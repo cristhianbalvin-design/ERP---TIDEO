@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { I, money, moneyD } from './icons.jsx';
+import React, { useState, useEffect, useMemo } from 'react';
+import { I, money } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { SIDEBAR } from './shell.jsx';
@@ -7,38 +7,140 @@ import { SIDEBAR } from './shell.jsx';
 // Roles builder, Usuarios, Tenants/Planes, and simple stub pages
 
 function Roles() {
-  const [sel, setSel] = useState('comercial');
+  const { roles, clonarRol, actualizarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, setUsuarios, addNotificacion } = useApp();
+  const rolKeys = Object.keys(roles);
+  const [sel, setSel] = useState(rolKeys.includes('comercial') ? 'comercial' : rolKeys[0] || '');
   const [tab, setTab] = useState('permisos');
-  const role = MOCK.roles[sel];
-  const allowed = new Set(role.permisos.ver || []);
+  const role = roles[sel];
+  const allowed = useMemo(() => new Set(role?.permisos?.ver || []), [role?.permisos?.ver]);
   const [preview, setPreview] = useState(false);
+
+  // Modales
+  const [modalNuevo, setModalNuevo] = useState(false);
+  const [modalClonar, setModalClonar] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [nuevoDesc, setNuevoDesc] = useState('');
+  const [clonarNombre, setClonarNombre] = useState('');
+  const [editingMeta, setEditingMeta] = useState(false);
+  const [editNombre, setEditNombre] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [reasignarUsuario, setReasignarUsuario] = useState(null);
+  const [reasignarRolId, setReasignarRolId] = useState('');
+
+  // Sync sel cuando se elimina un rol
+  useEffect(() => {
+    if (sel && !roles[sel]) setSel(Object.keys(roles)[0] || '');
+  }, [roles, sel]);
+
+  const handleNuevoRol = () => {
+    if (!nuevoNombre.trim()) return;
+    const newId = crearRol({ nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim() });
+    setSel(newId);
+    setModalNuevo(false);
+    setNuevoNombre('');
+    setNuevoDesc('');
+  };
+
+  const handleClonar = () => {
+    if (!clonarNombre.trim()) return;
+    const newId = clonarRol(sel, clonarNombre.trim());
+    if (newId) setSel(newId);
+    setModalClonar(false);
+    setClonarNombre('');
+  };
+
+  const handleEliminar = () => {
+    if (rolKeys.length <= 1) { addNotificacion('No puedes eliminar el único rol.', 'error'); return; }
+    if (!confirm(`¿Eliminar el rol "${role?.nombre}"? Esta acción no se puede deshacer.`)) return;
+    eliminarRol(sel);
+  };
+
+  const handleSaveMeta = () => {
+    editarRol(sel, { nombre: editNombre, descripcion: editDesc });
+    setEditingMeta(false);
+  };
+
+  const handleReasignar = () => {
+    setUsuarios(prev => prev.map(u => u.id === reasignarUsuario.id ? { ...u, rol: reasignarRolId } : u));
+    addNotificacion(`${reasignarUsuario.nombre} reasignado a "${roles[reasignarRolId]?.nombre || reasignarRolId}".`);
+    setReasignarUsuario(null);
+  };
+
+  if (!role) return null;
+
+  const cb = (p, act) => {
+    let realKey = act;
+    let isChecked;
+    if (act === 'costos')        { realKey = 'ver_costos';   isChecked = role.permisos.ver_costos   || role.permisos.todo; }
+    else if (act === 'finanzas') { realKey = 'ver_finanzas'; isChecked = role.permisos.ver_finanzas || role.permisos.todo; }
+    else if (act === 'precios')  { realKey = 'ver_precios';  isChecked = role.permisos.ver_precios  || role.permisos.todo; }
+    else {
+      // ver, crear, editar, anular, aprobar, exportar — per-screen arrays
+      const arr = role.permisos[act];
+      isChecked = Array.isArray(arr) ? arr.includes(p.key) : (arr === true || role.permisos.todo);
+    }
+    return (
+      <td key={act} style={{textAlign:'center'}}>
+        <input type="checkbox" className="checkbox" checked={isChecked || false}
+          onChange={e => actualizarPermisosRol(sel, p.key, realKey, e.target.checked)}
+          disabled={role.permisos.plataforma && act === 'ver'}/>
+      </td>
+    );
+  };
+
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Roles y Permisos</h1><div className="page-sub">{Object.keys(MOCK.roles).length} roles configurados · permisos granulares por pantalla</div></div>
-        <div className="row"><button className="btn btn-secondary">{I.copy} Clonar rol</button><button className="btn btn-primary">{I.plus} Nuevo rol</button></div>
+        <div><h1 className="page-title">Roles y Permisos</h1><div className="page-sub">{rolKeys.length} roles configurados · permisos granulares por pantalla</div></div>
+        <div className="row">
+          <button className="btn btn-secondary" onClick={() => { setClonarNombre(`Copia de ${role.nombre}`); setModalClonar(true); }}>{I.copy} Clonar rol</button>
+          <button className="btn btn-primary" onClick={() => setModalNuevo(true)}>{I.plus} Nuevo rol</button>
+        </div>
       </div>
+
       <div style={{display:'grid', gridTemplateColumns:'280px 1fr', gap:20}}>
+        {/* Sidebar roles */}
         <div className="card" style={{height:'fit-content'}}>
           <div className="card-head"><h3>Roles</h3></div>
           <div style={{padding:8}}>
-            {Object.entries(MOCK.roles).map(([k,r])=>(
-              <div key={k} onClick={()=>setSel(k)} style={{padding:'10px 12px', borderRadius:8, cursor:'pointer', background: sel===k?'var(--surface-hover)':'transparent', borderLeft: sel===k?'3px solid var(--cyan)':'3px solid transparent'}}>
+            {Object.entries(roles).map(([k,r])=>(
+              <div key={k} onClick={()=>setSel(k)} style={{padding:'10px 12px', borderRadius:8, cursor:'pointer', background:sel===k?'var(--surface-hover)':'transparent', borderLeft:sel===k?'3px solid var(--cyan)':'3px solid transparent', position:'relative'}}>
                 <div style={{fontWeight:600, fontSize:13}}>{r.nombre}</div>
                 <div className="text-muted" style={{fontSize:11,marginTop:2}}>{r.descripcion}</div>
-                <div className="text-subtle" style={{fontSize:11,marginTop:4}}>{MOCK.usuarios.filter(u=>u.rol===k).length} usuarios</div>
+                <div className="text-subtle" style={{fontSize:11,marginTop:4}}>{usuarios.filter(u=>u.rol===k).length} usuarios</div>
+                {sel === k && (
+                  <button className="icon-btn" style={{position:'absolute',top:8,right:4,opacity:0.4,fontSize:11}} title="Eliminar rol"
+                    onClick={e => { e.stopPropagation(); handleEliminar(); }}>{I.trash}</button>
+                )}
               </div>
             ))}
           </div>
         </div>
+
+        {/* Panel derecho */}
         <div className="card">
           <div className="card-head">
-            <div>
-              <h3>{role.nombre}</h3>
-              <div className="text-muted" style={{fontSize:12,marginTop:2}}>{role.descripcion}</div>
-            </div>
+            {editingMeta ? (
+              <div className="col" style={{gap:8, flex:1}}>
+                <input className="input" value={editNombre} onChange={e=>setEditNombre(e.target.value)} style={{fontWeight:700, fontSize:16}}/>
+                <input className="input" value={editDesc} onChange={e=>setEditDesc(e.target.value)} style={{fontSize:12}}/>
+                <div className="row" style={{gap:6}}>
+                  <button className="btn btn-sm btn-primary" onClick={handleSaveMeta}>Guardar</button>
+                  <button className="btn btn-sm btn-secondary" onClick={()=>setEditingMeta(false)}>Cancelar</button>
+                </div>
+              </div>
+            ) : (
+              <div className="row" style={{gap:8, flex:1}}>
+                <div>
+                  <h3>{role.nombre}</h3>
+                  <div className="text-muted" style={{fontSize:12,marginTop:2}}>{role.descripcion}</div>
+                </div>
+                <button className="icon-btn" style={{opacity:0.4}} title="Editar nombre" onClick={()=>{ setEditNombre(role.nombre); setEditDesc(role.descripcion||''); setEditingMeta(true); }}>{I.edit}</button>
+              </div>
+            )}
             <button className="btn btn-secondary btn-sm" onClick={()=>setPreview(true)}>{I.eye} ¿Cómo ve la app este rol?</button>
           </div>
+
           <div style={{padding:'0 20px'}}>
             <div className="tabs">
               <div className={'tab '+(tab==='permisos'?'active':'')} onClick={()=>setTab('permisos')}>Permisos por pantalla</div>
@@ -46,6 +148,7 @@ function Roles() {
               <div className={'tab '+(tab==='usuarios'?'active':'')} onClick={()=>setTab('usuarios')}>Usuarios asignados</div>
             </div>
           </div>
+
           {tab === 'permisos' && (
             <div className="table-wrap">
               <table className="tbl">
@@ -53,78 +156,153 @@ function Roles() {
                   <th>Pantalla</th>
                   {['Ver','Crear','Editar','Anular','Aprobar','Export','Costos','Precios','Finanzas'].map(h=>(<th key={h} style={{textAlign:'center'}}>{h}</th>))}
                 </tr></thead>
-                <tbody>{MOCK.pantallasPermisos.map((p,i)=>{
-                  const has = allowed.has(p.key) || role.permisos.todo;
-                  const cb = (act) => {
-                    if (!p.acciones.includes(act)) return <td key={act} style={{textAlign:'center',color:'var(--fg-subtle)'}}>—</td>;
-                    let checked = has;
-                    if (act==='costos') checked = has && (role.permisos.ver_costos || role.permisos.todo);
-                    if (act==='finanzas') checked = has && (role.permisos.ver_finanzas || role.permisos.todo);
-                    return <td key={act} style={{textAlign:'center'}}><input type="checkbox" className="checkbox" defaultChecked={checked} /></td>;
-                  };
-                  return (
-                    <tr key={i}>
-                      <td><div className="text-subtle" style={{fontSize:10,textTransform:'uppercase',letterSpacing:'0.08em'}}>{p.modulo}</div><strong>{p.pantalla}</strong></td>
-                      {cb('ver')}{cb('crear')}{cb('editar')}{cb('anular')}{cb('aprobar')}{cb('exportar')}{cb('costos')}{cb('precios')}{cb('finanzas')}
-                    </tr>
-                  );
-                })}</tbody>
+                <tbody>{MOCK.pantallasPermisos.map((p,i)=>(
+                  <tr key={i}>
+                    <td><div className="text-subtle" style={{fontSize:10,textTransform:'uppercase',letterSpacing:'0.08em'}}>{p.modulo}</div><strong>{p.pantalla}</strong></td>
+                    {cb(p,'ver')}{cb(p,'crear')}{cb(p,'editar')}{cb(p,'anular')}{cb(p,'aprobar')}{cb(p,'exportar')}{cb(p,'costos')}{cb(p,'precios')}{cb(p,'finanzas')}
+                  </tr>
+                ))}</tbody>
               </table>
             </div>
           )}
+
           {tab === 'especiales' && (
             <div className="card-body col" style={{gap:14}}>
               {[
-                {l:'Aprobar descuentos en cotizaciones', v:role.permisos.aprobar_descuentos||role.permisos.todo},
-                {l:'Ver salario y costo hora del personal', v:role.permisos.ver_costos||role.permisos.todo},
-                {l:'Puede anular documentos emitidos', v:role.permisos.anular_documentos||role.permisos.todo},
-                {l:'Acceso a vistas de campo móviles', v:role.permisos.acceso_campo||role.permisos.todo},
-                {l:'Ver información financiera (CxC, CxP, tesorería)', v:role.permisos.ver_finanzas||role.permisos.todo},
-              ].map((x,i)=>(
-                <div key={i} className="row" style={{justifyContent:'space-between', padding:12, border:'1px solid var(--border)', borderRadius:8}}>
+                {l:'Aprobar descuentos en cotizaciones', k:'aprobar_descuentos'},
+                {l:'Ver salario y costo hora del personal', k:'ver_costos'},
+                {l:'Puede anular documentos emitidos', k:'anular_documentos'},
+                {l:'Acceso a vistas de campo móviles', k:'acceso_campo'},
+                {l:'Ver información financiera (CxC, CxP, tesorería)', k:'ver_finanzas'},
+              ].map(x=>(
+                <div key={x.k} className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
                   <div style={{fontSize:13}}>{x.l}</div>
-                  <div className={'toggle '+(x.v?'on':'')}/>
+                  <div className={'toggle '+((role.permisos[x.k]||role.permisos.todo)?'on':'')} style={{cursor:'pointer'}}
+                    onClick={()=>actualizarPermisosRol(sel, null, x.k, !(role.permisos[x.k]||role.permisos.todo))}/>
                 </div>
               ))}
-              <div className="row" style={{justifyContent:'space-between', padding:12, border:'1px solid var(--border)', borderRadius:8}}>
+              <div className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
                 <div>
                   <div style={{fontSize:13,fontWeight:500}}>Monto máximo para aprobar compras</div>
                   <div className="text-muted" style={{fontSize:11,marginTop:2}}>0 = no puede aprobar compras</div>
                 </div>
-                <input className="input" style={{width:140,textAlign:'right'}} defaultValue={role.permisos.plataforma?'Sin limite':role.permisos.acceso_campo?'S/ 500':'S/ 0'}/>
+                <input className="input" style={{width:140,textAlign:'right'}}
+                  key={sel}
+                  defaultValue={role.permisos.monto_max_compras ?? (role.permisos.plataforma ? '' : '0')}
+                  placeholder="S/ 0"
+                  onBlur={e => actualizarPermisosRol(sel, null, 'monto_max_compras', Number(e.target.value.replace(/[^0-9]/g,'')) || 0)}/>
               </div>
-              <div className="row" style={{justifyContent:'space-between', padding:12, border:'1px solid var(--border)', borderRadius:8}}>
+              <div className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
                 <div style={{fontSize:13,fontWeight:500}}>Perfil de campo</div>
-                <select className="select" style={{width:180}} defaultValue={role.permisos.perfil_campo||'ninguno'}>
-                  <option>Ninguno</option><option>Técnico</option><option>Vendedor</option><option>Compras</option><option>Supervisor</option><option>Gerencia</option>
+                <select className="select" style={{width:180}}
+                  key={sel}
+                  value={role.permisos.perfil_campo || 'ninguno'}
+                  onChange={e => actualizarPermisosRol(sel, null, 'perfil_campo', e.target.value === 'ninguno' ? null : e.target.value)}>
+                  <option value="ninguno">Ninguno</option>
+                  <option value="Técnico">Técnico</option>
+                  <option value="Vendedor">Vendedor</option>
+                  <option value="Compras">Compras</option>
+                  <option value="Supervisor">Supervisor</option>
+                  <option value="Gerencia">Gerencia</option>
                 </select>
               </div>
             </div>
           )}
+
           {tab === 'usuarios' && (
             <div className="table-wrap">
               <table className="tbl">
                 <thead><tr><th>Usuario</th><th>Email</th><th>Área</th><th>Último acceso</th><th></th></tr></thead>
-                <tbody>{MOCK.usuarios.filter(u=>u.rol===sel).map(u=>(
-                  <tr key={u.id}><td><strong>{u.nombre}</strong></td><td className="text-muted">{u.email}</td><td>{u.area}</td><td className="text-muted">{u.ultimo}</td><td><button className="btn btn-sm btn-ghost">Reasignar</button></td></tr>
-                ))}</tbody>
+                <tbody>
+                  {usuarios.filter(u=>u.rol===sel).length === 0 && (
+                    <tr><td colSpan={5} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>Ningún usuario asignado a este rol.</td></tr>
+                  )}
+                  {usuarios.filter(u=>u.rol===sel).map(u=>(
+                    <tr key={u.id}>
+                      <td><strong>{u.nombre}</strong></td>
+                      <td className="text-muted">{u.email}</td>
+                      <td>{u.area}</td>
+                      <td className="text-muted">{u.ultimo || u.ultimo_login || '—'}</td>
+                      <td><button className="btn btn-sm btn-ghost" onClick={()=>{ setReasignarUsuario(u); setReasignarRolId(sel); }}>Reasignar</button></td>
+                    </tr>
+                  ))}
+                </tbody>
               </table>
             </div>
           )}
         </div>
       </div>
 
+      {/* Modal: Nuevo rol */}
+      {modalNuevo && <>
+        <div className="side-panel-backdrop" onClick={()=>setModalNuevo(false)}/>
+        <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:420,zIndex:200,boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
+          <h3 style={{marginBottom:20}}>Nuevo rol</h3>
+          <div className="col" style={{gap:14}}>
+            <div className="input-group">
+              <label>Nombre del rol *</label>
+              <input className="input" value={nuevoNombre} onChange={e=>setNuevoNombre(e.target.value)} placeholder="Ej: Coordinador de Ventas" autoFocus onKeyDown={e=>e.key==='Enter'&&handleNuevoRol()}/>
+            </div>
+            <div className="input-group">
+              <label>Descripción</label>
+              <input className="input" value={nuevoDesc} onChange={e=>setNuevoDesc(e.target.value)} placeholder="Breve descripción del rol"/>
+            </div>
+          </div>
+          <div className="row" style={{gap:8,marginTop:24,justifyContent:'flex-end'}}>
+            <button className="btn btn-secondary" onClick={()=>setModalNuevo(false)}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleNuevoRol} disabled={!nuevoNombre.trim()}>Crear rol</button>
+          </div>
+        </div>
+      </>}
+
+      {/* Modal: Clonar rol */}
+      {modalClonar && <>
+        <div className="side-panel-backdrop" onClick={()=>setModalClonar(false)}/>
+        <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:420,zIndex:200,boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
+          <h3 style={{marginBottom:8}}>Clonar rol</h3>
+          <div className="text-muted" style={{fontSize:12,marginBottom:20}}>Se copiará "{role.nombre}" con todos sus permisos.</div>
+          <div className="input-group">
+            <label>Nombre del nuevo rol *</label>
+            <input className="input" value={clonarNombre} onChange={e=>setClonarNombre(e.target.value)} autoFocus onKeyDown={e=>e.key==='Enter'&&handleClonar()}/>
+          </div>
+          <div className="row" style={{gap:8,marginTop:24,justifyContent:'flex-end'}}>
+            <button className="btn btn-secondary" onClick={()=>setModalClonar(false)}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleClonar} disabled={!clonarNombre.trim()}>Clonar</button>
+          </div>
+        </div>
+      </>}
+
+      {/* Modal: Reasignar usuario */}
+      {reasignarUsuario && <>
+        <div className="side-panel-backdrop" onClick={()=>setReasignarUsuario(null)}/>
+        <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:400,zIndex:200,boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
+          <h3 style={{marginBottom:8}}>Reasignar usuario</h3>
+          <div className="text-muted" style={{fontSize:12,marginBottom:20}}>{reasignarUsuario.nombre} · {reasignarUsuario.email}</div>
+          <div className="input-group">
+            <label>Nuevo rol</label>
+            <select className="select" value={reasignarRolId} onChange={e=>setReasignarRolId(e.target.value)}>
+              {Object.entries(roles).map(([k,r])=><option key={k} value={k}>{r.nombre}</option>)}
+            </select>
+          </div>
+          <div className="row" style={{gap:8,marginTop:24,justifyContent:'flex-end'}}>
+            <button className="btn btn-secondary" onClick={()=>setReasignarUsuario(null)}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleReasignar}>Confirmar</button>
+          </div>
+        </div>
+      </>}
+
+      {/* Preview sidebar */}
       {preview && <>
         <div className="side-panel-backdrop" onClick={()=>setPreview(false)}/>
         <div className="side-panel" style={{width:'min(420px, 92vw)'}}>
           <div className="side-panel-head">
             <div>
               <div className="eyebrow">Vista previa · {role.nombre}</div>
-              <div className="font-display" style={{fontSize:18, fontWeight:700, marginTop:2}}>Sidebar tal como lo ve este rol</div>
+              <div className="font-display" style={{fontSize:18,fontWeight:700,marginTop:2}}>Sidebar tal como lo ve este rol</div>
             </div>
             <button className="icon-btn" onClick={()=>setPreview(false)}>{I.x}</button>
           </div>
-          <div style={{background:'var(--navy)', padding:20, flex:1, overflowY:'auto'}}>
+          <div style={{background:'var(--navy)',padding:20,flex:1,overflowY:'auto'}}>
             <div style={{color:'#fff'}}>
               {SIDEBAR.map((g,gi)=>{
                 if (g.plataforma && !role.permisos.plataforma) return null;
@@ -151,32 +329,82 @@ function Roles() {
 }
 
 function Usuarios() {
-  const { usuarios } = useApp();
-  const getEmpresa = (id) => MOCK.empresas.find(e => e.id === id)?.nombre || MOCK.empresas[0]?.nombre || 'Tenant asignado';
+  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma } = useApp();
+  const [resetting, setResetting] = useState(null);
+  const [tempPass, setTempPass] = useState('Tideo2026!');
+  
+  const handleReset = () => {
+    if (!resetting) return;
+    addNotificacion(`Contraseña temporal asignada correctamente para ${resetting.nombre}`);
+    setResetting(null);
+  };
+
+  const getEmpresa = (id) => {
+    if (empresa?.id === id) return empresa.nombre;
+    const found = (empresasPlataforma || []).find(e => e.id === id);
+    return found ? found.nombre : (MOCK.empresas.find(e => e.id === id)?.nombre || 'Tenant asignado');
+  };
+  
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Usuarios</h1><div className="page-sub">9 usuarios · 5 con acceso de campo</div></div>
+        <div><h1 className="page-title">Usuarios</h1><div className="page-sub">{usuarios.length} usuarios · Acceso centralizado</div></div>
         <button className="btn btn-primary">{I.plus} Nuevo usuario</button>
       </div>
-      <div className="card"><div className="table-wrap"><table className="tbl">
-        <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Tenant</th><th>Área</th><th>Campo</th><th>Estado</th><th>Último login</th></tr></thead>
-        <tbody>{usuarios.map(u=>{
-          const r = MOCK.roles[u.rol];
-          return (
-            <tr key={u.id}>
-              <td><div className="row"><div className="avatar" style={{width:28,height:28,fontSize:11}}>{u.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div><strong>{u.nombre}</strong></div></td>
-              <td className="text-muted">{u.email}</td>
-              <td><span className={'badge badge-'+r.color}>{r.nombre}</span></td>
-              <td className="text-muted">{getEmpresa(u.empresa_id)}</td>
-              <td>{u.area}</td>
-              <td>{u.campo?<span className="badge badge-cyan">{I.mobile}{u.campoPerfil}</span>:<span className="text-subtle">—</span>}</td>
-              <td><span className="badge badge-green">{u.estado}</span></td>
-              <td className="text-muted">{u.ultimo}</td>
-            </tr>
-          );
-        })}</tbody>
-      </table></div></div>
+      <div className="card">
+        <div className="table-wrap">
+          <table className="tbl">
+            <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Tenant</th><th>Área</th><th>Campo</th><th>Estado</th><th>Último login</th><th style={{textAlign:'right'}}>Acceso</th></tr></thead>
+            <tbody>{usuarios.map(u=>{
+              const r = MOCK.roles[u.rol] || { nombre: u.rol, color: 'gray' };
+              return (
+                <tr key={u.id}>
+                  <td><div className="row"><div className="avatar" style={{width:28,height:28,fontSize:11}}>{u.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div><strong>{u.nombre}</strong></div></td>
+                  <td className="text-muted">{u.email}</td>
+                  <td><span className={'badge badge-'+r.color}>{r.nombre}</span></td>
+                  <td className="text-muted">{getEmpresa(u.empresa_id)}</td>
+                  <td>{u.area}</td>
+                  <td>{u.campo?<span className="badge badge-cyan">{I.mobile}{u.campoPerfil}</span>:<span className="text-subtle">—</span>}</td>
+                  <td><span className="badge badge-green">{u.estado}</span></td>
+                  <td className="text-muted">{u.ultimo || 'Nuevo'}</td>
+                  <td style={{textAlign:'right'}}>
+                    <button className="btn btn-ghost btn-sm" title="Asignar contraseña" onClick={() => setResetting(u)}>
+                      <span style={{fontSize:16}}>🔑</span>
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        </div>
+      </div>
+
+      {resetting && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:400}}>
+            <div className="modal-head">
+              <h2>Asignar Contraseña Temporal</h2>
+              <button className="icon-btn" onClick={() => setResetting(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body col" style={{gap:16}}>
+              <p style={{fontSize:13, color:'var(--fg-muted)'}}>
+                Estás asignando una clave de acceso manual para <strong>{resetting.nombre}</strong>.
+              </p>
+              <div className="input-group">
+                <label>Contraseña Temporal</label>
+                <div style={{display:'flex', gap:8}}>
+                  <input className="input" type="text" value={tempPass} onChange={e => setTempPass(e.target.value)} />
+                  <button className="btn btn-secondary" onClick={() => setTempPass(Math.random().toString(36).slice(-8) + '!')}>Generar</button>
+                </div>
+              </div>
+              <div className="modal-foot mt-4">
+                <button className="btn btn-secondary" onClick={() => setResetting(null)}>Cancelar</button>
+                <button className="btn btn-primary" onClick={handleReset}>Guardar y Notificar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

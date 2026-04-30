@@ -1446,13 +1446,14 @@ function Actividades() {
 
 // ============ OS CLIENTE ============
 function FormCrearOT({ os, onSave, onCancel }) {
+  const { personalOperativo } = useApp();
   const [form, setForm] = useState({
     servicio: 'Servicio cliente',
     descripcion: `Ejecucion de ${os.numero}`,
     costo_estimado: os.saldo_por_ejecutar || os.monto_aprobado || 0,
     fecha_programada: os.fecha_inicio || new Date().toISOString().split('T')[0],
     direccion_ejecucion: '',
-    responsable: '',
+    tecnico_responsable_id: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -1499,8 +1500,13 @@ function FormCrearOT({ os, onSave, onCancel }) {
               <input className="input" type="date" value={form.fecha_programada} onChange={e => upd('fecha_programada', e.target.value)} />
             </div>
             <div className="input-group">
-              <label>Responsable</label>
-              <input className="input" value={form.responsable} onChange={e => upd('responsable', e.target.value)} />
+              <label>Técnico responsable</label>
+              <select className="select" value={form.tecnico_responsable_id} onChange={e => upd('tecnico_responsable_id', e.target.value)}>
+                <option value="">Sin asignar</option>
+                {personalOperativo.filter(p => p.estado === 'activo').map(p => (
+                  <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` — ${p.cargo}` : ''}</option>
+                ))}
+              </select>
             </div>
             <div className="input-group" style={{gridColumn:'1 / -1'}}>
               <label>Dirección de ejecución</label>

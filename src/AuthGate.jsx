@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from './context.jsx';
 import { I } from './icons.jsx';
 
-function SplashLoading({ message }) {
+function SplashLoading({ message, duration }) {
   return (
     <div className="app-shell" style={{
       alignItems:'center', 
@@ -10,25 +10,42 @@ function SplashLoading({ message }) {
       background:'#1A2B4A', 
       backgroundImage: `url('/bg_login.jpg')`,
       backgroundRepeat: 'repeat',
-      backgroundSize: '1000px'
+      backgroundSize: '1000px',
+      position: 'relative',
+      overflow: 'hidden'
     }}>
-      <div className="col fade-in" style={{alignItems:'center', gap:24}}>
+      <div style={{
+        position: 'absolute',
+        width: '150%',
+        height: '150%',
+        background: 'radial-gradient(circle at center, rgba(0,188,212,0.1) 0%, transparent 70%)',
+        top: '-25%',
+        left: '-25%',
+        pointerEvents: 'none'
+      }} />
+
+      <div className="col fade-in" style={{alignItems:'center', gap:32, zIndex:1}}>
         <img 
           src="/logo_tideo.png" 
           alt="TIDEO" 
           className="animate-breathe"
           style={{height:140, display:'block'}} 
         />
-        {message && (
-          <div style={{textAlign:'center'}}>
-            <div className="font-display" style={{fontSize:18, fontWeight:600, color:'#fff', letterSpacing:'0.05em', textTransform:'uppercase'}}>
-              {message}
-            </div>
-            <div className="mt-2" style={{width:120, height:2, background:'rgba(255,255,255,0.1)', margin:'0 auto', borderRadius:9, overflow:'hidden'}}>
-              <div className="animate-progress" style={{width:'40%', height:'100%', background:'#fff', borderRadius:9}}></div>
-            </div>
+        <div style={{textAlign:'center', width:'100%'}}>
+          <div className="font-display" style={{fontSize:16, fontWeight:700, color:'#fff', letterSpacing:'0.15em', textTransform:'uppercase', opacity:0.9}}>
+            {message || 'Cargando'}
           </div>
-        )}
+          <div className="mt-6" style={{width:240, height:3, background:'rgba(255,255,255,0.08)', margin:'0 auto', borderRadius:9, overflow:'hidden', position:'relative'}}>
+            <div 
+              className="animate-progress" 
+              style={{
+                animation: duration 
+                  ? `progress-grow ${duration}ms linear forwards` 
+                  : 'progress-indeterminate 2s infinite ease-in-out'
+              }}
+            ></div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -175,7 +192,7 @@ export function AuthGate({ children }) {
   };
 
   if (isLoggingIn) {
-    return <SplashLoading message="Preparando tu entorno" />;
+    return <SplashLoading message="Preparando tu entorno" duration={4500} />;
   }
 
   if (!membresiaActiva && todasMembresias.length > 1) {

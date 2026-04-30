@@ -457,3 +457,26 @@ export async function loadCrmFromSupabase(supabase, empresaId) {
       .map(r => r.error?.message),
   };
 }
+
+export async function loadCsFromSupabase(supabase, empresaId) {
+  if (!isSupabaseMode() || !supabase || !empresaId) return null;
+  const q = table => supabase.from(table).select('*').eq('empresa_id', empresaId);
+  const [renR, onbR, planesR, npsR] = await Promise.all([
+    q('renovaciones').order('fecha_vencimiento', { ascending: true }),
+    q('onboardings').order('created_at', { ascending: false }),
+    q('planes_exito').order('created_at', { ascending: false }),
+    q('nps_encuestas').order('fecha_envio', { ascending: false }),
+  ]);
+  const hoy = new Date();
+  return {
+    renovaciones: (renR.data || []).map(r => ({
+      ...r,
+      dias_restantes: r.fecha_vencimiento
+        ? Math.ceil((new Date(r.fecha_vencimiento) - hoy) / 86400000)
+        : null,
+    })),
+    onboardings: onbR.data || [],
+    planesExito: planesR.data || [],
+    npsEncuestas: npsR.data || [],
+  };
+}

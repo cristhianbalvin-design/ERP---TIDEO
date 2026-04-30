@@ -33,13 +33,16 @@ $orderedFiles = @(
   "supabase/migrations/025_maestro_industrias.sql",
   "supabase/migrations/026_fix_hc_cotizacion_items.sql",
   "supabase/migrations/027_rpc_crear_ot_desde_os.sql",
+  "supabase/migrations/028_fix_ot_os_cliente_fkey.sql",
+  "supabase/migrations/029_rrhh_planner_campo_operativo.sql",
   "supabase/seeds/001_demo_tenants.sql",
   "supabase/seeds/008_maestros_base_demo.sql",
   "supabase/seeds/002_crm_demo.sql",
   "supabase/seeds/003_ops_demo.sql",
   "supabase/seeds/005_compras_demo.sql",
   "supabase/seeds/004_finances_demo.sql",
-  "supabase/seeds/006_rrhh_demo.sql"
+  "supabase/seeds/006_rrhh_demo.sql",
+  "supabase/seeds/009_rrhh_planner_campo_demo.sql"
 )
 
 if (!(Test-Path $outputDir)) {

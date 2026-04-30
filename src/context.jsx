@@ -2,14 +2,17 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { MOCK } from './data.js';
 import { isSupabaseMode } from './lib/dataMode.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
-import { loadCrmFromSupabase, persistirLead, actualizarLead, persistirCuenta, persistirContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial } from './services/crmService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, persistirCuenta, persistirContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial } from './services/crmService.js';
 import { loadOpsFromSupabase, persistirBacklog, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario } from './services/operacionesService.js';
 import { finanzasService } from './services/finanzasService.js';
 import { maestrosService } from './services/maestrosService.js';
 import { comprasService } from './services/comprasService.js';
 import { rrhhService } from './services/rrhhService.js';
+import * as plannerSvc from './services/plannerService.js';
 import { auditoriaService } from './services/auditoriaService.js';
 import { plataformaService } from './services/plataformaService.js';
+import { usuariosService } from './services/usuariosService.js';
+import { rolesService } from './services/rolesService.js';
 const AppContext = createContext();
 
 export function useApp() {
@@ -59,19 +62,26 @@ export function AppProvider({ children }) {
   const [active, setActive] = useState('dashboard');
   const [activeParams, setActiveParams] = useState({});
   const [roleKey, setRoleKey] = useState('admin');
-  const [empresa, setEmpresa] = useState(MOCK.empresas[0]);
+  const [empresa, setEmpresa] = useState(() => {
+    try {
+      const saved = localStorage.getItem('active_empresa_obj');
+      if (saved) return JSON.parse(saved);
+    } catch (e) { console.error('Error parsing saved empresa:', e); }
+    return MOCK.empresas[0];
+  });
+
   const [dark, setDark] = useState(false);
   const [mobileMode, setMobileMode] = useState(false);
   const [mobileProfile, setMobileProfile] = useState('tecnico');
   const [searchQuery, setSearchQuery] = useState('');
   const [createdRecords, setCreatedRecords] = useState({});
-  const [dataMode] = useState(isSupabaseMode() ? 'supabase' : 'mock');
+  const [dataMode] = useState(isSupabaseConfigured() ? 'supabase' : 'mock');
   const [authSession, setAuthSession] = useState(null);
   const [authUser, setAuthUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(isSupabaseMode());
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured());
   const [authError, setAuthError] = useState(null);
   const [supabaseStatus, setSupabaseStatus] = useState({
-    enabled: isSupabaseMode(),
+    enabled: isSupabaseConfigured(),
     configured: isSupabaseConfigured(),
     connected: false,
     loading: false,
@@ -79,11 +89,28 @@ export function AppProvider({ children }) {
   });
   const [todasMembresias, setTodasMembresias] = useState([]);
   const [membresiaActiva, setMembresiaActiva] = useState(null);
-  const [membresiaCargando, setMembresiaCargando] = useState(isSupabaseMode());
+  const [membresiaCargando, setMembresiaCargando] = useState(isSupabaseConfigured());
   const [empresasPlataforma, setEmpresasPlataforma] = useState(MOCK.empresas);
 
+  // Auto-seleccionar solo si hay exactamente 1 empresa — con múltiples siempre muestra el selector
+  useEffect(() => {
+    if (!authUser || membresiaActiva || todasMembresias.length !== 1) return;
+    seleccionarEmpresa(todasMembresias[0].empresa_id);
+  }, [authUser, todasMembresias, membresiaActiva]);
+
+  // Guardar la última empresa seleccionada
+  useEffect(() => {
+    if (empresa?.id) {
+      localStorage.setItem('active_empresa_obj', JSON.stringify(empresa));
+    }
+  }, [empresa]);
+
+
   // Business Data
-  const [usuarios, setUsuarios] = useState(MOCK.usuarios);
+  const [usuarios, setUsuarios] = useState(() => {
+    try { const saved = localStorage.getItem('tideo_usuarios'); return saved ? JSON.parse(saved) : MOCK.usuarios; } catch { return MOCK.usuarios; }
+  });
+  useEffect(() => { try { localStorage.setItem('tideo_usuarios', JSON.stringify(usuarios)); } catch {} }, [usuarios]);
   const [leads, setLeads] = useState(MOCK.leads);
   const [cuentas, setCuentas] = useState(MOCK.cuentas);
   const [contactos, setContactos] = useState(MOCK.contactos);
@@ -142,10 +169,25 @@ export function AppProvider({ children }) {
   const [referidos, setReferidos] = useState(MOCK.referidos || []);
   const [casosExito, setCasosExito] = useState(MOCK.casosExito || []);
   const [iaLogs, setIaLogs] = useState(MOCK.iaLogs || []);
+  // Planner v2
+  const [plannerAsignaciones, setPlannerAsignaciones] = useState([]);
+  const [cuadrillas, setCuadrillas] = useState([]);
+  const [semanaPlanner, setSemanaPlanner] = useState(null); // { inicio, fin } de la semana cargada
+
   const [turnos, setTurnos] = useState(MOCK.turnos || []);
   const [registrosAsistencia, setRegistrosAsistencia] = useState(MOCK.registrosAsistencia || []);
   const [periodosNomina, setPeriodosNomina] = useState(MOCK.periodosNomina || []);
   const [trabajadoresDatosNomina, setTrabajadoresDatosNomina] = useState(MOCK.trabajadoresDatosNomina || {});
+
+  const [rolesCtx, setRolesCtx] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tideo_roles');
+      return saved ? JSON.parse(saved) : MOCK.roles;
+    } catch { return MOCK.roles; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('tideo_roles', JSON.stringify(rolesCtx)); } catch {}
+  }, [rolesCtx]);
 
   const [notificaciones, setNotificaciones] = useState([
     { id: 'f3_1', text: 'Health Score de Logística Altiplano bajó a 28 — riesgo crítico. Se requiere plan de retención urgente.', read: false, time: 'Hace 15 min' },
@@ -165,7 +207,7 @@ export function AppProvider({ children }) {
   };
 
   useEffect(() => {
-    if (!isSupabaseMode()) return;
+    if (!isSupabaseConfigured()) return;
 
     let mounted = true;
     let subscription = null;
@@ -245,7 +287,7 @@ export function AppProvider({ children }) {
   };
 
   const loadSupabaseFinanceData = async () => {
-    if (!isSupabaseMode()) return;
+    if (!isSupabaseConfigured()) return;
 
     if (!isSupabaseConfigured()) {
       setSupabaseStatus({
@@ -348,7 +390,14 @@ export function AppProvider({ children }) {
   }, [empresa?.id, authSession?.user?.id]);
 
   useEffect(() => {
-    if (!isSupabaseMode() || !authSession?.user || !empresa?.id) return;
+    if (!isSupabaseConfigured() || !authSession?.user || !empresa?.id) return;
+    
+    // Limpiar listas actuales para evitar datos "pegados" de otro tenant
+    // usuarios se limpia después del merge con localStorage
+    setLeads([]);
+    setCuentas([]);
+    // ... (opcional otras listas)
+
     let mounted = true;
     const loadCrm = async () => {
       try {
@@ -476,6 +525,75 @@ export function AppProvider({ children }) {
             setPeriodosNomina(nominaData || []);
           }
         } catch (_err) { /* keep mock */ }
+
+        try {
+          const csData = await loadCsFromSupabase(supabase, empresa.id);
+          if (csData && mounted) {
+            setRenovaciones(csData.renovaciones || []);
+            setOnboardings(csData.onboardings || []);
+            setPlanesExito(csData.planesExito || []);
+            setNpsEncuestas(csData.npsEncuestas || []);
+          }
+        } catch (_err) { /* keep mock */ }
+
+        // Planner v2: cargar cuadrillas (asignaciones se cargan on-demand por semana)
+        try {
+          const cuadData = await plannerSvc.getCuadrillas(empresa.id);
+          if (mounted) setCuadrillas(cuadData || []);
+        } catch (_err) { /* keep mock */ }
+
+        try {
+          const usrData = await usuariosService.getUsuarios(empresa.id);
+          if (mounted) {
+            // Mergear usuarios locales (creados en prototipo) que no existan en Supabase
+            const localUsuarios = (() => { try { const s = localStorage.getItem('tideo_usuarios'); return s ? JSON.parse(s) : []; } catch { return []; } })();
+            const supabaseIds = new Set((usrData || []).map(u => u.id));
+            const onlyLocal = localUsuarios.filter(u => !supabaseIds.has(u.id));
+            setUsuarios([...(usrData || []), ...onlyLocal]);
+            
+            // Auto-sincronizar al admin logueado si no aparece en la lista
+            if (authUser?.email && !usrData?.find(u => u.email === authUser.email)) {
+              console.log('>>> Sincronizando usuario actual con la BD...');
+              registrarUsuario({
+                id: authUser.id,
+                nombre: authUser.user_metadata?.nombre || authUser.email.split('@')[0],
+                email: authUser.email,
+                rol: 'admin',
+                empresa_id: empresa.id,
+                estado: 'Activo'
+              });
+            }
+          }
+        } catch (_err) { 
+          console.error('Error loading usuarios from Supabase:', _err);
+          // Solo en caso de error real mantenemos los mock para no romper la UI
+        }
+
+        try {
+          const rolesData = await rolesService.getRoles(empresa.id);
+          if (mounted && rolesData?.length) {
+            // Convert list to object format if needed, but for the UI it might be easier as list
+            // However, to keep compatibility with MOCK.roles, we might want to store it as object
+            const rolesObj = {};
+            for (const r of rolesData) {
+              const pRows = await rolesService.getPermisosRoles(r.id);
+              rolesObj[r.id] = {
+                ...r,
+                permisos: {
+                  ver: pRows.filter(p => p.puede_ver).map(p => p.pantalla),
+                  crear: pRows.some(p => p.puede_crear),
+                  editar: pRows.some(p => p.puede_editar),
+                  anular: pRows.some(p => p.puede_anular),
+                  aprobar: pRows.some(p => p.puede_aprobar),
+                  ver_costos: pRows.some(p => p.puede_ver_costos),
+                  ver_finanzas: pRows.some(p => p.puede_ver_finanzas),
+                }
+              };
+            }
+            if (mounted) setRolesCtx(prev => ({ ...prev, ...rolesObj }));
+          }
+        } catch (_err) { /* keep mock */ }
+
       } catch (_err) { /* keep mock on error */ }
     };
     loadCrm();
@@ -508,13 +626,14 @@ export function AppProvider({ children }) {
   const seleccionarEmpresa = async (empresaId) => {
     const mem = todasMembresias.find(m => m.empresa_id === empresaId);
     if (!mem) return;
+    try { localStorage.setItem('last_empresa_id', empresaId); } catch {}
     setMembresiaCargando(true);
     await cargarMembresiaCompleta(mem);
   };
 
   useEffect(() => {
-    if (!isSupabaseMode() || !authUser?.id) {
-      if (isSupabaseMode()) {
+    if (!isSupabaseConfigured() || !authUser?.id) {
+      if (isSupabaseConfigured()) {
         setTodasMembresias([]);
         setMembresiaActiva(null);
         setMembresiaCargando(false);
@@ -571,7 +690,7 @@ export function AppProvider({ children }) {
   };
 
   const crmSync = (fn) => {
-    if (!isSupabaseMode() || !empresa?.id) return;
+    if (!isSupabaseConfigured() || !empresa?.id) return;
     crmPersist(fn)
       .catch((error) => {
         const message = error?.message || 'No se pudo persistir el cambio CRM en Supabase.';
@@ -581,7 +700,7 @@ export function AppProvider({ children }) {
   };
 
   const crmPersist = async (fn) => {
-    if (!isSupabaseMode() || !empresa?.id) return null;
+    if (!isSupabaseConfigured() || !empresa?.id) return null;
     const sb = await getSupabaseClient();
     const result = await fn(sb);
     if (result?.error) throw result.error;
@@ -589,7 +708,7 @@ export function AppProvider({ children }) {
   };
 
   const opsSync = (fn) => {
-    if (!isSupabaseMode() || !empresa?.id) return;
+    if (!isSupabaseConfigured() || !empresa?.id) return;
     getSupabaseClient()
       .then(async sb => {
         const result = await fn(sb);
@@ -604,7 +723,7 @@ export function AppProvider({ children }) {
   };
 
   const opsPersist = async (fn) => {
-    if (!isSupabaseMode() || !empresa?.id) return null;
+    if (!isSupabaseConfigured() || !empresa?.id) return null;
     const sb = await getSupabaseClient();
     const result = await fn(sb);
     if (result?.error) throw result.error;
@@ -612,7 +731,7 @@ export function AppProvider({ children }) {
   };
 
   const finSync = (fn) => {
-    if (!isSupabaseMode() || !empresa?.id) return;
+    if (!isSupabaseConfigured() || !empresa?.id) return;
     fn().catch((error) => {
       const message = error?.message || 'No se pudo persistir el cambio financiero en Supabase.';
       console.error('[FIN sync]', message, error);
@@ -621,7 +740,7 @@ export function AppProvider({ children }) {
   };
 
   const auditSync = ({ modulo, entidad, entidad_id, accion, valor_anterior = null, valor_nuevo = null }) => {
-    if (!isSupabaseMode() || !empresa?.id) return;
+    if (!isSupabaseConfigured() || !empresa?.id) return;
     auditoriaService.registrar({
       empresa_id: empresa.id,
       user_id: authUser?.id || null,
@@ -641,13 +760,13 @@ export function AppProvider({ children }) {
     setActiveParams(params);
   };
 
-  const role = (isSupabaseMode() && membresiaActiva)
+  const role = (isSupabaseConfigured() && membresiaActiva)
     ? buildRoleDePermisos(membresiaActiva.rol, membresiaActiva.permisos_rows, membresiaActiva.acceso_campo)
     : (MOCK.roles[roleKey] || MOCK.roles['admin']);
   const isSuperadmin = Boolean(role.permisos?.plataforma);
 
   useEffect(() => {
-    if (!isSupabaseMode() || !authSession?.user || !isSuperadmin) return;
+    if (!isSupabaseConfigured() || !authSession?.user || !isSuperadmin) return;
     plataformaService.listarEmpresas()
       .then(rows => setEmpresasPlataforma(rows.map(normalizarEmpresaSupabase)))
       .catch(error => {
@@ -659,7 +778,7 @@ export function AppProvider({ children }) {
   const crearTenantConAdmin = async (datos) => {
     if (!isSuperadmin) throw new Error('Solo Superadmin TIDEO puede crear tenants.');
 
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       const result = await plataformaService.crearTenantConAdmin(datos);
       const rows = await plataformaService.listarEmpresas();
       setEmpresasPlataforma(rows.map(normalizarEmpresaSupabase));
@@ -939,7 +1058,7 @@ export function AppProvider({ children }) {
     };
     const calculada = calcularHojaCosteo(hc);
     try {
-      if (isSupabaseMode()) {
+      if (isSupabaseConfigured()) {
         const result = await crmPersist(sb => crearHojaCosteoRpc(sb, empresa.id, calculada));
         if (result?.data) Object.assign(calculada, result.data);
       } else {
@@ -992,7 +1111,7 @@ export function AppProvider({ children }) {
   const aprobarHojaCosteo = async (hcId) => {
     const hc = hojasCosteo.find(h => h.id === hcId);
     if (!hc) return;
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       const cotBase = {
         id: generateId('cot'),
         oportunidad_id: hc.oportunidad_id,
@@ -1290,7 +1409,7 @@ export function AppProvider({ children }) {
     const saldoPorEjecutar = Math.max(0, Number(os.saldo_por_ejecutar || 0) - montoPlanificado);
 
     try {
-      if (isSupabaseMode()) {
+      if (isSupabaseConfigured()) {
         const result = await opsPersist(sb => crearOTDesdeOSRpc(sb, empresa.id, os.id, ot));
         const data = result?.data || {};
         Object.assign(ot, data.orden_trabajo || {});
@@ -1472,7 +1591,7 @@ export function AppProvider({ children }) {
       meta.otIds.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'valorizada' })));
     }
 
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       finSync(async () => {
         await finanzasService.crearValorizacion({
           id: val.id,
@@ -1491,6 +1610,36 @@ export function AppProvider({ children }) {
     }
 
     addNotificacion(`Valorización ${val.numero} aprobada.`);
+  };
+
+  const registrarUsuario = async (u) => {
+    // Validar que tenga empresa_id
+    if (!u.empresa_id && empresa?.id) u.empresa_id = empresa.id;
+    
+    if (!u.empresa_id) {
+      addNotificacion('No se pudo crear el usuario: Falta ID de empresa', 'error');
+      return;
+    }
+
+    setUsuarios(prev => {
+      const exists = prev.find(x => x.id === u.id);
+      if (exists) return prev.map(x => x.id === u.id ? u : x);
+      return [...prev, u];
+    });
+
+    if (isSupabaseConfigured()) {
+      try {
+        console.log('>>> Persistiendo usuario en Supabase:', u);
+        await usuariosService.registrarUsuario(u);
+        addNotificacion(`Usuario ${u.nombre} guardado en la nube.`);
+      } catch (err) {
+        console.error('>>> Error crítico Supabase:', err);
+        addNotificacion('Error de conexión: ' + (err.message || 'Error desconocido'), 'error');
+      }
+    } else {
+      console.log('>>> Supabase no configurado, modo local');
+      addNotificacion(`Usuario ${u.nombre} creado localmente (PRUEBA).`);
+    }
   };
 
   const updateLeadState = (leadId, newState) => {
@@ -1515,7 +1664,7 @@ export function AppProvider({ children }) {
       setValorizaciones(prev => prev.map(v => v.id === datos.valorizacion_id ? { ...v, estado: 'facturada' } : v));
     }
 
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       finSync(async () => {
         await finanzasService.emitirFactura(fac);
       });
@@ -1537,7 +1686,7 @@ export function AppProvider({ children }) {
     };
     setCxc(prev => [...prev, cuentaCobrar]);
 
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       finSync(async () => {
         await finanzasService.generarCxC(cuentaCobrar);
       });
@@ -1660,7 +1809,7 @@ export function AppProvider({ children }) {
       } : c));
     }
 
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       finSync(async () => {
         await finanzasService.registrarCobroCxC(cxcId, montoCobrado);
         await finanzasService.registrarMovimientoTesoreria(movimiento);
@@ -1681,7 +1830,7 @@ export function AppProvider({ children }) {
     };
     setCxp(prev => [cuentaPagar, ...prev]);
 
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       finSync(async () => {
         await finanzasService.generarCxP(cuentaPagar);
       });
@@ -1721,7 +1870,7 @@ export function AppProvider({ children }) {
     };
     setMovimientosTesoreria(prev => [movimiento, ...prev]);
 
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       finSync(async () => {
         await finanzasService.registrarPagoCxP(cxpId, montoPagado);
         await finanzasService.registrarMovimientoTesoreria(movimiento);
@@ -1759,7 +1908,7 @@ export function AppProvider({ children }) {
       m.id === movId ? { ...m, conciliado: true, vinculado_tipo: vinculadoTipo, vinculado_id: vinculadoId } : m
     ));
 
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       finSync(async () => {
         await finanzasService.conciliarMovimiento(movId, vinculadoTipo, vinculadoId);
       });
@@ -1877,7 +2026,7 @@ export function AppProvider({ children }) {
   };
 
   const crearCargo = async (cargo) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await maestrosService.crearCargo(empresa.id, cargo);
       setCargos(prev => [data, ...prev]);
       return data;
@@ -1888,7 +2037,7 @@ export function AppProvider({ children }) {
     }
   };
   const crearEspecialidad = async (especialidad) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await maestrosService.crearEspecialidad(empresa.id, especialidad);
       setEspecialidades(prev => [data, ...prev]);
       return data;
@@ -1899,7 +2048,7 @@ export function AppProvider({ children }) {
     }
   };
   const crearTipoServicio = async (ts) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await maestrosService.crearTipoServicio(empresa.id, ts);
       setTiposServicio(prev => [data, ...prev]);
       return data;
@@ -1910,7 +2059,7 @@ export function AppProvider({ children }) {
     }
   };
   const crearAlmacen = async (almacen) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await maestrosService.crearAlmacen(empresa.id, almacen);
       setAlmacenes(prev => [data, ...prev]);
       return data;
@@ -1921,7 +2070,7 @@ export function AppProvider({ children }) {
     }
   };
   const crearSede = async (sede) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await maestrosService.crearSede(empresa.id, sede);
       setSedes(prev => [data, ...prev]);
       return data;
@@ -1934,7 +2083,7 @@ export function AppProvider({ children }) {
 
   // ─── Compras Mutators ─────────────────────────────────────────
   const crearIndustria = async (industria) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await maestrosService.crearIndustria(empresa.id, industria);
       setIndustrias(prev => [data, ...prev]);
       return data;
@@ -1945,7 +2094,7 @@ export function AppProvider({ children }) {
   };
 
   const registrarProveedor = async (proveedor) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await comprasService.crearProveedor(empresa.id, proveedor);
       setProveedores(prev => [data, ...prev]);
       auditSync({ modulo: 'compras', entidad: 'proveedores', entidad_id: data.id, accion: 'crear', valor_nuevo: data });
@@ -1959,7 +2108,7 @@ export function AppProvider({ children }) {
   };
   const actualizarProveedorCtx = async (id, cambios) => {
     const anterior = proveedores.find(p => p.id === id) || null;
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       const data = await comprasService.actualizarProveedor(id, cambios);
       setProveedores(prev => prev.map(p => p.id === id ? data : p));
       auditSync({ modulo: 'compras', entidad: 'proveedores', entidad_id: id, accion: 'editar', valor_anterior: anterior, valor_nuevo: data });
@@ -1970,7 +2119,7 @@ export function AppProvider({ children }) {
     }
   };
   const crearProcesoCompraCtx = async (proceso) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await comprasService.crearProcesoCompra(empresa.id, proceso);
       setProcesosCompra(prev => [data, ...prev]);
       auditSync({ modulo: 'compras', entidad: 'procesos_compra', entidad_id: data.id, accion: 'crear', valor_nuevo: data });
@@ -1983,7 +2132,7 @@ export function AppProvider({ children }) {
     }
   };
   const actualizarProcesoCompraCtx = async (id, cambios) => {
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       const data = await comprasService.actualizarProcesoCompra(id, cambios);
       setProcesosCompra(prev => prev.map(p => p.id === id ? data : p));
       return data;
@@ -1992,7 +2141,7 @@ export function AppProvider({ children }) {
     }
   };
   const crearOrdenCompraCtx = async (oc) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await comprasService.crearOrdenCompra(empresa.id, oc);
       setOrdenesCompra(prev => [data, ...prev]);
       auditSync({ modulo: 'compras', entidad: 'ordenes_compra', entidad_id: data.id, accion: 'crear', valor_nuevo: data });
@@ -2005,7 +2154,7 @@ export function AppProvider({ children }) {
     }
   };
   const crearOrdenServicioCtx = async (os) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await comprasService.crearOrdenServicio(empresa.id, os);
       setOrdenesServicio(prev => [data, ...prev]);
       auditSync({ modulo: 'compras', entidad: 'ordenes_servicio_interna', entidad_id: data.id, accion: 'crear', valor_nuevo: data });
@@ -2018,7 +2167,7 @@ export function AppProvider({ children }) {
     }
   };
   const crearRecepcionCtx = async (recepcion) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await comprasService.crearRecepcion(empresa.id, recepcion);
       setRecepciones(prev => [data, ...prev]);
       auditSync({ modulo: 'compras', entidad: 'recepciones', entidad_id: data.id, accion: 'crear', valor_nuevo: data });
@@ -2048,7 +2197,7 @@ export function AppProvider({ children }) {
     };
 
     let guardada = evaluacion;
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       try {
         guardada = await comprasService.registrarEvaluacionProveedor(empresa.id, evaluacion);
       } catch (error) {
@@ -2065,7 +2214,7 @@ export function AppProvider({ children }) {
     setEvaluacionesProveedor(prev => [guardada, ...prev]);
     setProveedores(prev => prev.map(p => p.id === proveedor_id ? { ...p, ...cambiosProveedor } : p));
     auditSync({ modulo: 'compras', entidad: 'evaluaciones_proveedor', entidad_id: guardada.id, accion: 'crear', valor_nuevo: guardada });
-    if (isSupabaseMode()) {
+    if (isSupabaseConfigured()) {
       comprasService.actualizarProveedor(proveedor_id, { calificacion_promedio: promedio })
         .catch(error => addNotificacion(`Score de proveedor no persistio en Supabase: ${error.message}`));
     }
@@ -2115,7 +2264,7 @@ export function AppProvider({ children }) {
     };
 
     let recepcionGuardada = recepcion;
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       try {
         recepcionGuardada = await comprasService.crearRecepcion(empresa.id, {
           id: recepcion.id,
@@ -2140,7 +2289,7 @@ export function AppProvider({ children }) {
     if (isOC) {
       const cambios = { estado: 'cerrada', porcentaje_recibido: 100 };
       setOrdenesCompra(prev => prev.map(o => o.id === base.id ? { ...o, ...cambios } : o));
-      if (isSupabaseMode()) comprasService.actualizarOrdenCompra(base.id, cambios).catch(error => addNotificacion(`Compras no persistio en Supabase: ${error.message}`));
+      if (isSupabaseConfigured()) comprasService.actualizarOrdenCompra(base.id, cambios).catch(error => addNotificacion(`Compras no persistio en Supabase: ${error.message}`));
       if (itemsRecibidos.length) {
         setInventario(prev => [...prev, ...itemsRecibidos.map((item, idx) => ({
           id: generateId('inv'),
@@ -2153,7 +2302,7 @@ export function AppProvider({ children }) {
           stock_actual: item.recibido,
           costo_promedio: item.precio_unitario || 0
         }))]);
-        if (isSupabaseMode() && !observaciones) {
+        if (isSupabaseConfigured() && !observaciones) {
           Promise.all(itemsRecibidos.map((item, idx) => comprasService.registrarEntradaInventario(empresa.id, {
             codigo: item.codigo || `CMP-${String(idx + 1).padStart(3, '0')}-${base.codigo || base.id}`,
             descripcion: item.descripcion,
@@ -2175,7 +2324,7 @@ export function AppProvider({ children }) {
     } else {
       const cambios = { estado: 'cerrada' };
       setOrdenesServicio(prev => prev.map(o => o.id === base.id ? { ...o, ...cambios } : o));
-      if (isSupabaseMode()) comprasService.actualizarOrdenServicio(base.id, cambios).catch(error => addNotificacion(`Compras no persistio en Supabase: ${error.message}`));
+      if (isSupabaseConfigured()) comprasService.actualizarOrdenServicio(base.id, cambios).catch(error => addNotificacion(`Compras no persistio en Supabase: ${error.message}`));
     }
 
     await registrarEvaluacionProveedorCtx({
@@ -2213,7 +2362,7 @@ export function AppProvider({ children }) {
   };
 
   const crearTecnicoCtx = async (persona) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await rrhhService.crearPersonalOperativo(empresa.id, persona);
       setPersonalOperativo(prev => [data, ...prev]);
       return data;
@@ -2224,7 +2373,7 @@ export function AppProvider({ children }) {
     }
   };
   const crearAdminPersonalCtx = async (persona) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await rrhhService.crearPersonalAdmin(empresa.id, persona);
       setPersonalAdmin(prev => [data, ...prev]);
       return data;
@@ -2235,7 +2384,7 @@ export function AppProvider({ children }) {
     }
   };
   const crearTurnoCtx = async (turno) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await rrhhService.crearTurno(empresa.id, turno);
       setTurnos(prev => [data, ...prev]);
       return data;
@@ -2246,7 +2395,7 @@ export function AppProvider({ children }) {
     }
   };
   const registrarAsistenciaCtx = async (registro) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await rrhhService.registrarAsistencia(empresa.id, registro);
       setRegistrosAsistencia(prev => [data, ...prev]);
       return data;
@@ -2257,7 +2406,7 @@ export function AppProvider({ children }) {
     }
   };
   const crearPeriodoNominaCtx = async (periodo) => {
-    if (isSupabaseMode() && empresa?.id) {
+    if (isSupabaseConfigured() && empresa?.id) {
       const data = await rrhhService.crearPeriodoNomina(empresa.id, periodo);
       setPeriodosNomina(prev => [data, ...prev]);
       return data;
@@ -2283,6 +2432,247 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'crm', entidad: 'agenda_comercial', entidad_id: id, accion: 'editar', valor_anterior: anterior, valor_nuevo: datos });
   };
 
+  // ─── PLANNER V2 ────────────────────────────────────────────────────────────
+  /**
+   * Carga las asignaciones del planner para la semana (o rango) indicado.
+   * Guarda también el rango cargado para saber qué semana está en vista.
+   */
+  const loadPlannerSemana = async (fechaInicio, fechaFin) => {
+    if (!empresa?.id) return;
+    try {
+      let data;
+      if (isSupabaseConfigured()) {
+        data = await plannerSvc.getAsignaciones(empresa.id, fechaInicio, fechaFin);
+      } else {
+        // modo mock: filter plannerAsignaciones por rango
+        data = plannerAsignaciones.filter(a => a.fecha >= fechaInicio && a.fecha <= fechaFin);
+      }
+      setPlannerAsignaciones(data || []);
+      setSemanaPlanner({ inicio: fechaInicio, fin: fechaFin });
+    } catch (err) {
+      addNotificacion(`Planner: no se pudo cargar la semana — ${err?.message || err}`);
+    }
+  };
+
+  /**
+   * Crea asignaciones en lote (tecnico×día) para un rango.
+   * Detecta conflictos antes de persistir y los retorna para que el UI muestre el warning.
+   */
+  const crearAsignacionesRango = async ({ otId, tecnicoIds, fechaInicio, fechaFin, horaInicio = null, horaFin = null, cuadrillaOrigenId = null, forzar = false }) => {
+    if (!empresa?.id || !otId || !tecnicoIds?.length) return { conflictos: {}, creadas: [] };
+
+    // Generar lista de días del rango
+    const dias = [];
+    const inicio = new Date(fechaInicio);
+    const fin = new Date(fechaFin);
+    for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
+      dias.push(d.toISOString().split('T')[0]);
+    }
+
+    let conflictos = {};
+    if (isSupabaseConfigured() && !forzar) {
+      conflictos = await plannerSvc.detectarConflictos(tecnicoIds, dias, empresa.id);
+    }
+
+    let creadas = [];
+    if (isSupabaseConfigured()) {
+      creadas = await plannerSvc.crearAsignacionesRango({
+        otId, tecnicoIds, fechaInicio, fechaFin,
+        horaInicio, horaFin,
+        empresaId: empresa.id,
+        cuadrillaOrigenId: cuadrillaOrigenId || null,
+        createdBy: authUser?.id || null,
+      });
+      // Recargar la semana visible
+      if (semanaPlanner) await loadPlannerSemana(semanaPlanner.inicio, semanaPlanner.fin);
+    } else {
+      // Modo mock: generar objetos locales
+      creadas = tecnicoIds.flatMap(tid =>
+        dias.map(fecha => ({
+          id: generateId('pa'),
+          empresa_id: empresa.id,
+          ot_id: otId,
+          tecnico_id: tid,
+          fecha,
+          hora_inicio_estimada: horaInicio,
+          hora_fin_estimada: horaFin,
+          estado: 'programado',
+          cuadrilla_origen_id: cuadrillaOrigenId || null,
+        }))
+      );
+      setPlannerAsignaciones(prev => [
+        ...prev.filter(a => !creadas.some(c => c.ot_id === a.ot_id && c.tecnico_id === a.tecnico_id && c.fecha === a.fecha)),
+        ...creadas,
+      ]);
+    }
+
+    auditSync({ modulo: 'planner', entidad: 'asignaciones', entidad_id: otId, accion: 'crear_rango', valor_nuevo: { tecnicoIds, fechaInicio, fechaFin } });
+    addNotificacion(`Planner: ${creadas.length} asignaciones creadas para la OT.`);
+    return { conflictos, creadas };
+  };
+
+  /**
+   * Agrega un solo técnico a una OT en un día específico.
+   */
+  const agregarTecnicoADia = async ({ otId, tecnicoId, fecha, horaInicio = null, horaFin = null, cuadrillaOrigenId = null }) => {
+    if (!empresa?.id) return null;
+    try {
+      let nueva;
+      if (isSupabaseConfigured()) {
+        nueva = await plannerSvc.agregarTecnicoDia({ 
+          otId, tecnicoId, fecha, empresaId: empresa.id, 
+          horaInicio, horaFin,
+          cuadrillaOrigenId, createdBy: authUser?.id || null 
+        });
+        if (semanaPlanner) await loadPlannerSemana(semanaPlanner.inicio, semanaPlanner.fin);
+        addNotificacion('Asignación guardada');
+      } else {
+        nueva = { 
+          id: generateId('pa'), empresa_id: empresa.id, ot_id: otId, tecnico_id: tecnicoId, 
+          fecha, hora_inicio_estimada: horaInicio, hora_fin_estimada: horaFin, 
+          estado: 'programado' 
+        };
+        setPlannerAsignaciones(prev => [...prev, nueva]);
+      }
+      return nueva;
+    } catch (err) {
+      console.error('Error al agregar técnico:', err);
+      addNotificacion('Error al asignar: ' + (err.message || 'Error desconocido'), 'error');
+      return null;
+    }
+  };
+
+  /**
+   * Cancela una asignación específica con motivo.
+   */
+  const quitarTecnicoDeDia = async (asignacionId, motivo = '') => {
+    if (isSupabaseConfigured()) {
+      await plannerSvc.quitarTecnicoDia(asignacionId, motivo);
+      setPlannerAsignaciones(prev => prev.filter(a => a.id !== asignacionId));
+    } else {
+      setPlannerAsignaciones(prev => prev.map(a => a.id === asignacionId ? { ...a, estado: 'cancelado', motivo_reprogramacion: motivo } : a));
+    }
+    auditSync({ modulo: 'planner', entidad: 'asignaciones', entidad_id: asignacionId, accion: 'cancelar', valor_nuevo: { motivo } });
+  };
+
+  /**
+   * Detecta técnicos con parte pendiente en los últimos 14 días.
+   * Retorna un Set de "tecnicoId__fecha" con partes pendientes.
+   */
+  const partesPendientesSet = React.useMemo(() => {
+    const hoy = new Date();
+    const hace14 = new Date(hoy);
+    hace14.setDate(hoy.getDate() - 14);
+    const hace14Str = hace14.toISOString().split('T')[0];
+    const hoyStr = hoy.toISOString().split('T')[0];
+
+    // Asignaciones pasadas (entre hace14 y ayer)
+    const asigPasadas = plannerAsignaciones.filter(a =>
+      a.fecha >= hace14Str && a.fecha < hoyStr && a.estado !== 'cancelado'
+    );
+    // Partes registrados: map tecnicoId__fecha
+    const partesRegistrados = new Set(
+      partes.map(p => `${p.tecnico_id || p.tecnico}__${p.fecha}`)
+    );
+    const pendientes = new Set();
+    asigPasadas.forEach(a => {
+      const key = `${a.tecnico_id}__${a.fecha}`;
+      if (!partesRegistrados.has(key)) pendientes.add(key);
+    });
+    return pendientes;
+  }, [plannerAsignaciones, partes]);
+
+  /**
+   * Crea una nueva cuadrilla y la agrega al estado.
+   */
+  const crearCuadrillaCtx = async ({ nombre, especialidad, tecnicoIds }) => {
+    if (!empresa?.id) return null;
+    let nueva;
+    if (isSupabaseConfigured()) {
+      nueva = await plannerSvc.crearCuadrilla({ nombre, especialidadPrincipal: especialidad, tecnicoIds, empresaId: empresa.id });
+      const cuadData = await plannerSvc.getCuadrillas(empresa.id);
+      setCuadrillas(cuadData || []);
+    } else {
+      const tecnicos = personalOperativo.filter(p => tecnicoIds.includes(p.id));
+      nueva = { id: generateId('cua'), empresa_id: empresa.id, nombre, especialidad_principal: especialidad, activa: true };
+      setCuadrillas(prev => [...prev, { ...nueva, miembros: tecnicos.map(t => ({ id: generateId('cm'), tecnico_id: t.id, tecnico: t })) }]);
+    }
+    auditSync({ modulo: 'planner', entidad: 'cuadrillas', entidad_id: nueva?.id, accion: 'crear', valor_nuevo: { nombre, tecnicoIds } });
+    addNotificacion(`Cuadrilla "${nombre}" creada.`);
+    return nueva;
+  };
+
+  const actualizarCuadrillaCtx = async (id, { nombre, especialidad, tecnicoIds }) => {
+    if (!empresa?.id) return;
+    if (isSupabaseConfigured()) {
+      await plannerSvc.actualizarMiembrosCuadrilla(id, tecnicoIds);
+      // Actualizar nombre/especialidad si cambiaron (supongo que actualiza la tabla cuadrillas)
+      const cuadData = await plannerSvc.getCuadrillas(empresa.id);
+      setCuadrillas(cuadData || []);
+    } else {
+      setCuadrillas(prev => prev.map(c => c.id === id ? { ...c, nombre, especialidad_principal: especialidad } : c));
+    }
+    addNotificacion('Cuadrilla actualizada');
+  };
+  const eliminarCuadrillaCtx = async (id) => {
+    if (!empresa?.id) return;
+    if (isSupabaseConfigured()) {
+      const supabase = await getSupabaseClient();
+      const { error } = await supabase.from('cuadrillas').update({ activa: false }).eq('id', id);
+      if (error) throw error;
+      setCuadrillas(prev => prev.filter(c => c.id !== id));
+    } else {
+      setCuadrillas(prev => prev.filter(c => c.id !== id));
+    }
+    addNotificacion('Cuadrilla eliminada');
+  };
+
+  const clonarRol = (rolId, nuevoNombre) => {
+    const source = rolesCtx[rolId];
+    if (!source) { addNotificacion('Rol origen no encontrado.', 'error'); return; }
+    const newId = `rol_${Math.random().toString(36).slice(2, 7)}`;
+    const nuevo = { ...source, nombre: nuevoNombre, descripcion: `Copia de ${source.nombre}` };
+    setRolesCtx(prev => ({ ...prev, [newId]: nuevo }));
+    addNotificacion(`Rol "${nuevoNombre}" creado.`);
+    return newId;
+  };
+
+  const actualizarPermisosRol = (rolId, pantalla, key, value) => {
+    const PER_SCREEN = ['ver', 'crear', 'editar', 'anular', 'aprobar', 'exportar'];
+    setRolesCtx(prev => {
+      const r = { ...prev[rolId] };
+      if (!r.permisos) r.permisos = { ver: [] };
+      if (PER_SCREEN.includes(key)) {
+        const current = r.permisos[key];
+        let arr = Array.isArray(current)
+          ? [...current]
+          : (current === true ? MOCK.pantallasPermisos.map(p => p.key) : []);
+        if (value) { if (!arr.includes(pantalla)) arr.push(pantalla); }
+        else { arr = arr.filter(k => k !== pantalla); }
+        r.permisos = { ...r.permisos, [key]: arr };
+      } else {
+        r.permisos = { ...r.permisos, [key]: value };
+      }
+      return { ...prev, [rolId]: r };
+    });
+  };
+
+  const crearRol = (rolData) => {
+    const newId = `rol_${Math.random().toString(36).slice(2, 7)}`;
+    setRolesCtx(prev => ({ ...prev, [newId]: { nombre: rolData.nombre, descripcion: rolData.descripcion || '', color: 'blue', permisos: { ver: [] } } }));
+    addNotificacion(`Rol "${rolData.nombre}" creado.`);
+    return newId;
+  };
+
+  const eliminarRol = (rolId) => {
+    setRolesCtx(prev => { const next = { ...prev }; delete next[rolId]; return next; });
+    addNotificacion('Rol eliminado.');
+  };
+
+  const editarRol = (rolId, datos) => {
+    setRolesCtx(prev => ({ ...prev, [rolId]: { ...prev[rolId], ...datos } }));
+  };
+
   const contextValue = {
     active, navigate, activeParams,
     roleKey, setRoleKey, role, isSuperadmin,
@@ -2298,6 +2688,7 @@ export function AppProvider({ children }) {
     empresasPlataforma, setEmpresasPlataforma, crearTenantConAdmin,
     // Data
     usuarios, setUsuarios,
+    roles: rolesCtx, clonarRol, actualizarPermisosRol, crearRol, eliminarRol, editarRol,
     leads, setLeads, updateLeadState,
     cuentas, setCuentas,
     contactos, setContactos,
@@ -2343,6 +2734,7 @@ export function AppProvider({ children }) {
     crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
     crearCotizacion, aprobarCotizacion,
     crearOSCliente, crearOSClienteManual,
+    registrarUsuario,
     registrarActividad,
     actualizarActividad,
     // Fase 2 Actions
@@ -2382,6 +2774,18 @@ export function AppProvider({ children }) {
     crearOnboarding, registrarNPS,
     generarRenovacion, crearPlanRetencion,
     registrarIaLog,
+    // Planner v2
+    plannerAsignaciones, setPlannerAsignaciones,
+    cuadrillas, setCuadrillas,
+    semanaPlanner,
+    loadPlannerSemana,
+    crearAsignacionesRango,
+    agregarTecnicoADia,
+    quitarTecnicoDeDia,
+    crearCuadrillaCtx,
+    actualizarCuadrillaCtx,
+    eliminarCuadrillaCtx,
+    partesPendientesSet,
     notificaciones, markNotificacionesRead, addNotificacion,
     createdRecords, addCreatedRecord
   };

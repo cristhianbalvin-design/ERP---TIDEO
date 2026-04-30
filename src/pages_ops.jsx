@@ -473,7 +473,7 @@ function Cuentas() {
 }
 
 function OT({ role }) {
-  const { ots, cuentas, partes, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT } = useApp();
+  const { ots, cuentas, partes, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo } = useApp();
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Resumen');
   const [panel] = useState(false);
@@ -530,25 +530,49 @@ function OT({ role }) {
               <th>OT</th><th>Cliente</th><th>Sede</th><th>Tipo</th><th>Estado</th><th>SLA</th>
               <th>Responsable</th>{canCost && <th>Costo est/real</th>}<th>Avance</th>
             </tr></thead>
-            <tbody>{ots.map(o => (
-              <tr key={o.id} onClick={() => { setSel(o); setActiveTab('Resumen'); navigate('ot', { detail: o.id }); }} className="hover-row" style={{cursor:'pointer'}}>
-                <td>
-                  <div className="mono" style={{fontWeight:600}}>{o.numero}</div>
-                  {o.gps && <span className="badge badge-cyan" style={{marginTop:4}}>{I.mapPin}GPS</span>}
-                </td>
-                <td>{getCuenta(o.cuenta_id) || o.cliente}</td>
-                <td className="text-muted">{o.sede}</td>
-                <td>{o.tipo}</td>
-                <td><span className={'badge '+(badges[o.estado]?.[0]||'badge-gray')}>{badges[o.estado]?.[1]||o.estado}</span></td>
-                <td><span className={'badge '+(o.sla==='vencido'?'badge-red':o.sla==='riesgo'?'badge-orange':'badge-green')}>{o.sla==='vencido'?'Vencido':o.sla==='riesgo'?'Riesgo':'OK'}</span></td>
-                <td className="text-muted">{o.responsable}</td>
-                {canCost && <td className="num">{money(o.costoReal||0)}<span className="text-subtle"> / {money(o.costoEst||0)}</span></td>}
-                <td style={{width:120}}>
-                  <div className="bar"><div style={{width:(o.avance||0)+'%', background: o.avance===100?'var(--green)':'var(--cyan)'}}/></div>
-                  <div style={{fontSize:11,marginTop:2}}>{o.avance||0}%</div>
-                </td>
-              </tr>
-            ))}
+            <tbody>{ots.map(o => {
+              const asigs = plannerAsignaciones.filter(a => a.ot_id === o.id && a.estado !== 'cancelado');
+              const uniqueTecs = new Set(asigs.map(a => a.tecnico_id)).size;
+              
+              let displayEstado = o.estado;
+              let badgeColor = badges[o.estado]?.[0] || 'badge-gray';
+              let label = badges[o.estado]?.[1] || o.estado;
+
+              if (o.estado === 'programada' && uniqueTecs > 0) {
+                displayEstado = 'asignada';
+                badgeColor = 'badge-purple';
+                label = 'Asignada';
+              }
+
+              return (
+                <tr key={o.id} onClick={() => { setSel(o); setActiveTab(uniqueTecs > 0 ? 'Personal y Recursos' : 'Resumen'); navigate('ot', { detail: o.id }); }} className="hover-row" style={{cursor:'pointer'}}>
+                  <td>
+                    <div className="mono" style={{fontWeight:600}}>{o.numero}</div>
+                    {o.gps && <span className="badge badge-cyan" style={{marginTop:4}}>{I.mapPin}GPS</span>}
+                  </td>
+                  <td>{getCuenta(o.cuenta_id) || o.cliente}</td>
+                  <td className="text-muted">{o.sede}</td>
+                  <td>{o.tipo}</td>
+                  <td>
+                    <div style={{display:'flex', flexDirection:'column', gap:4, alignItems:'flex-start'}}>
+                      <span className={'badge '+badgeColor}>{label}</span>
+                      {uniqueTecs > 0 && (
+                        <span style={{fontSize:10, color:'var(--purple)', fontWeight:600, display:'flex', alignItems:'center', gap:4}}>
+                          👥 {uniqueTecs} técnicos
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td><span className={'badge '+(o.sla==='vencido'?'badge-red':o.sla==='riesgo'?'badge-orange':'badge-green')}>{o.sla==='vencido'?'Vencido':o.sla==='riesgo'?'Riesgo':'OK'}</span></td>
+                  <td className="text-muted">{o.responsable}</td>
+                  {canCost && <td className="num">{money(o.costoReal||0)}<span className="text-subtle"> / {money(o.costoEst||0)}</span></td>}
+                  <td style={{width:120}}>
+                    <div className="bar"><div style={{width:(o.avance||0)+'%', background: o.avance===100?'var(--green)':'var(--cyan)'}}/></div>
+                    <div style={{fontSize:11,marginTop:2}}>{o.avance||0}%</div>
+                  </td>
+                </tr>
+              );
+            })}
             {ots.length===0 && <tr><td colSpan="9" style={{textAlign:'center', padding:40}}>No hay órdenes de trabajo</td></tr>}
             </tbody>
           </table>
@@ -644,7 +668,7 @@ function OT({ role }) {
             </div>
             
             <div className="tabs">
-              {['Resumen', 'Tareas', 'Checklists y Calidad', 'Partes', 'Costos'].map(t => (
+              {['Resumen', 'Tareas', 'Checklists y Calidad', 'Personal y Recursos', 'Partes', 'Costos'].map(t => (
                 (!canCost && t==='Costos') ? null :
                 <div key={t} className={`tab ${activeTab===t?'active':''}`} onClick={() => setActiveTab(t)}>{t}</div>
               ))}
@@ -722,6 +746,50 @@ function OT({ role }) {
                     </table>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'Personal y Recursos' && (
+              <div>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
+                  <h3 style={{margin:0}}>Personal Asignado</h3>
+                  <button className="btn btn-secondary btn-sm" onClick={() => navigate('planner')}>Gestionar en Planner</button>
+                </div>
+                {(() => {
+                  const asigs = plannerAsignaciones.filter(a => a.ot_id === sel.id && a.estado !== 'cancelado');
+                  if (asigs.length === 0) return <div className="card" style={{padding:32, textAlign:'center', color:'var(--fg-muted)'}}>No hay personal asignado a esta OT todavía.</div>;
+                  
+                  // Agrupar por técnico para ver qué días tiene cada uno
+                  const porTecnico = {};
+                  asigs.forEach(a => {
+                    if (!porTecnico[a.tecnico_id]) porTecnico[a.tecnico_id] = [];
+                    porTecnico[a.tecnico_id].push(a);
+                  });
+
+                  return (
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:16}}>
+                      {Object.entries(porTecnico).map(([tecId, items]) => {
+                        const tec = personalOperativo.find(t => t.id === tecId) || items[0].tecnico || {};
+                        return (
+                          <div key={tecId} className="card" style={{padding:16}}>
+                            <div style={{fontWeight:700, fontSize:15, marginBottom:2}}>{tec.nombre || tecId}</div>
+                            <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:12}}>{tec.cargo || 'Técnico'}</div>
+                            <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                              {items.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(a => (
+                                <div key={a.id} style={{fontSize:12, display:'flex', justifyContent:'space-between', padding:'4px 8px', background:'var(--bg-subtle)', borderRadius:4}}>
+                                  <span style={{fontWeight:600}}>{a.fecha}</span>
+                                  <span style={{color:'var(--cyan)'}}>
+                                    {a.hora_inicio_estimada?.slice(0,5) || '--'} - {a.hora_fin_estimada?.slice(0,5) || '--'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -2133,122 +2201,599 @@ function SOLPE() {
   );
 }
 
+
+// ─── Planner v2 helpers ───────────────────────────────────────────────────────
+const OT_PALETTE = ['#0ea5e9','#f97316','#8b5cf6','#10b981','#ef4444','#f59e0b','#06b6d4','#ec4899'];
+function otColor(otId) {
+  let h = 0;
+  for (let i = 0; i < otId.length; i++) h = (h * 31 + otId.charCodeAt(i)) >>> 0;
+  return OT_PALETTE[h % OT_PALETTE.length];
+}
+
+function getSemana(offsetSemanas) {
+  const hoy = new Date();
+  const dow = hoy.getDay();
+  const lunes = new Date(hoy);
+  lunes.setDate(hoy.getDate() - (dow === 0 ? 6 : dow - 1) + offsetSemanas * 7);
+  const DIAS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(lunes);
+    d.setDate(lunes.getDate() + i);
+    return { label: `${DIAS[i]} ${d.getDate()}`, fecha: d.toISOString().split('T')[0], esHoy: d.toDateString() === new Date().toDateString() };
+  });
+}
+
+function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, ots }) {
+  const ot = ots.find(o => o.id === otId);
+  const hoy = new Date().toISOString().split('T')[0];
+  const [fi, setFi] = useState(hoy);
+  const [ff, setFf] = useState(hoy);
+  const [hi, setHi] = useState('');
+  const [hf, setHf] = useState('');
+  const [selTecs, setSelTecs] = useState([]);
+  const [cuadrilla, setCuadrilla] = useState('');
+  const [conflictos, setConflictos] = useState({});
+  const [paso, setPaso] = useState('form'); 
+  const [saving, setSaving] = useState(false);
+
+  const toggleTec = id => setSelTecs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const aplicarCuadrilla = (cid) => {
+    setCuadrilla(cid);
+    const c = cuadrillas.find(x => x.id === cid);
+    if (c) {
+      const ids = (c.cuadrilla_miembros || []).map(m => m.tecnico_id).filter(Boolean);
+      setSelTecs(ids);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!selTecs.length) return;
+    setSaving(true);
+    try {
+      const result = await onConfirm({ 
+        otId, 
+        tecnicoIds: selTecs, 
+        fechaInicio: fi, 
+        fechaFin: ff, 
+        horaInicio: hi || null,
+        horaFin: hf || null,
+        cuadrillaOrigenId: cuadrilla || null, 
+        forzar: paso === 'conflictos' 
+      });
+      if (result?.conflictos && Object.keys(result.conflictos).length > 0 && paso === 'form') {
+        setConflictos(result.conflictos);
+        setPaso('conflictos');
+        setSaving(false);
+        return;
+      }
+      onClose();
+    } catch (e) { setSaving(false); }
+  };
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={onClose}>
+      <div className="card" style={{width:'min(540px,96vw)',maxHeight:'90vh',overflow:'auto',padding:0}} onClick={e=>e.stopPropagation()}>
+        <div className="card-head" style={{padding:'16px 20px'}}>
+          <h3 style={{margin:0}}>{paso==='conflictos'?'⚠️ Conflictos detectados':'Asignar OT — Rango de fechas'}</h3>
+          <button className="icon-btn" onClick={onClose} style={{fontSize:18}}>×</button>
+        </div>
+        <div style={{padding:'16px 20px',display:'flex',flexDirection:'column',gap:14}}>
+          {paso === 'form' ? (<>
+            <div style={{fontSize:13, color:'var(--cyan)', fontWeight:700, marginBottom:4}}>{ot?.numero} — {ot?.servicio || ot?.descripcion}</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+              <div className="input-group"><label>Fecha inicio</label><input className="input" type="date" value={fi} min={hoy} onChange={e=>setFi(e.target.value)}/></div>
+              <div className="input-group"><label>Fecha fin</label><input className="input" type="date" value={ff} min={fi} onChange={e=>setFf(e.target.value)}/></div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+              <div className="input-group"><label>Hora inicio</label><input className="input" type="time" value={hi} onChange={e=>setHi(e.target.value)}/></div>
+              <div className="input-group"><label>Hora fin</label><input className="input" type="time" value={hf} onChange={e=>setHf(e.target.value)}/></div>
+            </div>
+            {cuadrillas.length > 0 && (
+              <div className="input-group">
+                <label>Cuadrilla (atajo)</label>
+                <select className="select" value={cuadrilla} onChange={e=>aplicarCuadrilla(e.target.value)}>
+                  <option value="">— Seleccionar técnicos individualmente —</option>
+                  {cuadrillas.map(c=><option key={c.id} value={c.id}>{c.nombre} ({(c.cuadrilla_miembros||[]).length} miembros)</option>)}
+                </select>
+              </div>
+            )}
+            <div>
+              <div className="label" style={{marginBottom:8}}>Técnicos ({selTecs.length} seleccionados)</div>
+              <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:220,overflowY:'auto'}}>
+                {tecnicos.map(t=>(
+                  <label key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,border:`1px solid ${selTecs.includes(t.id)?'var(--cyan)':'var(--border)'}`,cursor:'pointer',background:selTecs.includes(t.id)?'rgba(0,188,212,0.06)':'var(--surface)'}}>
+                    <input type="checkbox" className="checkbox" checked={selTecs.includes(t.id)} onChange={()=>toggleTec(t.id)}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:600,fontSize:13}}>{t.nombre}</div>
+                      <div style={{fontSize:11,color:'var(--fg-muted)'}}>{t.cargo} {t.costo_hora?`· S/${t.costo_hora}/h`:''}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </>) : (<>
+            <div style={{background:'rgba(245,158,11,0.08)',border:'1px solid var(--orange)',borderRadius:8,padding:12,fontSize:13,color:'var(--orange-dk)'}}>
+              Algunos técnicos ya tienen asignaciones en estos días. El sistema registrará el solapamiento. ¿Confirmar de todas formas?
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:200,overflowY:'auto'}}>
+              {Object.entries(conflictos).map(([key,items])=>{
+                const [tid,fecha]=key.split('__');
+                const tec=tecnicos.find(x=>x.id===tid);
+                return <div key={key} style={{fontSize:12,padding:'6px 10px',background:'var(--orange-lt)',borderRadius:6}}>
+                  <strong>{tec?.nombre||tid}</strong> · {fecha} → ya tiene: {items.map(i=>i.ot_numero).join(', ')}
+                </div>;
+              })}
+            </div>
+          </>)}
+          <div className="row" style={{justifyContent:'flex-end',gap:8,marginTop:4}}>
+            <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary" disabled={!selTecs.length||saving} data-local-form="true" onClick={handleConfirm}>
+              {saving?'Asignando...':(paso==='conflictos'?'Confirmar con solapamiento':'Asignar')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientesSet, onQuitar, onAgregarTecnico, onClose, ots, navigate }) {
+  const ot = ots.find(o => o.id === otId);
+  const [motivo, setMotivo] = useState('');
+  const [quitando, setQuitando] = useState(null);
+  const [showAgregar, setShowAgregar] = useState(false);
+  const [tecAdd, setTecAdd] = useState('');
+  const [horas, setHoras] = useState({ inicio: '', fin: '' });
+
+  const asigDia = asignaciones.filter(a => a.ot_id === otId && a.fecha === fecha && a.estado !== 'cancelado');
+  const tecIdsAsig = new Set(asigDia.map(a => a.tecnico_id));
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={onClose}>
+      <div className="card" style={{width:'min(460px,96vw)',padding:0}} onClick={e=>e.stopPropagation()}>
+        <div className="card-head" style={{padding:'14px 18px', borderBottom:'1px solid var(--border)'}}>
+          <div style={{flex:1}}>
+            <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:2}}>
+              <span style={{fontWeight:800, fontSize:15, color:'var(--cyan)'}}>{ot?.numero}</span>
+              <button className="btn btn-ghost btn-sm" style={{padding:'2px 8px', fontSize:11, height:24}} onClick={() => { navigate('ot', { detail: otId }); onClose(); }}>
+                Ver Detalle OT →
+              </button>
+            </div>
+            <div style={{fontSize:12,color:'var(--fg-muted)'}}>Equipo asignado para el {fecha}</div>
+          </div>
+          <button className="icon-btn" onClick={onClose} style={{fontSize:20}}>×</button>
+        </div>
+        <div style={{padding:'12px 18px',display:'flex',flexDirection:'column',gap:10,maxHeight:400,overflowY:'auto'}}>
+          {asigDia.length === 0 && <div className="text-muted" style={{fontSize:13,textAlign:'center',padding:20}}>Sin técnicos asignados este día.</div>}
+          {asigDia.map(a => {
+            const tec = tecnicos.find(t => t.id === a.tecnico_id) || a.tecnico || {};
+            const hasParte = !partesPendientesSet.has(`${a.tecnico_id}__${fecha}`);
+            // Debug de horas
+            if (!a.hora_inicio_estimada) console.log('Asignación sin hora:', a);
+            
+            return (
+              <div key={a.id} style={{display:'flex',flexDirection:'column',gap:6,padding:'10px 12px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:13}}>{tec.nombre||a.tecnico_id}</div>
+                    <div style={{fontSize:11,color:'var(--fg-muted)'}}>{tec.cargo||'—'}</div>
+                  </div>
+                  {quitando === a.id ? (
+                    <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                      <input className="input" style={{width:100,fontSize:11,height:28}} placeholder="Motivo..." value={motivo} onChange={e=>setMotivo(e.target.value)}/>
+                      <button className="btn btn-danger btn-sm" style={{height:28,fontSize:11}} onClick={async()=>{await onQuitar(a.id,motivo);setQuitando(null);}}>OK</button>
+                      <button className="btn btn-ghost btn-sm" style={{height:28}} onClick={()=>setQuitando(null)}>✕</button>
+                    </div>
+                  ) : (
+                    <button className="btn btn-ghost btn-sm" title="Quitar de este día" onClick={()=>setQuitando(a.id)}>✕</button>
+                  )}
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:4,paddingTop:6,borderTop:'1px solid rgba(255,255,255,0.05)'}}>
+                  <div style={{fontSize:11, color:'var(--cyan)', fontWeight:500}}>
+                    Horario: {a.hora_inicio_estimada ? a.hora_inicio_estimada.slice(0,5) : 'No definido'} - {a.hora_fin_estimada ? a.hora_fin_estimada.slice(0,5) : 'No definido'}
+                  </div>
+                  {new Date(fecha) < new Date(new Date().toDateString()) && (
+                    <span className={`badge ${hasParte?'badge-green':'badge-orange'}`} style={{fontSize:9}}>
+                      {hasParte?'✓ Parte ok':'⚠ Sin parte'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {showAgregar && (
+            <div className="card" style={{padding:12, background:'rgba(0,188,212,0.03)', border:'1px dashed var(--cyan)'}}>
+              <div className="input-group" style={{marginBottom:10}}>
+                <label style={{fontSize:11}}>Seleccionar técnico</label>
+                <select className="select" value={tecAdd} onChange={e=>setTecAdd(e.target.value)}>
+                  <option value="">Seleccionar...</option>
+                  {tecnicos.filter(t=>!tecIdsAsig.has(t.id)).map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}
+                </select>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+                <div className="input-group"><label style={{fontSize:11}}>Hora inicio</label><input className="input" type="time" value={horas.inicio} onChange={e=>setHoras(h=>({...h, inicio:e.target.value}))}/></div>
+                <div className="input-group"><label style={{fontSize:11}}>Hora fin</label><input className="input" type="time" value={horas.fin} onChange={e=>setHoras(h=>({...h, fin:e.target.value}))}/></div>
+              </div>
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn btn-primary btn-sm" style={{flex:1}} disabled={!tecAdd} onClick={async()=>{await onAgregarTecnico({otId,tecnicoId:tecAdd,fecha,horaInicio:horas.inicio,horaFin:horas.fin});setTecAdd('');setShowAgregar(false);}}>Agregar</button>
+                <button className="btn btn-secondary btn-sm" onClick={()=>setShowAgregar(false)}>Cancelar</button>
+              </div>
+            </div>
+          )}
+        </div>
+        {!showAgregar && (
+          <div style={{padding:'10px 18px',borderTop:'1px solid var(--border)'}}>
+            <button className="btn btn-secondary btn-sm" onClick={()=>setShowAgregar(true)}>+ Agregar técnico este día</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TabCuadrillas({ cuadrillas, tecnicos, crearCuadrillaCtx, actualizarCuadrillaCtx, eliminarCuadrillaCtx }) {
+  const [show, setShow] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [nombre, setNombre] = useState('');
+  const [esp, setEsp] = useState('');
+  const [selTecs, setSelTecs] = useState([]);
+  const [saving, setSaving] = useState(false);
+
+  const toggle = id => setSelTecs(p => p.includes(id)?p.filter(x=>x!==id):[...p,id]);
+
+  const handleSave = async () => {
+    if (!nombre||!selTecs.length) return;
+    setSaving(true);
+    try { 
+      if (editId) {
+        await actualizarCuadrillaCtx(editId, { nombre, especialidad: esp, tecnicoIds: selTecs });
+      } else {
+        await crearCuadrillaCtx({ nombre, especialidad: esp, tecnicoIds: selTecs }); 
+      }
+      handleClose();
+    } finally { setSaving(false); }
+  };
+
+  const handleEdit = (c) => {
+    setEditId(c.id);
+    setNombre(c.nombre);
+    setEsp(c.especialidad_principal || '');
+    setSelTecs((c.cuadrilla_miembros || []).map(m => m.tecnico_id));
+    setShow(true);
+  };
+
+  const handleClose = () => {
+    setShow(false);
+    setEditId(null);
+    setNombre('');
+    setEsp('');
+    setSelTecs([]);
+  };
+
+  return (
+    <div style={{display:'grid',gap:16}}>
+      <div style={{display:'flex',justifyContent:'flex-end'}}>
+        <button className="btn btn-primary" data-local-form="true" onClick={()=>setShow(true)}>+ Nueva cuadrilla</button>
+      </div>
+      {cuadrillas.length===0 && <div className="card" style={{padding:32,textAlign:'center',color:'var(--fg-muted)'}}>No hay cuadrillas. Crea una para agilizar asignaciones.</div>}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:12}}>
+        {cuadrillas.map(c=>(
+          <div key={c.id} className="card" style={{padding:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:14,marginBottom:2}}>{c.nombre}</div>
+                {c.especialidad_principal&&<div style={{fontSize:11,color:'var(--cyan)'}}>{c.especialidad_principal}</div>}
+              </div>
+              <div style={{display:'flex',gap:4}}>
+                <button className="icon-btn" style={{fontSize:14,color:'var(--fg-muted)'}} onClick={()=>handleEdit(c)}>{I.edit}</button>
+                <button className="icon-btn" style={{fontSize:14,color:'var(--fg-muted)'}} onClick={()=>window.confirm('¿Eliminar cuadrilla?') && eliminarCuadrillaCtx(c.id)}>✕</button>
+              </div>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:10}}>
+              {(c.cuadrilla_miembros||[]).map(m=>{
+                const t=tecnicos.find(x => x.id === m.tecnico_id) || {};
+                return <div key={m.id||m.tecnico_id} style={{fontSize:12,display:'flex',gap:6,alignItems:'center'}}>
+                  <div style={{width:6,height:6,borderRadius:'50%',background:'var(--cyan)',flexShrink:0}}/>
+                  {t.nombre||m.tecnico_id} <span style={{color:'var(--fg-muted)'}}>{t.cargo||''}</span>
+                </div>;
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      {show && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={handleClose}>
+          <div className="card" style={{width:'min(480px,96vw)',padding:0}} onClick={e=>e.stopPropagation()}>
+            <div className="card-head" style={{padding:'14px 18px'}}><h3 style={{margin:0}}>{editId?'Editar':'Nueva'} cuadrilla</h3><button className="icon-btn" onClick={handleClose}>×</button></div>
+            <div style={{padding:'16px 18px',display:'flex',flexDirection:'column',gap:12}}>
+              <div className="input-group"><label>Nombre</label><input className="input" value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ej: Cuadrilla Eléctrica Norte"/></div>
+              <div className="input-group"><label>Especialidad principal</label><input className="input" value={esp} onChange={e=>setEsp(e.target.value)} placeholder="Ej: Electricidad industrial"/></div>
+              <div>
+                <div className="label" style={{marginBottom:6}}>Técnicos miembros ({selTecs.length})</div>
+                <div style={{maxHeight:200,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
+                  {tecnicos.map(t=>(
+                    <label key={t.id} style={{display:'flex',gap:10,alignItems:'center',padding:'7px 10px',borderRadius:8,border:`1px solid ${selTecs.includes(t.id)?'var(--cyan)':'var(--border)'}`,cursor:'pointer',background:selTecs.includes(t.id)?'rgba(0,188,212,0.06)':'var(--surface)'}}>
+                      <input type="checkbox" className="checkbox" checked={selTecs.includes(t.id)} onChange={()=>toggle(t.id)}/>
+                      <div><div style={{fontWeight:600,fontSize:13}}>{t.nombre}</div><div style={{fontSize:11,color:'var(--fg-muted)'}}>{t.cargo}</div></div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="row" style={{justifyContent:'flex-end',gap:8}}>
+                <button className="btn btn-secondary" onClick={handleClose}>Cancelar</button>
+                <button className="btn btn-primary" data-local-form="true" disabled={!nombre||!selTecs.length||saving} onClick={handleSave}>{saving?'Guardando...':(editId?'Guardar cambios':'Crear cuadrilla')}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Planner() {
-  const { searchQuery } = useApp();
+  const {
+    searchQuery, personalOperativo, ots, cuentas, navigate,
+    plannerAsignaciones, loadPlannerSemana, crearAsignacionesRango,
+    agregarTecnicoADia, quitarTecnicoDeDia, cuadrillas, crearCuadrillaCtx,
+    partesPendientesSet, renovaciones, onboardings, planesExito, npsEncuestas,
+  } = useApp();
+
   const [plannerTab, setPlannerTab] = useState('tecnicos');
-  const tecnicos = ['Luis Mendoza', 'Carlos Reyes', 'Ana Torres', 'Jorge Quispe'];
-  const dias = ['Lun 28', 'Mar 29', 'Mie 30', 'Jue 1', 'Vie 2', 'Sab 3'];
+  const [offsetSemanas, setOffsetSemanas] = useState(0);
+  const [dragOtId, setDragOtId] = useState(null);
+  const [modalAsig, setModalAsig] = useState(null); // { otId }
+  const [popupDia, setPopupDia] = useState(null);   // { otId, fecha }
+  const [loading, setLoading] = useState(false);
+
+  const semana = useMemo(() => getSemana(offsetSemanas), [offsetSemanas]);
+
+  useEffect(() => {
+    setLoading(true);
+    loadPlannerSemana(semana[0].fecha, semana[6].fecha).finally(() => setLoading(false));
+  }, [semana[0].fecha, semana[6].fecha]);
+
+  const tecnicos = useMemo(() => personalOperativo.filter(p => !['inactivo', 'baja'].includes(p.estado)), [personalOperativo]);
+
+  // Agrupar asignaciones por técnico y fecha para renderizar celdas
+  const asigMap = useMemo(() => {
+    const map = {};
+    plannerAsignaciones.forEach(a => {
+      const key = `${a.tecnico_id}__${a.fecha}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(a);
+    });
+    return map;
+  }, [plannerAsignaciones]);
+
+  // Agrupar asignaciones por OT para ver bloques consistentes
+  const otAsigMap = useMemo(() => {
+    const map = {};
+    plannerAsignaciones.forEach(a => {
+      if (!map[a.ot_id]) map[a.ot_id] = new Set();
+      map[a.ot_id].add(a.fecha);
+    });
+    return map;
+  }, [plannerAsignaciones]);
 
   const query = searchQuery.toLowerCase();
-  const getCuentaNombre = id => (MOCK.cuentas||[]).find(c=>c.id===id)?.razon_social || id;
-  
-  const filteredRenovaciones = [...(MOCK.renovaciones||[])]
-    .filter(r => !query || getCuentaNombre(r.cuenta_id).toLowerCase().includes(query) || r.servicio.toLowerCase().includes(query))
-    .sort((a,b)=>a.dias_restantes-b.dias_restantes)
-    .slice(0,4);
-    
-  const filteredOnboardings = (MOCK.onboardings||[])
-    .filter(o => o.estado!=='completado' && (!query || getCuentaNombre(o.cuenta_id).toLowerCase().includes(query) || o.tipo_servicio.toLowerCase().includes(query)));
-    
-  const filteredNps = (MOCK.npsEncuestas||[])
-    .filter(n => n.estado==='enviado' && (!query || getCuentaNombre(n.cuenta_id).toLowerCase().includes(query)));
-    
-  const filteredPlanes = (MOCK.planesExito||[])
-    .filter(p => p.alertas && p.alertas.length>0 && (!query || getCuentaNombre(p.cuenta_id).toLowerCase().includes(query)));
+  const getCuentaNombre = id => cuentas.find(c => c.id === id)?.razon_social || id;
+
+  const sinAsignar = useMemo(() => {
+    return ots.filter(ot => {
+      if (['anulada', 'cerrada', 'valorizada', 'facturada'].includes(ot.estado)) return false;
+      // No tiene NINGUNA asignación en la semana visible
+      return !plannerAsignaciones.some(a => a.ot_id === ot.id);
+    });
+  }, [ots, plannerAsignaciones]);
+
+  const filteredRenovaciones = [...renovaciones]
+    .filter(r => !query || getCuentaNombre(r.cuenta_id).toLowerCase().includes(query))
+    .sort((a, b) => (a.dias_restantes ?? 9999) - (b.dias_restantes ?? 9999));
+
+  const filteredOnboardings = onboardings
+    .filter(o => o.estado !== 'completado' && (!query || getCuentaNombre(o.cuenta_id).toLowerCase().includes(query)));
+
+  const filteredNps = npsEncuestas
+    .filter(n => n.estado === 'enviado' && (!query || getCuentaNombre(n.cuenta_id).toLowerCase().includes(query)));
+
+  const filteredPlanes = planesExito
+    .filter(p => p.estado === 'activo' && (!query || getCuentaNombre(p.cuenta_id).toLowerCase().includes(query)));
+
+  const urgentes = filteredRenovaciones.filter(r => (r.dias_restantes ?? 0) <= 30).length + filteredNps.length;
 
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Planner de Recursos</h1><div className="page-sub">Programación de técnicos y agenda Customer Success</div></div>
-        <div className="row">
-          <button className="btn btn-secondary">{I.filter} Filtros</button>
-          <button className="btn btn-primary">{I.plus} Asignar Turno</button>
+        <div><h1 className="page-title">Planner de Recursos v2</h1><div className="page-sub">Programación OT × Rango × Cuadrilla</div></div>
+        <div className="row" style={{gap:12}}>
+          <div className="row" style={{background:'var(--bg-subtle)', borderRadius:12, padding:'4px 8px', border:'1px solid var(--border)'}}>
+            <button className="icon-btn" onClick={() => setOffsetSemanas(s => s - 1)} title="Semana anterior">{I.chevronLeft}</button>
+            <div style={{minWidth:180, textAlign:'center', fontWeight:700, fontSize:13}}>
+              {new Date(semana[0].fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} — {new Date(semana[6].fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </div>
+            <button className="icon-btn" onClick={() => setOffsetSemanas(s => s + 1)} title="Siguiente semana">{I.chevronRight}</button>
+          </div>
+          <button type="button" className="btn btn-ghost" onClick={() => setOffsetSemanas(0)}>{I.refresh} Hoy</button>
+          <button type="button" className="btn btn-primary" data-local-form="true" onClick={() => navigate('ot')}>{I.plus} Nueva OT</button>
         </div>
       </div>
 
       <div className="tabs">
-        <div className={'tab '+(plannerTab==='tecnicos'?'active':'')} onClick={()=>setPlannerTab('tecnicos')}>Técnicos</div>
+        <div className={'tab '+(plannerTab==='tecnicos'?'active':'')} onClick={()=>setPlannerTab('tecnicos')}>Grilla de Técnicos</div>
+        <div className={'tab '+(plannerTab==='cuadrillas'?'active':'')} onClick={()=>setPlannerTab('cuadrillas')}>Cuadrillas</div>
         <div className={'tab '+(plannerTab==='cs'?'active':'')} onClick={()=>setPlannerTab('cs')}>
           Agenda CS
-          {(filteredRenovaciones.filter(r=>r.dias_restantes<=30).length + filteredNps.length) > 0 && (
-            <span className="sidebar-item-badge" style={{marginLeft:6}}>{filteredRenovaciones.filter(r=>r.dias_restantes<=30).length + filteredNps.length}</span>
-          )}
+          {urgentes > 0 && <span className="sidebar-item-badge" style={{marginLeft:6}}>{urgentes}</span>}
         </div>
       </div>
 
       {plannerTab === 'tecnicos' && (
-        <div className="card">
-          <div style={{overflowX:'auto'}}>
-            <table className="tbl" style={{minWidth:800}}>
-              <thead>
-                <tr>
-                  <th style={{width:200}}>Técnico / Cuadrilla</th>
-                  {dias.map(d => <th key={d} style={{textAlign:'center'}}>{d}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {tecnicos.map(t => (
-                  <tr key={t}>
-                    <td style={{fontWeight:600}}>{t}</td>
-                    {dias.map((d, i) => {
-                      let task = null;
-                      if (t === 'Luis Mendoza' && i < 2) task = {ot: 'OT-0045', color: 'var(--cyan)'};
-                      if (t === 'Carlos Reyes' && i > 2 && i < 5) task = {ot: 'OT-0046', color: 'var(--purple)'};
-                      if (t === 'Ana Torres' && i === 1) task = {ot: 'Mantenimiento', color: 'var(--orange)'};
-                      return (
-                        <td key={d} style={{padding:4, borderRight:'1px solid var(--border-subtle)', verticalAlign:'top'}}>
-                          {task
-                            ? <div style={{background:task.color, color:'white', fontSize:11, padding:'4px 8px', borderRadius:4, fontWeight:600, cursor:'pointer'}}>{task.ot}</div>
-                            : <div style={{height:24}}/>
-                          }
-                        </td>
-                      );
-                    })}
+        <div style={{display:'flex', flexDirection:'column', gap:20}}>
+          <div className="card" style={{padding:0, position:'relative', minHeight:400}}>
+            {loading && (
+              <div style={{position:'absolute', inset:0, background:'rgba(255,255,255,0.6)', zIndex:10, display:'flex', alignItems:'center', justifyContent:'center'}}>
+                <div className="spinner" />
+              </div>
+            )}
+            <div style={{overflowX:'auto'}}>
+              <table className="tbl" style={{minWidth:900, borderCollapse:'separate', borderSpacing:0}}>
+                <thead style={{position:'sticky', top:0, zIndex:5}}>
+                  <tr>
+                    <th style={{width:220, background:'var(--bg-subtle)', position:'sticky', left:0, zIndex:6, borderRight:'2px solid var(--border)'}}>Técnico</th>
+                    {semana.map(d => (
+                      <th key={d.fecha} style={{textAlign:'center', background: d.esHoy ? 'rgba(14,165,233,0.05)' : 'var(--bg-subtle)', color: d.esHoy ? 'var(--cyan)' : 'inherit'}}>
+                        <div style={{fontSize:11, opacity:0.7, fontWeight:400}}>{d.label.split(' ')[0]}</div>
+                        <div style={{fontSize:16, fontWeight:800}}>{d.label.split(' ')[1]}</div>
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {tecnicos.length === 0 && (
+                    <tr><td colSpan={8} style={{textAlign:'center', padding:48, color:'var(--fg-muted)'}}>No hay personal operativo activo.</td></tr>
+                  )}
+                  {tecnicos.map(t => (
+                    <tr key={t.id} style={{height:60}}>
+                      <td style={{position:'sticky', left:0, background:'var(--surface)', zIndex:4, borderRight:'2px solid var(--border)', padding:'10px 16px'}}>
+                        <div style={{fontWeight:700, fontSize:13}}>{t.nombre}</div>
+                        <div style={{fontSize:11, color:'var(--fg-muted)'}}>{t.cargo || 'Técnico'}</div>
+                      </td>
+                      {semana.map(d => {
+                        const key = `${t.id}__${d.fecha}`;
+                        const asigs = asigMap[key] || [];
+                        return (
+                          <td key={d.fecha}
+                            style={{padding:4, borderRight:'1px solid var(--border-subtle)', verticalAlign:'top', background: d.esHoy ? 'rgba(14,165,233,0.02)' : 'transparent'}}
+                            onDragOver={e => e.preventDefault()}
+                            onDrop={async e => {
+                              e.preventDefault();
+                              const otId = e.dataTransfer.getData('otId');
+                              if (otId) await agregarTecnicoADia({ otId, tecnicoId: t.id, fecha: d.fecha });
+                            }}>
+                            <div style={{display:'flex', flexDirection:'column', gap:3}}>
+                              {asigs.map(a => {
+                                const ot = ots.find(o => o.id === a.ot_id) || {};
+                                return (
+                                  <div key={a.id}
+                                    onClick={() => setPopupDia({ otId: a.ot_id, fecha: d.fecha })}
+                                    style={{
+                                      background: otColor(a.ot_id),
+                                      color: 'white',
+                                      fontSize: 10,
+                                      padding: '4px 6px',
+                                      borderRadius: 4,
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between'
+                                    }}>
+                                    <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{ot.numero || 'OT'}</span>
+                                    {partesPendientesSet.has(`${t.id}__${d.fecha}`) && <span title="Parte pendiente" style={{marginLeft:4}}>●</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          {sinAsignar.length > 0 && (
+            <div className="card">
+              <div className="card-head">
+                <h3>Bandeja de Pendientes</h3>
+                <span className="badge badge-orange">{sinAsignar.length}</span>
+                <span style={{fontSize:11, color:'var(--fg-muted)', marginLeft:8}}>Arrastra a un técnico o usa el botón para asignar rango</span>
+              </div>
+              <div style={{display:'flex', flexWrap:'wrap', gap:10, padding:'0 20px 20px'}}>
+                {sinAsignar.map(ot => {
+                  const cli = cuentas.find(c => c.id === ot.cuenta_id);
+                  return (
+                    <div key={ot.id}
+                      draggable
+                      onDragStart={e => { e.dataTransfer.setData('otId', ot.id); setDragOtId(ot.id); }}
+                      onDragEnd={() => setDragOtId(null)}
+                      style={{
+                        background: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 12,
+                        padding: '10px 14px',
+                        cursor: 'grab',
+                        width: 240,
+                        transition: 'all 0.2s',
+                        boxShadow: dragOtId === ot.id ? '0 8px 16px rgba(0,0,0,0.1)' : 'none',
+                        opacity: dragOtId === ot.id ? 0.5 : 1
+                      }}>
+                      <div className="row" style={{justifyContent:'space-between', marginBottom:4}}>
+                        <div style={{fontWeight:800, color:'var(--cyan)', fontSize:13}}>{ot.numero}</div>
+                        <button className="btn btn-ghost btn-sm" style={{padding:2}} title="Asignar por rango" onClick={() => setModalAsig({ otId: ot.id })}>{I.calendar}</button>
+                      </div>
+                      <div style={{fontWeight:600, fontSize:12, marginBottom:2}}>{cli?.razon_social || 'Cliente desconocido'}</div>
+                      <div style={{fontSize:11, color:'var(--fg-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{ot.servicio || ot.descripcion}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
+      )}
+
+      {plannerTab === 'cuadrillas' && (
+        <TabCuadrillas 
+          cuadrillas={cuadrillas} 
+          tecnicos={tecnicos} 
+          crearCuadrillaCtx={crearCuadrillaCtx} 
+          actualizarCuadrillaCtx={actualizarCuadrillaCtx} 
+          eliminarCuadrillaCtx={eliminarCuadrillaCtx} 
+        />
       )}
 
       {plannerTab === 'cs' && (
         <div style={{display:'grid', gap:20}}>
-
-          {/* Renovaciones próximas */}
           <div className="card">
-            <div className="card-head"><h3>Renovaciones — Pendientes de contacto</h3><span className="badge badge-cyan">{filteredRenovaciones.length}</span></div>
-            <table className="tbl">
-              <thead><tr><th>Cliente</th><th>Servicio</th><th>Responsable CS</th><th>Vencimiento</th><th>Días</th><th>Estado</th></tr></thead>
-              <tbody>
-                {filteredRenovaciones.map(r => (
-                  <tr key={r.id}>
-                    <td style={{fontWeight:600}}>{getCuentaNombre(r.cuenta_id)}</td>
-                    <td>{r.servicio}</td>
-                    <td>{r.responsable_cs}</td>
-                    <td>{r.fecha_vencimiento}</td>
-                    <td><span className={'badge '+(r.dias_restantes<=30?'badge-red':r.dias_restantes<=60?'badge-yellow':'badge-green')}>{r.dias_restantes}d</span></td>
-                    <td><span className={'badge '+(r.estado==='renovado'?'badge-green':r.estado==='en_negociacion'?'badge-cyan':'badge-gray')}>{r.estado}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="card-head"><h3>Renovaciones</h3><span className="badge badge-cyan">{filteredRenovaciones.length}</span></div>
+            {filteredRenovaciones.length === 0
+              ? <div style={{padding:'16px 20px', color:'var(--fg-muted)'}}>Sin renovaciones registradas</div>
+              : <table className="tbl">
+                  <thead><tr><th>Cliente</th><th>Vencimiento</th><th>Monto</th><th>Días</th><th>Estado</th></tr></thead>
+                  <tbody>
+                    {filteredRenovaciones.map(r => (
+                      <tr key={r.id}>
+                        <td style={{fontWeight:600}}>{getCuentaNombre(r.cuenta_id)}</td>
+                        <td>{r.fecha_vencimiento}</td>
+                        <td>{r.monto_contrato ? `${r.moneda || 'PEN'} ${Number(r.monto_contrato).toLocaleString()}` : '—'}</td>
+                        <td>{r.dias_restantes != null ? <span className={'badge '+(r.dias_restantes<=30?'badge-red':r.dias_restantes<=60?'badge-yellow':'badge-green')}>{r.dias_restantes}d</span> : '—'}</td>
+                        <td><span className={'badge '+(r.estado==='renovado'?'badge-green':r.estado==='en_negociacion'?'badge-cyan':'badge-gray')}>{r.estado?.replace(/_/g,' ')}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+            }
           </div>
-
-          {/* Onboardings activos */}
           {filteredOnboardings.length > 0 && (
             <div className="card">
               <div className="card-head"><h3>Onboardings en Progreso</h3><span className="badge badge-purple">{filteredOnboardings.length}</span></div>
               <div style={{padding:'0 20px 16px', display:'flex', flexDirection:'column', gap:14}}>
                 {filteredOnboardings.map(o => {
-                  const completados = o.checklist.filter(c=>c.completado).length;
-                  const total = o.checklist.length;
-                  const pct = Math.round(completados/total*100);
+                  const checklist = Array.isArray(o.checklist) ? o.checklist : [];
+                  const pct = checklist.length > 0
+                    ? Math.round(checklist.filter(c => c.completado).length / checklist.length * 100)
+                    : (o.avance_pct ?? 0);
                   return (
                     <div key={o.id} style={{display:'grid', gridTemplateColumns:'1fr 120px 60px', gap:12, alignItems:'center'}}>
                       <div>
                         <div style={{fontWeight:600, fontSize:13}}>{getCuentaNombre(o.cuenta_id)}</div>
-                        <div style={{fontSize:11, color:'var(--fg-subtle)'}}>{o.tipo_servicio} · {o.responsable_cs}</div>
+                        <div style={{fontSize:11, color:'var(--fg-subtle)'}}>{o.fecha_inicio} → {o.fecha_objetivo || '—'}</div>
                       </div>
                       <div style={{background:'var(--bg-subtle)', borderRadius:4, height:8}}>
                         <div style={{width:pct+'%', height:'100%', background:pct>=75?'var(--green)':'var(--cyan)', borderRadius:4}}/>
@@ -2261,33 +2806,17 @@ function Planner() {
             </div>
           )}
 
-          {/* Planes con alertas */}
           {filteredPlanes.length > 0 && (
             <div className="card">
-              <div className="card-head"><h3>Planes de Éxito — Alertas activas</h3><span className="badge badge-yellow">{filteredPlanes.length}</span></div>
-              <div style={{padding:'0 20px 16px', display:'flex', flexDirection:'column', gap:10}}>
-                {filteredPlanes.map(p => (
-                  <div key={p.id} style={{padding:'10px 14px', background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.3)', borderRadius:8}}>
-                    <div style={{fontWeight:600, fontSize:13, marginBottom:4}}>{getCuentaNombre(p.cuenta_id)}</div>
-                    {p.alertas.map((a,i) => <div key={i} style={{fontSize:12, color:'var(--warning)'}}>⚠ {a}</div>)}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* NPS pendientes de respuesta */}
-          {filteredNps.length > 0 && (
-            <div className="card">
-              <div className="card-head"><h3>NPS — Pendientes de respuesta</h3><span className="badge badge-orange">{filteredNps.length}</span></div>
+              <div className="card-head"><h3>Planes de Éxito Activos</h3><span className="badge badge-green">{filteredPlanes.length}</span></div>
               <table className="tbl">
-                <thead><tr><th>Cliente</th><th>Responsable CS</th><th>Enviado</th></tr></thead>
+                <thead><tr><th>Cliente</th><th>Periodicidad revisión</th><th>Estado</th></tr></thead>
                 <tbody>
-                  {filteredNps.map(n => (
-                    <tr key={n.id}>
-                      <td style={{fontWeight:600}}>{getCuentaNombre(n.cuenta_id)}</td>
-                      <td>{n.responsable_cs}</td>
-                      <td>{n.fecha_envio}</td>
+                  {filteredPlanes.map(p => (
+                    <tr key={p.id}>
+                      <td style={{fontWeight:600}}>{getCuentaNombre(p.cuenta_id)}</td>
+                      <td>{p.periodicidad_revision || '—'}</td>
+                      <td><span className="badge badge-green">{p.estado}</span></td>
                     </tr>
                   ))}
                 </tbody>
@@ -2295,7 +2824,50 @@ function Planner() {
             </div>
           )}
 
+          {filteredNps.length > 0 && (
+            <div className="card">
+              <div className="card-head"><h3>NPS — Pendientes de respuesta</h3><span className="badge badge-orange">{filteredNps.length}</span></div>
+              <table className="tbl">
+                <thead><tr><th>Cliente</th><th>Enviado</th><th>Estado</th></tr></thead>
+                <tbody>
+                  {filteredNps.map(n => (
+                    <tr key={n.id}>
+                      <td style={{fontWeight:600}}>{getCuentaNombre(n.cuenta_id)}</td>
+                      <td>{n.fecha_envio}</td>
+                      <td><span className="badge badge-orange">Pendiente</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
+      )}
+
+      {modalAsig && (
+        <ModalAsignacionRango
+          otId={modalAsig.otId}
+          tecnicos={tecnicos}
+          cuadrillas={cuadrillas}
+          ots={ots}
+          onConfirm={crearAsignacionesRango}
+          onClose={() => setModalAsig(null)}
+        />
+      )}
+
+      {popupDia && (
+        <PopupDetalleDia
+          otId={popupDia.otId}
+          fecha={popupDia.fecha}
+          asignaciones={plannerAsignaciones}
+          tecnicos={tecnicos}
+          ots={ots}
+          partesPendientesSet={partesPendientesSet}
+          onQuitar={quitarTecnicoDeDia}
+          onAgregarTecnico={agregarTecnicoADia}
+          onClose={() => setPopupDia(null)}
+          navigate={navigate}
+        />
       )}
     </>
   );
@@ -3009,22 +3581,39 @@ function RRHH_Operativo() {
   const [tab, setTab] = useState('personal');
   const personal = personalOperativo.length ? personalOperativo : PERSONAL_INICIAL_OPS;
   const [panelAlta, setPanelAlta] = useState(false);
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor:'', sede:'', turno_id:'tur_001', fecha_ingreso:'', costo:'', costo_extra:'', acceso_campo:false, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0' };
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor:'', sede:'', turno_id:'tur_001', fecha_ingreso:'', costo:'', costo_extra:'', acceso_campo:true, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
+  const [altaError, setAltaError] = useState('');
+  const [altaSaving, setAltaSaving] = useState(false);
 
   const CARGOS_TEC = MOCK.cargosEmpresa.filter(c => c.tipo !== 'Administrativo' && c.estado === 'activo').map(c => c.nombre);
 
   const guardarTecnico = async (e) => {
     e.preventDefault();
+    if (altaSaving) return;
+    setAltaSaving(true);
+    setAltaError('');
     const idx = personal.length + 1;
+    const codigo = formAlta.codigo || `TEC-${String(idx).padStart(3,'0')}`;
     const nuevo = {
-      id: `TEC-${String(idx).padStart(3,'0')}`,
+      id: `pop_${Date.now()}`,
+      codigo,
+      documento: formAlta.dni,
+      dni: formAlta.dni,
+      telefono: formAlta.telefono,
+      email: formAlta.email,
       nombre: formAlta.nombre || 'Nuevo técnico',
       cargo: formAlta.cargo || 'Técnico de Campo',
       especialidad: formAlta.especialidad || 'General',
+      especialidad2: formAlta.especialidad2 || '',
+      supervisor: formAlta.supervisor || '',
       sede: formAlta.sede || '',
       costo: Number(formAlta.costo) || 0,
       costo_hora_real: Number(formAlta.costo) || 0,
+      costo_hora_extra: Number(formAlta.costo_extra) || 0,
+      acceso_campo: formAlta.acceso_campo,
+      perfil_campo: formAlta.perfil_campo,
+      fecha_ingreso: formAlta.fecha_ingreso || null,
       sueldo_base: Number(formAlta.sueldo_base) || 0,
       sistema_pensionario: formAlta.sistema_pensionario,
       afp_nombre: formAlta.afp_nombre,
@@ -3039,16 +3628,18 @@ function RRHH_Operativo() {
     };
     try {
       await crearTecnicoCtx({ ...nuevo, empresa_id: empresa?.id });
+      setFormAlta(formAltaBase);
+      setPanelAlta(false);
     } catch (_) {
-      setPersonalOperativo(prev => [...prev, nuevo]);
+      setAltaError('No se pudo guardar el tecnico en Supabase. Revisa permisos de RRHH Operativo o aplica la migracion backend.');
+    } finally {
+      setAltaSaving(false);
     }
-    setFormAlta(formAltaBase);
-    setPanelAlta(false);
   };
 
   const disponibles = personal.filter(p => p.estado === 'disponible').length;
-  const docsAlerta  = personal.filter(p => Object.values(p.docs).some(d => d !== 'vigente' && d !== 'ok')).length;
-  const costoTotal  = personal.filter(p => p.estado !== 'vacaciones').reduce((s,p) => s+p.costo, 0);
+  const docsAlerta  = personal.filter(p => Object.values(p.docs || {}).some(d => d !== 'vigente' && d !== 'ok')).length;
+  const costoTotal  = personal.filter(p => p.estado !== 'vacaciones').reduce((s,p) => s + Number(p.costo ?? p.costo_hora_real ?? 0), 0);
 
   const docBadge = d => d==='vigente'||d==='ok' ? 'badge-green' : d==='por_vencer'||d==='incompleto' ? 'badge-orange' : 'badge-red';
   const docLabel = d => d==='vigente'?'Vigente':d==='ok'?'OK':d==='por_vencer'?'Por vencer':d==='incompleto'?'Incompleto':'Vencido';
@@ -3093,7 +3684,7 @@ function RRHH_Operativo() {
               <tbody>
                 {personal.map(p => (
                   <tr key={p.id} className="hover-row">
-                    <td className="mono text-muted">{p.id}</td>
+                    <td className="mono text-muted">{p.codigo || p.id}</td>
                     <td>
                       <div className="row">
                         <div className="avatar" style={{width:28,height:28,fontSize:10}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
@@ -3103,7 +3694,7 @@ function RRHH_Operativo() {
                     <td>{p.cargo}</td>
                     <td className="text-muted">{p.especialidad}</td>
                     <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
-                    <td className="num">{money(p.costo)}/hr</td>
+                    <td className="num">{money(p.costo ?? p.costo_hora_real ?? 0)}/hr</td>
                     <td><span className="mono" style={{fontSize:12}}>{workerTurno(turnos, p).nombre}</span></td>
                     <td><span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span></td>
                   </tr>
@@ -3164,12 +3755,12 @@ function RRHH_Operativo() {
               <thead><tr><th>Técnico</th><th style={{textAlign:'center'}}>SCTR</th><th style={{textAlign:'center'}}>Médico</th><th style={{textAlign:'center'}}>EPP</th><th style={{textAlign:'center'}}>Licencia</th><th>Estado global</th></tr></thead>
               <tbody>
                 {personal.map(p => {
-                  const vals = Object.values(p.docs);
+                  const vals = Object.values(p.docs || {});
                   const global = vals.some(d=>d==='vencido')?'Vencido':vals.some(d=>d==='por_vencer'||d==='incompleto')?'Revisión':'OK';
                   return (
                     <tr key={p.id} className="hover-row">
                       <td style={{fontWeight:600}}>{p.nombre}<div className="text-muted" style={{fontSize:11}}>{p.cargo}</div></td>
-                      {Object.values(p.docs).map((d,i) => (
+                      {Object.values(p.docs || {}).map((d,i) => (
                         <td key={i} style={{textAlign:'center'}}><span className={'badge '+docBadge(d)} style={{fontSize:11}}>{docLabel(d)}</span></td>
                       ))}
                       <td><span className={'badge '+(global==='OK'?'badge-green':global==='Revisión'?'badge-orange':'badge-red')}>{global}</span></td>
@@ -3193,6 +3784,7 @@ function RRHH_Operativo() {
             <button className="icon-btn" onClick={() => setPanelAlta(false)}>{I.x}</button>
           </div>
           <form className="side-panel-body" onSubmit={guardarTecnico}>
+            {altaError && <div className="alert alert-danger" style={{marginBottom:16}}>{altaError}</div>}
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos personales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre completo *</label><input className="input" required value={formAlta.nombre} onChange={e=>setFormAlta(v=>({...v,nombre:e.target.value}))} placeholder="Nombre completo" autoFocus/></div>
@@ -3235,14 +3827,14 @@ function RRHH_Operativo() {
 
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Acceso a campo móvil</div>
             <div className="grid-2" style={{gap:14, marginBottom:24}}>
-              <div className="input-group"><label>Acceso a app de campo</label><select className="select" value={formAlta.acceso_campo?'si':'no'} onChange={e=>setFormAlta(v=>({...v,acceso_campo:e.target.value==='si'}))}><option value="no">No</option><option value="si">Sí</option></select></div>
+              <div className="input-group"><label>Acceso a app de campo</label><select className="select" value={formAlta.acceso_campo?'si':'no'} onChange={e=>setFormAlta(v=>({...v,acceso_campo:e.target.value==='si'}))}><option value="si">Si</option><option value="no">No</option></select></div>
               {formAlta.acceso_campo && <div className="input-group"><label>Perfil de campo</label><select className="select" value={formAlta.perfil_campo} onChange={e=>setFormAlta(v=>({...v,perfil_campo:e.target.value}))}><option>Tecnico</option><option>Supervisor</option><option>Compras</option></select></div>}
               {formAlta.acceso_campo && <div style={{gridColumn:'1/-1', fontSize:12, color:'var(--cyan)', padding:'8px 12px', background:'rgba(6,182,212,0.08)', borderRadius:8}}>Al activar esto, el técnico podrá ver sus OTs asignadas y registrar partes diarios desde su celular.</div>}
             </div>
 
             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
               <button type="button" className="btn btn-secondary" onClick={() => setPanelAlta(false)}>Cancelar</button>
-              <button type="submit" className="btn btn-primary">{I.save} Guardar técnico</button>
+              <button type="submit" className="btn btn-primary" disabled={altaSaving}>{I.save} {altaSaving ? 'Guardando...' : 'Guardar tecnico'}</button>
             </div>
           </form>
         </div>

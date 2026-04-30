@@ -415,7 +415,7 @@ function QuickCreateModal({ active, onClose }) {
         : `Tenant creado; admin pendiente: ${values.admin_email}`;
     } else if (active === 'usuarios') {
       const rolSeguro = values.rol === 'plataforma' && !app.role.permisos?.plataforma ? 'admin' : (values.rol || 'admin');
-      app.setUsuarios(prev => [...prev, {
+      const nuevoUsr = {
         id: makeId('u'),
         nombre: values.nombre || 'Nuevo usuario',
         email: values.email || 'usuario@tideo.pe',
@@ -429,7 +429,8 @@ function QuickCreateModal({ active, onClose }) {
         campoPerfil: values.rol === 'tecnico' ? 'Tecnico' : undefined,
         estado: 'Activo',
         ultimo: 'Nuevo'
-      }]);
+      };
+      app.registrarUsuario(nuevoUsr);
     } else if (active === 'leads') {
       app.crearLead({
         id: makeId('lead'), empresa_id: app.empresa.id, estado: 'nuevo', convertido: false,
