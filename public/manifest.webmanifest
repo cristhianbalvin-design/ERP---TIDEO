@@ -1,0 +1,18 @@
+{
+  "name": "TIDEO ERP",
+  "short_name": "TIDEO ERP",
+  "description": "Prototipo ERP modular multitenant con CRM, operaciones, finanzas, campo movil, BI e IA.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#EEF2F6",
+  "theme_color": "#0D1B2E",
+  "icons": [
+    {
+      "src": "/assets/tideo-isotipo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
