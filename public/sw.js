@@ -5,6 +5,10 @@ const APP_SHELL = [
   '/manifest.webmanifest',
   '/assets/tideo-isotipo.svg',
   '/assets/tideo-isotipo-white.svg',
+  '/icons/tideo-icon-192.png',
+  '/icons/tideo-icon-512.png',
+  '/icons/tideo-maskable-192.png',
+  '/icons/tideo-maskable-512.png',
 ];
 
 const isLocalScope = () => (

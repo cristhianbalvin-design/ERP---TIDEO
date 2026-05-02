@@ -18,9 +18,9 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
   ];
 
   return (
-    <div style={{minHeight:'100vh',background:dark?'#0D1B2E':'#EEF2F6',display:'flex',flexDirection:'column',padding:20,gap:20}}>
-      <div className="row" style={{gap:12, flexWrap:'wrap'}}>
-        <div className="row" style={{gap:10}}>
+    <div className="mobile-field-shell" style={{background:dark?'#0D1B2E':'#EEF2F6'}}>
+      <div className="mobile-field-toolbar">
+        <div className="mobile-field-brand">
           <div style={{width:32,height:32,background:dark?'#162038':'#fff',borderRadius:6,padding:4,display:'flex',alignItems:'center',justifyContent:'center'}}><img src="assets/tideo-isotipo.svg" alt="" style={{width:'100%'}}/></div>
           <div>
             <div className="font-display" style={{fontWeight:700,fontSize:16,color:dark?'#fff':'var(--navy)'}}>Modo Campo</div>
@@ -28,18 +28,18 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
           </div>
         </div>
         <div className="header-spacer"/>
-        <div className="row" style={{gap:6,flexWrap:'wrap'}}>
+        <div className="mobile-field-profiles">
           {profiles.map(p => (
             <button key={p.k} onClick={()=>{setProfile(p.k); setScreen('home');}} className={'btn btn-sm '+(profile===p.k?'btn-navy':'btn-secondary')}>
               <span style={{width:14,height:14}}>{p.icon}</span>{p.l}
             </button>
           ))}
         </div>
-        <button className="icon-btn" onClick={()=>setDark(!dark)}>{dark?I.sun:I.moon}</button>
-        <button className="btn btn-secondary" onClick={onExit}>{I.x} Salir modo campo</button>
+        <button className="icon-btn mobile-field-theme" onClick={()=>setDark(!dark)}>{dark?I.sun:I.moon}</button>
+        <button className="btn btn-secondary mobile-field-exit" onClick={onExit}>{I.x} Salir modo campo</button>
       </div>
 
-      <div style={{display:'flex',justifyContent:'center',flex:1}}>
+      <div className="mobile-field-stage">
         <div className={dark?'dark':''} style={{display:'contents'}}>
           <div className="mobile-frame">
             <div className="mobile-notch"/>
