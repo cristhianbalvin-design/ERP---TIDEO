@@ -196,6 +196,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tideo_sidebar_collapsed') === 'true');
   const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
   const [flyoutKey, setFlyoutKey] = useState(null);
+  const [flyoutTop, setFlyoutTop] = useState(0);
   const effectiveCollapsed = collapsed || isMobileNav;
   const allowed = role.permisos.todo ? null : new Set(role.permisos.ver || []);
   const badges = useMemo(() => buildSidebarBadges(app), [
@@ -271,6 +272,18 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
     setFlyoutKey(null);
     onNav(key);
   };
+  const toggleFlyout = (event, key) => {
+    if (flyoutKey === key) {
+      setFlyoutKey(null);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const nextTop = isMobileNav
+      ? Math.max(8, Math.min(rect.top, window.innerHeight - 280))
+      : 0;
+    setFlyoutTop(nextTop);
+    setFlyoutKey(key);
+  };
 
   return (
     <aside className={'sidebar ' + (effectiveCollapsed ? 'collapsed' : '')}>
@@ -293,7 +306,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
                   <button
                     type="button"
                     className={'sidebar-area-btn ' + (group.active ? 'active' : '')}
-                    onClick={() => setFlyoutKey(flyoutKey === group.key ? null : group.key)}
+                    onClick={(event) => toggleFlyout(event, group.key)}
                     title={group.section}
                     aria-label={group.section}
                   >
@@ -301,7 +314,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
                     {group.items.some(it => it.badge) && <span className="sidebar-area-dot" />}
                   </button>
                   {flyoutKey === group.key && (
-                    <div className="sidebar-flyout" onMouseLeave={() => setFlyoutKey(null)}>
+                    <div className="sidebar-flyout" style={isMobileNav ? { top: flyoutTop } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
                       <div className="sidebar-flyout-title">{group.section}</div>
                       {group.items.map(it => (
                         <button

@@ -1837,11 +1837,11 @@ body {
     margin-bottom: 7px;
   }
   .sidebar-flyout {
-    position: fixed;
-    left: 66px;
-    top: 8px;
+    position: absolute;
+    left: 58px;
+    top: 0 !important;
     width: min(250px, calc(100vw - 78px));
-    max-height: calc(100vh - 16px);
+    max-height: min(420px, calc(100vh - 24px));
   }
   .main-col { min-width: 0; width: calc(100vw - 66px); }
 }
