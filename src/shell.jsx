@@ -194,7 +194,9 @@ function buildSidebarBadges(app) {
 export function Sidebar({ active, onNav, role, isSuperadmin }) {
   const app = useApp();
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tideo_sidebar_collapsed') === 'true');
+  const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
   const [flyoutKey, setFlyoutKey] = useState(null);
+  const effectiveCollapsed = collapsed || isMobileNav;
   const allowed = role.permisos.todo ? null : new Set(role.permisos.ver || []);
   const badges = useMemo(() => buildSidebarBadges(app), [
     app.leads, app.oportunidades, app.actividades, app.agendaEventos, app.hojasCosteo,
@@ -225,6 +227,17 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
     } catch {}
     return new Set();
   });
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 900px)');
+    const onChange = () => {
+      setIsMobileNav(media.matches);
+      if (media.matches) setFlyoutKey(null);
+    };
+    onChange();
+    media.addEventListener?.('change', onChange);
+    return () => media.removeEventListener?.('change', onChange);
+  }, []);
 
   useEffect(() => {
     if (!activeGroupKey) return;
@@ -260,12 +273,12 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
   };
 
   return (
-    <aside className={'sidebar ' + (collapsed ? 'collapsed' : '')}>
+    <aside className={'sidebar ' + (effectiveCollapsed ? 'collapsed' : '')}>
       <div className="sidebar-logo">
         <div style={{width:34, height:34, background:'#fff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', padding:4, overflow:'hidden', boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
           <img src="/tideo-isotipo.png" alt="TIDEO" style={{width:'100%', height:'100%', objectFit:'contain'}} />
         </div>
-        {!collapsed && <div>
+        {!effectiveCollapsed && <div>
           <div className="sidebar-logo-text" style={{letterSpacing:'0.05em'}}>TIDEO</div>
           <div className="sidebar-logo-sub" style={{opacity:0.6, fontSize:10, fontWeight:700, letterSpacing:'0.1em'}}>ERP</div>
         </div>}
@@ -275,7 +288,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
           const isOpen = openSections.has(group.key);
           return (
             <div key={group.key} className="sidebar-group">
-              {collapsed ? (
+              {effectiveCollapsed ? (
                 <>
                   <button
                     type="button"
@@ -333,11 +346,12 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
         type="button"
         className="sidebar-collapse"
         onClick={toggleCollapsed}
+        style={isMobileNav ? {display:'none'} : undefined}
         title={collapsed ? 'Expandir menu' : 'Colapsar menu'}
         aria-label={collapsed ? 'Expandir menu' : 'Colapsar menu'}
       >
         {collapsed ? I.chevRight : I.chevLeft}
-        {!collapsed && <span>Colapsar</span>}
+        {!collapsed && !isMobileNav && <span>Colapsar</span>}
       </button>
     </aside>
   );

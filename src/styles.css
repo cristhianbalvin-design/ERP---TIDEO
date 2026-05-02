@@ -1806,9 +1806,44 @@ body {
 
 /* Responsive */
 @media (max-width: 900px) {
-  .sidebar { width: 64px; }
-  .sidebar-logo-text, .sidebar-logo-sub, .sidebar-section, .sidebar-item span:not(.sidebar-item-badge) { display: none; }
-  .sidebar-item { justify-content: center; }
+  .app-shell { align-items: stretch; }
+  .sidebar,
+  .sidebar.collapsed {
+    width: 66px;
+    min-width: 66px;
+    max-width: 66px;
+    overflow: visible;
+  }
+  .sidebar-logo {
+    justify-content: center;
+    padding: 14px 10px 12px;
+  }
+  .sidebar-logo-text,
+  .sidebar-logo-sub,
+  .sidebar-section,
+  .sidebar-section-toggle,
+  .sidebar-item,
+  .sidebar-collapse {
+    display: none !important;
+  }
+  .sidebar-nav,
+  .sidebar.collapsed .sidebar-nav {
+    padding: 8px 8px 16px !important;
+    overflow: visible;
+  }
+  .sidebar-area-btn {
+    width: 42px;
+    height: 42px;
+    margin-bottom: 7px;
+  }
+  .sidebar-flyout {
+    position: fixed;
+    left: 66px;
+    top: 8px;
+    width: min(250px, calc(100vw - 78px));
+    max-height: calc(100vh - 16px);
+  }
+  .main-col { min-width: 0; width: calc(100vw - 66px); }
 }
 @keyframes logo-breathe {
   0% { transform: scale(1); opacity: 0.8; filter: drop-shadow(0 0 0px #fff); }
