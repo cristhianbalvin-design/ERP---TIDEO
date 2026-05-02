@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { MOCK } from './data.js';
 import { isSupabaseMode } from './lib/dataMode.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
-import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, persistirCuenta, persistirContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial } from './services/crmService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta } from './services/crmService.js';
 import { loadOpsFromSupabase, persistirBacklog, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario } from './services/operacionesService.js';
 import { finanzasService } from './services/finanzasService.js';
 import { maestrosService } from './services/maestrosService.js';
@@ -58,6 +58,10 @@ function normalizarEmpresaSupabase(e) {
   };
 }
 
+function empresaPermiteAcceso(estado) {
+  return ['activa', 'activo', 'demo'].includes(String(estado || '').toLowerCase());
+}
+
 export function AppProvider({ children }) {
   const [active, setActive] = useState('dashboard');
   const [activeParams, setActiveParams] = useState({});
@@ -73,7 +77,6 @@ export function AppProvider({ children }) {
   const [dark, setDark] = useState(false);
   const [mobileMode, setMobileMode] = useState(false);
   const [mobileProfile, setMobileProfile] = useState('tecnico');
-  const [searchQuery, setSearchQuery] = useState('');
   const [createdRecords, setCreatedRecords] = useState({});
   const [dataMode] = useState(isSupabaseConfigured() ? 'supabase' : 'mock');
   const [authSession, setAuthSession] = useState(null);
@@ -648,22 +651,32 @@ export function AppProvider({ children }) {
       try {
         const supabase = await getSupabaseClient();
 
-        const { data: memberships, error: memError } = await supabase
-          .from('usuarios_empresas')
-          .select(`
-            empresa_id, rol_id, acceso_campo, perfil_campo,
-            empresa:empresas(id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado),
-            rol:roles(id, nombre, es_admin_empresa, es_superadmin)
-          `)
-          .eq('user_id', authUser.id)
-          .eq('estado', 'activo');
+        const { data: ues, error: uesError } = await supabase.rpc('get_mis_membresias');
+        console.log('>>> UES RPC:', { ues, uesError });
 
-        if (memError || !memberships?.length) {
+        if (uesError || !ues?.length) {
           if (mounted) { setTodasMembresias([]); setMembresiaCargando(false); }
           return;
         }
 
-        const activas = memberships.filter(m => m.empresa?.estado === 'activa');
+        const empresaIds = [...new Set(ues.map(u => u.empresa_id))];
+        const rolIds = [...new Set(ues.map(u => u.rol_id).filter(Boolean))];
+
+        const [{ data: empresasRows, error: empErr }, { data: rolesRows, error: rolErr }] = await Promise.all([
+          supabase.from('empresas').select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado').in('id', empresaIds),
+          supabase.from('roles').select('id, nombre, es_admin_empresa, es_superadmin').in('id', rolIds),
+        ]);
+
+        console.log('>>> EMPRESAS:', { empresasRows, empErr }, '>>> ROLES:', { rolesRows, rolErr });
+
+        const memberships = ues.map(u => ({
+          ...u,
+          empresa: empresasRows?.find(e => e.id === u.empresa_id) || null,
+          rol: rolesRows?.find(r => r.id === u.rol_id) || null,
+        }));
+
+        const activas = memberships.filter(m => empresaPermiteAcceso(m.empresa?.estado));
+        console.log('>>> ACTIVAS:', activas);
         if (!mounted) return;
 
         setTodasMembresias(activas);
@@ -834,6 +847,109 @@ export function AppProvider({ children }) {
       if (contactoPrincipal) await persistirContacto(sb, empresa.id, contactoPrincipal);
     });
     auditSync({ modulo: 'crm', entidad: 'cuentas', entidad_id: cuenta.id, accion: 'crear', valor_nuevo: cuenta });
+  };
+
+  const actualizarCuenta = async (cuentaId, datos) => {
+    const anterior = cuentas.find(c => c.id === cuentaId);
+    const payload = { ...datos };
+    if (payload.limite_credito !== undefined) {
+      payload.limite_credito = Number(payload.limite_credito || 0);
+    }
+
+    setCuentas(prev => prev.map(c => c.id === cuentaId ? { ...c, ...payload } : c));
+    await crmPersist(sb => svcActualizarCuenta(sb, empresa.id, cuentaId, payload));
+    auditSync({ modulo: 'crm', entidad: 'cuentas', entidad_id: cuentaId, accion: 'editar', valor_anterior: anterior || null, valor_nuevo: payload });
+    addNotificacion('Cuenta actualizada.');
+    return { ...(anterior || {}), ...payload };
+  };
+
+  const actualizarLogoCuenta = async (cuenta, file) => {
+    if (!cuenta?.id || !file) return null;
+
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase no esta configurado para guardar logotipos.');
+    }
+
+    const anterior = cuentas.find(c => c.id === cuenta.id) || cuenta;
+    const actualizada = await crmPersist(sb => subirLogoCuenta(sb, empresa.id, cuenta.id, file));
+
+    setCuentas(prev => prev.map(c => c.id === cuenta.id ? { ...c, ...actualizada } : c));
+    auditSync({
+      modulo: 'crm',
+      entidad: 'cuentas',
+      entidad_id: cuenta.id,
+      accion: 'actualizar_logo',
+      valor_anterior: { logo_url: anterior.logo_url || null, logo_path: anterior.logo_path || null },
+      valor_nuevo: { logo_url: actualizada.logo_url, logo_path: actualizada.logo_path },
+    });
+    addNotificacion(`Logo actualizado: ${actualizada.razon_social || cuenta.razon_social}`);
+    return actualizada;
+  };
+
+  const crearContactoCuenta = async (cuentaId, datos) => {
+    const contacto = {
+      id: generateId('con'),
+      empresa_id: empresa.id,
+      cuenta_id: cuentaId,
+      nombre: datos.nombre || 'Sin nombre',
+      cargo: datos.cargo || null,
+      telefono: datos.telefono || null,
+      email: datos.email || null,
+      principal: Boolean(datos.principal || datos.es_principal),
+      es_principal: Boolean(datos.principal || datos.es_principal),
+      estado: 'activo',
+    };
+
+    if (contacto.es_principal) {
+      setContactos(prev => prev.map(c => c.cuenta_id === cuentaId ? { ...c, principal: false, es_principal: false } : c));
+    }
+    setContactos(prev => [...prev, contacto]);
+
+    crmSync(async sb => {
+      if (contacto.es_principal) {
+        const actuales = contactos.filter(c => c.cuenta_id === cuentaId);
+        await Promise.all(actuales.map(c => actualizarContacto(sb, empresa.id, c.id, { es_principal: false })));
+      }
+      await persistirContacto(sb, empresa.id, contacto);
+    });
+    auditSync({ modulo: 'crm', entidad: 'contactos', entidad_id: contacto.id, accion: 'crear', valor_nuevo: contacto });
+    addNotificacion(`Contacto creado: ${contacto.nombre}`);
+    return contacto;
+  };
+
+  const actualizarContactoCuenta = async (contactoId, datos) => {
+    const anterior = contactos.find(c => c.id === contactoId);
+    if (!anterior) return null;
+    const normalizado = {
+      ...datos,
+      es_principal: datos.es_principal ?? datos.principal,
+      principal: datos.principal ?? datos.es_principal,
+    };
+
+    setContactos(prev => prev.map(c => {
+      if (normalizado.es_principal && c.cuenta_id === anterior.cuenta_id && c.id !== contactoId) {
+        return { ...c, principal: false, es_principal: false };
+      }
+      return c.id === contactoId ? { ...c, ...normalizado } : c;
+    }));
+
+    crmSync(async sb => {
+      if (normalizado.es_principal) {
+        const otros = contactos.filter(c => c.cuenta_id === anterior.cuenta_id && c.id !== contactoId);
+        await Promise.all(otros.map(c => actualizarContacto(sb, empresa.id, c.id, { es_principal: false })));
+      }
+      await actualizarContacto(sb, empresa.id, contactoId, {
+        nombre: normalizado.nombre,
+        cargo: normalizado.cargo,
+        telefono: normalizado.telefono,
+        email: normalizado.email,
+        es_principal: normalizado.es_principal,
+        estado: normalizado.estado,
+      });
+    });
+    auditSync({ modulo: 'crm', entidad: 'contactos', entidad_id: contactoId, accion: 'editar', valor_anterior: anterior, valor_nuevo: normalizado });
+    addNotificacion(`Contacto actualizado: ${normalizado.nombre || anterior.nombre}`);
+    return { ...anterior, ...normalizado };
   };
 
   // Mutations
@@ -1640,6 +1756,112 @@ export function AppProvider({ children }) {
       console.log('>>> Supabase no configurado, modo local');
       addNotificacion(`Usuario ${u.nombre} creado localmente (PRUEBA).`);
     }
+  };
+
+  const crearUsuarioConAcceso = async ({ nombre, email, password, rol, area }) => {
+    if (!isSupabaseConfigured()) {
+      addNotificacion('Se requiere Supabase para crear usuarios con acceso.', 'error');
+      return;
+    }
+    try {
+      const supabase = await getSupabaseClient();
+
+      // Guardar sesión del admin antes de signUp (que la reemplaza automáticamente)
+      const { data: { session: adminSession } } = await supabase.auth.getSession();
+
+      // 1. Intentar crear en Supabase Auth
+      let uid = null;
+      const { data: authData, error: authErr } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { nombre } }
+      });
+
+      // Restaurar sesión del admin inmediatamente
+      if (adminSession) {
+        await supabase.auth.setSession({
+          access_token: adminSession.access_token,
+          refresh_token: adminSession.refresh_token,
+        });
+      }
+
+      if (authErr) {
+        const yaExiste = authErr.message?.toLowerCase().includes('already registered') ||
+                         authErr.message?.toLowerCase().includes('already been registered');
+        if (!yaExiste) throw authErr;
+        addNotificacion(`El usuario ya tiene cuenta. Se agrega al tenant actual.`);
+      } else {
+        uid = authData.user?.id;
+        if (!uid) throw new Error('No se obtuvo ID de usuario de Auth');
+      }
+
+      let rolIdReal = rol;
+      const { data: rolRow } = await supabase
+        .from('roles')
+        .select('id')
+        .eq('empresa_id', empresa.id)
+        .or(`id.eq.${rol},nombre.ilike.%${rol}%`)
+        .limit(1)
+        .single();
+      if (rolRow?.id) rolIdReal = rolRow.id;
+
+      if (empresa?.id) {
+        const { data: vinculo, error: vinculoErr } = await supabase.rpc('vincular_usuario_a_empresa', {
+          p_email: email,
+          p_empresa_id: empresa.id,
+          p_rol_id: rolIdReal,
+          p_acceso_campo: false,
+          p_perfil_campo: null,
+        });
+        if (vinculoErr) throw vinculoErr;
+        uid = vinculo?.[0]?.user_id || uid;
+      }
+
+      if (!uid) throw new Error('No se pudo resolver el usuario Auth para vincularlo al tenant.');
+
+      // 2. Crear registro en tabla usuarios para este tenant
+      const nuevoUsuario = {
+        id: uid,
+        nombre,
+        email,
+        rol,
+        area: area || '',
+        empresa_id: empresa?.id,
+        estado: 'Activo',
+        must_change_password: true,
+      };
+      await usuariosService.registrarUsuario(nuevoUsuario);
+
+      setUsuarios(prev => {
+        if (prev.find(u => u.id === uid)) return prev.map(u => u.id === uid ? nuevoUsuario : u);
+        return [...prev, nuevoUsuario];
+      });
+      if (!authErr) addNotificacion(`Usuario ${nombre} creado. Ya puede ingresar con la contraseña temporal.`);
+      return nuevoUsuario;
+    } catch (err) {
+      addNotificacion('Error al crear usuario: ' + (err.message || 'Error desconocido'), 'error');
+      throw err;
+    }
+  };
+
+  const eliminarUsuario = async (id) => {
+    setUsuarios(prev => prev.filter(u => u.id !== id));
+    if (isSupabaseConfigured()) {
+      try {
+        await usuariosService.eliminarUsuario(id);
+      } catch (err) {
+        addNotificacion('Error al eliminar en Supabase: ' + err.message, 'error');
+      }
+    }
+  };
+
+  const marcarContrasenaActualizada = async () => {
+    if (!authUser?.id) return;
+    try {
+      const supabase = await getSupabaseClient();
+      await supabase.from('usuarios').update({ must_change_password: false }).eq('id', authUser.id);
+      setUsuarios(prev => prev.map(u => u.id === authUser.id ? { ...u, must_change_password: false } : u));
+    } catch { /* silently ignore */ }
   };
 
   const updateLeadState = (leadId, newState) => {
@@ -2630,9 +2852,37 @@ export function AppProvider({ children }) {
   const clonarRol = (rolId, nuevoNombre) => {
     const source = rolesCtx[rolId];
     if (!source) { addNotificacion('Rol origen no encontrado.', 'error'); return; }
-    const newId = `rol_${Math.random().toString(36).slice(2, 7)}`;
+    const newId = isSupabaseConfigured() && empresa?.id
+      ? `rol_${empresa.id}_${Math.random().toString(36).slice(2, 7)}`
+      : `rol_${Math.random().toString(36).slice(2, 7)}`;
     const nuevo = { ...source, nombre: nuevoNombre, descripcion: `Copia de ${source.nombre}` };
     setRolesCtx(prev => ({ ...prev, [newId]: nuevo }));
+    if (isSupabaseConfigured() && empresa?.id) {
+      rolesService.crearRol({
+        id: newId,
+        empresa_id: empresa.id,
+        nombre: nuevoNombre,
+        descripcion: `Copia de ${source.nombre}`,
+        es_superadmin: false,
+        es_admin_empresa: Boolean(source.es_admin_empresa),
+        activo: true,
+      }).then(() => {
+        const permisos = MOCK.pantallasPermisos.map(p => ({
+          pantalla: p.key,
+          puede_ver: Boolean(source.permisos?.ver === true || source.permisos?.ver?.includes?.(p.key)),
+          puede_crear: Boolean(source.permisos?.crear === true || source.permisos?.crear?.includes?.(p.key)),
+          puede_editar: Boolean(source.permisos?.editar === true || source.permisos?.editar?.includes?.(p.key)),
+          puede_anular: Boolean(source.permisos?.anular === true || source.permisos?.anular?.includes?.(p.key)),
+          puede_aprobar: Boolean(source.permisos?.aprobar === true || source.permisos?.aprobar?.includes?.(p.key)),
+          puede_exportar: Boolean(source.permisos?.exportar === true || source.permisos?.exportar?.includes?.(p.key)),
+          puede_ver_costos: Boolean(source.permisos?.ver_costos),
+          puede_ver_finanzas: Boolean(source.permisos?.ver_finanzas),
+        }));
+        return rolesService.actualizarPermisos(newId, permisos);
+      }).catch(error => {
+        addNotificacion(`No se pudo guardar el rol en Supabase: ${error.message}`, 'error');
+      });
+    }
     addNotificacion(`Rol "${nuevoNombre}" creado.`);
     return newId;
   };
@@ -2655,22 +2905,63 @@ export function AppProvider({ children }) {
       }
       return { ...prev, [rolId]: r };
     });
+    if (isSupabaseConfigured() && pantalla) {
+      const payload = {
+        pantalla,
+        puede_ver: key === 'ver' ? value : Boolean(rolesCtx[rolId]?.permisos?.ver?.includes?.(pantalla)),
+        puede_crear: key === 'crear' ? value : Boolean(rolesCtx[rolId]?.permisos?.crear?.includes?.(pantalla)),
+        puede_editar: key === 'editar' ? value : Boolean(rolesCtx[rolId]?.permisos?.editar?.includes?.(pantalla)),
+        puede_anular: key === 'anular' ? value : Boolean(rolesCtx[rolId]?.permisos?.anular?.includes?.(pantalla)),
+        puede_aprobar: key === 'aprobar' ? value : Boolean(rolesCtx[rolId]?.permisos?.aprobar?.includes?.(pantalla)),
+        puede_exportar: key === 'exportar' ? value : Boolean(rolesCtx[rolId]?.permisos?.exportar?.includes?.(pantalla)),
+        puede_ver_costos: key === 'ver_costos' ? value : Boolean(rolesCtx[rolId]?.permisos?.ver_costos),
+        puede_ver_finanzas: key === 'ver_finanzas' ? value : Boolean(rolesCtx[rolId]?.permisos?.ver_finanzas),
+      };
+      rolesService.actualizarPermisos(rolId, [payload]).catch(error => {
+        addNotificacion(`No se pudo guardar el permiso en Supabase: ${error.message}`, 'error');
+      });
+    }
   };
 
   const crearRol = (rolData) => {
-    const newId = `rol_${Math.random().toString(36).slice(2, 7)}`;
+    const newId = isSupabaseConfigured() && empresa?.id
+      ? `rol_${empresa.id}_${Math.random().toString(36).slice(2, 7)}`
+      : `rol_${Math.random().toString(36).slice(2, 7)}`;
     setRolesCtx(prev => ({ ...prev, [newId]: { nombre: rolData.nombre, descripcion: rolData.descripcion || '', color: 'blue', permisos: { ver: [] } } }));
+    if (isSupabaseConfigured() && empresa?.id) {
+      rolesService.crearRol({
+        id: newId,
+        empresa_id: empresa.id,
+        nombre: rolData.nombre,
+        descripcion: rolData.descripcion || '',
+        es_superadmin: false,
+        es_admin_empresa: false,
+        activo: true,
+      }).catch(error => {
+        addNotificacion(`No se pudo guardar el rol en Supabase: ${error.message}`, 'error');
+      });
+    }
     addNotificacion(`Rol "${rolData.nombre}" creado.`);
     return newId;
   };
 
   const eliminarRol = (rolId) => {
     setRolesCtx(prev => { const next = { ...prev }; delete next[rolId]; return next; });
+    if (isSupabaseConfigured()) {
+      rolesService.eliminarRol(rolId).catch(error => {
+        addNotificacion(`No se pudo eliminar el rol en Supabase: ${error.message}`, 'error');
+      });
+    }
     addNotificacion('Rol eliminado.');
   };
 
   const editarRol = (rolId, datos) => {
     setRolesCtx(prev => ({ ...prev, [rolId]: { ...prev[rolId], ...datos } }));
+    if (isSupabaseConfigured()) {
+      rolesService.actualizarRol(rolId, datos).catch(error => {
+        addNotificacion(`No se pudo actualizar el rol en Supabase: ${error.message}`, 'error');
+      });
+    }
   };
 
   const contextValue = {
@@ -2682,7 +2973,7 @@ export function AppProvider({ children }) {
     mobileProfile, setMobileProfile,
     authSession, authUser, authLoading, authError,
     signInWithPassword, signUpWithPassword, signOut,
-    searchQuery, setSearchQuery,
+    searchQuery: '',
     dataMode, supabaseStatus, reloadSupabaseFinanceData: loadSupabaseFinanceData,
     todasMembresias, membresiaActiva, membresiaCargando, seleccionarEmpresa,
     empresasPlataforma, setEmpresasPlataforma, crearTenantConAdmin,
@@ -2690,8 +2981,8 @@ export function AppProvider({ children }) {
     usuarios, setUsuarios,
     roles: rolesCtx, clonarRol, actualizarPermisosRol, crearRol, eliminarRol, editarRol,
     leads, setLeads, updateLeadState,
-    cuentas, setCuentas,
-    contactos, setContactos,
+    cuentas, setCuentas, actualizarCuenta, actualizarLogoCuenta,
+    contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta,
     oportunidades, setOportunidades,
     actividades, setActividades,
     agendaEventos, setAgendaEventos, crearAgendaEvento, actualizarAgendaEvento,
@@ -2735,6 +3026,9 @@ export function AppProvider({ children }) {
     crearCotizacion, aprobarCotizacion,
     crearOSCliente, crearOSClienteManual,
     registrarUsuario,
+    eliminarUsuario,
+    crearUsuarioConAcceso,
+    marcarContrasenaActualizada,
     registrarActividad,
     actualizarActividad,
     // Fase 2 Actions

@@ -66,6 +66,7 @@ const FORM_TEMPLATES = {
   usuarios: { title: 'Nuevo usuario', fields: [
     ['nombre','Nombre completo','text'],
     ['email','Email','email'],
+    ['password','Contraseña temporal','text'],
     ['cargo','Cargo','cargo'],
     ['area','Area','text'],
     ['rol','Rol','select',[
@@ -414,23 +415,16 @@ function QuickCreateModal({ active, onClose }) {
         ? `Admin vinculado: ${values.admin_email}`
         : `Tenant creado; admin pendiente: ${values.admin_email}`;
     } else if (active === 'usuarios') {
-      const rolSeguro = values.rol === 'plataforma' && !app.role.permisos?.plataforma ? 'admin' : (values.rol || 'admin');
-      const nuevoUsr = {
-        id: makeId('u'),
+      if (!values.password || values.password.length < 6) throw new Error('La contraseña temporal debe tener al menos 6 caracteres.');
+      if (!values.rol) throw new Error('Debes seleccionar un rol para el usuario.');
+      const rolSeguro = values.rol === 'plataforma' && !app.role.permisos?.plataforma ? 'admin' : values.rol;
+      await app.crearUsuarioConAcceso({
         nombre: values.nombre || 'Nuevo usuario',
-        email: values.email || 'usuario@tideo.pe',
+        email: values.email,
+        password: values.password,
         rol: rolSeguro,
         area: values.area || 'Sin area',
-        cargo: values.cargo || 'Por definir',
-        telefono: values.telefono || '',
-        sede: values.sede || '',
-        empresa_id: values.empresa_id || app.empresa.id,
-        campo: ['tecnico'].includes(values.rol),
-        campoPerfil: values.rol === 'tecnico' ? 'Tecnico' : undefined,
-        estado: 'Activo',
-        ultimo: 'Nuevo'
-      };
-      app.registrarUsuario(nuevoUsr);
+      });
     } else if (active === 'leads') {
       app.crearLead({
         id: makeId('lead'), empresa_id: app.empresa.id, estado: 'nuevo', convertido: false,

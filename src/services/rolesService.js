@@ -42,6 +42,27 @@ export const rolesService = {
     if (error) throw error;
   },
 
+  async actualizarRol(rolId, datos) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('roles')
+      .update(datos)
+      .eq('id', rolId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async eliminarRol(rolId) {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase
+      .from('roles')
+      .delete()
+      .eq('id', rolId);
+    if (error) throw error;
+  },
+
   async clonarRol(sourceRolId, newRolName, empresaId) {
     const supabase = await getSupabaseClient();
     

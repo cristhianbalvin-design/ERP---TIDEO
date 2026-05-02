@@ -7,10 +7,15 @@ import { useApp } from './context.jsx';
 
 // ============ CUENTAS Y CONTACTOS ============
 function Cuentas() {
-  const { cuentas, setCuentas, crearCuenta, contactos, oportunidades, cotizaciones, osClientes, usuarios, navigate, empresa, addNotificacion, role } = useApp();
+  const { cuentas, setCuentas, crearCuenta, actualizarCuenta, actualizarLogoCuenta, contactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, usuarios, navigate, empresa, addNotificacion, role } = useApp();
   const [sel, setSel] = useState(null);
   const [condEdit, setCondEdit] = useState({});
+  const [condEditing, setCondEditing] = useState(false);
+  const [condSaving, setCondSaving] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(null);
+  const [contactEditId, setContactEditId] = useState(null);
+  const [contactForm, setContactForm] = useState({ nombre:'', cargo:'', telefono:'', email:'', principal:false });
   const [formCuenta, setFormCuenta] = useState({
     razon_social: '',
     ruc: '',
@@ -26,6 +31,8 @@ function Cuentas() {
   });
   const [activeTab, setActiveTab] = useState('Resumen');
   const canFinanzas = role?.permisos?.ver_finanzas;
+  const cuentaContactos = sel ? contactos.filter(c => c.cuenta_id === sel.id) : [];
+  const contactoPrincipal = cuentaContactos.find(c => c.principal || c.es_principal) || cuentaContactos[0] || null;
 
   const csHealth  = sel ? MOCK.healthScoresDetalle.find(h => h.cuenta_id === sel.id) : null;
   const csOb      = sel ? MOCK.onboardings.find(o => o.cuenta_id === sel.id) : null;
@@ -50,11 +57,114 @@ function Cuentas() {
     }
   };
 
+  const getCuentaLogo = (cuenta) => cuenta.logo_url || null;
+
+  const getInitials = (name = '') => {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return 'CT';
+    return parts.slice(0, 2).map(part => part[0]).join('').toUpperCase();
+  };
+
+  const handleLogoUpload = async (cuenta, file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      addNotificacion?.('El archivo seleccionado no es una imagen.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      addNotificacion?.('El logo no debe superar 2 MB.');
+      return;
+    }
+
+    try {
+      setLogoUploading(cuenta.id);
+      const actualizada = await actualizarLogoCuenta(cuenta, file);
+      if (actualizada) setSel(prev => prev?.id === cuenta.id ? { ...prev, ...actualizada } : prev);
+    } catch (error) {
+      addNotificacion?.(`No se pudo guardar el logo: ${error?.message || 'error desconocido'}`);
+    } finally {
+      setLogoUploading(null);
+    }
+  };
+
   const updateCuentaForm = (field, value) => {
     setFormCuenta(prev => ({ ...prev, [field]: value }));
   };
 
   const formCuentaBase = { razon_social:'', ruc:'', industria:'', nombre_contacto:'', cargo_contacto:'', telefono:'', email:'', direccion:'', responsable_comercial:'', tamano:'', fuente_origen:'' };
+  const contactFormBase = { nombre:'', cargo:'', telefono:'', email:'', principal:false };
+
+  const startNuevoContacto = () => {
+    setContactEditId('nuevo');
+    setContactForm({ ...contactFormBase, principal: cuentaContactos.length === 0 });
+  };
+
+  const startEditarContacto = (contacto) => {
+    setContactEditId(contacto.id);
+    setContactForm({
+      nombre: contacto.nombre || '',
+      cargo: contacto.cargo || '',
+      telefono: contacto.telefono || '',
+      email: contacto.email || '',
+      principal: Boolean(contacto.principal || contacto.es_principal),
+    });
+  };
+
+  const cancelarContacto = () => {
+    setContactEditId(null);
+    setContactForm(contactFormBase);
+  };
+
+  const guardarContacto = async (e) => {
+    e.preventDefault();
+    if (!sel?.id) return;
+    if (!contactForm.nombre.trim()) {
+      addNotificacion?.('El nombre del contacto es obligatorio.');
+      return;
+    }
+
+    const payload = {
+      nombre: contactForm.nombre.trim(),
+      cargo: contactForm.cargo.trim() || null,
+      telefono: contactForm.telefono.trim() || null,
+      email: contactForm.email.trim() || null,
+      principal: Boolean(contactForm.principal),
+      es_principal: Boolean(contactForm.principal),
+      estado: 'activo',
+    };
+
+    if (!contactEditId || contactEditId === 'nuevo') {
+      await crearContactoCuenta(sel.id, payload);
+    } else {
+      await actualizarContactoCuenta(contactEditId, payload);
+    }
+    cancelarContacto();
+  };
+
+  const startEditarCondiciones = () => {
+    setCondEdit({});
+    setCondEditing(true);
+  };
+
+  const cancelarCondiciones = () => {
+    setCondEdit({});
+    setCondEditing(false);
+  };
+
+  const guardarCondiciones = async () => {
+    if (!sel?.id) return;
+    try {
+      setCondSaving(true);
+      const actualizada = await actualizarCuenta(sel.id, condEdit);
+      setSel(prev => ({ ...prev, ...actualizada }));
+      setCondEdit({});
+      setCondEditing(false);
+    } catch (error) {
+      addNotificacion?.(`No se pudieron guardar las condiciones: ${error?.message || 'error desconocido'}`);
+    } finally {
+      setCondSaving(false);
+    }
+  };
 
   const guardarCuenta = (e) => {
     e.preventDefault();
@@ -101,23 +211,47 @@ function Cuentas() {
         <strong>Recomendación: </strong><span className="text-muted">El flujo ideal es registrar primero un <strong>Lead</strong> y convertirlo desde el módulo de Leads. Esto pre-completa la cuenta con el RUC, razón social e industria del prospecto.</span>
         <button className="btn btn-ghost btn-sm" style={{marginLeft:12}} onClick={()=>navigate('leads')}>Ir a Leads</button>
       </div>
-      <div className="card">
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead><tr><th>Razón social</th><th>Tipo</th><th>Industria</th><th>Responsable</th><th>Health</th><th>Saldo CxC</th><th>Última Compra</th></tr></thead>
-            <tbody>{cuentas.map(c => (
-              <tr key={c.id} onClick={() => { setSel(c); setActiveTab('Resumen'); }} className="hover-row" style={{cursor:'pointer'}}>
-                <td><strong>{c.razon_social}</strong></td>
-                <td><span className={'badge ' + getTipoBadge(c.tipo)}>{c.tipo.replace('_', ' ')}</span></td>
-                <td className="text-muted">{c.industria}</td>
-                <td>{c.responsable_comercial}</td>
-                <td><span className={'health-dot health-'+getHealthColor(c.health_score)}/></td>
-                <td className="num">{c.saldo_cxc > 0 ? money(c.saldo_cxc) : <span className="text-subtle">—</span>}</td>
-                <td className="text-muted">{c.fecha_ultima_compra || '—'}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
+      <div className="account-gallery">
+        {cuentas.map(c => {
+          const logoUrl = getCuentaLogo(c);
+          return (
+            <article key={c.id} className="account-card" onClick={() => { setSel({ ...c, logo_url: logoUrl }); setActiveTab('Resumen'); setContactEditId(null); setCondEditing(false); setCondEdit({}); }}>
+              <div className="account-logo-wrap">
+                {logoUrl ? (
+                  <img className="account-logo" src={logoUrl} alt={`Logo de ${c.razon_social}`} />
+                ) : (
+                  <div className="account-logo-empty">
+                    <div className="account-logo-initials">{getInitials(c.razon_social)}</div>
+                    <span>Subir logotipo de empresa</span>
+                  </div>
+                )}
+                <label className="account-logo-upload" onClick={(e) => e.stopPropagation()}>
+                  {logoUploading === c.id ? 'Subiendo...' : logoUrl ? 'Cambiar logo' : 'Subir logo'}
+                  <input type="file" accept="image/*" disabled={logoUploading === c.id} onChange={(e) => handleLogoUpload(c, e.target.files?.[0])} />
+                </label>
+              </div>
+              <div className="account-card-body">
+                <div>
+                  <h2 className="account-title">{c.razon_social}</h2>
+                  <div className="text-muted" style={{fontSize:12, marginTop:4}}>{c.ruc || 'RUC pendiente'}</div>
+                </div>
+                <div className="account-meta">
+                  <div><span>Tipo</span><strong className={'badge ' + getTipoBadge(c.tipo)}>{c.tipo.replace('_', ' ')}</strong></div>
+                  <div><span>Industria</span><strong>{c.industria || 'Por definir'}</strong></div>
+                  <div><span>Responsable</span><strong>{c.responsable_comercial || 'Sin asignar'}</strong></div>
+                  <div><span>Última compra</span><strong>{c.fecha_ultima_compra || '—'}</strong></div>
+                </div>
+                <div className="account-footer">
+                  <div className="row" style={{gap:8}}>
+                    <span className={'health-dot health-'+getHealthColor(c.health_score)}/>
+                    <span className="text-muted">Health {c.health_score || 'N/A'}</span>
+                  </div>
+                  <strong>{c.saldo_cxc > 0 ? money(c.saldo_cxc) : 'Sin CxC'}</strong>
+                </div>
+              </div>
+            </article>
+          );
+        })}
       </div>
 
       {newOpen && <>
@@ -180,21 +314,34 @@ function Cuentas() {
 
       {sel && <>
         <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
-        <div className="side-panel">
-          <div className="side-panel-head">
-            <div>
+        <div className="side-panel account-profile-panel">
+          <div className="account-profile-hero">
+            <div className="account-profile-logo">
+              {getCuentaLogo(sel) ? <img src={getCuentaLogo(sel)} alt={`Logo de ${sel.razon_social}`} /> : <span>{getInitials(sel.razon_social)}</span>}
+              <label title="Cambiar logotipo">
+                {I.plus}
+                <input type="file" accept="image/*" disabled={logoUploading === sel.id} onChange={(e) => handleLogoUpload(sel, e.target.files?.[0])} />
+              </label>
+            </div>
+            <div className="account-profile-title">
               <div className="eyebrow">Ficha 360° · Cliente</div>
-              <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>{sel.razon_social}</div>
-              {sel.condicion_pago === 'Por definir' && (
-                <div style={{marginTop:6, display:'inline-flex', alignItems:'center', gap:6, padding:'3px 10px', background:'rgba(251,191,36,0.12)', border:'1px solid rgba(251,191,36,0.35)', borderRadius:20, fontSize:11, color:'var(--warning)'}}>
-                  ⚠ Condiciones comerciales pendientes
-                </div>
-              )}
+              <h2>{sel.razon_social}</h2>
+              <div className="account-profile-tags">
+                <span className={'badge ' + getTipoBadge(sel.tipo)}>{(sel.tipo || 'cliente').replace('_', ' ')}</span>
+                <span className="badge badge-gray">{sel.industria || 'Industria pendiente'}</span>
+                {sel.condicion_pago === 'Por definir' && <span className="badge badge-orange">Condiciones pendientes</span>}
+              </div>
+            </div>
+            <div className="account-profile-contact">
+              <div className="eyebrow">Contacto principal</div>
+              <strong>{contactoPrincipal?.nombre || 'Sin contacto'}</strong>
+              <span>{contactoPrincipal?.cargo || 'Cargo pendiente'}</span>
+              <span>{contactoPrincipal?.telefono || contactoPrincipal?.email || 'Datos pendientes'}</span>
             </div>
             <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
           </div>
           <div className="side-panel-body">
-            <div className="tabs">
+            <div className="tabs account-profile-tabs">
               {['Resumen', 'Oportunidades', 'Cotizaciones', 'OS Cliente', 'Contactos', 'Customer Success', ...(canFinanzas ? ['Condiciones comerciales'] : [])].map(t => (
                 <div key={t} className={`tab ${activeTab===t?'active':''}`} onClick={() => setActiveTab(t)}>{t}</div>
               ))}
@@ -202,28 +349,46 @@ function Cuentas() {
             
             {activeTab === 'Resumen' && (
               <>
-                <div className="grid-3" style={{gap:12, marginBottom:20}}>
-                  <div className="card" style={{padding:14}}><div className="eyebrow">Health Score</div><div className="row" style={{marginTop:8}}><span className={'health-dot health-'+getHealthColor(sel.health_score)}/><strong style={{marginLeft:8, fontSize:18}}>{sel.health_score || 'N/A'}</strong></div></div>
-                  <div className="card" style={{padding:14}}><div className="eyebrow">Saldo CxC</div><div style={{fontFamily:'Sora',fontSize:18,fontWeight:700,marginTop:4}}>{money(sel.saldo_cxc)}</div></div>
-                  <div className="card" style={{padding:14}}><div className="eyebrow">Días Mora</div><div style={{fontFamily:'Sora',fontSize:18,fontWeight:700,color:(sel.dias_mora||0)>30?'var(--danger)':(sel.dias_mora||0)>0?'var(--orange)':'var(--green)',marginTop:4}}>{sel.dias_mora || 0}d</div></div>
+                <div className="account-profile-kpis">
+                  <div><span>Health score</span><strong><span className={'health-dot health-'+getHealthColor(sel.health_score)}/>{sel.health_score || 'N/A'}</strong></div>
+                  <div><span>Saldo CxC</span><strong>{money(sel.saldo_cxc)}</strong></div>
+                  <div><span>Días mora</span><strong className={(sel.dias_mora||0)>30?'danger':(sel.dias_mora||0)>0?'warning':'success'}>{sel.dias_mora || 0}d</strong></div>
+                  <div><span>Última compra</span><strong>{sel.fecha_ultima_compra || '—'}</strong></div>
                 </div>
-                <div className="card mb-6">
-                  <div className="card-body">
-                    <div className="grid-2" style={{gap:16}}>
-                      <div><div className="eyebrow">RUC</div><div>{sel.ruc}</div></div>
-                      <div><div className="eyebrow">Dirección</div><div>{sel.direccion}</div></div>
-                      <div><div className="eyebrow">Teléfono</div><div>{sel.telefono}</div></div>
-                      <div><div className="eyebrow">Email Principal</div><div>{sel.email}</div></div>
+                <div className="account-profile-grid">
+                  <div className="account-info-card">
+                    <div className="card-head"><h3>Datos de empresa</h3></div>
+                    <div className="account-info-list">
+                      <div><span>RUC</span><strong>{sel.ruc || 'Pendiente'}</strong></div>
+                      <div><span>Razón social</span><strong>{sel.razon_social}</strong></div>
+                      <div><span>Dirección</span><strong>{sel.direccion || 'Pendiente'}</strong></div>
+                      <div><span>Responsable comercial</span><strong>{sel.responsable_comercial || 'Sin asignar'}</strong></div>
+                      <div><span>Teléfono empresa</span><strong>{sel.telefono || contactoPrincipal?.telefono || 'Pendiente'}</strong></div>
+                      <div><span>Email empresa</span><strong>{sel.email || contactoPrincipal?.email || 'Pendiente'}</strong></div>
+                    </div>
+                  </div>
+                  <div className="account-info-card">
+                    <div className="card-head">
+                      <h3>Contactos</h3>
+                      <button className="btn btn-secondary btn-sm" onClick={() => { setActiveTab('Contactos'); startNuevoContacto(); }}>{I.plus} Agregar</button>
+                    </div>
+                    <div className="account-contact-mini-list">
+                      {cuentaContactos.slice(0, 3).map(c => (
+                        <button key={c.id} onClick={() => { setActiveTab('Contactos'); startEditarContacto(c); }}>
+                          <span>{getInitials(c.nombre)}</span>
+                          <strong>{c.nombre}</strong>
+                          <small>{c.cargo || c.email || c.telefono || 'Sin datos'}</small>
+                        </button>
+                      ))}
+                      {cuentaContactos.length === 0 && <div className="account-empty-note">Aún no hay contactos registrados.</div>}
                     </div>
                   </div>
                 </div>
-                <div className="card">
+                <div className="account-info-card">
                   <div className="card-head"><h3>Actividad reciente</h3></div>
-                  <div className="card-body col" style={{gap:10}}>
+                  <div className="account-timeline">
                     {['Revisión de cuenta · hace 2 días', 'Llamada seguimiento · hace 1 semana'].map((t,i)=>(
-                      <div key={i} className="row" style={{gap:10,padding:10,border:'1px solid var(--border-subtle)',borderRadius:8,fontSize:13}}>
-                        <span style={{width:6,height:6,borderRadius:999,background:'var(--cyan)'}}/>{t}
-                      </div>
+                      <div key={i}><span/><p>{t}</p></div>
                     ))}
                   </div>
                 </div>
@@ -283,23 +448,59 @@ function Cuentas() {
             )}
 
             {activeTab === 'Contactos' && (
-              <div className="col" style={{gap:10}}>
-                {contactos.filter(c => c.cuenta_id === sel.id).map(c => (
-                  <div key={c.id} className="card p-3 row" style={{gap:12}}>
-                    <div className="avatar" style={{width:40, height:40}}>{c.nombre.charAt(0)}</div>
-                    <div style={{flex:1}}>
-                      <div className="row" style={{gap:8}}>
-                        <strong style={{color:'var(--fg)'}}>{c.nombre}</strong>
-                        {c.principal && <span className="badge badge-cyan" style={{fontSize:10}}>Principal</span>}
-                      </div>
-                      <div className="text-muted" style={{fontSize:12}}>{c.cargo}</div>
-                    </div>
-                    <div className="col text-right" style={{fontSize:12}}>
-                      <div>{c.telefono}</div>
-                      <div className="text-muted">{c.email}</div>
-                    </div>
+              <div className="account-contacts-layout">
+                <div className="account-info-card">
+                  <div className="card-head">
+                    <h3>{cuentaContactos.length} contactos</h3>
+                    <button className="btn btn-primary btn-sm" onClick={startNuevoContacto}>{I.plus} Nuevo contacto</button>
                   </div>
-                ))}
+                  <div className="account-contact-list">
+                    {cuentaContactos.map(c => (
+                      <button key={c.id} className={contactEditId === c.id ? 'active' : ''} onClick={() => startEditarContacto(c)}>
+                        <span className="account-contact-avatar">{getInitials(c.nombre)}</span>
+                        <span className="account-contact-main">
+                          <strong>{c.nombre}</strong>
+                          <small>{c.cargo || 'Cargo pendiente'}</small>
+                        </span>
+                        {(c.principal || c.es_principal) && <span className="badge badge-cyan">Principal</span>}
+                      </button>
+                    ))}
+                    {cuentaContactos.length === 0 && <div className="account-empty-note">Registra al primer contacto de esta empresa.</div>}
+                  </div>
+                </div>
+
+                <div className="account-info-card">
+                  <div className="card-head">
+                    <h3>{contactEditId && contactEditId !== 'nuevo' ? 'Editar contacto' : 'Nuevo contacto'}</h3>
+                    {contactEditId && <button className="btn btn-ghost btn-sm" onClick={cancelarContacto}>Limpiar</button>}
+                  </div>
+                  <form className="account-contact-form" onSubmit={guardarContacto}>
+                    <div className="input-group">
+                      <label>Nombre completo *</label>
+                      <input className="input" value={contactForm.nombre} onChange={e=>setContactForm(p=>({...p,nombre:e.target.value}))} placeholder="Nombre y apellido" />
+                    </div>
+                    <div className="input-group">
+                      <label>Cargo</label>
+                      <input className="input" value={contactForm.cargo} onChange={e=>setContactForm(p=>({...p,cargo:e.target.value}))} placeholder="Ej: Jefe de Compras" />
+                    </div>
+                    <div className="input-group">
+                      <label>Teléfono</label>
+                      <input className="input" value={contactForm.telefono} onChange={e=>setContactForm(p=>({...p,telefono:e.target.value}))} placeholder="+51 999 999 999" />
+                    </div>
+                    <div className="input-group">
+                      <label>Email</label>
+                      <input className="input" type="email" value={contactForm.email} onChange={e=>setContactForm(p=>({...p,email:e.target.value}))} placeholder="contacto@empresa.pe" />
+                    </div>
+                    <label className="account-check">
+                      <input type="checkbox" checked={contactForm.principal} onChange={e=>setContactForm(p=>({...p,principal:e.target.checked}))} />
+                      <span>Marcar como contacto principal</span>
+                    </label>
+                    <div className="row" style={{justifyContent:'flex-end', gap:10}}>
+                      <button type="button" className="btn btn-secondary" onClick={cancelarContacto}>Cancelar</button>
+                      <button type="submit" className="btn btn-primary">{contactEditId === 'nuevo' ? 'Crear contacto' : 'Guardar cambios'}</button>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
 
@@ -402,10 +603,13 @@ function Cuentas() {
             {activeTab === 'Condiciones comerciales' && canFinanzas && (
               <div className="col" style={{gap:16}}>
                 <div style={{padding:'10px 14px', background:'rgba(6,182,212,0.06)', border:'1px solid var(--border)', borderRadius:8, fontSize:12, color:'var(--fg-muted)'}}>
-                  Visible solo para Finanzas y Administración. Edición inline — los cambios se guardan al confirmar.
+                  Visible solo para Finanzas y Administración. {condEditing ? 'Editando condiciones comerciales.' : 'Modo lectura.'}
                 </div>
                 <div className="card">
-                  <div className="card-head"><h3>Condiciones de pago y crédito</h3></div>
+                  <div className="card-head">
+                    <h3>Condiciones de pago y crédito</h3>
+                    {!condEditing && <button className="btn btn-secondary btn-sm" onClick={startEditarCondiciones}>{I.edit} Editar</button>}
+                  </div>
                   <div className="card-body">
                     <div className="grid-2" style={{gap:16}}>
                       {[
@@ -419,11 +623,11 @@ function Cuentas() {
                         <div className="input-group" key={k}>
                           <label style={{fontSize:11}}>{label}</label>
                           {type === 'select' ? (
-                            <select className="select" value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]:e.target.value}))}>
+                            <select className="select" disabled={!condEditing || condSaving} value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]:e.target.value}))}>
                               {opts.map(o=><option key={o}>{o}</option>)}
                             </select>
                           ) : (
-                            <input className="input" type={type} value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]:e.target.value}))}/>
+                            <input className="input" disabled={!condEditing || condSaving} type={type} value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]:e.target.value}))}/>
                           )}
                         </div>
                       ))}
@@ -443,25 +647,23 @@ function Cuentas() {
                         <div className="input-group" key={k}>
                           <label style={{fontSize:11}}>{label}</label>
                           {type === 'select' ? (
-                            <select className="select" value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]:e.target.value}))}>
+                            <select className="select" disabled={!condEditing || condSaving} value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]:e.target.value}))}>
                               {opts.map(o=><option key={o}>{o}</option>)}
                             </select>
                           ) : (
-                            <input className="input" type="text" value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]:e.target.value}))}/>
+                            <input className="input" disabled={!condEditing || condSaving} type="text" value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]:e.target.value}))}/>
                           )}
                         </div>
                       ))}
                     </div>
                   </div>
                 </div>
-                <div className="row" style={{justifyContent:'flex-end', gap:10}}>
-                  <button className="btn btn-secondary" onClick={() => setCondEdit({})}>Cancelar</button>
-                  <button className="btn btn-primary" onClick={() => {
-                    setCuentas(prev => prev.map(c => c.id === sel.id ? {...c, ...condEdit} : c));
-                    setSel(prev => ({...prev, ...condEdit}));
-                    setCondEdit({});
-                  }}>Guardar condiciones</button>
-                </div>
+                {condEditing && (
+                  <div className="row" style={{justifyContent:'flex-end', gap:10}}>
+                    <button className="btn btn-secondary" disabled={condSaving} onClick={cancelarCondiciones}>Cancelar</button>
+                    <button className="btn btn-primary" disabled={condSaving} onClick={guardarCondiciones}>{condSaving ? 'Guardando...' : 'Guardar condiciones'}</button>
+                  </div>
+                )}
               </div>
             )}
 

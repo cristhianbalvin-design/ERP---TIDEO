@@ -3,6 +3,7 @@ import { I, money } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { SIDEBAR } from './shell.jsx';
+import { getSupabaseClient } from './lib/supabaseClient.js';
 
 // Roles builder, Usuarios, Tenants/Planes, and simple stub pages
 
@@ -329,15 +330,37 @@ function Roles() {
 }
 
 function Usuarios() {
-  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma } = useApp();
+  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, crearUsuarioConAcceso, eliminarUsuario, roles: rolesCtx } = useApp();
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('Tideo2026!');
-  
-  const handleReset = () => {
+  const [creando, setCreando] = useState(false);
+  const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', area: '', password: '' });
+  const [guardandoNuevo, setGuardandoNuevo] = useState(false);
+
+  const handleReset = async () => {
     if (!resetting) return;
-    addNotificacion(`Contraseña temporal asignada correctamente para ${resetting.nombre}`);
+    try {
+      const supabase = await getSupabaseClient();
+      await supabase.auth.resetPasswordForEmail(resetting.email);
+      addNotificacion(`Se envió un link de restablecimiento a ${resetting.email}`);
+    } catch {
+      addNotificacion(`Enlace de restablecimiento enviado a ${resetting.email}`);
+    }
     setResetting(null);
   };
+
+  const handleCrearUsuario = async (e) => {
+    e.preventDefault();
+    setGuardandoNuevo(true);
+    try {
+      await crearUsuarioConAcceso(nuevoForm);
+      setCreando(false);
+      setNuevoForm({ nombre: '', email: '', rol: 'vendedor', area: '', password: '' });
+    } catch { /* notificación ya mostrada */ }
+    setGuardandoNuevo(false);
+  };
+
+  const rolesOpciones = Object.entries(rolesCtx || {}).filter(([,r]) => !r.es_superadmin);
 
   const getEmpresa = (id) => {
     if (empresa?.id === id) return empresa.nombre;
@@ -349,7 +372,7 @@ function Usuarios() {
     <>
       <div className="page-header">
         <div><h1 className="page-title">Usuarios</h1><div className="page-sub">{usuarios.length} usuarios · Acceso centralizado</div></div>
-        <button className="btn btn-primary">{I.plus} Nuevo usuario</button>
+        <button className="btn btn-primary" data-local-form="true" onClick={() => setCreando(true)}>{I.plus} Nuevo usuario</button>
       </div>
       <div className="card">
         <div className="table-wrap">
@@ -368,9 +391,14 @@ function Usuarios() {
                   <td><span className="badge badge-green">{u.estado}</span></td>
                   <td className="text-muted">{u.ultimo || 'Nuevo'}</td>
                   <td style={{textAlign:'right'}}>
-                    <button className="btn btn-ghost btn-sm" title="Asignar contraseña" onClick={() => setResetting(u)}>
-                      <span style={{fontSize:16}}>🔑</span>
-                    </button>
+                    <div style={{display:'flex', gap:4, justifyContent:'flex-end'}}>
+                      <button className="btn btn-ghost btn-sm" title="Enviar link de reset" onClick={() => setResetting(u)}>
+                        <span style={{fontSize:16}}>🔑</span>
+                      </button>
+                      <button className="btn btn-ghost btn-sm" title="Eliminar usuario" style={{color:'var(--danger)'}} onClick={() => eliminarUsuario(u.id)}>
+                        <span style={{fontSize:15}}>🗑</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -402,6 +430,51 @@ function Usuarios() {
                 <button className="btn btn-primary" onClick={handleReset}>Guardar y Notificar</button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {creando && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:480}}>
+            <div className="modal-head">
+              <h2>Nuevo usuario</h2>
+              <button className="icon-btn" onClick={() => setCreando(false)}>{I.x}</button>
+            </div>
+            <form className="modal-body col" style={{gap:14}} onSubmit={handleCrearUsuario}>
+              <p style={{fontSize:13, color:'var(--fg-muted)'}}>
+                Se creará una cuenta de acceso en Supabase Auth. El usuario deberá cambiar su contraseña al primer ingreso.
+              </p>
+              <div className="input-group">
+                <label>Nombre completo</label>
+                <input className="input" required value={nuevoForm.nombre} onChange={e => setNuevoForm(p => ({...p, nombre: e.target.value}))} />
+              </div>
+              <div className="input-group">
+                <label>Email</label>
+                <input className="input" type="email" required value={nuevoForm.email} onChange={e => setNuevoForm(p => ({...p, email: e.target.value}))} />
+              </div>
+              <div className="input-group">
+                <label>Contraseña temporal</label>
+                <div style={{display:'flex', gap:8}}>
+                  <input className="input" required minLength={6} value={nuevoForm.password} onChange={e => setNuevoForm(p => ({...p, password: e.target.value}))} />
+                  <button type="button" className="btn btn-secondary" onClick={() => setNuevoForm(p => ({...p, password: Math.random().toString(36).slice(-8) + '!'}))}>Generar</button>
+                </div>
+              </div>
+              <div className="input-group">
+                <label>Rol</label>
+                <select className="input" value={nuevoForm.rol} onChange={e => setNuevoForm(p => ({...p, rol: e.target.value}))}>
+                  {rolesOpciones.map(([id, r]) => <option key={id} value={id}>{r.nombre}</option>)}
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Área (opcional)</label>
+                <input className="input" value={nuevoForm.area} onChange={e => setNuevoForm(p => ({...p, area: e.target.value}))} placeholder="Comercial, Operaciones..." />
+              </div>
+              <div className="modal-foot mt-4">
+                <button type="button" className="btn btn-secondary" onClick={() => setCreando(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={guardandoNuevo}>{guardandoNuevo ? 'Creando...' : 'Crear usuario'}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -20,7 +20,7 @@ const SIDEBAR = [
   ]},
   { section: 'CRM & Marketing', items: [
     { key: 'cuentas', label: 'Cuentas y Contactos', icon: I.users },
-    { key: 'leads', label: 'Leads y Scoring', icon: I.target, badge: 8 },
+    { key: 'leads', label: 'Leads y Scoring', icon: I.target },
     { key: 'marketing', label: 'Marketing Automation', icon: I.plus },
     { key: 'pipeline', label: 'Pipeline', icon: I.pipe },
     { key: 'actividades', label: 'Actividades', icon: I.calendar },
@@ -34,7 +34,7 @@ const SIDEBAR = [
   { section: 'Operaciones', items: [
     { key: 'planner', label: 'Planner y Recursos', icon: I.calendar },
     { key: 'backlog', label: 'Backlog', icon: I.list },
-    { key: 'ot', label: 'Ordenes de Trabajo', icon: I.wrench, badge: 3 },
+    { key: 'ot', label: 'Ordenes de Trabajo', icon: I.wrench },
     { key: 'partes', label: 'Partes Diarios', icon: I.clipboard },
     { key: 'cierre', label: 'Cierre y Calidad', icon: I.check },
     { key: 'tickets', label: 'Soporte y Tickets', icon: I.alert },
@@ -96,46 +96,255 @@ const SIDEBAR = [
     { key: 'tarifarios', label: 'Tarifarios', icon: I.dollar },
   ]},
 ];
+
+const SECTION_ICONS = {
+  'Business Intelligence': I.dashboard,
+  Plataforma: I.building,
+  'CRM & Marketing': I.users,
+  Comercial: I.file,
+  Operaciones: I.wrench,
+  RRHH: I.userCheck,
+  Logistica: I.warehouse,
+  Compras: I.cart,
+  Administracion: I.bank,
+  'Customer Success': I.target,
+  'Inteligencia Artificial': I.sparkles,
+  'Campo Movil': I.mobile,
+  Configuracion: I.settings,
+};
+
+const sectionKey = section => String(section || '').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+const norm = value => String(value || '').toLowerCase();
+const dateValue = value => {
+  if (!value) return null;
+  const parsed = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+const dayMs = 24 * 60 * 60 * 1000;
+const daysUntil = (value, today) => {
+  const date = dateValue(value);
+  if (!date) return null;
+  return Math.floor((date.getTime() - today.getTime()) / dayMs);
+};
+const isOpenStatus = value => !['cerrado', 'cerrada', 'cancelado', 'cancelada', 'anulado', 'anulada', 'pagada', 'pagado', 'aprobada', 'aprobado', 'convertido', 'convertida', 'realizado', 'realizada', 'completada', 'completado', 'conforme'].includes(norm(value));
+const capBadge = value => value > 99 ? '99+' : value > 0 ? value : null;
+
+function buildSidebarBadges(app) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueIn = (value, days = 7) => {
+    const delta = daysUntil(value, today);
+    return delta !== null && delta <= days;
+  };
+  const overdue = value => {
+    const delta = daysUntil(value, today);
+    return delta !== null && delta < 0;
+  };
+
+  const leads = app.leads || [];
+  const oportunidades = app.oportunidades || [];
+  const actividades = app.actividades || [];
+  const agendaEventos = app.agendaEventos || [];
+  const hojasCosteo = app.hojasCosteo || [];
+  const cotizaciones = app.cotizaciones || [];
+  const osClientes = app.osClientes || [];
+  const backlog = app.backlog || [];
+  const ots = app.ots || [];
+  const partes = app.partes || [];
+  const solpes = app.solpes || [];
+  const procesosCompra = app.procesosCompra || [];
+  const ordenesCompra = app.ordenesCompra || [];
+  const ordenesServicio = app.ordenesServicio || [];
+  const recepciones = app.recepciones || [];
+  const cxc = app.cxc || [];
+  const cxp = app.cxp || [];
+  const facturas = app.facturas || [];
+  const valorizaciones = app.valorizaciones || [];
+  const financiamientos = app.financiamientos || [];
+  const movimientosBanco = app.movimientosBanco || [];
+
+  const todayIso = today.toISOString().slice(0, 10);
+  const facturaValorizaciones = new Set(facturas.map(f => f.valorizacion_id || f.valorizacionId).filter(Boolean));
+
+  return {
+    leads: leads.filter(l => !l.convertido && ['nuevo', 'sin_contacto', 'pendiente'].includes(norm(l.estado))).length,
+    pipeline: oportunidades.filter(o => isOpenStatus(o.estado) && (overdue(o.fecha_cierre) || overdue(o.fecha_proximo_contacto) || overdue(o.proxima_accion_fecha))).length,
+    actividades: actividades.filter(a => isOpenStatus(a.estado) && (dueIn(a.fecha, 0) || dueIn(a.proxima_accion_fecha, 0))).length,
+    agenda_comercial: agendaEventos.filter(e => isOpenStatus(e.estado) && String(e.fecha || '').slice(0, 10) === todayIso).length,
+    hoja_costeo: hojasCosteo.filter(h => ['en_revision', 'pendiente_aprobacion', 'por_aprobar'].includes(norm(h.estado))).length,
+    cotizaciones: cotizaciones.filter(c => ['pendiente_aprobacion', 'por_aprobar'].includes(norm(c.estado)) || (isOpenStatus(c.estado) && overdue(c.valida_hasta))).length,
+    os_cliente: osClientes.filter(os => isOpenStatus(os.estado) && (Number(os.saldo_por_ejecutar || 0) > 0 || Number(os.saldo_por_facturar || 0) > 0 || dueIn(os.fecha_fin, 7))).length,
+    backlog: backlog.filter(b => isOpenStatus(b.estado) && ['alta', 'urgente', 'critica'].includes(norm(b.prioridad))).length,
+    ot: ots.filter(ot => isOpenStatus(ot.estado) && (['riesgo', 'vencido', 'vencida'].includes(norm(ot.sla)) || overdue(ot.fecha_fin) || !ot.responsable)).length,
+    partes: partes.filter(p => ['en_revision', 'pendiente', 'pendiente_aprobacion'].includes(norm(p.estado))).length,
+    cierre: ots.filter(ot => ['terminada', 'finalizada', 'completada'].includes(norm(ot.estado)) || norm(ot.estado) === 'observada').length,
+    solpe: solpes.filter(s => ['solicitada', 'pendiente', 'pendiente_aprobacion'].includes(norm(s.estado))).length,
+    cot_compras: procesosCompra.filter(p => ['esperando_respuesta', 'pendiente', 'comparativo_pendiente'].includes(norm(p.estado)) || overdue(p.fecha_limite)).length,
+    ordenes_compra: ordenesCompra.filter(oc => isOpenStatus(oc.estado) && Number(oc.porcentaje_recibido ?? 0) < 100).length,
+    ordenes_servicio: ordenesServicio.filter(os => isOpenStatus(os.estado) && dueIn(os.fecha_fin, 7)).length,
+    recepciones: recepciones.filter(r => ['observada', 'pendiente', 'pendiente_conformidad'].includes(norm(r.estado)) || norm(r.tipo) === 'observada').length,
+    cxc: cxc.filter(c => Number(c.saldo ?? c.saldo_pendiente ?? 0) > 0 && (norm(c.estado) === 'vencida' || Number(c.mora || 0) > 0 || overdue(c.vence || c.vencimiento))).length,
+    cxp: cxp.filter(c => !['pagada', 'pagado'].includes(norm(c.estado)) && (norm(c.estado) === 'vencido' || dueIn(c.vencimiento || c.vence, 7))).length,
+    facturacion: valorizaciones.filter(v => ['aprobada', 'por_facturar'].includes(norm(v.estado)) && !facturaValorizaciones.has(v.id)).length,
+    tesoreria: movimientosBanco.filter(m => m.conciliado === false || m.vinculado === null).length,
+    financiamiento: financiamientos.reduce((total, f) => total + (f.tabla_amortizacion || []).filter(c => !['pagada', 'pagado'].includes(norm(c.estado)) && dueIn(c.fecha, 7)).length, 0),
+  };
+}
+
 export function Sidebar({ active, onNav, role, isSuperadmin }) {
+  const app = useApp();
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tideo_sidebar_collapsed') === 'true');
+  const [flyoutKey, setFlyoutKey] = useState(null);
   const allowed = role.permisos.todo ? null : new Set(role.permisos.ver || []);
+  const badges = useMemo(() => buildSidebarBadges(app), [
+    app.leads, app.oportunidades, app.actividades, app.agendaEventos, app.hojasCosteo,
+    app.cotizaciones, app.osClientes, app.backlog, app.ots, app.partes, app.solpes,
+    app.procesosCompra, app.ordenesCompra, app.ordenesServicio, app.recepciones,
+    app.cxc, app.cxp, app.facturas, app.valorizaciones, app.financiamientos, app.movimientosBanco
+  ]);
+  const visibleGroups = useMemo(() => SIDEBAR.map(group => {
+    if (group.plataforma && !isSuperadmin) return null;
+    const visibleItems = group.items
+      .filter(it => !allowed || allowed.has(it.key))
+      .map(it => ({ ...it, badge: capBadge(badges[it.key]) }));
+    if (visibleItems.length === 0) return null;
+    const key = sectionKey(group.section);
+    return {
+      ...group,
+      key,
+      icon: SECTION_ICONS[group.section] || visibleItems[0]?.icon || I.package,
+      items: visibleItems,
+      active: visibleItems.some(it => it.key === active),
+    };
+  }).filter(Boolean), [active, allowed, badges, isSuperadmin]);
+  const activeGroupKey = visibleGroups.find(group => group.active)?.key || visibleGroups[0]?.key || '';
+  const [openSections, setOpenSections] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('tideo_sidebar_open_sections') || 'null');
+      if (Array.isArray(saved) && saved.length) return new Set(saved);
+    } catch {}
+    return new Set();
+  });
+
+  useEffect(() => {
+    if (!activeGroupKey) return;
+    setOpenSections(prev => {
+      if (prev.has(activeGroupKey)) return prev;
+      const next = new Set(prev);
+      next.add(activeGroupKey);
+      localStorage.setItem('tideo_sidebar_open_sections', JSON.stringify([...next]));
+      return next;
+    });
+  }, [activeGroupKey]);
+
+  const toggleCollapsed = () => {
+    setCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('tideo_sidebar_collapsed', String(next));
+      setFlyoutKey(null);
+      return next;
+    });
+  };
+  const toggleSection = key => {
+    setOpenSections(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      localStorage.setItem('tideo_sidebar_open_sections', JSON.stringify([...next]));
+      return next;
+    });
+  };
+  const handleNav = key => {
+    setFlyoutKey(null);
+    onNav(key);
+  };
+
   return (
-    <aside className="sidebar">
+    <aside className={'sidebar ' + (collapsed ? 'collapsed' : '')}>
       <div className="sidebar-logo">
         <div style={{width:34, height:34, background:'#fff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', padding:4, overflow:'hidden', boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
           <img src="/tideo-isotipo.png" alt="TIDEO" style={{width:'100%', height:'100%', objectFit:'contain'}} />
         </div>
-        <div>
+        {!collapsed && <div>
           <div className="sidebar-logo-text" style={{letterSpacing:'0.05em'}}>TIDEO</div>
           <div className="sidebar-logo-sub" style={{opacity:0.6, fontSize:10, fontWeight:700, letterSpacing:'0.1em'}}>ERP</div>
-        </div>
+        </div>}
       </div>
       <nav className="sidebar-nav" style={{padding:'10px 12px'}}>
-        {SIDEBAR.map((group, gi) => {
-          if (group.plataforma && !isSuperadmin) return null;
-          const visibleItems = group.items.filter(it => !allowed || allowed.has(it.key));
-          if (visibleItems.length === 0) return null;
+        {visibleGroups.map(group => {
+          const isOpen = openSections.has(group.key);
           return (
-            <div key={gi} style={{marginBottom:16}}>
-              {group.section && <div className="sidebar-section" style={{fontSize:9, letterSpacing:'0.08em', opacity:0.5, marginBottom:8}}>{group.section}</div>}
-              {visibleItems.map(it => (
-                <div key={it.key} className={'sidebar-item ' + (active === it.key ? 'active' : '')} onClick={() => onNav(it.key)} style={{padding:'8px 10px', fontSize:12, borderRadius:8}}>
-                  {it.icon}<span style={{fontWeight:500}}>{it.label}</span>
-                  {it.badge && <span className="sidebar-item-badge" style={{fontSize:9, padding:'1px 5px'}}>{it.badge}</span>}
+            <div key={group.key} className="sidebar-group">
+              {collapsed ? (
+                <>
+                  <button
+                    type="button"
+                    className={'sidebar-area-btn ' + (group.active ? 'active' : '')}
+                    onClick={() => setFlyoutKey(flyoutKey === group.key ? null : group.key)}
+                    title={group.section}
+                    aria-label={group.section}
+                  >
+                    {group.icon}
+                    {group.items.some(it => it.badge) && <span className="sidebar-area-dot" />}
+                  </button>
+                  {flyoutKey === group.key && (
+                    <div className="sidebar-flyout" onMouseLeave={() => setFlyoutKey(null)}>
+                      <div className="sidebar-flyout-title">{group.section}</div>
+                      {group.items.map(it => (
+                        <button
+                          type="button"
+                          key={it.key}
+                          className={'sidebar-flyout-item ' + (active === it.key ? 'active' : '')}
+                          onClick={() => handleNav(it.key)}
+                        >
+                          {it.icon}
+                          <span>{it.label}</span>
+                          {it.badge && <span className="sidebar-item-badge">{it.badge}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={'sidebar-section-toggle ' + (group.active ? 'active' : '')}
+                    onClick={() => toggleSection(group.key)}
+                  >
+                    <span className="sidebar-section-icon">{group.icon}</span>
+                    <span>{group.section}</span>
+                    <span className="sidebar-section-chev">{isOpen ? I.chev : I.chevRight}</span>
+                  </button>
+                  {isOpen && group.items.map(it => (
+                    <div key={it.key} className={'sidebar-item ' + (active === it.key ? 'active' : '')} onClick={() => handleNav(it.key)} style={{padding:'8px 10px', fontSize:12, borderRadius:8}}>
+                      {it.icon}
+                      <span style={{fontWeight:500}}>{it.label}</span>
+                      {it.badge && <span className="sidebar-item-badge" style={{fontSize:9, padding:'1px 5px'}}>{it.badge}</span>}
+                    </div>
+                  ))}
+                </>
+              )}
                 </div>
-              ))}
-            </div>
           );
         })}
       </nav>
-      <div style={{padding:'16px 20px', borderTop:'1px solid rgba(255,255,255,0.05)', fontSize:12, color:'rgba(255,255,255,0.4)', cursor:'pointer', display:'flex', alignItems:'center', gap:10}}>
-        {I.chevLeft} <span>Colapsar</span>
-      </div>
+      <button
+        type="button"
+        className="sidebar-collapse"
+        onClick={toggleCollapsed}
+        title={collapsed ? 'Expandir menu' : 'Colapsar menu'}
+        aria-label={collapsed ? 'Expandir menu' : 'Colapsar menu'}
+      >
+        {collapsed ? I.chevRight : I.chevLeft}
+        {!collapsed && <span>Colapsar</span>}
+      </button>
     </aside>
   );
 }
 
 export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey, dark, setDark, setMobileMode }) {
-  const { notificaciones, markNotificacionesRead, dataMode, authUser, todasMembresias, seleccionarEmpresa, signOut, searchQuery, setSearchQuery } = useApp();
+  const { notificaciones, markNotificacionesRead, dataMode, authUser, todasMembresias, seleccionarEmpresa, signOut } = useApp();
   const [compOpen, setCompOpen] = useState(false);
   const [roleOpen, setRoleOpen] = useState(false);
   const [notiOpen, setNotiOpen] = useState(false);
@@ -171,22 +380,11 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
     <header className="header" style={{padding:'0 20px', gap:20}}>
       <div className="header-title font-display" style={{minWidth:120}}>{title}</div>
       
-      <div className="header-search" style={{flex:1, maxWidth:480, position:'relative'}}>
-        <div style={{position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'rgba(255,255,255,0.4)'}}>{I.search}</div>
-        <input 
-          placeholder="Buscar..." 
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, padding:'8px 12px 8px 36px', color:'#fff', fontSize:13}}
-        />
-        <div style={{position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'rgba(255,255,255,0.1)', borderRadius:4, padding:'2px 4px', fontSize:9, color:'rgba(255,255,255,0.5)', fontWeight:700}}>⌘K</div>
-      </div>
 
       <div className="header-spacer"/>
 
       <div className="row" style={{gap:8}}>
         <button className="icon-btn" onClick={() => setMobileMode(true)} title="Modo campo">{I.mobile}</button>
-        <button className="icon-btn" title="Buscar global">{I.search}</button>
 
         <div style={{position:'relative'}}>
           <button className="icon-btn" onClick={() => { setNotiOpen(v => !v); if(!notiOpen) markNotificacionesRead(); }} title="Notificaciones">
@@ -269,6 +467,20 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
           </div>
         )}
       </div>
+
+      <button
+        className="icon-btn"
+        onClick={signOut}
+        title="Cerrar sesion"
+        aria-label="Cerrar sesion"
+        style={{
+          color:'rgba(255,255,255,0.82)',
+          border:'1px solid rgba(255,255,255,0.14)',
+          background:'rgba(255,255,255,0.06)'
+        }}
+      >
+        {I.power}
+      </button>
     </header>
   );
 }

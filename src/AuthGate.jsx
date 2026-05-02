@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from './context.jsx';
 import { I } from './icons.jsx';
+import { getSupabaseClient } from './lib/supabaseClient.js';
 
 function SplashLoading({ message, duration }) {
   return (
@@ -65,6 +66,8 @@ export function AuthGate({ children }) {
     membresiaActiva,
     membresiaCargando,
     seleccionarEmpresa,
+    usuarios,
+    marcarContrasenaActualizada,
   } = useApp();
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
@@ -74,6 +77,11 @@ export function AuthGate({ children }) {
   const [message, setMessage] = useState('');
   const [minLoading, setMinLoading] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [newPass, setNewPass] = useState('');
+  const [newPass2, setNewPass2] = useState('');
+  const [changingPass, setChangingPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [passError, setPassError] = useState('');
 
   React.useEffect(() => {
     const timer = setTimeout(() => setMinLoading(false), 3000); 
@@ -286,17 +294,60 @@ export function AuthGate({ children }) {
     );
   }
 
-  return (
-    <>
-      {children}
-      <button
-        className="btn btn-secondary btn-sm"
-        onClick={signOut}
-        style={{position:'fixed', right:16, bottom:16, zIndex:1000}}
-        title={authUser.email}
-      >
-        Salir
-      </button>
-    </>
-  );
+  const usuarioActual = usuarios.find(u => u.id === authUser?.id || u.email === authUser?.email);
+  if (membresiaActiva && usuarioActual?.must_change_password) {
+    const handleCambiarPass = async (e) => {
+      e.preventDefault();
+      setPassError('');
+      if (newPass.length < 6) { setPassError('Mínimo 6 caracteres'); return; }
+      if (newPass !== newPass2) { setPassError('Las contraseñas no coinciden'); return; }
+      setChangingPass(true);
+      try {
+        const supabase = await getSupabaseClient();
+        const { error } = await supabase.auth.updateUser({ password: newPass });
+        if (error) throw error;
+        // Marcar en Supabase (best-effort) y actualizar estado local inmediatamente
+        try {
+          await supabase.from('usuarios').update({ must_change_password: false }).eq('id', authUser.id);
+        } catch { /* ignorar si falla */ }
+        await marcarContrasenaActualizada();
+      } catch (err) {
+        setPassError(err.message || 'Error al cambiar contraseña');
+      } finally {
+        setChangingPass(false);
+      }
+    };
+    return (
+      <div className="app-shell" style={{alignItems:'center', justifyContent:'center', background:'#1A2B4A', backgroundImage:`url('/bg_login.jpg')`, backgroundRepeat:'repeat', backgroundSize:'1000px', padding:24}}>
+        <form className="card" onSubmit={handleCambiarPass} style={{width:'min(420px,100%)', padding:40, textAlign:'center', borderRadius:16, boxShadow:'var(--shadow-lg)'}}>
+          <img src="/logo_tideo.png" alt="TIDEO" style={{height:90, marginBottom:24, display:'block', marginLeft:'auto', marginRight:'auto'}} />
+          <div className="font-display" style={{fontSize:22, fontWeight:800, color:'var(--navy)', marginBottom:8}}>Cambiar contraseña</div>
+          <p className="text-muted" style={{fontSize:13, marginBottom:24}}>Tu cuenta tiene una contraseña temporal. Debes crear una nueva para continuar.</p>
+          <div className="input-group" style={{textAlign:'left'}}>
+            <label>Nueva contraseña</label>
+            <div style={{position:'relative'}}>
+              <input className="input" type={showNewPass ? 'text' : 'password'} value={newPass} onChange={e => setNewPass(e.target.value)} minLength={6} required placeholder="Mínimo 6 caracteres" style={{paddingRight:40}} />
+              <button type="button" onClick={() => setShowNewPass(v => !v)} style={{position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'var(--fg-muted)', cursor:'pointer', display:'flex', alignItems:'center'}}>
+                <span style={{width:20, height:20}}>{I.eye}</span>
+              </button>
+            </div>
+          </div>
+          <div className="input-group" style={{textAlign:'left'}}>
+            <label>Confirmar contraseña</label>
+            <input className="input" type={showNewPass ? 'text' : 'password'} value={newPass2} onChange={e => setNewPass2(e.target.value)} minLength={6} required />
+          </div>
+          {passError && (
+            <div style={{background:'rgba(220,38,38,0.08)', borderLeft:'3px solid var(--danger)', borderRadius:6, padding:'8px 12px', fontSize:13, marginTop:8, textAlign:'left'}}>
+              {passError}
+            </div>
+          )}
+          <button className="btn btn-primary" type="submit" style={{width:'100%', marginTop:18}} disabled={changingPass}>
+            {changingPass ? 'Guardando...' : 'Guardar y continuar'}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  return children;
 }

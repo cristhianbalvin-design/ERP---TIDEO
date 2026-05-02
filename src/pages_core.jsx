@@ -5,6 +5,23 @@ import { useApp } from './context.jsx';
 
 // Dashboard, CRM screens
 
+function startKanbanDrag(e, id) {
+  e.dataTransfer.setData('text/plain', id);
+  e.dataTransfer.effectAllowed = 'move';
+  e.currentTarget.classList.add('is-dragging');
+
+  const ghost = e.currentTarget.cloneNode(true);
+  ghost.classList.add('kanban-drag-ghost');
+  ghost.style.width = `${e.currentTarget.offsetWidth}px`;
+  document.body.appendChild(ghost);
+  e.dataTransfer.setDragImage(ghost, 24, 24);
+  window.setTimeout(() => ghost.remove(), 0);
+}
+
+function endKanbanDrag(e) {
+  e.currentTarget.classList.remove('is-dragging');
+}
+
 function Dashboard({ role }) {
   const { financiamientos, navigate } = useApp();
   const canFin = role.permisos.ver_finanzas || role.permisos.todo;
@@ -436,7 +453,7 @@ function Leads() {
                 <div 
                   key={c.k} 
                   className="kanban-col-v2"
-                  onDragOver={(e) => e.preventDefault()}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                   onDrop={(e) => handleDrop(e, c.k)}
                   style={{ '--accent': c.color }}
                 >
@@ -452,7 +469,8 @@ function Leads() {
                           key={l.id} 
                           className="kanban-card-v2"
                           draggable
-                          onDragStart={(e) => e.dataTransfer.setData('text/plain', l.id)}
+                          onDragStart={(e) => startKanbanDrag(e, l.id)}
+                          onDragEnd={endKanbanDrag}
                           onClick={() => setSel(l)}
                           style={{cursor: 'grab'}}
                         >
@@ -914,7 +932,7 @@ function Pipeline() {
                 <div 
                   key={c.k} 
                   className="kanban-col-v2"
-                  onDragOver={(e) => e.preventDefault()}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                   onDrop={(e) => handleDrop(e, c.k)}
                   style={{ '--accent': c.color }}
                 >
@@ -930,7 +948,8 @@ function Pipeline() {
                           key={o.id} 
                           className="kanban-card-v2"
                           draggable
-                          onDragStart={(e) => e.dataTransfer.setData('text/plain', o.id)}
+                          onDragStart={(e) => startKanbanDrag(e, o.id)}
+                          onDragEnd={endKanbanDrag}
                           onClick={() => setSel(o)}
                           style={{cursor: 'grab'}}
                         >
@@ -1292,7 +1311,7 @@ function Actividades() {
                 <div 
                   key={c.k} 
                   className="kanban-col-v2" 
-                  onDragOver={(e) => e.preventDefault()}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                   onDrop={(e) => handleDrop(e, c.k)}
                   style={{ '--accent': colors[i] }}
                 >
@@ -1308,7 +1327,8 @@ function Actividades() {
                           key={a.id} 
                           className="kanban-card-v2" 
                           draggable
-                          onDragStart={(e) => e.dataTransfer.setData('text/plain', a.id)}
+                          onDragStart={(e) => startKanbanDrag(e, a.id)}
+                          onDragEnd={endKanbanDrag}
                           style={{cursor: 'grab'}}
                         >
                           <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>

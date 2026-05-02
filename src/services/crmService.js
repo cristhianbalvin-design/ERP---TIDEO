@@ -12,8 +12,27 @@ const normalizarCuenta = c => ({
   lead_origen: c.lead_origen || null,
   telefono: c.telefono || null,
   email: c.email || null,
-  direccion: c.direccion || null,
+    direccion: c.direccion || null,
+    logo_url: c.logo_url || null,
+    logo_path: c.logo_path || null,
+    requiere_oc: c.requiere_oc || null,
+    clasificacion_interna: c.clasificacion_interna || null,
+    condicion_tributaria: c.condicion_tributaria || null,
 });
+
+const CUENTAS_LOGOS_BUCKET = 'logos-cuentas';
+
+const logoExtension = (file) => {
+  const byType = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/svg+xml': 'svg',
+  };
+  if (byType[file.type]) return byType[file.type];
+  const fromName = file.name?.split('.').pop()?.toLowerCase();
+  return fromName && /^[a-z0-9]+$/.test(fromName) ? fromName : 'png';
+};
 
 const normalizarLead = l => ({
   ...l,
@@ -130,9 +149,68 @@ export async function persistirCuenta(supabase, empresaId, cuenta) {
     saldo_cxc: cuenta.saldo_cxc ?? 0,
     margen_acumulado: cuenta.margen_acumulado ?? null,
     fecha_ultima_compra: cuenta.fecha_ultima_compra || null,
+    logo_url: cuenta.logo_url || null,
+    logo_path: cuenta.logo_path || null,
+    requiere_oc: cuenta.requiere_oc || null,
+    clasificacion_interna: cuenta.clasificacion_interna || null,
+    condicion_tributaria: cuenta.condicion_tributaria || null,
     estado: cuenta.estado || 'activo',
   };
   return supabase.from('cuentas').insert(row);
+}
+
+export async function actualizarCuenta(supabase, empresaId, cuentaId, datos) {
+  const allowed = [
+    'nombre_comercial', 'razon_social', 'ruc', 'tipo', 'industria', 'tamano',
+    'telefono', 'email', 'direccion', 'responsable_comercial', 'responsable_cs',
+    'fuente_origen', 'condicion_pago', 'limite_credito', 'moneda',
+    'riesgo_financiero', 'riesgo_churn', 'health_score', 'saldo_cxc',
+    'margen_acumulado', 'fecha_ultima_compra', 'requiere_oc',
+    'clasificacion_interna', 'condicion_tributaria', 'estado',
+  ];
+  const row = Object.fromEntries(
+    allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
+  );
+  if (!Object.keys(row).length) return null;
+  return supabase
+    .from('cuentas')
+    .update(row)
+    .eq('id', cuentaId)
+    .eq('empresa_id', empresaId)
+    .select('*')
+    .single();
+}
+
+export async function subirLogoCuenta(supabase, empresaId, cuentaId, file) {
+  const ext = logoExtension(file);
+  const path = `${empresaId}/${cuentaId}.${ext}`;
+
+  const uploaded = await supabase.storage
+    .from(CUENTAS_LOGOS_BUCKET)
+    .upload(path, file, {
+      cacheControl: '3600',
+      contentType: file.type,
+      upsert: true,
+    });
+
+  if (uploaded.error) throw uploaded.error;
+
+  const { data: publicData } = supabase.storage
+    .from(CUENTAS_LOGOS_BUCKET)
+    .getPublicUrl(path);
+
+  const publicUrl = publicData?.publicUrl ? `${publicData.publicUrl}?v=${Date.now()}` : null;
+
+  const updated = await supabase
+    .from('cuentas')
+    .update({ logo_url: publicUrl, logo_path: path })
+    .eq('id', cuentaId)
+    .eq('empresa_id', empresaId)
+    .select('*')
+    .single();
+
+  if (updated.error) throw updated.error;
+  return normalizarCuenta(updated.data);
 }
 
 export async function persistirContacto(supabase, empresaId, contacto) {
@@ -148,6 +226,21 @@ export async function persistirContacto(supabase, empresaId, contacto) {
     estado: contacto.estado || 'activo',
   };
   return supabase.from('contactos').insert(row);
+}
+
+export async function actualizarContacto(supabase, empresaId, contactoId, datos) {
+  const allowed = ['nombre', 'cargo', 'telefono', 'email', 'es_principal', 'estado'];
+  const row = Object.fromEntries(
+    allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
+  );
+  if (!Object.keys(row).length) return null;
+  return supabase
+    .from('contactos')
+    .update(row)
+    .eq('id', contactoId)
+    .eq('empresa_id', empresaId)
+    .select('*')
+    .single();
 }
 
 export async function persistirOportunidad(supabase, empresaId, opp) {

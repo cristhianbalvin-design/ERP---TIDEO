@@ -14,6 +14,7 @@ create table if not exists public.usuarios (
   campo boolean default false,
   campo_perfil text,
   estado text default 'Activo',
+  must_change_password boolean default true,
   ultimo_login timestamptz,
   created_at timestamptz default now(),
   updated_at timestamptz default now()

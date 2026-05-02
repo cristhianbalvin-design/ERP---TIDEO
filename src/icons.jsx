@@ -30,6 +30,8 @@ const I = {
   search: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>,
   plus: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>,
   chev: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 9l6 6 6-6"/></svg>,
+  chevLeft: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6"/></svg>,
+  chevRight: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 18l6-6-6-6"/></svg>,
   x: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6L6 18M6 6l12 12"/></svg>,
   arrowUp: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 19V5M5 12l7-7 7 7"/></svg>,
   arrowDown: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>,
@@ -49,6 +51,7 @@ const I = {
   download: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>,
   warehouse: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 8.3V21a1 1 0 0 1-1 1h-4v-7H7v7H3a1 1 0 0 1-1-1V8.3a2 2 0 0 1 1.3-1.9l8-3a2 2 0 0 1 1.4 0l8 3A2 2 0 0 1 22 8.3z"/></svg>,
   send: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/></svg>,
+  power: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>,
 };
 
 const money = (n, sym='S/') => sym + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0');
