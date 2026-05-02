@@ -20,6 +20,13 @@ if (import.meta.env.DEV && 'serviceWorker' in navigator) {
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js')
+      .then(registration => registration.update())
+      .catch(() => {});
+  });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (sessionStorage.getItem('tideo_sw_reloaded') === 'true') return;
+    sessionStorage.setItem('tideo_sw_reloaded', 'true');
+    window.location.reload();
   });
 }
