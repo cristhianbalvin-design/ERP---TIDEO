@@ -46,7 +46,7 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
             <div className="mobile-screen">
               {profile === 'tecnico' && <TecnicoView screen={screen} setScreen={setScreen}/>}
               {profile === 'logistica' && <LogisticaView screen={screen} setScreen={setScreen}/>}
-              {profile === 'vendedor' && <VendedorView screen={screen} setScreen={setScreen}/>}
+              {profile === 'vendedor' && <VendedorView screen={screen} setScreen={setScreen} dark={dark} setDark={setDark} onExit={onExit} profile={profile} setProfile={setProfile}/>}
               {profile === 'compras' && <ComprasView screen={screen} setScreen={setScreen}/>}
               {profile === 'supervisor' && <SupervisorView screen={screen} setScreen={setScreen}/>}
               {profile === 'gerencia' && <GerenciaView screen={screen} setScreen={setScreen}/>}
@@ -90,6 +90,14 @@ function getUsuarioMovil(authUser, usuarios = []) {
     email: usuario?.email || authUser?.email || null,
     iniciales: inicialesDe(nombre),
   };
+}
+
+function telefonoParaLlamar(valor) {
+  const limpio = String(valor || '').trim();
+  if (!limpio) return '';
+  const prefijo = limpio.startsWith('+') ? '+' : '';
+  const digitos = limpio.replace(/[^\d]/g, '');
+  return digitos ? `${prefijo}${digitos}` : '';
 }
 
 function extraerDatosTarjeta(texto = '') {
@@ -275,8 +283,8 @@ function LogisticaView({ screen, setScreen }) {
   </>;
 }
 
-function VendedorView({ screen, setScreen }) {
-  const { agendaEventos, cuentas, oportunidades, actividades, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva } = useApp();
+function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setProfile }) {
+  const { agendaEventos, cuentas, contactos, oportunidades, actividades, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva, empresa, dataMode, supabaseStatus, signOut, notificaciones, markNotificacionesRead, addNotificacion } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const esDelUsuario = valor => normalizarTexto(valor) === normalizarTexto(usuarioMovil.nombre);
   const rolNombre = normalizarTexto(role?.nombre || membresiaActiva?.rol?.nombre);
@@ -305,6 +313,7 @@ function VendedorView({ screen, setScreen }) {
   const [leadFotoEstado, setLeadFotoEstado] = useState('idle');
   const [leadFotoTexto, setLeadFotoTexto] = useState('');
   const [leadDesdeFoto, setLeadDesdeFoto] = useState(null);
+  const [notificacionesCampo, setNotificacionesCampo] = useState(true);
   const ETAPAS = ['prospecto', 'calificacion', 'propuesta', 'negociacion', 'cierre'];
   const oppsUsuario = oportunidades.filter(o => (puedeVerEquipoComercial || esDelUsuario(o.responsable)) && o.estado === 'abierta');
   const actsUsuario = actividades
@@ -314,7 +323,47 @@ function VendedorView({ screen, setScreen }) {
   const cuentaActiva =
     cuentas.find(c => esDelUsuario(c.responsable_comercial) || esDelUsuario(c.vendedor) || esDelUsuario(c.responsable)) ||
     cuentas[0];
+  const contactosCuentaActiva = contactos.filter(c => c.cuenta_id === cuentaActiva?.id);
+  const contactoPrincipal =
+    contactosCuentaActiva.find(c => c.principal || c.es_principal) ||
+    contactosCuentaActiva[0] ||
+    null;
+  const telefonoContactoPrincipal = contactoPrincipal?.telefono || cuentaActiva?.telefono || '';
+  const telefonoLlamada = telefonoParaLlamar(telefonoContactoPrincipal);
   const scopeLabel = puedeVerEquipoComercial ? 'Equipo Comercial' : 'Mi';
+  const online = typeof navigator === 'undefined' ? true : navigator.onLine;
+  const puedeUsarCamara = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia);
+  const puedeLlamar = typeof window !== 'undefined' && 'location' in window;
+  const sincronizacionEstado = dataMode === 'supabase'
+    ? (supabaseStatus?.connected ? 'Conectado' : 'Pendiente')
+    : 'Modo demo';
+  const unreadCount = notificaciones.filter(n => !n.read).length;
+  const puedeNotificar = typeof window !== 'undefined' && 'Notification' in window;
+  const permisoNotificacion = puedeNotificar ? Notification.permission : 'unsupported';
+  const mostrarToast = (mensaje) => {
+    setToast(mensaje);
+    setTimeout(() => setToast(null), 3000);
+  };
+  const abrirNotificaciones = () => {
+    markNotificacionesRead();
+    setScreen('notificaciones');
+  };
+  const solicitarPermisoNotificaciones = async () => {
+    if (!puedeNotificar) {
+      mostrarToast('Este navegador no soporta notificaciones');
+      return;
+    }
+    const permiso = await Notification.requestPermission();
+    mostrarToast(permiso === 'granted' ? 'Notificaciones activadas' : 'Permiso no concedido');
+  };
+  const probarNotificacion = () => {
+    const texto = 'Aviso de prueba para modo campo';
+    addNotificacion(texto);
+    if (puedeNotificar && Notification.permission === 'granted') {
+      new Notification('TIDEO ERP', { body: texto, icon: '/icons/tideo-icon-192.png' });
+    }
+    mostrarToast('Notificacion enviada');
+  };
 
   const handleRealizado = (id) => {
     actualizarAgendaEvento(id, { estado: 'realizado' });
@@ -481,7 +530,19 @@ function VendedorView({ screen, setScreen }) {
             </div>
             <div className="text-muted" style={{fontSize:12,marginBottom:10}}>{cuentaActiva?.industria || 'Sin industria'} · {usuarioMovil.nombre}</div>
             <div className="row" style={{gap:6}}>
-              <button className="btn btn-sm btn-secondary flex-1">{I.phone}Llamar</button>
+              <a
+                className="btn btn-sm btn-secondary flex-1"
+                href={telefonoLlamada ? `tel:${telefonoLlamada}` : undefined}
+                aria-disabled={!telefonoLlamada}
+                onClick={e => {
+                  if (!telefonoLlamada) {
+                    e.preventDefault();
+                    mostrarToast('El contacto principal no tiene telefono');
+                  }
+                }}
+              >
+                {I.phone}Llamar
+              </a>
               <button className="btn btn-sm btn-primary flex-1" onClick={() => setScreen('nueva-actividad')}>{I.plus}Actividad</button>
             </div>
           </div>
@@ -819,6 +880,150 @@ function VendedorView({ screen, setScreen }) {
             <button type="submit" className="btn btn-primary btn-lg" style={{width:'100%', marginTop:6}}>Registrar Actividad</button>
           </form>
         </div>
+      ) : screen === 'notificaciones' ? (
+        <>
+          <div className="row" style={{justifyContent:'space-between', marginBottom:12}}>
+            <div>
+              <div className="eyebrow">Notificaciones</div>
+              <div className="text-muted" style={{fontSize:12, marginTop:2}}>{notificaciones.length} avisos recientes</div>
+            </div>
+            <button className="btn btn-sm btn-secondary" onClick={probarNotificacion}>{I.bell} Probar</button>
+          </div>
+
+          <div className="card" style={{padding:14, marginBottom:12}}>
+            <div className="row" style={{justifyContent:'space-between', gap:12}}>
+              <div>
+                <div style={{fontWeight:700, fontSize:13}}>Push del navegador</div>
+                <div className="text-muted" style={{fontSize:12}}>
+                  {permisoNotificacion === 'granted' ? 'Permiso concedido' : permisoNotificacion === 'denied' ? 'Bloqueado por el navegador' : 'Pendiente de activar'}
+                </div>
+              </div>
+              <button className="btn btn-sm btn-secondary" onClick={solicitarPermisoNotificaciones} disabled={permisoNotificacion === 'granted'}>
+                {I.bell} Activar
+              </button>
+            </div>
+          </div>
+
+          <div className="col" style={{gap:8}}>
+            {notificaciones.length === 0 && (
+              <div className="card" style={{padding:18, textAlign:'center'}}>
+                <div className="text-muted" style={{fontSize:13}}>No hay notificaciones.</div>
+              </div>
+            )}
+            {notificaciones.map(n => (
+              <div key={n.id} className="card" style={{padding:12, borderLeft:`3px solid ${n.read ? 'var(--border)' : 'var(--cyan)'}`}}>
+                <div className="row" style={{gap:10, alignItems:'flex-start'}}>
+                  <div className="kpi-icon cyan" style={{position:'static', width:32, height:32, flexShrink:0}}>{I.bell}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13, fontWeight:n.read ? 500 : 700, lineHeight:1.35}}>{n.text}</div>
+                    <div className="text-muted" style={{fontSize:11, marginTop:4}}>{n.time || 'Reciente'}</div>
+                  </div>
+                  {!n.read && <span className="health-dot health-green" style={{marginTop:5}}/>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : screen === 'ajustes' ? (
+        <>
+          <div className="eyebrow" style={{marginBottom:12}}>Ajustes</div>
+          <div className="card" style={{padding:14, marginBottom:12}}>
+            <div className="row" style={{gap:10, alignItems:'center'}}>
+              <div className="avatar" style={{width:38,height:38}}>{usuarioMovil.iniciales}</div>
+              <div style={{flex:1, minWidth:0}}>
+                <div style={{fontWeight:700, fontSize:14, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{usuarioMovil.nombre}</div>
+                <div className="text-muted" style={{fontSize:12, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{usuarioMovil.email || 'Sin email registrado'}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="col" style={{gap:10}}>
+            <button className="card hover-raise row" style={{padding:12, cursor:'pointer', width:'100%'}} onClick={abrirNotificaciones}>
+              <div className="kpi-icon cyan" style={{position:'static', width:34, height:34}}>{I.bell}</div>
+              <div style={{flex:1, textAlign:'left', marginLeft:10}}>
+                <div style={{fontWeight:700, fontSize:13}}>Centro de notificaciones</div>
+                <div className="text-muted" style={{fontSize:11}}>{unreadCount ? `${unreadCount} avisos sin leer` : 'Sin avisos pendientes'}</div>
+              </div>
+              {unreadCount > 0 && <span className="badge badge-orange">{unreadCount}</span>}
+            </button>
+
+            <div className="card" style={{padding:14}}>
+              <div className="eyebrow" style={{marginBottom:10}}>Empresa y sincronizacion</div>
+              <div className="row" style={{justifyContent:'space-between', gap:12, marginBottom:10}}>
+                <div>
+                  <div style={{fontWeight:700, fontSize:13}}>{empresa?.nombre || empresa?.razon_social || 'Empresa activa'}</div>
+                  <div className="text-muted" style={{fontSize:12}}>{online ? 'Online' : 'Offline'} · {sincronizacionEstado}</div>
+                </div>
+                <span className={'badge '+(online && supabaseStatus?.connected ? 'badge-green' : 'badge-cyan')}>{dataMode}</span>
+              </div>
+              <button
+                className="btn btn-sm btn-secondary"
+                style={{width:'100%'}}
+                onClick={() => mostrarToast(online ? 'Datos sincronizados' : 'Sin conexion para sincronizar')}
+              >
+                {I.download} Sincronizar ahora
+              </button>
+            </div>
+
+            <div className="card" style={{padding:14}}>
+              <div className="eyebrow" style={{marginBottom:10}}>Preferencias</div>
+              <div className="row" style={{justifyContent:'space-between', gap:12, marginBottom:10}}>
+                <div>
+                  <div style={{fontWeight:700, fontSize:13}}>Tema</div>
+                  <div className="text-muted" style={{fontSize:12}}>{dark ? 'Oscuro' : 'Claro'}</div>
+                </div>
+                <button className="btn btn-sm btn-secondary" onClick={() => setDark(!dark)}>{dark ? I.sun : I.moon} Cambiar</button>
+              </div>
+              <div className="row" style={{justifyContent:'space-between', gap:12}}>
+                <div>
+                  <div style={{fontWeight:700, fontSize:13}}>Notificaciones</div>
+                  <div className="text-muted" style={{fontSize:12}}>{notificacionesCampo ? 'Activas' : 'Silenciadas'}</div>
+                </div>
+                <button className="btn btn-sm btn-secondary" onClick={() => setNotificacionesCampo(v => !v)}>{I.bell} {notificacionesCampo ? 'Silenciar' : 'Activar'}</button>
+              </div>
+            </div>
+
+            <div className="card" style={{padding:14}}>
+              <div className="eyebrow" style={{marginBottom:10}}>Perfil movil</div>
+              <select
+                className="select"
+                value={profile || 'vendedor'}
+                onChange={e => {
+                  setProfile(e.target.value);
+                  setScreen('home');
+                }}
+              >
+                <option value="tecnico">Tecnico</option>
+                <option value="logistica">Logistica</option>
+                <option value="vendedor">Vendedor</option>
+                <option value="compras">Compras</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="gerencia">Gerencia</option>
+              </select>
+            </div>
+
+            <div className="card" style={{padding:14}}>
+              <div className="eyebrow" style={{marginBottom:10}}>Permisos del celular</div>
+              <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
+                <span style={{fontSize:13}}>Camara</span>
+                <span className={'badge '+(puedeUsarCamara ? 'badge-green' : 'badge-orange')}>{puedeUsarCamara ? 'Disponible' : 'Revisar'}</span>
+              </div>
+              <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
+                <span style={{fontSize:13}}>Llamadas</span>
+                <span className={'badge '+(puedeLlamar ? 'badge-green' : 'badge-orange')}>{puedeLlamar ? 'Disponible' : 'Revisar'}</span>
+              </div>
+              <div className="row" style={{justifyContent:'space-between'}}>
+                <span style={{fontSize:13}}>Conexion</span>
+                <span className={'badge '+(online ? 'badge-green' : 'badge-orange')}>{online ? 'Online' : 'Offline'}</span>
+              </div>
+            </div>
+
+            <div className="row" style={{gap:8}}>
+              <button className="btn btn-secondary flex-1" onClick={onExit}>{I.mobile} Salir campo</button>
+              <button className="btn btn-secondary flex-1" style={{color:'var(--danger)'}} onClick={signOut}>{I.power} Cerrar sesion</button>
+            </div>
+          </div>
+        </>
       ) : null}
       {toast && (
         <div style={{position:'absolute', bottom:72, left:16, right:16, background:'var(--green)', color:'#fff', padding:'10px 16px', borderRadius:8, fontSize:13, fontWeight:600, textAlign:'center', zIndex:20}}>
@@ -830,7 +1035,7 @@ function VendedorView({ screen, setScreen }) {
       <div className={`mobile-nav-item ${screen==='home'||screen==='clientes'?'active':''}`} onClick={()=>setScreen('clientes')}>{I.home}Clientes</div>
       <div className={`mobile-nav-item ${screen==='pipeline'?'active':''}`} onClick={() => setScreen('pipeline')}>{I.pipe}Pipeline</div>
       <div className={`mobile-nav-item ${screen==='agenda'||screen==='nuevo-evento'?'active':''}`} onClick={()=>setScreen('agenda')}>{I.calendar}Agenda</div>
-      <div className="mobile-nav-item">{I.settings}Ajustes</div>
+      <div className={`mobile-nav-item ${screen==='ajustes'||screen==='notificaciones'?'active':''}`} onClick={()=>setScreen('ajustes')}>{I.settings}Ajustes</div>
     </div>
   </>;
 }
