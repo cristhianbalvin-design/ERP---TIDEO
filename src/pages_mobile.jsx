@@ -58,12 +58,85 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
   );
 }
 
+function normalizarTexto(valor) {
+  return String(valor || '').trim().toLowerCase();
+}
+
+function inicialesDe(nombre, fallback = 'U') {
+  const partes = String(nombre || fallback).trim().split(/\s+/).filter(Boolean);
+  return (partes.length ? partes : [fallback])
+    .map(p => p[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
+
+function getUsuarioMovil(authUser, usuarios = []) {
+  const email = normalizarTexto(authUser?.email);
+  const usuario = usuarios.find(u =>
+    u.id === authUser?.id ||
+    (email && normalizarTexto(u.email) === email)
+  );
+  const nombre =
+    usuario?.nombre ||
+    authUser?.user_metadata?.nombre ||
+    authUser?.user_metadata?.full_name ||
+    authUser?.email?.split('@')[0] ||
+    'Usuario';
+
+  return {
+    id: usuario?.id || authUser?.id || null,
+    nombre,
+    email: usuario?.email || authUser?.email || null,
+    iniciales: inicialesDe(nombre),
+  };
+}
+
+function extraerDatosTarjeta(texto = '') {
+  const limpio = String(texto || '').replace(/\r/g, '\n');
+  const lineas = limpio
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean);
+  const email = limpio.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || '';
+  const telefono = limpio.match(/(?:\+?\d[\d\s().-]{7,}\d)/)?.[0]?.replace(/\s{2,}/g, ' ').trim() || '';
+  const empresa = lineas.find(l => /\b(SAC|S\.A\.C\.|SA|S\.A\.|SRL|S\.R\.L\.|EIRL|E\.I\.R\.L\.|CORP|GROUP|GRUPO|INDUSTRIAL|MINERA|SERVICIOS)\b/i.test(l)) || '';
+  const web = lineas.find(l => /\b(www\.|\.com|\.pe|\.net)\b/i.test(l) && !l.includes('@')) || '';
+  const cargo = lineas.find(l => /\b(gerente|jefe|director|coordinador|supervisor|comercial|ventas|compras|operaciones|administrador|analista|ejecutivo)\b/i.test(l)) || '';
+  const nombre = lineas.find(l => {
+    if ([email, telefono, empresa, web, cargo].some(v => v && normalizarTexto(v) === normalizarTexto(l))) return false;
+    if (/@|www\.|\.com|\.pe|\d/.test(l)) return false;
+    return l.split(/\s+/).length >= 2 && l.length <= 45;
+  }) || '';
+
+  return {
+    nombre_contacto: nombre,
+    empresa_nombre: empresa,
+    cargo,
+    telefono,
+    email,
+    necesidad: limpio ? `Lead capturado desde tarjeta de presentacion.\n\nTexto detectado:\n${limpio}` : 'Lead capturado desde foto de tarjeta.',
+  };
+}
+
+function cargarImagen(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
 function TecnicoView({ screen, setScreen }) {
-  const { ots, cuentas, partes, personalOperativo, registrarParteDiario } = useApp();
+  const { ots, cuentas, partes, personalOperativo, registrarParteDiario, authUser, usuarios } = useApp();
   const [selectedOt, setSelectedOt] = useState(null);
   const today = new Date().toISOString().split('T')[0];
-  const tecnico = personalOperativo.find(p => p.estado !== 'vacaciones') || personalOperativo[0] || { id: 'tecnico_campo', nombre: 'Tecnico Campo' };
-  const iniciales = (tecnico.nombre || 'TC').split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase();
+  const usuarioMovil = getUsuarioMovil(authUser, usuarios);
+  const tecnico =
+    personalOperativo.find(p => p.id === usuarioMovil.id || normalizarTexto(p.email) === normalizarTexto(usuarioMovil.email)) ||
+    { id: usuarioMovil.id || 'tecnico_campo', nombre: usuarioMovil.nombre };
+  const iniciales = inicialesDe(tecnico.nombre, usuarioMovil.iniciales);
   const getCuenta = id => cuentas.find(c => c.id === id)?.razon_social || id || 'Cliente';
   const otsTecnico = ots
     .filter(o => o.estado !== 'anulada')
@@ -163,10 +236,12 @@ function TecnicoView({ screen, setScreen }) {
 }
 
 function LogisticaView({ screen, setScreen }) {
+  const { authUser, usuarios } = useApp();
+  const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   return <>
     <div className="mobile-header">
-      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Logística</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>H. Pinedo</div></div>
-      <div className="avatar" style={{width:34,height:34}}>HP</div>
+      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Logística</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>{usuarioMovil.nombre}</div></div>
+      <div className="avatar" style={{width:34,height:34}}>{usuarioMovil.iniciales}</div>
     </div>
     <div className="mobile-content">
       <div className="eyebrow" style={{marginBottom:10}}>Rutas de Entrega · Hoy</div>
@@ -201,10 +276,22 @@ function LogisticaView({ screen, setScreen }) {
 }
 
 function VendedorView({ screen, setScreen }) {
-  const { agendaEventos, cuentas, oportunidades, actividades, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, searchQuery, crearLead, industrias, registrarActividad } = useApp();
+  const { agendaEventos, cuentas, oportunidades, actividades, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva } = useApp();
+  const usuarioMovil = getUsuarioMovil(authUser, usuarios);
+  const esDelUsuario = valor => normalizarTexto(valor) === normalizarTexto(usuarioMovil.nombre);
+  const rolNombre = normalizarTexto(role?.nombre || membresiaActiva?.rol?.nombre);
+  const puedeVerEquipoComercial = Boolean(
+    role?.permisos?.plataforma ||
+    role?.permisos?.tenant_admin ||
+    role?.permisos?.todo ||
+    role?.permisos?.ver_agenda_equipo ||
+    rolNombre.includes('admin') ||
+    rolNombre.includes('jefe comercial') ||
+    rolNombre.includes('supervisor comercial')
+  );
   const query = searchQuery.toLowerCase();
   const eventos = agendaEventos
-    .filter(e => e.vendedor === 'Carla Meza')
+    .filter(e => puedeVerEquipoComercial || esDelUsuario(e.vendedor) || esDelUsuario(e.registrado_por))
     .filter(e => !query || e.titulo.toLowerCase().includes(query) || (cuentas.find(c=>c.id===e.cuenta_id)?.razon_social||'').toLowerCase().includes(query))
     .sort((a,b) => a.fecha.localeCompare(b.fecha));
   
@@ -213,10 +300,21 @@ function VendedorView({ screen, setScreen }) {
   const [toast, setToast] = useState(null);
   const [localQuery, setLocalQuery] = useState('');
   const [pipelineTab, setPipelineTab] = useState('opps');
+  const leadFileInputRef = useRef(null);
+  const [leadFotoPreview, setLeadFotoPreview] = useState(null);
+  const [leadFotoEstado, setLeadFotoEstado] = useState('idle');
+  const [leadFotoTexto, setLeadFotoTexto] = useState('');
+  const [leadDesdeFoto, setLeadDesdeFoto] = useState(null);
   const ETAPAS = ['prospecto', 'calificacion', 'propuesta', 'negociacion', 'cierre'];
-  const oppsMeza = oportunidades.filter(o => o.responsable === 'Carla Meza' && o.estado === 'abierta');
-  const actsMeza = actividades.filter(a => a.responsable === 'Carla Meza').sort((a,b) => b.fecha.localeCompare(a.fecha));
+  const oppsUsuario = oportunidades.filter(o => (puedeVerEquipoComercial || esDelUsuario(o.responsable)) && o.estado === 'abierta');
+  const actsUsuario = actividades
+    .filter(a => puedeVerEquipoComercial || esDelUsuario(a.responsable))
+    .sort((a,b) => b.fecha.localeCompare(a.fecha));
   const etapaColor = { prospecto:'cyan', calificacion:'purple', propuesta:'orange', negociacion:'navy', cierre:'green' };
+  const cuentaActiva =
+    cuentas.find(c => esDelUsuario(c.responsable_comercial) || esDelUsuario(c.vendedor) || esDelUsuario(c.responsable)) ||
+    cuentas[0];
+  const scopeLabel = puedeVerEquipoComercial ? 'Equipo Comercial' : 'Mi';
 
   const handleRealizado = (id) => {
     actualizarAgendaEvento(id, { estado: 'realizado' });
@@ -224,6 +322,88 @@ function VendedorView({ screen, setScreen }) {
       // Flujo rápido: en un caso real abriría el modal de nueva actividad
       alert('Se abrirá el modal de nueva actividad pre-llenado.');
     }
+  };
+
+  const guardarLeadDesdeFormData = (fd, extra = {}) => {
+    crearLead({
+      id: 'ld_' + Date.now(),
+      nombre_contacto: fd.get('nombre_contacto'),
+      empresa_nombre: fd.get('empresa_nombre'),
+      telefono: fd.get('telefono') || null,
+      email: fd.get('email') || null,
+      industria: fd.get('industria') || null,
+      cargo: fd.get('cargo') || null,
+      urgencia: fd.get('urgencia'),
+      necesidad: fd.get('necesidad') || null,
+      fuente: extra.fuente || 'campo_movil',
+      responsable: usuarioMovil.nombre,
+      registrado_desde: 'campo',
+      estado: 'nuevo',
+      convertido: false,
+      ...extra,
+    });
+  };
+
+  const analizarFotoTarjeta = async (file) => {
+    if (!file) return;
+    const preview = URL.createObjectURL(file);
+    setLeadFotoPreview(prev => {
+      if (prev) URL.revokeObjectURL(prev);
+      return preview;
+    });
+    setLeadFotoEstado('analizando');
+    setLeadFotoTexto('');
+    setLeadDesdeFoto(null);
+    setScreen('lead-foto');
+
+    try {
+      // Convertir imagen a base64
+      const imageBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Llamar a la Edge Function de Supabase (GPT-4o Vision)
+      const { getSupabaseClient } = await import('./lib/supabaseClient.js');
+      const sb = await getSupabaseClient();
+      const { data: fnData, error: fnError } = await sb.functions.invoke('extraer-tarjeta-lead', {
+        body: { imageBase64 },
+      });
+
+      if (fnError) throw fnError;
+      if (!fnData?.success) throw new Error(fnData?.error || 'Edge Function error');
+
+      const datos = {
+        nombre_contacto: fnData.data?.nombre_contacto || '',
+        empresa_nombre: fnData.data?.nombre_empresa || fnData.data?.razon_social || '',
+        cargo: fnData.data?.cargo || '',
+        telefono: fnData.data?.telefono || '',
+        email: fnData.data?.email || '',
+        necesidad: 'Lead capturado desde tarjeta de presentación con IA.',
+      };
+
+      setLeadDesdeFoto(datos);
+      setLeadFotoEstado('detectado');
+    } catch (error) {
+      console.error('No se pudo analizar la tarjeta con IA:', error);
+      // Fallback: form vacío para completar manualmente
+      setLeadDesdeFoto(extraerDatosTarjeta(''));
+      setLeadFotoEstado('sin_ocr');
+    }
+  };
+
+  const submitLeadFoto = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    guardarLeadDesdeFormData(fd, {
+      fuente: 'tarjeta_foto_movil',
+      evidencia_tipo: 'foto_tarjeta',
+    });
+    setToast('Lead creado desde tarjeta');
+    setTimeout(() => setToast(null), 3000);
+    setScreen('home');
   };
 
   const submitNuevoEvento = (e) => {
@@ -235,8 +415,8 @@ function VendedorView({ screen, setScreen }) {
       fecha: fd.get('fecha'),
       hora: fd.get('hora'),
       cuenta_id: fd.get('cuenta_id'),
-      vendedor: 'Carla Meza',
-      registrado_por: 'Carla Meza',
+      vendedor: usuarioMovil.nombre,
+      registrado_por: usuarioMovil.nombre,
       estado: 'programado',
       duracion_minutos: 60
     });
@@ -246,22 +426,7 @@ function VendedorView({ screen, setScreen }) {
   const submitNuevoLead = (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    crearLead({
-      id: 'ld_' + Date.now(),
-      nombre_contacto: fd.get('nombre_contacto'),
-      empresa_nombre: fd.get('empresa_nombre'),
-      telefono: fd.get('telefono') || null,
-      email: fd.get('email') || null,
-      industria: fd.get('industria') || null,
-      cargo: fd.get('cargo') || null,
-      urgencia: fd.get('urgencia'),
-      necesidad: fd.get('necesidad') || null,
-      fuente: 'campo_movil',
-      responsable: 'Carla Meza',
-      registrado_desde: 'campo',
-      estado: 'nuevo',
-      convertido: false,
-    });
+    guardarLeadDesdeFormData(fd);
     setToast('Lead creado correctamente');
     setTimeout(() => setToast(null), 3000);
     setScreen('home');
@@ -280,7 +445,7 @@ function VendedorView({ screen, setScreen }) {
       descripcion: fd.get('descripcion'),
       resultado: fd.get('resultado') || null,
       proxima_accion: fd.get('proxima_accion') || null,
-      responsable: 'Carla Meza',
+      responsable: usuarioMovil.nombre,
     });
     setToast('Actividad registrada');
     setTimeout(() => setToast(null), 3000);
@@ -289,20 +454,32 @@ function VendedorView({ screen, setScreen }) {
 
   return <>
     <div className="mobile-header">
-      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Vendedor</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>C. Meza</div></div>
-      <div className="avatar" style={{width:34,height:34}}>CM</div>
+      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Vendedor</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>{usuarioMovil.nombre}</div></div>
+      <div className="avatar" style={{width:34,height:34}}>{usuarioMovil.iniciales}</div>
     </div>
     <div className="mobile-content">
       {screen === 'home' || screen === 'clientes' ? (
         <>
+          <input
+            ref={leadFileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{display:'none'}}
+            onChange={e => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              analizarFotoTarjeta(file);
+            }}
+          />
           <button className="input hover-raise" style={{marginBottom:14,display:'flex',alignItems:'center',gap:8,cursor:'pointer',width:'100%',textAlign:'left',border:'none'}} onClick={() => setScreen('buscar')}><span style={{width:16,height:16,flexShrink:0,opacity:0.5}}>{I.search}</span><span style={{flex:1,fontSize:13,color:'var(--fg-muted)'}}>Buscar cliente...</span></button>
           <div className="eyebrow" style={{marginBottom:8}}>Cliente activo</div>
           <div className="card" style={{padding:14,marginBottom:14}}>
             <div className="row" style={{justifyContent:'space-between',marginBottom:6}}>
-              <div style={{fontFamily:'Sora',fontWeight:700,fontSize:15}}>Minera Andes SAC</div>
+              <div style={{fontFamily:'Sora',fontWeight:700,fontSize:15}}>{cuentaActiva?.razon_social || 'Sin cliente activo'}</div>
               <span className="health-dot health-green"/>
             </div>
-            <div className="text-muted" style={{fontSize:12,marginBottom:10}}>Minería · Carla Meza</div>
+            <div className="text-muted" style={{fontSize:12,marginBottom:10}}>{cuentaActiva?.industria || 'Sin industria'} · {usuarioMovil.nombre}</div>
             <div className="row" style={{gap:6}}>
               <button className="btn btn-sm btn-secondary flex-1">{I.phone}Llamar</button>
               <button className="btn btn-sm btn-primary flex-1" onClick={() => setScreen('nueva-actividad')}>{I.plus}Actividad</button>
@@ -310,7 +487,7 @@ function VendedorView({ screen, setScreen }) {
           </div>
           <div className="eyebrow" style={{marginBottom:8}}>Acciones rápidas</div>
           <div className="col" style={{gap:8}}>
-            <button className="card hover-raise row" style={{padding:12,cursor:'pointer',width:'100%'}}>
+            <button className="card hover-raise row" style={{padding:12,cursor:'pointer',width:'100%'}} onClick={() => leadFileInputRef.current?.click()}>
               <div className="kpi-icon cyan" style={{position:'static',width:34,height:34}}>{I.camera}</div>
               <div style={{flex:1,textAlign:'left',marginLeft:10}}>
                 <div style={{fontWeight:600,fontSize:13}}>Crear lead con foto de tarjeta</div>
@@ -336,7 +513,7 @@ function VendedorView({ screen, setScreen }) {
       ) : screen === 'agenda' ? (
         <>
           <div className="row" style={{justifyContent:'space-between', marginBottom: 16}}>
-            <div className="eyebrow">Mi Agenda Comercial</div>
+            <div className="eyebrow">{scopeLabel} Agenda Comercial</div>
             <button className="btn btn-sm btn-primary" onClick={() => setScreen('nuevo-evento')}>{I.plus} Nuevo</button>
           </div>
           <div className="col" style={{gap:10}}>
@@ -397,6 +574,77 @@ function VendedorView({ screen, setScreen }) {
             </div>
             <button type="submit" className="btn btn-primary btn-lg" style={{width:'100%', marginTop:10}}>Guardar en Agenda</button>
           </form>
+        </div>
+      ) : screen === 'lead-foto' ? (
+        <div style={{position:'absolute', top:0, left:0, right:0, bottom:0, background:'var(--bg)', padding:20, zIndex:10, overflowY:'auto'}}>
+          <div onClick={()=>setScreen('home')} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:16,cursor:'pointer'}}>← Volver</div>
+          <h2 className="font-display" style={{marginBottom:6}}>Lead desde tarjeta</h2>
+          <div className="text-muted" style={{fontSize:12,marginBottom:14}}>Revisa los datos extraidos antes de guardar.</div>
+          {leadFotoPreview && (
+            <div className="card" style={{padding:0,overflow:'hidden',marginBottom:14}}>
+              <img src={leadFotoPreview} alt="Tarjeta capturada" style={{display:'block',width:'100%',maxHeight:160,objectFit:'cover'}}/>
+            </div>
+          )}
+          {leadFotoEstado === 'analizando' ? (
+            <div className="card" style={{padding:16,textAlign:'center'}}>
+              <div className="kpi-icon cyan" style={{position:'static',margin:'0 auto 10px'}}>{I.sparkles}</div>
+              <div style={{fontWeight:700,fontSize:14}}>Analizando tarjeta...</div>
+              <div className="text-muted" style={{fontSize:12,marginTop:4}}>Intentando detectar nombre, empresa, email y telefono.</div>
+            </div>
+          ) : (
+            <form key={`${leadFotoEstado}-${leadFotoTexto.length}`} className="col" style={{gap:14}} onSubmit={submitLeadFoto}>
+              {leadFotoEstado === 'detectado' ? (
+                <div className="badge badge-green" style={{alignSelf:'flex-start'}}>{I.check} Datos detectados</div>
+              ) : (
+                <div className="card" style={{padding:12,background:'var(--cyan-lt)',borderColor:'rgba(6,182,212,0.25)'}}>
+                  <div style={{fontWeight:700,fontSize:13,marginBottom:3}}>OCR no disponible en este navegador</div>
+                  <div className="text-muted" style={{fontSize:12}}>La foto queda como evidencia y puedes completar los datos manualmente.</div>
+                </div>
+              )}
+              <div className="input-group">
+                <label>Nombre del contacto *</label>
+                <input name="nombre_contacto" type="text" className="input" defaultValue={leadDesdeFoto?.nombre_contacto || ''} placeholder="Ej: Juan Perez" required />
+              </div>
+              <div className="input-group">
+                <label>Empresa</label>
+                <input name="empresa_nombre" type="text" className="input" defaultValue={leadDesdeFoto?.empresa_nombre || ''} placeholder="Ej: Minera del Sur SAC" />
+              </div>
+              <div className="input-group">
+                <label>Cargo</label>
+                <input name="cargo" type="text" className="input" defaultValue={leadDesdeFoto?.cargo || ''} placeholder="Ej: Jefe de Compras" />
+              </div>
+              <div className="grid-2">
+                <div className="input-group">
+                  <label>Telefono</label>
+                  <input name="telefono" type="tel" className="input" defaultValue={leadDesdeFoto?.telefono || ''} placeholder="9XXXXXXXX" />
+                </div>
+                <div className="input-group">
+                  <label>Email</label>
+                  <input name="email" type="email" className="input" defaultValue={leadDesdeFoto?.email || ''} placeholder="correo@empresa.com" />
+                </div>
+              </div>
+              <div className="input-group">
+                <label>Industria</label>
+                <select name="industria" className="select" defaultValue="">
+                  <option value="">Seleccionar...</option>
+                  {(industrias || []).map(i => <option key={i.id} value={i.nombre}>{i.nombre}</option>)}
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Urgencia</label>
+                <select name="urgencia" className="select" defaultValue="media">
+                  <option value="alta">Alta</option>
+                  <option value="media">Media</option>
+                  <option value="baja">Baja</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Notas</label>
+                <textarea name="necesidad" className="input" defaultValue={leadDesdeFoto?.necesidad || ''} rows={4} style={{resize:'none'}} />
+              </div>
+              <button type="submit" className="btn btn-primary btn-lg" style={{width:'100%', marginTop:6}}>{I.check} Crear lead</button>
+            </form>
+          )}
         </div>
       ) : screen === 'nuevo-lead' ? (
         <div style={{position:'absolute', top:0, left:0, right:0, bottom:0, background:'var(--bg)', padding:20, zIndex:10, overflowY:'auto'}}>
@@ -474,15 +722,15 @@ function VendedorView({ screen, setScreen }) {
         </div>
       ) : screen === 'pipeline' ? (
         <>
-          <div className="eyebrow" style={{marginBottom:12}}>Mi Pipeline</div>
+          <div className="eyebrow" style={{marginBottom:12}}>{scopeLabel} Pipeline</div>
           <div className="row" style={{gap:6, marginBottom:14}}>
-            <button className={'btn btn-sm flex-1 '+(pipelineTab==='opps'?'btn-navy':'btn-secondary')} onClick={() => setPipelineTab('opps')}>Oportunidades · {oppsMeza.length}</button>
-            <button className={'btn btn-sm flex-1 '+(pipelineTab==='acts'?'btn-navy':'btn-secondary')} onClick={() => setPipelineTab('acts')}>Actividades · {actsMeza.length}</button>
+            <button className={'btn btn-sm flex-1 '+(pipelineTab==='opps'?'btn-navy':'btn-secondary')} onClick={() => setPipelineTab('opps')}>Oportunidades · {oppsUsuario.length}</button>
+            <button className={'btn btn-sm flex-1 '+(pipelineTab==='acts'?'btn-navy':'btn-secondary')} onClick={() => setPipelineTab('acts')}>Actividades · {actsUsuario.length}</button>
           </div>
           {pipelineTab === 'opps' ? (
             <div className="col" style={{gap:10}}>
-              {oppsMeza.length === 0 && <div className="text-muted" style={{textAlign:'center', padding:30, fontSize:13}}>No tienes oportunidades abiertas.</div>}
-              {oppsMeza.map(o => {
+              {oppsUsuario.length === 0 && <div className="text-muted" style={{textAlign:'center', padding:30, fontSize:13}}>No tienes oportunidades abiertas.</div>}
+              {oppsUsuario.map(o => {
                 const cuenta = cuentas.find(c => c.id === o.cuenta_id);
                 const color = etapaColor[o.etapa] || 'cyan';
                 const etapaIdx = ETAPAS.indexOf(o.etapa);
@@ -506,8 +754,8 @@ function VendedorView({ screen, setScreen }) {
             </div>
           ) : (
             <div className="col" style={{gap:10}}>
-              {actsMeza.length === 0 && <div className="text-muted" style={{textAlign:'center', padding:30, fontSize:13}}>No tienes actividades registradas.</div>}
-              {actsMeza.slice(0, 10).map(a => {
+              {actsUsuario.length === 0 && <div className="text-muted" style={{textAlign:'center', padding:30, fontSize:13}}>No tienes actividades registradas.</div>}
+              {actsUsuario.slice(0, 10).map(a => {
                 const cuenta = cuentas.find(c => c.id === a.cuenta_id);
                 const tipoColor = {llamada:'cyan', visita:'green', email:'purple', reunion:'orange', demo:'navy'}[a.tipo] || 'cyan';
                 return (
@@ -588,10 +836,12 @@ function VendedorView({ screen, setScreen }) {
 }
 
 function ComprasView({ screen, setScreen }) {
+  const { authUser, usuarios } = useApp();
+  const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   return <>
     <div className="mobile-header">
-      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Compras</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>R. Chávez</div></div>
-      <div className="avatar" style={{width:34,height:34}}>RC</div>
+      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Compras</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>{usuarioMovil.nombre}</div></div>
+      <div className="avatar" style={{width:34,height:34}}>{usuarioMovil.iniciales}</div>
     </div>
     <div className="mobile-content">
       <div className="eyebrow" style={{marginBottom:10}}>Capturar factura · Paso 2 de 3</div>
@@ -628,7 +878,8 @@ function ComprasView({ screen, setScreen }) {
 }
 
 function SupervisorView({ screen, setScreen }) {
-  const { partes, ots, personalOperativo, aprobarParteDiario } = useApp();
+  const { partes, ots, personalOperativo, aprobarParteDiario, authUser, usuarios } = useApp();
+  const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const pendientes = partes.filter(p => p.estado === 'en_revision' || p.estado === 'observado');
   const equipoActivo = personalOperativo.filter(p => !['vacaciones', 'inactivo', 'baja'].includes(p.estado)).slice(0, 4);
   const getOtNumero = id => ots.find(o => o.id === id)?.numero || id;
@@ -636,8 +887,8 @@ function SupervisorView({ screen, setScreen }) {
 
   return <>
     <div className="mobile-header">
-      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Supervisor</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>L. Mendoza</div></div>
-      <div className="avatar" style={{width:34,height:34}}>LM</div>
+      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Supervisor</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>{usuarioMovil.nombre}</div></div>
+      <div className="avatar" style={{width:34,height:34}}>{usuarioMovil.iniciales}</div>
     </div>
     <div className="mobile-content">
       <div className="eyebrow" style={{marginBottom:10}}>Partes pendientes - {pendientes.length}</div>
@@ -677,7 +928,8 @@ function SupervisorView({ screen, setScreen }) {
 }
 
 function GerenciaView({ screen, setScreen }) {
-  const { ots, cotizaciones } = useApp();
+  const { ots, cotizaciones, authUser, usuarios } = useApp();
+  const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const cxcVencida = MOCK.cxc.filter(c => c.estado === 'vencida').reduce((s, c) => s + c.saldo, 0);
   const otsActivas = ots.filter(o => o.estado === 'programada' || o.estado === 'ejecucion').length;
   const cotAprobar = cotizaciones.filter(c => c.estado === 'enviada' || c.estado === 'negociacion').length;
@@ -685,8 +937,8 @@ function GerenciaView({ screen, setScreen }) {
 
   return <>
     <div className="mobile-header">
-      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Gerencia</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>Vista ejecutiva</div></div>
-      <div className="avatar" style={{width:34,height:34}}>GE</div>
+      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Gerencia</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>{usuarioMovil.nombre}</div></div>
+      <div className="avatar" style={{width:34,height:34}}>{usuarioMovil.iniciales}</div>
     </div>
     <div className="mobile-content">
       <div className="eyebrow" style={{marginBottom:10}}>KPIs del mes</div>
