@@ -30,8 +30,9 @@ function Roles() {
 
   // Sync sel cuando se elimina un rol
   useEffect(() => {
-    if (sel && !roles[sel]) setSel(Object.keys(roles)[0] || '');
-  }, [roles, sel]);
+    if (!rolKeys.length) return;
+    if (!sel || !roles[sel]) setSel(rolKeys[0]);
+  }, [rolKeys, roles, sel]);
 
   const handleNuevoRol = () => {
     if (!nuevoNombre.trim()) return;
@@ -67,7 +68,16 @@ function Roles() {
     setReasignarUsuario(null);
   };
 
-  if (!role) return null;
+  if (!role) {
+    return (
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Roles y Permisos</h1>
+          <div className="page-sub">{rolKeys.length ? 'Cargando rol seleccionado...' : 'Cargando roles desde Supabase...'}</div>
+        </div>
+      </div>
+    );
+  }
 
   const cb = (p, act) => {
     let realKey = act;
