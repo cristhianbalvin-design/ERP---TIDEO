@@ -83,6 +83,16 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: "No tienes permiso para crear usuarios en este tenant." }, 403);
   }
 
+  const roleAliases: Record<string, string> = {
+    admin: "admin",
+    plataforma: "admin",
+    superadmin: "admin",
+    comercial: "comercial",
+    vendedor: "vendedor",
+    tecnico: "tecnico",
+    finanzas: "finanzas",
+  };
+
   let { data: roleRow, error: roleError } = await adminClient
     .from("roles")
     .select("id")
@@ -92,16 +102,48 @@ serve(async (req) => {
     .maybeSingle();
 
   if (!roleRow && !roleError) {
+    const alias = roleAliases[rolInput.toLowerCase()];
+    if (alias === "admin") {
+      const fallbackAdmin = await adminClient
+        .from("roles")
+        .select("id")
+        .eq("empresa_id", empresaId)
+        .eq("es_admin_empresa", true)
+        .eq("activo", true)
+        .order("nombre", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      roleRow = fallbackAdmin.data;
+      roleError = fallbackAdmin.error;
+    }
+  }
+
+  if (!roleRow && !roleError) {
+    const alias = roleAliases[rolInput.toLowerCase()] || rolInput;
     const fallback = await adminClient
       .from("roles")
       .select("id")
       .or(`empresa_id.eq.${empresaId},empresa_id.is.null`)
-      .ilike("nombre", `%${rolInput}%`)
+      .ilike("nombre", `%${alias}%`)
       .eq("activo", true)
       .limit(1)
       .maybeSingle();
     roleRow = fallback.data;
     roleError = fallback.error;
+  }
+
+  if (!roleRow && !roleError) {
+    const firstTenantRole = await adminClient
+      .from("roles")
+      .select("id")
+      .eq("empresa_id", empresaId)
+      .eq("activo", true)
+      .order("es_admin_empresa", { ascending: false })
+      .order("nombre", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    roleRow = firstTenantRole.data;
+    roleError = firstTenantRole.error;
   }
 
   if (roleError) return jsonResponse({ success: false, error: roleError.message }, 500);

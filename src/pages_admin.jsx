@@ -362,6 +362,12 @@ function Usuarios() {
 
   const rolesOpciones = Object.entries(rolesCtx || {}).filter(([,r]) => !r.es_superadmin);
 
+  useEffect(() => {
+    if (!rolesOpciones.length) return;
+    if (rolesOpciones.some(([id]) => id === nuevoForm.rol)) return;
+    setNuevoForm(p => ({ ...p, rol: rolesOpciones[0][0] }));
+  }, [rolesOpciones, nuevoForm.rol]);
+
   const getEmpresa = (id) => {
     if (empresa?.id === id) return empresa.nombre;
     const found = (empresasPlataforma || []).find(e => e.id === id);

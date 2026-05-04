@@ -187,12 +187,14 @@ export function AppProvider({ children }) {
   const [trabajadoresDatosNomina, setTrabajadoresDatosNomina] = useState(MOCK.trabajadoresDatosNomina || {});
 
   const [rolesCtx, setRolesCtx] = useState(() => {
+    if (isSupabaseConfigured()) return {};
     try {
       const saved = localStorage.getItem('tideo_roles');
       return saved ? JSON.parse(saved) : MOCK.roles;
     } catch { return MOCK.roles; }
   });
   useEffect(() => {
+    if (isSupabaseConfigured()) return;
     try { localStorage.setItem('tideo_roles', JSON.stringify(rolesCtx)); } catch {}
   }, [rolesCtx]);
 
@@ -600,7 +602,7 @@ export function AppProvider({ children }) {
                 }
               };
             }
-            if (mounted) setRolesCtx(prev => ({ ...prev, ...rolesObj }));
+            if (mounted) setRolesCtx(rolesObj);
           }
         } catch (_err) { /* keep mock */ }
 
