@@ -198,6 +198,29 @@ export function AppProvider({ children }) {
     try { localStorage.setItem('tideo_roles', JSON.stringify(rolesCtx)); } catch {}
   }, [rolesCtx]);
 
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    if (!membresiaActiva?.rol_id) return;
+    if (Object.keys(rolesCtx || {}).length) return;
+
+    const rolBase = membresiaActiva.rol || {
+      id: membresiaActiva.rol_id,
+      nombre: 'Rol actual',
+      descripcion: 'Rol asignado al usuario actual',
+      es_admin_empresa: true,
+      es_superadmin: false,
+    };
+
+    setRolesCtx({
+      [membresiaActiva.rol_id]: {
+        ...rolBase,
+        id: membresiaActiva.rol_id,
+        descripcion: rolBase.descripcion || 'Rol asignado al usuario actual',
+        ...buildRoleDePermisos(rolBase, membresiaActiva.permisos_rows || [], membresiaActiva.acceso_campo),
+      },
+    });
+  }, [membresiaActiva?.rol_id, rolesCtx]);
+
   const [notificaciones, setNotificaciones] = useState([
     { id: 'f3_1', text: 'Health Score de Logística Altiplano bajó a 28 — riesgo crítico. Se requiere plan de retención urgente.', read: false, time: 'Hace 15 min' },
     { id: 'f3_2', text: 'Renovación de Planta Industrial Norte vence en 28 días (S/ 76,200). Responsable: Pedro Salas.', read: false, time: 'Hace 1h' },
@@ -588,7 +611,12 @@ export function AppProvider({ children }) {
             // However, to keep compatibility with MOCK.roles, we might want to store it as object
             const rolesObj = {};
             for (const r of rolesData) {
-              const pRows = await rolesService.getPermisosRoles(r.id);
+              let pRows = [];
+              try {
+                pRows = await rolesService.getPermisosRoles(r.id);
+              } catch (permErr) {
+                console.warn('No se pudieron cargar permisos del rol:', r.id, permErr);
+              }
               rolesObj[r.id] = {
                 ...r,
                 permisos: {
@@ -603,8 +631,12 @@ export function AppProvider({ children }) {
               };
             }
             if (mounted) setRolesCtx(rolesObj);
+          } else if (mounted) {
+            setRolesCtx(prev => prev || {});
           }
-        } catch (_err) { /* keep mock */ }
+        } catch (_err) {
+          console.error('Error loading roles from Supabase:', _err);
+        }
 
       } catch (_err) { /* keep mock on error */ }
     };
