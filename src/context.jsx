@@ -271,7 +271,14 @@ export function AppProvider({ children }) {
       setAuthError(null);
       const supabase = await getSupabaseClient();
       const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) throw error;
+      if (error) {
+        let message = error.message;
+        try {
+          const body = await error.context?.json?.();
+          message = body?.error || message;
+        } catch { /* la respuesta de la funcion no siempre trae JSON */ }
+        throw new Error(message || 'No se pudo crear el usuario.');
+      }
       setAuthSession(data.session || null);
       setAuthUser(data.user || data.session?.user || null);
       return { data };
@@ -1765,85 +1772,40 @@ export function AppProvider({ children }) {
     }
     try {
       const supabase = await getSupabaseClient();
+      if (!empresa?.id) throw new Error('No hay tenant activo para crear el usuario.');
 
-      // Guardar sesión del admin antes de signUp (que la reemplaza automáticamente)
-      const { data: { session: adminSession } } = await supabase.auth.getSession();
-
-      // 1. Intentar crear en Supabase Auth
-      let uid = null;
-      const { data: authData, error: authErr } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { nombre } }
+      const { data, error } = await supabase.functions.invoke('crear-usuario-acceso', {
+        body: {
+          nombre,
+          email,
+          password,
+          rol,
+          area: area || '',
+          empresa_id: empresa.id,
+        },
       });
 
-      // Restaurar sesión del admin inmediatamente
-      if (adminSession) {
-        await supabase.auth.setSession({
-          access_token: adminSession.access_token,
-          refresh_token: adminSession.refresh_token,
-        });
-      }
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'No se pudo crear el usuario.');
 
-      if (authErr) {
-        const yaExiste = authErr.message?.toLowerCase().includes('already registered') ||
-                         authErr.message?.toLowerCase().includes('already been registered');
-        if (!yaExiste) throw authErr;
-        addNotificacion(`El usuario ya tiene cuenta. Se agrega al tenant actual.`);
-      } else {
-        uid = authData.user?.id;
-        if (!uid) throw new Error('No se obtuvo ID de usuario de Auth');
-      }
-
-      let rolIdReal = rol;
-      const { data: rolRow } = await supabase
-        .from('roles')
-        .select('id')
-        .eq('empresa_id', empresa.id)
-        .or(`id.eq.${rol},nombre.ilike.%${rol}%`)
-        .limit(1)
-        .single();
-      if (rolRow?.id) rolIdReal = rolRow.id;
-
-      if (empresa?.id) {
-        const { data: vinculo, error: vinculoErr } = await supabase.rpc('vincular_usuario_a_empresa', {
-          p_email: email,
-          p_empresa_id: empresa.id,
-          p_rol_id: rolIdReal,
-          p_acceso_campo: false,
-          p_perfil_campo: null,
-        });
-        if (vinculoErr) throw vinculoErr;
-        uid = vinculo?.[0]?.user_id || uid;
-      }
-
-      if (!uid) throw new Error('No se pudo resolver el usuario Auth para vincularlo al tenant.');
-
-      // 2. Crear registro en tabla usuarios para este tenant
-      const nuevoUsuario = {
-        id: uid,
-        nombre,
-        email,
-        rol,
-        area: area || '',
-        empresa_id: empresa?.id,
-        estado: 'Activo',
-        must_change_password: true,
-      };
-      await usuariosService.registrarUsuario(nuevoUsuario);
+      const nuevoUsuario = data.user;
+      const uid = nuevoUsuario.id;
 
       setUsuarios(prev => {
         if (prev.find(u => u.id === uid)) return prev.map(u => u.id === uid ? nuevoUsuario : u);
         return [...prev, nuevoUsuario];
       });
-      if (!authErr) addNotificacion(`Usuario ${nombre} creado. Ya puede ingresar con la contraseña temporal.`);
+      addNotificacion(
+        data.alreadyExists
+          ? `El usuario ${nombre} ya tenia cuenta. Se agrego al tenant actual.`
+          : `Usuario ${nombre} creado. Ya puede ingresar con la contrasena temporal.`
+      );
       return nuevoUsuario;
     } catch (err) {
       addNotificacion('Error al crear usuario: ' + (err.message || 'Error desconocido'), 'error');
       throw err;
     }
   };
-
   const eliminarUsuario = async (id) => {
     setUsuarios(prev => prev.filter(u => u.id !== id));
     if (isSupabaseConfigured()) {
