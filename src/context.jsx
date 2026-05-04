@@ -111,9 +111,13 @@ export function AppProvider({ children }) {
 
   // Business Data
   const [usuarios, setUsuarios] = useState(() => {
+    if (isSupabaseConfigured()) return [];
     try { const saved = localStorage.getItem('tideo_usuarios'); return saved ? JSON.parse(saved) : MOCK.usuarios; } catch { return MOCK.usuarios; }
   });
-  useEffect(() => { try { localStorage.setItem('tideo_usuarios', JSON.stringify(usuarios)); } catch {} }, [usuarios]);
+  useEffect(() => {
+    if (isSupabaseConfigured()) return;
+    try { localStorage.setItem('tideo_usuarios', JSON.stringify(usuarios)); } catch {}
+  }, [usuarios]);
   const [leads, setLeads] = useState(MOCK.leads);
   const [cuentas, setCuentas] = useState(MOCK.cuentas);
   const [contactos, setContactos] = useState(MOCK.contactos);
@@ -555,11 +559,7 @@ export function AppProvider({ children }) {
         try {
           const usrData = await usuariosService.getUsuarios(empresa.id);
           if (mounted) {
-            // Mergear usuarios locales (creados en prototipo) que no existan en Supabase
-            const localUsuarios = (() => { try { const s = localStorage.getItem('tideo_usuarios'); return s ? JSON.parse(s) : []; } catch { return []; } })();
-            const supabaseIds = new Set((usrData || []).map(u => u.id));
-            const onlyLocal = localUsuarios.filter(u => !supabaseIds.has(u.id));
-            setUsuarios([...(usrData || []), ...onlyLocal]);
+            setUsuarios(usrData || []);
             
             // Auto-sincronizar al admin logueado si no aparece en la lista
             if (authUser?.email && !usrData?.find(u => u.email === authUser.email)) {
@@ -1785,7 +1785,14 @@ export function AppProvider({ children }) {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        let message = error.message;
+        try {
+          const body = await error.context?.json?.();
+          message = body?.error || message;
+        } catch { /* la respuesta de la funcion no siempre trae JSON */ }
+        throw new Error(message || 'No se pudo crear el usuario.');
+      }
       if (!data?.success) throw new Error(data?.error || 'No se pudo crear el usuario.');
 
       const nuevoUsuario = data.user;
@@ -1807,11 +1814,28 @@ export function AppProvider({ children }) {
     }
   };
   const eliminarUsuario = async (id) => {
+    const previous = usuarios;
+    const usuarioEliminado = usuarios.find(u => u.id === id);
     setUsuarios(prev => prev.filter(u => u.id !== id));
     if (isSupabaseConfigured()) {
       try {
-        await usuariosService.eliminarUsuario(id);
+        const supabase = await getSupabaseClient();
+        if (!empresa?.id) throw new Error('No hay tenant activo para eliminar el usuario.');
+        const { data, error } = await supabase.functions.invoke('eliminar-usuario-acceso', {
+          body: { user_id: id, empresa_id: empresa.id },
+        });
+        if (error) {
+          let message = error.message;
+          try {
+            const body = await error.context?.json?.();
+            message = body?.error || message;
+          } catch { /* la respuesta de la funcion no siempre trae JSON */ }
+          throw new Error(message || 'No se pudo eliminar el usuario.');
+        }
+        if (!data?.success) throw new Error(data?.error || 'No se pudo eliminar el usuario.');
+        addNotificacion(`Usuario ${usuarioEliminado?.nombre || ''} eliminado del tenant.`);
       } catch (err) {
+        setUsuarios(previous);
         addNotificacion('Error al eliminar en Supabase: ' + err.message, 'error');
       }
     }
