@@ -8,7 +8,7 @@ import { getSupabaseClient } from './lib/supabaseClient.js';
 // Roles builder, Usuarios, Tenants/Planes, and simple stub pages
 
 function Roles() {
-  const { roles, clonarRol, actualizarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, setUsuarios, addNotificacion } = useApp();
+  const { roles, clonarRol, actualizarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, setUsuarios, addNotificacion, accessDebug } = useApp();
   const rolKeys = Object.keys(roles);
   const [sel, setSel] = useState(rolKeys.includes('comercial') ? 'comercial' : rolKeys[0] || '');
   const [tab, setTab] = useState('permisos');
@@ -112,6 +112,14 @@ function Roles() {
           <button className="btn btn-primary" onClick={() => setModalNuevo(true)}>{I.plus} Nuevo rol</button>
         </div>
       </div>
+
+      {(accessDebug?.rolesError || accessDebug?.rolesLoadedAt) && (
+        <div className={accessDebug?.rolesError ? 'alert alert-danger' : 'alert alert-info'} style={{marginBottom:16}}>
+          {accessDebug?.rolesError
+            ? `Roles: ${accessDebug.rolesError}`
+            : `Roles cargados desde Supabase a las ${accessDebug.rolesLoadedAt}.`}
+        </div>
+      )}
 
       <div style={{display:'grid', gridTemplateColumns:'280px 1fr', gap:20}}>
         {/* Sidebar roles */}
@@ -355,7 +363,7 @@ function Roles() {
 }
 
 function Usuarios() {
-  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, crearUsuarioConAcceso, eliminarUsuario, roles: rolesCtx } = useApp();
+  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, crearUsuarioConAcceso, eliminarUsuario, roles: rolesCtx, accessDebug } = useApp();
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('Tideo2026!');
   const [creando, setCreando] = useState(false);
@@ -405,12 +413,23 @@ function Usuarios() {
         <div><h1 className="page-title">Usuarios</h1><div className="page-sub">{usuarios.length} usuarios · Acceso centralizado</div></div>
         <button className="btn btn-primary" data-local-form="true" onClick={() => setCreando(true)}>{I.plus} Nuevo usuario</button>
       </div>
+      {(accessDebug?.usuariosError || accessDebug?.usuariosLoadedAt) && (
+        <div className={accessDebug?.usuariosError ? 'alert alert-danger' : 'alert alert-info'} style={{marginBottom:16}}>
+          {accessDebug?.usuariosError
+            ? `Usuarios: ${accessDebug.usuariosError}`
+            : `Usuarios cargados desde Supabase a las ${accessDebug.usuariosLoadedAt}.`}
+        </div>
+      )}
       <div className="card">
         <div className="table-wrap">
           <table className="tbl">
             <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Tenant</th><th>Área</th><th>Campo</th><th>Estado</th><th>Último login</th><th style={{textAlign:'right'}}>Acceso</th></tr></thead>
-            <tbody>{usuarios.map(u=>{
-              const r = MOCK.roles[u.rol] || { nombre: u.rol, color: 'gray' };
+            <tbody>
+              {usuarios.length === 0 && (
+                <tr><td colSpan={9} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>No hay usuarios visibles para este tenant.</td></tr>
+              )}
+              {usuarios.map(u=>{
+              const r = rolesCtx?.[u.rol] || MOCK.roles[u.rol] || { nombre: u.rol_nombre || u.rol, color: 'gray' };
               return (
                 <tr key={u.id}>
                   <td><div className="row"><div className="avatar" style={{width:28,height:28,fontSize:11}}>{u.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div><strong>{u.nombre}</strong></div></td>

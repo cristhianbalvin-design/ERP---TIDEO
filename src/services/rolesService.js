@@ -83,6 +83,9 @@ export const rolesService = {
         const body = await error.context?.json?.();
         message = body?.error || message;
       } catch { /* ignore */ }
+      if (/usuarios_empresas_rol_id_fkey|foreign key constraint/i.test(message || '')) {
+        message = 'No puedes eliminar este rol porque tiene usuarios asignados. Reasigna o elimina esas asignaciones primero.';
+      }
       throw new Error(message || 'No se pudo eliminar el rol.');
     }
     if (!data?.success) throw new Error(data?.error || 'No se pudo eliminar el rol.');

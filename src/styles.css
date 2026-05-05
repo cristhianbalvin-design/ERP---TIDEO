@@ -101,6 +101,25 @@ body {
   font-family: 'DM Sans', sans-serif;
 }
 
+.alert {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 13px;
+}
+.alert-danger {
+  border-color: rgba(229,57,53,0.35);
+  background: var(--danger-lt);
+  color: var(--danger);
+}
+.alert-info {
+  border-color: rgba(0,188,212,0.28);
+  background: var(--cyan-lt);
+  color: var(--cyan-dk);
+}
+
 /* === LAYOUT === */
 .app-shell { display: flex; min-height: 100vh; }
 .sidebar {

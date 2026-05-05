@@ -105,7 +105,12 @@ serve(async (req) => {
   if (permisosError) return jsonResponse({ success: false, error: permisosError.message }, 500);
 
   const { error: deleteError } = await adminClient.from("roles").delete().eq("id", rolId);
-  if (deleteError) return jsonResponse({ success: false, error: deleteError.message }, 500);
+  if (deleteError) {
+    const message = /usuarios_empresas_rol_id_fkey|foreign key constraint/i.test(deleteError.message)
+      ? "No puedes eliminar este rol porque tiene usuarios asignados. Reasigna o elimina esas asignaciones primero."
+      : deleteError.message;
+    return jsonResponse({ success: false, error: message }, 500);
+  }
 
   return jsonResponse({ success: true });
 });

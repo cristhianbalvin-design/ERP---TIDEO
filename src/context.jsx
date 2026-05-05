@@ -234,6 +234,13 @@ export function AppProvider({ children }) {
   const addNotificacion = (msg) => {
     setNotificaciones(prev => [{ id: generateId('not'), text: msg, read: false, time: 'Justo ahora' }, ...prev]);
   };
+  const [accessDebug, setAccessDebug] = useState({
+    build: 'access-debug-2026-05-05-01',
+    usuariosError: '',
+    rolesError: '',
+    usuariosLoadedAt: '',
+    rolesLoadedAt: '',
+  });
   const markNotificacionesRead = () => {
     setNotificaciones(prev => prev.map(n => ({ ...n, read: true })));
   };
@@ -585,6 +592,7 @@ export function AppProvider({ children }) {
           const usrData = await usuariosService.getUsuarios(empresa.id);
           if (mounted) {
             setUsuarios(usrData || []);
+            setAccessDebug(prev => ({ ...prev, usuariosError: '', usuariosLoadedAt: new Date().toLocaleTimeString('es-PE') }));
             
             // Auto-sincronizar al admin logueado si no aparece en la lista
             if (authUser?.email && !usrData?.find(u => u.email === authUser.email)) {
@@ -601,7 +609,11 @@ export function AppProvider({ children }) {
           }
         } catch (_err) { 
           console.error('Error loading usuarios from Supabase:', _err);
-          if (mounted) addNotificacion(`No se pudieron cargar usuarios: ${_err.message || 'Error desconocido'}`);
+          const message = _err.message || 'Error desconocido';
+          if (mounted) {
+            setAccessDebug(prev => ({ ...prev, usuariosError: message }));
+            addNotificacion(`No se pudieron cargar usuarios: ${message}`);
+          }
         }
 
         try {
@@ -626,11 +638,13 @@ export function AppProvider({ children }) {
               };
             }
             if (mounted) setRolesCtx(rolesObj);
+            if (mounted) setAccessDebug(prev => ({ ...prev, rolesError: '', rolesLoadedAt: new Date().toLocaleTimeString('es-PE') }));
           } else if (mounted) {
             setRolesCtx(prev => prev || {});
           }
         } catch (_err) {
           console.error('Error loading roles from Supabase:', _err);
+          if (mounted) setAccessDebug(prev => ({ ...prev, rolesError: _err.message || 'Error desconocido' }));
         }
 
       } catch (_err) { /* keep mock on error */ }
@@ -2958,6 +2972,7 @@ export function AppProvider({ children }) {
       };
     }
     setRolesCtx(rolesObj);
+    setAccessDebug(prev => ({ ...prev, rolesError: '', rolesLoadedAt: new Date().toLocaleTimeString('es-PE') }));
     return rolesObj;
   };
 
@@ -2966,6 +2981,7 @@ export function AppProvider({ children }) {
     if (!authSession?.user?.id || !empresa?.id || !membresiaActiva?.rol_id) return;
     cargarRolesAcceso().catch(error => {
       console.error('Error reloading roles from Supabase:', error);
+      setAccessDebug(prev => ({ ...prev, rolesError: error.message || 'Error desconocido' }));
       addNotificacion(`No se pudieron cargar roles desde Supabase: ${error.message}`, 'error');
     });
   }, [authSession?.user?.id, empresa?.id, membresiaActiva?.rol_id]);
@@ -3009,19 +3025,19 @@ export function AppProvider({ children }) {
   };
 
   const eliminarRol = async (rolId) => {
-    const previous = rolesCtx;
-    setRolesCtx(prev => { const next = { ...prev }; delete next[rolId]; return next; });
     if (isSupabaseConfigured()) {
       try {
         await rolesService.eliminarRol(rolId);
         await cargarRolesAcceso();
       } catch (error) {
-        setRolesCtx(previous);
         const message = `No se pudo eliminar el rol en Supabase: ${error.message}`;
-        addNotificacion(message);
+        addNotificacion(message, 'error');
+        setAccessDebug(prev => ({ ...prev, rolesError: message }));
         try { window.alert(message); } catch {}
         return false;
       }
+    } else {
+      setRolesCtx(prev => { const next = { ...prev }; delete next[rolId]; return next; });
     }
     addNotificacion('Rol eliminado.');
     return true;
@@ -3051,7 +3067,7 @@ export function AppProvider({ children }) {
     empresasPlataforma, setEmpresasPlataforma, crearTenantConAdmin,
     // Data
     usuarios, setUsuarios,
-    roles: rolesCtx, clonarRol, actualizarPermisosRol, crearRol, eliminarRol, editarRol,
+    roles: rolesCtx, clonarRol, actualizarPermisosRol, crearRol, eliminarRol, editarRol, accessDebug,
     leads, setLeads, updateLeadState,
     cuentas, setCuentas, actualizarCuenta, actualizarLogoCuenta,
     contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta,
