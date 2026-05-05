@@ -27,6 +27,7 @@ function Roles() {
   const [editDesc, setEditDesc] = useState('');
   const [reasignarUsuario, setReasignarUsuario] = useState(null);
   const [reasignarRolId, setReasignarRolId] = useState('');
+  const [roleActionError, setRoleActionError] = useState('');
 
   // Sync sel cuando se elimina un rol
   useEffect(() => {
@@ -52,10 +53,26 @@ function Roles() {
   };
 
   const handleEliminar = async () => {
-    if (role?.es_superadmin) { addNotificacion('No puedes eliminar un rol superadmin.', 'error'); return; }
+    setRoleActionError('');
+    if (role?.es_superadmin) {
+      const message = 'No puedes eliminar un rol superadmin.';
+      setRoleActionError(message);
+      addNotificacion(message, 'error');
+      return;
+    }
     const assigned = role?.assigned_count ?? usuarios.filter(u => u.rol === sel).length;
-    if (assigned > 0) { addNotificacion(`No puedes eliminar este rol porque tiene ${assigned} usuario(s) asignado(s).`, 'error'); return; }
-    if (rolKeys.length <= 1) { addNotificacion('No puedes eliminar el unico rol.', 'error'); return; }
+    if (assigned > 0) {
+      const message = `No puedes eliminar este rol porque tiene ${assigned} usuario(s) asignado(s). Reasignalos antes de eliminarlo.`;
+      setRoleActionError(message);
+      addNotificacion(message, 'error');
+      return;
+    }
+    if (rolKeys.length <= 1) {
+      const message = 'No puedes eliminar el unico rol.';
+      setRoleActionError(message);
+      addNotificacion(message, 'error');
+      return;
+    }
     if (!confirm(`Eliminar el rol "${role?.nombre}"? Esta accion no se puede deshacer.`)) return;
     const eliminado = await eliminarRol(sel);
     if (eliminado) setSel(rolKeys.find(k => k !== sel) || '');
@@ -120,6 +137,11 @@ function Roles() {
             : `Roles cargados desde Supabase a las ${accessDebug.rolesLoadedAt}.`}
         </div>
       )}
+      {roleActionError && (
+        <div className="alert alert-danger" style={{marginBottom:16}}>
+          {roleActionError}
+        </div>
+      )}
 
       <div style={{display:'grid', gridTemplateColumns:'280px 1fr', gap:20}}>
         {/* Sidebar roles */}
@@ -167,7 +189,6 @@ function Roles() {
                 className="btn btn-secondary btn-sm"
                 style={{color:'var(--danger)'}}
                 onClick={handleEliminar}
-                disabled={role?.es_superadmin || rolKeys.length <= 1 || (role?.assigned_count ?? usuarios.filter(u => u.rol === sel).length) > 0}
                 title={role?.es_superadmin ? 'No se puede eliminar un rol superadmin' : (role?.assigned_count ?? usuarios.filter(u => u.rol === sel).length) > 0 ? 'Reasigna los usuarios antes de eliminar el rol' : 'Eliminar rol'}
               >
                 {I.trash} Eliminar rol
