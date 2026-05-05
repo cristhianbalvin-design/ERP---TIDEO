@@ -414,6 +414,16 @@ function QuickCreateModal({ active, onClose }) {
       genericRecord.detail = result?.admin_vinculado
         ? `Admin vinculado: ${values.admin_email}`
         : `Tenant creado; admin pendiente: ${values.admin_email}`;
+    } else if (active === 'roles') {
+      if (!values.nombre) throw new Error('Completa el nombre del rol.');
+      const newId = await app.crearRol({
+        nombre: values.nombre,
+        descripcion: values.descripcion || '',
+        perfil_campo: values.perfil_campo || '',
+      });
+      if (!newId) throw new Error('No se pudo crear el rol.');
+      genericRecord.id = newId;
+      genericRecord.detail = 'Rol guardado en Supabase';
     } else if (active === 'usuarios') {
       if (!values.password || values.password.length < 6) throw new Error('La contraseña temporal debe tener al menos 6 caracteres.');
       if (!values.rol) throw new Error('Debes seleccionar un rol para el usuario.');
@@ -506,8 +516,10 @@ function QuickCreateModal({ active, onClose }) {
       app.setRenovaciones(prev => [{ id: makeId('ren'), empresa_id: app.empresa.id, estado: 'pendiente_contacto', oportunidad_generada: false, dias_restantes: 60, monto_contrato: number(values.monto_contrato), ...values }, ...prev]);
     }
 
-    app.addCreatedRecord(active, genericRecord);
-    app.addNotificacion(`Registro creado desde ${template.title}.`);
+    if (!['roles', 'usuarios', 'tenants'].includes(active)) {
+      app.addCreatedRecord(active, genericRecord);
+      app.addNotificacion(`Registro creado desde ${template.title}.`);
+    }
     onClose();
     } catch (err) {
       const message = err?.message || 'No se pudo guardar el registro.';
