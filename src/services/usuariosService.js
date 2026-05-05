@@ -6,7 +6,16 @@ export const usuariosService = {
     const { data: fnData, error: fnError } = await supabase.functions.invoke('listar-usuarios-acceso', {
       body: { empresa_id: empresaId },
     });
-    if (!fnError && fnData?.success) return fnData.usuarios || [];
+    if (fnError) {
+      let message = fnError.message;
+      try {
+        const body = await fnError.context?.json?.();
+        message = body?.error || message;
+      } catch { /* ignore */ }
+      throw new Error(message || 'No se pudieron cargar usuarios.');
+    }
+    if (fnData?.success) return fnData.usuarios || [];
+    if (fnData && !fnData.success) throw new Error(fnData.error || 'No se pudieron cargar usuarios.');
 
     const { data, error } = await supabase
       .from('usuarios')

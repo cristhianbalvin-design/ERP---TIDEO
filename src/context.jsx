@@ -601,7 +601,7 @@ export function AppProvider({ children }) {
           }
         } catch (_err) { 
           console.error('Error loading usuarios from Supabase:', _err);
-          // Solo en caso de error real mantenemos los mock para no romper la UI
+          if (mounted) addNotificacion(`No se pudieron cargar usuarios: ${_err.message || 'Error desconocido'}`);
         }
 
         try {
@@ -3017,7 +3017,9 @@ export function AppProvider({ children }) {
         await cargarRolesAcceso();
       } catch (error) {
         setRolesCtx(previous);
-        addNotificacion(`No se pudo eliminar el rol en Supabase: ${error.message}`, 'error');
+        const message = `No se pudo eliminar el rol en Supabase: ${error.message}`;
+        addNotificacion(message);
+        try { window.alert(message); } catch {}
         return false;
       }
     }

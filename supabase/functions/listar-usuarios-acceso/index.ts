@@ -46,19 +46,28 @@ serve(async (req) => {
 
   const { data: memberships, error: membershipError } = await adminClient
     .from("usuarios_empresas")
-    .select("user_id, empresa_id, rol_id, acceso_campo, perfil_campo, estado, roles!inner(id, nombre, es_admin_empresa, es_superadmin)")
+    .select("user_id, empresa_id, rol_id, acceso_campo, perfil_campo, estado")
     .eq("estado", "activo");
 
   if (membershipError) return jsonResponse({ success: false, error: membershipError.message }, 500);
 
+  const roleIds = [...new Set((memberships || []).map((m) => m.rol_id).filter(Boolean))];
+  const { data: rolesRows, error: rolesError } = roleIds.length
+    ? await adminClient.from("roles").select("id, nombre, es_admin_empresa, es_superadmin").in("id", roleIds)
+    : { data: [], error: null };
+
+  if (rolesError) return jsonResponse({ success: false, error: rolesError.message }, 500);
+
+  const rolesById = new Map((rolesRows || []).map((role) => [role.id, role]));
+
   const callerMemberships = (memberships || []).filter((m) => m.user_id === caller.id);
   const isSuperadmin = callerMemberships.some((m) => {
-    const role = Array.isArray(m.roles) ? m.roles[0] : m.roles;
+    const role = rolesById.get(m.rol_id);
     return role?.es_superadmin;
   });
   const manageableEmpresaIds = new Set<string>();
   for (const membership of callerMemberships) {
-    const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
+    const role = rolesById.get(membership.rol_id);
     if (role?.es_superadmin || role?.es_admin_empresa) manageableEmpresaIds.add(membership.empresa_id);
   }
 
@@ -88,7 +97,7 @@ serve(async (req) => {
     const key = `${membership.user_id}:${membership.empresa_id}`;
     if (rows.has(key)) continue;
     const authUser = authById.get(membership.user_id);
-    const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
+    const role = rolesById.get(membership.rol_id);
     rows.set(key, {
       id: membership.user_id,
       empresa_id: membership.empresa_id,

@@ -58,14 +58,23 @@ serve(async (req) => {
 
   const { data: callerMemberships, error: membershipError } = await adminClient
     .from("usuarios_empresas")
-    .select("empresa_id, estado, roles!inner(id, es_admin_empresa, es_superadmin)")
+    .select("empresa_id, rol_id, estado")
     .eq("user_id", caller.id)
     .eq("estado", "activo");
 
   if (membershipError) return jsonResponse({ success: false, error: membershipError.message }, 500);
 
+  const callerRoleIds = [...new Set((callerMemberships || []).map((m) => m.rol_id).filter(Boolean))];
+  const { data: callerRoles, error: callerRolesError } = callerRoleIds.length
+    ? await adminClient.from("roles").select("id, es_admin_empresa, es_superadmin").in("id", callerRoleIds)
+    : { data: [], error: null };
+
+  if (callerRolesError) return jsonResponse({ success: false, error: callerRolesError.message }, 500);
+
+  const callerRolesById = new Map((callerRoles || []).map((callerRole) => [callerRole.id, callerRole]));
+
   const canManage = (callerMemberships || []).some((membership) => {
-    const callerRole = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
+    const callerRole = callerRolesById.get(membership.rol_id);
     return callerRole?.es_superadmin || (membership.empresa_id === role.empresa_id && callerRole?.es_admin_empresa);
   });
 
