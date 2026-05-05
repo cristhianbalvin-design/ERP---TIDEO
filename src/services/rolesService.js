@@ -56,7 +56,7 @@ export const rolesService = {
     // upsert handles insert or update based on (rol_id, pantalla) unique constraint
     const { error } = await supabase
       .from('permisos_roles')
-      .upsert(permisos.map(p => ({ ...p, rol_id: rolId })));
+      .upsert(permisos.map(p => ({ ...p, rol_id: rolId })), { onConflict: 'rol_id,pantalla' });
     if (error) throw error;
   },
 

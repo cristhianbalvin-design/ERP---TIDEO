@@ -2977,6 +2977,17 @@ export function AppProvider({ children }) {
           es_admin_empresa: false,
           activo: true,
         });
+        await rolesService.actualizarPermisos(newId, MOCK.pantallasPermisos.map(p => ({
+          pantalla: p.key,
+          puede_ver: false,
+          puede_crear: false,
+          puede_editar: false,
+          puede_anular: false,
+          puede_aprobar: false,
+          puede_exportar: false,
+          puede_ver_costos: false,
+          puede_ver_finanzas: false,
+        })));
         await cargarRolesAcceso();
       } catch (error) {
         setRolesCtx(prev => { const next = { ...prev }; delete next[newId]; return next; });
