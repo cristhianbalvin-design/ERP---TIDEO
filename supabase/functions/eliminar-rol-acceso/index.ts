@@ -83,13 +83,9 @@ serve(async (req) => {
   const { count: membershipCount, error: membershipCountError } = await adminClient
     .from("usuarios_empresas")
     .select("id", { count: "exact", head: true })
-    .eq("rol_id", rolId)
-    .eq("estado", "activo");
+    .eq("rol_id", rolId);
 
   if (membershipCountError) return jsonResponse({ success: false, error: membershipCountError.message }, 500);
-  if ((membershipCount || 0) > 0) {
-    return jsonResponse({ success: false, error: `No puedes eliminar este rol porque tiene ${membershipCount} usuario(s) asignado(s).` }, 400);
-  }
 
   const { count: profileCount, error: profileCountError } = await adminClient
     .from("usuarios")
@@ -98,7 +94,19 @@ serve(async (req) => {
 
   if (profileCountError) return jsonResponse({ success: false, error: profileCountError.message }, 500);
   if ((profileCount || 0) > 0) {
-    return jsonResponse({ success: false, error: `No puedes eliminar este rol porque tiene ${profileCount} perfil(es) de usuario asignado(s).` }, 400);
+    const { error: clearProfilesError } = await adminClient
+      .from("usuarios")
+      .update({ rol: null })
+      .eq("rol", rolId);
+    if (clearProfilesError) return jsonResponse({ success: false, error: clearProfilesError.message }, 500);
+  }
+
+  if ((membershipCount || 0) > 0) {
+    const { error: membershipsDeleteError } = await adminClient
+      .from("usuarios_empresas")
+      .delete()
+      .eq("rol_id", rolId);
+    if (membershipsDeleteError) return jsonResponse({ success: false, error: membershipsDeleteError.message }, 500);
   }
 
   const { error: permisosError } = await adminClient.from("permisos_roles").delete().eq("rol_id", rolId);
@@ -112,5 +120,9 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: message }, 500);
   }
 
-  return jsonResponse({ success: true });
+  return jsonResponse({
+    success: true,
+    deleted_memberships: membershipCount || 0,
+    updated_profiles: profileCount || 0,
+  });
 });

@@ -61,19 +61,16 @@ function Roles() {
       return;
     }
     const assigned = role?.assigned_count ?? usuarios.filter(u => u.rol === sel).length;
-    if (assigned > 0) {
-      const message = `No puedes eliminar este rol porque tiene ${assigned} usuario(s) asignado(s). Reasignalos antes de eliminarlo.`;
-      setRoleActionError(message);
-      addNotificacion(message, 'error');
-      return;
-    }
     if (rolKeys.length <= 1) {
       const message = 'No puedes eliminar el unico rol.';
       setRoleActionError(message);
       addNotificacion(message, 'error');
       return;
     }
-    if (!confirm(`Eliminar el rol "${role?.nombre}"? Esta accion no se puede deshacer.`)) return;
+    const detail = assigned > 0
+      ? ` Tambien se eliminaran ${assigned} asignacion(es) interna(s) de usuarios_empresas para liberar el rol.`
+      : '';
+    if (!confirm(`Eliminar el rol "${role?.nombre}"?${detail} Esta accion no se puede deshacer.`)) return;
     const eliminado = await eliminarRol(sel);
     if (eliminado) setSel(rolKeys.find(k => k !== sel) || '');
   };
@@ -189,7 +186,7 @@ function Roles() {
                 className="btn btn-secondary btn-sm"
                 style={{color:'var(--danger)'}}
                 onClick={handleEliminar}
-                title={role?.es_superadmin ? 'No se puede eliminar un rol superadmin' : (role?.assigned_count ?? usuarios.filter(u => u.rol === sel).length) > 0 ? 'Reasigna los usuarios antes de eliminar el rol' : 'Eliminar rol'}
+                title={role?.es_superadmin ? 'No se puede eliminar un rol superadmin' : 'Eliminar rol'}
               >
                 {I.trash} Eliminar rol
               </button>
