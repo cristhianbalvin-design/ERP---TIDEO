@@ -53,7 +53,7 @@ function Roles() {
 
   const handleEliminar = async () => {
     if (role?.es_superadmin) { addNotificacion('No puedes eliminar un rol superadmin.', 'error'); return; }
-    const assigned = usuarios.filter(u => u.rol === sel).length;
+    const assigned = role?.assigned_count ?? usuarios.filter(u => u.rol === sel).length;
     if (assigned > 0) { addNotificacion(`No puedes eliminar este rol porque tiene ${assigned} usuario(s) asignado(s).`, 'error'); return; }
     if (rolKeys.length <= 1) { addNotificacion('No puedes eliminar el unico rol.', 'error'); return; }
     if (!confirm(`Eliminar el rol "${role?.nombre}"? Esta accion no se puede deshacer.`)) return;
@@ -122,7 +122,7 @@ function Roles() {
               <div key={k} onClick={()=>setSel(k)} style={{padding:'10px 12px', borderRadius:8, cursor:'pointer', background:sel===k?'var(--surface-hover)':'transparent', borderLeft:sel===k?'3px solid var(--cyan)':'3px solid transparent', position:'relative'}}>
                 <div style={{fontWeight:600, fontSize:13}}>{r.nombre}</div>
                 <div className="text-muted" style={{fontSize:11,marginTop:2}}>{r.descripcion}</div>
-                <div className="text-subtle" style={{fontSize:11,marginTop:4}}>{usuarios.filter(u=>u.rol===k).length} usuarios</div>
+                <div className="text-subtle" style={{fontSize:11,marginTop:4}}>{r.assigned_count ?? usuarios.filter(u=>u.rol===k).length} usuarios</div>
                 {sel === k && (
                   <button className="icon-btn" style={{position:'absolute',top:8,right:4,opacity:0.4,fontSize:11}} title="Eliminar rol"
                     onClick={e => { e.stopPropagation(); handleEliminar(); }}>{I.trash}</button>
@@ -159,8 +159,8 @@ function Roles() {
                 className="btn btn-secondary btn-sm"
                 style={{color:'var(--danger)'}}
                 onClick={handleEliminar}
-                disabled={role?.es_superadmin || rolKeys.length <= 1 || usuarios.some(u => u.rol === sel)}
-                title={role?.es_superadmin ? 'No se puede eliminar un rol superadmin' : usuarios.some(u => u.rol === sel) ? 'Reasigna los usuarios antes de eliminar el rol' : 'Eliminar rol'}
+                disabled={role?.es_superadmin || rolKeys.length <= 1 || (role?.assigned_count ?? usuarios.filter(u => u.rol === sel).length) > 0}
+                title={role?.es_superadmin ? 'No se puede eliminar un rol superadmin' : (role?.assigned_count ?? usuarios.filter(u => u.rol === sel).length) > 0 ? 'Reasigna los usuarios antes de eliminar el rol' : 'Eliminar rol'}
               >
                 {I.trash} Eliminar rol
               </button>

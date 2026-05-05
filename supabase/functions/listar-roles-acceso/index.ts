@@ -94,5 +94,21 @@ serve(async (req) => {
 
   if (permisosError) return jsonResponse({ success: false, error: permisosError.message }, 500);
 
-  return jsonResponse({ success: true, roles: roles || [], permisos: permisos || [] });
+  const { data: assignedRows, error: assignedError } = roleIds.length
+    ? await adminClient.from("usuarios_empresas").select("rol_id").in("rol_id", roleIds).eq("estado", "activo")
+    : { data: [], error: null };
+
+  if (assignedError) return jsonResponse({ success: false, error: assignedError.message }, 500);
+
+  const assignedCounts = new Map<string, number>();
+  for (const row of assignedRows || []) {
+    assignedCounts.set(row.rol_id, (assignedCounts.get(row.rol_id) || 0) + 1);
+  }
+
+  const rolesWithCounts = (roles || []).map((role) => ({
+    ...role,
+    assigned_count: assignedCounts.get(role.id) || 0,
+  }));
+
+  return jsonResponse({ success: true, roles: rolesWithCounts, permisos: permisos || [] });
 });

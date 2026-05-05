@@ -74,11 +74,18 @@ export const rolesService = {
 
   async eliminarRol(rolId) {
     const supabase = await getSupabaseClient();
-    const { error } = await supabase
-      .from('roles')
-      .delete()
-      .eq('id', rolId);
-    if (error) throw error;
+    const { data, error } = await supabase.functions.invoke('eliminar-rol-acceso', {
+      body: { rol_id: rolId },
+    });
+    if (error) {
+      let message = error.message;
+      try {
+        const body = await error.context?.json?.();
+        message = body?.error || message;
+      } catch { /* ignore */ }
+      throw new Error(message || 'No se pudo eliminar el rol.');
+    }
+    if (!data?.success) throw new Error(data?.error || 'No se pudo eliminar el rol.');
   },
 
   async clonarRol(sourceRolId, newRolName, empresaId) {
