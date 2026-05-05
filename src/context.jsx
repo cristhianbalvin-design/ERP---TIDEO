@@ -2961,6 +2961,15 @@ export function AppProvider({ children }) {
     return rolesObj;
   };
 
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    if (!authSession?.user?.id || !empresa?.id || !membresiaActiva?.rol_id) return;
+    cargarRolesAcceso().catch(error => {
+      console.error('Error reloading roles from Supabase:', error);
+      addNotificacion(`No se pudieron cargar roles desde Supabase: ${error.message}`, 'error');
+    });
+  }, [authSession?.user?.id, empresa?.id, membresiaActiva?.rol_id]);
+
   const crearRol = async (rolData) => {
     const newId = isSupabaseConfigured() && empresa?.id
       ? `rol_${empresa.id}_${Math.random().toString(36).slice(2, 7)}`
