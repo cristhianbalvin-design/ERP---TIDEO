@@ -34,10 +34,10 @@ function Roles() {
     if (!sel || !roles[sel]) setSel(rolKeys[0]);
   }, [rolKeys, roles, sel]);
 
-  const handleNuevoRol = () => {
+  const handleNuevoRol = async () => {
     if (!nuevoNombre.trim()) return;
-    const newId = crearRol({ nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim() });
-    setSel(newId);
+    const newId = await crearRol({ nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim() });
+    if (newId) setSel(newId);
     setModalNuevo(false);
     setNuevoNombre('');
     setNuevoDesc('');

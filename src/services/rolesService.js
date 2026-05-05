@@ -3,6 +3,11 @@ import { getSupabaseClient } from '../lib/supabaseClient.js';
 export const rolesService = {
   async getRoles(empresaId) {
     const supabase = await getSupabaseClient();
+    const { data: fnData, error: fnError } = await supabase.functions.invoke('listar-roles-acceso', {
+      body: { empresa_id: empresaId },
+    });
+    if (!fnError && fnData?.success) return fnData.roles || [];
+
     const { data, error } = await supabase
       .from('roles')
       .select('*')
@@ -20,6 +25,19 @@ export const rolesService = {
       .eq('rol_id', rolId);
     if (error) throw error;
     return data || [];
+  },
+
+  async getRolesConPermisos(empresaId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.functions.invoke('listar-roles-acceso', {
+      body: { empresa_id: empresaId },
+    });
+    if (error) throw error;
+    if (!data?.success) throw new Error(data?.error || 'No se pudieron cargar los roles.');
+    return {
+      roles: data.roles || [],
+      permisos: data.permisos || [],
+    };
   },
 
   async crearRol(rol) {

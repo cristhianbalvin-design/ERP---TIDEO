@@ -605,18 +605,13 @@ export function AppProvider({ children }) {
         }
 
         try {
-          const rolesData = await rolesService.getRoles(empresa.id);
+          const { roles: rolesData, permisos: permisosData } = await rolesService.getRolesConPermisos(empresa.id);
           if (mounted && rolesData?.length) {
             // Convert list to object format if needed, but for the UI it might be easier as list
             // However, to keep compatibility with MOCK.roles, we might want to store it as object
             const rolesObj = {};
             for (const r of rolesData) {
-              let pRows = [];
-              try {
-                pRows = await rolesService.getPermisosRoles(r.id);
-              } catch (permErr) {
-                console.warn('No se pudieron cargar permisos del rol:', r.id, permErr);
-              }
+              const pRows = (permisosData || []).filter(p => p.rol_id === r.id);
               rolesObj[r.id] = {
                 ...r,
                 permisos: {
@@ -2943,23 +2938,51 @@ export function AppProvider({ children }) {
     }
   };
 
-  const crearRol = (rolData) => {
+  const cargarRolesAcceso = async () => {
+    if (!empresa?.id) return {};
+    const { roles: rolesData, permisos: permisosData } = await rolesService.getRolesConPermisos(empresa.id);
+    const rolesObj = {};
+    for (const r of rolesData || []) {
+      const pRows = (permisosData || []).filter(p => p.rol_id === r.id);
+      rolesObj[r.id] = {
+        ...r,
+        permisos: {
+          ver: pRows.filter(p => p.puede_ver).map(p => p.pantalla),
+          crear: pRows.some(p => p.puede_crear),
+          editar: pRows.some(p => p.puede_editar),
+          anular: pRows.some(p => p.puede_anular),
+          aprobar: pRows.some(p => p.puede_aprobar),
+          ver_costos: pRows.some(p => p.puede_ver_costos),
+          ver_finanzas: pRows.some(p => p.puede_ver_finanzas),
+        },
+      };
+    }
+    setRolesCtx(rolesObj);
+    return rolesObj;
+  };
+
+  const crearRol = async (rolData) => {
     const newId = isSupabaseConfigured() && empresa?.id
       ? `rol_${empresa.id}_${Math.random().toString(36).slice(2, 7)}`
       : `rol_${Math.random().toString(36).slice(2, 7)}`;
     setRolesCtx(prev => ({ ...prev, [newId]: { nombre: rolData.nombre, descripcion: rolData.descripcion || '', color: 'blue', permisos: { ver: [] } } }));
     if (isSupabaseConfigured() && empresa?.id) {
-      rolesService.crearRol({
-        id: newId,
-        empresa_id: empresa.id,
-        nombre: rolData.nombre,
-        descripcion: rolData.descripcion || '',
-        es_superadmin: false,
-        es_admin_empresa: false,
-        activo: true,
-      }).catch(error => {
+      try {
+        await rolesService.crearRol({
+          id: newId,
+          empresa_id: empresa.id,
+          nombre: rolData.nombre,
+          descripcion: rolData.descripcion || '',
+          es_superadmin: false,
+          es_admin_empresa: false,
+          activo: true,
+        });
+        await cargarRolesAcceso();
+      } catch (error) {
+        setRolesCtx(prev => { const next = { ...prev }; delete next[newId]; return next; });
         addNotificacion(`No se pudo guardar el rol en Supabase: ${error.message}`, 'error');
-      });
+        return null;
+      }
     }
     addNotificacion(`Rol "${rolData.nombre}" creado.`);
     return newId;
