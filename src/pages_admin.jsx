@@ -51,10 +51,14 @@ function Roles() {
     setClonarNombre('');
   };
 
-  const handleEliminar = () => {
-    if (rolKeys.length <= 1) { addNotificacion('No puedes eliminar el único rol.', 'error'); return; }
-    if (!confirm(`¿Eliminar el rol "${role?.nombre}"? Esta acción no se puede deshacer.`)) return;
-    eliminarRol(sel);
+  const handleEliminar = async () => {
+    if (role?.es_superadmin) { addNotificacion('No puedes eliminar un rol superadmin.', 'error'); return; }
+    const assigned = usuarios.filter(u => u.rol === sel).length;
+    if (assigned > 0) { addNotificacion(`No puedes eliminar este rol porque tiene ${assigned} usuario(s) asignado(s).`, 'error'); return; }
+    if (rolKeys.length <= 1) { addNotificacion('No puedes eliminar el unico rol.', 'error'); return; }
+    if (!confirm(`Eliminar el rol "${role?.nombre}"? Esta accion no se puede deshacer.`)) return;
+    const eliminado = await eliminarRol(sel);
+    if (eliminado) setSel(rolKeys.find(k => k !== sel) || '');
   };
 
   const handleSaveMeta = () => {
@@ -149,7 +153,18 @@ function Roles() {
                 <button className="icon-btn" style={{opacity:0.4}} title="Editar nombre" onClick={()=>{ setEditNombre(role.nombre); setEditDesc(role.descripcion||''); setEditingMeta(true); }}>{I.edit}</button>
               </div>
             )}
-            <button className="btn btn-secondary btn-sm" onClick={()=>setPreview(true)}>{I.eye} ¿Cómo ve la app este rol?</button>
+            <div className="row" style={{gap:8}}>
+              <button className="btn btn-secondary btn-sm" onClick={()=>setPreview(true)}>{I.eye} Como ve la app este rol?</button>
+              <button
+                className="btn btn-secondary btn-sm"
+                style={{color:'var(--danger)'}}
+                onClick={handleEliminar}
+                disabled={role?.es_superadmin || rolKeys.length <= 1 || usuarios.some(u => u.rol === sel)}
+                title={role?.es_superadmin ? 'No se puede eliminar un rol superadmin' : usuarios.some(u => u.rol === sel) ? 'Reasigna los usuarios antes de eliminar el rol' : 'Eliminar rol'}
+              >
+                {I.trash} Eliminar rol
+              </button>
+            </div>
           </div>
 
           <div style={{padding:'0 20px'}}>

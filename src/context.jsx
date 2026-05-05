@@ -3008,14 +3008,21 @@ export function AppProvider({ children }) {
     return newId;
   };
 
-  const eliminarRol = (rolId) => {
+  const eliminarRol = async (rolId) => {
+    const previous = rolesCtx;
     setRolesCtx(prev => { const next = { ...prev }; delete next[rolId]; return next; });
     if (isSupabaseConfigured()) {
-      rolesService.eliminarRol(rolId).catch(error => {
+      try {
+        await rolesService.eliminarRol(rolId);
+        await cargarRolesAcceso();
+      } catch (error) {
+        setRolesCtx(previous);
         addNotificacion(`No se pudo eliminar el rol en Supabase: ${error.message}`, 'error');
-      });
+        return false;
+      }
     }
     addNotificacion('Rol eliminado.');
+    return true;
   };
 
   const editarRol = (rolId, datos) => {
