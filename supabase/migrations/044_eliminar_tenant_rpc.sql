@@ -11,12 +11,12 @@ begin
     raise exception 'Solo superadmin puede eliminar tenants.';
   end if;
 
-  -- 1. Tablas que referencian otras tablas del mismo tenant (borrar primero)
+  -- 1. Tablas que referencian cotizaciones u os_clientes (borrar antes que sus padres)
+  delete from public.hojas_costeo      where empresa_id = p_empresa_id;
   delete from public.os_clientes       where empresa_id = p_empresa_id;
   delete from public.cotizaciones      where empresa_id = p_empresa_id;
   delete from public.actividades_comerciales where empresa_id = p_empresa_id;
   delete from public.agenda_comercial  where empresa_id = p_empresa_id;
-  delete from public.hojas_costeo      where empresa_id = p_empresa_id;
 
   -- 2. Maestros y configuración del tenant
   delete from public.cargos_empresa         where empresa_id = p_empresa_id;
