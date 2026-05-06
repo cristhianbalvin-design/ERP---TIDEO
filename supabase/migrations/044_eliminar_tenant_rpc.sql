@@ -11,8 +11,8 @@ begin
     raise exception 'Solo superadmin puede eliminar tenants.';
   end if;
 
-  -- Deshabilita FK triggers para esta transaccion (hojas_costeo <-> cotizaciones son circulares)
-  perform set_config('session_replication_role', 'replica', true);
+  -- Rompe la referencia circular cotizaciones <-> hojas_costeo antes de borrar
+  update public.cotizaciones set hoja_costeo_id = null where empresa_id = p_empresa_id;
 
   delete from public.hojas_costeo            where empresa_id = p_empresa_id;
   delete from public.os_clientes             where empresa_id = p_empresa_id;
