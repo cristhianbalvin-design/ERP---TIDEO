@@ -733,8 +733,10 @@ export function AppProvider({ children }) {
 
         setTodasMembresias(activas);
 
-        if (activas.length === 1) {
-          await cargarMembresiaCompleta(activas[0]);
+        if (activas.length >= 1) {
+          const lastId = localStorage.getItem('last_empresa_id');
+          const mem = (lastId && activas.find(m => m.empresa_id === lastId)) || activas[0];
+          await cargarMembresiaCompleta(mem);
         } else {
           setMembresiaCargando(false);
         }
