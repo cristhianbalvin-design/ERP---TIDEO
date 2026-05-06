@@ -94,5 +94,20 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: membershipUpdateError.message }, 500);
   }
 
-  return jsonResponse({ success: true });
+  // Si el usuario ya no tiene ningún tenant activo, deshabilitar la cuenta Auth
+  // para que no pueda seguir haciendo login.
+  const { count: remainingCount } = await adminClient
+    .from("usuarios_empresas")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("estado", "activo");
+
+  const authDisabled = (remainingCount ?? 1) === 0;
+
+  if (authDisabled) {
+    // ban_duration largo deshabilita la cuenta sin perder el historial de auditoría.
+    await adminClient.auth.admin.updateUserById(userId, { ban_duration: "876600h" });
+  }
+
+  return jsonResponse({ success: true, authDisabled });
 });

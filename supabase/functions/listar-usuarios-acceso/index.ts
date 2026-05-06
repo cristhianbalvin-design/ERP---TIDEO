@@ -120,6 +120,12 @@ serve(async (req) => {
     if (rows.has(key)) continue;
     const authUser = authById.get(membership.user_id);
     const role = rolesById.get(membership.rol_id);
+    const estadoMap: Record<string, string> = {
+      activo: "Activo",
+      suspendido: "Suspendido",
+      invitado: "Invitado",
+      inactivo: "Inactivo",
+    };
     rows.set(key, {
       id: membership.user_id,
       empresa_id: membership.empresa_id,
@@ -130,7 +136,7 @@ serve(async (req) => {
       area: "",
       campo: membership.acceso_campo,
       campoPerfil: membership.perfil_campo,
-      estado: "Activo",
+      estado: estadoMap[membership.estado] ?? membership.estado,
     });
   }
 

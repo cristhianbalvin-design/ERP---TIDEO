@@ -85,82 +85,53 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: membershipError.message }, 500);
   }
 
-  const canManage = (memberships || []).some((membership) => {
+  const callerIsSuperadmin = (memberships || []).some((membership) => {
     const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
-    return role?.es_superadmin || (membership.empresa_id === empresaId && role?.es_admin_empresa);
+    return role?.es_superadmin;
+  });
+
+  const canManage = callerIsSuperadmin || (memberships || []).some((membership) => {
+    const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
+    return membership.empresa_id === empresaId && role?.es_admin_empresa;
   });
 
   if (!canManage) {
     return jsonResponse({ success: false, error: "No tienes permiso para crear usuarios en este tenant." }, 403);
   }
 
-  const roleAliases: Record<string, string> = {
-    admin: "admin",
-    plataforma: "admin",
-    superadmin: "admin",
-    comercial: "comercial",
-    vendedor: "vendedor",
-    tecnico: "tecnico",
-    finanzas: "finanzas",
-  };
-
+  // Resolver el rol por ID exacto dentro del tenant (no se aceptan roles de otros tenants)
   let { data: roleRow, error: roleError } = await adminClient
     .from("roles")
-    .select("id")
+    .select("id, es_superadmin, es_admin_empresa")
     .eq("id", rolInput)
-    .or(`empresa_id.eq.${empresaId},empresa_id.is.null`)
+    .eq("empresa_id", empresaId)
     .eq("activo", true)
     .maybeSingle();
 
+  // Si no se encontro por ID exacto, buscar por nombre dentro del tenant
   if (!roleRow && !roleError) {
-    const alias = roleAliases[rolInput.toLowerCase()];
-    if (alias === "admin") {
-      const fallbackAdmin = await adminClient
-        .from("roles")
-        .select("id")
-        .eq("empresa_id", empresaId)
-        .eq("es_admin_empresa", true)
-        .eq("activo", true)
-        .order("nombre", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      roleRow = fallbackAdmin.data;
-      roleError = fallbackAdmin.error;
-    }
-  }
-
-  if (!roleRow && !roleError) {
-    const alias = roleAliases[rolInput.toLowerCase()] || rolInput;
-    const fallback = await adminClient
+    const byName = await adminClient
       .from("roles")
-      .select("id")
-      .or(`empresa_id.eq.${empresaId},empresa_id.is.null`)
-      .ilike("nombre", `%${alias}%`)
-      .eq("activo", true)
-      .limit(1)
-      .maybeSingle();
-    roleRow = fallback.data;
-    roleError = fallback.error;
-  }
-
-  if (!roleRow && !roleError) {
-    const firstTenantRole = await adminClient
-      .from("roles")
-      .select("id")
+      .select("id, es_superadmin, es_admin_empresa")
       .eq("empresa_id", empresaId)
+      .ilike("nombre", `%${rolInput}%`)
       .eq("activo", true)
-      .order("es_admin_empresa", { ascending: false })
-      .order("nombre", { ascending: true })
       .limit(1)
       .maybeSingle();
-    roleRow = firstTenantRole.data;
-    roleError = firstTenantRole.error;
+    roleRow = byName.data;
+    roleError = byName.error;
   }
 
   if (roleError) return jsonResponse({ success: false, error: roleError.message }, 500);
   if (!roleRow?.id) return jsonResponse({ success: false, error: "El rol seleccionado no existe para este tenant." }, 400);
 
+  // Solo el superadmin puede asignar roles con es_superadmin=true
+  if (roleRow.es_superadmin && !callerIsSuperadmin) {
+    return jsonResponse({ success: false, error: "No puedes asignar un rol de superadmin a un usuario." }, 403);
+  }
+
   let alreadyExists = false;
+  let membershipOverwritten = false;
   let uid: string | null = null;
   const { data: createdUser, error: createError } = await adminClient.auth.admin.createUser({
     email,
@@ -180,6 +151,18 @@ serve(async (req) => {
   }
 
   if (!uid) return jsonResponse({ success: false, error: "No se pudo resolver el usuario Auth creado." }, 500);
+
+  // Detectar si ya existe una membresía activa para este usuario en este tenant
+  const { data: existingMembership } = await adminClient
+    .from("usuarios_empresas")
+    .select("rol_id, estado")
+    .eq("user_id", uid)
+    .eq("empresa_id", empresaId)
+    .maybeSingle();
+
+  if (existingMembership?.estado === "activo") {
+    membershipOverwritten = true;
+  }
 
   const { error: linkError } = await adminClient
     .from("usuarios_empresas")
@@ -216,6 +199,7 @@ serve(async (req) => {
   return jsonResponse({
     success: true,
     alreadyExists,
+    membershipOverwritten,
     user: savedUser || usuario,
   });
 });
