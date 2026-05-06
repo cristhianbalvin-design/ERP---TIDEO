@@ -25,10 +25,7 @@ export const plataformaService = {
 
   async eliminarEmpresa(id) {
     const supabase = await getSupabaseClient();
-    const { error } = await supabase
-      .from('empresas')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.rpc('eliminar_tenant_completo', { p_empresa_id: id });
     if (error) throw error;
   },
 
