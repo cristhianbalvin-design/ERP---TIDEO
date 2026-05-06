@@ -1817,7 +1817,11 @@ export function AppProvider({ children }) {
       const supabase = await getSupabaseClient();
       if (!empresa?.id) throw new Error('No hay tenant activo para crear el usuario.');
 
-      const { data, error } = await supabase.functions.invoke('crear-usuario-acceso', {
+      const timeout = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('La creacion del usuario esta tardando demasiado. Revisa la funcion crear-usuario-acceso en Supabase.')), 25000);
+      });
+      const { data, error } = await Promise.race([
+        supabase.functions.invoke('crear-usuario-acceso', {
         body: {
           nombre,
           email,
@@ -1826,7 +1830,9 @@ export function AppProvider({ children }) {
           area: area || '',
           empresa_id: empresa.id,
         },
-      });
+        }),
+        timeout,
+      ]);
 
       if (error) {
         let message = error.message;

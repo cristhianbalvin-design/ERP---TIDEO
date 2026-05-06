@@ -387,6 +387,7 @@ function Usuarios() {
   const [creando, setCreando] = useState(false);
   const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', area: '', password: '' });
   const [guardandoNuevo, setGuardandoNuevo] = useState(false);
+  const [nuevoError, setNuevoError] = useState('');
 
   const handleReset = async () => {
     if (!resetting) return;
@@ -402,12 +403,15 @@ function Usuarios() {
 
   const handleCrearUsuario = async (e) => {
     e.preventDefault();
+    setNuevoError('');
     setGuardandoNuevo(true);
     try {
       await crearUsuarioConAcceso(nuevoForm);
       setCreando(false);
       setNuevoForm({ nombre: '', email: '', rol: 'vendedor', area: '', password: '' });
-    } catch { /* notificación ya mostrada */ }
+    } catch (error) {
+      setNuevoError(error?.message || 'No se pudo crear el usuario.');
+    }
     setGuardandoNuevo(false);
   };
 
@@ -513,6 +517,7 @@ function Usuarios() {
               <p style={{fontSize:13, color:'var(--fg-muted)'}}>
                 Se creará una cuenta de acceso en Supabase Auth. El usuario deberá cambiar su contraseña al primer ingreso.
               </p>
+              {nuevoError && <div className="alert alert-danger">{nuevoError}</div>}
               <div className="input-group">
                 <label>Nombre completo</label>
                 <input className="input" required value={nuevoForm.nombre} onChange={e => setNuevoForm(p => ({...p, nombre: e.target.value}))} />
@@ -1795,3 +1800,4 @@ function MetricasSaaS() {
 }
 
 export { Roles, Usuarios, Tenants, Planes, Stub, Maestros, Servicios, Tarifarios, Parametros, RRHHAdmin, MetricasSaaS };
+

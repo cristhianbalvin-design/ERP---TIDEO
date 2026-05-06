@@ -15,6 +15,17 @@ const jsonResponse = (body: unknown, status = 200) =>
 const normalizeEmail = (email: unknown) =>
   String(email || "").trim().toLowerCase();
 
+const findAuthUserByEmail = async (adminClient: ReturnType<typeof createClient>, email: string) => {
+  for (let page = 1; page <= 20; page += 1) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw error;
+    const found = (data?.users || []).find((user) => normalizeEmail(user.email) === email);
+    if (found) return found;
+    if (!data?.users?.length || data.users.length < 1000) break;
+  }
+  return null;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return jsonResponse({ success: false, error: "Metodo no permitido." }, 405);
@@ -162,21 +173,26 @@ serve(async (req) => {
     const message = createError.message?.toLowerCase() || "";
     alreadyExists = message.includes("already") || message.includes("registered") || message.includes("exists");
     if (!alreadyExists) return jsonResponse({ success: false, error: createError.message }, 400);
+    const existingUser = await findAuthUserByEmail(adminClient, email);
+    uid = existingUser?.id || null;
   } else {
     uid = createdUser.user?.id || null;
   }
 
-  const { data: linkedRows, error: linkError } = await userClient.rpc("vincular_usuario_a_empresa", {
-    p_email: email,
-    p_empresa_id: empresaId,
-    p_rol_id: roleRow.id,
-    p_acceso_campo: false,
-    p_perfil_campo: null,
-  });
-
-  if (linkError) return jsonResponse({ success: false, error: linkError.message }, 400);
-  uid = linkedRows?.[0]?.user_id || uid;
   if (!uid) return jsonResponse({ success: false, error: "No se pudo resolver el usuario Auth creado." }, 500);
+
+  const { error: linkError } = await adminClient
+    .from("usuarios_empresas")
+    .upsert([{
+      user_id: uid,
+      empresa_id: empresaId,
+      rol_id: roleRow.id,
+      acceso_campo: false,
+      perfil_campo: null,
+      estado: "activo",
+    }], { onConflict: "user_id,empresa_id" });
+
+  if (linkError) return jsonResponse({ success: false, error: linkError.message }, 500);
 
   const usuario = {
     id: uid,
