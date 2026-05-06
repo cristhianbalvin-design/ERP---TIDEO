@@ -628,12 +628,14 @@ export function AppProvider({ children }) {
                 ...r,
                 permisos: {
                   ver: pRows.filter(p => p.puede_ver).map(p => p.pantalla),
-                  crear: pRows.some(p => p.puede_crear),
-                  editar: pRows.some(p => p.puede_editar),
-                  anular: pRows.some(p => p.puede_anular),
-                  aprobar: pRows.some(p => p.puede_aprobar),
+                  crear: pRows.filter(p => p.puede_crear).map(p => p.pantalla),
+                  editar: pRows.filter(p => p.puede_editar).map(p => p.pantalla),
+                  anular: pRows.filter(p => p.puede_anular).map(p => p.pantalla),
+                  aprobar: pRows.filter(p => p.puede_aprobar).map(p => p.pantalla),
+                  exportar: pRows.filter(p => p.puede_exportar).map(p => p.pantalla),
                   ver_costos: pRows.some(p => p.puede_ver_costos),
                   ver_finanzas: pRows.some(p => p.puede_ver_finanzas),
+                  ver_precios: pRows.some(p => p.permisos_extra?.puede_ver_precios),
                 }
               };
             }
@@ -2922,6 +2924,25 @@ export function AppProvider({ children }) {
     return newId;
   };
 
+  const permisoPantallaActivo = (permisos, key, pantalla) => {
+    const current = permisos?.[key];
+    if (Array.isArray(current)) return current.includes(pantalla);
+    return current === true || permisos?.todo;
+  };
+
+  const buildPermisosPayload = (permisos = {}) => MOCK.pantallasPermisos.map(p => ({
+    pantalla: p.key,
+    puede_ver: permisoPantallaActivo(permisos, 'ver', p.key),
+    puede_crear: permisoPantallaActivo(permisos, 'crear', p.key),
+    puede_editar: permisoPantallaActivo(permisos, 'editar', p.key),
+    puede_anular: permisoPantallaActivo(permisos, 'anular', p.key),
+    puede_aprobar: permisoPantallaActivo(permisos, 'aprobar', p.key),
+    puede_exportar: permisoPantallaActivo(permisos, 'exportar', p.key),
+    puede_ver_costos: Boolean(permisos.ver_costos || permisos.todo),
+    puede_ver_finanzas: Boolean(permisos.ver_finanzas || permisos.todo),
+    permisos_extra: { puede_ver_precios: Boolean(permisos.ver_precios || permisos.todo) },
+  }));
+
   const actualizarPermisosRol = (rolId, pantalla, key, value) => {
     const PER_SCREEN = ['ver', 'crear', 'editar', 'anular', 'aprobar', 'exportar'];
     setRolesCtx(prev => {
@@ -2940,22 +2961,20 @@ export function AppProvider({ children }) {
       }
       return { ...prev, [rolId]: r };
     });
-    if (isSupabaseConfigured() && pantalla) {
-      const payload = {
-        pantalla,
-        puede_ver: key === 'ver' ? value : Boolean(rolesCtx[rolId]?.permisos?.ver?.includes?.(pantalla)),
-        puede_crear: key === 'crear' ? value : Boolean(rolesCtx[rolId]?.permisos?.crear?.includes?.(pantalla)),
-        puede_editar: key === 'editar' ? value : Boolean(rolesCtx[rolId]?.permisos?.editar?.includes?.(pantalla)),
-        puede_anular: key === 'anular' ? value : Boolean(rolesCtx[rolId]?.permisos?.anular?.includes?.(pantalla)),
-        puede_aprobar: key === 'aprobar' ? value : Boolean(rolesCtx[rolId]?.permisos?.aprobar?.includes?.(pantalla)),
-        puede_exportar: key === 'exportar' ? value : Boolean(rolesCtx[rolId]?.permisos?.exportar?.includes?.(pantalla)),
-        puede_ver_costos: key === 'ver_costos' ? value : Boolean(rolesCtx[rolId]?.permisos?.ver_costos),
-        puede_ver_finanzas: key === 'ver_finanzas' ? value : Boolean(rolesCtx[rolId]?.permisos?.ver_finanzas),
-      };
-      rolesService.actualizarPermisos(rolId, [payload]).catch(error => {
-        addNotificacion(`No se pudo guardar el permiso en Supabase: ${error.message}`, 'error');
-      });
+  };
+
+  const guardarPermisosRol = async (rolId) => {
+    const rol = rolesCtx[rolId];
+    if (!rol) throw new Error('Rol no encontrado.');
+    if (!isSupabaseConfigured()) {
+      addNotificacion('Permisos guardados localmente.');
+      return true;
     }
+    const payload = buildPermisosPayload(rol.permisos);
+    await rolesService.actualizarPermisos(rolId, payload);
+    await cargarRolesAcceso();
+    addNotificacion(`Permisos de "${rol.nombre}" guardados.`);
+    return true;
   };
 
   const cargarRolesAcceso = async () => {
@@ -2968,12 +2987,14 @@ export function AppProvider({ children }) {
         ...r,
         permisos: {
           ver: pRows.filter(p => p.puede_ver).map(p => p.pantalla),
-          crear: pRows.some(p => p.puede_crear),
-          editar: pRows.some(p => p.puede_editar),
-          anular: pRows.some(p => p.puede_anular),
-          aprobar: pRows.some(p => p.puede_aprobar),
+          crear: pRows.filter(p => p.puede_crear).map(p => p.pantalla),
+          editar: pRows.filter(p => p.puede_editar).map(p => p.pantalla),
+          anular: pRows.filter(p => p.puede_anular).map(p => p.pantalla),
+          aprobar: pRows.filter(p => p.puede_aprobar).map(p => p.pantalla),
+          exportar: pRows.filter(p => p.puede_exportar).map(p => p.pantalla),
           ver_costos: pRows.some(p => p.puede_ver_costos),
           ver_finanzas: pRows.some(p => p.puede_ver_finanzas),
+          ver_precios: pRows.some(p => p.permisos_extra?.puede_ver_precios),
         },
       };
     }
@@ -3073,7 +3094,7 @@ export function AppProvider({ children }) {
     empresasPlataforma, setEmpresasPlataforma, crearTenantConAdmin,
     // Data
     usuarios, setUsuarios,
-    roles: rolesCtx, clonarRol, actualizarPermisosRol, crearRol, eliminarRol, editarRol, accessDebug,
+    roles: rolesCtx, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, accessDebug,
     leads, setLeads, updateLeadState,
     cuentas, setCuentas, actualizarCuenta, actualizarLogoCuenta,
     contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta,

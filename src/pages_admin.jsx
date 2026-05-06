@@ -8,7 +8,7 @@ import { getSupabaseClient } from './lib/supabaseClient.js';
 // Roles builder, Usuarios, Tenants/Planes, and simple stub pages
 
 function Roles() {
-  const { roles, clonarRol, actualizarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, setUsuarios, addNotificacion, accessDebug } = useApp();
+  const { roles, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, setUsuarios, addNotificacion, accessDebug } = useApp();
   const rolKeys = Object.keys(roles);
   const [sel, setSel] = useState(rolKeys.includes('comercial') ? 'comercial' : rolKeys[0] || '');
   const [tab, setTab] = useState('permisos');
@@ -28,12 +28,19 @@ function Roles() {
   const [reasignarUsuario, setReasignarUsuario] = useState(null);
   const [reasignarRolId, setReasignarRolId] = useState('');
   const [roleActionError, setRoleActionError] = useState('');
+  const [guardandoPermisos, setGuardandoPermisos] = useState(false);
+  const [permisosDirty, setPermisosDirty] = useState(false);
 
   // Sync sel cuando se elimina un rol
   useEffect(() => {
     if (!rolKeys.length) return;
     if (!sel || !roles[sel]) setSel(rolKeys[0]);
   }, [rolKeys, roles, sel]);
+
+  useEffect(() => {
+    setPermisosDirty(false);
+    setRoleActionError('');
+  }, [sel]);
 
   const handleNuevoRol = async () => {
     if (!nuevoNombre.trim()) return;
@@ -80,6 +87,21 @@ function Roles() {
     setEditingMeta(false);
   };
 
+  const handleGuardarPermisos = async () => {
+    setRoleActionError('');
+    setGuardandoPermisos(true);
+    try {
+      await guardarPermisosRol(sel);
+      setPermisosDirty(false);
+    } catch (error) {
+      const message = `No se pudieron guardar los permisos: ${error?.message || 'Error desconocido'}`;
+      setRoleActionError(message);
+      addNotificacion(message, 'error');
+    } finally {
+      setGuardandoPermisos(false);
+    }
+  };
+
   const handleReasignar = () => {
     setUsuarios(prev => prev.map(u => u.id === reasignarUsuario.id ? { ...u, rol: reasignarRolId } : u));
     addNotificacion(`${reasignarUsuario.nombre} reasignado a "${roles[reasignarRolId]?.nombre || reasignarRolId}".`);
@@ -111,7 +133,7 @@ function Roles() {
     return (
       <td key={act} style={{textAlign:'center'}}>
         <input type="checkbox" className="checkbox" checked={isChecked || false}
-          onChange={e => actualizarPermisosRol(sel, p.key, realKey, e.target.checked)}
+          onChange={e => { actualizarPermisosRol(sel, p.key, realKey, e.target.checked); setPermisosDirty(true); }}
           disabled={role.permisos.plataforma && act === 'ver'}/>
       </td>
     );
@@ -181,6 +203,14 @@ function Roles() {
               </div>
             )}
             <div className="row" style={{gap:8}}>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleGuardarPermisos}
+                disabled={guardandoPermisos}
+                title="Guardar permisos del rol seleccionado"
+              >
+                {I.save} {guardandoPermisos ? 'Guardando...' : permisosDirty ? 'Guardar permisos' : 'Guardar permisos'}
+              </button>
               <button className="btn btn-secondary btn-sm" onClick={()=>setPreview(true)}>{I.eye} Como ve la app este rol?</button>
               <button
                 className="btn btn-secondary btn-sm"
@@ -230,7 +260,7 @@ function Roles() {
                 <div key={x.k} className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
                   <div style={{fontSize:13}}>{x.l}</div>
                   <div className={'toggle '+((role.permisos[x.k]||role.permisos.todo)?'on':'')} style={{cursor:'pointer'}}
-                    onClick={()=>actualizarPermisosRol(sel, null, x.k, !(role.permisos[x.k]||role.permisos.todo))}/>
+                    onClick={()=>{ actualizarPermisosRol(sel, null, x.k, !(role.permisos[x.k]||role.permisos.todo)); setPermisosDirty(true); }}/>
                 </div>
               ))}
               <div className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
@@ -242,14 +272,14 @@ function Roles() {
                   key={sel}
                   defaultValue={role.permisos.monto_max_compras ?? (role.permisos.plataforma ? '' : '0')}
                   placeholder="S/ 0"
-                  onBlur={e => actualizarPermisosRol(sel, null, 'monto_max_compras', Number(e.target.value.replace(/[^0-9]/g,'')) || 0)}/>
+                  onBlur={e => { actualizarPermisosRol(sel, null, 'monto_max_compras', Number(e.target.value.replace(/[^0-9]/g,'')) || 0); setPermisosDirty(true); }}/>
               </div>
               <div className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
                 <div style={{fontSize:13,fontWeight:500}}>Perfil de campo</div>
                 <select className="select" style={{width:180}}
                   key={sel}
                   value={role.permisos.perfil_campo || 'ninguno'}
-                  onChange={e => actualizarPermisosRol(sel, null, 'perfil_campo', e.target.value === 'ninguno' ? null : e.target.value)}>
+                  onChange={e => { actualizarPermisosRol(sel, null, 'perfil_campo', e.target.value === 'ninguno' ? null : e.target.value); setPermisosDirty(true); }}>
                   <option value="ninguno">Ninguno</option>
                   <option value="Técnico">Técnico</option>
                   <option value="Vendedor">Vendedor</option>
