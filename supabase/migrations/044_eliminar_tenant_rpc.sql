@@ -1,5 +1,5 @@
--- RPC para eliminar un tenant y todos sus datos relacionados.
--- Usa information_schema para encontrar todas las tablas con FK a empresas dinamicamente.
+-- RPC para eliminar un tenant y todos sus datos en orden correcto.
+-- Orden forzado para cadenas de FK conocidas + loop dinamico para el resto.
 create or replace function public.eliminar_tenant_completo(p_empresa_id text)
 returns void
 language plpgsql
@@ -17,14 +17,23 @@ begin
   -- 1. Rompe referencia circular cotizaciones <-> hojas_costeo
   update public.cotizaciones set hoja_costeo_id = null where empresa_id = p_empresa_id;
 
-  -- 2. Orden forzado para tablas que se referencian entre si
-  delete from public.os_clientes  where empresa_id = p_empresa_id;
-  delete from public.hojas_costeo where empresa_id = p_empresa_id;
-  delete from public.cotizaciones where empresa_id = p_empresa_id;
-  -- usuarios_empresas referencia roles, debe ir antes
-  delete from public.usuarios_empresas where empresa_id = p_empresa_id;
+  -- 2. Jerarquia CRM (hojas que referencian otras entidades del tenant)
+  delete from public.actividades_comerciales where empresa_id = p_empresa_id;
+  delete from public.agenda_comercial        where empresa_id = p_empresa_id;
+  delete from public.oportunidades           where empresa_id = p_empresa_id;
+  delete from public.contactos               where empresa_id = p_empresa_id;
+  delete from public.cuentas                 where empresa_id = p_empresa_id;
+  delete from public.leads                   where empresa_id = p_empresa_id;
 
-  -- 3. Borra dinamicamente todas las demas tablas con FK a empresas
+  -- 3. Documentos comerciales (os_clientes referencia cotizaciones)
+  delete from public.os_clientes             where empresa_id = p_empresa_id;
+  delete from public.hojas_costeo            where empresa_id = p_empresa_id;
+  delete from public.cotizaciones            where empresa_id = p_empresa_id;
+
+  -- 4. Acceso (usuarios_empresas referencia roles)
+  delete from public.usuarios_empresas       where empresa_id = p_empresa_id;
+
+  -- 5. Resto de tablas con FK a empresas (dinamico, excluye las ya borradas)
   for v_table, v_column in
     select kcu.table_name, kcu.column_name
     from information_schema.key_column_usage kcu
@@ -36,6 +45,8 @@ begin
       and ccu.column_name = 'id'
       and kcu.table_schema = 'public'
       and kcu.table_name not in (
+        'actividades_comerciales', 'agenda_comercial',
+        'oportunidades', 'contactos', 'cuentas', 'leads',
         'os_clientes', 'hojas_costeo', 'cotizaciones',
         'usuarios_empresas', 'empresas'
       )
@@ -44,7 +55,7 @@ begin
       using p_empresa_id;
   end loop;
 
-  -- 4. Empresa
+  -- 6. Empresa
   delete from public.empresas where id = p_empresa_id;
 end;
 $$;
