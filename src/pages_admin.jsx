@@ -593,10 +593,11 @@ function Tenants() {
   const demos = tenants.filter(t => String(t.estado || '').toLowerCase() === 'demo').length;
   const paises = new Set(tenants.map(t => t.pais || 'PE')).size;
 
-  const [editando, setEditando] = useState(null); // empresa objeto
+  const [editando, setEditando] = useState(null);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
-  const [confirmando, setConfirmando] = useState(null); // id empresa a eliminar
+  const [confirmando, setConfirmando] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
 
   const abrirEditar = (t) => {
     setForm({
@@ -626,12 +627,13 @@ function Tenants() {
 
   const confirmarEliminar = async () => {
     setSaving(true);
+    setDeleteError(null);
     try {
       await eliminarTenant(confirmando);
       addNotificacion('Tenant eliminado.');
       setConfirmando(null);
     } catch (e) {
-      addNotificacion(`Error al eliminar: ${e.message}`);
+      setDeleteError(e.message);
     } finally {
       setSaving(false);
     }
@@ -673,7 +675,7 @@ function Tenants() {
                 <td>{estadoBadge(t.estado)}</td>
                 <td>
                   <div className="row" style={{gap:4, justifyContent:'flex-end'}}>
-                    <button className="icon-btn" title="Editar" onClick={() => abrirEditar(t)}>{I.edit}</button>
+                    <button className="icon-btn" title="Editar" style={{color:'var(--cyan)'}} onClick={() => abrirEditar(t)}>{I.edit}</button>
                     <button className="icon-btn" title="Eliminar" style={{color:'var(--red)'}} onClick={() => setConfirmando(t.id)}>{I.trash}</button>
                   </div>
                 </td>
@@ -739,9 +741,10 @@ function Tenants() {
         <div className="side-panel-backdrop" onClick={() => setConfirmando(null)}/>
         <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:420,zIndex:200,boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
           <h3 style={{marginBottom:8}}>Eliminar tenant</h3>
-          <p className="text-muted" style={{fontSize:14,marginBottom:20}}>¿Seguro que deseas eliminar <strong>{tenants.find(t => t.id === confirmando)?.nombre || confirmando}</strong>? Esta acción no se puede deshacer.</p>
+          <p className="text-muted" style={{fontSize:14,marginBottom:16}}>¿Seguro que deseas eliminar <strong>{tenants.find(t => t.id === confirmando)?.nombre || confirmando}</strong>? Esta acción no se puede deshacer.</p>
+          {deleteError && <div style={{background:'var(--red-lt,#fee)',color:'var(--red,#dc2626)',padding:'8px 12px',borderRadius:6,fontSize:13,marginBottom:12}}>{deleteError}</div>}
           <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
-            <button className="btn btn-secondary" onClick={() => setConfirmando(null)} disabled={saving}>Cancelar</button>
+            <button className="btn btn-secondary" onClick={() => { setConfirmando(null); setDeleteError(null); }} disabled={saving}>Cancelar</button>
             <button className="btn btn-danger" onClick={confirmarEliminar} disabled={saving}>{saving ? 'Eliminando...' : 'Eliminar'}</button>
           </div>
         </div>
