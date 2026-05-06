@@ -91,18 +91,21 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: "No tienes permiso para listar usuarios de este tenant." }, 403);
   }
 
-  const scopeEmpresaIds = empresaId && empresaId !== "emp_tideo"
-    ? [empresaId]
-    : isSuperadmin
-      ? [...new Set([
-          ...(memberships || []).map((m) => m.empresa_id),
-          ...(callerProfile?.empresa_id ? [callerProfile.empresa_id] : []),
-          "emp_tideo",
-        ])]
-      : [...manageableEmpresaIds];
+  const scopeAllEmpresas = isSuperadmin && (!empresaId || empresaId === "emp_tideo");
+  const scopeEmpresaIds = scopeAllEmpresas
+    ? []
+    : empresaId
+      ? [empresaId]
+      : isSuperadmin
+        ? [...new Set([
+            ...(memberships || []).map((m) => m.empresa_id),
+            ...(callerProfile?.empresa_id ? [callerProfile.empresa_id] : []),
+            "emp_tideo",
+          ])]
+        : [...manageableEmpresaIds];
 
   let profilesQuery = adminClient.from("usuarios").select("*").order("nombre", { ascending: true });
-  if (!(empresaId === "emp_tideo" && isSuperadmin) && scopeEmpresaIds.length) {
+  if (!scopeAllEmpresas && scopeEmpresaIds.length) {
     profilesQuery = profilesQuery.in("empresa_id", scopeEmpresaIds);
   }
   const { data: profiles, error: profilesError } = await profilesQuery;
@@ -135,7 +138,7 @@ serve(async (req) => {
   }
 
   for (const membership of memberships || []) {
-    if (!scopeEmpresaIds.includes(membership.empresa_id)) continue;
+    if (!scopeAllEmpresas && !scopeEmpresaIds.includes(membership.empresa_id)) continue;
     const key = `${membership.user_id}:${membership.empresa_id}`;
     if (rows.has(key)) continue;
     const authUser = authById.get(membership.user_id);
