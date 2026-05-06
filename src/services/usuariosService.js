@@ -37,6 +37,23 @@ export const usuariosService = {
     return data;
   },
 
+  async actualizarUsuarioAcceso(usuario) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.functions.invoke('actualizar-usuario-acceso', {
+      body: usuario,
+    });
+    if (error) {
+      let message = error.message;
+      try {
+        const body = await error.context?.json?.();
+        message = body?.error || message;
+      } catch { /* ignore */ }
+      throw new Error(message || 'No se pudo actualizar el usuario.');
+    }
+    if (!data?.success) throw new Error(data?.error || 'No se pudo actualizar el usuario.');
+    return data.user;
+  },
+
   async eliminarUsuario(id) {
     const supabase = await getSupabaseClient();
     const { error } = await supabase

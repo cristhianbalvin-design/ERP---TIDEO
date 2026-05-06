@@ -1917,6 +1917,56 @@ export function AppProvider({ children }) {
     }
   };
 
+  const actualizarUsuarioAcceso = async (usuarioId, datos) => {
+    const empresaId = datos?.empresa_id || empresa?.id;
+    const previous = usuarios;
+    const current = usuarios.find(u => u.id === usuarioId && (!empresaId || u.empresa_id === empresaId)) || usuarios.find(u => u.id === usuarioId);
+    const nextUser = {
+      ...current,
+      ...datos,
+      id: usuarioId,
+      empresa_id: empresaId,
+      campo: Boolean(datos.campo),
+      campoPerfil: datos.campo ? (datos.campoPerfil || datos.perfil_campo || 'Tecnico') : null,
+    };
+
+    setUsuarios(prev => prev.map(u => (
+      u.id === usuarioId && (!empresaId || u.empresa_id === empresaId)
+        ? nextUser
+        : u
+    )));
+
+    if (!isSupabaseConfigured()) {
+      addNotificacion(`Usuario ${nextUser.nombre || ''} actualizado localmente.`);
+      return nextUser;
+    }
+
+    try {
+      const savedUser = await usuariosService.actualizarUsuarioAcceso({
+        user_id: usuarioId,
+        empresa_id: empresaId,
+        nombre: nextUser.nombre,
+        email: nextUser.email,
+        rol: nextUser.rol,
+        area: nextUser.area || '',
+        acceso_campo: Boolean(nextUser.campo),
+        perfil_campo: nextUser.campo ? (nextUser.campoPerfil || 'Tecnico') : null,
+        estado: nextUser.estado || 'Activo',
+      });
+      setUsuarios(prev => prev.map(u => (
+        u.id === usuarioId && u.empresa_id === empresaId
+          ? savedUser
+          : u
+      )));
+      addNotificacion(`Usuario ${savedUser.nombre || nextUser.nombre || ''} actualizado.`);
+      return savedUser;
+    } catch (err) {
+      setUsuarios(previous);
+      addNotificacion('Error al actualizar usuario: ' + (err.message || 'Error desconocido'), 'error');
+      throw err;
+    }
+  };
+
   const marcarContrasenaActualizada = async () => {
     if (!authUser?.id) return;
     try {
@@ -3167,6 +3217,7 @@ export function AppProvider({ children }) {
     crearOSCliente, crearOSClienteManual,
     registrarUsuario,
     eliminarUsuario,
+    actualizarUsuarioAcceso,
     crearUsuarioConAcceso,
     marcarContrasenaActualizada,
     registrarActividad,

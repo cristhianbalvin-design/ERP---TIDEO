@@ -78,7 +78,9 @@ serve(async (req) => {
     .order("empresa_id", { ascending: true })
     .order("nombre", { ascending: true });
 
-  if (empresaId && empresaId !== "emp_tideo") {
+  if (empresaId === "emp_tideo") {
+    query = query.or(`empresa_id.eq.${empresaId},empresa_id.is.null`);
+  } else if (empresaId) {
     query = query.eq("empresa_id", empresaId);
   } else if (!isSuperadmin && manageableEmpresaIds.size) {
     query = query.in("empresa_id", [...manageableEmpresaIds]);

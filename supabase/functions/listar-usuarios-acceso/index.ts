@@ -111,8 +111,28 @@ serve(async (req) => {
   const { data: authUsersData } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const authById = new Map((authUsersData?.users || []).map((u) => [u.id, u]));
 
+  const estadoMap: Record<string, string> = {
+    activo: "Activo",
+    suspendido: "Suspendido",
+    invitado: "Invitado",
+    inactivo: "Inactivo",
+  };
+  const membershipsByKey = new Map((memberships || []).map((membership) => [`${membership.user_id}:${membership.empresa_id}`, membership]));
+
   const rows = new Map<string, Record<string, unknown>>();
-  for (const profile of profiles || []) rows.set(`${profile.id}:${profile.empresa_id}`, profile);
+  for (const profile of profiles || []) {
+    const key = `${profile.id}:${profile.empresa_id}`;
+    const membership = membershipsByKey.get(key);
+    const role = membership ? rolesById.get(membership.rol_id) : null;
+    rows.set(key, {
+      ...profile,
+      rol: membership?.rol_id || profile.rol,
+      rol_nombre: role?.nombre || profile.rol_nombre || profile.rol,
+      campo: membership?.acceso_campo ?? profile.campo,
+      campoPerfil: membership?.perfil_campo ?? profile.campo_perfil,
+      estado: membership?.estado ? (estadoMap[membership.estado] ?? membership.estado) : profile.estado,
+    });
+  }
 
   for (const membership of memberships || []) {
     if (!scopeEmpresaIds.includes(membership.empresa_id)) continue;
@@ -120,12 +140,6 @@ serve(async (req) => {
     if (rows.has(key)) continue;
     const authUser = authById.get(membership.user_id);
     const role = rolesById.get(membership.rol_id);
-    const estadoMap: Record<string, string> = {
-      activo: "Activo",
-      suspendido: "Suspendido",
-      invitado: "Invitado",
-      inactivo: "Inactivo",
-    };
     rows.set(key, {
       id: membership.user_id,
       empresa_id: membership.empresa_id,

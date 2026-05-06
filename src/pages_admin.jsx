@@ -411,13 +411,17 @@ function Roles() {
 }
 
 function Usuarios() {
-  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, crearUsuarioConAcceso, eliminarUsuario, roles: rolesCtx, accessDebug } = useApp();
+  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, roles: rolesCtx, accessDebug } = useApp();
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('Tideo2026!');
   const [creando, setCreando] = useState(false);
   const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', area: '', password: '' });
   const [guardandoNuevo, setGuardandoNuevo] = useState(false);
   const [nuevoError, setNuevoError] = useState('');
+  const [editando, setEditando] = useState(null);
+  const [editForm, setEditForm] = useState({ nombre: '', email: '', rol: '', area: '', campo: false, campoPerfil: 'Tecnico', estado: 'Activo' });
+  const [guardandoEdit, setGuardandoEdit] = useState(false);
+  const [editError, setEditError] = useState('');
 
   const handleReset = async () => {
     if (!resetting) return;
@@ -445,7 +449,48 @@ function Usuarios() {
     setGuardandoNuevo(false);
   };
 
-  const rolesOpciones = Object.entries(rolesCtx || {}).filter(([,r]) => !r.es_superadmin);
+  const abrirEditarUsuario = (usuario) => {
+    setEditError('');
+    setEditando(usuario);
+    setEditForm({
+      nombre: usuario.nombre || '',
+      email: usuario.email || '',
+      rol: usuario.rol || '',
+      area: usuario.area || '',
+      campo: Boolean(usuario.campo),
+      campoPerfil: usuario.campoPerfil || usuario.campo_perfil || 'Tecnico',
+      estado: usuario.estado || 'Activo',
+    });
+  };
+
+  const handleEditarUsuario = async (e) => {
+    e.preventDefault();
+    if (!editando) return;
+    setEditError('');
+    setGuardandoEdit(true);
+    try {
+      await actualizarUsuarioAcceso(editando.id, {
+        ...editForm,
+        empresa_id: editando.empresa_id,
+        campoPerfil: editForm.campo ? editForm.campoPerfil : null,
+      });
+      setEditando(null);
+    } catch (error) {
+      setEditError(error?.message || 'No se pudo actualizar el usuario.');
+    } finally {
+      setGuardandoEdit(false);
+    }
+  };
+
+  const rolPerteneceTenant = (r) => {
+    if (!empresa?.id) return true;
+    if (empresa.id === 'emp_tideo') return !r.empresa_id || r.empresa_id === empresa.id;
+    return r.empresa_id === empresa.id;
+  };
+  const rolesOpciones = Object.entries(rolesCtx || {}).filter(([,r]) => !r.es_superadmin && rolPerteneceTenant(r));
+  const rolesEditOpciones = Object.entries(rolesCtx || {}).filter(([id, r]) => (
+    (!r.es_superadmin && rolPerteneceTenant(r)) || id === editando?.rol
+  ));
 
   useEffect(() => {
     if (!rolesOpciones.length) return;
@@ -483,7 +528,7 @@ function Usuarios() {
               {usuarios.map(u=>{
               const r = rolesCtx?.[u.rol] || MOCK.roles[u.rol] || { nombre: u.rol_nombre || u.rol, color: 'gray' };
               return (
-                <tr key={u.id}>
+                <tr key={`${u.id}_${u.empresa_id}`}>
                   <td><div className="row"><div className="avatar" style={{width:28,height:28,fontSize:11}}>{u.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div><strong>{u.nombre}</strong></div></td>
                   <td className="text-muted">{u.email}</td>
                   <td><span className={'badge badge-'+r.color}>{r.nombre}</span></td>
@@ -494,6 +539,9 @@ function Usuarios() {
                   <td className="text-muted">{u.ultimo || 'Nuevo'}</td>
                   <td style={{textAlign:'right'}}>
                     <div style={{display:'flex', gap:4, justifyContent:'flex-end'}}>
+                      <button className="btn btn-ghost btn-sm" title="Editar usuario" onClick={() => abrirEditarUsuario(u)}>
+                        <span style={{width:16,height:16,display:'inline-flex'}}>{I.edit}</span>
+                      </button>
                       <button className="btn btn-ghost btn-sm" title="Enviar link de reset" onClick={() => setResetting(u)}>
                         <span style={{fontSize:16}}>🔑</span>
                       </button>
@@ -532,6 +580,67 @@ function Usuarios() {
                 <button className="btn btn-primary" onClick={handleReset}>Guardar y Notificar</button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {editando && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:520}}>
+            <div className="modal-head">
+              <h2>Editar usuario</h2>
+              <button className="icon-btn" onClick={() => setEditando(null)}>{I.x}</button>
+            </div>
+            <form className="modal-body col" style={{gap:14}} onSubmit={handleEditarUsuario}>
+              {editError && <div className="alert alert-danger">{editError}</div>}
+              <div className="input-group">
+                <label>Nombre completo</label>
+                <input className="input" required value={editForm.nombre} onChange={e => setEditForm(p => ({...p, nombre: e.target.value}))} />
+              </div>
+              <div className="input-group">
+                <label>Email</label>
+                <input className="input" type="email" required value={editForm.email} onChange={e => setEditForm(p => ({...p, email: e.target.value}))} />
+              </div>
+              <div className="input-group">
+                <label>Rol</label>
+                <select className="input" value={editForm.rol} onChange={e => setEditForm(p => ({...p, rol: e.target.value}))}>
+                  {rolesEditOpciones.map(([id, r]) => <option key={id} value={id}>{r.nombre}</option>)}
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Area</label>
+                <input className="input" value={editForm.area} onChange={e => setEditForm(p => ({...p, area: e.target.value}))} placeholder="Comercial, Operaciones..." />
+              </div>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                <div className="input-group">
+                  <label>Estado</label>
+                  <select className="input" value={editForm.estado} onChange={e => setEditForm(p => ({...p, estado: e.target.value}))}>
+                    <option value="Activo">Activo</option>
+                    <option value="Invitado">Invitado</option>
+                    <option value="Suspendido">Suspendido</option>
+                    <option value="Inactivo">Inactivo</option>
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Perfil de campo</label>
+                  <select className="input" value={editForm.campoPerfil} disabled={!editForm.campo} onChange={e => setEditForm(p => ({...p, campoPerfil: e.target.value}))}>
+                    <option value="Tecnico">Tecnico</option>
+                    <option value="Vendedor">Vendedor</option>
+                    <option value="Compras">Compras</option>
+                    <option value="Supervisor">Supervisor</option>
+                    <option value="Gerencia">Gerencia</option>
+                  </select>
+                </div>
+              </div>
+              <label className="row" style={{gap:8, fontSize:13}}>
+                <input type="checkbox" className="checkbox" checked={editForm.campo} onChange={e => setEditForm(p => ({...p, campo: e.target.checked}))} />
+                Acceso a campo movil
+              </label>
+              <div className="modal-foot mt-4">
+                <button type="button" className="btn btn-secondary" onClick={() => setEditando(null)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={guardandoEdit}>{guardandoEdit ? 'Guardando...' : 'Guardar cambios'}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -1910,4 +2019,3 @@ function MetricasSaaS() {
 }
 
 export { Roles, Usuarios, Tenants, Planes, Stub, Maestros, Servicios, Tarifarios, Parametros, RRHHAdmin, MetricasSaaS };
-
