@@ -86,12 +86,13 @@ serve(async (req) => {
     const profileRole = rolesById.get(callerProfile.rol);
     if (profileRole?.es_superadmin || profileRole?.es_admin_empresa) manageableEmpresaIds.add(callerProfile.empresa_id);
   }
+  const canManagePlatform = isSuperadmin || manageableEmpresaIds.has("emp_tideo");
 
   if (empresaId && empresaId !== "emp_tideo" && !isSuperadmin && !manageableEmpresaIds.has(empresaId)) {
     return jsonResponse({ success: false, error: "No tienes permiso para listar usuarios de este tenant." }, 403);
   }
 
-  const scopeAllEmpresas = isSuperadmin && (!empresaId || empresaId === "emp_tideo");
+  const scopeAllEmpresas = canManagePlatform && (!empresaId || empresaId === "emp_tideo");
   const scopeEmpresaIds = scopeAllEmpresas
     ? []
     : empresaId
