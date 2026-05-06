@@ -152,6 +152,16 @@ serve(async (req) => {
 
   if (!uid) return jsonResponse({ success: false, error: "No se pudo resolver el usuario Auth creado." }, 500);
 
+  if (alreadyExists) {
+    const { error: reactivateError } = await adminClient.auth.admin.updateUserById(uid, {
+      password,
+      email_confirm: true,
+      user_metadata: { nombre },
+      ban_duration: "none",
+    });
+    if (reactivateError) return jsonResponse({ success: false, error: reactivateError.message }, 400);
+  }
+
   // Detectar si ya existe una membresía activa para este usuario en este tenant
   const { data: existingMembership } = await adminClient
     .from("usuarios_empresas")
