@@ -51,7 +51,18 @@ serve(async (req) => {
 
   if (membershipError) return jsonResponse({ success: false, error: membershipError.message }, 500);
 
-  const roleIds = [...new Set((memberships || []).map((m) => m.rol_id).filter(Boolean))];
+  const { data: callerProfile, error: callerProfileError } = await adminClient
+    .from("usuarios")
+    .select("id, empresa_id, rol")
+    .eq("id", caller.id)
+    .maybeSingle();
+
+  if (callerProfileError) return jsonResponse({ success: false, error: callerProfileError.message }, 500);
+
+  const roleIds = [...new Set([
+    ...(memberships || []).map((m) => m.rol_id).filter(Boolean),
+    callerProfile?.rol,
+  ].filter(Boolean))];
   const { data: rolesRows, error: rolesError } = roleIds.length
     ? await adminClient.from("roles").select("id, nombre, es_admin_empresa, es_superadmin").in("id", roleIds)
     : { data: [], error: null };
@@ -64,11 +75,16 @@ serve(async (req) => {
   const isSuperadmin = callerMemberships.some((m) => {
     const role = rolesById.get(m.rol_id);
     return role?.es_superadmin;
-  });
+  }) || Boolean(callerProfile?.rol && rolesById.get(callerProfile.rol)?.es_superadmin);
+
   const manageableEmpresaIds = new Set<string>();
   for (const membership of callerMemberships) {
     const role = rolesById.get(membership.rol_id);
     if (role?.es_superadmin || role?.es_admin_empresa) manageableEmpresaIds.add(membership.empresa_id);
+  }
+  if (callerProfile?.empresa_id) {
+    const profileRole = rolesById.get(callerProfile.rol);
+    if (profileRole?.es_superadmin || profileRole?.es_admin_empresa) manageableEmpresaIds.add(callerProfile.empresa_id);
   }
 
   if (empresaId && empresaId !== "emp_tideo" && !isSuperadmin && !manageableEmpresaIds.has(empresaId)) {
@@ -78,11 +94,17 @@ serve(async (req) => {
   const scopeEmpresaIds = empresaId && empresaId !== "emp_tideo"
     ? [empresaId]
     : isSuperadmin
-      ? [...new Set((memberships || []).map((m) => m.empresa_id))]
+      ? [...new Set([
+          ...(memberships || []).map((m) => m.empresa_id),
+          ...(callerProfile?.empresa_id ? [callerProfile.empresa_id] : []),
+          "emp_tideo",
+        ])]
       : [...manageableEmpresaIds];
 
   let profilesQuery = adminClient.from("usuarios").select("*").order("nombre", { ascending: true });
-  if (scopeEmpresaIds.length) profilesQuery = profilesQuery.in("empresa_id", scopeEmpresaIds);
+  if (!(empresaId === "emp_tideo" && isSuperadmin) && scopeEmpresaIds.length) {
+    profilesQuery = profilesQuery.in("empresa_id", scopeEmpresaIds);
+  }
   const { data: profiles, error: profilesError } = await profilesQuery;
   if (profilesError) return jsonResponse({ success: false, error: profilesError.message }, 500);
 
