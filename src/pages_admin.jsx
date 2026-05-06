@@ -585,50 +585,58 @@ function Usuarios() {
   );
 }
 
-function TenantsLegacy() {
-  return (
-    <>
-      <div className="page-header">
-        <div><h1 className="page-title">Empresas / Tenants</h1><div className="page-sub">2 tenants activos · 1 en plan Enterprise · 1 en Professional</div></div>
-        <div className="row"><button className="btn btn-secondary">{I.download} Reporte plataforma</button><button className="btn btn-primary">{I.plus} Nueva empresa</button></div>
-      </div>
-      <div className="kpi-grid">
-        <div className="kpi-card"><div className="kpi-label">Tenants activos</div><div className="kpi-value">2</div><div className="kpi-icon cyan">{I.building}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Usuarios totales</div><div className="kpi-value">27</div><div className="kpi-icon purple">{I.users}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Storage plataforma</div><div className="kpi-value">12.4 GB</div><div className="kpi-icon orange">{I.package}</div></div>
-        <div className="kpi-card"><div className="kpi-label">MRR estimado</div><div className="kpi-value">$ 3,200</div><div className="kpi-delta up">{I.arrowUp}+1 tenant</div><div className="kpi-icon green">{I.dollar}</div></div>
-      </div>
-      <div className="card mt-6"><div className="table-wrap"><table className="tbl">
-        <thead><tr><th>Empresa</th><th>RUC</th><th>País</th><th>Plan</th><th>Usuarios</th><th>Storage</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
-        <tbody>
-          <tr><td><div className="row"><div style={{width:32,height:32,borderRadius:6,background:'var(--cyan-lt)',color:'var(--cyan-dk)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:12}}>SI</div><strong>Servicios Industriales Norte SAC</strong></div></td>
-            <td className="mono">20512345678</td><td>Perú</td>
-            <td><span className="badge badge-purple">Enterprise</span></td>
-            <td className="num">9 / 25</td><td className="num">7.2 GB</td>
-            <td className="text-muted">31 Dic 2026</td>
-            <td><span className="badge badge-green">Activo</span></td>
-            <td><button className="btn btn-sm btn-ghost">Modo soporte</button></td>
-          </tr>
-          <tr><td><div className="row"><div style={{width:32,height:32,borderRadius:6,background:'var(--green-lt)',color:'var(--green-dk)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:12}}>MA</div><strong>Mantenimiento Andes SRL</strong></div></td>
-            <td className="mono">20598765432</td><td>Perú</td>
-            <td><span className="badge badge-cyan">Professional</span></td>
-            <td className="num">18 / 20</td><td className="num">5.2 GB</td>
-            <td className="text-muted">15 Nov 2026</td>
-            <td><span className="badge badge-green">Activo</span></td>
-            <td><button className="btn btn-sm btn-ghost">Modo soporte</button></td>
-          </tr>
-        </tbody>
-      </table></div></div>
-    </>
-  );
-}
 
 function Tenants() {
-  const { empresasPlataforma = MOCK.empresas, usuarios = [] } = useApp();
+  const { empresasPlataforma = MOCK.empresas, usuarios = [], actualizarTenant, eliminarTenant, addNotificacion } = useApp();
   const tenants = empresasPlataforma.length ? empresasPlataforma : MOCK.empresas;
   const activos = tenants.filter(t => ['activa', 'activo'].includes(String(t.estado || '').toLowerCase())).length;
   const demos = tenants.filter(t => String(t.estado || '').toLowerCase() === 'demo').length;
   const paises = new Set(tenants.map(t => t.pais || 'PE')).size;
+
+  const [editando, setEditando] = useState(null); // empresa objeto
+  const [form, setForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [confirmando, setConfirmando] = useState(null); // id empresa a eliminar
+
+  const abrirEditar = (t) => {
+    setForm({
+      razon_social: t.razon_social || t.nombre || '',
+      nombre_comercial: t.nombre_comercial || '',
+      ruc: t.ruc || '',
+      pais: t.pais || 'PE',
+      moneda_base: t.moneda_base || t.moneda || 'PEN',
+      estado: t.estado || 'activa',
+    });
+    setEditando(t);
+  };
+
+  const guardar = async () => {
+    if (!form.razon_social?.trim()) return;
+    setSaving(true);
+    try {
+      await actualizarTenant(editando.id, form);
+      addNotificacion(`Tenant "${form.nombre_comercial || form.razon_social}" actualizado.`);
+      setEditando(null);
+    } catch (e) {
+      addNotificacion(`Error al actualizar: ${e.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmarEliminar = async () => {
+    setSaving(true);
+    try {
+      await eliminarTenant(confirmando);
+      addNotificacion('Tenant eliminado.');
+      setConfirmando(null);
+    } catch (e) {
+      addNotificacion(`Error al eliminar: ${e.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const iniciales = (nombre = 'TN') => nombre.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
   const estadoBadge = (estado) => {
     const normal = String(estado || 'activa').toLowerCase();
@@ -650,7 +658,7 @@ function Tenants() {
         <div className="kpi-card"><div className="kpi-label">Tenants demo</div><div className="kpi-value">{demos}</div><div className="kpi-icon green">{I.clock}</div></div>
       </div>
       <div className="card mt-6"><div className="table-wrap"><table className="tbl">
-        <thead><tr><th>Empresa</th><th>RUC / NIT</th><th>Pais</th><th>Moneda</th><th>Tenant ID</th><th>Fecha alta</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Empresa</th><th>RUC / NIT</th><th>Pais</th><th>Moneda</th><th>Tenant ID</th><th>Fecha alta</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>
           {tenants.map(t => {
             const nombre = t.nombre || t.nombre_comercial || t.razon_social || t.id;
@@ -663,12 +671,81 @@ function Tenants() {
                 <td className="mono">{t.id}</td>
                 <td className="text-muted">{t.fecha_inicio || (t.created_at ? String(t.created_at).slice(0, 10) : 'Hoy')}</td>
                 <td>{estadoBadge(t.estado)}</td>
-                <td><button className="btn btn-sm btn-ghost">Modo soporte</button></td>
+                <td>
+                  <div className="row" style={{gap:4, justifyContent:'flex-end'}}>
+                    <button className="icon-btn" title="Editar" onClick={() => abrirEditar(t)}>{I.edit}</button>
+                    <button className="icon-btn" title="Eliminar" style={{color:'var(--red)'}} onClick={() => setConfirmando(t.id)}>{I.trash}</button>
+                  </div>
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table></div></div>
+
+      {/* Modal: Editar tenant */}
+      {editando && <>
+        <div className="side-panel-backdrop" onClick={() => setEditando(null)}/>
+        <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:480,zIndex:200,boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
+          <h3 style={{marginBottom:20}}>Editar tenant</h3>
+          <div className="col" style={{gap:14}}>
+            <div className="input-group">
+              <label>Razón Social *</label>
+              <input className="input" value={form.razon_social} onChange={e => setForm(f => ({...f, razon_social: e.target.value}))} placeholder="Razón Social" autoFocus/>
+            </div>
+            <div className="input-group">
+              <label>Nombre Comercial</label>
+              <input className="input" value={form.nombre_comercial} onChange={e => setForm(f => ({...f, nombre_comercial: e.target.value}))} placeholder="Nombre que aparece en el sistema"/>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+              <div className="input-group">
+                <label>RUC / NIT</label>
+                <input className="input" value={form.ruc} onChange={e => setForm(f => ({...f, ruc: e.target.value}))} placeholder="20000000000"/>
+              </div>
+              <div className="input-group">
+                <label>País</label>
+                <input className="input" value={form.pais} onChange={e => setForm(f => ({...f, pais: e.target.value}))} placeholder="PE"/>
+              </div>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+              <div className="input-group">
+                <label>Moneda</label>
+                <select className="input" value={form.moneda_base} onChange={e => setForm(f => ({...f, moneda_base: e.target.value}))}>
+                  <option value="PEN">PEN</option>
+                  <option value="USD">USD</option>
+                  <option value="COP">COP</option>
+                  <option value="CLP">CLP</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Estado</label>
+                <select className="input" value={form.estado} onChange={e => setForm(f => ({...f, estado: e.target.value}))}>
+                  <option value="activa">Activa</option>
+                  <option value="demo">Demo</option>
+                  <option value="suspendida">Suspendida</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div className="row" style={{gap:8, marginTop:24, justifyContent:'flex-end'}}>
+            <button className="btn btn-secondary" onClick={() => setEditando(null)} disabled={saving}>Cancelar</button>
+            <button className="btn btn-primary" onClick={guardar} disabled={saving || !form.razon_social?.trim()}>{saving ? 'Guardando...' : 'Guardar cambios'}</button>
+          </div>
+        </div>
+      </>}
+
+      {/* Confirmación: Eliminar tenant */}
+      {confirmando && <>
+        <div className="side-panel-backdrop" onClick={() => setConfirmando(null)}/>
+        <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:420,zIndex:200,boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
+          <h3 style={{marginBottom:8}}>Eliminar tenant</h3>
+          <p className="text-muted" style={{fontSize:14,marginBottom:20}}>¿Seguro que deseas eliminar <strong>{tenants.find(t => t.id === confirmando)?.nombre || confirmando}</strong>? Esta acción no se puede deshacer.</p>
+          <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
+            <button className="btn btn-secondary" onClick={() => setConfirmando(null)} disabled={saving}>Cancelar</button>
+            <button className="btn btn-danger" onClick={confirmarEliminar} disabled={saving}>{saving ? 'Eliminando...' : 'Eliminar'}</button>
+          </div>
+        </div>
+      </>}
     </>
   );
 }

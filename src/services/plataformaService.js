@@ -11,6 +11,27 @@ export const plataformaService = {
     return data || [];
   },
 
+  async actualizarEmpresa(id, datos) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('empresas')
+      .update(datos)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async eliminarEmpresa(id) {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase
+      .from('empresas')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+  },
+
   async crearTenantConAdmin(payload) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase.rpc('crear_tenant_con_admin', {

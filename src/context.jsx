@@ -874,6 +874,29 @@ export function AppProvider({ children }) {
     return { empresa_id: nuevo.id, rol_id: `rol_${nuevo.id}_admin`, admin_vinculado: Boolean(datos.admin_email) };
   };
 
+  const actualizarTenant = async (id, datos) => {
+    if (!isSuperadmin) throw new Error('Solo Superadmin TIDEO puede editar tenants.');
+    if (isSupabaseConfigured()) {
+      await plataformaService.actualizarEmpresa(id, datos);
+    }
+    const rows = isSupabaseConfigured()
+      ? await plataformaService.listarEmpresas()
+      : null;
+    if (rows) {
+      setEmpresasPlataforma(rows.map(normalizarEmpresaSupabase));
+    } else {
+      setEmpresasPlataforma(prev => prev.map(e => e.id === id ? { ...e, ...datos, nombre: datos.nombre_comercial || datos.razon_social || e.nombre } : e));
+    }
+  };
+
+  const eliminarTenant = async (id) => {
+    if (!isSuperadmin) throw new Error('Solo Superadmin TIDEO puede eliminar tenants.');
+    if (isSupabaseConfigured()) {
+      await plataformaService.eliminarEmpresa(id);
+    }
+    setEmpresasPlataforma(prev => prev.filter(e => e.id !== id));
+  };
+
   const crearLead = (lead) => {
     setLeads(prev => [lead, ...prev]);
     crmSync(sb => persistirLead(sb, empresa.id, lead));
@@ -3093,7 +3116,7 @@ export function AppProvider({ children }) {
     searchQuery: '',
     dataMode, supabaseStatus, reloadSupabaseFinanceData: loadSupabaseFinanceData,
     todasMembresias, membresiaActiva, membresiaCargando, seleccionarEmpresa,
-    empresasPlataforma, setEmpresasPlataforma, crearTenantConAdmin,
+    empresasPlataforma, setEmpresasPlataforma, crearTenantConAdmin, actualizarTenant, eliminarTenant,
     // Data
     usuarios, setUsuarios,
     roles: rolesCtx, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, accessDebug,
