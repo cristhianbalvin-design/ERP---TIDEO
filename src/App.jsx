@@ -287,7 +287,8 @@ function QuickCreateModal({ active, onClose }) {
     }
     if (type === 'user' || type === 'user_comercial' || type === 'user_tecnico') {
       const roleFilter = type === 'user_comercial' ? ['comercial', 'admin'] : type === 'user_tecnico' ? ['operaciones', 'admin'] : null;
-      const users = app.usuarios.filter(u => !roleFilter || roleFilter.includes(u.rol_categoria));
+      const roleKeyword = type === 'user_comercial' ? 'comercial' : type === 'user_tecnico' ? 'técnico' : null;
+      const users = app.usuarios.filter(u => !roleFilter || (u.rol_categoria ? roleFilter.includes(u.rol_categoria) : (roleFilter.includes(u.rol) || (roleKeyword && (u.rol_nombre||'').toLowerCase().includes(roleKeyword)))));
       return (
         <select className="select" value={val(name)} onChange={e => update(name, e.target.value)}>
           <option value="">Seleccionar usuario...</option>

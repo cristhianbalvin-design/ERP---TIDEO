@@ -205,13 +205,13 @@ function Roles() {
                 </div>
               </div>
             ) : (
-              <div className="row" style={{gap:8, flex:1}}>
-                <div>
-                  <h3>{role.nombre}</h3>
-                  <div className="text-muted" style={{fontSize:12,marginTop:2}}>{role.descripcion}</div>
-                  <div className="text-subtle" style={{fontSize:11,marginTop:3}}>Categoría: {role.categoria || 'otro'}</div>
+              <div className="col" style={{gap:4, flex:1}}>
+                <h3 style={{margin:0}}>{role.nombre}</h3>
+                <div className="text-muted" style={{fontSize:12}}>{role.descripcion}</div>
+                <div className="row" style={{gap:8, alignItems:'center'}}>
+                  <div className="text-subtle" style={{fontSize:11}}>Categoría: <strong>{role.categoria || 'otro'}</strong></div>
+                  <button className="btn btn-sm btn-secondary" style={{fontSize:11,padding:'2px 8px'}} onClick={()=>{ setEditNombre(role.nombre); setEditDesc(role.descripcion||''); setEditCategoria(role.categoria||'otro'); setEditingMeta(true); }}>Editar</button>
                 </div>
-                <button className="icon-btn" style={{opacity:0.4}} title="Editar nombre" onClick={()=>{ setEditNombre(role.nombre); setEditDesc(role.descripcion||''); setEditCategoria(role.categoria||'otro'); setEditingMeta(true); }}>{I.edit}</button>
               </div>
             )}
             <div className="row" style={{gap:8}}>

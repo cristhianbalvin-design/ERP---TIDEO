@@ -292,7 +292,7 @@ function Cuentas() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Responsable comercial *</label><select className="select" required value={formCuenta.responsable_comercial} onChange={e=>updateCuentaForm('responsable_comercial', e.target.value)}>
                 <option value="">Seleccionar...</option>
-                {usuarios.filter(u => ['comercial','admin'].includes(u.rol_categoria)).map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
+                {usuarios.filter(u => u.rol_categoria ? ['comercial','admin'].includes(u.rol_categoria) : (['comercial','admin'].includes(u.rol)||(u.rol_nombre||'').toLowerCase().includes('comercial'))).map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
               </select></div>
               <div className="input-group"><label>Fuente de origen</label><select className="select" value={formCuenta.fuente_origen} onChange={e=>updateCuentaForm('fuente_origen', e.target.value)}>
                 <option value="">Seleccionar...</option>
@@ -1223,7 +1223,7 @@ function Proveedores() {
   const docs = MOCK.documentosProveedor || [];
   const evals = evaluacionesProveedor?.length ? evaluacionesProveedor : (MOCK.evaluacionesProveedor || []);
   const contactosProv = MOCK.contactosProveedor || [];
-  const responsables = usuarios.filter(u => ['admin','comercial','finanzas'].includes(u.rol_categoria));
+  const responsables = usuarios.filter(u => u.rol_categoria ? ['admin','comercial','finanzas'].includes(u.rol_categoria) : (['admin','comercial','finanzas'].includes(u.rol)||(u.rol_nombre||'').toLowerCase().match(/admin|comercial|finanzas/)));
   const visibleTabs = role.permisos?.ver_finanzas
     ? ['resumen','finanzas','documentos','evaluaciones','historial','contactos']
     : ['resumen','documentos','evaluaciones','historial','contactos'];
