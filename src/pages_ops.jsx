@@ -292,7 +292,7 @@ function Cuentas() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Responsable comercial *</label><select className="select" required value={formCuenta.responsable_comercial} onChange={e=>updateCuentaForm('responsable_comercial', e.target.value)}>
                 <option value="">Seleccionar...</option>
-                {usuarios.filter(u => ['comercial','admin'].includes(u.rol)).map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
+                {usuarios.filter(u => ['comercial','admin'].includes(u.rol_categoria)).map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
               </select></div>
               <div className="input-group"><label>Fuente de origen</label><select className="select" value={formCuenta.fuente_origen} onChange={e=>updateCuentaForm('fuente_origen', e.target.value)}>
                 <option value="">Seleccionar...</option>
@@ -1223,7 +1223,7 @@ function Proveedores() {
   const docs = MOCK.documentosProveedor || [];
   const evals = evaluacionesProveedor?.length ? evaluacionesProveedor : (MOCK.evaluacionesProveedor || []);
   const contactosProv = MOCK.contactosProveedor || [];
-  const responsables = usuarios.filter(u => ['admin','comercial','finanzas'].includes(u.rol));
+  const responsables = usuarios.filter(u => ['admin','comercial','finanzas'].includes(u.rol_categoria));
   const visibleTabs = role.permisos?.ver_finanzas
     ? ['resumen','finanzas','documentos','evaluaciones','historial','contactos']
     : ['resumen','documentos','evaluaciones','historial','contactos'];
@@ -3265,15 +3265,6 @@ function Tickets() {
   );
 }
 
-const PERSONAL_INICIAL_OPS = [
-  { id:'TEC-001', nombre:'Luis Mendoza',    cargo:'Técnico Mecánico',        especialidad:'Mecánica Industrial', costo:45, estado:'disponible', turno_id:'tur_001', turno:'Mañana',   docs:{ sctr:'vigente', medico:'vigente',    epp:'ok',         licencia:'vigente'    }},
-  { id:'TEC-002', nombre:'Carlos Reyes',    cargo:'Electricista Industrial',  especialidad:'Alta Tensión',        costo:50, estado:'ocupado',    turno_id:'tur_001', turno:'Mañana',  docs:{ sctr:'por_vencer',medico:'vigente',   epp:'ok',         licencia:'vigente'    }},
-  { id:'TEC-003', nombre:'Ana Torres',      cargo:'Supervisora SSO',          especialidad:'Seguridad OHSAS',     costo:75, estado:'disponible', turno_id:'tur_005', turno:'Administrativo',   docs:{ sctr:'vigente', medico:'vigente',    epp:'ok',         licencia:'vigente'    }},
-  { id:'TEC-004', nombre:'Jorge Quispe',    cargo:'Ayudante Técnico',         especialidad:'General',             costo:25, estado:'vacaciones', turno_id:'tur_002', turno:'Tarde',        docs:{ sctr:'vencido', medico:'por_vencer', epp:'incompleto', licencia:'vigente'    }},
-  { id:'TEC-005', nombre:'Pedro Condori',   cargo:'Técnico Electrónico',      especialidad:'Instrumentación',     costo:55, estado:'disponible', turno_id:'tur_004', turno:'Campo',    docs:{ sctr:'vigente', medico:'vigente',    epp:'ok',         licencia:'vigente'    }},
-  { id:'TEC-006', nombre:'Rosa Huanca',     cargo:'Técnica de Instrumentación',especialidad:'PLC / SCADA',        costo:65, estado:'disponible', turno_id:'tur_001', turno:'Mañana',   docs:{ sctr:'vigente', medico:'vigente',    epp:'ok',         licencia:'por_vencer' }},
-];
-
 function timeToMinutesHHMM(t) {
   if (!t) return 0;
   const [h, m] = String(t).split(':').map(Number);
@@ -3323,7 +3314,7 @@ function asistenciaBadge(estado) {
     : 'badge-gray';
 }
 
-function workerTurno(turnos, worker) {
+function workerTurno(turnos, worker = {}) {
   return turnos.find(t => t.id === worker.turno_id) || turnos[0] || {};
 }
 
@@ -3475,13 +3466,13 @@ function TurnosHorarios() {
 }
 
 function ControlAsistencia() {
-  const { turnos, registrosAsistencia, setRegistrosAsistencia, personalAdmin, empresa, addNotificacion } = useApp();
+  const { turnos, registrosAsistencia, setRegistrosAsistencia, personalOperativo, personalAdmin, empresa, addNotificacion } = useApp();
   const [tab, setTab] = useState('diaria');
   const [fecha, setFecha] = useState('2026-04-24');
   const [panel, setPanel] = useState(false);
   const [masivo, setMasivo] = useState(false);
   const trabajadores = [
-    ...PERSONAL_INICIAL_OPS.map(p => ({ ...p, area:'Operativo', remuneracion:3000 })),
+    ...personalOperativo.map(p => ({ ...p, area:p.area || 'Operativo', remuneracion:p.remuneracion || p.sueldo_base || 3000 })),
     ...personalAdmin.map(p => ({ id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:p.turno_id || 'tur_005', remuneracion:p.remuneracion || 3000 }))
   ];
   const [form, setForm] = useState({ trabajador_id:trabajadores[0]?.id || '', fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'' });
@@ -3536,7 +3527,7 @@ function ControlAsistencia() {
     setMasivo(false);
   };
   const resumenTrabajador = trabajadores[0];
-  const resumenRegs = registrosPeriodo.filter(r => r.trabajador_id === resumenTrabajador.id);
+  const resumenRegs = registrosPeriodo.filter(r => r.trabajador_id === resumenTrabajador?.id);
   const resumenTurno = workerTurno(turnos, resumenTrabajador);
   const semanalDias = ['2026-04-20','2026-04-21','2026-04-22','2026-04-23','2026-04-24','2026-04-25','2026-04-26'];
 
@@ -3551,7 +3542,7 @@ function ControlAsistencia() {
       {tab === 'diaria' && <div className="card"><div className="card-head"><h3>Asistencia del dia</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.map(row=><tr key={row.trabajador.id}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{minutesToLabel(row.calc.horas_trabajadas_min)}</td><td><span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span></td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>abrirEdicion(row)}>Editar</button></td></tr>)}</tbody></table></div></div>}
       {tab === 'semanal' && <div className="card"><div className="card-head"><h3>Vista semanal</h3><span className="text-muted">Semana del 20 al 26 Abr 2026</span></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadores.slice(0,8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
       {tab === 'mensual' && <div className="card"><div className="card-head"><h3>Resumen mensual - Abril 2026</h3></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Min. tardanza</th><th>Faltas</th><th>Faltas justif.</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>{trabajadores.slice(0,8).map(t=>{ const regs=registrosPeriodo.filter(r=>r.trabajador_id===t.id); return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{workerTurno(turnos,t).nombre}</td><td>22</td><td>{regs.filter(r=>!r.es_falta).length}</td><td>{regs.filter(r=>r.estado==='tardanza').length}</td><td>{regs.reduce((s,r)=>s+(r.tardanza_min||0),0)} min</td><td>{regs.filter(r=>r.estado==='falta').length}</td><td>{regs.filter(r=>r.estado==='falta_justificada').length}</td><td>{minutesToLabel(regs.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</td><td>{minutesToLabel(regs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</td></tr>})}</tbody></table></div><div style={{padding:16}}><strong>Promedio de asistencia:</strong> 94.7% · <strong>Total tardanzas:</strong> {kpis.tardanzas} · <strong>Total horas extra:</strong> {minutesToLabel(registrosPeriodo.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</div></div>}
-      {tab === 'resumen' && <div className="card" style={{padding:20}}><div className="card-head"><h3>Resumen por trabajador</h3><button className="btn btn-secondary btn-sm">{I.download} Exportar Excel</button></div><div className="grid-2" style={{gap:20}}><div><p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p><p><strong>Turno asignado:</strong> {resumenTurno.nombre} ({resumenTurno.hora_entrada} - {resumenTurno.hora_salida})</p><p><strong>Dias laborables:</strong> 22 dias</p><p><strong>Dias asistidos:</strong> {resumenRegs.filter(r=>!r.es_falta).length}</p><p><strong>Dias con tardanza:</strong> {resumenRegs.filter(r=>r.estado==='tardanza').length}</p><p><strong>Minutos tardanza:</strong> {resumenRegs.reduce((s,r)=>s+(r.tardanza_min||0),0)} minutos</p></div><div><p><strong>Horas esperadas:</strong> 176h</p><p><strong>Horas efectivas:</strong> {minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</p><p><strong>Horas extra:</strong> {minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</p><p><strong>Impacto nomina:</strong> descuento referencial por faltas y tardanzas.</p><p className="text-muted">Calculo referencial. Validar con el area de RRHH antes de procesar nomina.</p></div></div></div>}
+      {tab === 'resumen' && <div className="card" style={{padding:20}}><div className="card-head"><h3>Resumen por trabajador</h3><button className="btn btn-secondary btn-sm">{I.download} Exportar Excel</button></div>{!resumenTrabajador ? <div style={{padding:24, textAlign:'center', color:'var(--fg-muted)'}}>Sin trabajadores registrados.</div> : <div className="grid-2" style={{gap:20}}><div><p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p><p><strong>Turno asignado:</strong> {resumenTurno.nombre} ({resumenTurno.hora_entrada} - {resumenTurno.hora_salida})</p><p><strong>Dias laborables:</strong> 22 dias</p><p><strong>Dias asistidos:</strong> {resumenRegs.filter(r=>!r.es_falta).length}</p><p><strong>Dias con tardanza:</strong> {resumenRegs.filter(r=>r.estado==='tardanza').length}</p><p><strong>Minutos tardanza:</strong> {resumenRegs.reduce((s,r)=>s+(r.tardanza_min||0),0)} minutos</p></div><div><p><strong>Horas esperadas:</strong> 176h</p><p><strong>Horas efectivas:</strong> {minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</p><p><strong>Horas extra:</strong> {minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</p><p><strong>Impacto nomina:</strong> descuento referencial por faltas y tardanzas.</p><p className="text-muted">Calculo referencial. Validar con el area de RRHH antes de procesar nomina.</p></div></div>}</div>}
       {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registrar asistencia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{form.fecha}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarRegistro}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={form.fecha} onChange={e=>setForm(v=>({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:12, margin:'12px 0'}}>Turno asignado: <strong>{turno.nombre}</strong> · {turno.hora_entrada} - {turno.hora_salida} · Tolerancia {turno.tolerancia_minutos} min</div><div className="input-group"><label>Asistio</label><select className="select" value={form.asistio} onChange={e=>setForm(v=>({...v,asistio:e.target.value}))}><option value="si">Si</option><option value="no">No - falta</option></select></div>{form.asistio==='si' ? <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Hora entrada</label><input className="input" type="time" value={form.hora_entrada} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div><div className="input-group"><label>Hora salida</label><input className="input" type="time" value={form.hora_salida} onChange={e=>setForm(v=>({...v,hora_salida:e.target.value}))}/></div></div> : <><label className="row" style={{gap:8}}><input type="checkbox" checked={form.justificada} onChange={e=>setForm(v=>({...v,justificada:e.target.checked}))}/> Falta justificada</label>{form.justificada && <div className="input-group"><label>Motivo</label><select className="select" value={form.motivo_falta} onChange={e=>setForm(v=>({...v,motivo_falta:e.target.value}))}><option>Enfermedad con certificado</option><option>Permiso autorizado</option><option>Licencia</option><option>Otro</option></select></div>}</>}<div className="card" style={{padding:12, margin:'14px 0'}}><p><strong>Horas trabajadas:</strong> {minutesToLabel(resultado.horas_trabajadas_min)}</p><p><strong>Tardanza:</strong> {resultado.tardanza_min} min</p><p><strong>Horas extra:</strong> {minutesToLabel(resultado.horas_extra_min)}</p><p><strong>Estado:</strong> <span className={'badge '+asistenciaBadge(resultado.estado)}>{resultado.label}</span></p></div><div className="input-group"><label>Notas adicionales</label><textarea className="input" rows="3" value={form.notas} onChange={e=>setForm(v=>({...v,notas:e.target.value}))}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Guardar registro</button></div></form></div></>}
       {masivo && <><div className="side-panel-backdrop" onClick={()=>setMasivo(false)}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registro masivo</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{fecha}</div></div><button className="icon-btn" onClick={()=>setMasivo(false)}>{I.x}</button></div><div className="side-panel-body"><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Falta</th><th>Justif.</th></tr></thead><tbody>{trabajadores.slice(0,8).map(t=>{const trn=workerTurno(turnos,t);return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{trn.nombre}</td><td><input className="input" type="time" defaultValue={trn.hora_entrada}/></td><td><input className="input" type="time" defaultValue={trn.hora_salida}/></td><td><input type="checkbox"/></td><td><input type="checkbox"/></td></tr>})}</tbody></table></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setMasivo(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={guardarMasivo}>Guardar todos los registros</button></div></div></div></>}
     </>
@@ -3560,21 +3551,25 @@ function ControlAsistencia() {
 
 function Nomina() {
   const {
-    turnos, registrosAsistencia, personalAdmin, trabajadoresDatosNomina,
+    turnos, registrosAsistencia, personalOperativo, personalAdmin, trabajadoresDatosNomina,
     periodosNomina, setPeriodosNomina, setComprasGastos, role, empresa, addNotificacion
   } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('resumen');
   const [periodoId, setPeriodoId] = useState('nom_2026_04');
-  const [trabajadorSel, setTrabajadorSel] = useState('TEC-001');
+  const [trabajadorSel, setTrabajadorSel] = useState('');
   const [boleta, setBoleta] = useState(null);
   const [cierre, setCierre] = useState(false);
   const periodo = periodosNomina.find(p => p.id === periodoId) || periodosNomina[0];
   const periodoKey = `${periodo?.anio || 2026}-${String(periodo?.mes || 4).padStart(2, '0')}`;
   const trabajadores = [
-    ...PERSONAL_INICIAL_OPS.map(p => ({ ...p, area:'Operativo', tipo:'operativo', remuneracion:trabajadoresDatosNomina[p.id]?.sueldo_base || 3000 })),
+    ...personalOperativo.map(p => ({ ...p, area:p.area || 'Operativo', tipo:'operativo', remuneracion:p.remuneracion || trabajadoresDatosNomina[p.id]?.sueldo_base || p.sueldo_base || 3000 })),
     ...personalAdmin.map(p => ({ id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:p.turno_id || 'tur_005', tipo:'admin', remuneracion:p.remuneracion || trabajadoresDatosNomina[p.id]?.sueldo_base || 3000 }))
   ];
+  useEffect(() => {
+    if (!trabajadorSel && trabajadores[0]?.id) setTrabajadorSel(trabajadores[0].id);
+    if (trabajadorSel && trabajadores.length && !trabajadores.some(t => t.id === trabajadorSel)) setTrabajadorSel(trabajadores[0].id);
+  }, [trabajadorSel, trabajadores]);
   const calculos = trabajadores.map(t => {
     const turno = workerTurno(turnos, t);
     const datos = trabajadoresDatosNomina[t.id] || {};
@@ -3677,7 +3672,7 @@ function Nomina() {
           <div className="table-wrap">
             <table className="tbl">
               <thead><tr><th>Trabajador</th><th>Turno</th><th>Dias asist.</th><th>Faltas</th><th>Tard.</th><th>H. Extra</th><th>Sueldo base</th><th>Bruto</th><th>Descuentos</th><th>IR</th><th>Neto</th><th>Estado</th><th></th></tr></thead>
-              <tbody>{calculos.map(c => (
+              <tbody>{calculos.length === 0 && <tr><td colSpan={13} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin trabajadores registrados.</td></tr>}{calculos.map(c => (
                 <tr key={c.trabajador_id}>
                   <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}</div></td>
                   <td>{c.turno.nombre}</td>
@@ -3778,17 +3773,90 @@ function Nomina() {
 }
 
 function RRHH_Operativo() {
-  const { turnos, role, personalOperativo, setPersonalOperativo, crearTecnicoCtx, empresa } = useApp();
+  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, addNotificacion } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('personal');
-  const personal = personalOperativo.length ? personalOperativo : PERSONAL_INICIAL_OPS;
+  const personal = personalOperativo;
   const [panelAlta, setPanelAlta] = useState(false);
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor:'', sede:'', turno_id:'tur_001', fecha_ingreso:'', costo:'', costo_extra:'', acceso_campo:true, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0' };
+  const [editandoId, setEditandoId] = useState(null);
+  const turnosBaseOperativo = [
+    { id: 'turno_manana', nombre: 'Ma\u00f1ana', hora_entrada: '08:00', hora_salida: '17:00' },
+    { id: 'turno_noche', nombre: 'Noche', hora_entrada: '20:00', hora_salida: '06:00' },
+  ];
+  const turnosOptions = [
+    ...turnosBaseOperativo,
+    ...(turnos || []).filter(t => {
+      const nombre = String(t.nombre || '').toLowerCase();
+      return !['turno_manana', 'turno_noche'].includes(t.id) && !['mañana', 'manana', 'noche'].includes(nombre);
+    })
+  ];
+  const defaultTurnoId = turnosOptions[0]?.id || 'turno_manana';
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor:'', sede:'', turno_id:defaultTurnoId, fecha_ingreso:'', tipo_contrato:'Planilla', costo:'', costo_extra:'', acceso_campo:true, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [altaError, setAltaError] = useState('');
   const [altaSaving, setAltaSaving] = useState(false);
+  const esHonorarios = formAlta.tipo_contrato === 'Recibos por honorarios';
 
-  const CARGOS_TEC = MOCK.cargosEmpresa.filter(c => c.tipo !== 'Administrativo' && c.estado === 'activo').map(c => c.nombre);
+  const cargosOperativosOptions = cargos
+    .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Administrativa' && c.tipo !== 'Administrativo')
+    .map(c => c.nombre)
+    .filter(Boolean);
+  const especialidadesOptions = especialidades
+    .filter(e => e.estado !== 'inactivo')
+    .map(e => e.nombre)
+    .filter(Boolean);
+  const sedesOptions = sedes
+    .filter(s => s.estado !== 'inactivo')
+    .map(s => ({ nombre: s.nombre, detalle: s.direccion || s.detalle || s.gps || '' }))
+    .filter(s => s.nombre);
+
+  const cerrarPanelTecnico = () => {
+    setPanelAlta(false);
+    setEditandoId(null);
+    setFormAlta(formAltaBase);
+    setAltaError('');
+  };
+  const abrirNuevoTecnico = () => {
+    setEditandoId(null);
+    setFormAlta(formAltaBase);
+    setPanelAlta(true);
+  };
+  const abrirEditarTecnico = (p) => {
+    setEditandoId(p.id);
+    setFormAlta({
+      ...formAltaBase,
+      nombre: p.nombre || '',
+      dni: p.documento || p.dni || '',
+      telefono: p.telefono || '',
+      email: p.email || '',
+      codigo: p.codigo || p.id || '',
+      cargo: p.cargo || '',
+      especialidad: p.especialidad || '',
+      especialidad2: p.especialidad2 || '',
+      supervisor: p.supervisor || '',
+      sede: p.sede || '',
+      turno_id: p.turno_id || defaultTurnoId,
+      fecha_ingreso: p.fecha_ingreso || '',
+      tipo_contrato: p.tipo_contrato || 'Planilla',
+      costo: String(p.costo ?? p.costo_hora_real ?? ''),
+      costo_extra: String(p.costo_hora_extra ?? p.costo_extra ?? ''),
+      acceso_campo: p.acceso_campo ?? true,
+      perfil_campo: p.perfil_campo || 'Tecnico',
+      estado: p.estado || 'disponible',
+      sueldo_base: String(p.sueldo_base || ''),
+      sistema_pensionario: p.sistema_pensionario || 'AFP',
+    });
+    setPanelAlta(true);
+  };
+  const eliminarTecnico = async (p) => {
+    if (!window.confirm(`Eliminar a ${p.nombre}? Esta accion se reflejara en la base de datos.`)) return;
+    try {
+      await eliminarTecnicoCtx(p.id);
+      addNotificacion('Tecnico eliminado.');
+    } catch (_) {
+      addNotificacion('No se pudo eliminar el tecnico. Revisa si tiene asignaciones o permisos pendientes.');
+    }
+  };
 
   const guardarTecnico = async (e) => {
     e.preventDefault();
@@ -3816,22 +3884,28 @@ function RRHH_Operativo() {
       acceso_campo: formAlta.acceso_campo,
       perfil_campo: formAlta.perfil_campo,
       fecha_ingreso: formAlta.fecha_ingreso || null,
-      sueldo_base: Number(formAlta.sueldo_base) || 0,
-      sistema_pensionario: formAlta.sistema_pensionario,
-      afp_nombre: formAlta.afp_nombre,
-      tiene_hijos: formAlta.tiene_hijos,
-      regimen_laboral: formAlta.regimen_laboral,
-      cuota_prestamo_mes: Number(formAlta.cuota_prestamo_mes) || 0,
-      descuento_judicial: Number(formAlta.descuento_judicial) || 0,
+      tipo_contrato: formAlta.tipo_contrato || 'Planilla',
+      sueldo_base: esHonorarios ? 0 : Number(formAlta.sueldo_base) || 0,
+      sistema_pensionario: esHonorarios ? null : formAlta.sistema_pensionario,
+      afp_nombre: esHonorarios ? null : formAlta.afp_nombre,
+      tiene_hijos: esHonorarios ? false : formAlta.tiene_hijos,
+      regimen_laboral: esHonorarios ? 'honorarios' : formAlta.regimen_laboral,
+      cuota_prestamo_mes: esHonorarios ? 0 : Number(formAlta.cuota_prestamo_mes) || 0,
+      descuento_judicial: esHonorarios ? 0 : Number(formAlta.descuento_judicial) || 0,
       estado: formAlta.estado || 'disponible',
-      turno_id: formAlta.turno_id || 'tur_001',
-      turno: turnos.find(t => t.id === formAlta.turno_id)?.nombre || 'Turno Mañana',
+      turno_id: formAlta.turno_id || defaultTurnoId,
+      turno: turnosOptions.find(t => t.id === formAlta.turno_id)?.nombre || 'Ma\u00f1ana',
       docs: { sctr:'pendiente', medico:'pendiente', epp:'pendiente', licencia:'pendiente' }
     };
     try {
-      await crearTecnicoCtx({ ...nuevo, empresa_id: empresa?.id });
-      setFormAlta(formAltaBase);
-      setPanelAlta(false);
+      if (editandoId) {
+        await actualizarTecnicoCtx(editandoId, { ...nuevo, id: editandoId, empresa_id: empresa?.id });
+        addNotificacion('Tecnico actualizado.');
+      } else {
+        await crearTecnicoCtx({ ...nuevo, empresa_id: empresa?.id });
+        addNotificacion('Tecnico creado.');
+      }
+      cerrarPanelTecnico();
     } catch (_) {
       setAltaError('No se pudo guardar el tecnico en Supabase. Revisa permisos de RRHH Operativo o aplica la migracion backend.');
     } finally {
@@ -3862,7 +3936,7 @@ function RRHH_Operativo() {
     <>
       <div className="page-header">
         <div><h1 className="page-title">RRHH Operativo</h1><div className="page-sub">{personal.length} técnicos · Semana 28 Abr – 2 May 2026</div></div>
-        <button className="btn btn-primary" data-local-form="true" onClick={() => setPanelAlta(true)}>{I.plus} Nuevo técnico</button>
+        <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoTecnico}>{I.plus} Nuevo Colaborador</button>
       </div>
 
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
@@ -3882,8 +3956,9 @@ function RRHH_Operativo() {
         <div className="card">
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>ID</th><th>Nombre</th><th>Cargo</th><th>Especialidad</th><th>Sede base</th><th>Costo/Hora</th><th>Turno</th><th>Estado</th></tr></thead>
+              <thead><tr><th>ID</th><th>Nombre</th><th>Cargo</th><th>Especialidad</th><th>Sede base</th><th>Costo/Hora</th><th>Turno</th><th>Estado</th><th>Acciones</th></tr></thead>
               <tbody>
+                {personal.length === 0 && <tr><td colSpan={9} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
                 {personal.map(p => (
                   <tr key={p.id} className="hover-row">
                     <td className="mono text-muted">{p.codigo || p.id}</td>
@@ -3897,8 +3972,14 @@ function RRHH_Operativo() {
                     <td className="text-muted">{p.especialidad}</td>
                     <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
                     <td className="num">{money(p.costo ?? p.costo_hora_real ?? 0)}/hr</td>
-                    <td><span className="mono" style={{fontSize:12}}>{workerTurno(turnos, p).nombre}</span></td>
+                    <td><span className="mono" style={{fontSize:12}}>{workerTurno(turnosOptions, p).nombre}</span></td>
                     <td><span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span></td>
+                    <td>
+                      <div className="row" style={{gap:6}}>
+                        <button className="btn btn-ghost btn-sm" title="Editar tecnico" onClick={() => abrirEditarTecnico(p)}>{I.edit}</button>
+                        <button className="btn btn-ghost btn-sm" title="Eliminar tecnico" style={{color:'var(--danger)'}} onClick={() => eliminarTecnico(p)}>{I.trash}</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -3976,14 +4057,14 @@ function RRHH_Operativo() {
       )}
 
       {panelAlta && <>
-        <div className="side-panel-backdrop" onClick={() => setPanelAlta(false)}/>
+        <div className="side-panel-backdrop" onClick={cerrarPanelTecnico}/>
         <div className="side-panel" style={{width:'min(560px, 96vw)'}}>
           <div className="side-panel-head">
             <div>
-              <div className="eyebrow">Alta de personal</div>
-              <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>Nuevo técnico operativo</div>
+              <div className="eyebrow">{editandoId ? 'Edicion de personal' : 'Alta de personal'}</div>
+              <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>{editandoId ? 'Editar tecnico operativo' : 'Nuevo tecnico operativo'}</div>
             </div>
-            <button className="icon-btn" onClick={() => setPanelAlta(false)}>{I.x}</button>
+            <button className="icon-btn" onClick={cerrarPanelTecnico}>{I.x}</button>
           </div>
           <form className="side-panel-body" onSubmit={guardarTecnico}>
             {altaError && <div className="alert alert-danger" style={{marginBottom:16}}>{altaError}</div>}
@@ -3998,13 +4079,14 @@ function RRHH_Operativo() {
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos laborales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder={`TEC-00${personal.length+1}`}/></div>
-              <div className="input-group"><label>Turno asignado</label><select className="select" value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}>{turnos.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select></div>
-              <div className="input-group"><label>Cargo</label><select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{CARGOS_TEC.map(c=><option key={c}>{c}</option>)}</select></div>
-              <div className="input-group"><label>Especialidad principal</label><select className="select" value={formAlta.especialidad} onChange={e=>setFormAlta(v=>({...v,especialidad:e.target.value}))}><option value="">Seleccionar...</option>{MOCK.especialidadesTecnicas.map(e=><option key={e.id} value={e.nombre}>{e.nombre}</option>)}</select></div>
-              <div className="input-group"><label>Especialidad secundaria <span className="text-muted">(opcional)</span></label><select className="select" value={formAlta.especialidad2} onChange={e=>setFormAlta(v=>({...v,especialidad2:e.target.value}))}><option value="">Ninguna</option>{MOCK.especialidadesTecnicas.map(e=><option key={e.id} value={e.nombre}>{e.nombre}</option>)}</select></div>
-              <div className="input-group"><label>Sede base</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{[{nombre:'Planta Norte',dir:'Av. Industrial 1450, Ate Vitarte'},{nombre:'Sede Sur',dir:'Jr. Los Incas 320, Villa El Salvador'}].map(s=><option key={s.nombre} value={s.nombre}>{s.nombre} — {s.dir}</option>)}</select></div>
+              <div className="input-group"><label>Turno asignado</label><select className="select" value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select></div>
+              <div className="input-group"><label>Cargo</label><select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{cargosOperativosOptions.map(c=><option key={c}>{c}</option>)}</select></div>
+              <div className="input-group"><label>Especialidad principal</label><select className="select" value={formAlta.especialidad} onChange={e=>setFormAlta(v=>({...v,especialidad:e.target.value}))}><option value="">Seleccionar...</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>
+              <div className="input-group"><label>Especialidad secundaria <span className="text-muted">(opcional)</span></label><select className="select" value={formAlta.especialidad2} onChange={e=>setFormAlta(v=>({...v,especialidad2:e.target.value}))}><option value="">Ninguna</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>
+              <div className="input-group"><label>Sede base</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
               <div className="input-group"><label>Supervisor directo</label><select className="select" value={formAlta.supervisor} onChange={e=>setFormAlta(v=>({...v,supervisor:e.target.value}))}><option value="">Seleccionar...</option>{personal.filter(p=>p.cargo.includes('Supervis')).map(p=><option key={p.id}>{p.nombre}</option>)}</select></div>
               <div className="input-group"><label>Fecha de ingreso</label><input className="input" type="date" value={formAlta.fecha_ingreso} onChange={e=>setFormAlta(v=>({...v,fecha_ingreso:e.target.value}))}/></div>
+              <div className="input-group"><label>Modalidad de contrato</label><select className="select" value={formAlta.tipo_contrato} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value, ...(e.target.value === 'Recibos por honorarios' ? {sueldo_base:'', sistema_pensionario:'', afp_nombre:'', tiene_hijos:false, regimen_laboral:'honorarios', cuota_prestamo_mes:'0', descuento_judicial:'0'} : {sistema_pensionario:v.sistema_pensionario || 'AFP', afp_nombre:v.afp_nombre || 'Integra', regimen_laboral:v.regimen_laboral === 'honorarios' ? 'general' : v.regimen_laboral})}))}><option>Planilla</option><option>Recibos por honorarios</option><option>CAS</option><option>Practicante</option><option>Temporal</option></select></div>
               <div className="input-group"><label>Estado inicial</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="disponible">Disponible</option><option value="inactivo">Inactivo</option></select></div>
             </div>
 
@@ -4016,14 +4098,15 @@ function RRHH_Operativo() {
 
             {canFinanzas && <>
               <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos de nomina</div>
+              {esHonorarios && <div className="alert" style={{marginBottom:12}}>Recibos por honorarios no genera beneficios sociales ni aportes de planilla en este formulario.</div>}
               <div className="grid-2" style={{gap:14, marginBottom:20}}>
-                <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" value={formAlta.sueldo_base} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value}))} placeholder="3000"/></div>
-                <div className="input-group"><label>Sistema pensionario</label><select className="select" value={formAlta.sistema_pensionario} onChange={e=>setFormAlta(v=>({...v,sistema_pensionario:e.target.value, afp_nombre:e.target.value === 'ONP' ? 'ONP' : v.afp_nombre}))}><option value="AFP">AFP</option><option value="ONP">ONP</option></select></div>
-                <div className="input-group"><label>AFP / Entidad</label><select className="select" value={formAlta.afp_nombre} onChange={e=>setFormAlta(v=>({...v,afp_nombre:e.target.value}))}><option>Integra</option><option>Prima</option><option>Habitat</option><option>Profuturo</option><option>ONP</option></select></div>
-                <div className="input-group"><label>Regimen laboral</label><select className="select" value={formAlta.regimen_laboral} onChange={e=>setFormAlta(v=>({...v,regimen_laboral:e.target.value}))}><option value="general">General</option><option value="mype">MYPE</option><option value="cas">CAS</option><option value="otro">Otro</option></select></div>
-                <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos para asignacion familiar</label>
-                <div className="input-group"><label>Cuota prestamo mes</label><input className="input" type="number" min="0" value={formAlta.cuota_prestamo_mes} onChange={e=>setFormAlta(v=>({...v,cuota_prestamo_mes:e.target.value}))}/></div>
-                <div className="input-group"><label>Descuento judicial</label><input className="input" type="number" min="0" value={formAlta.descuento_judicial} onChange={e=>setFormAlta(v=>({...v,descuento_judicial:e.target.value}))}/></div>
+                <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" disabled={esHonorarios} value={formAlta.sueldo_base} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value}))} placeholder="3000"/></div>
+                <div className="input-group"><label>Sistema pensionario</label><select className="select" disabled={esHonorarios} value={formAlta.sistema_pensionario} onChange={e=>setFormAlta(v=>({...v,sistema_pensionario:e.target.value, afp_nombre:e.target.value === 'ONP' ? 'ONP' : v.afp_nombre}))}><option value="">No aplica</option><option value="AFP">AFP</option><option value="ONP">ONP</option></select></div>
+                <div className="input-group"><label>AFP / Entidad</label><select className="select" disabled={esHonorarios} value={formAlta.afp_nombre} onChange={e=>setFormAlta(v=>({...v,afp_nombre:e.target.value}))}><option value="">No aplica</option><option>Integra</option><option>Prima</option><option>Habitat</option><option>Profuturo</option><option>ONP</option></select></div>
+                <div className="input-group"><label>Regimen laboral</label><select className="select" disabled={esHonorarios} value={formAlta.regimen_laboral} onChange={e=>setFormAlta(v=>({...v,regimen_laboral:e.target.value}))}><option value="honorarios">Honorarios</option><option value="general">General</option><option value="mype">MYPE</option><option value="cas">CAS</option><option value="otro">Otro</option></select></div>
+                <label className="row" style={{gap:8, alignItems:'center', opacity: esHonorarios ? 0.5 : 1}}><input type="checkbox" disabled={esHonorarios} checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos para asignacion familiar</label>
+                <div className="input-group"><label>Cuota prestamo mes</label><input className="input" type="number" min="0" disabled={esHonorarios} value={formAlta.cuota_prestamo_mes} onChange={e=>setFormAlta(v=>({...v,cuota_prestamo_mes:e.target.value}))}/></div>
+                <div className="input-group"><label>Descuento judicial</label><input className="input" type="number" min="0" disabled={esHonorarios} value={formAlta.descuento_judicial} onChange={e=>setFormAlta(v=>({...v,descuento_judicial:e.target.value}))}/></div>
               </div>
             </>}
 
@@ -4035,8 +4118,8 @@ function RRHH_Operativo() {
             </div>
 
             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
-              <button type="button" className="btn btn-secondary" onClick={() => setPanelAlta(false)}>Cancelar</button>
-              <button type="submit" className="btn btn-primary" disabled={altaSaving}>{I.save} {altaSaving ? 'Guardando...' : 'Guardar tecnico'}</button>
+              <button type="button" className="btn btn-secondary" onClick={cerrarPanelTecnico}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={altaSaving}>{I.save} {altaSaving ? 'Guardando...' : editandoId ? 'Actualizar tecnico' : 'Guardar tecnico'}</button>
             </div>
           </form>
         </div>

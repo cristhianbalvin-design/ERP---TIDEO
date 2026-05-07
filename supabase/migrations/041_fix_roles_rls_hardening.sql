@@ -9,6 +9,7 @@ drop policy if exists access_roles_authenticated on public.roles;
 
 -- SELECT: miembros del tenant ven sus propios roles; roles globales (null) visibles a todos.
 -- access_roles_platform_all (migration 019) cubre SELECT del superadmin por separado.
+drop policy if exists roles_select on public.roles;
 create policy roles_select on public.roles
   for select using (
     empresa_id is null
@@ -16,6 +17,7 @@ create policy roles_select on public.roles
   );
 
 -- INSERT: solo admin del tenant, empresa_id obligatorio, no puede crear es_superadmin.
+drop policy if exists roles_insert on public.roles;
 create policy roles_insert on public.roles
   for insert with check (
     empresa_id is not null
@@ -24,6 +26,7 @@ create policy roles_insert on public.roles
   );
 
 -- UPDATE: solo admin del tenant, no puede cambiar empresa_id a null ni activar es_superadmin.
+drop policy if exists roles_update on public.roles;
 create policy roles_update on public.roles
   for update
   using (
@@ -38,6 +41,7 @@ create policy roles_update on public.roles
   );
 
 -- DELETE: solo admin del tenant, no puede borrar roles superadmin.
+drop policy if exists roles_delete on public.roles;
 create policy roles_delete on public.roles
   for delete using (
     empresa_id is not null

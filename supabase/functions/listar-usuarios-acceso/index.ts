@@ -64,7 +64,7 @@ serve(async (req) => {
     callerProfile?.rol,
   ].filter(Boolean))];
   const { data: rolesRows, error: rolesError } = roleIds.length
-    ? await adminClient.from("roles").select("id, nombre, es_admin_empresa, es_superadmin").in("id", roleIds)
+    ? await adminClient.from("roles").select("id, nombre, es_admin_empresa, es_superadmin, categoria").in("id", roleIds)
     : { data: [], error: null };
 
   if (rolesError) return jsonResponse({ success: false, error: rolesError.message }, 500);
@@ -132,6 +132,7 @@ serve(async (req) => {
       ...profile,
       rol: membership?.rol_id || profile.rol,
       rol_nombre: role?.nombre || profile.rol_nombre || profile.rol,
+      rol_categoria: role?.categoria || null,
       campo: membership?.acceso_campo ?? profile.campo,
       campoPerfil: membership?.perfil_campo ?? profile.campo_perfil,
       estado: membership?.estado ? (estadoMap[membership.estado] ?? membership.estado) : profile.estado,
@@ -151,6 +152,7 @@ serve(async (req) => {
       email: authUser?.email || "",
       rol: membership.rol_id,
       rol_nombre: role?.nombre || membership.rol_id,
+      rol_categoria: role?.categoria || null,
       area: "",
       campo: membership.acceso_campo,
       campoPerfil: membership.perfil_campo,

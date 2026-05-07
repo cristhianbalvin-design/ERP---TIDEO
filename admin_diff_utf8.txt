@@ -1,0 +1,501 @@
+﻿diff --git a/src/pages_admin.jsx b/src/pages_admin.jsx
+index 0a3481b..f37abd3 100644
+--- a/src/pages_admin.jsx
++++ b/src/pages_admin.jsx
+@@ -527,6 +527,11 @@ function Usuarios() {
+               )}
+               {usuarios.map(u=>{
+               const r = rolesCtx?.[u.rol] || MOCK.roles[u.rol] || { nombre: u.rol_nombre || u.rol, color: 'gray' };
++              const isSuperadminTideo = Boolean(
++                r.es_superadmin ||
++                u.rol === 'rol_tideo_super' ||
++                /superadmin\s+tideo/i.test(String(r.nombre || u.rol_nombre || u.rol || ''))
++              );
+               return (
+                 <tr key={`${u.id}_${u.empresa_id}`}>
+                   <td><div className="row"><div className="avatar" style={{width:28,height:28,fontSize:11}}>{u.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div><strong>{u.nombre}</strong></div></td>
+@@ -545,7 +550,13 @@ function Usuarios() {
+                       <button className="btn btn-ghost btn-sm" title="Enviar link de reset" onClick={() => setResetting(u)}>
+                         <span style={{fontSize:16}}>­ƒöæ</span>
+                       </button>
+-                      <button className="btn btn-ghost btn-sm" title="Eliminar usuario" style={{color:'var(--danger)'}} onClick={() => eliminarUsuario(u.id)}>
++                      <button
++                        className="btn btn-ghost btn-sm"
++                        title={isSuperadminTideo ? 'El Superadmin TIDEO no se puede eliminar' : 'Eliminar usuario'}
++                        style={{color:'var(--danger)', opacity: isSuperadminTideo ? 0.35 : 1, cursor: isSuperadminTideo ? 'not-allowed' : 'pointer'}}
++                        disabled={isSuperadminTideo}
++                        onClick={() => eliminarUsuario(u.id, u.empresa_id)}
++                      >
+                         <span style={{fontSize:15}}>­ƒùæ</span>
+                       </button>
+                     </div>
+@@ -909,26 +920,34 @@ function Stub({title, description}) {
+ 
+ // ============ CONFIGURACI├ôN Y MAESTROS ============
+ function Maestros() {
+-  const { navigate, cuentas, proveedores, cargos, especialidades, tiposServicio, almacenes, sedes, industrias, crearCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria } = useApp();
++  const { navigate, cuentas, proveedores, cargos, especialidades, tiposServicio, almacenes, sedes, industrias, crearCargo, actualizarCargo, eliminarCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria, addNotificacion } = useApp();
+   const [sel, setSel] = useState(null);
++  const [editandoId, setEditandoId] = useState(null);
+   const [clienteSearch, setClienteSearch] = useState('');
+   const nuevoBase = { nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'' };
+   const [rows, setRows] = useState({
+     mst_clientes: [],
+-    mst_proveedores: [
+-      { codigo:'PRV-001', nombre:'Ferreteria Industrial SAC', detalle:'Ferreteria ┬À Calificacion 4.5', estado:'activo' },
+-      { codigo:'PRV-002', nombre:'Electroandes', detalle:'Electricidad ┬À Calificacion 5.0', estado:'activo' }
+-    ],
+-    mst_materiales: [
+-      { codigo:'ROD-001', nombre:'Rodamiento 6205 ZZ', detalle:'Und ┬À barcode 775000620501', estado:'activo' },
+-      { codigo:'LUB-005', nombre:'Grasa Litio 500g', detalle:'Tarro ┬À stock bajo', estado:'activo' }
+-    ],
+-    mst_impuestos: [
+-      { codigo:'IGV-18', nombre:'IGV 18%', detalle:'Impuesto ventas Peru', estado:'activo' },
+-      { codigo:'PEN', nombre:'Sol peruano', detalle:'Moneda base tenant', estado:'activo' }
+-    ]
++    mst_proveedores: [],
++    mst_materiales: [],
++    mst_impuestos: [],
++    mst_centros_costo: []
+   });
+   const [nuevo, setNuevo] = useState(nuevoBase);
++  const [formSaving, setFormSaving] = useState(false);
++  const [formError, setFormError] = useState('');
++  const maestrosCatalogos = [
++    { id: 'mst_clientes', tabla: 'Clientes y contactos' },
++    { id: 'mst_proveedores', tabla: 'Proveedores' },
++    { id: 'mst_industrias', tabla: 'Industrias' },
++    { id: 'mst_sedes', tabla: 'Sedes y ubicaciones GPS' },
++    { id: 'mst_centros_costo', tabla: 'Centros de costo' },
++    { id: 'mst_cargos', tabla: 'Cargos de la empresa' },
++    { id: 'mst_especialidades', tabla: 'Especialidades tecnicas' },
++    { id: 'mst_materiales', tabla: 'Materiales e insumos con codigo de barras' },
++    { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades' },
++    { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno' },
++    { id: 'mst_almacenes', tabla: 'Almacenes y depositos' },
++  ];
+   const getSelectedRows = () => {
+     if (!sel) return [];
+     if (sel.id === 'mst_cargos') return cargos;
+@@ -950,15 +969,17 @@ function Maestros() {
+   const addRow = async (e) => {
+     e.preventDefault();
+     if (!sel) return;
++    setFormSaving(true);
++    setFormError('');
+     const base = {
+-      codigo: autoCode(sel.id, selectedRows.length),
++      codigo: editandoId ? nuevo.codigo : autoCode(sel.id, selectedRows.length),
+       nombre: nuevo.nombre || 'Nuevo valor',
+       estado: nuevo.estado
+     };
+     try {
+       if (sel.id === 'mst_cargos') {
+         const item = { ...base, tipo:nuevo.tipo_cargo||'Administrativo', detalle:nuevo.detalle||'Pendiente de completar' };
+-        await crearCargo(item);
++        if (editandoId) await actualizarCargo(editandoId, item); else await crearCargo(item);
+       } else if (sel.id === 'mst_especialidades') {
+         const item = { ...base, area:nuevo.area||'General', requiere_cert:nuevo.requiere_cert, detalle:`${nuevo.area||'General'} ┬À Cert: ${nuevo.requiere_cert?'S├¡':'No'}` };
+         await crearEspecialidad(item);
+@@ -975,12 +996,17 @@ function Maestros() {
+         const item = { ...base, categoria:nuevo.detalle||'General', detalle:nuevo.detalle||'General' };
+         await crearIndustria(item);
+       } else {
+-        const item = { ...base, detalle:nuevo.detalle||'Pendiente de completar' };
+-        setRows(prev => ({ ...prev, [sel.id]: [item, ...(prev[sel.id]||[])] }));
++        return;
+       }
+       setNuevo(nuevoBase);
++      addNotificacion?.(`${sel.tabla}: registro creado.`);
+     } catch (err) {
+       console.error(err);
++      const msg = err?.message || 'No se pudo crear el registro en Supabase.';
++      setFormError(msg);
++      addNotificacion?.(`No se pudo crear el registro: ${msg}`);
++    } finally {
++      setFormSaving(false);
+     }
+   };
+ 
+@@ -1025,115 +1051,20 @@ function Maestros() {
+         ))}</tbody>
+       </table>
+     );
+-    if (sel?.id === 'mst_cargos') return (
+-      <form className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+-        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+-          <CodPreview id={sel.id} len={selectedRows.length}/>
+-          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre del cargo *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Analista de Calidad" autoFocus/></div>
+-          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
+-          <div className="input-group"><label>Tipo de personal *</label><select className="select" value={nuevo.tipo_cargo} onChange={e=>setNuevo(v=>({...v,tipo_cargo:e.target.value}))}><option value="">Seleccionar...</option><option value="Administrativo">Administrativo</option><option value="Operativo">Operativo</option><option value="Ambos">Ambos</option></select></div>
+-          <div className="input-group" style={{gridColumn:'span 2'}}><label>Descripci├│n breve</label><input className="input" value={nuevo.detalle} onChange={e=>setNuevo(v=>({...v,detalle:e.target.value}))} placeholder="Ej: Responsable de an├ílisis y reportes"/></div>
+-          <div style={{display:'flex', alignItems:'end'}}><button className="btn btn-primary" type="submit" style={{width:'100%'}}>{I.plus} Agregar cargo</button></div>
+-        </div>
+-      </form>
+-    );
+-    if (sel?.id === 'mst_especialidades') return (
+-      <form className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+-        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+-          <CodPreview id={sel.id} len={selectedRows.length}/>
+-          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Electricista industrial" autoFocus/></div>
+-          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
+-          <div className="input-group"><label>├ürea</label><select className="select" value={nuevo.area} onChange={e=>setNuevo(v=>({...v,area:e.target.value}))}><option value="">Seleccionar...</option>{['El├®ctrica','Mec├ínica','Civil','Instrumentaci├│n','Sistemas','Seguridad','General'].map(a=><option key={a}>{a}</option>)}</select></div>
+-          <div className="input-group"><label>Requiere certificaci├│n</label><select className="select" value={nuevo.requiere_cert?'si':'no'} onChange={e=>setNuevo(v=>({...v,requiere_cert:e.target.value==='si'}))}><option value="no">No</option><option value="si">S├¡</option></select></div>
+-          <div style={{display:'flex', alignItems:'end', gridColumn:'span 2'}}><button className="btn btn-primary" type="submit" style={{width:'100%'}}>{I.plus} Agregar especialidad</button></div>
+-        </div>
+-      </form>
+-    );
+-    if (sel?.id === 'mst_tipos_servicio') return (
+-      <form className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+-        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+-          <CodPreview id={sel.id} len={selectedRows.length}/>
+-          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Mantenimiento predictivo" autoFocus/></div>
+-          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
+-          <div className="input-group"><label>Clasificaci├│n</label><select className="select" value={nuevo.clasificacion} onChange={e=>setNuevo(v=>({...v,clasificacion:e.target.value}))}><option value="">Seleccionar...</option>{['Preventivo','Correctivo','Proyecto','Emergencia','Garant├¡a','Interno'].map(c=><option key={c}>{c}</option>)}</select></div>
+-          <div className="input-group"><label>Facturable</label><select className="select" value={nuevo.facturable?'si':'no'} onChange={e=>setNuevo(v=>({...v,facturable:e.target.value==='si'}))}><option value="si">S├¡</option><option value="no">No</option></select></div>
+-          <div style={{display:'flex', alignItems:'end', gridColumn:'span 2'}}><button className="btn btn-primary" type="submit" style={{width:'100%'}}>{I.plus} Agregar tipo</button></div>
+-        </div>
+-      </form>
+-    );
+-    if (sel?.id === 'mst_almacenes') return (
+-      <form className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+-        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+-          <CodPreview id={sel.id} len={selectedRows.length}/>
+-          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre del almac├®n</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Almac├®n Sede Sur" autoFocus/></div>
+-          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
+-          <div className="input-group"><label>Tipo</label><select className="select" value={nuevo.tipo} onChange={e=>setNuevo(v=>({...v,tipo:e.target.value}))}><option value="">Seleccionar...</option>{['Central','Sede','M├│vil','Tr├ínsito'].map(t=><option key={t}>{t}</option>)}</select></div>
+-          <div className="input-group"><label>Responsable</label><input className="input" value={nuevo.responsable} onChange={e=>setNuevo(v=>({...v,responsable:e.target.value}))} placeholder="Nombre del responsable"/></div>
+-          <div className="input-group" style={{gridColumn:'span 2'}}><label>Direcci├│n</label><input className="input" value={nuevo.direccion} onChange={e=>setNuevo(v=>({...v,direccion:e.target.value}))} placeholder="Direcci├│n del almac├®n"/></div>
+-          <div style={{display:'flex', alignItems:'end'}}><button className="btn btn-primary" type="submit" style={{width:'100%'}}>{I.plus} Agregar</button></div>
+-        </div>
+-      </form>
+-    );
+-    if (sel?.id === 'mst_sedes') return (
+-      <form className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+-        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+-          <CodPreview id={sel.id} len={selectedRows.length}/>
+-          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre de la sede *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Sede Norte, Planta Central" autoFocus/></div>
+-          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
+-          <div className="input-group" style={{gridColumn:'span 3'}}><label>Direcci├│n f├¡sica</label><input className="input" value={nuevo.direccion} onChange={e=>setNuevo(v=>({...v,direccion:e.target.value}))} placeholder="Ej: Av. Industrial 1450, Ate Vitarte, Lima"/></div>
+-          <div className="input-group" style={{gridColumn:'span 2'}}><label>Coordenadas GPS <span style={{fontSize:10,color:'var(--fg-subtle)',fontWeight:400}}>┬À lat, lng</span></label><input className="input" value={nuevo.gps} onChange={e=>setNuevo(v=>({...v,gps:e.target.value}))} placeholder="Ej: -12.0464, -77.0428"/></div>
+-          <div style={{display:'flex', alignItems:'end', gridColumn:'span 2'}}><button className="btn btn-primary" type="submit" style={{width:'100%'}}>{I.plus} Agregar sede</button></div>
+-        </div>
+-      </form>
+-    );
+-    return (
+-      <form className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+-        <div className="grid-4" style={{gap:12}}>
+-          <CodPreview id={sel?.id||''} len={selectedRows.length}/>
+-          <div className="input-group"><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} autoFocus/></div>
+-          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option><option>bloqueado</option></select></div>
+-          <div style={{display:'flex', alignItems:'end'}}><button className="btn btn-primary" type="submit" style={{width:'100%'}}>{I.plus} Agregar</button></div>
+-          <div className="input-group" style={{gridColumn:'1 / -1'}}><label>Detalle</label><input className="input" value={nuevo.detalle} onChange={e=>setNuevo(v=>({...v,detalle:e.target.value}))}/></div>
+-        </div>
+-      </form>
+-    );
+-  };
+-
+-  const renderTable = () => {
+-    if (sel?.id === 'mst_clientes') {
+-      const filtered = cuentas.filter(c => !clienteSearch || c.razon_social.toLowerCase().includes(clienteSearch.toLowerCase()) || (c.ruc||'').includes(clienteSearch));
+-      return (
+-        <>
+-          <div style={{marginBottom:12}}>
+-            <input className="input" placeholder="Buscar por raz├│n social o RUC..." value={clienteSearch} onChange={e=>setClienteSearch(e.target.value)} style={{maxWidth:320}}/>
+-          </div>
+-          <table className="tbl">
+-            <thead><tr><th>RUC</th><th>Raz├│n social</th><th>Industria</th><th>Responsable</th><th>Tipo</th><th></th></tr></thead>
+-            <tbody>{filtered.map(c => (
+-              <tr key={c.id}>
+-                <td className="mono text-muted" style={{fontSize:12}}>{c.ruc || 'ÔÇö'}</td>
+-                <td><strong>{c.razon_social}</strong></td>
+-                <td className="text-muted">{c.industria}</td>
+-                <td>{c.responsable_comercial}</td>
+-                <td><span className={'badge '+(c.tipo==='estrategico'?'badge-purple':c.tipo==='en_riesgo'?'badge-red':c.tipo==='prospecto'?'badge-cyan':'badge-green')} style={{fontSize:11}}>{c.tipo?.replace('_',' ')}</span></td>
+-                <td><button className="btn btn-sm btn-ghost" onClick={()=>navigate('cuentas')}>Ver ÔåÆ</button></td>
+-              </tr>
+-            ))}</tbody>
+-          </table>
+-        </>
+-      );
+-    }
+     if (sel?.id === 'mst_cargos') return (
+       <table className="tbl">
+-        <thead><tr><th>C├│digo</th><th>Cargo</th><th>Tipo</th><th>Descripci├│n</th><th>Estado</th><th></th></tr></thead>
++        <thead><tr><th>C├│digo</th><th>Cargo</th><th>Tipo</th><th>Descripci├│n</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+         <tbody>{selectedRows.map((r,i) => (
+-          <tr key={`${r.codigo}-${i}`}>
++          <tr key={`${r.codigo}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
+             <td className="mono text-muted">{r.codigo}</td>
+             <td><strong>{r.nombre}</strong></td>
+             <td><span className={'badge '+(r.tipo==='Operativo'?'badge-cyan':r.tipo==='Ambos'?'badge-purple':'badge-gray')} style={{fontSize:11}}>{r.tipo||'ÔÇö'}</span></td>
+             <td className="text-muted" style={{fontSize:12}}>{r.detalle}</td>
+             <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
+-            <td><button className="btn btn-sm btn-ghost">Editar</button></td>
++            <td style={{textAlign:'right', whiteSpace:'nowrap'}}>
++              <button className="btn btn-sm btn-ghost" onClick={() => { setEditandoId(r.id); setNuevo({nombre:r.nombre, estado:r.estado, tipo_cargo:r.tipo, detalle:r.detalle, codigo:r.codigo}); }}>Ô£Å´©Å</button>
++              <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} onClick={async () => { if(window.confirm('┬┐Eliminar cargo?')) await eliminarCargo(r.id); }}>­ƒùæ´©Å</button>
++            </td>
+           </tr>
+         ))}</tbody>
+       </table>
+@@ -1222,26 +1153,32 @@ function Maestros() {
+           <div className="page-sub">Cat├ílogos de referencia globales del sistema</div>
+         </div>
+       </div>
+-      <div className="grid-2">
+-        {MOCK.maestros.map(m => (
+-          <div key={m.id} className="card hover-raise" style={{padding:20, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+-            <div>
+-              <div style={{fontWeight:600, fontSize:15}}>{m.tabla}</div>
+-              <div className="text-muted" style={{fontSize:12, marginTop:4}}>
+-                {m.id === 'mst_clientes' ? cuentas.length : m.id === 'mst_proveedores' ? proveedores.length : m.valores} valores ┬À Actualizado {m.id === 'mst_clientes' || m.id === 'mst_proveedores' ? 'en tiempo real' : m.actualizado}
+-              </div>
++      <div className="maestros-grid">
++        {maestrosCatalogos.map(m => (
++          <div key={m.id} className="maestro-card hover-raise">
++            <div className="maestro-card-icon">{I.settings}</div>
++            <div className="maestro-card-main">
++              <div className="maestro-card-title">{m.tabla}</div>
++              {m.id === 'mst_industrias' && (
++                <div className="maestro-card-meta">
++                  {industrias.length} valores - Actualizado en tiempo real
++                </div>
++              )}
+             </div>
+-            <button className="btn btn-secondary btn-sm" onClick={() => { setSel(m); setNuevo(nuevoBase); }}>Gestionar</button>
++            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { setSel(m); setNuevo(nuevoBase); setFormError(''); }}>
++              Gestionar {I.chevRight}
++            </button>
+           </div>
+         ))}
+       </div>
+ 
+-      <div style={{marginTop:20, padding:'16px 20px', background:'rgba(6,182,212,0.08)', border:'1px solid var(--border)', borderLeft:'3px solid var(--cyan)', borderRadius:10, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap'}}>
+-        <div style={{flex:1, minWidth:200}}>
+-          <div style={{fontWeight:600, fontSize:14, marginBottom:2}}>┬┐Buscas gestionar personal?</div>
+-          <div className="text-muted" style={{fontSize:13}}>El personal operativo se administra desde <strong>RRHH Operativo</strong> ┬À El personal administrativo desde <strong>RRHH Administrativo</strong></div>
++      <div className="maestros-help">
++        <div className="maestros-help-icon">{I.users}</div>
++        <div className="maestros-help-copy">
++          <div className="maestros-help-title">┬┐Buscas gestionar personal?</div>
++          <div className="maestros-help-text">El personal operativo se administra desde <strong>RRHH Operativo</strong> ┬À El personal administrativo desde <strong>RRHH Administrativo</strong></div>
+         </div>
+-        <div className="row" style={{gap:10}}>
++        <div className="maestros-help-actions">
+           <button className="btn btn-secondary btn-sm" onClick={()=>navigate('rrhh_operativo')}>Ir a RRHH Operativo</button>
+           <button className="btn btn-secondary btn-sm" onClick={()=>navigate('rrhh_admin')}>Ir a RRHH Administrativo</button>
+         </div>
+@@ -1267,6 +1204,7 @@ function Maestros() {
+                 <span className="badge badge-cyan">Validaci├│n de duplicados activa</span>
+               </div>
+             )}
++            {formError && <div className="alert alert-danger" style={{marginBottom:16}}>{formError}</div>}
+             {renderForm()}
+             <div className="card">
+               <div className="table-wrap">
+@@ -1473,22 +1411,73 @@ function Parametros() {
+ const CARGOS_ADM = MOCK.cargosEmpresa.filter(c => c.tipo !== 'Operativo' && c.estado === 'activo').map(c => c.nombre);
+ 
+ function RRHHAdmin() {
+-  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH, aprobarVacacion, turnos } = useApp();
++  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH, aprobarVacacion, turnos, crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion } = useApp();
+   const [sel, setSel] = useState(null);
+   const [tab, setTab] = useState('ficha');
+   const [view, setView] = useState('personal');
+   const [panelAlta, setPanelAlta] = useState(false);
+-  const [nuevosColabs, setNuevosColabs] = useState([]);
++  const [editandoId, setEditandoId] = useState(null);
++  const [altaSaving, setAltaSaving] = useState(false);
++  const [altaError, setAltaError] = useState('');
+   const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:'tur_005', modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo' };
+   const [formAlta, setFormAlta] = useState(formAltaBase);
+-  const todosPersonal = [...personalAdmin, ...nuevosColabs];
++  const todosPersonal = personalAdmin;
+   const persona = sel ? todosPersonal.find(p => p.id === sel) : null;
+ 
+-  const guardarColaborador = (e) => {
++  const cerrarPanelColaborador = () => {
++    setPanelAlta(false);
++    setEditandoId(null);
++    setFormAlta(formAltaBase);
++    setAltaError('');
++  };
++  const abrirNuevoColaborador = () => {
++    setEditandoId(null);
++    setFormAlta(formAltaBase);
++    setPanelAlta(true);
++  };
++  const abrirEditarColaborador = (p) => {
++    setEditandoId(p.id);
++    setFormAlta({
++      ...formAltaBase,
++      nombre: p.nombre || '',
++      dni: p.dni || p.documento || '',
++      fecha_nacimiento: p.fecha_nacimiento || '',
++      telefono: p.telefono || '',
++      email: p.email || '',
++      direccion: p.direccion || '',
++      codigo: p.codigo || p.id || '',
++      cargo: p.cargo || '',
++      area: p.area || '',
++      sede: p.sede || '',
++      turno_id: p.turno_id || 'tur_005',
++      modalidad: p.tipo_contrato || 'Planilla',
++      fecha_inicio: p.fecha_inicio_contrato || p.fecha_ingreso || '',
++      fecha_fin: p.fecha_fin_contrato || '',
++      remuneracion: String(p.remuneracion ?? p.sueldo_base ?? ''),
++      dias_vacaciones: String(p.dias_vacaciones_total ?? p.dias_vacaciones_disponibles ?? 30),
++      estado: p.estado || 'activo',
++    });
++    setPanelAlta(true);
++  };
++  const eliminarColaborador = async (p) => {
++    if (!window.confirm(`Eliminar a ${p.nombre}? Esta accion se reflejara en la base de datos.`)) return;
++    try {
++      await eliminarAdminPersonalCtx(p.id);
++      if (sel === p.id) setSel(null);
++      addNotificacion('Colaborador eliminado.');
++    } catch (_) {
++      addNotificacion('No se pudo eliminar el colaborador. Revisa permisos o registros relacionados.');
++    }
++  };
++
++  const guardarColaborador = async (e) => {
+     e.preventDefault();
++    if (altaSaving) return;
++    setAltaSaving(true);
++    setAltaError('');
+     const idx = todosPersonal.length + 1;
+     const nuevo = {
+-      id: `per_n${idx}`, empresa_id: 'emp_001',
++      id: editandoId || `per_${Date.now()}`, empresa_id: empresa?.id,
+       nombre: formAlta.nombre || 'Nuevo colaborador',
+       dni: formAlta.dni || '00000000',
+       fecha_nacimiento: formAlta.fecha_nacimiento || '',
+@@ -1512,9 +1501,20 @@ function RRHHAdmin() {
+       contacto_emergencia: '', relacion_emergencia: '', telefono_emergencia: '',
+       documentos: []
+     };
+-    setNuevosColabs(prev => [...prev, nuevo]);
+-    setFormAlta(formAltaBase);
+-    setPanelAlta(false);
++    try {
++      if (editandoId) {
++        await actualizarAdminPersonalCtx(editandoId, nuevo);
++        addNotificacion('Colaborador actualizado.');
++      } else {
++        await crearAdminPersonalCtx(nuevo);
++        addNotificacion('Colaborador creado.');
++      }
++      cerrarPanelColaborador();
++    } catch (_) {
++      setAltaError('No se pudo guardar el colaborador en Supabase. Revisa permisos de RRHH Administrativo o aplica la migracion backend.');
++    } finally {
++      setAltaSaving(false);
++    }
+   };
+ 
+   const contratoColor = (tipo) => tipo === 'Indefinido' ? 'green' : tipo === 'Plazo fijo' ? 'orange' : 'cyan';
+@@ -1537,6 +1537,8 @@ function RRHHAdmin() {
+           <div className="row">
+             <span className={'badge badge-' + contratoColor(persona.tipo_contrato)}>{persona.tipo_contrato}</span>
+             <span className="badge badge-green">{persona.estado}</span>
++            <button className="btn btn-ghost btn-sm" title="Editar colaborador" onClick={() => abrirEditarColaborador(persona)}>{I.edit}</button>
++            <button className="btn btn-ghost btn-sm" title="Eliminar colaborador" style={{color:'var(--danger)'}} onClick={() => eliminarColaborador(persona)}>{I.trash}</button>
+           </div>
+         </div>
+ 
+@@ -1704,10 +1706,11 @@ function RRHHAdmin() {
+   }
+ 
+   // Vista lista ÔÇö datos comunes
++  const personalIds = new Set(personalAdmin.map(p => p.id));
+   const vencimientosDocumentos = personalAdmin.flatMap(p =>
+     (p.documentos || []).filter(d => d.estado !== 'vigente').map(d => ({ persona: p.nombre, doc: d.nombre, estado: d.estado }))
+   );
+-  const vacPendientes = vacacionesSolicitudes.filter(v => v.estado === 'pendiente');
++  const vacPendientes = vacacionesSolicitudes.filter(v => v.estado === 'pendiente' && personalIds.has(v.personal_id));
+ 
+   // Vista Reportes ÔÇö datos calculados
+   const hoy = '2026-04-27';
+@@ -1718,13 +1721,13 @@ function RRHHAdmin() {
+     .map(p => ({ ...p, dias_restantes: Math.round((new Date(p.fecha_fin_contrato) - new Date(hoy)) / 86400000) }))
+     .sort((a, b) => a.dias_restantes - b.dias_restantes);
+   const vacRanking = [...personalAdmin].sort((a, b) => b.dias_vacaciones_disponibles - a.dias_vacaciones_disponibles);
+-  const solPend = MOCK.solicitudesRRHH.filter(s => s.estado === 'pendiente');
++  const solPend = solicitudesRRHH.filter(s => s.estado === 'pendiente' && personalIds.has(s.personal_id));
+ 
+   return (
+     <>
+       <div className="page-header">
+         <div><h1 className="page-title">RRHH Administrativo</h1><div className="page-sub">{personalAdmin.length} colaboradores activos ┬À Fase 3</div></div>
+-        <button className="btn btn-primary" data-local-form="true" onClick={() => setPanelAlta(true)}>{I.plus} Nuevo colaborador</button>
++        <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoColaborador}>{I.plus} Nuevo colaborador</button>
+       </div>
+ 
+       <div className="tabs">
+@@ -1734,7 +1737,7 @@ function RRHHAdmin() {
+ 
+       <div className="kpi-grid">
+         <div className="kpi-card"><div className="kpi-label">Colaboradores activos</div><div className="kpi-value">{personalAdmin.filter(p=>p.estado==='activo').length}</div><div className="kpi-icon cyan">{I.users}</div></div>
+-        <div className="kpi-card"><div className="kpi-label">Contratos por vencer</div><div className="kpi-value" style={{color:'var(--orange)'}}>1</div><div className="kpi-icon orange">{I.alert}</div></div>
++        <div className="kpi-card"><div className="kpi-label">Contratos por vencer</div><div className="kpi-value" style={{color:'var(--orange)'}}>{contratosVencer.length}</div><div className="kpi-icon orange">{I.alert}</div></div>
+         <div className="kpi-card"><div className="kpi-label">Vacaciones pendientes</div><div className="kpi-value" style={{color: vacPendientes.length > 0 ? 'var(--orange)' : 'inherit'}}>{vacPendientes.length}</div><div className="kpi-icon purple">{I.calendar}</div></div>
+         <div className="kpi-card"><div className="kpi-label">Docs vencidos / por vencer</div><div className="kpi-value" style={{color:'var(--danger)'}}>{vencimientosDocumentos.length}</div><div className="kpi-icon red">{I.shield}</div></div>
+       </div>
+@@ -1752,6 +1755,7 @@ function RRHHAdmin() {
+             <table className="tbl">
+               <thead><tr><th>Colaborador</th><th>Cargo</th><th>├ürea</th><th>Sede</th><th>Turno</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones disp.</th><th>Estado</th><th></th></tr></thead>
+               <tbody>
++                {todosPersonal.length === 0 && <tr><td colSpan={10} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal administrativo registrado.</td></tr>}
+                 {todosPersonal.map(p => (
+                   <tr key={p.id} className="hover-row" onClick={() => { setSel(p.id); setTab('ficha'); }} style={{cursor:'pointer'}}>
+                     <td>
+@@ -1768,7 +1772,12 @@ function RRHHAdmin() {
+                     <td>{p.modalidad}</td>
+                     <td className="num">{p.dias_vacaciones_disponibles} d├¡as</td>
+                     <td><span className="badge badge-green">{p.estado}</span></td>
+-                    <td><button className="btn btn-sm btn-ghost" onClick={e=>{e.stopPropagation();setSel(p.id);setTab('ficha');}}>Ver ficha</button></td>
++                    <td>
++                      <div className="row" style={{gap:6}}>
++                        <button className="btn btn-ghost btn-sm" title="Editar colaborador" onClick={e=>{e.stopPropagation(); abrirEditarColaborador(p);}}>{I.edit}</button>
++                        <button className="btn btn-ghost btn-sm" title="Eliminar colaborador" style={{color:'var(--danger)'}} onClick={e=>{e.stopPropagation(); eliminarColaborador(p);}}>{I.trash}</button>
++                      </div>
++                    </td>
+                   </tr>
+                 ))}
+               </tbody>
+@@ -1872,16 +1881,17 @@ function RRHHAdmin() {
+       )}
+ 
+       {panelAlta && <>
+-        <div className="side-panel-backdrop" onClick={() => setPanelAlta(false)}/>
++        <div className="side-panel-backdrop" onClick={cerrarPanelColaborador}/>
+         <div className="side-panel" style={{width:'min(560px, 96vw)'}}>
+           <div className="side-panel-head">
+             <div>
+-              <div className="eyebrow">Alta de personal</div>
+-              <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>Nuevo colaborador administrativo</div>
++              <div className="eyebrow">{editandoId ? 'Edicion de personal' : 'Alta de personal'}</div>
++              <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>{editandoId ? 'Editar colaborador administrativo' : 'Nuevo colaborador administrativo'}</div>
+             </div>
+-            <button className="icon-btn" onClick={() => setPanelAlta(false)}>{I.x}</button>
++            <button className="icon-btn" onClick={cerrarPanelColaborador}>{I.x}</button>
+           </div>
+           <form className="side-panel-body" onSubmit={guardarColaborador}>
++            {altaError && <div className="alert alert-danger" style={{marginBottom:16}}>{altaError}</div>}
+             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos personales</div>
+             <div className="grid-2" style={{gap:14, marginBottom:20}}>
+               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre completo *</label><input className="input" required value={formAlta.nombre} onChange={e=>setFormAlta(v=>({...v,nombre:e.target.value}))} placeholder="Nombre completo" autoFocus/></div>
+@@ -1913,8 +1923,8 @@ function RRHHAdmin() {
+             </div>
+ 
+             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
+-              <button type="button" className="btn btn-secondary" onClick={() => setPanelAlta(false)}>Cancelar</button>
+-              <button type="submit" className="btn btn-primary">{I.save} Guardar colaborador</button>
++              <button type="button" className="btn btn-secondary" onClick={cerrarPanelColaborador}>Cancelar</button>
++              <button type="submit" className="btn btn-primary" disabled={altaSaving}>{I.save} {altaSaving ? 'Guardando...' : editandoId ? 'Actualizar colaborador' : 'Guardar colaborador'}</button>
+             </div>
+           </form>
+         </div>

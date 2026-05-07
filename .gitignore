@@ -5,3 +5,6 @@ dist/
 !.env.example
 supabase/.temp/
 API OCR - ANTROPHIC.txt
+
+.vercel
+.env*.local

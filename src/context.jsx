@@ -62,11 +62,20 @@ function empresaPermiteAcceso(estado) {
   return ['activa', 'activo', 'demo'].includes(String(estado || '').toLowerCase());
 }
 
+function getInitialActivePage() {
+  if (typeof window === 'undefined') return 'dashboard';
+  const hashPage = window.location.hash.replace(/^#\/?/, '').trim();
+  const queryPage = new URLSearchParams(window.location.search).get('pantalla')?.trim();
+  const savedPage = localStorage.getItem('tideo_active_page')?.trim();
+  return hashPage || queryPage || savedPage || 'dashboard';
+}
+
 export function AppProvider({ children }) {
-  const [active, setActive] = useState('dashboard');
+  const [active, setActive] = useState(getInitialActivePage);
   const [activeParams, setActiveParams] = useState({});
   const [roleKey, setRoleKey] = useState('admin');
   const [empresa, setEmpresa] = useState(() => {
+    if (isSupabaseConfigured()) return MOCK.empresas[0];
     try {
       const saved = localStorage.getItem('active_empresa_obj');
       if (saved) return JSON.parse(saved);
@@ -95,6 +104,14 @@ export function AppProvider({ children }) {
   const [membresiaCargando, setMembresiaCargando] = useState(isSupabaseConfigured());
   const [empresasPlataforma, setEmpresasPlataforma] = useState(MOCK.empresas);
 
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    try {
+      localStorage.removeItem('active_empresa_obj');
+      localStorage.removeItem('tideo_usuarios');
+    } catch { /* limpieza best-effort de estado mock local */ }
+  }, []);
+
   // Auto-seleccionar solo si hay exactamente 1 empresa — con múltiples siempre muestra el selector
   useEffect(() => {
     if (!authUser || membresiaActiva || todasMembresias.length !== 1) return;
@@ -103,6 +120,7 @@ export function AppProvider({ children }) {
 
   // Guardar la última empresa seleccionada
   useEffect(() => {
+    if (isSupabaseConfigured()) return;
     if (empresa?.id) {
       localStorage.setItem('active_empresa_obj', JSON.stringify(empresa));
     }
@@ -152,21 +170,22 @@ export function AppProvider({ children }) {
   const [recepciones, setRecepciones] = useState(MOCK.recepciones || []);
 
   // Maestros Base Data
-  const [cargos, setCargos] = useState(MOCK.cargos || []);
-  const [especialidades, setEspecialidades] = useState(MOCK.especialidadesTecnicas || []);
-  const [tiposServicio, setTiposServicio] = useState(MOCK.tiposServicioInterno || []);
-  const [almacenes, setAlmacenes] = useState(MOCK.almacenesDepositos || []);
-  const [sedes, setSedes] = useState(MOCK.sedes || []);
-  const [industrias, setIndustrias] = useState(MOCK.industrias || []);
+  const [areasEmpresa, setAreasEmpresa] = useState([]);
+  const [cargos, setCargos] = useState([]);
+  const [especialidades, setEspecialidades] = useState([]);
+  const [tiposServicio, setTiposServicio] = useState([]);
+  const [almacenes, setAlmacenes] = useState([]);
+  const [sedes, setSedes] = useState([]);
+  const [industrias, setIndustrias] = useState([]);
 
   // Personal Operativo (separado del admin, estado propio)
-  const [personalOperativo, setPersonalOperativo] = useState(MOCK.personalOperativo || []);
+  const [personalOperativo, setPersonalOperativo] = useState([]);
 
   // Fase 3 Data
-  const [personalAdmin, setPersonalAdmin] = useState(MOCK.personalAdmin || []);
-  const [vacacionesSolicitudes, setVacacionesSolicitudes] = useState(MOCK.vacacionesSolicitudes || []);
-  const [licencias, setLicencias] = useState(MOCK.licencias || []);
-  const [solicitudesRRHH, setSolicitudesRRHH] = useState(MOCK.solicitudesRRHH || []);
+  const [personalAdmin, setPersonalAdmin] = useState([]);
+  const [vacacionesSolicitudes, setVacacionesSolicitudes] = useState([]);
+  const [licencias, setLicencias] = useState([]);
+  const [solicitudesRRHH, setSolicitudesRRHH] = useState([]);
   const [onboardings, setOnboardings] = useState(MOCK.onboardings || []);
   const [planesExito, setPlanesExito] = useState(MOCK.planesExito || []);
   const [healthScoresDetalle, setHealthScoresDetalle] = useState(MOCK.healthScoresDetalle || []);
@@ -499,6 +518,7 @@ export function AppProvider({ children }) {
         }
         
         try {
+          const ar = await maestrosService.getAreas(empresa.id);
           const cg = await maestrosService.getCargos(empresa.id);
           const es = await maestrosService.getEspecialidades(empresa.id);
           const ts = await maestrosService.getTiposServicio(empresa.id);
@@ -506,12 +526,13 @@ export function AppProvider({ children }) {
           const sd = await maestrosService.getSedes(empresa.id);
           const ind = await maestrosService.getIndustrias(empresa.id);
           if (mounted) {
+            setAreasEmpresa(ar || []);
             setCargos(cg || []);
             setEspecialidades(es || []);
             setTiposServicio(ts || []);
             setAlmacenes(al || []);
             setSedes(sd || []);
-            setIndustrias(ind?.length ? ind : (MOCK.industrias || []));
+            setIndustrias(ind || []);
           }
         } catch (_err) { /* keep mock */ }
 
@@ -570,7 +591,12 @@ export function AppProvider({ children }) {
             setRegistrosAsistencia(asistenciaData || []);
             setPeriodosNomina(nominaData || []);
           }
-        } catch (_err) { /* keep mock */ }
+        } catch (_err) {
+          if (mounted) {
+            setPersonalOperativo([]);
+            setPersonalAdmin([]);
+          }
+        }
 
         try {
           const csData = await loadCsFromSupabase(supabase, empresa.id);
@@ -825,6 +851,12 @@ export function AppProvider({ children }) {
   const navigate = (page, params = {}) => {
     setActive(page);
     setActiveParams(params);
+    try {
+      localStorage.setItem('tideo_active_page', page);
+      if (window.location.hash.replace(/^#\/?/, '') !== page) {
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${page}`);
+      }
+    } catch { /* navegacion local: no bloquear si el storage no esta disponible */ }
   };
 
   const role = (isSupabaseConfigured() && membresiaActiva)
@@ -1889,16 +1921,17 @@ export function AppProvider({ children }) {
       throw err;
     }
   };
-  const eliminarUsuario = async (id) => {
+  const eliminarUsuario = async (id, empresaIdOverride = null) => {
     const previous = usuarios;
-    const usuarioEliminado = usuarios.find(u => u.id === id);
-    setUsuarios(prev => prev.filter(u => u.id !== id));
+    const empresaId = empresaIdOverride || empresa?.id;
+    const usuarioEliminado = usuarios.find(u => u.id === id && (!empresaId || u.empresa_id === empresaId)) || usuarios.find(u => u.id === id);
+    setUsuarios(prev => prev.filter(u => !(u.id === id && (!empresaId || u.empresa_id === empresaId))));
     if (isSupabaseConfigured()) {
       try {
         const supabase = await getSupabaseClient();
-        if (!empresa?.id) throw new Error('No hay tenant activo para eliminar el usuario.');
+        if (!empresaId) throw new Error('No hay tenant activo para eliminar el usuario.');
         const { data, error } = await supabase.functions.invoke('eliminar-usuario-acceso', {
-          body: { user_id: id, empresa_id: empresa.id },
+          body: { user_id: id, empresa_id: empresaId },
         });
         if (error) {
           let message = error.message;
@@ -2359,6 +2392,30 @@ export function AppProvider({ children }) {
     setIaLogs(prev => [log, ...prev]);
   };
 
+  const crearArea = async (area) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await maestrosService.crearArea(empresa.id, area);
+      setAreasEmpresa(prev => [data, ...prev]);
+      return data;
+    }
+    const nuevo = { ...area, id: generateId('area'), empresa_id: empresa?.id, created_at: new Date().toISOString() };
+    setAreasEmpresa(prev => [nuevo, ...prev]);
+    return nuevo;
+  };
+  const actualizarArea = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const act = await maestrosService.actualizarArea(id, datos);
+      setAreasEmpresa(prev => prev.map(a => a.id === id ? act : a));
+      return act;
+    }
+    setAreasEmpresa(prev => prev.map(a => a.id === id ? { ...a, ...datos } : a));
+    return datos;
+  };
+  const eliminarArea = async (id) => {
+    if (isSupabaseConfigured()) await maestrosService.eliminarArea(id);
+    setAreasEmpresa(prev => prev.filter(a => a.id !== id));
+  };
+
   const crearCargo = async (cargo) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await maestrosService.crearCargo(empresa.id, cargo);
@@ -2369,6 +2426,74 @@ export function AppProvider({ children }) {
       setCargos(prev => [nuevo, ...prev]);
       return nuevo;
     }
+  };
+  const actualizarCargo = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const act = await maestrosService.actualizarCargo(id, datos);
+      setCargos(prev => prev.map(c => c.id === id ? act : c));
+      return act;
+    } else {
+      setCargos(prev => prev.map(c => c.id === id ? { ...c, ...datos } : c));
+      return datos;
+    }
+  };
+  const eliminarCargo = async (id) => {
+    if (isSupabaseConfigured()) {
+      await maestrosService.eliminarCargo(id);
+    }
+    setCargos(prev => prev.filter(c => c.id !== id));
+  };
+  const actualizarEspecialidad = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const act = await maestrosService.actualizarEspecialidad(id, datos);
+      setEspecialidades(prev => prev.map(e => e.id === id ? act : e));
+      return act;
+    }
+    setEspecialidades(prev => prev.map(e => e.id === id ? { ...e, ...datos } : e));
+    return datos;
+  };
+  const eliminarEspecialidad = async (id) => {
+    if (isSupabaseConfigured()) await maestrosService.eliminarEspecialidad(id);
+    setEspecialidades(prev => prev.filter(e => e.id !== id));
+  };
+  const actualizarTipoServicio = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const act = await maestrosService.actualizarTipoServicio(id, datos);
+      setTiposServicio(prev => prev.map(t => t.id === id ? act : t));
+      return act;
+    }
+    setTiposServicio(prev => prev.map(t => t.id === id ? { ...t, ...datos } : t));
+    return datos;
+  };
+  const eliminarTipoServicio = async (id) => {
+    if (isSupabaseConfigured()) await maestrosService.eliminarTipoServicio(id);
+    setTiposServicio(prev => prev.filter(t => t.id !== id));
+  };
+  const actualizarAlmacen = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const act = await maestrosService.actualizarAlmacen(id, datos);
+      setAlmacenes(prev => prev.map(a => a.id === id ? act : a));
+      return act;
+    }
+    setAlmacenes(prev => prev.map(a => a.id === id ? { ...a, ...datos } : a));
+    return datos;
+  };
+  const eliminarAlmacen = async (id) => {
+    if (isSupabaseConfigured()) await maestrosService.eliminarAlmacen(id);
+    setAlmacenes(prev => prev.filter(a => a.id !== id));
+  };
+  const actualizarSede = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const act = await maestrosService.actualizarSede(id, datos);
+      setSedes(prev => prev.map(s => s.id === id ? act : s));
+      return act;
+    }
+    setSedes(prev => prev.map(s => s.id === id ? { ...s, ...datos } : s));
+    return datos;
+  };
+  const eliminarSede = async (id) => {
+    if (isSupabaseConfigured()) await maestrosService.eliminarSede(id);
+    setSedes(prev => prev.filter(s => s.id !== id));
   };
   const crearEspecialidad = async (especialidad) => {
     if (isSupabaseConfigured() && empresa?.id) {
@@ -2425,6 +2550,19 @@ export function AppProvider({ children }) {
     const nuevo = { ...industria, id: generateId('ind'), empresa_id: empresa?.id, created_at: new Date().toISOString() };
     setIndustrias(prev => [nuevo, ...prev]);
     return nuevo;
+  };
+  const actualizarIndustria = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const act = await maestrosService.actualizarIndustria(id, datos);
+      setIndustrias(prev => prev.map(i => i.id === id ? act : i));
+      return act;
+    }
+    setIndustrias(prev => prev.map(i => i.id === id ? { ...i, ...datos } : i));
+    return datos;
+  };
+  const eliminarIndustria = async (id) => {
+    if (isSupabaseConfigured()) await maestrosService.eliminarIndustria(id);
+    setIndustrias(prev => prev.filter(i => i.id !== id));
   };
 
   const registrarProveedor = async (proveedor) => {
@@ -2706,6 +2844,23 @@ export function AppProvider({ children }) {
       return nuevo;
     }
   };
+  const actualizarTecnicoCtx = async (id, cambios) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await rrhhService.actualizarPersonalOperativo(id, cambios);
+      setPersonalOperativo(prev => prev.map(p => p.id === id ? data : p));
+      return data;
+    }
+    const actualizado = { ...cambios, id, updated_at: new Date().toISOString() };
+    setPersonalOperativo(prev => prev.map(p => p.id === id ? { ...p, ...actualizado } : p));
+    return actualizado;
+  };
+  const eliminarTecnicoCtx = async (id) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      await rrhhService.eliminarPersonalOperativo(id);
+    }
+    setPersonalOperativo(prev => prev.filter(p => p.id !== id));
+    return id;
+  };
   const crearAdminPersonalCtx = async (persona) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await rrhhService.crearPersonalAdmin(empresa.id, persona);
@@ -2716,6 +2871,23 @@ export function AppProvider({ children }) {
       setPersonalAdmin(prev => [nuevo, ...prev]);
       return nuevo;
     }
+  };
+  const actualizarAdminPersonalCtx = async (id, cambios) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await rrhhService.actualizarPersonalAdmin(id, cambios);
+      setPersonalAdmin(prev => prev.map(p => p.id === id ? data : p));
+      return data;
+    }
+    const actualizado = { ...cambios, id, updated_at: new Date().toISOString() };
+    setPersonalAdmin(prev => prev.map(p => p.id === id ? { ...p, ...actualizado } : p));
+    return actualizado;
+  };
+  const eliminarAdminPersonalCtx = async (id) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      await rrhhService.eliminarPersonalAdmin(id);
+    }
+    setPersonalAdmin(prev => prev.filter(p => p.id !== id));
+    return id;
   };
   const crearTurnoCtx = async (turno) => {
     if (isSupabaseConfigured() && empresa?.id) {
@@ -3092,7 +3264,7 @@ export function AppProvider({ children }) {
     const newId = isSupabaseConfigured() && empresa?.id
       ? `rol_${empresa.id}_${Math.random().toString(36).slice(2, 7)}`
       : `rol_${Math.random().toString(36).slice(2, 7)}`;
-    setRolesCtx(prev => ({ ...prev, [newId]: { nombre: rolData.nombre, descripcion: rolData.descripcion || '', color: 'blue', permisos: { ver: [] } } }));
+    setRolesCtx(prev => ({ ...prev, [newId]: { nombre: rolData.nombre, descripcion: rolData.descripcion || '', categoria: rolData.categoria || 'otro', color: 'blue', permisos: { ver: [] } } }));
     if (isSupabaseConfigured() && empresa?.id) {
       try {
         await rolesService.crearRol({
@@ -3100,6 +3272,7 @@ export function AppProvider({ children }) {
           empresa_id: empresa.id,
           nombre: rolData.nombre,
           descripcion: rolData.descripcion || '',
+          categoria: rolData.categoria || 'otro',
           es_superadmin: false,
           es_admin_empresa: false,
           activo: true,
@@ -3202,12 +3375,13 @@ export function AppProvider({ children }) {
     recepciones, setRecepciones,
     
     // Maestros Base Data
-    cargos, setCargos,
-    especialidades, setEspecialidades,
-    tiposServicio, setTiposServicio,
-    almacenes, setAlmacenes,
-    sedes, setSedes,
-    industrias, setIndustrias,
+    areasEmpresa, setAreasEmpresa, crearArea, actualizarArea, eliminarArea,
+    cargos, setCargos, actualizarCargo, eliminarCargo,
+    especialidades, setEspecialidades, actualizarEspecialidad, eliminarEspecialidad,
+    tiposServicio, setTiposServicio, actualizarTipoServicio, eliminarTipoServicio,
+    almacenes, setAlmacenes, actualizarAlmacen, eliminarAlmacen,
+    sedes, setSedes, actualizarSede, eliminarSede,
+    industrias, setIndustrias, actualizarIndustria, eliminarIndustria,
 
     // Actions
     crearLead, crearCuenta,
@@ -3254,7 +3428,9 @@ export function AppProvider({ children }) {
     // Fase 3 Actions
     calcularHealthScore,
     // RRHH Actions
-    crearTecnicoCtx, crearAdminPersonalCtx, crearTurnoCtx, registrarAsistenciaCtx, crearPeriodoNominaCtx,
+    crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx,
+    crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx,
+    crearTurnoCtx, registrarAsistenciaCtx, crearPeriodoNominaCtx,
     aprobarVacacion, rechazarVacacion,
     crearOnboarding, registrarNPS,
     generarRenovacion, crearPlanRetencion,

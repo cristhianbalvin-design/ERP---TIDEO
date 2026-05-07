@@ -1015,6 +1015,127 @@ body {
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 @media (max-width: 1100px) { .grid-2 { grid-template-columns: 1fr; } .grid-3 { grid-template-columns: 1fr; } }
 
+.maestros-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.maestro-card {
+  min-height: 92px;
+  padding: 18px 20px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.16s, box-shadow 0.16s, transform 0.16s;
+}
+.maestro-card:hover {
+  border-color: rgba(0, 188, 212, 0.35);
+  box-shadow: var(--shadow-md);
+}
+.maestro-card-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--cyan-dk);
+  background: var(--cyan-lt);
+  border: 1px solid rgba(6, 182, 212, 0.18);
+}
+.maestro-card-icon svg,
+.maestros-help-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2;
+}
+.maestro-card-main { min-width: 0; }
+.maestro-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg);
+  line-height: 1.25;
+}
+.maestro-card-meta {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.35;
+}
+.maestro-card-action {
+  min-width: 104px;
+  justify-content: center;
+}
+.maestro-card-action svg {
+  width: 14px;
+  height: 14px;
+}
+.maestros-help {
+  margin-top: 20px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: rgba(6, 182, 212, 0.07);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  border-radius: 10px;
+}
+.maestros-help-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  color: var(--cyan-dk);
+  background: var(--surface);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+}
+.maestros-help-copy {
+  flex: 1;
+  min-width: 260px;
+}
+.maestros-help-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fg);
+  margin-bottom: 2px;
+}
+.maestros-help-text {
+  font-size: 13px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+.maestros-help-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+@media (max-width: 1180px) {
+  .maestros-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .maestro-card {
+    grid-template-columns: 38px minmax(0, 1fr);
+    min-height: 0;
+  }
+  .maestro-card-action {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .maestros-help-actions,
+  .maestros-help-actions .btn {
+    width: 100%;
+  }
+}
+
 /* Costing editor */
 .cost-editor-shell { padding: 20px 32px; }
 .cost-editor-grid {

@@ -21,10 +21,12 @@ function Roles() {
   const [modalClonar, setModalClonar] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [nuevoDesc, setNuevoDesc] = useState('');
+  const [nuevoCategoria, setNuevoCategoria] = useState('otro');
   const [clonarNombre, setClonarNombre] = useState('');
   const [editingMeta, setEditingMeta] = useState(false);
   const [editNombre, setEditNombre] = useState('');
   const [editDesc, setEditDesc] = useState('');
+  const [editCategoria, setEditCategoria] = useState('otro');
   const [reasignarUsuario, setReasignarUsuario] = useState(null);
   const [reasignarRolId, setReasignarRolId] = useState('');
   const [roleActionError, setRoleActionError] = useState('');
@@ -44,11 +46,12 @@ function Roles() {
 
   const handleNuevoRol = async () => {
     if (!nuevoNombre.trim()) return;
-    const newId = await crearRol({ nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim() });
+    const newId = await crearRol({ nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim(), categoria: nuevoCategoria });
     if (newId) setSel(newId);
     setModalNuevo(false);
     setNuevoNombre('');
     setNuevoDesc('');
+    setNuevoCategoria('otro');
   };
 
   const handleClonar = () => {
@@ -83,7 +86,7 @@ function Roles() {
   };
 
   const handleSaveMeta = () => {
-    editarRol(sel, { nombre: editNombre, descripcion: editDesc });
+    editarRol(sel, { nombre: editNombre, descripcion: editDesc, categoria: editCategoria });
     setEditingMeta(false);
   };
 
@@ -188,6 +191,14 @@ function Roles() {
               <div className="col" style={{gap:8, flex:1}}>
                 <input className="input" value={editNombre} onChange={e=>setEditNombre(e.target.value)} style={{fontWeight:700, fontSize:16}}/>
                 <input className="input" value={editDesc} onChange={e=>setEditDesc(e.target.value)} style={{fontSize:12}}/>
+                <select className="select" style={{fontSize:12}} value={editCategoria} onChange={e=>setEditCategoria(e.target.value)}>
+                  <option value="admin">Administración del tenant</option>
+                  <option value="comercial">Comercial / Ventas</option>
+                  <option value="operaciones">Operaciones</option>
+                  <option value="finanzas">Finanzas</option>
+                  <option value="rrhh">RRHH</option>
+                  <option value="otro">Otro</option>
+                </select>
                 <div className="row" style={{gap:6}}>
                   <button className="btn btn-sm btn-primary" onClick={handleSaveMeta}>Guardar</button>
                   <button className="btn btn-sm btn-secondary" onClick={()=>setEditingMeta(false)}>Cancelar</button>
@@ -198,8 +209,9 @@ function Roles() {
                 <div>
                   <h3>{role.nombre}</h3>
                   <div className="text-muted" style={{fontSize:12,marginTop:2}}>{role.descripcion}</div>
+                  <div className="text-subtle" style={{fontSize:11,marginTop:3}}>Categoría: {role.categoria || 'otro'}</div>
                 </div>
-                <button className="icon-btn" style={{opacity:0.4}} title="Editar nombre" onClick={()=>{ setEditNombre(role.nombre); setEditDesc(role.descripcion||''); setEditingMeta(true); }}>{I.edit}</button>
+                <button className="icon-btn" style={{opacity:0.4}} title="Editar nombre" onClick={()=>{ setEditNombre(role.nombre); setEditDesc(role.descripcion||''); setEditCategoria(role.categoria||'otro'); setEditingMeta(true); }}>{I.edit}</button>
               </div>
             )}
             <div className="row" style={{gap:8}}>
@@ -294,7 +306,7 @@ function Roles() {
           {tab === 'usuarios' && (
             <div className="table-wrap">
               <table className="tbl">
-                <thead><tr><th>Usuario</th><th>Email</th><th>Área</th><th>Último acceso</th><th></th></tr></thead>
+                <thead><tr><th>Usuario</th><th>Email</th><th>Área</th><th>Último acceso</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
                 <tbody>
                   {usuarios.filter(u=>u.rol===sel).length === 0 && (
                     <tr><td colSpan={5} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>Ningún usuario asignado a este rol.</td></tr>
@@ -328,6 +340,17 @@ function Roles() {
             <div className="input-group">
               <label>Descripción</label>
               <input className="input" value={nuevoDesc} onChange={e=>setNuevoDesc(e.target.value)} placeholder="Breve descripción del rol"/>
+            </div>
+            <div className="input-group">
+              <label>Categoría <span className="text-muted" style={{fontSize:11}}>— define qué puede seleccionar este rol en formularios</span></label>
+              <select className="select" value={nuevoCategoria} onChange={e=>setNuevoCategoria(e.target.value)}>
+                <option value="admin">Administración del tenant</option>
+                <option value="comercial">Comercial / Ventas</option>
+                <option value="operaciones">Operaciones</option>
+                <option value="finanzas">Finanzas</option>
+                <option value="rrhh">RRHH</option>
+                <option value="otro">Otro</option>
+              </select>
             </div>
           </div>
           <div className="row" style={{gap:8,marginTop:24,justifyContent:'flex-end'}}>
@@ -527,6 +550,11 @@ function Usuarios() {
               )}
               {usuarios.map(u=>{
               const r = rolesCtx?.[u.rol] || MOCK.roles[u.rol] || { nombre: u.rol_nombre || u.rol, color: 'gray' };
+              const isSuperadminTideo = Boolean(
+                r.es_superadmin ||
+                u.rol === 'rol_tideo_super' ||
+                /superadmin\s+tideo/i.test(String(r.nombre || u.rol_nombre || u.rol || ''))
+              );
               return (
                 <tr key={`${u.id}_${u.empresa_id}`}>
                   <td><div className="row"><div className="avatar" style={{width:28,height:28,fontSize:11}}>{u.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div><strong>{u.nombre}</strong></div></td>
@@ -909,28 +937,49 @@ function Stub({title, description}) {
 
 // ============ CONFIGURACIÓN Y MAESTROS ============
 function Maestros() {
-  const { navigate, cuentas, proveedores, cargos, especialidades, tiposServicio, almacenes, sedes, industrias, crearCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria } = useApp();
+  const {
+    navigate, cuentas, proveedores, personalAdmin = [], personalOperativo = [],
+    areasEmpresa, cargos, especialidades, tiposServicio, almacenes, sedes, industrias,
+    crearArea, actualizarArea, eliminarArea,
+    crearCargo, actualizarCargo, eliminarCargo,
+    crearEspecialidad, actualizarEspecialidad, eliminarEspecialidad,
+    crearTipoServicio, actualizarTipoServicio, eliminarTipoServicio,
+    crearAlmacen, actualizarAlmacen, eliminarAlmacen,
+    crearSede, actualizarSede, eliminarSede,
+    crearIndustria, actualizarIndustria, eliminarIndustria,
+    addNotificacion
+  } = useApp();
   const [sel, setSel] = useState(null);
+  const [editandoId, setEditandoId] = useState(null);
+  const formRef = React.useRef(null);
   const [clienteSearch, setClienteSearch] = useState('');
+
+  const maestrosCatalogos = [
+    { id: 'mst_industrias', tabla: 'Industrias' },
+    { id: 'mst_sedes', tabla: 'Sedes y ubicaciones GPS' },
+    { id: 'mst_centros_costo', tabla: 'Centros de costo' },
+    { id: 'mst_areas', tabla: 'Areas de la empresa' },
+    { id: 'mst_cargos', tabla: 'Cargos de la empresa' },
+    { id: 'mst_especialidades', tabla: 'Especialidades técnicas' },
+    { id: 'mst_materiales', tabla: 'Materiales e insumos con codigo de barras' },
+    { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades' },
+    { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno' },
+    { id: 'mst_almacenes', tabla: 'Almacenes y depósitos' },
+  ];
   const nuevoBase = { nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'' };
   const [rows, setRows] = useState({
     mst_clientes: [],
-    mst_proveedores: [
-      { codigo:'PRV-001', nombre:'Ferreteria Industrial SAC', detalle:'Ferreteria · Calificacion 4.5', estado:'activo' },
-      { codigo:'PRV-002', nombre:'Electroandes', detalle:'Electricidad · Calificacion 5.0', estado:'activo' }
-    ],
-    mst_materiales: [
-      { codigo:'ROD-001', nombre:'Rodamiento 6205 ZZ', detalle:'Und · barcode 775000620501', estado:'activo' },
-      { codigo:'LUB-005', nombre:'Grasa Litio 500g', detalle:'Tarro · stock bajo', estado:'activo' }
-    ],
-    mst_impuestos: [
-      { codigo:'IGV-18', nombre:'IGV 18%', detalle:'Impuesto ventas Peru', estado:'activo' },
-      { codigo:'PEN', nombre:'Sol peruano', detalle:'Moneda base tenant', estado:'activo' }
-    ]
+    mst_proveedores: [],
+    mst_materiales: [],
+    mst_impuestos: [],
+    mst_centros_costo: []
   });
   const [nuevo, setNuevo] = useState(nuevoBase);
+  const [formSaving, setFormSaving] = useState(false);
+  const [formError, setFormError] = useState('');
   const getSelectedRows = () => {
     if (!sel) return [];
+    if (sel.id === 'mst_areas') return areasEmpresa;
     if (sel.id === 'mst_cargos') return cargos;
     if (sel.id === 'mst_especialidades') return especialidades;
     if (sel.id === 'mst_tipos_servicio') return tiposServicio;
@@ -940,9 +989,25 @@ function Maestros() {
     return rows[sel.id] || [];
   };
   const selectedRows = getSelectedRows();
+  const responsablesPersonal = [...personalAdmin, ...personalOperativo]
+    .filter(p => p?.id && p?.nombre)
+    .map(p => ({ id: p.id, nombre: p.nombre, tipo: personalOperativo.some(op => op.id === p.id) ? 'Operativo' : 'Administrativo' }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+  const formLen = editandoId ? Math.max(selectedRows.length - 1, 0) : selectedRows.length;
+
+  const scrollToForm = () => {
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
+
+  const resetForm = () => {
+    setNuevo(nuevoBase);
+    setEditandoId(null);
+    setFormError('');
+  };
 
   const autoCode = (id, len) => {
-    const prefixMap = { mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_almacenes:'ALM', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX' };
+    const prefixMap = { mst_areas:'ARE', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_almacenes:'ALM', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX' };
     const prefix = prefixMap[id] || id.slice(4,7).toUpperCase();
     return `${prefix}-${String(len+1).padStart(3,'0')}`;
   };
@@ -950,40 +1015,59 @@ function Maestros() {
   const addRow = async (e) => {
     e.preventDefault();
     if (!sel) return;
+    setFormSaving(true);
+    setFormError('');
     const base = {
-      codigo: autoCode(sel.id, selectedRows.length),
+      codigo: editandoId ? nuevo.codigo : autoCode(sel.id, selectedRows.length),
       nombre: nuevo.nombre || 'Nuevo valor',
       estado: nuevo.estado
     };
     try {
-      if (sel.id === 'mst_cargos') {
-        const item = { ...base, tipo:nuevo.tipo_cargo||'Administrativo', detalle:nuevo.detalle||'Pendiente de completar' };
-        await crearCargo(item);
+      if (sel.id === 'mst_areas') {
+        const item = { ...base, tipo: nuevo.tipo || 'Ambos', responsable: nuevo.responsable || '', detalle: nuevo.detalle || '' };
+        if (editandoId) await actualizarArea(editandoId, item);
+        else await crearArea(item);
+      } else if (sel.id === 'mst_cargos') {
+        const item = { ...base, tipo: nuevo.tipo_cargo || 'Administrativo', detalle: nuevo.detalle || 'Pendiente de completar' };
+        if (editandoId) await actualizarCargo(editandoId, item);
+        else await crearCargo(item);
       } else if (sel.id === 'mst_especialidades') {
-        const item = { ...base, area:nuevo.area||'General', requiere_cert:nuevo.requiere_cert, detalle:`${nuevo.area||'General'} · Cert: ${nuevo.requiere_cert?'Sí':'No'}` };
-        await crearEspecialidad(item);
+        const item = { ...base, area: nuevo.area || 'General', requiere_cert: nuevo.requiere_cert };
+        if (editandoId) await actualizarEspecialidad(editandoId, item);
+        else await crearEspecialidad(item);
       } else if (sel.id === 'mst_tipos_servicio') {
-        const item = { ...base, clasificacion:nuevo.clasificacion||'General', facturable:nuevo.facturable, detalle:`${nuevo.clasificacion||'General'} · ${nuevo.facturable?'Facturable':'No facturable'}` };
-        await crearTipoServicio(item);
+        const item = { ...base, clasificacion: nuevo.clasificacion || 'General', facturable: nuevo.facturable };
+        if (editandoId) await actualizarTipoServicio(editandoId, item);
+        else await crearTipoServicio(item);
       } else if (sel.id === 'mst_almacenes') {
-        const item = { ...base, tipo:nuevo.tipo||'Central', responsable:nuevo.responsable||'—', direccion:nuevo.direccion||'—', detalle:`${nuevo.tipo||'Central'} · ${nuevo.responsable||'—'}` };
-        await crearAlmacen(item);
+        const item = { ...base, tipo: nuevo.tipo || 'Central', responsable: nuevo.responsable || '', direccion: nuevo.direccion || '' };
+        if (editandoId) await actualizarAlmacen(editandoId, item);
+        else await crearAlmacen(item);
       } else if (sel.id === 'mst_sedes') {
-        const item = { ...base, direccion:nuevo.direccion||'Sin dirección', gps:nuevo.gps||'', detalle: nuevo.gps ? `${nuevo.direccion||''} · GPS ${nuevo.gps}` : (nuevo.direccion||'Sin dirección') };
-        await crearSede(item);
+        const item = { ...base, direccion: nuevo.direccion || 'Sin direccion', gps: nuevo.gps || '' };
+        if (editandoId) await actualizarSede(editandoId, item);
+        else await crearSede(item);
       } else if (sel.id === 'mst_industrias') {
-        const item = { ...base, categoria:nuevo.detalle||'General', detalle:nuevo.detalle||'General' };
-        await crearIndustria(item);
+        const item = { ...base, categoria: nuevo.detalle || 'General' };
+        if (editandoId) await actualizarIndustria(editandoId, item);
+        else await crearIndustria(item);
       } else {
-        const item = { ...base, detalle:nuevo.detalle||'Pendiente de completar' };
-        setRows(prev => ({ ...prev, [sel.id]: [item, ...(prev[sel.id]||[])] }));
+        return;
       }
-      setNuevo(nuevoBase);
+      addNotificacion?.(`${sel.tabla}: registro ${editandoId ? 'actualizado' : 'creado'}.`);
+      resetForm();
     } catch (err) {
       console.error(err);
+      const rawMsg = err?.message || 'No se pudo guardar el registro.';
+      const msg = rawMsg.includes('areas_empresa') || rawMsg.includes('schema cache')
+        ? 'No existe la tabla areas_empresa en Supabase. Aplica la migracion 050_maestro_areas_empresa.sql y recarga el schema cache.'
+        : rawMsg;
+      setFormError(msg);
+      addNotificacion?.(`No se pudo guardar el registro: ${msg}`);
+    } finally {
+      setFormSaving(false);
     }
   };
-
   const NOTAS_PANEL = {
     mst_especialidades: 'Estas especialidades se asignan al personal desde RRHH Operativo.',
     mst_tipos_servicio: 'Estos tipos se usan al crear Órdenes de Trabajo.',
@@ -994,6 +1078,67 @@ function Maestros() {
     <div className="input-group">
       <label>Código <span style={{fontSize:10, color:'var(--fg-subtle)', fontWeight:400}}>· Auto-generado</span></label>
       <input className="input" readOnly value={autoCode(id, len)} style={{color:'var(--fg-muted)', cursor:'default', background:'var(--bg-subtle)'}}/>
+    </div>
+  );
+
+  const submitLabel = (text) => (
+    <>{!editandoId && I.plus} {formSaving ? 'Guardando...' : editandoId ? `Actualizar ${text}` : `Agregar ${text}`}</>
+  );
+
+  const FormActions = ({ label }) => (
+    <div style={{display:'flex', gap:10, justifyContent:'flex-end', alignItems:'end', gridColumn:'1 / -1'}}>
+      {editandoId && <button type="button" className="btn btn-secondary" onClick={resetForm}>Cancelar</button>}
+      <button className="btn btn-primary" type="submit" disabled={formSaving} style={{minWidth:180}}>{submitLabel(label)}</button>
+    </div>
+  );
+
+  const editarRegistro = (r) => {
+    const form = {
+      ...nuevoBase,
+      codigo: r.codigo || '',
+      nombre: r.nombre || '',
+      estado: r.estado || 'activo',
+      detalle: r.detalle || r.categoria || '',
+      area: r.area || '',
+      requiere_cert: Boolean(r.requiere_cert),
+      clasificacion: r.clasificacion || '',
+      facturable: Boolean(r.facturable),
+      tipo: r.tipo || '',
+      responsable: r.responsable || '',
+      direccion: r.direccion || '',
+      gps: r.gps || '',
+      tipo_cargo: r.tipo || ''
+    };
+    setEditandoId(r.id);
+    setNuevo(form);
+    setFormError('');
+    scrollToForm();
+  };
+
+  const eliminarRegistro = async (r) => {
+    if (!sel || !window.confirm(`Eliminar "${r.nombre}"? Esta accion se reflejara en la base de datos.`)) return;
+    try {
+      if (sel.id === 'mst_cargos') await eliminarCargo(r.id);
+      else if (sel.id === 'mst_areas') await eliminarArea(r.id);
+      else if (sel.id === 'mst_especialidades') await eliminarEspecialidad(r.id);
+      else if (sel.id === 'mst_tipos_servicio') await eliminarTipoServicio(r.id);
+      else if (sel.id === 'mst_almacenes') await eliminarAlmacen(r.id);
+      else if (sel.id === 'mst_sedes') await eliminarSede(r.id);
+      else if (sel.id === 'mst_industrias') await eliminarIndustria(r.id);
+      else return;
+      if (editandoId === r.id) resetForm();
+      addNotificacion?.(`${sel.tabla}: registro eliminado.`);
+    } catch (err) {
+      const msg = err?.message || 'No se pudo eliminar el registro.';
+      setFormError(msg);
+      addNotificacion?.(`No se pudo eliminar el registro: ${msg}`);
+    }
+  };
+
+  const RowActions = ({ item }) => (
+    <div className="row" style={{justifyContent:'flex-end', gap:6}}>
+      <button className="icon-btn" title="Editar" onClick={() => editarRegistro(item)} style={{color:'var(--cyan)'}}>{I.edit}</button>
+      <button className="icon-btn" title="Eliminar" onClick={() => eliminarRegistro(item)} style={{color:'var(--danger)'}}>{I.trash}</button>
     </div>
   );
 
@@ -1012,7 +1157,7 @@ function Maestros() {
     );
     if (sel?.id === 'mst_proveedores') return (
       <table className="tbl">
-        <thead><tr><th>Codigo</th><th>Proveedor</th><th>Categoria</th><th>Estado</th><th>Responsable</th><th></th></tr></thead>
+        <thead><tr><th>Codigo</th><th>Proveedor</th><th>Categoria</th><th>Estado</th><th>Responsable</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{proveedores.map(p => (
           <tr key={p.id}>
             <td className="mono text-muted">{p.codigo}</td>
@@ -1025,74 +1170,100 @@ function Maestros() {
         ))}</tbody>
       </table>
     );
-    if (sel?.id === 'mst_cargos') return (
-      <form className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+    if (sel?.id === 'mst_areas') return (
+      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          <CodPreview id={sel.id} len={selectedRows.length}/>
+          <CodPreview id={sel.id} len={formLen}/>
+          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre del area *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Operaciones" autoFocus/></div>
+          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
+          <div className="input-group">
+            <label>Tipo de area</label>
+            <select className="select" value={nuevo.tipo || 'Ambos'} onChange={e=>setNuevo(v=>({...v,tipo:e.target.value}))}>
+              <option value="Administrativa">Administrativa</option>
+              <option value="Operativa">Operativa</option>
+              <option value="Ambos">Ambos</option>
+            </select>
+          </div>
+          <div className="input-group" style={{gridColumn:'span 2'}}>
+            <label>Responsable</label>
+            <select className="select" value={nuevo.responsable} onChange={e=>setNuevo(v=>({...v,responsable:e.target.value}))}>
+              <option value="">Sin responsable asignado</option>
+              {responsablesPersonal.map(p => <option key={`${p.tipo}-${p.id}`} value={p.nombre}>{p.nombre} - {p.tipo}</option>)}
+            </select>
+          </div>
+          <div className="input-group"><label>Descripcion breve</label><input className="input" value={nuevo.detalle} onChange={e=>setNuevo(v=>({...v,detalle:e.target.value}))} placeholder="Ej: Gestion operativa y supervision"/></div>
+          <FormActions label="area" />
+        </div>
+      </form>
+    );
+    if (sel?.id === 'mst_cargos') return (
+      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+          <CodPreview id={sel.id} len={formLen}/>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre del cargo *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Analista de Calidad" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
           <div className="input-group"><label>Tipo de personal *</label><select className="select" value={nuevo.tipo_cargo} onChange={e=>setNuevo(v=>({...v,tipo_cargo:e.target.value}))}><option value="">Seleccionar...</option><option value="Administrativo">Administrativo</option><option value="Operativo">Operativo</option><option value="Ambos">Ambos</option></select></div>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Descripción breve</label><input className="input" value={nuevo.detalle} onChange={e=>setNuevo(v=>({...v,detalle:e.target.value}))} placeholder="Ej: Responsable de análisis y reportes"/></div>
-          <div style={{display:'flex', alignItems:'end'}}><button className="btn btn-primary" type="submit" style={{width:'100%'}}>{I.plus} Agregar cargo</button></div>
+          <FormActions label="cargo" />
         </div>
       </form>
     );
     if (sel?.id === 'mst_especialidades') return (
-      <form className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          <CodPreview id={sel.id} len={selectedRows.length}/>
+          <CodPreview id={sel.id} len={formLen}/>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Electricista industrial" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
           <div className="input-group"><label>Área</label><select className="select" value={nuevo.area} onChange={e=>setNuevo(v=>({...v,area:e.target.value}))}><option value="">Seleccionar...</option>{['Eléctrica','Mecánica','Civil','Instrumentación','Sistemas','Seguridad','General'].map(a=><option key={a}>{a}</option>)}</select></div>
           <div className="input-group"><label>Requiere certificación</label><select className="select" value={nuevo.requiere_cert?'si':'no'} onChange={e=>setNuevo(v=>({...v,requiere_cert:e.target.value==='si'}))}><option value="no">No</option><option value="si">Sí</option></select></div>
-          <div style={{display:'flex', alignItems:'end', gridColumn:'span 2'}}><button className="btn btn-primary" type="submit" style={{width:'100%'}}>{I.plus} Agregar especialidad</button></div>
+          <FormActions label="especialidad" />
         </div>
       </form>
     );
     if (sel?.id === 'mst_tipos_servicio') return (
-      <form className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          <CodPreview id={sel.id} len={selectedRows.length}/>
+          <CodPreview id={sel.id} len={formLen}/>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Mantenimiento predictivo" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
           <div className="input-group"><label>Clasificación</label><select className="select" value={nuevo.clasificacion} onChange={e=>setNuevo(v=>({...v,clasificacion:e.target.value}))}><option value="">Seleccionar...</option>{['Preventivo','Correctivo','Proyecto','Emergencia','Garantía','Interno'].map(c=><option key={c}>{c}</option>)}</select></div>
           <div className="input-group"><label>Facturable</label><select className="select" value={nuevo.facturable?'si':'no'} onChange={e=>setNuevo(v=>({...v,facturable:e.target.value==='si'}))}><option value="si">Sí</option><option value="no">No</option></select></div>
-          <div style={{display:'flex', alignItems:'end', gridColumn:'span 2'}}><button className="btn btn-primary" type="submit" style={{width:'100%'}}>{I.plus} Agregar tipo</button></div>
+          <FormActions label="tipo" />
         </div>
       </form>
     );
     if (sel?.id === 'mst_almacenes') return (
-      <form className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          <CodPreview id={sel.id} len={selectedRows.length}/>
+          <CodPreview id={sel.id} len={formLen}/>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre del almacén</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Almacén Sede Sur" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
           <div className="input-group"><label>Tipo</label><select className="select" value={nuevo.tipo} onChange={e=>setNuevo(v=>({...v,tipo:e.target.value}))}><option value="">Seleccionar...</option>{['Central','Sede','Móvil','Tránsito'].map(t=><option key={t}>{t}</option>)}</select></div>
           <div className="input-group"><label>Responsable</label><input className="input" value={nuevo.responsable} onChange={e=>setNuevo(v=>({...v,responsable:e.target.value}))} placeholder="Nombre del responsable"/></div>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Dirección</label><input className="input" value={nuevo.direccion} onChange={e=>setNuevo(v=>({...v,direccion:e.target.value}))} placeholder="Dirección del almacén"/></div>
-          <div style={{display:'flex', alignItems:'end'}}><button className="btn btn-primary" type="submit" style={{width:'100%'}}>{I.plus} Agregar</button></div>
+          <FormActions label="almacen" />
         </div>
       </form>
     );
     if (sel?.id === 'mst_sedes') return (
-      <form className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          <CodPreview id={sel.id} len={selectedRows.length}/>
+          <CodPreview id={sel.id} len={formLen}/>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre de la sede *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Sede Norte, Planta Central" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
           <div className="input-group" style={{gridColumn:'span 3'}}><label>Dirección física</label><input className="input" value={nuevo.direccion} onChange={e=>setNuevo(v=>({...v,direccion:e.target.value}))} placeholder="Ej: Av. Industrial 1450, Ate Vitarte, Lima"/></div>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Coordenadas GPS <span style={{fontSize:10,color:'var(--fg-subtle)',fontWeight:400}}>· lat, lng</span></label><input className="input" value={nuevo.gps} onChange={e=>setNuevo(v=>({...v,gps:e.target.value}))} placeholder="Ej: -12.0464, -77.0428"/></div>
-          <div style={{display:'flex', alignItems:'end', gridColumn:'span 2'}}><button className="btn btn-primary" type="submit" style={{width:'100%'}}>{I.plus} Agregar sede</button></div>
+          <FormActions label="sede" />
         </div>
       </form>
     );
     return (
-      <form className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div className="grid-4" style={{gap:12}}>
-          <CodPreview id={sel?.id||''} len={selectedRows.length}/>
+          <CodPreview id={sel?.id||''} len={formLen}/>
           <div className="input-group"><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option><option>bloqueado</option></select></div>
-          <div style={{display:'flex', alignItems:'end'}}><button className="btn btn-primary" type="submit" style={{width:'100%'}}>{I.plus} Agregar</button></div>
+          <FormActions label="industria" />
           <div className="input-group" style={{gridColumn:'1 / -1'}}><label>Detalle</label><input className="input" value={nuevo.detalle} onChange={e=>setNuevo(v=>({...v,detalle:e.target.value}))}/></div>
         </div>
       </form>
@@ -1108,7 +1279,7 @@ function Maestros() {
             <input className="input" placeholder="Buscar por razón social o RUC..." value={clienteSearch} onChange={e=>setClienteSearch(e.target.value)} style={{maxWidth:320}}/>
           </div>
           <table className="tbl">
-            <thead><tr><th>RUC</th><th>Razón social</th><th>Industria</th><th>Responsable</th><th>Tipo</th><th></th></tr></thead>
+            <thead><tr><th>RUC</th><th>Razón social</th><th>Industria</th><th>Responsable</th><th>Tipo</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
             <tbody>{filtered.map(c => (
               <tr key={c.id}>
                 <td className="mono text-muted" style={{fontSize:12}}>{c.ruc || '—'}</td>
@@ -1123,24 +1294,40 @@ function Maestros() {
         </>
       );
     }
+    if (sel?.id === 'mst_areas') return (
+      <table className="tbl">
+        <thead><tr><th>Codigo</th><th>Area</th><th>Tipo</th><th>Responsable</th><th>Descripcion</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <tbody>{selectedRows.map((r,i) => (
+          <tr key={`${r.codigo}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
+            <td className="mono text-muted">{r.codigo}</td>
+            <td><strong>{r.nombre}</strong></td>
+            <td><span className={'badge '+(r.tipo==='Operativa'?'badge-cyan':r.tipo==='Administrativa'?'badge-gray':'badge-purple')} style={{fontSize:11}}>{r.tipo || 'Ambos'}</span></td>
+            <td className="text-muted">{r.responsable || '-'}</td>
+            <td className="text-muted" style={{fontSize:12}}>{r.detalle}</td>
+            <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
+            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
+          </tr>
+        ))}</tbody>
+      </table>
+    );
     if (sel?.id === 'mst_cargos') return (
       <table className="tbl">
-        <thead><tr><th>Código</th><th>Cargo</th><th>Tipo</th><th>Descripción</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Código</th><th>Cargo</th><th>Tipo</th><th>Descripción</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r,i) => (
-          <tr key={`${r.codigo}-${i}`}>
+          <tr key={`${r.codigo}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
             <td className="mono text-muted">{r.codigo}</td>
             <td><strong>{r.nombre}</strong></td>
             <td><span className={'badge '+(r.tipo==='Operativo'?'badge-cyan':r.tipo==='Ambos'?'badge-purple':'badge-gray')} style={{fontSize:11}}>{r.tipo||'—'}</span></td>
             <td className="text-muted" style={{fontSize:12}}>{r.detalle}</td>
             <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
-            <td><button className="btn btn-sm btn-ghost">Editar</button></td>
+            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
           </tr>
         ))}</tbody>
       </table>
     );
     if (sel?.id === 'mst_especialidades') return (
       <table className="tbl">
-        <thead><tr><th>Código</th><th>Especialidad</th><th>Área</th><th>Certif.</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Código</th><th>Especialidad</th><th>Área</th><th>Certif.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r,i) => (
           <tr key={`${r.codigo}-${i}`}>
             <td className="mono">{r.codigo}</td>
@@ -1148,14 +1335,14 @@ function Maestros() {
             <td className="text-muted">{r.area}</td>
             <td>{r.requiere_cert ? <span className="badge badge-orange">Sí</span> : <span className="badge badge-gray">No</span>}</td>
             <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
-            <td><button className="btn btn-sm btn-ghost">Editar</button></td>
+            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
           </tr>
         ))}</tbody>
       </table>
     );
     if (sel?.id === 'mst_tipos_servicio') return (
       <table className="tbl">
-        <thead><tr><th>Código</th><th>Nombre</th><th>Clasificación</th><th>Facturable</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Código</th><th>Nombre</th><th>Clasificación</th><th>Facturable</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r,i) => (
           <tr key={`${r.codigo}-${i}`}>
             <td className="mono">{r.codigo}</td>
@@ -1163,14 +1350,14 @@ function Maestros() {
             <td><span className="badge badge-cyan" style={{fontSize:11}}>{r.clasificacion}</span></td>
             <td>{r.facturable ? <span className="badge badge-green">Sí</span> : <span className="badge badge-gray">No</span>}</td>
             <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
-            <td><button className="btn btn-sm btn-ghost">Editar</button></td>
+            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
           </tr>
         ))}</tbody>
       </table>
     );
     if (sel?.id === 'mst_almacenes') return (
       <table className="tbl">
-        <thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Responsable</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Responsable</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r,i) => (
           <tr key={`${r.codigo}-${i}`}>
             <td className="mono">{r.codigo}</td>
@@ -1178,14 +1365,14 @@ function Maestros() {
             <td><span className="badge badge-purple" style={{fontSize:11}}>{r.tipo}</span></td>
             <td className="text-muted">{r.responsable}</td>
             <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
-            <td><button className="btn btn-sm btn-ghost">Editar</button></td>
+            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
           </tr>
         ))}</tbody>
       </table>
     );
     if (sel?.id === 'mst_sedes') return (
       <table className="tbl">
-        <thead><tr><th>Código</th><th>Nombre</th><th>Dirección física</th><th>GPS</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Código</th><th>Nombre</th><th>Dirección física</th><th>GPS</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r,i) => (
           <tr key={`${r.codigo}-${i}`}>
             <td className="mono text-muted">{r.codigo}</td>
@@ -1193,21 +1380,21 @@ function Maestros() {
             <td className="text-muted" style={{fontSize:12}}>{r.direccion || '—'}</td>
             <td><span className="mono" style={{fontSize:11, color:'var(--cyan-dk)', background:'var(--cyan-lt)', padding:'2px 7px', borderRadius:6}}>{r.gps || '—'}</span></td>
             <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
-            <td><button className="btn btn-sm btn-ghost">Editar</button></td>
+            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
           </tr>
         ))}</tbody>
       </table>
     );
     return (
       <table className="tbl">
-        <thead><tr><th>Codigo</th><th>Valor</th><th>Detalle</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Codigo</th><th>Valor</th><th>Detalle</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r, i) => (
           <tr key={`${r.codigo}-${i}`}>
             <td className="mono">{r.codigo}</td>
             <td><strong>{r.nombre}</strong></td>
             <td className="text-muted">{r.detalle}</td>
             <td><span className={'badge '+(r.estado==='activo'?'badge-green':r.estado==='bloqueado'?'badge-red':'badge-gray')}>{r.estado}</span></td>
-            <td><button className="btn btn-sm btn-ghost">Editar</button></td>
+            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
           </tr>
         ))}</tbody>
       </table>
@@ -1222,26 +1409,32 @@ function Maestros() {
           <div className="page-sub">Catálogos de referencia globales del sistema</div>
         </div>
       </div>
-      <div className="grid-2">
-        {MOCK.maestros.map(m => (
-          <div key={m.id} className="card hover-raise" style={{padding:20, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-            <div>
-              <div style={{fontWeight:600, fontSize:15}}>{m.tabla}</div>
-              <div className="text-muted" style={{fontSize:12, marginTop:4}}>
-                {m.id === 'mst_clientes' ? cuentas.length : m.id === 'mst_proveedores' ? proveedores.length : m.valores} valores · Actualizado {m.id === 'mst_clientes' || m.id === 'mst_proveedores' ? 'en tiempo real' : m.actualizado}
-              </div>
+      <div className="maestros-grid">
+        {maestrosCatalogos.map(m => (
+          <div key={m.id} className="maestro-card hover-raise">
+            <div className="maestro-card-icon">{I.settings}</div>
+            <div className="maestro-card-main">
+              <div className="maestro-card-title">{m.tabla}</div>
+              {m.id === 'mst_industrias' && (
+                <div className="maestro-card-meta">
+                  {industrias.length} valores - Actualizado en tiempo real
+                </div>
+              )}
             </div>
-            <button className="btn btn-secondary btn-sm" onClick={() => { setSel(m); setNuevo(nuevoBase); }}>Gestionar</button>
+            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { setSel(m); resetForm(); }}>
+              Gestionar {I.chevRight}
+            </button>
           </div>
         ))}
       </div>
 
-      <div style={{marginTop:20, padding:'16px 20px', background:'rgba(6,182,212,0.08)', border:'1px solid var(--border)', borderLeft:'3px solid var(--cyan)', borderRadius:10, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap'}}>
-        <div style={{flex:1, minWidth:200}}>
-          <div style={{fontWeight:600, fontSize:14, marginBottom:2}}>¿Buscas gestionar personal?</div>
-          <div className="text-muted" style={{fontSize:13}}>El personal operativo se administra desde <strong>RRHH Operativo</strong> · El personal administrativo desde <strong>RRHH Administrativo</strong></div>
+      <div className="maestros-help">
+        <div className="maestros-help-icon">{I.users}</div>
+        <div className="maestros-help-copy">
+          <div className="maestros-help-title">¿Buscas gestionar personal?</div>
+          <div className="maestros-help-text">El personal operativo se administra desde <strong>RRHH Operativo</strong> · El personal administrativo desde <strong>RRHH Administrativo</strong></div>
         </div>
-        <div className="row" style={{gap:10}}>
+        <div className="maestros-help-actions">
           <button className="btn btn-secondary btn-sm" onClick={()=>navigate('rrhh_operativo')}>Ir a RRHH Operativo</button>
           <button className="btn btn-secondary btn-sm" onClick={()=>navigate('rrhh_admin')}>Ir a RRHH Administrativo</button>
         </div>
@@ -1267,6 +1460,7 @@ function Maestros() {
                 <span className="badge badge-cyan">Validación de duplicados activa</span>
               </div>
             )}
+            {formError && <div className="alert alert-danger" style={{marginBottom:16}}>{formError}</div>}
             {renderForm()}
             <div className="card">
               <div className="table-wrap">
@@ -1470,25 +1664,97 @@ function Parametros() {
 // ============================================================
 // RRHH ADMINISTRATIVO — Fase 3
 // ============================================================
-const CARGOS_ADM = MOCK.cargosEmpresa.filter(c => c.tipo !== 'Operativo' && c.estado === 'activo').map(c => c.nombre);
-
 function RRHHAdmin() {
-  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH, aprobarVacacion, turnos } = useApp();
+  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH, aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
   const [panelAlta, setPanelAlta] = useState(false);
-  const [nuevosColabs, setNuevosColabs] = useState([]);
-  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:'tur_005', modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo' };
+  const [editandoId, setEditandoId] = useState(null);
+  const [altaSaving, setAltaSaving] = useState(false);
+  const [altaError, setAltaError] = useState('');
+  const turnosBaseRRHH = [
+    { id: 'turno_dia', nombre: 'D\u00eda', hora_entrada: '08:00', hora_salida: '18:00' },
+    { id: 'turno_noche', nombre: 'Noche', hora_entrada: '20:00', hora_salida: '06:00' },
+  ];
+  const turnosOptions = [
+    ...turnosBaseRRHH,
+    ...(turnos || []).filter(t => {
+      const nombre = String(t.nombre || '').toLowerCase();
+      return !['turno_dia', 'turno_noche'].includes(t.id) && !['dia', 'día', 'noche'].includes(nombre);
+    })
+  ];
+  const defaultTurnoId = turnosOptions[0]?.id || 'turno_dia';
+  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
-  const todosPersonal = [...personalAdmin, ...nuevosColabs];
+  const cargosAdminOptions = cargos
+    .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Operativo')
+    .map(c => c.nombre)
+    .filter(Boolean);
+  const sedesOptions = sedes
+    .filter(s => s.estado !== 'inactivo')
+    .map(s => ({ nombre: s.nombre, detalle: s.direccion || s.detalle || s.gps || '' }))
+    .filter(s => s.nombre);
+  const areasOptions = areasEmpresa.length
+    ? areasEmpresa.filter(a => a.tipo !== 'Operativa').map(a => a.nombre).filter(Boolean)
+    : [];
+  const todosPersonal = personalAdmin;
   const persona = sel ? todosPersonal.find(p => p.id === sel) : null;
 
-  const guardarColaborador = (e) => {
+  const cerrarPanelColaborador = () => {
+    setPanelAlta(false);
+    setEditandoId(null);
+    setFormAlta(formAltaBase);
+    setAltaError('');
+  };
+  const abrirNuevoColaborador = () => {
+    setEditandoId(null);
+    setFormAlta(formAltaBase);
+    setPanelAlta(true);
+  };
+  const abrirEditarColaborador = (p) => {
+    setEditandoId(p.id);
+    setFormAlta({
+      ...formAltaBase,
+      nombre: p.nombre || '',
+      dni: p.dni || p.documento || '',
+      fecha_nacimiento: p.fecha_nacimiento || '',
+      telefono: p.telefono || '',
+      email: p.email || '',
+      direccion: p.direccion || '',
+      codigo: p.codigo || p.id || '',
+      cargo: p.cargo || '',
+      area: p.area || '',
+      sede: p.sede || '',
+      turno_id: p.turno_id || defaultTurnoId,
+      modalidad: p.tipo_contrato || 'Planilla',
+      fecha_inicio: p.fecha_inicio_contrato || p.fecha_ingreso || '',
+      fecha_fin: p.fecha_fin_contrato || '',
+      remuneracion: String(p.remuneracion ?? p.sueldo_base ?? ''),
+      dias_vacaciones: String(p.dias_vacaciones_total ?? p.dias_vacaciones_disponibles ?? 30),
+      estado: p.estado || 'activo',
+    });
+    setPanelAlta(true);
+  };
+  const eliminarColaborador = async (p) => {
+    if (!window.confirm(`Eliminar a ${p.nombre}? Esta accion se reflejara en la base de datos.`)) return;
+    try {
+      await eliminarAdminPersonalCtx(p.id);
+      if (sel === p.id) setSel(null);
+      addNotificacion('Colaborador eliminado.');
+    } catch (_) {
+      addNotificacion('No se pudo eliminar el colaborador. Revisa permisos o registros relacionados.');
+    }
+  };
+
+  const guardarColaborador = async (e) => {
     e.preventDefault();
+    if (altaSaving) return;
+    setAltaSaving(true);
+    setAltaError('');
     const idx = todosPersonal.length + 1;
     const nuevo = {
-      id: `per_n${idx}`, empresa_id: 'emp_001',
+      id: editandoId || `per_${Date.now()}`, empresa_id: empresa?.id,
       nombre: formAlta.nombre || 'Nuevo colaborador',
       dni: formAlta.dni || '00000000',
       fecha_nacimiento: formAlta.fecha_nacimiento || '',
@@ -1496,8 +1762,8 @@ function RRHHAdmin() {
       email: formAlta.email || '',
       direccion: formAlta.direccion || '',
       cargo: formAlta.cargo || 'Por definir',
-      area: formAlta.area || 'Sin área',
-      supervisor: '', sede: formAlta.sede || 'Lima Principal', turno_id: formAlta.turno_id || 'tur_005',
+      area: formAlta.area || 'Sin area',
+      supervisor: '', sede: formAlta.sede || '', turno_id: formAlta.turno_id || defaultTurnoId,
       nivel_estudios: '', especialidad: '', institucion: '',
       tipo_contrato: formAlta.modalidad || 'Planilla',
       fecha_inicio_contrato: formAlta.fecha_inicio || '',
@@ -1508,13 +1774,24 @@ function RRHHAdmin() {
       dias_vacaciones_usados: 0,
       dias_vacaciones_disponibles: Number(formAlta.dias_vacaciones) || 30,
       estado: formAlta.estado || 'activo',
-      fecha_ingreso: formAlta.fecha_inicio || '2026-04-27',
+      fecha_ingreso: formAlta.fecha_inicio || new Date().toISOString().slice(0, 10),
       contacto_emergencia: '', relacion_emergencia: '', telefono_emergencia: '',
       documentos: []
     };
-    setNuevosColabs(prev => [...prev, nuevo]);
-    setFormAlta(formAltaBase);
-    setPanelAlta(false);
+    try {
+      if (editandoId) {
+        await actualizarAdminPersonalCtx(editandoId, nuevo);
+        addNotificacion('Colaborador actualizado.');
+      } else {
+        await crearAdminPersonalCtx(nuevo);
+        addNotificacion('Colaborador creado.');
+      }
+      cerrarPanelColaborador();
+    } catch (_) {
+      setAltaError('No se pudo guardar el colaborador en Supabase. Revisa permisos de RRHH Administrativo o aplica la migracion backend.');
+    } finally {
+      setAltaSaving(false);
+    }
   };
 
   const contratoColor = (tipo) => tipo === 'Indefinido' ? 'green' : tipo === 'Plazo fijo' ? 'orange' : 'cyan';
@@ -1537,6 +1814,8 @@ function RRHHAdmin() {
           <div className="row">
             <span className={'badge badge-' + contratoColor(persona.tipo_contrato)}>{persona.tipo_contrato}</span>
             <span className="badge badge-green">{persona.estado}</span>
+            <button className="btn btn-ghost btn-sm" title="Editar colaborador" onClick={() => { abrirEditarColaborador(persona); setSel(null); }}>{I.edit}</button>
+            <button className="btn btn-ghost btn-sm" title="Eliminar colaborador" style={{color:'var(--danger)'}} onClick={() => eliminarColaborador(persona)}>{I.trash}</button>
           </div>
         </div>
 
@@ -1559,7 +1838,7 @@ function RRHHAdmin() {
                   ['Cargo', persona.cargo], ['Área', persona.area],
                   ['Supervisor directo', persona.supervisor], ['Sede base', persona.sede],
                   ['Modalidad', persona.modalidad],
-                  ['Turno asignado', `${turnos.find(t => t.id === persona.turno_id)?.nombre || 'Administrativo'} (${turnos.find(t => t.id === persona.turno_id)?.hora_entrada || '09:00'} - ${turnos.find(t => t.id === persona.turno_id)?.hora_salida || '18:00'})`],
+                  ['Turno asignado', `${turnosOptions.find(t => t.id === persona.turno_id)?.nombre || 'D\u00eda'} (${turnosOptions.find(t => t.id === persona.turno_id)?.hora_entrada || '08:00'} - ${turnosOptions.find(t => t.id === persona.turno_id)?.hora_salida || '18:00'})`],
                 ].map(([label, val]) => (
                   <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
                     <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
@@ -1620,7 +1899,7 @@ function RRHHAdmin() {
               </div>
               <div className="table-wrap">
                 <table className="tbl">
-                  <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Motivo</th><th>Estado</th><th></th></tr></thead>
+                  <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Motivo</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
                   <tbody>
                     {vacPersona.length === 0 && <tr><td colSpan={7} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes registradas</td></tr>}
                     {vacPersona.map(v => (
@@ -1707,23 +1986,30 @@ function RRHHAdmin() {
   const vencimientosDocumentos = personalAdmin.flatMap(p =>
     (p.documentos || []).filter(d => d.estado !== 'vigente').map(d => ({ persona: p.nombre, doc: d.nombre, estado: d.estado }))
   );
+  const colaboradoresActivos = personalAdmin.filter(p => p.estado === 'activo').length;
   const vacPendientes = vacacionesSolicitudes.filter(v => v.estado === 'pendiente');
 
   // Vista Reportes — datos calculados
-  const hoy = '2026-04-27';
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
   const porArea = personalAdmin.reduce((acc, p) => { acc[p.area] = (acc[p.area] || 0) + 1; return acc; }, {});
   const maxArea = Math.max(...Object.values(porArea), 1);
   const contratosVencer = personalAdmin
     .filter(p => p.fecha_fin_contrato && p.tipo_contrato !== 'Indefinido')
-    .map(p => ({ ...p, dias_restantes: Math.round((new Date(p.fecha_fin_contrato) - new Date(hoy)) / 86400000) }))
+    .map(p => {
+      const fechaFin = new Date(p.fecha_fin_contrato);
+      fechaFin.setHours(0, 0, 0, 0);
+      return { ...p, dias_restantes: Math.round((fechaFin - hoy) / 86400000) };
+    })
+    .filter(p => p.dias_restantes >= 0 && p.dias_restantes <= 30)
     .sort((a, b) => a.dias_restantes - b.dias_restantes);
   const vacRanking = [...personalAdmin].sort((a, b) => b.dias_vacaciones_disponibles - a.dias_vacaciones_disponibles);
-  const solPend = MOCK.solicitudesRRHH.filter(s => s.estado === 'pendiente');
+  const solPend = solicitudesRRHH.filter(s => s.estado === 'pendiente');
 
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">RRHH Administrativo</h1><div className="page-sub">{personalAdmin.length} colaboradores activos · Fase 3</div></div>
+        <div><h1 className="page-title">RRHH Administrativo</h1><div className="page-sub">{colaboradoresActivos} colaboradores activos · Fase 3</div></div>
         <button className="btn btn-primary" data-local-form="true" onClick={() => setPanelAlta(true)}>{I.plus} Nuevo colaborador</button>
       </div>
 
@@ -1733,8 +2019,8 @@ function RRHHAdmin() {
       </div>
 
       <div className="kpi-grid">
-        <div className="kpi-card"><div className="kpi-label">Colaboradores activos</div><div className="kpi-value">{personalAdmin.filter(p=>p.estado==='activo').length}</div><div className="kpi-icon cyan">{I.users}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Contratos por vencer</div><div className="kpi-value" style={{color:'var(--orange)'}}>1</div><div className="kpi-icon orange">{I.alert}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Colaboradores activos</div><div className="kpi-value">{colaboradoresActivos}</div><div className="kpi-icon cyan">{I.users}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Contratos por vencer</div><div className="kpi-value" style={{color:'var(--orange)'}}>{contratosVencer.length}</div><div className="kpi-icon orange">{I.alert}</div></div>
         <div className="kpi-card"><div className="kpi-label">Vacaciones pendientes</div><div className="kpi-value" style={{color: vacPendientes.length > 0 ? 'var(--orange)' : 'inherit'}}>{vacPendientes.length}</div><div className="kpi-icon purple">{I.calendar}</div></div>
         <div className="kpi-card"><div className="kpi-label">Docs vencidos / por vencer</div><div className="kpi-value" style={{color:'var(--danger)'}}>{vencimientosDocumentos.length}</div><div className="kpi-icon red">{I.shield}</div></div>
       </div>
@@ -1750,7 +2036,7 @@ function RRHHAdmin() {
         <div className="card">
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Colaborador</th><th>Cargo</th><th>Área</th><th>Sede</th><th>Turno</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones disp.</th><th>Estado</th><th></th></tr></thead>
+              <thead><tr><th>Colaborador</th><th>Cargo</th><th>Área</th><th>Sede</th><th>Turno</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones disp.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
               <tbody>
                 {todosPersonal.map(p => (
                   <tr key={p.id} className="hover-row" onClick={() => { setSel(p.id); setTab('ficha'); }} style={{cursor:'pointer'}}>
@@ -1763,7 +2049,7 @@ function RRHHAdmin() {
                     <td>{p.cargo}</td>
                     <td>{p.area}</td>
                     <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
-                    <td><span className="text-muted" style={{fontSize:12}}>{turnos.find(t => t.id === p.turno_id)?.nombre || 'Administrativo'}</span></td>
+                    <td><span className="text-muted" style={{fontSize:12}}>{turnosOptions.find(t => t.id === p.turno_id)?.nombre || 'D\u00eda'}</span></td>
                     <td><span className={'badge badge-' + contratoColor(p.tipo_contrato)}>{p.tipo_contrato}</span></td>
                     <td>{p.modalidad}</td>
                     <td className="num">{p.dias_vacaciones_disponibles} días</td>
@@ -1872,16 +2158,17 @@ function RRHHAdmin() {
       )}
 
       {panelAlta && <>
-        <div className="side-panel-backdrop" onClick={() => setPanelAlta(false)}/>
+        <div className="side-panel-backdrop" onClick={cerrarPanelColaborador}/>
         <div className="side-panel" style={{width:'min(560px, 96vw)'}}>
           <div className="side-panel-head">
             <div>
-              <div className="eyebrow">Alta de personal</div>
-              <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>Nuevo colaborador administrativo</div>
+              <div className="eyebrow">{editandoId ? 'Edicion de personal' : 'Alta de personal'}</div>
+              <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>{editandoId ? 'Editar colaborador administrativo' : 'Nuevo colaborador administrativo'}</div>
             </div>
-            <button className="icon-btn" onClick={() => setPanelAlta(false)}>{I.x}</button>
+            <button className="icon-btn" onClick={cerrarPanelColaborador}>{I.x}</button>
           </div>
           <form className="side-panel-body" onSubmit={guardarColaborador}>
+            {altaError && <div className="alert alert-danger" style={{marginBottom:16}}>{altaError}</div>}
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos personales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre completo *</label><input className="input" required value={formAlta.nombre} onChange={e=>setFormAlta(v=>({...v,nombre:e.target.value}))} placeholder="Nombre completo" autoFocus/></div>
@@ -1896,10 +2183,10 @@ function RRHHAdmin() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder="ADM-008"/></div>
               <div className="input-group"><label>Modalidad de contrato</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>({...v,modalidad:e.target.value}))}>{['Planilla','Honorarios','CAS','Practicante'].map(m=><option key={m}>{m}</option>)}</select></div>
-              <div className="input-group"><label>Cargo</label><select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{CARGOS_ADM.map(c=><option key={c}>{c}</option>)}</select></div>
-              <div className="input-group"><label>Área</label><select className="select" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))}><option value="">Seleccionar área...</option>{['Comercial','Operaciones','Finanzas','RRHH','Gerencia','TI','Marketing'].map(a=><option key={a}>{a}</option>)}</select></div>
-              <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{[{nombre:'Planta Norte',dir:'Av. Industrial 1450, Ate Vitarte'},{nombre:'Sede Sur',dir:'Jr. Los Incas 320, Villa El Salvador'}].map(s=><option key={s.nombre} value={s.nombre}>{s.nombre} — {s.dir}</option>)}</select></div>
-              <div className="input-group"><label>Turno asignado</label><select className="select" value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}>{turnos.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select></div>
+              <div className="input-group"><label>Cargo</label><select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{cargosAdminOptions.map(c=><option key={c}>{c}</option>)}</select></div>
+              <div className="input-group"><label>Área</label><select className="select" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))}><option value="">Seleccionar área...</option>{areasOptions.map(a=><option key={a}>{a}</option>)}</select></div>
+              <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
+              <div className="input-group"><label>Turno asignado</label><select className="select" value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select></div>
               <div className="input-group"><label>Fecha inicio contrato *</label><input className="input" type="date" value={formAlta.fecha_inicio} onChange={e=>setFormAlta(v=>({...v,fecha_inicio:e.target.value}))}/></div>
               <div className="input-group"><label>Fecha fin contrato <span className="text-muted">(vacío = indefinido)</span></label><input className="input" type="date" value={formAlta.fecha_fin} onChange={e=>setFormAlta(v=>({...v,fecha_fin:e.target.value}))}/></div>
               <div className="input-group"><label>Sueldo base (S/)</label><input className="input" type="number" min="0" value={formAlta.remuneracion} onChange={e=>setFormAlta(v=>({...v,remuneracion:e.target.value}))} placeholder="0"/></div>
@@ -1913,8 +2200,8 @@ function RRHHAdmin() {
             </div>
 
             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
-              <button type="button" className="btn btn-secondary" onClick={() => setPanelAlta(false)}>Cancelar</button>
-              <button type="submit" className="btn btn-primary">{I.save} Guardar colaborador</button>
+              <button type="button" className="btn btn-secondary" onClick={cerrarPanelColaborador}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={altaSaving}>{I.save} {altaSaving ? 'Guardando...' : editandoId ? 'Actualizar colaborador' : 'Guardar colaborador'}</button>
             </div>
           </form>
         </div>
@@ -1986,7 +2273,7 @@ function MetricasSaaS() {
         <div className="card-head"><h3>Tenants</h3><span className="text-muted" style={{fontSize:12}}>{datos.tenants.en_prueba} en prueba</span></div>
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Empresa</th><th>Plan</th><th>País</th><th>Usuarios</th><th>Storage</th><th>Último acceso</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr><th>Empresa</th><th>Plan</th><th>País</th><th>Usuarios</th><th>Storage</th><th>Último acceso</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
             <tbody>
               <tr>
                 <td><div className="row"><div style={{width:32,height:32,borderRadius:6,background:'var(--cyan-lt)',color:'var(--cyan-dk)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:12}}>SI</div><strong>Servicios Industriales Norte SAC</strong></div></td>

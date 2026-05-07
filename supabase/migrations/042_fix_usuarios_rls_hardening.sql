@@ -5,6 +5,7 @@
 drop policy if exists tenant_usuarios_isolation on public.usuarios;
 
 -- SELECT: usuario ve su propio perfil; admin/superadmin ve perfiles de su empresa.
+drop policy if exists usuarios_select on public.usuarios;
 create policy usuarios_select on public.usuarios
   for select using (
     id = auth.uid()::text
@@ -13,6 +14,7 @@ create policy usuarios_select on public.usuarios
   );
 
 -- INSERT: usuario crea su propio perfil; admin crea perfiles para su empresa.
+drop policy if exists usuarios_insert on public.usuarios;
 create policy usuarios_insert on public.usuarios
   for insert with check (
     id = auth.uid()::text
@@ -21,6 +23,7 @@ create policy usuarios_insert on public.usuarios
   );
 
 -- UPDATE: usuario actualiza su propio perfil; admin actualiza perfiles de su empresa.
+drop policy if exists usuarios_update on public.usuarios;
 create policy usuarios_update on public.usuarios
   for update
   using (
@@ -35,6 +38,7 @@ create policy usuarios_update on public.usuarios
   );
 
 -- DELETE: solo admin del tenant y superadmin pueden eliminar perfiles.
+drop policy if exists usuarios_delete on public.usuarios;
 create policy usuarios_delete on public.usuarios
   for delete using (
     public.usuario_es_superadmin_plataforma()

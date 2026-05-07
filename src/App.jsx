@@ -62,7 +62,7 @@ const FORM_TEMPLATES = {
     ['admin_email', 'Email del admin del tenant', 'email'], ['admin_nombre', 'Nombre del admin', 'text']
   ]},
   planes: { title: 'Nuevo plan', fields: [['nombre','Nombre del plan','text'], ['precio','Precio mensual','number'], ['usuarios','Limite de usuarios','number'], ['modulos','Modulos incluidos','textarea']] },
-  roles: { title: 'Nuevo rol', fields: [['nombre','Nombre del rol','text'], ['descripcion','Descripcion','textarea'], ['perfil_campo','Perfil de campo','select',['Ninguno','Tecnico','Vendedor','Compras','Supervisor','Gerencia']]] },
+  roles: { title: 'Nuevo rol', fields: [['nombre','Nombre del rol','text'], ['descripcion','Descripcion','textarea'], ['categoria','Categoría','select',[{value:'admin',label:'Administración del tenant'},{value:'comercial',label:'Comercial / Ventas'},{value:'operaciones',label:'Operaciones'},{value:'finanzas',label:'Finanzas'},{value:'rrhh',label:'RRHH'},{value:'otro',label:'Otro'}]], ['perfil_campo','Perfil de campo','select',['Ninguno','Tecnico','Vendedor','Compras','Supervisor','Gerencia']]] },
   usuarios: { title: 'Nuevo usuario', fields: [
     ['nombre','Nombre completo','text'],
     ['email','Email','email'],
@@ -286,8 +286,8 @@ function QuickCreateModal({ active, onClose }) {
       );
     }
     if (type === 'user' || type === 'user_comercial' || type === 'user_tecnico') {
-      const roleFilter = type === 'user_comercial' ? ['comercial', 'admin'] : type === 'user_tecnico' ? ['tecnico', 'admin'] : null;
-      const users = app.usuarios.filter(u => !roleFilter || roleFilter.includes(u.rol));
+      const roleFilter = type === 'user_comercial' ? ['comercial', 'admin'] : type === 'user_tecnico' ? ['operaciones', 'admin'] : null;
+      const users = app.usuarios.filter(u => !roleFilter || roleFilter.includes(u.rol_categoria));
       return (
         <select className="select" value={val(name)} onChange={e => update(name, e.target.value)}>
           <option value="">Seleccionar usuario...</option>
@@ -419,6 +419,7 @@ function QuickCreateModal({ active, onClose }) {
       const newId = await app.crearRol({
         nombre: values.nombre,
         descripcion: values.descripcion || '',
+        categoria: values.categoria || 'otro',
         perfil_campo: values.perfil_campo || '',
       });
       if (!newId) throw new Error('No se pudo crear el rol.');

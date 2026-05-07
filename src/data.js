@@ -823,8 +823,6 @@ export const cargosEmpresa = [
   { id:'car_022', codigo:'CAR-022', nombre:'Supervisor de Operaciones',        tipo:'Ambos',          detalle:'Supervisión de equipos mixtos',               estado:'activo' },
 ];
 export const maestros = [
-  { id: 'mst_clientes', tabla: 'Clientes y contactos', valores: 42, actualizado: 'hoy' },
-  { id: 'mst_proveedores', tabla: 'Proveedores', valores: 18, actualizado: 'ayer' },
   { id: 'mst_industrias', tabla: 'Industrias', valores: 15, actualizado: 'hoy' },
   { id: 'mst_sedes', tabla: 'Sedes y ubicaciones GPS', valores: 14, actualizado: 'hace 2 dias' },
   { id: 'mst_centros_costo', tabla: 'Centros de costo', valores: 9, actualizado: 'hace 1 semana' },
@@ -833,25 +831,9 @@ export const maestros = [
   { id: 'mst_materiales', tabla: 'Materiales e insumos con codigo de barras', valores: 186, actualizado: 'hoy' },
   { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades', valores: 21, actualizado: 'hace 1 mes' },
   { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno', valores: 6, actualizado: 'hace 3 dias' },
-  { id: 'mst_almacenes', tabla: 'Almacenes y depósitos', valores: 4, actualizado: 'hace 1 semana' },
+  { id: 'mst_almacenes', tabla: 'Almacenes y depósitos', valores: 4, actualizado: 'hoy' }
 ];
-export const industrias = [
-  { id:'ind_001', codigo:'MIN', nombre:'Mineria', categoria:'Industrial', estado:'activo' },
-  { id:'ind_002', codigo:'IND', nombre:'Industrial', categoria:'Industrial', estado:'activo' },
-  { id:'ind_003', codigo:'CON', nombre:'Construccion', categoria:'Infraestructura', estado:'activo' },
-  { id:'ind_004', codigo:'AGR', nombre:'Agroindustria', categoria:'Industrial', estado:'activo' },
-  { id:'ind_005', codigo:'FAC', nombre:'Facilities', categoria:'Servicios', estado:'activo' },
-  { id:'ind_006', codigo:'ENE', nombre:'Energia', categoria:'Industrial', estado:'activo' },
-  { id:'ind_007', codigo:'OIL', nombre:'Petroleo & Gas', categoria:'Industrial', estado:'activo' },
-  { id:'ind_008', codigo:'LOG', nombre:'Logistica', categoria:'Servicios', estado:'activo' },
-  { id:'ind_009', codigo:'RET', nombre:'Retail', categoria:'Comercial', estado:'activo' },
-  { id:'ind_010', codigo:'SAL', nombre:'Salud', categoria:'Servicios', estado:'activo' },
-  { id:'ind_011', codigo:'EDU', nombre:'Educacion', categoria:'Servicios', estado:'activo' },
-  { id:'ind_012', codigo:'TEC', nombre:'Tecnologia', categoria:'Servicios', estado:'activo' },
-  { id:'ind_013', codigo:'PRO', nombre:'Servicios profesionales', categoria:'Servicios', estado:'activo' },
-  { id:'ind_014', codigo:'PUB', nombre:'Sector publico', categoria:'Gobierno', estado:'activo' },
-  { id:'ind_015', codigo:'OTR', nombre:'Otro', categoria:'General', estado:'activo' },
-];
+export const industrias = [];
 export const especialidadesTecnicas = [
   { id:'esp_001', codigo:'ESP-001', nombre:'Electricista industrial', area:'Eléctrica', requiere_cert:true, estado:'activo' },
   { id:'esp_002', codigo:'ESP-002', nombre:'Mecánico de fajas transportadoras', area:'Mecánica', requiere_cert:false, estado:'activo' },
@@ -984,68 +966,7 @@ export const cxp = [
 // ============================================================
 // FASE 3 — RRHH ADMINISTRATIVO
 // ============================================================
-export const personalAdmin = [
-  { id: 'per_001', empresa_id: 'emp_001', usuario_id: 'u2',
-    nombre: 'Carla Meza', dni: '74512345', fecha_nacimiento: '1990-03-15',
-    direccion: 'Av. Brasil 2341, Breña, Lima',
-    contacto_emergencia: 'María Meza', telefono_emergencia: '+51 987 111 222', relacion_emergencia: 'Madre',
-    nivel_estudios: 'Universitario', especialidad: 'Administración de Empresas', institucion: 'PUCP',
-    cargo: 'Jefa Comercial', area: 'Comercial', supervisor: 'Admin Master',
-    tipo_contrato: 'Indefinido', fecha_inicio_contrato: '2022-01-01', fecha_fin_contrato: null,
-    remuneracion: 4500, modalidad: 'Presencial', sede: 'Lima Principal', turno_id: 'tur_005',
-    dias_vacaciones_total: 30, dias_vacaciones_usados: 12, dias_vacaciones_disponibles: 18,
-    estado: 'activo', fecha_ingreso: '2022-01-01',
-    documentos: [
-      { nombre: 'DNI', vencimiento: null, estado: 'vigente' },
-      { nombre: 'Brevete Cat. B', vencimiento: '2026-08-15', estado: 'vigente' }
-    ]
-  },
-  { id: 'per_002', empresa_id: 'emp_001', usuario_id: 'u3',
-    nombre: 'Pedro Salas', dni: '76543210', fecha_nacimiento: '1988-07-22',
-    direccion: 'Jr. Camaná 890, Cercado, Lima',
-    contacto_emergencia: 'Rosa Salas', telefono_emergencia: '+51 987 222 333', relacion_emergencia: 'Esposa',
-    nivel_estudios: 'Universitario', especialidad: 'Ingeniería Industrial', institucion: 'UNI',
-    cargo: 'Ejecutivo Comercial', area: 'Comercial', supervisor: 'Carla Meza',
-    tipo_contrato: 'Plazo fijo', fecha_inicio_contrato: '2023-03-01', fecha_fin_contrato: '2025-03-01',
-    remuneracion: 3200, modalidad: 'Presencial', sede: 'Lima Principal', turno_id: 'tur_005',
-    dias_vacaciones_total: 30, dias_vacaciones_usados: 5, dias_vacaciones_disponibles: 25,
-    estado: 'activo', fecha_ingreso: '2023-03-01',
-    documentos: [
-      { nombre: 'DNI', vencimiento: null, estado: 'vigente' },
-      { nombre: 'Contrato plazo fijo', vencimiento: '2025-03-01', estado: 'por_vencer' }
-    ]
-  },
-  { id: 'per_003', empresa_id: 'emp_001', usuario_id: 'u4',
-    nombre: 'Andrea Rios', dni: '73210987', fecha_nacimiento: '1993-11-05',
-    direccion: 'Calle Las Flores 445, San Isidro, Lima',
-    contacto_emergencia: 'Carlos Rios', telefono_emergencia: '+51 987 333 444', relacion_emergencia: 'Padre',
-    nivel_estudios: 'Universitario', especialidad: 'Marketing', institucion: 'UPC',
-    cargo: 'Ejecutiva Comercial', area: 'Comercial', supervisor: 'Carla Meza',
-    tipo_contrato: 'Indefinido', fecha_inicio_contrato: '2021-06-15', fecha_fin_contrato: null,
-    remuneracion: 3400, modalidad: 'Presencial', sede: 'Lima Principal', turno_id: 'tur_005',
-    dias_vacaciones_total: 30, dias_vacaciones_usados: 20, dias_vacaciones_disponibles: 10,
-    estado: 'activo', fecha_ingreso: '2021-06-15',
-    documentos: [
-      { nombre: 'DNI', vencimiento: null, estado: 'vigente' }
-    ]
-  },
-  { id: 'per_004', empresa_id: 'emp_001', usuario_id: 'u5',
-    nombre: 'Juan Técnico', dni: '72109876', fecha_nacimiento: '1985-04-18',
-    direccion: 'Av. Tupac Amaru 1230, Comas, Lima',
-    contacto_emergencia: 'Elena Torres', telefono_emergencia: '+51 987 444 555', relacion_emergencia: 'Esposa',
-    nivel_estudios: 'Técnico', especialidad: 'Mecánica Industrial', institucion: 'SENATI',
-    cargo: 'Técnico de Campo', area: 'Operaciones', supervisor: 'M. López',
-    tipo_contrato: 'Indefinido', fecha_inicio_contrato: '2020-02-01', fecha_fin_contrato: null,
-    remuneracion: 2800, modalidad: 'Campo', sede: 'Lima Norte', turno_id: 'tur_001',
-    dias_vacaciones_total: 30, dias_vacaciones_usados: 8, dias_vacaciones_disponibles: 22,
-    estado: 'activo', fecha_ingreso: '2020-02-01',
-    documentos: [
-      { nombre: 'DNI', vencimiento: null, estado: 'vigente' },
-      { nombre: 'Cert. altura (ISOS)', vencimiento: '2025-06-30', estado: 'vigente' },
-      { nombre: 'Cert. electricidad BT', vencimiento: '2024-12-31', estado: 'vencido' }
-    ]
-  }
-];
+export const personalAdmin = [];
 
 export const vacacionesSolicitudes = [
   { id: 'vac_001', empresa_id: 'emp_001', personal_id: 'per_001',

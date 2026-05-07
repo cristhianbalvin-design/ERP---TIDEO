@@ -712,7 +712,7 @@ function Leads() {
                 <label>Responsable comercial *</label>
                 <select className={'select'+(errores.responsable?' border-danger':'')} value={formNuevo.responsable} onChange={e=>updateNuevo('responsable',e.target.value)}>
                   <option value="">Seleccionar...</option>
-                  {usuarios.filter(u=>['comercial','admin'].includes(u.rol)).map(u=><option key={u.id} value={u.nombre}>{u.nombre}</option>)}
+                  {usuarios.filter(u=>['comercial','admin'].includes(u.rol_categoria)).map(u=><option key={u.id} value={u.nombre}>{u.nombre}</option>)}
                 </select>
                 {errores.responsable && <span style={{fontSize:11,color:'var(--danger)'}}>Campo requerido</span>}
               </div>

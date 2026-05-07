@@ -76,6 +76,25 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: "No tienes permiso para eliminar usuarios en este tenant." }, 403);
   }
 
+  const { data: targetMembership, error: targetMembershipError } = await adminClient
+    .from("usuarios_empresas")
+    .select("rol_id, roles!inner(id, nombre, es_superadmin)")
+    .eq("user_id", userId)
+    .eq("empresa_id", empresaId)
+    .maybeSingle();
+
+  if (targetMembershipError) {
+    return jsonResponse({ success: false, error: targetMembershipError.message }, 500);
+  }
+
+  const targetRole = targetMembership
+    ? (Array.isArray(targetMembership.roles) ? targetMembership.roles[0] : targetMembership.roles)
+    : null;
+
+  if (targetRole?.es_superadmin || targetMembership?.rol_id === "rol_tideo_super") {
+    return jsonResponse({ success: false, error: "El Superadmin TIDEO no se puede eliminar." }, 403);
+  }
+
   const { error: profileError } = await adminClient
     .from("usuarios")
     .delete()
