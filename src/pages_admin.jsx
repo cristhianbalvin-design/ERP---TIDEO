@@ -306,16 +306,15 @@ function Roles() {
           {tab === 'usuarios' && (
             <div className="table-wrap">
               <table className="tbl">
-                <thead><tr><th>Usuario</th><th>Email</th><th>Área</th><th>Último acceso</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+                <thead><tr><th>Usuario</th><th>Email</th><th>Último acceso</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
                 <tbody>
                   {usuarios.filter(u=>u.rol===sel).length === 0 && (
-                    <tr><td colSpan={5} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>Ningún usuario asignado a este rol.</td></tr>
+                    <tr><td colSpan={4} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>Ningún usuario asignado a este rol.</td></tr>
                   )}
                   {usuarios.filter(u=>u.rol===sel).map(u=>(
                     <tr key={u.id}>
                       <td><strong>{u.nombre}</strong></td>
                       <td className="text-muted">{u.email}</td>
-                      <td>{u.area}</td>
                       <td className="text-muted">{u.ultimo || u.ultimo_login || '—'}</td>
                       <td><button className="btn btn-sm btn-ghost" onClick={()=>{ setReasignarUsuario(u); setReasignarRolId(sel); }}>Reasignar</button></td>
                     </tr>
@@ -438,11 +437,33 @@ function Usuarios() {
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('Tideo2026!');
   const [creando, setCreando] = useState(false);
-  const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', area: '', password: '' });
+  const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', password: '' });
   const [guardandoNuevo, setGuardandoNuevo] = useState(false);
   const [nuevoError, setNuevoError] = useState('');
   const [editando, setEditando] = useState(null);
-  const [editForm, setEditForm] = useState({ nombre: '', email: '', rol: '', area: '', campo: false, campoPerfil: 'Tecnico', estado: 'Activo' });
+  const mobileModuleOptions = [
+    { id: 'tecnico', label: 'Tecnico' },
+    { id: 'logistica', label: 'Logistica' },
+    { id: 'vendedor', label: 'Vendedor' },
+    { id: 'compras', label: 'Compras' },
+    { id: 'supervisor', label: 'Supervisor' },
+    { id: 'gerencia', label: 'Gerencia' },
+    { id: 'asistencia', label: 'Control de asistencia' },
+  ];
+  const legacyModuloCampo = (perfil) => {
+    const value = String(perfil || '').toLowerCase();
+    if (value.includes('vendedor')) return 'vendedor';
+    if (value.includes('compra')) return 'compras';
+    if (value.includes('supervisor')) return 'supervisor';
+    if (value.includes('gerencia')) return 'gerencia';
+    return 'tecnico';
+  };
+  const getCampoModulos = (usuario) => {
+    if (Array.isArray(usuario.campoModulos) && usuario.campoModulos.length) return usuario.campoModulos;
+    if (Array.isArray(usuario.campo_modulos) && usuario.campo_modulos.length) return usuario.campo_modulos;
+    return usuario.campo ? [legacyModuloCampo(usuario.campoPerfil || usuario.campo_perfil)] : [];
+  };
+  const [editForm, setEditForm] = useState({ nombre: '', email: '', rol: '', campo: false, campoModulos: [], estado: 'Activo' });
   const [guardandoEdit, setGuardandoEdit] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -465,7 +486,7 @@ function Usuarios() {
     try {
       await crearUsuarioConAcceso(nuevoForm);
       setCreando(false);
-      setNuevoForm({ nombre: '', email: '', rol: 'vendedor', area: '', password: '' });
+      setNuevoForm({ nombre: '', email: '', rol: 'vendedor', password: '' });
     } catch (error) {
       setNuevoError(error?.message || 'No se pudo crear el usuario.');
     }
@@ -479,9 +500,8 @@ function Usuarios() {
       nombre: usuario.nombre || '',
       email: usuario.email || '',
       rol: usuario.rol || '',
-      area: usuario.area || '',
       campo: Boolean(usuario.campo),
-      campoPerfil: usuario.campoPerfil || usuario.campo_perfil || 'Tecnico',
+      campoModulos: getCampoModulos(usuario),
       estado: usuario.estado || 'Activo',
     });
   };
@@ -495,7 +515,7 @@ function Usuarios() {
       await actualizarUsuarioAcceso(editando.id, {
         ...editForm,
         empresa_id: editando.empresa_id,
-        campoPerfil: editForm.campo ? editForm.campoPerfil : null,
+        campoModulos: editForm.campo ? editForm.campoModulos : [],
       });
       setEditando(null);
     } catch (error) {
@@ -543,10 +563,10 @@ function Usuarios() {
       <div className="card">
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Tenant</th><th>Área</th><th>Campo</th><th>Estado</th><th>Último login</th><th style={{textAlign:'right'}}>Acceso</th></tr></thead>
+            <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Tenant</th><th>Campo</th><th>Estado</th><th>Último login</th><th style={{textAlign:'right'}}>Acceso</th></tr></thead>
             <tbody>
               {usuarios.length === 0 && (
-                <tr><td colSpan={9} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>No hay usuarios visibles para este tenant.</td></tr>
+                <tr><td colSpan={8} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>No hay usuarios visibles para este tenant.</td></tr>
               )}
               {usuarios.map(u=>{
               const r = rolesCtx?.[u.rol] || MOCK.roles[u.rol] || { nombre: u.rol_nombre || u.rol, color: 'gray' };
@@ -561,8 +581,7 @@ function Usuarios() {
                   <td className="text-muted">{u.email}</td>
                   <td><span className={'badge badge-'+r.color}>{r.nombre}</span></td>
                   <td className="text-muted">{getEmpresa(u.empresa_id)}</td>
-                  <td>{u.area}</td>
-                  <td>{u.campo?<span className="badge badge-cyan">{I.mobile}{u.campoPerfil}</span>:<span className="text-subtle">—</span>}</td>
+                  <td>{u.campo?<span className="badge badge-cyan">{I.mobile}{getCampoModulos(u).map(m => mobileModuleOptions.find(x => x.id === m)?.label || m).join(', ')}</span>:<span className="text-subtle">—</span>}</td>
                   <td><span className="badge badge-green">{u.estado}</span></td>
                   <td className="text-muted">{u.ultimo || 'Nuevo'}</td>
                   <td style={{textAlign:'right'}}>
@@ -636,34 +655,42 @@ function Usuarios() {
                 </select>
               </div>
               <div className="input-group">
-                <label>Area</label>
-                <input className="input" value={editForm.area} onChange={e => setEditForm(p => ({...p, area: e.target.value}))} placeholder="Comercial, Operaciones..." />
-              </div>
-              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
-                <div className="input-group">
-                  <label>Estado</label>
-                  <select className="input" value={editForm.estado} onChange={e => setEditForm(p => ({...p, estado: e.target.value}))}>
-                    <option value="Activo">Activo</option>
-                    <option value="Invitado">Invitado</option>
-                    <option value="Suspendido">Suspendido</option>
-                    <option value="Inactivo">Inactivo</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>Perfil de campo</label>
-                  <select className="input" value={editForm.campoPerfil} disabled={!editForm.campo} onChange={e => setEditForm(p => ({...p, campoPerfil: e.target.value}))}>
-                    <option value="Tecnico">Tecnico</option>
-                    <option value="Vendedor">Vendedor</option>
-                    <option value="Compras">Compras</option>
-                    <option value="Supervisor">Supervisor</option>
-                    <option value="Gerencia">Gerencia</option>
-                  </select>
-                </div>
+                <label>Estado</label>
+                <select className="input" value={editForm.estado} onChange={e => setEditForm(p => ({...p, estado: e.target.value}))}>
+                  <option value="Activo">Activo</option>
+                  <option value="Invitado">Invitado</option>
+                  <option value="Suspendido">Suspendido</option>
+                  <option value="Inactivo">Inactivo</option>
+                </select>
               </div>
               <label className="row" style={{gap:8, fontSize:13}}>
                 <input type="checkbox" className="checkbox" checked={editForm.campo} onChange={e => setEditForm(p => ({...p, campo: e.target.checked}))} />
                 Acceso a campo movil
               </label>
+              {editForm.campo && (
+                <div className="input-group">
+                  <label>Modulos moviles habilitados</label>
+                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+                    {mobileModuleOptions.map(mod => (
+                      <label key={mod.id} className="row" style={{gap:8, fontSize:13, padding:'8px 10px', border:'1px solid var(--border)', borderRadius:8}}>
+                        <input
+                          type="checkbox"
+                          className="checkbox"
+                          checked={editForm.campoModulos.includes(mod.id)}
+                          onChange={e => setEditForm(p => ({
+                            ...p,
+                            campoModulos: e.target.checked
+                              ? [...new Set([...p.campoModulos, mod.id])]
+                              : p.campoModulos.filter(x => x !== mod.id)
+                          }))}
+                        />
+                        {mod.label}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="text-muted" style={{fontSize:12, marginTop:6}}>Control de asistencia requiere una ficha de colaborador con el mismo email y turno asignado.</div>
+                </div>
+              )}
               <div className="modal-foot mt-4">
                 <button type="button" className="btn btn-secondary" onClick={() => setEditando(null)}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" disabled={guardandoEdit}>{guardandoEdit ? 'Guardando...' : 'Guardar cambios'}</button>
@@ -705,10 +732,6 @@ function Usuarios() {
                 <select className="input" value={nuevoForm.rol} onChange={e => setNuevoForm(p => ({...p, rol: e.target.value}))}>
                   {rolesOpciones.map(([id, r]) => <option key={id} value={id}>{r.nombre}</option>)}
                 </select>
-              </div>
-              <div className="input-group">
-                <label>Área (opcional)</label>
-                <input className="input" value={nuevoForm.area} onChange={e => setNuevoForm(p => ({...p, area: e.target.value}))} placeholder="Comercial, Operaciones..." />
               </div>
               <div className="modal-foot mt-4">
                 <button type="button" className="btn btn-secondary" onClick={() => setCreando(false)}>Cancelar</button>
@@ -1673,7 +1696,9 @@ function RRHHAdmin() {
   const [editandoId, setEditandoId] = useState(null);
   const [altaSaving, setAltaSaving] = useState(false);
   const [altaError, setAltaError] = useState('');
-  const turnosBaseRRHH = [
+  const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
+  const defaultTurnoId = turnosOptions[0]?.id || '';
+  /*
     { id: 'turno_dia', nombre: 'D\u00eda', hora_entrada: '08:00', hora_salida: '18:00' },
     { id: 'turno_noche', nombre: 'Noche', hora_entrada: '20:00', hora_salida: '06:00' },
   ];
@@ -1684,7 +1709,8 @@ function RRHHAdmin() {
       return !['turno_dia', 'turno_noche'].includes(t.id) && !['dia', 'día', 'noche'].includes(nombre);
     })
   ];
-  const defaultTurnoId = turnosOptions[0]?.id || 'turno_dia';
+  const defaultTurnoIdLegacy = turnosOptions[0]?.id || 'turno_dia';
+  */
   const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const cargosAdminOptions = cargos
@@ -1708,8 +1734,12 @@ function RRHHAdmin() {
     setAltaError('');
   };
   const abrirNuevoColaborador = () => {
+    if (!turnosOptions.length) {
+      addNotificacion('Primero crea un turno real en RRHH > Turnos y Horarios.');
+      return;
+    }
     setEditandoId(null);
-    setFormAlta(formAltaBase);
+    setFormAlta({ ...formAltaBase, turno_id: defaultTurnoId });
     setPanelAlta(true);
   };
   const abrirEditarColaborador = (p) => {
@@ -1726,7 +1756,7 @@ function RRHHAdmin() {
       cargo: p.cargo || '',
       area: p.area || '',
       sede: p.sede || '',
-      turno_id: p.turno_id || defaultTurnoId,
+      turno_id: turnosOptions.some(t => t.id === p.turno_id) ? p.turno_id : defaultTurnoId,
       modalidad: p.tipo_contrato || 'Planilla',
       fecha_inicio: p.fecha_inicio_contrato || p.fecha_ingreso || '',
       fecha_fin: p.fecha_fin_contrato || '',
@@ -1750,6 +1780,10 @@ function RRHHAdmin() {
   const guardarColaborador = async (e) => {
     e.preventDefault();
     if (altaSaving) return;
+    if (!turnosOptions.some(t => t.id === formAlta.turno_id)) {
+      setAltaError('Selecciona un turno real creado en Supabase antes de guardar el colaborador.');
+      return;
+    }
     setAltaSaving(true);
     setAltaError('');
     const idx = todosPersonal.length + 1;
@@ -1763,7 +1797,7 @@ function RRHHAdmin() {
       direccion: formAlta.direccion || '',
       cargo: formAlta.cargo || 'Por definir',
       area: formAlta.area || 'Sin area',
-      supervisor: '', sede: formAlta.sede || '', turno_id: formAlta.turno_id || defaultTurnoId,
+      supervisor: '', sede: formAlta.sede || '', turno_id: formAlta.turno_id,
       nivel_estudios: '', especialidad: '', institucion: '',
       tipo_contrato: formAlta.modalidad || 'Planilla',
       fecha_inicio_contrato: formAlta.fecha_inicio || '',
@@ -1787,8 +1821,9 @@ function RRHHAdmin() {
         addNotificacion('Colaborador creado.');
       }
       cerrarPanelColaborador();
-    } catch (_) {
-      setAltaError('No se pudo guardar el colaborador en Supabase. Revisa permisos de RRHH Administrativo o aplica la migracion backend.');
+    } catch (err) {
+      console.error('Error guardando colaborador administrativo:', err);
+      setAltaError(`No se pudo guardar el colaborador en Supabase: ${err?.message || 'error desconocido'}`);
     } finally {
       setAltaSaving(false);
     }
@@ -1838,7 +1873,7 @@ function RRHHAdmin() {
                   ['Cargo', persona.cargo], ['Área', persona.area],
                   ['Supervisor directo', persona.supervisor], ['Sede base', persona.sede],
                   ['Modalidad', persona.modalidad],
-                  ['Turno asignado', `${turnosOptions.find(t => t.id === persona.turno_id)?.nombre || 'D\u00eda'} (${turnosOptions.find(t => t.id === persona.turno_id)?.hora_entrada || '08:00'} - ${turnosOptions.find(t => t.id === persona.turno_id)?.hora_salida || '18:00'})`],
+                  ['Turno asignado', turnosOptions.find(t => t.id === persona.turno_id) ? `${turnosOptions.find(t => t.id === persona.turno_id).nombre} (${turnosOptions.find(t => t.id === persona.turno_id).hora_entrada} - ${turnosOptions.find(t => t.id === persona.turno_id).hora_salida})` : 'Sin turno asignado'],
                 ].map(([label, val]) => (
                   <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
                     <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
@@ -2010,7 +2045,7 @@ function RRHHAdmin() {
     <>
       <div className="page-header">
         <div><h1 className="page-title">RRHH Administrativo</h1><div className="page-sub">{colaboradoresActivos} colaboradores activos · Fase 3</div></div>
-        <button className="btn btn-primary" data-local-form="true" onClick={() => setPanelAlta(true)}>{I.plus} Nuevo colaborador</button>
+        <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoColaborador} disabled={!turnosOptions.length}>{I.plus} Nuevo colaborador</button>
       </div>
 
       <div className="tabs">
@@ -2049,7 +2084,7 @@ function RRHHAdmin() {
                     <td>{p.cargo}</td>
                     <td>{p.area}</td>
                     <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
-                    <td><span className="text-muted" style={{fontSize:12}}>{turnosOptions.find(t => t.id === p.turno_id)?.nombre || 'D\u00eda'}</span></td>
+                    <td><span className="text-muted" style={{fontSize:12}}>{turnosOptions.find(t => t.id === p.turno_id)?.nombre || 'Sin turno'}</span></td>
                     <td><span className={'badge badge-' + contratoColor(p.tipo_contrato)}>{p.tipo_contrato}</span></td>
                     <td>{p.modalidad}</td>
                     <td className="num">{p.dias_vacaciones_disponibles} días</td>
@@ -2186,7 +2221,7 @@ function RRHHAdmin() {
               <div className="input-group"><label>Cargo</label><select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{cargosAdminOptions.map(c=><option key={c}>{c}</option>)}</select></div>
               <div className="input-group"><label>Área</label><select className="select" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))}><option value="">Seleccionar área...</option>{areasOptions.map(a=><option key={a}>{a}</option>)}</select></div>
               <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
-              <div className="input-group"><label>Turno asignado</label><select className="select" value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select></div>
+              <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               <div className="input-group"><label>Fecha inicio contrato *</label><input className="input" type="date" value={formAlta.fecha_inicio} onChange={e=>setFormAlta(v=>({...v,fecha_inicio:e.target.value}))}/></div>
               <div className="input-group"><label>Fecha fin contrato <span className="text-muted">(vacío = indefinido)</span></label><input className="input" type="date" value={formAlta.fecha_fin} onChange={e=>setFormAlta(v=>({...v,fecha_fin:e.target.value}))}/></div>
               <div className="input-group"><label>Sueldo base (S/)</label><input className="input" type="number" min="0" value={formAlta.remuneracion} onChange={e=>setFormAlta(v=>({...v,remuneracion:e.target.value}))} placeholder="0"/></div>

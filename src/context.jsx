@@ -23,7 +23,7 @@ function generateId(prefix) {
   return `${prefix}_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
 }
 
-function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false) {
+function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo_modulos = []) {
   const esSuperadmin = rol?.es_superadmin || false;
   const esAdmin = esSuperadmin || rol?.es_admin_empresa || false;
   const ver = permisosRows.filter(p => p.puede_ver).map(p => p.pantalla);
@@ -44,6 +44,7 @@ function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false) {
       aprobar_descuentos: puedeAprobar,
       ver_agenda_equipo: esAdmin,
       acceso_campo,
+      campo_modulos: Array.isArray(campo_modulos) ? campo_modulos : [],
     },
   };
 }
@@ -235,7 +236,7 @@ export function AppProvider({ children }) {
         ...rolBase,
         id: membresiaActiva.rol_id,
         descripcion: rolBase.descripcion || 'Rol asignado al usuario actual',
-        ...buildRoleDePermisos(rolBase, membresiaActiva.permisos_rows || [], membresiaActiva.acceso_campo),
+        ...buildRoleDePermisos(rolBase, membresiaActiva.permisos_rows || [], membresiaActiva.acceso_campo, membresiaActiva.campo_modulos),
       },
     });
   }, [membresiaActiva?.rol_id, rolesCtx]);
@@ -695,6 +696,7 @@ export function AppProvider({ children }) {
         rol_id: mem.rol_id,
         acceso_campo: mem.acceso_campo,
         perfil_campo: mem.perfil_campo,
+        campo_modulos: mem.campo_modulos || [],
         permisos_rows: permisosRows || [],
       });
     } catch (_err) {
@@ -860,7 +862,7 @@ export function AppProvider({ children }) {
   };
 
   const role = (isSupabaseConfigured() && membresiaActiva)
-    ? buildRoleDePermisos(membresiaActiva.rol, membresiaActiva.permisos_rows, membresiaActiva.acceso_campo)
+    ? buildRoleDePermisos(membresiaActiva.rol, membresiaActiva.permisos_rows, membresiaActiva.acceso_campo, membresiaActiva.campo_modulos)
     : (MOCK.roles[roleKey] || MOCK.roles['admin']);
   const isSuperadmin = Boolean(role.permisos?.plataforma);
 
@@ -1867,7 +1869,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  const crearUsuarioConAcceso = async ({ nombre, email, password, rol, area }) => {
+  const crearUsuarioConAcceso = async ({ nombre, email, password, rol }) => {
     if (!isSupabaseConfigured()) {
       addNotificacion('Se requiere Supabase para crear usuarios con acceso.', 'error');
       return;
@@ -1886,7 +1888,6 @@ export function AppProvider({ children }) {
           email,
           password,
           rol,
-          area: area || '',
           empresa_id: empresa.id,
         },
         }),
@@ -1954,13 +1955,28 @@ export function AppProvider({ children }) {
     const empresaId = datos?.empresa_id || empresa?.id;
     const previous = usuarios;
     const current = usuarios.find(u => u.id === usuarioId && (!empresaId || u.empresa_id === empresaId)) || usuarios.find(u => u.id === usuarioId);
+    const normalizarCampoModulos = (mods, perfil) => {
+      if (Array.isArray(mods) && mods.length) return [...new Set(mods.filter(Boolean))];
+      const value = String(perfil || '').toLowerCase();
+      if (value.includes('vendedor')) return ['vendedor'];
+      if (value.includes('compra')) return ['compras'];
+      if (value.includes('supervisor')) return ['supervisor'];
+      if (value.includes('gerencia')) return ['gerencia'];
+      return ['tecnico'];
+    };
+    const campoModulos = datos.campo ? normalizarCampoModulos(datos.campoModulos || datos.campo_modulos, datos.campoPerfil || datos.perfil_campo) : [];
+    const campoPerfilLegacy = campoModulos[0]
+      ? ({ tecnico: 'Tecnico', vendedor: 'Vendedor', compras: 'Compras', supervisor: 'Supervisor', gerencia: 'Gerencia', asistencia: 'Asistencia', logistica: 'Logistica' }[campoModulos[0]] || 'Tecnico')
+      : null;
     const nextUser = {
       ...current,
       ...datos,
       id: usuarioId,
       empresa_id: empresaId,
       campo: Boolean(datos.campo),
-      campoPerfil: datos.campo ? (datos.campoPerfil || datos.perfil_campo || 'Tecnico') : null,
+      campoPerfil: datos.campo ? campoPerfilLegacy : null,
+      campoModulos,
+      campo_modulos: campoModulos,
     };
 
     setUsuarios(prev => prev.map(u => (
@@ -1981,18 +1997,26 @@ export function AppProvider({ children }) {
         nombre: nextUser.nombre,
         email: nextUser.email,
         rol: nextUser.rol,
-        area: nextUser.area || '',
         acceso_campo: Boolean(nextUser.campo),
-        perfil_campo: nextUser.campo ? (nextUser.campoPerfil || 'Tecnico') : null,
+        perfil_campo: nextUser.campoPerfil,
+        campo_modulos: campoModulos,
         estado: nextUser.estado || 'Activo',
       });
+      const mergedSavedUser = {
+        ...nextUser,
+        ...savedUser,
+        campo: savedUser.campo ?? nextUser.campo,
+        campoPerfil: savedUser.campoPerfil ?? savedUser.campo_perfil ?? nextUser.campoPerfil,
+        campoModulos: savedUser.campoModulos || savedUser.campo_modulos || campoModulos,
+        campo_modulos: savedUser.campo_modulos || savedUser.campoModulos || campoModulos,
+      };
       setUsuarios(prev => prev.map(u => (
         u.id === usuarioId && u.empresa_id === empresaId
-          ? savedUser
+          ? mergedSavedUser
           : u
       )));
-      addNotificacion(`Usuario ${savedUser.nombre || nextUser.nombre || ''} actualizado.`);
-      return savedUser;
+      addNotificacion(`Usuario ${mergedSavedUser.nombre || nextUser.nombre || ''} actualizado.`);
+      return mergedSavedUser;
     } catch (err) {
       setUsuarios(previous);
       addNotificacion('Error al actualizar usuario: ' + (err.message || 'Error desconocido'), 'error');

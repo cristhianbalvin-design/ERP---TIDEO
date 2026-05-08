@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
+import { rrhhService } from './services/rrhhService.js';
 
 // Operations: OT, Partes, Valorization & Cuentas
 
@@ -3285,7 +3286,10 @@ function horasEfectivasTurno(entrada, salida, cruzaMedianoche, refrigerio) {
   return minutesToLabel(total);
 }
 
-function calcularResultadoAsistencia(horaEntrada, horaSalida, turno, esFalta, justificada) {
+function calcularResultadoAsistencia(horaEntrada, horaSalida, turno, esFalta, justificada, refrigerioTomadoMinutos = null) {
+  if (!turno?.id || !turno?.hora_entrada || !turno?.hora_salida) {
+    return { horas_trabajadas_min:0, tardanza_min:0, horas_extra_min:0, estado:'sin_turno', label:'Sin turno' };
+  }
   if (esFalta || !horaEntrada) {
     return { horas_trabajadas_min:0, tardanza_min:0, horas_extra_min:0, estado:justificada ? 'falta_justificada' : 'falta', label:justificada ? 'Falta justif.' : 'Falta' };
   }
@@ -3297,7 +3301,8 @@ function calcularResultadoAsistencia(horaEntrada, horaSalida, turno, esFalta, ju
   if (turno.cruza_medianoche && salidaMin < entradaMin) salidaMin += 24 * 60;
   let turnoSalidaMin = timeToMinutesHHMM(turno.hora_salida);
   if (turno.cruza_medianoche) turnoSalidaMin += 24 * 60;
-  const trabajadasMin = Math.max(0, salidaMin - entradaMin - (turno.refrigerio_minutos || 0));
+  const refriMin = refrigerioTomadoMinutos !== null && refrigerioTomadoMinutos !== '' ? Number(refrigerioTomadoMinutos) : (turno.refrigerio_minutos || 0);
+  const trabajadasMin = Math.max(0, salidaMin - entradaMin - refriMin);
   const tardanzaMin = Math.max(0, entradaMin - timeToMinutesHHMM(turno.hora_entrada) - (turno.tolerancia_minutos || 0));
   const extraMin = Math.max(0, salidaMin - turnoSalidaMin - 30);
   const estado = tardanzaMin > 0 ? 'tardanza' : extraMin > 0 ? 'horas_extra' : 'completo';
@@ -3315,7 +3320,7 @@ function asistenciaBadge(estado) {
 }
 
 function workerTurno(turnos, worker = {}) {
-  return turnos.find(t => t.id === worker.turno_id) || turnos[0] || {};
+  return (turnos || []).find(t => t.id === worker.turno_id) || {};
 }
 
 function calcularIR5ta(remuneracionBrutaMensual) {
@@ -3380,14 +3385,20 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
 }
 
 function TurnosHorarios() {
-  const { turnos, setTurnos, empresa, addNotificacion, crearTurnoCtx } = useApp();
+  const { turnos, setTurnos, empresa, addNotificacion, crearTurnoCtx, dataMode } = useApp();
   const [panel, setPanel] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const [form, setForm] = useState({
     nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10,
     cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false,
     refrigerio_minutos:60, descripcion:'', estado:'activo'
   });
   const codigo = `TUR-${String(turnos.length + 1).padStart(3, '0')}`;
+  const nuevoTurnoId = () => {
+    const uuid = globalThis.crypto?.randomUUID?.();
+    return `tur_${uuid || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`}`;
+  };
   const horasCalc = horasEfectivasTurno(form.hora_entrada, form.hora_salida, form.cruza_medianoche, form.refrigerio_minutos);
   const diasMap = [
     ['lun','Lun'], ['mar','Mar'], ['mie','Mie'], ['jue','Jue'], ['vie','Vie'], ['sab','Sab'], ['dom','Dom']
@@ -3395,21 +3406,32 @@ function TurnosHorarios() {
   const toggleDia = (d) => setForm(prev => ({ ...prev, dias_laborables: prev.dias_laborables.includes(d) ? prev.dias_laborables.filter(x => x !== d) : [...prev.dias_laborables, d] }));
   const guardar = async (e) => {
     e.preventDefault();
+    if (saving) return;
     if (!form.dias_variables && form.dias_laborables.length === 0) return;
+    setSaving(true);
+    setError('');
     const totalMin = timeToMinutesHHMM(form.hora_salida) + (form.cruza_medianoche ? 1440 : 0) - timeToMinutesHHMM(form.hora_entrada) - Number(form.refrigerio_minutos || 0);
     const turno = {
-      id:`tur_${String(turnos.length + 1).padStart(3, '0')}`, empresa_id:empresa.id, codigo,
+      id:nuevoTurnoId(), empresa_id:empresa.id, codigo,
       ...form, tolerancia_minutos:Number(form.tolerancia_minutos) || 0,
       refrigerio_minutos:Number(form.refrigerio_minutos) || 0,
       horas_efectivas: Math.max(0, totalMin / 60)
     };
     try {
       await crearTurnoCtx(turno);
-    } catch (_) {
-      setTurnos(prev => [...prev, turno]);
+      addNotificacion(`Turno ${turno.codigo} creado en ${dataMode === 'supabase' ? 'Supabase' : 'modo local'}.`);
+      setPanel(false);
+    } catch (err) {
+      if (dataMode === 'supabase') {
+        setError(`No se pudo guardar el turno en Supabase: ${err?.message || 'error desconocido'}`);
+      } else {
+        setTurnos(prev => [...prev, turno]);
+        addNotificacion(`Turno ${turno.codigo} creado en modo local.`);
+        setPanel(false);
+      }
+    } finally {
+      setSaving(false);
     }
-    addNotificacion(`Turno ${turno.codigo} creado.`);
-    setPanel(false);
   };
 
   return (
@@ -3424,7 +3446,7 @@ function TurnosHorarios() {
             <thead><tr><th>Codigo</th><th>Nombre</th><th>Entrada</th><th>Salida</th><th>Horas/dia</th><th>Tolerancia</th><th>Dias</th><th>Estado</th></tr></thead>
             <tbody>{turnos.map(t => (
               <tr key={t.id}>
-                <td className="mono">{t.codigo}</td>
+                <td className="mono">{t.codigo || t.id}</td>
                 <td><strong>{t.nombre}</strong>{t.cruza_medianoche && <span className="badge badge-purple" style={{marginLeft:8}}>Cruza medianoche</span>}</td>
                 <td>{t.hora_entrada}</td>
                 <td>{t.hora_salida}</td>
@@ -3442,6 +3464,7 @@ function TurnosHorarios() {
         <div className="side-panel" style={{width:'min(480px, 96vw)'}}>
           <div className="side-panel-head"><div><div className="eyebrow">Nuevo turno</div><div className="font-display" style={{fontSize:22, fontWeight:700}}>{codigo}</div></div><button className="icon-btn" onClick={() => setPanel(false)}>{I.x}</button></div>
           <form className="side-panel-body" onSubmit={guardar}>
+            {error && <div className="badge badge-red" style={{marginBottom:12}}>{error}</div>}
             <div className="input-group"><label>Nombre *</label><input className="input" required value={form.nombre} onChange={e=>setForm(v=>({...v,nombre:e.target.value}))}/></div>
             <div className="grid-2" style={{gap:12}}>
               <div className="input-group"><label>Hora de entrada *</label><input className="input" type="time" required value={form.hora_entrada} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div>
@@ -3457,7 +3480,7 @@ function TurnosHorarios() {
             <div className="card" style={{padding:12, margin:'14px 0'}}><strong>Horas laborables calculadas:</strong> {horasCalc} efectivas</div>
             <div className="input-group"><label>Descripcion / notas</label><textarea className="input" rows="3" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div>
             <div className="input-group"><label>Estado</label><select className="select" value={form.estado} onChange={e=>setForm(v=>({...v,estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
-            <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Guardar turno</button></div>
+            <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Guardar turno'}</button></div>
           </form>
         </div>
       </>}
@@ -3468,18 +3491,26 @@ function TurnosHorarios() {
 function ControlAsistencia() {
   const { turnos, registrosAsistencia, setRegistrosAsistencia, personalOperativo, personalAdmin, empresa, addNotificacion } = useApp();
   const [tab, setTab] = useState('diaria');
-  const [fecha, setFecha] = useState('2026-04-24');
+  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [panel, setPanel] = useState(false);
   const [masivo, setMasivo] = useState(false);
+  const [kiosk, setKiosk] = useState(false);
   const trabajadores = [
-    ...personalOperativo.map(p => ({ ...p, area:p.area || 'Operativo', remuneracion:p.remuneracion || p.sueldo_base || 3000 })),
-    ...personalAdmin.map(p => ({ id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:p.turno_id || 'tur_005', remuneracion:p.remuneracion || 3000 }))
+    ...personalOperativo.map(p => ({ ...p, trabajador_tipo:'operativo', area:p.area || 'Operativo', remuneracion:p.remuneracion || p.sueldo_base || 3000 })),
+    ...personalAdmin.map(p => ({ ...p, trabajador_tipo:'administrativo', id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:p.turno_id || 'tur_005', remuneracion:p.remuneracion || 3000 }))
   ];
-  const [form, setForm] = useState({ trabajador_id:trabajadores[0]?.id || '', fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'' });
+  const [form, setForm] = useState({ trabajador_id:trabajadores[0]?.id || '', fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'', latitud:'', longitud:'', refrigerio_tomado_minutos:0, ubicacion_estado:'' });
+  useEffect(() => {
+    if (!form.trabajador_id && trabajadores[0]?.id) {
+      setForm(prev => ({ ...prev, trabajador_id: trabajadores[0].id }));
+    }
+  }, [form.trabajador_id, trabajadores[0]?.id]);
   const trabajador = trabajadores.find(t => t.id === form.trabajador_id) || trabajadores[0];
   const turno = workerTurno(turnos, trabajador || {});
-  const resultado = calcularResultadoAsistencia(form.hora_entrada, form.hora_salida, turno, form.asistio === 'no', form.justificada);
-  const registrosPeriodo = registrosAsistencia.filter(r => r.fecha.startsWith('2026-04'));
+  const turnoPersistibleId = turnos.some(t => t.id === turno.id) ? turno.id : null;
+  const resultado = calcularResultadoAsistencia(form.hora_entrada, form.hora_salida, turno, form.asistio === 'no', form.justificada, form.refrigerio_tomado_minutos);
+  const currentMonth = fecha.substring(0, 7);
+  const registrosPeriodo = registrosAsistencia.filter(r => r.fecha.startsWith(currentMonth));
   const diaRows = trabajadores.map(t => {
     const reg = registrosAsistencia.find(r => r.trabajador_id === t.id && r.fecha === fecha);
     const trn = workerTurno(turnos, t);
@@ -3492,20 +3523,110 @@ function ControlAsistencia() {
     tardanzas: registrosPeriodo.filter(r => r.estado === 'tardanza').length,
     faltas: registrosPeriodo.filter(r => r.estado === 'falta' || r.estado === 'falta_justificada').length
   };
-  const guardarRegistro = (e) => {
+  const guardarRegistro = async (e) => {
     e?.preventDefault?.();
+    if (!turnoPersistibleId) {
+      addNotificacion('El colaborador no tiene un turno real asignado. Crea un turno y asignalo en Personal antes de registrar asistencia.');
+      return;
+    }
     const nuevo = {
-      id:`asis_${Date.now()}`, empresa_id:empresa.id, trabajador_id:form.trabajador_id, fecha:form.fecha,
-      turno_id:turno.id, hora_entrada:form.asistio === 'no' ? null : form.hora_entrada,
+      empresa_id:empresa.id, trabajador_id:form.trabajador_id, fecha:form.fecha,
+      trabajador_tipo: trabajador?.trabajador_tipo || 'operativo',
+      turno_id:turnoPersistibleId, hora_entrada:form.asistio === 'no' ? null : form.hora_entrada,
       hora_salida:form.asistio === 'no' ? null : form.hora_salida,
       horas_trabajadas_min:resultado.horas_trabajadas_min, tardanza_min:resultado.tardanza_min,
       horas_extra_min:resultado.horas_extra_min, estado:resultado.estado, es_falta:form.asistio === 'no',
-      justificada:form.justificada, motivo_falta:form.justificada ? form.motivo_falta : null, notas:form.notas
+      justificada:form.justificada, motivo_falta:form.justificada ? form.motivo_falta : null, notas:form.notas,
+      latitud:form.latitud, longitud:form.longitud, refrigerio_tomado_minutos:form.refrigerio_tomado_minutos ? Number(form.refrigerio_tomado_minutos) : 0
     };
-    setRegistrosAsistencia(prev => [nuevo, ...prev.filter(r => !(r.trabajador_id === nuevo.trabajador_id && r.fecha === nuevo.fecha))]);
-    addNotificacion('Registro de asistencia guardado.');
+    
+    const existente = registrosAsistencia.find(r => r.trabajador_id === form.trabajador_id && r.fecha === form.fecha);
+    
+    try {
+      if (existente?.id) {
+        const data = await rrhhService.actualizarAsistencia(existente.id, nuevo);
+        setRegistrosAsistencia(prev => prev.map(r => r.id === existente.id ? data : r));
+      } else {
+        const data = await rrhhService.registrarAsistencia(empresa.id, nuevo);
+        setRegistrosAsistencia(prev => [data, ...prev.filter(r => !(r.trabajador_id === nuevo.trabajador_id && r.fecha === nuevo.fecha))]);
+      }
+      addNotificacion('Registro de asistencia guardado en BD.');
+    } catch(err) {
+      const fb = {...nuevo, id: existente?.id || `asis_${Date.now()}`};
+      setRegistrosAsistencia(prev => [fb, ...prev.filter(r => !(r.trabajador_id === nuevo.trabajador_id && r.fecha === nuevo.fecha))]);
+      addNotificacion(`Error BD: ${err.message || JSON.stringify(err)}`);
+    }
     setPanel(false);
   };
+
+  const obtenerUbicacion = (e) => {
+    e?.preventDefault();
+    if (!navigator.geolocation) {
+      setForm(prev => ({...prev, ubicacion_estado: 'Geolocalización no soportada'}));
+      return;
+    }
+    setForm(prev => ({...prev, ubicacion_estado: 'Obteniendo...'}));
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setForm(prev => ({...prev, latitud: pos.coords.latitude, longitud: pos.coords.longitude, ubicacion_estado: 'Ubicación capturada'})),
+      () => setForm(prev => ({...prev, ubicacion_estado: 'Error al obtener ubicación'}))
+    );
+  };
+
+  const marcarKiosk = async (tipo) => {
+    if (!turnoPersistibleId) {
+      addNotificacion('El colaborador no tiene un turno real asignado. Crea un turno y asignalo antes de marcar asistencia.');
+      return;
+    }
+    const ahora = new Date();
+    const horaActual = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
+    const nuevoRegistro = {
+      empresa_id:empresa.id, trabajador_id:form.trabajador_id, trabajador_tipo: trabajador?.trabajador_tipo || 'operativo', fecha:form.fecha, turno_id:turnoPersistibleId,
+      es_falta:false, justificada:false, motivo_falta:null, notas:'Marcación móvil', latitud:form.latitud, longitud:form.longitud,
+      refrigerio_tomado_minutos: form.refrigerio_tomado_minutos ? Number(form.refrigerio_tomado_minutos) : 0
+    };
+
+    let calc = { horas_trabajadas_min:0, tardanza_min:0, horas_extra_min:0, estado:'incompleto', label:'Incompleto' };
+    const existente = registrosAsistencia.find(r => r.trabajador_id === form.trabajador_id && r.fecha === form.fecha);
+
+    if (tipo === 'entrada') {
+      if (existente?.hora_entrada) {
+        addNotificacion('Ya tienes una entrada marcada hoy.'); return;
+      }
+      nuevoRegistro.hora_entrada = horaActual;
+      nuevoRegistro.hora_salida = existente?.hora_salida || null;
+      calc = calcularResultadoAsistencia(horaActual, nuevoRegistro.hora_salida, turno, false, false, form.refrigerio_tomado_minutos);
+    } else {
+      if (!existente?.hora_entrada) {
+        addNotificacion('No puedes marcar salida sin haber marcado entrada.'); return;
+      }
+      nuevoRegistro.hora_entrada = existente.hora_entrada;
+      nuevoRegistro.hora_salida = horaActual;
+      calc = calcularResultadoAsistencia(existente.hora_entrada, horaActual, turno, false, false, form.refrigerio_tomado_minutos);
+    }
+
+    Object.assign(nuevoRegistro, {
+      horas_trabajadas_min:calc.horas_trabajadas_min, tardanza_min:calc.tardanza_min,
+      horas_extra_min:calc.horas_extra_min, estado:calc.estado
+    });
+
+    try {
+      if (existente?.id) {
+        const data = await rrhhService.actualizarAsistencia(existente.id, nuevoRegistro);
+        setRegistrosAsistencia(prev => prev.map(r => r.id === existente.id ? data : r));
+      } else {
+        const data = await rrhhService.registrarAsistencia(empresa.id, nuevoRegistro);
+        setRegistrosAsistencia(prev => [data, ...prev.filter(r => !(r.trabajador_id === nuevoRegistro.trabajador_id && r.fecha === nuevoRegistro.fecha))]);
+      }
+      addNotificacion(`Marcación de ${tipo} registrada en BD.`);
+    } catch(err) {
+      const fb = {...nuevoRegistro, id: existente?.id || `asis_${Date.now()}`};
+      setRegistrosAsistencia(prev => [fb, ...prev.filter(r => !(r.trabajador_id === nuevoRegistro.trabajador_id && r.fecha === nuevoRegistro.fecha))]);
+      addNotificacion(`Error BD: ${err.message || JSON.stringify(err)}`);
+    }
+
+    setKiosk(false);
+  };
+
   const abrirEdicion = (row) => {
     const r = row.registro;
     setForm({
@@ -3526,24 +3647,38 @@ function ControlAsistencia() {
     addNotificacion('Registro masivo del dia guardado.');
     setMasivo(false);
   };
-  const resumenTrabajador = trabajadores[0];
+  const resumenTrabajador = trabajadores.find(t => t.id === form.trabajador_id) || trabajadores[0];
   const resumenRegs = registrosPeriodo.filter(r => r.trabajador_id === resumenTrabajador?.id);
   const resumenTurno = workerTurno(turnos, resumenTrabajador);
-  const semanalDias = ['2026-04-20','2026-04-21','2026-04-22','2026-04-23','2026-04-24','2026-04-25','2026-04-26'];
+  
+  const dateObj = new Date(fecha + 'T00:00:00');
+  const day = dateObj.getDay() || 7;
+  const startOfWeek = new Date(dateObj);
+  startOfWeek.setDate(dateObj.getDate() - day + 1);
+  const semanalDias = Array.from({length: 7}).map((_, i) => {
+    const d = new Date(startOfWeek);
+    d.setDate(startOfWeek.getDate() + i);
+    return d.toISOString().split('T')[0];
+  });
+  const mesNombre = dateObj.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  const mesNombreCap = mesNombre.charAt(0).toUpperCase() + mesNombre.slice(1);
+  const endOfWeek = new Date(startOfWeek.getTime() + 6*86400000);
+  const semanaTexto = `Semana del ${startOfWeek.getDate()} al ${endOfWeek.getDate()} de ${mesNombreCap}`;
 
   return (
     <>
       <div className="page-header">
         <div><h1 className="page-title">Control de Asistencia</h1><div className="page-sub">Registro manual, tardanzas y horas trabajadas</div></div>
-        <div className="row" style={{gap:10}}><button className="btn btn-secondary" onClick={() => setMasivo(true)}>Registro masivo</button><button className="btn btn-primary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Registrar asistencia</button></div>
+        <div className="row" style={{gap:10}}><button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}} onClick={() => setKiosk(true)}>{I.clock} Reloj Control (Móvil)</button><button className="btn btn-secondary" onClick={() => setMasivo(true)}>Registro masivo</button><button className="btn btn-secondary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Manual</button></div>
       </div>
       <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Total trabajadores</div><div className="kpi-value">{kpis.total}</div></div><div className="kpi-card"><div className="kpi-label">Dias completos</div><div className="kpi-value">{kpis.completos}</div></div><div className="kpi-card"><div className="kpi-label">Tardanzas</div><div className="kpi-value" style={{color:'var(--orange)'}}>{kpis.tardanzas}</div></div><div className="kpi-card"><div className="kpi-label">Faltas</div><div className="kpi-value" style={{color:'var(--danger)'}}>{kpis.faltas}</div></div></div>
       <div className="tabs">{[['diaria','Vista diaria'],['semanal','Vista semanal'],['mensual','Vista mensual'],['resumen','Resumen por trabajador']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
       {tab === 'diaria' && <div className="card"><div className="card-head"><h3>Asistencia del dia</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.map(row=><tr key={row.trabajador.id}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{minutesToLabel(row.calc.horas_trabajadas_min)}</td><td><span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span></td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>abrirEdicion(row)}>Editar</button></td></tr>)}</tbody></table></div></div>}
-      {tab === 'semanal' && <div className="card"><div className="card-head"><h3>Vista semanal</h3><span className="text-muted">Semana del 20 al 26 Abr 2026</span></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadores.slice(0,8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
-      {tab === 'mensual' && <div className="card"><div className="card-head"><h3>Resumen mensual - Abril 2026</h3></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Min. tardanza</th><th>Faltas</th><th>Faltas justif.</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>{trabajadores.slice(0,8).map(t=>{ const regs=registrosPeriodo.filter(r=>r.trabajador_id===t.id); return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{workerTurno(turnos,t).nombre}</td><td>22</td><td>{regs.filter(r=>!r.es_falta).length}</td><td>{regs.filter(r=>r.estado==='tardanza').length}</td><td>{regs.reduce((s,r)=>s+(r.tardanza_min||0),0)} min</td><td>{regs.filter(r=>r.estado==='falta').length}</td><td>{regs.filter(r=>r.estado==='falta_justificada').length}</td><td>{minutesToLabel(regs.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</td><td>{minutesToLabel(regs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</td></tr>})}</tbody></table></div><div style={{padding:16}}><strong>Promedio de asistencia:</strong> 94.7% · <strong>Total tardanzas:</strong> {kpis.tardanzas} · <strong>Total horas extra:</strong> {minutesToLabel(registrosPeriodo.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</div></div>}
+      {tab === 'semanal' && <div className="card"><div className="card-head"><h3>Vista semanal</h3><span className="text-muted">{semanaTexto}</span></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadores.slice(0,8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
+      {tab === 'mensual' && <div className="card"><div className="card-head"><h3>Resumen mensual - {mesNombreCap}</h3></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Min. tardanza</th><th>Faltas</th><th>Faltas justif.</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>{trabajadores.slice(0,8).map(t=>{ const regs=registrosPeriodo.filter(r=>r.trabajador_id===t.id); return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{workerTurno(turnos,t).nombre}</td><td>22</td><td>{regs.filter(r=>!r.es_falta).length}</td><td>{regs.filter(r=>r.estado==='tardanza').length}</td><td>{regs.reduce((s,r)=>s+(r.tardanza_min||0),0)} min</td><td>{regs.filter(r=>r.estado==='falta').length}</td><td>{regs.filter(r=>r.estado==='falta_justificada').length}</td><td>{minutesToLabel(regs.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</td><td>{minutesToLabel(regs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</td></tr>})}</tbody></table></div><div style={{padding:16}}><strong>Promedio de asistencia:</strong> 94.7% · <strong>Total tardanzas:</strong> {kpis.tardanzas} · <strong>Total horas extra:</strong> {minutesToLabel(registrosPeriodo.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</div></div>}
       {tab === 'resumen' && <div className="card" style={{padding:20}}><div className="card-head"><h3>Resumen por trabajador</h3><button className="btn btn-secondary btn-sm">{I.download} Exportar Excel</button></div>{!resumenTrabajador ? <div style={{padding:24, textAlign:'center', color:'var(--fg-muted)'}}>Sin trabajadores registrados.</div> : <div className="grid-2" style={{gap:20}}><div><p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p><p><strong>Turno asignado:</strong> {resumenTurno.nombre} ({resumenTurno.hora_entrada} - {resumenTurno.hora_salida})</p><p><strong>Dias laborables:</strong> 22 dias</p><p><strong>Dias asistidos:</strong> {resumenRegs.filter(r=>!r.es_falta).length}</p><p><strong>Dias con tardanza:</strong> {resumenRegs.filter(r=>r.estado==='tardanza').length}</p><p><strong>Minutos tardanza:</strong> {resumenRegs.reduce((s,r)=>s+(r.tardanza_min||0),0)} minutos</p></div><div><p><strong>Horas esperadas:</strong> 176h</p><p><strong>Horas efectivas:</strong> {minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</p><p><strong>Horas extra:</strong> {minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</p><p><strong>Impacto nomina:</strong> descuento referencial por faltas y tardanzas.</p><p className="text-muted">Calculo referencial. Validar con el area de RRHH antes de procesar nomina.</p></div></div>}</div>}
-      {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registrar asistencia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{form.fecha}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarRegistro}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={form.fecha} onChange={e=>setForm(v=>({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:12, margin:'12px 0'}}>Turno asignado: <strong>{turno.nombre}</strong> · {turno.hora_entrada} - {turno.hora_salida} · Tolerancia {turno.tolerancia_minutos} min</div><div className="input-group"><label>Asistio</label><select className="select" value={form.asistio} onChange={e=>setForm(v=>({...v,asistio:e.target.value}))}><option value="si">Si</option><option value="no">No - falta</option></select></div>{form.asistio==='si' ? <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Hora entrada</label><input className="input" type="time" value={form.hora_entrada} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div><div className="input-group"><label>Hora salida</label><input className="input" type="time" value={form.hora_salida} onChange={e=>setForm(v=>({...v,hora_salida:e.target.value}))}/></div></div> : <><label className="row" style={{gap:8}}><input type="checkbox" checked={form.justificada} onChange={e=>setForm(v=>({...v,justificada:e.target.checked}))}/> Falta justificada</label>{form.justificada && <div className="input-group"><label>Motivo</label><select className="select" value={form.motivo_falta} onChange={e=>setForm(v=>({...v,motivo_falta:e.target.value}))}><option>Enfermedad con certificado</option><option>Permiso autorizado</option><option>Licencia</option><option>Otro</option></select></div>}</>}<div className="card" style={{padding:12, margin:'14px 0'}}><p><strong>Horas trabajadas:</strong> {minutesToLabel(resultado.horas_trabajadas_min)}</p><p><strong>Tardanza:</strong> {resultado.tardanza_min} min</p><p><strong>Horas extra:</strong> {minutesToLabel(resultado.horas_extra_min)}</p><p><strong>Estado:</strong> <span className={'badge '+asistenciaBadge(resultado.estado)}>{resultado.label}</span></p></div><div className="input-group"><label>Notas adicionales</label><textarea className="input" rows="3" value={form.notas} onChange={e=>setForm(v=>({...v,notas:e.target.value}))}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Guardar registro</button></div></form></div></>}
+      {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registrar asistencia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{form.fecha}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarRegistro}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={form.fecha} onChange={e=>setForm(v=>({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:12, margin:'12px 0'}}>Turno asignado: <strong>{turno.nombre}</strong> · {turno.hora_entrada} - {turno.hora_salida} · Tolerancia {turno.tolerancia_minutos} min</div><div className="input-group"><label>Asistio</label><select className="select" value={form.asistio} onChange={e=>setForm(v=>({...v,asistio:e.target.value}))}><option value="si">Si</option><option value="no">No - falta</option></select></div>{form.asistio==='si' ? <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Hora entrada</label><input className="input" type="time" value={form.hora_entrada} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div><div className="input-group"><label>Hora salida</label><input className="input" type="time" value={form.hora_salida} onChange={e=>setForm(v=>({...v,hora_salida:e.target.value}))}/></div></div> : <><label className="row" style={{gap:8}}><input type="checkbox" checked={form.justificada} onChange={e=>setForm(v=>({...v,justificada:e.target.checked}))}/> Falta justificada</label>{form.justificada && <div className="input-group"><label>Motivo</label><select className="select" value={form.motivo_falta} onChange={e=>setForm(v=>({...v,motivo_falta:e.target.value}))}><option>Enfermedad con certificado</option><option>Permiso autorizado</option><option>Licencia</option><option>Otro</option></select></div>}</>}<div className="input-group"><label>Minutos de refrigerio tomados</label><input className="input" type="number" min="0" value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación (Opcional)</label><button type="button" className="btn btn-secondary" style={{width:'100%'}} onClick={obtenerUbicacion}>{form.ubicacion_estado || 'Capturar lat/lng'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:12, marginBottom:10}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}<div className="card" style={{padding:12, margin:'14px 0'}}><p><strong>Horas trabajadas:</strong> {minutesToLabel(resultado.horas_trabajadas_min)}</p><p><strong>Tardanza:</strong> {resultado.tardanza_min} min</p><p><strong>Horas extra:</strong> {minutesToLabel(resultado.horas_extra_min)}</p><p><strong>Estado:</strong> <span className={'badge '+asistenciaBadge(resultado.estado)}>{resultado.label}</span></p></div><div className="input-group"><label>Notas adicionales</label><textarea className="input" rows="3" value={form.notas} onChange={e=>setForm(v=>({...v,notas:e.target.value}))}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Guardar registro</button></div></form></div></>}
+      {kiosk && <><div className="side-panel-backdrop" onClick={()=>setKiosk(false)}/><div className="side-panel" style={{width:'min(520px,100vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Reloj Control Móvil</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{new Date().toLocaleDateString()}</div></div><button className="icon-btn" onClick={()=>setKiosk(false)}>{I.x}</button></div><div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:24}}><div className="input-group"><label>Trabajador</label><select className="select" style={{fontSize:16, padding:12}} value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:20, textAlign:'center', background:'var(--bg-subtle)'}}><button className="btn btn-primary" style={{width:'100%', padding:'24px 20px', fontSize:20, marginBottom:20, justifyContent:'center'}} onClick={() => marcarKiosk('entrada')}>Entrada</button><button className="btn btn-secondary" style={{width:'100%', padding:'24px 20px', fontSize:20, justifyContent:'center'}} onClick={() => marcarKiosk('salida')}>Salida</button></div><div className="input-group"><label>Minutos de refrigerio tomados (especificar al marcar salida)</label><input className="input" type="number" min="0" style={{fontSize:16, padding:12}} value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación requerida</label><button className="btn btn-secondary" style={{width:'100%', padding:12, justifyContent:'center'}} onClick={obtenerUbicacion}>{I.mapPin} {form.ubicacion_estado || 'Obtener mi ubicación actual'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:14, textAlign:'center'}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}</div></div></>}
       {masivo && <><div className="side-panel-backdrop" onClick={()=>setMasivo(false)}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registro masivo</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{fecha}</div></div><button className="icon-btn" onClick={()=>setMasivo(false)}>{I.x}</button></div><div className="side-panel-body"><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Falta</th><th>Justif.</th></tr></thead><tbody>{trabajadores.slice(0,8).map(t=>{const trn=workerTurno(turnos,t);return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{trn.nombre}</td><td><input className="input" type="time" defaultValue={trn.hora_entrada}/></td><td><input className="input" type="time" defaultValue={trn.hora_salida}/></td><td><input type="checkbox"/></td><td><input type="checkbox"/></td></tr>})}</tbody></table></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setMasivo(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={guardarMasivo}>Guardar todos los registros</button></div></div></div></>}
     </>
   );
@@ -3779,6 +3914,7 @@ function RRHH_Operativo() {
   const personal = personalOperativo;
   const [panelAlta, setPanelAlta] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
+  /*
   const turnosBaseOperativo = [
     { id: 'turno_manana', nombre: 'Ma\u00f1ana', hora_entrada: '08:00', hora_salida: '17:00' },
     { id: 'turno_noche', nombre: 'Noche', hora_entrada: '20:00', hora_salida: '06:00' },
@@ -3790,8 +3926,11 @@ function RRHH_Operativo() {
       return !['turno_manana', 'turno_noche'].includes(t.id) && !['mañana', 'manana', 'noche'].includes(nombre);
     })
   ];
-  const defaultTurnoId = turnosOptions[0]?.id || 'turno_manana';
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor:'', sede:'', turno_id:defaultTurnoId, fecha_ingreso:'', tipo_contrato:'Planilla', costo:'', costo_extra:'', acceso_campo:true, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0' };
+  const defaultTurnoIdLegacyOperativo = turnosOptions[0]?.id || 'turno_manana';
+  */
+  const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
+  const defaultTurnoId = turnosOptions[0]?.id || '';
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:defaultTurnoId, fecha_ingreso:'', tipo_contrato:'Planilla', costo:'', costo_extra:'', acceso_campo:true, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [altaError, setAltaError] = useState('');
   const [altaSaving, setAltaSaving] = useState(false);
@@ -3809,6 +3948,13 @@ function RRHH_Operativo() {
     .filter(s => s.estado !== 'inactivo')
     .map(s => ({ nombre: s.nombre, detalle: s.direccion || s.detalle || s.gps || '' }))
     .filter(s => s.nombre);
+  const esSupervisorOperativo = (p = {}) => {
+    const cargo = String(p.cargo || '').toLowerCase();
+    return p.perfil_campo === 'Supervisor' || cargo.includes('supervis');
+  };
+  const supervisorOptions = personal
+    .filter(p => p.estado !== 'inactivo' && p.id !== editandoId && esSupervisorOperativo(p))
+    .map(p => ({ id: p.id, nombre: p.nombre, cargo: p.cargo || 'Supervisor' }));
 
   const cerrarPanelTecnico = () => {
     setPanelAlta(false);
@@ -3817,8 +3963,12 @@ function RRHH_Operativo() {
     setAltaError('');
   };
   const abrirNuevoTecnico = () => {
+    if (!turnosOptions.length) {
+      addNotificacion('Primero crea un turno real en RRHH > Turnos y Horarios.');
+      return;
+    }
     setEditandoId(null);
-    setFormAlta(formAltaBase);
+    setFormAlta({ ...formAltaBase, turno_id: defaultTurnoId });
     setPanelAlta(true);
   };
   const abrirEditarTecnico = (p) => {
@@ -3833,9 +3983,10 @@ function RRHH_Operativo() {
       cargo: p.cargo || '',
       especialidad: p.especialidad || '',
       especialidad2: p.especialidad2 || '',
+      supervisor_id: p.supervisor_id || personal.find(s => s.nombre === p.supervisor)?.id || '',
       supervisor: p.supervisor || '',
       sede: p.sede || '',
-      turno_id: p.turno_id || defaultTurnoId,
+      turno_id: turnosOptions.some(t => t.id === p.turno_id) ? p.turno_id : defaultTurnoId,
       fecha_ingreso: p.fecha_ingreso || '',
       tipo_contrato: p.tipo_contrato || 'Planilla',
       costo: String(p.costo ?? p.costo_hora_real ?? ''),
@@ -3845,6 +3996,11 @@ function RRHH_Operativo() {
       estado: p.estado || 'disponible',
       sueldo_base: String(p.sueldo_base || ''),
       sistema_pensionario: p.sistema_pensionario || 'AFP',
+      afp_nombre: p.afp_nombre || (p.sistema_pensionario === 'ONP' ? 'ONP' : 'Integra'),
+      tiene_hijos: Boolean(p.tiene_hijos),
+      regimen_laboral: p.regimen_laboral || (p.tipo_contrato === 'Recibos por honorarios' ? 'honorarios' : 'general'),
+      cuota_prestamo_mes: String(p.cuota_prestamo_mes ?? '0'),
+      descuento_judicial: String(p.descuento_judicial ?? '0'),
     });
     setPanelAlta(true);
   };
@@ -3861,10 +4017,15 @@ function RRHH_Operativo() {
   const guardarTecnico = async (e) => {
     e.preventDefault();
     if (altaSaving) return;
+    if (!turnosOptions.some(t => t.id === formAlta.turno_id)) {
+      setAltaError('Selecciona un turno real creado en Supabase antes de guardar el tecnico.');
+      return;
+    }
     setAltaSaving(true);
     setAltaError('');
     const idx = personal.length + 1;
     const codigo = formAlta.codigo || `TEC-${String(idx).padStart(3,'0')}`;
+    const supervisorSeleccionado = supervisorOptions.find(p => p.id === formAlta.supervisor_id);
     const nuevo = {
       id: `pop_${Date.now()}`,
       codigo,
@@ -3876,7 +4037,8 @@ function RRHH_Operativo() {
       cargo: formAlta.cargo || 'Técnico de Campo',
       especialidad: formAlta.especialidad || 'General',
       especialidad2: formAlta.especialidad2 || '',
-      supervisor: formAlta.supervisor || '',
+      supervisor_id: formAlta.supervisor_id || null,
+      supervisor: supervisorSeleccionado?.nombre || '',
       sede: formAlta.sede || '',
       costo: Number(formAlta.costo) || 0,
       costo_hora_real: Number(formAlta.costo) || 0,
@@ -3893,8 +4055,8 @@ function RRHH_Operativo() {
       cuota_prestamo_mes: esHonorarios ? 0 : Number(formAlta.cuota_prestamo_mes) || 0,
       descuento_judicial: esHonorarios ? 0 : Number(formAlta.descuento_judicial) || 0,
       estado: formAlta.estado || 'disponible',
-      turno_id: formAlta.turno_id || defaultTurnoId,
-      turno: turnosOptions.find(t => t.id === formAlta.turno_id)?.nombre || 'Ma\u00f1ana',
+      turno_id: formAlta.turno_id,
+      turno: turnosOptions.find(t => t.id === formAlta.turno_id)?.nombre || '',
       docs: { sctr:'pendiente', medico:'pendiente', epp:'pendiente', licencia:'pendiente' }
     };
     try {
@@ -3906,8 +4068,9 @@ function RRHH_Operativo() {
         addNotificacion('Tecnico creado.');
       }
       cerrarPanelTecnico();
-    } catch (_) {
-      setAltaError('No se pudo guardar el tecnico en Supabase. Revisa permisos de RRHH Operativo o aplica la migracion backend.');
+    } catch (err) {
+      console.error('Error guardando tecnico operativo:', err);
+      setAltaError(`No se pudo guardar el tecnico en Supabase: ${err?.message || 'error desconocido'}`);
     } finally {
       setAltaSaving(false);
     }
@@ -4079,12 +4242,12 @@ function RRHH_Operativo() {
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos laborales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder={`TEC-00${personal.length+1}`}/></div>
-              <div className="input-group"><label>Turno asignado</label><select className="select" value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select></div>
+              <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               <div className="input-group"><label>Cargo</label><select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{cargosOperativosOptions.map(c=><option key={c}>{c}</option>)}</select></div>
               <div className="input-group"><label>Especialidad principal</label><select className="select" value={formAlta.especialidad} onChange={e=>setFormAlta(v=>({...v,especialidad:e.target.value}))}><option value="">Seleccionar...</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>
               <div className="input-group"><label>Especialidad secundaria <span className="text-muted">(opcional)</span></label><select className="select" value={formAlta.especialidad2} onChange={e=>setFormAlta(v=>({...v,especialidad2:e.target.value}))}><option value="">Ninguna</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>
               <div className="input-group"><label>Sede base</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
-              <div className="input-group"><label>Supervisor directo</label><select className="select" value={formAlta.supervisor} onChange={e=>setFormAlta(v=>({...v,supervisor:e.target.value}))}><option value="">Seleccionar...</option>{personal.filter(p=>p.cargo.includes('Supervis')).map(p=><option key={p.id}>{p.nombre}</option>)}</select></div>
+              <div className="input-group"><label>Supervisor directo</label><select className="select" value={formAlta.supervisor_id} onChange={e=>setFormAlta(v=>({...v,supervisor_id:e.target.value}))}><option value="">Sin supervisor asignado</option>{supervisorOptions.map(p=><option key={p.id} value={p.id}>{p.nombre} - {p.cargo}</option>)}</select>{!supervisorOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Crea o edita un colaborador con perfil de campo Supervisor.</div>}</div>
               <div className="input-group"><label>Fecha de ingreso</label><input className="input" type="date" value={formAlta.fecha_ingreso} onChange={e=>setFormAlta(v=>({...v,fecha_ingreso:e.target.value}))}/></div>
               <div className="input-group"><label>Modalidad de contrato</label><select className="select" value={formAlta.tipo_contrato} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value, ...(e.target.value === 'Recibos por honorarios' ? {sueldo_base:'', sistema_pensionario:'', afp_nombre:'', tiene_hijos:false, regimen_laboral:'honorarios', cuota_prestamo_mes:'0', descuento_judicial:'0'} : {sistema_pensionario:v.sistema_pensionario || 'AFP', afp_nombre:v.afp_nombre || 'Integra', regimen_laboral:v.regimen_laboral === 'honorarios' ? 'general' : v.regimen_laboral})}))}><option>Planilla</option><option>Recibos por honorarios</option><option>CAS</option><option>Practicante</option><option>Temporal</option></select></div>
               <div className="input-group"><label>Estado inicial</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="disponible">Disponible</option><option value="inactivo">Inactivo</option></select></div>

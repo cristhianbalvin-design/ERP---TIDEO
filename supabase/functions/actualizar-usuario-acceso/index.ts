@@ -34,6 +34,30 @@ const estadoToProfile = (estado: string) => {
   return labels[value] || "Activo";
 };
 
+const allowedCampoModulos = new Set(["tecnico", "logistica", "vendedor", "compras", "supervisor", "gerencia", "asistencia"]);
+const legacyPerfilToModulo = (perfil: string | null) => {
+  const value = String(perfil || "").toLowerCase();
+  if (value.includes("vendedor")) return "vendedor";
+  if (value.includes("compra")) return "compras";
+  if (value.includes("supervisor")) return "supervisor";
+  if (value.includes("gerencia")) return "gerencia";
+  if (value.includes("logistica")) return "logistica";
+  if (value.includes("asistencia")) return "asistencia";
+  return "tecnico";
+};
+const moduloToPerfil = (modulo: string | null) => {
+  const map: Record<string, string> = {
+    tecnico: "Tecnico",
+    logistica: "Logistica",
+    vendedor: "Vendedor",
+    compras: "Compras",
+    supervisor: "Supervisor",
+    gerencia: "Gerencia",
+    asistencia: "Asistencia",
+  };
+  return modulo ? (map[modulo] || "Tecnico") : null;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return jsonResponse({ success: false, error: "Metodo no permitido." }, 405);
@@ -71,9 +95,13 @@ serve(async (req) => {
   const nombre = String(payload.nombre || "").trim();
   const email = normalizeEmail(payload.email);
   const rolId = String(payload.rol || "").trim();
-  const area = String(payload.area || "").trim();
   const accesoCampo = Boolean(payload.acceso_campo);
-  const perfilCampo = accesoCampo ? String(payload.perfil_campo || "Tecnico").trim() : null;
+  const campoModulos = accesoCampo
+    ? [...new Set((Array.isArray(payload.campo_modulos) ? payload.campo_modulos : [legacyPerfilToModulo(String(payload.perfil_campo || "Tecnico"))])
+      .map((m) => String(m || "").trim().toLowerCase())
+      .filter((m) => allowedCampoModulos.has(m)))]
+    : [];
+  const perfilCampo = accesoCampo ? moduloToPerfil(campoModulos[0] || legacyPerfilToModulo(String(payload.perfil_campo || "Tecnico"))) : null;
   const estadoPerfil = estadoToProfile(String(payload.estado || "Activo"));
   const estadoMembership = estadoToMembership(estadoPerfil);
 
@@ -140,6 +168,7 @@ serve(async (req) => {
       rol_id: rolId,
       acceso_campo: accesoCampo,
       perfil_campo: perfilCampo,
+      campo_modulos: campoModulos,
       estado: estadoMembership,
       updated_at: new Date().toISOString(),
     })
@@ -154,7 +183,6 @@ serve(async (req) => {
     nombre,
     email,
     rol: rolId,
-    area,
     campo: accesoCampo,
     campo_perfil: perfilCampo,
     estado: estadoPerfil,
@@ -174,6 +202,7 @@ serve(async (req) => {
     user: {
       ...(savedUser || profile),
       campoPerfil: perfilCampo,
+      campoModulos,
     },
   });
 });

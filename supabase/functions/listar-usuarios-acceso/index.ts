@@ -46,7 +46,7 @@ serve(async (req) => {
 
   const { data: memberships, error: membershipError } = await adminClient
     .from("usuarios_empresas")
-    .select("user_id, empresa_id, rol_id, acceso_campo, perfil_campo, estado")
+    .select("user_id, empresa_id, rol_id, acceso_campo, perfil_campo, campo_modulos, estado")
     .eq("estado", "activo");
 
   if (membershipError) return jsonResponse({ success: false, error: membershipError.message }, 500);
@@ -86,9 +86,9 @@ serve(async (req) => {
     const profileRole = rolesById.get(callerProfile.rol);
     if (profileRole?.es_superadmin || profileRole?.es_admin_empresa) manageableEmpresaIds.add(callerProfile.empresa_id);
   }
-  const canManagePlatform = isSuperadmin || manageableEmpresaIds.has("emp_tideo");
+  const canManagePlatform = isSuperadmin;
 
-  if (empresaId && empresaId !== "emp_tideo" && !isSuperadmin && !manageableEmpresaIds.has(empresaId)) {
+  if (empresaId && !isSuperadmin && !manageableEmpresaIds.has(empresaId)) {
     return jsonResponse({ success: false, error: "No tienes permiso para listar usuarios de este tenant." }, 403);
   }
 
@@ -106,6 +106,9 @@ serve(async (req) => {
         : [...manageableEmpresaIds];
 
   let profilesQuery = adminClient.from("usuarios").select("*").order("nombre", { ascending: true });
+  if (!scopeAllEmpresas && !scopeEmpresaIds.length) {
+    return jsonResponse({ success: true, usuarios: [] });
+  }
   if (!scopeAllEmpresas && scopeEmpresaIds.length) {
     profilesQuery = profilesQuery.in("empresa_id", scopeEmpresaIds);
   }
@@ -135,6 +138,8 @@ serve(async (req) => {
       rol_categoria: role?.categoria || null,
       campo: membership?.acceso_campo ?? profile.campo,
       campoPerfil: membership?.perfil_campo ?? profile.campo_perfil,
+      campoModulos: membership?.campo_modulos ?? profile.campo_modulos ?? [],
+      campo_modulos: membership?.campo_modulos ?? profile.campo_modulos ?? [],
       estado: membership?.estado ? (estadoMap[membership.estado] ?? membership.estado) : profile.estado,
     });
   }
@@ -156,6 +161,8 @@ serve(async (req) => {
       area: "",
       campo: membership.acceso_campo,
       campoPerfil: membership.perfil_campo,
+      campoModulos: membership.campo_modulos || [],
+      campo_modulos: membership.campo_modulos || [],
       estado: estadoMap[membership.estado] ?? membership.estado,
     });
   }

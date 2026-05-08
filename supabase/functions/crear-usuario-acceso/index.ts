@@ -65,7 +65,6 @@ serve(async (req) => {
   const password = String(payload.password || "");
   const empresaId = String(payload.empresa_id || "").trim();
   const rolInput = String(payload.rol || "").trim();
-  const area = String(payload.area || "").trim();
 
   if (!nombre || !email || !password || !empresaId || !rolInput) {
     return jsonResponse({ success: false, error: "Nombre, email, password, empresa y rol son obligatorios." }, 400);
@@ -182,6 +181,7 @@ serve(async (req) => {
       rol_id: roleRow.id,
       acceso_campo: false,
       perfil_campo: null,
+      campo_modulos: [],
       estado: "activo",
     }], { onConflict: "user_id,empresa_id" });
 
@@ -192,7 +192,6 @@ serve(async (req) => {
     nombre,
     email,
     rol: roleRow.id,
-    area,
     empresa_id: empresaId,
     estado: "Activo",
     must_change_password: true,

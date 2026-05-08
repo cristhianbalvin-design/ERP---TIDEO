@@ -2,20 +2,38 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
+import { rrhhService } from './services/rrhhService.js';
 
 // Mobile field views - all field profiles
 
 function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
+  const { authUser, usuarios, personalAdmin, personalOperativo } = useApp();
   const [screen, setScreen] = useState('home');
+  const trabajadorAsistencia = getTrabajadorAsistenciaMovil({ authUser, usuarios, personalAdmin, personalOperativo });
+  const modulosUsuario = getUsuarioCampoModulos(authUser, usuarios);
+  const modulosUsuarioKey = modulosUsuario.join('|');
+  const puedeVerAsistencia = Boolean(trabajadorAsistencia);
 
-  const profiles = [
+  const profiles = useMemo(() => [
     { k: 'tecnico', l: 'Técnico', icon: I.wrench },
     { k: 'logistica', l: 'Logística', icon: I.truck },
     { k: 'vendedor', l: 'Vendedor', icon: I.target },
     { k: 'compras', l: 'Compras', icon: I.camera },
     { k: 'supervisor', l: 'Supervisor', icon: I.shield },
     { k: 'gerencia', l: 'Gerencia', icon: I.trend },
-  ];
+    { k: 'asistencia', l: 'Asistencia', icon: I.clock, requiereAsistencia: true },
+  ].filter(p => modulosUsuario.includes(p.k) && (!p.requiereAsistencia || puedeVerAsistencia)), [modulosUsuarioKey, puedeVerAsistencia]);
+
+  useEffect(() => {
+    if (profile === 'asistencia' && !puedeVerAsistencia) {
+      setProfile(profiles[0]?.k || 'tecnico');
+      setScreen('home');
+    }
+    if (profiles.length && !profiles.some(p => p.k === profile)) {
+      setProfile(profiles[0].k);
+      setScreen('home');
+    }
+  }, [profile, puedeVerAsistencia, setProfile, profiles]);
 
   return (
     <div className="mobile-field-shell" style={{background:dark?'#0D1B2E':'#EEF2F6'}}>
@@ -50,6 +68,7 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
               {profile === 'compras' && <ComprasView screen={screen} setScreen={setScreen}/>}
               {profile === 'supervisor' && <SupervisorView screen={screen} setScreen={setScreen}/>}
               {profile === 'gerencia' && <GerenciaView screen={screen} setScreen={setScreen}/>}
+              {profile === 'asistencia' && <AsistenciaMobileView screen={screen} setScreen={setScreen}/>}
             </div>
           </div>
         </div>
@@ -60,6 +79,13 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
 
 function normalizarTexto(valor) {
   return String(valor || '').trim().toLowerCase();
+}
+
+function slugPersona(valor) {
+  return normalizarTexto(valor)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
 }
 
 function inicialesDe(nombre, fallback = 'U') {
@@ -90,6 +116,46 @@ function getUsuarioMovil(authUser, usuarios = []) {
     email: usuario?.email || authUser?.email || null,
     iniciales: inicialesDe(nombre),
   };
+}
+
+function getTrabajadorAsistenciaMovil({ authUser, usuarios = [], personalAdmin = [], personalOperativo = [] }) {
+  const usuarioMovil = getUsuarioMovil(authUser, usuarios);
+  const emailAuth = normalizarTexto(authUser?.email || usuarioMovil.email);
+  const usuarioSlug = slugPersona(usuarioMovil.nombre || emailAuth.split('@')[0]);
+  const trabajadores = [
+    ...(personalOperativo || [])
+      .map(p => ({ ...p, trabajador_tipo: 'operativo' })),
+    ...(personalAdmin || [])
+      .map(p => ({ ...p, trabajador_tipo: 'administrativo' })),
+  ];
+
+  return trabajadores.find(p => {
+    const email = normalizarTexto(p.email);
+    const nombreSlug = slugPersona(p.nombre);
+    return p.id === authUser?.id ||
+      p.id === usuarioMovil.id ||
+      (emailAuth && email === emailAuth) ||
+      (usuarioSlug && nombreSlug === usuarioSlug);
+  }) || null;
+}
+
+function getUsuarioCampoModulos(authUser, usuarios = []) {
+  const usuarioMovil = getUsuarioMovil(authUser, usuarios);
+  const emailAuth = normalizarTexto(authUser?.email || usuarioMovil.email);
+  const usuario = usuarios.find(u =>
+    u.id === authUser?.id ||
+    u.id === usuarioMovil.id ||
+    (emailAuth && normalizarTexto(u.email) === emailAuth)
+  );
+  if (!usuario?.campo) return [];
+  if (Array.isArray(usuario.campoModulos) && usuario.campoModulos.length) return usuario.campoModulos;
+  if (Array.isArray(usuario.campo_modulos) && usuario.campo_modulos.length) return usuario.campo_modulos;
+  const perfil = String(usuario.campoPerfil || usuario.campo_perfil || '').toLowerCase();
+  if (perfil.includes('vendedor')) return ['vendedor'];
+  if (perfil.includes('compra')) return ['compras'];
+  if (perfil.includes('supervisor')) return ['supervisor'];
+  if (perfil.includes('gerencia')) return ['gerencia'];
+  return ['tecnico'];
 }
 
 function telefonoParaLlamar(valor) {
@@ -134,6 +200,200 @@ function cargarImagen(src) {
     img.onerror = reject;
     img.src = src;
   });
+}
+
+function AsistenciaMobileView({ screen, setScreen }) {
+  const { authUser, usuarios, addNotificacion, registrosAsistencia, setRegistrosAsistencia, empresa, personalAdmin, personalOperativo, turnos } = useApp();
+  const [loading, setLoading] = useState(false);
+  const [geoEstado, setGeoEstado] = useState('');
+  
+  const usuarioMovil = getUsuarioMovil(authUser, usuarios);
+  const trabajadorActual = getTrabajadorAsistenciaMovil({ authUser, usuarios, personalAdmin, personalOperativo });
+  
+  const hoy = new Date();
+  const today = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+  const trabajadorId = trabajadorActual?.id || '';
+  const turnoIdPersistible = turnos?.some(t => t.id === trabajadorActual?.turno_id) ? trabajadorActual.turno_id : null;
+  
+  // Estado local para gobernar el flujo: entrada -> salida -> completado
+  const [modo, setModo] = useState('entrada');
+
+  useEffect(() => {
+    if (!trabajadorId) {
+      setModo('entrada');
+      return;
+    }
+    const rh = registrosAsistencia.filter(r => r.trabajador_id === trabajadorId && r.fecha === today);
+    if (rh.some(r => !r.hora_salida)) {
+      setModo('salida');
+    } else if (rh.length > 0) {
+      setModo('completado');
+    } else {
+      setModo('entrada');
+    }
+  }, [registrosAsistencia, trabajadorId, today]);
+
+  const manejarMarcacion = async () => {
+    if (modo === 'completado') return;
+    if (!trabajadorId) {
+      addNotificacion('No encuentro un colaborador habilitado para asistencia móvil. Revisa el email y el permiso en Personal.');
+      return;
+    }
+    if (!turnoIdPersistible) {
+      addNotificacion('Tu ficha no tiene un turno real asignado. Pide a RRHH asignarte un turno creado en Supabase.');
+      return;
+    }
+    setLoading(true);
+    setGeoEstado('Obteniendo ubicación...');
+    
+    let lat = null, lng = null;
+    if (navigator.geolocation) {
+      try {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+        });
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+      } catch (error) {
+        addNotificacion('No se pudo obtener la ubicación exacta. Asegúrate de dar permisos.');
+      }
+    } else {
+      addNotificacion('Geolocalización no soportada en este dispositivo.');
+    }
+
+    const ahora = new Date();
+    const horaActual = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
+    
+    if (modo === 'entrada') {
+      const nuevoRegistro = {
+        empresa_id: empresa?.id || 'emp_001',
+        trabajador_id: trabajadorId,
+        trabajador_tipo: trabajadorActual.trabajador_tipo,
+        fecha: today,
+        turno_id: turnoIdPersistible,
+        hora_entrada: horaActual,
+        hora_salida: null,
+        latitud: lat,
+        longitud: lng,
+        refrigerio_tomado_minutos: 0,
+        estado: 'incompleto',
+        es_falta: false,
+        justificada: false,
+        origen_registro: 'mobile_pwa',
+        notas: 'Marcación móvil (Modo Campo)'
+      };
+      
+      try {
+        const data = await rrhhService.registrarAsistencia(empresa?.id || 'emp_001', nuevoRegistro);
+        setRegistrosAsistencia(prev => [data, ...prev]);
+        addNotificacion(`Entrada registrada a las ${horaActual}`);
+      } catch (e) {
+        setRegistrosAsistencia(prev => [{...nuevoRegistro, id: `asis_${Date.now()}`}, ...prev]);
+        addNotificacion(`Error BD (Entrada): ${e.message || JSON.stringify(e)}`);
+      }
+      setModo('salida');
+    } else if (modo === 'salida') {
+      const abierto = registrosAsistencia.find(r => r.trabajador_id === trabajadorId && r.fecha === today && !r.hora_salida);
+      if (abierto) {
+        const cambios = { ...abierto, hora_salida: horaActual, estado: 'completo', latitud_salida: lat, longitud_salida: lng, origen_registro: 'mobile_pwa' };
+        try {
+          if (abierto.id) {
+             const data = await rrhhService.actualizarAsistencia(abierto.id, cambios);
+             setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? data : r));
+          } else {
+             const updated = { ...abierto, ...cambios };
+             setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? updated : r));
+          }
+          addNotificacion(`Salida registrada a las ${horaActual}`);
+        } catch (e) {
+          const updated = { ...abierto, ...cambios };
+          setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? updated : r));
+          addNotificacion(`Error BD (Salida): ${e.message || JSON.stringify(e)}`);
+        }
+      }
+      setModo('completado');
+    }
+    
+    setLoading(false);
+    setGeoEstado('');
+  };
+
+  return <>
+    <div className="mobile-header">
+      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Control de Asistencia</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>{usuarioMovil.nombre}</div></div>
+      <div className="avatar" style={{width:34,height:34}}>{usuarioMovil.iniciales}</div>
+    </div>
+    
+    <div className="mobile-content" style={{display:'flex', flexDirection:'column', justifyContent: 'flex-start', alignItems:'center', minHeight:'calc(100vh - 140px)', padding: '20px'}}>
+      <div className="font-display" style={{fontSize:38, fontWeight:700, marginBottom:4, textAlign:'center', color:'var(--fg)'}}>
+        {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+      </div>
+      <div className="text-muted" style={{fontSize:14, marginBottom:30, textAlign:'center', textTransform:'capitalize'}}>
+        {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+      </div>
+      
+      <div style={{position:'relative', width:220, height:220, display:'flex', alignItems:'center', justifyContent:'center', marginBottom:30}}>
+        {modo === 'entrada' && (
+          <button 
+            onClick={manejarMarcacion} 
+            disabled={loading}
+            className="hover-raise"
+            style={{width:200, height:200, borderRadius:'50%', background:'var(--green)', color:'white', border:'none', fontSize:32, fontWeight:700, boxShadow:'0 10px 30px rgba(34,197,94,0.4)', cursor:'pointer', transition:'all 0.2s', opacity: loading ? 0.7 : 1}}
+          >
+            {loading ? <span style={{fontSize:16}}>Ubicando...</span> : 'Entrada'}
+          </button>
+        )}
+        {modo === 'salida' && (
+          <button 
+            onClick={manejarMarcacion} 
+            disabled={loading}
+            className="hover-raise"
+            style={{width:200, height:200, borderRadius:'50%', background:'var(--danger)', color:'white', border:'none', fontSize:32, fontWeight:700, boxShadow:'0 10px 30px rgba(239,68,68,0.4)', cursor:'pointer', transition:'all 0.2s', opacity: loading ? 0.7 : 1}}
+          >
+            {loading ? <span style={{fontSize:16}}>Ubicando...</span> : 'Salida'}
+          </button>
+        )}
+        {modo === 'completado' && (
+          <button 
+            onClick={manejarMarcacion} 
+            className="hover-raise"
+            style={{width:200, height:200, borderRadius:'50%', background:'var(--bg-subtle)', color:'var(--fg)', border:'2px dashed var(--border)', fontSize:20, fontWeight:700, cursor:'pointer'}}
+          >
+            Nuevo registro
+          </button>
+        )}
+      </div>
+      
+      {loading && <div className="text-muted" style={{fontSize:14, fontWeight:600, marginBottom:20}}>{I.mapPin} {geoEstado}</div>}
+      
+      {modo === 'completado' && !loading && (
+        <div className="badge badge-green" style={{fontSize:14, padding:'10px 20px', borderRadius:20, marginBottom:20}}>{I.check} Turno registrado exitosamente</div>
+      )}
+      
+      <div style={{width:'100%', marginTop:'auto', paddingTop:20, borderTop:'1px solid var(--border-subtle)'}}>
+        <div className="eyebrow" style={{marginBottom:12}}>Historial de Hoy</div>
+        {registrosAsistencia.filter(r => r.trabajador_id === trabajadorId && r.fecha === today).map(r => (
+          <div key={r.id} className="card" style={{padding:16, marginBottom:12, width:'100%'}}>
+            <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
+              <div style={{fontWeight:700, fontSize:15}}>{r.fecha}</div>
+              <span className={'badge ' + (r.estado === 'completo' ? 'badge-green' : 'badge-orange')}>{r.estado === 'completo' ? 'Completado' : 'Abierto'}</span>
+            </div>
+            <div className="text-muted" style={{fontSize:14, marginBottom:4}}>Entrada: <strong style={{color:'var(--fg)'}}>{r.hora_entrada || '--:--'}</strong></div>
+            <div className="text-muted" style={{fontSize:14, marginBottom:10}}>Salida: <strong style={{color:'var(--fg)'}}>{r.hora_salida || '--:--'}</strong></div>
+            {r.latitud && <div style={{fontSize:12, color:'var(--fg-muted)', background:'var(--bg)', padding:8, borderRadius:6}}>{I.mapPin} Ingreso: {r.latitud}, {r.longitud}</div>}
+            {r.latitud_salida && <div style={{fontSize:12, color:'var(--fg-muted)', background:'var(--bg)', padding:8, borderRadius:6, marginTop:4}}>{I.mapPin} Salida: {r.latitud_salida}, {r.longitud_salida}</div>}
+          </div>
+        ))}
+        {registrosAsistencia.filter(r => r.trabajador_id === trabajadorId && r.fecha === today).length === 0 && (
+          <div className="text-muted" style={{textAlign:'center', padding:20, fontSize:13}}>Aún no hay marcaciones hoy.</div>
+        )}
+      </div>
+    </div>
+    <div className="mobile-nav">
+      <div className="mobile-nav-item active">{I.clock}Asistencia</div>
+      <div className="mobile-nav-item">{I.settings}Ajustes</div>
+    </div>
+  </>;
 }
 
 function TecnicoView({ screen, setScreen }) {

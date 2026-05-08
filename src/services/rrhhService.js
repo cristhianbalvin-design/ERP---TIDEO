@@ -1,9 +1,106 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 
+const generateTextId = (prefix) => {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  return `${prefix}_${uuid || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`}`;
+};
+
+const hhmm = (value) => {
+  if (!value) return value;
+  return String(value).slice(0, 5);
+};
+
+const normalizarTurno = (t = {}) => ({
+  ...t,
+  codigo: t.codigo || t.id,
+  dias_laborables: Array.isArray(t.dias_laborables) ? t.dias_laborables : [],
+  dias_variables: t.dias_variables ?? (Array.isArray(t.dias_laborables) && t.dias_laborables.length === 0),
+  refrigerio_minutos: Number(t.refrigerio_minutos ?? t.minutos_refrigerio ?? 0),
+  minutos_refrigerio: Number(t.minutos_refrigerio ?? t.refrigerio_minutos ?? 0),
+});
+
+const toTurnoRow = (empresaId, turno = {}) => {
+  return {
+    id: turno.id,
+    empresa_id: empresaId,
+    nombre: turno.nombre,
+    hora_entrada: turno.hora_entrada,
+    hora_salida: turno.hora_salida,
+    tolerancia_minutos: Number(turno.tolerancia_minutos || 0),
+    cruza_medianoche: Boolean(turno.cruza_medianoche),
+    dias_laborables: turno.dias_variables ? [] : (turno.dias_laborables || []),
+    minutos_refrigerio: Number(turno.minutos_refrigerio ?? turno.refrigerio_minutos ?? 0),
+    horas_efectivas: Number(turno.horas_efectivas || 0),
+    estado: turno.estado || 'activo',
+  };
+};
+
+const normalizarAsistencia = (r = {}) => {
+  const horasExtraMin = r.horas_extra_min ?? (r.horas_extra !== null && r.horas_extra !== undefined ? Math.round(Number(r.horas_extra || 0) * 60) : 0);
+  const esFalta = r.es_falta ?? ['falta', 'falta_justificada'].includes(r.estado);
+  const justificada = r.justificada ?? r.estado === 'falta_justificada';
+
+  return {
+    ...r,
+    hora_entrada: hhmm(r.hora_entrada),
+    hora_salida: hhmm(r.hora_salida),
+    horas_trabajadas_min: Number(r.horas_trabajadas_min || 0),
+    tardanza_min: Number(r.tardanza_min ?? r.tardanza_minutos ?? 0),
+    horas_extra_min: Number(horasExtraMin || 0),
+    es_falta: Boolean(esFalta),
+    justificada: Boolean(justificada),
+    motivo_falta: r.motivo_falta || r.justificacion || null,
+    notas: r.notas || null,
+    refrigerio_tomado_minutos: Number(r.refrigerio_tomado_minutos || 0),
+  };
+};
+
+const inferirTrabajadorTipo = (registro = {}) => {
+  if (registro.trabajador_tipo) return registro.trabajador_tipo;
+  const id = String(registro.trabajador_id || '').toLowerCase();
+  if (id.startsWith('per_') || id.startsWith('pad_') || id.startsWith('adm')) return 'administrativo';
+  return 'operativo';
+};
+
+const toAsistenciaRow = (empresaId, registro = {}, { includeId = true } = {}) => {
+  const tardanzaMin = Number(registro.tardanza_min ?? registro.tardanza_minutos ?? 0);
+  const horasExtraMin = Number(registro.horas_extra_min ?? 0);
+  const row = {
+    empresa_id: empresaId,
+    trabajador_tipo: inferirTrabajadorTipo(registro),
+    trabajador_id: registro.trabajador_id,
+    turno_id: registro.turno_id || null,
+    fecha: registro.fecha,
+    hora_entrada: registro.hora_entrada || null,
+    hora_salida: registro.hora_salida || null,
+    tardanza_minutos: tardanzaMin,
+    tardanza_min: tardanzaMin,
+    horas_extra: Number((horasExtraMin / 60).toFixed(2)),
+    horas_extra_min: horasExtraMin,
+    horas_trabajadas_min: Number(registro.horas_trabajadas_min || 0),
+    estado: registro.estado || 'completo',
+    justificacion: registro.motivo_falta || registro.justificacion || null,
+    es_falta: Boolean(registro.es_falta),
+    justificada: Boolean(registro.justificada),
+    motivo_falta: registro.motivo_falta || null,
+    notas: registro.notas || null,
+    origen_registro: registro.origen_registro || 'backoffice',
+    latitud: registro.latitud ?? null,
+    longitud: registro.longitud ?? null,
+    latitud_salida: registro.latitud_salida ?? null,
+    longitud_salida: registro.longitud_salida ?? null,
+    refrigerio_tomado_minutos: Number(registro.refrigerio_tomado_minutos || 0),
+  };
+  if (includeId) row.id = registro.id || generateTextId('asis');
+  return row;
+};
+
 const normalizarPersonalOperativo = (p = {}) => ({
   ...p,
   documento: p.documento || p.dni || '',
   sede: p.sede || '',
+  supervisor_id: p.supervisor_id || null,
+  supervisor: p.supervisor || '',
   costo: Number(p.costo ?? p.costo_hora_real ?? 0),
   costo_hora_real: Number(p.costo_hora_real ?? p.costo ?? 0),
   costo_hora_extra: Number(p.costo_hora_extra ?? p.costo_extra ?? 0),
@@ -32,6 +129,7 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   telefono: persona.telefono || null,
   email: persona.email || null,
   sede: persona.sede || null,
+  supervisor_id: persona.supervisor_id || null,
   supervisor: persona.supervisor || null,
   fecha_ingreso: persona.fecha_ingreso || null,
   sueldo_base: Number(persona.sueldo_base || 0),
@@ -59,7 +157,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
   };
   const allowed = new Set([
     'codigo', 'nombre', 'documento', 'cargo', 'especialidad', 'especialidad2',
-    'area', 'turno_id', 'telefono', 'email', 'sede', 'supervisor',
+    'area', 'turno_id', 'telefono', 'email', 'sede', 'supervisor_id', 'supervisor',
     'fecha_ingreso', 'sueldo_base', 'moneda', 'sistema_pensionario',
     'tipo_contrato', 'afp_nombre', 'tiene_hijos', 'regimen_laboral',
     'cuota_prestamo_mes', 'descuento_judicial',
@@ -237,14 +335,14 @@ export const rrhhService = {
     const { data, error } = await supabase
       .from('turnos').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false });
     if (error) { console.error('Error fetching turnos:', error); return []; }
-    return data;
+    return (data || []).map(normalizarTurno);
   },
   crearTurno: async (empresaId, turno) => {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
-      .from('turnos').insert([{ ...turno, empresa_id: empresaId }]).select().single();
+      .from('turnos').insert([toTurnoRow(empresaId, turno)]).select().single();
     if (error) throw error;
-    return data;
+    return normalizarTurno(data);
   },
 
   // ─── Registros de Asistencia ──────────────────────────────────
@@ -257,21 +355,26 @@ export const rrhhService = {
     if (fechaFin) query = query.lte('fecha', fechaFin);
     const { data, error } = await query.order('fecha', { ascending: false });
     if (error) { console.error('Error fetching asistencia:', error); return []; }
-    return data;
+    return (data || []).map(normalizarAsistencia);
   },
   registrarAsistencia: async (empresaId, registro) => {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
-      .from('registros_asistencia').insert([{ ...registro, empresa_id: empresaId }]).select().single();
+      .from('registros_asistencia').insert([toAsistenciaRow(empresaId, registro)]).select().single();
     if (error) throw error;
-    return data;
+    return normalizarAsistencia(data);
   },
   actualizarAsistencia: async (id, cambios) => {
     const supabase = await getSupabaseClient();
+    const empresaId = cambios.empresa_id;
+    const row = empresaId
+      ? toAsistenciaRow(empresaId, cambios, { includeId: false })
+      : { ...cambios };
+    delete row.id;
     const { data, error } = await supabase
-      .from('registros_asistencia').update({ ...cambios, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+      .from('registros_asistencia').update({ ...row, updated_at: new Date().toISOString() }).eq('id', id).select().single();
     if (error) throw error;
-    return data;
+    return normalizarAsistencia(data);
   },
 
   // ─── Períodos de Nómina ───────────────────────────────────────

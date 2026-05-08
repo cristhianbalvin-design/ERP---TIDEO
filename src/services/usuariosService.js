@@ -51,7 +51,14 @@ export const usuariosService = {
       throw new Error(message || 'No se pudo actualizar el usuario.');
     }
     if (!data?.success) throw new Error(data?.error || 'No se pudo actualizar el usuario.');
-    return data.user;
+    const campoModulos = data.user?.campoModulos || data.user?.campo_modulos || usuario.campo_modulos || [];
+    return {
+      ...(data.user || {}),
+      campo: data.user?.campo ?? usuario.acceso_campo,
+      campoPerfil: data.user?.campoPerfil ?? data.user?.campo_perfil ?? usuario.perfil_campo,
+      campoModulos,
+      campo_modulos: campoModulos,
+    };
   },
 
   async eliminarUsuario(id) {
