@@ -437,7 +437,7 @@ function Usuarios() {
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('Tideo2026!');
   const [creando, setCreando] = useState(false);
-  const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', password: '' });
+  const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', password: '', campo: false, campoModulos: [] });
   const [guardandoNuevo, setGuardandoNuevo] = useState(false);
   const [nuevoError, setNuevoError] = useState('');
   const [editando, setEditando] = useState(null);
@@ -466,6 +466,9 @@ function Usuarios() {
   const [editForm, setEditForm] = useState({ nombre: '', email: '', rol: '', campo: false, campoModulos: [], estado: 'Activo' });
   const [guardandoEdit, setGuardandoEdit] = useState(false);
   const [editError, setEditError] = useState('');
+  const [filtroTenant, setFiltroTenant] = useState('');
+  const [filtroUsuario, setFiltroUsuario] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('');
 
   const handleReset = async () => {
     if (!resetting) return;
@@ -486,7 +489,7 @@ function Usuarios() {
     try {
       await crearUsuarioConAcceso(nuevoForm);
       setCreando(false);
-      setNuevoForm({ nombre: '', email: '', rol: 'vendedor', password: '' });
+      setNuevoForm({ nombre: '', email: '', rol: 'vendedor', password: '', campo: false, campoModulos: [] });
     } catch (error) {
       setNuevoError(error?.message || 'No se pudo crear el usuario.');
     }
@@ -560,15 +563,62 @@ function Usuarios() {
             : `Usuarios cargados desde Supabase a las ${accessDebug.usuariosLoadedAt}.`}
         </div>
       )}
+      <div style={{display:'flex', gap:10, marginBottom:14, flexWrap:'wrap'}}>
+        <input
+          className="input"
+          style={{flex:'1 1 180px', minWidth:160}}
+          placeholder="Buscar usuario o email..."
+          value={filtroUsuario}
+          onChange={e => setFiltroUsuario(e.target.value)}
+        />
+        <select
+          className="input"
+          style={{flex:'1 1 180px', minWidth:160}}
+          value={filtroTenant}
+          onChange={e => setFiltroTenant(e.target.value)}
+        >
+          <option value="">Todos los tenants</option>
+          {[...new Map(usuarios.map(u => [u.empresa_id, getEmpresa(u.empresa_id)])).entries()].map(([id, nombre]) => (
+            <option key={id} value={id}>{nombre}</option>
+          ))}
+        </select>
+        <select
+          className="input"
+          style={{flex:'1 1 140px', minWidth:120}}
+          value={filtroEstado}
+          onChange={e => setFiltroEstado(e.target.value)}
+        >
+          <option value="">Todos los estados</option>
+          {[...new Set(usuarios.map(u => u.estado).filter(Boolean))].map(e => (
+            <option key={e} value={e}>{e}</option>
+          ))}
+        </select>
+      </div>
       <div className="card">
         <div className="table-wrap">
           <table className="tbl">
             <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Tenant</th><th>Campo</th><th>Estado</th><th>Último login</th><th style={{textAlign:'right'}}>Acceso</th></tr></thead>
             <tbody>
-              {usuarios.length === 0 && (
-                <tr><td colSpan={8} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>No hay usuarios visibles para este tenant.</td></tr>
+              {usuarios.filter(u => {
+                if (filtroTenant && u.empresa_id !== filtroTenant) return false;
+                if (filtroEstado && u.estado !== filtroEstado) return false;
+                if (filtroUsuario) {
+                  const q = filtroUsuario.toLowerCase();
+                  if (!u.nombre?.toLowerCase().includes(q) && !u.email?.toLowerCase().includes(q)) return false;
+                }
+                return true;
+              }).length === 0 && (
+                <tr><td colSpan={8} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>No hay usuarios que coincidan con los filtros.</td></tr>
               )}
-              {usuarios.map(u=>{
+              {usuarios.filter(u => {
+                if (filtroTenant && u.empresa_id !== filtroTenant) return false;
+                if (filtroEstado && u.estado !== filtroEstado) return false;
+                if (filtroUsuario) {
+                  const q = filtroUsuario.toLowerCase();
+                  if (!u.nombre?.toLowerCase().includes(q) && !u.email?.toLowerCase().includes(q)) return false;
+                }
+                return true;
+              }).map(u=>{
               const r = rolesCtx?.[u.rol] || MOCK.roles[u.rol] || { nombre: u.rol_nombre || u.rol, color: 'gray' };
               const isSuperadminTideo = Boolean(
                 r.es_superadmin ||
@@ -733,6 +783,34 @@ function Usuarios() {
                   {rolesOpciones.map(([id, r]) => <option key={id} value={id}>{r.nombre}</option>)}
                 </select>
               </div>
+              <label className="row" style={{gap:8, fontSize:13}}>
+                <input type="checkbox" className="checkbox" checked={nuevoForm.campo} onChange={e => setNuevoForm(p => ({...p, campo: e.target.checked}))} />
+                Acceso a campo movil
+              </label>
+              {nuevoForm.campo && (
+                <div className="input-group">
+                  <label>Modulos moviles habilitados</label>
+                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+                    {mobileModuleOptions.map(mod => (
+                      <label key={mod.id} className="row" style={{gap:8, fontSize:13, padding:'8px 10px', border:'1px solid var(--border)', borderRadius:8}}>
+                        <input
+                          type="checkbox"
+                          className="checkbox"
+                          checked={nuevoForm.campoModulos.includes(mod.id)}
+                          onChange={e => setNuevoForm(p => ({
+                            ...p,
+                            campoModulos: e.target.checked
+                              ? [...new Set([...p.campoModulos, mod.id])]
+                              : p.campoModulos.filter(x => x !== mod.id)
+                          }))}
+                        />
+                        {mod.label}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="text-muted" style={{fontSize:12, marginTop:6}}>Control de asistencia requiere una ficha de colaborador con el mismo email y turno asignado.</div>
+                </div>
+              )}
               <div className="modal-foot mt-4">
                 <button type="button" className="btn btn-secondary" onClick={() => setCreando(false)}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" disabled={guardandoNuevo}>{guardandoNuevo ? 'Creando...' : 'Crear usuario'}</button>
@@ -2045,7 +2123,10 @@ function RRHHAdmin() {
     <>
       <div className="page-header">
         <div><h1 className="page-title">RRHH Administrativo</h1><div className="page-sub">{colaboradoresActivos} colaboradores activos · Fase 3</div></div>
-        <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoColaborador} disabled={!turnosOptions.length}>{I.plus} Nuevo colaborador</button>
+        <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4}}>
+          <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoColaborador} disabled={!turnosOptions.length}>{I.plus} Nuevo colaborador</button>
+          {!turnosOptions.length && <span style={{fontSize:11, color:'var(--danger, #e53e3e)'}}>Crea un turno en Turnos y Horarios para habilitar esta opción.</span>}
+        </div>
       </div>
 
       <div className="tabs">

@@ -4099,7 +4099,10 @@ function RRHH_Operativo() {
     <>
       <div className="page-header">
         <div><h1 className="page-title">RRHH Operativo</h1><div className="page-sub">{personal.length} técnicos · Semana 28 Abr – 2 May 2026</div></div>
-        <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoTecnico}>{I.plus} Nuevo Colaborador</button>
+        <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4}}>
+          <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoTecnico} disabled={!turnosOptions.length}>{I.plus} Nuevo Colaborador</button>
+          {!turnosOptions.length && <span style={{fontSize:11, color:'var(--danger, #e53e3e)'}}>Crea un turno en Turnos y Horarios para habilitar esta opción.</span>}
+        </div>
       </div>
 
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
