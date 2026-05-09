@@ -864,7 +864,10 @@ export function AppProvider({ children }) {
   const role = (isSupabaseConfigured() && membresiaActiva)
     ? buildRoleDePermisos(membresiaActiva.rol, membresiaActiva.permisos_rows, membresiaActiva.acceso_campo, membresiaActiva.campo_modulos)
     : (MOCK.roles[roleKey] || MOCK.roles['admin']);
-  const isSuperadmin = Boolean(role.permisos?.plataforma);
+  // Superadmin de plataforma solo aplica cuando el tenant activo es emp_tideo.
+  // En cualquier otro tenant el usuario actúa como admin de ese tenant, sin acceso a módulos de plataforma.
+  const isSuperadmin = Boolean(role.permisos?.plataforma) &&
+    (!isSupabaseConfigured() || membresiaActiva?.empresa?.id === 'emp_tideo');
 
   useEffect(() => {
     if (!isSupabaseConfigured() || !authSession?.user || !isSuperadmin) return;
