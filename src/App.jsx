@@ -12,12 +12,17 @@ import { Cotizaciones, Valorizacion, Inventario, HojaCosteo } from './pages_extr
 import { CxC, Tesoreria, Resultados, Facturacion, Ventas, CajaChica, PrestamosPersonal, CxP, Presupuestos } from './pages_fin.jsx';
 import { FinanciamientoDeuda } from './pages_fin_deuda.jsx';
 import { MobileFieldView } from './pages_mobile.jsx';
-import { Cuentas, OT, Partes, Compras, Proveedores, CotizacionesCompras, OrdenesCompra, OrdenesServicio, Recepciones, TurnosHorarios, ControlAsistencia, Nomina, Backlog, Cierre, Remision, SOLPE, Planner, Tickets, RRHH_Operativo } from './pages_ops.jsx';
+import { Cuentas, OT, Partes, Compras, Proveedores, CotizacionesCompras, OrdenesCompra, OrdenesServicio, Recepciones, ControlAsistencia, Nomina, Backlog, Cierre, Remision, SOLPE, Planner, Tickets, RRHH_Operativo } from './pages_ops.jsx';
+import { TurnosHorarios } from './pages_turnos.jsx';
+import { ApiKeys } from './pages_api_keys.jsx';
 import { MOCK } from './data.js';
+import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getAssignableUsers } from './lib/hierarchy.js';
+import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 
 const CREATE_WORDS = ['nuevo', 'nueva', 'registrar', 'crear', 'emitir', 'asignar', 'solicitar ajuste', 'enviar encuesta'];
 const ACTION_EXCLUSIONS = ['aprobar', 'guardar', 'convertir', 'iniciar', 'cerrar', 'conciliar', 'validar', 'atender', 'generar oportunidad', 'enviar a cliente', 'siguiente', 'firmar', 'finalizar'];
 const PLATFORM_PAGES = new Set(['tenants', 'planes', 'metricas_saas']);
+const LOCAL_PRIMARY_FORM_PAGES = new Set(['cuentas', 'leads', 'marketing', 'pipeline', 'actividades', 'agenda_comercial']);
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -62,7 +67,7 @@ const FORM_TEMPLATES = {
     ['admin_email', 'Email del admin del tenant', 'email'], ['admin_nombre', 'Nombre del admin', 'text']
   ]},
   planes: { title: 'Nuevo plan', fields: [['nombre','Nombre del plan','text'], ['precio','Precio mensual','number'], ['usuarios','Limite de usuarios','number'], ['modulos','Modulos incluidos','textarea']] },
-  roles: { title: 'Nuevo rol', fields: [['nombre','Nombre del rol','text'], ['descripcion','Descripcion','textarea'], ['categoria','Categoría','select',[{value:'admin',label:'Administración del tenant'},{value:'comercial',label:'Comercial / Ventas'},{value:'operaciones',label:'Operaciones'},{value:'finanzas',label:'Finanzas'},{value:'rrhh',label:'RRHH'},{value:'otro',label:'Otro'}]], ['perfil_campo','Perfil de campo','select',['Ninguno','Tecnico','Vendedor','Compras','Supervisor','Gerencia']]] },
+  roles: { title: 'Nuevo rol', fields: [['nombre','Nombre del rol','text'], ['descripcion','Descripcion','textarea'], ['categoria','Categoria','select', ROLE_CATEGORIES], ['nivel_jerarquico','Nivel jerarquico','select', HIERARCHY_LEVELS], ['perfil_campo','Perfil de campo','select',['Ninguno','Tecnico','Vendedor','Compras','Supervisor','Gerencia']]] },
   usuarios: { title: 'Nuevo usuario', fields: [
     ['nombre','Nombre completo','text'],
     ['email','Email','email'],
@@ -85,10 +90,11 @@ const FORM_TEMPLATES = {
     ['empresa_contacto','Empresa','text'], ['ruc','RUC','ruc'],
     ['razon_social','Razon social','text'], ['industria','Industria','industria'],
     ['telefono','Telefono','text'], ['email','Email','email'],
-    ['fuente','Fuente','select',['Campo','Web','Referido','LinkedIn','Evento / Feria']], ['presupuesto_estimado','Presupuesto estimado','number'],
+    ['fuente','Fuente','select',['Campo','Web','Referido','LinkedIn','Evento / Feria']], ['presupuesto_estimado','Presupuesto estimado','number'], ['moneda','Moneda','moneda'],
+    ['campana_id','Campaña de origen','campana', null, { span: 2 }],
     ['necesidad','Necesidad','textarea', null, { span: 2 }]
   ] },
-  pipeline: { title: 'Nueva oportunidad', fields: [['nombre','Nombre oportunidad','text'], ['cuenta_id','Cuenta','cuenta'], ['servicio_interes','Servicio de interes','servicio'], ['monto_estimado','Monto estimado','number'], ['responsable','Responsable','user_comercial'], ['fecha_cierre_estimada','Fecha cierre estimada','date']] },
+  pipeline: { title: 'Nueva oportunidad', fields: [['nombre','Nombre oportunidad','text'], ['cuenta_id','Cuenta','cuenta'], ['servicio_interes','Servicio de interes','servicio'], ['monto_estimado','Monto estimado','number'], ['moneda','Moneda','moneda'], ['responsable','Responsable','user_comercial'], ['fecha_cierre_estimada','Fecha cierre estimada','date']] },
   actividades: { title: 'Nueva actividad', fields: [['tipo','Tipo','select',['llamada','reunion','email','visita','tarea','nota']], ['asunto','Asunto','text'], ['cuenta_id','Cuenta','cuenta'], ['responsable','Responsable','user'], ['fecha','Fecha','date'], ['resultado','Resultado / nota','textarea']] },
   agenda_comercial: { title: 'Nuevo evento en agenda', fields: [['tipo','Tipo de evento','select',['visita','reunion','llamada','demo']], ['titulo','Titulo breve','text'], ['cuenta_id','Cuenta o Prospecto','cuenta'], ['vendedor','Comercial responsable','user_comercial'], ['fecha','Fecha programada','date'], ['hora','Hora','time']] },
   cotizaciones: { title: 'Nueva cotizacion', fields: [['cuenta_id','Cuenta','cuenta'], ['oportunidad_id','Oportunidad ID','text'], ['alcance','Alcance tecnico','textarea'], ['subtotal','Subtotal','number'], ['condicion_pago','Condicion de pago','text'], ['validez','Validez','text']] },
@@ -171,6 +177,7 @@ const CARGOS_TECNICOS = [
 ];
 
 const CENTROS_COSTO = ['Comercial', 'Operaciones', 'Mantenimiento', 'Logistica', 'Administracion', 'Finanzas'];
+const MONEDAS = ['PEN', 'USD', 'EUR'];
 const INDUSTRIAS = [
   'Mineria',
   'Industrial',
@@ -286,13 +293,15 @@ function QuickCreateModal({ active, onClose }) {
       );
     }
     if (type === 'user' || type === 'user_comercial' || type === 'user_tecnico') {
-      const roleFilter = type === 'user_comercial' ? ['comercial', 'admin'] : type === 'user_tecnico' ? ['operaciones', 'admin'] : null;
-      const roleKeyword = type === 'user_comercial' ? 'comercial' : type === 'user_tecnico' ? 'técnico' : null;
-      const users = app.usuarios.filter(u => !roleFilter || (u.rol_categoria ? roleFilter.includes(u.rol_categoria) : (roleFilter.includes(u.rol) || (roleKeyword && (u.rol_nombre||'').toLowerCase().includes(roleKeyword)))));
+      const categoryFilter = type === 'user_comercial' ? ['comercial'] : type === 'user_tecnico' ? ['operaciones'] : null;
+      const users = categoryFilter
+        ? getAssignableUsers({ users: app.usuarios, roles: app.roles, categories: categoryFilter, includeAdmins: true, empresaId: app.empresa?.id })
+        : getAssignableUsers({ users: app.usuarios, roles: app.roles, empresaId: app.empresa?.id });
+      const shouldStoreUserId = active === 'leads' && name === 'responsable';
       return (
         <select className="select" value={val(name)} onChange={e => update(name, e.target.value)}>
           <option value="">Seleccionar usuario...</option>
-          {users.map(u => <option key={u.id} value={u.nombre}>{u.nombre} · {MOCK.roles[u.rol]?.nombre || u.rol}</option>)}
+          {users.map(u => <option key={u.id} value={shouldStoreUserId ? u.id : u.nombre}>{u.nombre} · {MOCK.roles[u.rol]?.nombre || u.rol}</option>)}
         </select>
       );
     }
@@ -347,17 +356,40 @@ function QuickCreateModal({ active, onClose }) {
         </select>
       );
     }
-    if (type === 'ruc') {
+    if (type === 'campana') {
+      const activas = (app.campanas || []).filter(c => c.estado === 'activa');
+      return (
+        <select className="select" value={val(name)} onChange={e => update(name, e.target.value)}>
+          <option value="">Sin campaña (orgánico / referido)</option>
+          {activas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+        </select>
+      );
+    }
+    if (type === 'ruc' || name === 'ruc') {
       return (
         <input
           className="input"
           type="text"
           inputMode="numeric"
-          pattern="[0-9]{11}"
+          pattern={RUC_PATTERN}
           maxLength={11}
           value={val(name)}
-          onChange={e => update(name, e.target.value.replace(/\D/g, '').slice(0, 11))}
-          placeholder="11 digitos"
+          onChange={e => update(name, sanitizeRuc(e.target.value))}
+          placeholder="20xxxxxxxxx"
+        />
+      );
+    }
+    if (name.toLowerCase().includes('telefono')) {
+      return (
+        <input
+          className="input"
+          type="tel"
+          inputMode="numeric"
+          pattern={PHONE_PATTERN}
+          maxLength={9}
+          value={val(name)}
+          onChange={e => update(name, sanitizePhone(e.target.value))}
+          placeholder="9XXXXXXXX"
         />
       );
     }
@@ -382,8 +414,13 @@ function QuickCreateModal({ active, onClose }) {
     e.preventDefault();
     if (saving) return;
     const number = (v) => v === '' ? 0 : Number(v);
-    if (values.ruc && !/^\d{11}$/.test(values.ruc)) {
-      setError('El RUC debe tener exactamente 11 numeros.');
+    if (values.ruc && !isValidRuc(values.ruc)) {
+      setError('El RUC debe tener 11 numeros y comenzar con 1 o 2.');
+      return;
+    }
+    const telefonoInvalido = Object.entries(values).find(([k, v]) => k.toLowerCase().includes('telefono') && !isValidPhone(v));
+    if (telefonoInvalido) {
+      setError('El telefono debe tener 9 digitos y comenzar con 9.');
       return;
     }
     const genericRecord = {
@@ -421,6 +458,7 @@ function QuickCreateModal({ active, onClose }) {
         nombre: values.nombre,
         descripcion: values.descripcion || '',
         categoria: values.categoria || 'otro',
+        nivel_jerarquico: values.nivel_jerarquico || 'operativo',
         perfil_campo: values.perfil_campo || '',
       });
       if (!newId) throw new Error('No se pudo crear el rol.');
@@ -438,12 +476,25 @@ function QuickCreateModal({ active, onClose }) {
         area: values.area || 'Sin area',
       });
     } else if (active === 'leads') {
+      const campanaSeleccionada = (app.campanas || []).find(c => c.id === values.campana_id);
+      const responsableSeleccionado = getAssignableUsers({
+        users: app.usuarios,
+        roles: app.roles,
+        categories: ['comercial'],
+        includeAdmins: true,
+        empresaId: app.empresa?.id,
+      }).find(u => u.id === values.responsable);
       app.crearLead({
+        ...values,
         id: makeId('lead'), empresa_id: app.empresa.id, estado: 'nuevo', convertido: false,
         registrado_desde: values.fuente === 'Campo' ? 'campo' : 'web',
         fecha_creacion: today(), dias_sin_actividad: 0,
-        cargo: 'Por definir', urgencia: 'media', responsable: app.role.nombre,
-        presupuesto_estimado: number(values.presupuesto_estimado), ...values
+        cargo: 'Por definir', urgencia: 'media',
+        responsable: responsableSeleccionado?.nombre || app.role.nombre,
+        responsable_id: responsableSeleccionado?.id || null,
+        presupuesto_estimado: number(values.presupuesto_estimado),
+        campana_id: values.campana_id || null,
+        campana: campanaSeleccionada?.nombre || null,
       });
     } else if (active === 'cuentas') {
       app.crearCuenta({
@@ -574,9 +625,11 @@ function MainLayout() {
     mobileProfile, setMobileProfile
   } = useApp();
   const [quickCreate, setQuickCreate] = useState(null);
+  const [openSelectorSignal, setOpenSelectorSignal] = useState(0);
 
   const allowed = role.permisos.todo ? null : new Set(role.permisos.ver || []);
   const shouldOpenCreate = (target) => {
+    if (LOCAL_PRIMARY_FORM_PAGES.has(active)) return false;
     const button = target.closest?.('button');
     if (!button || button.disabled || !button.classList.contains('btn-primary')) return false;
     if (button.dataset.localForm === 'true') return false;
@@ -684,6 +737,7 @@ function MainLayout() {
       case 'parametros': return <Parametros/>;
       case 'rrhh_admin': return <RRHHAdmin/>;
       case 'metricas_saas': return isSuperadmin ? <MetricasSaaS/> : <Dashboard role={role}/>;
+      case 'api_keys': return <ApiKeys/>;
       case 'cs_onboarding': return <CSOnboarding/>;
       case 'cs_planes': return <CSPlanes/>;
       case 'cs_health': return <CSHealthScore/>;
@@ -702,7 +756,19 @@ function MainLayout() {
     <div className="app-shell" onClickCapture={handleCreateCapture}>
       <Sidebar active={active} onNav={(p) => navigate(p)} role={role} isSuperadmin={isSuperadmin}/>
       <div className="main-col">
-        <Header active={active} empresa={empresa} setEmpresa={setEmpresa} role={role} roleKey={roleKey} setRoleKey={setRoleKey} dark={dark} setDark={setDark} setMobileMode={setMobileMode}/>
+        <Header active={active} empresa={empresa} setEmpresa={setEmpresa} role={role} roleKey={roleKey} setRoleKey={setRoleKey} dark={dark} setDark={setDark} setMobileMode={setMobileMode} openSelectorSignal={openSelectorSignal}/>
+        {isSuperadmin && empresa?.es_plataforma && (
+          <div style={{background:'#7c3aed', color:'#fff', padding:'8px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, fontSize:13}}>
+            <span>⚠️ Estás operando en el contexto de plataforma. Para gestión interna de TIDEO usa el tenant empresa.</span>
+            <button
+              className="btn btn-sm"
+              style={{background:'rgba(255,255,255,0.18)', color:'#fff', border:'1px solid rgba(255,255,255,0.35)', whiteSpace:'nowrap', flexShrink:0}}
+              onClick={() => setOpenSelectorSignal(v => v + 1)}
+            >
+              Cambiar empresa
+            </button>
+          </div>
+        )}
         <main className="main">
           <CreatedRecordsStrip screen={active}/>
           {Page()}

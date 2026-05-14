@@ -111,6 +111,8 @@ export const rolesService = {
         empresa_id: empresaId,
         nombre: newRolName,
         descripcion: `Copia de ${sourceRol.nombre}`,
+        categoria: sourceRol.categoria || 'otro',
+        nivel_jerarquico: sourceRol.nivel_jerarquico || 'operativo',
         es_admin_empresa: sourceRol.es_admin_empresa,
         es_superadmin: false, // Never clone superadmin status
         activo: true

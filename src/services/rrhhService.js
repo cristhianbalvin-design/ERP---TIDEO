@@ -344,6 +344,19 @@ export const rrhhService = {
     if (error) throw error;
     return normalizarTurno(data);
   },
+  actualizarTurno: async (empresaId, id, turno) => {
+    const supabase = await getSupabaseClient();
+    const { id: _id, ...row } = toTurnoRow(empresaId, turno);
+    const { data, error } = await supabase
+      .from('turnos').update(row).eq('id', id).select().single();
+    if (error) throw error;
+    return normalizarTurno(data);
+  },
+  eliminarTurno: async (id) => {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.from('turnos').delete().eq('id', id);
+    if (error) throw error;
+  },
 
   // ─── Registros de Asistencia ──────────────────────────────────
   getAsistencia: async (empresaId, fechaInicio, fechaFin) => {

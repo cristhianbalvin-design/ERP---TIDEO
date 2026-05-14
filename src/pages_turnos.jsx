@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { I } from './icons.jsx';
-import { MOCK } from './data.js';
+import { useApp } from './context.jsx';
+import { rrhhService } from './services/rrhhService.js';
 
 const DIAS_LABELS = { lun:'Lun', mar:'Mar', mie:'Mié', jue:'Jue', vie:'Vie', sab:'Sáb', dom:'Dom' };
 const DIAS_ORDER = ['lun','mar','mie','jue','vie','sab','dom'];
@@ -29,8 +30,11 @@ function diasLabel(t) {
 }
 
 export function TurnosHorarios() {
-  const [turnos, setTurnos] = useState([...MOCK.turnos]);
+  const { turnos, setTurnos, empresa, addNotificacion } = useApp();
   const [panel, setPanel] = useState(false);
+  const [editandoId, setEditandoId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const formBase = { nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false, refrigerio_minutos:60, descripcion:'', estado:'activo' };
   const [form, setForm] = useState(formBase);
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -40,19 +44,66 @@ export function TurnosHorarios() {
     upd('dias_laborables', curr.includes(d) ? curr.filter(x => x !== d) : [...curr, d]);
   };
 
-  const guardar = e => {
-    e.preventDefault();
-    const idx = turnos.length + 1;
-    setTurnos(prev => [...prev, {
-      ...form, id: `tur_${String(idx).padStart(3,'0')}`,
-      codigo: `TUR-${String(idx).padStart(3,'0')}`,
-      empresa_id: 'emp_001',
-      horas_efectivas: Math.floor((timeToMinutes(form.hora_salida) + (form.cruza_medianoche ? 1440 : 0) - timeToMinutes(form.hora_entrada) - form.refrigerio_minutos) / 60),
-      tolerancia_minutos: Number(form.tolerancia_minutos),
-      refrigerio_minutos: Number(form.refrigerio_minutos),
-    }]);
+  const abrirNuevo = () => {
+    setEditandoId(null);
     setForm(formBase);
-    setPanel(false);
+    setSaveError('');
+    setPanel(true);
+  };
+
+  const abrirEditar = (t) => {
+    setEditandoId(t.id);
+    setForm({
+      nombre: t.nombre || '',
+      hora_entrada: t.hora_entrada || '08:00',
+      hora_salida: t.hora_salida || '17:00',
+      tolerancia_minutos: t.tolerancia_minutos ?? 10,
+      cruza_medianoche: t.cruza_medianoche || false,
+      dias_laborables: t.dias_laborables || ['lun','mar','mie','jue','vie'],
+      dias_variables: t.dias_variables || false,
+      refrigerio_minutos: t.refrigerio_minutos ?? 60,
+      descripcion: t.descripcion || '',
+      estado: t.estado || 'activo',
+    });
+    setSaveError('');
+    setPanel(true);
+  };
+
+  const cerrar = () => { setPanel(false); setEditandoId(null); setForm(formBase); setSaveError(''); };
+
+  const guardar = async e => {
+    e.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    setSaveError('');
+    const horas = Math.floor((timeToMinutes(form.hora_salida) + (form.cruza_medianoche ? 1440 : 0) - timeToMinutes(form.hora_entrada) - Number(form.refrigerio_minutos)) / 60);
+    const payload = { ...form, horas_efectivas: horas, tolerancia_minutos: Number(form.tolerancia_minutos), refrigerio_minutos: Number(form.refrigerio_minutos) };
+    try {
+      if (editandoId) {
+        const actualizado = await rrhhService.actualizarTurno(empresa.id, editandoId, payload);
+        setTurnos(prev => prev.map(t => t.id === editandoId ? actualizado : t));
+        addNotificacion('Turno actualizado.');
+      } else {
+        const nuevo = await rrhhService.crearTurno(empresa.id, payload);
+        setTurnos(prev => [nuevo, ...prev]);
+        addNotificacion('Turno creado.');
+      }
+      cerrar();
+    } catch (err) {
+      setSaveError(err?.message || 'No se pudo guardar el turno.');
+    }
+    setSaving(false);
+  };
+
+  const eliminar = async (t) => {
+    if (!window.confirm(`Eliminar turno "${t.nombre}"? Esta acción se reflejará en la base de datos.`)) return;
+    try {
+      await rrhhService.eliminarTurno(t.id);
+      setTurnos(prev => prev.filter(x => x.id !== t.id));
+      addNotificacion('Turno eliminado.');
+    } catch {
+      addNotificacion('No se pudo eliminar el turno. Puede tener colaboradores asignados.');
+    }
   };
 
   const horasPreview = calcHorasEfectivas(form.hora_entrada, form.hora_salida, form.cruza_medianoche, form.refrigerio_minutos);
@@ -60,17 +111,17 @@ export function TurnosHorarios() {
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Turnos y Horarios</h1><div className="page-sub">Configuración de jornadas laborales · {turnos.filter(t=>t.estado==='activo').length} turnos activos</div></div>
-        <button className="btn btn-primary" onClick={() => setPanel(true)}>{I.plus} Nuevo turno</button>
+        <div><h1 className="page-title">Turnos y Horarios</h1><div className="page-sub">Configuración de jornadas laborales · {(turnos||[]).filter(t=>t.estado==='activo').length} turnos activos</div></div>
+        <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevo}>{I.plus} Nuevo turno</button>
       </div>
 
       <div className="card">
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Código</th><th>Nombre</th><th>Entrada</th><th>Salida</th><th>Horas/día</th><th>Tolerancia</th><th>Días</th><th>Refrigerio</th><th>Estado</th></tr></thead>
-            <tbody>{turnos.map(t => (
+            <thead><tr><th>Código</th><th>Nombre</th><th>Entrada</th><th>Salida</th><th>Horas/día</th><th>Tolerancia</th><th>Días</th><th>Refrigerio</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+            <tbody>{(turnos||[]).map(t => (
               <tr key={t.id} className="hover-row">
-                <td className="mono text-muted">{t.codigo}</td>
+                <td className="mono text-muted" style={{fontSize:11}}>{t.codigo || t.id}</td>
                 <td><strong>{t.nombre}</strong></td>
                 <td><span className="badge badge-gray" style={{fontFamily:'monospace'}}>{t.hora_entrada}</span></td>
                 <td><span className="badge badge-gray" style={{fontFamily:'monospace'}}>{t.hora_salida}{t.cruza_medianoche && <span style={{color:'var(--cyan)',marginLeft:4}}>+1d</span>}</span></td>
@@ -79,6 +130,12 @@ export function TurnosHorarios() {
                 <td>{diasLabel(t)}</td>
                 <td className="num">{t.refrigerio_minutos} min</td>
                 <td><span className={`badge badge-${t.estado==='activo'?'green':'gray'}`}>{t.estado}</span></td>
+                <td style={{textAlign:'right'}}>
+                  <div style={{display:'flex',gap:4,justifyContent:'flex-end'}}>
+                    <button className="icon-btn" title="Editar turno" style={{color:'var(--cyan)'}} onClick={()=>abrirEditar(t)}>{I.edit}</button>
+                    <button className="icon-btn" title="Eliminar turno" style={{color:'var(--danger)'}} onClick={()=>eliminar(t)}>{I.trash}</button>
+                  </div>
+                </td>
               </tr>
             ))}</tbody>
           </table>
@@ -86,13 +143,14 @@ export function TurnosHorarios() {
       </div>
 
       {panel && <>
-        <div className="side-panel-backdrop" onClick={() => setPanel(false)}/>
+        <div className="side-panel-backdrop" onClick={cerrar}/>
         <div className="side-panel" style={{width:'min(480px, 96vw)'}}>
           <div className="side-panel-head">
-            <div><div className="eyebrow">Configuración</div><div className="font-display" style={{fontSize:22,fontWeight:700,marginTop:2}}>Nuevo turno</div></div>
-            <button className="icon-btn" onClick={() => setPanel(false)}>{I.x}</button>
+            <div><div className="eyebrow">Configuración</div><div className="font-display" style={{fontSize:22,fontWeight:700,marginTop:2}}>{editandoId ? 'Editar turno' : 'Nuevo turno'}</div></div>
+            <button className="icon-btn" onClick={cerrar}>{I.x}</button>
           </div>
           <form className="side-panel-body" onSubmit={guardar}>
+            {saveError && <div className="alert alert-danger" style={{marginBottom:14}}>{saveError}</div>}
             <div className="input-group"><label>Nombre del turno *</label><input className="input" required value={form.nombre} onChange={e=>upd('nombre',e.target.value)} placeholder="Ej: Turno Mañana" autoFocus/></div>
 
             <div className="grid-2" style={{gap:14,marginTop:14}}>
@@ -146,8 +204,8 @@ export function TurnosHorarios() {
             </div>
 
             <div className="row" style={{justifyContent:'flex-end',gap:10,marginTop:24}}>
-              <button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button>
-              <button type="submit" className="btn btn-primary">{I.save || I.check} Guardar turno</button>
+              <button type="button" className="btn btn-secondary" onClick={cerrar}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : (editandoId ? 'Guardar cambios' : 'Crear turno')}</button>
             </div>
           </form>
         </div>

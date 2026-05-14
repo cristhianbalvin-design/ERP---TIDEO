@@ -4,6 +4,8 @@ import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient } from './lib/supabaseClient.js';
+import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getPotentialManagers } from './lib/hierarchy.js';
+import { PHONE_PATTERN, RUC_PATTERN, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 
 // Roles builder, Usuarios, Tenants/Planes, and simple stub pages
 
@@ -22,11 +24,13 @@ function Roles() {
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [nuevoDesc, setNuevoDesc] = useState('');
   const [nuevoCategoria, setNuevoCategoria] = useState('otro');
+  const [nuevoNivel, setNuevoNivel] = useState('operativo');
   const [clonarNombre, setClonarNombre] = useState('');
   const [editingMeta, setEditingMeta] = useState(false);
   const [editNombre, setEditNombre] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editCategoria, setEditCategoria] = useState('otro');
+  const [editNivel, setEditNivel] = useState('operativo');
   const [reasignarUsuario, setReasignarUsuario] = useState(null);
   const [reasignarRolId, setReasignarRolId] = useState('');
   const [roleActionError, setRoleActionError] = useState('');
@@ -46,12 +50,13 @@ function Roles() {
 
   const handleNuevoRol = async () => {
     if (!nuevoNombre.trim()) return;
-    const newId = await crearRol({ nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim(), categoria: nuevoCategoria });
+    const newId = await crearRol({ nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim(), categoria: nuevoCategoria, nivel_jerarquico: nuevoNivel });
     if (newId) setSel(newId);
     setModalNuevo(false);
     setNuevoNombre('');
     setNuevoDesc('');
     setNuevoCategoria('otro');
+    setNuevoNivel('operativo');
   };
 
   const handleClonar = () => {
@@ -86,7 +91,7 @@ function Roles() {
   };
 
   const handleSaveMeta = () => {
-    editarRol(sel, { nombre: editNombre, descripcion: editDesc, categoria: editCategoria });
+    editarRol(sel, { nombre: editNombre, descripcion: editDesc, categoria: editCategoria, nivel_jerarquico: editNivel });
     setEditingMeta(false);
   };
 
@@ -148,7 +153,7 @@ function Roles() {
         <div><h1 className="page-title">Roles y Permisos</h1><div className="page-sub">{rolKeys.length} roles configurados · permisos granulares por pantalla</div></div>
         <div className="row">
           <button className="btn btn-secondary" onClick={() => { setClonarNombre(`Copia de ${role.nombre}`); setModalClonar(true); }}>{I.copy} Clonar rol</button>
-          <button className="btn btn-primary" onClick={() => setModalNuevo(true)}>{I.plus} Nuevo rol</button>
+          <button className="btn btn-primary" data-local-form="true" onClick={() => setModalNuevo(true)}>{I.plus} Nuevo rol</button>
         </div>
       </div>
 
@@ -192,12 +197,10 @@ function Roles() {
                 <input className="input" value={editNombre} onChange={e=>setEditNombre(e.target.value)} style={{fontWeight:700, fontSize:16}}/>
                 <input className="input" value={editDesc} onChange={e=>setEditDesc(e.target.value)} style={{fontSize:12}}/>
                 <select className="select" style={{fontSize:12}} value={editCategoria} onChange={e=>setEditCategoria(e.target.value)}>
-                  <option value="admin">Administración del tenant</option>
-                  <option value="comercial">Comercial / Ventas</option>
-                  <option value="operaciones">Operaciones</option>
-                  <option value="finanzas">Finanzas</option>
-                  <option value="rrhh">RRHH</option>
-                  <option value="otro">Otro</option>
+                  {ROLE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+                <select className="select" style={{fontSize:12}} value={editNivel} onChange={e=>setEditNivel(e.target.value)}>
+                  {HIERARCHY_LEVELS.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
                 </select>
                 <div className="row" style={{gap:6}}>
                   <button className="btn btn-sm btn-primary" onClick={handleSaveMeta}>Guardar</button>
@@ -210,7 +213,8 @@ function Roles() {
                 <div className="text-muted" style={{fontSize:12}}>{role.descripcion}</div>
                 <div className="row" style={{gap:8, alignItems:'center'}}>
                   <div className="text-subtle" style={{fontSize:11}}>Categoría: <strong>{role.categoria || 'otro'}</strong></div>
-                  <button className="btn btn-sm btn-secondary" style={{fontSize:11,padding:'2px 8px'}} onClick={()=>{ setEditNombre(role.nombre); setEditDesc(role.descripcion||''); setEditCategoria(role.categoria||'otro'); setEditingMeta(true); }}>Editar</button>
+                  <div className="text-subtle" style={{fontSize:11}}>Nivel: <strong>{role.nivel_jerarquico || 'operativo'}</strong></div>
+                  <button className="btn btn-sm btn-secondary" style={{fontSize:11,padding:'2px 8px'}} onClick={()=>{ setEditNombre(role.nombre); setEditDesc(role.descripcion||''); setEditCategoria(role.categoria||'otro'); setEditNivel(role.nivel_jerarquico||'operativo'); setEditingMeta(true); }}>Editar</button>
                 </div>
               </div>
             )}
@@ -343,18 +347,19 @@ function Roles() {
             <div className="input-group">
               <label>Categoría <span className="text-muted" style={{fontSize:11}}>— define qué puede seleccionar este rol en formularios</span></label>
               <select className="select" value={nuevoCategoria} onChange={e=>setNuevoCategoria(e.target.value)}>
-                <option value="admin">Administración del tenant</option>
-                <option value="comercial">Comercial / Ventas</option>
-                <option value="operaciones">Operaciones</option>
-                <option value="finanzas">Finanzas</option>
-                <option value="rrhh">RRHH</option>
-                <option value="otro">Otro</option>
+                {ROLE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <div className="input-group">
+              <label>Nivel jerarquico <span className="text-muted" style={{fontSize:11}}>define alcance: tenant, equipo o propio</span></label>
+              <select className="select" value={nuevoNivel} onChange={e=>setNuevoNivel(e.target.value)}>
+                {HIERARCHY_LEVELS.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
               </select>
             </div>
           </div>
           <div className="row" style={{gap:8,marginTop:24,justifyContent:'flex-end'}}>
             <button className="btn btn-secondary" onClick={()=>setModalNuevo(false)}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleNuevoRol} disabled={!nuevoNombre.trim()}>Crear rol</button>
+            <button className="btn btn-primary" data-local-form="true" onClick={handleNuevoRol} disabled={!nuevoNombre.trim()}>Crear rol</button>
           </div>
         </div>
       </>}
@@ -437,7 +442,7 @@ function Usuarios() {
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('Tideo2026!');
   const [creando, setCreando] = useState(false);
-  const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', password: '', campo: false, campoModulos: [] });
+  const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', password: '', asignaciones: [], campo: false, campoModulos: [] });
   const [guardandoNuevo, setGuardandoNuevo] = useState(false);
   const [nuevoError, setNuevoError] = useState('');
   const [editando, setEditando] = useState(null);
@@ -463,7 +468,7 @@ function Usuarios() {
     if (Array.isArray(usuario.campo_modulos) && usuario.campo_modulos.length) return usuario.campo_modulos;
     return usuario.campo ? [legacyModuloCampo(usuario.campoPerfil || usuario.campo_perfil)] : [];
   };
-  const [editForm, setEditForm] = useState({ nombre: '', email: '', rol: '', campo: false, campoModulos: [], estado: 'Activo' });
+  const [editForm, setEditForm] = useState({ nombre: '', email: '', rol: '', jefe_user_id: '', asignaciones: [], campo: false, campoModulos: [], estado: 'Activo' });
   const [guardandoEdit, setGuardandoEdit] = useState(false);
   const [editError, setEditError] = useState('');
   const [filtroTenant, setFiltroTenant] = useState('');
@@ -489,7 +494,7 @@ function Usuarios() {
     try {
       await crearUsuarioConAcceso(nuevoForm);
       setCreando(false);
-      setNuevoForm({ nombre: '', email: '', rol: 'vendedor', password: '', campo: false, campoModulos: [] });
+      setNuevoForm({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', password: '', asignaciones: [], campo: false, campoModulos: [] });
     } catch (error) {
       setNuevoError(error?.message || 'No se pudo crear el usuario.');
     }
@@ -503,6 +508,15 @@ function Usuarios() {
       nombre: usuario.nombre || '',
       email: usuario.email || '',
       rol: usuario.rol || '',
+      jefe_user_id: usuario.jefe_user_id || '',
+      asignaciones: (usuario.asignaciones || [])
+        .filter(a => !a.principal)
+        .map(a => ({
+          rol_id: a.rol_id || a.rol,
+          jefe_user_id: a.jefe_user_id || '',
+          alcance_tipo: a.alcance_tipo || 'tenant',
+          alcance_id: a.alcance_id || '',
+        })),
       campo: Boolean(usuario.campo),
       campoModulos: getCampoModulos(usuario),
       estado: usuario.estado || 'Activo',
@@ -530,13 +544,120 @@ function Usuarios() {
 
   const rolPerteneceTenant = (r) => {
     if (!empresa?.id) return true;
-    if (empresa.id === 'emp_tideo') return !r.empresa_id || r.empresa_id === empresa.id;
+    if (empresa.es_plataforma) return !r.empresa_id || r.empresa_id === empresa.id;
     return r.empresa_id === empresa.id;
   };
   const rolesOpciones = Object.entries(rolesCtx || {}).filter(([,r]) => !r.es_superadmin && rolPerteneceTenant(r));
   const rolesEditOpciones = Object.entries(rolesCtx || {}).filter(([id, r]) => (
     (!r.es_superadmin && rolPerteneceTenant(r)) || id === editando?.rol
   ));
+  const getRoleCategory = (rolId) => rolesCtx?.[rolId]?.categoria || 'otro';
+  const getOptionLabel = (items, value) => items.find(x => x.value === value)?.label || value || '-';
+  const getRoleMeta = (rolId) => {
+    const r = rolesCtx?.[rolId] || MOCK.roles?.[rolId] || {};
+    const categoria = r.categoria || 'otro';
+    const nivel = r.nivel_jerarquico || 'operativo';
+    return {
+      categoria,
+      nivel,
+      categoriaLabel: getOptionLabel(ROLE_CATEGORIES, categoria),
+      nivelLabel: getOptionLabel(HIERARCHY_LEVELS, nivel),
+    };
+  };
+  const roleOptionText = (r) => {
+    const meta = getRoleMeta(r.id || r.key);
+    return `${r.nombre} · ${meta.categoriaLabel} · ${meta.nivelLabel}`;
+  };
+  const nuevoRoleMeta = getRoleMeta(nuevoForm.rol);
+  const editRoleMeta = getRoleMeta(editForm.rol);
+  const alcanceOptions = [
+    { value: 'tenant', label: 'Todo el tenant' },
+    { value: 'area', label: 'Area' },
+    { value: 'equipo', label: 'Equipo' },
+    { value: 'sede', label: 'Sede' },
+    { value: 'proyecto', label: 'Proyecto' },
+    { value: 'centro_costo', label: 'Centro de costo' },
+    { value: 'custom', label: 'Personalizado' },
+  ];
+  const crearAsignacionVacia = () => ({
+    rol_id: rolesOpciones[0]?.[0] || '',
+    jefe_user_id: '',
+    alcance_tipo: 'tenant',
+    alcance_id: '',
+  });
+  const actualizarAsignacion = (items, index, patch) => items.map((item, i) => (
+    i === index ? { ...item, ...patch } : item
+  ));
+  const renderAsignacionesAvanzadas = ({ items, setItems, excludeUserId = null }) => (
+    <details style={{border:'1px solid var(--border)', borderRadius:8, padding:12}}>
+      <summary style={{cursor:'pointer', fontWeight:700, fontSize:13}}>Asignaciones adicionales opcionales</summary>
+      <div className="text-muted" style={{fontSize:12, margin:'8px 0 12px'}}>
+        Usalo solo si una persona trabaja en mas de un area, proyecto, sede o centro de costo. El rol principal de arriba sigue siendo suficiente para la mayoria de usuarios.
+      </div>
+      <div className="col" style={{gap:10}}>
+        {items.map((asig, index) => {
+          const meta = getRoleMeta(asig.rol_id);
+          const managers = getPotentialManagers({
+            users: usuarios,
+            roles: rolesCtx,
+            empresaId: empresa?.id,
+            excludeUserId,
+            category: getRoleCategory(asig.rol_id),
+          });
+          return (
+            <div key={index} style={{border:'1px solid var(--border)', borderRadius:8, padding:10}}>
+              <div className="grid-2" style={{gap:10}}>
+                <div className="input-group">
+                  <label>Rol adicional</label>
+                  <select className="input" value={asig.rol_id} onChange={e => setItems(actualizarAsignacion(items, index, { rol_id: e.target.value, jefe_user_id: '' }))}>
+                    {rolesOpciones.map(([id, r]) => <option key={id} value={id}>{roleOptionText({ ...r, id })}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Jefe funcional</label>
+                  <select className="input" value={asig.jefe_user_id} onChange={e => setItems(actualizarAsignacion(items, index, { jefe_user_id: e.target.value }))}>
+                    <option value="">Sin jefe funcional</option>
+                    {managers.map(u => <option key={`${u.id}_${u.empresa_id}`} value={u.id}>{u.nombre} · {rolesCtx?.[u.rol]?.nombre || u.rol_nombre || u.rol}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Alcance</label>
+                  <select className="input" value={asig.alcance_tipo} onChange={e => setItems(actualizarAsignacion(items, index, { alcance_tipo: e.target.value, alcance_id: e.target.value === 'tenant' ? '' : asig.alcance_id }))}>
+                    {alcanceOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>ID alcance</label>
+                  <input className="input" disabled={asig.alcance_tipo === 'tenant'} value={asig.alcance_id || ''} onChange={e => setItems(actualizarAsignacion(items, index, { alcance_id: e.target.value }))} placeholder={asig.alcance_tipo === 'tenant' ? 'No aplica' : 'Ej: proyecto_001'} />
+                </div>
+              </div>
+              <div className="row" style={{justifyContent:'space-between', marginTop:8}}>
+                <div className="row" style={{gap:6, fontSize:12}}>
+                  <span className="badge badge-gray">{meta.categoriaLabel}</span>
+                  <span className="badge badge-cyan">{meta.nivelLabel}</span>
+                </div>
+                <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => setItems(items.filter((_, i) => i !== index))}>Quitar</button>
+              </div>
+            </div>
+          );
+        })}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setItems([...items, crearAsignacionVacia()])}>{I.plus} Agregar asignacion</button>
+      </div>
+    </details>
+  );
+  const nuevoJefes = getPotentialManagers({
+    users: usuarios,
+    roles: rolesCtx,
+    empresaId: empresa?.id,
+    category: getRoleCategory(nuevoForm.rol),
+  });
+  const editJefes = getPotentialManagers({
+    users: usuarios,
+    roles: rolesCtx,
+    empresaId: editando?.empresa_id || empresa?.id,
+    excludeUserId: editando?.id,
+    category: getRoleCategory(editForm.rol),
+  });
 
   useEffect(() => {
     if (!rolesOpciones.length) return;
@@ -620,6 +741,7 @@ function Usuarios() {
                 return true;
               }).map(u=>{
               const r = rolesCtx?.[u.rol] || MOCK.roles[u.rol] || { nombre: u.rol_nombre || u.rol, color: 'gray' };
+              const jefe = usuarios.find(x => x.id === u.jefe_user_id && x.empresa_id === u.empresa_id);
               const isSuperadminTideo = Boolean(
                 r.es_superadmin ||
                 u.rol === 'rol_tideo_super' ||
@@ -629,7 +751,13 @@ function Usuarios() {
                 <tr key={`${u.id}_${u.empresa_id}`}>
                   <td><div className="row"><div className="avatar" style={{width:28,height:28,fontSize:11}}>{u.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div><strong>{u.nombre}</strong></div></td>
                   <td className="text-muted">{u.email}</td>
-                  <td><span className={'badge badge-'+r.color}>{r.nombre}</span></td>
+                  <td>
+                    <span className={'badge badge-'+r.color}>{r.nombre}</span>
+                    <div className="text-muted" style={{fontSize:11, marginTop:4}}>Jefe: {jefe?.nombre || 'Sin jefe directo'}</div>
+                    {u.asignaciones?.filter?.(a => !a.principal).length > 0 && (
+                      <div className="text-muted" style={{fontSize:11}}>+{u.asignaciones.filter(a => !a.principal).length} asignacion(es)</div>
+                    )}
+                  </td>
                   <td className="text-muted">{getEmpresa(u.empresa_id)}</td>
                   <td>{u.campo?<span className="badge badge-cyan">{I.mobile}{getCampoModulos(u).map(m => mobileModuleOptions.find(x => x.id === m)?.label || m).join(', ')}</span>:<span className="text-subtle">—</span>}</td>
                   <td><span className="badge badge-green">{u.estado}</span></td>
@@ -701,9 +829,25 @@ function Usuarios() {
               <div className="input-group">
                 <label>Rol</label>
                 <select className="input" value={editForm.rol} onChange={e => setEditForm(p => ({...p, rol: e.target.value}))}>
-                  {rolesEditOpciones.map(([id, r]) => <option key={id} value={id}>{r.nombre}</option>)}
+                  {rolesEditOpciones.map(([id, r]) => <option key={id} value={id}>{roleOptionText({ ...r, id })}</option>)}
                 </select>
               </div>
+              <div className="row" style={{gap:8, flexWrap:'wrap', fontSize:12}}>
+                <span className="badge badge-gray">Categoria: {editRoleMeta.categoriaLabel}</span>
+                <span className="badge badge-cyan">Nivel: {editRoleMeta.nivelLabel}</span>
+              </div>
+              <div className="input-group">
+                <label>Jefe directo</label>
+                <select className="input" value={editForm.jefe_user_id} onChange={e => setEditForm(p => ({...p, jefe_user_id: e.target.value}))}>
+                  <option value="">Sin jefe directo</option>
+                  {editJefes.map(u => <option key={`${u.id}_${u.empresa_id}`} value={u.id}>{u.nombre} · {rolesCtx?.[u.rol]?.nombre || u.rol_nombre || u.rol}</option>)}
+                </select>
+              </div>
+              {renderAsignacionesAvanzadas({
+                items: editForm.asignaciones,
+                excludeUserId: editando?.id,
+                setItems: next => setEditForm(p => ({ ...p, asignaciones: next })),
+              })}
               <div className="input-group">
                 <label>Estado</label>
                 <select className="input" value={editForm.estado} onChange={e => setEditForm(p => ({...p, estado: e.target.value}))}>
@@ -780,9 +924,24 @@ function Usuarios() {
               <div className="input-group">
                 <label>Rol</label>
                 <select className="input" value={nuevoForm.rol} onChange={e => setNuevoForm(p => ({...p, rol: e.target.value}))}>
-                  {rolesOpciones.map(([id, r]) => <option key={id} value={id}>{r.nombre}</option>)}
+                  {rolesOpciones.map(([id, r]) => <option key={id} value={id}>{roleOptionText({ ...r, id })}</option>)}
                 </select>
               </div>
+              <div className="row" style={{gap:8, flexWrap:'wrap', fontSize:12}}>
+                <span className="badge badge-gray">Categoria: {nuevoRoleMeta.categoriaLabel}</span>
+                <span className="badge badge-cyan">Nivel: {nuevoRoleMeta.nivelLabel}</span>
+              </div>
+              <div className="input-group">
+                <label>Jefe directo</label>
+                <select className="input" value={nuevoForm.jefe_user_id} onChange={e => setNuevoForm(p => ({...p, jefe_user_id: e.target.value}))}>
+                  <option value="">Sin jefe directo</option>
+                  {nuevoJefes.map(u => <option key={`${u.id}_${u.empresa_id}`} value={u.id}>{u.nombre} · {rolesCtx?.[u.rol]?.nombre || u.rol_nombre || u.rol}</option>)}
+                </select>
+              </div>
+              {renderAsignacionesAvanzadas({
+                items: nuevoForm.asignaciones,
+                setItems: next => setNuevoForm(p => ({ ...p, asignaciones: next })),
+              })}
               <label className="row" style={{gap:8, fontSize:13}}>
                 <input type="checkbox" className="checkbox" checked={nuevoForm.campo} onChange={e => setNuevoForm(p => ({...p, campo: e.target.checked}))} />
                 Acceso a campo movil
@@ -940,7 +1099,7 @@ function Tenants() {
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
               <div className="input-group">
                 <label>RUC / NIT</label>
-                <input className="input" value={form.ruc} onChange={e => setForm(f => ({...f, ruc: e.target.value}))} placeholder="20000000000"/>
+                <input className="input" inputMode="numeric" pattern={RUC_PATTERN} maxLength={11} value={form.ruc} onChange={e => setForm(f => ({...f, ruc: sanitizeRuc(e.target.value)}))} placeholder="20000000000"/>
               </div>
               <div className="input-group">
                 <label>País</label>
@@ -1827,7 +1986,7 @@ function RRHHAdmin() {
       nombre: p.nombre || '',
       dni: p.dni || p.documento || '',
       fecha_nacimiento: p.fecha_nacimiento || '',
-      telefono: p.telefono || '',
+      telefono: sanitizePhone(p.telefono || ''),
       email: p.email || '',
       direccion: p.direccion || '',
       codigo: p.codigo || p.id || '',
@@ -2170,7 +2329,13 @@ function RRHHAdmin() {
                     <td>{p.modalidad}</td>
                     <td className="num">{p.dias_vacaciones_disponibles} días</td>
                     <td><span className="badge badge-green">{p.estado}</span></td>
-                    <td><button className="btn btn-sm btn-ghost" onClick={e=>{e.stopPropagation();setSel(p.id);setTab('ficha');}}>Ver ficha</button></td>
+                    <td>
+                      <div style={{display:'flex', gap:4, justifyContent:'flex-end'}}>
+                        <button className="btn btn-sm btn-ghost" onClick={e=>{e.stopPropagation();setSel(p.id);setTab('ficha');}}>Ver ficha</button>
+                        <button className="icon-btn" title="Editar colaborador" style={{color:'var(--cyan)'}} onClick={e=>{e.stopPropagation();abrirEditarColaborador(p);}}>{I.edit}</button>
+                        <button className="icon-btn" title="Eliminar colaborador" style={{color:'var(--danger)'}} onClick={e=>{e.stopPropagation();eliminarColaborador(p);}}>{I.trash}</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -2290,7 +2455,7 @@ function RRHHAdmin() {
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre completo *</label><input className="input" required value={formAlta.nombre} onChange={e=>setFormAlta(v=>({...v,nombre:e.target.value}))} placeholder="Nombre completo" autoFocus/></div>
               <div className="input-group"><label>DNI / Documento *</label><input className="input" required value={formAlta.dni} onChange={e=>setFormAlta(v=>({...v,dni:e.target.value}))} placeholder="12345678"/></div>
               <div className="input-group"><label>Fecha de nacimiento</label><input className="input" type="date" value={formAlta.fecha_nacimiento} onChange={e=>setFormAlta(v=>({...v,fecha_nacimiento:e.target.value}))}/></div>
-              <div className="input-group"><label>Teléfono celular</label><input className="input" value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:e.target.value}))} placeholder="+51 9..."/></div>
+              <div className="input-group"><label>Teléfono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group"><label>Email corporativo</label><input className="input" type="email" value={formAlta.email} onChange={e=>setFormAlta(v=>({...v,email:e.target.value}))} placeholder="nombre@empresa.pe"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Dirección personal</label><input className="input" value={formAlta.direccion} onChange={e=>setFormAlta(v=>({...v,direccion:e.target.value}))} placeholder="Dirección completa"/></div>
             </div>

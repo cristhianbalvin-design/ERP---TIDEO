@@ -21,19 +21,19 @@ const tenantAdminScreens = [
 const platformScreens = ['dashboard','tenants','planes','metricas_saas','usuarios','roles'];
 
 export const roles = {
-  plataforma: { nombre: 'Superadmin TIDEO', color: 'navy', descripcion: 'Administra la plataforma SaaS, tenants, planes, metricas y soporte TIDEO', permisos: { ver: platformScreens, plataforma: true, soporte_tenant: true, ver_costos: true, ver_finanzas: true } },
-  admin: { nombre: 'Super Administrador', color: 'purple', descripcion: 'Administra todos los modulos del ERP dentro de su empresa', permisos: { ver: tenantAdminScreens, tenant_admin: true, ver_costos: true, ver_precios: true, ver_finanzas: true, aprobar_descuentos: true, anular_documentos: true, acceso_campo: true, perfil_campo: 'Gerencia', ver_agenda_equipo: true } },
-  comercial: { nombre: 'Jefe Comercial', color: 'cyan', descripcion: 'Gestión de ventas y cotizaciones', permisos: { ver: ['dashboard','cuentas','leads','pipeline','actividades','agenda_comercial','hoja_costeo','cotizaciones','os_cliente'], crear: true, aprobar_descuentos: true, ver_costos: true, ver_agenda_equipo: true } },
-  vendedor: { nombre: 'Vendedor', color: 'blue', descripcion: 'Gestión de sus propias ventas y agenda', permisos: { ver: ['dashboard','cuentas','leads','pipeline','actividades','agenda_comercial','cotizaciones'], crear: true, acceso_campo: true, perfil_campo: 'Vendedor' } },
-  tecnico: { nombre: 'Técnico de Campo', color: 'orange', descripcion: 'Ejecución de OTs', permisos: { ver: ['ot','partes'], acceso_campo: true } },
-  finanzas: { nombre: 'Finanzas', color: 'green', descripcion: 'Control de cajas y facturación', permisos: { ver: ['dashboard','bi_financiero','presupuestos','cxc','cxp','tesoreria','resultados','facturacion','caja','financiamiento','prestamos_personal','ventas','valorizacion','nomina'], ver_finanzas: true } },
+  plataforma: { nombre: 'Superadmin TIDEO', color: 'navy', categoria: 'admin', nivel_jerarquico: 'direccion', descripcion: 'Administra la plataforma SaaS, tenants, planes, metricas y soporte TIDEO', permisos: { ver: platformScreens, plataforma: true, soporte_tenant: true, ver_costos: true, ver_finanzas: true } },
+  admin: { nombre: 'Super Administrador', color: 'purple', categoria: 'admin', nivel_jerarquico: 'direccion', descripcion: 'Administra todos los modulos del ERP dentro de su empresa', permisos: { ver: tenantAdminScreens, tenant_admin: true, ver_costos: true, ver_precios: true, ver_finanzas: true, aprobar_descuentos: true, anular_documentos: true, acceso_campo: true, perfil_campo: 'Gerencia', ver_agenda_equipo: true } },
+  comercial: { nombre: 'Jefe Comercial', color: 'cyan', categoria: 'comercial', nivel_jerarquico: 'jefatura', descripcion: 'Gestión de ventas y cotizaciones', permisos: { ver: ['dashboard','cuentas','leads','pipeline','actividades','agenda_comercial','hoja_costeo','cotizaciones','os_cliente'], crear: true, aprobar_descuentos: true, ver_costos: true, ver_agenda_equipo: true } },
+  vendedor: { nombre: 'Vendedor', color: 'blue', categoria: 'comercial', nivel_jerarquico: 'asesor', descripcion: 'Gestión de sus propias ventas y agenda', permisos: { ver: ['dashboard','cuentas','leads','pipeline','actividades','agenda_comercial','cotizaciones'], crear: true, acceso_campo: true, perfil_campo: 'Vendedor' } },
+  tecnico: { nombre: 'Técnico de Campo', color: 'orange', categoria: 'operaciones', nivel_jerarquico: 'operativo', descripcion: 'Ejecución de OTs', permisos: { ver: ['ot','partes'], acceso_campo: true } },
+  finanzas: { nombre: 'Finanzas', color: 'green', categoria: 'finanzas', nivel_jerarquico: 'jefatura', descripcion: 'Control de cajas y facturación', permisos: { ver: ['dashboard','bi_financiero','presupuestos','cxc','cxp','tesoreria','resultados','facturacion','caja','financiamiento','prestamos_personal','ventas','valorizacion','nomina'], ver_finanzas: true } },
 };
 
 export const usuarios = [
   { id: 'u1', nombre: 'Admin Master', email: 'admin@tideo.pe', rol: 'admin', area: 'Sistemas', estado: 'Activo', ultimo: 'Hace 5 min' },
   { id: 'u2', nombre: 'Carla Meza', email: 'cmeza@tideo.pe', rol: 'comercial', area: 'Comercial', estado: 'Activo', ultimo: 'Ayer' },
-  { id: 'u3', nombre: 'Pedro Salas', email: 'psalas@tideo.pe', rol: 'comercial', area: 'Comercial', estado: 'Activo', ultimo: 'Hoy' },
-  { id: 'u4', nombre: 'Andrea Rios', email: 'arios@tideo.pe', rol: 'comercial', area: 'Comercial', estado: 'Activo', ultimo: 'Hoy' },
+  { id: 'u3', nombre: 'Pedro Salas', email: 'psalas@tideo.pe', rol: 'vendedor', jefe_user_id: 'u2', area: 'Comercial', estado: 'Activo', ultimo: 'Hoy' },
+  { id: 'u4', nombre: 'Andrea Rios', email: 'arios@tideo.pe', rol: 'vendedor', jefe_user_id: 'u2', area: 'Comercial', estado: 'Activo', ultimo: 'Hoy' },
   { id: 'u5', nombre: 'Juan Técnico', email: 'jtec@tideo.pe', rol: 'tecnico', area: 'Operaciones', campo: true, campoPerfil: 'Técnico', estado: 'Activo', ultimo: 'Hace 2 horas' },
 ];
 
@@ -58,7 +58,7 @@ export const leads = [
     nombre: 'Rosa Mamani', empresa_contacto: 'Textil Andina SA',
     cargo: 'Gerente de Operaciones',
     telefono: '+51 976 543 210', email: 'r.mamani@textil-andina.pe',
-    fuente: 'Formulario web', campana: 'Google Ads Q1 2025',
+    fuente: 'Formulario web', campana: 'Google Ads Q1 2025', campana_id: 'camp_001',
     registrado_desde: 'web',
     necesidad: 'Servicio de limpieza industrial y mantenimiento preventivo mensual',
     urgencia: 'media', presupuesto_estimado: 24000,
@@ -73,7 +73,7 @@ export const leads = [
     nombre: 'Jorge Quispe', empresa_contacto: 'Distribuidora Sur EIRL',
     cargo: 'Administrador',
     telefono: '+51 965 432 109', email: 'j.quispe@distrisur.pe',
-    fuente: 'Evento / Feria', campana: 'ExpoMantenimiento 2025',
+    fuente: 'Evento / Feria', campana: 'ExpoMantenimiento 2025', campana_id: 'camp_002',
     registrado_desde: 'campo',
     necesidad: 'Mantenimiento eléctrico preventivo de almacenes',
     urgencia: 'baja', presupuesto_estimado: 8000,
@@ -103,7 +103,7 @@ export const leads = [
     nombre: 'Manuel Chávez', empresa_contacto: 'Constructora Rimac SA',
     cargo: 'Director de Proyectos',
     telefono: '+51 943 210 987', email: 'm.chavez@constructora-rimac.pe',
-    fuente: 'LinkedIn', campana: null,
+    fuente: 'LinkedIn', campana: null, campana_id: 'camp_003',
     registrado_desde: 'web',
     necesidad: 'Outsourcing de personal técnico para proyecto 8 meses',
     urgencia: 'media', presupuesto_estimado: 120000,
@@ -1536,8 +1536,51 @@ export const agendaEventos = [
   { id: 'evt_004', empresa_id: 'emp_001', titulo: 'Demo del servicio', tipo: 'demo', cuenta_id: 'cta_004', vendedor: 'Pedro Salas', registrado_por: 'Pedro Salas', fecha: '2026-05-02', hora: '11:00', duracion_minutos: 60, estado: 'programado', notas: 'Llevar equipos de muestra' }
 ];
 
+export const campanas = [
+  {
+    id: 'camp_001', empresa_id: 'emp_001',
+    nombre: 'Google Ads Q1 2025',
+    tipo: 'ads', canal: 'Google Ads',
+    fecha_inicio: '2025-01-01', fecha_fin: '2025-03-31',
+    presupuesto: 15000, moneda: 'PEN',
+    estado: 'finalizada',
+    descripcion: 'Search ads en Google enfocados en mantenimiento industrial y servicios técnicos en Lima',
+    created_at: '2024-12-28T00:00:00Z'
+  },
+  {
+    id: 'camp_002', empresa_id: 'emp_001',
+    nombre: 'ExpoMantenimiento 2025',
+    tipo: 'evento', canal: 'Evento',
+    fecha_inicio: '2025-01-10', fecha_fin: '2025-01-12',
+    presupuesto: 8000, moneda: 'PEN',
+    estado: 'finalizada',
+    descripcion: 'Participación como expositor en ExpoMantenimiento Lima 2025 — stand y charla técnica',
+    created_at: '2024-12-15T00:00:00Z'
+  },
+  {
+    id: 'camp_003', empresa_id: 'emp_001',
+    nombre: 'LinkedIn B2B Q2 2025',
+    tipo: 'ads', canal: 'LinkedIn',
+    fecha_inicio: '2025-04-01', fecha_fin: '2025-06-30',
+    presupuesto: 12000, moneda: 'PEN',
+    estado: 'activa',
+    descripcion: 'LinkedIn Ads targeting jefes de mantenimiento, gerentes de operaciones y directores de proyectos',
+    created_at: '2025-03-25T00:00:00Z'
+  },
+  {
+    id: 'camp_004', empresa_id: 'emp_001',
+    nombre: 'Email Reactivación Prospectos',
+    tipo: 'email', canal: 'Email',
+    fecha_inicio: '2025-05-01', fecha_fin: '2025-05-31',
+    presupuesto: 2000, moneda: 'PEN',
+    estado: 'activa',
+    descripcion: 'Secuencia de 3 emails para reactivar leads descartados con presupuesto > S/ 20,000',
+    created_at: '2025-04-28T00:00:00Z'
+  }
+];
+
 export const MOCK = {
-  empresas, roles, usuarios, leads, cuentas, contactos, oportunidades,
+  empresas, roles, usuarios, leads, cuentas, contactos, oportunidades, campanas,
   actividades, hojasCosteo, cotizaciones, osClientes, ots, partes, compras, cxc,
   movimientosBanco, estadoResultados, pantallasPermisos, servicios,
   tarifarios, maestros, backlog, remisiones, solpes, ventas, cajaChica,

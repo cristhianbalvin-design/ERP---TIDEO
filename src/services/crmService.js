@@ -102,6 +102,7 @@ export async function persistirLead(supabase, empresaId, lead) {
     urgencia: lead.urgencia || 'media',
     registrado_desde: lead.registrado_desde || 'backoffice',
     responsable: lead.responsable || null,
+    responsable_id: lead.responsable_id || null,
     campana: lead.campana || null,
     dias_sin_actividad: lead.dias_sin_actividad ?? 0,
     fecha_creacion: lead.fecha_creacion || null,
@@ -116,12 +117,36 @@ export async function persistirLead(supabase, empresaId, lead) {
 }
 
 export async function actualizarLead(supabase, leadId, datos) {
-  const allowed = ['estado', 'convertido', 'cuenta_id', 'motivo_descarte', 'dias_sin_actividad'];
+  const allowed = [
+    'nombre_contacto', 'empresa_nombre', 'razon_social', 'ruc', 'industria',
+    'telefono', 'email', 'fuente', 'cargo', 'urgencia', 'registrado_desde',
+    'responsable', 'responsable_id', 'campana', 'campana_id',
+    'dias_sin_actividad', 'fecha_creacion', 'motivo_descarte', 'necesidad',
+    'presupuesto_estimado', 'moneda', 'estado', 'convertido', 'cuenta_id',
+  ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
   );
   if (!Object.keys(row).length) return;
   return supabase.from('leads').update(row).eq('id', leadId);
+}
+
+export async function eliminarLead(supabase, leadId) {
+  const { error, count } = await supabase
+    .from('leads')
+    .delete({ count: 'exact' })
+    .eq('id', leadId)
+    .select();
+  if (error) throw error;
+
+  if (count && count > 0) return { count };
+
+  const rpc = await supabase.rpc('eliminar_lead_crm', { p_lead_id: leadId });
+  if (rpc.error) throw rpc.error;
+  if (rpc.data !== true) {
+    throw new Error('Supabase no eliminó el lead. Revisa permisos RLS o que el registro exista.');
+  }
+  return rpc;
 }
 
 export async function persistirCuenta(supabase, empresaId, cuenta) {
@@ -139,6 +164,7 @@ export async function persistirCuenta(supabase, empresaId, cuenta) {
     direccion: cuenta.direccion || null,
     responsable_comercial: cuenta.responsable_comercial || null,
     responsable_cs: cuenta.responsable_cs || null,
+    responsable_id: cuenta.responsable_id || null,
     fuente_origen: cuenta.fuente_origen || null,
     condicion_pago: cuenta.condicion_pago || null,
     limite_credito: cuenta.limite_credito || null,
@@ -262,6 +288,7 @@ export async function persistirOportunidad(supabase, empresaId, opp) {
     forecast_ponderado: opp.forecast_ponderado ?? (Number(opp.monto_estimado || 0) * Number(opp.probabilidad || 0) / 100),
     fuente: opp.fuente || null,
     responsable: opp.responsable || null,
+    responsable_id: opp.responsable_id || null,
     notas: opp.notas || null,
     competidor: opp.competidor || null,
     estado: opp.estado || 'abierta',

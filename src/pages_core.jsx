@@ -2,6 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
+import { canUserSeeOwner, getAssignableUsers } from './lib/hierarchy.js';
+import { campanasService } from './services/campanasService.js';
+import { isSupabaseConfigured } from './lib/supabaseClient.js';
+import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 
 // Dashboard, CRM screens
 
@@ -21,6 +25,10 @@ function startKanbanDrag(e, id) {
 function endKanbanDrag(e) {
   e.currentTarget.classList.remove('is-dragging');
 }
+
+const MONEDAS = ['PEN', 'USD', 'EUR'];
+const currencySymbol = (moneda = 'PEN') => moneda === 'USD' ? 'US$' : moneda === 'EUR' ? '€' : 'S/';
+const moneyCurrency = (value, moneda = 'PEN') => money(value, currencySymbol(moneda));
 
 function Dashboard({ role }) {
   const { financiamientos, navigate } = useApp();
@@ -321,7 +329,7 @@ function DonutChart() {
 
 // ============ LEADS KANBAN ============
 function Leads() {
-  const { leads, setLeads, crearLead, updateLeadState, convertirLead, descartarLead, navigate, usuarios, empresa, searchQuery } = useApp();
+  const { leads, setLeads, crearLead, actualizarLeadDatos, eliminarLead, updateLeadState, convertirLead, descartarLead, reactivarLead, navigate, usuarios, empresa, searchQuery, campanas, roles, industrias, actividades, historialEstados, addNotificacion } = useApp();
   const [view, setView] = useState('kanban');
   
   const query = searchQuery.toLowerCase();
@@ -332,25 +340,128 @@ function Leads() {
   );
   const [sel, setSel] = useState(null);
   const [modalConvertir, setModalConvertir] = useState(null);
-  const [modalDescartar, setModalDescartar] = useState(null);
+  const [convForm, setConvForm] = useState(null);
+  const [modalMoverLead, setModalMoverLead] = useState(null);
+  const [moverMotivo, setMoverMotivo] = useState('');
+  const [moverError, setMoverError] = useState(false);
+  const abrirMoverModal = (lead, destino) => { setMoverMotivo(''); setMoverError(false); setModalMoverLead({ lead, destino }); };
+  const [modalEliminarLead, setModalEliminarLead] = useState(null);
+  const [modalReactivar, setModalReactivar] = useState(null);
+  const [kanbanToast, setKanbanToast] = useState(null);
+  const [fichaTab, setFichaTab] = useState('detalles');
+  const [tlFiltroTipo, setTlFiltroTipo] = useState('todos');
+  const [tlFiltroDesde, setTlFiltroDesde] = useState('');
+  const [tlFiltroHasta, setTlFiltroHasta] = useState('');
+  useEffect(() => { setFichaTab('detalles'); setTlFiltroTipo('todos'); setTlFiltroDesde(''); setTlFiltroHasta(''); }, [sel?.id]);
+  const showKanbanToast = (msg) => {
+    setKanbanToast(msg);
+    setTimeout(() => setKanbanToast(null), 3500);
+  };
+  const opcionesIndustria = industrias?.length ? industrias.map(i => i.nombre || i) : ['Mineria','Industrial','Construccion','Agroindustria','Facilities','Energia','Petroleo & Gas','Logistica','Retail','Salud','Educacion','Tecnologia','Servicios profesionales','Sector publico','Otro'];
   const [panelNuevo, setPanelNuevo] = useState(false);
-  const formNuevoBase = { nombre:'', cargo:'', empresa_contacto:'', razon_social:'', ruc:'', industria:'', telefono:'', email:'', fuente:'', registrado_desde:'web', responsable:'', urgencia:'media', necesidad:'', presupuesto_estimado:'', moneda:'PEN' };
+  const [editandoLead, setEditandoLead] = useState(null);
+  const formNuevoBase = { nombre:'', cargo:'', empresa_contacto:'', razon_social:'', ruc:'', industria:'', telefono:'', email:'', fuente:'', campana_id:'', registrado_desde:'web', responsable:'', responsable_id:'', urgencia:'media', necesidad:'', presupuesto_estimado:'', moneda:'PEN' };
   const [formNuevo, setFormNuevo] = useState(formNuevoBase);
   const [errores, setErrores] = useState({});
+  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
+  const [campanasForm, setCampanasForm] = useState([]);
+  const [loadingCampanasForm, setLoadingCampanasForm] = useState(false);
+
+  useEffect(() => {
+    if (!modalConvertir) return;
+    setConvForm({
+      nombre_comercial: modalConvertir.empresa_contacto || '',
+      razon_social: modalConvertir.razon_social || modalConvertir.empresa_contacto || '',
+      ruc: modalConvertir.ruc || '',
+      industria: modalConvertir.industria || '',
+      fuente: modalConvertir.fuente || '',
+      contacto_nombre: modalConvertir.nombre || '',
+      contacto_cargo: modalConvertir.cargo || '',
+      contacto_telefono: modalConvertir.telefono || '',
+      contacto_email: modalConvertir.email || '',
+      nombre_oportunidad: `${modalConvertir.necesidad?.slice(0,50) || 'Venta'} — ${modalConvertir.empresa_contacto}`,
+      monto_estimado: modalConvertir.presupuesto_estimado || '',
+      moneda: modalConvertir.moneda || 'PEN',
+      etapa_inicial: 'calificacion'
+    });
+  }, [modalConvertir]);
+
+  useEffect(() => {
+    if (!panelNuevo) return;
+    if (isSupabaseConfigured() && empresa?.id) {
+      setLoadingCampanasForm(true);
+      campanasService.listar(empresa.id)
+        .then(data => setCampanasForm((data || []).filter(c => c.estado === 'activa')))
+        .catch(() => setCampanasForm((campanas || []).filter(c => c.estado === 'activa')))
+        .finally(() => setLoadingCampanasForm(false));
+    } else {
+      setCampanasForm((campanas || []).filter(c => c.estado === 'activa'));
+    }
+  }, [panelNuevo]);
 
   const updateNuevo = (f, v) => setFormNuevo(p => ({ ...p, [f]: v }));
+  const updateResponsableNuevo = (userId) => {
+    const user = comercialesAsignables.find(u => u.id === userId);
+    setFormNuevo(p => ({
+      ...p,
+      responsable_id: user?.id || '',
+      responsable: user?.nombre || '',
+    }));
+  };
+  const cerrarPanelLead = () => {
+    setPanelNuevo(false);
+    setEditandoLead(null);
+    setFormNuevo(formNuevoBase);
+    setErrores({});
+  };
+  const abrirEditarLead = (lead) => {
+    const responsable = lead.responsable_id
+      ? comercialesAsignables.find(u => u.id === lead.responsable_id)
+      : comercialesAsignables.find(u => String(u.nombre || '').trim() === String(lead.responsable || '').trim());
+    setFormNuevo({
+      ...formNuevoBase,
+      nombre: lead.nombre || lead.nombre_contacto || '',
+      cargo: lead.cargo || '',
+      empresa_contacto: lead.empresa_contacto || lead.empresa_nombre || '',
+      razon_social: lead.razon_social || '',
+      ruc: lead.ruc || '',
+      industria: lead.industria || '',
+      telefono: sanitizePhone(lead.telefono || ''),
+      email: lead.email || '',
+      fuente: lead.fuente || '',
+      campana_id: lead.campana_id || '',
+      registrado_desde: lead.registrado_desde || 'web',
+      responsable: responsable?.nombre || lead.responsable || '',
+      responsable_id: responsable?.id || lead.responsable_id || '',
+      urgencia: lead.urgencia || 'media',
+      necesidad: lead.necesidad || '',
+      presupuesto_estimado: lead.presupuesto_estimado ?? '',
+      moneda: lead.moneda || 'PEN',
+    });
+    setEditandoLead(lead);
+    setSel(null);
+    setPanelNuevo(true);
+  };
+  const confirmarEliminarLead = async (lead) => {
+    if (!lead?.id) return;
+    if (!window.confirm(`Eliminar el lead "${lead.nombre || lead.nombre_contacto}"?`)) return;
+    try {
+      await eliminarLead(lead.id);
+      if (sel?.id === lead.id) setSel(null);
+      if (editandoLead?.id === lead.id) cerrarPanelLead();
+    } catch (_) { /* notificacion emitida en context */ }
+  };
 
   const guardarLead = (e) => {
     e.preventDefault();
     const errs = {};
     if (!formNuevo.nombre) errs.nombre = true;
     if (!formNuevo.empresa_contacto) errs.empresa_contacto = true;
-    if (!formNuevo.responsable) errs.responsable = true;
-    if (formNuevo.ruc && !/^\d{11}$/.test(formNuevo.ruc)) errs.ruc = 'El RUC debe tener 11 dígitos';
+    if (!formNuevo.responsable_id) errs.responsable = true;
+    if (formNuevo.telefono && !isValidPhone(formNuevo.telefono)) errs.telefono = 'El teléfono debe tener 9 dígitos y comenzar con 9';
+    if (formNuevo.ruc && !isValidRuc(formNuevo.ruc)) errs.ruc = 'El RUC debe tener 11 números y comenzar con 1 o 2';
     if (Object.keys(errs).length) { setErrores(errs); return; }
-    const nuevo = {
-      id: `lead_${Date.now().toString(36)}`,
-      empresa_id: empresa?.id || 'emp_001',
+    const datos = {
       nombre: formNuevo.nombre,
       cargo: formNuevo.cargo,
       empresa_contacto: formNuevo.empresa_contacto,
@@ -360,35 +471,56 @@ function Leads() {
       telefono: formNuevo.telefono,
       email: formNuevo.email,
       fuente: formNuevo.fuente || 'Manual',
+      campana_id: formNuevo.campana_id || null,
+      campana: campanas.find(c => c.id === formNuevo.campana_id)?.nombre || null,
       registrado_desde: formNuevo.registrado_desde,
       responsable: formNuevo.responsable,
+      responsable_id: formNuevo.responsable_id,
       urgencia: formNuevo.urgencia,
       necesidad: formNuevo.necesidad,
       presupuesto_estimado: Number(formNuevo.presupuesto_estimado) || 0,
       moneda: formNuevo.moneda,
-      estado: 'nuevo',
-      fecha_creacion: new Date().toISOString().split('T')[0],
-      dias_sin_actividad: 0,
-      convertido: false
     };
-    crearLead(nuevo);
-    setPanelNuevo(false);
-    setFormNuevo(formNuevoBase);
-    setErrores({});
+    if (editandoLead) {
+      actualizarLeadDatos(editandoLead.id, datos);
+    } else {
+      crearLead({
+        id: `lead_${Date.now().toString(36)}`,
+        empresa_id: empresa?.id || 'emp_001',
+        ...datos,
+        estado: 'nuevo',
+        fecha_creacion: new Date().toISOString().split('T')[0],
+        dias_sin_actividad: 0,
+        convertido: false
+      });
+    }
+    cerrarPanelLead();
   };
 
   const cols = [
-    { k: 'nuevo', title: 'Nuevo', color: '#64748b' },
-    { k: 'en_contacto', title: 'En contacto', color: '#06b6d4' },
-    { k: 'calificado', title: 'Calificado', color: '#8b5cf6' },
-    { k: 'convertido', title: 'Convertido', color: '#10b981' },
-    { k: 'descartado', title: 'Descartado', color: '#f97316' },
+    { k: 'nuevo', title: 'Nuevo', color: '#64748b', hint: 'Lead recién registrado. Aún no has tenido contacto.' },
+    { k: 'en_contacto', title: 'En contacto', color: '#06b6d4', hint: 'Ya le escribiste o llamaste. Hay conversación iniciada.' },
+    { k: 'calificado', title: 'Calificado', color: '#8b5cf6', hint: 'Confirmaste necesidad, presupuesto y decisión.' },
+    { k: 'convertido', title: 'Convertido', color: '#10b981', hint: 'Muévelo aquí para crear cuenta, contacto y oportunidad automáticamente.' },
+    { k: 'descartado', title: 'Descartado', color: '#f97316', hint: 'No califica o perdió interés. Registra el motivo.' },
   ];
 
   const handleDrop = (e, targetStatus) => {
     e.preventDefault();
     const id = e.dataTransfer.getData('text/plain');
-    if (id) updateLeadState(id, targetStatus);
+    if (!id) return;
+    const lead = leads.find(l => l.id === id);
+    if (!lead) return;
+    if (lead.estado === 'descartado') {
+      showKanbanToast('Este lead está descartado. Ábrelo y usa "Reactivar lead" para volver a trabajarlo.');
+      return;
+    }
+    if (targetStatus === 'convertido') {
+      if (!lead.convertido) { setModalConvertir(lead); return; }
+      return;
+    }
+    if (lead.estado === targetStatus) return;
+    abrirMoverModal(lead, targetStatus);
   };
 
   const getFuenteIcon = (f) => {
@@ -398,6 +530,57 @@ function Leads() {
     if(fl.includes('linkedin')) return <span style={{color:'var(--navy)'}}>💼</span>;
     if(fl.includes('evento') || fl.includes('feria')) return <span style={{color:'var(--purple)'}}>📅</span>;
     return <span style={{color:'var(--cyan)'}}>🔗</span>;
+  };
+
+  const calcularScoreLead = (lead) => {
+    let score = 0;
+    const fuente = (lead.fuente || '').toLowerCase();
+    const fuentePremium = ['referido','evento','feria'].some(k => fuente.includes(k));
+    const fuenteMedia = !fuentePremium && ['linkedin','diagnóstico','diagnostico','formulario'].some(k => fuente.includes(k));
+    const hace7dias = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const tieneActividadReciente = (actividades || []).some(a =>
+      a.lead_id === lead.id && new Date(a.fecha || a.created_at) >= hace7dias
+    );
+
+    const tieneRuc           = !!(lead.ruc && String(lead.ruc).trim());
+    const tienePresupuesto   = (lead.presupuesto_estimado || 0) > 0;
+    const tieneNecesidad     = !!(lead.necesidad && String(lead.necesidad).trim());
+    const tieneResponsable   = !!(lead.responsable_id || lead.responsable);
+    const fueReactivado      = (lead.veces_reactivado || 0) > 0;
+    const muySinActividad    = Number(lead.dias_sin_actividad || 0) > 15;
+    const fueDescartado      = lead.estado === 'descartado';
+
+    if (tieneRuc)               score += 10;
+    if (tienePresupuesto)        score += 15;
+    if (fuentePremium)           score += 15;
+    else if (fuenteMedia)        score += 10;
+    if (tieneNecesidad)          score += 10;
+    if (tieneResponsable)        score += 10;
+    if (tieneActividadReciente)  score += 20;
+    if (fueReactivado)           score += 5;
+    if (muySinActividad)         score -= 15;
+    if (fueDescartado)           score -= 10;
+
+    score = Math.max(0, Math.min(100, score));
+
+    const label = score <= 30 ? 'Lead frío' : score <= 60 ? 'Lead tibio' : 'Lead caliente';
+    const color = score <= 30 ? 'var(--danger)' : score <= 60 ? 'var(--orange)' : 'var(--green)';
+    const bgLight = score <= 30 ? 'rgba(239,68,68,0.07)' : score <= 60 ? 'rgba(249,115,22,0.07)' : 'rgba(16,185,129,0.07)';
+
+    const criterios = [
+      { text: `RUC registrado (+10)`,                    estado: tieneRuc ? 'suma' : 'neutro' },
+      { text: `Presupuesto declarado (+15)`,              estado: tienePresupuesto ? 'suma' : 'neutro' },
+      { text: `Fuente premium: Referido/Evento (+15)`,    estado: fuentePremium ? 'suma' : 'neutro' },
+      { text: `Fuente digital: LinkedIn/Formulario (+10)`,estado: fuenteMedia ? 'suma' : 'neutro' },
+      { text: `Necesidad declarada (+10)`,                estado: tieneNecesidad ? 'suma' : 'neutro' },
+      { text: `Responsable asignado (+10)`,               estado: tieneResponsable ? 'suma' : 'neutro' },
+      { text: `Actividad en últimos 7 días (+20)`,        estado: tieneActividadReciente ? 'suma' : 'neutro' },
+      { text: `Lead reactivado antes (+5)`,               estado: fueReactivado ? 'suma' : 'neutro' },
+      { text: `Más de 15 días sin actividad (-15)`,       estado: muySinActividad ? 'resta' : 'neutro' },
+      { text: `Historial de descarte (-10)`,              estado: fueDescartado ? 'resta' : 'neutro' },
+    ];
+
+    return { score, label, color, bgLight, criterios };
   };
 
   const leadsActivos = leads.filter(l => !['convertido','descartado'].includes(l.estado));
@@ -420,7 +603,7 @@ function Leads() {
             <button className={`seg-btn ${view==='lista'?'active':''}`} onClick={()=>setView('lista')}>{I.list} Lista</button>
           </div>
           <button className="btn btn-secondary" style={{padding:'8px 16px', borderRadius:8}}>{I.filter} Filtros</button>
-          <button className="btn btn-primary" style={{padding:'8px 20px', borderRadius:8}} onClick={() => setPanelNuevo(true)}>{I.plus} Nuevo lead</button>
+          <button className="btn btn-primary" data-local-form="true" style={{padding:'8px 20px', borderRadius:8}} onClick={() => setPanelNuevo(true)}>{I.plus} Nuevo lead</button>
         </div>
       </div>
 
@@ -438,6 +621,7 @@ function Leads() {
               <div className="pipeline-kpi-label">{c.title}</div>
               <div className="pipeline-kpi-value">{money(sum)}</div>
               <div className="pipeline-kpi-count">{list.length} lead{list.length !== 1 ? 's' : ''}</div>
+              <p style={{fontSize:'0.7rem', color:'var(--color-slate)', fontStyle:'italic', marginTop:'6px', lineHeight:'1.3'}}>{c.hint}</p>
             </div>
           );
         })}
@@ -462,32 +646,60 @@ function Leads() {
                     <div className="kanban-col-count-v2">{list.length}</div>
                   </div>
                   
-                  <div style={{flex:1}}>
+                  <div style={{flex:1, paddingBottom:10}}>
                     {list.length > 0 ? (
                       list.map(l => (
-                        <div 
-                          key={l.id} 
+                        (() => {
+                          const diasSinActividad = Number(l.dias_sin_actividad || 0);
+                          const diasColor = diasSinActividad >= 7 ? 'badge-red' : diasSinActividad >= 3 ? 'badge-orange' : 'badge-gray';
+                          const { score: lScore, label: lLabel, color: lColor } = calcularScoreLead(l);
+                          return (
+                        <div
+                          key={l.id}
                           className="kanban-card-v2"
                           draggable
                           onDragStart={(e) => startKanbanDrag(e, l.id)}
                           onDragEnd={endKanbanDrag}
                           onClick={() => setSel(l)}
-                          style={{cursor: 'grab'}}
+                          style={{cursor: 'pointer'}}
                         >
-                          <div style={{fontSize:13, fontWeight:700, color:'var(--navy)', marginBottom:10, lineHeight:1.4}}>
-                            {l.nombre}
+                          <div className="row" style={{justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:8}}>
+                            <div style={{fontSize:13, fontWeight:700, color:'var(--navy)', lineHeight:1.4, minWidth:0}}>
+                              {l.nombre}
+                            </div>
+                            <div className="row" style={{gap:4, flexShrink:0}}>
+                              <button
+                                type="button"
+                                className="icon-btn"
+                                title="Editar lead"
+                                draggable={false}
+                                onMouseDown={e => e.stopPropagation()}
+                                onClick={e => { e.stopPropagation(); abrirEditarLead(l); }}
+                                style={{width:26, height:26}}
+                              >
+                                {I.edit}
+                              </button>
+                            </div>
                           </div>
                           <div style={{fontSize:11, color:'var(--cyan)', fontWeight:600, marginBottom:10}}>
                             {l.empresa_contacto}
                           </div>
                           
-                          <div style={{fontSize:14, fontWeight:800, color: 'var(--navy)', marginBottom:12}}>
-                            {money(l.presupuesto_estimado)}
+                          <div style={{fontSize:14, fontWeight:800, color: 'var(--navy)', marginBottom:8}}>
+                            {moneyCurrency(l.presupuesto_estimado, l.moneda)}
                           </div>
-  
+
+                          <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:10}}>
+                            <div style={{flex:1, height:3, borderRadius:99, background:'var(--border)', overflow:'hidden'}}>
+                              <div style={{width:`${lScore}%`, height:'100%', borderRadius:99, background:lColor}}/>
+                            </div>
+                            <span style={{fontSize:9, fontWeight:700, color:lColor, flexShrink:0, lineHeight:1}}>{lScore}pt · {lLabel}</span>
+                          </div>
+
                           <div className="row" style={{justifyContent:'space-between', borderTop:'1px solid var(--border-subtle)', paddingTop:12, marginTop:4}}>
-                            <div className="row" style={{gap:6}}>
+                            <div className="row" style={{gap:6, flexWrap:'wrap'}}>
                               <span className="badge badge-gray" style={{fontSize:9, padding:'1px 6px'}}>{l.fuente}</span>
+                              <span className={'badge '+diasColor} style={{fontSize:9, padding:'1px 6px'}}>{diasSinActividad}d sin act.</span>
                               <div className="text-muted" style={{fontSize:10}}>{l.fecha_creacion}</div>
                             </div>
                             <div className="avatar" style={{width:24, height:24, fontSize:10, margin:0, background:'var(--navy)', color:'#fff'}}>
@@ -495,6 +707,8 @@ function Leads() {
                             </div>
                           </div>
                         </div>
+                          );
+                        })()
                       ))
                     ) : (
                       <div className="card-empty-state">
@@ -504,7 +718,7 @@ function Leads() {
                     )}
                   </div>
   
-                  <button className="kanban-btn-add" onClick={() => setPanelNuevo(true)}>
+                  <button className="kanban-btn-add" data-local-form="true" onClick={() => setPanelNuevo(true)}>
                     {I.plus} Agregar lead
                   </button>
                 </div>
@@ -532,7 +746,7 @@ function Leads() {
                   <tr key={l.id} className="hover-row" onClick={() => setSel(l)}>
                     <td><div style={{fontWeight:600}}>{l.nombre}</div><div className="text-muted" style={{fontSize:11}}>{l.cargo}</div></td>
                     <td>{l.empresa_contacto}</td>
-                    <td><strong>{money(l.presupuesto_estimado)}</strong></td>
+                    <td><strong>{moneyCurrency(l.presupuesto_estimado, l.moneda)}</strong></td>
                     <td><span className="badge badge-gray">{l.fuente}</span></td>
                     <td>{l.responsable}</td>
                     <td className="text-muted">{l.fecha_creacion}</td>
@@ -545,7 +759,334 @@ function Leads() {
         </div>
       )}
 
-      {sel && (
+      {sel && (() => {
+        const diasSinActividad = Number(sel.dias_sin_actividad || 0);
+        const diasBadge = diasSinActividad >= 7 ? 'badge-red' : diasSinActividad >= 3 ? 'badge-orange' : 'badge-green';
+        const estadoBadge = sel.estado === 'convertido' ? 'badge-green' : sel.estado === 'descartado' ? 'badge-gray' : 'badge-cyan';
+        const urgenciaBadge = sel.urgencia === 'alta' ? 'badge-red' : sel.urgencia === 'baja' ? 'badge-gray' : 'badge-orange';
+        const campanaNombre = sel.campana_id ? (campanas.find(c => c.id === sel.campana_id)?.nombre || sel.campana_id) : (sel.campana || '');
+        const Field = ({ label, value, strong }) => (
+          <div style={{minWidth:0}}>
+            <div className="eyebrow" style={{marginBottom:5}}>{label}</div>
+            <div style={{fontSize:13, fontWeight:strong ? 700 : 500, color:value ? 'var(--fg)' : 'var(--fg-muted)', lineHeight:1.35, overflowWrap:'anywhere'}}>
+              {value || 'Pendiente'}
+            </div>
+          </div>
+        );
+        const SectionTitle = ({ icon, title, color }) => (
+          <div className="row" style={{gap:9, marginBottom:14}}>
+            <span style={{width:32, height:32, borderRadius:9, display:'inline-flex', alignItems:'center', justifyContent:'center', color, background:'var(--bg-subtle)', flex:'0 0 auto'}}>
+              <span style={{width:19, height:19, display:'inline-flex'}}>{icon}</span>
+            </span>
+            <strong style={{fontSize:13, color:'var(--fg)'}}>{title}</strong>
+          </div>
+        );
+        return (
+          <>
+            <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
+            <div className="side-panel" style={{width:'min(680px,96vw)'}}>
+              <div className="side-panel-head" style={{alignItems:'flex-start', flexDirection:'column', gap:10}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', width:'100%'}}>
+                  <div style={{minWidth:0}}>
+                    <div className="eyebrow">Ficha de lead</div>
+                    <div className="font-display" style={{fontSize:24, fontWeight:800, marginTop:4, lineHeight:1.15}}>{sel.nombre || 'Lead sin nombre'}</div>
+                    <div className="row" style={{gap:8, marginTop:10, flexWrap:'wrap'}}>
+                      <span className={'badge '+estadoBadge} style={{textTransform:'capitalize'}}>{(sel.estado || 'nuevo').replace('_',' ')}</span>
+                      <span className={'badge '+urgenciaBadge} style={{textTransform:'capitalize'}}>Urgencia {sel.urgencia || 'media'}</span>
+                      <span className={'badge '+diasBadge}>{diasSinActividad}d sin actividad</span>
+                    </div>
+                  </div>
+                  <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
+                </div>
+                {['nuevo', 'en_contacto'].includes(sel.estado) && (
+                  <div style={{width:'100%', padding:'8px 12px', background:'var(--orange-lt)', color:'var(--orange-dk)', borderRadius:8, fontSize:12, fontWeight:500, border:'1px solid rgba(255,152,0,0.3)', lineHeight:1.45}}>
+                    Avanza el lead por el tablero hasta <strong>Calificado</strong> antes de convertirlo.
+                  </div>
+                )}
+              </div>
+              <div className="side-panel-body" style={{padding:0}}>
+                {(({ score, label, color, bgLight, criterios }) => (
+                  <div style={{padding:'16px 22px 18px', borderBottom:'1px solid var(--border)', background:bgLight}}>
+                    <div style={{display:'flex', alignItems:'center', gap:16, marginBottom:14}}>
+                      <div style={{flex:1}}>
+                        <div style={{display:'flex', alignItems:'baseline', gap:8, marginBottom:8}}>
+                          <span style={{fontSize:30, fontWeight:900, color, fontFamily:'Sora,sans-serif', lineHeight:1}}>{score}</span>
+                          <span style={{fontSize:12, color:'var(--fg-muted)'}}>/ 100</span>
+                          <span style={{fontSize:11, fontWeight:700, color, padding:'2px 10px', borderRadius:99, border:`1px solid ${color}`}}>{label}</span>
+                        </div>
+                        <div style={{height:6, borderRadius:99, background:'var(--border)', overflow:'hidden'}}>
+                          <div style={{width:`${score}%`, height:'100%', borderRadius:99, background:color, transition:'width 0.4s'}}/>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'5px 20px'}}>
+                      {criterios.map((c, i) => (
+                        <div key={i} style={{display:'flex', alignItems:'center', gap:6}}>
+                          <span style={{
+                            width:14, height:14, flex:'0 0 14px', display:'inline-flex', alignItems:'center', justifyContent:'center',
+                            color: c.estado === 'suma' ? 'var(--green)' : c.estado === 'resta' ? 'var(--danger)' : 'var(--fg-muted)'
+                          }}>
+                            {c.estado === 'suma' ? I.check : c.estado === 'resta' ? I.x : <span style={{fontSize:14, lineHeight:1}}>–</span>}
+                          </span>
+                          <span style={{fontSize:10.5, lineHeight:1.3, color: c.estado === 'neutro' ? 'var(--fg-muted)' : 'var(--fg)'}}>
+                            {c.text}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))(calcularScoreLead(sel))}
+
+                <div style={{padding:'0 22px', borderBottom:'1px solid var(--border)', display:'flex', gap:4}}>
+                  {[['detalles','Detalles'],['timeline','Timeline']].map(([k,lbl]) => (
+                    <button key={k} onClick={() => setFichaTab(k)} style={{padding:'10px 14px', fontSize:12, fontWeight:fichaTab===k?700:500, color:fichaTab===k?'var(--cyan)':'var(--fg-muted)', background:'none', border:'none', borderBottom:fichaTab===k?'2px solid var(--cyan)':'2px solid transparent', cursor:'pointer', marginBottom:-1}}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+
+                {fichaTab === 'detalles' && <>
+                <div style={{padding:'20px 22px 22px', background:'linear-gradient(135deg, rgba(6,182,212,0.10), rgba(26,43,74,0.04))', borderBottom:'1px solid var(--border)'}}>
+                  <div style={{display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:16, alignItems:'stretch'}}>
+                    <div style={{padding:18, border:'1px solid var(--border)', borderRadius:10, background:'var(--surface)', boxShadow:'var(--shadow-sm)'}}>
+                      <div className="eyebrow" style={{marginBottom:8}}>Empresa objetivo</div>
+                      <div style={{fontSize:20, fontWeight:800, color:'var(--navy)', lineHeight:1.15}}>{sel.empresa_contacto || 'Empresa pendiente'}</div>
+                      <div className="text-muted" style={{fontSize:12, marginTop:8}}>{sel.razon_social || 'Sin razon social legal'}{sel.ruc ? ` · RUC ${sel.ruc}` : ''}</div>
+                    </div>
+                    <div style={{padding:18, border:'1px solid var(--border)', borderRadius:10, background:'var(--surface)', boxShadow:'var(--shadow-sm)'}}>
+                      <div className="eyebrow" style={{marginBottom:8}}>Potencial</div>
+                      <div className="font-display" style={{fontSize:24, fontWeight:800, color:'var(--navy)'}}>{moneyCurrency(sel.presupuesto_estimado, sel.moneda)}</div>
+                      <div className="text-muted" style={{fontSize:12, marginTop:8}}>{sel.moneda || 'PEN'} · {sel.fuente || 'Fuente pendiente'}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{padding:22, display:'grid', gap:18}}>
+                  <div style={{display:'grid', gridTemplateColumns:'repeat(2, minmax(0, 1fr))', gap:14}}>
+                    <div style={{border:'1px solid var(--border)', borderRadius:10, padding:16, background:'var(--surface)'}}>
+                      <SectionTitle icon={I.building} title="Empresa" color="var(--cyan)" />
+                      <div style={{display:'grid', gap:13}}>
+                        <Field label="Nombre comercial" value={sel.empresa_contacto} strong />
+                        <Field label="Razon social legal" value={sel.razon_social} />
+                        <Field label="RUC" value={sel.ruc} />
+                        <Field label="Industria" value={sel.industria} />
+                      </div>
+                    </div>
+                    <div style={{border:'1px solid var(--border)', borderRadius:10, padding:16, background:'var(--surface)'}}>
+                      <SectionTitle icon={I.users} title="Contacto" color="var(--purple)" />
+                      <div style={{display:'grid', gap:13}}>
+                        <Field label="Nombre" value={sel.nombre} strong />
+                        <Field label="Cargo" value={sel.cargo} />
+                        <Field label="Telefono" value={sel.telefono} />
+                        <Field label="Email" value={sel.email} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{border:'1px solid var(--border)', borderRadius:10, padding:16, background:'var(--surface)'}}>
+                    <SectionTitle icon={I.target} title="Oportunidad" color="var(--orange)" />
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:14, marginBottom:14}}>
+                      <Field label="Presupuesto estimado" value={moneyCurrency(sel.presupuesto_estimado, sel.moneda)} strong />
+                      <Field label="Urgencia" value={sel.urgencia} />
+                      <Field label="Dias sin actividad" value={`${diasSinActividad} dias`} strong />
+                    </div>
+                    <div style={{padding:'12px 14px', background:'var(--bg-subtle)', borderRadius:8, fontSize:13, lineHeight:1.5, minHeight:56}}>
+                      {sel.necesidad || 'Sin necesidad registrada.'}
+                    </div>
+                  </div>
+
+                  <div style={{border:'1px solid var(--border)', borderRadius:10, padding:16, background:'var(--surface)'}}>
+                    <SectionTitle icon={I.clipboard} title="Asignacion y origen" color="var(--green)" />
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:14}}>
+                      <Field label="Responsable comercial" value={sel.responsable} strong />
+                      <Field label="Fuente" value={sel.fuente} />
+                      <Field label="Registrado desde" value={sel.registrado_desde} />
+                      <Field label="Fecha de creacion" value={sel.fecha_creacion} />
+                      <Field label="Campana" value={campanaNombre} />
+                      <Field label="ID lead" value={sel.id} />
+                    </div>
+                  </div>
+
+                  {sel.motivo_descarte && (
+                    <div style={{border:'1px solid rgba(239,68,68,0.28)', borderRadius:10, padding:16, background:'rgba(239,68,68,0.06)'}}>
+                      <div className="eyebrow" style={{marginBottom:6}}>Motivo de descarte</div>
+                      <div style={{fontSize:13, color:'var(--danger)', lineHeight:1.45}}>{sel.motivo_descarte}</div>
+                    </div>
+                  )}
+
+                  {!['convertido', 'descartado'].includes(sel.estado) && (
+                    <div className="row" style={{gap:10, justifyContent:'flex-end', paddingTop:4, flexWrap:'wrap'}}>
+                      {sel.estado === 'calificado' && (
+                        <button className="btn btn-primary" style={{minWidth:160}} onClick={() => { setModalConvertir(sel); setSel(null); }}>{I.check} Convertir</button>
+                      )}
+                      <button className="btn btn-secondary" onClick={() => navigate('actividades')}>Registrar Actividad</button>
+                      <button className="btn btn-secondary" onClick={() => abrirEditarLead(sel)}>{I.edit} Editar</button>
+                      <button className="btn btn-ghost" onClick={() => { abrirMoverModal(sel, 'descartado'); setSel(null); }}>Descartar</button>
+                      {sel.estado === 'nuevo' && (
+                        <button className="btn btn-ghost" style={{color:'var(--danger)'}} onClick={() => setModalEliminarLead(sel)}>{I.trash} Eliminar</button>
+                      )}
+                    </div>
+                  )}
+                  {sel.estado === 'descartado' && (
+                    <div className="row" style={{gap:10, justifyContent:'flex-end', paddingTop:4}}>
+                      <button className="btn btn-primary" onClick={() => setModalReactivar(sel)}>{I.refresh} Reactivar lead</button>
+                    </div>
+                  )}
+                </div>
+                </>}
+
+                {fichaTab === 'timeline' && (() => {
+                  const hoyD = new Date(); hoyD.setHours(0,0,0,0);
+                  const hace1 = new Date(hoyD.getTime() - 86400000);
+                  const fmtISO = d => d.toISOString().split('T')[0];
+
+                  const actividadesLead = (actividades || []).filter(a => a.lead_id === sel.id).map(a => ({
+                    id: a.id, tipo: 'actividad',
+                    fecha: a.fecha || fmtISO(hoyD),
+                    titulo: `${a.tipo ? a.tipo.charAt(0).toUpperCase() + a.tipo.slice(1) : 'Actividad'}: ${(a.titulo || a.descripcion || 'Sin título').slice(0, 50)}`,
+                    descripcion: a.resultado || a.descripcion || '',
+                    usuario: a.responsable || a.vendedor || sel.responsable || '—',
+                    modulo: 'actividades',
+                  }));
+
+                  const historialLead = (historialEstados || [])
+                    .filter(h => h.lead_id === sel.id)
+                    .map(h => {
+                      const esReactivacion = h.estado_desde === 'descartado' && h.estado_hasta === 'en_contacto';
+                      return {
+                        id: h.id,
+                        tipo: esReactivacion ? 'reactivacion' : 'estado',
+                        fecha: h.creado_en?.split('T')[0] || fmtISO(hoyD),
+                        ts: h.creado_en || null,
+                        titulo: esReactivacion
+                          ? 'Lead reactivado'
+                          : `Estado: ${(h.estado_desde || '').replace('_',' ')} → ${(h.estado_hasta || '').replace('_',' ')}`,
+                        descripcion: h.motivo || '',
+                        usuario: sel.responsable || '—',
+                      };
+                    });
+
+                  const eventos = [
+                    { id: `${sel.id}_crea`, tipo: 'creacion', fecha: sel.fecha_creacion || fmtISO(hoyD),
+                      titulo: 'Lead registrado',
+                      descripcion: `Origen: ${sel.fuente || 'Manual'} · Registrado desde: ${sel.registrado_desde || 'backoffice'}`,
+                      usuario: sel.responsable || 'Sistema' },
+                    ...(sel.convertido ? [{ id: `${sel.id}_conv`, tipo: 'conversion', fecha: sel.fecha_creacion || fmtISO(hoyD),
+                      titulo: 'Lead convertido a oportunidad',
+                      descripcion: 'Cuenta y oportunidad creadas correctamente.',
+                      usuario: sel.responsable || 'Sistema',
+                      modulo: 'pipeline' }] : []),
+                    ...actividadesLead,
+                    ...historialLead,
+                  ];
+
+                  const tipoConfig = {
+                    creacion:     { color: 'var(--cyan)',   icon: I.plus,      bg: 'rgba(6,182,212,0.12)' },
+                    estado:       { color: '#64748b',       icon: I.arrowUp,   bg: 'rgba(100,116,139,0.12)' },
+                    reactivacion: { color: 'var(--orange)', icon: I.refresh,   bg: 'rgba(249,115,22,0.12)' },
+                    actividad:    { color: 'var(--navy)',   icon: I.clipboard, bg: 'rgba(26,43,74,0.12)' },
+                    conversion:   { color: 'var(--green)',  icon: I.check,     bg: 'rgba(16,185,129,0.12)' },
+                  };
+
+                  let filtrados = eventos.filter(ev => {
+                    if (tlFiltroTipo === 'estados' && !['estado', 'reactivacion'].includes(ev.tipo)) return false;
+                    if (tlFiltroTipo === 'actividades' && ev.tipo !== 'actividad') return false;
+                    if (tlFiltroDesde && ev.fecha < tlFiltroDesde) return false;
+                    if (tlFiltroHasta && ev.fecha > tlFiltroHasta) return false;
+                    return true;
+                  });
+                  filtrados = [...filtrados].sort((a, b) => {
+                    const ta = a.ts || a.fecha;
+                    const tb = b.ts || b.fecha;
+                    return tb.localeCompare(ta);
+                  });
+
+                  const fmtLabel = fechaStr => {
+                    if (fechaStr === fmtISO(hoyD)) return 'Hoy';
+                    if (fechaStr === fmtISO(hace1)) return 'Ayer';
+                    const d = new Date(fechaStr + 'T12:00:00');
+                    return d.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                  };
+
+                  const grupos = [];
+                  filtrados.forEach(ev => {
+                    const lbl = fmtLabel(ev.fecha);
+                    if (!grupos.length || grupos[grupos.length - 1].label !== lbl) grupos.push({ label: lbl, eventos: [] });
+                    grupos[grupos.length - 1].eventos.push(ev);
+                  });
+
+                  return (
+                    <div style={{padding: '14px 22px 28px'}}>
+                      <div style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap'}}>
+                        <select className="input" value={tlFiltroTipo} onChange={e => setTlFiltroTipo(e.target.value)} style={{fontSize: 12, padding: '4px 8px', height: 'auto', width: 'auto', minWidth: 140}}>
+                          <option value="todos">Todos los eventos</option>
+                          <option value="estados">Solo estados</option>
+                          <option value="actividades">Solo actividades</option>
+                        </select>
+                        <input type="date" className="input" value={tlFiltroDesde} onChange={e => setTlFiltroDesde(e.target.value)} style={{fontSize: 12, padding: '4px 8px', height: 'auto', width: 'auto'}}/>
+                        <input type="date" className="input" value={tlFiltroHasta} onChange={e => setTlFiltroHasta(e.target.value)} style={{fontSize: 12, padding: '4px 8px', height: 'auto', width: 'auto'}}/>
+                        {(tlFiltroTipo !== 'todos' || tlFiltroDesde || tlFiltroHasta) && (
+                          <button className="btn btn-ghost" style={{fontSize: 11, padding: '4px 10px', height: 'auto'}} onClick={() => { setTlFiltroTipo('todos'); setTlFiltroDesde(''); setTlFiltroHasta(''); }}>
+                            Limpiar
+                          </button>
+                        )}
+                      </div>
+
+                      {filtrados.length === 0 ? (
+                        <div style={{textAlign: 'center', padding: '32px 0', color: 'var(--fg-muted)', fontSize: 13}}>
+                          Sin actividad registrada para este lead.
+                        </div>
+                      ) : grupos.map((g, gi) => (
+                        <div key={gi}>
+                          <div style={{display: 'flex', alignItems: 'center', gap: 10, margin: `${gi === 0 ? 0 : 8}px 0 14px`}}>
+                            <div style={{flex: 1, height: 1, background: 'var(--border)'}}/>
+                            <span style={{fontSize: 10, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap'}}>{g.label}</span>
+                            <div style={{flex: 1, height: 1, background: 'var(--border)'}}/>
+                          </div>
+                          {g.eventos.map((ev, ei) => {
+                            const cfg = tipoConfig[ev.tipo] || tipoConfig.estado;
+                            const isLast = gi === grupos.length - 1 && ei === g.eventos.length - 1;
+                            return (
+                              <div key={ev.id} style={{display: 'flex', gap: 12, alignItems: 'flex-start'}}>
+                                <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', width: 32, flex: '0 0 32px'}}>
+                                  <div style={{width: 30, height: 30, borderRadius: 99, background: cfg.bg, border: `1.5px solid ${cfg.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: cfg.color, flex: '0 0 30px'}}>
+                                    <span style={{width: 13, height: 13, display: 'inline-flex'}}>{cfg.icon}</span>
+                                  </div>
+                                  {!isLast && <div style={{width: 2, flex: 1, background: 'var(--border)', marginTop: 4, minHeight: 20}}/>}
+                                </div>
+                                <div style={{flex: 1, paddingBottom: isLast ? 0 : 20}}>
+                                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 3}}>
+                                    <div style={{fontWeight: 700, fontSize: 12.5, color: 'var(--fg)', lineHeight: 1.35}}>{ev.titulo}</div>
+                                    <div style={{fontSize: 10.5, color: 'var(--fg-muted)', flexShrink: 0}}>{ev.fecha}</div>
+                                  </div>
+                                  {ev.descripcion && <div style={{fontSize: 11.5, color: 'var(--fg-muted)', lineHeight: 1.5, marginBottom: 5}}>{ev.descripcion}</div>}
+                                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                    <div style={{fontSize: 11, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 4}}>
+                                      <span style={{width: 11, height: 11, display: 'inline-flex', opacity: 0.6}}>{I.users}</span>
+                                      {ev.usuario}
+                                    </div>
+                                    {ev.modulo && (
+                                      <button className="btn btn-ghost" style={{fontSize: 10.5, padding: '2px 8px', height: 'auto', lineHeight: 1.4}} onClick={() => navigate(ev.modulo)}>
+                                        Ver en módulo →
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
+      {false && sel && (
         <>
           <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
           <div className="side-panel">
@@ -564,7 +1105,19 @@ function Leads() {
                 <div><div className="eyebrow">Necesidad</div><div>{sel.necesidad}</div></div>
                 <div><div className="eyebrow">Presupuesto Estimado</div><div style={{fontFamily:'Sora', fontWeight:700}}>{money(sel.presupuesto_estimado)}</div></div>
                 <div><div className="eyebrow">Responsable</div><div>{sel.responsable}</div></div>
+                <div><div className="eyebrow">Días sin actividad</div><div style={{fontFamily:'Sora', fontWeight:700}}>{Number(sel.dias_sin_actividad || 0)} días</div></div>
                 <div><div className="eyebrow">Estado</div><div style={{textTransform:'capitalize'}}>{sel.estado.replace('_',' ')}</div></div>
+                {(sel.campana_id || sel.campana) && (
+                  <div>
+                    <div className="eyebrow">Campaña</div>
+                    <div style={{fontSize:13}}>
+                      {sel.campana_id
+                        ? (campanas.find(c => c.id === sel.campana_id)?.nombre || sel.campana_id)
+                        : <span>{sel.campana} <span className="text-muted" style={{fontSize:11}}>(sin vincular)</span></span>
+                      }
+                    </div>
+                  </div>
+                )}
                 {sel.motivo_descarte && <div><div className="eyebrow">Motivo Descarte</div><div className="text-muted">{sel.motivo_descarte}</div></div>}
               </div>
 
@@ -572,7 +1125,9 @@ function Leads() {
                 <div className="row mt-6" style={{gap:10}}>
                   <button className="btn btn-primary flex-1" onClick={() => { setModalConvertir(sel); setSel(null); }}>{I.check} Convertir</button>
                   <button className="btn btn-secondary" onClick={() => navigate('actividades')}>Registrar Actividad</button>
+                  <button className="btn btn-secondary" onClick={() => abrirEditarLead(sel)}>{I.edit} Editar</button>
                   <button className="btn btn-ghost" onClick={() => { setModalDescartar(sel); setSel(null); }}>Descartar</button>
+                  <button className="icon-btn" title="Eliminar lead" style={{color:'var(--danger)'}} onClick={() => confirmarEliminarLead(sel)}>{I.trash}</button>
                 </div>
               )}
             </div>
@@ -580,75 +1135,261 @@ function Leads() {
         </>
       )}
 
-      {modalConvertir && (
-        <div className="modal-backdrop">
-          <div className="modal" style={{maxWidth:560}}>
-            <div className="modal-head">
-              <h2>Convertir Lead en Oportunidad</h2>
-              <button className="icon-btn" onClick={() => setModalConvertir(null)}>{I.x}</button>
+      {modalConvertir && convForm && (() => {
+        const rucError = !isValidRuc(convForm.ruc) || !convForm.ruc;
+        const telError = !isValidPhone(convForm.contacto_telefono) || !convForm.contacto_telefono;
+        const canSubmit =
+          convForm.nombre_comercial.trim() &&
+          convForm.razon_social.trim() &&
+          convForm.ruc && isValidRuc(convForm.ruc) &&
+          convForm.fuente &&
+          convForm.industria &&
+          convForm.contacto_nombre.trim() &&
+          convForm.contacto_cargo.trim() &&
+          convForm.contacto_telefono && isValidPhone(convForm.contacto_telefono) &&
+          convForm.contacto_email.trim() &&
+          convForm.nombre_oportunidad.trim() &&
+          String(convForm.monto_estimado).trim();
+        const req = <span style={{color:'var(--danger)',marginLeft:2}}>*</span>;
+        const secStyle = {background:'var(--bg-subtle,rgba(0,0,0,0.025))', borderRadius:10, padding:'14px 16px'};
+        const emptyStyle = (val) => (!val || !String(val).trim()) ? {borderColor:'var(--danger)'} : {};
+        return (
+          <div className="modal-backdrop">
+            <div className="modal" style={{maxWidth:640, maxHeight:'90vh', overflowY:'auto'}}>
+              <div className="modal-head">
+                <h2>Convertir Lead en Oportunidad</h2>
+                <button className="icon-btn" onClick={() => setModalConvertir(null)}>{I.x}</button>
+              </div>
+              <div className="modal-body col" style={{gap:16}}>
+
+                <div style={secStyle}>
+                  <div className="eyebrow" style={{marginBottom:10}}>Cuenta</div>
+                  <div className="col" style={{gap:10}}>
+                    <div className="grid-2">
+                      <div className="input-group">
+                        <label>Nombre Comercial{req}</label>
+                        <input className="input" value={convForm.nombre_comercial}
+                          style={emptyStyle(convForm.nombre_comercial)}
+                          onChange={e=>setConvForm(p=>({...p,nombre_comercial:e.target.value}))} autoFocus/>
+                      </div>
+                      <div className="input-group">
+                        <label>Razón Social{req}</label>
+                        <input className="input" value={convForm.razon_social}
+                          style={emptyStyle(convForm.razon_social)}
+                          onChange={e=>setConvForm(p=>({...p,razon_social:e.target.value}))}/>
+                      </div>
+                    </div>
+                    <div className="grid-2">
+                      <div className="input-group">
+                        <label>RUC{req} <span className="text-subtle" style={{fontWeight:400,fontSize:11}}>(11 dígitos, inicia en 1 o 2)</span></label>
+                        <input className="input" value={convForm.ruc} maxLength={11}
+                          style={rucError ? {borderColor:'var(--danger)'} : {}}
+                          onChange={e=>setConvForm(p=>({...p,ruc:sanitizeRuc(e.target.value)}))}/>
+                        {rucError && <span style={{fontSize:11,color:'var(--danger)'}}>11 dígitos, inicia con 1 o 2</span>}
+                      </div>
+                      <div className="input-group">
+                        <label>Fuente{req}</label>
+                        <select className="select" value={convForm.fuente}
+                          style={!convForm.fuente ? {borderColor:'var(--danger)'} : {}}
+                          onChange={e=>setConvForm(p=>({...p,fuente:e.target.value}))}>
+                          <option value="">Seleccionar...</option>
+                          {['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].map(f=><option key={f}>{f}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="input-group">
+                      <label>Industria{req}</label>
+                      <select className="select" value={convForm.industria}
+                        style={!convForm.industria ? {borderColor:'var(--danger)'} : {}}
+                        onChange={e=>setConvForm(p=>({...p,industria:e.target.value}))}>
+                        <option value="">Seleccionar...</option>
+                        {opcionesIndustria.map(i=><option key={i}>{i}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={secStyle}>
+                  <div className="eyebrow" style={{marginBottom:10}}>Contacto</div>
+                  <div className="col" style={{gap:10}}>
+                    <div className="grid-2">
+                      <div className="input-group">
+                        <label>Nombre{req}</label>
+                        <input className="input" value={convForm.contacto_nombre}
+                          style={emptyStyle(convForm.contacto_nombre)}
+                          onChange={e=>setConvForm(p=>({...p,contacto_nombre:e.target.value}))}/>
+                      </div>
+                      <div className="input-group">
+                        <label>Cargo{req}</label>
+                        <input className="input" value={convForm.contacto_cargo}
+                          style={emptyStyle(convForm.contacto_cargo)}
+                          onChange={e=>setConvForm(p=>({...p,contacto_cargo:e.target.value}))}/>
+                      </div>
+                    </div>
+                    <div className="grid-2">
+                      <div className="input-group">
+                        <label>Celular{req} <span className="text-subtle" style={{fontWeight:400,fontSize:11}}>(9 dígitos, inicia en 9)</span></label>
+                        <input className="input" value={convForm.contacto_telefono} maxLength={9}
+                          style={telError ? {borderColor:'var(--danger)'} : {}}
+                          onChange={e=>setConvForm(p=>({...p,contacto_telefono:sanitizePhone(e.target.value)}))}/>
+                        {telError && <span style={{fontSize:11,color:'var(--danger)'}}>9 dígitos, inicia con 9</span>}
+                      </div>
+                      <div className="input-group">
+                        <label>Email{req}</label>
+                        <input className="input" type="email" value={convForm.contacto_email}
+                          style={emptyStyle(convForm.contacto_email)}
+                          onChange={e=>setConvForm(p=>({...p,contacto_email:e.target.value}))}/>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={secStyle}>
+                  <div className="eyebrow" style={{marginBottom:10}}>Oportunidad</div>
+                  <div className="col" style={{gap:10}}>
+                    <div className="input-group">
+                      <label>Nombre de la Oportunidad{req}</label>
+                      <input className="input" value={convForm.nombre_oportunidad}
+                        style={emptyStyle(convForm.nombre_oportunidad)}
+                        onChange={e=>setConvForm(p=>({...p,nombre_oportunidad:e.target.value}))}/>
+                    </div>
+                    <div className="grid-2">
+                      <div className="input-group">
+                        <label>Monto Estimado{req}</label>
+                        <input className="input" type="number" value={convForm.monto_estimado}
+                          style={!String(convForm.monto_estimado).trim() ? {borderColor:'var(--danger)'} : {}}
+                          onChange={e=>setConvForm(p=>({...p,monto_estimado:e.target.value}))}/>
+                      </div>
+                      <div className="input-group">
+                        <label>Moneda</label>
+                        <select className="select" value={convForm.moneda} onChange={e=>setConvForm(p=>({...p,moneda:e.target.value}))}>
+                          {MONEDAS.map(m=><option key={m}>{m}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="input-group" style={{maxWidth:260}}>
+                      <label>Etapa Inicial</label>
+                      <select className="select" value={convForm.etapa_inicial} onChange={e=>setConvForm(p=>({...p,etapa_inicial:e.target.value}))}>
+                        <option value="calificacion">Calificación</option>
+                        <option value="prospeccion">Prospección</option>
+                        <option value="propuesta">Propuesta</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="modal-foot" style={{flexDirection:'column', alignItems:'flex-end', gap:8}}>
+                  {!canSubmit && <span style={{fontSize:11,color:'var(--danger)'}}>Completa todos los campos obligatorios (*)</span>}
+                  <div className="row" style={{gap:10}}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setModalConvertir(null)}>Cancelar</button>
+                    <button type="button" className="btn btn-primary" data-local-form="true" disabled={!canSubmit} onClick={() => {
+                      convertirLead(modalConvertir.id, convForm);
+                      setModalConvertir(null);
+                    }}>{I.check} Convertir y crear cuenta</button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <form className="modal-body col" style={{gap:16}} onSubmit={(e) => {
-              e.preventDefault();
-              const fd = new FormData(e.target);
-              convertirLead(modalConvertir.id, Object.fromEntries(fd));
-              setModalConvertir(null);
-            }}>
-              <div style={{padding:'10px 14px', background:'rgba(6,182,212,0.07)', borderRadius:8, border:'1px solid var(--border)', fontSize:13}}>
-                <div className="text-muted" style={{marginBottom:6, fontWeight:600}}>Datos del lead (pre-cargados)</div>
-                <div className="grid-2" style={{gap:'4px 16px'}}>
-                  <div><span className="text-muted">Empresa: </span><strong>{modalConvertir.empresa_contacto}</strong></div>
-                  <div><span className="text-muted">RUC: </span>{modalConvertir.ruc || <span className="text-subtle">—</span>}</div>
-                  <div><span className="text-muted">Contacto: </span>{modalConvertir.nombre}</div>
-                  <div><span className="text-muted">Industria: </span>{modalConvertir.industria || <span className="text-subtle">—</span>}</div>
-                </div>
-                <div className="text-subtle" style={{fontSize:11, marginTop:6}}>Estos datos se copiarán automáticamente a la Cuenta y al Contacto.</div>
+          </div>
+        );
+      })()}
+
+      {modalMoverLead && (() => {
+        const cfgMap = {
+          en_contacto: { titulo: 'Primer contacto', placeholder: '¿Cómo fue el primer contacto? ¿Llamada, visita, email?' },
+          calificado:  { titulo: 'Calificar lead', placeholder: '¿Por qué califica este lead? ¿Confirmaste necesidad, presupuesto y decisión?' },
+          descartado:  { titulo: 'Descartar lead', placeholder: '¿Por qué se descarta este lead?' },
+          nuevo:       { titulo: 'Regresar a Nuevo', placeholder: '¿Por qué regresa a Nuevo este lead?' },
+        };
+        const cfg = cfgMap[modalMoverLead.destino] || { titulo: 'Cambiar estado', placeholder: 'Escribe el motivo...' };
+        return (
+          <div className="modal-backdrop">
+            <div className="modal" style={{maxWidth:420}}>
+              <div className="modal-head">
+                <h2 style={{color:'var(--navy)'}}>{cfg.titulo}</h2>
+                <button className="icon-btn" onClick={() => setModalMoverLead(null)}>{I.x}</button>
               </div>
-              <div className="input-group">
-                <label>Nombre de la Oportunidad</label>
-                <input name="nombre_oportunidad" className="input" defaultValue={`${modalConvertir.necesidad?.slice(0,50) || 'Venta'} — ${modalConvertir.empresa_contacto}`} required autoFocus/>
-              </div>
-              <div className="grid-2">
+              <div className="modal-body col" style={{gap:12}}>
                 <div className="input-group">
-                  <label>Monto Estimado</label>
-                  <input name="monto_estimado" type="number" className="input" defaultValue={modalConvertir.presupuesto_estimado} required/>
-                </div>
-                <div className="input-group">
-                  <label>Etapa Inicial</label>
-                  <select name="etapa_inicial" className="select" defaultValue="calificacion">
-                    <option value="calificacion">Calificación</option>
-                    <option value="prospeccion">Prospección</option>
-                    <option value="propuesta">Propuesta</option>
-                  </select>
+                  <textarea className="input" rows={2} placeholder={cfg.placeholder} value={moverMotivo}
+                    onChange={e => { setMoverMotivo(e.target.value); setMoverError(false); }}
+                    style={moverError ? {borderColor:'var(--danger)'} : {}} autoFocus />
+                  {moverError && <div style={{fontSize:12, color:'var(--danger)', marginTop:4}}>El motivo es obligatorio.</div>}
                 </div>
               </div>
-              <div className="modal-foot mt-4">
-                <button type="button" className="btn btn-secondary" onClick={() => setModalConvertir(null)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary">{I.check} Convertir y crear cuenta</button>
+              <div className="modal-foot">
+                <button className="btn btn-secondary" onClick={() => setModalMoverLead(null)}>Cancelar</button>
+                <button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}}
+                  onClick={() => {
+                    if (!moverMotivo.trim()) { setMoverError(true); return; }
+                    const { lead, destino } = modalMoverLead;
+                    if (destino === 'descartado') {
+                      descartarLead(lead.id, moverMotivo.trim());
+                    } else {
+                      updateLeadState(lead.id, destino, moverMotivo.trim());
+                    }
+                    setModalMoverLead(null);
+                    setMoverMotivo('');
+                    setMoverError(false);
+                  }}>
+                  Confirmar movimiento
+                </button>
               </div>
-            </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {modalEliminarLead && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:420}}>
+            <div className="modal-head">
+              <h2>Eliminar lead</h2>
+              <button className="icon-btn" onClick={() => setModalEliminarLead(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body">
+              <p>¿Eliminar este lead? Esta acción no se puede deshacer. Si el lead ya tuvo contacto, usa <strong>Descartar</strong> en su lugar.</p>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-secondary" onClick={() => setModalEliminarLead(null)}>Cancelar</button>
+              <button className="btn btn-primary" style={{background:'var(--danger)', borderColor:'var(--danger)'}} onClick={async () => {
+                await eliminarLead(modalEliminarLead.id);
+                if (sel?.id === modalEliminarLead.id) setSel(null);
+                setModalEliminarLead(null);
+              }}>{I.trash} Eliminar definitivamente</button>
+            </div>
           </div>
         </div>
       )}
 
-      {modalDescartar && (
+      {kanbanToast && (
+        <div style={{position:'fixed', bottom:32, left:'50%', transform:'translateX(-50%)', zIndex:9999, background:'var(--navy)', color:'#fff', padding:'12px 20px', borderRadius:10, fontSize:13, fontWeight:500, boxShadow:'0 4px 20px rgba(0,0,0,0.25)', display:'flex', alignItems:'center', gap:10, maxWidth:420, lineHeight:1.4, pointerEvents:'none'}}>
+          <span style={{width:18, height:18, flex:'0 0 18px', display:'inline-flex', color:'var(--orange)'}}>{I.alert}</span>
+          {kanbanToast}
+        </div>
+      )}
+
+      {modalReactivar && (
         <div className="modal-backdrop">
-          <div className="modal" style={{maxWidth:400}}>
+          <div className="modal" style={{maxWidth:440}}>
             <div className="modal-head">
-              <h2>Descartar Lead</h2>
-              <button className="icon-btn" onClick={() => setModalDescartar(null)}>{I.x}</button>
+              <h2>Reactivar lead</h2>
+              <button className="icon-btn" onClick={() => setModalReactivar(null)}>{I.x}</button>
             </div>
             <form className="modal-body col" style={{gap:16}} onSubmit={(e) => {
               e.preventDefault();
-              descartarLead(modalDescartar.id, new FormData(e.target).get('motivo'));
-              setModalDescartar(null);
+              const motivo = new FormData(e.target).get('motivo');
+              reactivarLead(modalReactivar.id, motivo);
+              setSel(null);
+              setModalReactivar(null);
             }}>
               <div className="input-group">
-                <label>Motivo del descarte</label>
-                <textarea name="motivo" className="input" required rows="3"></textarea>
+                <label>¿Qué cambió? ¿Por qué se reactiva este lead? *</label>
+                <textarea name="motivo" className="input" required rows="4" placeholder="Describe qué nueva información o cambio de situación justifica retomar este lead..."></textarea>
               </div>
-              <div className="modal-foot mt-4">
-                <button type="button" className="btn btn-secondary" onClick={() => setModalDescartar(null)}>Cancelar</button>
-                <button type="submit" className="btn btn-danger">Descartar</button>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-secondary" onClick={() => setModalReactivar(null)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary">{I.refresh} Reactivar</button>
               </div>
             </form>
           </div>
@@ -656,14 +1397,14 @@ function Leads() {
       )}
 
       {panelNuevo && <>
-        <div className="side-panel-backdrop" onClick={() => { setPanelNuevo(false); setFormNuevo(formNuevoBase); setErrores({}); }}/>
+        <div className="side-panel-backdrop" onClick={cerrarPanelLead}/>
         <div className="side-panel" style={{width:'min(640px, 96vw)'}}>
           <div className="side-panel-head">
             <div>
               <div className="eyebrow">Registro de lead</div>
-              <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>Nuevo lead</div>
+              <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>{editandoLead ? 'Editar lead' : 'Nuevo lead'}</div>
             </div>
-            <button className="icon-btn" onClick={() => { setPanelNuevo(false); setFormNuevo(formNuevoBase); setErrores({}); }}>{I.x}</button>
+            <button className="icon-btn" onClick={cerrarPanelLead}>{I.x}</button>
           </div>
           <form className="side-panel-body" onSubmit={guardarLead}>
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Datos del contacto</div>
@@ -674,7 +1415,11 @@ function Leads() {
                 {errores.nombre && <span style={{fontSize:11,color:'var(--danger)'}}>Campo requerido</span>}
               </div>
               <div className="input-group"><label>Cargo</label><input className="input" value={formNuevo.cargo} onChange={e=>updateNuevo('cargo',e.target.value)} placeholder="Ej: Jefe de Mantenimiento"/></div>
-              <div className="input-group"><label>Teléfono</label><input className="input" value={formNuevo.telefono} onChange={e=>updateNuevo('telefono',e.target.value)} placeholder="+51 9xx xxx xxx"/></div>
+              <div className="input-group">
+                <label>Teléfono</label>
+                <input className={'input'+(errores.telefono?' border-danger':'')} type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formNuevo.telefono} onChange={e=>updateNuevo('telefono',sanitizePhone(e.target.value))} placeholder="9XXXXXXXX"/>
+                {errores.telefono && <span style={{fontSize:11,color:'var(--danger)'}}>{errores.telefono}</span>}
+              </div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email</label><input className="input" type="email" value={formNuevo.email} onChange={e=>updateNuevo('email',e.target.value)} placeholder="contacto@empresa.pe"/></div>
             </div>
 
@@ -688,7 +1433,7 @@ function Leads() {
               <div className="input-group"><label>Razón social legal</label><input className="input" value={formNuevo.razon_social} onChange={e=>updateNuevo('razon_social',e.target.value)} placeholder="Si difiere del nombre comercial"/></div>
               <div className="input-group">
                 <label>RUC <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>· 11 dígitos</span></label>
-                <input className={'input'+(errores.ruc?' border-danger':'')} value={formNuevo.ruc} onChange={e=>updateNuevo('ruc',e.target.value.replace(/\D/g,'').slice(0,11))} placeholder="20xxxxxxxxx" inputMode="numeric" maxLength={11}/>
+                <input className={'input'+(errores.ruc?' border-danger':'')} value={formNuevo.ruc} onChange={e=>updateNuevo('ruc',sanitizeRuc(e.target.value))} placeholder="20xxxxxxxxx" inputMode="numeric" pattern={RUC_PATTERN} maxLength={11}/>
                 {errores.ruc && <span style={{fontSize:11,color:'var(--danger)'}}>{errores.ruc}</span>}
               </div>
               <div className="input-group"><label>Industria</label><select className="select" value={formNuevo.industria} onChange={e=>updateNuevo('industria',e.target.value)}>
@@ -700,7 +1445,16 @@ function Leads() {
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Oportunidad</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Necesidad / Descripción</label><textarea className="input" rows={2} value={formNuevo.necesidad} onChange={e=>updateNuevo('necesidad',e.target.value)} placeholder="Ej: Mantenimiento de fajas transportadoras, 3 unidades con desgaste crítico"/></div>
-              <div className="input-group"><label>Presupuesto estimado (S/)</label><input className="input" type="number" value={formNuevo.presupuesto_estimado} onChange={e=>updateNuevo('presupuesto_estimado',e.target.value)} placeholder="0"/></div>
+              <div className="input-group">
+                <label>Presupuesto estimado</label>
+                <input className="input" type="number" min="0" step="0.01" value={formNuevo.presupuesto_estimado} onChange={e=>updateNuevo('presupuesto_estimado',e.target.value)} placeholder="0"/>
+              </div>
+              <div className="input-group">
+                <label>Moneda</label>
+                <select className="select" value={formNuevo.moneda} onChange={e=>updateNuevo('moneda',e.target.value)}>
+                  {MONEDAS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
               <div className="input-group"><label>Urgencia</label><select className="select" value={formNuevo.urgencia} onChange={e=>updateNuevo('urgencia',e.target.value)}>
                 <option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option>
               </select></div>
@@ -710,9 +1464,9 @@ function Leads() {
             <div className="grid-2" style={{gap:14, marginBottom:24}}>
               <div className="input-group">
                 <label>Responsable comercial *</label>
-                <select className={'select'+(errores.responsable?' border-danger':'')} value={formNuevo.responsable} onChange={e=>updateNuevo('responsable',e.target.value)}>
+                <select className={'select'+(errores.responsable?' border-danger':'')} value={formNuevo.responsable_id} onChange={e=>updateResponsableNuevo(e.target.value)}>
                   <option value="">Seleccionar...</option>
-                  {usuarios.filter(u=>u.rol_categoria?['comercial','admin'].includes(u.rol_categoria):(['comercial','admin'].includes(u.rol)||(u.rol_nombre||'').toLowerCase().includes('comercial'))).map(u=><option key={u.id} value={u.nombre}>{u.nombre}</option>)}
+                  {comercialesAsignables.map(u=><option key={u.id} value={u.id}>{u.nombre}</option>)}
                 </select>
                 {errores.responsable && <span style={{fontSize:11,color:'var(--danger)'}}>Campo requerido</span>}
               </div>
@@ -720,14 +1474,21 @@ function Leads() {
                 <option value="">Seleccionar...</option>
                 {['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].map(f=><option key={f}>{f}</option>)}
               </select></div>
+              <div className="input-group">
+                <label>Campaña de origen{loadingCampanasForm && <span className="text-muted" style={{fontWeight:400,marginLeft:6,fontSize:11}}>cargando…</span>}</label>
+                <select className="select" value={formNuevo.campana_id} onChange={e=>updateNuevo('campana_id',e.target.value)} disabled={loadingCampanasForm}>
+                  <option value="">Sin campaña (orgánico / referido)</option>
+                  {campanasForm.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+              </div>
               <div className="input-group"><label>Registrado desde</label><select className="select" value={formNuevo.registrado_desde} onChange={e=>updateNuevo('registrado_desde',e.target.value)}>
                 <option value="web">Web / CRM</option><option value="campo">Campo (app móvil)</option>
               </select></div>
             </div>
 
             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
-              <button type="button" className="btn btn-secondary" onClick={() => { setPanelNuevo(false); setFormNuevo(formNuevoBase); setErrores({}); }}>Cancelar</button>
-              <button type="submit" className="btn btn-primary">{I.plus} Registrar lead</button>
+              <button type="button" className="btn btn-secondary" onClick={cerrarPanelLead}>Cancelar</button>
+              <button type="submit" className="btn btn-primary">{editandoLead ? I.save : I.plus} {editandoLead ? 'Guardar cambios' : 'Registrar lead'}</button>
             </div>
           </form>
         </div>
@@ -740,12 +1501,56 @@ function Leads() {
 function Pipeline() {
   const {
     oportunidades, cuentas, actividades, agendaEventos, hojasCosteo, cotizaciones, osClientes,
-    crearAgendaEvento, actualizarEtapaOportunidad, marcarGanada, marcarPerdida, navigate, activeParams,
-    searchQuery
+    crearAgendaEvento, crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
+    navigate, activeParams, searchQuery, usuarios, roles, empresa
   } = useApp();
   const [view, setView] = useState('kanban');
   const [sel, setSel] = useState(null);
   const [agendaOpp, setAgendaOpp] = useState(null);
+  const [panelNuevaOpp, setPanelNuevaOpp] = useState(false);
+  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
+  const oppFormBase = {
+    nombre: '',
+    cuenta_id: '',
+    servicio_interes: '',
+    monto_estimado: '',
+    moneda: 'PEN',
+    responsable: '',
+    responsable_id: '',
+    fecha_cierre_estimada: '',
+    fuente: '',
+    notas: '',
+  };
+  const [oppForm, setOppForm] = useState(oppFormBase);
+  const updateOppForm = (field, value) => setOppForm(prev => ({ ...prev, [field]: value }));
+  const updateOppResponsable = (userId) => {
+    const user = comercialesAsignables.find(u => u.id === userId);
+    setOppForm(prev => ({ ...prev, responsable_id: user?.id || '', responsable: user?.nombre || '' }));
+  };
+  const cerrarNuevaOpp = () => {
+    setPanelNuevaOpp(false);
+    setOppForm(oppFormBase);
+  };
+  const guardarNuevaOpp = (event) => {
+    event.preventDefault();
+    crearOportunidad({
+      cuenta_id: oppForm.cuenta_id || cuentas[0]?.id || null,
+      nombre: oppForm.nombre || 'Nueva oportunidad',
+      servicio_interes: oppForm.servicio_interes || oppForm.nombre || 'Servicio por definir',
+      monto_estimado: Number(oppForm.monto_estimado || 0),
+      moneda: oppForm.moneda || 'PEN',
+      responsable: oppForm.responsable || 'Por asignar',
+      responsable_id: oppForm.responsable_id || null,
+      fecha_cierre_estimada: oppForm.fecha_cierre_estimada || null,
+      fuente: oppForm.fuente || null,
+      notas: oppForm.notas || null,
+      etapa: 'calificacion',
+      probabilidad: 30,
+      forecast_ponderado: Number(oppForm.monto_estimado || 0) * 0.3,
+      fecha_creacion: new Date().toISOString().split('T')[0],
+    });
+    cerrarNuevaOpp();
+  };
 
   useEffect(() => {
     if (activeParams?.panel) {
@@ -899,8 +1704,8 @@ function Pipeline() {
           </div>
           <button className="btn btn-secondary" style={{padding:'8px 16px', borderRadius:8}}>{I.filter} Filtros</button>
           <div className="row" style={{background:'var(--green)', borderRadius:8, overflow:'hidden'}}>
-            <button className="btn btn-primary" style={{background:'transparent', border:'none', padding:'8px 16px', borderRight:'1px solid rgba(255,255,255,0.1)'}}>{I.plus} Nueva oportunidad</button>
-            <button className="btn btn-primary" style={{background:'transparent', border:'none', padding:'8px 10px'}}>{I.chev}</button>
+            <button className="btn btn-primary" data-local-form="true" onClick={() => setPanelNuevaOpp(true)} style={{background:'transparent', border:'none', padding:'8px 16px', borderRight:'1px solid rgba(255,255,255,0.1)'}}>{I.plus} Nueva oportunidad</button>
+            <button className="btn btn-primary" data-local-form="true" style={{background:'transparent', border:'none', padding:'8px 10px'}}>{I.chev}</button>
           </div>
         </div>
       </div>
@@ -951,7 +1756,7 @@ function Pipeline() {
                           onDragStart={(e) => startKanbanDrag(e, o.id)}
                           onDragEnd={endKanbanDrag}
                           onClick={() => setSel(o)}
-                          style={{cursor: 'grab'}}
+                          style={{cursor: 'pointer'}}
                         >
                           <div style={{fontSize:13, fontWeight:700, color:'var(--navy)', marginBottom:10, lineHeight:1.4}}>
                             {o.nombre}
@@ -961,7 +1766,7 @@ function Pipeline() {
                           </div>
                           
                           <div style={{fontSize:14, fontWeight:800, color:'var(--navy)', marginBottom:12}}>
-                            {money(o.monto_estimado)}
+                            {moneyCurrency(o.monto_estimado, o.moneda)}
                           </div>
   
                           <div className="row" style={{justifyContent:'space-between', borderTop:'1px solid var(--border-subtle)', paddingTop:12, marginTop:4}}>
@@ -1011,7 +1816,7 @@ function Pipeline() {
                   <tr key={o.id} className="hover-row" onClick={() => setSel(o)}>
                     <td style={{fontWeight:600}}>{o.nombre}</td>
                     <td>{getOppCuentaNombre(o.cuenta_id)}</td>
-                    <td><strong>{money(o.monto_estimado)}</strong></td>
+                    <td><strong>{moneyCurrency(o.monto_estimado, o.moneda)}</strong></td>
                     <td><span className="badge badge-cyan">{(o.etapa || '').toUpperCase()}</span></td>
                     <td>{o.probabilidad}%</td>
                     <td className="text-muted">{o.fecha_cierre_estimada}</td>
@@ -1024,114 +1829,150 @@ function Pipeline() {
         </div>
       )}
 
-      {sel && (
-        <>
-          <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
-          <div className="side-panel">
-            <div className="side-panel-head">
-              <div>
-                <div className="eyebrow">Oportunidad</div>
-                <div className="font-display" style={{fontSize:20, fontWeight:700, marginTop:2}}>{sel.nombre}</div>
-              </div>
-              <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
-            </div>
-            <div className="side-panel-body">
-              <div className="grid-3" style={{gap:12, marginBottom:20}}>
-                <div><div className="eyebrow">Monto</div><div style={{fontFamily:'Sora', fontSize:20, fontWeight:700}}>{money(sel.monto_estimado)}</div></div>
-                <div><div className="eyebrow">Probabilidad</div><div style={{fontFamily:'Sora', fontSize:20, fontWeight:700}}>{sel.probabilidad}%</div></div>
-                <div><div className="eyebrow">Cierre est.</div><div style={{fontFamily:'Sora', fontSize:15, fontWeight:700}}>{sel.fecha_cierre_estimada || 'No definido'}</div></div>
-              </div>
-              <div className="col" style={{gap:12}}>
-                <div><div className="eyebrow">Cuenta</div><div style={{fontWeight:600}}>{getOppCuentaNombre(sel.cuenta_id)}</div></div>
-                <div><div className="eyebrow">Servicio de interés</div><div>{sel.servicio_interes}</div></div>
-                <div><div className="eyebrow">Responsable</div><div>{sel.responsable}</div></div>
-                <div><div className="eyebrow">Etapa actual</div><div style={{textTransform:'capitalize'}}>{sel.etapa}</div></div>
-                <div><div className="eyebrow">Notas</div><div className="text-muted">{sel.notas}</div></div>
-              </div>
+      {sel && (() => {
+        const etapaMap = {
+          calificacion: { bg:'var(--cyan-lt)', color:'var(--cyan-dk)', label:'Calificación' },
+          prospeccion:  { bg:'rgba(0,188,212,0.12)', color:'#0284c7', label:'Prospección' },
+          propuesta:    { bg:'var(--orange-lt)', color:'var(--orange-dk)', label:'Propuesta' },
+          negociacion:  { bg:'var(--orange-lt)', color:'var(--orange-dk)', label:'Negociación' },
+          cierre:       { bg:'var(--green-lt)', color:'var(--green-dk)', label:'Cierre' },
+          ganada:       { bg:'var(--green-lt)', color:'var(--green-dk)', label:'Ganada' },
+          perdida:      { bg:'var(--danger-lt)', color:'var(--danger)', label:'Perdida' },
+        };
+        const ec = etapaMap[sel.etapa] || { bg:'var(--border)', color:'var(--fg-muted)', label: sel.etapa };
+        const prob = Math.min(100, Math.max(0, sel.probabilidad || 0));
+        const infoRows = [
+          { icon: I.building, label: 'Cuenta',            value: getOppCuentaNombre(sel.cuenta_id) },
+          { icon: I.users,    label: 'Responsable',       value: sel.responsable || 'Por asignar' },
+          { icon: I.target,   label: 'Servicio de interés', value: sel.servicio_interes },
+          { icon: I.send,     label: 'Fuente',            value: sel.fuente },
+        ].filter(r => r.value);
+        return (
+          <>
+            <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
+            <div className="side-panel">
 
-              <div className="row mt-6" style={{gap:8}}>
-                <button
-                  type="button"
-                  className="btn btn-secondary flex-1"
-                  data-local-form="true"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setAgendaOpp(sel);
-                  }}
-                >
-                  {I.calendar} Agendar seguimiento
-                </button>
-                <button className="btn btn-secondary flex-1" onClick={() => navigate('actividades')}>
-                  {I.check} Ver actividades
-                </button>
-              </div>
-
-              <div className="commercial-timeline mt-6">
-                <div className="row" style={{justifyContent:'space-between', marginBottom:12}}>
-                  <div>
-                    <div className="eyebrow">Timeline comercial</div>
-                    <div className="text-muted" style={{fontSize:12}}>Agenda, actividades, costeo, cotizaciones y OS Cliente</div>
-                  </div>
-                  <span className="badge badge-cyan">{timelineSel.length}</span>
+              {/* Header con acento de color */}
+              <div style={{borderTop:`3px solid var(--cyan-dk)`, padding:'18px 22px 16px', borderBottom:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:10}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                  <div className="eyebrow">Oportunidad</div>
+                  <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
                 </div>
-                {timelineSel.length > 0 ? (
-                  <div className="commercial-timeline-list">
-                    {timelineSel.map(item => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`commercial-timeline-item ${item.action ? 'clickable' : ''}`}
-                        onClick={item.action || undefined}
-                      >
-                        <span className="commercial-timeline-icon">{item.icon}</span>
-                        <span className="commercial-timeline-body">
-                          <span className="commercial-timeline-meta">{item.tipo} · {item.fecha || 'Sin fecha'} {item.hora || ''}</span>
-                          <strong>{item.titulo}</strong>
-                          {item.detalle && <span>{item.detalle}</span>}
-                        </span>
-                        {item.estado && <span className={'badge ' + (item.estado === 'completada' || item.estado === 'aprobada' || item.estado === 'ganada' || item.estado === 'realizado' ? 'badge-green' : item.estado === 'borrador' || item.estado === 'pendiente' ? 'badge-cyan' : 'badge-orange')}>{item.estado}</span>}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="calendar-empty">Aun no hay historial comercial vinculado a esta oportunidad.</div>
-                )}
+                <div style={{fontSize:19, fontWeight:700, lineHeight:1.25, color:'var(--fg)'}}>{sel.nombre}</div>
+                <span style={{display:'inline-flex', alignSelf:'flex-start', alignItems:'center', gap:5, padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:600, letterSpacing:'0.05em', textTransform:'uppercase', background:ec.bg, color:ec.color}}>
+                  {ec.label}
+                </span>
               </div>
 
-              {!['ganada', 'perdida'].includes(sel.etapa) && (
-                <div className="col mt-6" style={{gap:8}}>
-                  <div className="row" style={{gap:8}}>
-                    <button
-                      className="btn btn-secondary flex-1"
-                      data-local-form="true"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        navigate('hoja_costeo', { nueva: true, opp: sel.id });
-                      }}
-                    >
+              <div className="side-panel-body" style={{padding:'18px 20px', display:'flex', flexDirection:'column', gap:18}}>
+
+                {/* Stats */}
+                <div className="grid-3" style={{gap:10}}>
+                  <div style={{background:'var(--bg-subtle)', borderRadius:10, padding:'12px 10px', border:'1px solid var(--border)', textAlign:'center'}}>
+                    <div className="eyebrow" style={{marginBottom:5}}>Monto</div>
+                    <div style={{fontFamily:'Sora,sans-serif', fontSize:16, fontWeight:700, color:'var(--cyan-dk)', lineHeight:1.2}}>{moneyCurrency(sel.monto_estimado, sel.moneda)}</div>
+                  </div>
+                  <div style={{background:'var(--bg-subtle)', borderRadius:10, padding:'12px 10px', border:'1px solid var(--border)', textAlign:'center'}}>
+                    <div className="eyebrow" style={{marginBottom:5}}>Prob.</div>
+                    <div style={{fontFamily:'Sora,sans-serif', fontSize:16, fontWeight:700, lineHeight:1.2}}>{prob}%</div>
+                    <div style={{height:3, background:'var(--border)', borderRadius:4, marginTop:7}}>
+                      <div style={{height:3, borderRadius:4, background:'var(--cyan-dk)', width:`${prob}%`, transition:'width 0.4s'}}/>
+                    </div>
+                  </div>
+                  <div style={{background:'var(--bg-subtle)', borderRadius:10, padding:'12px 10px', border:'1px solid var(--border)', textAlign:'center'}}>
+                    <div className="eyebrow" style={{marginBottom:5}}>Cierre</div>
+                    <div style={{fontSize:12, fontWeight:700, lineHeight:1.3}}>{sel.fecha_cierre_estimada || 'Sin fecha'}</div>
+                  </div>
+                </div>
+
+                {/* Detalles */}
+                <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
+                  {infoRows.map((row, idx) => (
+                    <div key={row.label} style={{display:'flex', alignItems:'flex-start', gap:10, padding:'9px 14px', borderBottom: idx < infoRows.length - 1 ? '1px solid var(--border)' : 'none', background: idx % 2 ? 'var(--bg-subtle)' : 'transparent'}}>
+                      <span style={{width:15, height:15, flexShrink:0, color:'var(--fg-muted)', marginTop:2, opacity:0.7}}>{row.icon}</span>
+                      <div>
+                        <div className="eyebrow" style={{marginBottom:2}}>{row.label}</div>
+                        <div style={{fontSize:13, fontWeight:500}}>{row.value}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {sel.notas && (
+                    <div style={{padding:'10px 14px', borderTop:'1px solid var(--border)', background: infoRows.length % 2 ? 'var(--bg-subtle)' : 'transparent'}}>
+                      <div className="eyebrow" style={{marginBottom:4}}>Notas</div>
+                      <div style={{fontSize:12, color:'var(--fg-muted)', lineHeight:1.6}}>{sel.notas}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Acciones rápidas */}
+                <div className="row" style={{gap:8}}>
+                  <button type="button" className="btn btn-secondary flex-1" style={{fontSize:12}} data-local-form="true"
+                    onClick={e => { e.stopPropagation(); setAgendaOpp(sel); }}>
+                    {I.calendar} Agendar
+                  </button>
+                  <button className="btn btn-secondary flex-1" style={{fontSize:12}} onClick={() => navigate('actividades')}>
+                    {I.check} Actividades
+                  </button>
+                </div>
+
+                {/* Timeline */}
+                <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', borderBottom:'1px solid var(--border)', background:'var(--bg-subtle)'}}>
+                    <div>
+                      <div className="eyebrow">Timeline Comercial</div>
+                      <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:1}}>Agenda · Actividades · Costeo · Cotizaciones</div>
+                    </div>
+                    <span className="badge badge-cyan">{timelineSel.length}</span>
+                  </div>
+                  {timelineSel.length > 0 ? (
+                    <div className="commercial-timeline-list" style={{borderRadius:0}}>
+                      {timelineSel.map(item => (
+                        <button key={item.id} type="button" className={`commercial-timeline-item ${item.action ? 'clickable' : ''}`} onClick={item.action || undefined}>
+                          <span className="commercial-timeline-icon">{item.icon}</span>
+                          <span className="commercial-timeline-body">
+                            <span className="commercial-timeline-meta">{item.tipo} · {item.fecha || 'Sin fecha'} {item.hora || ''}</span>
+                            <strong>{item.titulo}</strong>
+                            {item.detalle && <span>{item.detalle}</span>}
+                          </span>
+                          {item.estado && <span className={'badge ' + (item.estado === 'completada' || item.estado === 'aprobada' || item.estado === 'ganada' || item.estado === 'realizado' ? 'badge-green' : item.estado === 'borrador' || item.estado === 'pendiente' ? 'badge-cyan' : 'badge-orange')}>{item.estado}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{padding:'20px 14px', textAlign:'center', color:'var(--fg-muted)', fontSize:12}}>
+                      Aún no hay historial comercial vinculado.
+                    </div>
+                  )}
+                </div>
+
+                {/* CTAs principales */}
+                {!['ganada', 'perdida'].includes(sel.etapa) && (
+                  <div className="col" style={{gap:8, paddingBottom:4}}>
+                    <button className="btn btn-primary" style={{justifyContent:'center', fontWeight:600}} data-local-form="true"
+                      onClick={e => { e.stopPropagation(); navigate('cotizaciones', { opp: sel.id, active_tab: 'nueva' }); }}>
+                      {I.file} Crear Cotización
+                    </button>
+                    <button className="btn btn-secondary" style={{justifyContent:'center'}} data-local-form="true"
+                      onClick={e => { e.stopPropagation(); navigate('hoja_costeo', { nueva: true, opp: sel.id }); }}>
                       {I.receipt} Crear Hoja de Costeo
                     </button>
-                    <button
-                      className="btn btn-primary flex-1"
-                      data-local-form="true"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        navigate('cotizaciones', { opp: sel.id, active_tab: 'nueva' });
-                      }}
-                    >
-                      {I.file} Crear cotizacion
-                    </button>
+                    <div className="row" style={{gap:8, marginTop:2}}>
+                      <button className="btn flex-1" style={{justifyContent:'center', background:'var(--green-lt)', color:'var(--green-dk)', border:'1px solid rgba(76,175,80,0.3)', fontWeight:600}}
+                        onClick={() => { marcarGanada(sel.id, {}); setSel(null); }}>
+                        {I.check} Ganar
+                      </button>
+                      <button className="btn btn-ghost flex-1" style={{justifyContent:'center', color:'var(--danger)', opacity:0.75}}
+                        onClick={() => { marcarPerdida(sel.id, 'Perdida manualmente'); setSel(null); }}>
+                        Perder
+                      </button>
+                    </div>
                   </div>
-                  <div className="row" style={{gap:8}}>
-                    <button className="btn btn-secondary flex-1" onClick={() => { marcarGanada(sel.id, {}); setSel(null); }}>Ganar</button>
-                    <button className="btn btn-ghost flex-1" onClick={() => { marcarPerdida(sel.id, 'Perdida manualmente'); setSel(null); }}>Perder</button>
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        );
+      })()}
 
       {agendaOpp && (
         <div className="modal-backdrop">
@@ -1194,6 +2035,82 @@ function Pipeline() {
             </form>
           </div>
         </div>
+      )}
+
+      {panelNuevaOpp && (
+        <>
+          <div className="side-panel-backdrop" onClick={cerrarNuevaOpp}/>
+          <div className="side-panel" style={{width:'min(620px,96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Formulario de registro</div>
+                <div className="font-display" style={{fontSize:22,fontWeight:700,marginTop:2}}>Nueva oportunidad</div>
+              </div>
+              <button className="icon-btn" onClick={cerrarNuevaOpp}>{I.x}</button>
+            </div>
+            <form className="side-panel-body" onSubmit={guardarNuevaOpp}>
+              <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:'var(--fg-muted)'}}>Datos comerciales</div>
+              <div className="grid-2" style={{gap:14,marginBottom:20}}>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Nombre de oportunidad *</label>
+                  <input className="input" required value={oppForm.nombre} onChange={e=>updateOppForm('nombre',e.target.value)} placeholder="Ej: Mantenimiento integral planta norte" autoFocus/>
+                </div>
+                <div className="input-group">
+                  <label>Cuenta *</label>
+                  <select className="select" required value={oppForm.cuenta_id} onChange={e=>updateOppForm('cuenta_id',e.target.value)}>
+                    <option value="">Seleccionar...</option>
+                    {cuentas.map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Servicio de interes</label>
+                  <input className="input" value={oppForm.servicio_interes} onChange={e=>updateOppForm('servicio_interes',e.target.value)} placeholder="Ej: Mantenimiento preventivo"/>
+                </div>
+                <div className="input-group">
+                  <label>Monto estimado</label>
+                  <input className="input" type="number" value={oppForm.monto_estimado} onChange={e=>updateOppForm('monto_estimado',e.target.value)} placeholder="0"/>
+                </div>
+                <div className="input-group">
+                  <label>Moneda</label>
+                  <select className="select" value={oppForm.moneda} onChange={e=>updateOppForm('moneda',e.target.value)}>
+                    {MONEDAS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Fecha cierre estimada</label>
+                  <input className="input" type="date" value={oppForm.fecha_cierre_estimada} onChange={e=>updateOppForm('fecha_cierre_estimada',e.target.value)}/>
+                </div>
+              </div>
+
+              <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:'var(--fg-muted)'}}>Asignación</div>
+              <div className="grid-2" style={{gap:14,marginBottom:20}}>
+                <div className="input-group">
+                  <label>Responsable comercial *</label>
+                  <select className="select" required value={oppForm.responsable_id} onChange={e=>updateOppResponsable(e.target.value)}>
+                    <option value="">Seleccionar...</option>
+                    {comercialesAsignables.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Fuente</label>
+                  <select className="select" value={oppForm.fuente} onChange={e=>updateOppForm('fuente',e.target.value)}>
+                    <option value="">Seleccionar...</option>
+                    {['Lead convertido','Referido','Web','LinkedIn','Recompra','Prospeccion directa'].map(f=><option key={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Notas</label>
+                  <textarea className="input" rows={3} value={oppForm.notas} onChange={e=>updateOppForm('notas',e.target.value)} placeholder="Contexto comercial, necesidad o próximos pasos"/>
+                </div>
+              </div>
+
+              <div className="row" style={{justifyContent:'flex-end',gap:10}}>
+                <button type="button" className="btn btn-secondary" onClick={cerrarNuevaOpp}>Cancelar</button>
+                <button type="submit" className="btn btn-primary">{I.plus} Crear oportunidad</button>
+              </div>
+            </form>
+          </div>
+        </>
       )}
     </>
   );
@@ -1279,7 +2196,7 @@ function Actividades() {
             <button className={`seg-btn ${view==='lista'?'active':''}`} onClick={()=>setView('lista')}>{I.list} Lista</button>
           </div>
           <button className="btn btn-secondary">{I.filter} Filtros</button>
-          <button className="btn btn-primary" onClick={() => setModalNew(true)}>{I.plus} Nueva actividad</button>
+          <button className="btn btn-primary" data-local-form="true" onClick={() => setModalNew(true)}>{I.plus} Nueva actividad</button>
         </div>
       </div>
 
@@ -1329,7 +2246,7 @@ function Actividades() {
                           draggable
                           onDragStart={(e) => startKanbanDrag(e, a.id)}
                           onDragEnd={endKanbanDrag}
-                          style={{cursor: 'grab'}}
+                          style={{cursor: 'pointer'}}
                         >
                           <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>
                             <span style={{fontSize:10, fontWeight:800, textTransform:'uppercase', color:'var(--fg-subtle)', letterSpacing:'0.05em', display:'flex', alignItems:'center', gap:4}}>
@@ -1365,7 +2282,7 @@ function Actividades() {
                     )}
                   </div>
                   
-                  <button className="kanban-btn-add" onClick={() => setModalNew(true)}>
+                  <button className="kanban-btn-add" data-local-form="true" onClick={() => setModalNew(true)}>
                     {I.plus} Nueva actividad
                   </button>
                 </div>
@@ -1414,13 +2331,17 @@ function Actividades() {
       )}
 
       {modalNew && (
-        <div className="modal-backdrop">
-          <div className="modal" style={{maxWidth:500}}>
-            <div className="modal-head">
-              <h2>Registrar Actividad</h2>
+        <>
+          <div className="side-panel-backdrop" onClick={() => setModalNew(false)}/>
+          <div className="side-panel" style={{width:'min(560px,96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Formulario de registro</div>
+                <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>Nueva actividad</div>
+              </div>
               <button className="icon-btn" onClick={() => setModalNew(false)}>{I.x}</button>
             </div>
-            <form className="modal-body col" style={{gap:16}} onSubmit={(e) => {
+            <form className="side-panel-body" onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.target);
               registrarActividad({
@@ -1432,7 +2353,8 @@ function Actividades() {
               });
               setModalNew(false);
             }}>
-              <div className="grid-2">
+              <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Datos de la actividad</div>
+              <div className="grid-2" style={{gap:14, marginBottom:20}}>
                 <div className="input-group">
                   <label>Tipo</label>
                   <select name="tipo" className="select" required>
@@ -1446,18 +2368,18 @@ function Actividades() {
                   <label>Fecha</label>
                   <input name="fecha" type="date" className="input" defaultValue={today} required/>
                 </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Descripción</label>
+                  <textarea name="descripcion" className="input" rows="4" required autoFocus></textarea>
+                </div>
               </div>
-              <div className="input-group">
-                <label>Descripción</label>
-                <textarea name="descripcion" className="input" rows="3" required></textarea>
-              </div>
-              <div className="modal-foot mt-4">
+              <div className="row" style={{justifyContent:'flex-end', gap:10}}>
                 <button type="button" className="btn btn-secondary" onClick={() => setModalNew(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary">Guardar</button>
+                <button type="submit" className="btn btn-primary">{I.save} Guardar actividad</button>
               </div>
             </form>
           </div>
-        </div>
+        </>
       )}
     </>
   );
@@ -1711,32 +2633,289 @@ function OSCliente() {
 }
 
 function Marketing() {
+  const { campanas, crearCampana, actualizarCampana, cambiarEstadoCampana, eliminarCampana, leads, oportunidades } = useApp();
+  const [tab, setTab] = useState('campanas');
+  const [panelNuevo, setPanelNuevo] = useState(false);
+  const [editando, setEditando] = useState(null);
+  const [detalle, setDetalle] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const TIPOS = ['ads', 'email', 'evento', 'outbound', 'contenido', 'referidos'];
+  const CANALES = ['Google Ads', 'LinkedIn', 'Email', 'WhatsApp', 'Evento', 'Campo', 'Otro'];
+  const ESTADOS_LABEL = { borrador: 'Borrador', activa: 'Activa', pausada: 'Pausada', finalizada: 'Finalizada' };
+  const estadoBadge = { borrador: 'badge-gray', activa: 'badge-green', pausada: 'badge-orange', finalizada: 'badge-cyan' };
+
+  const formBase = { nombre: '', tipo: 'ads', canal: 'Google Ads', fecha_inicio: '', fecha_fin: '', presupuesto: '', moneda: 'PEN', estado: 'borrador', descripcion: '' };
+  const [form, setForm] = useState(formBase);
+  const upd = (f, v) => setForm(p => ({ ...p, [f]: v }));
+
+  const metricas = (camp) => {
+    const lg = leads.filter(l => l.campana_id === camp.id);
+    const lc = lg.filter(l => l.convertido);
+    const og = oportunidades.filter(o => o.campana_id === camp.id && o.estado === 'ganada');
+    const ing = og.reduce((s, o) => s + (o.monto_estimado || 0), 0);
+    const p = camp.presupuesto || 0;
+    return {
+      leadsGen: lg.length, leadsConv: lc.length, oppsGanadas: og.length,
+      ingresoAtribuido: ing,
+      cpl: lg.length > 0 ? p / lg.length : 0,
+      costoVenta: og.length > 0 ? p / og.length : 0,
+      roi: p > 0 ? (ing - p) / p * 100 : 0,
+      tasaConv: lg.length > 0 ? lc.length / lg.length * 100 : 0,
+    };
+  };
+
+  const campActivas = campanas.filter(c => c.estado === 'activa').length;
+  const totalLeadsAtrib = leads.filter(l => l.campana_id).length;
+  const presupuestoTotal = campanas.reduce((s, c) => s + (c.presupuesto || 0), 0);
+  const ingAtribTotal = oportunidades.filter(o => o.campana_id && o.estado === 'ganada').reduce((s, o) => s + (o.monto_estimado || 0), 0);
+  const roiGlobal = presupuestoTotal > 0 ? ((ingAtribTotal - presupuestoTotal) / presupuestoTotal * 100).toFixed(0) : null;
+
+  const abrirNuevo = () => { setForm(formBase); setFormError(''); setPanelNuevo(true); setEditando(null); setDetalle(null); };
+  const abrirEditar = (c) => { setForm({ nombre: c.nombre, tipo: c.tipo, canal: c.canal, fecha_inicio: c.fecha_inicio || '', fecha_fin: c.fecha_fin || '', presupuesto: c.presupuesto || '', moneda: c.moneda || 'PEN', estado: c.estado, descripcion: c.descripcion || '' }); setFormError(''); setEditando(c); setPanelNuevo(false); setDetalle(null); };
+  const cerrar = () => { setPanelNuevo(false); setEditando(null); setFormError(''); };
+
+  const confirmarEliminar = async (c) => {
+    if (!c?.id) return;
+    const ok = window.confirm(`Eliminar campaña "${c.nombre}"? Esta acción no se puede deshacer.`);
+    if (!ok) return;
+    try {
+      await eliminarCampana(c.id);
+      if (detalle?.id === c.id) setDetalle(null);
+      if (editando?.id === c.id) cerrar();
+    } catch (_) { /* notificación ya mostrada en context */ }
+  };
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    if (!form.nombre.trim()) return;
+    const datos = { ...form, presupuesto: Number(form.presupuesto) || 0 };
+    setFormError('');
+    setSaving(true);
+    try {
+      if (editando) await actualizarCampana(editando.id, datos);
+      else await crearCampana(datos);
+      cerrar();
+    } catch (err) {
+      setFormError(err?.message || 'No se pudo guardar la campana.');
+    }
+    finally { setSaving(false); }
+  };
+
+  const panelOpen = panelNuevo || !!editando;
+
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Marketing Automation</h1><div className="page-sub">Campañas activas y automatización de nutrición de leads</div></div>
-        <button className="btn btn-primary">{I.plus} Nueva Secuencia</button>
+        <div><h1 className="page-title">Marketing Automation</h1><div className="page-sub">Campañas, atribución de leads y ROI por canal</div></div>
+        <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevo}>{I.plus} Nueva campaña</button>
       </div>
-      <div className="card mt-6 p-6">
-        <h3 style={{marginBottom:16}}>Secuencias Activas (Simulado)</h3>
-        <p className="text-muted">El editor visual de flujos de correo y triggers se implementará en la versión final.</p>
-        <div className="table-wrap mt-4">
-          <table className="tbl">
-            <thead><tr><th>Campaña</th><th>Público Objetivo</th><th>Correos</th><th>Tasa Apertura</th><th>Conversión</th><th>Estado</th></tr></thead>
-            <tbody>
-              <tr><td>Nutrición: Leads Industriales</td><td>Industria: Manufactura, Score &lt; 50</td><td>4</td><td>42%</td><td>8%</td><td><span className="badge badge-green">Activa</span></td></tr>
-              <tr><td>Reactivación Q4</td><td>Oportunidades Perdidas &gt; 6 meses</td><td>2</td><td>28%</td><td>2%</td><td><span className="badge badge-orange">Pausada</span></td></tr>
-            </tbody>
-          </table>
+
+      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
+        <div className="kpi-card"><div className="kpi-label">Campañas activas</div><div className="kpi-value">{campActivas}</div><div className="kpi-icon green">{I.target}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Leads atribuidos</div><div className="kpi-value">{totalLeadsAtrib}</div><div className="kpi-icon cyan">{I.users}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Presupuesto total</div><div className="kpi-value" style={{fontSize:18}}>{money(presupuestoTotal)}</div><div className="kpi-icon orange">{I.dollar}</div></div>
+        <div className="kpi-card"><div className="kpi-label">ROI global</div><div className="kpi-value" style={{color: roiGlobal !== null ? (Number(roiGlobal) > 0 ? 'var(--green)' : 'var(--danger)') : 'var(--fg-muted)'}}>{roiGlobal !== null ? roiGlobal + '%' : '—'}</div><div className="kpi-icon purple">{I.trend}</div></div>
+      </div>
+
+      <div className="tabs">
+        <div className={'tab '+(tab==='campanas'?'active':'')} onClick={()=>setTab('campanas')}>Campañas</div>
+        <div className={'tab '+(tab==='rendimiento'?'active':'')} onClick={()=>setTab('rendimiento')}>Rendimiento por campaña</div>
+      </div>
+
+      <div style={{display:'grid', gridTemplateColumns: detalle && !panelOpen ? '1fr 380px' : '1fr', gap:20, alignItems:'start'}}>
+        <div>
+          {tab === 'campanas' && (
+            <div className="card">
+              <div className="card-head"><h3>Todas las campañas</h3><span className="badge badge-gray">{campanas.length}</span></div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Nombre</th><th>Tipo · Canal</th><th>Período</th><th className="num">Presupuesto</th><th>Leads</th><th>Conv.</th><th>Estado</th><th></th></tr></thead>
+                  <tbody>
+                    {campanas.map(c => {
+                      const m = metricas(c);
+                      return (
+                        <tr key={c.id} className="hover-row" onClick={() => { setDetalle(c); cerrar(); }} style={{cursor:'pointer'}}>
+                          <td><div style={{fontWeight:600,fontSize:13}}>{c.nombre}</div><div className="text-muted" style={{fontSize:11}}>{c.descripcion?.slice(0,55)}{(c.descripcion?.length||0)>55?'…':''}</div></td>
+                          <td><span className="badge badge-gray" style={{fontSize:11,textTransform:'capitalize'}}>{c.tipo}</span><span style={{marginLeft:6,fontSize:11,color:'var(--fg-muted)'}}>{c.canal}</span></td>
+                          <td className="text-muted" style={{fontSize:12}}>{c.fecha_inicio}{c.fecha_fin ? ' → '+c.fecha_fin : ''}</td>
+                          <td className="num">{money(c.presupuesto)}</td>
+                          <td style={{fontWeight:700}}>{m.leadsGen}</td>
+                          <td><span style={{fontSize:12,fontWeight:600,color:m.tasaConv>20?'var(--green)':'var(--fg)'}}>{m.tasaConv.toFixed(0)}%</span></td>
+                          <td><span className={'badge '+estadoBadge[c.estado]} style={{textTransform:'capitalize'}}>{ESTADOS_LABEL[c.estado]}</span></td>
+                          <td onClick={e=>e.stopPropagation()}>
+                            <div className="row" style={{gap:6}}>
+                              <button className="btn btn-sm btn-secondary" onClick={()=>abrirEditar(c)}>Editar</button>
+                              {c.estado==='borrador'&&<button className="btn btn-sm btn-primary" onClick={()=>cambiarEstadoCampana(c.id,'activa')}>Activar</button>}
+                              {c.estado==='activa'&&<button className="btn btn-sm btn-secondary" onClick={()=>cambiarEstadoCampana(c.id,'pausada')}>Pausar</button>}
+                              {c.estado==='pausada'&&<button className="btn btn-sm btn-primary" onClick={()=>cambiarEstadoCampana(c.id,'activa')}>Reactivar</button>}
+                              <button className="icon-btn" title="Eliminar campana" style={{color:'var(--danger)'}} onClick={()=>confirmarEliminar(c)}>{I.trash}</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!campanas.length && <tr><td colSpan={8} className="text-muted" style={{textAlign:'center',padding:32}}>Sin campañas. Crea la primera con "Nueva campaña".</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {tab === 'rendimiento' && (
+            <div style={{display:'grid',gap:20}}>
+              {campanas.map(c => {
+                const m = metricas(c);
+                return (
+                  <div key={c.id} className="card">
+                    <div className="card-head">
+                      <div><div style={{fontWeight:700,fontSize:14}}>{c.nombre}</div><div className="text-muted" style={{fontSize:11}}>{c.canal} · {c.fecha_inicio}{c.fecha_fin?' → '+c.fecha_fin:''}</div></div>
+                      <span className={'badge '+estadoBadge[c.estado]}>{ESTADOS_LABEL[c.estado]}</span>
+                    </div>
+                    <div style={{padding:'16px 24px',display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16,borderBottom:'1px solid var(--border)'}}>
+                      {[{l:'Leads generados',v:m.leadsGen,col:'var(--cyan)'},{l:'Convertidos',v:m.leadsConv,col:'var(--green)'},{l:'Ops ganadas',v:m.oppsGanadas,col:'var(--purple)'},{l:'Tasa conv.',v:m.tasaConv.toFixed(0)+'%',col:'var(--orange)'}].map(({l,v,col})=>(
+                        <div key={l} style={{textAlign:'center'}}><div style={{fontSize:24,fontWeight:800,color:col}}>{v}</div><div style={{fontSize:11,color:'var(--fg-muted)',marginTop:2}}>{l}</div></div>
+                      ))}
+                    </div>
+                    <div style={{padding:'16px 24px',display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}}>
+                      {[{l:'Ingreso atribuido',v:money(m.ingresoAtribuido),col:m.ingresoAtribuido>0?'var(--green)':'var(--fg)'},{l:'Costo por lead',v:m.leadsGen>0?money(m.cpl):'—',col:'var(--fg)'},{l:'Costo por venta',v:m.oppsGanadas>0?money(m.costoVenta):'—',col:'var(--fg)'},{l:'ROI',v:c.presupuesto>0?m.roi.toFixed(0)+'%':'—',col:m.roi>0?'var(--green)':m.roi<0?'var(--danger)':'var(--fg)'}].map(({l,v,col})=>(
+                        <div key={l} style={{background:'var(--bg-subtle)',borderRadius:8,padding:'10px 14px'}}><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>{l}</div><div style={{fontWeight:700,fontSize:14,color:col}}>{v}</div></div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              {!campanas.length && <div className="card" style={{padding:32,textAlign:'center'}}><p className="text-muted">Sin campañas registradas</p></div>}
+            </div>
+          )}
         </div>
+
+        {detalle && !panelOpen && (() => {
+          const c = detalle;
+          const m = metricas(c);
+          const leadsDetalle = leads.filter(l => l.campana_id === c.id);
+          return (
+            <div className="card" style={{position:'sticky',top:20}}>
+              <div className="card-head"><h3 style={{fontSize:13}}>{c.nombre}</h3><button className="btn btn-sm btn-secondary" onClick={()=>setDetalle(null)}>✕</button></div>
+              <div style={{padding:'0 24px 24px'}}>
+                <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
+                  <span className={'badge '+estadoBadge[c.estado]}>{ESTADOS_LABEL[c.estado]}</span>
+                  <span className="badge badge-gray" style={{textTransform:'capitalize'}}>{c.tipo}</span>
+                  <span className="badge badge-gray">{c.canal}</span>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16}}>
+                  {[{l:'Leads generados',v:m.leadsGen,col:'var(--cyan)'},{l:'Convertidos',v:m.leadsConv,col:'var(--green)'},{l:'Ops ganadas',v:m.oppsGanadas,col:'var(--purple)'},{l:'Tasa conv.',v:m.tasaConv.toFixed(0)+'%',col:'var(--orange)'}].map(({l,v,col})=>(
+                    <div key={l} style={{background:'var(--bg-subtle)',borderRadius:8,padding:'10px 12px',textAlign:'center'}}>
+                      <div style={{fontSize:20,fontWeight:800,color:col}}>{v}</div>
+                      <div style={{fontSize:10,color:'var(--fg-muted)',marginTop:2}}>{l}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:16}}>
+                  {[{l:'Ingreso atribuido',v:money(m.ingresoAtribuido),col:'var(--green)'},{l:'Presupuesto',v:money(c.presupuesto)},{l:'Costo por lead',v:m.leadsGen>0?money(m.cpl):'—'},{l:'ROI',v:c.presupuesto>0?m.roi.toFixed(0)+'%':'—',col:m.roi>0?'var(--green)':m.roi<0?'var(--danger)':undefined}].map(({l,v,col})=>(
+                    <div key={l} className="row" style={{justifyContent:'space-between',padding:'8px 10px',background:'var(--bg-subtle)',borderRadius:6}}>
+                      <span style={{fontSize:12,color:'var(--fg-muted)'}}>{l}</span><strong style={{fontSize:13,color:col||'var(--fg)'}}>{v}</strong>
+                    </div>
+                  ))}
+                </div>
+                {leadsDetalle.length > 0 && (
+                  <>
+                    <div style={{fontSize:11,fontWeight:600,marginBottom:6,color:'var(--fg-muted)',textTransform:'uppercase',letterSpacing:'0.05em'}}>Leads</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:4,maxHeight:220,overflowY:'auto'}}>
+                      {leadsDetalle.map(l=>(
+                        <div key={l.id} style={{padding:'7px 10px',background:'var(--bg-subtle)',borderRadius:6,fontSize:12}}>
+                          <div style={{fontWeight:600}}>{l.nombre}</div>
+                          <div style={{color:'var(--fg-muted)',marginTop:1}}>{l.empresa_contacto} · <span className={'badge '+(l.convertido?'badge-green':'badge-gray')} style={{fontSize:9,padding:'1px 5px'}}>{l.convertido?'convertido':l.estado}</span></div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <div className="row" style={{gap:8,marginTop:16}}>
+                  <button className="btn btn-secondary btn-sm" style={{flex:1}} onClick={()=>abrirEditar(c)}>Editar</button>
+                  {c.estado==='borrador'&&<button className="btn btn-primary btn-sm" style={{flex:1}} onClick={()=>{cambiarEstadoCampana(c.id,'activa');setDetalle({...c,estado:'activa'});}}>Activar</button>}
+                  {c.estado==='activa'&&<button className="btn btn-secondary btn-sm" style={{flex:1}} onClick={()=>{cambiarEstadoCampana(c.id,'pausada');setDetalle({...c,estado:'pausada'});}}>Pausar</button>}
+                  {c.estado==='pausada'&&<button className="btn btn-primary btn-sm" style={{flex:1}} onClick={()=>{cambiarEstadoCampana(c.id,'activa');setDetalle({...c,estado:'activa'});}}>Reactivar</button>}
+                  <button className="icon-btn" title="Eliminar campana" style={{color:'var(--danger)'}} onClick={()=>confirmarEliminar(c)}>{I.trash}</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
+
+      {panelOpen && (
+        <>
+          <div className="side-panel-backdrop" onClick={cerrar}/>
+          <div className="side-panel" style={{width:'min(560px,96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Formulario de registro</div>
+                <div className="font-display" style={{fontSize:22,fontWeight:700,marginTop:2}}>{editando ? 'Editar campaña' : 'Nueva campaña'}</div>
+              </div>
+              <button className="icon-btn" onClick={cerrar}>{I.x}</button>
+            </div>
+            <form className="side-panel-body" onSubmit={guardar}>
+              {formError && (
+                <div style={{padding:'10px 12px', border:'1px solid rgba(239,68,68,0.35)', background:'rgba(239,68,68,0.08)', color:'var(--danger)', borderRadius:8, fontSize:12, marginBottom:14}}>
+                  {formError}
+                </div>
+              )}
+              <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:'var(--fg-muted)'}}>Datos de la campaña</div>
+              <div className="grid-2" style={{gap:14,marginBottom:20}}>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Nombre *</label>
+                  <input className="input" value={form.nombre} onChange={e=>upd('nombre',e.target.value)} placeholder="Ej: Google Ads Q3 2025" required autoFocus/>
+                </div>
+                <div className="input-group">
+                  <label>Tipo</label>
+                  <select className="select" value={form.tipo} onChange={e=>upd('tipo',e.target.value)}>{TIPOS.map(t=><option key={t} value={t}>{t}</option>)}</select>
+                </div>
+                <div className="input-group">
+                  <label>Canal</label>
+                  <select className="select" value={form.canal} onChange={e=>upd('canal',e.target.value)}>{CANALES.map(c=><option key={c}>{c}</option>)}</select>
+                </div>
+                <div className="input-group">
+                  <label>Fecha inicio</label>
+                  <input className="input" type="date" value={form.fecha_inicio} onChange={e=>upd('fecha_inicio',e.target.value)}/>
+                </div>
+                <div className="input-group">
+                  <label>Fecha fin</label>
+                  <input className="input" type="date" value={form.fecha_fin} onChange={e=>upd('fecha_fin',e.target.value)}/>
+                </div>
+                <div className="input-group">
+                  <label>Presupuesto</label>
+                  <input className="input" type="number" value={form.presupuesto} onChange={e=>upd('presupuesto',e.target.value)} placeholder="0"/>
+                </div>
+                <div className="input-group">
+                  <label>Moneda</label>
+                  <select className="select" value={form.moneda} onChange={e=>upd('moneda',e.target.value)}><option>PEN</option><option>USD</option></select>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Estado</label>
+                  <select className="select" value={form.estado} onChange={e=>upd('estado',e.target.value)}>{Object.entries(ESTADOS_LABEL).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Descripción</label>
+                  <textarea className="input" rows={3} value={form.descripcion} onChange={e=>upd('descripcion',e.target.value)} placeholder="Objetivo y público de la campaña"/>
+                </div>
+              </div>
+              <div className="row" style={{justifyContent:'flex-end',gap:10}}>
+                <button type="button" className="btn btn-secondary" onClick={cerrar} disabled={saving}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : (editando ? 'Guardar cambios' : 'Crear campaña')}</button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
     </>
   );
 }
 
 function BIComercial() {
   const [tab, setTab] = useState('pipeline');
-  const { oportunidades, leads, cuentas } = useApp();
+  const { oportunidades, leads, cuentas, campanas } = useApp();
 
   const oppsAbiertas  = oportunidades.filter(o => o.estado === 'abierta');
   const oppsGanadas   = oportunidades.filter(o => o.estado === 'ganada');
@@ -1807,7 +2986,70 @@ function BIComercial() {
         <div className={'tab '+(tab==='pipeline'?'active':'')} onClick={()=>setTab('pipeline')}>Pipeline</div>
         <div className={'tab '+(tab==='leads'?'active':'')} onClick={()=>setTab('leads')}>Leads y Fuentes</div>
         <div className={'tab '+(tab==='rendimiento'?'active':'')} onClick={()=>setTab('rendimiento')}>Rendimiento Comercial</div>
+        <div className={'tab '+(tab==='campanas'?'active':'')} onClick={()=>setTab('campanas')}>Por campaña</div>
       </div>
+
+      {tab === 'campanas' && (() => {
+        const metCamp = (camp) => {
+          const lg = leads.filter(l => l.campana_id === camp.id);
+          const lc = lg.filter(l => l.convertido);
+          const og = oportunidades.filter(o => o.campana_id === camp.id && o.estado === 'ganada');
+          const ing = og.reduce((s, o) => s + (o.monto_estimado || 0), 0);
+          const p = camp.presupuesto || 0;
+          return { leadsGen: lg.length, leadsConv: lc.length, oppsGanadas: og.length, ingresoAtribuido: ing, cpl: lg.length > 0 ? p / lg.length : 0, roi: p > 0 ? (ing - p) / p * 100 : 0, tasaConv: lg.length > 0 ? lc.length / lg.length * 100 : 0 };
+        };
+        const maxLeads = Math.max(...(campanas||[]).map(c => metCamp(c).leadsGen), 1);
+        return (
+          <div style={{display:'grid',gap:20}}>
+            <div className="card">
+              <div className="card-head"><h3>Leads por campaña</h3><span className="text-muted" style={{fontSize:12}}>{leads.filter(l=>l.campana_id).length} leads atribuidos</span></div>
+              <div style={{padding:'16px 24px',display:'flex',flexDirection:'column',gap:16}}>
+                {(campanas||[]).map(c => {
+                  const m = metCamp(c);
+                  return (
+                    <div key={c.id}>
+                      <div className="row" style={{justifyContent:'space-between',marginBottom:6}}>
+                        <span style={{fontSize:13,fontWeight:500}}>{c.nombre}</span>
+                        <span style={{fontSize:12,color:'var(--fg-muted)'}}>{m.leadsGen} leads · <strong style={{color:'var(--fg)'}}>{m.tasaConv.toFixed(0)}% conv.</strong></span>
+                      </div>
+                      <div style={{height:8,background:'var(--bg-subtle)',borderRadius:4}}>
+                        <div style={{width:Math.round(m.leadsGen/maxLeads*100)+'%',height:'100%',background:'var(--cyan)',borderRadius:4}}/>
+                      </div>
+                    </div>
+                  );
+                })}
+                {!(campanas||[]).length && <p className="text-muted">Sin campañas registradas</p>}
+              </div>
+            </div>
+            <div className="card">
+              <div className="card-head"><h3>Métricas de atribución</h3></div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Campaña</th><th>Canal</th><th>Leads</th><th>Conv.</th><th>Ops ganadas</th><th className="num">Ingreso atribuido</th><th className="num">Costo/lead</th><th className="num">ROI</th></tr></thead>
+                  <tbody>
+                    {(campanas||[]).map(c => {
+                      const m = metCamp(c);
+                      return (
+                        <tr key={c.id} className="hover-row">
+                          <td style={{fontWeight:600}}>{c.nombre}</td>
+                          <td><span className="badge badge-gray" style={{fontSize:11}}>{c.canal}</span></td>
+                          <td style={{fontWeight:700}}>{m.leadsGen}</td>
+                          <td><span style={{fontWeight:600,color:m.tasaConv>20?'var(--green)':'var(--fg)'}}>{m.tasaConv.toFixed(0)}%</span></td>
+                          <td>{m.oppsGanadas}</td>
+                          <td className="num" style={{color:'var(--green)',fontWeight:600}}>{money(m.ingresoAtribuido)}</td>
+                          <td className="num">{m.leadsGen>0?money(m.cpl):'—'}</td>
+                          <td className="num"><span style={{fontWeight:700,color:m.roi>0?'var(--green)':m.roi<0?'var(--danger)':'var(--fg-muted)'}}>{c.presupuesto>0?m.roi.toFixed(0)+'%':'—'}</span></td>
+                        </tr>
+                      );
+                    })}
+                    {!(campanas||[]).length && <tr><td colSpan={8} className="text-muted" style={{textAlign:'center',padding:24}}>Sin campañas</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {tab === 'pipeline' && (
         <div style={{display:'grid', gap:20}}>
@@ -2248,31 +3490,66 @@ function BIOperativo() {
 
 // ============ AGENDA COMERCIAL ============
 function AgendaComercial() {
-  const { agendaEventos, cuentas, role, actualizarAgendaEvento, registrarActividad, searchQuery } = useApp();
+  const { agendaEventos, cuentas, role, usuarios, roles, authUser, crearAgendaEvento, actualizarAgendaEvento, registrarActividad, searchQuery } = useApp();
   const getAgendaCuentaNombre = (id) => cuentas.find(c => c.id === id)?.razon_social || id;
 
   const [view, setView] = useState('calendario'); // 'calendario' | 'semana' | 'dia' | 'lista'
   const [filtroVendedor, setFiltroVendedor] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   const [eventoRealizado, setEventoRealizado] = useState(null);
+  const [panelNuevoEvento, setPanelNuevoEvento] = useState(false);
+  const eventoFormBase = {
+    tipo: 'reunion',
+    titulo: '',
+    cuenta_id: '',
+    vendedor: '',
+    fecha: new Date().toISOString().split('T')[0],
+    hora: '09:00',
+    duracion_minutos: 60,
+    notas: '',
+  };
+  const [eventoForm, setEventoForm] = useState(eventoFormBase);
+  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true });
+  const updateEventoForm = (field, value) => setEventoForm(prev => ({ ...prev, [field]: value }));
+  const cerrarNuevoEvento = () => {
+    setPanelNuevoEvento(false);
+    setEventoForm(eventoFormBase);
+  };
+  const guardarNuevoEvento = (event) => {
+    event.preventDefault();
+    const vendedor = comercialesAsignables.find(u => u.id === eventoForm.vendedor)?.nombre || eventoForm.vendedor || 'Por asignar';
+    crearAgendaEvento({
+      titulo: eventoForm.titulo || 'Nuevo evento comercial',
+      tipo: eventoForm.tipo || 'reunion',
+      cuenta_id: eventoForm.cuenta_id || null,
+      vendedor,
+      registrado_por: vendedor,
+      fecha: eventoForm.fecha,
+      hora: eventoForm.hora,
+      duracion_minutos: Number(eventoForm.duracion_minutos || 60),
+      estado: 'programado',
+      notas: eventoForm.notas || null,
+    });
+    cerrarNuevoEvento();
+  };
   const [mesVisible, setMesVisible] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
   const [fechaSeleccionada, setFechaSeleccionada] = useState(new Date().toISOString().split('T')[0]);
 
-  // Jefes, supervisores, gerencia y admins ven la agenda del equipo completo.
+  const viewer = usuarios.find(u => u.id === authUser?.id || u.email === authUser?.email)
+    || usuarios.find(u => u.nombre === 'Carla Meza');
   const puedeVerEquipo = Boolean(
     role.permisos?.ver_agenda_equipo ||
     role.permisos?.tenant_admin ||
     role.permisos?.plataforma ||
-    /jefe|supervisor|gerente|administrador|admin/i.test(role.nombre || '')
+    ['direccion', 'jefatura', 'supervisor'].includes(String(viewer?.nivel_jerarquico || '').toLowerCase())
   );
-  const usuarioSimulado = 'Carla Meza';
 
   const query = searchQuery.toLowerCase();
   const eventosFiltrados = agendaEventos.filter(e => {
-    if (!puedeVerEquipo && e.vendedor !== usuarioSimulado) return false;
+    if (!canUserSeeOwner({ viewer, ownerName: e.vendedor, users: usuarios, roles })) return false;
     if (filtroVendedor && e.vendedor !== filtroVendedor) return false;
     if (filtroTipo && e.tipo !== filtroTipo) return false;
     
@@ -2434,7 +3711,7 @@ function AgendaComercial() {
             <button className={`seg-btn ${view==='dia'?'active':''}`} onClick={()=>setView('dia')}>Dia</button>
             <button className={`seg-btn ${view==='lista'?'active':''}`} onClick={()=>setView('lista')}>{I.list} Lista</button>
           </div>
-          <button className="btn btn-primary">{I.plus} Nuevo evento</button>
+          <button className="btn btn-primary" data-local-form="true" onClick={() => setPanelNuevoEvento(true)}>{I.plus} Nuevo evento</button>
         </div>
       </div>
 
@@ -2759,6 +4036,70 @@ function AgendaComercial() {
             </form>
           </div>
         </div>
+      )}
+
+      {panelNuevoEvento && (
+        <>
+          <div className="side-panel-backdrop" onClick={cerrarNuevoEvento}/>
+          <div className="side-panel" style={{width:'min(560px,96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Formulario de registro</div>
+                <div className="font-display" style={{fontSize:22,fontWeight:700,marginTop:2}}>Nuevo evento</div>
+              </div>
+              <button className="icon-btn" onClick={cerrarNuevoEvento}>{I.x}</button>
+            </div>
+            <form className="side-panel-body" onSubmit={guardarNuevoEvento}>
+              <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:'var(--fg-muted)'}}>Datos del evento</div>
+              <div className="grid-2" style={{gap:14,marginBottom:20}}>
+                <div className="input-group">
+                  <label>Tipo</label>
+                  <select className="select" value={eventoForm.tipo} onChange={e=>updateEventoForm('tipo',e.target.value)}>
+                    {['visita','reunion','llamada','demo','tarea'].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Fecha</label>
+                  <input className="input" type="date" required value={eventoForm.fecha} onChange={e=>updateEventoForm('fecha',e.target.value)}/>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Título *</label>
+                  <input className="input" required value={eventoForm.titulo} onChange={e=>updateEventoForm('titulo',e.target.value)} placeholder="Ej: Reunión de levantamiento con cliente" autoFocus/>
+                </div>
+                <div className="input-group">
+                  <label>Cuenta</label>
+                  <select className="select" value={eventoForm.cuenta_id} onChange={e=>updateEventoForm('cuenta_id',e.target.value)}>
+                    <option value="">Sin cuenta vinculada</option>
+                    {cuentas.map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Responsable comercial *</label>
+                  <select className="select" required value={eventoForm.vendedor} onChange={e=>updateEventoForm('vendedor',e.target.value)}>
+                    <option value="">Seleccionar...</option>
+                    {comercialesAsignables.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Hora</label>
+                  <input className="input" type="time" required value={eventoForm.hora} onChange={e=>updateEventoForm('hora',e.target.value)}/>
+                </div>
+                <div className="input-group">
+                  <label>Duración (min)</label>
+                  <input className="input" type="number" min="15" step="15" value={eventoForm.duracion_minutos} onChange={e=>updateEventoForm('duracion_minutos',e.target.value)}/>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Notas</label>
+                  <textarea className="input" rows={3} value={eventoForm.notas} onChange={e=>updateEventoForm('notas',e.target.value)} placeholder="Objetivo, agenda o preparación requerida"/>
+                </div>
+              </div>
+              <div className="row" style={{justifyContent:'flex-end',gap:10}}>
+                <button type="button" className="btn btn-secondary" onClick={cerrarNuevoEvento}>Cancelar</button>
+                <button type="submit" className="btn btn-primary">{I.plus} Crear evento</button>
+              </div>
+            </form>
+          </div>
+        </>
       )}
     </>
   );

@@ -18,6 +18,9 @@ const SIDEBAR = [
     { key: 'planes', label: 'Planes y Licencias', icon: I.package },
     { key: 'metricas_saas', label: 'Metricas SaaS', icon: I.trend },
   ]},
+  { section: 'Integraciones', items: [
+    { key: 'api_keys', label: 'API Keys', icon: I.lock },
+  ]},
   { section: 'CRM & Marketing', items: [
     { key: 'cuentas', label: 'Cuentas y Contactos', icon: I.users },
     { key: 'leads', label: 'Leads y Scoring', icon: I.target },
@@ -370,9 +373,10 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
   );
 }
 
-export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey, dark, setDark, setMobileMode }) {
+export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey, dark, setDark, setMobileMode, openSelectorSignal }) {
   const { notificaciones, markNotificacionesRead, dataMode, authUser, todasMembresias, seleccionarEmpresa, signOut } = useApp();
   const [compOpen, setCompOpen] = useState(false);
+  useEffect(() => { if (openSelectorSignal > 0) setCompOpen(true); }, [openSelectorSignal]);
   const [roleOpen, setRoleOpen] = useState(false);
   const [notiOpen, setNotiOpen] = useState(false);
   const title = SIDEBAR.flatMap(g => g.items).find(i => i.key === active)?.label || 'Dashboard';

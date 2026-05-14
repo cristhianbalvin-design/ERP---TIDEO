@@ -1,6 +1,6 @@
 # ERP Modular Est├índar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado ÔÇö TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS ┬À ├Ültima actualizaci├│n: 29/04/2026
+### Arquitectura Multitenant SaaS · Última actualización: 12/05/2026
 
 ---
 
@@ -23,16 +23,17 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 
 ---
 
-## 3. Estado de desarrollo ÔÇö 28/04/2026
+## 3. Estado de desarrollo — 12/05/2026
 
 ### 3.1 Resumen de progreso
 
-| ├ürea | Estado |
+| Área | Estado |
 |------|--------|
-| M├│dulos en prototipo (construidos) | 38 |
-| M├│dulos en prompt pendiente de implementar | 15 |
-| Stack t├®cnico | React 18 + Vite 5 ┬À Context API ┬À CSS custom properties ┬À Mock data pattern |
+| Módulos en prototipo (construidos) | 41 |
+| Módulos en prompt pendiente de implementar | 15 |
+| Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Mock data pattern |
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
+| Migraciones SQL aplicadas | 070 (última: usuarios_asignaciones_funcionales) |
 
 ### 3.2 Inventario completo de m├│dulos
 
@@ -56,7 +57,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | Hoja de Costeo | Ô£à Implementado | Documento interno entre Oportunidad y Cotizaci├│n. Secciones: MO, materiales, servicios terceros, log├¡stica. Flujo: borrador ÔåÆ en revisi├│n ÔåÆ aprobada ÔåÆ genera cotizaci├│n pre-rellenada |
 | Cotizaciones | Ô£à Implementado | |
 | OS Cliente | Ô£à Implementado | |
-| Marketing Automation | Ô£à Implementado | |
+| Marketing Automation — Campañas | ✔ Implementado | CRUD completo: crear/editar/pausar/reactivar campañas. Métricas: leads atribuidos, tasa conversión, ingreso atribuido, CPL, ROI. Ficha de campaña con leads detallados. `campana_id` viaja en leads → oportunidades. |
 
 #### Operaciones
 | M├│dulo | Estado |
@@ -69,12 +70,12 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | Soporte y Tickets | Ô£à Implementado |
 
 #### RRHH (secci├│n nueva ÔÇö pendiente de implementar)
-| M├│dulo | Estado | Prompt |
-|--------|--------|--------|
+| M├│dulo | Estado | Notas |
+|--------|--------|-------|
 | Personal Operativo | Ô£à Implementado (en Configuraci├│n) | Mover a secci├│n RRHH |
 | Personal Administrativo | Ô£à Implementado (en Configuraci├│n) | Mover a secci├│n RRHH |
 | Control de Asistencia | ÔÅ│ Pendiente | `prompt_asistencia_turnos.md` |
-| Turnos y Horarios | ÔÅ│ Pendiente | `prompt_asistencia_turnos.md` |
+| Turnos y Horarios | ✔ Implementado | Módulo standalone `pages_turnos.jsx`. CRUD completo: crear/editar/eliminar con side-panel. Campos: nombre, entrada/salida, tolerancia, cruza medianoche, días laborables (o variables), refrigerio. Preview de horas efectivas en tiempo real. |
 | N├│mina B├ísica | ÔÅ│ Pendiente | `prompt_nomina_basica.md` |
 | Pr├®stamos al Personal | Ô£à Implementado (como "Pr├®stamos y Pagos") | Mover a secci├│n RRHH |
 
@@ -136,12 +137,17 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | Tarifarios | Ô£à Implementado | |
 | Par├ímetros Generales | Ô£à Implementado | |
 
+#### Integraciones
+| Módulo | Estado | Notas |
+|--------|--------|-------|
+| API Keys | ✔ Implementado | CRUD completo. Generación `tdk_` + SHA-256 hash. Permisos por módulo:acción. Visualización one-time de la key. Edge Function `api-prospectos` consume la key para insertar leads vía webhook. |
+
 #### Plataforma SaaS (Superadmin TIDEO)
-| M├│dulo | Estado |
+| Módulo | Estado |
 |--------|--------|
-| Empresas / Tenants | Ô£à Implementado |
-| Planes y Licencias | Ô£à Implementado |
-| M├®tricas SaaS | Ô£à Implementado |
+| Empresas / Tenants | ✔ Implementado |
+| Planes y Licencias | ✔ Implementado |
+| Métricas SaaS | ✔ Implementado |
 
 ### 3.3 Prompts pendientes de ejecutar
 
@@ -167,11 +173,15 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | `src/pages_core.jsx` | Dashboard, CRM, Pipeline, BI Comercial, BI Operativo | 81 KB |
 | `src/pages_ops.jsx` | OT, Partes, Planner, Tickets, RRHH Op., Cuentas (ficha) | 81 KB |
 | `src/pages_admin.jsx` | Finanzas, RRHH Admin, Configuraci├│n | 59 KB |
+| `src/pages_turnos.jsx` | Turnos y Horarios (módulo standalone, CRUD completo) | 7 KB |
+| `src/pages_api_keys.jsx` | API Keys — generación, permisos, revocación, one-time display | 10 KB |
 | `src/pages_fin.jsx` | CxC, CxP, Facturaci├│n, Tesorer├¡a, ER, Presupuesto | 29 KB |
 | `src/pages_bi_fin.jsx` | BI Financiero | 20 KB |
 | `src/pages_ia.jsx` | IA Comercial, Operativa, Financiera + Historial | 37 KB |
 | `src/pages_cs.jsx` | Customer Success completo | 46 KB |
 | `src/icons.jsx` | Iconograf├¡a, helpers money/moneyD | 8.6 KB |
+| `src/lib/hierarchy.js` | ROLE_CATEGORIES, HIERARCHY_LEVELS, getAssignableUsers, getPotentialManagers, canUserSeeOwner | 4 KB |
+| `src/services/apiKeysService.js` | Generación tdk_ key, hash SHA-256, CRUD tabla api_keys | 2 KB |
 
 ### 3.5 Convenciones t├®cnicas cr├¡ticas
 
@@ -290,11 +300,12 @@ Primer contacto con prospecto
 | Industria | ÔÇö | |
 | Tel├®fono | ÔÇö | |
 | Email | ÔÇö | |
-| Fuente | Ô£ô | |
-| Responsable comercial | Ô£ô | |
-| Necesidad declarada | Ô£ô | |
-| Presupuesto estimado | ÔÇö | |
-| Registrado desde | ÔÇö | campo / web / formulario |
+| Fuente | ✔ | Canal de marketing (Referido, LinkedIn, Formulario web, Evento/Feria, etc.) |
+| Campaña de origen | — | `campana_id` FK a campanas. Selector muestra solo campañas Activas. Nulo = orgánico/referido. |
+| Responsable comercial | ✔ | |
+| Necesidad declarada | ✔ | |
+| Presupuesto estimado | — | |
+| Registrado desde | — | backoffice / campo / api |
 
 ### 5.4 Formulario de cuenta ÔÇö dos momentos
 
@@ -345,10 +356,13 @@ BUSINESS INTELLIGENCE
   BI Operativo
   BI Financiero
 
+INTEGRACIONES
+  API Keys
+
 CRM & MARKETING
   Cuentas y Contactos
   Leads y Scoring
-  Marketing Automation
+  Marketing Automation — Campañas
   Pipeline
   Actividades
 
@@ -858,7 +872,64 @@ Por proyecto/centro de costo. Aprobaci├│n con cadena visual (4 aprobadores c
 
 ---
 
-### 8.35 IA ÔÇö M├│dulos completos con historial auditado
+### 8.35 Integraciones — API Keys
+
+Gestión de claves de integración para que sistemas externos (formularios web, CRMs, herramientas de marketing) envíen leads automáticamente al ERP.
+
+**Generación:** `tdk_` + 64 hex chars (32 bytes random), hasheado con SHA-256 en el cliente antes de almacenar. La clave raw se muestra una única vez en un modal overlay al crear — nunca se guarda en texto plano en la base de datos.
+
+**Permisos:** array de strings `modulo:accion` (ej: `leads:write`, `contactos:read`). Cada key tiene scope propio.
+
+**Tabla `api_keys`:** id, empresa_id, key_hash (único), descripcion, permisos text[], activo, creado_por, creado_en, ultimo_uso_en.
+
+**Edge Function `api-prospectos`:** recibe `POST` con `X-Api-Key` header → llama RPC `validar_api_key(key_plain, permiso)` → si válida retorna `empresa_id` → inserta lead con `registrado_desde = 'api'` → responde `{ success: true, lead_id }`.
+
+**RLS:** SELECT/INSERT/UPDATE restringidos a `usuario_tiene_empresa(empresa_id)`. No permite revocar si no eres admin del tenant.
+
+---
+
+### 8.8c CRM — Marketing Automation — Campañas
+
+Módulo central de atribución de marketing. Responde: ¿qué canal generó más leads? ¿cuánto costó cada lead? ¿qué ROI tuvo cada campaña?
+
+**Flujo de atribución:**
+```
+Marketing crea campaña → estado Activa
+        ↓
+Tres caminos de entrada del lead:
+  1. Webhook (api-prospectos) → campana_id asignado automáticamente
+  2. Vendedor en formulario → selector "Campaña de origen" (solo Activas)
+  3. Lead ya existente → asignar desde ficha del lead
+        ↓
+Conversión del lead → campana_id viaja a la Oportunidad
+        ↓
+Oportunidad ganada → ingreso atribuido a la campaña
+        ↓
+BI Comercial → tab "Por campaña" con métricas completas
+```
+
+**Estados de campaña:** Borrador → Activa → Pausada → Finalizada
+
+**Tabla `campanas`:** id, empresa_id, nombre, tipo, canal, fecha_inicio, fecha_fin, presupuesto, moneda, estado, descripcion.
+
+**Columnas añadidas:** `campana_id` en `leads` y `oportunidades` (nullable, FK con `ON DELETE SET NULL`).
+
+**Métricas calculadas por campaña:**
+| Métrica | Cálculo |
+|---------|---------|
+| Leads generados | leads WHERE campana_id = camp.id |
+| Tasa de conversión | leads convertidos / leads totales |
+| Ops ganadas | oportunidades WHERE campana_id = camp.id AND estado = 'ganada' |
+| Ingreso atribuido | suma monto_estimado de ops ganadas |
+| Costo por lead (CPL) | presupuesto / leads generados |
+| Costo por venta | presupuesto / ops ganadas |
+| ROI | (ingreso atribuido − presupuesto) / presupuesto × 100 |
+
+**UI:** KPIs globales + tabla de campañas + panel lateral de crear/editar + ficha de campaña con lista de leads. Tab "Rendimiento por campaña" con cards individuales. BI Comercial añade tab "Por campaña" con barras comparativas y tabla de atribución.
+
+---
+
+### 8.35 IA — Módulos completos con historial auditado
 
 **IA Comercial:** resumen de cliente/oportunidad, siguiente mejor acci├│n, redacci├│n asistida, clasificaci├│n de leads, predicci├│n de cierre, recomendaci├│n de servicios.
 
@@ -899,13 +970,28 @@ empresas, planes, monedas, paises, zonas_horarias, versiones_plataforma
 
 ### 9.2 Tablas de acceso y permisos
 ```
-usuarios, usuarios_empresas (rol_id, acceso_campo, perfil_campo),
-roles, permisos_roles (9 acciones por pantalla), permisos_especiales, auditoria
+usuarios, usuarios_empresas (rol_id, acceso_campo, perfil_campo, jefe_user_id),
+roles (categoria, nivel_jerarquico, es_superadmin, es_admin_empresa),
+permisos_roles (9 acciones por pantalla), permisos_especiales,
+usuarios_asignaciones (empresa_id, user_id, rol_id, categoria, nivel_jerarquico,
+  jefe_user_id, alcance_tipo, alcance_id, principal, activo, fecha_inicio, fecha_fin),
+superadmin_accesos (log append-only cross-tenant), auditoria
 ```
+
+**Funciones RLS clave:**
+- `usuario_tiene_empresa(empresa_id)` — membresía activa en el tenant (o bypass superadmin plataforma)
+- `usuario_puede(empresa_id, pantalla, accion)` — permiso funcional granular
+- `usuario_es_admin_empresa(empresa_id)` — es_admin_empresa del rol del usuario
+- `usuario_es_superadmin_plataforma()` — usuario en tenant con `es_plataforma = true`
+- `usuario_alcance_jerarquico(empresa_id)` → `'tenant' | 'equipo' | 'propio'` según nivel jerárquico
+- `usuario_puede_ver_usuario(empresa_id, target_user_id)` — visibilidad jerárquica recursiva por jefe funcional
+- `usuario_puede_ver_registro(empresa_id, owner_user_id, categoria, alcance_tipo, alcance_id)` — visibilidad de registros combinando jerarquía + alcance funcional
 
 ### 9.3 Tablas de negocio (todas con empresa_id)
 
-**CRM:** cuentas, contactos, relacion_cuenta_contacto, leads, oportunidades, etapas_pipeline, actividades_comerciales, health_score_cliente.
+**CRM:** cuentas, contactos, relacion_cuenta_contacto, leads (+campana_id), oportunidades (+campana_id), campanas, etapas_pipeline, actividades_comerciales, health_score_cliente.
+
+**Integraciones:** api_keys (empresa_id, key_hash, descripcion, permisos text[], activo, creado_por, ultimo_uso_en).
 
 **Comercial:** hojas_costeo (con secciones jsonb: mano_obra, materiales, servicios_terceros, logistica + totales calculados + margen_objetivo_pct + responsable_costeo + cotizacion_id), cotizaciones (+ hoja_costeo_id para trazabilidad), historial_versiones_cotizacion, os_cliente, condiciones_comerciales.
 
@@ -934,6 +1020,16 @@ Todo `empresa_id` impl├¡cito. RLS en base de datos. Sin acceso cruzado entre 
 
 ### 10.2 Roles y permisos
 Sin permiso "Ver" ÔåÆ pantalla no aparece en sidebar. Permisos de costos/precios/finanzas independientes. Sin `acceso_campo` ÔåÆ no accede a PWA. Rol Admin no eliminable si es el ├║nico activo.
+
+**Jerarquia transversal:** cada rol tiene `categoria` (admin, comercial, operaciones, finanzas, RRHH, compras, logistica, customer_success u otro) y `nivel_jerarquico` (direccion, jefatura, supervisor, asesor, operativo o soporte). Cada usuario puede tener `jefe_user_id` como jefe directo dentro del tenant. Direccion/admin ve todo el tenant; jefatura y supervisores ven su equipo recursivo; asesores/operativos ven solo sus propios movimientos. Esta regla aplica a toda la plataforma, no solo al area comercial.
+
+**Modelo World Class de asignaciones (migración 070):** el cargo laboral no define permisos. El usuario pertenece al tenant en `usuarios_empresas`; el rol define permisos; y `usuarios_asignaciones` define donde aplica ese rol. La asignacion principal se crea automaticamente desde el rol principal (trigger `trg_usuarios_empresas_sync_asignacion_principal`) para mantener simple la experiencia. Las asignaciones adicionales son opcionales y permiten estructuras matriciales: una persona puede operar en Comercial y Proyectos, o Finanzas y Operaciones, con jefe funcional y alcance por tenant, area, equipo, sede, proyecto o centro de costo.
+
+**Alcances válidos en `usuarios_asignaciones.alcance_tipo`:** `tenant` (todo el tenant), `area`, `equipo`, `sede`, `proyecto`, `centro_costo`, `custom`.
+
+**Regla de visibilidad por `usuario_alcance_jerarquico`:** la función devuelve `'tenant'` si el usuario tiene rol dirección/admin; `'equipo'` si tiene jefatura/supervisor; `'propio'` en cualquier otro caso. Toda RLS que dependa de jerarquía debe llamar a esta función en lugar de comparar `nivel_jerarquico` directamente, para que la sincronización con `usuarios_asignaciones` sea la fuente de verdad.
+
+**Sincronización bidireccional:** `usuarios_empresas` sigue siendo la membresía oficial. El trigger `trg_usuarios_empresas_sync_asignacion_principal` crea/actualiza/desactiva la asignación principal en `usuarios_asignaciones` cuando cambia el rol o el estado del usuario en `usuarios_empresas`. El backfill de la migración 070 copia todos los usuarios activos existentes.
 
 ### 10.3 CRM y comercial
 Lead requiere fuente y responsable. Oportunidad perdida requiere motivo. OT facturable requiere OS Cliente. Descuento sobre l├¡mite requiere aprobaci├│n. No duplicar facturaci├│n por el mismo alcance.
@@ -1014,7 +1110,17 @@ No eliminar ÔåÆ anular con motivo y usuario. Modificaciones cr├¡ticas regi
 
 | Fecha | Cambios principales |
 |-------|---------------------|
-| 29/04/2026 | Backend m├¡nimos para deploy beta: RLS por permisos funcionales para Operaciones, Compras, Finanzas, RRHH, Customer Success, IA y Maestros; permisos admin sembrados para pantallas cr├¡ticas; auditor├¡a DB transversal para inserts/updates de m├│dulos fuera de CRM/Comercial; aprobaci├│n de Hoja de Costeo y creaci├│n de Cotizaci├│n atomizada v├¡a RPC `aprobar_hoja_costeo_y_crear_cotizacion`. Migraci├│n `024_backend_minimos_deploy_beta.sql`. |
+| 12/05/2026 | **Conexión módulo Turnos y Horarios:** `pages_turnos.jsx` existía como módulo standalone completo pero nunca era importado — App.jsx seguía usando la versión de `pages_ops.jsx`. Corregido: App.jsx ahora importa `TurnosHorarios` desde `pages_turnos.jsx`; removido de la exportación de `pages_ops.jsx`. También corregido bug de import default vs named (`import { rrhhService }` en lugar de `import rrhhService`). `rrhhService.js` extendido con `actualizarTurno` y `eliminarTurno`. El módulo activo tiene: CRUD completo (crear/editar/eliminar), tabla con columna Refrigerio, side-panel con cálculo de horas efectivas en tiempo real, días laborables con selección visual, toggle "cruza medianoche". |
+| 12/05/2026 | **Asignaciones funcionales multirol (migracion 070):** nueva tabla `usuarios_asignaciones` con rol, categoria, nivel jerarquico, jefe funcional, alcance y bandera principal. Backfill automatico desde `usuarios_empresas`. Triggers mantienen sincronizada la asignacion principal. Nuevas funciones `usuario_puede_ver_registro` y jerarquia basada en asignaciones. UI de Usuarios mantiene el flujo simple y agrega un bloque colapsado de asignaciones adicionales opcionales para empresas grandes o estructuras matriciales. |
+| 12/05/2026 | **Jerarquia transversal de roles y usuarios (migracion 069):** `roles.nivel_jerarquico` y `usuarios_empresas.jefe_user_id` permiten estructura por equipos en cualquier area. Nueva regla: direccion/admin ve tenant completo, jefatura/supervisor ve subordinados recursivos y asesor/operativo ve registros propios. UI de Roles agrega Categoria + Nivel; UI de Usuarios agrega Jefe directo. Selectores de responsables filtran por categoria de rol. |
+| 12/05/2026 | **Módulo Campañas de Marketing (migración 068):** tabla `campanas` con estados Borrador/Activa/Pausada/Finalizada. `campana_id` añadido a `leads` y `oportunidades` (nullable, viaja al convertir). Marketing Automation reemplazado con CRUD completo: KPIs globales, tabla con Activar/Pausar/Reactivar, panel lateral crear/editar, ficha de campaña con métricas (CPL, ROI, ingreso atribuido). BIComercial añade tab "Por campaña" con barras comparativas y tabla de atribución. Formulario de nuevo lead añade selector "Campaña de origen" (solo campañas Activas). |
+| 12/05/2026 | **Módulo API Keys (migración 067):** tabla `api_keys` con hash SHA-256, permisos modulo:accion, estado activo/inactivo. CRUD completo con visualización one-time de la key raw. Edge Function `api-prospectos` en Deno valida key vía RPC `validar_api_key` e inserta leads con `registrado_desde = 'api'`. Sidebar: sección "Integraciones" nueva visible para todos los tenants. |
+| 12/05/2026 | **Hardening multitenant (migraciones 062–066):** columna `es_plataforma boolean` en `empresas` para identificar al tenant dueño de la plataforma — reemplaza comparación hardcodeada `id = 'emp_tideo'` en frontend y funciones RLS. Log de accesos cross-tenant `superadmin_accesos` (append-only, fire-and-forget). `usuario_es_superadmin_plataforma()` y `usuario_tiene_empresa()` refactorizadas para requerir `es_plataforma = true` en el bypass. `usuario_es_admin_empresa()` corregida para usar `es_admin_empresa = true` del rol (no `es_superadmin`). RLS aplicada a 17 tablas de finanzas/operaciones/soporte/auditoría con `CREATE TABLE IF NOT EXISTS` en migración 065. |
+| 12/05/2026 | **Explicación columnas `leads`:** documentado que `fuente` = canal de marketing (Referido, LinkedIn, etc.) y `registrado_desde` = canal técnico de entrada (backoffice, api, campo). `campana` (texto legacy) coexiste con `campana_id` (FK). `responsable_id` guarda el UUID del usuario asignado y `responsable` conserva el nombre visible como snapshot. `dias_sin_actividad` es un campo existente sin lógica activa. |
+| 12/05/2026 | **Responsable comercial normalizado:** formularios de creación de leads guardan `responsable_id` y `responsable`. Al convertir, el UUID se propaga a cuenta y oportunidad. Migración `072_backfill_responsable_id_crm.sql` rellena históricos por coincidencia única de nombre dentro del tenant. |
+| 12/05/2026 | **CRUD directo en tarjetas de Leads:** cada tarjeta muestra acciones de editar y eliminar. Editar reutiliza el panel de lead y persiste en Supabase. Eliminar borra el lead; migración `073_leads_delete_set_null.sql` ajusta FKs para conservar oportunidades, agenda y actividades con `lead_id = null`. |
+| 12/05/2026 | **Estandarización fase 1 de formularios principales:** CRM & Marketing queda excluido del quick-create global basado en texto. Cada pantalla usa acción primaria explícita local. Pipeline y Agenda Comercial agregan side-panel oficial para "Nueva oportunidad" y "Nuevo evento". |
+| 29/04/2026 | Backend mínimos para deploy beta: RLS por permisos funcionales para Operaciones, Compras, Finanzas, RRHH, Customer Success, IA y Maestros; permisos admin sembrados para pantallas cr├¡ticas; auditor├¡a DB transversal para inserts/updates de m├│dulos fuera de CRM/Comercial; aprobaci├│n de Hoja de Costeo y creaci├│n de Cotizaci├│n atomizada v├¡a RPC `aprobar_hoja_costeo_y_crear_cotizacion`. Migraci├│n `024_backend_minimos_deploy_beta.sql`. |
 | 29/04/2026 | Hoja de Costeo: persistencia robusta mediante RPC `crear_hoja_costeo` con `security definer`. La creaci├│n ya no depende del insert directo desde frontend; el backend valida acceso al tenant y permiso funcional `hoja_costeo/crear`, inserta la fila y retorna el registro persistido. El formulario mantiene los datos y muestra error visible si Supabase rechaza la operaci├│n. Migraci├│n `023_rpc_crear_hoja_costeo.sql`. |
 | 29/04/2026 | RLS permisos: `usuario_puede` ahora concede bypass global a Superadmin TIDEO activo, completando el acceso operativo de plataforma a cualquier pantalla de cualquier tenant. Esto corrige persistencia de Hoja de Costeo, Cotizaciones y OS Cliente cuando el registro lo crea soporte/plataforma en tenants donde TIDEO no tiene membres├¡a directa. Migraci├│n `022_superadmin_global_permissions.sql`. |
 | 29/04/2026 | RLS plataforma: Superadmin TIDEO ahora tiene acceso operativo a cualquier tenant sin depender de membres├¡a directa por empresa. Se actualiza `usuario_tiene_empresa` para considerar rol `es_superadmin` activo, corrigiendo persistencia de documentos creados por soporte/plataforma en tenants nuevos. Migraci├│n `021_superadmin_tenant_data_access.sql`. |

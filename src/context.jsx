@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { MOCK } from './data.js';
 import { isSupabaseMode } from './lib/dataMode.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
-import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta } from './services/crmService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta } from './services/crmService.js';
 import { loadOpsFromSupabase, persistirBacklog, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario } from './services/operacionesService.js';
 import { finanzasService } from './services/finanzasService.js';
 import { maestrosService } from './services/maestrosService.js';
@@ -13,6 +13,7 @@ import { auditoriaService } from './services/auditoriaService.js';
 import { plataformaService } from './services/plataformaService.js';
 import { usuariosService } from './services/usuariosService.js';
 import { rolesService } from './services/rolesService.js';
+import { campanasService } from './services/campanasService.js';
 const AppContext = createContext();
 
 export function useApp() {
@@ -21,6 +22,47 @@ export function useApp() {
 
 function generateId(prefix) {
   return `${prefix}_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
+}
+
+function toDateOnly(value) {
+  if (!value) return null;
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function diffDaysFromToday(value) {
+  const date = toDateOnly(value);
+  if (!date) return 0;
+  const today = toDateOnly(new Date().toISOString().slice(0, 10));
+  return Math.max(0, Math.floor((today - date) / 86400000));
+}
+
+function getLeadActivityDate(lead, actividades = [], agendaEventos = []) {
+  const today = toDateOnly(new Date().toISOString().slice(0, 10));
+  const dates = [];
+  actividades.forEach(a => {
+    const linked = a.lead_id === lead.id || (a.vinculo_tipo === 'lead' && a.vinculo_id === lead.id);
+    const date = linked ? toDateOnly(a.fecha || a.created_at) : null;
+    if (date && date <= today) dates.push(date);
+  });
+  agendaEventos.forEach(e => {
+    const date = e.lead_id === lead.id ? toDateOnly(e.fecha || e.created_at) : null;
+    if (date && date <= today) dates.push(date);
+  });
+  if (!dates.length) return lead.fecha_creacion || lead.created_at || null;
+  return dates.sort((a, b) => b - a)[0].toISOString().slice(0, 10);
+}
+
+function calcularDiasSinActividadLead(lead, actividades = [], agendaEventos = []) {
+  if (['convertido', 'descartado'].includes(lead.estado)) return Number(lead.dias_sin_actividad || 0);
+  return diffDaysFromToday(getLeadActivityDate(lead, actividades, agendaEventos));
+}
+
+function recalcularDiasSinActividadLeads(leads = [], actividades = [], agendaEventos = []) {
+  return leads.map(lead => ({
+    ...lead,
+    dias_sin_actividad: calcularDiasSinActividadLead(lead, actividades, agendaEventos),
+  }));
 }
 
 function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo_modulos = []) {
@@ -138,9 +180,11 @@ export function AppProvider({ children }) {
     try { localStorage.setItem('tideo_usuarios', JSON.stringify(usuarios)); } catch {}
   }, [usuarios]);
   const [leads, setLeads] = useState(MOCK.leads);
+  const [historialEstados, setHistorialEstados] = useState([]);
   const [cuentas, setCuentas] = useState(MOCK.cuentas);
   const [contactos, setContactos] = useState(MOCK.contactos);
   const [oportunidades, setOportunidades] = useState(MOCK.oportunidades);
+  const [campanas, setCampanas] = useState(MOCK.campanas || []);
   const [actividades, setActividades] = useState(MOCK.actividades);
   const [agendaEventos, setAgendaEventos] = useState(MOCK.agendaEventos || []);
   const [hojasCosteo, setHojasCosteo] = useState(MOCK.hojasCosteo || []);
@@ -472,6 +516,7 @@ export function AppProvider({ children }) {
         setLeads([]);
         setContactos([]);
         setOportunidades([]);
+        setCampanas([]);
         setHojasCosteo([]);
         setCotizaciones([]);
         setOsClientes([]);
@@ -501,15 +546,28 @@ export function AppProvider({ children }) {
 
         const data = await loadCrmFromSupabase(supabase, empresa.id);
         if (!data || !mounted) return;
+        const agendaData = data.agendaEventos || [];
+        const actividadesData = data.actividades || [];
+        const leadsCalculados = recalcularDiasSinActividadLeads(data.leads || [], actividadesData, agendaData);
         setCuentas(data.cuentas || []);
-        setLeads(data.leads || []);
+        setLeads(leadsCalculados);
+        Promise.all(
+          leadsCalculados
+            .filter((lead, index) => Number((data.leads || [])[index]?.dias_sin_actividad || 0) !== Number(lead.dias_sin_actividad || 0))
+            .map(lead => actualizarLead(supabase, lead.id, { dias_sin_actividad: lead.dias_sin_actividad }))
+        ).catch(err => console.error('No se pudo sincronizar dias_sin_actividad', err));
         setContactos(data.contactos || []);
         setOportunidades(data.oportunidades || []);
         setHojasCosteo(data.hojasCosteo || []);
         setCotizaciones(data.cotizaciones || []);
         setOsClientes(data.osClientes || []);
-        setAgendaEventos(data.agendaEventos || []);
-        setActividades(data.actividades || []);
+        setAgendaEventos(agendaData);
+        setActividades(actividadesData);
+
+        try {
+          const campanasData = await campanasService.listar(empresa.id);
+          if (mounted) setCampanas(campanasData || []);
+        } catch (_err) { /* keep empty list if campaign table is not available */ }
         
         const opsData = await loadOpsFromSupabase(supabase, empresa.id);
         if (opsData && mounted) {
@@ -712,6 +770,13 @@ export function AppProvider({ children }) {
     try { localStorage.setItem('last_empresa_id', empresaId); } catch {}
     setMembresiaCargando(true);
     await cargarMembresiaCompleta(mem);
+    if (isSupabaseConfigured() && mem.rol?.es_superadmin && !mem.empresa?.es_plataforma) {
+      getSupabaseClient().then(sb => sb.from('superadmin_accesos').insert({
+        user_id: authUser.id,
+        empresa_id: mem.empresa_id,
+        empresa_nombre: mem.empresa?.nombre_comercial || mem.empresa?.razon_social || mem.empresa_id,
+      })).catch(() => {});
+    }
   };
 
   useEffect(() => {
@@ -743,7 +808,7 @@ export function AppProvider({ children }) {
         const rolIds = [...new Set(ues.map(u => u.rol_id).filter(Boolean))];
 
         const [{ data: empresasRows, error: empErr }, { data: rolesRows, error: rolErr }] = await Promise.all([
-          supabase.from('empresas').select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado').in('id', empresaIds),
+          supabase.from('empresas').select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma').in('id', empresaIds),
           supabase.from('roles').select('id, nombre, es_admin_empresa, es_superadmin').in('id', rolIds),
         ]);
 
@@ -867,7 +932,7 @@ export function AppProvider({ children }) {
   // Superadmin de plataforma solo aplica cuando el tenant activo es emp_tideo.
   // En cualquier otro tenant el usuario actúa como admin de ese tenant, sin acceso a módulos de plataforma.
   const isSuperadmin = Boolean(role.permisos?.plataforma) &&
-    (!isSupabaseConfigured() || membresiaActiva?.empresa?.id === 'emp_tideo');
+    (!isSupabaseConfigured() || Boolean(membresiaActiva?.empresa?.es_plataforma));
 
   useEffect(() => {
     if (!isSupabaseConfigured() || !authSession?.user || !isSuperadmin) return;
@@ -934,10 +999,106 @@ export function AppProvider({ children }) {
     setEmpresasPlataforma(prev => prev.filter(e => e.id !== id));
   };
 
+  const recargarCampanas = async () => {
+    if (!isSupabaseConfigured() || !empresa?.id) return;
+    try {
+      const data = await campanasService.listar(empresa.id);
+      setCampanas(data || []);
+    } catch (err) { console.error(err); }
+  };
+
+  const crearCampana = async (datos) => {
+    if (!isSupabaseConfigured()) {
+      const campana = { ...datos, id: generateId('camp'), empresa_id: empresa?.id, created_at: new Date().toISOString() };
+      setCampanas(prev => [campana, ...prev]);
+      return;
+    }
+    try {
+      await campanasService.crear(empresa.id, datos);
+      await recargarCampanas();
+    } catch (err) {
+      addNotificacion(`Error al crear campaña: ${err.message}`);
+      throw err;
+    }
+  };
+
+  const actualizarCampana = async (id, datos) => {
+    if (!isSupabaseConfigured()) {
+      setCampanas(prev => prev.map(c => c.id === id ? { ...c, ...datos } : c));
+      return;
+    }
+    try {
+      await campanasService.actualizar(id, datos);
+      await recargarCampanas();
+    } catch (err) {
+      addNotificacion(`Error al actualizar campaña: ${err.message}`);
+      throw err;
+    }
+  };
+
+  const cambiarEstadoCampana = async (id, estado) => {
+    if (!isSupabaseConfigured()) {
+      setCampanas(prev => prev.map(c => c.id === id ? { ...c, estado } : c));
+      return;
+    }
+    try {
+      await campanasService.cambiarEstado(id, estado);
+      await recargarCampanas();
+    } catch (err) {
+      addNotificacion(`Error al cambiar estado de campaña: ${err.message}`);
+      throw err;
+    }
+  };
+
+  const eliminarCampana = async (id) => {
+    if (!isSupabaseConfigured()) {
+      setCampanas(prev => prev.filter(c => c.id !== id));
+      return;
+    }
+    try {
+      await campanasService.eliminar(id);
+      await recargarCampanas();
+    } catch (err) {
+      addNotificacion(`Error al eliminar campaña: ${err.message}`);
+      throw err;
+    }
+  };
+
   const crearLead = (lead) => {
     setLeads(prev => [lead, ...prev]);
     crmSync(sb => persistirLead(sb, empresa.id, lead));
     auditSync({ modulo: 'crm', entidad: 'leads', entidad_id: lead.id, accion: 'crear', valor_nuevo: lead });
+  };
+
+  const actualizarLeadDatos = (leadId, datos) => {
+    const anterior = leads.find(l => l.id === leadId) || null;
+    const payload = { ...datos };
+    if (payload.presupuesto_estimado !== undefined) {
+      payload.presupuesto_estimado = Number(payload.presupuesto_estimado || 0);
+    }
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ...payload } : l));
+    crmSync(sb => actualizarLead(sb, leadId, {
+      ...payload,
+      nombre_contacto: payload.nombre ?? payload.nombre_contacto,
+      empresa_nombre: payload.empresa_contacto ?? payload.empresa_nombre,
+    }));
+    auditSync({ modulo: 'crm', entidad: 'leads', entidad_id: leadId, accion: 'editar', valor_anterior: anterior, valor_nuevo: payload });
+    addNotificacion('Lead actualizado.');
+  };
+
+  const eliminarLead = async (leadId) => {
+    const anterior = leads.find(l => l.id === leadId) || null;
+    setLeads(prev => prev.filter(l => l.id !== leadId));
+    try {
+      await crmPersist(sb => eliminarLeadSvc(sb, leadId));
+      auditSync({ modulo: 'crm', entidad: 'leads', entidad_id: leadId, accion: 'eliminar', valor_anterior: anterior });
+      addNotificacion('Lead eliminado.');
+      return true;
+    } catch (error) {
+      if (anterior) setLeads(prev => prev.some(l => l.id === leadId) ? prev : [anterior, ...prev]);
+      addNotificacion(`No se pudo eliminar el lead: ${error?.message || 'Error desconocido'}`);
+      throw error;
+    }
   };
 
   const crearCuenta = (cuenta) => {
@@ -1078,13 +1239,14 @@ export function AppProvider({ children }) {
     const nuevaCuenta = {
       id: newCuentaId,
       empresa_id: empresa.id,
-      razon_social: lead.razon_social || lead.empresa_contacto,
-      nombre_comercial: lead.empresa_contacto,
+      razon_social: datosConversion.razon_social || lead.razon_social || lead.empresa_contacto,
+      nombre_comercial: datosConversion.nombre_comercial || lead.empresa_contacto,
       tipo: 'prospecto',
-      industria: lead.industria || 'Por definir',
+      industria: datosConversion.industria || lead.industria || 'Por definir',
       tamano: 'Por definir',
       estado: 'activo',
       responsable_comercial: lead.responsable,
+      responsable_id: lead.responsable_id || null,
       responsable_cs: null,
       condicion_pago: 'Por definir',
       limite_credito: 0,
@@ -1098,18 +1260,18 @@ export function AppProvider({ children }) {
       direccion: lead.direccion || 'Pendiente',
       telefono: lead.telefono,
       email: lead.email,
-      ruc: lead.ruc || 'Pendiente'
+      ruc: datosConversion.ruc || lead.ruc || 'Pendiente'
     };
 
     const nuevoContacto = {
       id: newContactoId,
       empresa_id: empresa.id,
       cuenta_id: newCuentaId,
-      nombre: lead.nombre,
-      cargo: lead.cargo,
+      nombre: datosConversion.contacto_nombre || lead.nombre,
+      cargo: datosConversion.contacto_cargo || lead.cargo,
       rol: 'decisor',
-      telefono: lead.telefono,
-      email: lead.email,
+      telefono: datosConversion.contacto_telefono || lead.telefono,
+      email: datosConversion.contacto_email || lead.email,
       principal: true,
       lead_origen: lead.id
     };
@@ -1123,11 +1285,14 @@ export function AppProvider({ children }) {
       servicio_interes: lead.necesidad,
       etapa: datosConversion.etapa_inicial || 'calificacion',
       monto_estimado: datosConversion.monto_estimado || lead.presupuesto_estimado,
+      moneda: datosConversion.moneda || lead.moneda || 'PEN',
       probabilidad: 30, // default
       forecast_ponderado: (datosConversion.monto_estimado || lead.presupuesto_estimado) * 0.3,
       fecha_cierre_estimada: null,
       fuente: lead.fuente,
+      campana_id: lead.campana_id || null,
       responsable: lead.responsable,
+      responsable_id: lead.responsable_id || null,
       competidor: null,
       estado: 'abierta',
       lead_origen: lead.id,
@@ -1141,9 +1306,11 @@ export function AppProvider({ children }) {
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, estado: 'convertido', convertido: true } : l));
 
     crmSync(async sb => {
+      const { data: lr } = await sb.from('leads').select('campana_id').eq('id', leadId).single();
+      const campanaIdFinal = lr?.campana_id ?? (lead.campana_id || null);
       await persistirCuenta(sb, empresa.id, nuevaCuenta);
       await persistirContacto(sb, empresa.id, nuevoContacto);
-      await persistirOportunidad(sb, empresa.id, nuevaOportunidad);
+      await persistirOportunidad(sb, empresa.id, { ...nuevaOportunidad, campana_id: campanaIdFinal });
       await actualizarLead(sb, leadId, { estado: 'convertido', convertido: true, cuenta_id: newCuentaId });
     });
     auditSync({
@@ -1164,6 +1331,24 @@ export function AppProvider({ children }) {
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, estado: 'descartado', motivo_descarte: motivo } : l));
     crmSync(sb => actualizarLead(sb, leadId, { estado: 'descartado', motivo_descarte: motivo }));
     auditSync({ modulo: 'crm', entidad: 'leads', entidad_id: leadId, accion: 'descartar', valor_anterior: anterior, valor_nuevo: { motivo } });
+    if (anterior) pushHistorial(leadId, anterior.estado, 'descartado', motivo);
+  };
+
+  const reactivarLead = (leadId, motivo) => {
+    const anterior = leads.find(l => l.id === leadId) || null;
+    const ahora = new Date().toISOString();
+    setLeads(prev => prev.map(l => l.id === leadId ? {
+      ...l,
+      estado: 'en_contacto',
+      motivo_descarte: null,
+      reactivado_en: ahora,
+      reactivado_por: authUser?.id,
+      veces_reactivado: (l.veces_reactivado || 0) + 1
+    } : l));
+    // El trigger DB gestiona reactivado_* — solo enviamos el cambio de estado
+    crmSync(sb => actualizarLead(sb, leadId, { estado: 'en_contacto', motivo_descarte: null }));
+    pushHistorial(leadId, 'descartado', 'en_contacto', motivo);
+    auditSync({ modulo: 'crm', entidad: 'leads', entidad_id: leadId, accion: 'reactivar', valor_anterior: anterior, valor_nuevo: { motivo } });
   };
 
   const crearOportunidad = (datos) => {
@@ -1558,14 +1743,38 @@ export function AppProvider({ children }) {
       estado: datos.resultado ? 'completada' : 'pendiente',
       ...datos
     };
+    const leadId = act.lead_id || (act.vinculo_tipo === 'lead' ? act.vinculo_id : null);
+    const nextActividades = [act, ...actividades];
     setActividades(prev => [act, ...prev]);
+    if (leadId) {
+      setLeads(prev => {
+        const nextLeads = recalcularDiasSinActividadLeads(prev, nextActividades, agendaEventos);
+        const leadActualizado = nextLeads.find(l => l.id === leadId);
+        if (leadActualizado) {
+          crmSync(sb => actualizarLead(sb, leadId, { dias_sin_actividad: leadActualizado.dias_sin_actividad }));
+        }
+        return nextLeads;
+      });
+    }
     crmSync(sb => persistirActividadComercial(sb, empresa.id, act));
     auditSync({ modulo: 'crm', entidad: 'actividades_comerciales', entidad_id: act.id, accion: 'crear', valor_nuevo: act });
   };
 
   const actualizarActividad = (id, datos) => {
     const anterior = actividades.find(a => a.id === id) || null;
-    setActividades(prev => prev.map(a => a.id === id ? { ...a, ...datos } : a));
+    const leadId = datos.lead_id || anterior?.lead_id || (datos.vinculo_tipo === 'lead' ? datos.vinculo_id : null) || (anterior?.vinculo_tipo === 'lead' ? anterior.vinculo_id : null);
+    const nextActividades = actividades.map(a => a.id === id ? { ...a, ...datos } : a);
+    setActividades(nextActividades);
+    if (leadId) {
+      setLeads(prev => {
+        const nextLeads = recalcularDiasSinActividadLeads(prev, nextActividades, agendaEventos);
+        const leadActualizado = nextLeads.find(l => l.id === leadId);
+        if (leadActualizado) {
+          crmSync(sb => actualizarLead(sb, leadId, { dias_sin_actividad: leadActualizado.dias_sin_actividad }));
+        }
+        return nextLeads;
+      });
+    }
     crmSync(sb => actualizarActividadComercial(sb, id, datos));
     auditSync({ modulo: 'crm', entidad: 'actividades_comerciales', entidad_id: id, accion: 'editar', valor_anterior: anterior, valor_nuevo: datos });
   };
@@ -1872,7 +2081,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  const crearUsuarioConAcceso = async ({ nombre, email, password, rol }) => {
+  const crearUsuarioConAcceso = async ({ nombre, email, password, rol, jefe_user_id = null, asignaciones = [] }) => {
     if (!isSupabaseConfigured()) {
       addNotificacion('Se requiere Supabase para crear usuarios con acceso.', 'error');
       return;
@@ -1891,6 +2100,8 @@ export function AppProvider({ children }) {
           email,
           password,
           rol,
+          jefe_user_id: jefe_user_id || null,
+          asignaciones,
           empresa_id: empresa.id,
         },
         }),
@@ -2000,6 +2211,8 @@ export function AppProvider({ children }) {
         nombre: nextUser.nombre,
         email: nextUser.email,
         rol: nextUser.rol,
+        jefe_user_id: nextUser.jefe_user_id || null,
+        asignaciones: nextUser.asignaciones || [],
         acceso_campo: Boolean(nextUser.campo),
         perfil_campo: nextUser.campoPerfil,
         campo_modulos: campoModulos,
@@ -2036,9 +2249,26 @@ export function AppProvider({ children }) {
     } catch { /* silently ignore */ }
   };
 
-  const updateLeadState = (leadId, newState) => {
+  const pushHistorial = (leadId, estadoDesde, estadoHasta, motivo = null) => {
+    const ev = {
+      id: generateId('lhe'),
+      lead_id: leadId,
+      empresa_id: empresa?.id,
+      estado_desde: estadoDesde,
+      estado_hasta: estadoHasta,
+      motivo,
+      creado_por: authUser?.id,
+      creado_en: new Date().toISOString(),
+    };
+    setHistorialEstados(prev => [ev, ...prev]);
+    crmSync(sb => sb.from('lead_historial_estados').insert(ev));
+  };
+
+  const updateLeadState = (leadId, newState, motivo = null) => {
+    const anterior = leads.find(l => l.id === leadId);
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, estado: newState } : l));
     crmSync(sb => actualizarLead(sb, leadId, { estado: newState }));
+    if (anterior && anterior.estado !== newState) pushHistorial(leadId, anterior.estado, newState, motivo);
   };
 
   // ============================================================
@@ -2927,6 +3157,21 @@ export function AppProvider({ children }) {
       return nuevo;
     }
   };
+  const actualizarTurnoCtx = async (id, turno) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await rrhhService.actualizarTurno(empresa.id, id, turno);
+      setTurnos(prev => prev.map(t => t.id === id ? data : t));
+      return data;
+    } else {
+      setTurnos(prev => prev.map(t => t.id === id ? { ...t, ...turno } : t));
+    }
+  };
+  const eliminarTurnoCtx = async (id) => {
+    if (isSupabaseConfigured()) {
+      await rrhhService.eliminarTurno(id);
+    }
+    setTurnos(prev => prev.filter(t => t.id !== id));
+  };
   const registrarAsistenciaCtx = async (registro) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await rrhhService.registrarAsistencia(empresa.id, registro);
@@ -2952,7 +3197,18 @@ export function AppProvider({ children }) {
 
   const crearAgendaEvento = (evento) => {
     const nuevo = { ...evento, registrado_por: evento.registrado_por || evento.vendedor, id: generateId('evt'), empresa_id: empresa?.id };
-    setAgendaEventos(prev => [nuevo, ...prev]);
+    const nextAgenda = [nuevo, ...agendaEventos];
+    setAgendaEventos(nextAgenda);
+    if (nuevo.lead_id) {
+      setLeads(prev => {
+        const nextLeads = recalcularDiasSinActividadLeads(prev, actividades, nextAgenda);
+        const leadActualizado = nextLeads.find(l => l.id === nuevo.lead_id);
+        if (leadActualizado) {
+          crmSync(sb => actualizarLead(sb, nuevo.lead_id, { dias_sin_actividad: leadActualizado.dias_sin_actividad }));
+        }
+        return nextLeads;
+      });
+    }
     crmSync(sb => persistirAgendaEvento(sb, empresa.id, nuevo));
     auditSync({ modulo: 'crm', entidad: 'agenda_comercial', entidad_id: nuevo.id, accion: 'crear', valor_nuevo: nuevo });
     return nuevo;
@@ -2960,7 +3216,19 @@ export function AppProvider({ children }) {
 
   const actualizarAgendaEvento = (id, datos) => {
     const anterior = agendaEventos.find(e => e.id === id) || null;
-    setAgendaEventos(prev => prev.map(e => e.id === id ? { ...e, ...datos } : e));
+    const leadId = datos.lead_id || anterior?.lead_id || null;
+    const nextAgenda = agendaEventos.map(e => e.id === id ? { ...e, ...datos } : e);
+    setAgendaEventos(nextAgenda);
+    if (leadId) {
+      setLeads(prev => {
+        const nextLeads = recalcularDiasSinActividadLeads(prev, actividades, nextAgenda);
+        const leadActualizado = nextLeads.find(l => l.id === leadId);
+        if (leadActualizado) {
+          crmSync(sb => actualizarLead(sb, leadId, { dias_sin_actividad: leadActualizado.dias_sin_actividad }));
+        }
+        return nextLeads;
+      });
+    }
     crmSync(sb => actualizarAgendaEventoSvc(sb, id, datos));
     auditSync({ modulo: 'crm', entidad: 'agenda_comercial', entidad_id: id, accion: 'editar', valor_anterior: anterior, valor_nuevo: datos });
   };
@@ -3174,6 +3442,8 @@ export function AppProvider({ children }) {
         empresa_id: empresa.id,
         nombre: nuevoNombre,
         descripcion: `Copia de ${source.nombre}`,
+        categoria: source.categoria || 'otro',
+        nivel_jerarquico: source.nivel_jerarquico || 'operativo',
         es_superadmin: false,
         es_admin_empresa: Boolean(source.es_admin_empresa),
         activo: true,
@@ -3291,7 +3561,7 @@ export function AppProvider({ children }) {
     const newId = isSupabaseConfigured() && empresa?.id
       ? `rol_${empresa.id}_${Math.random().toString(36).slice(2, 7)}`
       : `rol_${Math.random().toString(36).slice(2, 7)}`;
-    setRolesCtx(prev => ({ ...prev, [newId]: { nombre: rolData.nombre, descripcion: rolData.descripcion || '', categoria: rolData.categoria || 'otro', color: 'blue', permisos: { ver: [] } } }));
+    setRolesCtx(prev => ({ ...prev, [newId]: { nombre: rolData.nombre, descripcion: rolData.descripcion || '', categoria: rolData.categoria || 'otro', nivel_jerarquico: rolData.nivel_jerarquico || 'operativo', color: 'blue', permisos: { ver: [] } } }));
     if (isSupabaseConfigured() && empresa?.id) {
       try {
         await rolesService.crearRol({
@@ -3300,6 +3570,7 @@ export function AppProvider({ children }) {
           nombre: rolData.nombre,
           descripcion: rolData.descripcion || '',
           categoria: rolData.categoria || 'otro',
+          nivel_jerarquico: rolData.nivel_jerarquico || 'operativo',
           es_superadmin: false,
           es_admin_empresa: false,
           activo: true,
@@ -3370,7 +3641,8 @@ export function AppProvider({ children }) {
     // Data
     usuarios, setUsuarios,
     roles: rolesCtx, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, accessDebug,
-    leads, setLeads, updateLeadState,
+    leads, setLeads, updateLeadState, historialEstados,
+    campanas, setCampanas, crearCampana, actualizarCampana, cambiarEstadoCampana, eliminarCampana,
     cuentas, setCuentas, actualizarCuenta, actualizarLogoCuenta,
     contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta,
     oportunidades, setOportunidades,
@@ -3411,8 +3683,8 @@ export function AppProvider({ children }) {
     industrias, setIndustrias, actualizarIndustria, eliminarIndustria,
 
     // Actions
-    crearLead, crearCuenta,
-    convertirLead, descartarLead,
+    crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,
+    convertirLead, descartarLead, reactivarLead,
     crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
     crearCotizacion, aprobarCotizacion,
     crearOSCliente, crearOSClienteManual,
@@ -3457,7 +3729,7 @@ export function AppProvider({ children }) {
     // RRHH Actions
     crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx,
     crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx,
-    crearTurnoCtx, registrarAsistenciaCtx, crearPeriodoNominaCtx,
+    crearTurnoCtx, actualizarTurnoCtx, eliminarTurnoCtx, registrarAsistenciaCtx, crearPeriodoNominaCtx,
     aprobarVacacion, rechazarVacacion,
     crearOnboarding, registrarNPS,
     generarRenovacion, crearPlanRetencion,

@@ -46,7 +46,7 @@ serve(async (req) => {
 
   const { data: memberships, error: membershipError } = await adminClient
     .from("usuarios_empresas")
-    .select("user_id, empresa_id, rol_id, acceso_campo, perfil_campo, campo_modulos, estado")
+    .select("user_id, empresa_id, rol_id, jefe_user_id, acceso_campo, perfil_campo, campo_modulos, estado")
     .eq("estado", "activo");
 
   if (membershipError) return jsonResponse({ success: false, error: membershipError.message }, 500);
@@ -64,7 +64,7 @@ serve(async (req) => {
     callerProfile?.rol,
   ].filter(Boolean))];
   const { data: rolesRows, error: rolesError } = roleIds.length
-    ? await adminClient.from("roles").select("id, nombre, es_admin_empresa, es_superadmin, categoria").in("id", roleIds)
+    ? await adminClient.from("roles").select("id, nombre, es_admin_empresa, es_superadmin, categoria, nivel_jerarquico").in("id", roleIds)
     : { data: [], error: null };
 
   if (rolesError) return jsonResponse({ success: false, error: rolesError.message }, 500);
@@ -118,6 +118,35 @@ serve(async (req) => {
   const { data: authUsersData } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const authById = new Map((authUsersData?.users || []).map((u) => [u.id, u]));
 
+  let assignmentsQuery = adminClient
+    .from("usuarios_asignaciones")
+    .select("*")
+    .eq("activo", true)
+    .order("principal", { ascending: false })
+    .order("created_at", { ascending: true });
+  if (!scopeAllEmpresas && scopeEmpresaIds.length) {
+    assignmentsQuery = assignmentsQuery.in("empresa_id", scopeEmpresaIds);
+  }
+  const { data: assignmentsRaw, error: assignmentsError } = await assignmentsQuery;
+  const assignments = assignmentsRaw || [];
+  if (assignmentsError && assignmentsError.code !== "42P01") {
+    return jsonResponse({ success: false, error: assignmentsError.message }, 500);
+  }
+
+  const missingRoleIds = [...new Set(
+    assignments
+      .map((assignment) => assignment.rol_id)
+      .filter((id) => id && !rolesById.has(id))
+  )];
+  if (missingRoleIds.length) {
+    const { data: extraRoles, error: extraRolesError } = await adminClient
+      .from("roles")
+      .select("id, nombre, es_admin_empresa, es_superadmin, categoria, nivel_jerarquico")
+      .in("id", missingRoleIds);
+    if (extraRolesError) return jsonResponse({ success: false, error: extraRolesError.message }, 500);
+    for (const role of extraRoles || []) rolesById.set(role.id, role);
+  }
+
   const estadoMap: Record<string, string> = {
     activo: "Activo",
     suspendido: "Suspendido",
@@ -125,17 +154,35 @@ serve(async (req) => {
     inactivo: "Inactivo",
   };
   const membershipsByKey = new Map((memberships || []).map((membership) => [`${membership.user_id}:${membership.empresa_id}`, membership]));
+  const assignmentsByKey = new Map<string, Record<string, unknown>[]>();
+  for (const assignment of assignments) {
+    const role = rolesById.get(assignment.rol_id);
+    const key = `${assignment.user_id}:${assignment.empresa_id}`;
+    const item = {
+      ...assignment,
+      rol_nombre: role?.nombre || assignment.rol_id,
+      rol_categoria: role?.categoria || assignment.categoria,
+    };
+    const list = assignmentsByKey.get(key) || [];
+    list.push(item);
+    assignmentsByKey.set(key, list);
+  }
 
   const rows = new Map<string, Record<string, unknown>>();
   for (const profile of profiles || []) {
     const key = `${profile.id}:${profile.empresa_id}`;
     const membership = membershipsByKey.get(key);
+    const asignaciones = assignmentsByKey.get(key) || [];
+    const principal = asignaciones.find((a) => a.principal) || asignaciones[0] || null;
     const role = membership ? rolesById.get(membership.rol_id) : null;
     rows.set(key, {
       ...profile,
       rol: membership?.rol_id || profile.rol,
       rol_nombre: role?.nombre || profile.rol_nombre || profile.rol,
-      rol_categoria: role?.categoria || null,
+      rol_categoria: principal?.categoria || role?.categoria || null,
+      nivel_jerarquico: principal?.nivel_jerarquico || role?.nivel_jerarquico || null,
+      jefe_user_id: principal?.jefe_user_id || membership?.jefe_user_id || null,
+      asignaciones,
       campo: membership?.acceso_campo ?? profile.campo,
       campoPerfil: membership?.perfil_campo ?? profile.campo_perfil,
       campoModulos: membership?.campo_modulos ?? profile.campo_modulos ?? [],
@@ -150,6 +197,8 @@ serve(async (req) => {
     if (rows.has(key)) continue;
     const authUser = authById.get(membership.user_id);
     const role = rolesById.get(membership.rol_id);
+    const asignaciones = assignmentsByKey.get(key) || [];
+    const principal = asignaciones.find((a) => a.principal) || asignaciones[0] || null;
     rows.set(key, {
       id: membership.user_id,
       empresa_id: membership.empresa_id,
@@ -157,7 +206,10 @@ serve(async (req) => {
       email: authUser?.email || "",
       rol: membership.rol_id,
       rol_nombre: role?.nombre || membership.rol_id,
-      rol_categoria: role?.categoria || null,
+      rol_categoria: principal?.categoria || role?.categoria || null,
+      nivel_jerarquico: principal?.nivel_jerarquico || role?.nivel_jerarquico || null,
+      jefe_user_id: principal?.jefe_user_id || membership.jefe_user_id || null,
+      asignaciones,
       area: "",
       campo: membership.acceso_campo,
       campoPerfil: membership.perfil_campo,

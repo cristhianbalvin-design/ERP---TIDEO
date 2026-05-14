@@ -39,7 +39,10 @@ El proyecto ya paso de prototipo mock puro a una base SaaS inicial con Supabase,
 - Cotizaciones nuevas preservan sus partidas como `items` compatibles con Supabase.
 - Cuentas ahora persisten los campos usados por la UI: telefono, email, direccion, tamano, responsable comercial, health/saldo CxC y datos relacionados.
 - Nueva migracion incremental: `supabase/migrations/012_crm_account_fields.sql`.
-- Leads y oportunidades ahora persisten campos del flujo comercial: cargo, urgencia, responsable, motivo de descarte, contacto asociado, servicio de interes, forecast, fuente, notas y competidor.
+- Leads y oportunidades ahora persisten campos del flujo comercial: cargo, urgencia, responsable/responsable_id, motivo de descarte, contacto asociado, servicio de interes, forecast, fuente, notas y competidor.
+- Migración 072 rellena `responsable_id` histórico en leads, cuentas y oportunidades cuando el nombre del responsable coincide de forma única con un usuario del mismo tenant.
+- Tarjetas de Leads incluyen acciones de editar y eliminar. La edición actualiza Supabase y la eliminación borra el lead en BD; migración 073 deja `lead_id` en NULL en oportunidades, agenda y actividades relacionadas para no bloquear el borrado.
+- Inicio de estandarización de formularios principales: CRM & Marketing deja de usar captura global por texto del botón. Cuentas, Leads, Marketing, Pipeline, Actividades y Agenda usan formularios locales explícitos; Pipeline y Agenda reciben side-panel oficial para crear oportunidad/evento.
 - Nueva migracion incremental: `supabase/migrations/013_crm_flow_fields.sql`.
 - La creacion manual de OS Cliente desde el formulario rapido ahora usa `crearOSClienteManual` y persiste en `public.os_clientes`.
 - Nueva migracion incremental: `supabase/migrations/014_commercial_documents_existing_db.sql` para bases existentes que no tienen `cotizaciones` y `os_clientes`.

@@ -7,34 +7,46 @@ import { useApp } from './context.jsx';
 // ============================================================
 function IaDisclaimer() {
   return (
-    <div style={{ padding: '10px 14px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, fontSize: 12, color: 'var(--fg-muted)' }} className="row">
-      {I.sparkles}
+    <div style={{ padding: '10px 14px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, fontSize: 12, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ display: 'flex', width: 16, height: 16, flexShrink: 0, color: 'var(--purple)' }}>{I.sparkles}</span>
       <span>La IA asiste y recomienda — las aprobaciones y acciones críticas siempre requieren usuario autorizado. Toda acción queda auditada.</span>
     </div>
   );
 }
 
 function IaResultPanel({ loading, resultado, onClear }) {
+  const [copiado, setCopiado] = useState(false);
   if (!resultado && !loading) return null;
+
+  const copiar = () => {
+    navigator.clipboard.writeText(resultado).then(() => {
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    });
+  };
+
   return (
-    <div style={{ marginTop: 16, padding: 20, background: 'var(--bg-subtle)', border: '1px solid var(--border)', borderRadius: 12 }}>
+    <div style={{ marginTop: 16, border: '1px solid rgba(99,102,241,0.3)', borderRadius: 12, overflow: 'hidden' }}>
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 24, color: 'var(--fg-muted)' }}>
-          <div style={{ fontSize: 24, marginBottom: 8 }}>⚙️</div>
-          <div style={{ fontWeight: 600 }}>Analizando datos...</div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>Procesando información del ERP</div>
+        <div style={{ textAlign: 'center', padding: '32px 24px', background: 'var(--bg-subtle)', color: 'var(--fg-muted)' }}>
+          <div style={{ width: 40, height: 40, border: '3px solid rgba(99,102,241,0.2)', borderTopColor: 'var(--purple)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Analizando datos del ERP...</div>
+          <div style={{ fontSize: 12, marginTop: 4 }}>Procesando información en tiempo real</div>
         </div>
       ) : (
         <>
-          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 14 }}>
-            <div className="row" style={{ gap: 8 }}>
-              {I.sparkles}
-              <strong style={{ fontSize: 13 }}>Resultado generado por IA</strong>
-              <span className="badge badge-purple" style={{ fontSize: 10 }}>Verifique antes de actuar</span>
+          <div style={{ padding: '10px 16px', background: 'rgba(99,102,241,0.08)', borderBottom: '1px solid rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ display: 'flex', width: 16, height: 16, color: 'var(--purple)' }}>{I.sparkles}</span>
+              <strong style={{ fontSize: 12, color: 'var(--fg)' }}>Análisis generado por IA</strong>
+              <span className="badge badge-purple" style={{ fontSize: 10 }}>Verificar antes de actuar</span>
             </div>
-            <button className="btn btn-sm btn-ghost" onClick={onClear}>Limpiar</button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="btn btn-sm btn-ghost" onClick={copiar} style={{ fontSize: 11 }}>{copiado ? '✓ Copiado' : 'Copiar'}</button>
+              <button className="btn btn-sm btn-ghost" onClick={onClear} style={{ fontSize: 11 }}>Limpiar</button>
+            </div>
           </div>
-          <div style={{ fontSize: 13, lineHeight: 1.8, whiteSpace: 'pre-line', color: 'var(--fg)' }}>{resultado}</div>
+          <div style={{ padding: '16px 20px', background: 'var(--surface)', fontSize: 13, lineHeight: 1.9, whiteSpace: 'pre-line', color: 'var(--fg)', fontFamily: 'monospace' }}>{resultado}</div>
         </>
       )}
     </div>
@@ -252,6 +264,10 @@ ${sugeridos.map((s, i) => `${i + 1}. ${s}`).join('\n')}
     }
   };
 
+  const oppsAbiertas = oportunidades.filter(o => o.estado === 'abierta');
+  const valorPipeline = oppsAbiertas.reduce((s, o) => s + (o.monto_estimado || 0), 0);
+  const forecastPonderado = oppsAbiertas.reduce((s, o) => s + (o.forecast_ponderado || 0), 0);
+
   return (
     <>
       <div className="page-header">
@@ -260,16 +276,18 @@ ${sugeridos.map((s, i) => `${i + 1}. ${s}`).join('\n')}
 
       <IaDisclaimer />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, marginTop: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20, marginTop: 16 }}>
         <div className="card" style={{ height: 'fit-content' }}>
-          <div className="card-head"><h3>Acciones disponibles</h3></div>
+          <div className="card-head"><h3>Acciones IA</h3></div>
           <div style={{ padding: '0 8px 12px' }}>
             {acciones.map(a => (
               <div key={a.key} onClick={() => { setAccion(a.key); limpiar(); }}
-                style={{ padding: '12px', borderRadius: 8, cursor: 'pointer', marginBottom: 4, background: accion === a.key ? 'var(--surface-hover)' : 'transparent', borderLeft: accion === a.key ? '3px solid var(--cyan)' : '3px solid transparent' }}>
-                <div style={{ fontSize: 20, marginBottom: 4 }}>{a.icon}</div>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{a.label}</div>
-                <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>{a.desc}</div>
+                style={{ padding: '10px 12px', borderRadius: 8, cursor: 'pointer', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 10, background: accion === a.key ? 'rgba(99,102,241,0.1)' : 'transparent', borderLeft: accion === a.key ? '3px solid var(--purple)' : '3px solid transparent', transition: 'all 0.15s' }}>
+                <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{a.icon}</span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 12, color: accion === a.key ? 'var(--purple)' : 'var(--fg)' }}>{a.label}</div>
+                  <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 1, lineHeight: 1.3 }}>{a.desc}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -277,11 +295,32 @@ ${sugeridos.map((s, i) => `${i + 1}. ${s}`).join('\n')}
 
         <div>
           {!accion && (
-            <div className="card" style={{ padding: 60, textAlign: 'center', background: 'var(--bg-subtle)', borderStyle: 'dashed' }}>
-              <div style={{ fontSize: 48, marginBottom: 12 }}>🤖</div>
-              <div style={{ fontFamily: 'Sora', fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Selecciona una acción de IA</div>
-              <div className="text-muted" style={{ fontSize: 13 }}>El copiloto analiza los datos reales del ERP para generar recomendaciones contextualizadas.</div>
-            </div>
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+                <div className="card" style={{ padding: '14px 16px' }}>
+                  <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Oportunidades abiertas</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'Sora', color: 'var(--fg)' }}>{oppsAbiertas.length}</div>
+                  <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>en pipeline activo</div>
+                </div>
+                <div className="card" style={{ padding: '14px 16px' }}>
+                  <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Valor pipeline</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'Sora', color: 'var(--fg)' }}>S/ {valorPipeline.toLocaleString()}</div>
+                  <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>monto estimado total</div>
+                </div>
+                <div className="card" style={{ padding: '14px 16px' }}>
+                  <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Forecast ponderado</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'Sora', color: 'var(--cyan-dk)' }}>S/ {forecastPonderado.toLocaleString()}</div>
+                  <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>ajustado por probabilidad</div>
+                </div>
+              </div>
+              <div className="card" style={{ padding: '40px 32px', textAlign: 'center', background: 'var(--bg-subtle)', borderStyle: 'dashed' }}>
+                <div style={{ width: 48, height: 48, margin: '0 auto 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(99,102,241,0.12)', borderRadius: 12, color: 'var(--purple)' }}>
+                  <span style={{ display: 'flex', width: 28, height: 28 }}>{I.sparkles}</span>
+                </div>
+                <div style={{ fontFamily: 'Sora', fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Selecciona una acción del panel izquierdo</div>
+                <div className="text-muted" style={{ fontSize: 13, maxWidth: 380, margin: '0 auto' }}>El copiloto analiza los datos reales del ERP para generar recomendaciones contextualizadas sobre clientes, oportunidades y pipeline.</div>
+              </div>
+            </>
           )}
 
           {accion && (
@@ -308,8 +347,8 @@ ${sugeridos.map((s, i) => `${i + 1}. ${s}`).join('\n')}
                     </select>
                   </div>
                 )}
-                <button className="btn btn-primary" onClick={ejecutarAccion} disabled={loading}>
-                  {loading ? 'Analizando...' : `${I.sparkles} Ejecutar análisis IA`}
+                <button className="btn btn-primary" onClick={ejecutarAccion} disabled={loading} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  {loading ? 'Analizando...' : <><span style={{ display: 'flex', width: 14, height: 14 }}>{I.sparkles}</span> Ejecutar análisis IA</>}
                 </button>
                 <IaResultPanel loading={loading} resultado={resultado} onClear={limpiar} />
               </div>
@@ -481,8 +520,8 @@ Consumo de materiales registrado:
                       placeholder="Ej: Reparación urgente de tablero eléctrico en planta Norte del cliente Minera Andes, el sistema de arranque falló esta mañana..." style={{ width: '100%', resize: 'vertical' }} />
                   </div>
                 )}
-                <button className="btn btn-primary" onClick={ejecutarAccion} disabled={loading}>
-                  {loading ? 'Analizando...' : `${I.sparkles} Ejecutar análisis IA`}
+                <button className="btn btn-primary" onClick={ejecutarAccion} disabled={loading} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  {loading ? 'Analizando...' : <><span style={{ display: 'flex', width: 14, height: 14 }}>{I.sparkles}</span> Ejecutar análisis IA</>}
                 </button>
                 <IaResultPanel loading={loading} resultado={resultado} onClear={limpiar} />
               </div>
@@ -604,8 +643,8 @@ export function IAFinanciera() {
                     </select>
                   </div>
                 )}
-                <button className="btn btn-primary" onClick={ejecutarAccion} disabled={loading}>
-                  {loading ? 'Analizando...' : `${I.sparkles} Ejecutar análisis IA`}
+                <button className="btn btn-primary" onClick={ejecutarAccion} disabled={loading} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  {loading ? 'Analizando...' : <><span style={{ display: 'flex', width: 14, height: 14 }}>{I.sparkles}</span> Ejecutar análisis IA</>}
                 </button>
                 <IaResultPanel loading={loading} resultado={resultado} onClear={limpiar} />
               </div>

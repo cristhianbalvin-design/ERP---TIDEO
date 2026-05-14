@@ -3,12 +3,14 @@ import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { rrhhService } from './services/rrhhService.js';
+import { getAssignableUsers } from './lib/hierarchy.js';
+import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 
 // Operations: OT, Partes, Valorization & Cuentas
 
 // ============ CUENTAS Y CONTACTOS ============
 function Cuentas() {
-  const { cuentas, setCuentas, crearCuenta, actualizarCuenta, actualizarLogoCuenta, contactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, usuarios, navigate, empresa, addNotificacion, role } = useApp();
+  const { cuentas, setCuentas, crearCuenta, actualizarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, usuarios, roles, navigate, empresa, addNotificacion, role } = useApp();
   const [sel, setSel] = useState(null);
   const [condEdit, setCondEdit] = useState({});
   const [condEditing, setCondEditing] = useState(false);
@@ -32,6 +34,11 @@ function Cuentas() {
   });
   const [activeTab, setActiveTab] = useState('Resumen');
   const canFinanzas = role?.permisos?.ver_finanzas;
+  const [editingCuenta, setEditingCuenta] = useState(null);
+  const [editCuentaForm, setEditCuentaForm] = useState({});
+  const [confirmDelCuenta, setConfirmDelCuenta] = useState(null);
+  const [confirmDelContacto, setConfirmDelContacto] = useState(null);
+  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
   const cuentaContactos = sel ? contactos.filter(c => c.cuenta_id === sel.id) : [];
   const contactoPrincipal = cuentaContactos.find(c => c.principal || c.es_principal) || cuentaContactos[0] || null;
 
@@ -41,6 +48,95 @@ function Cuentas() {
   const csNps     = sel ? [...MOCK.npsEncuestas].filter(n => n.cuenta_id === sel.id).sort((a,b) => (b.fecha_respuesta||'').localeCompare(a.fecha_respuesta||''))[0] : null;
   const csRenov   = sel ? MOCK.renovaciones.find(r => r.cuenta_id === sel.id) : null;
   const dimLabels = { comercial:'Comercial', operativa:'Operativa', financiera:'Financiera', soporte:'Soporte', satisfaccion:'Satisfacción' };
+
+  const [tlFiltro, setTlFiltro] = useState('todos');
+  const [tlDesde, setTlDesde] = useState('');
+  const [tlHasta, setTlHasta] = useState('');
+
+  const TL_COLOR = { lead:'var(--cyan)', actividad:'var(--navy)', oportunidad:'var(--green)', cotizacion:'var(--orange)', hoja_costeo:'var(--fg-muted)', os_cliente:'var(--purple)', ot:'var(--navy)', valorizacion:'var(--green)', factura:'var(--green)', cobranza:'var(--orange)', soporte:'var(--danger)', cs:'var(--purple)' };
+  const TL_ICON  = { lead:I.users, actividad:I.calendar, oportunidad:I.pipe, cotizacion:I.file, hoja_costeo:I.clipboard, os_cliente:I.package, ot:I.wrench, valorizacion:I.receipt, factura:I.receipt, cobranza:I.dollar, soporte:I.alert, cs:I.sparkles };
+  const TL_CAT   = { lead:'lead', actividad:'actividades', oportunidad:'oportunidades', cotizacion:'cotizaciones', hoja_costeo:'operaciones', os_cliente:'operaciones', ot:'operaciones', valorizacion:'finanzas', factura:'finanzas', cobranza:'finanzas', soporte:'soporte', cs:'cs' };
+
+  const tlEventos = useMemo(() => {
+    if (!sel) return [];
+    const eventos = [];
+    const cId = sel.id;
+    const opps = oportunidades.filter(o => o.cuenta_id === cId);
+    const oppIds = new Set(opps.map(o => o.id));
+    const osIds  = new Set(osClientes.filter(os => os.cuenta_id === cId).map(os => os.id));
+
+    // Lead origen y su historial
+    const leadOrig = sel.lead_origen ? leads.find(l => l.id === sel.lead_origen) : null;
+    if (leadOrig) {
+      eventos.push({ id:`lead-crea-${leadOrig.id}`, tipo:'lead', fecha:leadOrig.fecha_creacion, titulo:'Lead registrado', descripcion:`${leadOrig.nombre} · ${leadOrig.empresa_contacto} · ${leadOrig.fuente||''}`, usuario:leadOrig.responsable, nav:'leads', navParams:null });
+      historialEstados.filter(h => h.lead_id === leadOrig.id).forEach(h => {
+        eventos.push({ id:`lead-hist-${h.id}`, tipo:'lead', fecha:(h.creado_en||'').slice(0,10), titulo:`Lead: ${h.estado_desde} → ${h.estado_hasta}`, descripcion:h.motivo||'', usuario:null, nav:null });
+      });
+      if (leadOrig.convertido) {
+        eventos.push({ id:`lead-conv-${leadOrig.id}`, tipo:'lead', fecha:leadOrig.fecha_conversion||leadOrig.fecha_creacion, titulo:'Lead convertido en cuenta', descripcion:`Origen de ${sel.razon_social}`, usuario:leadOrig.responsable, nav:'leads', navParams:null });
+      }
+    }
+
+    // Actividades
+    actividades.filter(a => a.cuenta_id===cId || (a.vinculo_tipo==='oportunidad' && oppIds.has(a.vinculo_id))).forEach(a => {
+      eventos.push({ id:`act-${a.id}`, tipo:'actividad', fecha:a.fecha, titulo:a.tipo.charAt(0).toUpperCase()+a.tipo.slice(1), descripcion:a.descripcion, usuario:a.responsable, nav:null });
+    });
+
+    // Oportunidades
+    opps.forEach(o => {
+      eventos.push({ id:`opp-${o.id}`, tipo:'oportunidad', fecha:o.fecha_creacion, titulo:`Oportunidad creada: ${o.nombre}`, descripcion:`${o.etapa} · ${money(o.monto_estimado)}`, usuario:o.responsable, nav:'pipeline', navParams:{ panel:o.id } });
+      if (o.fecha_cierre_real && o.estado==='ganada') eventos.push({ id:`opp-won-${o.id}`, tipo:'oportunidad', fecha:o.fecha_cierre_real, titulo:`Oportunidad ganada: ${o.nombre}`, descripcion:money(o.monto_estimado), usuario:o.responsable, nav:'pipeline', navParams:{ panel:o.id } });
+      if (o.estado==='perdida') eventos.push({ id:`opp-lost-${o.id}`, tipo:'oportunidad', fecha:o.fecha_cierre_real||o.fecha_cierre_estimada, titulo:`Oportunidad perdida: ${o.nombre}`, descripcion:o.motivo_perdida||'', usuario:o.responsable, nav:'pipeline', navParams:{ panel:o.id } });
+    });
+
+    // Cotizaciones
+    cotizaciones.filter(c => c.cuenta_id===cId).forEach(c => {
+      eventos.push({ id:`cot-${c.id}`, tipo:'cotizacion', fecha:c.fecha, titulo:`Cotización ${c.numero} v${c.version||1}`, descripcion:`${c.estado} · ${money(c.total)}`, usuario:c.responsable, nav:'cotizaciones', navParams:{ detail:c.id } });
+    });
+
+    // Hojas de costeo aprobadas
+    hojasCosteo.filter(h => h.cuenta_id===cId && h.estado==='aprobada').forEach(h => {
+      eventos.push({ id:`hc-${h.id}`, tipo:'hoja_costeo', fecha:h.fecha, titulo:`Hoja de costeo aprobada: ${h.numero}`, descripcion:money(h.costo_total), usuario:h.responsable_costeo, nav:null });
+    });
+
+    // OS Cliente
+    osClientes.filter(os => os.cuenta_id===cId).forEach(os => {
+      eventos.push({ id:`os-${os.id}`, tipo:'os_cliente', fecha:os.fecha_emision, titulo:`OS Cliente: ${os.numero}`, descripcion:`${os.estado} · ${money(os.monto_aprobado)}`, usuario:null, nav:'os_cliente', navParams:{ detail:os.id } });
+    });
+
+    // OTs
+    ots.filter(o => o.cuenta_id===cId || osIds.has(o.os_cliente_id)).forEach(o => {
+      eventos.push({ id:`ot-ini-${o.id}`, tipo:'ot', fecha:o.fecha_inicio, titulo:`OT abierta: ${o.numero}`, descripcion:`${o.tipo} — ${o.descripcion||''}`, usuario:o.responsable, nav:'ot', navParams:{ detail:o.id } });
+      if (['cerrada','completada'].includes(o.estado) && o.fecha_fin) eventos.push({ id:`ot-fin-${o.id}`, tipo:'ot', fecha:o.fecha_fin, titulo:`OT cerrada: ${o.numero}`, descripcion:`Costo real: ${money(o.costoReal||0)}`, usuario:o.responsable, nav:'ot', navParams:{ detail:o.id } });
+    });
+
+    // Valorizaciones
+    valorizaciones.filter(v => osIds.has(v.os_cliente_id)).forEach(v => {
+      eventos.push({ id:`val-${v.id}`, tipo:'valorizacion', fecha:v.fecha, titulo:`Valorización ${v.numero}`, descripcion:`${v.estado} · ${money(v.total)}`, usuario:null, nav:'os_cliente', navParams:{ detail:v.os_cliente_id } });
+    });
+
+    // Facturas
+    facturas.filter(f => f.cuenta_id===cId).forEach(f => {
+      eventos.push({ id:`fac-${f.id}`, tipo:'factura', fecha:f.fecha_emision||f.fecha, titulo:`Factura ${f.numero||''}`, descripcion:`${f.estado} · ${money(f.monto_total||f.total||0)}`, usuario:null, nav:null });
+    });
+
+    // CxC por nombre
+    cxc.filter(c => c.cliente===sel.razon_social).forEach(c => {
+      eventos.push({ id:`cxc-${c.id}`, tipo:'cobranza', fecha:c.emision, titulo:`Cobranza: ${c.factura}`, descripcion:`${c.estado} · ${money(c.total)}`, usuario:null, nav:null });
+    });
+
+    // Customer Success (desde MOCK)
+    const csObLoc = MOCK.onboardings.find(o => o.cuenta_id===cId);
+    if (csObLoc?.estado==='completado') eventos.push({ id:'cs-ob', tipo:'cs', fecha:csObLoc.fecha_cierre||csObLoc.fecha_inicio, titulo:'Onboarding completado', descripcion:csObLoc.tipo_servicio, usuario:null, nav:null });
+    const csNpsLoc = [...MOCK.npsEncuestas].filter(n => n.cuenta_id===cId).sort((a,b)=>(b.fecha_respuesta||'').localeCompare(a.fecha_respuesta||''))[0];
+    if (csNpsLoc) eventos.push({ id:'cs-nps', tipo:'cs', fecha:csNpsLoc.fecha_respuesta, titulo:`NPS registrado: ${csNpsLoc.score}`, descripcion:`${csNpsLoc.clasificacion}${csNpsLoc.comentario?` · "${csNpsLoc.comentario}"`:''}`, usuario:null, nav:null });
+    const csRenovLoc = MOCK.renovaciones.find(r => r.cuenta_id===cId);
+    if (csRenovLoc) eventos.push({ id:'cs-renov', tipo:'cs', fecha:csRenovLoc.fecha_renovacion||csRenovLoc.fecha_vencimiento, titulo:`Renovación: ${csRenovLoc.servicio}`, descripcion:`${csRenovLoc.estado||''} · ${money(csRenovLoc.monto_contrato)}`, usuario:null, nav:null });
+    const csHLoc = MOCK.healthScoresDetalle.find(h => h.cuenta_id===cId);
+    if (csHLoc?.score_total < 40) eventos.push({ id:'cs-health', tipo:'cs', fecha:csHLoc.fecha||new Date().toISOString().slice(0,10), titulo:'Health score bajo umbral crítico', descripcion:`Score: ${csHLoc.score_total} · ${csHLoc.semaforo}`, usuario:null, nav:null });
+
+    return eventos.filter(e => e.fecha).sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
+  }, [sel, leads, historialEstados, actividades, oportunidades, cotizaciones, hojasCosteo, osClientes, ots, valorizaciones, facturas, cxc]);
 
   const getHealthColor = (score) => {
     if (score === null || score === undefined) return 'gray';
@@ -105,7 +201,7 @@ function Cuentas() {
     setContactForm({
       nombre: contacto.nombre || '',
       cargo: contacto.cargo || '',
-      telefono: contacto.telefono || '',
+      telefono: sanitizePhone(contacto.telefono || ''),
       email: contacto.email || '',
       principal: Boolean(contacto.principal || contacto.es_principal),
     });
@@ -121,6 +217,10 @@ function Cuentas() {
     if (!sel?.id) return;
     if (!contactForm.nombre.trim()) {
       addNotificacion?.('El nombre del contacto es obligatorio.');
+      return;
+    }
+    if (contactForm.telefono && !isValidPhone(contactForm.telefono)) {
+      addNotificacion?.('El telefono debe tener 9 digitos y comenzar con 9.');
       return;
     }
 
@@ -142,6 +242,27 @@ function Cuentas() {
     cancelarContacto();
   };
 
+  const guardarEditCuenta = async () => {
+    if (!editingCuenta) return;
+    const actualizada = await actualizarCuenta(editingCuenta.id, editCuentaForm);
+    if (sel?.id === editingCuenta.id) setSel(prev => ({ ...prev, ...editCuentaForm, ...actualizada }));
+    setEditingCuenta(null);
+    addNotificacion?.('Cuenta actualizada');
+  };
+
+  const confirmarEliminarCuenta = () => {
+    setCuentas(prev => prev.filter(c => c.id !== confirmDelCuenta.id));
+    if (sel?.id === confirmDelCuenta.id) setSel(null);
+    setConfirmDelCuenta(null);
+    addNotificacion?.(`Cuenta "${confirmDelCuenta.razon_social}" eliminada`);
+  };
+
+  const confirmarEliminarContacto = () => {
+    setContactos(prev => prev.filter(c => c.id !== confirmDelContacto.id));
+    setConfirmDelContacto(null);
+    addNotificacion?.(`Contacto "${confirmDelContacto.nombre}" eliminado`);
+  };
+
   const startEditarCondiciones = () => {
     setCondEdit({});
     setCondEditing(true);
@@ -154,6 +275,10 @@ function Cuentas() {
 
   const guardarCondiciones = async () => {
     if (!sel?.id) return;
+    if (condEdit.ruc && !isValidRuc(condEdit.ruc)) {
+      addNotificacion?.('El RUC debe tener 11 numeros y comenzar con 1 o 2.');
+      return;
+    }
     try {
       setCondSaving(true);
       const actualizada = await actualizarCuenta(sel.id, condEdit);
@@ -169,6 +294,14 @@ function Cuentas() {
 
   const guardarCuenta = (e) => {
     e.preventDefault();
+    if (formCuenta.ruc && !isValidRuc(formCuenta.ruc)) {
+      addNotificacion?.('El RUC debe tener 11 numeros y comenzar con 1 o 2.');
+      return;
+    }
+    if (formCuenta.telefono && !isValidPhone(formCuenta.telefono)) {
+      addNotificacion?.('El telefono debe tener 9 digitos y comenzar con 9.');
+      return;
+    }
     const nueva = {
       id: `cta_${Date.now().toString(36)}`,
       empresa_id: empresa.id,
@@ -247,7 +380,21 @@ function Cuentas() {
                     <span className={'health-dot health-'+getHealthColor(c.health_score)}/>
                     <span className="text-muted">Health {c.health_score || 'N/A'}</span>
                   </div>
-                  <strong>{c.saldo_cxc > 0 ? money(c.saldo_cxc) : 'Sin CxC'}</strong>
+                  <div className="row" style={{gap:8, alignItems:'center'}}>
+                    <strong style={{fontSize:11}}>{c.saldo_cxc > 0 ? money(c.saldo_cxc) : 'Sin CxC'}</strong>
+                    <div className="row" style={{gap:2}} onClick={e => e.stopPropagation()}>
+                      <button type="button" className="icon-btn" title="Editar cuenta"
+                        style={{width:26, height:26, color:'var(--fg-muted)', borderRadius:6}}
+                        onClick={e => { e.stopPropagation(); setEditingCuenta(c); setEditCuentaForm({ razon_social:c.razon_social||'', ruc:c.ruc||'', industria:c.industria||'', tipo:c.tipo||'prospecto', responsable_comercial:c.responsable_comercial||'' }); }}>
+                        {I.edit}
+                      </button>
+                      <button type="button" className="icon-btn" title="Eliminar cuenta"
+                        style={{width:26, height:26, color:'var(--danger)', borderRadius:6}}
+                        onClick={e => { e.stopPropagation(); setConfirmDelCuenta(c); }}>
+                        {I.trash}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </article>
@@ -269,7 +416,7 @@ function Cuentas() {
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Datos de la empresa</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Razón social *</label><input className="input" required value={formCuenta.razon_social} onChange={e=>updateCuentaForm('razon_social', e.target.value)} autoFocus placeholder="Nombre legal de la empresa"/></div>
-              <div className="input-group"><label>RUC <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>· 11 dígitos</span></label><input className="input" value={formCuenta.ruc} onChange={e=>updateCuentaForm('ruc', e.target.value)} placeholder="20xxxxxxxxx" maxLength={11}/></div>
+              <div className="input-group"><label>RUC <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>· 11 dígitos</span></label><input className="input" value={formCuenta.ruc} onChange={e=>updateCuentaForm('ruc', sanitizeRuc(e.target.value))} placeholder="20xxxxxxxxx" inputMode="numeric" pattern={RUC_PATTERN} maxLength={11}/></div>
               <div className="input-group"><label>Industria</label><select className="select" value={formCuenta.industria} onChange={e=>updateCuentaForm('industria', e.target.value)}>
                 <option value="">Seleccionar...</option>
                 {['Minería','Industrial','Construcción','Agroindustria','Facilities','Energía','Petróleo & Gas','Logística','Otro'].map(i=><option key={i}>{i}</option>)}
@@ -285,7 +432,7 @@ function Cuentas() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Nombre del contacto</label><input className="input" value={formCuenta.nombre_contacto} onChange={e=>updateCuentaForm('nombre_contacto', e.target.value)} placeholder="Nombre y apellido"/></div>
               <div className="input-group"><label>Cargo</label><input className="input" value={formCuenta.cargo_contacto} onChange={e=>updateCuentaForm('cargo_contacto', e.target.value)} placeholder="Ej: Gerente de Operaciones"/></div>
-              <div className="input-group"><label>Teléfono</label><input className="input" value={formCuenta.telefono} onChange={e=>updateCuentaForm('telefono', e.target.value)} placeholder="+51 9xx xxx xxx"/></div>
+              <div className="input-group"><label>Teléfono</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formCuenta.telefono} onChange={e=>updateCuentaForm('telefono', sanitizePhone(e.target.value))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group"><label>Email</label><input className="input" type="email" value={formCuenta.email} onChange={e=>updateCuentaForm('email', e.target.value)} placeholder="contacto@empresa.pe"/></div>
             </div>
 
@@ -293,7 +440,7 @@ function Cuentas() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Responsable comercial *</label><select className="select" required value={formCuenta.responsable_comercial} onChange={e=>updateCuentaForm('responsable_comercial', e.target.value)}>
                 <option value="">Seleccionar...</option>
-                {usuarios.filter(u => u.rol_categoria ? ['comercial','admin'].includes(u.rol_categoria) : (['comercial','admin'].includes(u.rol)||(u.rol_nombre||'').toLowerCase().includes('comercial'))).map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
+                {comercialesAsignables.map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
               </select></div>
               <div className="input-group"><label>Fuente de origen</label><select className="select" value={formCuenta.fuente_origen} onChange={e=>updateCuentaForm('fuente_origen', e.target.value)}>
                 <option value="">Seleccionar...</option>
@@ -343,11 +490,84 @@ function Cuentas() {
           </div>
           <div className="side-panel-body">
             <div className="tabs account-profile-tabs">
-              {['Resumen', 'Oportunidades', 'Cotizaciones', 'OS Cliente', 'Contactos', 'Customer Success', ...(canFinanzas ? ['Condiciones comerciales'] : [])].map(t => (
+              {['Timeline', 'Resumen', 'Oportunidades', 'Cotizaciones', 'OS Cliente', 'Contactos', 'Customer Success', ...(canFinanzas ? ['Condiciones comerciales'] : [])].map(t => (
                 <div key={t} className={`tab ${activeTab===t?'active':''}`} onClick={() => setActiveTab(t)}>{t}</div>
               ))}
             </div>
             
+            {activeTab === 'Timeline' && (() => {
+              const filtrados = tlEventos.filter(e => {
+                if (tlFiltro !== 'todos' && TL_CAT[e.tipo] !== tlFiltro) return false;
+                if (tlDesde && e.fecha < tlDesde) return false;
+                if (tlHasta && e.fecha > tlHasta) return false;
+                return true;
+              });
+              const today = new Date().toISOString().slice(0,10);
+              const ayer  = new Date(Date.now()-86400000).toISOString().slice(0,10);
+              const fmtDia = f => f===today?'Hoy':f===ayer?'Ayer':f.split('-').reverse().join('/');
+              const grupos = {};
+              filtrados.forEach(e => { const d=(e.fecha||'').slice(0,10)||'Sin fecha'; if(!grupos[d])grupos[d]=[]; grupos[d].push(e); });
+              const fechas = Object.keys(grupos).sort((a,b)=>b.localeCompare(a));
+              return (
+                <div style={{paddingTop:4}}>
+                  <div style={{display:'flex', gap:8, paddingBottom:14, flexWrap:'wrap', alignItems:'center'}}>
+                    <select className="select" style={{height:32, fontSize:12, padding:'0 8px', width:'auto', minWidth:130}} value={tlFiltro} onChange={e=>setTlFiltro(e.target.value)}>
+                      {[['todos','Todos'],['lead','Lead'],['actividades','Actividades'],['oportunidades','Oportunidades'],['cotizaciones','Cotizaciones'],['operaciones','Operaciones'],['finanzas','Finanzas'],['soporte','Soporte'],['cs','Customer Success']].map(([v,l])=>(
+                        <option key={v} value={v}>{l}</option>
+                      ))}
+                    </select>
+                    <input type="date" className="input" style={{height:32, fontSize:12, padding:'0 8px', width:'auto'}} value={tlDesde} onChange={e=>setTlDesde(e.target.value)} />
+                    <span style={{fontSize:12, color:'var(--fg-muted)'}}>–</span>
+                    <input type="date" className="input" style={{height:32, fontSize:12, padding:'0 8px', width:'auto'}} value={tlHasta} onChange={e=>setTlHasta(e.target.value)} />
+                    {(tlFiltro!=='todos'||tlDesde||tlHasta) && (
+                      <button className="btn btn-ghost btn-sm" onClick={()=>{setTlFiltro('todos');setTlDesde('');setTlHasta('');}}>
+                        {I.x} Limpiar
+                      </button>
+                    )}
+                  </div>
+                  {filtrados.length===0 && (
+                    <div style={{textAlign:'center', padding:'28px 0', color:'var(--fg-muted)', fontSize:13}}>Sin actividad registrada para esta cuenta.</div>
+                  )}
+                  <div style={{position:'relative'}}>
+                    <div style={{position:'absolute', left:15, top:0, bottom:0, width:2, background:'var(--border)', zIndex:0, borderRadius:1}}/>
+                    {fechas.map(fecha => (
+                      <div key={fecha}>
+                        <div style={{display:'flex', alignItems:'center', gap:8, margin:'14px 0 10px', position:'relative', zIndex:1}}>
+                          <div style={{width:32}}/>
+                          <span style={{fontSize:10, fontWeight:700, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.07em', background:'var(--bg)', padding:'2px 8px', borderRadius:10, border:'1px solid var(--border)'}}>
+                            {fmtDia(fecha)}
+                          </span>
+                        </div>
+                        {grupos[fecha].map(ev => (
+                          <div key={ev.id} style={{display:'flex', gap:10, marginBottom:10, position:'relative', zIndex:1}}>
+                            <div style={{flexShrink:0, width:32, height:32, borderRadius:'50%', background:'var(--white)', border:`2px solid ${TL_COLOR[ev.tipo]||'#94a3b8'}`, display:'flex', alignItems:'center', justifyContent:'center', color:TL_COLOR[ev.tipo]||'#94a3b8', zIndex:2}}>
+                              <span style={{width:14, height:14, display:'flex'}}>{TL_ICON[ev.tipo]}</span>
+                            </div>
+                            <div style={{flex:1, background:'var(--white)', border:'1px solid var(--border)', borderRadius:8, padding:'8px 12px', minWidth:0}}>
+                              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:2}}>
+                                <span style={{fontWeight:700, fontSize:13, color:'var(--navy)', lineHeight:1.3}}>{ev.titulo}</span>
+                                <span style={{fontSize:11, color:'var(--fg-muted)', flexShrink:0}}>{fmtDia(fecha)}</span>
+                              </div>
+                              {ev.descripcion && <p style={{fontSize:12, color:'var(--fg-muted)', margin:'0 0 4px', lineHeight:1.4}}>{ev.descripcion}</p>}
+                              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:4}}>
+                                <span style={{fontSize:11, color:'var(--fg-subtle)'}}>{ev.usuario||''}</span>
+                                {ev.nav && (
+                                  <button className="btn btn-ghost btn-sm" style={{fontSize:11, height:22, padding:'0 8px'}}
+                                    onClick={()=>navigate(ev.nav, ev.navParams||{})}>
+                                    Ver en módulo
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {activeTab === 'Resumen' && (
               <>
                 <div className="account-profile-kpis">
@@ -453,7 +673,7 @@ function Cuentas() {
                 <div className="account-info-card">
                   <div className="card-head">
                     <h3>{cuentaContactos.length} contactos</h3>
-                    <button className="btn btn-primary btn-sm" onClick={startNuevoContacto}>{I.plus} Nuevo contacto</button>
+                    <button className="btn btn-primary btn-sm" data-local-form="true" onClick={startNuevoContacto}>{I.plus} Nuevo contacto</button>
                   </div>
                   <div className="account-contact-list">
                     {cuentaContactos.map(c => (
@@ -463,7 +683,19 @@ function Cuentas() {
                           <strong>{c.nombre}</strong>
                           <small>{c.cargo || 'Cargo pendiente'}</small>
                         </span>
-                        {(c.principal || c.es_principal) && <span className="badge badge-cyan">Principal</span>}
+                        <span className="row" style={{gap:3}} onClick={e => e.stopPropagation()}>
+                          {(c.principal || c.es_principal) && <span className="badge badge-cyan">Principal</span>}
+                          <span role="button" className="icon-btn" title="Editar"
+                            style={{width:24, height:24, color:'var(--fg-muted)', borderRadius:5, flexShrink:0}}
+                            onClick={e => { e.stopPropagation(); startEditarContacto(c); }}>
+                            {I.edit}
+                          </span>
+                          <span role="button" className="icon-btn" title="Eliminar"
+                            style={{width:24, height:24, color:'var(--danger)', borderRadius:5, flexShrink:0}}
+                            onClick={e => { e.stopPropagation(); setConfirmDelContacto(c); }}>
+                            {I.trash}
+                          </span>
+                        </span>
                       </button>
                     ))}
                     {cuentaContactos.length === 0 && <div className="account-empty-note">Registra al primer contacto de esta empresa.</div>}
@@ -486,7 +718,7 @@ function Cuentas() {
                     </div>
                     <div className="input-group">
                       <label>Teléfono</label>
-                      <input className="input" value={contactForm.telefono} onChange={e=>setContactForm(p=>({...p,telefono:e.target.value}))} placeholder="+51 999 999 999" />
+                      <input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={contactForm.telefono} onChange={e=>setContactForm(p=>({...p,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX" />
                     </div>
                     <div className="input-group">
                       <label>Email</label>
@@ -652,7 +884,7 @@ function Cuentas() {
                               {opts.map(o=><option key={o}>{o}</option>)}
                             </select>
                           ) : (
-                            <input className="input" disabled={!condEditing || condSaving} type="text" value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]:e.target.value}))}/>
+                            <input className="input" disabled={!condEditing || condSaving} type="text" inputMode={k === 'ruc' ? 'numeric' : undefined} pattern={k === 'ruc' ? RUC_PATTERN : undefined} maxLength={k === 'ruc' ? 11 : undefined} value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]: k === 'ruc' ? sanitizeRuc(e.target.value) : e.target.value}))}/>
                           )}
                         </div>
                       ))}
@@ -671,6 +903,97 @@ function Cuentas() {
           </div>
         </div>
       </>}
+
+      {/* Modal editar cuenta */}
+      {editingCuenta && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:520}}>
+            <div className="modal-head">
+              <h2>Editar cuenta</h2>
+              <button className="icon-btn" onClick={() => setEditingCuenta(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body col" style={{gap:14}}>
+              <div className="grid-2">
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Razón Social</label>
+                  <input className="input" value={editCuentaForm.razon_social} onChange={e=>setEditCuentaForm(p=>({...p,razon_social:e.target.value}))} autoFocus/>
+                </div>
+                <div className="input-group">
+                  <label>RUC <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>(11 dígitos)</span></label>
+                  <input className="input" value={editCuentaForm.ruc} maxLength={11}
+                    onChange={e=>setEditCuentaForm(p=>({...p,ruc:sanitizeRuc(e.target.value)}))}/>
+                </div>
+                <div className="input-group">
+                  <label>Tipo</label>
+                  <select className="select" value={editCuentaForm.tipo} onChange={e=>setEditCuentaForm(p=>({...p,tipo:e.target.value}))}>
+                    {['prospecto','cliente','estrategico','en_riesgo','inactivo'].map(t=><option key={t} value={t}>{t.replace('_',' ')}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Industria</label>
+                  <select className="select" value={editCuentaForm.industria} onChange={e=>setEditCuentaForm(p=>({...p,industria:e.target.value}))}>
+                    <option value="">Seleccionar...</option>
+                    {['Minería','Industrial','Construcción','Agroindustria','Facilities','Energía','Petróleo & Gas','Logística','Otro'].map(i=><option key={i}>{i}</option>)}
+                  </select>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Responsable Comercial</label>
+                  <select className="select" value={editCuentaForm.responsable_comercial} onChange={e=>setEditCuentaForm(p=>({...p,responsable_comercial:e.target.value}))}>
+                    <option value="">Sin asignar</option>
+                    {comercialesAsignables.map(u=><option key={u.id} value={u.nombre}>{u.nombre}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-secondary" onClick={() => setEditingCuenta(null)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={guardarEditCuenta}>{I.save} Guardar cambios</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmar eliminar cuenta */}
+      {confirmDelCuenta && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:400}}>
+            <div className="modal-head">
+              <h2>Eliminar cuenta</h2>
+              <button className="icon-btn" onClick={() => setConfirmDelCuenta(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body">
+              <p>¿Eliminar <strong>{confirmDelCuenta.razon_social}</strong>? Esta acción no se puede deshacer.</p>
+              <p className="text-muted" style={{fontSize:12, marginTop:8}}>Las oportunidades y contactos vinculados quedarán sin cuenta asociada.</p>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-secondary" onClick={() => setConfirmDelCuenta(null)}>Cancelar</button>
+              <button className="btn btn-primary" style={{background:'var(--danger)', borderColor:'var(--danger)'}} onClick={confirmarEliminarCuenta}>{I.trash} Eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmar eliminar contacto */}
+      {confirmDelContacto && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:380}}>
+            <div className="modal-head">
+              <h2>Eliminar contacto</h2>
+              <button className="icon-btn" onClick={() => setConfirmDelContacto(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body">
+              <p>¿Eliminar a <strong>{confirmDelContacto.nombre}</strong>?</p>
+              {(confirmDelContacto.principal || confirmDelContacto.es_principal) && (
+                <p className="text-muted" style={{fontSize:12, marginTop:8}}>Este es el contacto principal de la cuenta.</p>
+              )}
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-secondary" onClick={() => setConfirmDelContacto(null)}>Cancelar</button>
+              <button className="btn btn-primary" style={{background:'var(--danger)', borderColor:'var(--danger)'}} onClick={confirmarEliminarContacto}>{I.trash} Eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -1105,7 +1428,7 @@ function Partes() {
     <>
       <div className="page-header">
         <div><h1 className="page-title">Partes Diarios</h1><div className="page-sub">{partes.length} partes · {partes.filter(p=>p.estado==='en_revision').length} pendientes de aprobación</div></div>
-        <button className="btn btn-primary" onClick={() => setPanel(true)}>{I.plus} Nuevo parte</button>
+        <button className="btn btn-primary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Nuevo parte</button>
       </div>
       <div className="card">
         <div className="table-wrap">
@@ -1211,7 +1534,7 @@ export function PlaceholderCompras({ titulo }) {
 }
 
 function Proveedores() {
-  const { proveedores, setProveedores, evaluacionesProveedor, usuarios, empresa, role, addNotificacion, registrarProveedor, actualizarProveedorCtx } = useApp();
+  const { proveedores, setProveedores, evaluacionesProveedor, usuarios, roles, empresa, role, addNotificacion, registrarProveedor, actualizarProveedorCtx } = useApp();
   const [tab, setTab] = useState('todos');
   const [panel, setPanel] = useState(false);
   const [sel, setSel] = useState(null);
@@ -1224,7 +1547,7 @@ function Proveedores() {
   const docs = MOCK.documentosProveedor || [];
   const evals = evaluacionesProveedor?.length ? evaluacionesProveedor : (MOCK.evaluacionesProveedor || []);
   const contactosProv = MOCK.contactosProveedor || [];
-  const responsables = usuarios.filter(u => u.rol_categoria ? ['admin','comercial','finanzas'].includes(u.rol_categoria) : (['admin','comercial','finanzas'].includes(u.rol)||(u.rol_nombre||'').toLowerCase().match(/admin|comercial|finanzas/)));
+  const responsables = getAssignableUsers({ users: usuarios, roles, categories: ['compras', 'logistica', 'finanzas'], includeAdmins: true, empresaId: empresa?.id });
   const visibleTabs = role.permisos?.ver_finanzas
     ? ['resumen','finanzas','documentos','evaluaciones','historial','contactos']
     : ['resumen','documentos','evaluaciones','historial','contactos'];
@@ -1248,8 +1571,12 @@ function Proveedores() {
   });
   const saveProveedor = async (e) => {
     e.preventDefault();
-    if (form.pais === 'Peru' && !/^\d{11}$/.test(form.ruc)) {
-      addNotificacion('El RUC peruano debe tener 11 digitos.');
+    if (form.pais === 'Peru' && !isValidRuc(form.ruc)) {
+      addNotificacion('El RUC peruano debe tener 11 numeros y comenzar con 1 o 2.');
+      return;
+    }
+    if (!isValidPhone(form.telefono)) {
+      addNotificacion('El telefono debe tener 9 digitos y comenzar con 9.');
       return;
     }
     const next = proveedores.length + 1;
@@ -1437,7 +1764,7 @@ function Proveedores() {
           <form className="side-panel-body" onSubmit={saveProveedor}>
             <div className="eyebrow">Identificacion fiscal</div>
             <div className="grid-2" style={{gap:12, marginBottom:18}}>
-              <div className="input-group"><label>RUC / NIT *</label><input className="input" required value={form.ruc} onChange={e=>update('ruc', e.target.value)}/></div>
+              <div className="input-group"><label>RUC / NIT *</label><input className="input" required inputMode="numeric" pattern={RUC_PATTERN} maxLength={11} value={form.ruc} onChange={e=>update('ruc', sanitizeRuc(e.target.value))} placeholder="20xxxxxxxxx"/></div>
               <div className="input-group"><label>Pais *</label><select className="select" value={form.pais} onChange={e=>update('pais', e.target.value)}><option>Peru</option><option>Chile</option><option>Colombia</option><option>Mexico</option></select></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Razon social *</label><input className="input" required value={form.razon_social} onChange={e=>update('razon_social', e.target.value)}/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre comercial</label><input className="input" value={form.nombre_comercial} onChange={e=>update('nombre_comercial', e.target.value)} placeholder="Si es diferente a la razon social"/></div>
@@ -1452,7 +1779,7 @@ function Proveedores() {
             <div className="grid-2" style={{gap:12, marginBottom:18}}>
               <div className="input-group"><label>Nombre del contacto *</label><input className="input" required value={form.contacto_nombre} onChange={e=>update('contacto_nombre', e.target.value)}/></div>
               <div className="input-group"><label>Cargo</label><input className="input" value={form.contacto_cargo} onChange={e=>update('contacto_cargo', e.target.value)}/></div>
-              <div className="input-group"><label>Telefono *</label><input className="input" required value={form.telefono} onChange={e=>update('telefono', e.target.value)}/></div>
+              <div className="input-group"><label>Telefono *</label><input className="input" required type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={form.telefono} onChange={e=>update('telefono', sanitizePhone(e.target.value))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group"><label>Email *</label><input className="input" required type="email" value={form.email} onChange={e=>update('email', e.target.value)}/></div>
               <div className="input-group"><label>Sitio web</label><input className="input" value={form.web} onChange={e=>update('web', e.target.value)} placeholder="https://"/></div>
               <div className="input-group"><label>Direccion</label><input className="input" value={form.direccion} onChange={e=>update('direccion', e.target.value)}/></div>
@@ -1495,16 +1822,23 @@ function docsVencidosProveedor(id) {
 }
 
 function CotizacionesCompras() {
-  const { procesosCompra, setProcesosCompra, respuestasCompra, setRespuestasCompra, proveedores, solpes, ots, usuarios, empresa, setOrdenesCompra, setOrdenesServicio, navigate, addNotificacion } = useApp();
+  const { procesosCompra, setProcesosCompra, respuestasCompra, setRespuestasCompra, proveedores, solpes, ots, usuarios, roles, empresa, setOrdenesCompra, setOrdenesServicio, navigate, addNotificacion } = useApp();
   const [tab, setTab] = useState('todas');
   const [wizard, setWizard] = useState(false);
   const [step, setStep] = useState(1);
   const [sel, setSel] = useState(null);
   const [detailTab, setDetailTab] = useState('detalle');
   const [winner, setWinner] = useState('');
+  const responsablesCompra = getAssignableUsers({
+    users: usuarios,
+    roles,
+    categories: ['compras', 'logistica', 'finanzas'],
+    includeAdmins: true,
+    empresaId: empresa?.id
+  });
   const [form, setForm] = useState({
     origen_solpe:'si', solpe_id: solpes[0]?.id || '', descripcion: solpes[0]?.items?.[0]?.nombre || '',
-    tipo:'bien', fecha_limite:'2025-04-30', responsable: usuarios.find(u=>u.rol==='admin')?.nombre || usuarios[0]?.nombre || '',
+    tipo:'bien', fecha_limite:'2025-04-30', responsable: responsablesCompra[0]?.nombre || usuarios[0]?.nombre || '',
     proveedores:[]
   });
   const filtrados = procesosCompra.filter(p => {
@@ -1607,7 +1941,7 @@ function CotizacionesCompras() {
       <div className="tabs">{[['todas','Todas'],['pendiente','Pendiente de cotizar'],['esperando','Esperando respuesta'],['listo','Comparativo listo'],['generada','OC/OS generada']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
       <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>N proceso</th><th>SOLPE origen</th><th>OT</th><th>Tipo</th><th>Descripcion</th><th>Monto ref.</th><th>Proveedores</th><th>Estado</th><th>Fecha limite</th><th>Responsable</th><th>Acciones</th></tr></thead><tbody>{filtrados.map(p => { const resps = respuestasCompra.filter(r=>r.proceso_id===p.id); const responded = resps.filter(r=>r.estado==='respondida').length; return <tr key={p.id}><td className="mono">{p.codigo}</td><td className="mono text-muted">{p.solpe_id || 'Libre'}</td><td className="mono">{p.ot_id || '-'}</td><td>{p.tipo === 'bien' ? 'Bien' : 'Servicio'}</td><td>{p.descripcion}</td><td>{money(p.monto_referencial)}</td><td>{responded} de {p.proveedores_consultados.length} respondieron</td><td><span className={'badge '+compraBadge(p.estado)}>{p.estado.replace('_',' ')}</span></td><td>{p.fecha_limite}</td><td>{p.responsable}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>setSel(p)}>Ver proceso</button></td></tr>})}</tbody></table></div></div>
       {wizard && <><div className="side-panel-backdrop" onClick={()=>setWizard(false)}/><div className="side-panel" style={{width:'min(680px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Paso {step} de 3</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nuevo proceso de cotizacion</div></div><button className="icon-btn" onClick={()=>setWizard(false)}>{I.x}</button></div><div className="side-panel-body">
-        {step===1 && <><div className="input-group"><label>Origen</label><select className="select" value={form.origen_solpe} onChange={e=>update('origen_solpe', e.target.value)}><option value="si">Si - seleccionar SOLPE aprobada</option><option value="no">No - descripcion libre</option></select></div>{form.origen_solpe==='si' && <div className="input-group"><label>SOLPE aprobada</label><select className="select" value={form.solpe_id} onChange={e=>update('solpe_id', e.target.value)}>{solpes.map(s=><option key={s.id} value={s.id}>{s.numero || s.id} - {s.items?.[0]?.nombre || s.estado}</option>)}</select></div>}<div className="input-group"><label>Descripcion detallada</label><textarea className="input" rows="4" value={form.descripcion} onChange={e=>update('descripcion', e.target.value)}/></div><div className="grid-2" style={{gap:12}}><div className="input-group"><label>Tipo</label><select className="select" value={form.tipo} onChange={e=>update('tipo', e.target.value)}><option value="bien">Bien - genera OC</option><option value="servicio">Servicio - genera OS</option></select></div><div className="input-group"><label>Fecha limite</label><input className="input" type="date" value={form.fecha_limite} onChange={e=>update('fecha_limite', e.target.value)}/></div></div><div className="input-group"><label>Responsable de compras</label><select className="select" value={form.responsable} onChange={e=>update('responsable', e.target.value)}>{usuarios.map(u=><option key={u.id}>{u.nombre}</option>)}</select></div></>}
+        {step===1 && <><div className="input-group"><label>Origen</label><select className="select" value={form.origen_solpe} onChange={e=>update('origen_solpe', e.target.value)}><option value="si">Si - seleccionar SOLPE aprobada</option><option value="no">No - descripcion libre</option></select></div>{form.origen_solpe==='si' && <div className="input-group"><label>SOLPE aprobada</label><select className="select" value={form.solpe_id} onChange={e=>update('solpe_id', e.target.value)}>{solpes.map(s=><option key={s.id} value={s.id}>{s.numero || s.id} - {s.items?.[0]?.nombre || s.estado}</option>)}</select></div>}<div className="input-group"><label>Descripcion detallada</label><textarea className="input" rows="4" value={form.descripcion} onChange={e=>update('descripcion', e.target.value)}/></div><div className="grid-2" style={{gap:12}}><div className="input-group"><label>Tipo</label><select className="select" value={form.tipo} onChange={e=>update('tipo', e.target.value)}><option value="bien">Bien - genera OC</option><option value="servicio">Servicio - genera OS</option></select></div><div className="input-group"><label>Fecha limite</label><input className="input" type="date" value={form.fecha_limite} onChange={e=>update('fecha_limite', e.target.value)}/></div></div><div className="input-group"><label>Responsable de compras</label><select className="select" value={form.responsable} onChange={e=>update('responsable', e.target.value)}>{responsablesCompra.map(u=><option key={u.id}>{u.nombre}</option>)}</select></div></>}
         {step===2 && <><p className="text-muted">Selecciona proveedores homologados. Observados o con documentos vencidos se muestran con advertencia.</p>{proveedoresCompatibles.map(p=><label key={p.id} className="card" style={{padding:12,display:'block',marginBottom:10,cursor:'pointer'}}><input type="checkbox" checked={form.proveedores.includes(p.id)} onChange={()=>toggleProveedor(p.id)} style={{marginRight:8}}/><strong>{p.codigo} {p.razon_social}</strong><div className="text-muted" style={{fontSize:12,marginLeft:24}}>{p.categoria} - {ratingText(p.calificacion_promedio)} - {p.condicion_pago || 'Sin condicion'} {p.estado==='observado' ? ' - Observado' : ''} {docsVencidosProveedor(p.id) ? ' - Documento vencido' : ''}</div></label>)}</>}
         {step===3 && <div className="card" style={{padding:16}}><p><strong>Origen:</strong> {form.origen_solpe==='si' ? form.solpe_id : 'Libre'}</p><p><strong>Tipo:</strong> {form.tipo === 'bien' ? 'Bien - Orden de Compra' : 'Servicio - Orden de Servicio'}</p><p><strong>Descripcion:</strong> {form.descripcion}</p><p><strong>Proveedores:</strong> {form.proveedores.map(id=>proveedorById(proveedores,id).razon_social).join(', ')}</p><p><strong>Fecha limite:</strong> {form.fecha_limite}</p><p><strong>Responsable:</strong> {form.responsable}</p></div>}
         <div className="row mt-6" style={{justifyContent:'space-between'}}><button className="btn btn-secondary" onClick={()=> step===1 ? setWizard(false) : setStep(s=>s-1)}>{step===1?'Cancelar':'Anterior'}</button><button className="btn btn-primary" data-local-form="true" disabled={step===2 && form.proveedores.length<1} onClick={()=> step===3 ? createProceso() : setStep(s=>s+1)}>{step===3?'Confirmar y crear proceso':'Siguiente'}</button></div>
@@ -3385,86 +3719,96 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
 }
 
 function TurnosHorarios() {
-  const { turnos, setTurnos, empresa, addNotificacion, crearTurnoCtx, dataMode } = useApp();
+  const { turnos, setTurnos, empresa, addNotificacion, crearTurnoCtx, actualizarTurnoCtx, eliminarTurnoCtx, dataMode } = useApp();
   const [panel, setPanel] = useState(false);
+  const [editandoId, setEditandoId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({
-    nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10,
-    cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false,
-    refrigerio_minutos:60, descripcion:'', estado:'activo'
-  });
-  const codigo = `TUR-${String(turnos.length + 1).padStart(3, '0')}`;
-  const nuevoTurnoId = () => {
-    const uuid = globalThis.crypto?.randomUUID?.();
-    return `tur_${uuid || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`}`;
-  };
+  const formBase = { nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false, refrigerio_minutos:60, descripcion:'', estado:'activo' };
+  const [form, setForm] = useState(formBase);
   const horasCalc = horasEfectivasTurno(form.hora_entrada, form.hora_salida, form.cruza_medianoche, form.refrigerio_minutos);
-  const diasMap = [
-    ['lun','Lun'], ['mar','Mar'], ['mie','Mie'], ['jue','Jue'], ['vie','Vie'], ['sab','Sab'], ['dom','Dom']
-  ];
+  const diasMap = [['lun','Lun'], ['mar','Mar'], ['mie','Mie'], ['jue','Jue'], ['vie','Vie'], ['sab','Sab'], ['dom','Dom']];
   const toggleDia = (d) => setForm(prev => ({ ...prev, dias_laborables: prev.dias_laborables.includes(d) ? prev.dias_laborables.filter(x => x !== d) : [...prev.dias_laborables, d] }));
+
+  const abrirNuevo = () => { setEditandoId(null); setForm(formBase); setError(''); setPanel(true); };
+  const abrirEditar = (t) => {
+    setEditandoId(t.id);
+    setForm({ nombre:t.nombre||'', hora_entrada:t.hora_entrada||'08:00', hora_salida:t.hora_salida||'17:00', tolerancia_minutos:t.tolerancia_minutos??10, cruza_medianoche:t.cruza_medianoche||false, dias_laborables:t.dias_laborables||['lun','mar','mie','jue','vie'], dias_variables:t.dias_variables||false, refrigerio_minutos:t.refrigerio_minutos??60, descripcion:t.descripcion||'', estado:t.estado||'activo' });
+    setError(''); setPanel(true);
+  };
+  const cerrar = () => { setPanel(false); setEditandoId(null); setForm(formBase); setError(''); };
+
   const guardar = async (e) => {
     e.preventDefault();
     if (saving) return;
     if (!form.dias_variables && form.dias_laborables.length === 0) return;
-    setSaving(true);
-    setError('');
+    setSaving(true); setError('');
     const totalMin = timeToMinutesHHMM(form.hora_salida) + (form.cruza_medianoche ? 1440 : 0) - timeToMinutesHHMM(form.hora_entrada) - Number(form.refrigerio_minutos || 0);
-    const turno = {
-      id:nuevoTurnoId(), empresa_id:empresa.id, codigo,
-      ...form, tolerancia_minutos:Number(form.tolerancia_minutos) || 0,
-      refrigerio_minutos:Number(form.refrigerio_minutos) || 0,
-      horas_efectivas: Math.max(0, totalMin / 60)
-    };
+    const payload = { ...form, tolerancia_minutos:Number(form.tolerancia_minutos)||0, refrigerio_minutos:Number(form.refrigerio_minutos)||0, horas_efectivas:Math.max(0, totalMin/60) };
     try {
-      await crearTurnoCtx(turno);
-      addNotificacion(`Turno ${turno.codigo} creado en ${dataMode === 'supabase' ? 'Supabase' : 'modo local'}.`);
-      setPanel(false);
-    } catch (err) {
-      if (dataMode === 'supabase') {
-        setError(`No se pudo guardar el turno en Supabase: ${err?.message || 'error desconocido'}`);
+      if (editandoId) {
+        await actualizarTurnoCtx(editandoId, payload);
+        addNotificacion('Turno actualizado.');
       } else {
-        setTurnos(prev => [...prev, turno]);
-        addNotificacion(`Turno ${turno.codigo} creado en modo local.`);
-        setPanel(false);
+        const nuevoId = `tur_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2,8)}`}`;
+        const codigo = `TUR-${String(turnos.length + 1).padStart(3,'0')}`;
+        await crearTurnoCtx({ id:nuevoId, empresa_id:empresa.id, codigo, ...payload });
+        addNotificacion(`Turno ${codigo} creado.`);
       }
-    } finally {
-      setSaving(false);
+      cerrar();
+    } catch (err) {
+      setError(err?.message || 'No se pudo guardar el turno.');
+    }
+    setSaving(false);
+  };
+
+  const eliminar = async (t) => {
+    if (!window.confirm(`Eliminar turno "${t.nombre}"? Esta acción se reflejará en la base de datos.`)) return;
+    try {
+      await eliminarTurnoCtx(t.id);
+      addNotificacion('Turno eliminado.');
+    } catch {
+      addNotificacion('No se pudo eliminar el turno. Puede tener colaboradores asignados.');
     }
   };
 
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Turnos y Horarios</h1><div className="page-sub">Configuracion de jornadas laborales</div></div>
-        <button className="btn btn-primary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Nuevo turno</button>
+        <div><h1 className="page-title">Turnos y Horarios</h1><div className="page-sub">Configuracion de jornadas laborales · {turnos.filter(t=>t.estado==='activo').length} activos</div></div>
+        <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevo}>{I.plus} Nuevo turno</button>
       </div>
       <div className="card">
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Codigo</th><th>Nombre</th><th>Entrada</th><th>Salida</th><th>Horas/dia</th><th>Tolerancia</th><th>Dias</th><th>Estado</th></tr></thead>
+            <thead><tr><th>Codigo</th><th>Nombre</th><th>Entrada</th><th>Salida</th><th>Horas/dia</th><th>Tolerancia</th><th>Dias</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
             <tbody>{turnos.map(t => (
               <tr key={t.id}>
-                <td className="mono">{t.codigo || t.id}</td>
-                <td><strong>{t.nombre}</strong>{t.cruza_medianoche && <span className="badge badge-purple" style={{marginLeft:8}}>Cruza medianoche</span>}</td>
+                <td className="mono" style={{fontSize:11}}>{t.codigo || t.id}</td>
+                <td><strong>{t.nombre}</strong>{t.cruza_medianoche && <span className="badge badge-purple" style={{marginLeft:8}}>+1d</span>}</td>
                 <td>{t.hora_entrada}</td>
                 <td>{t.hora_salida}</td>
                 <td>{t.horas_efectivas}h</td>
                 <td>{t.tolerancia_minutos} min</td>
                 <td>{t.dias_variables ? 'Variable' : t.dias_laborables.join('-')}</td>
                 <td><span className={'badge '+(t.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{t.estado}</span></td>
+                <td style={{textAlign:'right'}}>
+                  <div style={{display:'flex', gap:4, justifyContent:'flex-end'}}>
+                    <button className="icon-btn" title="Editar turno" style={{color:'var(--cyan)'}} onClick={()=>abrirEditar(t)}>{I.edit}</button>
+                    <button className="icon-btn" title="Eliminar turno" style={{color:'var(--danger)'}} onClick={()=>eliminar(t)}>{I.trash}</button>
+                  </div>
+                </td>
               </tr>
             ))}</tbody>
           </table>
         </div>
       </div>
       {panel && <>
-        <div className="side-panel-backdrop" onClick={() => setPanel(false)}/>
+        <div className="side-panel-backdrop" onClick={cerrar}/>
         <div className="side-panel" style={{width:'min(480px, 96vw)'}}>
-          <div className="side-panel-head"><div><div className="eyebrow">Nuevo turno</div><div className="font-display" style={{fontSize:22, fontWeight:700}}>{codigo}</div></div><button className="icon-btn" onClick={() => setPanel(false)}>{I.x}</button></div>
+          <div className="side-panel-head"><div><div className="eyebrow">{editandoId ? 'Editar turno' : 'Nuevo turno'}</div><div className="font-display" style={{fontSize:22, fontWeight:700}}>{editandoId ? form.nombre : `TUR-${String(turnos.length+1).padStart(3,'0')}`}</div></div><button className="icon-btn" onClick={cerrar}>{I.x}</button></div>
           <form className="side-panel-body" onSubmit={guardar}>
-            {error && <div className="badge badge-red" style={{marginBottom:12}}>{error}</div>}
+            {error && <div className="alert alert-danger" style={{marginBottom:12}}>{error}</div>}
             <div className="input-group"><label>Nombre *</label><input className="input" required value={form.nombre} onChange={e=>setForm(v=>({...v,nombre:e.target.value}))}/></div>
             <div className="grid-2" style={{gap:12}}>
               <div className="input-group"><label>Hora de entrada *</label><input className="input" type="time" required value={form.hora_entrada} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div>
@@ -3480,7 +3824,7 @@ function TurnosHorarios() {
             <div className="card" style={{padding:12, margin:'14px 0'}}><strong>Horas laborables calculadas:</strong> {horasCalc} efectivas</div>
             <div className="input-group"><label>Descripcion / notas</label><textarea className="input" rows="3" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div>
             <div className="input-group"><label>Estado</label><select className="select" value={form.estado} onChange={e=>setForm(v=>({...v,estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
-            <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Guardar turno'}</button></div>
+            <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={cerrar}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit" disabled={saving}>{saving ? 'Guardando...' : (editandoId ? 'Guardar cambios' : 'Crear turno')}</button></div>
           </form>
         </div>
       </>}
@@ -3977,7 +4321,7 @@ function RRHH_Operativo() {
       ...formAltaBase,
       nombre: p.nombre || '',
       dni: p.documento || p.dni || '',
-      telefono: p.telefono || '',
+      telefono: sanitizePhone(p.telefono || ''),
       email: p.email || '',
       codigo: p.codigo || p.id || '',
       cargo: p.cargo || '',
@@ -4238,7 +4582,7 @@ function RRHH_Operativo() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre completo *</label><input className="input" required value={formAlta.nombre} onChange={e=>setFormAlta(v=>({...v,nombre:e.target.value}))} placeholder="Nombre completo" autoFocus/></div>
               <div className="input-group"><label>DNI / Documento *</label><input className="input" required value={formAlta.dni} onChange={e=>setFormAlta(v=>({...v,dni:e.target.value}))} placeholder="12345678"/></div>
-              <div className="input-group"><label>Teléfono celular</label><input className="input" value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:e.target.value}))} placeholder="+51 9..."/></div>
+              <div className="input-group"><label>Teléfono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email</label><input className="input" type="email" value={formAlta.email} onChange={e=>setFormAlta(v=>({...v,email:e.target.value}))} placeholder="tecnico@empresa.pe"/></div>
             </div>
 
@@ -4294,4 +4638,4 @@ function RRHH_Operativo() {
   );
 }
 
-export { Cuentas, OT, Partes, Compras, Proveedores, CotizacionesCompras, OrdenesCompra, OrdenesServicio, Recepciones, TurnosHorarios, ControlAsistencia, Nomina, Backlog, Cierre, Remision, SOLPE, Planner, Tickets, RRHH_Operativo };
+export { Cuentas, OT, Partes, Compras, Proveedores, CotizacionesCompras, OrdenesCompra, OrdenesServicio, Recepciones, ControlAsistencia, Nomina, Backlog, Cierre, Remision, SOLPE, Planner, Tickets, RRHH_Operativo };

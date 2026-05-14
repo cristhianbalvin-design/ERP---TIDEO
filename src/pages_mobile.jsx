@@ -3,6 +3,7 @@ import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { rrhhService } from './services/rrhhService.js';
+import { PHONE_PATTERN, sanitizePhone } from './lib/formValidators.js';
 
 // Mobile field views - all field profiles
 
@@ -835,7 +836,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
         <>
           <div className="row" style={{justifyContent:'space-between', marginBottom: 16}}>
             <div className="eyebrow">{scopeLabel} Agenda Comercial</div>
-            <button className="btn btn-sm btn-primary" onClick={() => setScreen('nuevo-evento')}>{I.plus} Nuevo</button>
+            <button className="btn btn-sm btn-primary" data-local-form="true" onClick={() => setScreen('nuevo-evento')}>{I.plus} Nuevo</button>
           </div>
           <div className="col" style={{gap:10}}>
             {eventos.map(e => (
@@ -937,7 +938,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
               <div className="grid-2">
                 <div className="input-group">
                   <label>Telefono</label>
-                  <input name="telefono" type="tel" className="input" defaultValue={leadDesdeFoto?.telefono || ''} placeholder="9XXXXXXXX" />
+                  <input name="telefono" type="tel" className="input" defaultValue={sanitizePhone(leadDesdeFoto?.telefono || '')} inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} onInput={e => { e.currentTarget.value = sanitizePhone(e.currentTarget.value); }} placeholder="9XXXXXXXX" />
                 </div>
                 <div className="input-group">
                   <label>Email</label>
@@ -987,7 +988,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
             <div className="grid-2">
               <div className="input-group">
                 <label>Teléfono</label>
-                <input name="telefono" type="tel" className="input" placeholder="9XXXXXXXX" />
+                <input name="telefono" type="tel" className="input" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} onInput={e => { e.currentTarget.value = sanitizePhone(e.currentTarget.value); }} placeholder="9XXXXXXXX" />
               </div>
               <div className="input-group">
                 <label>Email</label>

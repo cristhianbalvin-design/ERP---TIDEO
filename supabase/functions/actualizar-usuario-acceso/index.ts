@@ -58,6 +58,139 @@ const moduloToPerfil = (modulo: string | null) => {
   return modulo ? (map[modulo] || "Tecnico") : null;
 };
 
+const allowedScopes = new Set(["tenant", "area", "equipo", "sede", "proyecto", "centro_costo", "custom"]);
+
+const normalizeAssignments = (value: unknown) =>
+  (Array.isArray(value) ? value : [])
+    .map((item) => item && typeof item === "object" ? item as Record<string, unknown> : null)
+    .filter(Boolean)
+    .map((item) => ({
+      rol_id: String(item?.rol_id || item?.rol || "").trim(),
+      jefe_user_id: String(item?.jefe_user_id || "").trim() || null,
+      alcance_tipo: allowedScopes.has(String(item?.alcance_tipo || "").trim())
+        ? String(item?.alcance_tipo || "").trim()
+        : "tenant",
+      alcance_id: String(item?.alcance_id || "").trim() || null,
+    }))
+    .filter((item) => item.rol_id);
+
+const saveFunctionalAssignments = async (
+  adminClient: ReturnType<typeof createClient>,
+  params: {
+    empresaId: string;
+    userId: string;
+    principalRole: Record<string, unknown>;
+    jefeUserId: string | null;
+    extras: unknown;
+  },
+) => {
+  const now = new Date().toISOString();
+  const baseRow = {
+    empresa_id: params.empresaId,
+    user_id: params.userId,
+    rol_id: String(params.principalRole.id),
+    categoria: String(params.principalRole.categoria || "otro"),
+    nivel_jerarquico: String(params.principalRole.nivel_jerarquico || "operativo"),
+    jefe_user_id: params.jefeUserId,
+    alcance_tipo: "tenant",
+    alcance_id: null,
+    principal: true,
+    activo: true,
+    fecha_fin: null,
+    updated_at: now,
+  };
+
+  const { data: existingPrincipal, error: principalLookupError } = await adminClient
+    .from("usuarios_asignaciones")
+    .select("id")
+    .eq("empresa_id", params.empresaId)
+    .eq("user_id", params.userId)
+    .eq("principal", true)
+    .maybeSingle();
+  if (principalLookupError && principalLookupError.code === "42P01") return [];
+  if (principalLookupError) throw principalLookupError;
+
+  if (existingPrincipal?.id) {
+    const { error } = await adminClient.from("usuarios_asignaciones").update(baseRow).eq("id", existingPrincipal.id);
+    if (error) throw error;
+  } else {
+    const { error } = await adminClient.from("usuarios_asignaciones").insert([baseRow]);
+    if (error) throw error;
+  }
+
+  const { error: deactivateError } = await adminClient
+    .from("usuarios_asignaciones")
+    .update({ activo: false, fecha_fin: now.slice(0, 10), updated_at: now })
+    .eq("empresa_id", params.empresaId)
+    .eq("user_id", params.userId)
+    .eq("principal", false)
+    .eq("activo", true);
+  if (deactivateError) throw deactivateError;
+
+  const extras = normalizeAssignments(params.extras);
+  const jefeIds = [...new Set(extras.map((item) => item.jefe_user_id).filter(Boolean) as string[])];
+  if (jefeIds.includes(params.userId)) throw new Error("Un usuario no puede ser su propio jefe funcional.");
+  if (jefeIds.length) {
+    const { data: jefeRows, error: jefeRowsError } = await adminClient
+      .from("usuarios_empresas")
+      .select("user_id")
+      .eq("empresa_id", params.empresaId)
+      .eq("estado", "activo")
+      .in("user_id", jefeIds);
+    if (jefeRowsError) throw jefeRowsError;
+    const found = new Set((jefeRows || []).map((row) => row.user_id));
+    if (jefeIds.some((id) => !found.has(id))) {
+      throw new Error("Todo jefe funcional debe pertenecer al mismo tenant y estar activo.");
+    }
+  }
+  const extraRoleIds = [...new Set(extras.map((item) => item.rol_id))];
+  let rolesById = new Map<string, Record<string, unknown>>();
+  if (extraRoleIds.length) {
+    const { data: extraRoles, error: extraRolesError } = await adminClient
+      .from("roles")
+      .select("id, nombre, categoria, nivel_jerarquico, empresa_id, es_superadmin")
+      .in("id", extraRoleIds)
+      .eq("activo", true);
+    if (extraRolesError) throw extraRolesError;
+    rolesById = new Map((extraRoles || []).map((role) => [role.id, role]));
+  }
+
+  const rows: Record<string, unknown>[] = [];
+  for (const item of extras) {
+    const role = rolesById.get(item.rol_id);
+    if (!role) continue;
+    if (role.empresa_id !== params.empresaId && role.es_superadmin !== true) continue;
+    if (item.jefe_user_id === params.userId) continue;
+    rows.push({
+      empresa_id: params.empresaId,
+      user_id: params.userId,
+      rol_id: item.rol_id,
+      categoria: String(role.categoria || "otro"),
+      nivel_jerarquico: String(role.nivel_jerarquico || "operativo"),
+      jefe_user_id: item.jefe_user_id,
+      alcance_tipo: item.alcance_tipo,
+      alcance_id: item.alcance_tipo === "tenant" ? null : item.alcance_id,
+      principal: false,
+      activo: true,
+    });
+  }
+
+  if (rows.length) {
+    const { error } = await adminClient.from("usuarios_asignaciones").insert(rows);
+    if (error) throw error;
+  }
+
+  const { data: saved, error: savedError } = await adminClient
+    .from("usuarios_asignaciones")
+    .select("*")
+    .eq("empresa_id", params.empresaId)
+    .eq("user_id", params.userId)
+    .eq("activo", true)
+    .order("principal", { ascending: false });
+  if (savedError) throw savedError;
+  return saved || [];
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return jsonResponse({ success: false, error: "Metodo no permitido." }, 405);
@@ -95,6 +228,9 @@ serve(async (req) => {
   const nombre = String(payload.nombre || "").trim();
   const email = normalizeEmail(payload.email);
   const rolId = String(payload.rol || "").trim();
+  const jefeUserIdRaw = String(payload.jefe_user_id || "").trim();
+  const jefeUserId = jefeUserIdRaw || null;
+  const asignacionesPayload = payload.asignaciones || [];
   const accesoCampo = Boolean(payload.acceso_campo);
   const campoModulos = accesoCampo
     ? [...new Set((Array.isArray(payload.campo_modulos) ? payload.campo_modulos : [legacyPerfilToModulo(String(payload.perfil_campo || "Tecnico"))])
@@ -143,7 +279,7 @@ serve(async (req) => {
 
   const { data: roleRow, error: roleError } = await adminClient
     .from("roles")
-    .select("id, empresa_id, es_superadmin, activo")
+    .select("id, empresa_id, es_superadmin, categoria, nivel_jerarquico, activo")
     .eq("id", rolId)
     .maybeSingle();
 
@@ -156,6 +292,22 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: "No puedes asignar un rol de superadmin a un usuario." }, 403);
   }
 
+  if (jefeUserId === userId) {
+    return jsonResponse({ success: false, error: "Un usuario no puede ser su propio jefe directo." }, 400);
+  }
+
+  if (jefeUserId) {
+    const { data: jefeMembership, error: jefeError } = await adminClient
+      .from("usuarios_empresas")
+      .select("user_id, empresa_id, estado")
+      .eq("user_id", jefeUserId)
+      .eq("empresa_id", empresaId)
+      .eq("estado", "activo")
+      .maybeSingle();
+    if (jefeError) return jsonResponse({ success: false, error: jefeError.message }, 500);
+    if (!jefeMembership) return jsonResponse({ success: false, error: "El jefe directo debe pertenecer al mismo tenant y estar activo." }, 400);
+  }
+
   const { error: authUpdateError } = await adminClient.auth.admin.updateUserById(userId, {
     email,
     user_metadata: { nombre },
@@ -166,6 +318,7 @@ serve(async (req) => {
     .from("usuarios_empresas")
     .update({
       rol_id: rolId,
+      jefe_user_id: jefeUserId,
       acceso_campo: accesoCampo,
       perfil_campo: perfilCampo,
       campo_modulos: campoModulos,
@@ -197,12 +350,27 @@ serve(async (req) => {
 
   if (saveError) return jsonResponse({ success: false, error: saveError.message }, 500);
 
+  let asignaciones: Record<string, unknown>[] = [];
+  try {
+    asignaciones = await saveFunctionalAssignments(adminClient, {
+      empresaId,
+      userId,
+      principalRole: roleRow,
+      jefeUserId,
+      extras: asignacionesPayload,
+    });
+  } catch (error) {
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : "No se pudieron guardar las asignaciones funcionales." }, 500);
+  }
+
   return jsonResponse({
     success: true,
     user: {
       ...(savedUser || profile),
       campoPerfil: perfilCampo,
       campoModulos,
+      jefe_user_id: jefeUserId,
+      asignaciones,
     },
   });
 });
