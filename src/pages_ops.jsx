@@ -10,7 +10,7 @@ import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sa
 
 // ============ CUENTAS Y CONTACTOS ============
 function Cuentas() {
-  const { cuentas, setCuentas, crearCuenta, actualizarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, usuarios, roles, navigate, empresa, addNotificacion, role } = useApp();
+  const { cuentas, setCuentas, crearCuenta, actualizarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, usuarios, roles, navigate, empresa, addNotificacion, role } = useApp();
   const [sel, setSel] = useState(null);
   const [condEdit, setCondEdit] = useState({});
   const [condEditing, setCondEditing] = useState(false);
@@ -88,6 +88,11 @@ function Cuentas() {
       if (o.fecha_cierre_real && o.estado==='ganada') eventos.push({ id:`opp-won-${o.id}`, tipo:'oportunidad', fecha:o.fecha_cierre_real, titulo:`Oportunidad ganada: ${o.nombre}`, descripcion:money(o.monto_estimado), usuario:o.responsable, nav:'pipeline', navParams:{ panel:o.id } });
       if (o.estado==='perdida') eventos.push({ id:`opp-lost-${o.id}`, tipo:'oportunidad', fecha:o.fecha_cierre_real||o.fecha_cierre_estimada, titulo:`Oportunidad perdida: ${o.nombre}`, descripcion:o.motivo_perdida||'', usuario:o.responsable, nav:'pipeline', navParams:{ panel:o.id } });
     });
+    // Cambios de etapa en oportunidades
+    (oppHistorialEtapas || []).filter(h => oppIds.has(h.opp_id)).forEach(h => {
+      const oppNombre = opps.find(o => o.id === h.opp_id)?.nombre || '';
+      eventos.push({ id:`ohe-${h.id}`, tipo:'oportunidad', fecha:h.fecha, titulo:`Etapa: ${h.etapa_desde} → ${h.etapa_hasta}`, descripcion:oppNombre, usuario:h.usuario, nav:'pipeline', navParams:{ panel:h.opp_id } });
+    });
 
     // Cotizaciones
     cotizaciones.filter(c => c.cuenta_id===cId).forEach(c => {
@@ -136,7 +141,7 @@ function Cuentas() {
     if (csHLoc?.score_total < 40) eventos.push({ id:'cs-health', tipo:'cs', fecha:csHLoc.fecha||new Date().toISOString().slice(0,10), titulo:'Health score bajo umbral crítico', descripcion:`Score: ${csHLoc.score_total} · ${csHLoc.semaforo}`, usuario:null, nav:null });
 
     return eventos.filter(e => e.fecha).sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
-  }, [sel, leads, historialEstados, actividades, oportunidades, cotizaciones, hojasCosteo, osClientes, ots, valorizaciones, facturas, cxc]);
+  }, [sel, leads, historialEstados, actividades, oportunidades, cotizaciones, hojasCosteo, osClientes, ots, valorizaciones, facturas, cxc, oppHistorialEtapas]);
 
   const getHealthColor = (score) => {
     if (score === null || score === undefined) return 'gray';
@@ -2294,7 +2299,7 @@ function Backlog() {
     e.preventDefault();
     const id = e.dataTransfer.getData('text/plain');
     if (id) {
-      setBacklog(prev => prev.map(b => b.id === id ? { ...b, estado: targetStatus } : b));
+      setBacklog(prev => prev.map(b => b.id === id ? { ...b, estado: targetStatus, moved_at: Date.now() } : b));
       addNotificacion(`Requerimiento movido a ${targetStatus.replace('_',' ')}`);
     }
   };
@@ -2341,10 +2346,12 @@ function Backlog() {
         <div style={{overflowX:'auto', paddingBottom:20, marginTop:24}}>
           <div className="kanban-v2">
             {cols.map((c, i) => {
-              const list = filteredBacklog.filter(b => b.estado === c.k);
+              const list = filteredBacklog
+                .filter(b => b.estado === c.k)
+                .sort((a, b) => (b.moved_at || 0) - (a.moved_at || 0) || (b.fecha_recepcion || '').localeCompare(a.fecha_recepcion || ''));
               return (
-                <div 
-                  key={c.k} 
+                <div
+                  key={c.k}
                   className="kanban-col-v2"
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => handleDrop(e, c.k)}
@@ -3433,7 +3440,7 @@ function Tickets() {
     e.preventDefault();
     const id = e.dataTransfer.getData('text/plain');
     if (id) {
-      setTickets(prev => prev.map(t => t.id === id ? { ...t, estado: targetStatus } : t));
+      setTickets(prev => prev.map(t => t.id === id ? { ...t, estado: targetStatus, moved_at: Date.now() } : t));
       addNotificacion(`Ticket movido a ${targetStatus.replace('_',' ')}`);
     }
   };
@@ -3493,10 +3500,12 @@ function Tickets() {
         <div style={{overflowX:'auto', paddingBottom:20, marginTop:24}}>
           <div className="kanban-v2">
             {cols.map((c, i) => {
-              const list = filteredTickets.filter(t => t.estado === c.k);
+              const list = filteredTickets
+                .filter(t => t.estado === c.k)
+                .sort((a, b) => (b.moved_at || 0) - (a.moved_at || 0) || (b.fecha_creacion || '').localeCompare(a.fecha_creacion || ''));
               return (
-                <div 
-                  key={c.k} 
+                <div
+                  key={c.k}
                   className="kanban-col-v2"
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => handleDrop(e, c.k)}

@@ -1735,6 +1735,51 @@ function Maestros() {
 }
 
 function Servicios() {
+  const [servicios, setServicios] = useState(MOCK.servicios);
+  const [panelAbierto, setPanelAbierto] = useState(false);
+  const [editando, setEditando] = useState(null);
+
+  const formBase = { familia: '', descripcion: '', unidad: 'Servicio', costo: '', precio: '', estado: 'activo', facturable: true, precio_incluido: false, detalle: '', entregables: [] };
+  const [form, setForm] = useState(formBase);
+  const [nuevoEntregable, setNuevoEntregable] = useState('');
+
+  const margenCalc = (c, p) => {
+    const pc = Number(p), cc = Number(c);
+    if (!pc) return 0;
+    return Math.round(((pc - cc) / pc) * 100);
+  };
+
+  const abrirNuevo = () => { setForm(formBase); setNuevoEntregable(''); setEditando(null); setPanelAbierto(true); };
+  const abrirEditar = (s) => {
+    setForm({ familia: s.familia, descripcion: s.descripcion, unidad: s.unidad, costo: s.costo, precio: s.precio, estado: s.estado, facturable: s.facturable, precio_incluido: s.precio_incluido ?? false, detalle: s.detalle || '', entregables: s.entregables ? [...s.entregables] : [] });
+    setNuevoEntregable('');
+    setEditando(s);
+    setPanelAbierto(true);
+  };
+  const cerrar = () => { setPanelAbierto(false); setEditando(null); };
+
+  const upd = (f, v) => setForm(p => ({ ...p, [f]: v }));
+
+  const agregarEntregable = () => {
+    const txt = nuevoEntregable.trim();
+    if (!txt) return;
+    setForm(p => ({ ...p, entregables: [...p.entregables, txt] }));
+    setNuevoEntregable('');
+  };
+  const quitarEntregable = (idx) => setForm(p => ({ ...p, entregables: p.entregables.filter((_, i) => i !== idx) }));
+
+  const guardar = () => {
+    if (!form.descripcion.trim()) return;
+    const margen = margenCalc(form.costo, form.precio);
+    if (editando) {
+      setServicios(prev => prev.map(s => s.id === editando.id ? { ...s, ...form, costo: Number(form.costo), precio: Number(form.precio), margen } : s));
+    } else {
+      const nuevoId = `SRV-${String(servicios.length + 1).padStart(3, '0')}`;
+      setServicios(prev => [...prev, { id: nuevoId, ...form, costo: Number(form.costo), precio: Number(form.precio), margen }]);
+    }
+    cerrar();
+  };
+
   return (
     <>
       <div className="page-header">
@@ -1742,7 +1787,7 @@ function Servicios() {
           <h1 className="page-title">Catálogo de Servicios</h1>
           <div className="page-sub">Servicios ofrecidos con estructura de costos</div>
         </div>
-        <button className="btn btn-primary">{I.plus} Nuevo servicio</button>
+        <button className="btn btn-primary" onClick={abrirNuevo}>{I.plus} Nuevo servicio</button>
       </div>
       <div className="card">
         <div className="table-wrap">
@@ -1756,28 +1801,127 @@ function Servicios() {
                 <th>Costo Ref.</th>
                 <th>Precio Ref.</th>
                 <th>Margen</th>
+                <th>Facturable</th>
                 <th>Estado</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {MOCK.servicios.map(s => (
+              {servicios.map(s => (
                 <tr key={s.id} className="hover-row">
                   <td className="mono">{s.id}</td>
                   <td>{s.familia}</td>
-                  <td style={{fontWeight:500}}>{s.descripcion}</td>
+                  <td style={{fontWeight:500}}>
+                    {s.descripcion}
+                    {s.entregables?.length > 0 && <span className="text-muted" style={{fontSize:11, marginLeft:6}}>· {s.entregables.length} entregable{s.entregables.length !== 1 ? 's' : ''}</span>}
+                  </td>
                   <td>{s.unidad}</td>
                   <td className="mono text-muted">{money(s.costo)}</td>
-                  <td className="mono" style={{fontWeight:600}}>{money(s.precio)}</td>
+                  <td className="mono" style={{fontWeight:600}}>{s.precio_incluido ? <span className="badge badge-gray">Incluido</span> : money(s.precio)}</td>
                   <td><span className="badge badge-cyan">{s.margen}%</span></td>
-                  <td><span className="badge badge-green">{s.estado}</span></td>
-                  <td><button className="icon-btn">{I.chev}</button></td>
+                  <td>{s.facturable ? <span className="badge badge-green">Sí</span> : <span className="badge badge-gray">No</span>}</td>
+                  <td><span className={`badge ${s.estado === 'activo' ? 'badge-green' : 'badge-gray'}`}>{s.estado}</span></td>
+                  <td><button className="icon-btn" style={{color:'var(--fg-muted)'}} onClick={() => abrirEditar(s)} title="Editar servicio">{I.edit}</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {panelAbierto && <>
+        <div className="side-panel-backdrop" onClick={cerrar}/>
+        <div className="side-panel" style={{width:'min(580px, 96vw)'}}>
+          <div className="side-panel-head">
+            <div>
+              <div className="eyebrow">Catálogo de Servicios</div>
+              <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>{editando ? 'Editar servicio' : 'Nuevo servicio'}</div>
+            </div>
+            <button className="icon-btn" style={{color:'var(--fg-muted)'}} onClick={cerrar}>{I.x}</button>
+          </div>
+          <div className="side-panel-body">
+            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Identificación</div>
+            <div className="grid-2" style={{gap:14, marginBottom:20}}>
+              <div className="input-group">
+                <label>Descripción (nombre del servicio) *</label>
+                <input className="input" value={form.descripcion} onChange={e => upd('descripcion', e.target.value)} placeholder="Ej: Mantenimiento preventivo mensual" autoFocus />
+              </div>
+              <div className="input-group">
+                <label>Familia / Categoría</label>
+                <input className="input" value={form.familia} onChange={e => upd('familia', e.target.value)} placeholder="Ej: Mantenimiento" />
+              </div>
+              <div className="input-group">
+                <label>Unidad</label>
+                <select className="select" value={form.unidad} onChange={e => upd('unidad', e.target.value)}>
+                  {['Servicio','Hora','Proyecto','Informe','Actividad','Día','Mes','Unidad'].map(u => <option key={u}>{u}</option>)}
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Estado</label>
+                <select className="select" value={form.estado} onChange={e => upd('estado', e.target.value)}>
+                  <option value="activo">Activo</option>
+                  <option value="inactivo">Inactivo</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Precios de referencia</div>
+            <div className="grid-2" style={{gap:14, marginBottom:20}}>
+              <div className="input-group">
+                <label>Costo referencial</label>
+                <input className="input" type="number" min="0" step="0.01" value={form.costo} onChange={e => upd('costo', e.target.value)} placeholder="0" disabled={form.precio_incluido} />
+              </div>
+              <div className="input-group">
+                <label>Precio referencial</label>
+                <input className="input" type="number" min="0" step="0.01" value={form.precio} onChange={e => upd('precio', e.target.value)} placeholder="0" disabled={form.precio_incluido} />
+              </div>
+              {!form.precio_incluido && (Number(form.costo) > 0 || Number(form.precio) > 0) && (
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <span className="text-muted" style={{fontSize:12}}>Margen calculado: <strong>{margenCalc(form.costo, form.precio)}%</strong></span>
+                </div>
+              )}
+            </div>
+
+            <div style={{fontWeight:600, fontSize:13, marginBottom:12, color:'var(--fg-muted)'}}>Comportamiento en documentos</div>
+            <div style={{display:'flex', flexDirection:'column', gap:12, marginBottom:20}}>
+              <label style={{display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontSize:14}}>
+                <input type="checkbox" checked={form.facturable} onChange={e => upd('facturable', e.target.checked)} style={{width:16, height:16}} />
+                <span><strong>Es facturable</strong> — este servicio genera factura al cliente</span>
+              </label>
+              <label style={{display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontSize:14}}>
+                <input type="checkbox" checked={form.precio_incluido} onChange={e => { upd('precio_incluido', e.target.checked); if (e.target.checked) { upd('costo', 0); upd('precio', 0); } }} style={{width:16, height:16}} />
+                <span><strong>Precio "Incluido"</strong> — aparece en cotizaciones sin monto visible</span>
+              </label>
+            </div>
+
+            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Detalle del alcance</div>
+            <div className="input-group" style={{marginBottom:20}}>
+              <label>Descripción larga</label>
+              <textarea className="input" rows={4} value={form.detalle} onChange={e => upd('detalle', e.target.value)} placeholder="Describe qué incluye este servicio, condiciones, alcance, etc. Este texto aparece en el PDF de cotización." />
+            </div>
+
+            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Entregables incluidos</div>
+            <div style={{marginBottom:20}}>
+              {form.entregables.map((ent, idx) => (
+                <div key={idx} style={{display:'flex', alignItems:'center', gap:8, padding:'6px 10px', background:'var(--bg-subtle)', borderRadius:6, marginBottom:6, fontSize:13}}>
+                  <span style={{color:'var(--fg-muted)'}}>•</span>
+                  <span style={{flex:1}}>{ent}</span>
+                  <button type="button" className="icon-btn" style={{padding:2, color:'var(--danger)'}} onClick={() => quitarEntregable(idx)}>{I.x}</button>
+                </div>
+              ))}
+              <div style={{display:'flex', gap:8, marginTop:8}}>
+                <input className="input" style={{flex:1}} value={nuevoEntregable} onChange={e => setNuevoEntregable(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), agregarEntregable())} placeholder="Ej: Capacitación 36 horas" />
+                <button type="button" className="btn btn-secondary btn-sm" onClick={agregarEntregable}>{I.plus} Agregar</button>
+              </div>
+            </div>
+
+            <div className="row" style={{justifyContent:'flex-end', gap:10}}>
+              <button type="button" className="btn btn-secondary" onClick={cerrar}>Cancelar</button>
+              <button type="button" className="btn btn-primary" onClick={guardar}>{I.save} {editando ? 'Guardar cambios' : 'Crear servicio'}</button>
+            </div>
+          </div>
+        </div>
+      </>}
     </>
   );
 }
@@ -1827,6 +1971,51 @@ function Tarifarios() {
 }
 
 function Parametros() {
+  const { empresaConfig, guardarEmpresaConfig, subirImagenEmpresa, addNotificacion } = useApp();
+  const [saving, setSaving] = useState(false);
+
+  const [datos, setDatos] = useState({ razon_social:'', ruc:'', email_comercial:'', sitio_web:'', direccion:'', firmante:'', cargo_firmante:'' });
+  const [conds, setConds] = useState({ cond_forma_pago:'', cond_validez:'', cond_penalidad:'', cond_inicio_proyecto:'', cond_alcance:'', cond_integraciones:'', cond_confidencialidad:'', cond_glosa_factura:'' });
+  const [colores, setColores] = useState({ color_primario:'#1A2B4A', color_secundario:'#607D8B' });
+  const [logoFile, setLogoFile]   = useState(null);
+  const [firmaFile, setFirmaFile] = useState(null);
+  const [logoPreview, setLogoPreview]   = useState(null);
+  const [firmaPreview, setFirmaPreview] = useState(null);
+
+  useEffect(() => {
+    if (!empresaConfig?.empresa_id) return;
+    setDatos({ razon_social: empresaConfig.razon_social||'', ruc: empresaConfig.ruc||'', email_comercial: empresaConfig.email_comercial||'', sitio_web: empresaConfig.sitio_web||'', direccion: empresaConfig.direccion||'', firmante: empresaConfig.firmante||'', cargo_firmante: empresaConfig.cargo_firmante||'' });
+    setConds({ cond_forma_pago: empresaConfig.cond_forma_pago||'', cond_validez: empresaConfig.cond_validez||'', cond_penalidad: empresaConfig.cond_penalidad||'', cond_inicio_proyecto: empresaConfig.cond_inicio_proyecto||'', cond_alcance: empresaConfig.cond_alcance||'', cond_integraciones: empresaConfig.cond_integraciones||'', cond_confidencialidad: empresaConfig.cond_confidencialidad||'', cond_glosa_factura: empresaConfig.cond_glosa_factura||'' });
+    setColores({ color_primario: empresaConfig.color_primario||'#1A2B4A', color_secundario: empresaConfig.color_secundario||'#607D8B' });
+    if (empresaConfig.logo_url) setLogoPreview(empresaConfig.logo_url);
+    if (empresaConfig.firma_url) setFirmaPreview(empresaConfig.firma_url);
+  }, [empresaConfig]);
+
+  const pickImagen = (campo, setFile, setPreview) => (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFile(file);
+    setPreview(URL.createObjectURL(file));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const extra = {};
+      if (logoFile) {
+        try { extra.logo_url = await subirImagenEmpresa('logo', logoFile); } catch (_) { addNotificacion('No se pudo subir el logo; verifique el bucket en Supabase.'); }
+        setLogoFile(null);
+      }
+      if (firmaFile) {
+        try { extra.firma_url = await subirImagenEmpresa('firma', firmaFile); } catch (_) { addNotificacion('No se pudo subir la firma; verifique el bucket en Supabase.'); }
+        setFirmaFile(null);
+      }
+      await guardarEmpresaConfig({ ...datos, ...conds, ...colores, ...extra });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const series = [
     { doc: 'Cotizaciones', serie: 'COT-2026', siguiente: '0042', regla: 'Anual por empresa', estado: 'activo' },
     { doc: 'OS Cliente', serie: 'OSC-2026', siguiente: '0018', regla: 'Anual por empresa', estado: 'activo' },
@@ -1847,6 +2036,9 @@ function Parametros() {
     { servicio: 'Instalacion proyecto', respuesta: '48h', resolucion: 'Segun cronograma', semaforo: 'Por hito vencido' }
   ];
 
+  const inp = (field) => ({ className:'input', value: datos[field], onChange: e => setDatos(p=>({...p,[field]:e.target.value})) });
+  const ta  = (field, rows=4) => ({ className:'input', rows, value: conds[field], onChange: e => setConds(p=>({...p,[field]:e.target.value})), style:{resize:'vertical'} });
+
   return (
     <>
       <div className="page-header">
@@ -1854,8 +2046,108 @@ function Parametros() {
           <h1 className="page-title">Parametros Generales</h1>
           <div className="page-sub">Series, estados, impuestos, plantillas PDF y SLA base por tenant</div>
         </div>
-        <button className="btn btn-primary">{I.save} Guardar cambios</button>
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{I.save} {saving ? 'Guardando…' : 'Guardar cambios'}</button>
       </div>
+
+      {/* ── Datos de la empresa ── */}
+      <div className="card mb-6">
+        <div className="card-head"><h3>Datos de la empresa</h3><span className="badge badge-cyan">Viajan a todos los documentos</span></div>
+        <div className="card-body" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:16}}>
+
+          {/* Logo */}
+          <div className="input-group" style={{gridColumn:'1/-1', display:'flex', alignItems:'flex-start', gap:20}}>
+            <div>
+              <label>Logo de la empresa</label>
+              <div style={{width:120, height:80, border:'1px dashed var(--border)', borderRadius:8, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg-alt)', marginBottom:6}}>
+                {logoPreview ? <img src={logoPreview} alt="Logo" style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}}/> : <span style={{fontSize:11, color:'var(--fg-subtle)'}}>Sin logo</span>}
+              </div>
+              <label className="btn btn-secondary" style={{cursor:'pointer', fontSize:12}}>
+                {I.upload} Subir logo
+                <input type="file" accept="image/*" style={{display:'none'}} onChange={pickImagen('logo', setLogoFile, setLogoPreview)}/>
+              </label>
+            </div>
+            <div style={{flex:1}}>
+              <label>Firma (cierre del PDF)</label>
+              <div style={{width:160, height:80, border:'1px dashed var(--border)', borderRadius:8, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg-alt)', marginBottom:6}}>
+                {firmaPreview ? <img src={firmaPreview} alt="Firma" style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}}/> : <span style={{fontSize:11, color:'var(--fg-subtle)'}}>Sin firma</span>}
+              </div>
+              <label className="btn btn-secondary" style={{cursor:'pointer', fontSize:12}}>
+                {I.upload} Subir firma
+                <input type="file" accept="image/*" style={{display:'none'}} onChange={pickImagen('firma', setFirmaFile, setFirmaPreview)}/>
+              </label>
+            </div>
+          </div>
+
+          <div className="input-group">
+            <label>Razón social</label>
+            <input {...inp('razon_social')} placeholder="Ej: TIDEO S.A.C."/>
+          </div>
+          <div className="input-group">
+            <label>RUC</label>
+            <input {...inp('ruc')} placeholder="20XXXXXXXXX"/>
+          </div>
+          <div className="input-group">
+            <label>Email comercial</label>
+            <input {...inp('email_comercial')} type="email" placeholder="ventas@empresa.com"/>
+          </div>
+          <div className="input-group">
+            <label>Sitio web</label>
+            <input {...inp('sitio_web')} placeholder="www.empresa.com"/>
+          </div>
+          <div className="input-group" style={{gridColumn:'1/-1'}}>
+            <label>Dirección</label>
+            <input {...inp('direccion')} placeholder="Av. Ejemplo 123, Lima"/>
+          </div>
+          <div className="input-group">
+            <label>Firmante por defecto</label>
+            <input {...inp('firmante')} placeholder="Nombre completo"/>
+          </div>
+          <div className="input-group">
+            <label>Cargo del firmante</label>
+            <input {...inp('cargo_firmante')} placeholder="Ej: Gerente Comercial"/>
+          </div>
+          <div className="input-group">
+            <label>Color primario (PDF, encabezados)</label>
+            <div style={{display:'flex', alignItems:'center', gap:10}}>
+              <input type="color" value={colores.color_primario} onChange={e => setColores(p=>({...p, color_primario:e.target.value}))} style={{width:44, height:36, border:'1px solid var(--border)', borderRadius:6, cursor:'pointer', padding:2}}/>
+              <input className="input" value={colores.color_primario} onChange={e => setColores(p=>({...p, color_primario:e.target.value}))} style={{flex:1}} placeholder="#1A2B4A"/>
+              <div style={{width:32, height:32, borderRadius:6, background:colores.color_primario, border:'1px solid var(--border)'}}/>
+            </div>
+          </div>
+          <div className="input-group">
+            <label>Color secundario (PDF, subtítulos)</label>
+            <div style={{display:'flex', alignItems:'center', gap:10}}>
+              <input type="color" value={colores.color_secundario} onChange={e => setColores(p=>({...p, color_secundario:e.target.value}))} style={{width:44, height:36, border:'1px solid var(--border)', borderRadius:6, cursor:'pointer', padding:2}}/>
+              <input className="input" value={colores.color_secundario} onChange={e => setColores(p=>({...p, color_secundario:e.target.value}))} style={{flex:1}} placeholder="#607D8B"/>
+              <div style={{width:32, height:32, borderRadius:6, background:colores.color_secundario, border:'1px solid var(--border)'}}/>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Condiciones comerciales por defecto ── */}
+      <div className="card mb-6">
+        <div className="card-head"><h3>Condiciones comerciales por defecto</h3><span className="badge badge-purple">Pre-cargadas en cada cotización</span></div>
+        <div className="card-body col" style={{gap:16}}>
+          {[
+            ['cond_forma_pago',       'Forma de pago y datos bancarios',       'Ej: 50% adelanto, 50% contra entrega. Cuenta BCP…'],
+            ['cond_validez',          'Validez de la oferta',                  'Ej: La presente cotización tiene validez de 30 días calendarios.'],
+            ['cond_penalidad',        'Penalidad por mora',                    'Ej: 0.5% por día hábil de retraso sobre el monto pendiente.'],
+            ['cond_inicio_proyecto',  'Inicio del proyecto',                   'Ej: El proyecto inicia 5 días hábiles después de la aprobación.'],
+            ['cond_alcance',          'Alcance y exclusiones',                 'Ej: El presente servicio incluye… No incluye…'],
+            ['cond_integraciones',    'Integraciones externas',                'Ej: Las integraciones con sistemas de terceros serán cotizadas por separado.'],
+            ['cond_confidencialidad', 'Confidencialidad',                      'Ej: Ambas partes se comprometen a mantener confidencialidad…'],
+            ['cond_glosa_factura',    'Glosa recomendada para facturas',       'Ej: Por servicio de mantenimiento según contrato N°…'],
+          ].map(([field, label, placeholder]) => (
+            <div className="input-group" key={field}>
+              <label>{label}</label>
+              <textarea {...ta(field)} placeholder={placeholder}/>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Secciones existentes ── */}
       <div className="grid-2">
         <div className="card">
           <div className="card-head"><h3>Series documentarias</h3><span className="badge badge-cyan">{series.length} activas</span></div>

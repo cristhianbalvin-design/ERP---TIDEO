@@ -1,6 +1,6 @@
 # ERP Modular Est├índar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado ÔÇö TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS · Última actualización: 12/05/2026
+### Arquitectura Multitenant SaaS · Última actualización: 15/05/2026
 
 ---
 
@@ -29,11 +29,12 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 
 | Área | Estado |
 |------|--------|
-| Módulos en prototipo (construidos) | 41 |
-| Módulos en prompt pendiente de implementar | 15 |
-| Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Mock data pattern |
+| Módulos implementados (construidos) | ~63 |
+| Módulos en prompt pendiente de implementar | 3 |
+| Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase |
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
-| Migraciones SQL aplicadas | 070 (última: usuarios_asignaciones_funcionales) |
+| Migraciones SQL aplicadas en Supabase | 078 (última confirmada: leads_campos_reactivacion) |
+| Migraciones creadas pendientes de aplicar | 079 opp_historial_etapas |
 
 ### 3.2 Inventario completo de m├│dulos
 
@@ -51,7 +52,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 |--------|--------|-------|
 | Cuentas y Contactos | Ô£à Implementado | Pendiente: expandir formulario alta, tab condiciones financieras, nota orientaci├│n flujo |
 | Leads y Scoring | Ô£à Implementado | Pendiente: agregar Raz├│n Social, RUC, Industria al formulario |
-| Pipeline y Oportunidades | Ô£à Implementado | |
+| Pipeline y Oportunidades | ✔ Implementado | Timeline: movimientos entre etapas registrados en `opp_historial_etapas` (migr. 079 pendiente de aplicar) |
 | Agenda Comercial | Ô£à Implementado | Planificaci├│n de visitas y demos |
 | Actividades Comerciales | Ô£à Implementado | |
 | Hoja de Costeo | Ô£à Implementado | Documento interno entre Oportunidad y Cotizaci├│n. Secciones: MO, materiales, servicios terceros, log├¡stica. Flujo: borrador ÔåÆ en revisi├│n ÔåÆ aprobada ÔåÆ genera cotizaci├│n pre-rellenada |
@@ -69,14 +70,14 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | Cierre T├®cnico y Calidad | Ô£à Implementado |
 | Soporte y Tickets | Ô£à Implementado |
 
-#### RRHH (secci├│n nueva ÔÇö pendiente de implementar)
+#### RRHH
 | M├│dulo | Estado | Notas |
 |--------|--------|-------|
 | Personal Operativo | Ô£à Implementado (en Configuraci├│n) | Mover a secci├│n RRHH |
 | Personal Administrativo | Ô£à Implementado (en Configuraci├│n) | Mover a secci├│n RRHH |
-| Control de Asistencia | ÔÅ│ Pendiente | `prompt_asistencia_turnos.md` |
+| Control de Asistencia | ✔ Implementado | 4 tabs: diaria, semanal, mensual, resumen. Tardanzas y horas extra automáticas. Registro masivo. |
 | Turnos y Horarios | ✔ Implementado | Módulo standalone `pages_turnos.jsx`. CRUD completo: crear/editar/eliminar con side-panel. Campos: nombre, entrada/salida, tolerancia, cruza medianoche, días laborables (o variables), refrigerio. Preview de horas efectivas en tiempo real. |
-| N├│mina B├ísica | ÔÅ│ Pendiente | `prompt_nomina_basica.md` |
+| Nómina Básica | ✔ Implementado | Cálculo completo: bruto, AFP/ONP, IR 5ta, cargas empresa. Cierre de período → egresos en finanzas. |
 | Pr├®stamos al Personal | Ô£à Implementado (como "Pr├®stamos y Pagos") | Mover a secci├│n RRHH |
 
 #### Log├¡stica
@@ -86,14 +87,14 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | SOLPE Interna | Ô£à Implementado |
 | Transporte y Gu├¡as | Ô£à Implementado |
 
-#### Compras (secci├│n nueva ÔÇö pendiente de implementar)
-| M├│dulo | Estado | Prompt |
+#### Compras
+| Módulo | Estado | Notas |
 |--------|--------|--------|
-| Proveedores (completo + homologaci├│n + evaluaci├│n) | ÔÅ│ Pendiente | `prompt_compras_p1_sidebar_proveedores.md` |
-| Cotizaciones de Compra | ÔÅ│ Pendiente | `prompt_compras_p2_flujo_completo.md` |
-| ├ôrdenes de Compra | ÔÅ│ Pendiente | `prompt_compras_p2_flujo_completo.md` |
-| ├ôrdenes de Servicio Interna | ÔÅ│ Pendiente | `prompt_compras_p2_flujo_completo.md` |
-| Recepciones | ÔÅ│ Pendiente | `prompt_compras_p2_flujo_completo.md` |
+| Proveedores (completo + homologación + evaluación) | ✔ Implementado | Ciclo de vida + 6 tabs: Resumen, Condiciones, Documentos, Evaluaciones, Historial OC, Contactos |
+| Cotizaciones de Compra | ✔ Implementado | Wizard 3 pasos. Cuadro comparativo. Selección proveedor ganador |
+| Órdenes de Compra | ✔ Implementado | Para bienes. Timeline de seguimiento por estados |
+| Órdenes de Servicio Interna | ✔ Implementado | Para servicios tercerizados. Conformidad como cierre |
+| Recepciones | ✔ Implementado | Verificación ítem por ítem. Genera CxP + evaluación proveedor |
 
 #### Administraci├│n y Finanzas
 | M├│dulo | Estado | Notas |
@@ -101,7 +102,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | Ventas | Ô£à Implementado | |
 | Caja Chica y Anticipos | Ô£à Implementado | |
 | Pr├®stamos al Personal | Ô£à Implementado | Renombrar y mover a secci├│n RRHH |
-| Financiamiento y Deuda | ÔÅ│ Pendiente | `prompt_financiamiento_deuda.md` |
+| Financiamiento y Deuda | ✔ Implementado | `pages_fin_deuda.jsx`. Tabla de amortización automática. Intereses → ER. Reporte de deuda 12 meses. |
 | Cuentas por Cobrar | Ô£à Implementado | |
 | Cuentas por Pagar | Ô£à Implementado | |
 | Facturaci├│n | Ô£à Implementado | |
@@ -156,32 +157,46 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | `prompt_fix_maestros_rrhh.md` | Correcci├│n arquitectura Maestros Base (eliminar Personal, agregar Especialidades/Tipos de servicio/Almacenes) | 1 |
 | `prompt_fix_clientes_arquitectura.md` | Clientes solo lectura en Maestros Base, formulario nueva cuenta expandido, tab condiciones financieras | 2 |
 | `prompt_fix_lead_cuenta_flujo.md` | Formulario lead con RUC/Raz├│n social, convertir lead, flujo completo CRM | 3 |
-| `prompt_compras_p1_sidebar_proveedores.md` | Secci├│n COMPRAS en sidebar + m├│dulo Proveedores completo con homologaci├│n | 4 |
-| `prompt_compras_p2_flujo_completo.md` | Cotizaciones compra + OC + OS Interna + Recepciones | 5 |
-| `prompt_asistencia_turnos.md` | Secci├│n RRHH en sidebar + Control de Asistencia + Turnos y Horarios | 6 |
-| `prompt_nomina_basica.md` | M├│dulo N├│mina B├ísica con c├ílculo completo, boleta PDF y cierre de per├¡odo | 7 |
-| `prompt_financiamiento_deuda.md` | Financiamiento y Deuda + renombrar Pr├®stamos al Personal | 8 |
 
 ### 3.4 Estructura de archivos fuente
 
-| Archivo | Responsabilidad | Tama├▒o aprox. |
+| Archivo | Responsabilidad | Tamaño aprox. |
 |---------|----------------|---------------|
-| `src/App.jsx` | Router principal, switch de rutas | 30 KB |
-| `src/data.js` | Todos los datasets mock (MOCK export) | 70 KB |
-| `src/context.jsx` | Estado global, notificaciones, funciones de mutaci├│n | 20 KB |
-| `src/shell.jsx` | Layout, sidebar, header, dark mode, simulador de roles | 11 KB |
-| `src/pages_core.jsx` | Dashboard, CRM, Pipeline, BI Comercial, BI Operativo | 81 KB |
-| `src/pages_ops.jsx` | OT, Partes, Planner, Tickets, RRHH Op., Cuentas (ficha) | 81 KB |
-| `src/pages_admin.jsx` | Finanzas, RRHH Admin, Configuraci├│n | 59 KB |
-| `src/pages_turnos.jsx` | Turnos y Horarios (módulo standalone, CRUD completo) | 7 KB |
-| `src/pages_api_keys.jsx` | API Keys — generación, permisos, revocación, one-time display | 10 KB |
-| `src/pages_fin.jsx` | CxC, CxP, Facturaci├│n, Tesorer├¡a, ER, Presupuesto | 29 KB |
+| `src/App.jsx` | Router principal, switch de rutas | 44 KB |
+| `src/data.js` | Todos los datasets mock (MOCK export) | 108 KB |
+| `src/context.jsx` | Estado global, funciones de mutación, CRM sync, historial etapas, asistencia, planner | 153 KB |
+| `src/shell.jsx` | Layout, sidebar, header, dark mode, simulador de roles | 26 KB |
+| `src/pages_core.jsx` | Dashboard, CRM, Leads, Pipeline, Campañas, BI Comercial, BI Operativo | 228 KB |
+| `src/pages_ops.jsx` | OT, Partes, Planner, Tickets, RRHH, Compras, Cuentas 360° | 319 KB |
+| `src/pages_admin.jsx` | Configuración, Usuarios, Roles, Maestros, Tesorería, ER, CxC, CxP | 149 KB |
+| `src/pages_turnos.jsx` | Turnos y Horarios (CRUD completo, standalone) | 12 KB |
+| `src/pages_api_keys.jsx` | API Keys — generación, permisos, revocación, one-time display | 16 KB |
+| `src/pages_fin.jsx` | CxC, CxP, Facturación, Tesorería, Presupuesto | 63 KB |
 | `src/pages_bi_fin.jsx` | BI Financiero | 20 KB |
-| `src/pages_ia.jsx` | IA Comercial, Operativa, Financiera + Historial | 37 KB |
+| `src/pages_ia.jsx` | IA Comercial, Operativa, Financiera + Historial auditado | 54 KB |
 | `src/pages_cs.jsx` | Customer Success completo | 46 KB |
-| `src/icons.jsx` | Iconograf├¡a, helpers money/moneyD | 8.6 KB |
-| `src/lib/hierarchy.js` | ROLE_CATEGORIES, HIERARCHY_LEVELS, getAssignableUsers, getPotentialManagers, canUserSeeOwner | 4 KB |
-| `src/services/apiKeysService.js` | Generación tdk_ key, hash SHA-256, CRUD tabla api_keys | 2 KB |
+| `src/icons.jsx` | Iconografía, helpers money/moneyD | 8.6 KB |
+| `src/lib/hierarchy.js` | ROLE_CATEGORIES, HIERARCHY_LEVELS, getAssignableUsers, getPotentialManagers | 4.9 KB |
+| `src/pages_extra.jsx` | Cotizaciones, Valorizaciones, Inventario, Hoja de Costeo | 51 KB |
+| `src/pages_fin_deuda.jsx` | Financiamiento y Deuda (standalone) | 28 KB |
+| `src/pages_mobile.jsx` | Vistas de campo móvil (MobileFieldView, PWA) | 80 KB |
+| `src/lib/dataMode.js` | VITE_DATA_MODE switch (supabase/mock) | 0.6 KB |
+| `src/lib/currency.js` | Helpers de formateo de moneda | 2.2 KB |
+| `src/services/crmService.js` | loadCrmFromSupabase, normalización, inserts CRM | 23 KB |
+| `src/services/rrhhService.js` | Personal, turnos, asistencia, nómina | 20 KB |
+| `src/services/comprasService.js` | Proveedores, procesos, OC, OS, recepciones | 13 KB |
+| `src/services/financiamientosService.js` | Financiamientos, amortización, pagos | 10 KB |
+| `src/services/maestrosService.js` | Catálogos, materiales, especialidades | 9.9 KB |
+| `src/services/plannerService.js` | Planner, cuadrillas, asignaciones | 6.7 KB |
+| `src/services/finanzasService.js` | CxC, CxP, facturas, caja chica | 5.3 KB |
+| `src/services/operacionesService.js` | OTs, partes, tickets | 6.2 KB |
+| `src/services/estadoResultadosService.js` | Cálculo ER, agrupación por categoría | 4.2 KB |
+| `src/services/rolesService.js` | Roles, permisos por pantalla | 4.5 KB |
+| `src/services/campanasService.js` | CRUD campañas, métricas de atribución | 2.2 KB |
+| `src/services/usuariosService.js` | Usuarios, membresías, perfiles | 2.4 KB |
+| `src/services/apiKeysService.js` | Generación tdk_ key, hash SHA-256, CRUD api_keys | 2 KB |
+| `src/services/tesoreriaService.js` | Movimientos de tesorería, match bancario | 1.5 KB |
+| `src/services/plataformaService.js` | Empresas/tenants, métricas SaaS | 1.7 KB |
 
 ### 3.5 Convenciones t├®cnicas cr├¡ticas
 
@@ -989,7 +1004,7 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 ### 9.3 Tablas de negocio (todas con empresa_id)
 
-**CRM:** cuentas, contactos, relacion_cuenta_contacto, leads (+campana_id), oportunidades (+campana_id), campanas, etapas_pipeline, actividades_comerciales, health_score_cliente.
+**CRM:** cuentas, contactos, relacion_cuenta_contacto, leads (+campana_id), oportunidades (+campana_id), campanas, etapas_pipeline, actividades_comerciales, health_score_cliente, lead_historial_estados (append-only, cargada en boot desde Supabase), opp_historial_etapas (append-only, migración 079 pendiente de aplicar).
 
 **Integraciones:** api_keys (empresa_id, key_hash, descripcion, permisos text[], activo, creado_por, ultimo_uso_en).
 
@@ -1110,6 +1125,7 @@ No eliminar ÔåÆ anular con motivo y usuario. Modificaciones cr├¡ticas regi
 
 | Fecha | Cambios principales |
 |-------|---------------------|
+| 15/05/2026 | **Persistencia de Timeline — Leads y Oportunidades (migraciones 077-079):** `lead_historial_estados` existía en Supabase (migr. 077) pero no se cargaba al iniciar — corregido en `loadCrmFromSupabase` de `crmService.js`. `opp_historial_etapas` creada como tabla append-only (migr. 079 **pendiente de aplicar en SQL Editor**). `actualizarEtapaOportunidad` en `context.jsx` registra el movimiento optimísticamente y persiste en Supabase en paralelo. El timeline del Pipeline y de Cuentas 360° ahora muestran cambios de etapa persistidos. |
 | 12/05/2026 | **Conexión módulo Turnos y Horarios:** `pages_turnos.jsx` existía como módulo standalone completo pero nunca era importado — App.jsx seguía usando la versión de `pages_ops.jsx`. Corregido: App.jsx ahora importa `TurnosHorarios` desde `pages_turnos.jsx`; removido de la exportación de `pages_ops.jsx`. También corregido bug de import default vs named (`import { rrhhService }` en lugar de `import rrhhService`). `rrhhService.js` extendido con `actualizarTurno` y `eliminarTurno`. El módulo activo tiene: CRUD completo (crear/editar/eliminar), tabla con columna Refrigerio, side-panel con cálculo de horas efectivas en tiempo real, días laborables con selección visual, toggle "cruza medianoche". |
 | 12/05/2026 | **Asignaciones funcionales multirol (migracion 070):** nueva tabla `usuarios_asignaciones` con rol, categoria, nivel jerarquico, jefe funcional, alcance y bandera principal. Backfill automatico desde `usuarios_empresas`. Triggers mantienen sincronizada la asignacion principal. Nuevas funciones `usuario_puede_ver_registro` y jerarquia basada en asignaciones. UI de Usuarios mantiene el flujo simple y agrega un bloque colapsado de asignaciones adicionales opcionales para empresas grandes o estructuras matriciales. |
 | 12/05/2026 | **Jerarquia transversal de roles y usuarios (migracion 069):** `roles.nivel_jerarquico` y `usuarios_empresas.jefe_user_id` permiten estructura por equipos en cualquier area. Nueva regla: direccion/admin ve tenant completo, jefatura/supervisor ve subordinados recursivos y asesor/operativo ve registros propios. UI de Roles agrega Categoria + Nivel; UI de Usuarios agrega Jefe directo. Selectores de responsables filtran por categoria de rol. |
@@ -1120,6 +1136,7 @@ No eliminar ÔåÆ anular con motivo y usuario. Modificaciones cr├¡ticas regi
 | 12/05/2026 | **Responsable comercial normalizado:** formularios de creación de leads guardan `responsable_id` y `responsable`. Al convertir, el UUID se propaga a cuenta y oportunidad. Migración `072_backfill_responsable_id_crm.sql` rellena históricos por coincidencia única de nombre dentro del tenant. |
 | 12/05/2026 | **CRUD directo en tarjetas de Leads:** cada tarjeta muestra acciones de editar y eliminar. Editar reutiliza el panel de lead y persiste en Supabase. Eliminar borra el lead; migración `073_leads_delete_set_null.sql` ajusta FKs para conservar oportunidades, agenda y actividades con `lead_id = null`. |
 | 12/05/2026 | **Estandarización fase 1 de formularios principales:** CRM & Marketing queda excluido del quick-create global basado en texto. Cada pantalla usa acción primaria explícita local. Pipeline y Agenda Comercial agregan side-panel oficial para "Nueva oportunidad" y "Nuevo evento". |
+| 12/05/2026 | **Migraciones auxiliares CRM (071-076):** `071_roles_categoria` añade campo `categoria` a roles. `074_leads_dias_sin_actividad_logic` activa lógica de días sin actividad en leads. `075_leads_delete_policy` agrega política de eliminación directa para leads. `076_rpc_eliminar_lead_crm` crea RPC que elimina lead y dependencias en una transacción. Las migraciones 072 y 073 están documentadas en entradas anteriores. |
 | 29/04/2026 | Backend mínimos para deploy beta: RLS por permisos funcionales para Operaciones, Compras, Finanzas, RRHH, Customer Success, IA y Maestros; permisos admin sembrados para pantallas cr├¡ticas; auditor├¡a DB transversal para inserts/updates de m├│dulos fuera de CRM/Comercial; aprobaci├│n de Hoja de Costeo y creaci├│n de Cotizaci├│n atomizada v├¡a RPC `aprobar_hoja_costeo_y_crear_cotizacion`. Migraci├│n `024_backend_minimos_deploy_beta.sql`. |
 | 29/04/2026 | Hoja de Costeo: persistencia robusta mediante RPC `crear_hoja_costeo` con `security definer`. La creaci├│n ya no depende del insert directo desde frontend; el backend valida acceso al tenant y permiso funcional `hoja_costeo/crear`, inserta la fila y retorna el registro persistido. El formulario mantiene los datos y muestra error visible si Supabase rechaza la operaci├│n. Migraci├│n `023_rpc_crear_hoja_costeo.sql`. |
 | 29/04/2026 | RLS permisos: `usuario_puede` ahora concede bypass global a Superadmin TIDEO activo, completando el acceso operativo de plataforma a cualquier pantalla de cualquier tenant. Esto corrige persistencia de Hoja de Costeo, Cotizaciones y OS Cliente cuando el registro lo crea soporte/plataforma en tenants donde TIDEO no tiene membres├¡a directa. Migraci├│n `022_superadmin_global_permissions.sql`. |

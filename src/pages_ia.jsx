@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { I, money } from './icons.jsx';
 import { useApp } from './context.jsx';
 
@@ -112,6 +112,280 @@ function IaHistorial({ tipo }) {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// ARIA — AGENTE ANALISTA COMERCIAL
+// ============================================================
+
+// Conectar webhook aquí cuando esté disponible
+const ARIA_WEBHOOK_URL = 'https://evl.fhr.mybluehost.me/webhook-test/agente_ia';
+
+const ARIA_SUGERIDAS = [
+  '¿Cuál es el estado actual del pipeline?',
+  '¿Qué oportunidades tienen mayor probabilidad de cierre?',
+  '¿Qué cuentas requieren atención urgente?',
+  '¿Cómo está el forecast ponderado del mes?',
+];
+
+function buildAriaContext(oportunidades, cuentas, leads) {
+  const abiertas = oportunidades.filter(o => o.estado === 'abierta');
+  return {
+    pipeline: {
+      total_oportunidades_abiertas: abiertas.length,
+      valor_total: abiertas.reduce((s, o) => s + (o.monto_estimado || 0), 0),
+      forecast_ponderado: abiertas.reduce((s, o) => s + (o.forecast_ponderado || 0), 0),
+      detalle: abiertas.map(o => ({
+        nombre: o.nombre,
+        cliente: cuentas.find(c => c.id === o.cuenta_id)?.nombre_comercial || '—',
+        monto_estimado: o.monto_estimado,
+        etapa: o.etapa,
+        probabilidad: o.probabilidad,
+        responsable: o.responsable,
+        fecha_cierre_estimada: o.fecha_cierre_estimada,
+        competidor: o.competidor || null,
+      })),
+    },
+    cuentas: cuentas.map(c => ({
+      nombre: c.nombre_comercial,
+      industria: c.industria,
+      health_score: c.health_score,
+      saldo_cxc: c.saldo_cxc,
+      dias_mora: c.dias_mora,
+      riesgo_financiero: c.riesgo_financiero,
+      responsable_comercial: c.responsable_comercial,
+    })),
+    leads_activos: (leads || []).filter(l => l.estado !== 'descartado').length,
+  };
+}
+
+function buildAriaSystemPrompt(empresa_nombre, empresa_id, usuario_nombre, usuario_rol, fecha_hoy, datos) {
+  return `Eres ARIA (Analista de Resultados e Inteligencia de Área), el agente analista comercial del ERP de ${empresa_nombre}. Tu misión es responder preguntas sobre el desempeño comercial con datos reales, razonamiento claro y recomendaciones accionables.
+
+━━━ IDENTIDAD Y ROL ━━━
+Nombre: ARIA — Analista Comercial
+Empresa cliente: ${empresa_nombre} (empresa_id: ${empresa_id})
+Perfil de usuario: ${usuario_nombre}, rol: ${usuario_rol}
+Fecha actual: ${fecha_hoy}
+
+━━━ CONTEXTO DEL SISTEMA ━━━
+Operas sobre el ERP TIDEO Tech & Strategy. Los módulos que puedes analizar son:
+- CRM: leads, cuentas, contactos, oportunidades, pipeline
+- Marketing: campañas, atribución, CPL, ROI por canal
+- Customer Success: health score, onboarding, renovaciones, NPS, churn
+- Comercial: cotizaciones, OS Cliente, agenda, actividades
+
+Los datos del ERP se inyectan directamente en el contexto de cada pregunta. SIEMPRE trabajas únicamente con los datos de ${empresa_nombre}. NUNCA accedes a datos de otras empresas.
+
+━━━ COMPORTAMIENTO ANALÍTICO ━━━
+1. Lee la pregunta del usuario con atención.
+2. Analiza los datos del ERP que se te proporcionan en el contexto.
+3. Razona con criterio de analista senior.
+4. Responde en español peruano usando términos del negocio local.
+5. SIEMPRE termina con una recomendación o próximo paso concreto.
+
+━━━ ESTRUCTURA DE RESPUESTA ━━━
+Usa siempre este orden:
+① Hallazgo principal (1-2 oraciones directas con el dato clave)
+② Análisis de contexto (por qué es relevante, tendencia o comparación)
+③ Detalle de soporte (tabla o lista concisa con los datos relevantes)
+④ Recomendación accionable (qué hacer, con quién, cuándo)
+
+━━━ MANEJO DE DATOS INSUFICIENTES ━━━
+Si los datos son parciales o no concluyentes:
+- Responde con lo que tienes disponible.
+- Señala explícitamente: "Estimación referencial: ..." o "Con los datos actuales, ..."
+- Nunca inventes datos concretos (montos, nombres, fechas).
+- Puedes aplicar buenas prácticas de mercado como referencia, indicándolo claramente.
+
+━━━ TONO Y ESTILO ━━━
+- Consultivo y explicativo, como un analista senior de ventas.
+- Directo pero no brusco — explica el razonamiento.
+- Números con formato peruano: S/ 12,500.
+- Porcentajes siempre con contexto: "42% de conversión, por encima del promedio esperado de 30-35% para servicios B2B".
+- Sin emojis ni lenguaje informal.
+
+━━━ LÍMITES ESTRICTOS ━━━
+- Solo analizas datos de ${empresa_nombre}.
+- No opinas sobre temas fuera del ámbito comercial del ERP.
+- No ejecutas acciones dentro del ERP (solo lectura + recomendaciones).
+- Si el usuario pide algo fuera de tu alcance, explicas por qué y sugieres a quién escalar.
+
+━━━ DATOS DEL ERP (contexto inyectado) ━━━
+${JSON.stringify(datos, null, 2)}`;
+}
+
+function ARIAChat({ oportunidades, cuentas, leads }) {
+  const [messages, setMessages] = useState([{
+    role: 'assistant',
+    content: 'Buenos días. Soy ARIA, su analista comercial. Estoy conectada a los datos del ERP y lista para responder preguntas sobre pipeline, oportunidades, cuentas o desempeño comercial. ¿En qué le puedo asistir hoy?',
+    ts: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+  }]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || loading) return;
+
+    const ts = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+    const updated = [...messages, { role: 'user', content: text, ts }];
+    setMessages(updated);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const ctx = buildAriaContext(oportunidades, cuentas, leads);
+      const system = buildAriaSystemPrompt(
+        'TIDEO Tech & Strategy', 'empresa-001',
+        'Usuario', 'Comercial',
+        new Date().toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        ctx
+      );
+
+      const payload = {
+        system,
+        messages: updated.map(m => ({ role: m.role, content: m.content })),
+        empresa_id: 'empresa-001',
+        timestamp: new Date().toISOString(),
+      };
+
+      let content;
+      if (ARIA_WEBHOOK_URL) {
+        const res = await fetch(ARIA_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        content = data.response ?? data.content?.[0]?.text ?? data.message ?? data.text ?? JSON.stringify(data);
+      } else {
+        const abiertas = oportunidades.filter(o => o.estado === 'abierta');
+        content = `① Con los datos actuales del ERP, el pipeline registra ${abiertas.length} oportunidad${abiertas.length !== 1 ? 'es' : ''} abierta${abiertas.length !== 1 ? 's' : ''} por un valor total de S/ ${abiertas.reduce((s, o) => s + (o.monto_estimado || 0), 0).toLocaleString()}.
+
+② ARIA está lista para analizar su consulta en profundidad. El webhook de IA aún no está configurado — una vez conectado, procesará la pregunta con criterio de analista senior y datos reales del ERP.
+
+③ Estado del sistema:
+• Webhook: pendiente de configuración (ARIA_WEBHOOK_URL en pages_ia.jsx)
+• Datos del ERP: cargados y disponibles
+• System prompt: inyectado correctamente con contexto de empresa
+• Consulta recibida: "${text}"
+
+④ Configure la constante ARIA_WEBHOOK_URL con la URL del webhook para activar el análisis completo de ARIA.`;
+      }
+
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content,
+        ts: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Error de conexión con ARIA: ${err.message}. Verifique la URL del webhook e intente nuevamente.`,
+        ts: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+        error: true,
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onKey = e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: 500, border: '1px solid rgba(99,102,241,0.25)', borderRadius: 12, overflow: 'hidden', background: 'var(--surface)' }}>
+      <style>{`@keyframes aria-dot{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-5px);opacity:1}}`}</style>
+
+      {/* Cabecera ARIA */}
+      <div style={{ padding: '10px 16px', background: 'rgba(99,102,241,0.07)', borderBottom: '1px solid rgba(99,102,241,0.18)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg,#6366f1,#818cf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 13, flexShrink: 0, fontFamily: 'Sora' }}>A</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, fontFamily: 'Sora', color: 'var(--fg)', lineHeight: 1.2 }}>ARIA</div>
+          <div style={{ fontSize: 10, color: 'var(--fg-muted)' }}>Analista de Resultados e Inteligencia de Área</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: ARIA_WEBHOOK_URL ? '#10b981' : '#f59e0b', flexShrink: 0 }} />
+          <span style={{ fontSize: 10, color: 'var(--fg-muted)' }}>{ARIA_WEBHOOK_URL ? 'Conectada' : 'Webhook pendiente'}</span>
+        </div>
+      </div>
+
+      {/* Mensajes */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {messages.map((m, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start', gap: 2 }}>
+            {m.role === 'assistant' && (
+              <div style={{ fontSize: 10, color: 'var(--fg-muted)', paddingLeft: 2, fontWeight: 600, letterSpacing: '0.02em' }}>ARIA · {m.ts}</div>
+            )}
+            <div style={{
+              maxWidth: '88%', padding: '9px 13px',
+              borderRadius: m.role === 'user' ? '11px 11px 3px 11px' : '11px 11px 11px 3px',
+              background: m.role === 'user' ? 'var(--purple)' : m.error ? 'rgba(239,68,68,0.07)' : 'var(--bg-subtle)',
+              color: m.role === 'user' ? '#fff' : m.error ? '#ef4444' : 'var(--fg)',
+              fontSize: 12.5, lineHeight: 1.75, whiteSpace: 'pre-line',
+              border: m.role === 'assistant' ? '1px solid rgba(99,102,241,0.1)' : 'none',
+            }}>{m.content}</div>
+            {m.role === 'user' && (
+              <div style={{ fontSize: 10, color: 'var(--fg-muted)', paddingRight: 2 }}>{m.ts}</div>
+            )}
+          </div>
+        ))}
+
+        {loading && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+            <div style={{ fontSize: 10, color: 'var(--fg-muted)', paddingLeft: 2, fontWeight: 600 }}>ARIA · procesando...</div>
+            <div style={{ padding: '10px 14px', borderRadius: '11px 11px 11px 3px', background: 'var(--bg-subtle)', border: '1px solid rgba(99,102,241,0.1)', display: 'flex', gap: 5, alignItems: 'center' }}>
+              {[0, 0.2, 0.4].map((delay, j) => (
+                <div key={j} style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--purple)', animation: `aria-dot 1.2s ease-in-out ${delay}s infinite` }} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.length === 1 && !loading && (
+          <div style={{ marginTop: 4 }}>
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 7 }}>Preguntas frecuentes</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {ARIA_SUGERIDAS.map((s, i) => (
+                <button key={i} onClick={() => setInput(s)}
+                  style={{ textAlign: 'left', padding: '6px 11px', borderRadius: 7, border: '1px solid rgba(99,102,241,0.2)', background: 'rgba(99,102,241,0.04)', cursor: 'pointer', fontSize: 11.5, color: 'var(--purple)', fontFamily: 'inherit' }}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(99,102,241,0.15)', display: 'flex', gap: 7, background: 'var(--surface)', flexShrink: 0 }}>
+        <textarea
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={onKey}
+          placeholder="Consulta a ARIA sobre pipeline, clientes u oportunidades..."
+          rows={1}
+          disabled={loading}
+          style={{ flex: 1, resize: 'none', border: '1px solid rgba(99,102,241,0.22)', borderRadius: 7, padding: '7px 11px', fontSize: 12.5, background: 'var(--bg)', color: 'var(--fg)', fontFamily: 'inherit', lineHeight: 1.5, outline: 'none' }}
+        />
+        <button onClick={send} disabled={loading || !input.trim()} className="btn btn-primary"
+          style={{ padding: '0 13px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
+          <span style={{ display: 'flex', width: 13, height: 13 }}>{I.sparkles}</span>
+          Enviar
+        </button>
       </div>
     </div>
   );
@@ -313,13 +587,7 @@ ${sugeridos.map((s, i) => `${i + 1}. ${s}`).join('\n')}
                   <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>ajustado por probabilidad</div>
                 </div>
               </div>
-              <div className="card" style={{ padding: '40px 32px', textAlign: 'center', background: 'var(--bg-subtle)', borderStyle: 'dashed' }}>
-                <div style={{ width: 48, height: 48, margin: '0 auto 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(99,102,241,0.12)', borderRadius: 12, color: 'var(--purple)' }}>
-                  <span style={{ display: 'flex', width: 28, height: 28 }}>{I.sparkles}</span>
-                </div>
-                <div style={{ fontFamily: 'Sora', fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Selecciona una acción del panel izquierdo</div>
-                <div className="text-muted" style={{ fontSize: 13, maxWidth: 380, margin: '0 auto' }}>El copiloto analiza los datos reales del ERP para generar recomendaciones contextualizadas sobre clientes, oportunidades y pipeline.</div>
-              </div>
+              <ARIAChat oportunidades={oportunidades} cuentas={cuentas} leads={leads} />
             </>
           )}
 

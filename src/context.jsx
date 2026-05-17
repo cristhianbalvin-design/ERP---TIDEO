@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { MOCK } from './data.js';
-import { isSupabaseMode } from './lib/dataMode.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta } from './services/crmService.js';
-import { loadOpsFromSupabase, persistirBacklog, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario } from './services/operacionesService.js';
+import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario } from './services/operacionesService.js';
 import { finanzasService } from './services/finanzasService.js';
 import { maestrosService } from './services/maestrosService.js';
 import { comprasService } from './services/comprasService.js';
@@ -181,6 +180,7 @@ export function AppProvider({ children }) {
   }, [usuarios]);
   const [leads, setLeads] = useState(MOCK.leads);
   const [historialEstados, setHistorialEstados] = useState([]);
+  const [oppHistorialEtapas, setOppHistorialEtapas] = useState([]);
   const [cuentas, setCuentas] = useState(MOCK.cuentas);
   const [contactos, setContactos] = useState(MOCK.contactos);
   const [oportunidades, setOportunidades] = useState(MOCK.oportunidades);
@@ -213,6 +213,9 @@ export function AppProvider({ children }) {
   const [ordenesCompra, setOrdenesCompra] = useState(MOCK.ordenesCompra || []);
   const [ordenesServicio, setOrdenesServicio] = useState(MOCK.ordenesServicio || []);
   const [recepciones, setRecepciones] = useState(MOCK.recepciones || []);
+
+  // Configuración de empresa
+  const [empresaConfig, setEmpresaConfig] = useState({});
 
   // Maestros Base Data
   const [areasEmpresa, setAreasEmpresa] = useState([]);
@@ -563,6 +566,8 @@ export function AppProvider({ children }) {
         setOsClientes(data.osClientes || []);
         setAgendaEventos(agendaData);
         setActividades(actividadesData);
+        setHistorialEstados(data.historialEstados || []);
+        setOppHistorialEtapas(data.oppHistorialEtapas || []);
 
         try {
           const campanasData = await campanasService.listar(empresa.id);
@@ -595,7 +600,11 @@ export function AppProvider({ children }) {
           }
         } catch (_err) { /* keep mock */ }
 
-        
+        try {
+          const { data: cfgData } = await supabase.from('empresa_config').select('*').eq('empresa_id', empresa.id).maybeSingle();
+          if (mounted) setEmpresaConfig(cfgData || {});
+        } catch (_err) { /* tabla aún no existe, ignorar */ }
+
         try {
           const valData = await finanzasService.getValorizaciones(empresa.id);
           const facData = await finanzasService.getFacturas(empresa.id);
@@ -1232,12 +1241,17 @@ export function AppProvider({ children }) {
     const lead = leads.find(l => l.id === leadId);
     if (!lead) return;
 
-    const newCuentaId = generateId('cta');
-    const newContactoId = generateId('con');
-    const newOppId = generateId('opp');
+    const rucLead = datosConversion.ruc || lead.ruc;
+    const emailContacto = datosConversion.contacto_email || lead.email;
 
-    const nuevaCuenta = {
-      id: newCuentaId,
+    // Deduplicar cuenta por RUC
+    const cuentaExistente = rucLead && rucLead !== 'Pendiente'
+      ? cuentas.find(c => c.empresa_id === empresa.id && c.ruc === rucLead)
+      : null;
+
+    const cuentaId = cuentaExistente ? cuentaExistente.id : generateId('cta');
+    const nuevaCuenta = cuentaExistente ? null : {
+      id: cuentaId,
       empresa_id: empresa.id,
       razon_social: datosConversion.razon_social || lead.razon_social || lead.empresa_contacto,
       nombre_comercial: datosConversion.nombre_comercial || lead.empresa_contacto,
@@ -1246,7 +1260,7 @@ export function AppProvider({ children }) {
       tamano: 'Por definir',
       estado: 'activo',
       responsable_comercial: lead.responsable,
-      responsable_id: lead.responsable_id || null,
+      responsable_id: lead?.['responsable_id'] || null,
       responsable_cs: null,
       condicion_pago: 'Por definir',
       limite_credito: 0,
@@ -1260,39 +1274,46 @@ export function AppProvider({ children }) {
       direccion: lead.direccion || 'Pendiente',
       telefono: lead.telefono,
       email: lead.email,
-      ruc: datosConversion.ruc || lead.ruc || 'Pendiente'
+      ruc: rucLead || 'Pendiente'
     };
 
-    const nuevoContacto = {
-      id: newContactoId,
+    // Deduplicar contacto por email dentro de la misma cuenta
+    const contactoExistente = emailContacto
+      ? contactos.find(c => c.cuenta_id === cuentaId && c.email === emailContacto)
+      : null;
+
+    const contactoId = contactoExistente ? contactoExistente.id : generateId('con');
+    const nuevoContacto = contactoExistente ? null : {
+      id: contactoId,
       empresa_id: empresa.id,
-      cuenta_id: newCuentaId,
+      cuenta_id: cuentaId,
       nombre: datosConversion.contacto_nombre || lead.nombre,
       cargo: datosConversion.contacto_cargo || lead.cargo,
       rol: 'decisor',
       telefono: datosConversion.contacto_telefono || lead.telefono,
-      email: datosConversion.contacto_email || lead.email,
+      email: emailContacto,
       principal: true,
       lead_origen: lead.id
     };
 
+    const newOppId = generateId('opp');
     const nuevaOportunidad = {
       id: newOppId,
       empresa_id: empresa.id,
-      cuenta_id: newCuentaId,
-      contacto_id: newContactoId,
+      cuenta_id: cuentaId,
+      contacto_id: contactoId,
       nombre: datosConversion.nombre_oportunidad,
       servicio_interes: lead.necesidad,
       etapa: datosConversion.etapa_inicial || 'calificacion',
       monto_estimado: datosConversion.monto_estimado || lead.presupuesto_estimado,
       moneda: datosConversion.moneda || lead.moneda || 'PEN',
-      probabilidad: 30, // default
+      probabilidad: 30,
       forecast_ponderado: (datosConversion.monto_estimado || lead.presupuesto_estimado) * 0.3,
       fecha_cierre_estimada: null,
       fuente: lead.fuente,
       campana_id: lead.campana_id || null,
       responsable: lead.responsable,
-      responsable_id: lead.responsable_id || null,
+      responsable_id: lead?.['responsable_id'] || null,
       competidor: null,
       estado: 'abierta',
       lead_origen: lead.id,
@@ -1300,18 +1321,25 @@ export function AppProvider({ children }) {
       fecha_creacion: new Date().toISOString().split('T')[0]
     };
 
-    setCuentas(prev => [...prev, nuevaCuenta]);
-    setContactos(prev => [...prev, nuevoContacto]);
+    if (nuevaCuenta) setCuentas(prev => [...prev, nuevaCuenta]);
+    if (nuevoContacto) setContactos(prev => [...prev, nuevoContacto]);
     setOportunidades(prev => [...prev, nuevaOportunidad]);
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, estado: 'convertido', convertido: true } : l));
+    const montoFinal = datosConversion.monto_estimado || lead.presupuesto_estimado;
+    const monedaFinal = datosConversion.moneda || lead.moneda || 'PEN';
+
+    setLeads(prev => prev.map(l => l.id === leadId ? {
+      ...l, estado: 'convertido', convertido: true,
+      presupuesto_estimado: montoFinal,
+      moneda: monedaFinal
+    } : l));
 
     crmSync(async sb => {
       const { data: lr } = await sb.from('leads').select('campana_id').eq('id', leadId).single();
       const campanaIdFinal = lr?.campana_id ?? (lead.campana_id || null);
-      await persistirCuenta(sb, empresa.id, nuevaCuenta);
-      await persistirContacto(sb, empresa.id, nuevoContacto);
+      if (nuevaCuenta) await persistirCuenta(sb, empresa.id, nuevaCuenta);
+      if (nuevoContacto) await persistirContacto(sb, empresa.id, nuevoContacto);
       await persistirOportunidad(sb, empresa.id, { ...nuevaOportunidad, campana_id: campanaIdFinal });
-      await actualizarLead(sb, leadId, { estado: 'convertido', convertido: true, cuenta_id: newCuentaId });
+      await actualizarLead(sb, leadId, { estado: 'convertido', convertido: true, cuenta_id: cuentaId, presupuesto_estimado: montoFinal, moneda: monedaFinal });
     });
     auditSync({
       modulo: 'crm',
@@ -1319,7 +1347,7 @@ export function AppProvider({ children }) {
       entidad_id: leadId,
       accion: 'convertir',
       valor_anterior: lead,
-      valor_nuevo: { cuenta: nuevaCuenta, contacto: nuevoContacto, oportunidad: nuevaOportunidad }
+      valor_nuevo: { cuenta: nuevaCuenta ?? cuentaExistente, contacto: nuevoContacto ?? contactoExistente, oportunidad: nuevaOportunidad }
     });
 
     addNotificacion(`Lead convertido a oportunidad: ${nuevaOportunidad.nombre}`);
@@ -1367,7 +1395,38 @@ export function AppProvider({ children }) {
   };
 
   const actualizarEtapaOportunidad = (oppId, nuevaEtapa) => {
-    setOportunidades(prev => prev.map(o => o.id === oppId ? { ...o, etapa: nuevaEtapa } : o));
+    const opp = oportunidades.find(o => o.id === oppId);
+    if (nuevaEtapa === 'propuesta') {
+      const tieneCotEnviada = cotizaciones.some(
+        c => c.oportunidad_id === oppId && ['enviada', 'aprobada', 'ganada', 'convertida'].includes(c.estado)
+      );
+      if (!tieneCotEnviada) {
+        addNotificacion('Para pasar a Propuesta debes tener al menos una cotización enviada al cliente.');
+        return false;
+      }
+    }
+    if (opp && opp.etapa !== nuevaEtapa) {
+      const ev = {
+        id: generateId('ohe'),
+        empresa_id: empresa?.id,
+        opp_id: oppId,
+        cuenta_id: opp.cuenta_id || null,
+        etapa_desde: opp.etapa,
+        etapa_hasta: nuevaEtapa,
+        usuario: opp.responsable || null,
+        creado_en: new Date().toISOString(),
+        fecha: new Date().toISOString().split('T')[0],
+      };
+      setOppHistorialEtapas(prev => [ev, ...prev]);
+      if (isSupabaseConfigured() && empresa?.id) {
+        getSupabaseClient().then(sb => sb.from('opp_historial_etapas').insert({
+          id: ev.id, empresa_id: ev.empresa_id, opp_id: ev.opp_id,
+          cuenta_id: ev.cuenta_id, etapa_desde: ev.etapa_desde,
+          etapa_hasta: ev.etapa_hasta, usuario: ev.usuario, creado_en: ev.creado_en,
+        })).catch(() => {});
+      }
+    }
+    setOportunidades(prev => prev.map(o => o.id === oppId ? { ...o, etapa: nuevaEtapa, moved_at: Date.now() } : o));
     crmSync(sb => actualizarOportunidad(sb, oppId, { etapa: nuevaEtapa }));
   };
 
@@ -1595,7 +1654,14 @@ export function AppProvider({ children }) {
     const cot = {
       id: generateId('cot'),
       empresa_id: empresa.id,
-      numero: `COT-${new Date().getFullYear()}-${Math.floor(Math.random()*10000).toString().padStart(4,'0')}`,
+      numero: (() => {
+        const year = new Date().getFullYear();
+        const yearCots = cotizaciones.filter(c => c.numero?.startsWith(`COT-${year}`));
+        const maxCorr = yearCots.length
+          ? Math.max(...yearCots.map(c => parseInt(c.numero.split('-').pop()) || 0))
+          : 0;
+        return `COT-${year}-${(maxCorr + 1).toString().padStart(4, '0')}`;
+      })(),
       version: 1,
       estado: 'borrador',
       fecha: new Date().toISOString().split('T')[0],
@@ -1607,6 +1673,8 @@ export function AppProvider({ children }) {
       igv: 0,
       total: 0,
       historial_versiones: [],
+      token_aceptacion: crypto.randomUUID(),
+      token_activo: true,
       ...datos,
       cuenta_id: datos.cuenta_id || oportunidades.find(o => o.id === datos.oportunidad_id)?.cuenta_id || null,
       items: datos.items || datos.partidas || []
@@ -1637,6 +1705,46 @@ export function AppProvider({ children }) {
     crmSync(sb => svcActualizarCotizacion(sb, cotId, { estado: 'aprobada' }));
     auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotId, accion: 'aprobar', valor_anterior: anterior, valor_nuevo: { estado: 'aprobada' } });
     addNotificacion(`Cotización aprobada por el cliente.`);
+  };
+
+  const subirVersionCotizacion = async (cotId) => {
+    const cotAnterior = cotizaciones.find(c => c.id === cotId);
+    if (!cotAnterior) throw new Error('Cotización no encontrada');
+    const nuevaVersion = (cotAnterior.version || 1) + 1;
+    const nuevoId = generateId('cot');
+    const historialEntry = {
+      version: cotAnterior.version || 1,
+      fecha: cotAnterior.fecha,
+      total: cotAnterior.total,
+      cotizacion_id: cotAnterior.id,
+    };
+    const nuevaCot = {
+      ...cotAnterior,
+      id: nuevoId,
+      version: nuevaVersion,
+      estado: 'borrador',
+      fecha: new Date().toISOString().split('T')[0],
+      historial_versiones: [...(cotAnterior.historial_versiones || []), historialEntry],
+      token_aceptacion: crypto.randomUUID(),
+      token_activo: true,
+      aceptacion_nombre: null,
+      aceptacion_dni: null,
+      aceptacion_fecha: null,
+      aceptacion_ip: null,
+    };
+    // Desactivar token de la versión anterior
+    crmSync(sb => svcActualizarCotizacion(sb, cotId, { token_activo: false }));
+    try {
+      await crmPersist(sb => persistirCotizacion(sb, empresa.id, nuevaCot));
+    } catch (error) {
+      addNotificacion('Error al crear nueva versión: ' + (error?.message || error));
+      throw error;
+    }
+    setCotizaciones(prev => [...prev, nuevaCot]);
+    auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: nuevoId, accion: 'nueva_version', valor_anterior: { id: cotId, version: cotAnterior.version }, valor_nuevo: { id: nuevoId, version: nuevaVersion } });
+    addNotificacion(`Nueva versión v${nuevaVersion} creada para ${cotAnterior.numero}.`);
+    navigate('cotizaciones', { detail: nuevoId, edit: true });
+    return nuevoId;
   };
 
   const crearOSCliente = async (cotId, datos) => {
@@ -1729,12 +1837,6 @@ export function AppProvider({ children }) {
     return osc.id;
   };
 
-  const actualizarOSCliente = (oscId, datos) => {
-    const anterior = osClientes.find(os => os.id === oscId) || null;
-    setOsClientes(prev => prev.map(os => os.id === oscId ? { ...os, ...datos } : os));
-    crmSync(sb => svcActualizarOSCliente(sb, oscId, datos));
-    auditSync({ modulo: 'comercial', entidad: 'os_clientes', entidad_id: oscId, accion: 'editar', valor_anterior: anterior, valor_nuevo: datos });
-  };
 
   const registrarActividad = (datos) => {
     const act = {
@@ -1958,7 +2060,7 @@ export function AppProvider({ children }) {
             if (existente) {
               existente.cantidad += mu.cantidad;
             } else {
-              itemsADescontar.push({ material_id: itemInv.id, cantidad: mu.cantidad, almacen_id: itemInv.almacen_id || null });
+              itemsADescontar.push({ material_id: itemInv.id, cantidad: mu.cantidad, almacen_id: itemInv?.['almacen_id'] || null });
             }
           }
         });
@@ -2266,7 +2368,7 @@ export function AppProvider({ children }) {
 
   const updateLeadState = (leadId, newState, motivo = null) => {
     const anterior = leads.find(l => l.id === leadId);
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, estado: newState } : l));
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, estado: newState, moved_at: Date.now() } : l));
     crmSync(sb => actualizarLead(sb, leadId, { estado: newState }));
     if (anterior && anterior.estado !== newState) pushHistorial(leadId, anterior.estado, newState, motivo);
   };
@@ -2400,8 +2502,8 @@ export function AppProvider({ children }) {
         nuevoSaldo = Math.max(0, total - nuevoMonto);
         nuevoEstado = nuevoSaldo <= 0 ? 'cobrada' : 'cobro_parcial';
         
-        if (nuevoEstado === 'cobrada' && c.factura_id) {
-          setFacturas(fPrev => fPrev.map(f => f.id === c.factura_id ? { ...f, estado: 'pagada' } : f));
+        if (nuevoEstado === 'cobrada' && c?.['factura_id']) {
+          setFacturas(fPrev => fPrev.map(f => f.id === c?.['factura_id'] ? { ...f, estado: 'pagada' } : f));
         }
 
         return { ...c, monto_pagado: nuevoMonto, pagado: nuevoMonto, saldo: nuevoSaldo, estado: nuevoEstado };
@@ -2414,7 +2516,7 @@ export function AppProvider({ children }) {
       id: generateId('tes'),
       empresa_id: empresa.id,
       tipo: 'ingreso',
-      descripcion: datos.descripcion || `Cobro ${cuentaCobrar?.facturas?.numero || cuentaCobrar?.factura || cuentaCobrar?.factura_id || cxcId}`,
+      descripcion: datos.descripcion || `Cobro ${cuentaCobrar?.['facturas']?.numero || cuentaCobrar?.factura || cuentaCobrar?.['factura_id'] || cxcId}`,
       monto: montoCobrado,
       moneda: cuentaCobrar?.moneda || 'PEN',
       fecha,
@@ -2647,6 +2749,35 @@ export function AppProvider({ children }) {
       fecha: new Date().toISOString()
     };
     setIaLogs(prev => [log, ...prev]);
+  };
+
+  // ---- Empresa Config ----
+  const guardarEmpresaConfig = async (datos) => {
+    const payload = { ...datos, empresa_id: empresa?.id };
+    setEmpresaConfig(prev => ({ ...prev, ...datos }));
+    if (isSupabaseConfigured() && empresa?.id) {
+      try {
+        const supabase = await getSupabaseClient();
+        const { error } = await supabase.from('empresa_config').upsert(payload, { onConflict: 'empresa_id' });
+        if (error) {
+          console.error('[empresa_config upsert]', error.message, error.details);
+          addNotificacion('Error al guardar configuración: ' + error.message);
+          return;
+        }
+      } catch (_err) { console.error('[empresa_config]', _err); }
+    }
+    addNotificacion('Configuración de empresa guardada.');
+  };
+
+  const subirImagenEmpresa = async (campo, file) => {
+    if (!isSupabaseConfigured() || !empresa?.id) throw new Error('Supabase no configurado');
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${empresa.id}/${campo}.${ext}`;
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.storage.from('empresa-assets').upload(path, file, { upsert: true, contentType: file.type });
+    if (error) throw error;
+    const { data: pub } = supabase.storage.from('empresa-assets').getPublicUrl(path);
+    return pub?.publicUrl ? `${pub.publicUrl}?v=${Date.now()}` : null;
   };
 
   const crearArea = async (area) => {
@@ -3373,11 +3504,11 @@ export function AppProvider({ children }) {
     );
     // Partes registrados: map tecnicoId__fecha
     const partesRegistrados = new Set(
-      partes.map(p => `${p.tecnico_id || p.tecnico}__${p.fecha}`)
+      partes.map(p => `${p?.['tecnico_id'] || p.tecnico}__${p.fecha}`)
     );
     const pendientes = new Set();
     asigPasadas.forEach(a => {
-      const key = `${a.tecnico_id}__${a.fecha}`;
+      const key = `${a?.['tecnico_id']}__${a.fecha}`;
       if (!partesRegistrados.has(key)) pendientes.add(key);
     });
     return pendientes;
@@ -3645,7 +3776,7 @@ export function AppProvider({ children }) {
     campanas, setCampanas, crearCampana, actualizarCampana, cambiarEstadoCampana, eliminarCampana,
     cuentas, setCuentas, actualizarCuenta, actualizarLogoCuenta,
     contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta,
-    oportunidades, setOportunidades,
+    oportunidades, setOportunidades, oppHistorialEtapas,
     actividades, setActividades,
     agendaEventos, setAgendaEventos, crearAgendaEvento, actualizarAgendaEvento,
     hojasCosteo, setHojasCosteo, crearHojaCosteo, actualizarHojaCosteo, aprobarHojaCosteo,
@@ -3686,7 +3817,7 @@ export function AppProvider({ children }) {
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,
     convertirLead, descartarLead, reactivarLead,
     crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
-    crearCotizacion, aprobarCotizacion,
+    crearCotizacion, aprobarCotizacion, subirVersionCotizacion,
     crearOSCliente, crearOSClienteManual,
     registrarUsuario,
     eliminarUsuario,
@@ -3747,7 +3878,9 @@ export function AppProvider({ children }) {
     eliminarCuadrillaCtx,
     partesPendientesSet,
     notificaciones, markNotificacionesRead, addNotificacion,
-    createdRecords, addCreatedRecord
+    createdRecords, addCreatedRecord,
+    // Empresa Config
+    empresaConfig, guardarEmpresaConfig, subirImagenEmpresa,
   };
 
   return (

@@ -341,10 +341,11 @@ function Leads() {
   const [sel, setSel] = useState(null);
   const [modalConvertir, setModalConvertir] = useState(null);
   const [convForm, setConvForm] = useState(null);
+  const [modalConvertirDrag, setModalConvertirDrag] = useState(null);
   const [modalMoverLead, setModalMoverLead] = useState(null);
   const [moverMotivo, setMoverMotivo] = useState('');
-  const [moverError, setMoverError] = useState(false);
-  const abrirMoverModal = (lead, destino) => { setMoverMotivo(''); setMoverError(false); setModalMoverLead({ lead, destino }); };
+  const [moverError, setMoverError] = useState('');
+  const abrirMoverModal = (lead, destino) => { setMoverMotivo(''); setMoverError(''); setModalMoverLead({ lead, destino }); };
   const [modalEliminarLead, setModalEliminarLead] = useState(null);
   const [modalReactivar, setModalReactivar] = useState(null);
   const [kanbanToast, setKanbanToast] = useState(null);
@@ -360,7 +361,7 @@ function Leads() {
   const opcionesIndustria = industrias?.length ? industrias.map(i => i.nombre || i) : ['Mineria','Industrial','Construccion','Agroindustria','Facilities','Energia','Petroleo & Gas','Logistica','Retail','Salud','Educacion','Tecnologia','Servicios profesionales','Sector publico','Otro'];
   const [panelNuevo, setPanelNuevo] = useState(false);
   const [editandoLead, setEditandoLead] = useState(null);
-  const formNuevoBase = { nombre:'', cargo:'', empresa_contacto:'', razon_social:'', ruc:'', industria:'', telefono:'', email:'', fuente:'', campana_id:'', registrado_desde:'web', responsable:'', responsable_id:'', urgencia:'media', necesidad:'', presupuesto_estimado:'', moneda:'PEN' };
+  const formNuevoBase = { nombre:'', cargo:'', empresa_contacto:'', razon_social:'', ruc:'', industria:'', telefono:'', email:'', fuente:'', campana_id:'', registrado_desde:'web', responsable:'', responsable_id:'', urgencia:'media', necesidad:'', presupuesto_estimado:'', moneda:'PEN', servicio_interes:'' };
   const [formNuevo, setFormNuevo] = useState(formNuevoBase);
   const [errores, setErrores] = useState({});
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
@@ -437,6 +438,7 @@ function Leads() {
       necesidad: lead.necesidad || '',
       presupuesto_estimado: lead.presupuesto_estimado ?? '',
       moneda: lead.moneda || 'PEN',
+      servicio_interes: lead.servicio_interes || '',
     });
     setEditandoLead(lead);
     setSel(null);
@@ -480,6 +482,7 @@ function Leads() {
       necesidad: formNuevo.necesidad,
       presupuesto_estimado: Number(formNuevo.presupuesto_estimado) || 0,
       moneda: formNuevo.moneda,
+      servicio_interes: formNuevo.servicio_interes || null,
     };
     if (editandoLead) {
       actualizarLeadDatos(editandoLead.id, datos);
@@ -515,11 +518,23 @@ function Leads() {
       showKanbanToast('Este lead está descartado. Ábrelo y usa "Reactivar lead" para volver a trabajarlo.');
       return;
     }
+    if (lead.convertido && targetStatus !== 'convertido') {
+      showKanbanToast('Este lead ya fue convertido en oportunidad y no puede moverse. Si la oportunidad se descarta, hazlo desde el módulo de Pipeline.');
+      return;
+    }
+    if (targetStatus === 'nuevo' && lead.estado !== 'nuevo') {
+      showKanbanToast('Ese lead no puede volver a Nuevo y por tanto eliminarse. Si ya no es válido, pásalo a Descartado y describe el motivo.');
+      return;
+    }
     if (targetStatus === 'convertido') {
-      if (!lead.convertido) { setModalConvertir(lead); return; }
+      if (!lead.convertido) { setModalConvertirDrag(lead); return; }
       return;
     }
     if (lead.estado === targetStatus) return;
+    if (targetStatus === 'calificado' && !(lead.presupuesto_estimado > 0)) {
+      showKanbanToast('Para calificar este lead debes registrar un presupuesto estimado.');
+      return;
+    }
     abrirMoverModal(lead, targetStatus);
   };
 
@@ -610,7 +625,8 @@ function Leads() {
       <div className="pipeline-kpi-grid" style={{gridTemplateColumns:'repeat(5, 1fr)'}}>
         {cols.map((c, i) => {
           const list = filteredLeads.filter(l => l.estado === c.k);
-          const sum = list.reduce((s,l)=>(s+(l.presupuesto_estimado||0)),0);
+          const sumPEN = list.reduce((s,l) => l.moneda !== 'USD' ? s + (l.presupuesto_estimado||0) : s, 0);
+          const sumUSD = list.reduce((s,l) => l.moneda === 'USD' ? s + (l.presupuesto_estimado||0) : s, 0);
           const icons = [I.plus, I.users, I.star, I.check, I.x];
           const colors = ['var(--cyan)', 'var(--orange)', 'var(--purple)', 'var(--green)', 'var(--slate-400)'];
           return (
@@ -619,7 +635,10 @@ function Leads() {
                 {icons[i]}
               </div>
               <div className="pipeline-kpi-label">{c.title}</div>
-              <div className="pipeline-kpi-value">{money(sum)}</div>
+              <div style={{display:'flex', flexDirection:'column', gap:2}}>
+                <div className="pipeline-kpi-value" style={{fontSize:'0.95em'}}>{money(sumPEN)}</div>
+                <div className="pipeline-kpi-value" style={{fontSize:'0.95em'}}>{money(sumUSD, 'US$')}</div>
+              </div>
               <div className="pipeline-kpi-count">{list.length} lead{list.length !== 1 ? 's' : ''}</div>
               <p style={{fontSize:'0.7rem', color:'var(--color-slate)', fontStyle:'italic', marginTop:'6px', lineHeight:'1.3'}}>{c.hint}</p>
             </div>
@@ -631,11 +650,13 @@ function Leads() {
         <div style={{overflowX:'auto', paddingBottom:20}}>
           <div className="kanban-v2">
             {cols.map((c, i) => {
-              const list = filteredLeads.filter(l => l.estado === c.k);
+              const list = filteredLeads
+                .filter(l => l.estado === c.k)
+                .sort((a, b) => (b.moved_at || 0) - (a.moved_at || 0) || (b.fecha_creacion || '').localeCompare(a.fecha_creacion || ''));
               const colors = ['var(--cyan)', 'var(--orange)', 'var(--purple)', 'var(--green)', 'var(--slate-400)'];
               return (
-                <div 
-                  key={c.k} 
+                <div
+                  key={c.k}
                   className="kanban-col-v2"
                   onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                   onDrop={(e) => handleDrop(e, c.k)}
@@ -889,6 +910,7 @@ function Leads() {
                       <Field label="Presupuesto estimado" value={moneyCurrency(sel.presupuesto_estimado, sel.moneda)} strong />
                       <Field label="Urgencia" value={sel.urgencia} />
                       <Field label="Dias sin actividad" value={`${diasSinActividad} dias`} strong />
+                      {sel.servicio_interes && <Field label="Servicio de interés" value={sel.servicio_interes} style={{gridColumn:'1/-1'}} />}
                     </div>
                     <div style={{padding:'12px 14px', background:'var(--bg-subtle)', borderRadius:8, fontSize:13, lineHeight:1.5, minHeight:56}}>
                       {sel.necesidad || 'Sin necesidad registrada.'}
@@ -1269,11 +1291,9 @@ function Leads() {
                     </div>
                     <div className="input-group" style={{maxWidth:260}}>
                       <label>Etapa Inicial</label>
-                      <select className="select" value={convForm.etapa_inicial} onChange={e=>setConvForm(p=>({...p,etapa_inicial:e.target.value}))}>
-                        <option value="calificacion">Calificación</option>
-                        <option value="prospeccion">Prospección</option>
-                        <option value="propuesta">Propuesta</option>
-                      </select>
+                      <div style={{fontSize:13, color:'var(--text-muted)', padding:'8px 10px', background:'var(--bg-soft)', borderRadius:6, border:'1px solid var(--border)'}}>
+                        La oportunidad iniciará en etapa <strong style={{color:'var(--text)'}}>Calificación</strong>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1312,17 +1332,21 @@ function Leads() {
               <div className="modal-body col" style={{gap:12}}>
                 <div className="input-group">
                   <textarea className="input" rows={2} placeholder={cfg.placeholder} value={moverMotivo}
-                    onChange={e => { setMoverMotivo(e.target.value); setMoverError(false); }}
+                    onChange={e => { setMoverMotivo(e.target.value); setMoverError(''); }}
                     style={moverError ? {borderColor:'var(--danger)'} : {}} autoFocus />
-                  {moverError && <div style={{fontSize:12, color:'var(--danger)', marginTop:4}}>El motivo es obligatorio.</div>}
+                  {moverError && <div style={{fontSize:12, color:'var(--danger)', marginTop:4}}>{moverError}</div>}
                 </div>
               </div>
               <div className="modal-foot">
                 <button className="btn btn-secondary" onClick={() => setModalMoverLead(null)}>Cancelar</button>
                 <button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}}
                   onClick={() => {
-                    if (!moverMotivo.trim()) { setMoverError(true); return; }
                     const { lead, destino } = modalMoverLead;
+                    if (destino === 'calificado' && !(lead.presupuesto_estimado > 0)) {
+                      setMoverError('Para calificar este lead debes registrar un presupuesto estimado.');
+                      return;
+                    }
+                    if (!moverMotivo.trim()) { setMoverError('El motivo es obligatorio.'); return; }
                     if (destino === 'descartado') {
                       descartarLead(lead.id, moverMotivo.trim());
                     } else {
@@ -1330,7 +1354,7 @@ function Leads() {
                     }
                     setModalMoverLead(null);
                     setMoverMotivo('');
-                    setMoverError(false);
+                    setMoverError('');
                   }}>
                   Confirmar movimiento
                 </button>
@@ -1357,6 +1381,41 @@ function Leads() {
                 if (sel?.id === modalEliminarLead.id) setSel(null);
                 setModalEliminarLead(null);
               }}>{I.trash} Eliminar definitivamente</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalConvertirDrag && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:440}}>
+            <div className="modal-head">
+              <h2>Convertir lead</h2>
+              <button className="icon-btn" onClick={() => setModalConvertirDrag(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body" style={{display:'flex', flexDirection:'column', gap:12}}>
+              <div style={{display:'flex', gap:10, padding:'10px 14px', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:8}}>
+                <span style={{flex:'0 0 18px', color:'var(--orange)', marginTop:1}}>{I.alert}</span>
+                <p style={{margin:0, fontSize:13, color:'#92400e', lineHeight:1.5}}>
+                  Al mover <strong>{modalConvertirDrag.nombre}</strong> a Convertido se crearán automáticamente en el sistema:
+                </p>
+              </div>
+              <ul style={{margin:0, padding:'0 0 0 20px', fontSize:13, color:'var(--text)', lineHeight:2}}>
+                <li>Una <strong>cuenta</strong> en el módulo de Cuentas</li>
+                <li>Un <strong>contacto</strong> asociado a esa cuenta</li>
+                <li>Una <strong>oportunidad de venta</strong> en el Pipeline</li>
+              </ul>
+              <p style={{margin:0, fontSize:12, color:'var(--text-muted)'}}>
+                Si ya existe una cuenta con el mismo RUC o un contacto con el mismo correo, no se duplicarán.
+              </p>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-secondary" onClick={() => setModalConvertirDrag(null)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={() => {
+                const lead = modalConvertirDrag;
+                setModalConvertirDrag(null);
+                setModalConvertir(lead);
+              }}>Continuar con la conversión</button>
             </div>
           </div>
         </div>
@@ -1445,6 +1504,13 @@ function Leads() {
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Oportunidad</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Necesidad / Descripción</label><textarea className="input" rows={2} value={formNuevo.necesidad} onChange={e=>updateNuevo('necesidad',e.target.value)} placeholder="Ej: Mantenimiento de fajas transportadoras, 3 unidades con desgaste crítico"/></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}>
+                <label>Servicio de interés <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>· opcional</span></label>
+                <select className="select" value={formNuevo.servicio_interes} onChange={e=>updateNuevo('servicio_interes',e.target.value)}>
+                  <option value="">Sin especificar</option>
+                  {MOCK.servicios.filter(s=>s.estado==='activo').map(s=><option key={s.id} value={s.descripcion}>{s.descripcion}</option>)}
+                </select>
+              </div>
               <div className="input-group">
                 <label>Presupuesto estimado</label>
                 <input className="input" type="number" min="0" step="0.01" value={formNuevo.presupuesto_estimado} onChange={e=>updateNuevo('presupuesto_estimado',e.target.value)} placeholder="0"/>
@@ -1501,6 +1567,7 @@ function Leads() {
 function Pipeline() {
   const {
     oportunidades, cuentas, actividades, agendaEventos, hojasCosteo, cotizaciones, osClientes,
+    oppHistorialEtapas,
     crearAgendaEvento, crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
     navigate, activeParams, searchQuery, usuarios, roles, empresa
   } = useApp();
@@ -1508,6 +1575,9 @@ function Pipeline() {
   const [sel, setSel] = useState(null);
   const [agendaOpp, setAgendaOpp] = useState(null);
   const [panelNuevaOpp, setPanelNuevaOpp] = useState(false);
+  const [pendingPerdida, setPendingPerdida] = useState(null);
+  const [motivoPerdida, setMotivoPerdida] = useState('');
+  const [motivoError, setMotivoError] = useState(false);
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
   const oppFormBase = {
     nombre: '',
@@ -1560,17 +1630,17 @@ function Pipeline() {
   }, [activeParams, oportunidades]);
 
   const cols = [
-    { k: 'prospeccion', title: 'Prospección', color: '#64748b' },
-    { k: 'calificacion', title: 'Calificación', color: '#06b6d4' },
-    { k: 'propuesta', title: 'Propuesta', color: '#8b5cf6' },
-    { k: 'ganada', title: 'Ganada', color: '#10b981' },
-    { k: 'negociacion', title: 'Negociación', color: '#f97316' },
+    { k: 'calificacion', title: 'Calificación', color: '#64748b', hint: 'Confirmaste necesidad, presupuesto y que tiene poder de decisión.' },
+    { k: 'propuesta',    title: 'Propuesta',    color: '#06b6d4', hint: 'Le enviaste o presentaste una cotización formal. Esperas respuesta.' },
+    { k: 'negociacion',  title: 'Negociación',  color: '#8b5cf6', hint: 'Hay interés confirmado. Están ajustando condiciones, precio o alcance.' },
+    { k: 'ganada',       title: 'Ganada',       color: '#10b981', hint: 'Oportunidad cerrada. Se generará o ya existe una OS Cliente.' },
+    { k: 'perdida',      title: 'Perdida',      color: '#f97316', hint: 'No se concretó. Registra el motivo para mejorar el proceso.' },
   ];
   
   const activeOps = oportunidades.filter(o => !['perdida'].includes(o.etapa));
   const query = searchQuery.toLowerCase();
   const getOppCuentaNombre = (id) => cuentas.find(c => c.id === id)?.razon_social || id;
-  const filteredOps = activeOps.filter(o => 
+  const filteredOps = oportunidades.filter(o =>
     o.nombre.toLowerCase().includes(query) ||
     getOppCuentaNombre(o.cuenta_id).toLowerCase().includes(query)
   );
@@ -1583,7 +1653,7 @@ function Pipeline() {
     const id = e.dataTransfer.getData('text/plain');
     if (id) {
       if (targetStatus === 'ganada') marcarGanada(id, {});
-      else if (targetStatus === 'perdida') marcarPerdida(id, 'Perdida desde kanban');
+      else if (targetStatus === 'perdida') { setPendingPerdida(id); setMotivoPerdida(''); setMotivoError(false); }
       else actualizarEtapaOportunidad(id, targetStatus);
     }
   };
@@ -1657,8 +1727,22 @@ function Pipeline() {
           icon: I.file,
           action: () => navigate('os_cliente', { detail: os.id }),
         })),
+      ...(oppHistorialEtapas || [])
+        .filter(h => h.opp_id === oppId)
+        .map(h => ({
+          id: `etapa-${h.id}`,
+          tipo: 'Etapa',
+          titulo: `${h.etapa_desde} → ${h.etapa_hasta}`,
+          detalle: h.usuario || '',
+          fecha: h.fecha,
+          icon: I.arrowUp,
+        })),
     ];
-    return items.sort((a, b) => `${b.fecha || ''} ${b.hora || ''}`.localeCompare(`${a.fecha || ''} ${a.hora || ''}`));
+    return items.sort((a, b) => {
+      const ka = `${b.fecha || ''} ${b.hora || ''}`;
+      const kb = `${a.fecha || ''} ${a.hora || ''}`;
+      return ka.localeCompare(kb);
+    });
   };
   const timelineSel = getOppTimeline(sel);
   const crearEventoDesdeOportunidad = (e) => {
@@ -1713,16 +1797,21 @@ function Pipeline() {
       <div className="pipeline-kpi-grid" style={{gridTemplateColumns:'repeat(5, 1fr)'}}>
         {cols.map((c, i) => {
           const ops = filteredOps.filter(o => o.etapa === c.k);
-          const sum = ops.reduce((s,o)=>s+(o.monto_estimado||0),0);
-          const icons = [I.users, I.star, I.file, I.hand, I.check];
+          const sumPEN = ops.reduce((s,o) => o.moneda !== 'USD' ? s + (o.monto_estimado||0) : s, 0);
+          const sumUSD = ops.reduce((s,o) => o.moneda === 'USD' ? s + (o.monto_estimado||0) : s, 0);
+          const icons = [I.star, I.file, I.hand, I.check, I.x];
           return (
             <div key={c.k} className={`pipeline-kpi-card ${c.k} hover-raise`} style={{ '--accent': c.color }}>
               <div className="pipeline-kpi-icon" style={{color: c.color}}>
                 {icons[i]}
               </div>
               <div className="pipeline-kpi-label">{c.title}</div>
-              <div className="pipeline-kpi-value">{money(sum)}</div>
+              <div style={{display:'flex', flexDirection:'column', gap:2}}>
+                <div className="pipeline-kpi-value" style={{fontSize:'0.95em'}}>{money(sumPEN)}</div>
+                <div className="pipeline-kpi-value" style={{fontSize:'0.95em'}}>{money(sumUSD, 'US$')}</div>
+              </div>
               <div className="pipeline-kpi-count">{ops.length} oportunidad{ops.length !== 1 ? 'es' : ''}</div>
+              <p style={{fontSize:'0.7rem', color:'var(--color-slate)', fontStyle:'italic', marginTop:'6px', lineHeight:'1.3'}}>{c.hint}</p>
             </div>
           );
         })}
@@ -1732,10 +1821,12 @@ function Pipeline() {
         <div style={{overflowX:'auto', paddingBottom:20}}>
           <div className="kanban-v2">
             {cols.map(c => {
-              const list = filteredOps.filter(o => o.etapa === c.k);
+              const list = filteredOps
+                .filter(o => o.etapa === c.k)
+                .sort((a, b) => (b.moved_at || 0) - (a.moved_at || 0) || (b.fecha_creacion || '').localeCompare(a.fecha_creacion || ''));
               return (
-                <div 
-                  key={c.k} 
+                <div
+                  key={c.k}
                   className="kanban-col-v2"
                   onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                   onDrop={(e) => handleDrop(e, c.k)}
@@ -1831,13 +1922,13 @@ function Pipeline() {
 
       {sel && (() => {
         const etapaMap = {
-          calificacion: { bg:'var(--cyan-lt)', color:'var(--cyan-dk)', label:'Calificación' },
-          prospeccion:  { bg:'rgba(0,188,212,0.12)', color:'#0284c7', label:'Prospección' },
-          propuesta:    { bg:'var(--orange-lt)', color:'var(--orange-dk)', label:'Propuesta' },
-          negociacion:  { bg:'var(--orange-lt)', color:'var(--orange-dk)', label:'Negociación' },
-          cierre:       { bg:'var(--green-lt)', color:'var(--green-dk)', label:'Cierre' },
-          ganada:       { bg:'var(--green-lt)', color:'var(--green-dk)', label:'Ganada' },
-          perdida:      { bg:'var(--danger-lt)', color:'var(--danger)', label:'Perdida' },
+          calificacion: { bg:'rgba(100,116,139,0.12)', color:'#64748b',          label:'Calificación' },
+          prospeccion:  { bg:'rgba(100,116,139,0.12)', color:'#64748b',          label:'Prospección' },
+          propuesta:    { bg:'var(--cyan-lt)',          color:'var(--cyan-dk)',   label:'Propuesta' },
+          negociacion:  { bg:'var(--purple-lt)',        color:'var(--purple-dk)', label:'Negociación' },
+          cierre:       { bg:'var(--green-lt)',         color:'var(--green-dk)', label:'Cierre' },
+          ganada:       { bg:'var(--green-lt)',         color:'var(--green-dk)', label:'Ganada' },
+          perdida:      { bg:'var(--orange-lt)',        color:'var(--orange-dk)', label:'Perdida' },
         };
         const ec = etapaMap[sel.etapa] || { bg:'var(--border)', color:'var(--fg-muted)', label: sel.etapa };
         const prob = Math.min(100, Math.max(0, sel.probabilidad || 0));
@@ -1962,7 +2053,7 @@ function Pipeline() {
                         {I.check} Ganar
                       </button>
                       <button className="btn btn-ghost flex-1" style={{justifyContent:'center', color:'var(--danger)', opacity:0.75}}
-                        onClick={() => { marcarPerdida(sel.id, 'Perdida manualmente'); setSel(null); }}>
+                        onClick={() => { setPendingPerdida(sel.id); setMotivoPerdida(''); setMotivoError(false); }}>
                         Perder
                       </button>
                     </div>
@@ -2112,6 +2203,49 @@ function Pipeline() {
           </div>
         </>
       )}
+
+      {pendingPerdida && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:440}}>
+            <div className="modal-head">
+              <div>
+                <div className="eyebrow">Pipeline</div>
+                <h2>Motivo de pérdida</h2>
+              </div>
+              <button className="icon-btn" onClick={() => { setPendingPerdida(null); setMotivoPerdida(''); setMotivoError(false); }}>{I.x}</button>
+            </div>
+            <div className="modal-body col" style={{gap:16}}>
+              <p style={{fontSize:13, color:'var(--fg-muted)', margin:0}}>
+                Registra por qué no se concretó esta oportunidad. Esta información ayuda a mejorar el proceso comercial.
+              </p>
+              <div className="input-group">
+                <label>Motivo *</label>
+                <textarea
+                  className="input"
+                  rows={3}
+                  placeholder="Ej: Precio fuera de presupuesto, eligieron otro proveedor..."
+                  value={motivoPerdida}
+                  onChange={e => { setMotivoPerdida(e.target.value); if (e.target.value.trim()) setMotivoError(false); }}
+                  autoFocus
+                  style={{borderColor: motivoError ? 'var(--danger)' : undefined}}
+                />
+                {motivoError && <span style={{fontSize:11, color:'var(--danger)', marginTop:2}}>El motivo es obligatorio.</span>}
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-secondary" onClick={() => { setPendingPerdida(null); setMotivoPerdida(''); setMotivoError(false); }}>Cancelar</button>
+              <button className="btn" style={{background:'var(--danger)', color:'#fff'}} onClick={() => {
+                if (!motivoPerdida.trim()) { setMotivoError(true); return; }
+                marcarPerdida(pendingPerdida, motivoPerdida.trim());
+                setSel(null);
+                setPendingPerdida(null);
+                setMotivoPerdida('');
+                setMotivoError(false);
+              }}>Confirmar pérdida</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -2161,7 +2295,7 @@ function Actividades() {
         }
       }
 
-      actualizarActividad(id, { estado: newEstado, fecha: newFecha });
+      actualizarActividad(id, { estado: newEstado, fecha: newFecha, moved_at: Date.now() });
     }
   };
 
@@ -2222,12 +2356,14 @@ function Actividades() {
         <div style={{overflowX:'auto', paddingBottom:20, marginTop:24}}>
           <div className="kanban-v2">
             {cols.map((c, i) => {
-              const list = actsCalculated.filter(a => a.estado === c.k);
+              const list = actsCalculated
+                .filter(a => a.estado === c.k)
+                .sort((a, b) => (b.moved_at || 0) - (a.moved_at || 0) || (b.fecha || '').localeCompare(a.fecha || ''));
               const colors = ['#64748b', '#06b6d4', '#8b5cf6'];
               return (
-                <div 
-                  key={c.k} 
-                  className="kanban-col-v2" 
+                <div
+                  key={c.k}
+                  className="kanban-col-v2"
                   onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                   onDrop={(e) => handleDrop(e, c.k)}
                   style={{ '--accent': colors[i] }}
@@ -2927,7 +3063,6 @@ function BIComercial() {
   const leadsActivos  = leads.filter(l => !l.convertido).length;
 
   const ETAPAS = [
-    { key:'prospeccion', label:'Prospección',  color:'var(--fg-subtle)' },
     { key:'calificacion',label:'Calificación', color:'var(--cyan)'      },
     { key:'propuesta',   label:'Propuesta',    color:'var(--purple)'    },
     { key:'negociacion', label:'Negociación',  color:'var(--orange)'    },
@@ -2965,7 +3100,7 @@ function BIComercial() {
   ];
   const maxTend = Math.max(...tendencia.map(t => t.valor), 1);
 
-  const etapaBadge = { prospeccion:'badge-gray', calificacion:'badge-cyan', propuesta:'badge-purple', negociacion:'badge-orange' };
+  const etapaBadge = { calificacion:'badge-cyan', propuesta:'badge-purple', negociacion:'badge-orange' };
   const getNombre  = id => { const c = cuentas.find(c => c.id === id); return c?.razon_social || c?.nombre_comercial || id; };
 
   return (

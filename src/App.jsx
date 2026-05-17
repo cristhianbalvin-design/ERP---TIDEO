@@ -9,6 +9,7 @@ import { IAComercial, IAOperativa, IAFinanciera } from './pages_ia.jsx';
 import { BIFinanciero } from './pages_bi_fin.jsx';
 import { Dashboard, Leads, Pipeline, Actividades, AgendaComercial, OSCliente, Marketing, BIComercial, BIOperativo } from './pages_core.jsx';
 import { Cotizaciones, Valorizacion, Inventario, HojaCosteo } from './pages_extra.jsx';
+import { PaginaAceptacion } from './pages_aceptar.jsx';
 import { CxC, Tesoreria, Resultados, Facturacion, Ventas, CajaChica, PrestamosPersonal, CxP, Presupuestos } from './pages_fin.jsx';
 import { FinanciamientoDeuda } from './pages_fin_deuda.jsx';
 import { MobileFieldView } from './pages_mobile.jsx';
@@ -780,6 +781,11 @@ function MainLayout() {
 }
 
 export default function App() {
+  const hash = window.location.hash;
+  if (hash.startsWith('#aceptar/')) {
+    const token = hash.slice('#aceptar/'.length).split('?')[0];
+    return <ErrorBoundary><PaginaAceptacion token={token} /></ErrorBoundary>;
+  }
   return (
     <ErrorBoundary>
       <AppProvider>

@@ -311,6 +311,7 @@ export async function persistirCotizacion(supabase, empresaId, cot) {
     empresa_id: empresaId,
     oportunidad_id: cot.oportunidad_id || null,
     cuenta_id: cot.cuenta_id || null,
+    contacto_id: cot.contacto_id || null,
     numero: cot.numero,
     version: cot.version || 1,
     estado: cot.estado || 'borrador',
@@ -325,13 +326,45 @@ export async function persistirCotizacion(supabase, empresaId, cot) {
     total: cot.total || 0,
     moneda: cot.moneda || 'PEN',
     condicion_pago: cot.condicion_pago || null,
+    descripcion_general: cot.descripcion_general || null,
+    validez_tipo: cot.validez_tipo || 'dias',
+    validez_dias: cot.validez_dias || 30,
+    validez_fecha: cot.validez_fecha || null,
+    subtotal_impl: cot.subtotal_impl || 0,
+    igv_impl: cot.igv_impl || 0,
+    total_impl: cot.total_impl || 0,
+    subtotal_rec: cot.subtotal_rec || 0,
+    igv_rec: cot.igv_rec || 0,
+    total_rec: cot.total_rec || 0,
+    hitos_activos: cot.hitos_activos || false,
+    hitos_pago: cot.hitos_pago || [],
+    glosa_factura: cot.glosa_factura || null,
+    cond_forma_pago: cot.cond_forma_pago || null,
+    cond_validez: cot.cond_validez || null,
+    cond_penalidad: cot.cond_penalidad || null,
+    cond_inicio_proyecto: cot.cond_inicio_proyecto || null,
+    cond_alcance: cot.cond_alcance || null,
+    cond_integraciones: cot.cond_integraciones || null,
+    cond_confidencialidad: cot.cond_confidencialidad || null,
+    historial_versiones: cot.historial_versiones || [],
+    token_aceptacion:   cot.token_aceptacion || null,
+    token_activo:       cot.token_activo !== undefined ? cot.token_activo : true,
   };
   if (cot.hoja_costeo_id) row.hoja_costeo_id = cot.hoja_costeo_id;
   return supabase.from('cotizaciones').insert(row);
 }
 
 export async function actualizarCotizacion(supabase, cotId, datos) {
-  const allowed = ['estado', 'total', 'version', 'items', 'subtotal', 'descuento_global', 'base_imponible', 'igv', 'hoja_costeo_id'];
+  const allowed = [
+    'estado', 'total', 'version', 'items', 'subtotal', 'descuento_global',
+    'base_imponible', 'igv', 'igv_pct', 'moneda', 'condicion_pago', 'hoja_costeo_id',
+    'contacto_id', 'descripcion_general', 'validez_tipo', 'validez_dias', 'validez_fecha',
+    'subtotal_impl', 'igv_impl', 'total_impl', 'subtotal_rec', 'igv_rec', 'total_rec',
+    'hitos_activos', 'hitos_pago', 'glosa_factura',
+    'cond_forma_pago', 'cond_validez', 'cond_penalidad', 'cond_inicio_proyecto',
+    'cond_alcance', 'cond_integraciones', 'cond_confidencialidad', 'historial_versiones',
+    'fecha_envio', 'token_activo', 'token_aceptacion',
+  ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
   );
@@ -550,7 +583,7 @@ export async function loadCrmFromSupabase(supabase, empresaId) {
 
   const q = table => supabase.from(table).select('*').eq('empresa_id', empresaId);
 
-  const [cuentasR, leadsR, contactosR, oppsR, hcR, cotR, oscR, agendaR, actR] = await Promise.all([
+  const [cuentasR, leadsR, contactosR, oppsR, hcR, cotR, oscR, agendaR, actR, lheR, oheR] = await Promise.all([
     q('cuentas').order('nombre_comercial'),
     q('leads').order('created_at', { ascending: false }),
     q('contactos').order('nombre'),
@@ -560,7 +593,14 @@ export async function loadCrmFromSupabase(supabase, empresaId) {
     q('os_clientes').order('created_at', { ascending: false }),
     q('agenda_comercial').order('fecha', { ascending: true }),
     q('actividades_comerciales').order('fecha', { ascending: false }),
+    q('lead_historial_estados').order('creado_en', { ascending: false }),
+    q('opp_historial_etapas').order('creado_en', { ascending: false }),
   ]);
+
+  const normalizarHistorialEtapa = (h) => ({
+    ...h,
+    fecha: (h.creado_en || '').slice(0, 10),
+  });
 
   return {
     cuentas: (cuentasR.data || []).map(normalizarCuenta),
@@ -572,7 +612,9 @@ export async function loadCrmFromSupabase(supabase, empresaId) {
     osClientes: oscR.data || [],
     agendaEventos: (agendaR.data || []).map(normalizarAgendaEvento),
     actividades: (actR.data || []).map(normalizarActividad),
-    errors: [cuentasR, leadsR, contactosR, oppsR, hcR, cotR, oscR, agendaR, actR]
+    historialEstados: lheR.data || [],
+    oppHistorialEtapas: (oheR.data || []).map(normalizarHistorialEtapa),
+    errors: [cuentasR, leadsR, contactosR, oppsR, hcR, cotR, oscR, agendaR, actR, lheR, oheR]
       .filter(r => r.error)
       .map(r => r.error?.message),
   };
