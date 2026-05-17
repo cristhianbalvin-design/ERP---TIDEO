@@ -42,26 +42,35 @@ serve(async (req) => {
       .eq("empresa_id", rpcData.empresa_id)
       .single();
 
-    // Cargar vendedor de la oportunidad
+    // Cargar vendedor de la oportunidad (responsable_id → usuarios.email)
     let vendedorEmail: string | null = null;
     if (rpcData.oportunidad_id) {
       const { data: opp } = await supabase
         .from("oportunidades")
-        .select("responsable_email, responsable")
+        .select("responsable_id")
         .eq("id", rpcData.oportunidad_id)
         .single();
-      vendedorEmail = opp?.responsable_email || null;
+      if (opp?.responsable_id) {
+        const { data: usr } = await supabase
+          .from("usuarios")
+          .select("email")
+          .eq("user_id", opp.responsable_id)
+          .single();
+        vendedorEmail = usr?.email || null;
+      }
     }
+    // Fallback: notificar al email comercial de la empresa
+    const destino = vendedorEmail || cfg?.email_comercial || null;
 
     // Enviar email de notificación via Resend (requiere RESEND_API_KEY en Supabase)
     const resendKey = Deno.env.get("RESEND_API_KEY");
-    if (resendKey && vendedorEmail) {
+    if (resendKey && destino) {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           from: cfg?.email_comercial || "notificaciones@tideo.tech",
-          to: [vendedorEmail],
+          to: [destino],
           subject: `${nombre} aceptó la cotización ${rpcData.numero}`,
           html: `
             <p>Hola,</p>
