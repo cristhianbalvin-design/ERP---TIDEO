@@ -155,6 +155,7 @@ function CotizacionesInner() {
           empresaConfig={empresaConfig}
           onBack={() => navigate('cotizaciones')}
           onEdit={() => navigate('cotizaciones', { detail: cot.id, edit: true })}
+          onRevertirBorrador={() => actualizarCotizacion(cot.id, { estado: 'borrador' })}
           onCrearVersion={async () => { await subirVersionCotizacion(cot.id); }}
           onEnviar={() => actualizarCotizacion(cot.id, { estado: 'enviada', fecha_envio: new Date().toISOString() })}
           onAprobar={() => { aprobarCotizacion(cot.id); setOsModal(cot); }}
@@ -354,7 +355,7 @@ function AprobacionManualModal({ onClose, onConfirmar }) {
 }
 
 // ── Detalle (lectura) ──────────────────────────────────────────────────
-function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig, onBack, onEdit, onCrearVersion, onEnviar, onAprobacionManual, onGenerarOS, onDescargarPDF, generandoPDF }) {
+function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig, onBack, onEdit, onRevertirBorrador, onCrearVersion, onEnviar, onAprobacionManual, onGenerarOS, onDescargarPDF, generandoPDF }) {
   const partidas = cot.items || cot.partidas || [];
   const hayRecurrente = partidas.some(p => !p.incluido && p.tipo === 'recurrente');
   const [seccionesOpen, setSeccionesOpen] = useState({});
@@ -409,6 +410,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
         <div className="row">
           {cot.estado === 'borrador' && <button className="btn btn-secondary" onClick={onEdit}>{I.edit} Editar</button>}
           {cot.estado === 'borrador' && <button className="btn btn-primary" onClick={() => setConfirmEnviar(true)}>{I.send} Enviar a cliente</button>}
+          {cot.estado === 'enviada'  && <button className="btn btn-ghost" onClick={onRevertirBorrador} style={{color:'var(--text-muted)'}}>↩ Revertir a borrador</button>}
           {cot.estado === 'enviada'  && <button className="btn btn-secondary" onClick={() => setShowAprobModal(true)}>{I.check} Aprobar manualmente</button>}
           {cot.estado === 'aprobada' && <button className="btn btn-primary" onClick={onGenerarOS}>{I.clipboard} Generar OS</button>}
           <button className="btn btn-secondary" onClick={onCrearVersion}>{I.plus} Nueva versión</button>
@@ -736,16 +738,30 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
   const cfg     = empresaConfig || {};
   const isEdit  = !!(cotizacionBase?.id);
   const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
+  const contactosCuenta = contactos || [];
+  const contactoPrincipalCuenta = contactosCuenta.find(c => c.principal || c.es_principal);
+  const contactosOrdenados = [...contactosCuenta].sort((a, b) => {
+    const aPrincipal = a.principal || a.es_principal ? 1 : 0;
+    const bPrincipal = b.principal || b.es_principal ? 1 : 0;
+    if (aPrincipal !== bPrincipal) return bPrincipal - aPrincipal;
+    return String(a.nombre || '').localeCompare(String(b.nombre || ''));
+  });
 
   // ── Bloque 1 ────────────────────────────────────────────────────────
+  const [numeroCot,   setNumeroCot]   = useState(cotizacionBase?.numero      || '');
   const [moneda,      setMoneda]      = useState(cotizacionBase?.moneda      || opp?.moneda || 'PEN');
   const [igvPct,      setIgvPct]      = useState(cotizacionBase?.igv_pct     || 18);
   const [validezTipo, setValidezTipo] = useState(cotizacionBase?.validez_tipo  || 'dias');
   const [validezDias, setValidezDias] = useState(cotizacionBase?.validez_dias  || 30);
   const [validezFecha,setValidezFecha]= useState(cotizacionBase?.validez_fecha || '');
-  const [contactoId,  setContactoId]  = useState(cotizacionBase?.contacto_id  || opp?.contacto_id || '');
+  const [contactoId,  setContactoId]  = useState(cotizacionBase?.contacto_id || contactoPrincipalCuenta?.id || opp?.contacto_id || contactosCuenta[0]?.id || '');
   const [cebeId,      setCebeId]      = useState(cotizacionBase?.centro_beneficio_id || '');
   const [descripcion, setDescripcion] = useState(cotizacionBase?.descripcion_general || '');
+
+  useEffect(() => {
+    if (isEdit || contactoId || !contactoPrincipalCuenta?.id) return;
+    setContactoId(contactoPrincipalCuenta.id);
+  }, [isEdit, contactoId, contactoPrincipalCuenta?.id]);
 
   // ── Bloque 2: partidas ───────────────────────────────────────────────
   const emptyPartida = () => ({ id: Date.now() + Math.random(), descripcion: '', detalle_items_txt: '', tipo: 'servicio', detalle_cantidad: '', cantidad: 1, precio_unitario: 0, incluido: false });
@@ -838,6 +854,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
       cuenta_id:      cotizacionBase?.cuenta_id      || opp?.cuenta_id,
       contacto_id:    contactoId || null,
       centro_beneficio_id: cebeId || null,
+      ...(isEdit && numeroCot ? { numero: numeroCot.trim() } : {}),
       moneda, igv_pct: Number(igvPct),
       validez_tipo: validezTipo,
       validez_dias: Number(validezDias),
@@ -885,6 +902,12 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
       <div className="card mt-6">
         <div className="card-body">
           <div className="eyebrow" style={{marginBottom:16}}>Encabezado</div>
+          {isEdit && (
+            <div className="input-group" style={{marginBottom:16, maxWidth:280}}>
+              <label>Número de cotización</label>
+              <input className="input mono" value={numeroCot} onChange={e => setNumeroCot(e.target.value)} placeholder="Ej. COT-2026-0502" />
+            </div>
+          )}
           <div className="grid-3" style={{gap:16, marginBottom:16}}>
             <div className="input-group">
               <label>Moneda</label>
@@ -900,7 +923,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
               <label>Attn. (contacto)</label>
               <select className="select" value={contactoId} onChange={e => setContactoId(e.target.value)}>
                 <option value="">Sin contacto específico</option>
-                {(contactos || []).map(c => <option key={c.id} value={c.id}>{c.nombre}{c.cargo ? ` (${c.cargo})` : ''}</option>)}
+                {contactosOrdenados.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.cargo ? ` (${c.cargo})` : ''}{(c.principal || c.es_principal) ? ' - Principal' : ''}</option>)}
               </select>
             </div>
             <div className="input-group">

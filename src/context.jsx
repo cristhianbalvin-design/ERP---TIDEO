@@ -1627,11 +1627,15 @@ export function AppProvider({ children }) {
     const oppDeHC = oportunidades.find(o => o.id === hc.oportunidad_id);
     const monedaHC = oppDeHC?.moneda || hc.moneda || empresa?.moneda || 'PEN';
     if (isSupabaseConfigured()) {
+      const serieDocHC = (seriesDocumentarias || []).find(s => s.documento === 'Cotizaciones' && s.estado === 'activo');
+      const numeroCotHC = serieDocHC
+        ? `${serieDocHC.serie}-${Number(serieDocHC.siguiente_correlativo).toString().padStart(4, '0')}`
+        : `COT-${new Date().getFullYear()}-${Math.floor(Math.random()*10000).toString().padStart(4,'0')}`;
       const cotBase = {
         id: generateId('cot'),
         oportunidad_id: hc.oportunidad_id,
         cuenta_id: hc.cuenta_id,
-        numero: `COT-${new Date().getFullYear()}-${Math.floor(Math.random()*10000).toString().padStart(4,'0')}`,
+        numero: numeroCotHC,
         version: 1,
         estado: 'borrador',
         fecha: new Date().toISOString().split('T')[0],
@@ -1665,6 +1669,14 @@ export function AppProvider({ children }) {
           : [...prev, cotFinal]
         );
         setHojasCosteo(prev => prev.map(h => h.id === hcId ? { ...h, ...hcFinal } : h));
+        if (serieDocHC) {
+          const nextCorr = Number(serieDocHC.siguiente_correlativo) + 1;
+          setSeriesDocumentarias(prev => prev.map(s => s.id === serieDocHC.id ? { ...s, siguiente_correlativo: nextCorr } : s));
+          getSupabaseClient().then(sb =>
+            sb.from('series_documentarias').update({ siguiente_correlativo: nextCorr }).eq('id', serieDocHC.id)
+              .then(({ error }) => { if (error) console.error('[series] increment failed:', error); })
+          );
+        }
         auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hcId, accion: 'aprobar', valor_anterior: hc, valor_nuevo: { estado: 'aprobada', cotizacion_id: cotFinal.id } });
         addNotificacion(`HC aprobada. CotizaciÃ³n borrador generada.`);
         navigate('cotizaciones', { detail: cotFinal.id });
@@ -1707,17 +1719,21 @@ export function AppProvider({ children }) {
   };
 
   const crearCotizacion = async (datos) => {
+    const serieDoc = (seriesDocumentarias || []).find(s => s.documento === 'Cotizaciones' && s.estado === 'activo');
+    const numeroCot = serieDoc
+      ? `${serieDoc.serie}-${Number(serieDoc.siguiente_correlativo).toString().padStart(4, '0')}`
+      : (() => {
+          const year = new Date().getFullYear();
+          const yearCots = cotizaciones.filter(c => c.numero?.startsWith(`COT-${year}`));
+          const maxCorr = yearCots.length
+            ? Math.max(...yearCots.map(c => parseInt(c.numero.split('-').pop()) || 0))
+            : 0;
+          return `COT-${year}-${(maxCorr + 1).toString().padStart(4, '0')}`;
+        })();
     const cot = {
       id: generateId('cot'),
       empresa_id: empresa.id,
-      numero: (() => {
-        const year = new Date().getFullYear();
-        const yearCots = cotizaciones.filter(c => c.numero?.startsWith(`COT-${year}`));
-        const maxCorr = yearCots.length
-          ? Math.max(...yearCots.map(c => parseInt(c.numero.split('-').pop()) || 0))
-          : 0;
-        return `COT-${year}-${(maxCorr + 1).toString().padStart(4, '0')}`;
-      })(),
+      numero: numeroCot,
       version: 1,
       estado: 'borrador',
       fecha: new Date().toISOString().split('T')[0],
@@ -1743,6 +1759,16 @@ export function AppProvider({ children }) {
       throw error;
     }
     setCotizaciones(prev => [...prev, cot]);
+    if (serieDoc) {
+      const nextCorr = Number(serieDoc.siguiente_correlativo) + 1;
+      setSeriesDocumentarias(prev => prev.map(s => s.id === serieDoc.id ? { ...s, siguiente_correlativo: nextCorr } : s));
+      if (isSupabaseConfigured()) {
+        getSupabaseClient().then(sb =>
+          sb.from('series_documentarias').update({ siguiente_correlativo: nextCorr }).eq('id', serieDoc.id)
+            .then(({ error }) => { if (error) console.error('[series] increment failed:', error); })
+        );
+      }
+    }
     auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cot.id, accion: 'crear', valor_nuevo: cot });
     addNotificacion(`Cotización ${cot.numero} generada con éxito.`);
     return cot.id;

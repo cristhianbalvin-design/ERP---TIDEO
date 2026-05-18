@@ -175,9 +175,12 @@ export function CotizacionPDF({ cot, cuenta, contacto, cfg, qrDataUrl }) {
             const isRec = p.tipo === 'recurrente' && !p.incluido;
             const showSepRow = isRec && !lastWasImpl;
             lastWasImpl = !isRec;
-            const subItems = p.sub_items || (typeof p.descripcion === 'string' && p.descripcion.includes('\n')
-              ? p.descripcion.split('\n').slice(1)
-              : []);
+            const subItems = (Array.isArray(p.detalle_items) ? p.detalle_items : [])
+              .concat(
+                !p.detalle_items && typeof p.descripcion === 'string' && p.descripcion.includes('\n')
+                  ? p.descripcion.split('\n').slice(1)
+                  : []
+              );
             const mainDesc = p.nombre || (typeof p.descripcion === 'string' ? p.descripcion.split('\n')[0] : p.descripcion) || '—';
             return (
               <View key={p.id || i} wrap={false}>
@@ -265,7 +268,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, cfg, qrDataUrl }) {
                   <Text style={[S.tHeadCell, { flex: 1 }]}>Concepto</Text>
                   <Text style={[S.tHeadCell, { width: 44, textAlign: 'right' }]}>%</Text>
                   <Text style={[S.tHeadCell, { width: 80, textAlign: 'right' }]}>Monto</Text>
-                  <Text style={[S.tHeadCell, { width: 130 }]}>Condición de cobro</Text>
+                  <Text style={[S.tHeadCell, { flex: 1, paddingLeft: 8 }]}>Condición de cobro</Text>
                 </View>
                 {cot.hitos_pago.map((h, i) => (
                   <View key={i} style={[S.tRow, i % 2 !== 0 ? S.tRowAlt : {}]}>
@@ -273,7 +276,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, cfg, qrDataUrl }) {
                     <Text style={[S.tCell, S.tCellBold, { flex: 1 }]}>{h.concepto}</Text>
                     <Text style={[S.tCell, { width: 44, textAlign: 'right' }]}>{h.porcentaje}%</Text>
                     <Text style={[S.tCell, S.tCellBold, { width: 80, textAlign: 'right' }]}>{fmt(h.monto, s)}</Text>
-                    <Text style={[S.tCell, { width: 130, color: '#555', fontSize: 8 }]}>{h.condicion || '—'}</Text>
+                    <Text style={[S.tCell, { flex: 1, paddingLeft: 8, color: '#555', fontSize: 8 }]}>{h.condicion || '—'}</Text>
                   </View>
                 ))}
               </View>
