@@ -228,4 +228,147 @@ export const maestrosService = {
     const { error } = await supabase.from('industrias').delete().eq('id', industriaId);
     if (error) throw error;
   },
+
+  // Servicios (Catálogo)
+  getMonedasImpuestosUnidades: async (empresaId) => {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('monedas_impuestos_unidades').select('*').eq('empresa_id', empresaId).order('tipo', { ascending: true }).order('codigo', { ascending: true });
+    if (error) { console.error('Error fetching monedas/impuestos/unidades:', error); return []; }
+    return data;
+  },
+  crearMonedaImpuestoUnidad: async (empresaId, item) => {
+    const supabase = await getSupabaseClient();
+    const payload = {
+      id: item.id || makeId('miu'),
+      empresa_id: empresaId,
+      ...pick(item, ['tipo', 'codigo', 'nombre', 'detalle', 'estado']),
+    };
+    const { data, error } = await supabase.from('monedas_impuestos_unidades').insert([payload]).select().single();
+    if (error) throw error;
+    return data;
+  },
+  actualizarMonedaImpuestoUnidad: async (itemId, payload) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('monedas_impuestos_unidades').update(pick(payload, ['tipo', 'codigo', 'nombre', 'detalle', 'estado'])).eq('id', itemId).select().single();
+    if (error) throw error;
+    return data;
+  },
+  eliminarMonedaImpuestoUnidad: async (itemId) => {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.from('monedas_impuestos_unidades').delete().eq('id', itemId);
+    if (error) throw error;
+  },
+
+  getCentrosBeneficio: async (empresaId) => {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('centros_beneficio').select('*').eq('empresa_id', empresaId).order('codigo', { ascending: true });
+    if (error) { console.error('Error fetching CEBE:', error); return []; }
+    return data;
+  },
+  crearCentroBeneficio: async (empresaId, cebe) => {
+    const supabase = await getSupabaseClient();
+    const payload = {
+      id: cebe.id || makeId('cebe'),
+      empresa_id: empresaId,
+      ...pick(cebe, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
+    };
+    const { data, error } = await supabase.from('centros_beneficio').insert([payload]).select().single();
+    if (error) throw error;
+    return data;
+  },
+  actualizarCentroBeneficio: async (cebeId, payload) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('centros_beneficio').update(pick(payload, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cebeId).select().single();
+    if (error) throw error;
+    return data;
+  },
+  importarCentrosBeneficio: async (empresaId, cebes) => {
+    const supabase = await getSupabaseClient();
+    const payload = cebes.map(c => ({
+      id: c.id || makeId('cebe'),
+      empresa_id: empresaId,
+      ...pick(c, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
+    }));
+    const { data, error } = await supabase.from('centros_beneficio').upsert(payload, { onConflict: 'empresa_id,codigo' }).select();
+    if (error) throw error;
+    return data;
+  },
+  getCentrosCosto: async (empresaId) => {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('centros_costo').select('*').eq('empresa_id', empresaId).order('codigo', { ascending: true });
+    if (error) { console.error('Error fetching CECO:', error); return []; }
+    return data;
+  },
+  crearCentroCosto: async (empresaId, ceco) => {
+    const supabase = await getSupabaseClient();
+    const payload = {
+      id: ceco.id || makeId('ceco'),
+      empresa_id: empresaId,
+      ...pick(ceco, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
+    };
+    const { data, error } = await supabase.from('centros_costo').insert([payload]).select().single();
+    if (error) throw error;
+    return data;
+  },
+  actualizarCentroCosto: async (cecoId, payload) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('centros_costo').update(pick(payload, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cecoId).select().single();
+    if (error) throw error;
+    return data;
+  },
+  importarCentrosCosto: async (empresaId, cecos) => {
+    const supabase = await getSupabaseClient();
+    const payload = cecos.map(c => ({
+      id: c.id || makeId('ceco'),
+      empresa_id: empresaId,
+      ...pick(c, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
+    }));
+    const { data, error } = await supabase.from('centros_costo').upsert(payload, { onConflict: 'empresa_id,codigo' }).select();
+    if (error) throw error;
+    return data;
+  },
+
+  getServicios: async (empresaId) => {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('servicios').select('*').eq('empresa_id', empresaId).order('codigo', { ascending: true });
+    if (error) { console.error('Error fetching servicios:', error); return []; }
+    return data;
+  },
+  crearServicio: async (empresaId, servicio) => {
+    const supabase = await getSupabaseClient();
+    const payload = {
+      id: servicio.id || makeId('srv'),
+      empresa_id: empresaId,
+      ...pick(servicio, ['codigo', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas']),
+    };
+    const { data, error } = await supabase.from('servicios').insert([payload]).select().single();
+    if (error) throw error;
+    return data;
+  },
+  actualizarServicio: async (servicioId, payload) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('servicios').update(pick(payload, ['codigo', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas'])).eq('id', servicioId).select().single();
+    if (error) throw error;
+    return data;
+  },
+  eliminarServicio: async (servicioId) => {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.from('servicios').delete().eq('id', servicioId);
+    if (error) throw error;
+  },
+  importarServiciosMasivo: async (empresaId, servicios) => {
+    const supabase = await getSupabaseClient();
+    const payload = servicios.map(s => ({
+      id: s.id || makeId('srv'),
+      empresa_id: empresaId,
+      ...pick(s, ['codigo', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas']),
+    }));
+    const { data, error } = await supabase.from('servicios').upsert(payload, { onConflict: 'empresa_id, codigo' }).select();
+    if (error) throw error;
+    return data;
+  },
 };

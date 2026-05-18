@@ -104,6 +104,21 @@ function empresaPermiteAcceso(estado) {
   return ['activa', 'activo', 'demo'].includes(String(estado || '').toLowerCase());
 }
 
+const SERIES_DOCUMENTARIAS_DEFAULT = [
+  { id: 'ser_cotizaciones', documento: 'Cotizaciones', serie: 'COT-2026', siguiente_correlativo: 42, regla: 'Anual por empresa', estado: 'activo' },
+  { id: 'ser_os_cliente', documento: 'OS Cliente', serie: 'OSC-2026', siguiente_correlativo: 18, regla: 'Anual por empresa', estado: 'activo' },
+  { id: 'ser_ordenes_trabajo', documento: 'Ordenes de Trabajo', serie: 'OT-26', siguiente_correlativo: 64, regla: 'Anual por empresa', estado: 'activo' },
+  { id: 'ser_solpe', documento: 'SOLPE', serie: 'SLP-2026', siguiente_correlativo: 28, regla: 'Anual por empresa', estado: 'activo' },
+  { id: 'ser_facturas', documento: 'Facturas', serie: 'F001', siguiente_correlativo: 520, regla: 'Serie fiscal externa', estado: 'activo' },
+  { id: 'ser_finanzas', documento: 'CxC / CxP', serie: 'FIN-2026', siguiente_correlativo: 145, regla: 'Correlativo financiero', estado: 'activo' },
+];
+
+const SLA_PLANTILLAS_DEFAULT = [
+  { id: 'sla_correctivo_critico', nombre: 'Correctivo critico', tiempo_respuesta_horas: 4, tiempo_resolucion_horas: 24, semaforo_regla: 'Rojo a 80%', estado: 'activo' },
+  { id: 'sla_preventivo_mensual', nombre: 'Preventivo mensual', tiempo_respuesta_horas: 24, tiempo_resolucion_horas: 120, semaforo_regla: 'Naranja a 70%', estado: 'activo' },
+  { id: 'sla_soporte_premium', nombre: 'Soporte Premium', tiempo_respuesta_horas: 2, tiempo_resolucion_horas: 12, semaforo_regla: 'Rojo a 90%', estado: 'activo' },
+];
+
 function getInitialActivePage() {
   if (typeof window === 'undefined') return 'dashboard';
   const hashPage = window.location.hash.replace(/^#\/?/, '').trim();
@@ -114,6 +129,7 @@ function getInitialActivePage() {
 
 export function AppProvider({ children }) {
   const [active, setActive] = useState(getInitialActivePage);
+  const [quickCreate, setQuickCreate] = useState(null);
   const [activeParams, setActiveParams] = useState({});
   const [roleKey, setRoleKey] = useState('admin');
   const [empresa, setEmpresa] = useState(() => {
@@ -216,6 +232,9 @@ export function AppProvider({ children }) {
 
   // Configuración de empresa
   const [empresaConfig, setEmpresaConfig] = useState({});
+  const [seriesDocumentarias, setSeriesDocumentarias] = useState(isSupabaseConfigured() ? [] : SERIES_DOCUMENTARIAS_DEFAULT);
+  const [slaPlantillas, setSlaPlantillas] = useState(isSupabaseConfigured() ? [] : SLA_PLANTILLAS_DEFAULT);
+  const [monedasImpuestosUnidades, setMonedasImpuestosUnidades] = useState([]);
 
   // Maestros Base Data
   const [areasEmpresa, setAreasEmpresa] = useState([]);
@@ -225,6 +244,8 @@ export function AppProvider({ children }) {
   const [almacenes, setAlmacenes] = useState([]);
   const [sedes, setSedes] = useState([]);
   const [industrias, setIndustrias] = useState([]);
+  const [centrosCosto, setCentrosCosto] = useState([]);
+  const [centrosBeneficio, setCentrosBeneficio] = useState([]);
 
   // Personal Operativo (separado del admin, estado propio)
   const [personalOperativo, setPersonalOperativo] = useState([]);
@@ -589,6 +610,9 @@ export function AppProvider({ children }) {
           const al = await maestrosService.getAlmacenes(empresa.id);
           const sd = await maestrosService.getSedes(empresa.id);
           const ind = await maestrosService.getIndustrias(empresa.id);
+          const cc = await maestrosService.getCentrosCosto(empresa.id);
+          const cb = await maestrosService.getCentrosBeneficio(empresa.id);
+          const miu = await maestrosService.getMonedasImpuestosUnidades(empresa.id);
           if (mounted) {
             setAreasEmpresa(ar || []);
             setCargos(cg || []);
@@ -597,12 +621,23 @@ export function AppProvider({ children }) {
             setAlmacenes(al || []);
             setSedes(sd || []);
             setIndustrias(ind || []);
+            setCentrosCosto(cc || []);
+            setCentrosBeneficio(cb || []);
+            setMonedasImpuestosUnidades(miu || []);
           }
         } catch (_err) { /* keep mock */ }
 
         try {
           const { data: cfgData } = await supabase.from('empresa_config').select('*').eq('empresa_id', empresa.id).maybeSingle();
           if (mounted) setEmpresaConfig(cfgData || {});
+          const [{ data: seriesData }, { data: slaData }] = await Promise.all([
+            supabase.from('series_documentarias').select('*').eq('empresa_id', empresa.id).order('documento', { ascending: true }),
+            supabase.from('sla_plantillas').select('*').eq('empresa_id', empresa.id).order('nombre', { ascending: true }),
+          ]);
+          if (mounted) {
+            setSeriesDocumentarias(seriesData || []);
+            setSlaPlantillas(slaData || []);
+          }
         } catch (_err) { /* tabla aún no existe, ignorar */ }
 
         try {
@@ -1528,6 +1563,7 @@ export function AppProvider({ children }) {
       margen_objetivo_pct: 35,
       ...datos,
       cuenta_id: datos.cuenta_id || oportunidades.find(o => o.id === datos.oportunidad_id)?.cuenta_id || null,
+      moneda: datos.moneda || oportunidades.find(o => o.id === datos.oportunidad_id)?.moneda || 'PEN',
       cotizacion_id: null
     };
     const calculada = calcularHojaCosteo(hc);
@@ -1535,6 +1571,9 @@ export function AppProvider({ children }) {
       if (isSupabaseConfigured()) {
         const result = await crmPersist(sb => crearHojaCosteoRpc(sb, empresa.id, calculada));
         if (result?.data) Object.assign(calculada, result.data);
+        if (calculada.moneda && calculada.moneda !== 'PEN') {
+          crmSync(sb => actualizarHojaCosteoSvc(sb, calculada.id, { moneda: calculada.moneda }));
+        }
       } else {
         await crmPersist(sb => persistirHojaCosteo(sb, empresa.id, calculada));
       }
@@ -1585,6 +1624,8 @@ export function AppProvider({ children }) {
   const aprobarHojaCosteo = async (hcId) => {
     const hc = hojasCosteo.find(h => h.id === hcId);
     if (!hc) return;
+    const oppDeHC = oportunidades.find(o => o.id === hc.oportunidad_id);
+    const monedaHC = oppDeHC?.moneda || hc.moneda || empresa?.moneda || 'PEN';
     if (isSupabaseConfigured()) {
       const cotBase = {
         id: generateId('cot'),
@@ -1594,7 +1635,7 @@ export function AppProvider({ children }) {
         version: 1,
         estado: 'borrador',
         fecha: new Date().toISOString().split('T')[0],
-        moneda: 'PEN',
+        moneda: monedaHC,
         validez: '30 dias',
         subtotal: hc.precio_sugerido_sin_igv,
         base_imponible: hc.precio_sugerido_sin_igv,
@@ -1607,7 +1648,18 @@ export function AppProvider({ children }) {
         const result = await crmPersist(sb => aprobarHojaCosteoRpc(sb, empresa.id, hcId, cotBase));
         const cotFinal = { ...cotBase, ...(result?.data?.cotizacion || {}), items: cotBase.items };
         const hcFinal = result?.data?.hoja_costeo || { ...hc, estado: 'aprobada', cotizacion_id: cotFinal.id };
-        crmSync(sb => svcActualizarCotizacion(sb, cotFinal.id, { items: cotFinal.items }));
+        crmSync(sb => svcActualizarCotizacion(sb, cotFinal.id, {
+          items: cotFinal.items,
+          moneda: cotFinal.moneda,
+          subtotal: cotFinal.subtotal,
+          base_imponible: cotFinal.base_imponible,
+          igv_pct: 18,
+          igv: cotFinal.igv,
+          total: cotFinal.total,
+          subtotal_impl: cotFinal.subtotal,
+          igv_impl: cotFinal.igv,
+          total_impl: cotFinal.total,
+        }));
         setCotizaciones(prev => prev.some(c => c.id === cotFinal.id)
           ? prev.map(c => c.id === cotFinal.id ? { ...c, ...cotFinal } : c)
           : [...prev, cotFinal]
@@ -1628,12 +1680,16 @@ export function AppProvider({ children }) {
     const cotId = await crearCotizacion({
       oportunidad_id: hc.oportunidad_id,
       cuenta_id: hc.cuenta_id,
-      moneda: 'PEN',
+      moneda: monedaHC,
       validez: '30 días',
       subtotal: hc.precio_sugerido_sin_igv,
       base_imponible: hc.precio_sugerido_sin_igv,
+      igv_pct: 18,
       igv: Math.round(hc.precio_sugerido_sin_igv * 0.18),
       total: hc.precio_sugerido_total,
+      subtotal_impl: hc.precio_sugerido_sin_igv,
+      igv_impl: Math.round(hc.precio_sugerido_sin_igv * 0.18),
+      total_impl: hc.precio_sugerido_total,
       items: itemsCot,
       hoja_costeo_id: hcId
     });
@@ -1807,7 +1863,7 @@ export function AppProvider({ children }) {
       oportunidad_id: datos.oportunidad_id || null,
       numero_doc_cliente: datos.numero_doc_cliente || null,
       monto_aprobado: monto,
-      moneda: datos.moneda || 'PEN',
+      moneda: datos.moneda || empresa?.moneda || 'PEN',
       condicion_pago: datos.condicion_pago || null,
       fecha_emision: datos.fecha_emision || new Date().toISOString().split('T')[0],
       fecha_inicio: datos.fecha_inicio || null,
@@ -1837,6 +1893,10 @@ export function AppProvider({ children }) {
     return osc.id;
   };
 
+  const actualizarOSCliente = async (id, datos) => {
+    setOsClientes(prev => prev.map(o => o.id === id ? { ...o, ...datos } : o));
+    crmSync(sb => svcActualizarOSCliente(sb, id, datos));
+  };
 
   const registrarActividad = (datos) => {
     const act = {
@@ -1944,10 +2004,8 @@ export function AppProvider({ children }) {
       costoEst: montoPlanificado,
       costoReal: 0,
       avance: 0,
+      es_adicional: datos.es_adicional || false,
     };
-
-    const otsAsociadas = Array.from(new Set([...(os.ots_asociadas || []), ot.id]));
-    const saldoPorEjecutar = Math.max(0, Number(os.saldo_por_ejecutar || 0) - montoPlanificado);
 
     try {
       if (isSupabaseConfigured()) {
@@ -1956,7 +2014,6 @@ export function AppProvider({ children }) {
         Object.assign(ot, data.orden_trabajo || {});
       } else {
         await opsPersist(sb => persistirOT(sb, empresa.id, ot));
-        await crmPersist(sb => svcActualizarOSCliente(sb, os.id, { ots_asociadas: otsAsociadas, saldo_por_ejecutar: saldoPorEjecutar }));
       }
     } catch (error) {
       const message = error?.message || 'No se pudo guardar la OT en Supabase.';
@@ -1965,7 +2022,15 @@ export function AppProvider({ children }) {
     }
 
     setOts(prev => [...prev, ot]);
-    setOsClientes(prev => prev.map(item => item.id === os.id ? { ...item, ots_asociadas: otsAsociadas, saldo_por_ejecutar: saldoPorEjecutar } : item));
+    setOsClientes(prev => prev.map(item => {
+      if (item.id !== os.id) return item;
+      const nuevasOTs = Array.from(new Set([...(item.ots_asociadas || []), ot.id]));
+      const nuevoSaldo = Math.max(0, Number(item.saldo_por_ejecutar || 0) - montoPlanificado);
+      if (!isSupabaseConfigured()) {
+        crmSync(sb => svcActualizarOSCliente(sb, os.id, { ots_asociadas: nuevasOTs, saldo_por_ejecutar: nuevoSaldo }));
+      }
+      return { ...item, ots_asociadas: nuevasOTs, saldo_por_ejecutar: nuevoSaldo };
+    }));
     auditSync({ modulo: 'operaciones', entidad: 'ordenes_trabajo', entidad_id: ot.id, accion: 'crear_desde_os', valor_nuevo: ot });
     addNotificacion(`OT ${ot.numero} creada exitosamente.`);
     return ot.id;
@@ -2780,6 +2845,119 @@ export function AppProvider({ children }) {
     return pub?.publicUrl ? `${pub.publicUrl}?v=${Date.now()}` : null;
   };
 
+  const recargarParametrosGenerales = async () => {
+    if (!isSupabaseConfigured() || !empresa?.id) return;
+    const supabase = await getSupabaseClient();
+    const [{ data: seriesData, error: seriesError }, { data: slaData, error: slaError }] = await Promise.all([
+      supabase.from('series_documentarias').select('*').eq('empresa_id', empresa.id).order('documento', { ascending: true }),
+      supabase.from('sla_plantillas').select('*').eq('empresa_id', empresa.id).order('nombre', { ascending: true }),
+    ]);
+    if (seriesError) throw seriesError;
+    if (slaError) throw slaError;
+    setSeriesDocumentarias(seriesData || []);
+    setSlaPlantillas(slaData || []);
+  };
+
+  const crearSerieDocumentaria = async (datos) => {
+    const payload = {
+      id: datos.id || generateId('ser'),
+      empresa_id: empresa?.id,
+      documento: datos.documento || '',
+      serie: datos.serie || '',
+      siguiente_correlativo: Number(datos.siguiente_correlativo || 1),
+      regla: datos.regla || '',
+      estado: datos.estado || 'activo',
+    };
+    if (isSupabaseConfigured() && empresa?.id) {
+      const supabase = await getSupabaseClient();
+      const { data, error } = await supabase.from('series_documentarias').insert(payload).select('*').single();
+      if (error) throw error;
+      setSeriesDocumentarias(prev => [data, ...prev]);
+      return data;
+    }
+    setSeriesDocumentarias(prev => [payload, ...prev]);
+    return payload;
+  };
+
+  const actualizarSerieDocumentaria = async (id, datos) => {
+    const payload = {
+      documento: datos.documento || '',
+      serie: datos.serie || '',
+      siguiente_correlativo: Number(datos.siguiente_correlativo || 1),
+      regla: datos.regla || '',
+      estado: datos.estado || 'activo',
+      updated_at: new Date().toISOString(),
+    };
+    if (isSupabaseConfigured()) {
+      const supabase = await getSupabaseClient();
+      const { data, error } = await supabase.from('series_documentarias').update(payload).eq('id', id).select('*').single();
+      if (error) throw error;
+      setSeriesDocumentarias(prev => prev.map(s => s.id === id ? data : s));
+      return data;
+    }
+    setSeriesDocumentarias(prev => prev.map(s => s.id === id ? { ...s, ...payload } : s));
+    return payload;
+  };
+
+  const eliminarSerieDocumentaria = async (id) => {
+    if (isSupabaseConfigured()) {
+      const supabase = await getSupabaseClient();
+      const { error } = await supabase.from('series_documentarias').delete().eq('id', id);
+      if (error) throw error;
+    }
+    setSeriesDocumentarias(prev => prev.filter(s => s.id !== id));
+  };
+
+  const crearSlaPlantilla = async (datos) => {
+    const payload = {
+      id: datos.id || generateId('sla'),
+      empresa_id: empresa?.id,
+      nombre: datos.nombre || '',
+      tiempo_respuesta_horas: Number(datos.tiempo_respuesta_horas || 0),
+      tiempo_resolucion_horas: Number(datos.tiempo_resolucion_horas || 0),
+      semaforo_regla: datos.semaforo_regla || '',
+      estado: datos.estado || 'activo',
+    };
+    if (isSupabaseConfigured() && empresa?.id) {
+      const supabase = await getSupabaseClient();
+      const { data, error } = await supabase.from('sla_plantillas').insert(payload).select('*').single();
+      if (error) throw error;
+      setSlaPlantillas(prev => [data, ...prev]);
+      return data;
+    }
+    setSlaPlantillas(prev => [payload, ...prev]);
+    return payload;
+  };
+
+  const actualizarSlaPlantilla = async (id, datos) => {
+    const payload = {
+      nombre: datos.nombre || '',
+      tiempo_respuesta_horas: Number(datos.tiempo_respuesta_horas || 0),
+      tiempo_resolucion_horas: Number(datos.tiempo_resolucion_horas || 0),
+      semaforo_regla: datos.semaforo_regla || '',
+      estado: datos.estado || 'activo',
+      updated_at: new Date().toISOString(),
+    };
+    if (isSupabaseConfigured()) {
+      const supabase = await getSupabaseClient();
+      const { data, error } = await supabase.from('sla_plantillas').update(payload).eq('id', id).select('*').single();
+      if (error) throw error;
+      setSlaPlantillas(prev => prev.map(s => s.id === id ? data : s));
+      return data;
+    }
+    setSlaPlantillas(prev => prev.map(s => s.id === id ? { ...s, ...payload } : s));
+    return payload;
+  };
+
+  const eliminarSlaPlantilla = async (id) => {
+    if (isSupabaseConfigured()) {
+      const supabase = await getSupabaseClient();
+      const { error } = await supabase.from('sla_plantillas').delete().eq('id', id);
+      if (error) throw error;
+    }
+    setSlaPlantillas(prev => prev.filter(s => s.id !== id));
+  };
+
   const crearArea = async (area) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await maestrosService.crearArea(empresa.id, area);
@@ -2951,6 +3129,112 @@ export function AppProvider({ children }) {
   const eliminarIndustria = async (id) => {
     if (isSupabaseConfigured()) await maestrosService.eliminarIndustria(id);
     setIndustrias(prev => prev.filter(i => i.id !== id));
+  };
+
+  const crearMonedaImpuestoUnidad = async (item) => {
+    const payload = {
+      ...item,
+      tipo: item.tipo || 'moneda',
+      codigo: String(item.codigo || '').trim().toUpperCase(),
+      estado: item.estado || 'activo',
+    };
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await maestrosService.crearMonedaImpuestoUnidad(empresa.id, payload);
+      setMonedasImpuestosUnidades(prev => [...prev, data]);
+      return data;
+    }
+    const nuevo = { ...payload, id: generateId('miu'), empresa_id: empresa?.id };
+    setMonedasImpuestosUnidades(prev => [...prev, nuevo]);
+    return nuevo;
+  };
+  const actualizarMonedaImpuestoUnidad = async (id, datos) => {
+    const payload = {
+      ...datos,
+      tipo: datos.tipo || 'moneda',
+      codigo: String(datos.codigo || '').trim().toUpperCase(),
+      estado: datos.estado || 'activo',
+    };
+    if (isSupabaseConfigured()) {
+      const act = await maestrosService.actualizarMonedaImpuestoUnidad(id, payload);
+      setMonedasImpuestosUnidades(prev => prev.map(i => i.id === id ? act : i));
+      return act;
+    }
+    setMonedasImpuestosUnidades(prev => prev.map(i => i.id === id ? { ...i, ...payload } : i));
+    return payload;
+  };
+  const eliminarMonedaImpuestoUnidad = async (id) => {
+    if (isSupabaseConfigured()) await maestrosService.eliminarMonedaImpuestoUnidad(id);
+    setMonedasImpuestosUnidades(prev => prev.filter(i => i.id !== id));
+  };
+
+  const crearCentroCosto = async (datos) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await maestrosService.crearCentroCosto(empresa.id, datos);
+      setCentrosCosto(prev => [...prev, data]);
+      return data;
+    }
+    const nuevo = { ...datos, id: `ceco_${Date.now()}`, empresa_id: empresa?.id };
+    setCentrosCosto(prev => [...prev, nuevo]);
+    return nuevo;
+  };
+  const actualizarCentroCosto = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const act = await maestrosService.actualizarCentroCosto(id, datos);
+      setCentrosCosto(prev => prev.map(c => c.id === id ? act : c));
+      return act;
+    }
+    setCentrosCosto(prev => prev.map(c => c.id === id ? { ...c, ...datos } : c));
+    return datos;
+  };
+  const eliminarCentroCosto = async (id) => {
+    if (isSupabaseConfigured()) {
+      const supabase = await import('./lib/supabaseClient.js').then(m => m.getSupabaseClient());
+      const { error } = await supabase.from('centros_costo').delete().eq('id', id);
+      if (error) throw error;
+    }
+    setCentrosCosto(prev => prev.filter(c => c.id !== id));
+  };
+  const importarCentrosCosto = async (filas) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await maestrosService.importarCentrosCosto(empresa.id, filas);
+      setCentrosCosto(await maestrosService.getCentrosCosto(empresa.id));
+      return data;
+    }
+  };
+
+  const crearCentroBeneficio = async (datos) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await maestrosService.crearCentroBeneficio(empresa.id, datos);
+      setCentrosBeneficio(prev => [...prev, data]);
+      return data;
+    }
+    const nuevo = { ...datos, id: `cebe_${Date.now()}`, empresa_id: empresa?.id };
+    setCentrosBeneficio(prev => [...prev, nuevo]);
+    return nuevo;
+  };
+  const actualizarCentroBeneficio = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const act = await maestrosService.actualizarCentroBeneficio(id, datos);
+      setCentrosBeneficio(prev => prev.map(c => c.id === id ? act : c));
+      return act;
+    }
+    setCentrosBeneficio(prev => prev.map(c => c.id === id ? { ...c, ...datos } : c));
+    return datos;
+  };
+  const eliminarCentroBeneficio = async (id) => {
+    if (isSupabaseConfigured()) {
+      const supabase = await import('./lib/supabaseClient.js').then(m => m.getSupabaseClient());
+      const { error } = await supabase.from('centros_beneficio').delete().eq('id', id);
+      if (error) throw error;
+    }
+    setCentrosBeneficio(prev => prev.filter(c => c.id !== id));
+  };
+  const importarCentrosBeneficio = async (filas) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await maestrosService.importarCentrosBeneficio(empresa.id, filas);
+      setCentrosBeneficio(await maestrosService.getCentrosBeneficio(empresa.id));
+      return data;
+    }
   };
 
   const registrarProveedor = async (proveedor) => {
@@ -3756,8 +4040,14 @@ export function AppProvider({ children }) {
     }
   };
 
+  const monedasActivas = (() => {
+    const list = (monedasImpuestosUnidades || []).filter(m => m.tipo === 'moneda' && m.estado === 'activo');
+    return list.length ? list : [{ codigo: empresa?.moneda || 'PEN', nombre: 'Moneda base' }];
+  })();
+
   const contextValue = {
     active, navigate, activeParams,
+    quickCreate, setQuickCreate,
     roleKey, setRoleKey, role, isSuperadmin,
     empresa, setEmpresa,
     dark, setDark,
@@ -3781,7 +4071,7 @@ export function AppProvider({ children }) {
     agendaEventos, setAgendaEventos, crearAgendaEvento, actualizarAgendaEvento,
     hojasCosteo, setHojasCosteo, crearHojaCosteo, actualizarHojaCosteo, aprobarHojaCosteo,
     cotizaciones, setCotizaciones, actualizarCotizacion,
-    osClientes, setOsClientes,
+    osClientes, setOsClientes, actualizarOSCliente,
     cxp, setCxp,
     cxc, setCxc,
     facturas, setFacturas,
@@ -3812,6 +4102,10 @@ export function AppProvider({ children }) {
     almacenes, setAlmacenes, actualizarAlmacen, eliminarAlmacen,
     sedes, setSedes, actualizarSede, eliminarSede,
     industrias, setIndustrias, actualizarIndustria, eliminarIndustria,
+    monedasImpuestosUnidades, setMonedasImpuestosUnidades, monedasActivas,
+    crearMonedaImpuestoUnidad, actualizarMonedaImpuestoUnidad, eliminarMonedaImpuestoUnidad,
+    centrosCosto, setCentrosCosto, crearCentroCosto, actualizarCentroCosto, eliminarCentroCosto, importarCentrosCosto,
+    centrosBeneficio, setCentrosBeneficio, crearCentroBeneficio, actualizarCentroBeneficio, eliminarCentroBeneficio, importarCentrosBeneficio,
 
     // Actions
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,
@@ -3881,6 +4175,9 @@ export function AppProvider({ children }) {
     createdRecords, addCreatedRecord,
     // Empresa Config
     empresaConfig, guardarEmpresaConfig, subirImagenEmpresa,
+    seriesDocumentarias, slaPlantillas, recargarParametrosGenerales,
+    crearSerieDocumentaria, actualizarSerieDocumentaria, eliminarSerieDocumentaria,
+    crearSlaPlantilla, actualizarSlaPlantilla, eliminarSlaPlantilla,
   };
 
   return (

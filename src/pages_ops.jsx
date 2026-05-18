@@ -96,7 +96,8 @@ function Cuentas() {
 
     // Cotizaciones
     cotizaciones.filter(c => c.cuenta_id===cId).forEach(c => {
-      eventos.push({ id:`cot-${c.id}`, tipo:'cotizacion', fecha:c.fecha, titulo:`Cotización ${c.numero} v${c.version||1}`, descripcion:`${c.estado} · ${money(c.total)}`, usuario:c.responsable, nav:'cotizaciones', navParams:{ detail:c.id } });
+      const cotSym = c.moneda === 'USD' ? 'US$' : c.moneda === 'EUR' ? '€' : 'S/';
+      eventos.push({ id:`cot-${c.id}`, tipo:'cotizacion', fecha:c.fecha, titulo:`Cotización ${c.numero} v${c.version||1}`, descripcion:`${c.estado} · ${money(c.total_impl || c.total, cotSym)}`, usuario:c.responsable, nav:'cotizaciones', navParams:{ detail:c.id } });
     });
 
     // Hojas de costeo aprobadas
@@ -106,7 +107,8 @@ function Cuentas() {
 
     // OS Cliente
     osClientes.filter(os => os.cuenta_id===cId).forEach(os => {
-      eventos.push({ id:`os-${os.id}`, tipo:'os_cliente', fecha:os.fecha_emision, titulo:`OS Cliente: ${os.numero}`, descripcion:`${os.estado} · ${money(os.monto_aprobado)}`, usuario:null, nav:'os_cliente', navParams:{ detail:os.id } });
+      const sym = os.moneda === 'USD' ? 'US$' : os.moneda === 'EUR' ? '€' : 'S/';
+      eventos.push({ id:`os-${os.id}`, tipo:'os_cliente', fecha:os.fecha_emision, titulo:`OS Cliente: ${os.numero}`, descripcion:`${os.estado} · ${money(os.monto_aprobado, sym)}`, usuario:null, nav:'os_cliente', navParams:{ detail:os.id } });
     });
 
     // OTs
@@ -648,7 +650,7 @@ function Cuentas() {
                       <span className="badge badge-gray">{c.estado}</span>
                     </div>
                     <div className="row mt-2" style={{justifyContent:'space-between', fontSize:12}}>
-                      <span className="text-muted">Total: <strong style={{color:'var(--fg)'}}>{money(c.total)}</strong></span>
+                      <span className="text-muted">Total: <strong style={{color:'var(--fg)'}}>{money(c.total_impl || c.total, c.moneda === 'USD' ? 'US$' : c.moneda === 'EUR' ? '€' : 'S/')}</strong></span>
                       <span className="text-muted">{c.fecha}</span>
                     </div>
                   </div>
@@ -665,7 +667,7 @@ function Cuentas() {
                       <span className="badge badge-gray">{os.estado}</span>
                     </div>
                     <div className="row mt-2" style={{justifyContent:'space-between', fontSize:12}}>
-                      <span className="text-muted">Monto Aprobado: <strong style={{color:'var(--fg)'}}>{money(os.monto_aprobado)}</strong></span>
+                      <span className="text-muted">Monto Aprobado: <strong style={{color:'var(--fg)'}}>{money(os.monto_aprobado, os.moneda === 'USD' ? 'US$' : os.moneda === 'EUR' ? '€' : 'S/')}</strong></span>
                       <span className="text-muted">{os.fecha_emision}</span>
                     </div>
                   </div>
@@ -1004,13 +1006,72 @@ function Cuentas() {
 }
 
 function OT({ role }) {
-  const { ots, cuentas, partes, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo } = useApp();
+  const { ots, cuentas, partes, osClientes, usuarios, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, registrarParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio } = useApp();
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Resumen');
   const [panel] = useState(false);
-  
+  const [confirmAnular, setConfirmAnular] = useState(false);
+
+  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: new Date().toISOString().split('T')[0], fecha_fin: '' };
+  const [panelNuevaOT, setPanelNuevaOT] = useState(false);
+  const [formNuevaOT, setFormNuevaOT] = useState(formNuevaOTBase);
+  const [errorNuevaOT, setErrorNuevaOT] = useState('');
+  const [savingNuevaOT, setSavingNuevaOT] = useState(false);
+
+  const updNuevaOT = (k, v) => setFormNuevaOT(p => ({ ...p, [k]: v }));
+  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
+  const tiposActivos = (tiposServicio || []).filter(t => t.estado !== 'inactivo');
+  const personal = (personalOperativo || []).filter(p => p.estado === 'activo');
+
+  const osSeleccionada = formNuevaOT.tipo === 'cliente' ? osClientes.find(o => o.id === formNuevaOT.os_cliente_id) : null;
+  const cebeHeredado = osSeleccionada ? (centrosBeneficio || []).find(c => c.id === osSeleccionada.centro_beneficio_id) : null;
+
+  const cerrarPanelNuevaOT = () => { setPanelNuevaOT(false); setFormNuevaOT(formNuevaOTBase); setErrorNuevaOT(''); };
+
+  const submitNuevaOT = async () => {
+    if (savingNuevaOT) return;
+    if (!formNuevaOT.centro_costo_id) { setErrorNuevaOT('Selecciona un CECO antes de continuar.'); return; }
+    if (formNuevaOT.tipo === 'cliente') {
+      if (!formNuevaOT.os_cliente_id) { setErrorNuevaOT('Selecciona la OS Cliente vinculada.'); return; }
+      if (!osSeleccionada?.centro_beneficio_id) { setErrorNuevaOT('La OS Cliente seleccionada no tiene CEBE asignado. Asígnalo desde la ficha de la OS.'); return; }
+    }
+    setSavingNuevaOT(true);
+    setErrorNuevaOT('');
+    try {
+      const datos = {
+        tipo: formNuevaOT.tipo,
+        centro_costo_id: formNuevaOT.centro_costo_id,
+        servicio: formNuevaOT.servicio,
+        descripcion: formNuevaOT.descripcion,
+        tecnico_responsable_id: formNuevaOT.tecnico_responsable_id,
+        prioridad: formNuevaOT.prioridad,
+        fecha_programada: formNuevaOT.fecha_programada,
+        fecha_fin: formNuevaOT.fecha_fin,
+        estado: 'programada',
+      };
+      if (formNuevaOT.tipo === 'cliente') {
+        await crearOTDesdeOS(formNuevaOT.os_cliente_id, { ...datos, costo_estimado: 0 });
+      } else {
+        crearOT({ ...datos, centro_beneficio_id: formNuevaOT.centro_beneficio_id });
+      }
+      cerrarPanelNuevaOT();
+    } catch (err) {
+      setErrorNuevaOT(err?.message || 'No se pudo crear la OT.');
+    } finally {
+      setSavingNuevaOT(false);
+    }
+  };
+  const [showNuevaTarea, setShowNuevaTarea] = useState(false);
+  const [nuevaTareaForm, setNuevaTareaForm] = useState({ descripcion: '', responsable_id: '', fecha_limite: '' });
+  const [showAsignarTec, setShowAsignarTec] = useState(false);
+  const [asignarTecForm, setAsignarTecForm] = useState({ tecnico_id: '', fecha_inicio: new Date().toISOString().split('T')[0], fecha_fin: '' });
+  const [showNuevoParte, setShowNuevoParte] = useState(false);
+  const [parteFormOT, setParteFormOT] = useState({ tecnico: '', fecha: new Date().toISOString().split('T')[0], horas: 8, avance_reportado: 0, actividades: '' });
+
   const canCost = role.permisos.ver_costos || role.permisos.todo;
   const getCuenta = (id) => cuentas.find(c => c.id === id)?.razon_social || id;
+  const otSym = (ot) => { const m = osClientes.find(o => o.id === ot.os_cliente_id)?.moneda; return m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'S/'; };
 
   const badges = {
     borrador: ['badge-gray','Borrador'], programada: ['badge-cyan','Programada'],
@@ -1019,6 +1080,54 @@ function OT({ role }) {
   };
 
   const partesOT = sel ? partes.filter(p => p.ot_id === sel.id) : [];
+
+  const osVinculada = sel?.os_cliente_id ? osClientes.find(o => o.id === sel.os_cliente_id) : null;
+  const responsableNombre = sel
+    ? (usuarios.find(u => u.id === sel.tecnico_responsable_id)?.nombre || sel.responsable || '—')
+    : '—';
+  const supervisorNombre = sel?.supervisor || '—';
+  const prioridadMeta = { normal: ['badge-gray','Normal'], urgente: ['badge-orange','Urgente'], critica: ['badge-red','Crítica'] };
+
+  const agregarTarea = () => {
+    if (!nuevaTareaForm.descripcion.trim()) return;
+    const tareas = [...(sel.tareas || []), { id: Date.now(), descripcion: nuevaTareaForm.descripcion, responsable_id: nuevaTareaForm.responsable_id, fecha_limite: nuevaTareaForm.fecha_limite, estado: 'pendiente', completado: false }];
+    actualizarOT(sel.id, { tareas });
+    setSel(s => ({ ...s, tareas }));
+    setNuevaTareaForm({ descripcion: '', responsable_id: '', fecha_limite: '' });
+    setShowNuevaTarea(false);
+  };
+
+  const toggleTarea = (tareaId) => {
+    const tareas = (sel.tareas || []).map(t => {
+      if (t.id !== tareaId) return t;
+      const completado = !t.completado;
+      return { ...t, completado, estado: completado ? 'completada' : 'pendiente' };
+    });
+    actualizarOT(sel.id, { tareas });
+    setSel(s => ({ ...s, tareas }));
+  };
+
+  const submitParteDesdOT = async (e) => {
+    e.preventDefault();
+    if (!parteFormOT.actividades.trim()) return;
+    await registrarParteDiario({ ...parteFormOT, ot_id: sel.id });
+    setShowNuevoParte(false);
+    setParteFormOT({ tecnico: '', fecha: new Date().toISOString().split('T')[0], horas: 8, avance_reportado: 0, actividades: '' });
+  };
+
+  const submitAsignarTec = async (e) => {
+    e.preventDefault();
+    if (!asignarTecForm.tecnico_id || !asignarTecForm.fecha_inicio) return;
+    await crearAsignacionesRango({ otId: sel.id, tecnicoIds: [asignarTecForm.tecnico_id], fechaInicio: asignarTecForm.fecha_inicio, fechaFin: asignarTecForm.fecha_fin || asignarTecForm.fecha_inicio });
+    setShowAsignarTec(false);
+    setAsignarTecForm({ tecnico_id: '', fecha_inicio: new Date().toISOString().split('T')[0], fecha_fin: '' });
+  };
+
+  const historialOT = sel ? [
+    { id: 'create', fecha: sel.created_at || sel.fecha_inicio || '', usuario: '—', evento: `OT ${sel.numero} creada`, tipo: 'creacion' },
+    ...partesOT.map(p => ({ id: p.id, fecha: p.fecha, usuario: p.tecnico, evento: `Parte diario registrado · ${p.horas}h · +${p.avance_reportado}% avance`, tipo: 'parte' })),
+    ...(['cerrada','valorizada','facturada'].includes(sel.estado) ? [{ id: 'close', fecha: sel.fecha_fin || '', usuario: '—', evento: 'OT cerrada técnicamente', tipo: 'cierre' }] : []),
+  ].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')) : [];
 
   useEffect(() => {
     if (!activeParams?.detail) return;
@@ -1038,7 +1147,7 @@ function OT({ role }) {
         </div>
         <div className="row">
           <button className="btn btn-secondary">{I.filter} Filtrar</button>
-          <button className="btn btn-primary">{I.plus} Nueva OT</button>
+          <button className="btn btn-primary" data-local-form="true" onClick={() => setPanelNuevaOT(true)}>{I.plus} Nueva OT</button>
         </div>
       </div>
 
@@ -1096,7 +1205,7 @@ function OT({ role }) {
                   </td>
                   <td><span className={'badge '+(o.sla==='vencido'?'badge-red':o.sla==='riesgo'?'badge-orange':'badge-green')}>{o.sla==='vencido'?'Vencido':o.sla==='riesgo'?'Riesgo':'OK'}</span></td>
                   <td className="text-muted">{o.responsable}</td>
-                  {canCost && <td className="num">{money(o.costoReal||0)}<span className="text-subtle"> / {money(o.costoEst||0)}</span></td>}
+                  {canCost && <td className="num">{money(o.costoReal||0, otSym(o))}<span className="text-subtle"> / {money(o.costoEst||0, otSym(o))}</span></td>}
                   <td style={{width:120}}>
                     <div className="bar"><div style={{width:(o.avance||0)+'%', background: o.avance===100?'var(--green)':'var(--cyan)'}}/></div>
                     <div style={{fontSize:11,marginTop:2}}>{o.avance||0}%</div>
@@ -1183,63 +1292,210 @@ function OT({ role }) {
 
       {sel && <>
         <div className="side-panel-backdrop" onClick={() => { setSel(null); navigate('ot'); }}/>
-        <div className="side-panel" style={{width: 800}}>
-          <div className="side-panel-head">
-            <div>
-              <div className="eyebrow">Orden de trabajo</div>
-              <div className="font-display mono" style={{fontSize:20, fontWeight:700, marginTop:2}}>{sel.numero}</div>
+        <div className="side-panel" style={{width: 840}}>
+
+          {/* HEADER */}
+          <div className="side-panel-head" style={{flexDirection:'column', alignItems:'stretch', gap:10, paddingBottom:12}}>
+            {/* Breadcrumb */}
+            <div style={{display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--fg-muted)'}}>
+              {osVinculada ? (
+                <>
+                  <button className="btn btn-ghost" style={{padding:0, fontSize:12, color:'var(--cyan)', fontWeight:600}}
+                    onClick={() => { setSel(null); navigate('os_cliente', { detail: osVinculada.id }); }}>
+                    {osVinculada.numero}
+                  </button>
+                  <span>›</span>
+                  <span style={{color:'var(--fg)', fontWeight:600}}>{sel.numero}</span>
+                </>
+              ) : (
+                <span style={{color:'var(--fg-muted)'}}>Órdenes de Trabajo › {sel.numero}</span>
+              )}
             </div>
-            <button className="icon-btn" onClick={() => { setSel(null); navigate('ot'); }}>{I.x}</button>
+
+            {/* Título + cerrar */}
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+              <div>
+                <div className="eyebrow">Orden de trabajo</div>
+                <div className="font-display mono" style={{fontSize:20, fontWeight:700, marginTop:2}}>{sel.numero}</div>
+              </div>
+              <div className="row" style={{gap:8, alignItems:'center'}}>
+                {!['cerrada','cerrada_tecnica','facturada','anulada'].includes(sel.estado) && (
+                  confirmAnular
+                    ? <div className="row" style={{gap:6, alignItems:'center'}}>
+                        <span style={{fontSize:12, color:'var(--danger)'}}>¿Confirmar anulación?</span>
+                        <button className="btn btn-secondary" style={{fontSize:11, padding:'2px 8px'}} onClick={() => setConfirmAnular(false)}>No</button>
+                        <button className="btn" style={{fontSize:11, padding:'2px 8px', background:'var(--danger)', color:'#fff'}} onClick={() => { actualizarOT(sel.id, { estado: 'anulada' }); setConfirmAnular(false); setSel(s => ({ ...s, estado: 'anulada' })); }}>Sí, anular</button>
+                      </div>
+                    : <button className="btn btn-secondary" style={{fontSize:12, color:'var(--danger)'}} onClick={() => setConfirmAnular(true)}>Anular OT</button>
+                )}
+                <button className="icon-btn" onClick={() => { setSel(null); setConfirmAnular(false); navigate('ot'); }}>{I.x}</button>
+              </div>
+            </div>
+
+            {/* Estado + botones de acción */}
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8}}>
+              <div className="row" style={{gap:6, flexWrap:'wrap'}}>
+                <span className={'badge '+(badges[sel.estado]?.[0]||'badge-gray')}>{badges[sel.estado]?.[1]||sel.estado}</span>
+                <span className={'badge '+(sel.sla==='vencido'?'badge-red':sel.sla==='riesgo'?'badge-orange':'badge-green')}>SLA {sel.sla==='vencido'?'Vencido':sel.sla==='riesgo'?'Riesgo':'OK'}</span>
+                {sel.gps && <span className="badge badge-cyan">{I.mapPin}GPS</span>}
+              </div>
+              <div className="row" style={{gap:8}}>
+                {sel.estado === 'programada' && (
+                  <button className="btn btn-primary" style={{fontSize:13}} onClick={() => { actualizarOT(sel.id, { estado: 'ejecucion', fecha_inicio_real: new Date().toISOString() }); setSel(s => ({ ...s, estado: 'ejecucion' })); }}>
+                    {I.play} Iniciar OT
+                  </button>
+                )}
+                {sel.estado === 'ejecucion' && <>
+                  <button className="btn btn-secondary" style={{fontSize:13}} onClick={() => { setActiveTab('Partes'); setShowNuevoParte(true); }}>
+                    {I.plus} Registrar Parte Diario
+                  </button>
+                  <button className="btn btn-primary" style={{fontSize:13}} onClick={() => { cerrarTecnicamenteOT(sel.id, { resultado: 'conforme' }); setSel(s => ({ ...s, estado: 'cerrada' })); }}>
+                    {I.check} Cerrar OT
+                  </button>
+                </>}
+                {(sel.estado === 'cerrada' || sel.estado === 'cerrada_tecnica') && (
+                  <button className="btn btn-secondary" style={{fontSize:13}} onClick={() => setActiveTab('Historial')}>
+                    {I.file} Ver cierre técnico
+                  </button>
+                )}
+                {sel.estado === 'cerrada' && (
+                  <button className="btn btn-secondary" style={{fontSize:13}}>{I.truck} Enviar a remisión</button>
+                )}
+              </div>
+            </div>
           </div>
+
+          {/* BODY */}
           <div className="side-panel-body">
-            <div className="row" style={{marginBottom:16, flexWrap:'wrap'}}>
-              <span className={'badge '+(badges[sel.estado]?.[0]||'badge-gray')}>{badges[sel.estado]?.[1]||sel.estado}</span>
-              <span className={'badge '+(sel.sla==='vencido'?'badge-red':sel.sla==='riesgo'?'badge-orange':'badge-green')}>SLA {sel.sla==='vencido'?'Vencido':sel.sla==='riesgo'?'Riesgo':'OK'}</span>
-              {sel.gps && <span className="badge badge-cyan">{I.mapPin}GPS registrado · -12.0464, -77.0428</span>}
-            </div>
-            
             <div className="tabs">
-              {['Resumen', 'Tareas', 'Checklists y Calidad', 'Personal y Recursos', 'Partes', 'Costos'].map(t => (
-                (!canCost && t==='Costos') ? null :
+              {['Resumen', 'Tareas', 'Checklists y Calidad', 'Personal y Recursos', 'Partes', ...(canCost ? ['Costos'] : []), 'Evidencias', 'Historial'].map(t => (
                 <div key={t} className={`tab ${activeTab===t?'active':''}`} onClick={() => setActiveTab(t)}>{t}</div>
               ))}
             </div>
 
+            {/* ── TAB RESUMEN ── */}
             {activeTab === 'Resumen' && (
-              <>
-                <div className="grid-3" style={{gap:12, marginBottom:16}}>
-                  <div><div className="eyebrow">Cliente</div><div>{getCuenta(sel.cuenta_id) || sel.cliente}</div></div>
-                  <div><div className="eyebrow">Sede</div><div>{sel.sede}</div></div>
-                  <div><div className="eyebrow">Tipo</div><div>{sel.tipo}</div></div>
-                  <div><div className="eyebrow">Responsable</div><div>{sel.responsable}</div></div>
-                  <div><div className="eyebrow">Supervisor</div><div>{sel.supervisor}</div></div>
-                  <div><div className="eyebrow">Fechas</div><div>{sel.fecha_inicio} — {sel.fecha_fin}</div></div>
+              <div className="col" style={{gap:16}}>
+                <div className="grid-3" style={{gap:12}}>
+                  <div>
+                    <div className="eyebrow">OS Cliente</div>
+                    {osVinculada
+                      ? <button className="btn btn-ghost" style={{padding:0, color:'var(--cyan)', fontWeight:600, fontSize:13, textDecoration:'underline'}}
+                          onClick={() => { setSel(null); navigate('os_cliente', { detail: osVinculada.id }); }}>
+                          {osVinculada.numero}
+                        </button>
+                      : <span className="text-muted">—</span>
+                    }
+                  </div>
+                  <div><div className="eyebrow">Cliente</div><div>{getCuenta(sel.cuenta_id) || sel.cliente || '—'}</div></div>
+                  <div><div className="eyebrow">Sede</div><div>{sel.sede || '—'}</div></div>
+                  <div><div className="eyebrow">Tipo</div><div>{sel.tipo || '—'}</div></div>
+                  <div>
+                    <div className="eyebrow">Prioridad</div>
+                    <span className={`badge ${prioridadMeta[sel.prioridad || 'normal']?.[0] || 'badge-gray'}`}>
+                      {prioridadMeta[sel.prioridad || 'normal']?.[1] || 'Normal'}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="eyebrow">Facturación</div>
+                    <span className={`badge ${sel.facturable === false ? 'badge-gray' : 'badge-green'}`}>
+                      {sel.facturable === false ? 'No facturable' : 'Facturable'}
+                    </span>
+                  </div>
+                  <div><div className="eyebrow">Responsable</div><div>{responsableNombre}</div></div>
+                  <div><div className="eyebrow">Supervisor</div><div>{supervisorNombre}</div></div>
+                  <div><div className="eyebrow">Fecha de inicio</div><div>{sel.fecha_inicio || '—'}</div></div>
+                  <div><div className="eyebrow">Fecha fin programada</div><div>{sel.fecha_fin || sel.fecha_programada || '—'}</div></div>
                 </div>
                 <div style={{background:'var(--bg-subtle)', padding:16, borderRadius:8}}>
                   <div className="eyebrow" style={{marginBottom:8}}>Descripción / Alcance</div>
-                  <p style={{fontSize:13, lineHeight:1.5}}>{sel.descripcion || 'Sin descripción detallada.'}</p>
+                  <p style={{fontSize:13, lineHeight:1.5, margin:0}}>{sel.descripcion || 'Sin descripción detallada.'}</p>
                 </div>
-              </>
+              </div>
             )}
 
+            {/* ── TAB TAREAS ── */}
             {activeTab === 'Tareas' && (
               <div>
-                <h3 style={{marginBottom:16}}>Lista de Tareas</h3>
-                {sel.tareas?.length > 0 ? (
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
+                  <div>
+                    <h3 style={{margin:0}}>Tareas</h3>
+                    {(sel.tareas?.length || 0) > 0 && (() => {
+                      const total = sel.tareas.length;
+                      const done = sel.tareas.filter(t => t.completado || t.estado === 'completada').length;
+                      const pct = Math.round((done / total) * 100);
+                      return (
+                        <div style={{display:'flex', alignItems:'center', gap:8, marginTop:4}}>
+                          <span style={{fontSize:12, color:'var(--fg-muted)'}}>{done} de {total} completadas</span>
+                          <div style={{width:80, height:6, background:'var(--border)', borderRadius:3}}>
+                            <div style={{width:`${pct}%`, height:'100%', background:'var(--green)', borderRadius:3}}/>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  {!['cerrada','facturada','anulada'].includes(sel.estado) && (
+                    <button className="btn btn-secondary btn-sm" onClick={() => setShowNuevaTarea(s => !s)}>{I.plus} Nueva tarea</button>
+                  )}
+                </div>
+
+                {showNuevaTarea && (
+                  <div className="card" style={{padding:16, marginBottom:16, border:'1px solid var(--cyan)'}}>
+                    <div className="grid-2" style={{gap:12}}>
+                      <div className="input-group" style={{gridColumn:'1/-1'}}>
+                        <label>Descripción *</label>
+                        <input className="input" value={nuevaTareaForm.descripcion} onChange={e => setNuevaTareaForm(s => ({...s, descripcion: e.target.value}))} placeholder="Describe la tarea..." autoFocus />
+                      </div>
+                      <div className="input-group">
+                        <label>Responsable</label>
+                        <select className="select" value={nuevaTareaForm.responsable_id} onChange={e => setNuevaTareaForm(s => ({...s, responsable_id: e.target.value}))}>
+                          <option value="">Sin asignar</option>
+                          {personalOperativo.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        <label>Fecha límite</label>
+                        <input className="input" type="date" value={nuevaTareaForm.fecha_limite} onChange={e => setNuevaTareaForm(s => ({...s, fecha_limite: e.target.value}))} />
+                      </div>
+                    </div>
+                    <div className="row mt-4" style={{justifyContent:'flex-end', gap:8}}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setShowNuevaTarea(false)}>Cancelar</button>
+                      <button className="btn btn-primary btn-sm" onClick={agregarTarea} disabled={!nuevaTareaForm.descripcion.trim()}>Agregar tarea</button>
+                    </div>
+                  </div>
+                )}
+
+                {(sel.tareas?.length || 0) > 0 ? (
                   <div style={{display:'flex', flexDirection:'column', gap:8}}>
-                    {sel.tareas.map(t => (
-                      <label key={t.id} style={{display:'flex', gap:12, alignItems:'center', padding:12, border:'1px solid var(--border)', borderRadius:6, background:'var(--bg)'}}>
-                        <input type="checkbox" checked={t.completado} readOnly />
-                        <span style={{textDecoration: t.completado?'line-through':'none', color: t.completado?'var(--fg-muted)':'var(--fg)'}}>{t.descripcion}</span>
-                      </label>
-                    ))}
+                    {sel.tareas.map(t => {
+                      const completado = t.completado || t.estado === 'completada';
+                      const estadoBadge = completado ? ['badge-green','Completada'] : (t.estado === 'en_progreso' ? ['badge-orange','En progreso'] : ['badge-gray','Pendiente']);
+                      const resp = personalOperativo.find(p => p.id === t.responsable_id);
+                      return (
+                        <div key={t.id} style={{padding:12, border:'1px solid var(--border)', borderRadius:6, background:'var(--bg)', display:'flex', gap:12, alignItems:'flex-start'}}>
+                          <input type="checkbox" checked={completado} onChange={() => toggleTarea(t.id)} style={{marginTop:3, cursor:'pointer'}} />
+                          <div style={{flex:1, minWidth:0}}>
+                            <div style={{textDecoration: completado?'line-through':'none', color: completado?'var(--fg-muted)':'var(--fg)', fontWeight:500}}>{t.descripcion}</div>
+                            <div className="row" style={{gap:12, marginTop:5, fontSize:11, color:'var(--fg-muted)'}}>
+                              {resp && <span>👤 {resp.nombre}</span>}
+                              {t.fecha_limite && <span>📅 {t.fecha_limite}</span>}
+                            </div>
+                          </div>
+                          <span className={`badge ${estadoBadge[0]}`} style={{fontSize:10, flexShrink:0}}>{estadoBadge[1]}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
-                  <div className="text-muted" style={{padding:20, textAlign:'center'}}>No hay tareas específicas para esta OT.</div>
+                  <div className="text-muted" style={{padding:32, textAlign:'center'}}>
+                    No hay tareas para esta OT.
+                    {!['cerrada','facturada','anulada'].includes(sel.estado) && <div style={{marginTop:6, fontSize:12}}>Usa &quot;+ Nueva tarea&quot; para agregar.</div>}
+                  </div>
                 )}
               </div>
             )}
 
+            {/* ── TAB CHECKLISTS ── */}
             {activeTab === 'Checklists y Calidad' && (
               <div className="col" style={{gap:20}}>
                 <div className="card">
@@ -1256,7 +1512,6 @@ function OT({ role }) {
                     </div>
                   </div>
                 </div>
-
                 <div className="card">
                   <div className="card-head">
                     <h3 style={{fontSize:16}}>Incidentes Reportados</h3>
@@ -1266,13 +1521,7 @@ function OT({ role }) {
                     <table className="tbl">
                       <thead><tr><th>ID</th><th>Fecha</th><th>Severidad</th><th>Descripción</th><th>Estado</th></tr></thead>
                       <tbody>
-                        <tr>
-                          <td className="mono text-muted">INC-045</td>
-                          <td>Ayer, 14:30</td>
-                          <td><span className="badge badge-orange">Media</span></td>
-                          <td>Herramienta defectuosa (Taladro)</td>
-                          <td><span className="badge badge-cyan">Atendido</span></td>
-                        </tr>
+                        <tr><td colSpan="5" style={{textAlign:'center', padding:24, color:'var(--fg-muted)'}}>Sin incidentes registrados</td></tr>
                       </tbody>
                     </table>
                   </div>
@@ -1280,38 +1529,75 @@ function OT({ role }) {
               </div>
             )}
 
+            {/* ── TAB PERSONAL Y RECURSOS ── */}
             {activeTab === 'Personal y Recursos' && (
               <div>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
                   <h3 style={{margin:0}}>Personal Asignado</h3>
-                  <button className="btn btn-secondary btn-sm" onClick={() => navigate('planner')}>Gestionar en Planner</button>
+                  <div className="row" style={{gap:8}}>
+                    {!['cerrada','facturada','anulada'].includes(sel.estado) && (
+                      <button className="btn btn-secondary btn-sm" onClick={() => setShowAsignarTec(s => !s)}>{I.plus} Asignar técnico</button>
+                    )}
+                    <button className="btn btn-secondary btn-sm" onClick={() => navigate('planner')}>Gestionar en Planner</button>
+                  </div>
                 </div>
+
+                {showAsignarTec && (
+                  <form className="card" style={{padding:16, marginBottom:16, border:'1px solid var(--cyan)'}} onSubmit={submitAsignarTec}>
+                    <div className="grid-3" style={{gap:12}}>
+                      <div className="input-group">
+                        <label>Técnico *</label>
+                        <select className="select" value={asignarTecForm.tecnico_id} onChange={e => setAsignarTecForm(s => ({...s, tecnico_id: e.target.value}))} required>
+                          <option value="">Seleccionar...</option>
+                          {personalOperativo.map(p => <option key={p.id} value={p.id}>{p.nombre} — {p.cargo || 'Técnico'}</option>)}
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        <label>Fecha inicio *</label>
+                        <input className="input" type="date" value={asignarTecForm.fecha_inicio} onChange={e => setAsignarTecForm(s => ({...s, fecha_inicio: e.target.value}))} required />
+                      </div>
+                      <div className="input-group">
+                        <label>Fecha fin</label>
+                        <input className="input" type="date" value={asignarTecForm.fecha_fin} onChange={e => setAsignarTecForm(s => ({...s, fecha_fin: e.target.value}))} />
+                      </div>
+                    </div>
+                    <div className="row mt-4" style={{justifyContent:'flex-end', gap:8}}>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowAsignarTec(false)}>Cancelar</button>
+                      <button type="submit" className="btn btn-primary btn-sm">Asignar</button>
+                    </div>
+                  </form>
+                )}
+
                 {(() => {
                   const asigs = plannerAsignaciones.filter(a => a.ot_id === sel.id && a.estado !== 'cancelado');
                   if (asigs.length === 0) return <div className="card" style={{padding:32, textAlign:'center', color:'var(--fg-muted)'}}>No hay personal asignado a esta OT todavía.</div>;
-                  
-                  // Agrupar por técnico para ver qué días tiene cada uno
                   const porTecnico = {};
                   asigs.forEach(a => {
                     if (!porTecnico[a.tecnico_id]) porTecnico[a.tecnico_id] = [];
                     porTecnico[a.tecnico_id].push(a);
                   });
-
                   return (
-                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:16}}>
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:16}}>
                       {Object.entries(porTecnico).map(([tecId, items]) => {
-                        const tec = personalOperativo.find(t => t.id === tecId) || items[0].tecnico || {};
+                        const tec = personalOperativo.find(t => t.id === tecId) || {};
+                        const totalHoras = items.reduce((s, a) => {
+                          if (!a.hora_inicio_estimada || !a.hora_fin_estimada) return s;
+                          const [h1, m1] = a.hora_inicio_estimada.split(':').map(Number);
+                          const [h2, m2] = a.hora_fin_estimada.split(':').map(Number);
+                          return s + (h2 * 60 + m2 - h1 * 60 - m1) / 60;
+                        }, 0);
+                        const sorted = [...items].sort((a, b) => a.fecha.localeCompare(b.fecha));
                         return (
                           <div key={tecId} className="card" style={{padding:16}}>
                             <div style={{fontWeight:700, fontSize:15, marginBottom:2}}>{tec.nombre || tecId}</div>
-                            <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:12}}>{tec.cargo || 'Técnico'}</div>
-                            <div style={{display:'flex', flexDirection:'column', gap:6}}>
-                              {items.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(a => (
-                                <div key={a.id} style={{fontSize:12, display:'flex', justifyContent:'space-between', padding:'4px 8px', background:'var(--bg-subtle)', borderRadius:4}}>
+                            <div style={{fontSize:12, color:'var(--fg-muted)'}}>{tec.cargo || 'Técnico'}</div>
+                            {totalHoras > 0 && <div style={{fontSize:12, color:'var(--cyan)', fontWeight:600, marginTop:4}}>{totalHoras.toFixed(1)}h asignadas</div>}
+                            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:8, marginTop:2}}>Desde {sorted[0].fecha}</div>
+                            <div style={{display:'flex', flexDirection:'column', gap:4}}>
+                              {sorted.map(a => (
+                                <div key={a.id} style={{fontSize:11, display:'flex', justifyContent:'space-between', padding:'3px 8px', background:'var(--bg-subtle)', borderRadius:4}}>
                                   <span style={{fontWeight:600}}>{a.fecha}</span>
-                                  <span style={{color:'var(--cyan)'}}>
-                                    {a.hora_inicio_estimada?.slice(0,5) || '--'} - {a.hora_fin_estimada?.slice(0,5) || '--'}
-                                  </span>
+                                  <span style={{color:'var(--cyan)'}}>{a.hora_inicio_estimada?.slice(0,5)||'--'} – {a.hora_fin_estimada?.slice(0,5)||'--'}</span>
                                 </div>
                               ))}
                             </div>
@@ -1324,54 +1610,321 @@ function OT({ role }) {
               </div>
             )}
 
+            {/* ── TAB PARTES ── */}
             {activeTab === 'Partes' && (
               <div>
-                <h3 style={{marginBottom:16}}>Partes Diarios Vinculados</h3>
-                {partesOT.length > 0 ? (
-                  <div style={{display:'flex', flexDirection:'column', gap:12}}>
-                    {partesOT.map(p => (
-                      <div key={p.id} style={{padding:16, border:'1px solid var(--border)', borderRadius:6}}>
-                        <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
-                          <div style={{fontWeight:600}}>{p.tecnico}</div>
-                          <span className={`badge ${p.estado==='aprobado'?'badge-green':'badge-orange'}`}>{p.estado}</span>
-                        </div>
-                        <div className="grid-3" style={{marginBottom:8, fontSize:12}}>
-                          <div><span className="text-muted">Fecha:</span> {p.fecha}</div>
-                          <div><span className="text-muted">Horas:</span> {p.horas}h</div>
-                          <div><span className="text-muted">Avance reportado:</span> +{p.avance_reportado}%</div>
-                        </div>
-                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>{p.actividades}</div>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
+                  <h3 style={{margin:0}}>Partes Diarios</h3>
+                  {sel.estado === 'ejecucion' && (
+                    <button className="btn btn-secondary btn-sm" onClick={() => setShowNuevoParte(s => !s)}>{I.plus} Nuevo parte diario</button>
+                  )}
+                </div>
+
+                {showNuevoParte && (
+                  <form className="card" style={{padding:16, marginBottom:16, border:'1px solid var(--cyan)'}} onSubmit={submitParteDesdOT}>
+                    <div className="grid-2" style={{gap:12}}>
+                      <div className="input-group">
+                        <label>Técnico *</label>
+                        <input className="input" value={parteFormOT.tecnico} onChange={e => setParteFormOT(s => ({...s, tecnico: e.target.value}))} placeholder="Nombre del técnico" required />
                       </div>
-                    ))}
-                  </div>
+                      <div className="input-group">
+                        <label>Fecha *</label>
+                        <input className="input" type="date" value={parteFormOT.fecha} onChange={e => setParteFormOT(s => ({...s, fecha: e.target.value}))} required />
+                      </div>
+                      <div className="input-group">
+                        <label>Horas trabajadas</label>
+                        <input className="input" type="number" min="0" step="0.5" value={parteFormOT.horas} onChange={e => setParteFormOT(s => ({...s, horas: Number(e.target.value)}))} />
+                      </div>
+                      <div className="input-group">
+                        <label>Avance reportado (%)</label>
+                        <input className="input" type="number" min="0" max="100" value={parteFormOT.avance_reportado} onChange={e => setParteFormOT(s => ({...s, avance_reportado: Number(e.target.value)}))} />
+                      </div>
+                      <div className="input-group" style={{gridColumn:'1/-1'}}>
+                        <label>Actividades realizadas *</label>
+                        <textarea className="input" rows="3" value={parteFormOT.actividades} onChange={e => setParteFormOT(s => ({...s, actividades: e.target.value}))} required />
+                      </div>
+                    </div>
+                    <div className="row mt-4" style={{justifyContent:'flex-end', gap:8}}>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowNuevoParte(false)}>Cancelar</button>
+                      <button type="submit" className="btn btn-primary btn-sm">{I.save} Enviar a revisión</button>
+                    </div>
+                  </form>
+                )}
+
+                {partesOT.length > 0 ? (
+                  <>
+                    {(() => {
+                      const aprobados = partesOT.filter(p => p.estado === 'aprobado');
+                      const avanceTotal = aprobados.length > 0
+                        ? Math.round(aprobados.reduce((s, p) => s + (p.avance_reportado || 0), 0) / aprobados.length)
+                        : (sel.avance || 0);
+                      return (
+                        <div style={{display:'flex', gap:24, padding:14, background:'var(--bg-subtle)', borderRadius:8, marginBottom:16}}>
+                          <div><div className="eyebrow">Avance total</div><div style={{fontWeight:700, fontSize:18, color:'var(--cyan)'}}>{avanceTotal}%</div></div>
+                          <div><div className="eyebrow">Partes registrados</div><div style={{fontWeight:700, fontSize:18}}>{partesOT.length}</div></div>
+                          <div><div className="eyebrow">Aprobados</div><div style={{fontWeight:700, fontSize:18, color:'var(--green)'}}>{aprobados.length}</div></div>
+                        </div>
+                      );
+                    })()}
+                    <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                      {partesOT.map(p => (
+                        <div key={p.id} style={{padding:14, border:'1px solid var(--border)', borderRadius:6, background:'var(--bg)'}}>
+                          <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>
+                            <div style={{fontWeight:600, fontSize:13}}>{p.tecnico}</div>
+                            <span className={`badge ${p.estado==='aprobado'?'badge-green':p.estado==='observado'?'badge-red':'badge-orange'}`}>
+                              {p.estado==='aprobado'?'Aprobado':p.estado==='observado'?'Rechazado':'Pendiente'}
+                            </span>
+                          </div>
+                          <div className="grid-3" style={{fontSize:12, gap:8, marginBottom:8}}>
+                            <div><span className="text-muted">Fecha:</span> {p.fecha}</div>
+                            <div><span className="text-muted">Horas:</span> {p.horas}h</div>
+                            <div><span className="text-muted">Avance:</span> +{p.avance_reportado}%</div>
+                          </div>
+                          <div style={{fontSize:12, color:'var(--fg-muted)', lineHeight:1.4}}>{p.actividades}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 ) : (
-                  <div className="text-muted" style={{padding:20, textAlign:'center'}}>Aún no se han registrado partes diarios para esta OT.</div>
+                  <div className="text-muted" style={{padding:32, textAlign:'center'}}>
+                    Aún no se han registrado partes diarios.
+                    {sel.estado === 'ejecucion' && <div style={{marginTop:6, fontSize:12}}>Usa &quot;+ Nuevo parte diario&quot; para registrar.</div>}
+                  </div>
                 )}
               </div>
             )}
 
-            {activeTab === 'Costos' && canCost && (
-              <div className="card">
-                <div className="card-head"><h3>Resumen Financiero</h3></div>
-                <div className="card-body">
-                  <div className="grid-3" style={{gap:12}}>
-                    <div><div className="eyebrow">Estimado</div><div style={{fontFamily:'Sora',fontSize:22,fontWeight:700}}>{money(sel.costoEst||0)}</div></div>
-                    <div><div className="eyebrow">Real Acumulado</div><div style={{fontFamily:'Sora',fontSize:22,fontWeight:700}}>{money(sel.costoReal||0)}</div></div>
-                    <div><div className="eyebrow">Margen Actual</div><div style={{fontFamily:'Sora',fontSize:22,fontWeight:700,color:(sel.costoReal||0)<=(sel.costoEst||0)?'var(--green)':'var(--danger)'}}>{sel.costoEst>0?Math.round(((sel.costoEst||0)-(sel.costoReal||0))/(sel.costoEst||1)*100):0}%</div></div>
+            {/* ── TAB COSTOS ── */}
+            {activeTab === 'Costos' && canCost && (() => {
+              const partesAprobados = partesOT.filter(p => p.estado === 'aprobado');
+              const horasReales = partesAprobados.reduce((s, p) => s + (p.horas || 0), 0);
+              const moReal = horasReales * 45;
+              const matReal = partesAprobados.reduce((s, p) =>
+                s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
+              const costoEst = sel.costoEst || 0;
+              const costoReal = sel.costoReal || (moReal + matReal);
+              const margen = costoEst > 0 ? Math.round(((costoEst - costoReal) / costoEst) * 100) : 0;
+              const rows = [
+                ['Mano de obra', costoEst > 0 ? costoEst * 0.5 : null, moReal > 0 ? moReal : null],
+                ['Materiales', costoEst > 0 ? costoEst * 0.25 : null, matReal > 0 ? matReal : null],
+                ['Servicios terceros', costoEst > 0 ? costoEst * 0.15 : null, null],
+                ['Logística y viáticos', costoEst > 0 ? costoEst * 0.1 : null, null],
+              ];
+              return (
+                <div className="col" style={{gap:16}}>
+                  <div className="table-wrap">
+                    <table className="tbl">
+                      <thead>
+                        <tr><th>Categoría</th><th className="num">Estimado</th><th className="num">Real</th><th className="num">Diferencia</th></tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(([cat, est, real]) => {
+                          const diff = (est || 0) - (real || 0);
+                          return (
+                            <tr key={cat}>
+                              <td>{cat}</td>
+                              <td className="num">{est != null ? money(est) : '—'}</td>
+                              <td className="num">{real != null ? money(real) : '—'}</td>
+                              <td className="num" style={{color: est != null && real != null ? (diff >= 0 ? 'var(--green)' : 'var(--danger)') : 'var(--fg-muted)', fontWeight:600}}>
+                                {est != null && real != null ? ((diff >= 0 ? '+' : '') + money(diff)) : '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        <tr style={{borderTop:'2px solid var(--border)', fontWeight:700, background:'var(--bg-subtle)'}}>
+                          <td>Total</td>
+                          <td className="num">{money(costoEst)}</td>
+                          <td className="num">{money(costoReal)}</td>
+                          <td className="num" style={{color: (costoEst - costoReal) >= 0 ? 'var(--green)' : 'var(--danger)', fontWeight:700}}>
+                            {(costoEst - costoReal) >= 0 ? '+' : ''}{money(costoEst - costoReal)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
+                  <div className="card" style={{padding:20, textAlign:'center'}}>
+                    <div className="eyebrow" style={{marginBottom:6}}>Margen actual</div>
+                    <div style={{fontSize:32, fontWeight:700, color: margen >= 0 ? 'var(--green)' : 'var(--danger)'}}>{margen}%</div>
+                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Basado en costos reales de partes aprobados</div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── TAB EVIDENCIAS ── */}
+            {activeTab === 'Evidencias' && (
+              <div>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
+                  <h3 style={{margin:0}}>Evidencias</h3>
+                  {sel.estado !== 'facturada' && (
+                    <button className="btn btn-secondary btn-sm">{I.plus} Subir evidencia</button>
+                  )}
+                </div>
+                <div style={{padding:48, textAlign:'center', color:'var(--fg-muted)', border:'2px dashed var(--border)', borderRadius:8}}>
+                  <div style={{fontSize:36, marginBottom:8}}>📎</div>
+                  <div style={{fontWeight:600, marginBottom:6}}>Sin evidencias registradas</div>
+                  <div style={{fontSize:12}}>Sube fotos o documentos desde campo o backoffice para documentar la ejecución.</div>
                 </div>
               </div>
             )}
 
-            <div className="row mt-6">
-              {sel.estado==='programada' && <button className="btn btn-primary flex-1" onClick={()=>actualizarOT(sel.id, {estado:'ejecucion'})}>{I.play} Iniciar OT</button>}
-              {sel.estado==='ejecucion' && <button className="btn btn-primary flex-1" onClick={()=>cerrarTecnicamenteOT(sel.id, {resultado: 'conforme'})}>{I.check} Cerrar técnicamente</button>}
-              {sel.estado==='cerrada' && <button className="btn btn-primary flex-1">{I.truck} Enviar a remisión</button>}
-              <button className="btn btn-secondary">{I.edit} Editar</button>
-            </div>
+            {/* ── TAB HISTORIAL ── */}
+            {activeTab === 'Historial' && (
+              <div>
+                <h3 style={{marginBottom:16}}>Historial de eventos</h3>
+                {historialOT.length > 0 ? (
+                  <div style={{position:'relative'}}>
+                    <div style={{position:'absolute', left:13, top:8, bottom:8, width:2, background:'var(--border)', borderRadius:2}}/>
+                    <div style={{display:'flex', flexDirection:'column', gap:14}}>
+                      {historialOT.map(ev => (
+                        <div key={ev.id} style={{display:'flex', gap:16, paddingLeft:36, position:'relative'}}>
+                          <div style={{
+                            position:'absolute', left:6, top:8, width:16, height:16, borderRadius:'50%',
+                            background: ev.tipo==='creacion'?'var(--cyan)':ev.tipo==='parte'?'var(--green)':ev.tipo==='cierre'?'var(--purple)':'var(--border)',
+                            border:'2px solid var(--bg-card)',
+                          }}/>
+                          <div style={{flex:1, padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:6}}>
+                            <div style={{display:'flex', justifyContent:'space-between', gap:12}}>
+                              <div style={{fontSize:13, fontWeight:600}}>{ev.evento}</div>
+                              <div style={{fontSize:11, color:'var(--fg-muted)', flexShrink:0}}>{ev.fecha}</div>
+                            </div>
+                            {ev.usuario !== '—' && <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:3}}>{ev.usuario}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-muted" style={{padding:32, textAlign:'center'}}>No hay eventos registrados.</div>
+                )}
+              </div>
+            )}
+
           </div>
         </div>
       </>}
+
+      {panelNuevaOT && (
+        <>
+          <div className="side-panel-backdrop" onClick={cerrarPanelNuevaOT}/>
+          <div className="side-panel" style={{width:'min(580px, 96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Formulario de registro</div>
+                <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>Nueva Orden de Trabajo</div>
+              </div>
+              <button className="icon-btn" onClick={cerrarPanelNuevaOT}>×</button>
+            </div>
+            <div className="side-panel-body">
+              {errorNuevaOT && <div className="alert alert-danger" style={{marginBottom:16}}>{errorNuevaOT}</div>}
+
+              <div className="eyebrow" style={{marginBottom:12}}>Clasificación</div>
+              <div className="grid-2" style={{gap:16, marginBottom:20}}>
+                <div className="input-group">
+                  <label>Tipo de OT <span style={{color:'var(--danger)'}}>*</span></label>
+                  <select className="select" value={formNuevaOT.tipo} onChange={e => updNuevaOT('tipo', e.target.value)}>
+                    <option value="cliente">Servicio Cliente</option>
+                    <option value="interna">Interna</option>
+                    <option value="correctiva">Correctiva</option>
+                    <option value="preventiva">Preventiva</option>
+                    <option value="tercerizada">Tercerizada</option>
+                    <option value="garantia">Garantía</option>
+                    <option value="emergencia">Emergencia</option>
+                    <option value="proyecto">Proyecto</option>
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Prioridad</label>
+                  <select className="select" value={formNuevaOT.prioridad} onChange={e => updNuevaOT('prioridad', e.target.value)}>
+                    <option value="normal">Normal</option>
+                    <option value="urgente">Urgente</option>
+                    <option value="critica">Crítica</option>
+                  </select>
+                </div>
+              </div>
+
+              {formNuevaOT.tipo === 'cliente' && (
+                <>
+                  <div className="eyebrow" style={{marginBottom:12}}>OS Cliente vinculada</div>
+                  <div className="input-group" style={{marginBottom:20}}>
+                    <label>OS Cliente <span style={{color:'var(--danger)'}}>*</span></label>
+                    <select className="select" value={formNuevaOT.os_cliente_id} onChange={e => updNuevaOT('os_cliente_id', e.target.value)}>
+                      <option value="">Seleccionar OS Cliente...</option>
+                      {osClientes.filter(o => !['cerrada','anulada'].includes(o.estado)).map(o => (
+                        <option key={o.id} value={o.id}>{o.numero} — {cuentas.find(c => c.id === o.cuenta_id)?.razon_social || o.cuenta_id}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+
+              <div className="eyebrow" style={{marginBottom:12}}>Vinculación contable</div>
+              <div className="grid-2" style={{gap:16, marginBottom:20}}>
+                <div className="input-group">
+                  <label>CECO <span style={{color:'var(--danger)'}}>*</span></label>
+                  <select className="select" value={formNuevaOT.centro_costo_id} onChange={e => updNuevaOT('centro_costo_id', e.target.value)}>
+                    <option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'Sin CECOs activos — crea uno en Maestros Base'}</option>
+                    {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>CEBE</label>
+                  {formNuevaOT.tipo === 'cliente' ? (
+                    <input className="input" readOnly style={{opacity:0.75}}
+                      value={cebeHeredado ? `${cebeHeredado.codigo ? cebeHeredado.codigo + ' - ' : ''}${cebeHeredado.nombre}` : ''}
+                      placeholder={formNuevaOT.os_cliente_id ? 'Sin CEBE en la OS — asígnalo primero' : 'Se hereda de la OS Cliente'}
+                    />
+                  ) : (
+                    <select className="select" value={formNuevaOT.centro_beneficio_id} onChange={e => updNuevaOT('centro_beneficio_id', e.target.value)}>
+                      <option value="">{cebesActivos.length ? 'Seleccionar CEBE...' : 'Sin CEBEs activos — crea uno en Maestros Base'}</option>
+                      {cebesActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              <div className="eyebrow" style={{marginBottom:12}}>Detalle del trabajo</div>
+              <div className="grid-2" style={{gap:16, marginBottom:20}}>
+                <div className="input-group">
+                  <label>Servicio / tipo de trabajo</label>
+                  {tiposActivos.length > 0 ? (
+                    <select className="select" value={formNuevaOT.servicio} onChange={e => updNuevaOT('servicio', e.target.value)}>
+                      <option value="">Seleccionar servicio...</option>
+                      {tiposActivos.map(t => <option key={t.id} value={t.nombre}>{t.codigo ? `[${t.codigo}] ` : ''}{t.nombre}</option>)}
+                    </select>
+                  ) : (
+                    <input className="input" value={formNuevaOT.servicio} onChange={e => updNuevaOT('servicio', e.target.value)} placeholder="Ej. Mantenimiento preventivo" />
+                  )}
+                </div>
+                <div className="input-group">
+                  <label>Responsable técnico</label>
+                  <select className="select" value={formNuevaOT.tecnico_responsable_id} onChange={e => updNuevaOT('tecnico_responsable_id', e.target.value)}>
+                    <option value="">Sin asignar</option>
+                    {personal.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Fecha de inicio</label>
+                  <input className="input" type="date" value={formNuevaOT.fecha_programada} onChange={e => updNuevaOT('fecha_programada', e.target.value)} />
+                </div>
+                <div className="input-group">
+                  <label>Fecha fin programada</label>
+                  <input className="input" type="date" value={formNuevaOT.fecha_fin} onChange={e => updNuevaOT('fecha_fin', e.target.value)} />
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Descripción / alcance</label>
+                  <textarea className="input" rows="3" value={formNuevaOT.descripcion} onChange={e => updNuevaOT('descripcion', e.target.value)} placeholder="Describe el trabajo a realizar..." />
+                </div>
+              </div>
+
+              <div className="row" style={{justifyContent:'flex-end', gap:8}}>
+                <button className="btn btn-secondary" onClick={cerrarPanelNuevaOT}>Cancelar</button>
+                <button className="btn btn-primary" disabled={savingNuevaOT} onClick={submitNuevaOT}>{I.check} {savingNuevaOT ? 'Creando...' : 'Crear OT'}</button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -1956,18 +2509,19 @@ function CotizacionesCompras() {
 }
 
 function OrdenesCompra() {
-  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, addNotificacion, navigate } = useApp();
+  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, addNotificacion, navigate, centrosCosto } = useApp();
   const [tab, setTab] = useState('todas');
   const [panel, setPanel] = useState(false);
   const [sel, setSel] = useState(null);
-  const [form, setForm] = useState({ proveedor_id:'prv_001', proceso_compra_id:'', ot_id:'', descripcion:'', total:1000, fecha_entrega_esperada:'2025-04-30' });
+  const [form, setForm] = useState({ proveedor_id:'prv_001', proceso_compra_id:'', ot_id:'', centro_costo_id:'', descripcion:'', total:1000, fecha_entrega_esperada:'2025-04-30' });
   const list = ordenesCompra.filter(o => tab === 'todas' || o.estado === tab);
   const homologados = proveedores.filter(p => p.estado === 'homologado' || p.estado === 'observado');
   const kpi = { emitidas: ordenesCompra.length, pendientes: ordenesCompra.filter(o=>o.porcentaje_recibido<100).length, parcial: ordenesCompra.filter(o=>o.estado==='recibida_parcial').length, total: ordenesCompra.reduce((s,o)=>s+(o.total||0),0) };
   const crear = (emitir=true) => {
+    if (!form.centro_costo_id) { addNotificacion('Este campo es obligatorio. Selecciona un CECO antes de continuar.'); return; }
     const subtotal = Number(form.total) || 0;
     const p = proveedorById(proveedores, form.proveedor_id);
-    const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, proveedor_id:form.proveedor_id, ot_id:form.ot_id, descripcion:form.descripcion || 'Compra directa', items:[{descripcion:form.descripcion || 'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:subtotal, subtotal}], subtotal, igv:subtotal*0.18, total:subtotal*1.18, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, almacen_destino:'ALM-001', estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:'' };
+    const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, proveedor_id:form.proveedor_id, ot_id:form.ot_id, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || 'Compra directa', items:[{descripcion:form.descripcion || 'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:subtotal, subtotal}], subtotal, igv:subtotal*0.18, total:subtotal*1.18, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, almacen_destino:'ALM-001', estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:'' };
     setOrdenesCompra(prev=>[oc,...prev]); addNotificacion(`${oc.codigo} ${emitir?'emitida':'guardada como borrador'}.`); setPanel(false);
   };
   if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} onBack={()=>setSel(null)} onConfirmar={()=>setOrdenesCompra(prev=>prev.map(o=>o.id===sel.id?{...o,estado:'confirmada'}:o))} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
@@ -1977,7 +2531,7 @@ function OrdenesCompra() {
       <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas este mes</div><div className="kpi-value">{kpi.emitidas}</div></div><div className="kpi-card"><div className="kpi-label">Pendientes recepcion</div><div className="kpi-value">{kpi.pendientes}</div></div><div className="kpi-card"><div className="kpi-label">Recibidas parcial</div><div className="kpi-value">{kpi.parcial}</div></div><div className="kpi-card"><div className="kpi-label">Valor total mes</div><div className="kpi-value">{money(kpi.total)}</div></div></div>
       <div className="tabs">{['todas','emitida','confirmada','en_transito','recibida_parcial','cerrada','anulada'].map(t=><div key={t} className={'tab '+(tab===t?'active':'')} onClick={()=>setTab(t)}>{t.replace('_',' ')}</div>)}</div>
       <OrdenesTable list={list} proveedores={proveedores} onSel={setSel} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>
-      {panel && <PanelOC form={form} setForm={setForm} proveedores={homologados} procesos={procesosCompra} ots={ots} onClose={()=>setPanel(false)} onCrear={crear}/>}
+      {panel && <PanelOC form={form} setForm={setForm} proveedores={homologados} procesos={procesosCompra} ots={ots} centrosCosto={centrosCosto} onClose={()=>setPanel(false)} onCrear={crear}/>}
     </>
   );
 }
@@ -1986,8 +2540,9 @@ function OrdenesTable({ list, proveedores, onSel, onRecepcion }) {
   return <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>N OC</th><th>Proveedor</th><th>Concepto</th><th>Monto total</th><th>OT</th><th>Estado</th><th>Emision</th><th>Entrega esperada</th><th>Recibido</th><th>Acciones</th></tr></thead><tbody>{list.map(o=>{ const p=proveedorById(proveedores,o.proveedor_id); return <tr key={o.id}><td className="mono">{o.codigo}</td><td><strong>{p.razon_social}</strong><div className="text-muted" style={{fontSize:11}}>{ratingText(p.calificacion_promedio)}</div></td><td>{o.descripcion}</td><td>{money(o.total||0)}</td><td className="mono">{o.ot_id||'-'}</td><td><span className={'badge '+estadoOcBadge(o.estado)}>{o.estado.replace('_',' ')}</span></td><td>{o.fecha_emision}</td><td>{o.fecha_entrega_esperada}</td><td><div style={{width:80,height:6,background:'var(--bg-subtle)',borderRadius:99}}><div style={{width:`${o.porcentaje_recibido||0}%`,height:6,background:'var(--green)',borderRadius:99}}/></div><span className="text-muted" style={{fontSize:11}}>{o.porcentaje_recibido||0}%</span></td><td><button className="btn btn-sm btn-secondary" onClick={()=>onSel(o)}>Ver detalle</button> <button className="btn btn-sm btn-ghost" onClick={()=>onRecepcion(o)}>Registrar recepcion</button></td></tr>})}</tbody></table></div></div>;
 }
 
-function PanelOC({ form, setForm, proveedores, procesos, ots, onClose, onCrear }) {
-  return <><div className="side-panel-backdrop" onClick={onClose}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de compra</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OC</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}><div className="input-group"><label>Proceso de cotizacion</label><select className="select" value={form.proceso_compra_id} onChange={e=>setForm(v=>({...v,proceso_compra_id:e.target.value}))}><option value="">Compra directa</option>{procesos.map(p=><option key={p.id} value={p.id}>{p.codigo}</option>)}</select></div><div className="input-group"><label>Proveedor</label><select className="select" value={form.proveedor_id} onChange={e=>setForm(v=>({...v,proveedor_id:e.target.value}))}>{proveedores.map(p=><option key={p.id} value={p.id}>{p.razon_social}{p.estado==='observado'?' - observado':''}</option>)}</select></div><div className="input-group"><label>OT vinculada</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero || o.id}</option>)}</select></div><div className="input-group"><label>Fecha entrega esperada</label><input className="input" type="date" value={form.fecha_entrega_esperada} onChange={e=>setForm(v=>({...v,fecha_entrega_esperada:e.target.value}))}/></div><div className="input-group" style={{gridColumn:'1/-1'}}><label>Descripcion</label><textarea className="input" rows="3" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div><div className="input-group"><label>Monto subtotal</label><input className="input" type="number" value={form.total} onChange={e=>setForm(v=>({...v,total:e.target.value}))}/></div></div><div className="card mt-6" style={{padding:14}}><p><strong>Subtotal:</strong> {money(Number(form.total)||0)}</p><p><strong>IGV 18%:</strong> {money((Number(form.total)||0)*0.18)}</p><p><strong>Total:</strong> {money((Number(form.total)||0)*1.18)}</p></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>onCrear(false)}>Guardar borrador</button><button className="btn btn-primary" data-local-form="true" onClick={()=>onCrear(true)}>Emitir OC</button></div></div></div></>;
+function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [], onClose, onCrear }) {
+  const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  return <><div className="side-panel-backdrop" onClick={onClose}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de compra</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OC</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}><div className="input-group"><label>Proceso de cotizacion</label><select className="select" value={form.proceso_compra_id} onChange={e=>setForm(v=>({...v,proceso_compra_id:e.target.value}))}><option value="">Compra directa</option>{procesos.map(p=><option key={p.id} value={p.id}>{p.codigo}</option>)}</select></div><div className="input-group"><label>Proveedor</label><select className="select" value={form.proveedor_id} onChange={e=>setForm(v=>({...v,proveedor_id:e.target.value}))}>{proveedores.map(p=><option key={p.id} value={p.id}>{p.razon_social}{p.estado==='observado'?' - observado':''}</option>)}</select></div><div className="input-group"><label>CECO *</label><select className="select" value={form.centro_costo_id} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div><div className="input-group"><label>OT vinculada</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero || o.id}</option>)}</select></div><div className="input-group"><label>Fecha entrega esperada</label><input className="input" type="date" value={form.fecha_entrega_esperada} onChange={e=>setForm(v=>({...v,fecha_entrega_esperada:e.target.value}))}/></div><div className="input-group" style={{gridColumn:'1/-1'}}><label>Descripcion</label><textarea className="input" rows="3" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div><div className="input-group"><label>Monto subtotal</label><input className="input" type="number" value={form.total} onChange={e=>setForm(v=>({...v,total:e.target.value}))}/></div></div><div className="card mt-6" style={{padding:14}}><p><strong>Subtotal:</strong> {money(Number(form.total)||0)}</p><p><strong>IGV 18%:</strong> {money((Number(form.total)||0)*0.18)}</p><p><strong>Total:</strong> {money((Number(form.total)||0)*1.18)}</p></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>onCrear(false)}>Guardar borrador</button><button className="btn btn-primary" data-local-form="true" onClick={()=>onCrear(true)}>Emitir OC</button></div></div></div></>;
 }
 
 function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
@@ -1996,13 +2551,14 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
 }
 
 function OrdenesServicio() {
-  const { ordenesServicio, setOrdenesServicio, proveedores, ots, empresa, addNotificacion, navigate } = useApp();
+  const { ordenesServicio, setOrdenesServicio, proveedores, ots, empresa, addNotificacion, navigate, centrosCosto } = useApp();
   const [panel, setPanel] = useState(false);
   const [tab, setTab] = useState('todas');
-  const [form, setForm] = useState({ proveedor_id:'prv_003', ot_id:'', descripcion:'', total:800, fecha_inicio:'2025-04-30', fecha_fin:'2025-04-30', responsable_validacion:'Roberto Quispe' });
+  const [form, setForm] = useState({ proveedor_id:'prv_003', ot_id:'', centro_costo_id:'', descripcion:'', total:800, fecha_inicio:'2025-04-30', fecha_fin:'2025-04-30', responsable_validacion:'Roberto Quispe' });
   const list = ordenesServicio.filter(o => tab === 'todas' || o.estado === tab);
   const provs = proveedores.filter(p => (p.estado === 'homologado' || p.estado === 'observado') && ['Servicios','Transporte','Mixto'].includes(p.categoria));
-  const crear = () => { const p=proveedorById(proveedores,form.proveedor_id); const os={id:`os_${Date.now()}`,empresa_id:empresa.id,codigo:`OS-2025-${String(ordenesServicio.length+13).padStart(4,'0')}`,proveedor_id:form.proveedor_id,ot_id:form.ot_id,descripcion:form.descripcion||'Servicio tercerizado',alcance:form.descripcion||'Servicio tercerizado',entregables:'Evidencia del servicio',criterios_conformidad:'Conforme a alcance',total:Number(form.total)||0,moneda:'PEN',condicion_pago:p.condicion_pago||'Contado',fecha_emision:new Date().toISOString().slice(0,10),fecha_inicio:form.fecha_inicio,fecha_fin:form.fecha_fin,responsable_validacion:form.responsable_validacion,estado:'emitida',notas:''}; setOrdenesServicio(prev=>[os,...prev]); addNotificacion(`${os.codigo} emitida.`); setPanel(false); };
+  const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const crear = () => { if (!form.centro_costo_id) { addNotificacion('Este campo es obligatorio. Selecciona un CECO antes de continuar.'); return; } const p=proveedorById(proveedores,form.proveedor_id); const os={id:`os_${Date.now()}`,empresa_id:empresa.id,codigo:`OS-2025-${String(ordenesServicio.length+13).padStart(4,'0')}`,proveedor_id:form.proveedor_id,ot_id:form.ot_id,centro_costo_id:form.centro_costo_id,descripcion:form.descripcion||'Servicio tercerizado',alcance:form.descripcion||'Servicio tercerizado',entregables:'Evidencia del servicio',criterios_conformidad:'Conforme a alcance',total:Number(form.total)||0,moneda:'PEN',condicion_pago:p.condicion_pago||'Contado',fecha_emision:new Date().toISOString().slice(0,10),fecha_inicio:form.fecha_inicio,fecha_fin:form.fecha_fin,responsable_validacion:form.responsable_validacion,estado:'emitida',notas:''}; setOrdenesServicio(prev=>[os,...prev]); addNotificacion(`${os.codigo} emitida.`); setPanel(false); };
   return <><div className="page-header"><div><h1 className="page-title">Ordenes de Servicio</h1><div className="page-sub">Servicios tercerizados, conformidad y cierre</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>setPanel(true)}>{I.plus} Nueva OS</button></div><div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas</div><div className="kpi-value">{ordenesServicio.length}</div></div><div className="kpi-card"><div className="kpi-label">En ejecucion</div><div className="kpi-value">{ordenesServicio.filter(o=>o.estado==='en_ejecucion').length}</div></div><div className="kpi-card"><div className="kpi-label">Pendiente conformidad</div><div className="kpi-value">{ordenesServicio.filter(o=>o.estado==='pendiente_conformidad').length}</div></div><div className="kpi-card"><div className="kpi-label">Valor total</div><div className="kpi-value">{money(ordenesServicio.reduce((s,o)=>s+(o.total||0),0))}</div></div></div><div className="tabs">{['todas','emitida','confirmada','en_ejecucion','pendiente_conformidad','cerrada','observada'].map(t=><div key={t} className={'tab '+(tab===t?'active':'')} onClick={()=>setTab(t)}>{t.replace('_',' ')}</div>)}</div><div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>OS</th><th>Proveedor</th><th>Servicio</th><th>Monto</th><th>OT</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Validador</th><th>Acciones</th></tr></thead><tbody>{list.map(o=>{const p=proveedorById(proveedores,o.proveedor_id);return <tr key={o.id}><td className="mono">{o.codigo}</td><td><strong>{p.razon_social}</strong></td><td>{o.descripcion}</td><td>{money(o.total)}</td><td className="mono">{o.ot_id||'-'}</td><td><span className={'badge '+estadoOcBadge(o.estado)}>{o.estado.replace('_',' ')}</span></td><td>{o.fecha_inicio}</td><td>{o.fecha_fin}</td><td>{o.responsable_validacion}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>navigate('recepciones',{osId:o.id})}>Conformidad</button></td></tr>})}</tbody></table></div></div>{panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de servicio</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OS</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}><div className="input-group"><label>Proveedor</label><select className="select" value={form.proveedor_id} onChange={e=>setForm(v=>({...v,proveedor_id:e.target.value}))}>{provs.map(p=><option key={p.id} value={p.id}>{p.razon_social}</option>)}</select></div><div className="input-group"><label>OT</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero||o.id}</option>)}</select></div><div className="input-group" style={{gridColumn:'1/-1'}}><label>Servicio / alcance</label><textarea className="input" rows="4" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div><div className="input-group"><label>Fecha inicio</label><input className="input" type="date" value={form.fecha_inicio} onChange={e=>setForm(v=>({...v,fecha_inicio:e.target.value}))}/></div><div className="input-group"><label>Fecha fin</label><input className="input" type="date" value={form.fecha_fin} onChange={e=>setForm(v=>({...v,fecha_fin:e.target.value}))}/></div><div className="input-group"><label>Total</label><input className="input" type="number" value={form.total} onChange={e=>setForm(v=>({...v,total:e.target.value}))}/></div><div className="input-group"><label>Responsable validacion</label><input className="input" value={form.responsable_validacion} onChange={e=>setForm(v=>({...v,responsable_validacion:e.target.value}))}/></div></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={crear}>Emitir OS</button></div></div></div></>}</>;
 }
 
@@ -2676,7 +3232,7 @@ function Remision() {
 }
 
 function SOLPE() {
-  const { solpes, ots, searchQuery } = useApp();
+  const { solpes, ots, searchQuery, setQuickCreate } = useApp();
   const getOTNumero = (id) => ots.find(o => o.id === id)?.numero || id;
 
   const query = searchQuery.toLowerCase();
@@ -2694,7 +3250,7 @@ function SOLPE() {
           <h1 className="page-title">SOLPE (Pedidos Internos)</h1>
           <div className="page-sub">Requerimientos de almacén generados por el equipo técnico</div>
         </div>
-        <button className="btn btn-primary">{I.plus} Nueva SOLPE</button>
+        <button className="btn btn-primary" onClick={() => setQuickCreate('solpe')}>{I.plus} Nueva SOLPE</button>
       </div>
       <div className="card mt-6">
         <div className="table-wrap">
@@ -4261,7 +4817,7 @@ function Nomina() {
 }
 
 function RRHH_Operativo() {
-  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, addNotificacion } = useApp();
+  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, addNotificacion, centrosCosto } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('personal');
   const personal = personalOperativo;
@@ -4283,7 +4839,8 @@ function RRHH_Operativo() {
   */
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:defaultTurnoId, fecha_ingreso:'', tipo_contrato:'Planilla', costo:'', costo_extra:'', acceso_campo:true, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0' };
+  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', fecha_ingreso:'', tipo_contrato:'Planilla', costo:'', costo_extra:'', acceso_campo:true, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [altaError, setAltaError] = useState('');
   const [altaSaving, setAltaSaving] = useState(false);
@@ -4340,6 +4897,7 @@ function RRHH_Operativo() {
       supervisor: p.supervisor || '',
       sede: p.sede || '',
       turno_id: turnosOptions.some(t => t.id === p.turno_id) ? p.turno_id : defaultTurnoId,
+      centro_costo_id: p.centro_costo_id || '',
       fecha_ingreso: p.fecha_ingreso || '',
       tipo_contrato: p.tipo_contrato || 'Planilla',
       costo: String(p.costo ?? p.costo_hora_real ?? ''),
@@ -4372,6 +4930,10 @@ function RRHH_Operativo() {
     if (altaSaving) return;
     if (!turnosOptions.some(t => t.id === formAlta.turno_id)) {
       setAltaError('Selecciona un turno real creado en Supabase antes de guardar el tecnico.');
+      return;
+    }
+    if (!formAlta.centro_costo_id) {
+      setAltaError('Este campo es obligatorio. Selecciona un CECO antes de continuar.');
       return;
     }
     setAltaSaving(true);
@@ -4409,6 +4971,7 @@ function RRHH_Operativo() {
       descuento_judicial: esHonorarios ? 0 : Number(formAlta.descuento_judicial) || 0,
       estado: formAlta.estado || 'disponible',
       turno_id: formAlta.turno_id,
+      centro_costo_id: formAlta.centro_costo_id,
       turno: turnosOptions.find(t => t.id === formAlta.turno_id)?.nombre || '',
       docs: { sctr:'pendiente', medico:'pendiente', epp:'pendiente', licencia:'pendiente' }
     };
@@ -4598,6 +5161,7 @@ function RRHH_Operativo() {
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos laborales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder={`TEC-00${personal.length+1}`}/></div>
+              <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               <div className="input-group"><label>Cargo</label><select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{cargosOperativosOptions.map(c=><option key={c}>{c}</option>)}</select></div>
               <div className="input-group"><label>Especialidad principal</label><select className="select" value={formAlta.especialidad} onChange={e=>setFormAlta(v=>({...v,especialidad:e.target.value}))}><option value="">Seleccionar...</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>

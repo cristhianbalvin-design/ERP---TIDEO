@@ -988,6 +988,79 @@ body {
 .tbl input.num { padding-left: 8px; padding-right: 8px; }
 .mono { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; }
 
+.catalog-card {
+  overflow: hidden;
+}
+.service-catalog-table {
+  min-width: 1120px;
+  table-layout: fixed;
+}
+.service-catalog-table th,
+.service-catalog-table td {
+  vertical-align: middle;
+}
+.service-catalog-table th:nth-child(1),
+.service-catalog-table td:nth-child(1) { width: 92px; }
+.service-catalog-table th:nth-child(2),
+.service-catalog-table td:nth-child(2) { width: 120px; }
+.service-catalog-table th:nth-child(3),
+.service-catalog-table td:nth-child(3) { width: 300px; }
+.service-catalog-table th:nth-child(4),
+.service-catalog-table td:nth-child(4) { width: 96px; }
+.service-catalog-table th:nth-child(5),
+.service-catalog-table td:nth-child(5) { width: 82px; }
+.service-catalog-table th:nth-child(6),
+.service-catalog-table td:nth-child(6),
+.service-catalog-table th:nth-child(7),
+.service-catalog-table td:nth-child(7) {
+  width: 108px;
+  text-align: right;
+}
+.service-catalog-table th:nth-child(8),
+.service-catalog-table td:nth-child(8),
+.service-catalog-table th:nth-child(9),
+.service-catalog-table td:nth-child(9),
+.service-catalog-table th:nth-child(10),
+.service-catalog-table td:nth-child(10) {
+  width: 92px;
+  text-align: center;
+}
+.service-catalog-table th:nth-child(11),
+.service-catalog-table td:nth-child(11) {
+  width: 92px;
+  text-align: right;
+}
+.service-cell-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.service-cell-meta {
+  margin-top: 4px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+.service-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+}
+.import-preview-table {
+  min-width: 980px;
+  table-layout: fixed;
+}
+.import-preview-table th,
+.import-preview-table td {
+  min-width: 140px;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Inputs */
 .input, .select, .textarea {
   width: 100%;

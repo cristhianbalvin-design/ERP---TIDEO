@@ -6,6 +6,7 @@ import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient } from './lib/supabaseClient.js';
 import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getPotentialManagers } from './lib/hierarchy.js';
 import { PHONE_PATTERN, RUC_PATTERN, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
+import { maestrosService } from './services/maestrosService.js';
 
 // Roles builder, Usuarios, Tenants/Planes, and simple stub pages
 
@@ -1195,11 +1196,564 @@ function Stub({title, description}) {
   );
 }
 
+// ============ CECO / CEBE ============
+function CecoCebePanel({ onClose }) {
+  const {
+    centrosCosto, centrosBeneficio, cuentas, usuarios, empresa,
+    crearCentroCosto, actualizarCentroCosto, importarCentrosCosto,
+    crearCentroBeneficio, actualizarCentroBeneficio, importarCentrosBeneficio,
+    addNotificacion
+  } = useApp();
+
+  const [tab, setTab] = useState('ceco');
+
+  const cecoBase = { codigo:'', nombre:'', tipo:'area_funcional', responsable_id:'', cebe_id:'', presupuesto_mensual:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
+  const [cecoForm, setCecoForm] = useState(cecoBase);
+  const [cecoEditId, setCecoEditId] = useState(null);
+  const [cecoSaving, setCecoSaving] = useState(false);
+  const [cecoError, setCecoError] = useState('');
+  const [cecoFiltroTipo, setCecoFiltroTipo] = useState('');
+  const [cecoFiltroCebe, setCecoFiltroCebe] = useState('');
+  const [cecoFiltroEstado, setCecoFiltroEstado] = useState('activo');
+  const [cecoModalImport, setCecoModalImport] = useState(false);
+  const [cecoImportRows, setCecoImportRows] = useState([]);
+  const [cecoImportStep, setCecoImportStep] = useState(1);
+
+  const cebeBase = { codigo:'', nombre:'', tipo:'linea_servicio', responsable_id:'', cuenta_id:'', meta_ingresos:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
+  const [cebeForm, setCebeForm] = useState(cebeBase);
+  const [cebeEditId, setCebeEditId] = useState(null);
+  const [cebeSaving, setCebeSaving] = useState(false);
+  const [cebeError, setCebeError] = useState('');
+  const [cebeFiltroTipo, setCebeFiltroTipo] = useState('');
+  const [cebeFiltroEstado, setCebeFiltroEstado] = useState('activo');
+  const [cebeModalImport, setCebeModalImport] = useState(false);
+  const [cebeImportRows, setCebeImportRows] = useState([]);
+  const [cebeImportStep, setCebeImportStep] = useState(1);
+
+  const usuariosActivos = (usuarios || []).filter(u => u.estado !== 'inactivo');
+  const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
+
+  const CECO_TIPOS = ['area_funcional','proyecto','sede','temporal'];
+  const CEBE_TIPOS = ['linea_servicio','cliente','proyecto','producto','temporal'];
+  const labelTipo = t => ({ area_funcional:'Área funcional', proyecto:'Proyecto', sede:'Sede', temporal:'Temporal', linea_servicio:'Línea de servicio', cliente:'Cliente', producto:'Producto', temporal:'Temporal' }[t] || t);
+
+  // ---- CECO ----
+  const resetCecoForm = () => { setCecoForm(cecoBase); setCecoEditId(null); setCecoError(''); };
+  const editarCeco = c => {
+    setCecoForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'area_funcional', responsable_id:c.responsable_id||'', cebe_id:c.cebe_id||'', presupuesto_mensual:c.presupuesto_mensual||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
+    setCecoEditId(c.id); setCecoError('');
+  };
+  const guardarCeco = async e => {
+    e.preventDefault();
+    if (!cecoForm.codigo.trim()) return setCecoError('El código del CECO es obligatorio.');
+    if (!cecoForm.nombre.trim()) return setCecoError('El nombre es obligatorio.');
+    if (!cecoForm.cebe_id) return setCecoError('El CEBE padre es obligatorio.');
+    if ((centrosCosto||[]).some(c => c.codigo === cecoForm.codigo.trim() && c.id !== cecoEditId)) return setCecoError('Este código ya está en uso. Elige uno diferente.');
+    setCecoSaving(true); setCecoError('');
+    try {
+      const resp = usuariosActivos.find(u => u.id === cecoForm.responsable_id);
+      const datos = { ...cecoForm, responsable_nombre: resp?.nombre || '', fecha_inicio: cecoForm.fecha_inicio || null, fecha_fin: cecoForm.fecha_fin || null, presupuesto_mensual: cecoForm.presupuesto_mensual !== '' ? cecoForm.presupuesto_mensual : null, cebe_id: cecoForm.cebe_id || null };
+      if (cecoEditId) await actualizarCentroCosto(cecoEditId, datos);
+      else await crearCentroCosto(datos);
+      addNotificacion?.(`CECO ${cecoEditId ? 'actualizado' : 'creado'} correctamente.`);
+      resetCecoForm();
+    } catch (err) { setCecoError(err?.message || 'No se pudo guardar el CECO.'); }
+    finally { setCecoSaving(false); }
+  };
+  const cecosFiltrados = (centrosCosto||[]).filter(c =>
+    (!cecoFiltroTipo || c.tipo === cecoFiltroTipo) &&
+    (!cecoFiltroCebe || c.cebe_id === cecoFiltroCebe) &&
+    (!cecoFiltroEstado || c.estado === cecoFiltroEstado)
+  );
+
+  // ---- CEBE ----
+  const resetCebeForm = () => { setCebeForm(cebeBase); setCebeEditId(null); setCebeError(''); };
+  const editarCebe = c => {
+    setCebeForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'linea_servicio', responsable_id:c.responsable_id||'', cuenta_id:c.cuenta_id||'', meta_ingresos:c.meta_ingresos||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
+    setCebeEditId(c.id); setCebeError('');
+  };
+  const guardarCebe = async e => {
+    e.preventDefault();
+    if (!cebeForm.codigo.trim()) return setCebeError('El código del CEBE es obligatorio.');
+    if (!cebeForm.nombre.trim()) return setCebeError('El nombre es obligatorio.');
+    if ((centrosBeneficio||[]).some(c => c.codigo === cebeForm.codigo.trim() && c.id !== cebeEditId)) return setCebeError('Este código ya está en uso. Elige uno diferente.');
+    setCebeSaving(true); setCebeError('');
+    try {
+      const resp = usuariosActivos.find(u => u.id === cebeForm.responsable_id);
+      const datos = { ...cebeForm, responsable_nombre: resp?.nombre || '', fecha_inicio: cebeForm.fecha_inicio || null, fecha_fin: cebeForm.fecha_fin || null, meta_ingresos: cebeForm.meta_ingresos !== '' ? cebeForm.meta_ingresos : null, cuenta_id: cebeForm.cuenta_id || null };
+      if (cebeEditId) await actualizarCentroBeneficio(cebeEditId, datos);
+      else await crearCentroBeneficio(datos);
+      addNotificacion?.(`CEBE ${cebeEditId ? 'actualizado' : 'creado'} correctamente.`);
+      resetCebeForm();
+    } catch (err) { setCebeError(err?.message || 'No se pudo guardar el CEBE.'); }
+    finally { setCebeSaving(false); }
+  };
+  const cebesFiltrados = (centrosBeneficio||[]).filter(c =>
+    (!cebeFiltroTipo || c.tipo === cebeFiltroTipo) &&
+    (!cebeFiltroEstado || c.estado === cebeFiltroEstado)
+  );
+
+  // ---- Import/Export ----
+  const parseCsvLine = line => {
+    const vals = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === ',' && !inQ) {
+        vals.push(cur.trim().replace(/\r/g,''));
+        cur = '';
+      } else { cur += ch; }
+    }
+    vals.push(cur.trim().replace(/\r/g,''));
+    return vals;
+  };
+  const parseCsv = text => {
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) return [];
+    const headers = parseCsvLine(lines[0]).map(h => h.replace(/\r/g,''));
+    return lines.slice(1).filter(l => l.trim()).map(line => {
+      const vals = parseCsvLine(line);
+      const row = {};
+      headers.forEach((h,i) => row[h] = vals[i]||'');
+      return row;
+    });
+  };
+  const normEstado = v => (v||'').trim().toLowerCase();
+  const tipoKeyMap = { 'área funcional':'area_funcional', 'area funcional':'area_funcional', 'proyecto':'proyecto', 'sede':'sede', 'temporal':'temporal', 'línea de servicio':'linea_servicio', 'linea de servicio':'linea_servicio', 'cliente':'cliente', 'producto':'producto' };
+  const normTipo = v => tipoKeyMap[(v||'').trim().toLowerCase()] || (v||'').trim().toLowerCase();
+  const findCebe = val => {
+    if (!val) return null;
+    const v = val.trim();
+    return (centrosBeneficio||[]).find(b =>
+      b.nombre === v ||
+      b.codigo === v ||
+      `${b.codigo} - ${b.nombre}` === v ||
+      v.includes(b.nombre) ||
+      v.includes(b.codigo)
+    ) || null;
+  };
+  const validarCecoImport = rows => rows.map(r => {
+    const errores = [];
+    const estadoNorm = normEstado(r.estado);
+    if (!r.codigo) errores.push('Código vacío');
+    else if ((centrosCosto||[]).some(c=>c.codigo===r.codigo) || rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado');
+    if (!r.nombre) errores.push('Nombre vacío');
+    if (!r.tipo) errores.push('Tipo vacío');
+    if (r.cebe_padre && !findCebe(r.cebe_padre)) errores.push(`CEBE "${r.cebe_padre}" no encontrado`);
+    if (r.estado && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido (usa "activo" o "inactivo")');
+    const cebe = findCebe(r.cebe_padre);
+    const resp = usuariosActivos.find(u=>u.nombre===r.responsable);
+    return { ...r, tipo: normTipo(r.tipo), estado: estadoNorm || 'activo', cebe_id: cebe?.id || null, responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, presupuesto_mensual: r.presupuesto_mensual || null, _errores: errores };
+  });
+  const validarCebeImport = rows => rows.map(r => {
+    const errores = [];
+    const estadoNorm = normEstado(r.estado);
+    if (!r.codigo) errores.push('Código vacío');
+    else if ((centrosBeneficio||[]).some(c=>c.codigo===r.codigo) || rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado');
+    if (!r.nombre) errores.push('Nombre vacío');
+    if (!r.tipo) errores.push('Tipo vacío');
+    if (r.estado && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido (usa "activo" o "inactivo")');
+    const resp = usuariosActivos.find(u=>u.nombre===r.responsable);
+    return { ...r, tipo: normTipo(r.tipo), estado: estadoNorm || 'activo', responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, meta_ingresos: r.meta_ingresos || null, cuenta_id: r.cuenta_id || null, _errores: errores };
+  });
+  const exportCsv = (data, headers, filename) => {
+    const rows = [headers.join(','), ...data.map(r => headers.map(h=>`"${r[h]??''}"` ).join(','))];
+    const blob = new Blob([rows.join('\n')], { type:'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  };
+
+  return (
+    <>
+      <div className="side-panel-backdrop" onClick={onClose}/>
+      <div className="side-panel" style={{ width:'min(960px, 98vw)' }}>
+        <div className="side-panel-head">
+          <div>
+            <div className="eyebrow">Gestión de catálogo</div>
+            <div className="font-display" style={{ fontSize:22, fontWeight:700, marginTop:2 }}>Centros de Costo y Beneficio</div>
+            <div className="text-muted" style={{ fontSize:12, marginTop:4 }}>{(centrosCosto||[]).length} CECOs · {(centrosBeneficio||[]).length} CEBEs · empresa actual</div>
+          </div>
+          <button className="icon-btn" onClick={onClose}>{I.x}</button>
+        </div>
+
+        <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', padding:'0 24px' }}>
+          {[['ceco','CECO — Centros de Costo'],['cebe','CEBE — Centros de Beneficio']].map(([id,label]) => (
+            <button key={id} onClick={() => setTab(id)} style={{ padding:'10px 20px', background:'none', border:'none', borderBottom: tab===id ? '2px solid var(--cyan)' : '2px solid transparent', color: tab===id ? 'var(--cyan)' : 'var(--fg-muted)', fontWeight: tab===id ? 700 : 400, fontSize:13, cursor:'pointer', marginBottom:-1 }}>{label}</button>
+          ))}
+        </div>
+
+        <div className="side-panel-body">
+
+          {/* ===== TAB CECO ===== */}
+          {tab === 'ceco' && (<>
+            <div className="row" style={{ gap:10, marginBottom:18 }}>
+              <button className="btn btn-secondary" onClick={() => { setCecoModalImport(true); setCecoImportRows([]); setCecoImportStep(1); }}>{I.download} Importar Excel</button>
+              <button className="btn btn-secondary" onClick={() => { const data = (centrosCosto||[]).map(c => ({ ...c, cebe_padre: (centrosBeneficio||[]).find(b=>b.id===c.cebe_id)?.nombre || '', responsable: c.responsable_nombre || '' })); exportCsv(data, ['codigo','nombre','tipo','responsable','cebe_padre','presupuesto_mensual','fecha_inicio','fecha_fin','descripcion','estado'], 'cecos.csv'); }}>{I.download} Exportar Excel</button>
+              <span className="badge badge-cyan">Validación de duplicados activa</span>
+            </div>
+
+            <div className="card" style={{ marginBottom:16, padding:20 }}>
+              <div style={{ fontWeight:600, fontSize:13, color:'var(--cyan)', marginBottom:14 }}>{cecoEditId ? 'Editar CECO' : 'Nuevo CECO'}</div>
+              {cecoError && <div className="alert alert-danger" style={{ marginBottom:12, fontSize:13 }}>{cecoError}</div>}
+              <form onSubmit={guardarCeco}>
+                <div className="grid-2" style={{ gap:12, marginBottom:12 }}>
+                  <div className="input-group">
+                    <label>Código * <span style={{ fontSize:11, fontWeight:400, color:'var(--fg-subtle)' }}>· Lo define la empresa</span></label>
+                    <input className="input" value={cecoForm.codigo} onChange={e=>setCecoForm(p=>({...p,codigo:e.target.value}))} placeholder="Ej: CC-OPS-01" disabled={!!cecoEditId}/>
+                  </div>
+                  <div className="input-group">
+                    <label>Nombre *</label>
+                    <input className="input" value={cecoForm.nombre} onChange={e=>setCecoForm(p=>({...p,nombre:e.target.value}))} placeholder="Ej: Operaciones Lima"/>
+                  </div>
+                  <div className="input-group">
+                    <label>Tipo *</label>
+                    <select className="select" value={cecoForm.tipo} onChange={e=>setCecoForm(p=>({...p,tipo:e.target.value}))}>
+                      {CECO_TIPOS.map(t=><option key={t} value={t}>{labelTipo(t)}</option>)}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>Responsable</label>
+                    <select className="select" value={cecoForm.responsable_id} onChange={e=>setCecoForm(p=>({...p,responsable_id:e.target.value}))}>
+                      <option value="">— Seleccionar —</option>
+                      {usuariosActivos.map(u=><option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>CEBE padre *</label>
+                    <select className="select" value={cecoForm.cebe_id} onChange={e=>setCecoForm(p=>({...p,cebe_id:e.target.value}))}>
+                      <option value="">— Seleccionar CEBE —</option>
+                      {cebesActivos.map(c=><option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>Presupuesto mensual</label>
+                    <input className="input" type="number" min="0" value={cecoForm.presupuesto_mensual} onChange={e=>setCecoForm(p=>({...p,presupuesto_mensual:e.target.value}))} placeholder="0.00"/>
+                  </div>
+                  {['proyecto','temporal'].includes(cecoForm.tipo) && <>
+                    <div className="input-group">
+                      <label>Fecha inicio</label>
+                      <input className="input" type="date" value={cecoForm.fecha_inicio} onChange={e=>setCecoForm(p=>({...p,fecha_inicio:e.target.value}))}/>
+                    </div>
+                    <div className="input-group">
+                      <label>Fecha fin</label>
+                      <input className="input" type="date" value={cecoForm.fecha_fin} onChange={e=>setCecoForm(p=>({...p,fecha_fin:e.target.value}))}/>
+                    </div>
+                  </>}
+                  <div className="input-group" style={{ gridColumn:'1/-1' }}>
+                    <label>Descripción</label>
+                    <input className="input" value={cecoForm.descripcion} onChange={e=>setCecoForm(p=>({...p,descripcion:e.target.value}))} placeholder="Opcional"/>
+                  </div>
+                  <div className="input-group">
+                    <label>Estado *</label>
+                    <select className="select" value={cecoForm.estado} onChange={e=>setCecoForm(p=>({...p,estado:e.target.value}))}>
+                      <option value="activo">Activo</option>
+                      <option value="inactivo">Inactivo</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+                  {cecoEditId && <button type="button" className="btn btn-secondary" onClick={resetCecoForm}>Cancelar</button>}
+                  <button className="btn btn-primary" type="submit" disabled={cecoSaving}>{cecoSaving ? 'Guardando...' : cecoEditId ? 'Actualizar CECO' : '+ Agregar CECO'}</button>
+                </div>
+              </form>
+            </div>
+
+            <div className="row" style={{ gap:10, marginBottom:12, flexWrap:'wrap' }}>
+              <select className="select" style={{ width:'auto', fontSize:12 }} value={cecoFiltroTipo} onChange={e=>setCecoFiltroTipo(e.target.value)}>
+                <option value="">Todos los tipos</option>
+                {CECO_TIPOS.map(t=><option key={t} value={t}>{labelTipo(t)}</option>)}
+              </select>
+              <select className="select" style={{ width:'auto', fontSize:12 }} value={cecoFiltroCebe} onChange={e=>setCecoFiltroCebe(e.target.value)}>
+                <option value="">Todos los CEBEs</option>
+                {(centrosBeneficio||[]).map(c=><option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+              </select>
+              <select className="select" style={{ width:'auto', fontSize:12 }} value={cecoFiltroEstado} onChange={e=>setCecoFiltroEstado(e.target.value)}>
+                <option value="">Todos los estados</option>
+                <option value="activo">Activo</option>
+                <option value="inactivo">Inactivo</option>
+              </select>
+              <span className="text-muted" style={{ fontSize:12, marginLeft:'auto' }}>{cecosFiltrados.length} registros</span>
+            </div>
+
+            <div className="card">
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>CEBE padre</th><th>Responsable</th><th>Presupuesto</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
+                  <tbody>
+                    {cecosFiltrados.length === 0
+                      ? <tr><td colSpan="8" className="text-center text-muted" style={{ padding:'32px 0' }}>No hay CECOs con los filtros seleccionados.</td></tr>
+                      : cecosFiltrados.map(c => {
+                          const cebePadre = (centrosBeneficio||[]).find(b=>b.id===c.cebe_id);
+                          const resp = usuariosActivos.find(u=>u.id===c.responsable_id);
+                          return (
+                            <tr key={c.id}>
+                              <td className="mono">{c.codigo}</td>
+                              <td style={{ fontWeight:500 }}>{c.nombre}</td>
+                              <td><span className="badge badge-purple" style={{ fontSize:11 }}>{labelTipo(c.tipo)}</span></td>
+                              <td className="text-muted" style={{ fontSize:12 }}>{cebePadre ? `${cebePadre.codigo} — ${cebePadre.nombre}` : '—'}</td>
+                              <td className="text-muted" style={{ fontSize:12 }}>{resp?.nombre || c.responsable_nombre || '—'}</td>
+                              <td className="mono text-muted" style={{ fontSize:12 }}>{c.presupuesto_mensual ? `S/ ${Number(c.presupuesto_mensual).toLocaleString('es-PE')}` : '—'}</td>
+                              <td><span className={`badge ${c.estado==='activo'?'badge-green':'badge-gray'}`}>{c.estado}</span></td>
+                              <td>
+                                <div className="row" style={{ justifyContent:'flex-end', gap:4 }}>
+                                  <button className="icon-btn" title="Editar" onClick={()=>editarCeco(c)} style={{ color:'var(--cyan)' }}>{I.edit}</button>
+                                  <button className="icon-btn" title="Inactivar" onClick={async()=>{ if(window.confirm(`¿Inactivar "${c.nombre}"?`)) { await actualizarCentroCosto(c.id,{...c,estado:'inactivo'}); addNotificacion?.('CECO inactivado.'); }}} style={{ color:'var(--fg-muted)' }}>{I.trash}</button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>)}
+
+          {/* ===== TAB CEBE ===== */}
+          {tab === 'cebe' && (<>
+            <div className="row" style={{ gap:10, marginBottom:18 }}>
+              <button className="btn btn-secondary" onClick={() => { setCebeModalImport(true); setCebeImportRows([]); setCebeImportStep(1); }}>{I.download} Importar Excel</button>
+              <button className="btn btn-secondary" onClick={() => exportCsv(centrosBeneficio||[], ['codigo','nombre','tipo','responsable_nombre','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.csv')}>{I.download} Exportar Excel</button>
+              <span className="badge badge-cyan">Validación de duplicados activa</span>
+            </div>
+
+            <div className="card" style={{ marginBottom:16, padding:20 }}>
+              <div style={{ fontWeight:600, fontSize:13, color:'var(--cyan)', marginBottom:14 }}>{cebeEditId ? 'Editar CEBE' : 'Nuevo CEBE'}</div>
+              {cebeError && <div className="alert alert-danger" style={{ marginBottom:12, fontSize:13 }}>{cebeError}</div>}
+              <form onSubmit={guardarCebe}>
+                <div className="grid-2" style={{ gap:12, marginBottom:12 }}>
+                  <div className="input-group">
+                    <label>Código * <span style={{ fontSize:11, fontWeight:400, color:'var(--fg-subtle)' }}>· Lo define la empresa</span></label>
+                    <input className="input" value={cebeForm.codigo} onChange={e=>setCebeForm(p=>({...p,codigo:e.target.value}))} placeholder="Ej: CEBE-001" disabled={!!cebeEditId}/>
+                  </div>
+                  <div className="input-group">
+                    <label>Nombre *</label>
+                    <input className="input" value={cebeForm.nombre} onChange={e=>setCebeForm(p=>({...p,nombre:e.target.value}))} placeholder="Ej: TIDEO Consulting"/>
+                  </div>
+                  <div className="input-group">
+                    <label>Tipo *</label>
+                    <select className="select" value={cebeForm.tipo} onChange={e=>setCebeForm(p=>({...p,tipo:e.target.value}))}>
+                      {CEBE_TIPOS.map(t=><option key={t} value={t}>{labelTipo(t)}</option>)}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>Responsable</label>
+                    <select className="select" value={cebeForm.responsable_id} onChange={e=>setCebeForm(p=>({...p,responsable_id:e.target.value}))}>
+                      <option value="">— Seleccionar —</option>
+                      {usuariosActivos.map(u=><option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    </select>
+                  </div>
+                  {cebeForm.tipo === 'cliente' && (
+                    <div className="input-group">
+                      <label>Cliente vinculado</label>
+                      <select className="select" value={cebeForm.cuenta_id} onChange={e=>setCebeForm(p=>({...p,cuenta_id:e.target.value}))}>
+                        <option value="">— Seleccionar cliente —</option>
+                        {(cuentas||[]).filter(c=>c.estado!=='inactivo').map(c=><option key={c.id} value={c.id}>{c.razon_social||c.nombre}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <div className="input-group">
+                    <label>Meta de ingresos</label>
+                    <input className="input" type="number" min="0" value={cebeForm.meta_ingresos} onChange={e=>setCebeForm(p=>({...p,meta_ingresos:e.target.value}))} placeholder="0.00"/>
+                  </div>
+                  <div className="input-group">
+                    <label>Fecha inicio</label>
+                    <input className="input" type="date" value={cebeForm.fecha_inicio} onChange={e=>setCebeForm(p=>({...p,fecha_inicio:e.target.value}))}/>
+                  </div>
+                  <div className="input-group">
+                    <label>Fecha fin</label>
+                    <input className="input" type="date" value={cebeForm.fecha_fin} onChange={e=>setCebeForm(p=>({...p,fecha_fin:e.target.value}))}/>
+                  </div>
+                  <div className="input-group" style={{ gridColumn:'1/-1' }}>
+                    <label>Descripción</label>
+                    <input className="input" value={cebeForm.descripcion} onChange={e=>setCebeForm(p=>({...p,descripcion:e.target.value}))} placeholder="Opcional"/>
+                  </div>
+                  <div className="input-group">
+                    <label>Estado *</label>
+                    <select className="select" value={cebeForm.estado} onChange={e=>setCebeForm(p=>({...p,estado:e.target.value}))}>
+                      <option value="activo">Activo</option>
+                      <option value="inactivo">Inactivo</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+                  {cebeEditId && <button type="button" className="btn btn-secondary" onClick={resetCebeForm}>Cancelar</button>}
+                  <button className="btn btn-primary" type="submit" disabled={cebeSaving}>{cebeSaving ? 'Guardando...' : cebeEditId ? 'Actualizar CEBE' : '+ Agregar CEBE'}</button>
+                </div>
+              </form>
+            </div>
+
+            <div className="row" style={{ gap:10, marginBottom:12, flexWrap:'wrap' }}>
+              <select className="select" style={{ width:'auto', fontSize:12 }} value={cebeFiltroTipo} onChange={e=>setCebeFiltroTipo(e.target.value)}>
+                <option value="">Todos los tipos</option>
+                {CEBE_TIPOS.map(t=><option key={t} value={t}>{labelTipo(t)}</option>)}
+              </select>
+              <select className="select" style={{ width:'auto', fontSize:12 }} value={cebeFiltroEstado} onChange={e=>setCebeFiltroEstado(e.target.value)}>
+                <option value="">Todos los estados</option>
+                <option value="activo">Activo</option>
+                <option value="inactivo">Inactivo</option>
+              </select>
+              <span className="text-muted" style={{ fontSize:12, marginLeft:'auto' }}>{cebesFiltrados.length} registros</span>
+            </div>
+
+            <div className="card">
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Responsable</th><th>Meta ingresos</th><th>CECOs</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
+                  <tbody>
+                    {cebesFiltrados.length === 0
+                      ? <tr><td colSpan="8" className="text-center text-muted" style={{ padding:'32px 0' }}>No hay CEBEs con los filtros seleccionados.</td></tr>
+                      : cebesFiltrados.map(c => {
+                          const resp = usuariosActivos.find(u=>u.id===c.responsable_id);
+                          const cecosCount = (centrosCosto||[]).filter(cc=>cc.cebe_id===c.id).length;
+                          return (
+                            <tr key={c.id}>
+                              <td className="mono">{c.codigo}</td>
+                              <td style={{ fontWeight:500 }}>{c.nombre}</td>
+                              <td><span className="badge badge-cyan" style={{ fontSize:11 }}>{labelTipo(c.tipo)}</span></td>
+                              <td className="text-muted" style={{ fontSize:12 }}>{resp?.nombre || c.responsable_nombre || '—'}</td>
+                              <td className="mono text-muted" style={{ fontSize:12 }}>{c.meta_ingresos ? `S/ ${Number(c.meta_ingresos).toLocaleString('es-PE')}` : '—'}</td>
+                              <td><span className="badge badge-gray" style={{ fontSize:11 }}>{cecosCount} CECOs</span></td>
+                              <td><span className={`badge ${c.estado==='activo'?'badge-green':'badge-gray'}`}>{c.estado}</span></td>
+                              <td>
+                                <div className="row" style={{ justifyContent:'flex-end', gap:4 }}>
+                                  <button className="icon-btn" title="Editar" onClick={()=>editarCebe(c)} style={{ color:'var(--cyan)' }}>{I.edit}</button>
+                                  <button className="icon-btn" title="Inactivar" onClick={async()=>{ if(window.confirm(`¿Inactivar "${c.nombre}"?`)) { await actualizarCentroBeneficio(c.id,{...c,estado:'inactivo'}); addNotificacion?.('CEBE inactivado.'); }}} style={{ color:'var(--fg-muted)' }}>{I.trash}</button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>)}
+
+        </div>
+
+        {/* Modal importar CECO */}
+        {cecoModalImport && (
+          <div className="modal-backdrop">
+            <div className="modal" style={{ maxWidth:720, width:'96vw' }}>
+              <div className="modal-head">
+                <h2>Importar CECOs — Paso {cecoImportStep} de 3</h2>
+                <button className="icon-btn" onClick={()=>setCecoModalImport(false)}>{I.x}</button>
+              </div>
+              <div className="modal-body">
+                {cecoImportStep === 1 && (
+                  <div>
+                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un CSV con columnas: <code>codigo, nombre, tipo, responsable, cebe_padre, presupuesto_mensual, estado</code></p>
+                    <input type="file" accept=".csv" onChange={e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>{ setCecoImportRows(validarCecoImport(parseCsv(ev.target.result))); setCecoImportStep(2); }; r.readAsText(f); }}/>
+                  </div>
+                )}
+                {cecoImportStep === 2 && (
+                  <div>
+                    <p style={{ marginBottom:12, fontSize:13 }}><strong>{cecoImportRows.length} filas</strong> · {cecoImportRows.filter(r=>r._errores.length===0).length} válidas · {cecoImportRows.filter(r=>r._errores.length>0).length} con errores</p>
+                    <div style={{ maxHeight:280, overflow:'auto' }}>
+                      <table className="tbl">
+                        <thead><tr><th>Fila</th><th>Código</th><th>Nombre</th><th>Estado</th><th>Errores</th></tr></thead>
+                        <tbody>{cecoImportRows.map((r,i)=>(
+                          <tr key={i} style={{ background: r._errores.length>0 ? 'rgba(239,68,68,0.05)' : 'transparent' }}>
+                            <td className="mono text-muted">{i+2}</td><td className="mono">{r.codigo}</td><td>{r.nombre}</td>
+                            <td>{r._errores.length===0 ? <span className="badge badge-green">OK</span> : <span className="badge badge-red">Error</span>}</td>
+                            <td style={{ fontSize:11, color:'var(--danger)' }}>{r._errores.join(' · ')}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                    <div style={{ display:'flex', gap:10, marginTop:16 }}>
+                      <button className="btn btn-secondary" onClick={()=>setCecoImportStep(1)}>← Volver</button>
+                      <button className="btn btn-primary" disabled={!cecoImportRows.some(r=>r._errores.length===0)} onClick={()=>setCecoImportStep(3)}>Confirmar importación →</button>
+                    </div>
+                  </div>
+                )}
+                {cecoImportStep === 3 && (
+                  <div>
+                    <p style={{ marginBottom:16, fontSize:13 }}>Se importarán <strong>{cecoImportRows.filter(r=>r._errores.length===0).length} CECOs</strong>. Los {cecoImportRows.filter(r=>r._errores.length>0).length} con errores serán ignorados.</p>
+                    <button className="btn btn-primary" onClick={async e => {
+                      const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Importando...';
+                      try {
+                        const v = cecoImportRows.filter(r=>r._errores.length===0).map(({_errores,...r})=>r);
+                        await importarCentrosCosto(v);
+                        addNotificacion?.(`${v.length} CECOs importados correctamente.`);
+                        setCecoModalImport(false);
+                      } catch(err) {
+                        btn.disabled = false; btn.textContent = 'Reintentar';
+                        setCecoError(err?.message || 'Error al importar CECOs.');
+                        setCecoImportStep(1);
+                        setCecoModalImport(false);
+                      }
+                    }}>Importar {cecoImportRows.filter(r=>r._errores.length===0).length} CECOs</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal importar CEBE */}
+        {cebeModalImport && (
+          <div className="modal-backdrop">
+            <div className="modal" style={{ maxWidth:720, width:'96vw' }}>
+              <div className="modal-head">
+                <h2>Importar CEBEs — Paso {cebeImportStep} de 3</h2>
+                <button className="icon-btn" onClick={()=>setCebeModalImport(false)}>{I.x}</button>
+              </div>
+              <div className="modal-body">
+                {cebeImportStep === 1 && (
+                  <div>
+                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un CSV con columnas: <code>codigo, nombre, tipo, responsable_nombre, meta_ingresos, estado</code></p>
+                    <input type="file" accept=".csv" onChange={e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>{ setCebeImportRows(validarCebeImport(parseCsv(ev.target.result))); setCebeImportStep(2); }; r.readAsText(f); }}/>
+                  </div>
+                )}
+                {cebeImportStep === 2 && (
+                  <div>
+                    <p style={{ marginBottom:12, fontSize:13 }}><strong>{cebeImportRows.length} filas</strong> · {cebeImportRows.filter(r=>r._errores.length===0).length} válidas · {cebeImportRows.filter(r=>r._errores.length>0).length} con errores</p>
+                    <div style={{ maxHeight:280, overflow:'auto' }}>
+                      <table className="tbl">
+                        <thead><tr><th>Fila</th><th>Código</th><th>Nombre</th><th>Estado</th><th>Errores</th></tr></thead>
+                        <tbody>{cebeImportRows.map((r,i)=>(
+                          <tr key={i} style={{ background: r._errores.length>0 ? 'rgba(239,68,68,0.05)' : 'transparent' }}>
+                            <td className="mono text-muted">{i+2}</td><td className="mono">{r.codigo}</td><td>{r.nombre}</td>
+                            <td>{r._errores.length===0 ? <span className="badge badge-green">OK</span> : <span className="badge badge-red">Error</span>}</td>
+                            <td style={{ fontSize:11, color:'var(--danger)' }}>{r._errores.join(' · ')}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                    <div style={{ display:'flex', gap:10, marginTop:16 }}>
+                      <button className="btn btn-secondary" onClick={()=>setCebeImportStep(1)}>← Volver</button>
+                      <button className="btn btn-primary" disabled={!cebeImportRows.some(r=>r._errores.length===0)} onClick={()=>setCebeImportStep(3)}>Confirmar importación →</button>
+                    </div>
+                  </div>
+                )}
+                {cebeImportStep === 3 && (
+                  <div>
+                    <p style={{ marginBottom:16, fontSize:13 }}>Se importarán <strong>{cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs</strong>. Los {cebeImportRows.filter(r=>r._errores.length>0).length} con errores serán ignorados.</p>
+                    <button className="btn btn-primary" onClick={async()=>{ const v=cebeImportRows.filter(r=>r._errores.length===0).map(({_errores,...r})=>({...r,estado:r.estado||'activo'})); await importarCentrosBeneficio(v); addNotificacion?.(`${v.length} CEBEs importados.`); setCebeModalImport(false); }}>Importar {cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </>
+  );
+}
+
 // ============ CONFIGURACIÓN Y MAESTROS ============
 function Maestros() {
   const {
     navigate, cuentas, proveedores, personalAdmin = [], personalOperativo = [],
     areasEmpresa, cargos, especialidades, tiposServicio, almacenes, sedes, industrias,
+    monedasImpuestosUnidades = [],
     crearArea, actualizarArea, eliminarArea,
     crearCargo, actualizarCargo, eliminarCargo,
     crearEspecialidad, actualizarEspecialidad, eliminarEspecialidad,
@@ -1207,9 +1761,12 @@ function Maestros() {
     crearAlmacen, actualizarAlmacen, eliminarAlmacen,
     crearSede, actualizarSede, eliminarSede,
     crearIndustria, actualizarIndustria, eliminarIndustria,
+    crearMonedaImpuestoUnidad, actualizarMonedaImpuestoUnidad, eliminarMonedaImpuestoUnidad,
     addNotificacion
   } = useApp();
+  const { centrosCosto, centrosBeneficio } = useApp();
   const [sel, setSel] = useState(null);
+  const [showCecoCebe, setShowCecoCebe] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const formRef = React.useRef(null);
   const [clienteSearch, setClienteSearch] = useState('');
@@ -1217,7 +1774,7 @@ function Maestros() {
   const maestrosCatalogos = [
     { id: 'mst_industrias', tabla: 'Industrias' },
     { id: 'mst_sedes', tabla: 'Sedes y ubicaciones GPS' },
-    { id: 'mst_centros_costo', tabla: 'Centros de costo' },
+    { id: 'mst_ceco_cebe', tabla: 'Centros de Costo y Beneficio' },
     { id: 'mst_areas', tabla: 'Areas de la empresa' },
     { id: 'mst_cargos', tabla: 'Cargos de la empresa' },
     { id: 'mst_especialidades', tabla: 'Especialidades técnicas' },
@@ -1226,13 +1783,12 @@ function Maestros() {
     { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno' },
     { id: 'mst_almacenes', tabla: 'Almacenes y depósitos' },
   ];
-  const nuevoBase = { nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'' };
+  const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', tipo_catalogo:'moneda' };
   const [rows, setRows] = useState({
     mst_clientes: [],
     mst_proveedores: [],
     mst_materiales: [],
     mst_impuestos: [],
-    mst_centros_costo: []
   });
   const [nuevo, setNuevo] = useState(nuevoBase);
   const [formSaving, setFormSaving] = useState(false);
@@ -1246,6 +1802,7 @@ function Maestros() {
     if (sel.id === 'mst_almacenes') return almacenes;
     if (sel.id === 'mst_sedes') return sedes;
     if (sel.id === 'mst_industrias') return industrias;
+    if (sel.id === 'mst_impuestos') return monedasImpuestosUnidades;
     return rows[sel.id] || [];
   };
   const selectedRows = getSelectedRows();
@@ -1311,6 +1868,17 @@ function Maestros() {
         const item = { ...base, categoria: nuevo.detalle || 'General' };
         if (editandoId) await actualizarIndustria(editandoId, item);
         else await crearIndustria(item);
+      } else if (sel.id === 'mst_impuestos') {
+        const item = {
+          codigo: String(nuevo.codigo || '').trim().toUpperCase(),
+          tipo: nuevo.tipo_catalogo || 'moneda',
+          nombre: nuevo.nombre || 'Nuevo valor',
+          detalle: nuevo.detalle || '',
+          estado: nuevo.estado || 'activo',
+        };
+        if (!item.codigo) throw new Error('Completa el codigo del valor.');
+        if (editandoId) await actualizarMonedaImpuestoUnidad(editandoId, item);
+        else await crearMonedaImpuestoUnidad(item);
       } else {
         return;
       }
@@ -1319,9 +1887,12 @@ function Maestros() {
     } catch (err) {
       console.error(err);
       const rawMsg = err?.message || 'No se pudo guardar el registro.';
-      const msg = rawMsg.includes('areas_empresa') || rawMsg.includes('schema cache')
-        ? 'No existe la tabla areas_empresa en Supabase. Aplica la migracion 050_maestro_areas_empresa.sql y recarga el schema cache.'
-        : rawMsg;
+      let msg = rawMsg;
+      if (rawMsg.includes('monedas_impuestos_unidades') || (sel.id === 'mst_impuestos' && rawMsg.includes('schema cache'))) {
+        msg = 'No existe la tabla monedas_impuestos_unidades en Supabase. Aplica la migracion 095_parametros_generales_resto.sql y recarga el schema cache.';
+      } else if (rawMsg.includes('areas_empresa') || (sel.id === 'mst_areas' && rawMsg.includes('schema cache'))) {
+        msg = 'No existe la tabla areas_empresa en Supabase. Aplica la migracion 050_maestro_areas_empresa.sql y recarga el schema cache.';
+      }
       setFormError(msg);
       addNotificacion?.(`No se pudo guardar el registro: ${msg}`);
     } finally {
@@ -1364,6 +1935,7 @@ function Maestros() {
       clasificacion: r.clasificacion || '',
       facturable: Boolean(r.facturable),
       tipo: r.tipo || '',
+      tipo_catalogo: r.tipo || 'moneda',
       responsable: r.responsable || '',
       direccion: r.direccion || '',
       gps: r.gps || '',
@@ -1385,6 +1957,7 @@ function Maestros() {
       else if (sel.id === 'mst_almacenes') await eliminarAlmacen(r.id);
       else if (sel.id === 'mst_sedes') await eliminarSede(r.id);
       else if (sel.id === 'mst_industrias') await eliminarIndustria(r.id);
+      else if (sel.id === 'mst_impuestos') await eliminarMonedaImpuestoUnidad(r.id);
       else return;
       if (editandoId === r.id) resetForm();
       addNotificacion?.(`${sel.tabla}: registro eliminado.`);
@@ -1474,7 +2047,7 @@ function Maestros() {
           <CodPreview id={sel.id} len={formLen}/>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Electricista industrial" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
-          <div className="input-group"><label>Área</label><select className="select" value={nuevo.area} onChange={e=>setNuevo(v=>({...v,area:e.target.value}))}><option value="">Seleccionar...</option>{['Eléctrica','Mecánica','Civil','Instrumentación','Sistemas','Seguridad','General'].map(a=><option key={a}>{a}</option>)}</select></div>
+          <div className="input-group"><label>Área</label><select className="select" value={nuevo.area} onChange={e=>setNuevo(v=>({...v,area:e.target.value}))}><option value="">Seleccionar...</option>{(areasEmpresa||[]).map(a=><option key={a.id} value={a.nombre}>{a.nombre}</option>)}</select></div>
           <div className="input-group"><label>Requiere certificación</label><select className="select" value={nuevo.requiere_cert?'si':'no'} onChange={e=>setNuevo(v=>({...v,requiere_cert:e.target.value==='si'}))}><option value="no">No</option><option value="si">Sí</option></select></div>
           <FormActions label="especialidad" />
         </div>
@@ -1514,6 +2087,28 @@ function Maestros() {
           <div className="input-group" style={{gridColumn:'span 3'}}><label>Dirección física</label><input className="input" value={nuevo.direccion} onChange={e=>setNuevo(v=>({...v,direccion:e.target.value}))} placeholder="Ej: Av. Industrial 1450, Ate Vitarte, Lima"/></div>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Coordenadas GPS <span style={{fontSize:10,color:'var(--fg-subtle)',fontWeight:400}}>· lat, lng</span></label><input className="input" value={nuevo.gps} onChange={e=>setNuevo(v=>({...v,gps:e.target.value}))} placeholder="Ej: -12.0464, -77.0428"/></div>
           <FormActions label="sede" />
+        </div>
+      </form>
+    );
+    if (sel?.id === 'mst_impuestos') return (
+      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+          <div className="input-group">
+            <label>Tipo</label>
+            <select className="select" value={nuevo.tipo_catalogo} onChange={e=>setNuevo(v=>({...v,tipo_catalogo:e.target.value}))}>
+              <option value="moneda">Moneda</option>
+              <option value="impuesto">Impuesto</option>
+              <option value="unidad">Unidad</option>
+            </select>
+          </div>
+          <div className="input-group">
+            <label>Codigo *</label>
+            <input className="input" required value={nuevo.codigo} onChange={e=>setNuevo(v=>({...v,codigo:e.target.value.toUpperCase()}))} placeholder={nuevo.tipo_catalogo === 'moneda' ? 'PEN' : nuevo.tipo_catalogo === 'impuesto' ? 'IGV' : 'UN'} autoFocus/>
+          </div>
+          <div className="input-group" style={{gridColumn:'span 1'}}><label>Nombre *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Sol peruano"/></div>
+          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option><option>bloqueado</option></select></div>
+          <div className="input-group" style={{gridColumn:'1 / -1'}}><label>Detalle</label><input className="input" value={nuevo.detalle} onChange={e=>setNuevo(v=>({...v,detalle:e.target.value}))} placeholder="Ej: Moneda base local, impuesto 18%, unidad de medida"/></div>
+          <FormActions label="valor" />
         </div>
       </form>
     );
@@ -1645,6 +2240,21 @@ function Maestros() {
         ))}</tbody>
       </table>
     );
+    if (sel?.id === 'mst_impuestos') return (
+      <table className="tbl">
+        <thead><tr><th>Tipo</th><th>Codigo</th><th>Valor</th><th>Detalle</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <tbody>{selectedRows.map((r,i) => (
+          <tr key={`${r.codigo}-${i}`}>
+            <td><span className="badge badge-cyan">{r.tipo}</span></td>
+            <td className="mono">{r.codigo}</td>
+            <td><strong>{r.nombre}</strong></td>
+            <td className="text-muted">{r.detalle}</td>
+            <td><span className={'badge '+(r.estado==='activo'?'badge-green':r.estado==='bloqueado'?'badge-red':'badge-gray')}>{r.estado}</span></td>
+            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
+          </tr>
+        ))}</tbody>
+      </table>
+    );
     return (
       <table className="tbl">
         <thead><tr><th>Codigo</th><th>Valor</th><th>Detalle</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
@@ -1676,12 +2286,13 @@ function Maestros() {
             <div className="maestro-card-main">
               <div className="maestro-card-title">{m.tabla}</div>
               {m.id === 'mst_industrias' && (
-                <div className="maestro-card-meta">
-                  {industrias.length} valores - Actualizado en tiempo real
-                </div>
+                <div className="maestro-card-meta">{industrias.length} valores - Actualizado en tiempo real</div>
+              )}
+              {m.id === 'mst_ceco_cebe' && (
+                <div className="maestro-card-meta">{(centrosCosto||[]).length} CECOs · {(centrosBeneficio||[]).length} CEBEs</div>
               )}
             </div>
-            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { setSel(m); resetForm(); }}>
+            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { if (m.id === 'mst_ceco_cebe') { setShowCecoCebe(true); } else { setSel(m); resetForm(); } }}>
               Gestionar {I.chevRight}
             </button>
           </div>
@@ -1699,6 +2310,8 @@ function Maestros() {
           <button className="btn btn-secondary btn-sm" onClick={()=>navigate('rrhh_admin')}>Ir a RRHH Administrativo</button>
         </div>
       </div>
+
+      {showCecoCebe && <CecoCebePanel onClose={() => setShowCecoCebe(false)} />}
 
       {sel && <>
         <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
@@ -1735,11 +2348,35 @@ function Maestros() {
 }
 
 function Servicios() {
-  const [servicios, setServicios] = useState(MOCK.servicios);
+  const { role, addNotificacion, empresa } = useApp();
+  const [servicios, setServicios] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [panelAbierto, setPanelAbierto] = useState(false);
   const [editando, setEditando] = useState(null);
+  const [formError, setFormError] = useState('');
 
-  const formBase = { familia: '', descripcion: '', unidad: 'Servicio', costo: '', precio: '', estado: 'activo', facturable: true, precio_incluido: false, detalle: '', entregables: [] };
+  useEffect(() => {
+    if (!empresa?.id) return;
+    setLoading(true);
+    maestrosService.getServicios(empresa.id).then(data => {
+      setServicios(data || []);
+      setLoading(false);
+    }).catch(err => {
+      console.error(err);
+      addNotificacion('Error cargando catálogo de servicios.', 'error');
+      setLoading(false);
+    });
+  }, [empresa?.id]);
+
+  const [modalImportar, setModalImportar] = useState(false);
+  const [tabImport, setTabImport] = useState('subir');
+  const [importRows, setImportRows] = useState([]);
+
+  const formBase = { 
+    codigo: '', familia: '', descripcion: '', unidad: 'Servicio', 
+    moneda: 'PEN', costo: '', precio: '', estado: 'activo', facturable: true, 
+    precio_incluido: false, detalle: '', entregables: [], notas_internas: '' 
+  };
   const [form, setForm] = useState(formBase);
   const [nuevoEntregable, setNuevoEntregable] = useState('');
 
@@ -1749,13 +2386,44 @@ function Servicios() {
     return Math.round(((pc - cc) / pc) * 100);
   };
 
-  const abrirNuevo = () => { setForm(formBase); setNuevoEntregable(''); setEditando(null); setPanelAbierto(true); };
+  const verCostos = role?.permisos?.todo || role?.permisos?.ver_costos;
+  const verPrecios = role?.permisos?.todo || role?.permisos?.ver_precios;
+  
+  const margenActual = margenCalc(form.costo, form.precio);
+  const colorMargen = margenActual > 30 ? 'var(--green)' : margenActual >= 10 ? 'var(--orange)' : 'var(--danger)';
+
+  const abrirNuevo = () => { 
+    const nuevoCodigo = `SRV-${String(servicios.length + 1).padStart(3, '0')}`;
+    setForm({ ...formBase, codigo: nuevoCodigo }); 
+    setNuevoEntregable(''); 
+    setEditando(null); 
+    setFormError('');
+    setPanelAbierto(true); 
+  };
+  
   const abrirEditar = (s) => {
-    setForm({ familia: s.familia, descripcion: s.descripcion, unidad: s.unidad, costo: s.costo, precio: s.precio, estado: s.estado, facturable: s.facturable, precio_incluido: s.precio_incluido ?? false, detalle: s.detalle || '', entregables: s.entregables ? [...s.entregables] : [] });
+    setForm({ 
+      id: s.id,
+      codigo: s.codigo || s.id || '',
+      familia: s.familia || 'Mantenimiento', 
+      descripcion: s.descripcion || '', 
+      unidad: s.unidad || 'Servicio', 
+      moneda: s.moneda || 'PEN',
+      costo: s.costo || '', 
+      precio: s.precio || '', 
+      estado: s.estado || 'activo', 
+      facturable: s.facturable ?? true, 
+      precio_incluido: s.precio_incluido ?? false, 
+      detalle: s.detalle || '', 
+      notas_internas: s.notas_internas || '',
+      entregables: s.entregables ? [...s.entregables] : [] 
+    });
     setNuevoEntregable('');
     setEditando(s);
+    setFormError('');
     setPanelAbierto(true);
   };
+  
   const cerrar = () => { setPanelAbierto(false); setEditando(null); };
 
   const upd = (f, v) => setForm(p => ({ ...p, [f]: v }));
@@ -1768,17 +2436,135 @@ function Servicios() {
   };
   const quitarEntregable = (idx) => setForm(p => ({ ...p, entregables: p.entregables.filter((_, i) => i !== idx) }));
 
-  const guardar = () => {
-    if (!form.descripcion.trim()) return;
-    const margen = margenCalc(form.costo, form.precio);
-    if (editando) {
-      setServicios(prev => prev.map(s => s.id === editando.id ? { ...s, ...form, costo: Number(form.costo), precio: Number(form.precio), margen } : s));
-    } else {
-      const nuevoId = `SRV-${String(servicios.length + 1).padStart(3, '0')}`;
-      setServicios(prev => [...prev, { id: nuevoId, ...form, costo: Number(form.costo), precio: Number(form.precio), margen }]);
+  const guardar = async () => {
+    setFormError('');
+    if (!form.codigo?.trim()) return setFormError('El código es obligatorio.');
+    if (!form.descripcion?.trim()) return setFormError('La descripción es obligatoria.');
+    
+    if (!editando || editando.codigo !== form.codigo) {
+      if (servicios.some(s => s.codigo === form.codigo)) {
+        return setFormError('El código ya existe en el catálogo.');
+      }
     }
-    cerrar();
+    
+    if (form.facturable && !form.precio_incluido && Number(form.precio) <= 0) {
+      return setFormError('Si el servicio es facturable, el precio de referencia debe ser mayor a 0 (o estar incluido).');
+    }
+
+    const margen = margenCalc(form.costo, form.precio);
+    
+    try {
+      if (editando) {
+        const payload = { ...form, costo: Number(form.costo), precio: Number(form.precio), margen };
+        const saved = await maestrosService.actualizarServicio(editando.id, payload);
+        setServicios(prev => prev.map(s => s.id === editando.id ? saved : s));
+      } else {
+        const payload = { ...form, costo: Number(form.costo), precio: Number(form.precio), margen };
+        delete payload.id;
+        const saved = await maestrosService.crearServicio(empresa.id, payload);
+        setServicios(prev => [...prev, saved]);
+      }
+      addNotificacion(editando ? 'Servicio actualizado' : 'Servicio creado');
+      cerrar();
+    } catch (err) {
+      console.error(err);
+      setFormError(err.message || 'Error al guardar el servicio en la base de datos.');
+    }
   };
+
+  const eliminar = async (s) => {
+    if (confirm(`¿Estás seguro de eliminar el servicio "${s.descripcion}"?`)) {
+      try {
+        await maestrosService.eliminarServicio(s.id);
+        setServicios(prev => prev.filter(x => x.id !== s.id));
+        addNotificacion('Servicio eliminado', 'info');
+      } catch (err) {
+        console.error(err);
+        addNotificacion('Error al eliminar el servicio.', 'error');
+      }
+    }
+  };
+
+  const descargarPlantilla = () => {
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "codigo,nombre,familia,unidad,costo_ref,precio_ref,facturable,estado,entregables\n"
+      + "SRV-999,Mantenimiento Preventivo,Mantenimiento,Servicio,100,150,si,activo,Revision general|Cambio aceite\n";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "plantilla_servicios.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target.result;
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      if (lines.length < 2) return;
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const rowsParsed = [];
+      for(let i=1; i<lines.length; i++){
+        const cols = lines[i].split(',').map(c => c.trim());
+        const row = {};
+        headers.forEach((h, j) => { row[h] = cols[j] || ''; });
+        
+        const errors = [];
+        if (!row.codigo) errors.push('Código vacío');
+        else if (servicios.some(s => s.codigo === row.codigo) || rowsParsed.some(r => r.codigo === row.codigo)) errors.push('Código duplicado');
+        if (!row.nombre) errors.push('Nombre vacío');
+        
+        const facturable = row.facturable?.toLowerCase() !== 'no';
+        const precio = Number(row.precio_ref) || 0;
+        if (facturable && precio <= 0) errors.push('Precio requerido si es facturable');
+        
+        rowsParsed.push({ ...row, facturable, _errores: errors });
+      }
+      setImportRows(rowsParsed);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const ejecutarImportacion = async () => {
+    const validRows = importRows.filter(r => r._errores.length === 0);
+    if (!validRows.length) return;
+    const nuevos = validRows.map(r => ({
+      codigo: r.codigo,
+      descripcion: r.nombre,
+      familia: r.familia || 'General',
+      unidad: r.unidad || 'Servicio',
+      moneda: r.moneda && String(r.moneda).toUpperCase() === 'USD' ? 'USD' : 'PEN',
+      costo: Number(r.costo_ref) || 0,
+      precio: Number(r.precio_ref) || 0,
+      facturable: r.facturable,
+      estado: r.estado === 'inactivo' ? 'inactivo' : 'activo',
+      margen: margenCalc(r.costo_ref, r.precio_ref),
+      entregables: r.entregables ? r.entregables.split('|').filter(Boolean) : []
+    }));
+    
+    try {
+      setLoading(true);
+      await maestrosService.importarServiciosMasivo(empresa.id, nuevos);
+      const data = await maestrosService.getServicios(empresa.id);
+      setServicios(data || []);
+      addNotificacion(`Se importaron ${nuevos.length} servicios exitosamente.`);
+      setModalImportar(false);
+      setImportRows([]);
+    } catch (err) {
+      console.error(err);
+      addNotificacion('Error durante la importación masiva.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const familiasMst = ['Mantenimiento', 'Implementación', 'Supervisión', 'Suministro', 'Consultoría', 'General'];
+  const familiasOpciones = [...new Set([...familiasMst, ...servicios.map(s => s.familia).filter(Boolean)])].sort();
 
   return (
     <>
@@ -1787,41 +2573,51 @@ function Servicios() {
           <h1 className="page-title">Catálogo de Servicios</h1>
           <div className="page-sub">Servicios ofrecidos con estructura de costos</div>
         </div>
-        <button className="btn btn-primary" onClick={abrirNuevo}>{I.plus} Nuevo servicio</button>
+        <div className="row">
+          <button className="btn btn-secondary" onClick={() => { setModalImportar(true); setTabImport('subir'); setImportRows([]); }}>{I.download} Carga masiva</button>
+          <button className="btn btn-primary" onClick={abrirNuevo}>{I.plus} Nuevo servicio</button>
+        </div>
       </div>
       <div className="card">
         <div className="table-wrap">
           <table className="tbl">
             <thead>
               <tr>
-                <th>Código</th>
+                <th style={{width:90}}>Código</th>
                 <th>Familia</th>
                 <th>Descripción</th>
                 <th>Unidad</th>
-                <th>Costo Ref.</th>
-                <th>Precio Ref.</th>
-                <th>Margen</th>
+                {verCostos && <th>Costo Ref.</th>}
+                {verPrecios && <th>Precio Ref.</th>}
+                {(verCostos || verPrecios) && <th>Margen</th>}
                 <th>Facturable</th>
                 <th>Estado</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {servicios.map(s => (
-                <tr key={s.id} className="hover-row">
-                  <td className="mono">{s.id}</td>
+              {loading ? (
+                <tr><td colSpan="10" className="text-center text-muted" style={{padding:'40px 0'}}>Cargando catálogo...</td></tr>
+              ) : servicios.length === 0 ? (
+                <tr><td colSpan="10" className="text-center text-muted" style={{padding:'40px 0'}}>No hay servicios registrados en el catálogo.</td></tr>
+              ) : servicios.map(s => (
+                <tr key={s.id || s.codigo} className="hover-row">
+                  <td className="mono">{s.codigo || s.id}</td>
                   <td>{s.familia}</td>
                   <td style={{fontWeight:500}}>
                     {s.descripcion}
-                    {s.entregables?.length > 0 && <span className="text-muted" style={{fontSize:11, marginLeft:6}}>· {s.entregables.length} entregable{s.entregables.length !== 1 ? 's' : ''}</span>}
+                    {s.entregables?.length > 0 && <span className="text-muted" style={{fontSize:11, marginLeft:6}}>· <span className="badge badge-gray">{s.entregables.length} entregables</span></span>}
                   </td>
                   <td>{s.unidad}</td>
-                  <td className="mono text-muted">{money(s.costo)}</td>
-                  <td className="mono" style={{fontWeight:600}}>{s.precio_incluido ? <span className="badge badge-gray">Incluido</span> : money(s.precio)}</td>
-                  <td><span className="badge badge-cyan">{s.margen}%</span></td>
+                  {verCostos && <td className="mono text-muted">{money(s.costo, s.moneda === 'USD' ? '$' : 'S/')}</td>}
+                  {verPrecios && <td className="mono" style={{fontWeight:600}}>{s.precio_incluido ? <span className="badge badge-gray">Incluido</span> : money(s.precio, s.moneda === 'USD' ? '$' : 'S/')}</td>}
+                  {(verCostos || verPrecios) && <td><span className="badge badge-cyan">{s.margen}%</span></td>}
                   <td>{s.facturable ? <span className="badge badge-green">Sí</span> : <span className="badge badge-gray">No</span>}</td>
                   <td><span className={`badge ${s.estado === 'activo' ? 'badge-green' : 'badge-gray'}`}>{s.estado}</span></td>
-                  <td><button className="icon-btn" style={{color:'var(--fg-muted)'}} onClick={() => abrirEditar(s)} title="Editar servicio">{I.edit}</button></td>
+                  <td>
+                    <button className="icon-btn" style={{color:'var(--fg-muted)'}} onClick={() => abrirEditar(s)} title="Editar servicio">{I.edit}</button>
+                    <button className="icon-btn" style={{color:'var(--danger)', marginLeft: 6}} onClick={() => eliminar(s)} title="Eliminar servicio">{I.trash}</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1831,7 +2627,7 @@ function Servicios() {
 
       {panelAbierto && <>
         <div className="side-panel-backdrop" onClick={cerrar}/>
-        <div className="side-panel" style={{width:'min(580px, 96vw)'}}>
+        <div className="side-panel" style={{width:'min(680px, 96vw)'}}>
           <div className="side-panel-head">
             <div>
               <div className="eyebrow">Catálogo de Servicios</div>
@@ -1840,20 +2636,29 @@ function Servicios() {
             <button className="icon-btn" style={{color:'var(--fg-muted)'}} onClick={cerrar}>{I.x}</button>
           </div>
           <div className="side-panel-body">
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Identificación</div>
-            <div className="grid-2" style={{gap:14, marginBottom:20}}>
+            {formError && <div className="alert alert-danger" style={{marginBottom:16}}>{formError}</div>}
+            
+            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--cyan)'}}>IDENTIFICACIÓN</div>
+            <div className="grid-2" style={{gap:14, marginBottom:24}}>
               <div className="input-group">
+                <label>Código *</label>
+                <input className="input" value={form.codigo} onChange={e => upd('codigo', e.target.value)} placeholder="SRV-006" disabled={!!editando} />
+              </div>
+              <div className="input-group">
+                <label>Familia / Categoría</label>
+                <input className="input" list="familias-list" value={form.familia} onChange={e => upd('familia', e.target.value)} placeholder="Selecciona o escribe..." />
+                <datalist id="familias-list">
+                  {familiasOpciones.map(f => <option key={f} value={f} />)}
+                </datalist>
+              </div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}>
                 <label>Descripción (nombre del servicio) *</label>
                 <input className="input" value={form.descripcion} onChange={e => upd('descripcion', e.target.value)} placeholder="Ej: Mantenimiento preventivo mensual" autoFocus />
               </div>
               <div className="input-group">
-                <label>Familia / Categoría</label>
-                <input className="input" value={form.familia} onChange={e => upd('familia', e.target.value)} placeholder="Ej: Mantenimiento" />
-              </div>
-              <div className="input-group">
-                <label>Unidad</label>
+                <label>Unidad de medida</label>
                 <select className="select" value={form.unidad} onChange={e => upd('unidad', e.target.value)}>
-                  {['Servicio','Hora','Proyecto','Informe','Actividad','Día','Mes','Unidad'].map(u => <option key={u}>{u}</option>)}
+                  {['Servicio','Hora','Proyecto','Informe','Actividad','Mes','Día','Unidad'].map(u => <option key={u}>{u}</option>)}
                 </select>
               </div>
               <div className="input-group">
@@ -1865,63 +2670,170 @@ function Servicios() {
               </div>
             </div>
 
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Precios de referencia</div>
-            <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group">
-                <label>Costo referencial</label>
-                <input className="input" type="number" min="0" step="0.01" value={form.costo} onChange={e => upd('costo', e.target.value)} placeholder="0" disabled={form.precio_incluido} />
-              </div>
-              <div className="input-group">
-                <label>Precio referencial</label>
-                <input className="input" type="number" min="0" step="0.01" value={form.precio} onChange={e => upd('precio', e.target.value)} placeholder="0" disabled={form.precio_incluido} />
-              </div>
-              {!form.precio_incluido && (Number(form.costo) > 0 || Number(form.precio) > 0) && (
-                <div className="input-group" style={{gridColumn:'1/-1'}}>
-                  <span className="text-muted" style={{fontSize:12}}>Margen calculado: <strong>{margenCalc(form.costo, form.precio)}%</strong></span>
+            {(verCostos || verPrecios) && (
+              <>
+                <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--cyan)'}}>ECONOMÍA</div>
+                <div className="grid-2" style={{gap:14, marginBottom:24, padding:16, background:'var(--bg-subtle)', borderRadius:8}}>
+                  <div className="input-group" style={{gridColumn:'1/-1', display:'flex', gap:12, alignItems:'center'}}>
+                    <label style={{margin:0}}>Moneda base:</label>
+                    <select className="select" style={{width:150}} value={form.moneda} onChange={e => upd('moneda', e.target.value)}>
+                      <option value="PEN">Soles (S/)</option>
+                      <option value="USD">Dólares ($)</option>
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>Costo de referencia ({form.moneda === 'USD' ? '$' : 'S/'})</label>
+                    <input className="input" type="number" min="0" step="0.01" value={form.costo} onChange={e => upd('costo', e.target.value)} placeholder="0.00" disabled={!verCostos || form.precio_incluido} />
+                  </div>
+                  <div className="input-group">
+                    <label>Precio de referencia ({form.moneda === 'USD' ? '$' : 'S/'})</label>
+                    <input className="input" type="number" min="0" step="0.01" value={form.precio} onChange={e => upd('precio', e.target.value)} placeholder="0.00" disabled={!verPrecios || form.precio_incluido} />
+                  </div>
+                  {!form.precio_incluido && (Number(form.costo) > 0 || Number(form.precio) > 0) && (
+                    <div className="input-group" style={{gridColumn:'1/-1', display:'flex', flexDirection:'row', alignItems:'center', gap:10}}>
+                      <label style={{margin:0}}>Margen calculado:</label>
+                      <strong style={{color: colorMargen, fontSize:15}}>{margenActual}%</strong>
+                    </div>
+                  )}
+                  <div className="input-group" style={{gridColumn:'1/-1'}}>
+                    <label style={{display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontSize:14, marginTop:4}}>
+                      <input type="checkbox" checked={form.facturable} onChange={e => upd('facturable', e.target.checked)} style={{width:16, height:16}} />
+                      <span><strong>Es facturable</strong> (Genera línea de cobro al cliente)</span>
+                    </label>
+                  </div>
                 </div>
-              )}
-            </div>
+              </>
+            )}
 
-            <div style={{fontWeight:600, fontSize:13, marginBottom:12, color:'var(--fg-muted)'}}>Comportamiento en documentos</div>
-            <div style={{display:'flex', flexDirection:'column', gap:12, marginBottom:20}}>
-              <label style={{display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontSize:14}}>
-                <input type="checkbox" checked={form.facturable} onChange={e => upd('facturable', e.target.checked)} style={{width:16, height:16}} />
-                <span><strong>Es facturable</strong> — este servicio genera factura al cliente</span>
-              </label>
-              <label style={{display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontSize:14}}>
-                <input type="checkbox" checked={form.precio_incluido} onChange={e => { upd('precio_incluido', e.target.checked); if (e.target.checked) { upd('costo', 0); upd('precio', 0); } }} style={{width:16, height:16}} />
-                <span><strong>Precio "Incluido"</strong> — aparece en cotizaciones sin monto visible</span>
-              </label>
-            </div>
-
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Detalle del alcance</div>
-            <div className="input-group" style={{marginBottom:20}}>
-              <label>Descripción larga</label>
-              <textarea className="input" rows={4} value={form.detalle} onChange={e => upd('detalle', e.target.value)} placeholder="Describe qué incluye este servicio, condiciones, alcance, etc. Este texto aparece en el PDF de cotización." />
-            </div>
-
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Entregables incluidos</div>
-            <div style={{marginBottom:20}}>
+            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--cyan)'}}>ENTREGABLES</div>
+            <div style={{marginBottom:24}}>
               {form.entregables.map((ent, idx) => (
-                <div key={idx} style={{display:'flex', alignItems:'center', gap:8, padding:'6px 10px', background:'var(--bg-subtle)', borderRadius:6, marginBottom:6, fontSize:13}}>
+                <div key={idx} style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'var(--bg)', border:'1px solid var(--border)', borderRadius:6, marginBottom:6, fontSize:13}}>
                   <span style={{color:'var(--fg-muted)'}}>•</span>
                   <span style={{flex:1}}>{ent}</span>
-                  <button type="button" className="icon-btn" style={{padding:2, color:'var(--danger)'}} onClick={() => quitarEntregable(idx)}>{I.x}</button>
+                  <button type="button" className="icon-btn" style={{padding:2, color:'var(--danger)'}} onClick={() => quitarEntregable(idx)}>{I.trash}</button>
                 </div>
               ))}
               <div style={{display:'flex', gap:8, marginTop:8}}>
                 <input className="input" style={{flex:1}} value={nuevoEntregable} onChange={e => setNuevoEntregable(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), agregarEntregable())} placeholder="Ej: Capacitación 36 horas" />
-                <button type="button" className="btn btn-secondary btn-sm" onClick={agregarEntregable}>{I.plus} Agregar</button>
+                <button type="button" className="btn btn-secondary" style={{padding:'0 16px'}} onClick={agregarEntregable}>{I.plus} Agregar entregable</button>
               </div>
+            </div>
+
+            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--cyan)'}}>NOTAS INTERNAS</div>
+            <div className="input-group" style={{marginBottom:24}}>
+              <textarea className="input" rows={3} value={form.notas_internas} onChange={e => upd('notas_internas', e.target.value)} placeholder="Instrucciones opcionales para ventas o cotizaciones..." />
             </div>
 
             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
               <button type="button" className="btn btn-secondary" onClick={cerrar}>Cancelar</button>
-              <button type="button" className="btn btn-primary" onClick={guardar}>{I.save} {editando ? 'Guardar cambios' : 'Crear servicio'}</button>
+              <button type="button" className="btn btn-primary" data-local-form="true" onClick={guardar}>{I.save} {editando ? 'Guardar cambios' : 'Crear servicio'}</button>
             </div>
           </div>
         </div>
       </>}
+
+      {modalImportar && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setModalImportar(false)} />
+          <div className="side-panel" style={{maxWidth: 800, width: '96vw', padding:0}}>
+            <div className="side-panel-head" style={{padding:'20px 24px'}}>
+              <div>
+                <div className="font-display" style={{fontSize:22, fontWeight:700}}>Carga Masiva de Servicios</div>
+              </div>
+              <button className="icon-btn" onClick={() => setModalImportar(false)}>{I.x}</button>
+            </div>
+            
+            <div style={{padding:'0 24px'}}>
+              <div className="tabs">
+                <div className={'tab '+(tabImport==='subir'?'active':'')} onClick={()=>setTabImport('subir')}>Subir archivo</div>
+                <div className={'tab '+(tabImport==='plantilla'?'active':'')} onClick={()=>setTabImport('plantilla')}>Descargar plantilla</div>
+              </div>
+            </div>
+
+            <div className="side-panel-body" style={{padding:'24px', maxHeight:'calc(100vh - 140px)', overflowY:'auto'}}>
+              {tabImport === 'plantilla' ? (
+                <div className="col" style={{gap:16, alignItems:'center', padding:'40px 20px', textAlign:'center'}}>
+                  <div style={{fontSize:48}}>📄</div>
+                  <h3 style={{margin:0}}>Plantilla CSV de Servicios</h3>
+                  <p className="text-muted" style={{maxWidth:400}}>Descarga este archivo como guía. No modifiques los nombres de las columnas en la primera fila para asegurar una correcta importación.</p>
+                  <button className="btn btn-primary" onClick={descargarPlantilla}>{I.download} Descargar plantilla CSV</button>
+                </div>
+              ) : (
+                <div className="col" style={{gap:20}}>
+                  {!importRows.length ? (
+                    <div style={{border:'2px dashed var(--border)', borderRadius:12, padding:'60px 20px', textAlign:'center', cursor:'pointer'}} onClick={() => document.getElementById('csv-upload').click()}>
+                      <div style={{fontSize:40, marginBottom:16, color:'var(--fg-muted)'}}>⬆️</div>
+                      <h4 style={{margin:0}}>Selecciona un archivo CSV</h4>
+                      <p className="text-muted" style={{marginTop:8, fontSize:13}}>Los archivos XLSX deben guardarse primero como CSV (delimitado por comas).</p>
+                      <input id="csv-upload" type="file" accept=".csv" style={{display:'none'}} onChange={handleFileUpload} />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="row" style={{justifyContent:'space-between', alignItems:'center'}}>
+                        <div>
+                          <strong>{importRows.length} filas analizadas</strong>
+                          <div className="text-muted" style={{fontSize:12}}>
+                            {importRows.filter(r => r._errores.length===0).length} válidas, {importRows.filter(r => r._errores.length>0).length} con errores
+                          </div>
+                        </div>
+                        <button className="btn btn-secondary btn-sm" onClick={() => setImportRows([])}>Subir otro archivo</button>
+                      </div>
+                      <div className="table-wrap" style={{maxHeight: 300, overflow:'auto'}}>
+                        <table className="table" style={{minWidth: 1080}}>
+                          <thead>
+                            <tr>
+                              <th>Código</th>
+                              <th>Nombre</th>
+                              <th>Familia</th>
+                              <th>Unidad</th>
+                              <th>Moneda</th>
+                              <th>Costo</th>
+                              <th>Precio</th>
+                              <th>Facturable</th>
+                              <th>Estado</th>
+                              <th>Entregables</th>
+                              <th>Errores</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {importRows.map((r, i) => (
+                              <tr key={i} style={{background: r._errores.length ? 'var(--danger-subtle)' : 'transparent'}}>
+                                <td className="mono">{r.codigo}</td>
+                                <td>{r.nombre}</td>
+                                <td>{r.familia}</td>
+                                <td>{r.unidad}</td>
+                                <td>{String(r.moneda || 'PEN').toUpperCase()}</td>
+                                <td className="mono">{r.costo_ref}</td>
+                                <td>{r.precio_ref}</td>
+                                <td>{r.facturable ? 'Sí' : 'No'}</td>
+                                <td>{r.estado || 'activo'}</td>
+                                <td className="text-muted" style={{maxWidth:220, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}} title={r.entregables}>{r.entregables}</td>
+                                <td>
+                                  {r._errores.length ? (
+                                    <span style={{color:'var(--danger)', fontSize:12}}>{r._errores.join(', ')}</span>
+                                  ) : (
+                                    <span style={{color:'var(--green)', fontSize:12}}>OK</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="row" style={{justifyContent:'flex-end'}}>
+                        <button className="btn btn-primary" onClick={ejecutarImportacion} disabled={!importRows.some(r => r._errores.length===0)}>
+                          Importar {importRows.filter(r => r._errores.length===0).length} filas válidas
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -1971,22 +2883,53 @@ function Tarifarios() {
 }
 
 function Parametros() {
-  const { empresaConfig, guardarEmpresaConfig, subirImagenEmpresa, addNotificacion } = useApp();
+  const {
+    empresaConfig, guardarEmpresaConfig, subirImagenEmpresa, addNotificacion,
+    seriesDocumentarias = [], slaPlantillas = [],
+    monedasImpuestosUnidades = [],
+    crearSerieDocumentaria, actualizarSerieDocumentaria, eliminarSerieDocumentaria,
+    crearSlaPlantilla, actualizarSlaPlantilla, eliminarSlaPlantilla,
+  } = useApp();
   const [saving, setSaving] = useState(false);
+  const [savingSerie, setSavingSerie] = useState(false);
+  const [savingSla, setSavingSla] = useState(false);
 
   const [datos, setDatos] = useState({ razon_social:'', ruc:'', email_comercial:'', sitio_web:'', direccion:'', firmante:'', cargo_firmante:'' });
   const [conds, setConds] = useState({ cond_forma_pago:'', cond_validez:'', cond_penalidad:'', cond_inicio_proyecto:'', cond_alcance:'', cond_integraciones:'', cond_confidencialidad:'', cond_glosa_factura:'' });
   const [colores, setColores] = useState({ color_primario:'#1A2B4A', color_secundario:'#607D8B' });
+  const defaultFlujos = [
+    { modulo: 'OT', flujo: 'borrador -> programada -> ejecucion -> cerrada -> valorizada -> facturada', alerta: 'SLA por contrato' },
+    { modulo: 'Cotizacion', flujo: 'borrador -> enviada -> aprobada -> ganada / perdida', alerta: 'Descuento requiere aprobacion' },
+    { modulo: 'SOLPE', flujo: 'borrador -> solicitada -> aprobada -> atendida', alerta: 'Urgencia alta notifica supervisor' },
+    { modulo: 'Compras campo', flujo: 'capturada -> pendiente revision -> validada -> CxP', alerta: 'IA con baja confianza' },
+  ];
+  const emptySerie = { documento:'', serie:'', siguiente_correlativo:'1', regla:'', estado:'activo' };
+  const emptySla = { nombre:'', tiempo_respuesta_horas:'4', tiempo_resolucion_horas:'24', semaforo_regla:'Rojo a 80%', estado:'activo' };
+  const [parametros, setParametros] = useState({ moneda_base:'PEN', igv_defecto:'18', zona_horaria:'America/Lima', plantilla_cotizacion:'TIDEO propuesta tecnica v3', plantilla_factura:'Exportacion fiscal externa', requiere_2fa_financiero:false });
+  const [flujosAlertas, setFlujosAlertas] = useState(defaultFlujos);
+  const [serieForm, setSerieForm] = useState(emptySerie);
+  const [serieEditId, setSerieEditId] = useState(null);
+  const [slaForm, setSlaForm] = useState(emptySla);
+  const [slaEditId, setSlaEditId] = useState(null);
   const [logoFile, setLogoFile]   = useState(null);
   const [firmaFile, setFirmaFile] = useState(null);
   const [logoPreview, setLogoPreview]   = useState(null);
   const [firmaPreview, setFirmaPreview] = useState(null);
 
   useEffect(() => {
-    if (!empresaConfig?.empresa_id) return;
     setDatos({ razon_social: empresaConfig.razon_social||'', ruc: empresaConfig.ruc||'', email_comercial: empresaConfig.email_comercial||'', sitio_web: empresaConfig.sitio_web||'', direccion: empresaConfig.direccion||'', firmante: empresaConfig.firmante||'', cargo_firmante: empresaConfig.cargo_firmante||'' });
     setConds({ cond_forma_pago: empresaConfig.cond_forma_pago||'', cond_validez: empresaConfig.cond_validez||'', cond_penalidad: empresaConfig.cond_penalidad||'', cond_inicio_proyecto: empresaConfig.cond_inicio_proyecto||'', cond_alcance: empresaConfig.cond_alcance||'', cond_integraciones: empresaConfig.cond_integraciones||'', cond_confidencialidad: empresaConfig.cond_confidencialidad||'', cond_glosa_factura: empresaConfig.cond_glosa_factura||'' });
     setColores({ color_primario: empresaConfig.color_primario||'#1A2B4A', color_secundario: empresaConfig.color_secundario||'#607D8B' });
+    setParametros({
+      moneda_base: empresaConfig.moneda_base || 'PEN',
+      igv_defecto: empresaConfig.igv_defecto ?? '18',
+      zona_horaria: empresaConfig.zona_horaria || 'America/Lima',
+      plantilla_cotizacion: empresaConfig.plantilla_cotizacion || 'TIDEO propuesta tecnica v3',
+      plantilla_factura: empresaConfig.plantilla_factura || 'Exportacion fiscal externa',
+      requiere_2fa_financiero: Boolean(empresaConfig.requiere_2fa_financiero),
+    });
+    const cfgFlujos = Array.isArray(empresaConfig.config_flujos_alertas) ? empresaConfig.config_flujos_alertas : defaultFlujos;
+    setFlujosAlertas(cfgFlujos.length ? cfgFlujos : defaultFlujos);
     if (empresaConfig.logo_url) setLogoPreview(empresaConfig.logo_url);
     if (empresaConfig.firma_url) setFirmaPreview(empresaConfig.firma_url);
   }, [empresaConfig]);
@@ -2002,6 +2945,7 @@ function Parametros() {
     setSaving(true);
     try {
       const extra = {};
+      const { moneda_base, ...parametrosSinMoneda } = parametros;
       if (logoFile) {
         try { extra.logo_url = await subirImagenEmpresa('logo', logoFile); } catch (_) { addNotificacion('No se pudo subir el logo; verifique el bucket en Supabase.'); }
         setLogoFile(null);
@@ -2010,41 +2954,89 @@ function Parametros() {
         try { extra.firma_url = await subirImagenEmpresa('firma', firmaFile); } catch (_) { addNotificacion('No se pudo subir la firma; verifique el bucket en Supabase.'); }
         setFirmaFile(null);
       }
-      await guardarEmpresaConfig({ ...datos, ...conds, ...colores, ...extra });
+      await guardarEmpresaConfig({
+        ...datos,
+        ...conds,
+        ...colores,
+        ...parametrosSinMoneda,
+        ...(monedasActivas.length ? { moneda_base } : {}),
+        igv_defecto: Number(parametros.igv_defecto || 0),
+        config_flujos_alertas: flujosAlertas,
+        ...extra,
+      });
     } finally {
       setSaving(false);
     }
   };
 
-  const series = [
-    { doc: 'Cotizaciones', serie: 'COT-2026', siguiente: '0042', regla: 'Anual por empresa', estado: 'activo' },
-    { doc: 'OS Cliente', serie: 'OSC-2026', siguiente: '0018', regla: 'Anual por empresa', estado: 'activo' },
-    { doc: 'Ordenes de Trabajo', serie: 'OT-26', siguiente: '0064', regla: 'Anual por empresa', estado: 'activo' },
-    { doc: 'SOLPE', serie: 'SLP-2026', siguiente: '0028', regla: 'Anual por empresa', estado: 'activo' },
-    { doc: 'Facturas', serie: 'F001', siguiente: '0520', regla: 'Serie fiscal externa', estado: 'activo' },
-    { doc: 'CxC / CxP', serie: 'FIN-2026', siguiente: '0145', regla: 'Correlativo financiero', estado: 'activo' }
-  ];
-  const estados = [
-    { modulo: 'OT', flujo: 'borrador -> programada -> ejecucion -> cerrada -> valorizada -> facturada', alerta: 'SLA por servicio' },
-    { modulo: 'Cotizacion', flujo: 'borrador -> enviada -> aprobada -> ganada / perdida', alerta: 'Descuento requiere aprobacion' },
-    { modulo: 'SOLPE', flujo: 'borrador -> solicitada -> aprobada -> atendida', alerta: 'Urgencia alta notifica supervisor' },
-    { modulo: 'Compras campo', flujo: 'capturada -> pendiente revision -> validada -> CxP', alerta: 'IA con baja confianza' }
-  ];
-  const slas = [
-    { servicio: 'Correctivo critico', respuesta: '4h', resolucion: '24h', semaforo: 'Rojo a 80%' },
-    { servicio: 'Preventivo mensual', respuesta: '24h', resolucion: '5 dias', semaforo: 'Naranja a 70%' },
-    { servicio: 'Instalacion proyecto', respuesta: '48h', resolucion: 'Segun cronograma', semaforo: 'Por hito vencido' }
-  ];
+  const resetSerie = () => { setSerieForm(emptySerie); setSerieEditId(null); };
+  const resetSla = () => { setSlaForm(emptySla); setSlaEditId(null); };
+
+  const guardarSerie = async (e) => {
+    e.preventDefault();
+    if (!serieForm.documento.trim() || !serieForm.serie.trim()) {
+      addNotificacion('Completa documento y serie.');
+      return;
+    }
+    setSavingSerie(true);
+    try {
+      if (serieEditId) await actualizarSerieDocumentaria(serieEditId, serieForm);
+      else await crearSerieDocumentaria(serieForm);
+      resetSerie();
+      addNotificacion('Serie documentaria guardada.');
+    } catch (error) {
+      addNotificacion(`No se pudo guardar la serie: ${error?.message || 'error desconocido'}`);
+    } finally {
+      setSavingSerie(false);
+    }
+  };
+
+  const guardarSla = async (e) => {
+    e.preventDefault();
+    if (!slaForm.nombre.trim()) {
+      addNotificacion('Completa el nombre de la plantilla SLA.');
+      return;
+    }
+    setSavingSla(true);
+    try {
+      if (slaEditId) await actualizarSlaPlantilla(slaEditId, slaForm);
+      else await crearSlaPlantilla(slaForm);
+      resetSla();
+      addNotificacion('Plantilla SLA guardada.');
+    } catch (error) {
+      addNotificacion(`No se pudo guardar la plantilla SLA: ${error?.message || 'error desconocido'}`);
+    } finally {
+      setSavingSla(false);
+    }
+  };
+
+  const editarSerie = (s) => {
+    setSerieEditId(s.id);
+    setSerieForm({ documento:s.documento||'', serie:s.serie||'', siguiente_correlativo:String(s.siguiente_correlativo ?? 1), regla:s.regla||'', estado:s.estado||'activo' });
+  };
+
+  const editarSla = (s) => {
+    setSlaEditId(s.id);
+    setSlaForm({ nombre:s.nombre||'', tiempo_respuesta_horas:String(s.tiempo_respuesta_horas ?? 0), tiempo_resolucion_horas:String(s.tiempo_resolucion_horas ?? 0), semaforo_regla:s.semaforo_regla||'', estado:s.estado||'activo' });
+  };
+
+  const setFlujoField = (idx, field, value) => {
+    setFlujosAlertas(prev => prev.map((row, i) => i === idx ? { ...row, [field]: value } : row));
+  };
 
   const inp = (field) => ({ className:'input', value: datos[field], onChange: e => setDatos(p=>({...p,[field]:e.target.value})) });
   const ta  = (field, rows=4) => ({ className:'input', rows, value: conds[field], onChange: e => setConds(p=>({...p,[field]:e.target.value})), style:{resize:'vertical'} });
+  const pinp = (field) => ({ className:'input', value: parametros[field], onChange: e => setParametros(p=>({...p,[field]:e.target.value})) });
+  const monedasActivas = monedasImpuestosUnidades
+    .filter(m => m.tipo === 'moneda' && m.estado === 'activo' && m.codigo)
+    .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)));
 
   return (
     <>
       <div className="page-header">
         <div>
           <h1 className="page-title">Parametros Generales</h1>
-          <div className="page-sub">Series, estados, impuestos, plantillas PDF y SLA base por tenant</div>
+          <div className="page-sub">Series, estados, impuestos, plantillas PDF y plantillas SLA por tenant</div>
         </div>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{I.save} {saving ? 'Guardando…' : 'Guardar cambios'}</button>
       </div>
@@ -2150,17 +3142,32 @@ function Parametros() {
       {/* ── Secciones existentes ── */}
       <div className="grid-2">
         <div className="card">
-          <div className="card-head"><h3>Series documentarias</h3><span className="badge badge-cyan">{series.length} activas</span></div>
+          <div className="card-head"><h3>Series documentarias</h3><span className="badge badge-cyan">{seriesDocumentarias.filter(s => s.estado === 'activo').length} activas</span></div>
+          <form className="card-body" onSubmit={guardarSerie} style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+            <div className="input-group"><label>Documento</label><input className="input" value={serieForm.documento} onChange={e=>setSerieForm(p=>({...p, documento:e.target.value}))} placeholder="Cotizaciones"/></div>
+            <div className="input-group"><label>Serie</label><input className="input" value={serieForm.serie} onChange={e=>setSerieForm(p=>({...p, serie:e.target.value}))} placeholder="COT-2026"/></div>
+            <div className="input-group"><label>Siguiente correlativo</label><input className="input" type="number" min="1" value={serieForm.siguiente_correlativo} onChange={e=>setSerieForm(p=>({...p, siguiente_correlativo:e.target.value}))}/></div>
+            <div className="input-group"><label>Estado</label><select className="input" value={serieForm.estado} onChange={e=>setSerieForm(p=>({...p, estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}><label>Regla</label><input className="input" value={serieForm.regla} onChange={e=>setSerieForm(p=>({...p, regla:e.target.value}))} placeholder="Anual por empresa"/></div>
+            <div className="row" style={{gridColumn:'1/-1', justifyContent:'flex-end'}}>
+              {serieEditId && <button type="button" className="btn btn-secondary" onClick={resetSerie}>Cancelar</button>}
+              <button type="submit" className="btn btn-primary" disabled={savingSerie}>{serieEditId ? I.save : I.plus} {savingSerie ? 'Guardando...' : serieEditId ? 'Actualizar serie' : 'Agregar serie'}</button>
+            </div>
+          </form>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Documento</th><th>Serie</th><th>Siguiente</th><th>Regla</th><th>Estado</th></tr></thead>
-              <tbody>{series.map(s => (
-                <tr key={s.doc}>
-                  <td><strong>{s.doc}</strong></td>
+              <thead><tr><th>Documento</th><th>Serie</th><th>Siguiente</th><th>Regla</th><th>Estado</th><th></th></tr></thead>
+              <tbody>{seriesDocumentarias.map(s => (
+                <tr key={s.id}>
+                  <td><strong>{s.documento}</strong></td>
                   <td className="mono">{s.serie}</td>
-                  <td className="mono">{s.siguiente}</td>
+                  <td className="mono">{String(s.siguiente_correlativo).padStart(4, '0')}</td>
                   <td className="text-muted">{s.regla}</td>
-                  <td><span className="badge badge-green">{s.estado}</span></td>
+                  <td><span className={'badge ' + (s.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{s.estado}</span></td>
+                  <td className="row" style={{justifyContent:'flex-end', gap:4}}>
+                    <button className="icon-btn" title="Editar" onClick={() => editarSerie(s)} style={{color:'var(--cyan)'}}>{I.edit}</button>
+                    <button className="icon-btn" title="Eliminar" onClick={() => { if (window.confirm('Eliminar serie documentaria?')) eliminarSerieDocumentaria(s.id).catch(error => addNotificacion(`No se pudo eliminar la serie: ${error?.message || 'error desconocido'}`)); }} style={{color:'var(--danger)'}}>{I.trash}</button>
+                  </td>
                 </tr>
               ))}</tbody>
             </table>
@@ -2168,42 +3175,74 @@ function Parametros() {
         </div>
         <div className="card">
           <div className="card-head"><h3>Moneda, impuestos y PDF</h3></div>
-          <div className="card-body col" style={{gap:12}}>
-            {[
-              ['Moneda base', 'PEN - Sol peruano'],
-              ['IGV por defecto', '18%'],
-              ['Zona horaria', 'America/Lima'],
-              ['Plantilla cotizacion', 'TIDEO propuesta tecnica v3'],
-              ['Plantilla factura', 'Exportacion fiscal externa'],
-              ['2FA financiero', 'Obligatorio para roles con ver_finanzas']
-            ].map(([l, v]) => (
-              <div key={l} className="row" style={{justifyContent:'space-between', padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8}}>
-                <span className="text-muted" style={{fontSize:12}}>{l}</span>
-                <strong style={{fontSize:13}}>{v}</strong>
-              </div>
-            ))}
+          <div className="card-body" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+            <div className="input-group">
+              <label>Moneda base</label>
+              <select className="input" value={monedasActivas.length ? parametros.moneda_base : ''} disabled={!monedasActivas.length} onChange={e => setParametros(p=>({...p, moneda_base:e.target.value}))}>
+                {!monedasActivas.length && <option value="">Sin monedas activas en el maestro</option>}
+                {monedasActivas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} - {m.nombre}</option>)}
+              </select>
+              {!monedasActivas.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Crea al menos una moneda activa en Maestros Base &gt; Monedas, impuestos y unidades.</div>}
+            </div>
+            <div className="input-group"><label>IGV por defecto (%)</label><input {...pinp('igv_defecto')} type="number" step="0.01" min="0"/></div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}><label>Zona horaria</label><input {...pinp('zona_horaria')} placeholder="America/Lima"/></div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}><label>Plantilla cotizacion</label><input {...pinp('plantilla_cotizacion')} placeholder="TIDEO propuesta tecnica v3"/></div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}><label>Plantilla factura</label><input {...pinp('plantilla_factura')} placeholder="Exportacion fiscal externa"/></div>
+            <label className="row" style={{gridColumn:'1/-1', gap:10, padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8}}>
+              <input type="checkbox" className="checkbox" checked={parametros.requiere_2fa_financiero} onChange={e=>setParametros(p=>({...p, requiere_2fa_financiero:e.target.checked}))}/>
+              <span>Requiere 2FA financiero</span>
+            </label>
           </div>
         </div>
       </div>
       <div className="grid-2 mt-6">
         <div className="card">
-          <div className="card-head"><h3>Estados por documento</h3></div>
+          <div className="card-head">
+            <h3>Estados por documento</h3>
+            <button className="btn btn-secondary btn-sm" onClick={() => setFlujosAlertas(prev => [...prev, { modulo:'', flujo:'', alerta:'' }])}>{I.plus} Agregar</button>
+          </div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Modulo</th><th>Flujo</th><th>Regla de alerta</th></tr></thead>
-              <tbody>{estados.map(e => (
-                <tr key={e.modulo}><td><strong>{e.modulo}</strong></td><td className="text-muted">{e.flujo}</td><td>{e.alerta}</td></tr>
+              <thead><tr><th>Modulo</th><th>Flujo</th><th>Regla de alerta</th><th></th></tr></thead>
+              <tbody>{flujosAlertas.map((e, idx) => (
+                <tr key={`${e.modulo}_${idx}`}>
+                  <td><input className="input" value={e.modulo || ''} onChange={ev => setFlujoField(idx, 'modulo', ev.target.value)} /></td>
+                  <td><input className="input" value={e.flujo || ''} onChange={ev => setFlujoField(idx, 'flujo', ev.target.value)} /></td>
+                  <td><input className="input" value={e.alerta || ''} onChange={ev => setFlujoField(idx, 'alerta', ev.target.value)} /></td>
+                  <td><button className="icon-btn" title="Eliminar" onClick={() => setFlujosAlertas(prev => prev.filter((_, i) => i !== idx))} style={{color:'var(--danger)'}}>{I.trash}</button></td>
+                </tr>
               ))}</tbody>
             </table>
           </div>
         </div>
         <div className="card">
-          <div className="card-head"><h3>SLA basico por servicio</h3></div>
+          <div className="card-head"><h3>Plantillas de SLA (Para Contratos)</h3><span className="badge badge-orange">{slaPlantillas.length} plantillas</span></div>
+          <form className="card-body" onSubmit={guardarSla} style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+            <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre</label><input className="input" value={slaForm.nombre} onChange={e=>setSlaForm(p=>({...p, nombre:e.target.value}))} placeholder="Correctivo Critico"/></div>
+            <div className="input-group"><label>Respuesta (horas)</label><input className="input" type="number" min="0" step="0.5" value={slaForm.tiempo_respuesta_horas} onChange={e=>setSlaForm(p=>({...p, tiempo_respuesta_horas:e.target.value}))}/></div>
+            <div className="input-group"><label>Resolucion (horas)</label><input className="input" type="number" min="0" step="0.5" value={slaForm.tiempo_resolucion_horas} onChange={e=>setSlaForm(p=>({...p, tiempo_resolucion_horas:e.target.value}))}/></div>
+            <div className="input-group"><label>Semaforo</label><input className="input" value={slaForm.semaforo_regla} onChange={e=>setSlaForm(p=>({...p, semaforo_regla:e.target.value}))} placeholder="Rojo a 80%"/></div>
+            <div className="input-group"><label>Estado</label><select className="input" value={slaForm.estado} onChange={e=>setSlaForm(p=>({...p, estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
+            <div className="row" style={{gridColumn:'1/-1', justifyContent:'flex-end'}}>
+              {slaEditId && <button type="button" className="btn btn-secondary" onClick={resetSla}>Cancelar</button>}
+              <button type="submit" className="btn btn-primary" disabled={savingSla}>{slaEditId ? I.save : I.plus} {savingSla ? 'Guardando...' : slaEditId ? 'Actualizar SLA' : 'Agregar SLA'}</button>
+            </div>
+          </form>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Servicio</th><th>Respuesta</th><th>Resolucion</th><th>Semaforo</th></tr></thead>
-              <tbody>{slas.map(s => (
-                <tr key={s.servicio}><td><strong>{s.servicio}</strong></td><td>{s.respuesta}</td><td>{s.resolucion}</td><td><span className="badge badge-orange">{s.semaforo}</span></td></tr>
+              <thead><tr><th>Plantilla</th><th>Respuesta</th><th>Resolucion</th><th>Semaforo</th><th>Estado</th><th></th></tr></thead>
+              <tbody>{slaPlantillas.map(s => (
+                <tr key={s.id}>
+                  <td><strong>{s.nombre}</strong></td>
+                  <td>{s.tiempo_respuesta_horas}h</td>
+                  <td>{s.tiempo_resolucion_horas}h</td>
+                  <td><span className="badge badge-orange">{s.semaforo_regla}</span></td>
+                  <td><span className={'badge ' + (s.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{s.estado}</span></td>
+                  <td className="row" style={{justifyContent:'flex-end', gap:4}}>
+                    <button className="icon-btn" title="Editar" onClick={() => editarSla(s)} style={{color:'var(--cyan)'}}>{I.edit}</button>
+                    <button className="icon-btn" title="Eliminar" onClick={() => { if (window.confirm('Eliminar plantilla SLA?')) eliminarSlaPlantilla(s.id).catch(error => addNotificacion(`No se pudo eliminar la plantilla SLA: ${error?.message || 'error desconocido'}`)); }} style={{color:'var(--danger)'}}>{I.trash}</button>
+                  </td>
+                </tr>
               ))}</tbody>
             </table>
           </div>
@@ -2217,7 +3256,7 @@ function Parametros() {
 // RRHH ADMINISTRATIVO — Fase 3
 // ============================================================
 function RRHHAdmin() {
-  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH, aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion } = useApp();
+  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH, aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -2227,20 +3266,8 @@ function RRHHAdmin() {
   const [altaError, setAltaError] = useState('');
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
-  /*
-    { id: 'turno_dia', nombre: 'D\u00eda', hora_entrada: '08:00', hora_salida: '18:00' },
-    { id: 'turno_noche', nombre: 'Noche', hora_entrada: '20:00', hora_salida: '06:00' },
-  ];
-  const turnosOptions = [
-    ...turnosBaseRRHH,
-    ...(turnos || []).filter(t => {
-      const nombre = String(t.nombre || '').toLowerCase();
-      return !['turno_dia', 'turno_noche'].includes(t.id) && !['dia', 'día', 'noche'].includes(nombre);
-    })
-  ];
-  const defaultTurnoIdLegacy = turnosOptions[0]?.id || 'turno_dia';
-  */
-  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo' };
+  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const cargosAdminOptions = cargos
     .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Operativo')
@@ -2286,6 +3313,7 @@ function RRHHAdmin() {
       area: p.area || '',
       sede: p.sede || '',
       turno_id: turnosOptions.some(t => t.id === p.turno_id) ? p.turno_id : defaultTurnoId,
+      centro_costo_id: p.centro_costo_id || '',
       modalidad: p.tipo_contrato || 'Planilla',
       fecha_inicio: p.fecha_inicio_contrato || p.fecha_ingreso || '',
       fecha_fin: p.fecha_fin_contrato || '',
@@ -2313,6 +3341,10 @@ function RRHHAdmin() {
       setAltaError('Selecciona un turno real creado en Supabase antes de guardar el colaborador.');
       return;
     }
+    if (!formAlta.centro_costo_id) {
+      setAltaError('Este campo es obligatorio. Selecciona un CECO antes de continuar.');
+      return;
+    }
     setAltaSaving(true);
     setAltaError('');
     const idx = todosPersonal.length + 1;
@@ -2327,6 +3359,7 @@ function RRHHAdmin() {
       cargo: formAlta.cargo || 'Por definir',
       area: formAlta.area || 'Sin area',
       supervisor: '', sede: formAlta.sede || '', turno_id: formAlta.turno_id,
+      centro_costo_id: formAlta.centro_costo_id,
       nivel_estudios: '', especialidad: '', institucion: '',
       tipo_contrato: formAlta.modalidad || 'Planilla',
       fecha_inicio_contrato: formAlta.fecha_inicio || '',
@@ -2759,6 +3792,7 @@ function RRHHAdmin() {
               <div className="input-group"><label>Cargo</label><select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{cargosAdminOptions.map(c=><option key={c}>{c}</option>)}</select></div>
               <div className="input-group"><label>Área</label><select className="select" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))}><option value="">Seleccionar área...</option>{areasOptions.map(a=><option key={a}>{a}</option>)}</select></div>
               <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
+              <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               <div className="input-group"><label>Fecha inicio contrato *</label><input className="input" type="date" value={formAlta.fecha_inicio} onChange={e=>setFormAlta(v=>({...v,fecha_inicio:e.target.value}))}/></div>
               <div className="input-group"><label>Fecha fin contrato <span className="text-muted">(vacío = indefinido)</span></label><input className="input" type="date" value={formAlta.fecha_fin} onChange={e=>setFormAlta(v=>({...v,fecha_fin:e.target.value}))}/></div>

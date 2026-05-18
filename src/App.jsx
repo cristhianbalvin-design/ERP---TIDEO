@@ -104,9 +104,9 @@ const FORM_TEMPLATES = {
   partes: { title: 'Nuevo parte diario', fields: [['ot_id','OT','ot'], ['tecnico','Tecnico','user_tecnico'], ['fecha','Fecha','date'], ['horas','Horas','number'], ['avance_reportado','Avance %','number'], ['actividades','Actividades ejecutadas','textarea']] },
   backlog: { title: 'Nuevo requerimiento', fields: [['cuenta_id','Cuenta','cuenta'], ['titulo','Titulo','text'], ['origen','Origen','select',['Cliente','Tecnico en campo','Backoffice','Ticket']], ['prioridad','Prioridad','select',['alta','media','baja']], ['descripcion','Descripcion','textarea']] },
   inventario: { title: 'Registrar entrada de inventario', fields: [['sku','SKU','text'], ['nombre','Material / insumo','text'], ['categoria','Categoria','text'], ['almacen','Almacen','text'], ['unidad','Unidad','text'], ['stock_actual','Cantidad','number'], ['costo_promedio','Costo unitario','number']] },
-  solpe: { title: 'Nueva SOLPE', fields: [['ot_id','OT','ot'], ['solicitante','Solicitante','user'], ['centro_costo','Centro de costo','centro_costo'], ['urgencia','Urgencia','select',['alta','media','baja']], ['items_texto','Items solicitados','textarea']] },
+  solpe: { title: 'Nueva SOLPE', fields: [['ot_id','OT','ot'], ['solicitante','Solicitante','user'], ['centro_costo_id','Centro de costo','centro_costo'], ['urgencia','Urgencia','select',['alta','media','baja']], ['items_texto','Items solicitados','textarea']] },
   remision: { title: 'Emitir guia / traslado', fields: [['ot','OT destino','ot'], ['destino','Punto de llegada','text'], ['transportista','Transportista / chofer','text'], ['fecha','Fecha salida','date'], ['estado','Estado','select',['programado','en_transito','entregado']]] },
-  compras: { title: 'Nuevo registro de compra / gasto', fields: [['proveedor','Proveedor','proveedor'], ['doc','Documento','text'], ['monto','Monto','number'], ['ot','OT / centro de costo','ot'], ['fecha','Fecha','date'], ['origen_registro','Origen','select',['backoffice','campo']]] },
+  compras: { title: 'Nuevo registro de compra / gasto', fields: [['proveedor','Proveedor','proveedor'], ['doc','Documento','text'], ['monto','Monto','number'], ['centro_costo_id','Centro de costo','centro_costo'], ['centro_beneficio_id','Centro de beneficio','centro_beneficio'], ['ot','OT vinculada','ot'], ['fecha','Fecha','date'], ['origen_registro','Origen','select',['backoffice','campo']]] },
   ventas: { title: 'Registrar venta', fields: [['cliente','Cliente','cuenta'], ['concepto','Concepto','text'], ['monto','Monto','number'], ['moneda','Moneda','select',['PEN','USD']], ['fecha','Fecha','date'], ['estado','Estado','select',['emitida','pendiente','cobrada']]] },
   caja: { title: 'Registrar gasto de caja chica', fields: [['responsable','Responsable','user'], ['concepto','Concepto','text'], ['comprobante','Comprobante','text'], ['monto','Monto','number'], ['fecha','Fecha','date'], ['estado','Estado','select',['pendiente','rendido','aprobado']]] },
   prestamos_personal: { title: 'Nuevo prestamo / anticipo', fields: [['empleado','Empleado','user'], ['monto','Monto','number'], ['cuotas','Cuotas','number'], ['fecha','Fecha otorgado','date'], ['descuento_nomina','Descontar automaticamente en nomina','select',['si','no']], ['estado','Estado','select',['vigente','cancelado']]] },
@@ -341,10 +341,20 @@ function QuickCreateModal({ active, onClose }) {
       );
     }
     if (type === 'centro_costo') {
+      const cecos = (app.centrosCosto || []).filter(c => c.estado === 'activo');
       return (
         <select className="select" value={val(name)} onChange={e => update(name, e.target.value)}>
-          <option value="">Seleccionar centro de costo...</option>
-          {CENTROS_COSTO.map(c => <option key={c} value={c}>{c}</option>)}
+          <option value="">{cecos.length ? 'Seleccionar centro de costo...' : 'No hay Centros de Costo activos.'}</option>
+          {cecos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
+        </select>
+      );
+    }
+    if (type === 'centro_beneficio') {
+      const cebes = (app.centrosBeneficio || []).filter(c => c.estado === 'activo');
+      return (
+        <select className="select" value={val(name)} onChange={e => update(name, e.target.value)}>
+          <option value="">{cebes.length ? 'Seleccionar CEBE...' : 'No hay Centros de Beneficio activos. Crea uno en Maestros Base antes de continuar.'}</option>
+          {cebes.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
         </select>
       );
     }
@@ -422,6 +432,29 @@ function QuickCreateModal({ active, onClose }) {
     const telefonoInvalido = Object.entries(values).find(([k, v]) => k.toLowerCase().includes('telefono') && !isValidPhone(v));
     if (telefonoInvalido) {
       setError('El telefono debe tener 9 digitos y comenzar con 9.');
+      return;
+    }
+    const requireCentro = (kind, value) => {
+      const label = kind === 'ceco' ? 'CECO' : 'CEBE';
+      if (!value) throw new Error(`Este campo es obligatorio. Selecciona un ${label} antes de continuar.`);
+    };
+    try {
+      if (['ot', 'solpe', 'compras', 'rrhh_admin', 'rrhh_operativo'].includes(active)) {
+        requireCentro('ceco', values.centro_costo_id);
+      }
+      if (['os_cliente', 'compras'].includes(active)) {
+        requireCentro('cebe', values.centro_beneficio_id);
+      }
+      if (active === 'ot') {
+        if (values.tipo === 'cliente') {
+          const os = (app.osClientes || []).find(o => o.id === values.os_cliente_id);
+          if (!os?.centro_beneficio_id) throw new Error('La OS Cliente vinculada no tiene un CEBE asignado. Complétalo antes de crear la OT.');
+        } else {
+          requireCentro('cebe', values.centro_beneficio_id);
+        }
+      }
+    } catch (err) {
+      setError(err.message);
       return;
     }
     const genericRecord = {
@@ -623,40 +656,11 @@ function MainLayout() {
   const { 
     active, navigate, role, roleKey, setRoleKey, isSuperadmin,
     empresa, setEmpresa, dark, setDark, mobileMode, setMobileMode,
-    mobileProfile, setMobileProfile
+    mobileProfile, setMobileProfile, quickCreate, setQuickCreate
   } = useApp();
-  const [quickCreate, setQuickCreate] = useState(null);
   const [openSelectorSignal, setOpenSelectorSignal] = useState(0);
 
   const allowed = role.permisos.todo ? null : new Set(role.permisos.ver || []);
-  const shouldOpenCreate = (target) => {
-    if (LOCAL_PRIMARY_FORM_PAGES.has(active)) return false;
-    const button = target.closest?.('button');
-    if (!button || button.disabled || !button.classList.contains('btn-primary')) return false;
-    if (button.dataset.localForm === 'true') return false;
-    if (button.type === 'submit' && button.closest('form')) return false;
-    const text = (button.textContent || '').trim().toLowerCase();
-    if (!text) return false;
-    return CREATE_WORDS.some(x => text.includes(x));
-  };
-
-  const handleCreateCapture = (event) => {
-    if (!shouldOpenCreate(event.target)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setQuickCreate(active);
-  };
-
-  useEffect(() => {
-    const onDocumentClick = (event) => {
-      if (quickCreate || !shouldOpenCreate(event.target)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setQuickCreate(active);
-    };
-    document.addEventListener('click', onDocumentClick, true);
-    return () => document.removeEventListener('click', onDocumentClick, true);
-  }, [active, quickCreate]);
 
   useEffect(() => {
     if (!isSuperadmin && quickCreate && PLATFORM_PAGES.has(quickCreate)) {
@@ -754,7 +758,7 @@ function MainLayout() {
   };
 
   return (
-    <div className="app-shell" onClickCapture={handleCreateCapture}>
+    <div className="app-shell">
       <Sidebar active={active} onNav={(p) => navigate(p)} role={role} isSuperadmin={isSuperadmin}/>
       <div className="main-col">
         <Header active={active} empresa={empresa} setEmpresa={setEmpresa} role={role} roleKey={roleKey} setRoleKey={setRoleKey} dark={dark} setDark={setDark} setMobileMode={setMobileMode} openSelectorSignal={openSelectorSignal}/>

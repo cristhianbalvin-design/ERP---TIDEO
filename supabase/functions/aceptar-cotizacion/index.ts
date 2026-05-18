@@ -54,7 +54,7 @@ serve(async (req) => {
         const { data: usr } = await supabase
           .from("usuarios")
           .select("email")
-          .eq("user_id", opp.responsable_id)
+          .eq("id", opp.responsable_id)
           .single();
         vendedorEmail = usr?.email || null;
       }

@@ -545,7 +545,7 @@ function LogisticaView({ screen, setScreen }) {
 }
 
 function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setProfile }) {
-  const { agendaEventos, cuentas, contactos, oportunidades, actividades, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva, empresa, dataMode, supabaseStatus, signOut, notificaciones, markNotificacionesRead, addNotificacion } = useApp();
+  const { agendaEventos, cuentas, contactos, oportunidades, actividades, leads, updateLeadState, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva, empresa, dataMode, supabaseStatus, signOut, notificaciones, markNotificacionesRead, addNotificacion } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const esDelUsuario = valor => normalizarTexto(valor) === normalizarTexto(usuarioMovil.nombre);
   const rolNombre = normalizarTexto(role?.nombre || membresiaActiva?.rol?.nombre);
@@ -568,7 +568,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
   const today = new Date().toISOString().split('T')[0];
   const [toast, setToast] = useState(null);
   const [localQuery, setLocalQuery] = useState('');
-  const [pipelineTab, setPipelineTab] = useState('opps');
+  const [pipelineTab, setPipelineTab] = useState('leads');
   const leadFileInputRef = useRef(null);
   const [leadFotoPreview, setLeadFotoPreview] = useState(null);
   const [leadFotoEstado, setLeadFotoEstado] = useState('idle');
@@ -580,7 +580,11 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
   const actsUsuario = actividades
     .filter(a => puedeVerEquipoComercial || esDelUsuario(a.responsable))
     .sort((a,b) => b.fecha.localeCompare(a.fecha));
+  const leadsUsuario = (leads || [])
+    .filter(l => (puedeVerEquipoComercial || esDelUsuario(l.responsable)) && !['convertido', 'descartado'].includes(normalizarTexto(l.estado)))
+    .sort((a,b) => String(b.fecha_creacion || '').localeCompare(String(a.fecha_creacion || '')));
   const etapaColor = { prospecto:'cyan', calificacion:'purple', propuesta:'orange', negociacion:'navy', cierre:'green' };
+  const estadoLeadColor = { nuevo:'cyan', contactado:'purple', calificado:'green', en_proceso:'orange' };
   const cuentaActiva =
     cuentas.find(c => esDelUsuario(c.responsable_comercial) || esDelUsuario(c.vendedor) || esDelUsuario(c.responsable)) ||
     cuentas[0];
@@ -1046,10 +1050,43 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
         <>
           <div className="eyebrow" style={{marginBottom:12}}>{scopeLabel} Pipeline</div>
           <div className="row" style={{gap:6, marginBottom:14}}>
-            <button className={'btn btn-sm flex-1 '+(pipelineTab==='opps'?'btn-navy':'btn-secondary')} onClick={() => setPipelineTab('opps')}>Oportunidades · {oppsUsuario.length}</button>
-            <button className={'btn btn-sm flex-1 '+(pipelineTab==='acts'?'btn-navy':'btn-secondary')} onClick={() => setPipelineTab('acts')}>Actividades · {actsUsuario.length}</button>
+            <button className={'btn btn-sm flex-1 '+(pipelineTab==='leads'?'btn-navy':'btn-secondary')} onClick={() => setPipelineTab('leads')}>Leads · {leadsUsuario.length}</button>
+            <button className={'btn btn-sm flex-1 '+(pipelineTab==='opps'?'btn-navy':'btn-secondary')} onClick={() => setPipelineTab('opps')}>Opps · {oppsUsuario.length}</button>
+            <button className={'btn btn-sm flex-1 '+(pipelineTab==='acts'?'btn-navy':'btn-secondary')} onClick={() => setPipelineTab('acts')}>Acts · {actsUsuario.length}</button>
           </div>
-          {pipelineTab === 'opps' ? (
+          {pipelineTab === 'leads' ? (
+            <div className="col" style={{gap:10}}>
+              {leadsUsuario.length === 0 && <div className="text-muted" style={{textAlign:'center', padding:30, fontSize:13}}>No tienes leads activos.</div>}
+              {leadsUsuario.map(l => {
+                const color = estadoLeadColor[normalizarTexto(l.estado)] || 'cyan';
+                const telefonoLead = telefonoParaLlamar(l.telefono);
+                return (
+                  <div key={l.id} className="card" style={{padding:14, borderLeft:`3px solid var(--${color})`}}>
+                    <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
+                      <span className={`badge badge-${color}`} style={{fontSize:10, textTransform:'capitalize'}}>{l.estado || 'Nuevo'}</span>
+                      <span style={{fontSize:12, fontWeight:600, color:'var(--fg-muted)'}}>{l.fecha_creacion?.substring(0,10) || ''}</span>
+                    </div>
+                    <div style={{fontWeight:700, fontSize:14, marginBottom:2}}>{l.nombre_contacto || l.nombre}</div>
+                    <div className="text-muted" style={{fontSize:12, marginBottom:8}}>{l.empresa_nombre || l.empresa_contacto || 'Sin empresa'} {l.cargo ? `· ${l.cargo}` : ''}</div>
+                    <div className="row" style={{justifyContent:'space-between', alignItems:'center'}}>
+                      <div style={{fontSize:11, color:'var(--fg-muted)'}}>{l.telefono || 'Sin teléfono'}</div>
+                      <div className="row" style={{gap:6}}>
+                        <a
+                          className="btn btn-sm btn-secondary"
+                          href={telefonoLead ? `tel:${telefonoLead}` : undefined}
+                          aria-disabled={!telefonoLead}
+                          onClick={e => { if (!telefonoLead) { e.preventDefault(); mostrarToast('El lead no tiene teléfono válido'); } }}
+                          style={{fontSize:11, padding:'4px 8px'}}
+                        >
+                          {I.phone} Llamar
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : pipelineTab === 'opps' ? (
             <div className="col" style={{gap:10}}>
               {oppsUsuario.length === 0 && <div className="text-muted" style={{textAlign:'center', padding:30, fontSize:13}}>No tienes oportunidades abiertas.</div>}
               {oppsUsuario.map(o => {

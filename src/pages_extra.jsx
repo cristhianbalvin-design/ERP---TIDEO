@@ -2,8 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { I, money } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
+import { getAssignableUsers } from './lib/hierarchy.js';
 
 const currencySymbol = (m = 'PEN') => m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'S/';
+const moneyCurrency = (value, moneda = 'PEN') => money(value, currencySymbol(moneda));
+
+const construirPartidasDesdeHC = (hc) => {
+  const margen = Math.min(Math.max(Number(hc.margen_objetivo_pct || 35), 0), 95) / 100;
+  const divisor = 1 - margen;
+  return [
+    ...(hc.mano_obra || []),
+    ...(hc.materiales || []),
+    ...(hc.servicios_terceros || []),
+    ...(hc.logistica || []),
+  ].map((i, idx) => {
+    const cantidad = Number(i.cantidad || 0);
+    const costoUnitario = Number(i.costo_unitario ?? i.precio_unitario ?? 0);
+    const precioUnitario = divisor > 0 ? Math.round(costoUnitario / divisor) : costoUnitario;
+    return {
+      id: i.id || idx + 1,
+      descripcion: i.descripcion || 'Partida de costeo',
+      tipo: 'servicio',
+      cantidad,
+      unidad: i.unidad || 'und',
+      precio_unitario: precioUnitario,
+      subtotal: cantidad * precioUnitario,
+    };
+  }).filter(p => p.cantidad > 0 || p.precio_unitario > 0);
+};
 
 // ============ COTIZACIONES ============
 
@@ -17,12 +43,19 @@ const COT_BADGE = e =>
 
 function CotizacionesInner() {
   const {
-    cotizaciones, oportunidades, cuentas, contactos, activeParams,
-    navigate, crearCotizacion, actualizarCotizacion, aprobarCotizacion,
-    crearOSCliente, subirVersionCotizacion, searchQuery, empresaConfig, addNotificacion
+    cotizaciones, oportunidades, cuentas, contactos, usuarios, osClientes, hojasCosteo, activeParams,
+    navigate, crearCotizacion, actualizarCotizacion, aprobarCotizacion, registrarAprobacionManual,
+    crearOSCliente, vincularCotizacionOS, subirVersionCotizacion, searchQuery, empresaConfig, addNotificacion
   } = useApp();
   const [osModal, setOsModal] = useState(null);
   const [generandoPDF, setGenerandoPDF] = useState(false);
+
+  useEffect(() => {
+    if (activeParams?.crear_os && activeParams?.detail) {
+      const c = cotizaciones.find(x => x.id === activeParams.detail);
+      if (c && c.estado === 'aprobada') setOsModal(c);
+    }
+  }, [activeParams?.crear_os, activeParams?.detail]);
 
   const getOpp    = id => oportunidades.find(o => o.id === id);
   const getCuenta = id => cuentas.find(c => c.id === id);
@@ -33,10 +66,20 @@ function CotizacionesInner() {
   if (activeParams?.active_tab === 'nueva' && activeParams?.opp) {
     const opp = getOpp(activeParams.opp);
     if (!opp) return <div className="p-4">Oportunidad no encontrada</div>;
+    const hcBase = activeParams.hc_id ? (hojasCosteo || []).find(h => h.id === activeParams.hc_id) : null;
+    const cotBaseDeHC = hcBase ? {
+      moneda: opp.moneda || hcBase.moneda,
+      igv_pct: 18,
+      oportunidad_id: opp.id,
+      cuenta_id: opp.cuenta_id,
+      hoja_costeo_id: hcBase.id,
+      items: construirPartidasDesdeHC(hcBase),
+    } : null;
     return (
       <EditorCotizacion
         opp={opp}
         cuenta={getCuenta(opp.cuenta_id)}
+        cotizacionBase={cotBaseDeHC}
         contactos={(contactos || []).filter(c => c.cuenta_id === opp.cuenta_id)}
         empresaConfig={empresaConfig}
         onSave={async (data) => { await crearCotizacion(data); navigate('cotizaciones'); }}
@@ -108,22 +151,27 @@ function CotizacionesInner() {
     return (
       <>
         <DetalleCotizacion
-          cot={cot} opp={opp} cuenta={cuenta} contacto={contacto}
+          cot={cot} opp={opp} cuenta={cuenta} contacto={contacto} usuarios={usuarios}
           empresaConfig={empresaConfig}
           onBack={() => navigate('cotizaciones')}
           onEdit={() => navigate('cotizaciones', { detail: cot.id, edit: true })}
           onCrearVersion={async () => { await subirVersionCotizacion(cot.id); }}
           onEnviar={() => actualizarCotizacion(cot.id, { estado: 'enviada', fecha_envio: new Date().toISOString() })}
           onAprobar={() => { aprobarCotizacion(cot.id); setOsModal(cot); }}
+          onAprobacionManual={async (datos) => { await registrarAprobacionManual(cot.id, datos); }}
           onGenerarOS={() => setOsModal(cot)}
           onDescargarPDF={handleDescargarPDF}
           generandoPDF={generandoPDF}
         />
         {osModal && (
-          <GenerarOSModal
+          <CrearOSModal
             cot={osModal}
+            opp={oportunidades.find(o => o.id === osModal.oportunidad_id)}
+            osClientes={osClientes || []}
+            cuentas={cuentas}
             onClose={() => setOsModal(null)}
-            onConfirm={async (datos) => { await crearOSCliente(osModal.id, datos); setOsModal(null); }}
+            onCrearNueva={async (datos) => { await crearOSCliente(osModal.id, datos); setOsModal(null); }}
+            onVincularExistente={async (osId) => { await vincularCotizacionOS(osModal.id, osId); setOsModal(null); }}
           />
         )}
       </>
@@ -216,16 +264,112 @@ function QRBlock({ token }) {
   );
 }
 
+// ── Modal aprobación manual ─────────────────────────────────────────────
+const CANALES_APROBACION = [
+  'Aprobado por email',
+  'Aprobado por WhatsApp',
+  'Aprobado en reunión',
+  'Aprobado con firma física',
+  'Otro',
+];
+
+function AprobacionManualModal({ onClose, onConfirmar }) {
+  const hoy = new Date().toISOString().split('T')[0];
+  const [canal, setCanal]     = useState('');
+  const [fecha, setFecha]     = useState(hoy);
+  const [notas, setNotas]     = useState('');
+  const [archivos, setArchivos] = useState([]);
+  const [error, setError]     = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const agregarArchivos = (e) => {
+    setArchivos(prev => [...prev, ...Array.from(e.target.files)]);
+    e.target.value = '';
+  };
+  const quitarArchivo = (i) => setArchivos(prev => prev.filter((_, idx) => idx !== i));
+
+  const handleConfirmar = async () => {
+    if (!canal) { setError('Selecciona el canal de aprobación.'); return; }
+    if (!fecha) { setError('Indica la fecha de aprobación del cliente.'); return; }
+    setError(null);
+    setLoading(true);
+    await onConfirmar({ canal, fecha_cliente: fecha, notas: notas.trim() || null, archivos });
+    setLoading(false);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{maxWidth:540, width:'100%'}} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 style={{fontSize:16}}>Registrar aprobación del cliente</h2>
+          <button className="btn-icon" onClick={onClose}>{I.x}</button>
+        </div>
+        <div className="modal-body" style={{display:'flex', flexDirection:'column', gap:16}}>
+          <div className="input-group" style={{margin:0}}>
+            <label>Canal de aprobación *</label>
+            <select className="input" value={canal} onChange={e => { setCanal(e.target.value); setError(null); }}>
+              <option value="">Selecciona un canal…</option>
+              {CANALES_APROBACION.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="input-group" style={{margin:0}}>
+            <label>Fecha de aprobación del cliente *</label>
+            <input type="date" className="input" value={fecha} max={hoy}
+              onChange={e => { setFecha(e.target.value); setError(null); }} />
+          </div>
+          <div className="input-group" style={{margin:0}}>
+            <label>Notas adicionales</label>
+            <textarea className="input" rows={3} value={notas} onChange={e => setNotas(e.target.value)}
+              placeholder="Contexto sobre cómo se dio la aprobación…" />
+          </div>
+          <div className="input-group" style={{margin:0}}>
+            <label>Adjuntar sustento</label>
+            <label style={{display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:6, border:'1px dashed var(--border)', cursor:'pointer', fontSize:13, color:'var(--fg-muted)', background:'var(--bg-subtle)'}}>
+              {I.file} Seleccionar archivos (PDF, imágenes, Word)
+              <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" onChange={agregarArchivos} style={{display:'none'}} />
+            </label>
+            {archivos.length > 0 && (
+              <div style={{marginTop:8, display:'flex', flexDirection:'column', gap:5}}>
+                {archivos.map((f, i) => (
+                  <div key={i} style={{display:'flex', alignItems:'center', gap:8, padding:'6px 10px', background:'var(--bg-subtle)', borderRadius:6, fontSize:13}}>
+                    <span style={{flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{f.name}</span>
+                    <span style={{fontSize:11, color:'var(--fg-muted)', flexShrink:0}}>{(f.size/1024).toFixed(0)} KB</span>
+                    <button onClick={() => quitarArchivo(i)} style={{background:'none', border:'none', cursor:'pointer', color:'var(--danger)', padding:0, lineHeight:1, fontSize:16}}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {error && <div style={{color:'var(--danger)', fontSize:13, padding:'8px 12px', background:'#fff0f0', borderRadius:6}}>{error}</div>}
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose} disabled={loading}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleConfirmar} disabled={loading}>
+            {loading ? 'Registrando…' : 'Confirmar aprobación'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Detalle (lectura) ──────────────────────────────────────────────────
-function DetalleCotizacion({ cot, opp, cuenta, contacto, empresaConfig, onBack, onEdit, onCrearVersion, onEnviar, onAprobar, onGenerarOS, onDescargarPDF, generandoPDF }) {
+function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig, onBack, onEdit, onCrearVersion, onEnviar, onAprobacionManual, onGenerarOS, onDescargarPDF, generandoPDF }) {
   const partidas = cot.items || cot.partidas || [];
   const hayRecurrente = partidas.some(p => !p.incluido && p.tipo === 'recurrente');
   const [seccionesOpen, setSeccionesOpen] = useState({});
   const toggleSeccion = k => setSeccionesOpen(p => ({ ...p, [k]: !p[k] }));
   const [confirmEnviar, setConfirmEnviar] = useState(false);
+  const [showAprobModal, setShowAprobModal] = useState(false);
   const sym = currencySymbol(cot.moneda);
 
   const cfg = empresaConfig || {};
+
+  const vendedor = opp?.responsable_id
+    ? (usuarios || []).find(u => u.id === opp.responsable_id)
+    : null;
+  const vendedorNombre = vendedor?.nombre || opp?.responsable || '—';
+  const vendedorEmail  = vendedor?.email  || null;
 
   const validezTexto = () => {
     if (cot.validez_tipo === 'fecha_exacta' && cot.validez_fecha)
@@ -265,7 +409,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, empresaConfig, onBack, 
         <div className="row">
           {cot.estado === 'borrador' && <button className="btn btn-secondary" onClick={onEdit}>{I.edit} Editar</button>}
           {cot.estado === 'borrador' && <button className="btn btn-primary" onClick={() => setConfirmEnviar(true)}>{I.send} Enviar a cliente</button>}
-          {cot.estado === 'enviada'  && <button className="btn btn-primary" onClick={onAprobar}>{I.check} Marcar aprobada</button>}
+          {cot.estado === 'enviada'  && <button className="btn btn-secondary" onClick={() => setShowAprobModal(true)}>{I.check} Aprobar manualmente</button>}
           {cot.estado === 'aprobada' && <button className="btn btn-primary" onClick={onGenerarOS}>{I.clipboard} Generar OS</button>}
           <button className="btn btn-secondary" onClick={onCrearVersion}>{I.plus} Nueva versión</button>
           <button className="btn btn-secondary" onClick={onDescargarPDF} disabled={generandoPDF}>{I.download} {generandoPDF ? 'Generando…' : 'PDF'}</button>
@@ -275,17 +419,36 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, empresaConfig, onBack, 
       {/* Bloque 1 — Encabezado */}
       <div className="card mt-6">
         <div className="card-body">
-          <div className="grid-4" style={{marginBottom:20}}>
+          {/* Fila 1: datos del documento */}
+          <div className="grid-4" style={{marginBottom:16}}>
             <div><div className="eyebrow">Fecha emisión</div><div style={{fontWeight:600, marginTop:4}}>{cot.fecha}</div></div>
             <div><div className="eyebrow">Moneda</div><div style={{fontWeight:600, marginTop:4}}>{cot.moneda}</div></div>
             <div><div className="eyebrow">Validez</div><div style={{fontWeight:600, marginTop:4}}>{validezTexto()}</div></div>
-            <div><div className="eyebrow">Attn.</div><div style={{fontWeight:600, marginTop:4}}>{contacto?.nombre || '—'}</div></div>
-            {cot.fecha_envio && (
-              <div><div className="eyebrow">Enviada al cliente</div><div style={{fontWeight:600, marginTop:4}}>{new Date(cot.fecha_envio).toLocaleString('es-PE')}</div></div>
-            )}
+            <div><div className="eyebrow">Attn. (contacto cliente)</div><div style={{fontWeight:600, marginTop:4}}>{contacto?.nombre || '—'}</div></div>
+          </div>
+          {/* Fila 2: datos internos */}
+          <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, paddingTop:14, borderTop:'1px solid var(--border)'}}>
+            <div>
+              <div className="eyebrow">Vendedor responsable</div>
+              <div style={{fontWeight:600, marginTop:4}}>{vendedorNombre}</div>
+            </div>
+            <div>
+              <div className="eyebrow">Email vendedor</div>
+              <div style={{marginTop:4}}>
+                {vendedorEmail
+                  ? <a href={`mailto:${vendedorEmail}`} style={{color:'var(--cyan)', textDecoration:'none', fontWeight:600}}>{vendedorEmail}</a>
+                  : <span style={{color:'var(--fg-muted)'}}>—</span>}
+              </div>
+            </div>
+            <div>
+              <div className="eyebrow">Enviada al cliente</div>
+              <div style={{fontWeight:600, marginTop:4}}>
+                {cot.fecha_envio ? new Date(cot.fecha_envio).toLocaleString('es-PE') : <span style={{color:'var(--fg-muted)'}}>—</span>}
+              </div>
+            </div>
           </div>
           {cot.descripcion_general && (
-            <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, borderLeft:'3px solid var(--cyan)', fontSize:14, lineHeight:'1.6'}}>
+            <div style={{marginTop:16, padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, borderLeft:'3px solid var(--cyan)', fontSize:14, lineHeight:'1.6'}}>
               {cot.descripcion_general}
             </div>
           )}
@@ -446,11 +609,14 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, empresaConfig, onBack, 
         </div>
       )}
 
-      {/* Bloque: Aceptación registrada */}
+      {/* Bloque: Aprobación digital (vía QR) */}
       {cot.aceptacion_fecha && (
         <div className="card mt-4" style={{borderLeft:'4px solid var(--green)'}}>
           <div className="card-body">
-            <h3 style={{marginBottom:12, color:'var(--green)'}}>✓ Aceptación digital registrada</h3>
+            <div className="row" style={{alignItems:'center', gap:10, marginBottom:12}}>
+              <h3 style={{margin:0, color:'var(--green)'}}>✓ Aprobación registrada</h3>
+              <span className="badge badge-green">Aprobación digital</span>
+            </div>
             <div className="grid-4" style={{fontSize:13}}>
               <div><div className="eyebrow">Aceptado por</div><div style={{fontWeight:600, marginTop:4}}>{cot.aceptacion_nombre || '—'}</div></div>
               <div><div className="eyebrow">DNI</div><div style={{fontWeight:600, marginTop:4}}>{cot.aceptacion_dni || '—'}</div></div>
@@ -459,6 +625,53 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, empresaConfig, onBack, 
             </div>
           </div>
         </div>
+      )}
+
+      {/* Bloque: Aprobación manual (registrada por vendedor) */}
+      {cot.aprobacion_tipo === 'manual' && (
+        <div className="card mt-4" style={{borderLeft:'4px solid var(--green)'}}>
+          <div className="card-body">
+            <div className="row" style={{alignItems:'center', gap:10, marginBottom:16}}>
+              <h3 style={{margin:0, color:'var(--green)'}}>✓ Aprobación registrada</h3>
+              <span className="badge badge-cyan">Aprobación manual</span>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, fontSize:13}}>
+              <div><div className="eyebrow">Canal</div><div style={{fontWeight:600, marginTop:4}}>{cot.aprobacion_canal || '—'}</div></div>
+              <div><div className="eyebrow">Fecha aprobación cliente</div><div style={{fontWeight:600, marginTop:4}}>{cot.aprobacion_fecha_cliente || '—'}</div></div>
+              <div><div className="eyebrow">Registrado por</div><div style={{fontWeight:600, marginTop:4}}>{cot.aprobacion_registrada_por || '—'}</div></div>
+              <div><div className="eyebrow">Fecha y hora de registro</div><div style={{fontWeight:600, marginTop:4}}>{cot.aprobacion_registrada_at ? new Date(cot.aprobacion_registrada_at).toLocaleString('es-PE') : '—'}</div></div>
+              {cot.aprobacion_notas && (
+                <div style={{gridColumn:'span 2'}}><div className="eyebrow">Notas</div><div style={{marginTop:4}}>{cot.aprobacion_notas}</div></div>
+              )}
+            </div>
+            {(cot.aprobacion_archivos || []).length > 0 && (
+              <div style={{marginTop:14}}>
+                <div className="eyebrow" style={{marginBottom:8}}>Archivos adjuntos</div>
+                <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                  {(cot.aprobacion_archivos || []).map((a, i) => (
+                    <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
+                      style={{display:'flex', alignItems:'center', gap:8, padding:'7px 12px', background:'var(--bg-subtle)', borderRadius:6, fontSize:13, textDecoration:'none', color:'var(--cyan)'}}>
+                      {I.download}
+                      <span style={{flex:1}}>{a.nombre}</span>
+                      <span style={{fontSize:11, color:'var(--fg-muted)'}}>{a.tamanio ? (a.tamanio/1024).toFixed(0)+' KB' : ''}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Aprobar manualmente */}
+      {showAprobModal && (
+        <AprobacionManualModal
+          onClose={() => setShowAprobModal(false)}
+          onConfirmar={async (datos) => {
+            await onAprobacionManual(datos);
+            setShowAprobModal(false);
+          }}
+        />
       )}
 
       {/* Historial de versiones */}
@@ -519,8 +732,10 @@ function TotalesBox({ subtotal, igvPct, igv, total, suffix = '', sym = 'S/' }) {
 
 // ── Editor (crear o editar borrador) ───────────────────────────────────
 function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfig, onSave, onCancel }) {
+  const { centrosBeneficio, monedasActivas } = useApp();
   const cfg     = empresaConfig || {};
-  const isEdit  = !!cotizacionBase;
+  const isEdit  = !!(cotizacionBase?.id);
+  const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
 
   // ── Bloque 1 ────────────────────────────────────────────────────────
   const [moneda,      setMoneda]      = useState(cotizacionBase?.moneda      || opp?.moneda || 'PEN');
@@ -529,6 +744,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
   const [validezDias, setValidezDias] = useState(cotizacionBase?.validez_dias  || 30);
   const [validezFecha,setValidezFecha]= useState(cotizacionBase?.validez_fecha || '');
   const [contactoId,  setContactoId]  = useState(cotizacionBase?.contacto_id  || opp?.contacto_id || '');
+  const [cebeId,      setCebeId]      = useState(cotizacionBase?.centro_beneficio_id || '');
   const [descripcion, setDescripcion] = useState(cotizacionBase?.descripcion_general || '');
 
   // ── Bloque 2: partidas ───────────────────────────────────────────────
@@ -621,11 +837,13 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
       oportunidad_id: cotizacionBase?.oportunidad_id || opp?.id,
       cuenta_id:      cotizacionBase?.cuenta_id      || opp?.cuenta_id,
       contacto_id:    contactoId || null,
+      centro_beneficio_id: cebeId || null,
       moneda, igv_pct: Number(igvPct),
       validez_tipo: validezTipo,
       validez_dias: Number(validezDias),
       validez_fecha: validezTipo === 'fecha_exacta' ? validezFecha : null,
       descripcion_general: descripcion,
+      hoja_costeo_id: cotizacionBase?.hoja_costeo_id || null,
       items,
       subtotal: subtImpl + subtRec, base_imponible: subtImpl,
       igv: igvImpl, total: totalImpl,
@@ -671,8 +889,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
             <div className="input-group">
               <label>Moneda</label>
               <select className="select" value={moneda} onChange={e => setMoneda(e.target.value)}>
-                <option value="PEN">PEN — Soles</option>
-                <option value="USD">USD — Dólares</option>
+                {monedasActivas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre}</option>)}
               </select>
             </div>
             <div className="input-group">
@@ -684,6 +901,13 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
               <select className="select" value={contactoId} onChange={e => setContactoId(e.target.value)}>
                 <option value="">Sin contacto específico</option>
                 {(contactos || []).map(c => <option key={c.id} value={c.id}>{c.nombre}{c.cargo ? ` (${c.cargo})` : ''}</option>)}
+              </select>
+            </div>
+            <div className="input-group">
+              <label>CEBE</label>
+              <select className="select" value={cebeId} onChange={e => setCebeId(e.target.value)}>
+                <option value="">Sin CEBE asociado</option>
+                {cebesActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}{c.tipo ? ` (${c.tipo})` : ''}</option>)}
               </select>
             </div>
           </div>
@@ -738,46 +962,36 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
           </div>
 
           {partidas.map((p, idx) => (
-            <div key={p.id} style={{marginBottom:16, padding:16, background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)'}}>
-              <div className="row" style={{justifyContent:'space-between', marginBottom:12}}>
-                <span style={{fontWeight:600, fontSize:13, color:'var(--fg-muted)'}}>Partida {idx + 1}</span>
-                <div className="row" style={{gap:4}}>
-                  {idx > 0 && <button type="button" className="icon-btn" onClick={() => movePartida(idx, -1)} title="Subir">↑</button>}
-                  {idx < partidas.length - 1 && <button type="button" className="icon-btn" onClick={() => movePartida(idx, 1)} title="Bajar">↓</button>}
-                  <button type="button" className="icon-btn text-danger" onClick={() => removePartida(p.id)}>{I.x}</button>
-                </div>
-              </div>
-              <div className="grid-2" style={{gap:12, marginBottom:12}}>
-                <div className="input-group" style={{margin:0}}>
-                  <label style={{fontSize:12}}>Descripción</label>
+            <div key={p.id} style={{marginBottom:12, padding:'14px 16px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)'}}>
+              {/* Fila 1: descripción + tipo + acciones */}
+              <div className="row" style={{gap:10, marginBottom:10, alignItems:'flex-end'}}>
+                <span style={{fontWeight:600, fontSize:11, color:'var(--fg-muted)', minWidth:60, paddingBottom:8}}>Partida {idx + 1}</span>
+                <div className="input-group" style={{margin:0, flex:3}}>
+                  <label style={{fontSize:11}}>Descripción</label>
                   <input className="input" value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} placeholder="Nombre del servicio o bien" />
                 </div>
-                <div className="input-group" style={{margin:0}}>
-                  <label style={{fontSize:12}}>Tipo</label>
+                <div className="input-group" style={{margin:0, flex:1, minWidth:140}}>
+                  <label style={{fontSize:11}}>Tipo</label>
                   <select className="select" value={p.tipo} onChange={e => updatePartida(p.id, 'tipo', e.target.value)}>
                     <option value="servicio">Servicio</option>
                     <option value="bien">Bien</option>
                     <option value="recurrente">Recurrente (mensual)</option>
                   </select>
                 </div>
-              </div>
-              <div className="input-group" style={{marginBottom:12}}>
-                <label style={{fontSize:12}}>Detalle / sub-ítems (una línea = una viñeta en el PDF)</label>
-                <textarea className="input" rows="2" value={p.detalle_items_txt}
-                  onChange={e => updatePartida(p.id, 'detalle_items_txt', e.target.value)}
-                  placeholder="Entregable 1&#10;Entregable 2" />
-              </div>
-              <div className="grid-4" style={{gap:12, alignItems:'flex-end'}}>
-                <div className="input-group" style={{margin:0}}>
-                  <label style={{fontSize:12}}>Detalle de cantidad</label>
-                  <input className="input" value={p.detalle_cantidad} onChange={e => updatePartida(p.id, 'detalle_cantidad', e.target.value)} placeholder="1 proyecto, 2 meses…" />
+                <div className="row" style={{gap:4, paddingBottom:2}}>
+                  {idx > 0 && <button type="button" className="icon-btn" onClick={() => movePartida(idx, -1)} title="Subir">↑</button>}
+                  {idx < partidas.length - 1 && <button type="button" className="icon-btn" onClick={() => movePartida(idx, 1)} title="Bajar">↓</button>}
+                  <button type="button" className="icon-btn text-danger" onClick={() => removePartida(p.id)}>{I.x}</button>
                 </div>
-                <div className="input-group" style={{margin:0}}>
-                  <label style={{fontSize:12}}>Cantidad</label>
+              </div>
+              {/* Fila 2: cantidad + precio + total */}
+              <div className="row" style={{gap:10, marginBottom:10, alignItems:'flex-end'}}>
+                <div className="input-group" style={{margin:0, width:110}}>
+                  <label style={{fontSize:11}}>Cantidad</label>
                   <input type="number" className="input num" min="0" step="0.01" value={p.cantidad} onChange={e => updatePartida(p.id, 'cantidad', e.target.value)} />
                 </div>
-                <div className="input-group" style={{margin:0}}>
-                  <label style={{fontSize:12}}>Precio unitario</label>
+                <div className="input-group" style={{margin:0, flex:1}}>
+                  <label style={{fontSize:11}}>Precio unitario</label>
                   {p.incluido
                     ? <div className="row" style={{gap:6, alignItems:'center'}}>
                         <span className="badge badge-gray" style={{flex:1, textAlign:'center', height:36, lineHeight:'36px'}}>Incluido</span>
@@ -789,12 +1003,24 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                       </div>
                   }
                 </div>
-                <div style={{textAlign:'right'}}>
+                <div className="input-group" style={{margin:0, flex:2}}>
+                  <label style={{fontSize:11}}>Detalle de cantidad</label>
+                  <input className="input" value={p.detalle_cantidad} onChange={e => updatePartida(p.id, 'detalle_cantidad', e.target.value)} placeholder="1 proyecto, 2 meses…" />
+                </div>
+                <div style={{textAlign:'right', minWidth:120, paddingBottom:2}}>
                   <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total partida</div>
-                  <div style={{fontWeight:700, fontSize:16, fontFamily:'Sora'}}>
-                    {p.incluido ? <span className="text-muted">—</span> : money(Number(p.cantidad || 0) * Number(p.precio_unitario || 0))}
+                  <div style={{fontWeight:700, fontSize:16, fontFamily:'Sora', color:'var(--cyan)'}}>
+                    {p.incluido ? <span className="text-muted">Incluido</span> : moneyCurrency(Number(p.cantidad || 0) * Number(p.precio_unitario || 0), moneda)}
                   </div>
                 </div>
+              </div>
+              {/* Fila 3: sub-ítems (opcional, compacto) */}
+              <div className="input-group" style={{margin:0}}>
+                <label style={{fontSize:11}}>Sub-ítems / entregables (una línea = viñeta en PDF)</label>
+                <textarea className="input" rows="2" value={p.detalle_items_txt}
+                  onChange={e => updatePartida(p.id, 'detalle_items_txt', e.target.value)}
+                  placeholder="Entregable 1&#10;Entregable 2"
+                  style={{fontSize:12, resize:'vertical'}} />
               </div>
             </div>
           ))}
@@ -916,61 +1142,191 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
   );
 }
 
-function GenerarOSModal({ cot, onClose, onConfirm }) {
+const CONDICIONES_PAGO = ['Contado', '30 días', '45 días', '60 días', '90 días', '120 días', 'Anticipado', 'Contra entrega'];
+
+function CrearOSModal({ cot, opp, osClientes, cuentas, onClose, onCrearNueva, onVincularExistente }) {
+  const { usuarios, roles, empresa, centrosBeneficio } = useApp();
+  const comerciales = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
+  const getNombre = id => (cuentas || []).find(c => c.id === id)?.razon_social || id;
+  const cuenta = (cuentas || []).find(c => c.id === cot.cuenta_id);
+  const osExistentes = (osClientes || []).filter(os =>
+    os.cuenta_id === cot.cuenta_id && !['cerrada', 'anulada'].includes(os.estado)
+  );
   const today = new Date().toISOString().split('T')[0];
-  const nextMonth = new Date(); nextMonth.setMonth(nextMonth.getMonth() + 1);
-  const defaultEnd = nextMonth.toISOString().split('T')[0];
+  const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
+  const cebesOrdenados = [...cebesActivos].sort((a, b) => Number(b.tipo === 'cliente' && b.cuenta_id === cot.cuenta_id) - Number(a.tipo === 'cliente' && a.cuenta_id === cot.cuenta_id));
+  const condPagoInicial = cot.condicion_pago || cuenta?.condicion_pago || '30 días';
+  const [modo, setModo] = useState(osExistentes.length > 0 ? null : 'nueva');
+  const [osSeleccionada, setOsSeleccionada] = useState('');
+  const [paso, setPaso] = useState(1);
+  const [tieneNumero, setTieneNumero] = useState(null);
   const [form, setForm] = useState({
     numero_doc_cliente: '',
-    condicion_pago: cot.condicion_pago || '30 dias',
+    nombre: opp?.nombre || cot.numero || '',
+    responsable_comercial_id: opp?.responsable_id || '',
+    moneda: cot.moneda || 'PEN',
     fecha_inicio: today,
-    fecha_fin: defaultEnd,
+    fecha_fin: '',
+    observaciones: '',
+    condicion_pago: condPagoInicial,
     sla: 'estandar',
+    centro_beneficio_id: cot.centro_beneficio_id || '',
   });
-  const update = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
+  const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const optStyle = { display:'flex', alignItems:'center', gap:10, padding:'10px 14px', border:'1px solid var(--border)', borderRadius:8, cursor:'pointer', transition:'background 0.15s' };
+  const infoBox = { padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)', fontSize:13 };
+
+  if (modo === null) {
+    return (
+      <div className="modal-backdrop">
+        <div className="modal" style={{maxWidth:480}}>
+          <div className="modal-head">
+            <h2>Crear OS Cliente</h2>
+            <button className="icon-btn" onClick={onClose}>{I.x}</button>
+          </div>
+          <div className="modal-body col" style={{gap:14}}>
+            <div style={infoBox}>
+              <div className="eyebrow">Cotización aprobada</div>
+              <strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))} · {getNombre(cot.cuenta_id)}
+            </div>
+            <div style={{fontWeight:500, fontSize:14}}>Se detectaron OS activas para este cliente. ¿Esta cotización corresponde a una OS existente o es una OS nueva?</div>
+            <div className="col" style={{gap:8}}>
+              {osExistentes.map(os => (
+                <label key={os.id} style={{...optStyle, background: osSeleccionada === os.id ? 'var(--cyan-lt)' : 'transparent'}}>
+                  <input type="radio" name="os_existente" style={{accentColor:'var(--cyan-dk)'}} checked={osSeleccionada === os.id} onChange={() => setOsSeleccionada(os.id)} />
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13}}>{os.numero}{os.nombre ? ` — ${os.nombre}` : ''}</div>
+                    <div style={{fontSize:12, color:'var(--fg-muted)'}}>{money(os.monto_aprobado, currencySymbol(os.moneda))} · {os.estado}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="modal-foot">
+            <button className="btn btn-ghost" onClick={() => setModo('nueva')}>Crear nueva OS</button>
+            <button className="btn btn-primary" disabled={!osSeleccionada} onClick={() => onVincularExistente(osSeleccionada)}>Agregar a OS existente</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (paso === 1) {
+    return (
+      <div className="modal-backdrop">
+        <div className="modal" style={{maxWidth:480}}>
+          <div className="modal-head">
+            <div>
+              <div className="eyebrow" style={{marginBottom:2}}>Paso 1 de 2 — Número de OS</div>
+              <h2>Crear OS Cliente</h2>
+            </div>
+            <button className="icon-btn" onClick={onClose}>{I.x}</button>
+          </div>
+          <div className="modal-body col" style={{gap:16}}>
+            <div style={infoBox}><strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))}</div>
+            <div style={{fontWeight:500}}>¿El cliente proporcionó un número de OS?</div>
+            <div className="col" style={{gap:8}}>
+              <label style={{...optStyle, background: tieneNumero === true ? 'var(--cyan-lt)' : 'transparent'}}>
+                <input type="radio" name="tiene_num" style={{accentColor:'var(--cyan-dk)'}} checked={tieneNumero === true} onChange={() => setTieneNumero(true)} />
+                <span>Sí — el cliente proporcionó su número de OS</span>
+              </label>
+              <label style={{...optStyle, background: tieneNumero === false ? 'var(--cyan-lt)' : 'transparent'}}>
+                <input type="radio" name="tiene_num" style={{accentColor:'var(--cyan-dk)'}} checked={tieneNumero === false} onChange={() => setTieneNumero(false)} />
+                <span>No / Aún no — generar número interno automático</span>
+              </label>
+            </div>
+            {tieneNumero === true && (
+              <div className="input-group">
+                <label>Número OS del cliente</label>
+                <input className="input" value={form.numero_doc_cliente} onChange={e => upd('numero_doc_cliente', e.target.value)} placeholder="Ej. OS-2026-001" autoFocus />
+              </div>
+            )}
+          </div>
+          <div className="modal-foot">
+            <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary"
+              disabled={tieneNumero === null || (tieneNumero === true && !form.numero_doc_cliente.trim())}
+              onClick={() => setPaso(2)}>
+              Siguiente →
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="modal-backdrop">
-      <div className="modal" style={{maxWidth:520}}>
+      <div className="modal" style={{maxWidth:560}}>
         <div className="modal-head">
-          <h2>Generar OS Cliente</h2>
+          <div>
+            <div className="eyebrow" style={{marginBottom:2}}>Paso 2 de 2 — Datos de la OS</div>
+            <h2>Crear OS Cliente</h2>
+          </div>
           <button className="icon-btn" onClick={onClose}>{I.x}</button>
         </div>
-        <form className="modal-body col" style={{gap:16}} onSubmit={e => { e.preventDefault(); onConfirm(form); }}>
-          <div style={{padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)', fontSize:13}}>
-            <div className="eyebrow">Cotización aprobada</div>
+        <form className="modal-body col" style={{gap:14}} onSubmit={e => { e.preventDefault(); onCrearNueva(form); }}>
+          <div style={infoBox}>
             <strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))}
+            {tieneNumero && form.numero_doc_cliente && <> · OS cliente: <strong>{form.numero_doc_cliente}</strong></>}
           </div>
           <div className="input-group">
-            <label>OC / pedido cliente</label>
-            <input className="input" value={form.numero_doc_cliente} onChange={e => update('numero_doc_cliente', e.target.value)} placeholder="Ej. OC-2026-001" />
+            <label>Nombre de la OS <span style={{color:'var(--danger)'}}>*</span></label>
+            <input className="input" value={form.nombre} onChange={e => upd('nombre', e.target.value)} required />
+          </div>
+          <div className="input-group">
+            <label>CEBE <span style={{color:'var(--danger)'}}>*</span></label>
+            <select className="select" value={form.centro_beneficio_id} onChange={e => upd('centro_beneficio_id', e.target.value)} required>
+              <option value="">Seleccionar CEBE...</option>
+              {cebesOrdenados.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}{c.tipo ? ` (${c.tipo})` : ''}</option>)}
+            </select>
           </div>
           <div className="grid-2">
             <div className="input-group">
-              <label>Fecha inicio</label>
-              <input className="input" type="date" value={form.fecha_inicio} onChange={e => update('fecha_inicio', e.target.value)} required />
+              <label>Moneda</label>
+              <input className="input" value={form.moneda} readOnly style={{opacity:0.65, cursor:'not-allowed'}} />
             </div>
             <div className="input-group">
-              <label>Fecha fin</label>
-              <input className="input" type="date" value={form.fecha_fin} onChange={e => update('fecha_fin', e.target.value)} required />
+              <label>Responsable comercial</label>
+              <select className="select" value={form.responsable_comercial_id} onChange={e => upd('responsable_comercial_id', e.target.value)}>
+                <option value="">Sin asignar</option>
+                {comerciales.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid-2">
+            <div className="input-group">
+              <label>Fecha inicio servicio <span style={{color:'var(--danger)'}}>*</span></label>
+              <input className="input" type="date" value={form.fecha_inicio} onChange={e => upd('fecha_inicio', e.target.value)} required />
+            </div>
+            <div className="input-group">
+              <label>Fecha estimada de cierre</label>
+              <input className="input" type="date" value={form.fecha_fin} onChange={e => upd('fecha_fin', e.target.value)} />
             </div>
           </div>
           <div className="grid-2">
             <div className="input-group">
               <label>Condición de pago</label>
-              <input className="input" value={form.condicion_pago} onChange={e => update('condicion_pago', e.target.value)} />
+              <select className="select" value={form.condicion_pago} onChange={e => upd('condicion_pago', e.target.value)}>
+                {CONDICIONES_PAGO.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
             <div className="input-group">
               <label>SLA</label>
-              <select className="select" value={form.sla} onChange={e => update('sla', e.target.value)}>
+              <select className="select" value={form.sla} onChange={e => upd('sla', e.target.value)}>
                 <option value="estandar">Estándar</option>
                 <option value="estricto">Estricto</option>
                 <option value="critico">Crítico</option>
               </select>
             </div>
           </div>
-          <div className="modal-foot mt-4">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn btn-primary">{I.check} Crear OS</button>
+          <div className="input-group">
+            <label>Observaciones</label>
+            <textarea className="input" rows="2" value={form.observaciones} onChange={e => upd('observaciones', e.target.value)} placeholder="Notas internas..." />
+          </div>
+          <div className="modal-foot mt-2">
+            <button type="button" className="btn btn-secondary" onClick={() => setPaso(1)}>← Volver</button>
+            <button type="submit" className="btn btn-primary">{I.check} Crear OS Cliente</button>
           </div>
         </form>
       </div>
@@ -1321,8 +1677,8 @@ function HojaCosteo() {
                     <td className="mono" style={{fontWeight:600}}>{hc.numero}</td>
                     <td>{opp?.nombre || '—'}</td>
                     <td><strong>{getCuentaNombre(hc.cuenta_id)}</strong></td>
-                    <td className="num">{money(hc.costo_total)}</td>
-                    <td className="num" style={{fontWeight:600}}>{money(hc.precio_sugerido_total)}</td>
+                    <td className="num">{moneyCurrency(hc.costo_total, opp?.moneda || hc.moneda)}</td>
+                    <td className="num" style={{fontWeight:600}}>{moneyCurrency(hc.precio_sugerido_total, opp?.moneda || hc.moneda)}</td>
                     <td className="num">{hc.margen_objetivo_pct}%</td>
                     <td className="text-muted">{hc.responsable_costeo || '—'}</td>
                     <td><span className={'badge ' + badgeHC(hc.estado)}>{labelEstadoHC(hc.estado)}</span></td>
@@ -1338,7 +1694,7 @@ function HojaCosteo() {
   );
 }
 
-function SeccionCosto({ titulo, badge, items, onChange, readOnly, sugerido, catalogoOpciones }) {
+function SeccionCosto({ titulo, badge, items, onChange, readOnly, sugerido, catalogoOpciones, moneda = 'PEN' }) {
   const safeItems = Array.isArray(items) ? items : [];
   const calcSubtotal = list => list.reduce((s, i) => s + (Number(i.cantidad || 0) * Number(i.costo_unitario || 0)), 0);
 
@@ -1355,7 +1711,7 @@ function SeccionCosto({ titulo, badge, items, onChange, readOnly, sugerido, cata
       <div className="cost-section-head">
         <div className="row" style={{gap:10, alignItems:'center'}}>
           <h3>{titulo}</h3>
-          <span className={'badge ' + badge}>{money(calcSubtotal(safeItems))}</span>
+          <span className={'badge ' + badge}>{moneyCurrency(calcSubtotal(safeItems), moneda)}</span>
         </div>
         {!readOnly && <button className="btn btn-secondary btn-sm" onClick={addItem}>{I.plus} Agregar línea</button>}
       </div>
@@ -1367,7 +1723,7 @@ function SeccionCosto({ titulo, badge, items, onChange, readOnly, sugerido, cata
       {safeItems.length > 0 && (
         <div className="table-wrap cost-table-wrap">
           <table className="tbl cost-table">
-            <thead><tr><th>Descripción</th><th style={{width:100}}>Cant.</th><th style={{width:100}}>Unidad</th><th style={{width:130}}>Costo unit.</th><th style={{width:120}}>Subtotal</th>{!readOnly && <th style={{width:36}}></th>}</tr></thead>
+            <thead><tr><th>Descripción</th><th style={{width:100}}>Cant.</th><th style={{width:100}}>Unidad</th><th style={{width:130}}>Costo unit. ({currencySymbol(moneda)})</th><th style={{width:120}}>Subtotal</th>{!readOnly && <th style={{width:36}}></th>}</tr></thead>
             <tbody>
               {safeItems.map(item => (
                 <tr key={item.id}>
@@ -1382,8 +1738,8 @@ function SeccionCosto({ titulo, badge, items, onChange, readOnly, sugerido, cata
                   }</td>
                   <td data-label="Cant.">{readOnly ? <span className="num">{item.cantidad}</span> : <input type="number" className="input num" min="0" step="0.01" value={item.cantidad} onChange={e => updateItem(item.id, 'cantidad', e.target.value)} />}</td>
                   <td data-label="Unidad">{readOnly ? <span className="text-muted">{item.unidad}</span> : <input className="input" value={item.unidad} onChange={e => updateItem(item.id, 'unidad', e.target.value)} />}</td>
-                  <td data-label="Costo unit.">{readOnly ? <span className="num">{money(item.costo_unitario)}</span> : <input type="number" className="input num" min="0" step="0.01" value={item.costo_unitario} onChange={e => updateItem(item.id, 'costo_unitario', e.target.value)} />}</td>
-                  <td data-label="Subtotal" className="num" style={{fontWeight:600}}>{money(Number(item.cantidad || 0) * Number(item.costo_unitario || 0))}</td>
+                  <td data-label="Costo unit.">{readOnly ? <span className="num">{moneyCurrency(item.costo_unitario, moneda)}</span> : <input type="number" className="input num" min="0" step="0.01" value={item.costo_unitario} onChange={e => updateItem(item.id, 'costo_unitario', e.target.value)} />}</td>
+                  <td data-label="Subtotal" className="num" style={{fontWeight:600}}>{moneyCurrency(Number(item.cantidad || 0) * Number(item.costo_unitario || 0), moneda)}</td>
                   {!readOnly && <td className="cost-row-action"><button type="button" className="icon-btn text-danger" onClick={() => removeItem(item.id)} title="Eliminar linea">{I.x}</button></td>}
                 </tr>
               ))}
@@ -1395,7 +1751,7 @@ function SeccionCosto({ titulo, badge, items, onChange, readOnly, sugerido, cata
   );
 }
 
-function ResumenCostos({ hc }) {
+function ResumenCostos({ hc, moneda = 'PEN' }) {
   const margen = Number(hc.margen_objetivo_pct || 35);
   const totalManoObra = hc.total_mano_obra ?? calcSub(hc.mano_obra);
   const totalMateriales = hc.total_materiales ?? calcSub(hc.materiales);
@@ -1418,22 +1774,22 @@ function ResumenCostos({ hc }) {
         ].map(([label, val]) => (
           <div key={label} className="row" style={{justifyContent:'space-between'}}>
             <span className="text-muted" style={{fontSize:13}}>{label}</span>
-            <span className="num" style={{fontSize:13}}>{money(val || 0)}</span>
+            <span className="num" style={{fontSize:13}}>{moneyCurrency(val || 0, moneda)}</span>
           </div>
         ))}
       </div>
       <div style={{borderTop:'2px solid var(--border)', paddingTop:12, marginBottom:8}}>
         <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
           <span style={{fontWeight:600}}>Costo total estimado</span>
-          <span className="num" style={{fontWeight:700}}>{money(costo)}</span>
+          <span className="num" style={{fontWeight:700}}>{moneyCurrency(costo, moneda)}</span>
         </div>
         <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
           <span className="text-muted" style={{fontSize:13}}>Margen objetivo: {margen}% → precio sin IGV</span>
-          <span className="num" style={{fontSize:13}}>{money(sinIgv)}</span>
+          <span className="num" style={{fontSize:13}}>{moneyCurrency(sinIgv, moneda)}</span>
         </div>
         <div className="row" style={{justifyContent:'space-between', paddingTop:8, borderTop:'1px solid var(--border)'}}>
           <span style={{fontWeight:700, fontFamily:'Sora', fontSize:16}}>Precio sugerido al cliente (c/ IGV)</span>
-          <span className="num" style={{fontWeight:700, fontFamily:'Sora', fontSize:18, color:'var(--cyan)'}}>{money(conIgv)}</span>
+          <span className="num" style={{fontWeight:700, fontFamily:'Sora', fontSize:18, color:'var(--cyan)'}}>{moneyCurrency(conIgv, moneda)}</span>
         </div>
       </div>
       <div style={{marginTop:8, padding:'6px 10px', background: margenReal >= margen ? 'rgba(76,175,80,0.1)' : 'rgba(255,152,0,0.1)', borderRadius:6, textAlign:'center', fontSize:13}}>
@@ -1444,7 +1800,10 @@ function ResumenCostos({ hc }) {
 }
 
 function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo, aprobarHojaCosteo, navigate }) {
+  const { usuarios, roles, empresa } = useApp();
+  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
   const opp = getOpp(hc.oportunidad_id);
+  const hcMoneda = opp?.moneda || hc.moneda || 'PEN';
   const estado = hc.estado || 'borrador';
   const estadoLabel = String(estado).replace('_',' ');
   const [editMode, setEditMode] = useState(false);
@@ -1486,7 +1845,7 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
       <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
         <div>
           <button className="btn btn-ghost" onClick={() => navigate('hoja_costeo')} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver a lista</button>
-          <h1 className="page-title row" style={{gap:10}}>{hc.numero} <span className={'badge ' + badgeHC(estado)} style={{fontSize:12, textTransform:'uppercase'}}>{estadoLabel}</span></h1>
+          <h1 className="page-title row" style={{gap:10}}>{hc.numero} <span className={'badge ' + badgeHC(estado)} style={{fontSize:12, textTransform:'uppercase'}}>{estadoLabel}</span><span className="badge badge-gray" style={{fontSize:11}}>{currencySymbol(hcMoneda)}</span></h1>
           <div className="page-sub">Oportunidad: {opp?.nombre || '—'} · Cliente: <strong>{getCuentaNombre(hc.cuenta_id)}</strong></div>
         </div>
         <div className="row">
@@ -1505,22 +1864,46 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
             <button className="btn btn-primary" style={{background:'var(--green)'}} onClick={handleAprobar}>{I.check} Aprobar Costeo</button>
           )}
           {estado === 'aprobada' && (
-            <button className="btn btn-primary" onClick={() => navigate('cotizaciones', { active_tab: 'nueva', opp: hc.oportunidad_id })}>{I.plus} Generar Cotización</button>
+            <button className="btn btn-primary" onClick={() => navigate('cotizaciones', { active_tab: 'nueva', opp: hc.oportunidad_id, hc_id: hc.id })}>{I.plus} Generar Cotización</button>
           )}
           <button className="btn btn-secondary">{I.download} PDF</button>
         </div>
       </div>
 
+      {opp && (
+        <div style={{ margin: '0 0 0', padding: '12px 32px 0' }}>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 16px', fontSize: 13 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Referencia de la oportunidad — no se editan desde aquí</div>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>Monto estimado</div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{moneyCurrency(opp.monto_estimado || 0, opp.moneda || 'PEN')}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>Etapa</div>
+                <div style={{ fontWeight: 600, textTransform: 'capitalize' }}>{(opp.etapa || '—').replace('_', ' ')}</div>
+              </div>
+              {opp.servicio_interes && (
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>Servicio de interés</div>
+                  <div>{opp.servicio_interes}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="cost-editor-shell">
         <div className="cost-editor-grid">
           <div className="cost-lines">
-            <SeccionCosto titulo="Mano de Obra" badge="badge-cyan" items={form.mano_obra} readOnly={readOnly} onChange={val => setForm(p=>({...p, mano_obra: val}))} />
-            <SeccionCosto titulo="Materiales e Insumos" badge="badge-purple" items={form.materiales} readOnly={readOnly} onChange={val => setForm(p=>({...p, materiales: val}))} />
-            <SeccionCosto titulo="Servicios Terceros / Alquileres" badge="badge-orange" items={form.servicios_terceros} readOnly={readOnly} onChange={val => setForm(p=>({...p, servicios_terceros: val}))} catalogoOpciones={MOCK.servicios.filter(s => s.estado === 'activo')} />
-            <SeccionCosto titulo="Logística y Viáticos" badge="badge-gray" items={form.logistica} readOnly={readOnly} onChange={val => setForm(p=>({...p, logistica: val}))} />
+            <SeccionCosto titulo="Mano de Obra" badge="badge-cyan" items={form.mano_obra} readOnly={readOnly} onChange={val => setForm(p=>({...p, mano_obra: val}))} moneda={hcMoneda} />
+            <SeccionCosto titulo="Materiales e Insumos" badge="badge-purple" items={form.materiales} readOnly={readOnly} onChange={val => setForm(p=>({...p, materiales: val}))} moneda={hcMoneda} />
+            <SeccionCosto titulo="Servicios Terceros / Alquileres" badge="badge-orange" items={form.servicios_terceros} readOnly={readOnly} onChange={val => setForm(p=>({...p, servicios_terceros: val}))} catalogoOpciones={MOCK.servicios.filter(s => s.estado === 'activo')} moneda={hcMoneda} />
+            <SeccionCosto titulo="Logística y Viáticos" badge="badge-gray" items={form.logistica} readOnly={readOnly} onChange={val => setForm(p=>({...p, logistica: val}))} moneda={hcMoneda} />
           </div>
           <aside className="cost-sidebar">
-            <ResumenCostos hc={{ ...hc, ...form, costo_total: (calcSub(form.mano_obra)+calcSub(form.materiales)+calcSub(form.servicios_terceros)+calcSub(form.logistica)), precio_sugerido_sin_igv: calcPrecio(form), precio_sugerido_total: calcPrecio(form)*1.18 }} />
+            <ResumenCostos hc={{ ...hc, ...form, costo_total: (calcSub(form.mano_obra)+calcSub(form.materiales)+calcSub(form.servicios_terceros)+calcSub(form.logistica)), precio_sugerido_sin_igv: calcPrecio(form), precio_sugerido_total: calcPrecio(form)*1.18 }} moneda={hcMoneda} />
             
             <div className="card mt-6" style={{padding:20}}>
               <div className="eyebrow" style={{marginBottom:16}}>Configuración y Notas</div>
@@ -1530,7 +1913,12 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
               </div>
               <div className="input-group">
                 <label>Responsable</label>
-                {readOnly ? <div>{form.responsable_costeo}</div> : <input className="input" value={form.responsable_costeo} onChange={e => setForm(p=>({...p, responsable_costeo: e.target.value}))} />}
+                {readOnly ? <div>{form.responsable_costeo || '—'}</div> : (
+                  <select className="select" value={form.responsable_costeo} onChange={e => setForm(p=>({...p, responsable_costeo: e.target.value}))}>
+                    <option value="">Sin asignar</option>
+                    {comercialesAsignables.map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
+                  </select>
+                )}
               </div>
               <div className="input-group">
                 <label>Notas internas</label>
@@ -1554,9 +1942,12 @@ const calcPrecio = f => {
 
 // Subcomponente Editor Hoja de Costeo
 function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
+  const { usuarios, roles, empresa } = useApp();
+  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
   const [form, setForm] = useState({
     oportunidad_id: opp.id,
     cuenta_id: opp.cuenta_id,
+    moneda: opp.moneda || 'PEN',
     numero: `HC-${Date.now().toString().slice(-6)}`,
     mano_obra: [{ id: 1, descripcion: 'Técnico Especialista', cantidad: 1, unidad: 'hh', costo_unitario: 80 }],
     materiales: [],
@@ -1575,7 +1966,7 @@ function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
       <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
         <div>
           <button className="btn btn-ghost" onClick={onCancel} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver</button>
-          <h1 className="page-title">Nueva Hoja de Costeo</h1>
+          <h1 className="page-title row" style={{gap:10}}>Nueva Hoja de Costeo <span className="badge badge-gray" style={{fontSize:11}}>{currencySymbol(form.moneda)}</span></h1>
           <div className="page-sub">Oportunidad: {opp.nombre} · Cliente: <strong>{getCuentaNombre(opp.cuenta_id)}</strong></div>
         </div>
         <div className="row">
@@ -1583,16 +1974,39 @@ function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
           <button className="btn btn-primary" onClick={() => onSave({ ...form, costo_total: totalCosto, precio_sugerido_sin_igv: precioSinIgv, precio_sugerido_total: precioSinIgv * 1.18 })}>{I.save} Guardar y Continuar</button>
         </div>
       </div>
+
+      <div style={{ padding: '12px 32px 0' }}>
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 16px', fontSize: 13 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Referencia de la oportunidad — no se editan desde aquí</div>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>Monto estimado</div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{moneyCurrency(opp.monto_estimado || 0, opp.moneda || 'PEN')}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>Etapa</div>
+              <div style={{ fontWeight: 600, textTransform: 'capitalize' }}>{(opp.etapa || '—').replace('_', ' ')}</div>
+            </div>
+            {opp.servicio_interes && (
+              <div style={{ flex: 1, minWidth: 160 }}>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>Servicio de interés</div>
+                <div>{opp.servicio_interes}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="cost-editor-shell">
         <div className="cost-editor-grid">
           <div className="cost-lines">
-            <SeccionCosto titulo="Mano de Obra" badge="badge-cyan" items={form.mano_obra} onChange={val => setForm(p=>({...p, mano_obra: val}))} />
-            <SeccionCosto titulo="Materiales e Insumos" badge="badge-purple" items={form.materiales} onChange={val => setForm(p=>({...p, materiales: val}))} />
-            <SeccionCosto titulo="Servicios Terceros / Alquileres" badge="badge-orange" items={form.servicios_terceros} onChange={val => setForm(p=>({...p, servicios_terceros: val}))} catalogoOpciones={MOCK.servicios.filter(s => s.estado === 'activo')} />
-            <SeccionCosto titulo="Logistica y Viaticos" badge="badge-gray" items={form.logistica} onChange={val => setForm(p=>({...p, logistica: val}))} />
+            <SeccionCosto titulo="Mano de Obra" badge="badge-cyan" items={form.mano_obra} onChange={val => setForm(p=>({...p, mano_obra: val}))} moneda={form.moneda} />
+            <SeccionCosto titulo="Materiales e Insumos" badge="badge-purple" items={form.materiales} onChange={val => setForm(p=>({...p, materiales: val}))} moneda={form.moneda} />
+            <SeccionCosto titulo="Servicios Terceros / Alquileres" badge="badge-orange" items={form.servicios_terceros} onChange={val => setForm(p=>({...p, servicios_terceros: val}))} catalogoOpciones={MOCK.servicios.filter(s => s.estado === 'activo')} moneda={form.moneda} />
+            <SeccionCosto titulo="Logistica y Viaticos" badge="badge-gray" items={form.logistica} onChange={val => setForm(p=>({...p, logistica: val}))} moneda={form.moneda} />
           </div>
           <aside className="cost-sidebar">
-             <ResumenCostos hc={{ ...form, costo_total: totalCosto, precio_sugerido_sin_igv: precioSinIgv, precio_sugerido_total: precioSinIgv * 1.18 }} />
+             <ResumenCostos hc={{ ...form, costo_total: totalCosto, precio_sugerido_sin_igv: precioSinIgv, precio_sugerido_total: precioSinIgv * 1.18 }} moneda={form.moneda} />
              <div className="card mt-6" style={{padding:20}}>
               <div className="eyebrow" style={{marginBottom:16}}>Configuracion y notas</div>
               <div className="input-group">
@@ -1601,7 +2015,10 @@ function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
               </div>
               <div className="input-group">
                 <label>Responsable del costeo</label>
-                <input className="input" value={form.responsable_costeo} onChange={e => setForm(p=>({...p, responsable_costeo: e.target.value}))} />
+                <select className="select" value={form.responsable_costeo} onChange={e => setForm(p=>({...p, responsable_costeo: e.target.value}))}>
+                  <option value="">Sin asignar</option>
+                  {comercialesAsignables.map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
+                </select>
               </div>
               <div className="input-group">
                 <label>Notas internas</label>

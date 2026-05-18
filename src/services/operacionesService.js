@@ -11,6 +11,7 @@ export async function persistirBacklog(supabase, empresaId, req) {
     estado: req.estado || 'pendiente',
     fecha_requerida: req.fecha_requerida || null,
     centro_costo: req.centro_costo || null,
+    centro_costo_id: req.centro_costo_id || null,
   };
   return supabase.from('backlog').insert(row);
 }
@@ -36,6 +37,9 @@ export async function persistirOT(supabase, empresaId, ot) {
     avance_pct: ot.avance || 0,
     costo_estimado: ot.costoEst || 0,
     costo_real: ot.costoReal || 0,
+    centro_costo_id: ot.centro_costo_id || null,
+    centro_beneficio_id: ot.centro_beneficio_id || null,
+    es_adicional: ot.es_adicional || false,
   };
   return supabase.from('ordenes_trabajo').insert(row);
 }
@@ -53,6 +57,8 @@ export async function crearOTDesdeOSRpc(supabase, empresaId, osClienteId, ot) {
     p_tecnico_responsable_id: ot.tecnico_responsable_id || ot.responsable_id || null,
     p_estado: ot.estado || 'programada',
     p_costo_estimado: ot.costoEst ?? ot.costo_estimado ?? 0,
+    p_centro_costo_id: ot.centro_costo_id || null,
+    p_centro_beneficio_id: ot.centro_beneficio_id || null,
   });
 }
 
@@ -158,7 +164,8 @@ export async function loadOpsFromSupabase(supabase, empresaId) {
     sede: ot.direccion_ejecucion,
     fecha_inicio: ot.fecha_programada,
     responsable_id: ot.tecnico_responsable_id,
-    cliente: ot.cuenta_id
+    cliente: ot.cuenta_id,
+    es_adicional: ot.es_adicional || false,
   });
 
   const mapParte = (p) => ({

@@ -113,6 +113,7 @@ const normalizarPersonalOperativo = (p = {}) => ({
   cuota_prestamo_mes: Number(p.cuota_prestamo_mes || 0),
   descuento_judicial: Number(p.descuento_judicial || 0),
   docs: p.docs || { sctr: 'pendiente', medico: 'pendiente', epp: 'pendiente', licencia: 'pendiente' },
+  centro_costo_id: p.centro_costo_id || null,
 });
 
 const toPersonalOperativoRow = (empresaId, persona = {}) => ({
@@ -146,6 +147,7 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   acceso_campo: persona.acceso_campo ?? true,
   perfil_campo: persona.perfil_campo || 'Tecnico',
   docs: persona.docs || { sctr: 'pendiente', medico: 'pendiente', epp: 'pendiente', licencia: 'pendiente' },
+  centro_costo_id: persona.centro_costo_id || null,
   estado: persona.estado || 'disponible',
 });
 
@@ -162,7 +164,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
     'tipo_contrato', 'afp_nombre', 'tiene_hijos', 'regimen_laboral',
     'cuota_prestamo_mes', 'descuento_judicial',
     'costo_hora_real', 'costo_hora_extra', 'acceso_campo', 'perfil_campo',
-    'docs', 'estado'
+    'docs', 'estado', 'centro_costo_id'
   ]);
 
   return Object.entries(cambios).reduce((row, [key, value]) => {
@@ -190,6 +192,7 @@ const normalizarPersonalAdmin = (p = {}) => ({
   dias_vacaciones_usados: Number(p.dias_vacaciones_usados ?? 0),
   dias_vacaciones_disponibles: Number(p.dias_vacaciones_disponibles ?? p.vacaciones_pendientes ?? 0),
   documentos: p.documentos || [],
+  centro_costo_id: p.centro_costo_id || null,
 });
 
 const toPersonalAdminRow = (empresaId, persona = {}) => ({
@@ -228,6 +231,7 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   especialidad: persona.especialidad || null,
   institucion: persona.institucion || null,
   documentos: persona.documentos || [],
+  centro_costo_id: persona.centro_costo_id || null,
   estado: persona.estado || 'activo',
 });
 
@@ -244,7 +248,7 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     'vacaciones_pendientes', 'dias_vacaciones_total', 'dias_vacaciones_usados',
     'dias_vacaciones_disponibles', 'contacto_emergencia', 'relacion_emergencia',
     'telefono_emergencia', 'nivel_estudios', 'especialidad', 'institucion',
-    'documentos', 'estado'
+    'documentos', 'estado', 'centro_costo_id'
   ]);
 
   return Object.entries(cambios).reduce((row, [key, value]) => {

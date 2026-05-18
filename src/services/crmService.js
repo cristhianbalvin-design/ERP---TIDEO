@@ -349,6 +349,7 @@ export async function persistirCotizacion(supabase, empresaId, cot) {
     historial_versiones: cot.historial_versiones || [],
     token_aceptacion:   cot.token_aceptacion || null,
     token_activo:       cot.token_activo !== undefined ? cot.token_activo : true,
+    centro_beneficio_id: cot.centro_beneficio_id || null,
   };
   if (cot.hoja_costeo_id) row.hoja_costeo_id = cot.hoja_costeo_id;
   return supabase.from('cotizaciones').insert(row);
@@ -364,12 +365,23 @@ export async function actualizarCotizacion(supabase, cotId, datos) {
     'cond_forma_pago', 'cond_validez', 'cond_penalidad', 'cond_inicio_proyecto',
     'cond_alcance', 'cond_integraciones', 'cond_confidencialidad', 'historial_versiones',
     'fecha_envio', 'token_activo', 'token_aceptacion',
+    'aprobacion_tipo', 'aprobacion_canal', 'aprobacion_fecha_cliente',
+    'aprobacion_notas', 'aprobacion_registrada_por', 'aprobacion_registrada_at', 'aprobacion_archivos',
+    'centro_beneficio_id',
   ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
   );
   if (!Object.keys(row).length) return;
   return supabase.from('cotizaciones').update(row).eq('id', cotId);
+}
+
+export async function subirArchivoSustento(supabase, empresaId, cotId, file) {
+  const path = `${empresaId}/${cotId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const { error } = await supabase.storage.from('cotizaciones-sustento').upload(path, file);
+  if (error) throw error;
+  const { data: urlData } = supabase.storage.from('cotizaciones-sustento').getPublicUrl(path);
+  return { nombre: file.name, path, url: urlData.publicUrl, tipo: file.type, tamanio: file.size };
 }
 
 export async function persistirOSCliente(supabase, empresaId, osc) {
@@ -396,6 +408,13 @@ export async function persistirOSCliente(supabase, empresaId, osc) {
     monto_facturado: osc.monto_facturado || 0,
     monto_cobrado: osc.monto_cobrado || 0,
     ots_asociadas: osc.ots_asociadas || [],
+    nombre: osc.nombre || null,
+    responsable_comercial: osc.responsable_comercial || null,
+    responsable_comercial_id: osc.responsable_comercial_id || null,
+    observaciones: osc.observaciones || null,
+    hitos_facturacion: osc.hitos_facturacion || [],
+    contacto_id: osc.contacto_id || null,
+    centro_beneficio_id: osc.centro_beneficio_id || null,
   };
   return supabase.from('os_clientes').insert(row);
 }
@@ -415,12 +434,24 @@ export async function actualizarOSCliente(supabase, oscId, datos) {
     'sla',
     'condicion_pago',
     'numero_doc_cliente',
+    'nombre',
+    'responsable_comercial',
+    'responsable_comercial_id',
+    'observaciones',
+    'hitos_facturacion',
+    'monto_aprobado',
+    'contacto_id',
+    'centro_beneficio_id',
   ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
   );
   if (!Object.keys(row).length) return;
   return supabase.from('os_clientes').update(row).eq('id', oscId);
+}
+
+export async function vincularCotizacionAOS(supabase, cotId, osId) {
+  return supabase.from('cotizaciones').update({ os_cliente_id: osId }).eq('id', cotId);
 }
 
 export async function persistirHojaCosteo(supabase, empresaId, hc) {
@@ -449,6 +480,7 @@ export async function persistirHojaCosteo(supabase, empresaId, hc) {
     costo_total: hc.costo_total || 0,
     precio_sugerido_sin_igv: hc.precio_sugerido_sin_igv || 0,
     precio_sugerido_total: hc.precio_sugerido_total || 0,
+    moneda: hc.moneda || 'PEN',
   };
   return supabase.from('hojas_costeo').insert(row);
 }
@@ -492,7 +524,7 @@ export async function aprobarHojaCosteoRpc(supabase, empresaId, hcId, cotizacion
 export async function actualizarHojaCosteoSvc(supabase, hcId, datos) {
   const allowed = [
     'estado', 'responsable_costeo', 'notas', 'margen_objetivo_pct',
-    'version', 'historial_versiones',
+    'version', 'historial_versiones', 'moneda',
     'mano_obra', 'materiales', 'servicios_terceros', 'logistica',
     'total_mano_obra', 'total_materiales', 'total_servicios_terceros', 'total_logistica',
     'costo_total', 'precio_sugerido_sin_igv', 'precio_sugerido_total', 'cotizacion_id',
