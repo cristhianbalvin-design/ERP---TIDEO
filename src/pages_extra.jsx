@@ -115,22 +115,44 @@ function CotizacionesInner() {
     const cuenta  = getCuenta(cot.cuenta_id || opp?.cuenta_id);
     const contacto = getContacto(cot.contacto_id || opp?.contacto_id);
 
+    const urlToDataUrl = async (url) => {
+      if (!url || url.startsWith('data:')) return url;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        return await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } catch {
+        return null;
+      }
+    };
+
     const handleDescargarPDF = async () => {
       setGenerandoPDF(true);
       try {
-        // Si la cotización no tiene token, lo generamos y guardamos ahora
         let token = cot.token_aceptacion;
         if (!token) {
           token = crypto.randomUUID();
-          await actualizarCotizacion(cot.id, { token_aceptacion: token, token_activo: true });
+          actualizarCotizacion(cot.id, { token_aceptacion: token, token_activo: true });
         }
-        const QRCode = (await import('qrcode')).default;
+        const cfg = empresaConfig || {};
+        const [logoDataUrl, firmaDataUrl, QRCode] = await Promise.all([
+          urlToDataUrl(cfg.logo_url),
+          urlToDataUrl(cfg.firma_url),
+          import('qrcode').then(m => m.default),
+        ]);
         const aceptarUrl = (import.meta.env.VITE_APP_URL || window.location.origin) + '/#aceptar/' + token;
         const qrDataUrl = await QRCode.toDataURL(aceptarUrl, { width: 200, margin: 1 });
         const { pdf } = await import('@react-pdf/renderer');
         const { CotizacionPDF } = await import('./pages_pdf.jsx');
+        const cfgPDF = { ...cfg, logo_url: logoDataUrl || undefined, firma_url: firmaDataUrl || undefined };
         const blob = await pdf(
-          <CotizacionPDF cot={cot} cuenta={cuenta} contacto={contacto} cfg={empresaConfig} qrDataUrl={qrDataUrl} />
+          <CotizacionPDF cot={cot} cuenta={cuenta} contacto={contacto} cfg={cfgPDF} qrDataUrl={qrDataUrl} />
         ).toBlob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

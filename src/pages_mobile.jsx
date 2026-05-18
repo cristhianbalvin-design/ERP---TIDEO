@@ -82,6 +82,14 @@ function normalizarTexto(valor) {
   return String(valor || '').trim().toLowerCase();
 }
 
+function currencySymbol(moneda = 'PEN') {
+  return moneda === 'USD' ? 'US$' : moneda === 'EUR' ? '€' : 'S/';
+}
+
+function moneyCurrency(value, moneda = 'PEN') {
+  return money(value, currencySymbol(moneda));
+}
+
 function slugPersona(valor) {
   return normalizarTexto(valor)
     .normalize('NFD')
@@ -1098,7 +1106,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
                   <div key={o.id} className="card" style={{padding:14, borderLeft:`3px solid var(--${color})`}}>
                     <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
                       <span className={`badge badge-${color}`} style={{fontSize:10, textTransform:'capitalize'}}>{o.etapa}</span>
-                      <span style={{fontSize:13, fontWeight:700, color:'var(--green-dk)'}}>{money(o.monto_estimado)}</span>
+                      <span style={{fontSize:13, fontWeight:700, color:'var(--green-dk)'}}>{moneyCurrency(o.monto_estimado, o.moneda)}</span>
                     </div>
                     <div style={{fontWeight:700, fontSize:14, marginBottom:2}}>{o.nombre}</div>
                     <div className="text-muted" style={{fontSize:12, marginBottom:8}}>{cuenta?.razon_social || o.cuenta_id}</div>
