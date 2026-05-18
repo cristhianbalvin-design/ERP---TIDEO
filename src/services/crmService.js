@@ -357,7 +357,7 @@ export async function persistirCotizacion(supabase, empresaId, cot) {
 
 export async function actualizarCotizacion(supabase, cotId, datos) {
   const allowed = [
-    'estado', 'total', 'version', 'items', 'subtotal', 'descuento_global',
+    'numero', 'estado', 'total', 'version', 'items', 'subtotal', 'descuento_global',
     'base_imponible', 'igv', 'igv_pct', 'moneda', 'condicion_pago', 'hoja_costeo_id',
     'contacto_id', 'descripcion_general', 'validez_tipo', 'validez_dias', 'validez_fecha',
     'subtotal_impl', 'igv_impl', 'total_impl', 'subtotal_rec', 'igv_rec', 'total_rec',
