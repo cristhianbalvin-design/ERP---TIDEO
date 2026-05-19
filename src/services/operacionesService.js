@@ -84,6 +84,7 @@ export async function persistirParteDiario(supabase, empresaId, parte) {
     tecnico_id: parte.tecnico_id || parte.tecnico || null,
     fecha: parte.fecha || new Date().toISOString().split('T')[0],
     horas_normales: parte.horas || 0,
+    numero: parte.numero || null,
     actividad: parte.actividad || parte.descripcion || null,
     avance_pct: parte.avance_reportado || 0,
     materiales: parte.materiales_usados || [],

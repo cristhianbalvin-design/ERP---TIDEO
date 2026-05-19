@@ -1426,7 +1426,9 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
                           onClick={() => abrirPerderOpp(o)}>
                           Perdida
                         </button>
-                        {nextEtapa && <button className="btn btn-sm btn-secondary" style={{fontSize:11}} onClick={() => actualizarEtapaOportunidad(o.id, nextEtapa)}>{nextEtapa} →</button>}
+                        {nextEtapa && !['propuesta', 'negociacion', 'ganada'].includes(nextEtapa) && (
+                          <button className="btn btn-sm btn-secondary" style={{fontSize:11}} onClick={() => actualizarEtapaOportunidad(o.id, nextEtapa)}>{nextEtapa} →</button>
+                        )}
                       </div>
                     </div>
                   </div>

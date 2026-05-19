@@ -1858,7 +1858,13 @@ export function AppProvider({ children }) {
   const aprobarCotizacionInterna = async (cotId) => {
     const u = (usuarios || []).find(u => u.id === authUser?.id);
     const nombreAprobador = u?.nombre || authUser?.user_metadata?.nombre || authUser?.email || 'Aprobador';
-    const patch = { aprobada_interna_por: nombreAprobador, aprobada_interna_at: new Date().toISOString() };
+    const cotActual = cotizaciones.find(c => c.id === cotId);
+    const patch = {
+      aprobada_interna_por: nombreAprobador,
+      aprobada_interna_at: new Date().toISOString(),
+      // Si estaba pendiente_aprobacion, vuelve a borrador para que el asesor pueda enviar
+      ...(cotActual?.estado === 'pendiente_aprobacion' ? { estado: 'borrador' } : {}),
+    };
     if (isSupabaseConfigured()) {
       const sb = await getSupabaseClient();
       const { error } = await sb.from('cotizaciones').update(patch).eq('id', cotId);
@@ -2107,18 +2113,21 @@ export function AppProvider({ children }) {
   };
 
   // Fase 2 Mutators
-  const convertirBacklogAOT = (backlogId) => {
+  const convertirBacklogAOT = (backlogId, datos = {}) => {
     const req = backlog.find(b => b.id === backlogId);
     if (!req) return;
+    if (!datos.centro_costo_id) { addNotificacion('Selecciona un CECO antes de convertir a OT.'); return; }
     setBacklog(prev => prev.map(b => b.id === backlogId ? { ...b, estado: 'convertido' } : b));
     opsSync(sb => actualizarBacklog(sb, backlogId, { estado: 'convertido' }));
     crearOT({
-      cliente: req.cuenta_id, 
+      cliente: req.cuenta_id,
+      cuenta_id: req.cuenta_id,
       descripcion: req.descripcion,
-      tipo: 'Correctiva',
-      estado: 'borrador',
+      tipo: datos.tipo || 'Correctiva',
+      estado: 'programada',
+      centro_costo_id: datos.centro_costo_id,
       costoEst: 0, costoReal: 0, avance: 0,
-      backlog_id: backlogId
+      backlog_id: backlogId,
     });
     addNotificacion('Requerimiento convertido a OT.');
   };
@@ -2210,11 +2219,27 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'operaciones', entidad: 'ordenes_trabajo', entidad_id: otId, accion: 'editar', valor_anterior: anterior, valor_nuevo: datos });
   };
 
-  const registrarParteDiario = (datos) => {
+  const registrarParteDiario = async (datos) => {
+    // Generar número de serie desde Supabase o fallback local
+    let numero = null;
+    if (isSupabaseConfigured() && empresa?.id) {
+      try {
+        const sb = await getSupabaseClient();
+        const { data: numData } = await sb.rpc('siguiente_numero_parte_diario', { p_empresa_id: empresa.id });
+        if (numData) numero = numData;
+      } catch { /* fallback a null, se muestra generado en UI */ }
+    }
+    if (!numero) {
+      const anio = new Date().getFullYear();
+      const serie = (seriesDocumentarias || []).find(s => s.documento === 'Partes Diarios' && s.estado === 'activo');
+      numero = serie ? `${serie.serie}-${String(serie.siguiente_correlativo).padStart(4, '0')}` : null;
+    }
+
     const p = {
       id: generateId('part'),
       empresa_id: empresa.id,
       estado: 'en_revision',
+      ...(numero ? { numero } : {}),
       ...datos
     };
     setPartes(prev => [...prev, p]);
@@ -2228,41 +2253,76 @@ export function AppProvider({ children }) {
     addNotificacion(`Parte diario registrado y enviado a revisión.`);
   };
 
-  const aprobarParteDiario = (parteId) => {
+  const aprobarParteDiario = (parteId, avanceValidado = null, motivoAprobacion = '') => {
     const parte = partes.find(p => p.id === parteId);
     if (!parte) return;
+    const avanceFinal = avanceValidado !== null ? Number(avanceValidado) : (parte.avance_reportado || 0);
+    const parteAprobado = { ...parte, estado: 'aprobado', avance_validado: avanceFinal, motivo_aprobacion: motivoAprobacion || undefined };
+    setPartes(prev => prev.map(p => p.id === parteId ? parteAprobado : p));
+    opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'aprobado', avance_validado: avanceFinal }));
+    auditSync({ modulo: 'operaciones', entidad: 'partes_diarios', entidad_id: parteId, accion: 'aprobar', valor_anterior: parte, valor_nuevo: { estado: 'aprobado', avance_validado: avanceFinal } });
 
-    // Aprobar parte
-    setPartes(prev => prev.map(p => p.id === parteId ? { ...p, estado: 'aprobado' } : p));
-    opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'aprobado' }));
-    auditSync({ modulo: 'operaciones', entidad: 'partes_diarios', entidad_id: parteId, accion: 'aprobar', valor_anterior: parte, valor_nuevo: { estado: 'aprobado' } });
-    
-    // Impactar OT (Avance y Costo Real)
-    // Calculamos el costo de los materiales usados
+    // Costo materiales
     let costoMateriales = 0;
-    
     if (parte.materiales_usados) {
       parte.materiales_usados.forEach(mu => {
         const itemInv = inventario.find(i => i.sku === mu.sku);
-        if (itemInv) {
-          costoMateriales += (mu.cantidad * itemInv.costo_promedio);
-        }
+        if (itemInv) costoMateriales += (mu.cantidad * itemInv.costo_promedio);
       });
     }
 
+    // Costo mano de obra (horas × costo_hora del técnico)
+    const tecnico = personalOperativo.find(p => p.id === parte.tecnico_id);
+    const costoManoObra = (parte.horas || 0) * (tecnico?.costo_hora || 0);
+
     setOts(prev => prev.map(o => {
-      if (o.id === parte.ot_id) {
-        const nuevosDatos = { 
-          avance: Math.min(100, (o.avance || 0) + (parte.avance_reportado || 0)),
-          costoReal: (o.costoReal || 0) + costoMateriales
-        };
-        opsSync(sb => svcActualizarOT(sb, o.id, nuevosDatos));
-        return { ...o, ...nuevosDatos };
+      if (o.id !== parte.ot_id) return o;
+
+      // Partes aprobados incluyendo el recién aprobado
+      const partesAprobadosOT = [...partes.filter(p => p.ot_id === o.id && p.id !== parteId && p.estado === 'aprobado'), parteAprobado];
+
+      // Calcular avance según si la OT tiene tareas con peso
+      const tareas = o.tareas || [];
+      const tareasConPeso = tareas.filter(t => Number(t.peso) > 0);
+      let nuevoAvance;
+      if (tareasConPeso.length > 0) {
+        let avancePonderado = 0;
+        tareasConPeso.forEach(tarea => {
+          let acumuladoTarea = 0;
+          partesAprobadosOT.forEach(p => {
+            const tt = (p.tareas_trabajadas || []).find(t => String(t.tarea_id) === String(tarea.id));
+            if (tt) acumuladoTarea += Number(tt.avance_hoy) || 0;
+          });
+          avancePonderado += (Number(tarea.peso) / 100) * Math.min(100, acumuladoTarea);
+        });
+        nuevoAvance = Math.min(100, Math.round(avancePonderado));
+      } else {
+        nuevoAvance = Math.min(100, partesAprobadosOT.reduce((s, p) => s + (Number(p.avance_validado) || 0), 0));
       }
-      return o;
+
+      const nuevosDatos = {
+        avance: nuevoAvance,
+        costoReal: (o.costoReal || 0) + costoMateriales + costoManoObra,
+      };
+      opsSync(sb => svcActualizarOT(sb, o.id, nuevosDatos));
+      return { ...o, ...nuevosDatos };
     }));
 
-    addNotificacion('Parte diario aprobado. Costos y avance actualizados.');
+    addNotificacion('Parte diario aprobado. Avance y costos actualizados.');
+  };
+
+  const observarParteDiario = (parteId, motivo = '') => {
+    if (!motivo.trim()) return;
+    setPartes(prev => prev.map(p => p.id === parteId ? { ...p, estado: 'observado', motivo_observacion: motivo } : p));
+    opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'observado', motivo_observacion: motivo }));
+    addNotificacion('Parte diario observado. El técnico puede corregirlo y reenviarlo.');
+  };
+
+  const rechazarParteDiario = (parteId, motivo = '') => {
+    if (!motivo.trim()) return;
+    setPartes(prev => prev.map(p => p.id === parteId ? { ...p, estado: 'rechazado', motivo_rechazo: motivo } : p));
+    opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'rechazado', motivo_rechazo: motivo }));
+    addNotificacion('Parte diario rechazado.');
   };
 
   const cerrarTecnicamenteOT = (otId, datosCierre) => {
@@ -4354,7 +4414,7 @@ export function AppProvider({ children }) {
     registrarActividad,
     actualizarActividad,
     // Fase 2 Actions
-    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, registrarParteDiario, aprobarParteDiario, cerrarTecnicamenteOT, crearSOLPE, generarValorizacion,
+    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, registrarParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, cerrarTecnicamenteOT, crearSOLPE, generarValorizacion,
     // Finanzas Actions
     emitirFactura, emitirFacturaDesdeValorizacion, generarCxC, registrarCobroCxC, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento,
     // Maestros Base Actions

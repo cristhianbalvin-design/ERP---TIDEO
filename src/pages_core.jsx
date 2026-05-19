@@ -840,12 +840,12 @@ function Leads() {
         return (
           <>
             <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
-            <div className="side-panel" style={{width:'min(680px,96vw)'}}>
+            <div className="side-panel ficha-detail-panel" style={{width:'min(680px,96vw)'}}>
               <div className="side-panel-head" style={{alignItems:'flex-start', flexDirection:'column', gap:10}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', width:'100%'}}>
                   <div style={{minWidth:0}}>
                     <div className="eyebrow">Ficha de lead</div>
-                    <div className="font-display" style={{fontSize:24, fontWeight:800, marginTop:4, lineHeight:1.15}}>{sel.nombre || 'Lead sin nombre'}</div>
+                    <div className="font-display ficha-detail-title" style={{marginTop:4}}>{sel.nombre || 'Lead sin nombre'}</div>
                     <div className="row" style={{gap:8, marginTop:10, flexWrap:'wrap'}}>
                       <span className={'badge '+estadoBadge} style={{textTransform:'capitalize'}}>{(sel.estado || 'nuevo').replace('_',' ')}</span>
                       <span className={'badge '+urgenciaBadge} style={{textTransform:'capitalize'}}>Urgencia {sel.urgencia || 'media'}</span>
@@ -866,7 +866,7 @@ function Leads() {
                     <div style={{display:'flex', alignItems:'center', gap:16, marginBottom:14}}>
                       <div style={{flex:1}}>
                         <div style={{display:'flex', alignItems:'baseline', gap:8, marginBottom:8}}>
-                          <span style={{fontSize:30, fontWeight:900, color, fontFamily:'Sora,sans-serif', lineHeight:1}}>{score}</span>
+                          <span className="ficha-detail-score" style={{color}}>{score}</span>
                           <span style={{fontSize:12, color:'var(--fg-muted)'}}>/ 100</span>
                           <span style={{fontSize:11, fontWeight:700, color, padding:'2px 10px', borderRadius:99, border:`1px solid ${color}`}}>{label}</span>
                         </div>
@@ -893,13 +893,14 @@ function Leads() {
                   </div>
                 ))(calcularScoreLead(sel))}
 
-                <div style={{padding:'0 22px', borderBottom:'1px solid var(--border)', display:'flex', gap:4}}>
+                <div className="ficha-detail-tabs" style={{padding:'0 22px', borderBottom:'1px solid var(--border)', display:'flex', gap:4}}>
                   {[['detalles','Detalles'],['timeline','Timeline']].map(([k,lbl]) => (
-                    <button key={k} onClick={() => setFichaTab(k)} style={{padding:'10px 14px', fontSize:12, fontWeight:fichaTab===k?700:500, color:fichaTab===k?'var(--cyan)':'var(--fg-muted)', background:'none', border:'none', borderBottom:fichaTab===k?'2px solid var(--cyan)':'2px solid transparent', cursor:'pointer', marginBottom:-1}}>
+                    <button key={k} className={`ficha-detail-tab ${fichaTab===k?'active':''}`} onClick={() => setFichaTab(k)}>
                       {lbl}
                     </button>
                   ))}
                 </div>
+                <div className="ficha-detail-content">
 
                 {fichaTab === 'detalles' && <>
                 <div style={{padding:'20px 22px 22px', background:'linear-gradient(135deg, rgba(6,182,212,0.10), rgba(26,43,74,0.04))', borderBottom:'1px solid var(--border)'}}>
@@ -1137,6 +1138,7 @@ function Leads() {
                     </div>
                   );
                 })()}
+                </div>
               </div>
             </div>
           </>
@@ -1608,6 +1610,7 @@ function Pipeline() {
   } = useApp();
   const [view, setView] = useState('kanban');
   const [sel, setSel] = useState(null);
+  const [oppDetailTab, setOppDetailTab] = useState('Resumen');
   const [agendaOpp, setAgendaOpp] = useState(null);
   const [panelNuevaOpp, setPanelNuevaOpp] = useState(false);
   const [pendingPerdida, setPendingPerdida] = useState(null);
@@ -2021,6 +2024,36 @@ function Pipeline() {
         };
         const ec = etapaMap[sel.etapa] || { bg:'var(--border)', color:'var(--fg-muted)', label: sel.etapa };
         const prob = Math.min(100, Math.max(0, sel.probabilidad || 0));
+        const cotOpps = cotizaciones.filter(c => c.oportunidad_id === sel.id);
+        const hojaOpps = hojasCosteo.filter(h => h.oportunidad_id === sel.id);
+        const osExistente = osClientes.find(o => o.oportunidad_id === sel.id);
+        const cotAprobada = cotOpps.find(c => c.estado === 'aprobada');
+        const montoCotizado = getOppMontoCotizado(sel.id);
+        const montoDisplay = montoCotizado ? moneyCurrency(montoCotizado.subtotal, montoCotizado.moneda) : moneyCurrency(sel.monto_estimado, sel.moneda);
+        const actividadCount = timelineSel.filter(t => ['Actividad','Agenda'].includes(t.tipo)).length;
+        const oppHealthBase = [
+          sel.cuenta_id ? 10 : 0,
+          sel.responsable ? 10 : 0,
+          sel.servicio_interes ? 10 : 0,
+          Number(sel.monto_estimado || 0) > 0 || montoCotizado ? 10 : 0,
+          sel.fecha_cierre_estimada ? 5 : 0,
+          cotOpps.length ? 20 : 0,
+          actividadCount ? 10 : 0,
+          hojaOpps.length ? 10 : 0,
+          osExistente ? 15 : 0,
+        ].reduce((sum, value) => sum + value, 0);
+        const oppHealthScore = Math.max(0, Math.min(100, Math.round(Math.max(prob, oppHealthBase))));
+        const oppHealthColor = oppHealthScore >= 70 ? 'var(--green)' : oppHealthScore >= 40 ? 'var(--orange)' : 'var(--cyan)';
+        const oppHealthBg = oppHealthScore >= 70 ? 'rgba(16,185,129,0.08)' : oppHealthScore >= 40 ? 'rgba(249,115,22,0.08)' : 'rgba(6,182,212,0.08)';
+        const oppHealthLabel = oppHealthScore >= 70 ? 'Alta probabilidad' : oppHealthScore >= 40 ? 'En desarrollo' : 'Inicio comercial';
+        const oppCriterios = [
+          { ok: !!sel.cuenta_id, text: 'Cuenta vinculada' },
+          { ok: !!sel.responsable, text: sel.responsable ? 'Responsable asignado' : 'Responsable pendiente' },
+          { ok: !!sel.servicio_interes, text: 'Servicio definido' },
+          { ok: cotOpps.length > 0, text: cotOpps.length ? `${cotOpps.length} cotizacion(es)` : 'Sin cotizacion' },
+          { ok: actividadCount > 0, text: actividadCount ? `${actividadCount} actividad(es)` : 'Sin actividad registrada' },
+          { ok: !!sel.fecha_cierre_estimada, text: sel.fecha_cierre_estimada ? 'Fecha de cierre estimada' : 'Sin fecha de cierre' },
+        ];
         const infoRows = [
           { icon: I.building, label: 'Cuenta',            value: getOppCuentaNombre(sel.cuenta_id) },
           { icon: I.users,    label: 'Responsable',       value: sel.responsable || 'Por asignar' },
@@ -2030,22 +2063,56 @@ function Pipeline() {
         return (
           <>
             <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
-            <div className="side-panel">
+            <div className="side-panel ficha-detail-panel" style={{width:'min(680px,96vw)'}}>
 
-              {/* Header con acento de color */}
-              <div style={{borderTop:`3px solid var(--cyan-dk)`, padding:'18px 22px 16px', borderBottom:'1px solid var(--border)', display:'flex', flexDirection:'column', gap:10}}>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
-                  <div className="eyebrow">Oportunidad</div>
+              <div className="side-panel-head" style={{alignItems:'flex-start', flexDirection:'column', gap:10}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', width:'100%'}}>
+                  <div style={{minWidth:0}}>
+                    <div className="eyebrow">Ficha de oportunidad</div>
+                    <div className="font-display ficha-detail-title" style={{marginTop:4}}>{sel.nombre}</div>
+                    <div className="row" style={{gap:8, marginTop:10, flexWrap:'wrap'}}>
+                      <span className="badge" style={{background:ec.bg, color:ec.color}}>{ec.label}</span>
+                      <span className="badge badge-gray">{prob}% probabilidad</span>
+                      {sel.fecha_cierre_estimada && <span className="badge badge-cyan">Cierre {sel.fecha_cierre_estimada}</span>}
+                    </div>
+                  </div>
                   <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
                 </div>
-                <div style={{fontSize:19, fontWeight:700, lineHeight:1.25, color:'var(--fg)'}}>{sel.nombre}</div>
-                <span style={{display:'inline-flex', alignSelf:'flex-start', alignItems:'center', gap:5, padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:600, letterSpacing:'0.05em', textTransform:'uppercase', background:ec.bg, color:ec.color}}>
-                  {ec.label}
-                </span>
               </div>
 
-              <div className="side-panel-body" style={{padding:'18px 20px', display:'flex', flexDirection:'column', gap:18}}>
+              <div className="side-panel-body" style={{padding:0}}>
+                <div style={{padding:'16px 22px 18px', borderBottom:'1px solid var(--border)', background:oppHealthBg}}>
+                  <div style={{display:'flex', alignItems:'baseline', gap:8, marginBottom:8}}>
+                    <span className="ficha-detail-score" style={{color:oppHealthColor}}>{oppHealthScore}</span>
+                    <span style={{fontSize:12, color:'var(--fg-muted)'}}>/ 100</span>
+                    <span style={{fontSize:11, fontWeight:700, color:oppHealthColor, padding:'2px 10px', borderRadius:99, border:`1px solid ${oppHealthColor}`}}>Salud comercial</span>
+                    <span style={{fontSize:12, color:'var(--fg-muted)'}}>{oppHealthLabel}</span>
+                  </div>
+                  <div style={{height:6, borderRadius:99, background:'var(--border)', overflow:'hidden', marginBottom:12}}>
+                    <div style={{width:`${oppHealthScore}%`, height:'100%', borderRadius:99, background:oppHealthColor, transition:'width 0.4s'}}/>
+                  </div>
+                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'5px 20px'}}>
+                    {oppCriterios.map((c, i) => (
+                      <div key={i} style={{display:'flex', alignItems:'center', gap:6}}>
+                        <span style={{width:14, height:14, flex:'0 0 14px', display:'inline-flex', alignItems:'center', justifyContent:'center', color:c.ok ? 'var(--green)' : 'var(--fg-muted)'}}>
+                          {c.ok ? I.check : <span style={{fontSize:14, lineHeight:1}}>-</span>}
+                        </span>
+                        <span style={{fontSize:10.5, lineHeight:1.3, color:c.ok ? 'var(--fg)' : 'var(--fg-muted)'}}>{c.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="ficha-detail-tabs" style={{padding:'0 22px', borderBottom:'1px solid var(--border)', display:'flex', gap:4, flexWrap:'wrap'}}>
+                  {['Resumen', 'Timeline', 'Acciones'].map(t => (
+                    <button key={t} className={`ficha-detail-tab ${oppDetailTab===t?'active':''}`} onClick={() => setOppDetailTab(t)}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <div className="ficha-detail-content">
 
+                {oppDetailTab === 'Resumen' && (
+                  <div className="col" style={{gap:16, padding:22}}>
                 {/* Stats */}
                 <div className="grid-3" style={{gap:10}}>
                   <div style={{background:'var(--bg-subtle)', borderRadius:10, padding:'12px 10px', border:'1px solid var(--border)', textAlign:'center'}}>
@@ -2085,7 +2152,11 @@ function Pipeline() {
                 </div>
 
                 {/* Acciones rápidas */}
-                <div className="row" style={{gap:8}}>
+                </div>
+                )}
+
+                {oppDetailTab === 'Acciones' && (
+                  <div className="row" style={{gap:8, padding:'22px 22px 0'}}>
                   <button type="button" className="btn btn-secondary flex-1" style={{fontSize:12}} data-local-form="true"
                     onClick={e => { e.stopPropagation(); setAgendaOpp(sel); }}>
                     {I.calendar} Agendar
@@ -2094,8 +2165,11 @@ function Pipeline() {
                     {I.check} Actividades
                   </button>
                 </div>
+                )}
 
                 {/* Timeline */}
+                {oppDetailTab === 'Timeline' && (
+                  <div style={{padding:22}}>
                 <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
                   <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', borderBottom:'1px solid var(--border)', background:'var(--bg-subtle)'}}>
                     <div>
@@ -2124,8 +2198,12 @@ function Pipeline() {
                     </div>
                   )}
                 </div>
+                  </div>
+                )}
 
                 {/* CTAs principales */}
+                {oppDetailTab === 'Acciones' && (
+                  <div className="col" style={{gap:8, padding:'0 22px 22px'}}>
                 {!['ganada', 'perdida'].includes(sel.etapa) && (
                   <div className="col" style={{gap:8, paddingBottom:4}}>
                     {!cotizaciones.some(c => c.oportunidad_id === sel.id) && (
@@ -2177,6 +2255,9 @@ function Pipeline() {
                   }
                   return null;
                 })()}
+                  </div>
+                )}
+                </div>
               </div>
             </div>
           </>
@@ -3515,7 +3596,11 @@ function OSCliente() {
                           <span className="badge badge-cyan">{(ot.estado || 'programada').replace('_', ' ')}</span>
                           {ot.es_adicional && <span className="badge badge-orange" style={{marginLeft:4}}>Adicional</span>}
                         </td>
-                        <td onClick={e => e.stopPropagation()}>
+                        <td onClick={e => e.stopPropagation()} style={{display:'flex', gap:4, alignItems:'center'}}>
+                          <button className="btn btn-secondary" style={{fontSize:11, padding:'2px 8px'}}
+                            onClick={() => navigate('ot', { detail: ot.id })}>
+                            Editar
+                          </button>
                           {['borrador','programada'].includes(ot.estado) && !cerrada && (
                             <button className="btn btn-secondary" style={{fontSize:11, padding:'2px 8px', color:'var(--danger)'}}
                               onClick={() => { if (window.confirm(`¿Desvincular ${ot.numero} de esta OS?`)) actualizarOT(ot.id, { os_cliente_id: null }); }}>

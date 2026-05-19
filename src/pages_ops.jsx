@@ -152,6 +152,29 @@ function Cuentas() {
     return 'red';
   };
 
+  const cuentaHealthBase = sel ? [
+    sel.ruc && sel.ruc !== 'Pendiente' ? 15 : 0,
+    contactoPrincipal ? 20 : 0,
+    sel.responsable_comercial && sel.responsable_comercial !== 'Sin asignar' ? 15 : 0,
+    sel.condicion_pago && sel.condicion_pago !== 'Por definir' ? 15 : 0,
+    Number(sel.saldo_cxc || 0) <= 0 && Number(sel.dias_mora || 0) <= 0 ? 15 : 0,
+    tlEventos.length > 0 ? 10 : 0,
+    sel.industria && sel.industria !== 'Por definir' ? 10 : 0,
+  ].reduce((sum, value) => sum + value, 0) : 0;
+  const cuentaHealthRaw = csHealth?.score_total ?? sel?.health_score ?? cuentaHealthBase;
+  const cuentaHealthScore = Math.max(0, Math.min(100, Math.round(Number(cuentaHealthRaw) || 0)));
+  const cuentaHealthColor = cuentaHealthScore >= 70 ? 'var(--green)' : cuentaHealthScore >= 40 ? 'var(--orange)' : 'var(--danger)';
+  const cuentaHealthBg = cuentaHealthScore >= 70 ? 'rgba(76,175,80,0.10)' : cuentaHealthScore >= 40 ? 'rgba(251,191,36,0.12)' : 'rgba(239,68,68,0.10)';
+  const cuentaHealthLabel = cuentaHealthScore >= 70 ? 'Cuenta sana' : cuentaHealthScore >= 40 ? 'En seguimiento' : 'Cuenta en riesgo';
+  const cuentaHealthCriterios = sel ? [
+    { ok: Boolean(sel.ruc && sel.ruc !== 'Pendiente'), label: sel.ruc && sel.ruc !== 'Pendiente' ? 'RUC registrado' : 'RUC pendiente' },
+    { ok: Boolean(contactoPrincipal), label: contactoPrincipal ? 'Contacto principal asignado' : 'Sin contacto principal' },
+    { ok: Boolean(sel.responsable_comercial && sel.responsable_comercial !== 'Sin asignar'), label: sel.responsable_comercial && sel.responsable_comercial !== 'Sin asignar' ? 'Responsable comercial asignado' : 'Responsable comercial pendiente' },
+    { ok: Boolean(sel.condicion_pago && sel.condicion_pago !== 'Por definir'), label: sel.condicion_pago && sel.condicion_pago !== 'Por definir' ? 'Condiciones comerciales definidas' : 'Condiciones comerciales pendientes' },
+    { ok: Number(sel.saldo_cxc || 0) <= 0 && Number(sel.dias_mora || 0) <= 0, label: Number(sel.dias_mora || 0) > 0 ? 'CxC con mora' : 'CxC sin mora' },
+    { ok: tlEventos.length > 0, label: tlEventos.length > 0 ? 'Actividad registrada' : 'Sin actividad reciente' },
+  ] : [];
+
   const getTipoBadge = (tipo) => {
     switch(tipo) {
       case 'estrategico': return 'badge-purple';
@@ -469,7 +492,7 @@ function Cuentas() {
 
       {sel && <>
         <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
-        <div className="side-panel account-profile-panel">
+        <div className="side-panel account-profile-panel ficha-detail-panel">
           <div className="account-profile-hero">
             <div className="account-profile-logo">
               {getCuentaLogo(sel) ? <img src={getCuentaLogo(sel)} alt={`Logo de ${sel.razon_social}`} /> : <span>{getInitials(sel.razon_social)}</span>}
@@ -480,7 +503,7 @@ function Cuentas() {
             </div>
             <div className="account-profile-title">
               <div className="eyebrow">Ficha 360° · Cliente</div>
-              <h2>{sel.razon_social}</h2>
+              <h2 className="ficha-detail-title">{sel.razon_social}</h2>
               <div className="account-profile-tags">
                 <span className={'badge ' + getTipoBadge(sel.tipo)}>{(sel.tipo || 'cliente').replace('_', ' ')}</span>
                 <span className="badge badge-gray">{sel.industria || 'Industria pendiente'}</span>
@@ -495,12 +518,31 @@ function Cuentas() {
             </div>
             <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
           </div>
-          <div className="side-panel-body">
-            <div className="tabs account-profile-tabs">
-              {['Timeline', 'Resumen', 'Oportunidades', 'Cotizaciones', 'OS Cliente', 'Contactos', 'Customer Success', ...(canFinanzas ? ['Condiciones comerciales'] : [])].map(t => (
-                <div key={t} className={`tab ${activeTab===t?'active':''}`} onClick={() => setActiveTab(t)}>{t}</div>
+          <div className="account-profile-health" style={{background: cuentaHealthBg}}>
+            <div className="row" style={{alignItems:'center', gap:8, marginBottom:10}}>
+              <strong className="ficha-detail-score" style={{color:cuentaHealthColor}}>{cuentaHealthScore}</strong>
+              <span style={{fontSize:12, color:'var(--fg-muted)'}}>/ 100</span>
+              <span className="badge" style={{borderColor:cuentaHealthColor, color:cuentaHealthColor, background:'var(--surface)'}}>{cuentaHealthLabel}</span>
+            </div>
+            <div style={{height:5, borderRadius:999, background:'rgba(15,35,70,0.12)', overflow:'hidden', marginBottom:12}}>
+              <div style={{width:`${cuentaHealthScore}%`, height:'100%', borderRadius:999, background:cuentaHealthColor}}/>
+            </div>
+            <div className="account-profile-health-grid">
+              {cuentaHealthCriterios.map((criterio, idx) => (
+                <div key={`${criterio.label}-${idx}`} style={{display:'flex', gap:8, alignItems:'center', minWidth:0}}>
+                  <span style={{width:12, color:criterio.ok ? 'var(--green)' : 'var(--fg-muted)', fontWeight:800}}>{criterio.ok ? I.check : <span style={{fontSize:14, lineHeight:1}}>-</span>}</span>
+                  <span style={{fontSize:12, color:'var(--fg-muted)', overflow:'hidden', textOverflow:'ellipsis'}}>{criterio.label}</span>
+                </div>
               ))}
             </div>
+          </div>
+          <div className="side-panel-body">
+            <div className="tabs account-profile-tabs ficha-detail-tabs">
+              {['Timeline', 'Resumen', 'Oportunidades', 'Cotizaciones', 'OS Cliente', 'Contactos', 'Customer Success', ...(canFinanzas ? ['Condiciones comerciales'] : [])].map(t => (
+                <div key={t} className={`tab ficha-detail-tab ${activeTab===t?'active':''}`} onClick={() => setActiveTab(t)}>{t}</div>
+              ))}
+            </div>
+            <div className="ficha-detail-content">
             
             {activeTab === 'Timeline' && (() => {
               const filtrados = tlEventos.filter(e => {
@@ -578,7 +620,7 @@ function Cuentas() {
             {activeTab === 'Resumen' && (
               <>
                 <div className="account-profile-kpis">
-                  <div><span>Health score</span><strong><span className={'health-dot health-'+getHealthColor(sel.health_score)}/>{sel.health_score || 'N/A'}</strong></div>
+                  <div><span>Health score</span><strong><span className={'health-dot health-'+getHealthColor(cuentaHealthScore)}/>{cuentaHealthScore}</strong></div>
                   <div><span>Saldo CxC</span><strong>{money(sel.saldo_cxc)}</strong></div>
                   <div><span>Días mora</span><strong className={(sel.dias_mora||0)>30?'danger':(sel.dias_mora||0)>0?'warning':'success'}>{sel.dias_mora || 0}d</strong></div>
                   <div><span>Última compra</span><strong>{sel.fecha_ultima_compra || '—'}</strong></div>
@@ -906,6 +948,7 @@ function Cuentas() {
                 )}
               </div>
             )}
+            </div>
 
           </div>
         </div>
@@ -1006,7 +1049,7 @@ function Cuentas() {
 }
 
 function OT({ role }) {
-  const { ots, cuentas, partes, osClientes, usuarios, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, registrarParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio } = useApp();
+  const { ots, cuentas, partes, osClientes, usuarios, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, registrarParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, almacenes } = useApp();
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Resumen');
   const [panel] = useState(false);
@@ -1077,9 +1120,31 @@ function OT({ role }) {
   const [showNuevaTarea, setShowNuevaTarea] = useState(false);
   const [nuevaTareaForm, setNuevaTareaForm] = useState({ descripcion: '', responsable_id: '', fecha_limite: '' });
   const [showAsignarTec, setShowAsignarTec] = useState(false);
-  const [asignarTecForm, setAsignarTecForm] = useState({ tecnico_id: '', fecha_inicio: new Date().toISOString().split('T')[0], fecha_fin: '' });
+  const [asignarTecForm, setAsignarTecForm] = useState({ tecnico_id: '', fecha_inicio: new Date().toISOString().split('T')[0], fecha_fin: '', hora_inicio: '', hora_fin: '' });
   const [showNuevoParte, setShowNuevoParte] = useState(false);
-  const [parteFormOT, setParteFormOT] = useState({ tecnico: '', fecha: new Date().toISOString().split('T')[0], horas: 8, avance_reportado: 0, actividades: '' });
+  const [parteFormOT, setParteFormOT] = useState({ tecnico_id: '', fecha: new Date().toISOString().split('T')[0], horas: 8, tareas_trabajadas: [], actividades_adicionales: [] });
+  const [editandoDatos, setEditandoDatos] = useState(false);
+  const [formDatos, setFormDatos] = useState({});
+  const abrirEditDatos = () => {
+    setFormDatos({
+      centro_costo_id: sel?.centro_costo_id || '',
+      tipo: sel?.tipo || '',
+      prioridad: sel?.prioridad || 'normal',
+      facturable: sel?.facturable !== false,
+      tecnico_responsable_id: sel?.tecnico_responsable_id || '',
+      supervisor: sel?.supervisor || '',
+      sede: sel?.sede || '',
+      fecha_inicio: sel?.fecha_inicio || '',
+      fecha_fin: sel?.fecha_fin || sel?.fecha_programada || '',
+      descripcion: sel?.descripcion || '',
+    });
+    setEditandoDatos(true);
+  };
+  const guardarDatos = async () => {
+    await actualizarOT(sel.id, formDatos);
+    setSel(s => ({ ...s, ...formDatos }));
+    setEditandoDatos(false);
+  };
 
   const canCost = role.permisos.ver_costos || role.permisos.todo;
   const getCuenta = (id) => cuentas.find(c => c.id === id)?.razon_social || id;
@@ -1099,6 +1164,46 @@ function OT({ role }) {
     : '—';
   const supervisorNombre = sel?.supervisor || '—';
   const prioridadMeta = { normal: ['badge-gray','Normal'], urgente: ['badge-orange','Urgente'], critica: ['badge-red','Crítica'] };
+  const asignacionesOT = sel ? plannerAsignaciones.filter(a => a.ot_id === sel.id && a.estado !== 'cancelado') : [];
+  const tecnicosAsignadosOT = new Set(asignacionesOT.map(a => a.tecnico_id)).size;
+  const tecnicosDeOT = [...new Set(asignacionesOT.map(a => a.tecnico_id))].map(id => personalOperativo.find(p => p.id === id)).filter(Boolean);
+  const tareasOT = sel?.tareas || [];
+  const tareasCompletadasOT = tareasOT.filter(t => t.completado || t.estado === 'completada').length;
+  const avanceOperativo = sel ? (
+    sel.estado === 'anulada' ? 0 :
+    ['facturada','valorizada'].includes(sel.estado) ? 100 :
+    ['cerrada','cerrada_tecnica'].includes(sel.estado) ? 85 :
+    sel.estado === 'ejecucion' ? Math.max(45, Math.min(80, 45 + Math.round((sel.avance || 0) * 0.35))) :
+    sel.estado === 'programada' ? (tecnicosAsignadosOT > 0 ? 35 : 25) :
+    15
+  ) : 0;
+  const avanceColor = avanceOperativo >= 80 ? 'var(--green)' : avanceOperativo >= 45 ? 'var(--orange)' : 'var(--cyan)';
+  const avanceBg = avanceOperativo >= 80 ? 'rgba(16,185,129,0.08)' : avanceOperativo >= 45 ? 'rgba(249,115,22,0.08)' : 'rgba(6,182,212,0.08)';
+  const criteriosOT = sel ? [
+    { ok: !!sel.centro_costo_id, text: 'CECO asignado' },
+    { ok: !!sel.fecha_inicio || !!sel.fecha_programada, text: 'Fecha programada' },
+    { ok: tecnicosAsignadosOT > 0, text: `${tecnicosAsignadosOT || 'Sin'} tecnico${tecnicosAsignadosOT === 1 ? '' : 's'} asignado${tecnicosAsignadosOT === 1 ? '' : 's'}` },
+    { ok: sel.sla !== 'vencido', warn: sel.sla === 'riesgo', text: sel.sla === 'vencido' ? 'SLA vencido' : sel.sla === 'riesgo' ? 'SLA en riesgo' : 'SLA OK' },
+    { ok: partesOT.length > 0, text: `${partesOT.length || 'Sin'} parte${partesOT.length === 1 ? '' : 's'} diario${partesOT.length === 1 ? '' : 's'}` },
+    { ok: tareasOT.length === 0 || tareasCompletadasOT === tareasOT.length, warn: tareasOT.length > 0 && tareasCompletadasOT < tareasOT.length, text: tareasOT.length ? `${tareasCompletadasOT}/${tareasOT.length} tareas completas` : 'Sin tareas pendientes' },
+  ] : [];
+  const puedeIniciarOT = !!sel?.centro_costo_id && tecnicosAsignadosOT > 0;
+  const tooltipIniciarOT = !sel?.centro_costo_id && tecnicosAsignadosOT === 0
+    ? 'Asigna un CECO y al menos un técnico antes de iniciar'
+    : !sel?.centro_costo_id ? 'Asigna un CECO antes de iniciar'
+    : 'Asigna al menos un técnico antes de iniciar';
+  const OtField = ({ label, value, children, strong = false }) => (
+    <div>
+      <div className="eyebrow" style={{marginBottom:6}}>{label}</div>
+      <div style={{fontWeight:strong ? 700 : 500, fontSize:13, color:value || children ? 'var(--fg)' : 'var(--fg-muted)'}}>{children || value || 'Pendiente'}</div>
+    </div>
+  );
+  const OtCardTitle = ({ icon, title, color }) => (
+    <div className="row" style={{gap:10, marginBottom:16}}>
+      <span style={{width:32, height:32, borderRadius:8, background:`color-mix(in srgb, ${color} 12%, transparent)`, color, display:'inline-flex', alignItems:'center', justifyContent:'center'}}>{icon}</span>
+      <strong style={{fontSize:13}}>{title}</strong>
+    </div>
+  );
 
   const agregarTarea = () => {
     if (!nuevaTareaForm.descripcion.trim()) return;
@@ -1119,20 +1224,103 @@ function OT({ role }) {
     setSel(s => ({ ...s, tareas }));
   };
 
-  const submitParteDesdOT = async (e) => {
-    e.preventDefault();
-    if (!parteFormOT.actividades.trim()) return;
-    await registrarParteDiario({ ...parteFormOT, ot_id: sel.id });
+  const abrirNuevoParte = () => {
+    const hoyStr = new Date().toISOString().split('T')[0];
+    const tecAutoId = authUser ? (personalOperativo.find(p => p.id === authUser.id)?.id || '') : '';
+    setParteFormOT({
+      tecnico_id: tecAutoId,
+      fecha: hoyStr,
+      horas: (() => {
+        if (!tecAutoId) return 8;
+        const asig = (sel?.id ? plannerAsignaciones.filter(a => a.ot_id === sel.id && a.tecnico_id === tecAutoId && a.fecha === hoyStr) : []);
+        const a = asig[0];
+        if (a?.hora_inicio_estimada && a?.hora_fin_estimada) {
+          const [h1, m1] = a.hora_inicio_estimada.split(':').map(Number);
+          const [h2, m2] = a.hora_fin_estimada.split(':').map(Number);
+          return Math.max(1, (h2 * 60 + m2 - h1 * 60 - m1) / 60);
+        }
+        return 8;
+      })(),
+      tareas_trabajadas: (sel?.tareas || []).map(t => ({
+        tarea_id: t.id,
+        nombre: t.descripcion,
+        estado_actual: t.completado ? 'completada' : (t.estado || 'pendiente'),
+        trabajado: false,
+        avance_hoy: 0,
+      })),
+      actividades_adicionales: [],
+      avance_global: 0,
+      avance_ajustado_manual: false,
+      materiales_lineas: [],
+      evidencias: [],
+      observaciones: '',
+      es_restriccion: false,
+    });
+    setActiveTab('Partes');
+    setShowNuevoParte(true);
+  };
+
+  const updParteHorasTecnico = (tecnicoId) => {
+    const hoyStr = parteFormOT.fecha || new Date().toISOString().split('T')[0];
+    const asig = plannerAsignaciones.find(a => a.ot_id === sel?.id && a.tecnico_id === tecnicoId && a.fecha === hoyStr);
+    let horas = 8;
+    if (asig?.hora_inicio_estimada && asig?.hora_fin_estimada) {
+      const [h1, m1] = asig.hora_inicio_estimada.split(':').map(Number);
+      const [h2, m2] = asig.hora_fin_estimada.split(':').map(Number);
+      horas = Math.max(1, (h2 * 60 + m2 - h1 * 60 - m1) / 60);
+    }
+    setParteFormOT(s => ({ ...s, tecnico_id: tecnicoId, horas }));
+  };
+
+  const buildPartePayload = (modo) => {
+    const tecnicoObj = personalOperativo.find(p => p.id === parteFormOT.tecnico_id);
+    const tareasActivas = parteFormOT.tareas_trabajadas.filter(t => t.trabajado);
+    const actividadesTexto = [
+      ...tareasActivas.map(t => `${t.nombre}${t.avance_hoy ? ` (+${t.avance_hoy}%)` : ''}`),
+      ...parteFormOT.actividades_adicionales.filter(a => a.descripcion.trim()).map(a => a.descripcion + (a.avance_estimado ? ` (+${a.avance_estimado}%)` : '')),
+    ].join('\n');
+    const avanceCalculado = tareasActivas.reduce((s, t) => s + (Number(t.avance_hoy) || 0), 0) + parteFormOT.actividades_adicionales.reduce((s, a) => s + (Number(a.avance_estimado) || 0), 0);
+    const materialesUsados = parteFormOT.materiales_lineas.filter(m => m.inv_id && Number(m.cantidad) > 0).map(m => {
+      const item = inventario.find(i => i.id === m.inv_id);
+      return { sku: item?.sku || m.inv_id, nombre: item?.nombre || '', cantidad: Number(m.cantidad), almacen_id: m.almacen_id };
+    });
+    const estadoParte = modo === 'borrador' ? 'borrador' : parteFormOT.es_restriccion ? 'con_restriccion' : 'en_revision';
+    return {
+      estado: estadoParte,
+      ot_id: sel.id,
+      tecnico: tecnicoObj?.nombre || parteFormOT.tecnico_id,
+      tecnico_id: parteFormOT.tecnico_id,
+      fecha: parteFormOT.fecha,
+      horas: Number(parteFormOT.horas || 0),
+      avance_reportado: parteFormOT.avance_ajustado_manual ? Number(parteFormOT.avance_global) : avanceCalculado,
+      avance_ajustado_manual: parteFormOT.avance_ajustado_manual,
+      actividades: actividadesTexto,
+      actividad: actividadesTexto,
+      tareas_trabajadas: tareasActivas,
+      actividades_adicionales: parteFormOT.actividades_adicionales,
+      materiales_usados: materialesUsados,
+      evidencias: parteFormOT.evidencias.map(e => ({ nombre: e.nombre, tipo: e.tipo, tamanio: e.tamanio })),
+      observaciones: parteFormOT.observaciones,
+      es_restriccion: parteFormOT.es_restriccion,
+    };
+  };
+  const parteFormReset = { tecnico_id: '', fecha: new Date().toISOString().split('T')[0], horas: 8, tareas_trabajadas: [], actividades_adicionales: [], avance_global: 0, avance_ajustado_manual: false, materiales_lineas: [], evidencias: [], observaciones: '', es_restriccion: false };
+  const submitParteDesdOT = async (e, modo = 'revision') => {
+    if (e) e.preventDefault();
+    if (!parteFormOT.tecnico_id) return;
+    const tareasActivas = parteFormOT.tareas_trabajadas.filter(t => t.trabajado);
+    if (modo !== 'borrador' && tareasActivas.length === 0 && parteFormOT.actividades_adicionales.filter(a => a.descripcion.trim()).length === 0) return;
+    await registrarParteDiario(buildPartePayload(modo));
     setShowNuevoParte(false);
-    setParteFormOT({ tecnico: '', fecha: new Date().toISOString().split('T')[0], horas: 8, avance_reportado: 0, actividades: '' });
+    setParteFormOT(parteFormReset);
   };
 
   const submitAsignarTec = async (e) => {
     e.preventDefault();
     if (!asignarTecForm.tecnico_id || !asignarTecForm.fecha_inicio) return;
-    await crearAsignacionesRango({ otId: sel.id, tecnicoIds: [asignarTecForm.tecnico_id], fechaInicio: asignarTecForm.fecha_inicio, fechaFin: asignarTecForm.fecha_fin || asignarTecForm.fecha_inicio });
+    await crearAsignacionesRango({ otId: sel.id, tecnicoIds: [asignarTecForm.tecnico_id], fechaInicio: asignarTecForm.fecha_inicio, fechaFin: asignarTecForm.fecha_fin || asignarTecForm.fecha_inicio, horaInicio: asignarTecForm.hora_inicio || null, horaFin: asignarTecForm.hora_fin || null });
     setShowAsignarTec(false);
-    setAsignarTecForm({ tecnico_id: '', fecha_inicio: new Date().toISOString().split('T')[0], fecha_fin: '' });
+    setAsignarTecForm({ tecnico_id: '', fecha_inicio: new Date().toISOString().split('T')[0], fecha_fin: '', hora_inicio: '', hora_fin: '' });
   };
 
   const historialOT = sel ? [
@@ -1304,7 +1492,7 @@ function OT({ role }) {
 
       {sel && <>
         <div className="side-panel-backdrop" onClick={() => { setSel(null); navigate('ot'); }}/>
-        <div className="side-panel" style={{width: 840}}>
+        <div className="side-panel ficha-detail-panel" style={{width:'min(680px,96vw)'}}>
 
           {/* HEADER */}
           <div className="side-panel-head" style={{flexDirection:'column', alignItems:'stretch', gap:10, paddingBottom:12}}>
@@ -1327,8 +1515,8 @@ function OT({ role }) {
             {/* Título + cerrar */}
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
               <div>
-                <div className="eyebrow">Orden de trabajo</div>
-                <div className="font-display mono" style={{fontSize:20, fontWeight:700, marginTop:2}}>{sel.numero}</div>
+                <div className="eyebrow">Ficha de OT</div>
+                <div className="font-display mono ficha-detail-title" style={{marginTop:4}}>{sel.numero}</div>
               </div>
               <div className="row" style={{gap:8, alignItems:'center'}}>
                 {!['cerrada','cerrada_tecnica','facturada','anulada'].includes(sel.estado) && (
@@ -1353,12 +1541,21 @@ function OT({ role }) {
               </div>
               <div className="row" style={{gap:8}}>
                 {sel.estado === 'programada' && (
-                  <button className="btn btn-primary" style={{fontSize:13}} onClick={() => { actualizarOT(sel.id, { estado: 'ejecucion', fecha_inicio_real: new Date().toISOString() }); setSel(s => ({ ...s, estado: 'ejecucion' })); }}>
+                  <button
+                    className="btn btn-primary"
+                    style={{fontSize:13, ...(!puedeIniciarOT ? {opacity:0.45, cursor:'not-allowed'} : {})}}
+                    title={!puedeIniciarOT ? tooltipIniciarOT : ''}
+                    onClick={() => {
+                      if (!puedeIniciarOT) return;
+                      actualizarOT(sel.id, { estado: 'ejecucion', fecha_inicio_real: new Date().toISOString() });
+                      setSel(s => ({ ...s, estado: 'ejecucion' }));
+                    }}
+                  >
                     {I.play} Iniciar OT
                   </button>
                 )}
                 {sel.estado === 'ejecucion' && <>
-                  <button className="btn btn-secondary" style={{fontSize:13}} onClick={() => { setActiveTab('Partes'); setShowNuevoParte(true); }}>
+                  <button className="btn btn-secondary" style={{fontSize:13}} onClick={abrirNuevoParte}>
                     {I.plus} Registrar Parte Diario
                   </button>
                   <button className="btn btn-primary" style={{fontSize:13}} onClick={() => { cerrarTecnicamenteOT(sel.id, { resultado: 'conforme' }); setSel(s => ({ ...s, estado: 'cerrada' })); }}>
@@ -1378,57 +1575,183 @@ function OT({ role }) {
           </div>
 
           {/* BODY */}
-          <div className="side-panel-body">
-            <div className="tabs">
+          <div className="side-panel-body" style={{padding:0}}>
+            <div style={{padding:'16px 22px 18px', borderBottom:'1px solid var(--border)', background:avanceBg}}>
+              <div style={{display:'flex', alignItems:'center', gap:16, marginBottom:14}}>
+                <div style={{flex:1}}>
+                  <div style={{display:'flex', alignItems:'baseline', gap:8, marginBottom:8}}>
+                    <span className="ficha-detail-score" style={{color:avanceColor}}>{avanceOperativo}</span>
+                    <span style={{fontSize:12, color:'var(--fg-muted)'}}>/ 100</span>
+                    <span style={{fontSize:11, fontWeight:700, color:avanceColor, padding:'2px 10px', borderRadius:99, border:`1px solid ${avanceColor}`}}>Salud operativa</span>
+                  </div>
+                  <div style={{height:6, borderRadius:99, background:'var(--border)', overflow:'hidden'}}>
+                    <div style={{width:`${avanceOperativo}%`, height:'100%', borderRadius:99, background:avanceColor, transition:'width 0.4s'}}/>
+                  </div>
+                </div>
+              </div>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'5px 20px'}}>
+                {criteriosOT.map((c, i) => (
+                  <div key={i} style={{display:'flex', alignItems:'center', gap:6}}>
+                    <span style={{width:14, height:14, flex:'0 0 14px', display:'inline-flex', alignItems:'center', justifyContent:'center', color:c.ok ? 'var(--green)' : c.warn ? 'var(--orange)' : 'var(--fg-muted)'}}>
+                      {c.ok ? I.check : <span style={{fontSize:14, lineHeight:1}}>–</span>}
+                    </span>
+                    <span style={{fontSize:10.5, lineHeight:1.3, color:c.ok || c.warn ? 'var(--fg)' : 'var(--fg-muted)'}}>{c.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="ficha-detail-tabs" style={{padding:'0 22px', borderBottom:'1px solid var(--border)', display:'flex', gap:4, flexWrap:'wrap'}}>
               {['Resumen', 'Tareas', 'Checklists y Calidad', 'Personal y Recursos', 'Partes', ...(canCost ? ['Costos'] : []), 'Evidencias', 'Historial'].map(t => (
-                <div key={t} className={`tab ${activeTab===t?'active':''}`} onClick={() => setActiveTab(t)}>{t}</div>
+                <button key={t} className={`ficha-detail-tab ${activeTab===t?'active':''}`} onClick={() => setActiveTab(t)}>
+                  {t}
+                </button>
               ))}
             </div>
+            <div className="ficha-detail-content">
 
             {/* ── TAB RESUMEN ── */}
             {activeTab === 'Resumen' && (
-              <div className="col" style={{gap:16}}>
-                <div className="grid-3" style={{gap:12}}>
-                  <div>
-                    <div className="eyebrow">OS Cliente</div>
-                    {osVinculada
-                      ? <button className="btn btn-ghost" style={{padding:0, color:'var(--cyan)', fontWeight:600, fontSize:13, textDecoration:'underline'}}
-                          onClick={() => { setSel(null); navigate('os_cliente', { detail: osVinculada.id }); }}>
-                          {osVinculada.numero}
-                        </button>
-                      : <span className="text-muted">—</span>
-                    }
+              <div className="col" style={{gap:16, padding:22}}>
+                <div style={{display:'grid', gridTemplateColumns:'1.35fr 1fr', gap:16, alignItems:'stretch'}}>
+                  <div style={{padding:18, border:'1px solid var(--border)', borderRadius:10, background:'var(--surface)', boxShadow:'var(--shadow-sm)'}}>
+                    <div className="eyebrow" style={{marginBottom:8}}>Cliente / OS origen</div>
+                    <div style={{fontSize:20, fontWeight:800, color:'var(--navy)', lineHeight:1.15}}>{getCuenta(sel.cuenta_id) || sel.cliente || 'Cliente pendiente'}</div>
+                    <div className="text-muted" style={{fontSize:12, marginTop:8}}>
+                      {osVinculada
+                        ? <button className="btn btn-ghost" style={{padding:0, color:'var(--cyan)', fontWeight:700, fontSize:12}} onClick={() => { setSel(null); navigate('os_cliente', { detail: osVinculada.id }); }}>{osVinculada.numero}</button>
+                        : 'Sin OS Cliente vinculada'}
+                    </div>
                   </div>
-                  <div><div className="eyebrow">Cliente</div><div>{getCuenta(sel.cuenta_id) || sel.cliente || '—'}</div></div>
-                  <div><div className="eyebrow">Sede</div><div>{sel.sede || '—'}</div></div>
-                  <div><div className="eyebrow">Tipo</div><div>{sel.tipo || '—'}</div></div>
-                  <div>
-                    <div className="eyebrow">Prioridad</div>
-                    <span className={`badge ${prioridadMeta[sel.prioridad || 'normal']?.[0] || 'badge-gray'}`}>
-                      {prioridadMeta[sel.prioridad || 'normal']?.[1] || 'Normal'}
-                    </span>
+                  <div style={{padding:18, border:'1px solid var(--border)', borderRadius:10, background:'var(--surface)', boxShadow:'var(--shadow-sm)'}}>
+                    <div className="eyebrow" style={{marginBottom:8}}>Avance operativo</div>
+                    <div className="font-display" style={{fontSize:24, fontWeight:800, color:'var(--navy)'}}>{sel.avance || 0}%</div>
+                    <div className="text-muted" style={{fontSize:12, marginTop:8}}>{partesOT.length} parte(s) · {tecnicosAsignadosOT} tecnico(s)</div>
                   </div>
-                  <div>
-                    <div className="eyebrow">Facturación</div>
-                    <span className={`badge ${sel.facturable === false ? 'badge-gray' : 'badge-green'}`}>
-                      {sel.facturable === false ? 'No facturable' : 'Facturable'}
-                    </span>
-                  </div>
-                  <div><div className="eyebrow">Responsable</div><div>{responsableNombre}</div></div>
-                  <div><div className="eyebrow">Supervisor</div><div>{supervisorNombre}</div></div>
-                  <div><div className="eyebrow">Fecha de inicio</div><div>{sel.fecha_inicio || '—'}</div></div>
-                  <div><div className="eyebrow">Fecha fin programada</div><div>{sel.fecha_fin || sel.fecha_programada || '—'}</div></div>
                 </div>
-                <div style={{background:'var(--bg-subtle)', padding:16, borderRadius:8}}>
-                  <div className="eyebrow" style={{marginBottom:8}}>Descripción / Alcance</div>
-                  <p style={{fontSize:13, lineHeight:1.5, margin:0}}>{sel.descripcion || 'Sin descripción detallada.'}</p>
+                <div style={{border:'1px solid var(--border)', borderRadius:10, padding:16, background:'var(--surface)'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
+                    <div className="row" style={{gap:10}}>
+                      <span style={{width:32, height:32, borderRadius:8, background:'color-mix(in srgb, var(--cyan) 12%, transparent)', color:'var(--cyan)', display:'inline-flex', alignItems:'center', justifyContent:'center'}}>{I.clipboard || I.file}</span>
+                      <div style={{fontWeight:700, fontSize:13, color:'var(--fg)'}}>Datos operativos</div>
+                    </div>
+                    {!editandoDatos && !['cerrada','facturada','anulada'].includes(sel.estado) && (
+                      <button className="btn btn-secondary" style={{fontSize:11, padding:'2px 10px'}} onClick={abrirEditDatos}>Editar</button>
+                    )}
+                  </div>
+                  {editandoDatos ? (
+                    <div className="col" style={{gap:14}}>
+                      <div className="grid-3" style={{gap:14}}>
+                        <div className="input-group" style={{gridColumn:'1/-1'}}>
+                          <label>CECO</label>
+                          <select className="select" value={formDatos.centro_costo_id} onChange={e => setFormDatos(p => ({...p, centro_costo_id: e.target.value}))}>
+                            <option value="">Sin CECO</option>
+                            {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre}</option>)}
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          <label>Tipo</label>
+                          <select className="select" value={formDatos.tipo} onChange={e => setFormDatos(p => ({...p, tipo: e.target.value}))}>
+                            <option value="">—</option>
+                            {(tiposActivos.length > 0
+                              ? tiposActivos.map(t => t.nombre)
+                              : ['interna','cliente','garantia','correctiva']
+                            ).map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          <label>Prioridad</label>
+                          <select className="select" value={formDatos.prioridad} onChange={e => setFormDatos(p => ({...p, prioridad: e.target.value}))}>
+                            <option value="normal">Normal</option>
+                            <option value="urgente">Urgente</option>
+                            <option value="critica">Crítica</option>
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          <label>Facturación</label>
+                          <select className="select" value={formDatos.facturable ? 'si' : 'no'} onChange={e => setFormDatos(p => ({...p, facturable: e.target.value === 'si'}))}>
+                            <option value="si">Facturable</option>
+                            <option value="no">No facturable</option>
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          <label>Responsable</label>
+                          <select className="select" value={formDatos.tecnico_responsable_id} onChange={e => setFormDatos(p => ({...p, tecnico_responsable_id: e.target.value}))}>
+                            <option value="">Sin asignar</option>
+                            {personal.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          <label>Supervisor</label>
+                          <input className="input" value={formDatos.supervisor} onChange={e => setFormDatos(p => ({...p, supervisor: e.target.value}))} placeholder="Nombre del supervisor" />
+                        </div>
+                        <div className="input-group">
+                          <label>Sede</label>
+                          <input className="input" value={formDatos.sede} onChange={e => setFormDatos(p => ({...p, sede: e.target.value}))} placeholder="Sede" />
+                        </div>
+                        <div className="input-group">
+                          <label>Fecha de inicio</label>
+                          <input className="input" type="date" value={formDatos.fecha_inicio} onChange={e => setFormDatos(p => ({...p, fecha_inicio: e.target.value}))} />
+                        </div>
+                        <div className="input-group">
+                          <label>Fecha fin programada</label>
+                          <input className="input" type="date" value={formDatos.fecha_fin} onChange={e => setFormDatos(p => ({...p, fecha_fin: e.target.value}))} />
+                        </div>
+                      </div>
+                      <div className="input-group">
+                        <label>Descripción / Alcance</label>
+                        <textarea className="input" rows={3} value={formDatos.descripcion} onChange={e => setFormDatos(p => ({...p, descripcion: e.target.value}))} placeholder="Describe el alcance de la OT..." style={{resize:'vertical'}} />
+                      </div>
+                      <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => setEditandoDatos(false)}>Cancelar</button>
+                        <button className="btn btn-primary btn-sm" onClick={guardarDatos}>Guardar cambios</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid-3" style={{gap:14}}>
+                        <div>
+                          <div className="eyebrow">OS Cliente</div>
+                          {osVinculada
+                            ? <button className="btn btn-ghost" style={{padding:0, color:'var(--cyan)', fontWeight:600, fontSize:13, textDecoration:'underline'}}
+                                onClick={() => { setSel(null); navigate('os_cliente', { detail: osVinculada.id }); }}>
+                                {osVinculada.numero}
+                              </button>
+                            : <span className="text-muted">—</span>
+                          }
+                        </div>
+                        <div><div className="eyebrow">Cliente</div><div>{getCuenta(sel.cuenta_id) || sel.cliente || '—'}</div></div>
+                        <div><div className="eyebrow">Sede</div><div>{sel.sede || '—'}</div></div>
+                        <div><div className="eyebrow">Tipo</div><div>{sel.tipo || '—'}</div></div>
+                        <div>
+                          <div className="eyebrow">Prioridad</div>
+                          <span className={`badge ${prioridadMeta[sel.prioridad || 'normal']?.[0] || 'badge-gray'}`}>
+                            {prioridadMeta[sel.prioridad || 'normal']?.[1] || 'Normal'}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="eyebrow">Facturación</div>
+                          <span className={`badge ${sel.facturable === false ? 'badge-gray' : 'badge-green'}`}>
+                            {sel.facturable === false ? 'No facturable' : 'Facturable'}
+                          </span>
+                        </div>
+                        <div><div className="eyebrow">Responsable</div><div>{responsableNombre}</div></div>
+                        <div><div className="eyebrow">Supervisor</div><div>{supervisorNombre}</div></div>
+                        <div><div className="eyebrow">Fecha de inicio</div><div>{sel.fecha_inicio || '—'}</div></div>
+                        <div><div className="eyebrow">Fecha fin programada</div><div>{sel.fecha_fin || sel.fecha_programada || '—'}</div></div>
+                      </div>
+                      <div style={{background:'var(--bg-subtle)', padding:16, borderRadius:8, marginTop:14}}>
+                        <div className="eyebrow" style={{marginBottom:8}}>Descripción / Alcance</div>
+                        <p style={{fontSize:13, lineHeight:1.5, margin:0}}>{sel.descripcion || 'Sin descripción detallada.'}</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
 
             {/* ── TAB TAREAS ── */}
             {activeTab === 'Tareas' && (
-              <div>
+              <div style={{padding:22}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
                   <div>
                     <h3 style={{margin:0}}>Tareas</h3>
@@ -1509,7 +1832,7 @@ function OT({ role }) {
 
             {/* ── TAB CHECKLISTS ── */}
             {activeTab === 'Checklists y Calidad' && (
-              <div className="col" style={{gap:20}}>
+              <div className="col" style={{gap:20, padding:22}}>
                 <div className="card">
                   <div className="card-head">
                     <h3 style={{fontSize:16}}>Checklist de Seguridad Inicial (SSOMA)</h3>
@@ -1543,7 +1866,7 @@ function OT({ role }) {
 
             {/* ── TAB PERSONAL Y RECURSOS ── */}
             {activeTab === 'Personal y Recursos' && (
-              <div>
+              <div style={{padding:22}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
                   <h3 style={{margin:0}}>Personal Asignado</h3>
                   <div className="row" style={{gap:8}}>
@@ -1557,7 +1880,7 @@ function OT({ role }) {
                 {showAsignarTec && (
                   <form className="card" style={{padding:16, marginBottom:16, border:'1px solid var(--cyan)'}} onSubmit={submitAsignarTec}>
                     <div className="grid-3" style={{gap:12}}>
-                      <div className="input-group">
+                      <div className="input-group" style={{gridColumn:'1/-1'}}>
                         <label>Técnico *</label>
                         <select className="select" value={asignarTecForm.tecnico_id} onChange={e => setAsignarTecForm(s => ({...s, tecnico_id: e.target.value}))} required>
                           <option value="">Seleccionar...</option>
@@ -1571,6 +1894,15 @@ function OT({ role }) {
                       <div className="input-group">
                         <label>Fecha fin</label>
                         <input className="input" type="date" value={asignarTecForm.fecha_fin} onChange={e => setAsignarTecForm(s => ({...s, fecha_fin: e.target.value}))} />
+                      </div>
+                      <div className="input-group" style={{visibility:'hidden'}} />
+                      <div className="input-group">
+                        <label>Hora inicio (por día)</label>
+                        <input className="input" type="time" value={asignarTecForm.hora_inicio} onChange={e => setAsignarTecForm(s => ({...s, hora_inicio: e.target.value}))} />
+                      </div>
+                      <div className="input-group">
+                        <label>Hora fin (por día)</label>
+                        <input className="input" type="time" value={asignarTecForm.hora_fin} onChange={e => setAsignarTecForm(s => ({...s, hora_fin: e.target.value}))} />
                       </div>
                     </div>
                     <div className="row mt-4" style={{justifyContent:'flex-end', gap:8}}>
@@ -1624,44 +1956,250 @@ function OT({ role }) {
 
             {/* ── TAB PARTES ── */}
             {activeTab === 'Partes' && (
-              <div>
+              <div style={{padding:22}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
                   <h3 style={{margin:0}}>Partes Diarios</h3>
-                  {sel.estado === 'ejecucion' && (
-                    <button className="btn btn-secondary btn-sm" onClick={() => setShowNuevoParte(s => !s)}>{I.plus} Nuevo parte diario</button>
+                  {sel.estado === 'ejecucion' && !showNuevoParte && (
+                    <button className="btn btn-secondary btn-sm" onClick={abrirNuevoParte}>{I.plus} Nuevo parte diario</button>
                   )}
                 </div>
 
-                {showNuevoParte && (
-                  <form className="card" style={{padding:16, marginBottom:16, border:'1px solid var(--cyan)'}} onSubmit={submitParteDesdOT}>
-                    <div className="grid-2" style={{gap:12}}>
-                      <div className="input-group">
-                        <label>Técnico *</label>
-                        <input className="input" value={parteFormOT.tecnico} onChange={e => setParteFormOT(s => ({...s, tecnico: e.target.value}))} placeholder="Nombre del técnico" required />
+                {showNuevoParte && (() => {
+                  const hoyStr = new Date().toISOString().split('T')[0];
+                  const tareasActivas = parteFormOT.tareas_trabajadas.filter(t => t.trabajado);
+                  const avancePreview =
+                    tareasActivas.reduce((s, t) => s + (Number(t.avance_hoy) || 0), 0) +
+                    parteFormOT.actividades_adicionales.reduce((s, a) => s + (Number(a.avance_estimado) || 0), 0);
+                  const puedeEnviar = !!parteFormOT.tecnico_id && (tareasActivas.length > 0 || parteFormOT.actividades_adicionales.some(a => a.descripcion.trim()));
+
+                  return (
+                    <form className="card" style={{padding:20, marginBottom:20, border:'1px solid var(--cyan)'}} onSubmit={submitParteDesdOT}>
+                      <div style={{marginBottom:16, paddingBottom:12, borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                        <h4 style={{margin:0, color:'var(--cyan)'}}>Nuevo Parte Diario</h4>
+                        {avancePreview > 0 && <span style={{fontSize:12, color:'var(--fg-muted)'}}>Avance total reportado: <strong style={{color:'var(--cyan)'}}>{avancePreview}%</strong></span>}
                       </div>
-                      <div className="input-group">
-                        <label>Fecha *</label>
-                        <input className="input" type="date" value={parteFormOT.fecha} onChange={e => setParteFormOT(s => ({...s, fecha: e.target.value}))} required />
+
+                      {/* — Encabezado — */}
+                      <div style={{background:'var(--bg-subtle)', padding:14, borderRadius:8, marginBottom:16}}>
+                        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:12}}>
+                          <div className="input-group">
+                            <label>OT vinculada</label>
+                            <div style={{fontWeight:600, fontSize:13, padding:'6px 0'}}>{sel.numero}</div>
+                          </div>
+                          <div className="input-group">
+                            <label>Fecha *</label>
+                            <input className="input" type="date" max={hoyStr} value={parteFormOT.fecha} onChange={e => setParteFormOT(s => ({...s, fecha: e.target.value}))} required />
+                          </div>
+                          <div className="input-group">
+                            <label>Horas trabajadas</label>
+                            <input className="input" type="number" min="0.5" step="0.5" max="24" value={parteFormOT.horas} onChange={e => setParteFormOT(s => ({...s, horas: Number(e.target.value)}))} />
+                          </div>
+                        </div>
+                        <div className="input-group">
+                          <label>Técnico *</label>
+                          {tecnicosDeOT.length > 0 ? (
+                            <select className="select" value={parteFormOT.tecnico_id} onChange={e => updParteHorasTecnico(e.target.value)} required>
+                              <option value="">Seleccionar técnico...</option>
+                              {tecnicosDeOT.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.cargo ? ` — ${t.cargo}` : ''}</option>)}
+                            </select>
+                          ) : (
+                            <div style={{fontSize:12, color:'var(--fg-muted)', padding:'6px 0'}}>No hay técnicos asignados a esta OT en el Planner. Asigna uno desde la pestaña Personal y Recursos.</div>
+                          )}
+                        </div>
                       </div>
-                      <div className="input-group">
-                        <label>Horas trabajadas</label>
-                        <input className="input" type="number" min="0" step="0.5" value={parteFormOT.horas} onChange={e => setParteFormOT(s => ({...s, horas: Number(e.target.value)}))} />
+
+                      {/* — Sección 1: Tareas de la OT — */}
+                      {parteFormOT.tareas_trabajadas.length > 0 && (
+                        <div style={{marginBottom:16}}>
+                          <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
+                            Tareas de la OT
+                            <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Marca las tareas en las que trabajaste hoy</span>
+                          </div>
+                          <div className="col" style={{gap:8}}>
+                            {parteFormOT.tareas_trabajadas.map((t, idx) => (
+                              <div key={t.tarea_id} style={{display:'flex', alignItems:'center', gap:10, padding:'10px 12px', border:'1px solid var(--border)', borderRadius:6, background: t.trabajado ? 'color-mix(in srgb, var(--cyan) 5%, transparent)' : 'var(--bg)'}}>
+                                <input type="checkbox" checked={t.trabajado} onChange={e => setParteFormOT(s => ({ ...s, tareas_trabajadas: s.tareas_trabajadas.map((x, i) => i === idx ? {...x, trabajado: e.target.checked, avance_hoy: e.target.checked ? x.avance_hoy : 0} : x) }))} style={{cursor:'pointer', width:16, height:16, flexShrink:0}} />
+                                <div style={{flex:1, minWidth:0}}>
+                                  <div style={{fontSize:13, fontWeight:500, color: t.trabajado ? 'var(--fg)' : 'var(--fg-muted)'}}>{t.nombre}</div>
+                                </div>
+                                <span className={`badge ${t.estado_actual === 'completada' ? 'badge-green' : t.estado_actual === 'en_progreso' ? 'badge-orange' : 'badge-gray'}`} style={{fontSize:10, flexShrink:0}}>{t.estado_actual}</span>
+                                {t.trabajado && (
+                                  <div style={{display:'flex', alignItems:'center', gap:6, flexShrink:0}}>
+                                    <label style={{fontSize:11, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>Avance hoy</label>
+                                    <input className="input" type="number" min="0" max="100" style={{width:72, padding:'3px 8px', fontSize:12}} value={t.avance_hoy} onChange={e => setParteFormOT(s => ({ ...s, tareas_trabajadas: s.tareas_trabajadas.map((x, i) => i === idx ? {...x, avance_hoy: Number(e.target.value)} : x) }))} />
+                                    <span style={{fontSize:11}}>%</span>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* — Sección 2: Actividades adicionales — */}
+                      <div style={{marginBottom:16}}>
+                        <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
+                          Actividades adicionales
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Actividades no contempladas en tareas</span>
+                        </div>
+                        <div className="col" style={{gap:8}}>
+                          {parteFormOT.actividades_adicionales.map((a, idx) => (
+                            <div key={idx} style={{display:'flex', gap:8, alignItems:'flex-start'}}>
+                              <input className="input" style={{flex:1}} placeholder="Descripción de la actividad *" value={a.descripcion} onChange={e => setParteFormOT(s => ({ ...s, actividades_adicionales: s.actividades_adicionales.map((x, i) => i === idx ? {...x, descripcion: e.target.value} : x) }))} />
+                              <div style={{display:'flex', alignItems:'center', gap:4, flexShrink:0}}>
+                                <input className="input" type="number" min="0" max="100" style={{width:72, padding:'6px 8px', fontSize:12}} placeholder="0" value={a.avance_estimado} onChange={e => setParteFormOT(s => ({ ...s, actividades_adicionales: s.actividades_adicionales.map((x, i) => i === idx ? {...x, avance_estimado: Number(e.target.value)} : x) }))} />
+                                <span style={{fontSize:11, color:'var(--fg-muted)'}}>%</span>
+                              </div>
+                              <button type="button" className="icon-btn" style={{flexShrink:0}} onClick={() => setParteFormOT(s => ({ ...s, actividades_adicionales: s.actividades_adicionales.filter((_, i) => i !== idx) }))}>{I.x}</button>
+                            </div>
+                          ))}
+                        </div>
+                        <button type="button" className="btn btn-ghost" style={{fontSize:12, marginTop:8}} onClick={() => setParteFormOT(s => ({ ...s, actividades_adicionales: [...s.actividades_adicionales, { descripcion: '', avance_estimado: 0 }] }))}>
+                          {I.plus} Agregar actividad
+                        </button>
                       </div>
-                      <div className="input-group">
-                        <label>Avance reportado (%)</label>
-                        <input className="input" type="number" min="0" max="100" value={parteFormOT.avance_reportado} onChange={e => setParteFormOT(s => ({...s, avance_reportado: Number(e.target.value)}))} />
+
+                      {/* — Sección 3: Avance global del día — */}
+                      <div style={{marginBottom:16, padding:14, background:'var(--bg-subtle)', borderRadius:8}}>
+                        <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Avance global del día</div>
+                        <div style={{display:'flex', alignItems:'center', gap:12}}>
+                          <div style={{flex:1}}>
+                            <div style={{display:'flex', alignItems:'center', gap:8}}>
+                              <input
+                                className="input"
+                                type="number" min="0" max="100"
+                                style={{width:90, fontSize:16, fontWeight:700, textAlign:'center'}}
+                                value={parteFormOT.avance_ajustado_manual ? parteFormOT.avance_global : avancePreview}
+                                onChange={e => {
+                                  const val = Math.min(100, Math.max(0, Number(e.target.value)));
+                                  setParteFormOT(s => ({ ...s, avance_global: val, avance_ajustado_manual: val !== avancePreview }));
+                                }}
+                              />
+                              <span style={{fontSize:14, fontWeight:600}}>%</span>
+                              {parteFormOT.avance_ajustado_manual && (
+                                <span style={{fontSize:11, color:'var(--orange)', background:'color-mix(in srgb, var(--orange) 10%, transparent)', padding:'2px 8px', borderRadius:99, border:'1px solid var(--orange)'}}>Ajustado manualmente</span>
+                              )}
+                            </div>
+                            <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>
+                              Calculado automáticamente: {avancePreview}% · Puedes ajustarlo si no refleja la realidad
+                            </div>
+                          </div>
+                          {parteFormOT.avance_ajustado_manual && (
+                            <button type="button" className="btn btn-ghost" style={{fontSize:11}} onClick={() => setParteFormOT(s => ({ ...s, avance_global: avancePreview, avance_ajustado_manual: false }))}>
+                              Restablecer
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="input-group" style={{gridColumn:'1/-1'}}>
-                        <label>Actividades realizadas *</label>
-                        <textarea className="input" rows="3" value={parteFormOT.actividades} onChange={e => setParteFormOT(s => ({...s, actividades: e.target.value}))} required />
+
+                      {/* — Sección 4: Materiales usados — */}
+                      <div style={{marginBottom:16}}>
+                        <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
+                          Materiales usados
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional — solo si se consumieron materiales</span>
+                        </div>
+                        {parteFormOT.materiales_lineas.length > 0 && (
+                          <div className="col" style={{gap:8, marginBottom:8}}>
+                            {parteFormOT.materiales_lineas.map((m, idx) => {
+                              const item = inventario.find(i => i.id === m.inv_id);
+                              return (
+                                <div key={idx} style={{display:'grid', gridTemplateColumns:'2fr 1fr 1.5fr auto', gap:8, alignItems:'center'}}>
+                                  <div>
+                                    <select className="select" value={m.inv_id} onChange={e => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.map((x, i) => i === idx ? {...x, inv_id: e.target.value} : x) }))}>
+                                      <option value="">Seleccionar material...</option>
+                                      {(inventario || []).map(it => (
+                                        <option key={it.id} value={it.id}>{it.sku} — {it.nombre} (Stock: {it.stock_actual} {it.unidad})</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div style={{display:'flex', alignItems:'center', gap:4}}>
+                                    <input className="input" type="number" min="0.01" step="0.01" placeholder="Cant." value={m.cantidad} onChange={e => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.map((x, i) => i === idx ? {...x, cantidad: e.target.value} : x) }))} />
+                                    {item && <span style={{fontSize:11, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>{item.unidad}</span>}
+                                  </div>
+                                  <select className="select" value={m.almacen_id} onChange={e => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.map((x, i) => i === idx ? {...x, almacen_id: e.target.value} : x) }))}>
+                                    <option value="">Almacén origen</option>
+                                    {(almacenes || []).filter(a => a.estado !== 'inactivo').map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                                  </select>
+                                  <button type="button" className="icon-btn" onClick={() => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.filter((_, i) => i !== idx) }))}>{I.x}</button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <button type="button" className="btn btn-ghost" style={{fontSize:12}} onClick={() => setParteFormOT(s => ({ ...s, materiales_lineas: [...s.materiales_lineas, { inv_id: '', cantidad: '', almacen_id: '' }] }))}>
+                          {I.plus} Agregar material
+                        </button>
                       </div>
-                    </div>
-                    <div className="row mt-4" style={{justifyContent:'flex-end', gap:8}}>
-                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowNuevoParte(false)}>Cancelar</button>
-                      <button type="submit" className="btn btn-primary btn-sm">{I.save} Enviar a revisión</button>
-                    </div>
-                  </form>
-                )}
+
+                      {/* — Sección 5: Evidencias — */}
+                      <div style={{marginBottom:16}}>
+                        <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
+                          Evidencias
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional — fotos o documentos del trabajo ejecutado hoy</span>
+                        </div>
+                        {parteFormOT.evidencias.length > 0 && (
+                          <div style={{display:'flex', flexWrap:'wrap', gap:8, marginBottom:8}}>
+                            {parteFormOT.evidencias.map((ev, idx) => (
+                              <div key={idx} style={{position:'relative', width:80, height:80, borderRadius:6, overflow:'hidden', border:'1px solid var(--border)', background:'var(--bg-subtle)'}}>
+                                {ev.tipo.startsWith('image/') ? (
+                                  <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} />
+                                ) : (
+                                  <div style={{width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4}}>
+                                    <span style={{fontSize:22}}>📄</span>
+                                    <span style={{fontSize:9, color:'var(--fg-muted)', textAlign:'center', padding:'0 4px', lineHeight:1.2, overflow:'hidden', textOverflow:'ellipsis', maxWidth:'100%'}}>{ev.nombre}</span>
+                                  </div>
+                                )}
+                                <button type="button" onClick={() => setParteFormOT(s => ({ ...s, evidencias: s.evidencias.filter((_, i) => i !== idx) }))} style={{position:'absolute', top:2, right:2, width:18, height:18, borderRadius:'50%', background:'rgba(0,0,0,0.55)', color:'#fff', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, lineHeight:1}}>×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <label className="btn btn-ghost" style={{fontSize:12, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6}}>
+                          📎 Adjuntar archivo
+                          <input type="file" accept="image/*,.pdf" multiple style={{display:'none'}} onChange={e => {
+                            const files = Array.from(e.target.files || []);
+                            const nuevas = files.map(f => ({ nombre: f.name, tipo: f.type, tamanio: f.size, url: URL.createObjectURL(f) }));
+                            setParteFormOT(s => ({ ...s, evidencias: [...s.evidencias, ...nuevas] }));
+                            e.target.value = '';
+                          }} />
+                        </label>
+                      </div>
+
+                      {/* — Sección 6: Observaciones / Restricciones — */}
+                      <div style={{marginBottom:16}}>
+                        <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Observaciones o restricciones</div>
+                        <textarea
+                          className="input" rows={3}
+                          placeholder="Reporta cualquier problema, restricción o novedad del día (falta de materiales, acceso restringido, condiciones climáticas, equipos defectuosos...)"
+                          value={parteFormOT.observaciones}
+                          onChange={e => setParteFormOT(s => ({...s, observaciones: e.target.value}))}
+                          style={{resize:'vertical'}}
+                        />
+                        <label style={{display:'flex', alignItems:'center', gap:10, marginTop:10, cursor:'pointer', userSelect:'none', padding:'10px 14px', borderRadius:8, border:`1px solid ${parteFormOT.es_restriccion ? 'var(--danger)' : 'var(--border)'}`, background: parteFormOT.es_restriccion ? 'color-mix(in srgb, var(--danger) 6%, transparent)' : 'var(--bg-subtle)'}}>
+                          <div style={{position:'relative', width:36, height:20, flexShrink:0}}>
+                            <input type="checkbox" checked={parteFormOT.es_restriccion} onChange={e => setParteFormOT(s => ({...s, es_restriccion: e.target.checked}))} style={{opacity:0, position:'absolute', width:'100%', height:'100%', margin:0, cursor:'pointer'}} />
+                            <div style={{position:'absolute', inset:0, borderRadius:99, background: parteFormOT.es_restriccion ? 'var(--danger)' : 'var(--border)', transition:'background 0.2s'}} />
+                            <div style={{position:'absolute', top:2, left: parteFormOT.es_restriccion ? 18 : 2, width:16, height:16, borderRadius:'50%', background:'#fff', transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.2)'}} />
+                          </div>
+                          <div>
+                            <div style={{fontSize:13, fontWeight:600, color: parteFormOT.es_restriccion ? 'var(--danger)' : 'var(--fg)'}}>Reportar como restricción</div>
+                            <div style={{fontSize:11, color:'var(--fg-muted)'}}>El parte quedará marcado como "Con restricción" y se generará una alerta al supervisor</div>
+                          </div>
+                        </label>
+                      </div>
+
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', paddingTop:14, borderTop:'1px solid var(--border)'}}>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowNuevoParte(false)}>Cancelar</button>
+                        <div className="row" style={{gap:8}}>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={e => submitParteDesdOT(null, 'borrador')} disabled={!parteFormOT.tecnico_id}>{I.save} Guardar borrador</button>
+                          <button type="submit" className="btn btn-primary btn-sm" disabled={!puedeEnviar}>
+                            {parteFormOT.es_restriccion ? '⚠ Enviar con restricción' : `${I.check} Enviar a revisión`}
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  );
+                })()}
 
                 {partesOT.length > 0 ? (
                   <>
@@ -1683,8 +2221,8 @@ function OT({ role }) {
                         <div key={p.id} style={{padding:14, border:'1px solid var(--border)', borderRadius:6, background:'var(--bg)'}}>
                           <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>
                             <div style={{fontWeight:600, fontSize:13}}>{p.tecnico}</div>
-                            <span className={`badge ${p.estado==='aprobado'?'badge-green':p.estado==='observado'?'badge-red':'badge-orange'}`}>
-                              {p.estado==='aprobado'?'Aprobado':p.estado==='observado'?'Rechazado':'Pendiente'}
+                            <span className={`badge ${p.estado==='aprobado'?'badge-green':p.estado==='observado'?'badge-red':p.estado==='con_restriccion'?'badge-red':p.estado==='borrador'?'badge-gray':'badge-orange'}`}>
+                              {p.estado==='aprobado'?'Aprobado':p.estado==='observado'?'Observado':p.estado==='con_restriccion'?'Con restricción':p.estado==='borrador'?'Borrador':'Pendiente'}
                             </span>
                           </div>
                           <div className="grid-3" style={{fontSize:12, gap:8, marginBottom:8}}>
@@ -1723,7 +2261,7 @@ function OT({ role }) {
                 ['Logística y viáticos', costoEst > 0 ? costoEst * 0.1 : null, null],
               ];
               return (
-                <div className="col" style={{gap:16}}>
+                <div className="col" style={{gap:16, padding:22}}>
                   <div className="table-wrap">
                     <table className="tbl">
                       <thead>
@@ -1764,25 +2302,50 @@ function OT({ role }) {
             })()}
 
             {/* ── TAB EVIDENCIAS ── */}
-            {activeTab === 'Evidencias' && (
-              <div>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
-                  <h3 style={{margin:0}}>Evidencias</h3>
-                  {sel.estado !== 'facturada' && (
-                    <button className="btn btn-secondary btn-sm">{I.plus} Subir evidencia</button>
+            {activeTab === 'Evidencias' && (() => {
+              const evidenciasOT = partesOT.flatMap(p =>
+                (p.evidencias || []).map(ev => ({ ...ev, parte_numero: p.id, parte_fecha: p.fecha, tecnico: p.tecnico }))
+              );
+              return (
+                <div style={{padding:22}}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
+                    <div>
+                      <h3 style={{margin:0}}>Evidencias</h3>
+                      <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>Archivos adjuntos a los partes diarios de esta OT</div>
+                    </div>
+                  </div>
+                  {evidenciasOT.length === 0 ? (
+                    <div style={{padding:48, textAlign:'center', color:'var(--fg-muted)', border:'2px dashed var(--border)', borderRadius:8}}>
+                      <div style={{fontSize:36, marginBottom:8}}>📎</div>
+                      <div style={{fontWeight:600, marginBottom:6}}>Sin evidencias registradas</div>
+                      <div style={{fontSize:12}}>Las fotos y documentos adjuntos al registrar partes diarios aparecerán aquí automáticamente.</div>
+                    </div>
+                  ) : (
+                    <div style={{display:'flex', flexWrap:'wrap', gap:12}}>
+                      {evidenciasOT.map((ev, idx) => (
+                        <div key={idx} style={{width:120, border:'1px solid var(--border)', borderRadius:8, overflow:'hidden', background:'var(--surface)'}}>
+                          <div style={{width:'100%', height:80, background:'var(--bg-subtle)', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                            {ev.tipo?.startsWith('image/') && ev.url ? (
+                              <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} />
+                            ) : (
+                              <span style={{fontSize:32}}>📄</span>
+                            )}
+                          </div>
+                          <div style={{padding:'6px 8px'}}>
+                            <div style={{fontSize:11, fontWeight:600, color:'var(--fg)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}} title={ev.nombre}>{ev.nombre}</div>
+                            <div style={{fontSize:10, color:'var(--fg-muted)', marginTop:2}}>{ev.tecnico} · {ev.parte_fecha}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-                <div style={{padding:48, textAlign:'center', color:'var(--fg-muted)', border:'2px dashed var(--border)', borderRadius:8}}>
-                  <div style={{fontSize:36, marginBottom:8}}>📎</div>
-                  <div style={{fontWeight:600, marginBottom:6}}>Sin evidencias registradas</div>
-                  <div style={{fontSize:12}}>Sube fotos o documentos desde campo o backoffice para documentar la ejecución.</div>
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* ── TAB HISTORIAL ── */}
             {activeTab === 'Historial' && (
-              <div>
+              <div style={{padding:22}}>
                 <h3 style={{marginBottom:16}}>Historial de eventos</h3>
                 {historialOT.length > 0 ? (
                   <div style={{position:'relative'}}>
@@ -1811,6 +2374,7 @@ function OT({ role }) {
                 )}
               </div>
             )}
+            </div>
 
           </div>
         </div>
@@ -1942,138 +2506,358 @@ function OT({ role }) {
 }
 
 function Partes() {
-  const { partes, ots, aprobarParteDiario, registrarParteDiario } = useApp();
+  const { partes, ots, cuentas, aprobarParteDiario, observarParteDiario, rechazarParteDiario, navigate } = useApp();
   const [sel, setSel] = useState(null);
-  const [panel, setPanel] = useState(false);
-  const [form, setForm] = useState({
-    ot_id: '',
-    tecnico: '',
-    fecha: new Date().toISOString().split('T')[0],
-    horas: 8,
-    avance_reportado: 0,
-    actividades: '',
-    material_sku: '',
-    material_nombre: '',
-    material_cantidad: 0,
-  });
+  const [modoAccion, setModoAccion] = useState(null); // null | 'aprobar' | 'observar' | 'rechazar'
+  const [avanceAprobacion, setAvanceAprobacion] = useState(0);
+  const [motivoAccion, setMotivoAccion] = useState('');
+  const [filtroOT, setFiltroOT] = useState('');
+  const [filtroTecnico, setFiltroTecnico] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('');
+  const [filtroDesde, setFiltroDesde] = useState('');
+  const [filtroHasta, setFiltroHasta] = useState('');
+  const [filtroCliente, setFiltroCliente] = useState('');
 
-  const getOTNumero = (otId) => ots.find(o => o.id === otId)?.numero || otId;
-  const otsDisponibles = ots.filter(o => !['cerrada', 'valorizada', 'facturada', 'anulada'].includes(o.estado));
-  const updateForm = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
-  const resetForm = () => setForm({
-    ot_id: '',
-    tecnico: '',
-    fecha: new Date().toISOString().split('T')[0],
-    horas: 8,
-    avance_reportado: 0,
-    actividades: '',
-    material_sku: '',
-    material_nombre: '',
-    material_cantidad: 0,
-  });
-  const crearParte = (event) => {
-    event.preventDefault();
-    const materiales = form.material_sku || form.material_nombre
-      ? [{
-          sku: form.material_sku || 'MAT-SIN-SKU',
-          nombre: form.material_nombre || form.material_sku,
-          cantidad: Number(form.material_cantidad || 0)
-        }]
-      : [];
-    registrarParteDiario({
-      ot_id: form.ot_id,
-      tecnico: form.tecnico,
-      fecha: form.fecha,
-      horas: Number(form.horas || 0),
-      avance_reportado: Number(form.avance_reportado || 0),
-      actividades: form.actividades,
-      actividad: form.actividades,
-      materiales_usados: materiales,
-    });
-    resetForm();
-    setPanel(false);
+  const hoy = new Date().toISOString().split('T')[0];
+  const getOT = id => ots.find(o => o.id === id);
+  const getOTNumero = id => getOT(id)?.numero || '—';
+  const getCuenta = otId => {
+    const ot = getOT(otId);
+    return (cuentas || []).find(c => c.id === ot?.cuenta_id)?.razon_social || '—';
   };
+
+  // Número de parte legible: PD-YYYY-NNNN basado en orden de creación por año
+  const partesOrdenados = [...partes].sort((a, b) => (a.created_at || a.fecha || '') < (b.created_at || b.fecha || '') ? -1 : 1);
+  const getNumeroParte = p => {
+    if (p.numero) return p.numero;
+    const anio = (p.created_at || p.fecha || hoy).substring(0, 4);
+    const delAnio = partesOrdenados.filter(x => (x.created_at || x.fecha || '').startsWith(anio));
+    const idx = delAnio.findIndex(x => x.id === p.id);
+    return `PD-${anio}-${String(idx + 1).padStart(4, '0')}`;
+  };
+
+  // KPIs
+  const partesHoy = partes.filter(p => p.fecha === hoy);
+  const pendientesTotal = partes.filter(p => p.estado === 'en_revision').length;
+  const aprobadosHoy = partesHoy.filter(p => p.estado === 'aprobado').length;
+  const observadosHoy = partesHoy.filter(p => p.estado === 'observado').length;
+
+  // Listas para filtros
+  const tecnicosFiltro = [...new Set(partes.map(p => p.tecnico).filter(Boolean))].sort();
+  const otsFiltro = ots.filter(o => partes.some(p => p.ot_id === o.id));
+  const clientesFiltro = (cuentas || []).filter(c => otsFiltro.some(o => o.cuenta_id === c.id));
+
+  const hayFiltros = filtroOT || filtroTecnico || filtroEstado || filtroDesde || filtroHasta || filtroCliente;
+  const partesFiltrados = partes.filter(p => {
+    if (filtroOT && p.ot_id !== filtroOT) return false;
+    if (filtroTecnico && p.tecnico !== filtroTecnico) return false;
+    if (filtroEstado && p.estado !== filtroEstado) return false;
+    if (filtroDesde && p.fecha < filtroDesde) return false;
+    if (filtroHasta && p.fecha > filtroHasta) return false;
+    if (filtroCliente && getOT(p.ot_id)?.cuenta_id !== filtroCliente) return false;
+    return true;
+  });
 
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Partes Diarios</h1><div className="page-sub">{partes.length} partes · {partes.filter(p=>p.estado==='en_revision').length} pendientes de aprobación</div></div>
-        <button className="btn btn-primary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Nuevo parte</button>
+        <div>
+          <h1 className="page-title">Partes Diarios</h1>
+          <div className="page-sub">Vista de supervisión · {partes.length} partes totales</div>
+        </div>
       </div>
+
+      {/* KPIs */}
+      <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20}}>
+        <div className="card" style={{padding:'14px 18px'}}>
+          <div className="eyebrow" style={{marginBottom:6}}>Total partes del día</div>
+          <div style={{fontSize:28, fontWeight:800, color:'var(--navy)'}}>{partesHoy.length}</div>
+        </div>
+        <div className="card" style={{padding:'14px 18px', borderLeft:'3px solid var(--orange)'}}>
+          <div className="eyebrow" style={{marginBottom:6}}>Pendientes de aprobación</div>
+          <div style={{fontSize:28, fontWeight:800, color:'var(--orange)'}}>{pendientesTotal}</div>
+        </div>
+        <div className="card" style={{padding:'14px 18px', borderLeft:'3px solid var(--green)'}}>
+          <div className="eyebrow" style={{marginBottom:6}}>Aprobados hoy</div>
+          <div style={{fontSize:28, fontWeight:800, color:'var(--green)'}}>{aprobadosHoy}</div>
+        </div>
+        <div className="card" style={{padding:'14px 18px', borderLeft:'3px solid var(--danger)'}}>
+          <div className="eyebrow" style={{marginBottom:6}}>Observados hoy</div>
+          <div style={{fontSize:28, fontWeight:800, color:'var(--danger)'}}>{observadosHoy}</div>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div className="card" style={{padding:'12px 16px', marginBottom:12}}>
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr 1fr auto', gap:8, alignItems:'end'}}>
+          <select className="select" value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)}>
+            <option value="">Todos los clientes</option>
+            {clientesFiltro.map(c => <option key={c.id} value={c.id}>{c.razon_social}</option>)}
+          </select>
+          <select className="select" value={filtroOT} onChange={e => setFiltroOT(e.target.value)}>
+            <option value="">Todas las OTs</option>
+            {otsFiltro.map(o => <option key={o.id} value={o.id}>{o.numero}</option>)}
+          </select>
+          <select className="select" value={filtroTecnico} onChange={e => setFiltroTecnico(e.target.value)}>
+            <option value="">Todos los técnicos</option>
+            {tecnicosFiltro.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select className="select" value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
+            <option value="">Todos los estados</option>
+            <option value="en_revision">Pendiente</option>
+            <option value="aprobado">Aprobado</option>
+            <option value="observado">Observado</option>
+          </select>
+          <input className="input" type="date" value={filtroDesde} onChange={e => setFiltroDesde(e.target.value)} title="Fecha desde" />
+          <input className="input" type="date" value={filtroHasta} onChange={e => setFiltroHasta(e.target.value)} title="Fecha hasta" />
+          {hayFiltros && <button className="btn btn-ghost" style={{fontSize:12, whiteSpace:'nowrap'}} onClick={() => { setFiltroOT(''); setFiltroTecnico(''); setFiltroEstado(''); setFiltroDesde(''); setFiltroHasta(''); setFiltroCliente(''); }}>✕ Limpiar</button>}
+        </div>
+      </div>
+
+      {/* Tabla */}
       <div className="card">
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Parte</th><th>OT</th><th>Técnico</th><th>Fecha</th><th>Horas</th><th>Avance</th><th>Estado</th></tr></thead>
-            <tbody>{partes.map(p => (
-              <tr key={p.id} onClick={() => setSel(p)} className="hover-row" style={{cursor:'pointer'}}>
-                <td className="mono" style={{fontWeight:600}}>{p.id}</td>
-                <td className="mono">{getOTNumero(p.ot_id)}</td>
-                <td>{p.tecnico}</td>
-                <td className="text-muted">{p.fecha}</td>
-                <td className="num">{p.horas}h</td>
-                <td style={{width:120}}><div className="bar"><div style={{width:(p.avance_reportado||0)+'%',background:'var(--cyan)'}}/></div><div style={{fontSize:11,marginTop:2}}>+{p.avance_reportado||0}%</div></td>
-                <td><span className={'badge '+(p.estado==='aprobado'?'badge-green':p.estado==='observado'?'badge-red':'badge-orange')}>{p.estado.replace('_', ' ')}</span></td>
+            <thead>
+              <tr>
+                <th>N° Parte</th><th>OT</th><th>Cliente</th><th>Técnico</th>
+                <th>Fecha</th><th className="num">Horas</th><th>Avance rep.</th><th>Estado</th><th></th>
               </tr>
-            ))}
-            {partes.length===0 && <tr><td colSpan="7" style={{textAlign:'center', padding:40}}>No hay partes diarios</td></tr>}
+            </thead>
+            <tbody>
+              {partesFiltrados.map(p => (
+                <tr key={p.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => setSel(p)}>
+                  <td className="mono" style={{fontWeight:600}}>{getNumeroParte(p)}</td>
+                  <td className="mono">{getOTNumero(p.ot_id)}</td>
+                  <td style={{maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{getCuenta(p.ot_id)}</td>
+                  <td>{p.tecnico}</td>
+                  <td className="text-muted">{p.fecha}</td>
+                  <td className="num">{p.horas}h</td>
+                  <td style={{width:110}}>
+                    <div className="bar"><div style={{width:(p.avance_reportado||0)+'%', background:'var(--cyan)'}}/></div>
+                    <div style={{fontSize:11, marginTop:2}}>+{p.avance_reportado||0}%</div>
+                  </td>
+                  <td>
+                    <span className={`badge ${p.estado==='aprobado'?'badge-green':p.estado==='observado'?'badge-red':'badge-orange'}`}>
+                      {p.estado === 'en_revision' ? 'Pendiente' : p.estado.replace('_', ' ')}
+                    </span>
+                  </td>
+                  <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
+                    {p.estado === 'en_revision' && <>
+                      <button className="btn btn-primary" style={{fontSize:11, padding:'2px 8px', marginRight:4}} onClick={() => aprobarParteDiario(p.id)}>{I.check}</button>
+                      <button className="btn btn-secondary" style={{fontSize:11, padding:'2px 8px', color:'var(--danger)'}} onClick={() => observarParteDiario(p.id)}>Obs.</button>
+                    </>}
+                  </td>
+                </tr>
+              ))}
+              {partesFiltrados.length === 0 && (
+                <tr><td colSpan="9" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
+                  {hayFiltros ? 'Sin partes con los filtros aplicados.' : 'No hay partes diarios registrados.'}
+                </td></tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {sel && <>
-        <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
-        <div className="side-panel">
-          <div className="side-panel-head">
-            <div>
-              <div className="eyebrow">Revisión de Parte Diario</div>
-              <div className="font-display mono" style={{fontSize:20, fontWeight:700, marginTop:2}}>{sel.id}</div>
-            </div>
-            <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
-          </div>
-          <div className="side-panel-body">
-            <div className="row" style={{marginBottom:16}}>
-              <span className={'badge '+(sel.estado==='aprobado'?'badge-green':sel.estado==='observado'?'badge-red':'badge-orange')}>{sel.estado.replace('_', ' ')}</span>
-              <span className="badge badge-gray">{getOTNumero(sel.ot_id)}</span>
-            </div>
-            <div className="grid-3" style={{gap:12, marginBottom:24}}>
-              <div><div className="eyebrow">Técnico</div><div>{sel.tecnico}</div></div>
-              <div><div className="eyebrow">Fecha</div><div>{sel.fecha}</div></div>
-              <div><div className="eyebrow">Horas</div><div>{sel.horas}h</div></div>
-              <div><div className="eyebrow">Avance rep.</div><div>+{sel.avance_reportado||0}%</div></div>
-            </div>
-            
-            <h3 style={{marginBottom:8, fontSize:14}}>Actividades Realizadas</h3>
-            <div style={{background:'var(--bg-subtle)', padding:16, borderRadius:8, marginBottom:24, fontSize:13, lineHeight:1.5}}>
-              {sel.actividades || 'Sin descripción.'}
-            </div>
-
-            <h3 style={{marginBottom:16, borderBottom:'1px solid var(--border)', paddingBottom:8}}>Materiales Usados</h3>
-            <div className="table-wrap" style={{marginBottom:24}}>
-              <table className="tbl">
-                <thead><tr><th>SKU</th><th>Descripción</th><th>Cant.</th></tr></thead>
-                <tbody>
-                  {sel.materiales_usados?.map((m, i) => (
-                    <tr key={i}>
-                      <td className="mono text-muted">{m.sku}</td>
-                      <td>{m.nombre}</td>
-                      <td className="num">{m.cantidad}</td>
-                    </tr>
-                  ))}
-                  {(!sel.materiales_usados || sel.materiales_usados.length===0) && <tr><td colSpan="3" style={{textAlign:'center'}}>No se registraron materiales</td></tr>}
-                </tbody>
-              </table>
-            </div>
-
-            {sel.estado === 'en_revision' && (
-              <div className="row mt-6">
-                <button className="btn btn-primary flex-1" onClick={() => { aprobarParteDiario(sel.id); setSel(null); }}>{I.check} Aprobar Parte</button>
-                <button className="btn btn-secondary flex-1 text-danger">Observar</button>
+      {/* Panel lateral de detalle / revisión */}
+      {sel && (() => {
+        const estadoBadge = sel.estado === 'aprobado' ? 'badge-green' : sel.estado === 'rechazado' ? 'badge-red' : sel.estado === 'observado' ? 'badge-orange' : sel.estado === 'con_restriccion' ? 'badge-red' : sel.estado === 'borrador' ? 'badge-gray' : 'badge-orange';
+        const estadoLabel = { aprobado: 'Aprobado', rechazado: 'Rechazado', observado: 'Observado', con_restriccion: 'Con restricción', borrador: 'Borrador', en_revision: 'Pendiente revisión' }[sel.estado] || sel.estado;
+        const revisable = ['en_revision', 'con_restriccion'].includes(sel.estado);
+        const cerrarPanel = () => { setSel(null); setModoAccion(null); setMotivoAccion(''); setAvanceAprobacion(0); };
+        return (<>
+          <div className="side-panel-backdrop" onClick={cerrarPanel}/>
+          <div className="side-panel" style={{width:520}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Revisión de Parte Diario</div>
+                <div className="font-display mono" style={{fontSize:20, fontWeight:700, marginTop:2}}>{getNumeroParte(sel)}</div>
               </div>
-            )}
+              <button className="icon-btn" onClick={cerrarPanel}>{I.x}</button>
+            </div>
+            <div className="side-panel-body col" style={{gap:0}}>
+
+              {/* ── Encabezado ── */}
+              <div style={{padding:'14px 22px', borderBottom:'1px solid var(--border)', display:'flex', flexWrap:'wrap', gap:8, alignItems:'center'}}>
+                <span className={`badge ${estadoBadge}`}>{estadoLabel}</span>
+                <button className="btn btn-ghost" style={{padding:0, color:'var(--cyan)', fontWeight:600, fontSize:12}} onClick={() => { cerrarPanel(); navigate('ot', { detail: sel.ot_id }); }}>{getOTNumero(sel.ot_id)} ↗</button>
+                <span className="badge badge-gray">{getCuenta(sel.ot_id)}</span>
+                {sel.es_restriccion && <span className="badge badge-red">⚠ Restricción reportada</span>}
+              </div>
+              <div style={{padding:'12px 22px', borderBottom:'1px solid var(--border)', display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12}}>
+                <div><div className="eyebrow">Técnico</div><div style={{fontSize:13, fontWeight:500}}>{sel.tecnico}</div></div>
+                <div><div className="eyebrow">Fecha</div><div style={{fontSize:13}}>{sel.fecha}</div></div>
+                <div><div className="eyebrow">Horas</div><div style={{fontSize:13, fontWeight:600}}>{sel.horas}h</div></div>
+                <div>
+                  <div className="eyebrow">Avance global</div>
+                  <div style={{fontSize:13, fontWeight:600, color:'var(--cyan)'}}>
+                    {sel.avance_validado !== undefined ? sel.avance_validado : sel.avance_reportado || 0}%
+                    {sel.avance_ajustado_manual && <span style={{fontSize:10, marginLeft:4, color:'var(--orange)', border:'1px solid var(--orange)', borderRadius:99, padding:'0 5px'}}>Ajustado</span>}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Cuerpo ── */}
+              <div style={{flex:1, overflowY:'auto', padding:'16px 22px', display:'flex', flexDirection:'column', gap:18}}>
+
+                {/* Tareas trabajadas */}
+                {(sel.tareas_trabajadas?.length || 0) > 0 && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Tareas trabajadas</div>
+                    <div className="col" style={{gap:6}}>
+                      {sel.tareas_trabajadas.map((t, i) => (
+                        <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', border:'1px solid var(--border)', borderRadius:6, background:'var(--bg-subtle)'}}>
+                          <div style={{fontSize:13}}>{t.nombre}</div>
+                          <div style={{display:'flex', alignItems:'center', gap:8, flexShrink:0}}>
+                            <span className={`badge ${t.estado_actual==='completada'?'badge-green':t.estado_actual==='en_progreso'?'badge-orange':'badge-gray'}`} style={{fontSize:10}}>{t.estado_actual}</span>
+                            {t.avance_hoy > 0 && <span style={{fontSize:12, fontWeight:600, color:'var(--cyan)'}}>+{t.avance_hoy}%</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Actividades adicionales */}
+                {(sel.actividades_adicionales?.length || 0) > 0 && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Actividades adicionales</div>
+                    <div className="col" style={{gap:6}}>
+                      {sel.actividades_adicionales.filter(a => a.descripcion).map((a, i) => (
+                        <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', border:'1px solid var(--border)', borderRadius:6}}>
+                          <div style={{fontSize:13}}>{a.descripcion}</div>
+                          {a.avance_estimado > 0 && <span style={{fontSize:12, fontWeight:600, color:'var(--cyan)', flexShrink:0}}>+{a.avance_estimado}%</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Texto libre de actividades (partes legacy sin tareas/actividades_adicionales) */}
+                {!(sel.tareas_trabajadas?.length) && !(sel.actividades_adicionales?.length) && sel.actividades && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Actividades realizadas</div>
+                    <div style={{background:'var(--bg-subtle)', padding:12, borderRadius:6, fontSize:13, lineHeight:1.6}}>{sel.actividades}</div>
+                  </div>
+                )}
+
+                {/* Materiales */}
+                {(sel.materiales_usados?.length || 0) > 0 && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Materiales usados</div>
+                    <table className="tbl" style={{fontSize:12}}>
+                      <thead><tr><th>SKU</th><th>Descripción</th><th className="num">Cant.</th></tr></thead>
+                      <tbody>
+                        {sel.materiales_usados.map((m, i) => <tr key={i}><td className="mono text-muted">{m.sku}</td><td>{m.nombre}</td><td className="num">{m.cantidad}</td></tr>)}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Evidencias */}
+                {(sel.evidencias?.length || 0) > 0 && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Evidencias ({sel.evidencias.length})</div>
+                    <div style={{display:'flex', flexWrap:'wrap', gap:8}}>
+                      {sel.evidencias.map((ev, i) => (
+                        <div key={i} style={{width:72, height:72, borderRadius:6, overflow:'hidden', border:'1px solid var(--border)', background:'var(--bg-subtle)', display:'flex', alignItems:'center', justifyContent:'center'}} title={ev.nombre}>
+                          {ev.tipo?.startsWith('image/') && ev.url ? <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <span style={{fontSize:24}}>📄</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Observaciones / Restricción */}
+                {sel.observaciones && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8, display:'flex', alignItems:'center', gap:8}}>
+                      Observaciones
+                      {sel.es_restriccion && <span className="badge badge-red" style={{fontSize:10}}>⚠ Con restricción</span>}
+                    </div>
+                    <div style={{background: sel.es_restriccion ? 'color-mix(in srgb, var(--danger) 6%, transparent)' : 'var(--bg-subtle)', padding:12, borderRadius:6, fontSize:13, lineHeight:1.6, border: sel.es_restriccion ? '1px solid var(--danger)' : 'none'}}>{sel.observaciones}</div>
+                  </div>
+                )}
+
+                {/* Motivo de observación/rechazo previo */}
+                {sel.motivo_observacion && (
+                  <div style={{background:'color-mix(in srgb, var(--orange) 8%, transparent)', border:'1px solid var(--orange)', borderRadius:6, padding:12}}>
+                    <div style={{fontWeight:600, fontSize:12, color:'var(--orange)', marginBottom:4}}>Observación del supervisor</div>
+                    <div style={{fontSize:13}}>{sel.motivo_observacion}</div>
+                  </div>
+                )}
+                {sel.motivo_rechazo && (
+                  <div style={{background:'color-mix(in srgb, var(--danger) 8%, transparent)', border:'1px solid var(--danger)', borderRadius:6, padding:12}}>
+                    <div style={{fontWeight:600, fontSize:12, color:'var(--danger)', marginBottom:4}}>Motivo de rechazo</div>
+                    <div style={{fontSize:13}}>{sel.motivo_rechazo}</div>
+                  </div>
+                )}
+
+                {/* ── Bloque de aprobación ── */}
+                {revisable && (
+                  <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
+                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>Decisión del supervisor</div>
+
+                    {/* Sin modo seleccionado: tres botones */}
+                    {!modoAccion && (
+                      <div style={{padding:16, display:'flex', gap:8}}>
+                        <button className="btn btn-primary" style={{flex:1}} onClick={() => { setModoAccion('aprobar'); setAvanceAprobacion(sel.avance_reportado || 0); }}>{I.check} Aprobar</button>
+                        <button className="btn btn-secondary" style={{flex:1}} onClick={() => setModoAccion('observar')}>Observar</button>
+                        <button className="btn btn-secondary" style={{flex:1, color:'var(--danger)'}} onClick={() => setModoAccion('rechazar')}>Rechazar</button>
+                      </div>
+                    )}
+
+                    {/* Modo: Aprobar */}
+                    {modoAccion === 'aprobar' && (
+                      <div style={{padding:16}} className="col" style={{gap:12}}>
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>Confirma el avance final que se sumará a la OT. Puedes ajustarlo si el técnico lo sobreestimó.</div>
+                        <div style={{display:'flex', alignItems:'center', gap:10}}>
+                          <label style={{fontSize:13, fontWeight:600, whiteSpace:'nowrap'}}>Avance validado:</label>
+                          <input className="input" type="number" min="0" max="100" style={{width:80, textAlign:'center', fontWeight:700, fontSize:16}} value={avanceAprobacion} onChange={e => setAvanceAprobacion(Math.min(100, Math.max(0, Number(e.target.value))))} />
+                          <span style={{fontSize:14, fontWeight:600}}>%</span>
+                        </div>
+                        <div style={{fontSize:11, color:'var(--fg-muted)'}}>
+                          Esto también registrará salidas de inventario por los materiales usados y sumará el costo de mano de obra al tab Costos de la OT.
+                        </div>
+                        <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => setModoAccion(null)}>Cancelar</button>
+                          <button className="btn btn-primary btn-sm" onClick={() => { aprobarParteDiario(sel.id, avanceAprobacion); cerrarPanel(); }}>{I.check} Confirmar aprobación</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Modo: Observar */}
+                    {modoAccion === 'observar' && (
+                      <div style={{padding:16}} className="col" style={{gap:12}}>
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverá al técnico para corrección. Escribe el motivo — será visible para el técnico.</div>
+                        <textarea className="input" rows={3} placeholder="Motivo de la observación (obligatorio)..." value={motivoAccion} onChange={e => setMotivoAccion(e.target.value)} autoFocus style={{resize:'vertical'}} />
+                        <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => { setModoAccion(null); setMotivoAccion(''); }}>Cancelar</button>
+                          <button className="btn btn-secondary btn-sm" style={{color:'var(--orange)'}} disabled={!motivoAccion.trim()} onClick={() => { observarParteDiario(sel.id, motivoAccion); cerrarPanel(); }}>Enviar observación</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Modo: Rechazar */}
+                    {modoAccion === 'rechazar' && (
+                      <div style={{padding:16}} className="col" style={{gap:12}}>
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte quedará <strong>rechazado definitivamente</strong>. Las horas y materiales no se imputarán a la OT. Escribe el motivo — será visible para el técnico.</div>
+                        <textarea className="input" rows={3} placeholder="Motivo del rechazo (obligatorio)..." value={motivoAccion} onChange={e => setMotivoAccion(e.target.value)} autoFocus style={{resize:'vertical', borderColor:'var(--danger)'}} />
+                        <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => { setModoAccion(null); setMotivoAccion(''); }}>Cancelar</button>
+                          <button className="btn btn-sm" style={{background:'var(--danger)', color:'#fff'}} disabled={!motivoAccion.trim()} onClick={() => { rechazarParteDiario(sel.id, motivoAccion); cerrarPanel(); }}>Confirmar rechazo</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              </div>
+            </div>
           </div>
-        </div>
-      </>}
+        </>);
+      })()}
     </>
   );
 }
@@ -2846,10 +3630,20 @@ function Compras() {
 }
 
 function Backlog() {
-  const { backlog, setBacklog, cuentas, convertirBacklogAOT, addNotificacion, empresa, searchQuery } = useApp();
+  const { backlog, setBacklog, cuentas, convertirBacklogAOT, addNotificacion, empresa, searchQuery, centrosCosto } = useApp();
   const [view, setView] = useState('kanban');
+  const [modalConvertir, setModalConvertir] = useState(null);
+  const [cecoSeleccionado, setCecoSeleccionado] = useState('');
+  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const getCuenta = (id) => cuentas.find(c => c.id === id)?.razon_social || id;
-  
+
+  const confirmarConvertir = () => {
+    if (!cecoSeleccionado) return;
+    convertirBacklogAOT(modalConvertir.id, { centro_costo_id: cecoSeleccionado });
+    setModalConvertir(null);
+    setCecoSeleccionado('');
+  };
+
   const query = searchQuery.toLowerCase();
   const filteredBacklog = backlog.filter(b => 
     b.descripcion.toLowerCase().includes(query) ||
@@ -2955,8 +3749,19 @@ function Backlog() {
                               <span className={`badge ${b.prioridad==='alta'?'badge-danger':'badge-gray'}`} style={{fontSize:9, padding:'1px 6px'}}>{b.prioridad}</span>
                               <div className="text-muted" style={{fontSize:10}}>{b.fecha_recepcion}</div>
                             </div>
-                            <div className="avatar" style={{width:24, height:24, fontSize:10, margin:0, background:'var(--navy)', color:'#fff'}}>
-                              {b.responsable?.charAt(0) || 'B'}
+                            <div className="row" style={{gap:6, alignItems:'center'}}>
+                              {b.estado === 'en_revision' && (
+                                <button
+                                  className="btn btn-sm btn-primary"
+                                  style={{fontSize:10, padding:'2px 8px'}}
+                                  onClick={e => { e.stopPropagation(); setCecoSeleccionado(''); setModalConvertir(b); }}
+                                >
+                                  {I.arrowUp} Convertir a OT
+                                </button>
+                              )}
+                              <div className="avatar" style={{width:24, height:24, fontSize:10, margin:0, background:'var(--navy)', color:'#fff'}}>
+                                {b.responsable?.charAt(0) || 'B'}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -3004,6 +3809,43 @@ function Backlog() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {modalConvertir && (
+        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center'}}
+          onClick={e => { if (e.target === e.currentTarget) setModalConvertir(null); }}>
+          <div className="card" style={{width:420, padding:24, boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}}>
+            <div style={{fontWeight:800, fontSize:16, marginBottom:4}}>Convertir a OT</div>
+            <div className="text-muted" style={{fontSize:13, marginBottom:20}}>
+              {modalConvertir.servicio} · {getCuenta(modalConvertir.cuenta_id)}
+            </div>
+            <div className="input-group" style={{marginBottom:20}}>
+              <label>Centro de Costo (CECO) <span style={{color:'var(--danger)'}}>*</span></label>
+              <select
+                className="select"
+                value={cecoSeleccionado}
+                onChange={e => setCecoSeleccionado(e.target.value)}
+                autoFocus
+              >
+                <option value="">Seleccionar CECO...</option>
+                {cecosActivos.map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre}{c.codigo ? ` (${c.codigo})` : ''}</option>
+                ))}
+              </select>
+            </div>
+            <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
+              <button className="btn btn-secondary" onClick={() => setModalConvertir(null)}>Cancelar</button>
+              <button
+                className="btn btn-primary"
+                disabled={!cecoSeleccionado}
+                style={!cecoSeleccionado ? {opacity:0.45, cursor:'not-allowed'} : {}}
+                onClick={confirmarConvertir}
+              >
+                {I.check} Crear OT
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -171,7 +171,7 @@ export function PaginaAceptacion({ token }) {
           </div>
           {cot?.descripcion_general && (
             <div style={{ marginTop: 14, padding: '10px 14px', background: '#f5f8ff', borderLeft: `3px solid ${primary}`, borderRadius: 4, fontSize: 13, lineHeight: 1.6, color: '#333' }}>
-              {cot.descripcion_general}
+              {renderComercial(cot.descripcion_general)}
             </div>
           )}
         </div>
@@ -191,7 +191,7 @@ export function PaginaAceptacion({ token }) {
             <tbody>
               {items.map((p, i) => {
                 const isRec = p.tipo === 'recurrente' && !p.incluido;
-                const subItems = p.sub_items || [];
+                const subItems = p.sub_items || p.detalle_items || [];
                 const mainDesc = p.nombre || (typeof p.descripcion === 'string' ? p.descripcion.split('\n')[0] : p.descripcion) || '—';
                 return (
                   <React.Fragment key={p.id || i}>
@@ -201,9 +201,9 @@ export function PaginaAceptacion({ token }) {
                     <tr style={{ background: i % 2 === 0 ? '#fff' : '#fafbfc', borderBottom: '1px solid #f0f0f0' }}>
                       <td style={{ padding: '8px 10px', color: '#999' }}>{p.n || i + 1}</td>
                       <td style={{ padding: '8px 10px' }}>
-                        <div style={{ fontWeight: 600 }}>{mainDesc}</div>
+                        <div style={{ fontWeight: 600 }}>{renderComercial(mainDesc)}</div>
                         {subItems.map((s, si) => (
-                          <div key={si} style={{ fontSize: 11.5, color: '#666', marginTop: 2 }}>• {typeof s === 'string' ? s : s.nombre || s}</div>
+                          <div key={si} style={{ fontSize: 11.5, color: '#666', marginTop: 2 }}>• {renderComercial(typeof s === 'string' ? s : s.nombre || s)}</div>
                         ))}
                       </td>
                       <td style={{ padding: '8px 10px', textAlign: 'right', color: '#555' }}>
@@ -260,10 +260,10 @@ export function PaginaAceptacion({ token }) {
                 {cot.hitos_pago.map((h, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#fafbfc', borderBottom: '1px solid #f0f0f0' }}>
                     <td style={styles.td}>{i + 1}</td>
-                    <td style={{ ...styles.td, fontWeight: 600, textAlign: 'left' }}>{h.concepto}</td>
+                    <td style={{ ...styles.td, fontWeight: 600, textAlign: 'left' }}>{renderComercial(h.concepto)}</td>
                     <td style={styles.td}>{h.porcentaje}%</td>
                     <td style={{ ...styles.td, fontWeight: 700 }}>{fmtMoney(h.monto, cot.moneda)}</td>
-                    <td style={{ ...styles.td, color: '#666', textAlign: 'left' }}>{h.condicion || '—'}</td>
+                    <td style={{ ...styles.td, color: '#666', textAlign: 'left' }}>{renderComercial(h.condicion) || '—'}</td>
                   </tr>
                 ))}
               </tbody>

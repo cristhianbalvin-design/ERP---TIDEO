@@ -37,6 +37,7 @@ const construirPartidasDesdeHC = (hc) => {
 const COT_BADGE = e =>
   e === 'aprobada' || e === 'ganada' ? 'badge-green' :
   e === 'enviada' ? 'badge-cyan' :
+  e === 'pendiente_aprobacion' ? 'badge-orange' :
   e === 'en_negociacion' ? 'badge-orange' :
   e === 'perdida' ? 'badge-red' :
   e === 'convertida' ? 'badge-navy' :
@@ -184,6 +185,8 @@ function CotizacionesInner() {
           onCrearVersion={async () => { await subirVersionCotizacion(cot.id); }}
           onEnviar={() => actualizarCotizacion(cot.id, { estado: 'enviada', fecha_envio: new Date().toISOString() })}
           onAprobarInterna={() => aprobarCotizacionInterna(cot.id)}
+          onSolicitarAprobacion={() => actualizarCotizacion(cot.id, { estado: 'pendiente_aprobacion' })}
+          onCancelarSolicitud={() => actualizarCotizacion(cot.id, { estado: 'borrador' })}
           onAprobar={() => { aprobarCotizacion(cot.id); setOsModal(cot); }}
           onAprobacionManual={async (datos) => { await registrarAprobacionManual(cot.id, datos); }}
           onGenerarOS={() => setOsModal(cot)}
@@ -387,7 +390,7 @@ function AprobacionManualModal({ onClose, onConfirmar }) {
 }
 
 // ── Detalle (lectura) ──────────────────────────────────────────────────
-function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig, onBack, onEdit, onRevertirBorrador, onCrearVersion, onEnviar, onAprobarInterna, onAprobacionManual, onGenerarOS, onDescargarPDF, generandoPDF }) {
+function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig, onBack, onEdit, onRevertirBorrador, onCrearVersion, onEnviar, onAprobarInterna, onSolicitarAprobacion, onCancelarSolicitud, onAprobacionManual, onGenerarOS, onDescargarPDF, generandoPDF }) {
   const partidas = cot.items || cot.partidas || [];
   const hayRecurrente = partidas.some(p => !p.incluido && p.tipo === 'recurrente');
   const [seccionesOpen, setSeccionesOpen] = useState({});
@@ -401,12 +404,14 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
   const textoCtx = { empresa: cfg, cuenta, cliente: cuenta, contacto, cotizacion: cot, oportunidad: opp };
   const renderComercial = texto => renderTextoComercial(texto, textoCtx);
 
-  const puedeAprobarCot   = role?.permisos?.todo || role?.permisos?.aprobar_descuentos || false;
-  const aprobadaInterna   = !!cot.aprobada_interna_por;
-  const esBorrador        = cot.estado === 'borrador';
-  const puedeEditar       = esBorrador && (puedeAprobarCot || !aprobadaInterna);
-  const puedeEnviar       = esBorrador && (puedeAprobarCot || aprobadaInterna);
-  const mostrarAprobarBtn = puedeAprobarCot && esBorrador && !aprobadaInterna;
+  const puedeAprobarCot     = role?.permisos?.todo || role?.permisos?.aprobar_descuentos || false;
+  const aprobadaInterna     = !!cot.aprobada_interna_por;
+  const esBorrador          = cot.estado === 'borrador';
+  const esPendiente         = cot.estado === 'pendiente_aprobacion';
+  const puedeEditar         = esBorrador && (puedeAprobarCot || !aprobadaInterna);
+  const puedeEnviar         = esBorrador && (puedeAprobarCot || aprobadaInterna);
+  const mostrarAprobarBtn   = puedeAprobarCot && (esBorrador || esPendiente) && !aprobadaInterna;
+  const mostrarSolicitarBtn = !puedeAprobarCot && esBorrador && !aprobadaInterna;
 
   const vendedor = opp?.responsable_id
     ? (usuarios || []).find(u => u.id === opp.responsable_id)
@@ -452,6 +457,16 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
         </div>
         <div className="row">
           {puedeEditar && <button className="btn btn-secondary" onClick={onEdit}>{I.edit} Editar</button>}
+          {mostrarSolicitarBtn && (
+            <button className="btn btn-secondary" onClick={onSolicitarAprobacion} style={{color:'var(--orange)', borderColor:'var(--orange)'}}>
+              ⏫ Solicitar aprobación
+            </button>
+          )}
+          {esPendiente && !puedeAprobarCot && (
+            <button className="btn btn-ghost" onClick={onCancelarSolicitud} style={{color:'var(--fg-muted)'}}>
+              ✕ Cancelar solicitud
+            </button>
+          )}
           {mostrarAprobarBtn && (
             <button className="btn btn-secondary" onClick={onAprobarInterna} style={{color:'var(--cyan)', borderColor:'var(--cyan)'}}>
               ✓ Aprobar para envío
@@ -509,7 +524,12 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
           </div>
           {esBorrador && !aprobadaInterna && !puedeAprobarCot && (
             <div style={{marginTop:14, padding:'10px 14px', background:'#fff8e1', borderRadius:8, borderLeft:'3px solid #f59e0b', fontSize:13, color:'#92400e', display:'flex', alignItems:'center', gap:8}}>
-              ⏳ <span>Pendiente de aprobación del jefe comercial para poder enviar al cliente.</span>
+              ⏳ <span>Usa <strong>Solicitar aprobación</strong> para que la jefatura comercial revise esta cotización antes de enviarla al cliente.</span>
+            </div>
+          )}
+          {esPendiente && (
+            <div style={{marginTop:14, padding:'10px 14px', background:'#fff7ed', borderRadius:8, borderLeft:'3px solid var(--orange)', fontSize:13, color:'#9a3412', display:'flex', alignItems:'center', gap:8}}>
+              ⏳ <span><strong>Pendiente de revisión</strong> — la jefatura comercial debe aprobar esta cotización para que puedas enviarla al cliente.{puedeAprobarCot ? ' Usa el botón "Aprobar para envío" de arriba.' : ''}</span>
             </div>
           )}
           {aprobadaInterna && (
@@ -519,7 +539,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
           )}
           {cot.descripcion_general && (
             <div style={{marginTop:16, padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, borderLeft:'3px solid var(--cyan)', fontSize:14, lineHeight:'1.6'}}>
-              {cot.descripcion_general}
+              {renderComercial(cot.descripcion_general)}
             </div>
           )}
         </div>
@@ -539,10 +559,10 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
                   <tr key={p.id || i}>
                     <td className="num text-muted">{p.n || i + 1}</td>
                     <td>
-                      <div style={{fontWeight:600}}>{p.descripcion || 'Sin descripción'}</div>
+                      <div style={{fontWeight:600}}>{renderComercial(p.descripcion) || 'Sin descripción'}</div>
                       {(Array.isArray(p.detalle_items) ? p.detalle_items : []).length > 0 && (
                         <ul style={{margin:'4px 0 0 16px', padding:0, fontSize:12, color:'var(--fg-muted)', lineHeight:'1.5'}}>
-                          {p.detalle_items.map((d, j) => <li key={j}>{d}</li>)}
+                          {p.detalle_items.map((d, j) => <li key={j}>{renderComercial(d)}</li>)}
                         </ul>
                       )}
                     </td>
@@ -552,7 +572,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
                       </span>
                     </td>
                     <td className="num">{p.cantidad}</td>
-                    <td className="text-muted" style={{fontSize:12}}>{p.detalle_cantidad || '—'}</td>
+                    <td className="text-muted" style={{fontSize:12}}>{renderComercial(p.detalle_cantidad) || '—'}</td>
                     <td className="num">{p.incluido ? <span className="badge badge-gray">Incluido</span> : money(p.precio_unitario || 0, sym)}</td>
                     <td className="num" style={{fontWeight:600}}>{p.incluido ? '—' : money(p.total || (p.cantidad * p.precio_unitario), sym)}</td>
                   </tr>
@@ -593,10 +613,10 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
                   {cot.hitos_pago.map((h, i) => (
                     <tr key={h.id || i}>
                       <td className="num text-muted">{i + 1}</td>
-                      <td style={{fontWeight:600}}>{h.concepto}</td>
+                      <td style={{fontWeight:600}}>{renderComercial(h.concepto)}</td>
                       <td className="num">{h.porcentaje}%</td>
                       <td className="num" style={{fontWeight:600}}>{money(h.monto, sym)}</td>
-                      <td className="text-muted" style={{fontSize:13}}>{h.condicion || '—'}</td>
+                      <td className="text-muted" style={{fontSize:13}}>{renderComercial(h.condicion) || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -898,14 +918,26 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
     if (!texto) return;
     setGlosa(prev => insertarTexto(prev, texto));
   };
+  const insertarDescripcion = (texto) => {
+    if (!texto) return;
+    setDescripcion(prev => insertarTexto(prev, texto));
+  };
+  const insertarPartida = (id, field, texto) => {
+    if (!texto) return;
+    setPartidas(prev => prev.map(p => p.id === id ? { ...p, [field]: insertarTexto(p[field], texto) } : p));
+  };
+  const insertarHito = (id, field, texto) => {
+    if (!texto) return;
+    setHitos(prev => prev.map(h => h.id === id ? { ...h, [field]: insertarTexto(h[field], texto) } : h));
+  };
   const insertControls = (onInsert) => (
     <div className="row" style={{gap:8, marginBottom:6, flexWrap:'wrap'}}>
-      <select className="select" defaultValue="" style={{maxWidth:230, height:32, fontSize:12}}
+      <select className="select" defaultValue="" style={{width:'min(100%, 230px)', height:32, fontSize:12}}
         onChange={e => { onInsert(e.target.value); e.currentTarget.value = ''; }}>
         <option value="">Insertar variable...</option>
         {VARIABLES_COMERCIALES.map(v => <option key={v.token} value={v.token}>{v.grupo} - {v.label}</option>)}
       </select>
-      <select className="select" defaultValue="" style={{maxWidth:250, height:32, fontSize:12}}
+      <select className="select" defaultValue="" style={{width:'min(100%, 250px)', height:32, fontSize:12}}
         onChange={e => { onInsert(e.target.value); e.currentTarget.value = ''; }}>
         <option value="">Insertar frase...</option>
         {diccionarioActivo.map(d => <option key={d.id} value={d.texto}>{d.categoria} - {d.clave}</option>)}
@@ -1070,6 +1102,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
           </div>
           <div className="input-group">
             <label>Descripción general del servicio</label>
+            {insertControls(insertarDescripcion)}
             <textarea className="input" rows="3" value={descripcion} onChange={e => setDescripcion(e.target.value)}
               placeholder="Describe el alcance general en un párrafo. Aparece antes de la tabla de partidas en el PDF." />
           </div>
@@ -1098,6 +1131,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                 <span style={{fontWeight:600, fontSize:11, color:'var(--fg-muted)', minWidth:60, paddingBottom:8}}>Partida {idx + 1}</span>
                 <div className="input-group" style={{margin:0, flex:3}}>
                   <label style={{fontSize:11}}>Descripción</label>
+                  {insertControls(texto => insertarPartida(p.id, 'descripcion', texto))}
                   <input className="input" value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} placeholder="Nombre del servicio o bien" />
                 </div>
                 <div className="input-group" style={{margin:0, flex:1, minWidth:140}}>
@@ -1135,6 +1169,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                 </div>
                 <div className="input-group" style={{margin:0, flex:2}}>
                   <label style={{fontSize:11}}>Detalle de cantidad</label>
+                  {insertControls(texto => insertarPartida(p.id, 'detalle_cantidad', texto))}
                   <input className="input" value={p.detalle_cantidad} onChange={e => updatePartida(p.id, 'detalle_cantidad', e.target.value)} placeholder="1 proyecto, 2 meses…" />
                 </div>
                 <div style={{textAlign:'right', minWidth:120, paddingBottom:2}}>
@@ -1147,6 +1182,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
               {/* Fila 3: sub-ítems (opcional, compacto) */}
               <div className="input-group" style={{margin:0}}>
                 <label style={{fontSize:11}}>Sub-ítems / entregables (una línea = viñeta en PDF)</label>
+                {insertControls(texto => insertarPartida(p.id, 'detalle_items_txt', texto))}
                 <textarea className="input" rows="2" value={p.detalle_items_txt}
                   onChange={e => updatePartida(p.id, 'detalle_items_txt', e.target.value)}
                   placeholder="Entregable 1&#10;Entregable 2"
@@ -1197,10 +1233,16 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                     {hitos.map((h, i) => (
                       <tr key={h.id}>
                         <td className="num text-muted">{i + 1}</td>
-                        <td><input className="input" value={h.concepto} onChange={e => updateHito(h.id, 'concepto', e.target.value)} placeholder="Ej: Anticipo" /></td>
+                        <td>
+                          {insertControls(texto => insertarHito(h.id, 'concepto', texto))}
+                          <input className="input" value={h.concepto} onChange={e => updateHito(h.id, 'concepto', e.target.value)} placeholder="Ej: Anticipo" />
+                        </td>
                         <td><input type="number" className="input num" min="0" max="100" value={h.porcentaje} onChange={e => updateHito(h.id, 'porcentaje', e.target.value)} /></td>
                         <td className="num" style={{fontWeight:600}}>{money(Math.round(totalImpl * Number(h.porcentaje || 0) / 100))}</td>
-                        <td><input className="input" value={h.condicion} onChange={e => updateHito(h.id, 'condicion', e.target.value)} placeholder="Al inicio del trabajo" /></td>
+                        <td>
+                          {insertControls(texto => insertarHito(h.id, 'condicion', texto))}
+                          <input className="input" value={h.condicion} onChange={e => updateHito(h.id, 'condicion', e.target.value)} placeholder="Al inicio del trabajo" />
+                        </td>
                         <td><button className="icon-btn text-danger" onClick={() => removeHito(h.id)}>{I.x}</button></td>
                       </tr>
                     ))}

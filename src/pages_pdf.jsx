@@ -159,7 +159,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
           <>
             <View style={S.sep} />
             <Text style={S.secLabel}>DESCRIPCIÓN DEL SERVICIO</Text>
-            <Text style={{ fontSize: 9, lineHeight: 1.6, color: '#333', marginBottom: 12 }}>{cot.descripcion_general}</Text>
+            <Text style={{ fontSize: 9, lineHeight: 1.6, color: '#333', marginBottom: 12 }}>{renderComercial(cot.descripcion_general)}</Text>
           </>
         )}
 
@@ -195,10 +195,10 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
                 <View style={[S.tRow, i % 2 !== 0 ? S.tRowAlt : {}]}>
                   <Text style={[S.tCell, { width: 22, color: '#888' }]}>{p.n || i + 1}</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={S.tCellBold}>{mainDesc}</Text>
+                    <Text style={S.tCellBold}>{renderComercial(mainDesc)}</Text>
                     {subItems.map((sub, si) => (
                       <Text key={si} style={{ fontSize: 7.5, color: '#555', marginTop: 1.5 }}>
-                        {'• '}{typeof sub === 'string' ? sub.trim() : sub.nombre || sub}
+                        {'• '}{renderComercial(typeof sub === 'string' ? sub.trim() : sub.nombre || sub)}
                       </Text>
                     ))}
                   </View>
@@ -276,10 +276,10 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
                 {cot.hitos_pago.map((h, i) => (
                   <View key={i} style={[S.tRow, i % 2 !== 0 ? S.tRowAlt : {}]}>
                     <Text style={[S.tCell, { width: 22, color: '#888' }]}>{i + 1}</Text>
-                    <Text style={[S.tCell, S.tCellBold, { flex: 1 }]}>{h.concepto}</Text>
+                    <Text style={[S.tCell, S.tCellBold, { flex: 1 }]}>{renderComercial(h.concepto)}</Text>
                     <Text style={[S.tCell, { width: 44, textAlign: 'right' }]}>{h.porcentaje}%</Text>
                     <Text style={[S.tCell, S.tCellBold, { width: 80, textAlign: 'right' }]}>{fmt(h.monto, s)}</Text>
-                    <Text style={[S.tCell, { flex: 1, paddingLeft: 8, color: '#555', fontSize: 8 }]}>{h.condicion || '—'}</Text>
+                    <Text style={[S.tCell, { flex: 1, paddingLeft: 8, color: '#555', fontSize: 8 }]}>{renderComercial(h.condicion) || '—'}</Text>
                   </View>
                 ))}
               </View>
