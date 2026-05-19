@@ -297,7 +297,7 @@ export async function persistirOportunidad(supabase, empresaId, opp) {
 }
 
 export async function actualizarOportunidad(supabase, oppId, datos) {
-  const allowed = ['etapa', 'estado', 'probabilidad', 'monto_estimado', 'fecha_cierre_estimada', 'fecha_cierre_real', 'motivo_perdida', 'forecast_ponderado', 'notas', 'competidor'];
+  const allowed = ['etapa', 'estado', 'probabilidad', 'monto_estimado', 'moneda', 'fecha_cierre_estimada', 'fecha_cierre_real', 'motivo_perdida', 'forecast_ponderado', 'notas', 'competidor'];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
   );

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer';
+import { renderTextoComercial } from './lib/textoComercial.js';
 
 const fmt = (n, sym = 'S/') =>
   sym + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0');
@@ -78,7 +79,7 @@ function Footer({ S, cfg }) {
   );
 }
 
-export function CotizacionPDF({ cot, cuenta, contacto, cfg, qrDataUrl }) {
+export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
   const primary   = cfg?.color_primario   || '#1A2B4A';
   const secondary = cfg?.color_secundario || '#607D8B';
   const S   = makeStyles(primary, secondary);
@@ -91,7 +92,9 @@ export function CotizacionPDF({ cot, cuenta, contacto, cfg, qrDataUrl }) {
     ? `Válida únicamente el ${cot.validez_fecha}`
     : cot.validez_dias ? `${cot.validez_dias} días` : cot.validez || '—';
   const hayHitos = cot.hitos_activos && cot.hitos_pago?.length > 0;
-  const glosa = cot.glosa_factura || cfg?.cond_glosa_factura;
+  const textoCtx = { empresa: cfg, cuenta, cliente: cuenta, contacto, cotizacion: cot, oportunidad: opp };
+  const renderComercial = texto => renderTextoComercial(texto, textoCtx);
+  const glosa = renderComercial(cot.glosa_factura || cfg?.cond_glosa_factura);
   const CONDS = [
     ['cond_forma_pago',       'Forma de pago y datos bancarios'],
     ['cond_validez',          'Validez de la oferta'],
@@ -306,7 +309,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, cfg, qrDataUrl }) {
                   {CONDS.slice(0, Math.ceil(CONDS.length / 2)).map(([k, label]) => (
                     <View key={k}>
                       <Text style={S.condKey}>{label.toUpperCase()}</Text>
-                      <Text style={S.condVal}>{cot[k] || cfg?.[k]}</Text>
+                      <Text style={S.condVal}>{renderComercial(cot[k] || cfg?.[k])}</Text>
                     </View>
                   ))}
                 </View>
@@ -314,7 +317,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, cfg, qrDataUrl }) {
                   {CONDS.slice(Math.ceil(CONDS.length / 2)).map(([k, label]) => (
                     <View key={k}>
                       <Text style={S.condKey}>{label.toUpperCase()}</Text>
-                      <Text style={S.condVal}>{cot[k] || cfg?.[k]}</Text>
+                      <Text style={S.condVal}>{renderComercial(cot[k] || cfg?.[k])}</Text>
                     </View>
                   ))}
                 </View>

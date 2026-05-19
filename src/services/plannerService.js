@@ -146,6 +146,25 @@ export async function quitarTecnicoDia(asignacionId, motivo = '') {
   return data;
 }
 
+/**
+ * Actualiza fecha y/o horario de una asignación existente.
+ */
+export async function actualizarAsignacion(asignacionId, { fecha, horaInicio, horaFin }) {
+  const supabase = await getSupabaseClient();
+  const patch = { updated_at: new Date().toISOString() };
+  if (fecha !== undefined) patch.fecha = fecha;
+  if (horaInicio !== undefined) patch.hora_inicio_estimada = horaInicio || null;
+  if (horaFin !== undefined) patch.hora_fin_estimada = horaFin || null;
+  const { data, error } = await supabase
+    .from('planner_asignaciones')
+    .update(patch)
+    .eq('id', asignacionId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // ─── CUADRILLAS ───────────────────────────────────────────────────────────────
 
 /**
@@ -175,12 +194,12 @@ export async function getCuadrillas(empresaId) {
 /**
  * Crea una nueva cuadrilla y sus miembros.
  */
-export async function crearCuadrilla({ nombre, especialidadPrincipal, tecnicoIds, empresaId }) {
+export async function crearCuadrilla({ nombre, descripcion, especialidadPrincipal, liderTecnicoId, tecnicoIds, empresaId }) {
   const supabase = await getSupabaseClient();
 
   const { data: cuadrilla, error: errC } = await supabase
     .from('cuadrillas')
-    .insert({ empresa_id: empresaId, nombre, especialidad_principal: especialidadPrincipal || null })
+    .insert({ empresa_id: empresaId, nombre, descripcion: descripcion || null, especialidad_principal: especialidadPrincipal || null, lider_id: liderTecnicoId || null })
     .select()
     .single();
 
@@ -196,15 +215,17 @@ export async function crearCuadrilla({ nombre, especialidadPrincipal, tecnicoIds
 }
 
 /**
- * Actualiza los miembros de una cuadrilla (reemplaza todos).
+ * Actualiza todos los campos de una cuadrilla y reemplaza sus miembros.
  */
-export async function actualizarMiembrosCuadrilla(cuadrillaId, tecnicoIds) {
+export async function actualizarCuadrilla(cuadrillaId, { nombre, descripcion, especialidadPrincipal, liderTecnicoId, tecnicoIds }) {
   const supabase = await getSupabaseClient();
-  // Eliminar miembros actuales
+  const { error: errU } = await supabase.from('cuadrillas')
+    .update({ nombre, descripcion: descripcion || null, especialidad_principal: especialidadPrincipal || null, lider_id: liderTecnicoId || null, updated_at: new Date().toISOString() })
+    .eq('id', cuadrillaId);
+  if (errU) throw errU;
   await supabase.from('cuadrilla_miembros').delete().eq('cuadrilla_id', cuadrillaId);
   if (tecnicoIds?.length) {
-    const miembros = tecnicoIds.map(tid => ({ cuadrilla_id: cuadrillaId, tecnico_id: tid }));
-    const { error } = await supabase.from('cuadrilla_miembros').insert(miembros);
-    if (error) throw error;
+    const { error: errM } = await supabase.from('cuadrilla_miembros').insert(tecnicoIds.map(tid => ({ cuadrilla_id: cuadrillaId, tecnico_id: tid })));
+    if (errM) throw errM;
   }
 }

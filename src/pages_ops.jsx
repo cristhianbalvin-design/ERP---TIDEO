@@ -1018,13 +1018,23 @@ function OT({ role }) {
   const [errorNuevaOT, setErrorNuevaOT] = useState('');
   const [savingNuevaOT, setSavingNuevaOT] = useState(false);
 
-  const updNuevaOT = (k, v) => setFormNuevaOT(p => ({ ...p, [k]: v }));
+  const tiposConOSObligatoria = ['cliente', 'garantia'];
+  const tiposConOSOpcional = ['correctiva'];
+  const permiteOSCliente = tipo => tiposConOSObligatoria.includes(tipo) || tiposConOSOpcional.includes(tipo);
+  const updNuevaOT = (k, v) => setFormNuevaOT(p => {
+    const next = { ...p, [k]: v };
+    if (k === 'tipo' && !permiteOSCliente(v)) next.os_cliente_id = '';
+    if (k === 'os_cliente_id' && v) next.centro_beneficio_id = '';
+    return next;
+  });
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
   const tiposActivos = (tiposServicio || []).filter(t => t.estado !== 'inactivo');
   const personal = (personalOperativo || []).filter(p => p.estado === 'activo');
 
-  const osSeleccionada = formNuevaOT.tipo === 'cliente' ? osClientes.find(o => o.id === formNuevaOT.os_cliente_id) : null;
+  const debeTenerOSCliente = tiposConOSObligatoria.includes(formNuevaOT.tipo);
+  const puedeTenerOSCliente = permiteOSCliente(formNuevaOT.tipo);
+  const osSeleccionada = puedeTenerOSCliente && formNuevaOT.os_cliente_id ? osClientes.find(o => o.id === formNuevaOT.os_cliente_id) : null;
   const cebeHeredado = osSeleccionada ? (centrosBeneficio || []).find(c => c.id === osSeleccionada.centro_beneficio_id) : null;
 
   const cerrarPanelNuevaOT = () => { setPanelNuevaOT(false); setFormNuevaOT(formNuevaOTBase); setErrorNuevaOT(''); };
@@ -1032,8 +1042,10 @@ function OT({ role }) {
   const submitNuevaOT = async () => {
     if (savingNuevaOT) return;
     if (!formNuevaOT.centro_costo_id) { setErrorNuevaOT('Selecciona un CECO antes de continuar.'); return; }
-    if (formNuevaOT.tipo === 'cliente') {
-      if (!formNuevaOT.os_cliente_id) { setErrorNuevaOT('Selecciona la OS Cliente vinculada.'); return; }
+    if (debeTenerOSCliente && !formNuevaOT.os_cliente_id) {
+      setErrorNuevaOT('Selecciona la OS Cliente vinculada.'); return;
+    }
+    if (formNuevaOT.os_cliente_id) {
       if (!osSeleccionada?.centro_beneficio_id) { setErrorNuevaOT('La OS Cliente seleccionada no tiene CEBE asignado. Asígnalo desde la ficha de la OS.'); return; }
     }
     setSavingNuevaOT(true);
@@ -1042,7 +1054,7 @@ function OT({ role }) {
       const datos = {
         tipo: formNuevaOT.tipo,
         centro_costo_id: formNuevaOT.centro_costo_id,
-        servicio: formNuevaOT.servicio,
+        servicio: formNuevaOT.servicio || (formNuevaOT.tipo === 'garantia' ? 'Garantia' : formNuevaOT.tipo === 'correctiva' ? 'Correctiva' : 'Servicio cliente'),
         descripcion: formNuevaOT.descripcion,
         tecnico_responsable_id: formNuevaOT.tecnico_responsable_id,
         prioridad: formNuevaOT.prioridad,
@@ -1050,7 +1062,7 @@ function OT({ role }) {
         fecha_fin: formNuevaOT.fecha_fin,
         estado: 'programada',
       };
-      if (formNuevaOT.tipo === 'cliente') {
+      if (formNuevaOT.os_cliente_id) {
         await crearOTDesdeOS(formNuevaOT.os_cliente_id, { ...datos, costo_estimado: 0 });
       } else {
         crearOT({ ...datos, centro_beneficio_id: formNuevaOT.centro_beneficio_id });
@@ -1843,13 +1855,13 @@ function OT({ role }) {
                 </div>
               </div>
 
-              {formNuevaOT.tipo === 'cliente' && (
+              {puedeTenerOSCliente && (
                 <>
                   <div className="eyebrow" style={{marginBottom:12}}>OS Cliente vinculada</div>
                   <div className="input-group" style={{marginBottom:20}}>
-                    <label>OS Cliente <span style={{color:'var(--danger)'}}>*</span></label>
+                    <label>OS Cliente {debeTenerOSCliente && <span style={{color:'var(--danger)'}}>*</span>}</label>
                     <select className="select" value={formNuevaOT.os_cliente_id} onChange={e => updNuevaOT('os_cliente_id', e.target.value)}>
-                      <option value="">Seleccionar OS Cliente...</option>
+                      <option value="">{debeTenerOSCliente ? 'Seleccionar OS Cliente...' : 'Sin OS Cliente vinculada'}</option>
                       {osClientes.filter(o => !['cerrada','anulada'].includes(o.estado)).map(o => (
                         <option key={o.id} value={o.id}>{o.numero} — {cuentas.find(c => c.id === o.cuenta_id)?.razon_social || o.cuenta_id}</option>
                       ))}
@@ -1869,7 +1881,7 @@ function OT({ role }) {
                 </div>
                 <div className="input-group">
                   <label>CEBE</label>
-                  {formNuevaOT.tipo === 'cliente' ? (
+                  {formNuevaOT.os_cliente_id ? (
                     <input className="input" readOnly style={{opacity:0.75}}
                       value={cebeHeredado ? `${cebeHeredado.codigo ? cebeHeredado.codigo + ' - ' : ''}${cebeHeredado.nombre}` : ''}
                       placeholder={formNuevaOT.os_cliente_id ? 'Sin CEBE en la OS — asígnalo primero' : 'Se hereda de la OS Cliente'}
@@ -3232,7 +3244,7 @@ function Remision() {
 }
 
 function SOLPE() {
-  const { solpes, ots, searchQuery, setQuickCreate } = useApp();
+  const { solpes, ots, searchQuery } = useApp();
   const getOTNumero = (id) => ots.find(o => o.id === id)?.numero || id;
 
   const query = searchQuery.toLowerCase();
@@ -3250,7 +3262,6 @@ function SOLPE() {
           <h1 className="page-title">SOLPE (Pedidos Internos)</h1>
           <div className="page-sub">Requerimientos de almacén generados por el equipo técnico</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setQuickCreate('solpe')}>{I.plus} Nueva SOLPE</button>
       </div>
       <div className="card mt-6">
         <div className="table-wrap">
@@ -3303,12 +3314,15 @@ function SOLPE() {
 
 
 // ─── Planner v2 helpers ───────────────────────────────────────────────────────
-const OT_PALETTE = ['#0ea5e9','#f97316','#8b5cf6','#10b981','#ef4444','#f59e0b','#06b6d4','#ec4899'];
-function otColor(otId) {
-  let h = 0;
-  for (let i = 0; i < otId.length; i++) h = (h * 31 + otId.charCodeAt(i)) >>> 0;
-  return OT_PALETTE[h % OT_PALETTE.length];
+function otPriorityColor(prioridad) {
+  const p = (prioridad || 'normal').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  if (p === 'critica') return '#ef4444';
+  if (p === 'urgente') return '#f97316';
+  return '#0ea5e9';
 }
+const PRIORIDAD_LABEL = { critica:'Crítica', urgente:'Urgente', normal:'Normal' };
+const PRIORIDAD_ORDER = { critica:0, urgente:1, normal:2 };
+function prioKey(p) { return (p||'normal').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
 
 function getSemana(offsetSemanas) {
   const hoy = new Date();
@@ -3323,7 +3337,7 @@ function getSemana(offsetSemanas) {
   });
 }
 
-function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, ots }) {
+function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, ots, plannerAsignaciones, turnos }) {
   const ot = ots.find(o => o.id === otId);
   const hoy = new Date().toISOString().split('T')[0];
   const [fi, setFi] = useState(hoy);
@@ -3332,11 +3346,56 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
   const [hf, setHf] = useState('');
   const [selTecs, setSelTecs] = useState([]);
   const [cuadrilla, setCuadrilla] = useState('');
-  const [conflictos, setConflictos] = useState({});
-  const [paso, setPaso] = useState('form'); 
+  const [paso, setPaso] = useState('form'); // 'form' | 'resumen'
   const [saving, setSaving] = useState(false);
+  const [turnoAviso, setTurnoAviso] = useState(false);
 
-  const toggleTec = id => setSelTecs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  // Obtener horas de turno de un técnico
+  const getTurnoHoras = (t) => {
+    if (!t) return { hi: '', hf: '' };
+    const turno = (turnos || []).find(x => x.id === t.turno_id);
+    if (turno?.hora_entrada) return { hi: turno.hora_entrada.slice(0,5), hf: turno.hora_salida?.slice(0,5) || '' };
+    if (t.hora_entrada) return { hi: t.hora_entrada.slice(0,5), hf: t.hora_salida?.slice(0,5) || '' };
+    return { hi: '', hf: '' };
+  };
+
+  // Conflictos en tiempo real: técnico seleccionado con asignaciones en el rango
+  const conflictosTecs = useMemo(() => {
+    if (!fi || !ff) return {};
+    const result = {};
+    selTecs.forEach(tid => {
+      const solapadas = (plannerAsignaciones || []).filter(a =>
+        a.tecnico_id === tid &&
+        a.estado !== 'cancelado' &&
+        a.ot_id !== otId &&
+        a.fecha >= fi && a.fecha <= ff
+      );
+      if (solapadas.length) result[tid] = solapadas;
+    });
+    return result;
+  }, [selTecs, fi, ff, plannerAsignaciones, otId]);
+
+  const toggleTec = (id) => {
+    setSelTecs(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      // Auto-fill horas desde el turno del primer técnico seleccionado
+      if (!prev.includes(id) && prev.length === 0) {
+        const tec = tecnicos.find(t => t.id === id);
+        const { hi: h1, hf: h2 } = getTurnoHoras(tec);
+        if (h1) { setHi(h1); setHf(h2); }
+      }
+      // Advertencia si los técnicos tienen turnos distintos
+      if (!prev.includes(id) && prev.length > 0) {
+        const primerTec = tecnicos.find(t => t.id === prev[0]);
+        const nuevoTec = tecnicos.find(t => t.id === id);
+        const t1 = primerTec?.turno_id;
+        const t2 = nuevoTec?.turno_id;
+        if (t1 && t2 && t1 !== t2) setTurnoAviso(true);
+      }
+      if (next.length === 0) setTurnoAviso(false);
+      return next;
+    });
+  };
 
   const aplicarCuadrilla = (cid) => {
     setCuadrilla(cid);
@@ -3344,51 +3403,71 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
     if (c) {
       const ids = (c.cuadrilla_miembros || []).map(m => m.tecnico_id).filter(Boolean);
       setSelTecs(ids);
+      if (ids.length > 0) {
+        const tec = tecnicos.find(t => t.id === ids[0]);
+        const { hi: h1, hf: h2 } = getTurnoHoras(tec);
+        if (h1) { setHi(h1); setHf(h2); }
+      }
     }
   };
 
   const handleConfirm = async () => {
-    if (!selTecs.length) return;
+    if (!selTecs.length || saving) return;
     setSaving(true);
     try {
-      const result = await onConfirm({ 
-        otId, 
-        tecnicoIds: selTecs, 
-        fechaInicio: fi, 
-        fechaFin: ff, 
+      await onConfirm({
+        otId,
+        tecnicoIds: selTecs,
+        fechaInicio: fi,
+        fechaFin: ff,
         horaInicio: hi || null,
         horaFin: hf || null,
-        cuadrillaOrigenId: cuadrilla || null, 
-        forzar: paso === 'conflictos' 
+        cuadrillaOrigenId: cuadrilla || null,
+        forzar: true,
       });
-      if (result?.conflictos && Object.keys(result.conflictos).length > 0 && paso === 'form') {
-        setConflictos(result.conflictos);
-        setPaso('conflictos');
-        setSaving(false);
-        return;
-      }
       onClose();
     } catch (e) { setSaving(false); }
   };
 
+  const nConflictos = Object.keys(conflictosTecs).length;
+  const diasRango = fi && ff ? Math.max(1, Math.round((new Date(ff) - new Date(fi)) / 86400000) + 1) : 1;
+
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={onClose}>
-      <div className="card" style={{width:'min(540px,96vw)',maxHeight:'90vh',overflow:'auto',padding:0}} onClick={e=>e.stopPropagation()}>
+      <div className="card" style={{width:'min(560px,96vw)',maxHeight:'92vh',overflow:'auto',padding:0}} onClick={e=>e.stopPropagation()}>
         <div className="card-head" style={{padding:'16px 20px'}}>
-          <h3 style={{margin:0}}>{paso==='conflictos'?'⚠️ Conflictos detectados':'Asignar OT — Rango de fechas'}</h3>
+          <div>
+            <h3 style={{margin:0}}>{paso==='resumen'?'Confirmar asignación':'Asignar OT — Rango de fechas'}</h3>
+            <div style={{fontSize:12,color:'var(--cyan)',marginTop:2,fontWeight:600}}>{ot?.numero} — {ot?.servicio||ot?.descripcion}</div>
+          </div>
           <button className="icon-btn" onClick={onClose} style={{fontSize:18}}>×</button>
         </div>
+
         <div style={{padding:'16px 20px',display:'flex',flexDirection:'column',gap:14}}>
+
           {paso === 'form' ? (<>
-            <div style={{fontSize:13, color:'var(--cyan)', fontWeight:700, marginBottom:4}}>{ot?.numero} — {ot?.servicio || ot?.descripcion}</div>
+            {/* Fechas */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
               <div className="input-group"><label>Fecha inicio</label><input className="input" type="date" value={fi} min={hoy} onChange={e=>setFi(e.target.value)}/></div>
               <div className="input-group"><label>Fecha fin</label><input className="input" type="date" value={ff} min={fi} onChange={e=>setFf(e.target.value)}/></div>
             </div>
+            {/* Horas */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-              <div className="input-group"><label>Hora inicio</label><input className="input" type="time" value={hi} onChange={e=>setHi(e.target.value)}/></div>
-              <div className="input-group"><label>Hora fin</label><input className="input" type="time" value={hf} onChange={e=>setHf(e.target.value)}/></div>
+              <div className="input-group">
+                <label>Hora inicio <span style={{fontWeight:400,color:'var(--fg-muted)',fontSize:10}}>(del turno)</span></label>
+                <input className="input" type="time" value={hi} onChange={e=>setHi(e.target.value)}/>
+              </div>
+              <div className="input-group">
+                <label>Hora fin</label>
+                <input className="input" type="time" value={hf} onChange={e=>setHf(e.target.value)}/>
+              </div>
             </div>
+            {turnoAviso && (
+              <div style={{background:'rgba(245,158,11,0.08)',border:'1px solid var(--orange)',borderRadius:8,padding:'8px 12px',fontSize:12,color:'var(--orange-dk)'}}>
+                ⚠ Los técnicos seleccionados tienen turnos diferentes. Verifica las horas.
+              </div>
+            )}
+            {/* Cuadrilla */}
             {cuadrillas.length > 0 && (
               <div className="input-group">
                 <label>Cuadrilla (atajo)</label>
@@ -3398,39 +3477,79 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
                 </select>
               </div>
             )}
+            {/* Lista de técnicos */}
             <div>
               <div className="label" style={{marginBottom:8}}>Técnicos ({selTecs.length} seleccionados)</div>
-              <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:220,overflowY:'auto'}}>
-                {tecnicos.map(t=>(
-                  <label key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,border:`1px solid ${selTecs.includes(t.id)?'var(--cyan)':'var(--border)'}`,cursor:'pointer',background:selTecs.includes(t.id)?'rgba(0,188,212,0.06)':'var(--surface)'}}>
-                    <input type="checkbox" className="checkbox" checked={selTecs.includes(t.id)} onChange={()=>toggleTec(t.id)}/>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:13}}>{t.nombre}</div>
-                      <div style={{fontSize:11,color:'var(--fg-muted)'}}>{t.cargo} {t.costo_hora?`· S/${t.costo_hora}/h`:''}</div>
-                    </div>
-                  </label>
-                ))}
+              <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:240,overflowY:'auto'}}>
+                {tecnicos.map(t => {
+                  const sel = selTecs.includes(t.id);
+                  const conflicto = conflictosTecs[t.id];
+                  const turno = (turnos||[]).find(x=>x.id===t.turno_id);
+                  return (
+                    <label key={t.id} style={{display:'flex',alignItems:'flex-start',gap:10,padding:'8px 10px',borderRadius:8,border:`1px solid ${conflicto&&sel?'var(--danger)':sel?'var(--cyan)':'var(--border)'}`,cursor:'pointer',background:conflicto&&sel?'rgba(239,68,68,0.04)':sel?'rgba(0,188,212,0.06)':'var(--surface)'}}>
+                      <input type="checkbox" className="checkbox" style={{marginTop:2}} checked={sel} onChange={()=>toggleTec(t.id)}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                          <span style={{fontWeight:600,fontSize:13}}>{t.nombre}</span>
+                          {conflicto && sel && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'var(--danger)',color:'#fff'}}>Conflicto</span>}
+                        </div>
+                        <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:1}}>
+                          {t.cargo}{t.costo_hora?` · S/${t.costo_hora}/h`:''}{turno?` · Turno: ${turno.nombre}`:''}
+                        </div>
+                        {conflicto && sel && (
+                          <div style={{fontSize:11,color:'var(--danger)',marginTop:3}}>
+                            {conflicto.map(a=>{
+                              const otConf = ots.find(o=>o.id===a.ot_id);
+                              return <div key={a.id}>Asignado a {otConf?.numero||a.ot_id} · {a.fecha}</div>;
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           </>) : (<>
-            <div style={{background:'rgba(245,158,11,0.08)',border:'1px solid var(--orange)',borderRadius:8,padding:12,fontSize:13,color:'var(--orange-dk)'}}>
-              Algunos técnicos ya tienen asignaciones en estos días. El sistema registrará el solapamiento. ¿Confirmar de todas formas?
+            {/* PASO RESUMEN */}
+            <div style={{background:'var(--bg-subtle)',borderRadius:10,padding:'12px 14px',display:'flex',flexDirection:'column',gap:6}}>
+              <div style={{fontSize:11,fontWeight:700,color:'var(--fg-muted)',textTransform:'uppercase',letterSpacing:0.5,marginBottom:4}}>Resumen de asignación</div>
+              <div style={{fontSize:13}}><strong>OT:</strong> {ot?.numero} — {ot?.servicio||ot?.descripcion}</div>
+              <div style={{fontSize:13}}><strong>Rango:</strong> {fi} al {ff} <span style={{color:'var(--fg-muted)'}}>({diasRango} día{diasRango!==1?'s':''})</span></div>
+              {(hi||hf) && <div style={{fontSize:13}}><strong>Horario:</strong> {hi||'--:--'} – {hf||'--:--'}</div>}
+              <div style={{fontSize:13,marginTop:4}}><strong>Técnicos ({selTecs.length}):</strong></div>
+              <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:2}}>
+                {selTecs.map(tid=>{
+                  const tec=tecnicos.find(x=>x.id===tid);
+                  const conf=conflictosTecs[tid];
+                  return (
+                    <div key={tid} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,padding:'5px 8px',borderRadius:6,background:conf?'rgba(239,68,68,0.06)':'rgba(0,188,212,0.04)',border:`1px solid ${conf?'rgba(239,68,68,0.2)':'rgba(0,188,212,0.15)'}`}}>
+                      <span style={{color:conf?'var(--danger)':'var(--green)'}}>●</span>
+                      <span style={{fontWeight:600}}>{tec?.nombre||tid}</span>
+                      {conf && <span style={{fontSize:10,padding:'1px 5px',borderRadius:3,background:'var(--danger)',color:'#fff'}}>Conflicto</span>}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:200,overflowY:'auto'}}>
-              {Object.entries(conflictos).map(([key,items])=>{
-                const [tid,fecha]=key.split('__');
-                const tec=tecnicos.find(x=>x.id===tid);
-                return <div key={key} style={{fontSize:12,padding:'6px 10px',background:'var(--orange-lt)',borderRadius:6}}>
-                  <strong>{tec?.nombre||tid}</strong> · {fecha} → ya tiene: {items.map(i=>i.ot_numero).join(', ')}
-                </div>;
-              })}
-            </div>
+            {nConflictos > 0 && (
+              <div style={{background:'rgba(239,68,68,0.07)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:8,padding:'10px 12px',fontSize:12,color:'var(--danger)'}}>
+                ⚠ {nConflictos} técnico{nConflictos!==1?'s tienen':' tiene'} conflictos de horario. ¿Confirmas la asignación?
+              </div>
+            )}
           </>)}
+
           <div className="row" style={{justifyContent:'flex-end',gap:8,marginTop:4}}>
-            <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-            <button className="btn btn-primary" disabled={!selTecs.length||saving} data-local-form="true" onClick={handleConfirm}>
-              {saving?'Asignando...':(paso==='conflictos'?'Confirmar con solapamiento':'Asignar')}
-            </button>
+            {paso==='resumen'
+              ? <><button className="btn btn-secondary" onClick={()=>setPaso('form')}>← Volver</button>
+                  <button className="btn btn-primary" data-local-form="true" disabled={saving} onClick={handleConfirm}>
+                    {saving?'Asignando...':'Confirmar asignación'}
+                  </button></>
+              : <><button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+                  <button className="btn btn-primary" data-local-form="true" disabled={!selTecs.length} onClick={()=>setPaso('resumen')}>
+                    Ver resumen →
+                  </button></>
+            }
           </div>
         </div>
       </div>
@@ -3438,10 +3557,13 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
   );
 }
 
-function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientesSet, onQuitar, onAgregarTecnico, onClose, ots, navigate }) {
+function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientesSet, onQuitar, onActualizar, onAgregarTecnico, onClose, ots, navigate }) {
   const ot = ots.find(o => o.id === otId);
   const [motivo, setMotivo] = useState('');
   const [quitando, setQuitando] = useState(null);
+  const [editando, setEditando] = useState(null); // asignacion id siendo editado
+  const [editForm, setEditForm] = useState({ fecha: '', inicio: '', fin: '' });
+  const [guardando, setGuardando] = useState(false);
   const [showAgregar, setShowAgregar] = useState(false);
   const [tecAdd, setTecAdd] = useState('');
   const [horas, setHoras] = useState({ inicio: '', fin: '' });
@@ -3449,9 +3571,31 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
   const asigDia = asignaciones.filter(a => a.ot_id === otId && a.fecha === fecha && a.estado !== 'cancelado');
   const tecIdsAsig = new Set(asigDia.map(a => a.tecnico_id));
 
+  const abrirEdicion = (a) => {
+    setEditando(a.id);
+    setQuitando(null);
+    setEditForm({
+      fecha: a.fecha,
+      inicio: a.hora_inicio_estimada ? a.hora_inicio_estimada.slice(0, 5) : '',
+      fin: a.hora_fin_estimada ? a.hora_fin_estimada.slice(0, 5) : '',
+    });
+  };
+
+  const guardarEdicion = async (a) => {
+    setGuardando(true);
+    try {
+      await onActualizar(a.id, {
+        fecha: editForm.fecha || a.fecha,
+        horaInicio: editForm.inicio || null,
+        horaFin: editForm.fin || null,
+      });
+      setEditando(null);
+    } finally { setGuardando(false); }
+  };
+
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={onClose}>
-      <div className="card" style={{width:'min(460px,96vw)',padding:0}} onClick={e=>e.stopPropagation()}>
+      <div className="card" style={{width:'min(480px,96vw)',padding:0}} onClick={e=>e.stopPropagation()}>
         <div className="card-head" style={{padding:'14px 18px', borderBottom:'1px solid var(--border)'}}>
           <div style={{flex:1}}>
             <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:2}}>
@@ -3464,56 +3608,92 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
           </div>
           <button className="icon-btn" onClick={onClose} style={{fontSize:20}}>×</button>
         </div>
-        <div style={{padding:'12px 18px',display:'flex',flexDirection:'column',gap:10,maxHeight:400,overflowY:'auto'}}>
-          {asigDia.length === 0 && <div className="text-muted" style={{fontSize:13,textAlign:'center',padding:20}}>Sin técnicos asignados este día.</div>}
+
+        <div style={{padding:'12px 18px',display:'flex',flexDirection:'column',gap:10,maxHeight:440,overflowY:'auto'}}>
+          {asigDia.length === 0 && <div className="text-muted" style={{fontSize:13,textAlign:'center',padding:20}}>Sin colaboradores asignados este día.</div>}
           {asigDia.map(a => {
-            const tec = tecnicos.find(t => t.id === a.tecnico_id) || a.tecnico || {};
+            const tec = tecnicos.find(t => t.id === a.tecnico_id) || {};
             const hasParte = !partesPendientesSet.has(`${a.tecnico_id}__${fecha}`);
-            // Debug de horas
-            if (!a.hora_inicio_estimada) console.log('Asignación sin hora:', a);
-            
+            const esEdicion = editando === a.id;
+            const esQuitando = quitando === a.id;
+
             return (
-              <div key={a.id} style={{display:'flex',flexDirection:'column',gap:6,padding:'10px 12px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)'}}>
-                <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <div key={a.id} style={{display:'flex',flexDirection:'column',gap:0,borderRadius:10,border:`1px solid ${esEdicion?'var(--cyan)':'var(--border)'}`,background:'var(--surface)',overflow:'hidden',transition:'border-color 0.15s'}}>
+                {/* Fila principal */}
+                <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px'}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,fontSize:13}}>{tec.nombre||a.tecnico_id}</div>
                     <div style={{fontSize:11,color:'var(--fg-muted)'}}>{tec.cargo||'—'}</div>
                   </div>
-                  {quitando === a.id ? (
-                    <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                      <input className="input" style={{width:100,fontSize:11,height:28}} placeholder="Motivo..." value={motivo} onChange={e=>setMotivo(e.target.value)}/>
-                      <button className="btn btn-danger btn-sm" style={{height:28,fontSize:11}} onClick={async()=>{await onQuitar(a.id,motivo);setQuitando(null);}}>OK</button>
-                      <button className="btn btn-ghost btn-sm" style={{height:28}} onClick={()=>setQuitando(null)}>✕</button>
-                    </div>
-                  ) : (
-                    <button className="btn btn-ghost btn-sm" title="Quitar de este día" onClick={()=>setQuitando(a.id)}>✕</button>
-                  )}
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:4,paddingTop:6,borderTop:'1px solid rgba(255,255,255,0.05)'}}>
-                  <div style={{fontSize:11, color:'var(--cyan)', fontWeight:500}}>
-                    Horario: {a.hora_inicio_estimada ? a.hora_inicio_estimada.slice(0,5) : 'No definido'} - {a.hora_fin_estimada ? a.hora_fin_estimada.slice(0,5) : 'No definido'}
+                  <div style={{display:'flex',gap:4,alignItems:'center',flexShrink:0}}>
+                    {!esQuitando && !esEdicion && (
+                      <button className="icon-btn" style={{fontSize:13,color:'var(--fg-muted)'}} title="Editar fecha/horario" onClick={()=>abrirEdicion(a)}>{I.edit}</button>
+                    )}
+                    {!esEdicion && (
+                      esQuitando ? (
+                        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                          <input className="input" style={{width:100,fontSize:11,height:28}} placeholder="Motivo..." value={motivo} onChange={e=>setMotivo(e.target.value)} autoFocus/>
+                          <button className="btn btn-danger btn-sm" style={{height:28,fontSize:11}} onClick={async()=>{await onQuitar(a.id,motivo);setQuitando(null);setMotivo('');}}>OK</button>
+                          <button className="btn btn-ghost btn-sm" style={{height:28}} onClick={()=>setQuitando(null)}>✕</button>
+                        </div>
+                      ) : (
+                        <button className="icon-btn" style={{fontSize:13,color:'var(--fg-muted)'}} title="Quitar de este día" onClick={()=>{setQuitando(a.id);setEditando(null);}}>✕</button>
+                      )
+                    )}
                   </div>
-                  {new Date(fecha) < new Date(new Date().toDateString()) && (
-                    <span className={`badge ${hasParte?'badge-green':'badge-orange'}`} style={{fontSize:9}}>
-                      {hasParte?'✓ Parte ok':'⚠ Sin parte'}
-                    </span>
-                  )}
                 </div>
+
+                {/* Horario display / edit */}
+                {esEdicion ? (
+                  <div style={{padding:'10px 12px',borderTop:'1px solid var(--border)',background:'rgba(14,165,233,0.03)'}}>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>
+                      <div className="input-group">
+                        <label style={{fontSize:10}}>Fecha</label>
+                        <input className="input" style={{fontSize:12}} type="date" value={editForm.fecha} onChange={e=>setEditForm(f=>({...f,fecha:e.target.value}))}/>
+                      </div>
+                      <div className="input-group">
+                        <label style={{fontSize:10}}>Hora inicio</label>
+                        <input className="input" style={{fontSize:12}} type="time" value={editForm.inicio} onChange={e=>setEditForm(f=>({...f,inicio:e.target.value}))}/>
+                      </div>
+                      <div className="input-group">
+                        <label style={{fontSize:10}}>Hora fin</label>
+                        <input className="input" style={{fontSize:12}} type="time" value={editForm.fin} onChange={e=>setEditForm(f=>({...f,fin:e.target.value}))}/>
+                      </div>
+                    </div>
+                    <div style={{display:'flex',gap:8}}>
+                      <button className="btn btn-primary btn-sm" style={{flex:1}} disabled={guardando} onClick={()=>guardarEdicion(a)}>{guardando?'Guardando...':'Guardar'}</button>
+                      <button className="btn btn-secondary btn-sm" onClick={()=>setEditando(null)}>Cancelar</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 12px 8px',borderTop:'1px solid rgba(255,255,255,0.04)'}}>
+                    <div style={{fontSize:11, color:'var(--cyan)', fontWeight:500}}>
+                      {a.fecha !== fecha && <span style={{marginRight:6,color:'var(--orange)'}}>📅 {a.fecha}</span>}
+                      {a.hora_inicio_estimada ? a.hora_inicio_estimada.slice(0,5) : '—'} – {a.hora_fin_estimada ? a.hora_fin_estimada.slice(0,5) : '—'}
+                    </div>
+                    {new Date(fecha) < new Date(new Date().toDateString()) && (
+                      <span className={`badge ${hasParte?'badge-green':'badge-orange'}`} style={{fontSize:9}}>
+                        {hasParte?'✓ Parte ok':'⚠ Sin parte'}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
+
           {showAgregar && (
             <div className="card" style={{padding:12, background:'rgba(0,188,212,0.03)', border:'1px dashed var(--cyan)'}}>
               <div className="input-group" style={{marginBottom:10}}>
-                <label style={{fontSize:11}}>Seleccionar técnico</label>
+                <label style={{fontSize:11}}>Seleccionar colaborador</label>
                 <select className="select" value={tecAdd} onChange={e=>setTecAdd(e.target.value)}>
                   <option value="">Seleccionar...</option>
-                  {tecnicos.filter(t=>!tecIdsAsig.has(t.id)).map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}
+                  {tecnicos.filter(t=>!tecIdsAsig.has(t.id)).map(t=><option key={t.id} value={t.id}>{t.nombre} — {t.cargo||'—'}</option>)}
                 </select>
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
-                <div className="input-group"><label style={{fontSize:11}}>Hora inicio</label><input className="input" type="time" value={horas.inicio} onChange={e=>setHoras(h=>({...h, inicio:e.target.value}))}/></div>
-                <div className="input-group"><label style={{fontSize:11}}>Hora fin</label><input className="input" type="time" value={horas.fin} onChange={e=>setHoras(h=>({...h, fin:e.target.value}))}/></div>
+                <div className="input-group"><label style={{fontSize:11}}>Hora inicio</label><input className="input" type="time" value={horas.inicio} onChange={e=>setHoras(h=>({...h,inicio:e.target.value}))}/></div>
+                <div className="input-group"><label style={{fontSize:11}}>Hora fin</label><input className="input" type="time" value={horas.fin} onChange={e=>setHoras(h=>({...h,fin:e.target.value}))}/></div>
               </div>
               <div style={{display:'flex',gap:8}}>
                 <button className="btn btn-primary btn-sm" style={{flex:1}} disabled={!tecAdd} onClick={async()=>{await onAgregarTecnico({otId,tecnicoId:tecAdd,fecha,horaInicio:horas.inicio,horaFin:horas.fin});setTecAdd('');setShowAgregar(false);}}>Agregar</button>
@@ -3522,9 +3702,10 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
             </div>
           )}
         </div>
+
         {!showAgregar && (
           <div style={{padding:'10px 18px',borderTop:'1px solid var(--border)'}}>
-            <button className="btn btn-secondary btn-sm" onClick={()=>setShowAgregar(true)}>+ Agregar técnico este día</button>
+            <button className="btn btn-secondary btn-sm" onClick={()=>setShowAgregar(true)}>+ Agregar colaborador este día</button>
           </div>
         )}
       </div>
@@ -3532,24 +3713,31 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
   );
 }
 
-function TabCuadrillas({ cuadrillas, tecnicos, crearCuadrillaCtx, actualizarCuadrillaCtx, eliminarCuadrillaCtx }) {
+function TabCuadrillas({ cuadrillas, tecnicos, especialidades, crearCuadrillaCtx, actualizarCuadrillaCtx, eliminarCuadrillaCtx }) {
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState(null);
   const [nombre, setNombre] = useState('');
+  const [descripcion, setDescripcion] = useState('');
   const [esp, setEsp] = useState('');
   const [selTecs, setSelTecs] = useState([]);
+  const [liderId, setLiderId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(null);
 
-  const toggle = id => setSelTecs(p => p.includes(id)?p.filter(x=>x!==id):[...p,id]);
+  const toggle = id => setSelTecs(p => {
+    const next = p.includes(id) ? p.filter(x => x !== id) : [...p, id];
+    if (!next.includes(liderId)) setLiderId('');
+    return next;
+  });
 
   const handleSave = async () => {
-    if (!nombre||!selTecs.length) return;
+    if (!nombre || !selTecs.length) return;
     setSaving(true);
-    try { 
+    try {
       if (editId) {
-        await actualizarCuadrillaCtx(editId, { nombre, especialidad: esp, tecnicoIds: selTecs });
+        await actualizarCuadrillaCtx(editId, { nombre, descripcion, especialidad: esp, liderTecnicoId: liderId || null, tecnicoIds: selTecs });
       } else {
-        await crearCuadrillaCtx({ nombre, especialidad: esp, tecnicoIds: selTecs }); 
+        await crearCuadrillaCtx({ nombre, descripcion, especialidad: esp, liderTecnicoId: liderId || null, tecnicoIds: selTecs });
       }
       handleClose();
     } finally { setSaving(false); }
@@ -3558,72 +3746,150 @@ function TabCuadrillas({ cuadrillas, tecnicos, crearCuadrillaCtx, actualizarCuad
   const handleEdit = (c) => {
     setEditId(c.id);
     setNombre(c.nombre);
+    setDescripcion(c.descripcion || '');
     setEsp(c.especialidad_principal || '');
-    setSelTecs((c.cuadrilla_miembros || []).map(m => m.tecnico_id));
+    const ids = (c.cuadrilla_miembros || []).map(m => m.tecnico_id);
+    setSelTecs(ids);
+    setLiderId(c.lider_id || '');
     setShow(true);
   };
 
   const handleClose = () => {
-    setShow(false);
-    setEditId(null);
-    setNombre('');
-    setEsp('');
-    setSelTecs([]);
+    setShow(false); setEditId(null); setNombre(''); setDescripcion('');
+    setEsp(''); setSelTecs([]); setLiderId('');
   };
 
+  const liderTecs = selTecs.map(id => tecnicos.find(t => t.id === id)).filter(Boolean);
+
   return (
-    <div style={{display:'grid',gap:16}}>
-      <div style={{display:'flex',justifyContent:'flex-end'}}>
-        <button className="btn btn-primary" data-local-form="true" onClick={()=>setShow(true)}>+ Nueva cuadrilla</button>
+    <div style={{display:'grid', gap:16}}>
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <div style={{fontSize:13, color:'var(--fg-muted)'}}>{cuadrillas.length} cuadrilla{cuadrillas.length !== 1 ? 's' : ''}</div>
+        <button className="btn btn-primary" data-local-form="true" onClick={() => setShow(true)}>+ Nueva cuadrilla</button>
       </div>
-      {cuadrillas.length===0 && <div className="card" style={{padding:32,textAlign:'center',color:'var(--fg-muted)'}}>No hay cuadrillas. Crea una para agilizar asignaciones.</div>}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:12}}>
-        {cuadrillas.map(c=>(
-          <div key={c.id} className="card" style={{padding:16}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
-              <div>
-                <div style={{fontWeight:700,fontSize:14,marginBottom:2}}>{c.nombre}</div>
-                {c.especialidad_principal&&<div style={{fontSize:11,color:'var(--cyan)'}}>{c.especialidad_principal}</div>}
-              </div>
-              <div style={{display:'flex',gap:4}}>
-                <button className="icon-btn" style={{fontSize:14,color:'var(--fg-muted)'}} onClick={()=>handleEdit(c)}>{I.edit}</button>
-                <button className="icon-btn" style={{fontSize:14,color:'var(--fg-muted)'}} onClick={()=>window.confirm('¿Eliminar cuadrilla?') && eliminarCuadrillaCtx(c.id)}>✕</button>
-              </div>
-            </div>
-            <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:10}}>
-              {(c.cuadrilla_miembros||[]).map(m=>{
-                const t=tecnicos.find(x => x.id === m.tecnico_id) || {};
-                return <div key={m.id||m.tecnico_id} style={{fontSize:12,display:'flex',gap:6,alignItems:'center'}}>
-                  <div style={{width:6,height:6,borderRadius:'50%',background:'var(--cyan)',flexShrink:0}}/>
-                  {t.nombre||m.tecnico_id} <span style={{color:'var(--fg-muted)'}}>{t.cargo||''}</span>
-                </div>;
-              })}
-            </div>
+
+      {cuadrillas.length === 0
+        ? <div className="card" style={{padding:40, textAlign:'center', color:'var(--fg-muted)'}}>No hay cuadrillas. Crea una para agilizar asignaciones en el planner.</div>
+        : (
+          <div className="card" style={{padding:0, overflow:'hidden'}}>
+            <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
+              <thead>
+                <tr style={{background:'var(--bg-subtle)', borderBottom:'1px solid var(--border)'}}>
+                  <th style={{padding:'10px 14px', textAlign:'left', fontWeight:600, color:'var(--fg-muted)'}}>Nombre</th>
+                  <th style={{padding:'10px 14px', textAlign:'left', fontWeight:600, color:'var(--fg-muted)'}}>Descripción</th>
+                  <th style={{padding:'10px 14px', textAlign:'center', fontWeight:600, color:'var(--fg-muted)'}}>N° Técnicos</th>
+                  <th style={{padding:'10px 14px', textAlign:'left', fontWeight:600, color:'var(--fg-muted)'}}>Especialidad principal</th>
+                  <th style={{padding:'10px 14px', textAlign:'center', fontWeight:600, color:'var(--fg-muted)'}}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cuadrillas.map((c, i) => {
+                  const miembros = c.cuadrilla_miembros || [];
+                  const lider = tecnicos.find(t => t.id === c.lider_id);
+                  return (
+                    <tr key={c.id} style={{borderBottom: i < cuadrillas.length - 1 ? '1px solid var(--border)' : 'none', background:'var(--surface)'}}>
+                      <td style={{padding:'12px 14px'}}>
+                        <div style={{fontWeight:700}}>{c.nombre}</div>
+                        {lider && <div style={{fontSize:11, color:'var(--cyan)', marginTop:2}}>Líder: {lider.nombre}</div>}
+                      </td>
+                      <td style={{padding:'12px 14px', color:'var(--fg-muted)', maxWidth:220}}>
+                        {c.descripcion || <span style={{color:'var(--fg-muted)', opacity:0.5}}>—</span>}
+                      </td>
+                      <td style={{padding:'12px 14px', textAlign:'center'}}>
+                        <span style={{display:'inline-flex', alignItems:'center', justifyContent:'center', width:28, height:28, borderRadius:'50%', background:'var(--bg-subtle)', fontWeight:700, fontSize:13, border:'1px solid var(--border)'}}>
+                          {miembros.length}
+                        </span>
+                      </td>
+                      <td style={{padding:'12px 14px'}}>
+                        {c.especialidad_principal
+                          ? <span style={{fontSize:12, padding:'2px 8px', borderRadius:6, background:'rgba(0,188,212,0.08)', color:'var(--cyan)', border:'1px solid rgba(0,188,212,0.2)'}}>{c.especialidad_principal}</span>
+                          : <span style={{color:'var(--fg-muted)', opacity:0.5}}>—</span>}
+                      </td>
+                      <td style={{padding:'12px 14px', textAlign:'center'}}>
+                        <div style={{display:'flex', gap:4, justifyContent:'center'}}>
+                          <button className="icon-btn" style={{fontSize:14}} onClick={() => handleEdit(c)} title="Editar">{I.edit}</button>
+                          <button className="icon-btn" style={{fontSize:14, color:'var(--danger)'}} onClick={() => setConfirmDel(c)} title="Eliminar">✕</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        ))}
-      </div>
+        )
+      }
+
+      {/* Modal nueva/editar cuadrilla */}
       {show && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={handleClose}>
-          <div className="card" style={{width:'min(480px,96vw)',padding:0}} onClick={e=>e.stopPropagation()}>
-            <div className="card-head" style={{padding:'14px 18px'}}><h3 style={{margin:0}}>{editId?'Editar':'Nueva'} cuadrilla</h3><button className="icon-btn" onClick={handleClose}>×</button></div>
-            <div style={{padding:'16px 18px',display:'flex',flexDirection:'column',gap:12}}>
-              <div className="input-group"><label>Nombre</label><input className="input" value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ej: Cuadrilla Eléctrica Norte"/></div>
-              <div className="input-group"><label>Especialidad principal</label><input className="input" value={esp} onChange={e=>setEsp(e.target.value)} placeholder="Ej: Electricidad industrial"/></div>
+        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16}} onClick={handleClose}>
+          <div className="card" style={{width:'min(520px,96vw)', padding:0, maxHeight:'90vh', display:'flex', flexDirection:'column'}} onClick={e => e.stopPropagation()}>
+            <div className="card-head" style={{padding:'14px 18px', flexShrink:0}}>
+              <h3 style={{margin:0}}>{editId ? 'Editar' : 'Nueva'} cuadrilla</h3>
+              <button className="icon-btn" onClick={handleClose}>×</button>
+            </div>
+            <div style={{padding:'16px 18px', display:'flex', flexDirection:'column', gap:12, overflowY:'auto'}}>
+              <div className="input-group">
+                <label>Nombre *</label>
+                <input className="input" value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej: Cuadrilla Eléctrica A" autoFocus/>
+              </div>
+              <div className="input-group">
+                <label>Descripción</label>
+                <input className="input" value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej: Equipo de instalaciones eléctricas zona norte"/>
+              </div>
+              <div className="input-group">
+                <label>Especialidad principal</label>
+                {especialidades?.length > 0
+                  ? <select className="select" value={esp} onChange={e => setEsp(e.target.value)}>
+                      <option value="">— Sin especialidad —</option>
+                      {especialidades.filter(e => e.estado !== 'inactivo').map(e => <option key={e.id} value={e.nombre}>{e.nombre}</option>)}
+                    </select>
+                  : <input className="input" value={esp} onChange={e => setEsp(e.target.value)} placeholder="Ej: Electricidad industrial"/>
+                }
+              </div>
               <div>
-                <div className="label" style={{marginBottom:6}}>Técnicos miembros ({selTecs.length})</div>
-                <div style={{maxHeight:200,overflowY:'auto',display:'flex',flexDirection:'column',gap:4}}>
-                  {tecnicos.map(t=>(
-                    <label key={t.id} style={{display:'flex',gap:10,alignItems:'center',padding:'7px 10px',borderRadius:8,border:`1px solid ${selTecs.includes(t.id)?'var(--cyan)':'var(--border)'}`,cursor:'pointer',background:selTecs.includes(t.id)?'rgba(0,188,212,0.06)':'var(--surface)'}}>
-                      <input type="checkbox" className="checkbox" checked={selTecs.includes(t.id)} onChange={()=>toggle(t.id)}/>
-                      <div><div style={{fontWeight:600,fontSize:13}}>{t.nombre}</div><div style={{fontSize:11,color:'var(--fg-muted)'}}>{t.cargo}</div></div>
+                <div className="label" style={{marginBottom:6}}>Técnicos miembros * ({selTecs.length} seleccionados)</div>
+                <div style={{maxHeight:180, overflowY:'auto', display:'flex', flexDirection:'column', gap:4, border:'1px solid var(--border)', borderRadius:8, padding:6}}>
+                  {tecnicos.map(t => (
+                    <label key={t.id} style={{display:'flex', gap:10, alignItems:'center', padding:'6px 8px', borderRadius:6, border:`1px solid ${selTecs.includes(t.id) ? 'var(--cyan)' : 'transparent'}`, cursor:'pointer', background: selTecs.includes(t.id) ? 'rgba(0,188,212,0.06)' : 'transparent'}}>
+                      <input type="checkbox" className="checkbox" checked={selTecs.includes(t.id)} onChange={() => toggle(t.id)}/>
+                      <div style={{flex:1, minWidth:0}}>
+                        <div style={{fontWeight:600, fontSize:13}}>{t.nombre}</div>
+                        <div style={{fontSize:11, color:'var(--fg-muted)'}}>{[t.cargo, t.especialidad].filter(Boolean).join(' · ')}</div>
+                      </div>
                     </label>
                   ))}
                 </div>
               </div>
-              <div className="row" style={{justifyContent:'flex-end',gap:8}}>
+              {selTecs.length > 0 && (
+                <div className="input-group">
+                  <label>Líder de cuadrilla <span style={{color:'var(--fg-muted)', fontWeight:400}}>(opcional)</span></label>
+                  <select className="select" value={liderId} onChange={e => setLiderId(e.target.value)}>
+                    <option value="">— Sin líder asignado —</option>
+                    {liderTecs.map(t => <option key={t.id} value={t.id}>{t.nombre} · {t.cargo}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className="row" style={{justifyContent:'flex-end', gap:8, paddingTop:4}}>
                 <button className="btn btn-secondary" onClick={handleClose}>Cancelar</button>
-                <button className="btn btn-primary" data-local-form="true" disabled={!nombre||!selTecs.length||saving} onClick={handleSave}>{saving?'Guardando...':(editId?'Guardar cambios':'Crear cuadrilla')}</button>
+                <button className="btn btn-primary" data-local-form="true" disabled={!nombre || !selTecs.length || saving} onClick={handleSave}>
+                  {saving ? 'Guardando...' : editId ? 'Guardar cambios' : 'Crear cuadrilla'}
+                </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm eliminar */}
+      {confirmDel && (
+        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:1001, display:'flex', alignItems:'center', justifyContent:'center', padding:16}} onClick={() => setConfirmDel(null)}>
+          <div className="card" style={{width:'min(360px,96vw)', padding:20}} onClick={e => e.stopPropagation()}>
+            <div style={{fontWeight:700, marginBottom:8}}>Eliminar cuadrilla</div>
+            <div style={{fontSize:13, color:'var(--fg-muted)', marginBottom:16}}>¿Seguro que deseas eliminar <strong>{confirmDel.nombre}</strong>? Esta acción no se puede deshacer.</div>
+            <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
+              <button className="btn btn-secondary" onClick={() => setConfirmDel(null)}>Cancelar</button>
+              <button className="btn btn-danger" onClick={() => { eliminarCuadrillaCtx(confirmDel.id); setConfirmDel(null); }}>Eliminar</button>
             </div>
           </div>
         </div>
@@ -3636,8 +3902,10 @@ function Planner() {
   const {
     searchQuery, personalOperativo, ots, cuentas, navigate,
     plannerAsignaciones, loadPlannerSemana, crearAsignacionesRango,
-    agregarTecnicoADia, quitarTecnicoDeDia, cuadrillas, crearCuadrillaCtx,
+    agregarTecnicoADia, quitarTecnicoDeDia, actualizarAsignacionCtx, cuadrillas, crearCuadrillaCtx,
+    actualizarCuadrillaCtx, eliminarCuadrillaCtx, especialidades,
     partesPendientesSet, renovaciones, onboardings, planesExito, npsEncuestas,
+    vacacionesSolicitudes, licencias, turnos,
   } = useApp();
 
   const [plannerTab, setPlannerTab] = useState('tecnicos');
@@ -3677,29 +3945,79 @@ function Planner() {
     return map;
   }, [plannerAsignaciones]);
 
+  // Ausencias aprobadas (vacaciones + licencias) → set de "personal_id__fecha__Tipo"
+  const ausenciasDias = useMemo(() => {
+    const set = new Set();
+    const addRange = (personalId, fInicio, fFin, tipo) => {
+      if (!personalId || !fInicio) return;
+      const end = new Date(fFin || fInicio);
+      for (let d = new Date(fInicio); d <= end; d.setDate(d.getDate() + 1)) {
+        set.add(`${personalId}__${d.toISOString().split('T')[0]}__${tipo}`);
+      }
+    };
+    (vacacionesSolicitudes || []).filter(v => v.estado === 'aprobado').forEach(v =>
+      addRange(v.personal_id, v.fecha_inicio, v.fecha_fin, 'Vacaciones'));
+    (licencias || []).filter(l => l.estado === 'aprobado').forEach(l =>
+      addRange(l.personal_id, l.fecha_inicio, l.fecha_fin, 'Licencia'));
+    return set;
+  }, [vacacionesSolicitudes, licencias]);
+
+  const getAusenciaTipo = (tecnicoId, fecha) => {
+    for (const tipo of ['Vacaciones', 'Licencia']) {
+      if (ausenciasDias.has(`${tecnicoId}__${fecha}__${tipo}`)) return tipo;
+    }
+    return null;
+  };
+
+  // Horas asignadas por técnico en la semana visible
+  const horasAsignadasMap = useMemo(() => {
+    const map = {};
+    plannerAsignaciones.forEach(a => {
+      if (a.estado === 'cancelado') return;
+      if (!map[a.tecnico_id]) map[a.tecnico_id] = 0;
+      if (a.hora_inicio_estimada && a.hora_fin_estimada) {
+        const [h1, m1] = a.hora_inicio_estimada.slice(0,5).split(':').map(Number);
+        const [h2, m2] = a.hora_fin_estimada.slice(0,5).split(':').map(Number);
+        const hrs = (h2 * 60 + m2 - (h1 * 60 + m1)) / 60;
+        if (hrs > 0) map[a.tecnico_id] += hrs;
+      } else {
+        map[a.tecnico_id] += 8;
+      }
+    });
+    return map;
+  }, [plannerAsignaciones]);
+
   const query = searchQuery.toLowerCase();
   const getCuentaNombre = id => cuentas.find(c => c.id === id)?.razon_social || id;
 
   const sinAsignar = useMemo(() => {
-    return ots.filter(ot => {
-      if (['anulada', 'cerrada', 'valorizada', 'facturada'].includes(ot.estado)) return false;
-      // No tiene NINGUNA asignación en la semana visible
-      return !plannerAsignaciones.some(a => a.ot_id === ot.id);
-    });
+    return ots
+      .filter(ot => {
+        if (['anulada', 'cerrada', 'valorizada', 'facturada'].includes(ot.estado)) return false;
+        return !plannerAsignaciones.some(a => a.ot_id === ot.id);
+      })
+      .sort((a, b) => {
+        const pa = PRIORIDAD_ORDER[prioKey(a.prioridad)] ?? 2;
+        const pb = PRIORIDAD_ORDER[prioKey(b.prioridad)] ?? 2;
+        if (pa !== pb) return pa - pb;
+        const fa = a.fecha_limite || a.fecha_fin || '9999';
+        const fb = b.fecha_limite || b.fecha_fin || '9999';
+        return fa.localeCompare(fb);
+      });
   }, [ots, plannerAsignaciones]);
 
   const filteredRenovaciones = [...renovaciones]
-    .filter(r => !query || getCuentaNombre(r.cuenta_id).toLowerCase().includes(query))
+    .filter(r => (r.dias_restantes ?? 9999) <= 90 && (!query || getCuentaNombre(r.cuenta_id).toLowerCase().includes(query)))
     .sort((a, b) => (a.dias_restantes ?? 9999) - (b.dias_restantes ?? 9999));
 
   const filteredOnboardings = onboardings
     .filter(o => o.estado !== 'completado' && (!query || getCuentaNombre(o.cuenta_id).toLowerCase().includes(query)));
 
   const filteredNps = npsEncuestas
-    .filter(n => n.estado === 'enviado' && (!query || getCuentaNombre(n.cuenta_id).toLowerCase().includes(query)));
+    .filter(n => n.estado === 'pendiente' && (!query || getCuentaNombre(n.cuenta_id).toLowerCase().includes(query)));
 
   const filteredPlanes = planesExito
-    .filter(p => p.estado === 'activo' && (!query || getCuentaNombre(p.cuenta_id).toLowerCase().includes(query)));
+    .filter(p => p.estado === 'activo' && p.alertas?.length > 0 && (!query || getCuentaNombre(p.cuenta_id).toLowerCase().includes(query)));
 
   const urgentes = filteredRenovaciones.filter(r => (r.dias_restantes ?? 0) <= 30).length + filteredNps.length;
 
@@ -3741,7 +4059,7 @@ function Planner() {
               <table className="tbl" style={{minWidth:900, borderCollapse:'separate', borderSpacing:0}}>
                 <thead style={{position:'sticky', top:0, zIndex:5}}>
                   <tr>
-                    <th style={{width:220, background:'var(--bg-subtle)', position:'sticky', left:0, zIndex:6, borderRight:'2px solid var(--border)'}}>Técnico</th>
+                    <th style={{width:220, background:'var(--bg-subtle)', position:'sticky', left:0, zIndex:6, borderRight:'2px solid var(--border)'}}>Colaborador</th>
                     {semana.map(d => (
                       <th key={d.fecha} style={{textAlign:'center', background: d.esHoy ? 'rgba(14,165,233,0.05)' : 'var(--bg-subtle)', color: d.esHoy ? 'var(--cyan)' : 'inherit'}}>
                         <div style={{fontSize:11, opacity:0.7, fontWeight:400}}>{d.label.split(' ')[0]}</div>
@@ -3759,44 +4077,60 @@ function Planner() {
                       <td style={{position:'sticky', left:0, background:'var(--surface)', zIndex:4, borderRight:'2px solid var(--border)', padding:'10px 16px'}}>
                         <div style={{fontWeight:700, fontSize:13}}>{t.nombre}</div>
                         <div style={{fontSize:11, color:'var(--fg-muted)'}}>{t.cargo || 'Técnico'}</div>
+                        {(() => {
+                          const horasDisp = t.horas_semana || 40;
+                          const horasAsig = Math.round((horasAsignadasMap[t.id] || 0) * 10) / 10;
+                          const pct = horasDisp > 0 ? horasAsig / horasDisp : 0;
+                          const col = pct > 1 ? 'var(--danger)' : pct > 0.9 ? 'var(--orange)' : 'var(--fg-muted)';
+                          return <div style={{fontSize:10, fontWeight:600, color:col, marginTop:3}}>{horasAsig}h / {horasDisp}h</div>;
+                        })()}
                       </td>
                       {semana.map(d => {
                         const key = `${t.id}__${d.fecha}`;
                         const asigs = asigMap[key] || [];
+                        const ausenciaTipo = getAusenciaTipo(t.id, d.fecha);
                         return (
                           <td key={d.fecha}
-                            style={{padding:4, borderRight:'1px solid var(--border-subtle)', verticalAlign:'top', background: d.esHoy ? 'rgba(14,165,233,0.02)' : 'transparent'}}
-                            onDragOver={e => e.preventDefault()}
+                            style={{
+                              padding: ausenciaTipo ? 0 : 4,
+                              borderRight:'1px solid var(--border-subtle)',
+                              verticalAlign:'top',
+                              minWidth: 110,
+                              background: ausenciaTipo ? 'rgba(148,163,184,0.18)' : d.esHoy ? 'rgba(14,165,233,0.02)' : 'transparent',
+                            }}
+                            onDragOver={e => { if (!ausenciaTipo) e.preventDefault(); }}
                             onDrop={async e => {
                               e.preventDefault();
+                              if (ausenciaTipo) return;
                               const otId = e.dataTransfer.getData('otId');
                               if (otId) await agregarTecnicoADia({ otId, tecnicoId: t.id, fecha: d.fecha });
                             }}>
-                            <div style={{display:'flex', flexDirection:'column', gap:3}}>
-                              {asigs.map(a => {
-                                const ot = ots.find(o => o.id === a.ot_id) || {};
-                                return (
-                                  <div key={a.id}
-                                    onClick={() => setPopupDia({ otId: a.ot_id, fecha: d.fecha })}
-                                    style={{
-                                      background: otColor(a.ot_id),
-                                      color: 'white',
-                                      fontSize: 10,
-                                      padding: '4px 6px',
-                                      borderRadius: 4,
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'space-between'
-                                    }}>
-                                    <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{ot.numero || 'OT'}</span>
-                                    {partesPendientesSet.has(`${t.id}__${d.fecha}`) && <span title="Parte pendiente" style={{marginLeft:4}}>●</span>}
-                                  </div>
-                                );
-                              })}
-                            </div>
+                            {ausenciaTipo ? (
+                              <div style={{height:'100%', minHeight:56, display:'flex', alignItems:'center', justifyContent:'center'}}>
+                                <span style={{fontSize:9, fontWeight:700, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:0.5}}>{ausenciaTipo}</span>
+                              </div>
+                            ) : (
+                              <div style={{display:'flex', flexDirection:'column', gap:3}}>
+                                {asigs.map(a => {
+                                  const ot = ots.find(o => o.id === a.ot_id) || {};
+                                  const cli = cuentas.find(c => c.id === ot.cuenta_id);
+                                  const bgColor = otPriorityColor(ot.prioridad);
+                                  const horario = (a.hora_inicio_estimada && a.hora_fin_estimada)
+                                    ? `${a.hora_inicio_estimada.slice(0,5)}–${a.hora_fin_estimada.slice(0,5)}`
+                                    : null;
+                                  return (
+                                    <div key={a.id}
+                                      onClick={() => setPopupDia({ otId: a.ot_id, fecha: d.fecha })}
+                                      style={{background:bgColor, color:'white', fontSize:10, padding:'4px 6px', borderRadius:4, fontWeight:700, cursor:'pointer', boxShadow:'0 1px 3px rgba(0,0,0,0.1)'}}>
+                                      <div style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{ot.numero || 'OT'}</div>
+                                      {cli && <div style={{fontWeight:400, fontSize:9, opacity:0.9, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{cli.razon_social}</div>}
+                                      {horario && <div style={{fontWeight:400, fontSize:9, opacity:0.85}}>{horario}</div>}
+                                      {partesPendientesSet.has(`${t.id}__${d.fecha}`) && <div style={{fontSize:8, opacity:0.9}}>● Parte pend.</div>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </td>
                         );
                       })}
@@ -3817,28 +4151,47 @@ function Planner() {
               <div style={{display:'flex', flexWrap:'wrap', gap:10, padding:'0 20px 20px'}}>
                 {sinAsignar.map(ot => {
                   const cli = cuentas.find(c => c.id === ot.cuenta_id);
+                  const pk = prioKey(ot.prioridad);
+                  const prioColor = otPriorityColor(ot.prioridad);
+                  const prioLabel = PRIORIDAD_LABEL[pk] || 'Normal';
+                  const fechaLimite = ot.fecha_limite || ot.fecha_fin;
+                  const vencida = fechaLimite && new Date(fechaLimite) < new Date();
                   return (
                     <div key={ot.id}
                       draggable
                       onDragStart={e => { e.dataTransfer.setData('otId', ot.id); setDragOtId(ot.id); }}
                       onDragEnd={() => setDragOtId(null)}
+                      title="Arrastra para asignar a un colaborador"
                       style={{
                         background: 'var(--surface)',
                         border: '1px solid var(--border)',
+                        borderTop: `3px solid ${prioColor}`,
                         borderRadius: 12,
                         padding: '10px 14px',
                         cursor: 'grab',
+                        userSelect: 'none',
                         width: 240,
-                        transition: 'all 0.2s',
-                        boxShadow: dragOtId === ot.id ? '0 8px 16px rgba(0,0,0,0.1)' : 'none',
-                        opacity: dragOtId === ot.id ? 0.5 : 1
+                        transition: 'box-shadow 0.15s, opacity 0.15s',
+                        boxShadow: dragOtId === ot.id ? '0 8px 20px rgba(0,0,0,0.15)' : '0 1px 3px rgba(0,0,0,0.04)',
+                        opacity: dragOtId === ot.id ? 0.45 : 1
                       }}>
-                      <div className="row" style={{justifyContent:'space-between', marginBottom:4}}>
-                        <div style={{fontWeight:800, color:'var(--cyan)', fontSize:13}}>{ot.numero}</div>
-                        <button className="btn btn-ghost btn-sm" style={{padding:2}} title="Asignar por rango" onClick={() => setModalAsig({ otId: ot.id })}>{I.calendar}</button>
+                      <div className="row" style={{justifyContent:'space-between', marginBottom:6, alignItems:'center'}}>
+                        <div className="row" style={{gap:6, alignItems:'center'}}>
+                          <span style={{fontSize:14, color:'var(--fg-muted)', lineHeight:1, cursor:'grab'}}>⠿</span>
+                          <div style={{fontWeight:800, color:'var(--cyan)', fontSize:13}}>{ot.numero}</div>
+                        </div>
+                        <div className="row" style={{gap:4, alignItems:'center'}}>
+                          <span style={{fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:4, background:prioColor, color:'#fff'}}>{prioLabel}</span>
+                          <button className="btn btn-ghost btn-sm" style={{padding:2, cursor:'pointer'}} title="Asignar por rango" onClick={e => { e.stopPropagation(); setModalAsig({ otId: ot.id }); }}>{I.calendar}</button>
+                        </div>
                       </div>
                       <div style={{fontWeight:600, fontSize:12, marginBottom:2}}>{cli?.razon_social || 'Cliente desconocido'}</div>
-                      <div style={{fontSize:11, color:'var(--fg-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{ot.servicio || ot.descripcion}</div>
+                      <div style={{fontSize:11, color:'var(--fg-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom: fechaLimite ? 5 : 0}}>{ot.servicio || ot.descripcion}</div>
+                      {fechaLimite && (
+                        <div style={{fontSize:10, fontWeight:600, color: vencida ? 'var(--danger)' : 'var(--fg-muted)'}}>
+                          {I.calendar} Límite: {fechaLimite}{vencida ? ' ⚠' : ''}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -3849,98 +4202,143 @@ function Planner() {
       )}
 
       {plannerTab === 'cuadrillas' && (
-        <TabCuadrillas 
-          cuadrillas={cuadrillas} 
-          tecnicos={tecnicos} 
-          crearCuadrillaCtx={crearCuadrillaCtx} 
-          actualizarCuadrillaCtx={actualizarCuadrillaCtx} 
-          eliminarCuadrillaCtx={eliminarCuadrillaCtx} 
+        <TabCuadrillas
+          cuadrillas={cuadrillas}
+          tecnicos={tecnicos}
+          especialidades={especialidades}
+          crearCuadrillaCtx={crearCuadrillaCtx}
+          actualizarCuadrillaCtx={actualizarCuadrillaCtx}
+          eliminarCuadrillaCtx={eliminarCuadrillaCtx}
         />
       )}
 
       {plannerTab === 'cs' && (
         <div style={{display:'grid', gap:20}}>
+
+          {/* 1. Renovaciones */}
           <div className="card">
-            <div className="card-head"><h3>Renovaciones</h3><span className="badge badge-cyan">{filteredRenovaciones.length}</span></div>
+            <div className="card-head">
+              <h3>Renovaciones próximas <span style={{fontSize:12,fontWeight:400,color:'var(--fg-muted)'}}>— 90 días</span></h3>
+              <span className="badge badge-cyan">{filteredRenovaciones.length}</span>
+            </div>
             {filteredRenovaciones.length === 0
-              ? <div style={{padding:'16px 20px', color:'var(--fg-muted)'}}>Sin renovaciones registradas</div>
+              ? <div style={{padding:'16px 20px', color:'var(--fg-muted)'}}>Sin contratos por vencer en los próximos 90 días</div>
               : <table className="tbl">
-                  <thead><tr><th>Cliente</th><th>Vencimiento</th><th>Monto</th><th>Días</th><th>Estado</th></tr></thead>
+                  <thead><tr><th>Cliente</th><th>Servicio</th><th>Vencimiento</th><th>Días</th><th>Responsable CS</th><th>Estado</th></tr></thead>
                   <tbody>
-                    {filteredRenovaciones.map(r => (
-                      <tr key={r.id}>
-                        <td style={{fontWeight:600}}>{getCuentaNombre(r.cuenta_id)}</td>
-                        <td>{r.fecha_vencimiento}</td>
-                        <td>{r.monto_contrato ? `${r.moneda || 'PEN'} ${Number(r.monto_contrato).toLocaleString()}` : '—'}</td>
-                        <td>{r.dias_restantes != null ? <span className={'badge '+(r.dias_restantes<=30?'badge-red':r.dias_restantes<=60?'badge-yellow':'badge-green')}>{r.dias_restantes}d</span> : '—'}</td>
-                        <td><span className={'badge '+(r.estado==='renovado'?'badge-green':r.estado==='en_negociacion'?'badge-cyan':'badge-gray')}>{r.estado?.replace(/_/g,' ')}</span></td>
+                    {filteredRenovaciones.map(r => {
+                      const d = r.dias_restantes ?? 9999;
+                      const badgeClass = d <= 30 ? 'badge-red' : d <= 60 ? 'badge-yellow' : 'badge-green';
+                      return (
+                        <tr key={r.id}>
+                          <td style={{fontWeight:600}}>{getCuentaNombre(r.cuenta_id)}</td>
+                          <td style={{fontSize:12, color:'var(--fg-muted)', maxWidth:180}}>{r.servicio}</td>
+                          <td>{r.fecha_vencimiento}</td>
+                          <td><span className={`badge ${badgeClass}`}>{d}d</span></td>
+                          <td>{r.responsable_cs || '—'}</td>
+                          <td><span className={'badge '+(r.estado==='renovado'?'badge-green':r.estado==='en_negociacion'?'badge-cyan':r.estado==='en_riesgo'?'badge-red':'badge-gray')}>{r.estado?.replace(/_/g,' ')}</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+            }
+          </div>
+
+          {/* 2. Onboardings en progreso */}
+          <div className="card">
+            <div className="card-head">
+              <h3>Onboardings en progreso</h3>
+              <span className="badge badge-purple">{filteredOnboardings.length}</span>
+            </div>
+            {filteredOnboardings.length === 0
+              ? <div style={{padding:'16px 20px', color:'var(--fg-muted)'}}>Sin onboardings en curso</div>
+              : <table className="tbl">
+                  <thead><tr><th>Cliente</th><th>Inicio</th><th>Hitos</th><th>Avance</th><th>Responsable CS</th></tr></thead>
+                  <tbody>
+                    {filteredOnboardings.map(o => {
+                      const checklist = Array.isArray(o.checklist) ? o.checklist : [];
+                      const completados = checklist.filter(c => c.completado).length;
+                      const total = checklist.length;
+                      const pct = total > 0 ? Math.round(completados / total * 100) : (o.avance_pct ?? 0);
+                      return (
+                        <tr key={o.id}>
+                          <td style={{fontWeight:600}}>{getCuentaNombre(o.cuenta_id)}</td>
+                          <td>{o.fecha_inicio}</td>
+                          <td style={{whiteSpace:'nowrap', fontWeight:600}}>
+                            {total > 0 ? <>{completados} <span style={{color:'var(--fg-muted)', fontWeight:400}}>/ {total}</span></> : '—'}
+                          </td>
+                          <td style={{minWidth:130}}>
+                            <div style={{display:'flex', alignItems:'center', gap:8}}>
+                              <div style={{flex:1, background:'var(--bg-subtle)', borderRadius:4, height:6}}>
+                                <div style={{width:pct+'%', height:'100%', background:pct>=75?'var(--green)':'var(--cyan)', borderRadius:4}}/>
+                              </div>
+                              <span style={{fontSize:11, fontWeight:700, flexShrink:0, minWidth:28}}>{pct}%</span>
+                            </div>
+                          </td>
+                          <td>{o.responsable_cs || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+            }
+          </div>
+
+          {/* 3. Planes con alertas */}
+          <div className="card">
+            <div className="card-head">
+              <h3>Planes con alertas</h3>
+              <span className="badge badge-orange">{filteredPlanes.length}</span>
+            </div>
+            {filteredPlanes.length === 0
+              ? <div style={{padding:'16px 20px', color:'var(--fg-muted)'}}>Sin planes con objetivos en riesgo</div>
+              : <table className="tbl">
+                  <thead><tr><th>Cliente</th><th>Objetivo</th><th>Alertas activas</th><th>Responsable CS</th></tr></thead>
+                  <tbody>
+                    {filteredPlanes.map(p => (
+                      <tr key={p.id}>
+                        <td style={{fontWeight:600}}>{getCuentaNombre(p.cuenta_id)}</td>
+                        <td style={{fontSize:12, color:'var(--fg-muted)', maxWidth:200}}>{p.objetivo}</td>
+                        <td>
+                          <div style={{display:'flex', flexDirection:'column', gap:3}}>
+                            {(p.alertas || []).map((a, i) => (
+                              <span key={i} style={{fontSize:11, padding:'2px 7px', borderRadius:4, background:'rgba(239,68,68,0.08)', color:'var(--danger)', border:'1px solid rgba(239,68,68,0.15)', display:'inline-block'}}>{a}</span>
+                            ))}
+                          </div>
+                        </td>
+                        <td>{p.responsable_cs || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
             }
           </div>
-          {filteredOnboardings.length > 0 && (
-            <div className="card">
-              <div className="card-head"><h3>Onboardings en Progreso</h3><span className="badge badge-purple">{filteredOnboardings.length}</span></div>
-              <div style={{padding:'0 20px 16px', display:'flex', flexDirection:'column', gap:14}}>
-                {filteredOnboardings.map(o => {
-                  const checklist = Array.isArray(o.checklist) ? o.checklist : [];
-                  const pct = checklist.length > 0
-                    ? Math.round(checklist.filter(c => c.completado).length / checklist.length * 100)
-                    : (o.avance_pct ?? 0);
-                  return (
-                    <div key={o.id} style={{display:'grid', gridTemplateColumns:'1fr 120px 60px', gap:12, alignItems:'center'}}>
-                      <div>
-                        <div style={{fontWeight:600, fontSize:13}}>{getCuentaNombre(o.cuenta_id)}</div>
-                        <div style={{fontSize:11, color:'var(--fg-subtle)'}}>{o.fecha_inicio} → {o.fecha_objetivo || '—'}</div>
-                      </div>
-                      <div style={{background:'var(--bg-subtle)', borderRadius:4, height:8}}>
-                        <div style={{width:pct+'%', height:'100%', background:pct>=75?'var(--green)':'var(--cyan)', borderRadius:4}}/>
-                      </div>
-                      <span style={{fontSize:12, fontWeight:700, textAlign:'right'}}>{pct}%</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
-          {filteredPlanes.length > 0 && (
-            <div className="card">
-              <div className="card-head"><h3>Planes de Éxito Activos</h3><span className="badge badge-green">{filteredPlanes.length}</span></div>
-              <table className="tbl">
-                <thead><tr><th>Cliente</th><th>Periodicidad revisión</th><th>Estado</th></tr></thead>
-                <tbody>
-                  {filteredPlanes.map(p => (
-                    <tr key={p.id}>
-                      <td style={{fontWeight:600}}>{getCuentaNombre(p.cuenta_id)}</td>
-                      <td>{p.periodicidad_revision || '—'}</td>
-                      <td><span className="badge badge-green">{p.estado}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* 4. NPS pendientes */}
+          <div className="card">
+            <div className="card-head">
+              <h3>NPS pendientes</h3>
+              <span className="badge badge-orange">{filteredNps.length}</span>
             </div>
-          )}
+            {filteredNps.length === 0
+              ? <div style={{padding:'16px 20px', color:'var(--fg-muted)'}}>Sin encuestas NPS pendientes de respuesta</div>
+              : <table className="tbl">
+                  <thead><tr><th>Cliente</th><th>Fecha envío</th><th>Responsable CS</th><th>Estado</th></tr></thead>
+                  <tbody>
+                    {filteredNps.map(n => (
+                      <tr key={n.id}>
+                        <td style={{fontWeight:600}}>{getCuentaNombre(n.cuenta_id)}</td>
+                        <td>{n.fecha_envio || '—'}</td>
+                        <td>{n.responsable_cs || '—'}</td>
+                        <td><span className="badge badge-orange">Sin respuesta</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+            }
+          </div>
 
-          {filteredNps.length > 0 && (
-            <div className="card">
-              <div className="card-head"><h3>NPS — Pendientes de respuesta</h3><span className="badge badge-orange">{filteredNps.length}</span></div>
-              <table className="tbl">
-                <thead><tr><th>Cliente</th><th>Enviado</th><th>Estado</th></tr></thead>
-                <tbody>
-                  {filteredNps.map(n => (
-                    <tr key={n.id}>
-                      <td style={{fontWeight:600}}>{getCuentaNombre(n.cuenta_id)}</td>
-                      <td>{n.fecha_envio}</td>
-                      <td><span className="badge badge-orange">Pendiente</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       )}
 
@@ -3950,6 +4348,8 @@ function Planner() {
           tecnicos={tecnicos}
           cuadrillas={cuadrillas}
           ots={ots}
+          plannerAsignaciones={plannerAsignaciones}
+          turnos={turnos}
           onConfirm={crearAsignacionesRango}
           onClose={() => setModalAsig(null)}
         />
@@ -3964,6 +4364,7 @@ function Planner() {
           ots={ots}
           partesPendientesSet={partesPendientesSet}
           onQuitar={quitarTecnicoDeDia}
+          onActualizar={actualizarAsignacionCtx}
           onAgregarTecnico={agregarTecnicoADia}
           onClose={() => setPopupDia(null)}
           navigate={navigate}

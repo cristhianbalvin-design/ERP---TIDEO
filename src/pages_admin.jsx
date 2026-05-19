@@ -6,6 +6,7 @@ import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient } from './lib/supabaseClient.js';
 import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getPotentialManagers } from './lib/hierarchy.js';
 import { PHONE_PATTERN, RUC_PATTERN, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
+import { VARIABLES_COMERCIALES } from './lib/textoComercial.js';
 import { maestrosService } from './services/maestrosService.js';
 
 // Roles builder, Usuarios, Tenants/Planes, and simple stub pages
@@ -1199,7 +1200,7 @@ function Stub({title, description}) {
 // ============ CECO / CEBE ============
 function CecoCebePanel({ onClose }) {
   const {
-    centrosCosto, centrosBeneficio, cuentas, usuarios, empresa,
+    centrosCosto, centrosBeneficio, cuentas, usuarios, empresa, ots,
     crearCentroCosto, actualizarCentroCosto, importarCentrosCosto,
     crearCentroBeneficio, actualizarCentroBeneficio, importarCentrosBeneficio,
     addNotificacion
@@ -1232,6 +1233,20 @@ function CecoCebePanel({ onClose }) {
 
   const usuariosActivos = (usuarios || []).filter(u => u.estado !== 'inactivo');
   const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
+  const estadosOtCerrados = new Set(['cerrada', 'cerrado', 'cerrada_tecnica', 'cerrado_tecnico', 'valorizada', 'valorizado', 'facturada', 'facturado', 'anulada', 'anulado', 'cancelada', 'cancelado']);
+  const otsActivasPorCeco = cecoId => (ots || []).filter(o => o.centro_costo_id === cecoId && !estadosOtCerrados.has(String(o.estado || '').toLowerCase()));
+  const confirmarInactivacionCeco = ceco => {
+    const otsActivas = otsActivasPorCeco(ceco.id);
+    if (!otsActivas.length) return window.confirm(`¿Inactivar "${ceco.nombre}"?`);
+    const muestra = otsActivas.slice(0, 5).map(o => o.numero || o.id).join(', ');
+    const extra = otsActivas.length > 5 ? ` y ${otsActivas.length - 5} mas` : '';
+    return window.confirm(`El CECO "${ceco.nombre}" tiene ${otsActivas.length} OT(s) activa(s) vinculada(s): ${muestra}${extra}.\n\nSi lo inactivas, no aparecera para nuevas asignaciones, pero las OTs existentes conservaran la vinculacion. ¿Deseas continuar?`);
+  };
+  const inactivarCeco = async ceco => {
+    if (!confirmarInactivacionCeco(ceco)) return;
+    await actualizarCentroCosto(ceco.id, { ...ceco, estado: 'inactivo' });
+    addNotificacion?.('CECO inactivado.');
+  };
 
   const CECO_TIPOS = ['area_funcional','proyecto','sede','temporal'];
   const CEBE_TIPOS = ['linea_servicio','cliente','proyecto','producto','temporal'];
@@ -1249,6 +1264,8 @@ function CecoCebePanel({ onClose }) {
     if (!cecoForm.nombre.trim()) return setCecoError('El nombre es obligatorio.');
     if (!cecoForm.cebe_id) return setCecoError('El CEBE padre es obligatorio.');
     if ((centrosCosto||[]).some(c => c.codigo === cecoForm.codigo.trim() && c.id !== cecoEditId)) return setCecoError('Este código ya está en uso. Elige uno diferente.');
+    const cecoActual = (centrosCosto || []).find(c => c.id === cecoEditId);
+    if (cecoEditId && cecoActual?.estado !== 'inactivo' && cecoForm.estado === 'inactivo' && !confirmarInactivacionCeco(cecoActual)) return;
     setCecoSaving(true); setCecoError('');
     try {
       const resp = usuariosActivos.find(u => u.id === cecoForm.responsable_id);
@@ -1499,7 +1516,7 @@ function CecoCebePanel({ onClose }) {
                               <td>
                                 <div className="row" style={{ justifyContent:'flex-end', gap:4 }}>
                                   <button className="icon-btn" title="Editar" onClick={()=>editarCeco(c)} style={{ color:'var(--cyan)' }}>{I.edit}</button>
-                                  <button className="icon-btn" title="Inactivar" onClick={async()=>{ if(window.confirm(`¿Inactivar "${c.nombre}"?`)) { await actualizarCentroCosto(c.id,{...c,estado:'inactivo'}); addNotificacion?.('CECO inactivado.'); }}} style={{ color:'var(--fg-muted)' }}>{I.trash}</button>
+                                  <button className="icon-btn" title="Inactivar" onClick={() => inactivarCeco(c)} style={{ color:'var(--fg-muted)' }}>{I.trash}</button>
                                 </div>
                               </td>
                             </tr>
@@ -2885,14 +2902,16 @@ function Tarifarios() {
 function Parametros() {
   const {
     empresaConfig, guardarEmpresaConfig, subirImagenEmpresa, addNotificacion,
-    seriesDocumentarias = [], slaPlantillas = [],
+    seriesDocumentarias = [], slaPlantillas = [], diccionarioComercial = [],
     monedasImpuestosUnidades = [],
     crearSerieDocumentaria, actualizarSerieDocumentaria, eliminarSerieDocumentaria,
     crearSlaPlantilla, actualizarSlaPlantilla, eliminarSlaPlantilla,
+    crearDiccionarioComercial, actualizarDiccionarioComercial, eliminarDiccionarioComercial,
   } = useApp();
   const [saving, setSaving] = useState(false);
   const [savingSerie, setSavingSerie] = useState(false);
   const [savingSla, setSavingSla] = useState(false);
+  const [savingDicc, setSavingDicc] = useState(false);
 
   const [datos, setDatos] = useState({ razon_social:'', ruc:'', email_comercial:'', sitio_web:'', direccion:'', firmante:'', cargo_firmante:'' });
   const [conds, setConds] = useState({ cond_forma_pago:'', cond_validez:'', cond_penalidad:'', cond_inicio_proyecto:'', cond_alcance:'', cond_integraciones:'', cond_confidencialidad:'', cond_glosa_factura:'' });
@@ -2905,12 +2924,15 @@ function Parametros() {
   ];
   const emptySerie = { documento:'', serie:'', siguiente_correlativo:'1', regla:'', estado:'activo' };
   const emptySla = { nombre:'', tiempo_respuesta_horas:'4', tiempo_resolucion_horas:'24', semaforo_regla:'Rojo a 80%', estado:'activo' };
+  const emptyDicc = { categoria:'Comercial', clave:'', texto:'', estado:'activo' };
   const [parametros, setParametros] = useState({ moneda_base:'PEN', igv_defecto:'18', zona_horaria:'America/Lima', plantilla_cotizacion:'TIDEO propuesta tecnica v3', plantilla_factura:'Exportacion fiscal externa', requiere_2fa_financiero:false });
   const [flujosAlertas, setFlujosAlertas] = useState(defaultFlujos);
   const [serieForm, setSerieForm] = useState(emptySerie);
   const [serieEditId, setSerieEditId] = useState(null);
   const [slaForm, setSlaForm] = useState(emptySla);
   const [slaEditId, setSlaEditId] = useState(null);
+  const [diccForm, setDiccForm] = useState(emptyDicc);
+  const [diccEditId, setDiccEditId] = useState(null);
   const [logoFile, setLogoFile]   = useState(null);
   const [firmaFile, setFirmaFile] = useState(null);
   const [logoPreview, setLogoPreview]   = useState(null);
@@ -2971,6 +2993,7 @@ function Parametros() {
 
   const resetSerie = () => { setSerieForm(emptySerie); setSerieEditId(null); };
   const resetSla = () => { setSlaForm(emptySla); setSlaEditId(null); };
+  const resetDicc = () => { setDiccForm(emptyDicc); setDiccEditId(null); };
 
   const guardarSerie = async (e) => {
     e.preventDefault();
@@ -3010,6 +3033,25 @@ function Parametros() {
     }
   };
 
+  const guardarDicc = async (e) => {
+    e.preventDefault();
+    if (!diccForm.clave.trim() || !diccForm.texto.trim()) {
+      addNotificacion('Completa clave y texto del diccionario.');
+      return;
+    }
+    setSavingDicc(true);
+    try {
+      if (diccEditId) await actualizarDiccionarioComercial(diccEditId, diccForm);
+      else await crearDiccionarioComercial(diccForm);
+      resetDicc();
+      addNotificacion('Frase comercial guardada.');
+    } catch (error) {
+      addNotificacion(`No se pudo guardar la frase: ${error?.message || 'error desconocido'}`);
+    } finally {
+      setSavingDicc(false);
+    }
+  };
+
   const editarSerie = (s) => {
     setSerieEditId(s.id);
     setSerieForm({ documento:s.documento||'', serie:s.serie||'', siguiente_correlativo:String(s.siguiente_correlativo ?? 1), regla:s.regla||'', estado:s.estado||'activo' });
@@ -3020,9 +3062,37 @@ function Parametros() {
     setSlaForm({ nombre:s.nombre||'', tiempo_respuesta_horas:String(s.tiempo_respuesta_horas ?? 0), tiempo_resolucion_horas:String(s.tiempo_resolucion_horas ?? 0), semaforo_regla:s.semaforo_regla||'', estado:s.estado||'activo' });
   };
 
+  const editarDicc = (d) => {
+    setDiccEditId(d.id);
+    setDiccForm({ categoria:d.categoria||'Comercial', clave:d.clave||'', texto:d.texto||'', estado:d.estado||'activo' });
+  };
+
   const setFlujoField = (idx, field, value) => {
     setFlujosAlertas(prev => prev.map((row, i) => i === idx ? { ...row, [field]: value } : row));
   };
+
+  const diccionarioActivo = (diccionarioComercial || []).filter(d => d.estado === 'activo');
+  const insertarCond = (field, texto) => {
+    if (!texto) return;
+    setConds(prev => {
+      const actual = prev[field] || '';
+      return { ...prev, [field]: actual ? `${actual}${actual.endsWith(' ') || actual.endsWith('\n') ? '' : ' '}${texto}` : texto };
+    });
+  };
+  const insertControls = (field) => (
+    <div className="row" style={{gap:8, marginBottom:6, flexWrap:'wrap'}}>
+      <select className="input" defaultValue="" style={{maxWidth:240, height:32, fontSize:12}}
+        onChange={e => { insertarCond(field, e.target.value); e.currentTarget.value = ''; }}>
+        <option value="">Insertar variable...</option>
+        {VARIABLES_COMERCIALES.map(v => <option key={v.token} value={v.token}>{v.grupo} - {v.label}</option>)}
+      </select>
+      <select className="input" defaultValue="" style={{maxWidth:260, height:32, fontSize:12}}
+        onChange={e => { insertarCond(field, e.target.value); e.currentTarget.value = ''; }}>
+        <option value="">Insertar frase...</option>
+        {diccionarioActivo.map(d => <option key={d.id} value={d.texto}>{d.categoria} - {d.clave}</option>)}
+      </select>
+    </div>
+  );
 
   const inp = (field) => ({ className:'input', value: datos[field], onChange: e => setDatos(p=>({...p,[field]:e.target.value})) });
   const ta  = (field, rows=4) => ({ className:'input', rows, value: conds[field], onChange: e => setConds(p=>({...p,[field]:e.target.value})), style:{resize:'vertical'} });
@@ -3133,6 +3203,7 @@ function Parametros() {
           ].map(([field, label, placeholder]) => (
             <div className="input-group" key={field}>
               <label>{label}</label>
+              {insertControls(field)}
               <textarea {...ta(field)} placeholder={placeholder}/>
             </div>
           ))}
@@ -3140,6 +3211,51 @@ function Parametros() {
       </div>
 
       {/* ── Secciones existentes ── */}
+      <div className="grid-2 mb-6">
+        <div className="card">
+          <div className="card-head"><h3>Variables del sistema</h3><span className="badge badge-cyan">{VARIABLES_COMERCIALES.length} disponibles</span></div>
+          <div className="card-body" style={{display:'grid', gridTemplateColumns:'repeat(2, minmax(0, 1fr))', gap:8}}>
+            {VARIABLES_COMERCIALES.map(v => (
+              <div key={v.token} style={{border:'1px solid var(--border)', borderRadius:8, padding:'8px 10px', background:'var(--bg-subtle)'}}>
+                <div className="eyebrow" style={{marginBottom:3}}>{v.grupo}</div>
+                <div style={{fontSize:12, fontWeight:700}}>{v.label}</div>
+                <div className="mono text-muted" style={{fontSize:11, marginTop:3}}>{v.token}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-head"><h3>Diccionario comercial</h3><span className="badge badge-purple">{diccionarioComercial.length} frases</span></div>
+          <form className="card-body" onSubmit={guardarDicc} style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+            <div className="input-group"><label>Categoria</label><select className="input" value={diccForm.categoria} onChange={e=>setDiccForm(p=>({...p, categoria:e.target.value}))}>{['Comercial','Proyecto','Pagos','Facturacion','Legal'].map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+            <div className="input-group"><label>Estado</label><select className="input" value={diccForm.estado} onChange={e=>setDiccForm(p=>({...p, estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}><label>Clave visible</label><input className="input" value={diccForm.clave} onChange={e=>setDiccForm(p=>({...p, clave:e.target.value}))} placeholder="Primera factura"/></div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}><label>Texto a insertar</label><textarea className="input" rows={3} value={diccForm.texto} onChange={e=>setDiccForm(p=>({...p, texto:e.target.value}))} placeholder="Primera factura contra entrega de avance aprobado"/></div>
+            <div className="row" style={{gridColumn:'1/-1', justifyContent:'flex-end'}}>
+              {diccEditId && <button type="button" className="btn btn-secondary" onClick={resetDicc}>Cancelar</button>}
+              <button type="submit" className="btn btn-primary" disabled={savingDicc}>{diccEditId ? I.save : I.plus} {savingDicc ? 'Guardando...' : diccEditId ? 'Actualizar frase' : 'Agregar frase'}</button>
+            </div>
+          </form>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Categoria</th><th>Clave</th><th>Texto</th><th>Estado</th><th></th></tr></thead>
+              <tbody>{diccionarioComercial.map(d => (
+                <tr key={d.id}>
+                  <td><span className="badge badge-cyan">{d.categoria}</span></td>
+                  <td><strong>{d.clave}</strong></td>
+                  <td className="text-muted" style={{maxWidth:260}}>{d.texto}</td>
+                  <td><span className={'badge ' + (d.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{d.estado}</span></td>
+                  <td className="row" style={{justifyContent:'flex-end', gap:4}}>
+                    <button className="icon-btn" title="Editar" onClick={() => editarDicc(d)} style={{color:'var(--cyan)'}}>{I.edit}</button>
+                    <button className="icon-btn" title="Eliminar" onClick={() => { if (window.confirm('Eliminar frase comercial?')) eliminarDiccionarioComercial(d.id).catch(error => addNotificacion(`No se pudo eliminar la frase: ${error?.message || 'error desconocido'}`)); }} style={{color:'var(--danger)'}}>{I.trash}</button>
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div className="grid-2">
         <div className="card">
           <div className="card-head"><h3>Series documentarias</h3><span className="badge badge-cyan">{seriesDocumentarias.filter(s => s.estado === 'activo').length} activas</span></div>

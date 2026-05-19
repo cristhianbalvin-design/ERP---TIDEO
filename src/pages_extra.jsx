@@ -3,6 +3,7 @@ import { I, money } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { getAssignableUsers } from './lib/hierarchy.js';
+import { VARIABLES_COMERCIALES, insertarTexto, renderTextoComercial } from './lib/textoComercial.js';
 
 const currencySymbol = (m = 'PEN') => m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'S/';
 const moneyCurrency = (value, moneda = 'PEN') => money(value, currencySymbol(moneda));
@@ -44,8 +45,8 @@ const COT_BADGE = e =>
 function CotizacionesInner() {
   const {
     cotizaciones, oportunidades, cuentas, contactos, usuarios, osClientes, hojasCosteo, activeParams,
-    navigate, crearCotizacion, actualizarCotizacion, aprobarCotizacion, registrarAprobacionManual,
-    crearOSCliente, vincularCotizacionOS, subirVersionCotizacion, searchQuery, empresaConfig, addNotificacion
+    navigate, crearCotizacion, actualizarCotizacion, aprobarCotizacion, aprobarCotizacionInterna, registrarAprobacionManual,
+    crearOSCliente, vincularCotizacionOS, subirVersionCotizacion, searchQuery, empresaConfig, diccionarioComercial = [], addNotificacion
   } = useApp();
   const [osModal, setOsModal] = useState(null);
   const [generandoPDF, setGenerandoPDF] = useState(false);
@@ -82,6 +83,7 @@ function CotizacionesInner() {
         cotizacionBase={cotBaseDeHC}
         contactos={(contactos || []).filter(c => c.cuenta_id === opp.cuenta_id)}
         empresaConfig={empresaConfig}
+        diccionarioComercial={diccionarioComercial}
         onSave={async (data) => { await crearCotizacion(data); navigate('cotizaciones'); }}
         onCancel={() => navigate('pipeline', { panel: opp.id })}
       />
@@ -101,6 +103,7 @@ function CotizacionesInner() {
         cotizacionBase={cot}
         contactos={(contactos || []).filter(c => c.cuenta_id === cuentaId)}
         empresaConfig={empresaConfig}
+        diccionarioComercial={diccionarioComercial}
         onSave={async (data) => { await actualizarCotizacion(cot.id, data); navigate('cotizaciones', { detail: cot.id }); }}
         onCancel={() => navigate('cotizaciones', { detail: cot.id })}
       />
@@ -152,7 +155,7 @@ function CotizacionesInner() {
         const { CotizacionPDF } = await import('./pages_pdf.jsx');
         const cfgPDF = { ...cfg, logo_url: logoDataUrl || undefined, firma_url: firmaDataUrl || undefined };
         const blob = await pdf(
-          <CotizacionPDF cot={cot} cuenta={cuenta} contacto={contacto} cfg={cfgPDF} qrDataUrl={qrDataUrl} />
+          <CotizacionPDF cot={cot} cuenta={cuenta} contacto={contacto} opp={opp} cfg={cfgPDF} qrDataUrl={qrDataUrl} />
         ).toBlob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -180,6 +183,7 @@ function CotizacionesInner() {
           onRevertirBorrador={() => actualizarCotizacion(cot.id, { estado: 'borrador' })}
           onCrearVersion={async () => { await subirVersionCotizacion(cot.id); }}
           onEnviar={() => actualizarCotizacion(cot.id, { estado: 'enviada', fecha_envio: new Date().toISOString() })}
+          onAprobarInterna={() => aprobarCotizacionInterna(cot.id)}
           onAprobar={() => { aprobarCotizacion(cot.id); setOsModal(cot); }}
           onAprobacionManual={async (datos) => { await registrarAprobacionManual(cot.id, datos); }}
           onGenerarOS={() => setOsModal(cot)}
@@ -314,10 +318,16 @@ function AprobacionManualModal({ onClose, onConfirmar }) {
   const handleConfirmar = async () => {
     if (!canal) { setError('Selecciona el canal de aprobación.'); return; }
     if (!fecha) { setError('Indica la fecha de aprobación del cliente.'); return; }
+    if (!archivos.length) { setError('Adjunta la evidencia de aprobacion del cliente.'); return; }
     setError(null);
     setLoading(true);
-    await onConfirmar({ canal, fecha_cliente: fecha, notas: notas.trim() || null, archivos });
-    setLoading(false);
+    try {
+      await onConfirmar({ canal, fecha_cliente: fecha, notas: notas.trim() || null, archivos });
+    } catch (err) {
+      setError(err?.message || 'No se pudo registrar la aprobacion.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -346,7 +356,7 @@ function AprobacionManualModal({ onClose, onConfirmar }) {
               placeholder="Contexto sobre cómo se dio la aprobación…" />
           </div>
           <div className="input-group" style={{margin:0}}>
-            <label>Adjuntar sustento</label>
+            <label>Adjuntar sustento *</label>
             <label style={{display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:6, border:'1px dashed var(--border)', cursor:'pointer', fontSize:13, color:'var(--fg-muted)', background:'var(--bg-subtle)'}}>
               {I.file} Seleccionar archivos (PDF, imágenes, Word)
               <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" onChange={agregarArchivos} style={{display:'none'}} />
@@ -377,7 +387,7 @@ function AprobacionManualModal({ onClose, onConfirmar }) {
 }
 
 // ── Detalle (lectura) ──────────────────────────────────────────────────
-function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig, onBack, onEdit, onRevertirBorrador, onCrearVersion, onEnviar, onAprobacionManual, onGenerarOS, onDescargarPDF, generandoPDF }) {
+function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig, onBack, onEdit, onRevertirBorrador, onCrearVersion, onEnviar, onAprobarInterna, onAprobacionManual, onGenerarOS, onDescargarPDF, generandoPDF }) {
   const partidas = cot.items || cot.partidas || [];
   const hayRecurrente = partidas.some(p => !p.incluido && p.tipo === 'recurrente');
   const [seccionesOpen, setSeccionesOpen] = useState({});
@@ -386,13 +396,24 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
   const [showAprobModal, setShowAprobModal] = useState(false);
   const sym = currencySymbol(cot.moneda);
 
+  const { authUser, role } = useApp();
   const cfg = empresaConfig || {};
+  const textoCtx = { empresa: cfg, cuenta, cliente: cuenta, contacto, cotizacion: cot, oportunidad: opp };
+  const renderComercial = texto => renderTextoComercial(texto, textoCtx);
+
+  const puedeAprobarCot   = role?.permisos?.todo || role?.permisos?.aprobar_descuentos || false;
+  const aprobadaInterna   = !!cot.aprobada_interna_por;
+  const esBorrador        = cot.estado === 'borrador';
+  const puedeEditar       = esBorrador && (puedeAprobarCot || !aprobadaInterna);
+  const puedeEnviar       = esBorrador && (puedeAprobarCot || aprobadaInterna);
+  const mostrarAprobarBtn = puedeAprobarCot && esBorrador && !aprobadaInterna;
 
   const vendedor = opp?.responsable_id
     ? (usuarios || []).find(u => u.id === opp.responsable_id)
     : null;
   const vendedorNombre = vendedor?.nombre || opp?.responsable || '—';
-  const vendedorEmail  = vendedor?.email  || null;
+  // Fallback: si el responsable es el usuario logueado y no está en la lista (ej. asesor sin permiso de listar usuarios)
+  const vendedorEmail = vendedor?.email || (opp?.responsable_id === authUser?.id ? authUser?.email : null) || null;
 
   const validezTexto = () => {
     if (cot.validez_tipo === 'fecha_exacta' && cot.validez_fecha)
@@ -430,12 +451,27 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
           </div>
         </div>
         <div className="row">
-          {cot.estado === 'borrador' && <button className="btn btn-secondary" onClick={onEdit}>{I.edit} Editar</button>}
-          {cot.estado === 'borrador' && <button className="btn btn-primary" onClick={() => setConfirmEnviar(true)}>{I.send} Enviar a cliente</button>}
-          {cot.estado === 'enviada'  && <button className="btn btn-ghost" onClick={onRevertirBorrador} style={{color:'var(--text-muted)'}}>↩ Revertir a borrador</button>}
-          {cot.estado === 'enviada'  && <button className="btn btn-secondary" onClick={() => setShowAprobModal(true)}>{I.check} Aprobar manualmente</button>}
+          {puedeEditar && <button className="btn btn-secondary" onClick={onEdit}>{I.edit} Editar</button>}
+          {mostrarAprobarBtn && (
+            <button className="btn btn-secondary" onClick={onAprobarInterna} style={{color:'var(--cyan)', borderColor:'var(--cyan)'}}>
+              ✓ Aprobar para envío
+            </button>
+          )}
+          {esBorrador && (
+            <button
+              className="btn btn-primary"
+              onClick={() => setConfirmEnviar(true)}
+              disabled={!puedeEnviar}
+              title={!puedeEnviar ? 'Pendiente de aprobación del jefe comercial' : ''}
+              style={!puedeEnviar ? {opacity:0.45, cursor:'not-allowed'} : {}}
+            >
+              {I.send} Enviar a cliente
+            </button>
+          )}
+          {cot.estado === 'enviada' && puedeAprobarCot && <button className="btn btn-ghost" onClick={onRevertirBorrador} style={{color:'var(--text-muted)'}}>↩ Revertir a borrador</button>}
+          {cot.estado === 'enviada' && <button className="btn btn-secondary" onClick={() => setShowAprobModal(true)}>{I.check} Aprobar manualmente</button>}
           {cot.estado === 'aprobada' && <button className="btn btn-primary" onClick={onGenerarOS}>{I.clipboard} Generar OS</button>}
-          <button className="btn btn-secondary" onClick={onCrearVersion}>{I.plus} Nueva versión</button>
+          {puedeAprobarCot && <button className="btn btn-secondary" onClick={onCrearVersion}>{I.plus} Nueva versión</button>}
           <button className="btn btn-secondary" onClick={onDescargarPDF} disabled={generandoPDF}>{I.download} {generandoPDF ? 'Generando…' : 'PDF'}</button>
         </div>
       </div>
@@ -471,6 +507,16 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
               </div>
             </div>
           </div>
+          {esBorrador && !aprobadaInterna && !puedeAprobarCot && (
+            <div style={{marginTop:14, padding:'10px 14px', background:'#fff8e1', borderRadius:8, borderLeft:'3px solid #f59e0b', fontSize:13, color:'#92400e', display:'flex', alignItems:'center', gap:8}}>
+              ⏳ <span>Pendiente de aprobación del jefe comercial para poder enviar al cliente.</span>
+            </div>
+          )}
+          {aprobadaInterna && (
+            <div style={{marginTop:14, padding:'10px 14px', background:'#f0fdf4', borderRadius:8, borderLeft:'3px solid var(--green)', fontSize:13, color:'#166534', display:'flex', alignItems:'center', gap:8}}>
+              ✓ <span>Aprobada para envío por <strong>{cot.aprobada_interna_por}</strong>{cot.aprobada_interna_at ? ` · ${new Date(cot.aprobada_interna_at).toLocaleDateString('es-PE')}` : ''}</span>
+            </div>
+          )}
           {cot.descripcion_general && (
             <div style={{marginTop:16, padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, borderLeft:'3px solid var(--cyan)', fontSize:14, lineHeight:'1.6'}}>
               {cot.descripcion_general}
@@ -559,7 +605,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
             {cot.glosa_factura && (
               <div style={{marginTop:16, padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:8, fontSize:13}}>
                 <div className="eyebrow" style={{marginBottom:4}}>Glosa recomendada para facturas</div>
-                {cot.glosa_factura}
+                {renderComercial(cot.glosa_factura)}
               </div>
             )}
           </div>
@@ -572,7 +618,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
           <div className="card-body">
             <h3 style={{marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Condiciones comerciales</h3>
             {COND_SECTIONS.map(([key, label]) => {
-              const texto = cot[key] || cfg[key];
+              const texto = renderComercial(cot[key] || cfg[key]);
               if (!texto) return null;
               const open = seccionesOpen[key] !== false;
               return (
@@ -755,7 +801,7 @@ function TotalesBox({ subtotal, igvPct, igv, total, suffix = '', sym = 'S/' }) {
 }
 
 // ── Editor (crear o editar borrador) ───────────────────────────────────
-function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfig, onSave, onCancel }) {
+function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfig, diccionarioComercial = [], onSave, onCancel }) {
   const { centrosBeneficio, monedasActivas } = useApp();
   const cfg     = empresaConfig || {};
   const isEdit  = !!(cotizacionBase?.id);
@@ -843,6 +889,29 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
     confidencialidad: cotizacionBase?.cond_confidencialidad ?? cfg.cond_confidencialidad ?? '',
   });
   const setCond = (k, v) => setConds(p => ({ ...p, [k]: v }));
+  const diccionarioActivo = (diccionarioComercial || []).filter(d => d.estado === 'activo');
+  const insertarCond = (key, texto) => {
+    if (!texto) return;
+    setConds(prev => ({ ...prev, [key]: insertarTexto(prev[key], texto) }));
+  };
+  const insertarGlosa = (texto) => {
+    if (!texto) return;
+    setGlosa(prev => insertarTexto(prev, texto));
+  };
+  const insertControls = (onInsert) => (
+    <div className="row" style={{gap:8, marginBottom:6, flexWrap:'wrap'}}>
+      <select className="select" defaultValue="" style={{maxWidth:230, height:32, fontSize:12}}
+        onChange={e => { onInsert(e.target.value); e.currentTarget.value = ''; }}>
+        <option value="">Insertar variable...</option>
+        {VARIABLES_COMERCIALES.map(v => <option key={v.token} value={v.token}>{v.grupo} - {v.label}</option>)}
+      </select>
+      <select className="select" defaultValue="" style={{maxWidth:250, height:32, fontSize:12}}
+        onChange={e => { onInsert(e.target.value); e.currentTarget.value = ''; }}>
+        <option value="">Insertar frase...</option>
+        {diccionarioActivo.map(d => <option key={d.id} value={d.texto}>{d.categoria} - {d.clave}</option>)}
+      </select>
+    </div>
+  );
 
   const COND_LABELS = [
     ['forma_pago',       'Forma de pago y datos bancarios'],
@@ -855,11 +924,16 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
   ];
 
   // ── Guardar ──────────────────────────────────────────────────────────
-  const handleSave = () => {
+  const [guardando, setGuardando] = useState(false);
+  const [errorGuardar, setErrorGuardar] = useState('');
+
+  const handleSave = async () => {
     if (hitosActivos && Math.abs(sumPct - 100) > 0.01) {
       alert(`Los porcentajes de hitos suman ${sumPct.toFixed(1)}%. Deben sumar exactamente 100%.`);
       return;
     }
+    setGuardando(true);
+    setErrorGuardar('');
     const items = partidas.map((p, i) => ({
       id: p.id, n: i + 1,
       descripcion: p.descripcion,
@@ -871,34 +945,40 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
       total: p.incluido ? 0 : Number(p.cantidad) * Number(p.precio_unitario),
       incluido: p.incluido || false,
     }));
-    onSave({
-      oportunidad_id: cotizacionBase?.oportunidad_id || opp?.id,
-      cuenta_id:      cotizacionBase?.cuenta_id      || opp?.cuenta_id,
-      contacto_id:    contactoId || null,
-      centro_beneficio_id: cebeId || null,
-      ...(isEdit && numeroCot ? { numero: numeroCot.trim() } : {}),
-      moneda, igv_pct: Number(igvPct),
-      validez_tipo: validezTipo,
-      validez_dias: Number(validezDias),
-      validez_fecha: validezTipo === 'fecha_exacta' ? validezFecha : null,
-      descripcion_general: descripcion,
-      hoja_costeo_id: cotizacionBase?.hoja_costeo_id || null,
-      items,
-      subtotal: subtImpl + subtRec, base_imponible: subtImpl,
-      igv: igvImpl, total: totalImpl,
-      subtotal_impl: subtImpl, igv_impl: igvImpl, total_impl: totalImpl,
-      subtotal_rec: subtRec,   igv_rec: igvRec,   total_rec: totalRec,
-      hitos_activos: hitosActivos,
-      hitos_pago: hitosActivos ? hitos.map(h => ({ ...h, monto: Math.round(totalImpl * Number(h.porcentaje || 0) / 100) })) : [],
-      glosa_factura:         glosa || null,
-      cond_forma_pago:       conds.forma_pago       || null,
-      cond_validez:          conds.validez          || null,
-      cond_penalidad:        conds.penalidad        || null,
-      cond_inicio_proyecto:  conds.inicio_proyecto  || null,
-      cond_alcance:          conds.alcance          || null,
-      cond_integraciones:    conds.integraciones    || null,
-      cond_confidencialidad: conds.confidencialidad || null,
-    });
+    try {
+      await onSave({
+        oportunidad_id: cotizacionBase?.oportunidad_id || opp?.id,
+        cuenta_id:      cotizacionBase?.cuenta_id      || opp?.cuenta_id,
+        contacto_id:    contactoId || null,
+        centro_beneficio_id: cebeId || null,
+        ...(isEdit && numeroCot ? { numero: numeroCot.trim() } : {}),
+        moneda, igv_pct: Number(igvPct),
+        validez_tipo: validezTipo,
+        validez_dias: Number(validezDias),
+        validez_fecha: validezTipo === 'fecha_exacta' ? validezFecha : null,
+        descripcion_general: descripcion,
+        hoja_costeo_id: cotizacionBase?.hoja_costeo_id || null,
+        items,
+        subtotal: subtImpl + subtRec, base_imponible: subtImpl,
+        igv: igvImpl, total: totalImpl,
+        subtotal_impl: subtImpl, igv_impl: igvImpl, total_impl: totalImpl,
+        subtotal_rec: subtRec,   igv_rec: igvRec,   total_rec: totalRec,
+        hitos_activos: hitosActivos,
+        hitos_pago: hitosActivos ? hitos.map(h => ({ ...h, monto: Math.round(totalImpl * Number(h.porcentaje || 0) / 100) })) : [],
+        glosa_factura:         glosa || null,
+        cond_forma_pago:       conds.forma_pago       || null,
+        cond_validez:          conds.validez          || null,
+        cond_penalidad:        conds.penalidad        || null,
+        cond_inicio_proyecto:  conds.inicio_proyecto  || null,
+        cond_alcance:          conds.alcance          || null,
+        cond_integraciones:    conds.integraciones    || null,
+        cond_confidencialidad: conds.confidencialidad || null,
+      });
+    } catch (err) {
+      setErrorGuardar(err?.message || 'No se pudo guardar la cotización. Verifica tus permisos.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
@@ -914,9 +994,14 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
             {cuenta?.ruc && <> · RUC: {cuenta.ruc}</>}
           </div>
         </div>
-        <div className="row">
-          <button className="btn btn-secondary" onClick={onCancel}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave}>{I.save} Guardar cotización</button>
+        <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:8}}>
+          <div className="row">
+            <button className="btn btn-secondary" onClick={onCancel} disabled={guardando}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={guardando}>
+              {guardando ? 'Guardando…' : <>{I.save} Guardar cotización</>}
+            </button>
+          </div>
+          {errorGuardar && <span style={{fontSize:12, color:'var(--red)', maxWidth:320, textAlign:'right'}}>{errorGuardar}</span>}
         </div>
       </div>
 
@@ -1137,6 +1222,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
               <button className="btn btn-secondary btn-sm" onClick={addHito}>{I.plus} Agregar hito</button>
               <div className="input-group" style={{marginTop:16}}>
                 <label>Glosa recomendada para las facturas</label>
+                {insertControls(insertarGlosa)}
                 <textarea className="input" rows="2" value={glosa} onChange={e => setGlosa(e.target.value)} placeholder="Texto que irá en las facturas…" />
               </div>
             </>
@@ -1152,6 +1238,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
           {COND_LABELS.map(([key, label]) => (
             <div className="input-group" key={key}>
               <label style={{fontSize:13}}>{label}</label>
+              {insertControls(texto => insertarCond(key, texto))}
               <textarea className="input" rows="3" value={conds[key]} onChange={e => setCond(key, e.target.value)} placeholder={label + '…'} />
             </div>
           ))}
@@ -1199,6 +1286,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, onClose, onCrearNueva, on
   );
   const today = new Date().toISOString().split('T')[0];
   const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
+  const cebeVinculadoCuenta = cebesActivos.find(c => c.tipo === 'cliente' && c.cuenta_id === cot.cuenta_id);
   const cebesOrdenados = [...cebesActivos].sort((a, b) => Number(b.tipo === 'cliente' && b.cuenta_id === cot.cuenta_id) - Number(a.tipo === 'cliente' && a.cuenta_id === cot.cuenta_id));
   const condPagoInicial = cot.condicion_pago || cuenta?.condicion_pago || '30 días';
   const [modo, setModo] = useState(osExistentes.length > 0 ? null : 'nueva');
@@ -1215,7 +1303,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, onClose, onCrearNueva, on
     observaciones: '',
     condicion_pago: condPagoInicial,
     sla: 'estandar',
-    centro_beneficio_id: cot.centro_beneficio_id || '',
+    centro_beneficio_id: cot.centro_beneficio_id || cebeVinculadoCuenta?.id || '',
   });
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const optStyle = { display:'flex', alignItems:'center', gap:10, padding:'10px 14px', border:'1px solid var(--border)', borderRadius:8, cursor:'pointer', transition:'background 0.15s' };

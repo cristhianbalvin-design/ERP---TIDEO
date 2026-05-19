@@ -1706,24 +1706,33 @@ function Pipeline() {
     o.nombre.toLowerCase().includes(query) ||
     getOppCuentaNombre(o.cuenta_id).toLowerCase().includes(query)
   );
+  const etapaPipeline = (opp) => opp.etapa === 'cierre' ? 'negociacion' : opp.etapa;
 
-  const total = activeOps.reduce((s,o)=>s+(o.monto_estimado||0),0);
+  const getOppMontoCotizado = (oppId) => {
+    const oppCots = cotizaciones.filter(c => c.oportunidad_id === oppId);
+    if (!oppCots.length) return null;
+    const latest = oppCots.reduce((best, c) => (c.version || 1) > (best.version || 1) ? c : best, oppCots[0]);
+    return { subtotal: latest.subtotal || 0, moneda: latest.moneda || 'PEN' };
+  };
+  const getOppMontoEfectivo = (o) => {
+    const cot = getOppMontoCotizado(o.id);
+    return cot ? cot.subtotal : (o.monto_estimado || 0);
+  };
+
+  const total = activeOps.reduce((s,o) => s + getOppMontoEfectivo(o), 0);
   const forecast = activeOps.reduce((s,o)=>s+(o.forecast_ponderado||0),0);
 
+  const ETAPAS_AUTO = ['propuesta', 'negociacion', 'ganada'];
   const handleDrop = (e, targetStatus) => {
     e.preventDefault();
     const id = e.dataTransfer.getData('text/plain');
     if (!id) return;
-    if (targetStatus === 'propuesta') {
-      const tieneCotizacion = cotizaciones.some(c => c.oportunidad_id === id);
-      if (!tieneCotizacion) {
-        setDropMsg('No puedes mover esta oportunidad a Propuesta sin una cotización. Abre el panel lateral y crea una cotización primero.');
-        setTimeout(() => setDropMsg(null), 5000);
-        return;
-      }
+    if (ETAPAS_AUTO.includes(targetStatus)) {
+      setDropMsg('Esta etapa avanza automáticamente según el estado de la cotización.');
+      setTimeout(() => setDropMsg(null), 4000);
+      return;
     }
-    if (targetStatus === 'ganada') marcarGanada(id, {});
-    else if (targetStatus === 'perdida') { setPendingPerdida(id); setMotivoPerdida(''); setMotivoError(false); }
+    if (targetStatus === 'perdida') { setPendingPerdida(id); setMotivoPerdida(''); setMotivoError(false); }
     else actualizarEtapaOportunidad(id, targetStatus);
   };
 
@@ -1872,9 +1881,9 @@ function Pipeline() {
 
       <div className="pipeline-kpi-grid" style={{gridTemplateColumns:'repeat(5, 1fr)'}}>
         {cols.map((c, i) => {
-          const ops = filteredOps.filter(o => o.etapa === c.k);
-          const sumPEN = ops.reduce((s,o) => o.moneda !== 'USD' ? s + (o.monto_estimado||0) : s, 0);
-          const sumUSD = ops.reduce((s,o) => o.moneda === 'USD' ? s + (o.monto_estimado||0) : s, 0);
+          const ops = filteredOps.filter(o => etapaPipeline(o) === c.k);
+          const sumPEN = ops.reduce((s,o) => { const cot = getOppMontoCotizado(o.id); const moneda = cot ? cot.moneda : (o.moneda||'PEN'); const monto = cot ? cot.subtotal : (o.monto_estimado||0); return moneda !== 'USD' ? s + monto : s; }, 0);
+          const sumUSD = ops.reduce((s,o) => { const cot = getOppMontoCotizado(o.id); const moneda = cot ? cot.moneda : (o.moneda||'PEN'); const monto = cot ? cot.subtotal : (o.monto_estimado||0); return moneda === 'USD' ? s + monto : s; }, 0);
           const icons = [I.star, I.file, I.hand, I.check, I.x];
           return (
             <div key={c.k} className={`pipeline-kpi-card ${c.k} hover-raise`} style={{ '--accent': c.color }}>
@@ -1898,29 +1907,33 @@ function Pipeline() {
           <div className="kanban-v2">
             {cols.map(c => {
               const list = filteredOps
-                .filter(o => o.etapa === c.k)
+                .filter(o => etapaPipeline(o) === c.k)
                 .sort((a, b) => (b.moved_at || 0) - (a.moved_at || 0) || (b.fecha_creacion || '').localeCompare(a.fecha_creacion || ''));
+              const isAuto = ETAPAS_AUTO.includes(c.k);
               return (
                 <div
                   key={c.k}
                   className="kanban-col-v2"
-                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                  onDragOver={(e) => { if (!isAuto) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } }}
                   onDrop={(e) => handleDrop(e, c.k)}
                   style={{ '--accent': c.color }}
                 >
                   <div className="kanban-col-head-v2">
-                    <div className="kanban-col-title-v2">{c.title}</div>
+                    <div className="kanban-col-title-v2" style={{display:'flex', alignItems:'center', gap:6}}>
+                      {c.title}
+                      {isAuto && <span style={{fontSize:9, color:'var(--text-muted)', fontWeight:400, letterSpacing:0.5}}>AUTO</span>}
+                    </div>
                     <div className="kanban-col-count-v2">{list.length}</div>
                   </div>
-                  
+
                   <div style={{flex:1}}>
                     {list.length > 0 ? (
                       list.map(o => (
-                        <div 
-                          key={o.id} 
+                        <div
+                          key={o.id}
                           className="kanban-card-v2"
-                          draggable
-                          onDragStart={(e) => startKanbanDrag(e, o.id)}
+                          draggable={!isAuto}
+                          onDragStart={(e) => { if (!isAuto) startKanbanDrag(e, o.id); }}
                           onDragEnd={endKanbanDrag}
                           onClick={() => setSel(o)}
                           style={{cursor: 'pointer'}}
@@ -1933,7 +1946,7 @@ function Pipeline() {
                           </div>
                           
                           <div style={{fontSize:14, fontWeight:800, color:'var(--navy)', marginBottom:12}}>
-                            {moneyCurrency(o.monto_estimado, o.moneda)}
+                            {(() => { const cot = getOppMontoCotizado(o.id); return cot ? moneyCurrency(cot.subtotal, cot.moneda) : moneyCurrency(o.monto_estimado, o.moneda); })()}
                           </div>
   
                           <div className="row" style={{justifyContent:'space-between', borderTop:'1px solid var(--border-subtle)', paddingTop:12, marginTop:4}}>
@@ -2037,7 +2050,7 @@ function Pipeline() {
                 <div className="grid-3" style={{gap:10}}>
                   <div style={{background:'var(--bg-subtle)', borderRadius:10, padding:'12px 10px', border:'1px solid var(--border)', textAlign:'center'}}>
                     <div className="eyebrow" style={{marginBottom:5}}>Monto</div>
-                    <div style={{fontFamily:'Sora,sans-serif', fontSize:16, fontWeight:700, color:'var(--cyan-dk)', lineHeight:1.2}}>{moneyCurrency(sel.monto_estimado, sel.moneda)}</div>
+                    <div style={{fontFamily:'Sora,sans-serif', fontSize:16, fontWeight:700, color:'var(--cyan-dk)', lineHeight:1.2}}>{(() => { const cot = getOppMontoCotizado(sel.id); return cot ? moneyCurrency(cot.subtotal, cot.moneda) : moneyCurrency(sel.monto_estimado, sel.moneda); })()}</div>
                   </div>
                   <div style={{background:'var(--bg-subtle)', borderRadius:10, padding:'12px 10px', border:'1px solid var(--border)', textAlign:'center'}}>
                     <div className="eyebrow" style={{marginBottom:5}}>Prob.</div>
@@ -2115,14 +2128,18 @@ function Pipeline() {
                 {/* CTAs principales */}
                 {!['ganada', 'perdida'].includes(sel.etapa) && (
                   <div className="col" style={{gap:8, paddingBottom:4}}>
-                    <button className="btn btn-primary" style={{justifyContent:'center', fontWeight:600}} data-local-form="true"
-                      onClick={e => { e.stopPropagation(); navigate('cotizaciones', { opp: sel.id, active_tab: 'nueva' }); }}>
-                      {I.file} Crear Cotización
-                    </button>
-                    <button className="btn btn-secondary" style={{justifyContent:'center'}} data-local-form="true"
-                      onClick={e => { e.stopPropagation(); navigate('hoja_costeo', { nueva: true, opp: sel.id }); }}>
-                      {I.receipt} Crear Hoja de Costeo
-                    </button>
+                    {!cotizaciones.some(c => c.oportunidad_id === sel.id) && (
+                      <button className="btn btn-primary" style={{justifyContent:'center', fontWeight:600}} data-local-form="true"
+                        onClick={e => { e.stopPropagation(); navigate('cotizaciones', { opp: sel.id, active_tab: 'nueva' }); }}>
+                        {I.file} Crear Cotización
+                      </button>
+                    )}
+                    {!hojasCosteo.some(h => h.oportunidad_id === sel.id) && !cotizaciones.some(c => c.oportunidad_id === sel.id) && (
+                      <button className="btn btn-secondary" style={{justifyContent:'center'}} data-local-form="true"
+                        onClick={e => { e.stopPropagation(); navigate('hoja_costeo', { nueva: true, opp: sel.id }); }}>
+                        {I.receipt} Crear Hoja de Costeo
+                      </button>
+                    )}
                     <div className="row" style={{gap:8, marginTop:2}}>
                       <button className="btn flex-1" style={{justifyContent:'center', background:'var(--green-lt)', color:'var(--green-dk)', border:'1px solid rgba(76,175,80,0.3)', fontWeight:600}}
                         onClick={() => { marcarGanada(sel.id, {}); setSel(null); }}>

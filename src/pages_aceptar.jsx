@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { renderTextoComercial } from './lib/textoComercial.js';
 
 const sb = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -126,6 +127,8 @@ export function PaginaAceptacion({ token }) {
     ? `Válida únicamente el ${cot.validez_fecha}`
     : cot?.validez_dias ? `${cot.validez_dias} días` : '—';
   const hayHitos = cot?.hitos_activos && cot?.hitos_pago?.length > 0;
+  const textoCtx = { empresa: cfg, cuenta, cliente: cuenta, cotizacion: cot };
+  const renderComercial = texto => renderTextoComercial(texto, textoCtx);
   const CONDS = [
     ['cond_forma_pago', 'Forma de pago'],
     ['cond_validez', 'Validez de la oferta'],
@@ -268,7 +271,7 @@ export function PaginaAceptacion({ token }) {
             {(cot.glosa_factura || cfg?.cond_glosa_factura) && (
               <div style={{ marginTop: 10, padding: '8px 12px', background: '#f0f5ff', borderLeft: `3px solid ${primary}`, borderRadius: 4, fontSize: 13, fontStyle: 'italic', color: '#334' }}>
                 <span style={{ fontWeight: 700, fontStyle: 'normal', fontSize: 11, color: secondary }}>Glosa recomendada: </span>
-                {cot.glosa_factura || cfg?.cond_glosa_factura}
+                {renderComercial(cot.glosa_factura || cfg?.cond_glosa_factura)}
               </div>
             )}
           </div>
@@ -282,7 +285,7 @@ export function PaginaAceptacion({ token }) {
               {CONDS.map(([k, label]) => (
                 <div key={k}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: secondary, letterSpacing: 0.5, marginBottom: 3 }}>{label.toUpperCase()}</div>
-                  <div style={{ fontSize: 13, color: '#444', lineHeight: 1.55 }}>{cot?.[k] || cfg?.[k]}</div>
+                  <div style={{ fontSize: 13, color: '#444', lineHeight: 1.55 }}>{renderComercial(cot?.[k] || cfg?.[k])}</div>
                 </div>
               ))}
             </div>

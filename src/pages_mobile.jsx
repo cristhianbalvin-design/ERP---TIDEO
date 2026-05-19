@@ -3,15 +3,18 @@ import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { rrhhService } from './services/rrhhService.js';
-import { PHONE_PATTERN, sanitizePhone } from './lib/formValidators.js';
+import { PHONE_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 
 // Mobile field views - all field profiles
 
 function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
-  const { authUser, usuarios, personalAdmin, personalOperativo } = useApp();
+  const { authUser, usuarios, personalAdmin, personalOperativo, role } = useApp();
   const [screen, setScreen] = useState('home');
   const trabajadorAsistencia = getTrabajadorAsistenciaMovil({ authUser, usuarios, personalAdmin, personalOperativo });
-  const modulosUsuario = getUsuarioCampoModulos(authUser, usuarios);
+  // Usar role.permisos.campo_modulos (de membresiaActiva, disponible desde el login)
+  // en lugar de buscar en usuarios[] que puede estar vacío por RLS para roles no-admin.
+  const modulosUsuario = (role?.permisos?.campo_modulos?.length ? role.permisos.campo_modulos : null)
+    ?? getUsuarioCampoModulos(authUser, usuarios);
   const modulosUsuarioKey = modulosUsuario.join('|');
   const puedeVerAsistencia = Boolean(trabajadorAsistencia);
 
@@ -26,11 +29,14 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
   ].filter(p => modulosUsuario.includes(p.k) && (!p.requiereAsistencia || puedeVerAsistencia)), [modulosUsuarioKey, puedeVerAsistencia]);
 
   useEffect(() => {
+    if (!profiles.length) return;
     if (profile === 'asistencia' && !puedeVerAsistencia) {
-      setProfile(profiles[0]?.k || 'tecnico');
+      setProfile(profiles[0].k);
       setScreen('home');
+      return;
     }
-    if (profiles.length && !profiles.some(p => p.k === profile)) {
+    // null (inicial) o perfil no permitido → asignar el primero disponible
+    if (!profile || !profiles.some(p => p.k === profile)) {
       setProfile(profiles[0].k);
       setScreen('home');
     }
@@ -553,7 +559,7 @@ function LogisticaView({ screen, setScreen }) {
 }
 
 function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setProfile }) {
-  const { agendaEventos, cuentas, contactos, oportunidades, actividades, leads, updateLeadState, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva, empresa, dataMode, supabaseStatus, signOut, notificaciones, markNotificacionesRead, addNotificacion } = useApp();
+  const { agendaEventos, cuentas, contactos, oportunidades, cotizaciones, actividades, leads, historialEstados, oppHistorialEtapas, updateLeadState, convertirLead, descartarLead, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, marcarPerdida, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva, empresa, dataMode, supabaseStatus, signOut, notificaciones, markNotificacionesRead, addNotificacion, monedasActivas } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const esDelUsuario = valor => normalizarTexto(valor) === normalizarTexto(usuarioMovil.nombre);
   const rolNombre = normalizarTexto(role?.nombre || membresiaActiva?.rol?.nombre);
@@ -583,16 +589,142 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
   const [leadFotoTexto, setLeadFotoTexto] = useState('');
   const [leadDesdeFoto, setLeadDesdeFoto] = useState(null);
   const [notificacionesCampo, setNotificacionesCampo] = useState(true);
-  const ETAPAS = ['prospecto', 'calificacion', 'propuesta', 'negociacion', 'cierre'];
+  const [modalMovLead, setModalMovLead] = useState(null); // { lead, destino }
+  const [movMotivo, setMovMotivo] = useState('');
+  const [movError, setMovError] = useState('');
+  const [modalConvertirLead, setModalConvertirLead] = useState(null);
+  const [convertirForm, setConvertirForm] = useState(null);
+  const [convertirError, setConvertirError] = useState('');
+  const [modalPerderOpp, setModalPerderOpp] = useState(null);
+  const [motivoPerdida, setMotivoPerdida] = useState('');
+  const [perdidaError, setPerdidaError] = useState('');
+  const [drawerItem, setDrawerItem] = useState(null); // { type: 'lead'|'opp', data: object }
+  const [drawerTab, setDrawerTab] = useState('timeline');
+  const ESTADOS_LEAD_ORDER = ['nuevo', 'en_contacto', 'calificado'];
+  const MOV_CFG = {
+    en_contacto: { titulo: 'Primer contacto', placeholder: '¿Cómo fue el primer contacto?' },
+    calificado:  { titulo: 'Calificar lead', placeholder: '¿Por qué califica? ¿Confirmaste necesidad, presupuesto y decisión?' },
+    descartado:  { titulo: 'Descartar lead', placeholder: '¿Por qué se descarta este lead?' },
+  };
+  const mobileFormGrid = { display:'grid', gridTemplateColumns:'1fr', gap:12 };
+  const abrirMovLead = (lead, destino) => { setModalMovLead({ lead, destino }); setMovMotivo(''); setMovError(''); };
+  const buildConvertirFormLead = (lead) => ({
+    nombre_comercial: lead.empresa_nombre || lead.empresa_contacto || '',
+    razon_social: lead.razon_social || lead.empresa_nombre || lead.empresa_contacto || '',
+    ruc: lead.ruc || '',
+    fuente: lead.fuente || '',
+    industria: lead.industria || '',
+    contacto_nombre: lead.nombre_contacto || lead.nombre || '',
+    contacto_cargo: lead.cargo || '',
+    contacto_telefono: sanitizePhone(lead.telefono || ''),
+    contacto_email: lead.email || '',
+    nombre_oportunidad: `${(lead.necesidad || 'Venta').slice(0, 50)} — ${lead.empresa_nombre || lead.empresa_contacto || 'Prospecto'}`,
+    monto_estimado: lead.presupuesto_estimado || '',
+    moneda: lead.moneda || monedasActivas?.[0]?.codigo || 'PEN',
+  });
+  const abrirConvertirLead = (lead) => {
+    setModalConvertirLead(lead);
+    setConvertirForm(buildConvertirFormLead(lead));
+    setConvertirError('');
+  };
+  const updateConvertirForm = (campo, valor) => {
+    setConvertirForm(prev => ({ ...prev, [campo]: valor }));
+    setConvertirError('');
+  };
+  const confirmarConvertirLead = () => {
+    if (!modalConvertirLead || !convertirForm) return;
+    const requeridos = [
+      'nombre_comercial',
+      'razon_social',
+      'ruc',
+      'fuente',
+      'industria',
+      'contacto_nombre',
+      'contacto_cargo',
+      'contacto_telefono',
+      'contacto_email',
+      'nombre_oportunidad',
+      'monto_estimado',
+    ];
+    const faltaCampo = requeridos.some(k => !String(convertirForm[k] || '').trim());
+    if (faltaCampo) {
+      setConvertirError('Completa todos los campos obligatorios para crear la oportunidad.');
+      return;
+    }
+    if (!isValidRuc(convertirForm.ruc)) {
+      setConvertirError('El RUC debe tener 11 digitos y empezar con 1 o 2.');
+      return;
+    }
+    if (!isValidPhone(convertirForm.contacto_telefono)) {
+      setConvertirError('El celular debe tener 9 digitos y empezar con 9.');
+      return;
+    }
+    if (!(Number(convertirForm.monto_estimado) > 0)) {
+      setConvertirError('El monto estimado debe ser mayor a cero.');
+      return;
+    }
+    convertirLead(modalConvertirLead.id, convertirForm);
+    setModalConvertirLead(null);
+    setConvertirForm(null);
+    setConvertirError('');
+    setPipelineTab('opps');
+    mostrarToast('Lead convertido a oportunidad');
+  };
+  const confirmarMovLead = () => {
+    const { lead, destino } = modalMovLead;
+    if (destino === 'calificado' && !(lead.presupuesto_estimado > 0)) {
+      setMovError('Para calificar debes registrar un presupuesto estimado desde el desktop.');
+      return;
+    }
+    if (!movMotivo.trim()) { setMovError('El motivo es obligatorio.'); return; }
+    if (destino === 'descartado') descartarLead(lead.id, movMotivo.trim());
+    else updateLeadState(lead.id, destino, movMotivo.trim());
+    setModalMovLead(null);
+    setMovMotivo('');
+    setMovError('');
+  };
+  const abrirPerderOpp = (opp) => {
+    setModalPerderOpp(opp);
+    setMotivoPerdida('');
+    setPerdidaError('');
+  };
+  const confirmarPerderOpp = () => {
+    if (!modalPerderOpp) return;
+    if (!motivoPerdida.trim()) {
+      setPerdidaError('Registra el motivo de perdida.');
+      return;
+    }
+    marcarPerdida(modalPerderOpp.id, motivoPerdida.trim());
+    setModalPerderOpp(null);
+    setMotivoPerdida('');
+    setPerdidaError('');
+    mostrarToast('Oportunidad marcada como perdida');
+  };
+  const ETAPAS = ['prospecto', 'calificacion', 'propuesta', 'negociacion'];
   const oppsUsuario = oportunidades.filter(o => (puedeVerEquipoComercial || esDelUsuario(o.responsable)) && o.estado === 'abierta');
+  const etapaPipelineMobile = (opp) => normalizarTexto(opp?.etapa) === 'cierre' ? 'negociacion' : normalizarTexto(opp?.etapa);
+  const getOppMontoEfectivo = (opp) => {
+    const oppCots = (cotizaciones || []).filter(c => c.oportunidad_id === opp.id);
+    if (!oppCots.length) return { monto: opp.monto_estimado || 0, moneda: opp.moneda || 'PEN' };
+    const latest = oppCots.reduce((best, c) => (c.version || 1) > (best.version || 1) ? c : best, oppCots[0]);
+    return { monto: latest.subtotal || 0, moneda: latest.moneda || 'PEN' };
+  };
+  const ETAPAS_PIPELINE = ['calificacion', 'propuesta', 'negociacion', 'ganada'];
+  const ETAPA_LABELS = { calificacion: 'Calificación', propuesta: 'Propuesta', negociacion: 'Negociación', ganada: 'Ganada' };
+  const resumenEtapas = ETAPAS_PIPELINE.map(etapa => {
+    const oppsEtapa = oppsUsuario.filter(o => etapaPipelineMobile(o) === etapa);
+    const totalUSD = oppsEtapa.reduce((s, o) => { const m = getOppMontoEfectivo(o); return m.moneda === 'USD' ? s + m.monto : s; }, 0);
+    const totalPEN = oppsEtapa.reduce((s, o) => { const m = getOppMontoEfectivo(o); return m.moneda !== 'USD' ? s + m.monto : s; }, 0);
+    return { etapa, totalUSD, totalPEN, count: oppsEtapa.length };
+  }).filter(r => r.count > 0);
   const actsUsuario = actividades
     .filter(a => puedeVerEquipoComercial || esDelUsuario(a.responsable))
     .sort((a,b) => b.fecha.localeCompare(a.fecha));
   const leadsUsuario = (leads || [])
     .filter(l => (puedeVerEquipoComercial || esDelUsuario(l.responsable)) && !['convertido', 'descartado'].includes(normalizarTexto(l.estado)))
     .sort((a,b) => String(b.fecha_creacion || '').localeCompare(String(a.fecha_creacion || '')));
-  const etapaColor = { prospecto:'cyan', calificacion:'purple', propuesta:'orange', negociacion:'navy', cierre:'green' };
-  const estadoLeadColor = { nuevo:'cyan', contactado:'purple', calificado:'green', en_proceso:'orange' };
+  const etapaColor = { prospecto:'cyan', calificacion:'purple', propuesta:'orange', negociacion:'navy', cierre:'green', ganada:'green' };
+  const estadoLeadColor = { nuevo:'cyan', contactado:'purple', en_contacto:'purple', calificado:'green', en_proceso:'orange', interesado:'orange' };
   const cuentaActiva =
     cuentas.find(c => esDelUsuario(c.responsable_comercial) || esDelUsuario(c.vendedor) || esDelUsuario(c.responsable)) ||
     cuentas[0];
@@ -1064,60 +1196,268 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
           </div>
           {pipelineTab === 'leads' ? (
             <div className="col" style={{gap:10}}>
+              {leadsUsuario.length > 0 && (() => {
+                const grupos = leadsUsuario.reduce((acc, l) => {
+                  const k = normalizarTexto(l.estado) || 'nuevo';
+                  if (!acc[k]) acc[k] = { label: l.estado || 'Nuevo', color: estadoLeadColor[k] || 'cyan', count: 0 };
+                  acc[k].count++;
+                  return acc;
+                }, {});
+                return (
+                  <div style={{display:'flex', flexWrap:'wrap', gap:8, marginBottom:4}}>
+                    {Object.values(grupos).map(g => (
+                      <div key={g.label} style={{display:'flex', alignItems:'center', gap:6, background:'var(--bg-subtle)', borderRadius:8, padding:'7px 12px', borderLeft:`3px solid var(--${g.color})`}}>
+                        <span style={{fontSize:11, fontWeight:700, textTransform:'capitalize', color:`var(--${g.color})`}}>{g.label}</span>
+                        <span style={{fontSize:14, fontWeight:800, color:`var(--${g.color})`}}>{g.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
               {leadsUsuario.length === 0 && <div className="text-muted" style={{textAlign:'center', padding:30, fontSize:13}}>No tienes leads activos.</div>}
               {leadsUsuario.map(l => {
-                const color = estadoLeadColor[normalizarTexto(l.estado)] || 'cyan';
+                const estadoActual = normalizarTexto(l.estado);
+                const color = estadoLeadColor[estadoActual] || 'cyan';
                 const telefonoLead = telefonoParaLlamar(l.telefono);
+                const idxActual = ESTADOS_LEAD_ORDER.indexOf(estadoActual);
+                const siguienteEstado = idxActual >= 0 ? ESTADOS_LEAD_ORDER[idxActual + 1] : null;
+                const siguienteLabel = siguienteEstado ? (MOV_CFG[siguienteEstado]?.titulo || siguienteEstado) : null;
+                const esCalificado = estadoActual === 'calificado';
                 return (
                   <div key={l.id} className="card" style={{padding:14, borderLeft:`3px solid var(--${color})`}}>
-                    <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
-                      <span className={`badge badge-${color}`} style={{fontSize:10, textTransform:'capitalize'}}>{l.estado || 'Nuevo'}</span>
-                      <span style={{fontSize:12, fontWeight:600, color:'var(--fg-muted)'}}>{l.fecha_creacion?.substring(0,10) || ''}</span>
+                    <div style={{cursor:'pointer'}} onClick={() => { setDrawerItem({ type: 'lead', data: l }); setDrawerTab('timeline'); }}>
+                      <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
+                        <span className={`badge badge-${color}`} style={{fontSize:10, textTransform:'capitalize'}}>{l.estado || 'Nuevo'}</span>
+                        <span style={{fontSize:12, fontWeight:600, color:'var(--fg-muted)'}}>{l.fecha_creacion?.substring(0,10) || ''}</span>
+                      </div>
+                      <div style={{fontWeight:700, fontSize:14, marginBottom:2}}>{l.nombre_contacto || l.nombre}</div>
+                      <div className="text-muted" style={{fontSize:12, marginBottom:10}}>{l.empresa_nombre || l.empresa_contacto || 'Sin empresa'} {l.cargo ? `· ${l.cargo}` : ''}</div>
                     </div>
-                    <div style={{fontWeight:700, fontSize:14, marginBottom:2}}>{l.nombre_contacto || l.nombre}</div>
-                    <div className="text-muted" style={{fontSize:12, marginBottom:8}}>{l.empresa_nombre || l.empresa_contacto || 'Sin empresa'} {l.cargo ? `· ${l.cargo}` : ''}</div>
-                    <div className="row" style={{justifyContent:'space-between', alignItems:'center'}}>
-                      <div style={{fontSize:11, color:'var(--fg-muted)'}}>{l.telefono || 'Sin teléfono'}</div>
+                    <div className="row" style={{justifyContent:'space-between', alignItems:'center', gap:6}}>
+                      <a
+                        className="btn btn-sm btn-secondary"
+                        href={telefonoLead ? `tel:${telefonoLead}` : undefined}
+                        aria-disabled={!telefonoLead}
+                        onClick={e => { if (!telefonoLead) { e.preventDefault(); mostrarToast('El lead no tiene teléfono válido'); } }}
+                        style={{fontSize:11, padding:'4px 8px'}}
+                      >{I.phone} Llamar</a>
                       <div className="row" style={{gap:6}}>
-                        <a
-                          className="btn btn-sm btn-secondary"
-                          href={telefonoLead ? `tel:${telefonoLead}` : undefined}
-                          aria-disabled={!telefonoLead}
-                          onClick={e => { if (!telefonoLead) { e.preventDefault(); mostrarToast('El lead no tiene teléfono válido'); } }}
-                          style={{fontSize:11, padding:'4px 8px'}}
-                        >
-                          {I.phone} Llamar
-                        </a>
+                        {esCalificado ? (
+                          <button className="btn btn-sm" style={{fontSize:11, padding:'4px 10px', background:'var(--green)', color:'#fff', border:'none'}}
+                            onClick={() => abrirConvertirLead(l)}>
+                            Convertir →
+                          </button>
+                        ) : siguienteLabel && (
+                          <button className="btn btn-sm" style={{fontSize:11, padding:'4px 10px', background:'var(--cyan)', color:'#fff', border:'none'}}
+                            onClick={() => abrirMovLead(l, siguienteEstado)}>
+                            {siguienteLabel} →
+                          </button>
+                        )}
+                        <button className="btn btn-sm" style={{fontSize:11, padding:'4px 10px', background:'var(--bg-subtle)', color:'var(--orange)', border:'1px solid var(--orange)'}}
+                          onClick={() => abrirMovLead(l, 'descartado')}>
+                          Descartar
+                        </button>
                       </div>
                     </div>
                   </div>
                 );
               })}
+
+              {modalMovLead && (
+                <div style={{position:'absolute', inset:0, background:'rgba(0,0,0,0.45)', zIndex:200, display:'flex', alignItems:'flex-end'}}
+                  onClick={e => { if (e.target === e.currentTarget) setModalMovLead(null); }}>
+                  <div style={{background:'var(--bg)', borderRadius:'16px 16px 0 0', padding:20, width:'100%', boxSizing:'border-box'}}>
+                    <div style={{fontWeight:700, fontSize:15, marginBottom:12, color:'var(--navy)'}}>
+                      {MOV_CFG[modalMovLead.destino]?.titulo || 'Cambiar estado'}
+                    </div>
+                    <textarea
+                      className="input"
+                      rows={3}
+                      placeholder={MOV_CFG[modalMovLead.destino]?.placeholder || 'Escribe el motivo...'}
+                      value={movMotivo}
+                      onChange={e => { setMovMotivo(e.target.value); setMovError(''); }}
+                      style={{width:'100%', boxSizing:'border-box', marginBottom:6, ...(movError ? {borderColor:'var(--danger)'} : {})}}
+                      autoFocus
+                    />
+                    {movError && <div style={{fontSize:12, color:'var(--danger)', marginBottom:8}}>{movError}</div>}
+                    <div className="row" style={{gap:8, marginTop:4}}>
+                      <button className="btn btn-secondary flex-1" onClick={() => setModalMovLead(null)}>Cancelar</button>
+                      <button className="btn btn-primary flex-1" style={{background:'var(--green)', border:'none'}} onClick={confirmarMovLead}>Confirmar</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {modalConvertirLead && convertirForm && (
+                <div style={{position:'absolute', inset:0, background:'rgba(0,0,0,0.45)', zIndex:210, display:'flex', alignItems:'flex-end'}}
+                  onClick={e => { if (e.target === e.currentTarget) { setModalConvertirLead(null); setConvertirForm(null); } }}>
+                  <div style={{background:'var(--bg)', borderRadius:'16px 16px 0 0', padding:18, width:'100%', boxSizing:'border-box', maxHeight:'88%', overflowY:'auto'}}>
+                    <div className="row" style={{justifyContent:'space-between', alignItems:'flex-start', gap:12, marginBottom:12}}>
+                      <div>
+                        <div style={{fontWeight:800, fontSize:15, color:'var(--navy)'}}>Convertir a oportunidad</div>
+                        <div className="text-muted" style={{fontSize:12, marginTop:2}}>Completa los datos faltantes para continuar el flujo.</div>
+                      </div>
+                      <button className="icon-btn" style={{width:30, height:30}} onClick={() => { setModalConvertirLead(null); setConvertirForm(null); }}>{I.x}</button>
+                    </div>
+
+                    <div className="col" style={{gap:12}}>
+                      <div className="input-group">
+                        <label>Nombre comercial *</label>
+                        <input className="input" value={convertirForm.nombre_comercial} onChange={e => updateConvertirForm('nombre_comercial', e.target.value)} autoFocus />
+                      </div>
+                      <div className="input-group">
+                        <label>Razon social *</label>
+                        <input className="input" value={convertirForm.razon_social} onChange={e => updateConvertirForm('razon_social', e.target.value)} />
+                      </div>
+                      <div style={mobileFormGrid}>
+                        <div className="input-group">
+                          <label>RUC *</label>
+                          <input className="input" inputMode="numeric" maxLength={11} value={convertirForm.ruc}
+                            onChange={e => updateConvertirForm('ruc', sanitizeRuc(e.target.value))} placeholder="20xxxxxxxxx" />
+                        </div>
+                        <div className="input-group">
+                          <label>Fuente *</label>
+                          <select className="select" value={convertirForm.fuente} onChange={e => updateConvertirForm('fuente', e.target.value)}>
+                            <option value="">Seleccionar...</option>
+                            {['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].map(f => <option key={f}>{f}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="input-group">
+                        <label>Industria *</label>
+                        <select className="select" value={convertirForm.industria} onChange={e => updateConvertirForm('industria', e.target.value)}>
+                          <option value="">Seleccionar...</option>
+                          {(industrias || []).map(i => <option key={i.id || i.nombre} value={i.nombre || i}>{i.nombre || i}</option>)}
+                          {(!industrias || industrias.length === 0) && ['Mineria','Industrial','Construccion','Servicios','Otro'].map(i => <option key={i}>{i}</option>)}
+                        </select>
+                      </div>
+
+                      <div style={mobileFormGrid}>
+                        <div className="input-group">
+                          <label>Contacto *</label>
+                          <input className="input" value={convertirForm.contacto_nombre} onChange={e => updateConvertirForm('contacto_nombre', e.target.value)} />
+                        </div>
+                        <div className="input-group">
+                          <label>Cargo *</label>
+                          <input className="input" value={convertirForm.contacto_cargo} onChange={e => updateConvertirForm('contacto_cargo', e.target.value)} />
+                        </div>
+                      </div>
+                      <div style={mobileFormGrid}>
+                        <div className="input-group">
+                          <label>Celular *</label>
+                          <input className="input" inputMode="numeric" maxLength={9} value={convertirForm.contacto_telefono}
+                            onChange={e => updateConvertirForm('contacto_telefono', sanitizePhone(e.target.value))} placeholder="9XXXXXXXX" />
+                        </div>
+                        <div className="input-group">
+                          <label>Email *</label>
+                          <input className="input" type="email" value={convertirForm.contacto_email} onChange={e => updateConvertirForm('contacto_email', e.target.value)} />
+                        </div>
+                      </div>
+
+                      <div className="input-group">
+                        <label>Nombre oportunidad *</label>
+                        <input className="input" value={convertirForm.nombre_oportunidad} onChange={e => updateConvertirForm('nombre_oportunidad', e.target.value)} />
+                      </div>
+                      <div style={mobileFormGrid}>
+                        <div className="input-group">
+                          <label>Monto *</label>
+                          <input className="input" type="number" min="0" step="0.01" value={convertirForm.monto_estimado}
+                            onChange={e => updateConvertirForm('monto_estimado', e.target.value)} />
+                        </div>
+                        <div className="input-group">
+                          <label>Moneda</label>
+                          <select className="select" value={convertirForm.moneda} onChange={e => updateConvertirForm('moneda', e.target.value)}>
+                            {(monedasActivas?.length ? monedasActivas : [{ codigo: convertirForm.moneda, nombre: 'Moneda del lead' }]).map(m => (
+                              <option key={m.codigo} value={m.codigo}>{m.codigo} - {m.nombre}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {convertirError && <div style={{fontSize:12, color:'var(--danger)', marginTop:10}}>{convertirError}</div>}
+                    <div className="row" style={{gap:8, marginTop:14}}>
+                      <button className="btn btn-secondary flex-1" onClick={() => { setModalConvertirLead(null); setConvertirForm(null); }}>Cancelar</button>
+                      <button className="btn btn-primary flex-1" style={{background:'var(--green)', border:'none'}} onClick={confirmarConvertirLead}>
+                        {I.check} Convertir
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : pipelineTab === 'opps' ? (
             <div className="col" style={{gap:10}}>
+              {resumenEtapas.length > 0 && (
+                <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8, marginBottom:4}}>
+                  {resumenEtapas.map(r => (
+                    <div key={r.etapa} style={{background:'var(--bg-subtle)', borderRadius:10, padding:'10px 12px', borderLeft:`3px solid var(--${etapaColor[r.etapa] || 'cyan'})`}}>
+                      <div style={{fontSize:10, color:`var(--${etapaColor[r.etapa] || 'cyan'})`, fontWeight:700, textTransform:'uppercase', letterSpacing:0.5, marginBottom:4}}>{ETAPA_LABELS[r.etapa]}</div>
+                      {r.totalUSD > 0 && <div style={{fontSize:13, fontWeight:800, color:'var(--navy)', lineHeight:1.2}}>{moneyCurrency(r.totalUSD, 'USD')}</div>}
+                      {r.totalPEN > 0 && <div style={{fontSize:13, fontWeight:800, color:'var(--navy)', lineHeight:1.2}}>{moneyCurrency(r.totalPEN, 'PEN')}</div>}
+                      <div style={{fontSize:10, color:'var(--fg-muted)', marginTop:2}}>{r.count} opp{r.count !== 1 ? 's' : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {oppsUsuario.length === 0 && <div className="text-muted" style={{textAlign:'center', padding:30, fontSize:13}}>No tienes oportunidades abiertas.</div>}
               {oppsUsuario.map(o => {
                 const cuenta = cuentas.find(c => c.id === o.cuenta_id);
-                const color = etapaColor[o.etapa] || 'cyan';
-                const etapaIdx = ETAPAS.indexOf(o.etapa);
+                const etapaActual = etapaPipelineMobile(o);
+                const color = etapaColor[etapaActual] || 'cyan';
+                const etapaIdx = ETAPAS.indexOf(etapaActual);
                 const nextEtapa = ETAPAS[etapaIdx + 1];
+                const montoEfectivo = getOppMontoEfectivo(o);
                 return (
                   <div key={o.id} className="card" style={{padding:14, borderLeft:`3px solid var(--${color})`}}>
-                    <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
-                      <span className={`badge badge-${color}`} style={{fontSize:10, textTransform:'capitalize'}}>{o.etapa}</span>
-                      <span style={{fontSize:13, fontWeight:700, color:'var(--green-dk)'}}>{moneyCurrency(o.monto_estimado, o.moneda)}</span>
+                    <div style={{cursor:'pointer'}} onClick={() => { setDrawerItem({ type: 'opp', data: o }); setDrawerTab('timeline'); }}>
+                      <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
+                        <span className={`badge badge-${color}`} style={{fontSize:10, textTransform:'capitalize'}}>{ETAPA_LABELS[etapaActual] || etapaActual}</span>
+                        <span style={{fontSize:13, fontWeight:700, color:'var(--green-dk)'}}>{moneyCurrency(montoEfectivo.monto, montoEfectivo.moneda)}</span>
+                      </div>
+                      <div style={{fontWeight:700, fontSize:14, marginBottom:2}}>{o.nombre}</div>
+                      <div className="text-muted" style={{fontSize:12, marginBottom:8}}>{cuenta?.razon_social || o.cuenta_id}</div>
+                      <div className="bar" style={{marginBottom:6}}><div style={{width:`${o.probabilidad}%`, background:'var(--green)'}}/></div>
                     </div>
-                    <div style={{fontWeight:700, fontSize:14, marginBottom:2}}>{o.nombre}</div>
-                    <div className="text-muted" style={{fontSize:12, marginBottom:8}}>{cuenta?.razon_social || o.cuenta_id}</div>
-                    <div className="bar" style={{marginBottom:6}}><div style={{width:`${o.probabilidad}%`, background:'var(--green)'}}/></div>
-                    <div className="row" style={{justifyContent:'space-between', alignItems:'center'}}>
+                    <div className="row" style={{justifyContent:'space-between', alignItems:'center', gap:6}}>
                       <div style={{fontSize:11, color:'var(--fg-muted)'}}>{o.probabilidad}% · {o.fecha_cierre_estimada}</div>
-                      {nextEtapa && <button className="btn btn-sm btn-secondary" style={{fontSize:11}} onClick={() => actualizarEtapaOportunidad(o.id, nextEtapa)}>{nextEtapa} →</button>}
+                      <div className="row" style={{gap:6}}>
+                        <button className="btn btn-sm" style={{fontSize:11, padding:'4px 10px', background:'var(--bg-subtle)', color:'var(--orange)', border:'1px solid var(--orange)'}}
+                          onClick={() => abrirPerderOpp(o)}>
+                          Perdida
+                        </button>
+                        {nextEtapa && <button className="btn btn-sm btn-secondary" style={{fontSize:11}} onClick={() => actualizarEtapaOportunidad(o.id, nextEtapa)}>{nextEtapa} →</button>}
+                      </div>
                     </div>
                   </div>
                 );
               })}
+
+              {modalPerderOpp && (
+                <div style={{position:'absolute', inset:0, background:'rgba(0,0,0,0.45)', zIndex:220, display:'flex', alignItems:'flex-end'}}
+                  onClick={e => { if (e.target === e.currentTarget) setModalPerderOpp(null); }}>
+                  <div style={{background:'var(--bg)', borderRadius:'16px 16px 0 0', padding:20, width:'100%', boxSizing:'border-box'}}>
+                    <div style={{fontWeight:800, fontSize:15, marginBottom:4, color:'var(--navy)'}}>Marcar oportunidad perdida</div>
+                    <div className="text-muted" style={{fontSize:12, marginBottom:12}}>{modalPerderOpp.nombre}</div>
+                    <textarea
+                      className="input"
+                      rows={3}
+                      placeholder="Motivo de perdida: precio, competencia, sin presupuesto, timing..."
+                      value={motivoPerdida}
+                      onChange={e => { setMotivoPerdida(e.target.value); setPerdidaError(''); }}
+                      style={{width:'100%', boxSizing:'border-box', marginBottom:6, ...(perdidaError ? {borderColor:'var(--danger)'} : {})}}
+                      autoFocus
+                    />
+                    {perdidaError && <div style={{fontSize:12, color:'var(--danger)', marginBottom:8}}>{perdidaError}</div>}
+                    <div className="row" style={{gap:8, marginTop:4}}>
+                      <button className="btn btn-secondary flex-1" onClick={() => setModalPerderOpp(null)}>Cancelar</button>
+                      <button className="btn btn-primary flex-1" style={{background:'var(--orange)', border:'none'}} onClick={confirmarPerderOpp}>
+                        Confirmar perdida
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="col" style={{gap:10}}>
@@ -1139,6 +1479,196 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
               })}
             </div>
           )}
+
+          {drawerItem && (() => {
+            const isLead = drawerItem.type === 'lead';
+            const item = drawerItem.data;
+            const hoyStr = new Date().toISOString().split('T')[0];
+            const ayerStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+            const tipoConfigDrw = {
+              creacion:     { color: 'var(--cyan)',    icon: I.plus,      bg: 'rgba(6,182,212,0.12)' },
+              estado:       { color: '#64748b',        icon: I.arrowUp,   bg: 'rgba(100,116,139,0.12)' },
+              reactivacion: { color: 'var(--orange)',  icon: I.refresh,   bg: 'rgba(249,115,22,0.12)' },
+              actividad:    { color: 'var(--navy)',    icon: I.clipboard, bg: 'rgba(26,43,74,0.12)' },
+              conversion:   { color: 'var(--green)',   icon: I.check,     bg: 'rgba(16,185,129,0.12)' },
+              cotizacion:   { color: '#7c3aed',        icon: I.file,      bg: 'rgba(124,58,237,0.10)' },
+              agenda:       { color: 'var(--cyan)',    icon: I.calendar,  bg: 'rgba(6,182,212,0.12)' },
+              etapa:        { color: '#64748b',        icon: I.arrowUp,   bg: 'rgba(100,116,139,0.12)' },
+            };
+
+            let eventos;
+            if (isLead) {
+              const actsLead = (actividades || []).filter(a => a.lead_id === item.id).map(a => ({
+                id: `act-${a.id}`, tipo: 'actividad',
+                fecha: a.fecha || hoyStr, ts: a.updated_at || a.created_at || null,
+                titulo: `${a.tipo ? a.tipo.charAt(0).toUpperCase() + a.tipo.slice(1) : 'Actividad'}: ${(a.descripcion || 'Sin detalle').slice(0, 60)}`,
+                descripcion: a.resultado || '', usuario: a.responsable || item.responsable || '—',
+              }));
+              const histLead = (historialEstados || []).filter(h => h.lead_id === item.id).map(h => {
+                const esReact = h.estado_desde === 'descartado' && h.estado_hasta === 'en_contacto';
+                return { id: `hist-${h.id}`, tipo: esReact ? 'reactivacion' : 'estado',
+                  fecha: h.creado_en?.split('T')[0] || hoyStr, ts: h.creado_en || null,
+                  titulo: esReact ? 'Lead reactivado' : `${(h.estado_desde||'').replace(/_/g,' ')} → ${(h.estado_hasta||'').replace(/_/g,' ')}`,
+                  descripcion: h.motivo || '', usuario: item.responsable || '—' };
+              });
+              eventos = [
+                { id: `crea-${item.id}`, tipo: 'creacion', fecha: item.fecha_creacion || hoyStr, ts: item.fecha_creacion || null,
+                  titulo: 'Lead registrado', descripcion: `Origen: ${item.fuente || 'Manual'}`, usuario: item.responsable || 'Sistema' },
+                ...(item.convertido ? [{ id: `conv-${item.id}`, tipo: 'conversion', fecha: item.fecha_creacion || hoyStr, ts: null,
+                  titulo: 'Convertido a oportunidad', descripcion: '', usuario: item.responsable || 'Sistema' }] : []),
+                ...actsLead, ...histLead,
+              ];
+            } else {
+              const actsOpp = (actividades || []).filter(a => a.oportunidad_id === item.id).map(a => ({
+                id: `act-${a.id}`, tipo: 'actividad',
+                fecha: a.fecha || hoyStr, ts: a.updated_at || a.created_at || null,
+                titulo: `${a.tipo ? a.tipo.charAt(0).toUpperCase() + a.tipo.slice(1) : 'Actividad'}: ${(a.descripcion || 'Sin detalle').slice(0, 60)}`,
+                descripcion: a.resultado || '', usuario: a.responsable || item.responsable || '—',
+              }));
+              const evtsOpp = (agendaEventos || []).filter(e => e.oportunidad_id === item.id).map(e => ({
+                id: `evt-${e.id}`, tipo: 'agenda',
+                fecha: e.fecha || hoyStr, ts: null,
+                titulo: e.titulo || 'Evento agendado',
+                descripcion: `${e.tipo || 'Reunión'} · ${e.estado || ''}`,
+                usuario: e.vendedor || item.responsable || '—',
+              }));
+              const cotsOpp = (cotizaciones || []).filter(c => c.oportunidad_id === item.id).map(c => ({
+                id: `cot-${c.id}`, tipo: 'cotizacion',
+                fecha: c.fecha || c.created_at?.slice(0, 10) || hoyStr, ts: c.created_at || null,
+                titulo: `${c.numero || 'Cotización'} · v${c.version || 1}`,
+                descripcion: `${moneyCurrency(c.total || c.subtotal || 0, c.moneda || 'PEN')} · ${c.estado || 'borrador'}`,
+                usuario: item.responsable || '—',
+                aprobacion: c.aprobada_interna_por ? { por: c.aprobada_interna_por, at: c.aprobada_interna_at } : null,
+              }));
+              const etapasOpp = (oppHistorialEtapas || []).filter(h => h.opp_id === item.id).map(h => ({
+                id: `etapa-${h.id}`, tipo: 'etapa',
+                fecha: h.creado_en?.split('T')[0] || hoyStr, ts: h.creado_en || null,
+                titulo: `Etapa: ${(h.etapa_desde||'').replace(/_/g,' ')} → ${(h.etapa_hasta||'').replace(/_/g,' ')}`,
+                descripcion: '', usuario: h.usuario || item.responsable || '—',
+              }));
+              eventos = [
+                { id: `crea-${item.id}`, tipo: 'creacion',
+                  fecha: item.fecha_creacion || item.created_at?.slice(0,10) || hoyStr, ts: item.created_at || null,
+                  titulo: 'Oportunidad creada',
+                  descripcion: `Monto estimado: ${moneyCurrency(item.monto_estimado || 0, item.moneda || 'PEN')}`,
+                  usuario: item.responsable || 'Sistema' },
+                ...actsOpp, ...evtsOpp, ...cotsOpp, ...etapasOpp,
+              ];
+            }
+
+            eventos = eventos.sort((a, b) => (b.ts || b.fecha || '').localeCompare(a.ts || a.fecha || ''));
+
+            const fmtLabel = f => {
+              if (!f || f === hoyStr) return 'Hoy';
+              if (f === ayerStr) return 'Ayer';
+              return new Date(f + 'T12:00:00').toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' });
+            };
+            const grupos = [];
+            eventos.forEach(ev => {
+              const lbl = fmtLabel(ev.fecha || hoyStr);
+              if (!grupos.length || grupos[grupos.length-1].label !== lbl) grupos.push({ label: lbl, eventos: [] });
+              grupos[grupos.length-1].eventos.push(ev);
+            });
+
+            const itemNombre = isLead ? (item.nombre_contacto || item.nombre) : item.nombre;
+            const itemSub = isLead
+              ? (item.empresa_nombre || item.empresa_contacto || '')
+              : (cuentas.find(c => c.id === item.cuenta_id)?.razon_social || '');
+
+            return (
+              <div style={{position:'absolute', inset:0, background:'rgba(0,0,0,0.45)', zIndex:300, display:'flex', flexDirection:'column', justifyContent:'flex-end'}}
+                onClick={e => { if (e.target === e.currentTarget) setDrawerItem(null); }}>
+                <div style={{background:'var(--bg)', borderRadius:'16px 16px 0 0', width:'100%', boxSizing:'border-box', maxHeight:'90%', display:'flex', flexDirection:'column'}}>
+                  <div style={{display:'flex', justifyContent:'center', paddingTop:10, paddingBottom:4}}>
+                    <div style={{width:36, height:4, borderRadius:99, background:'var(--border)'}}/>
+                  </div>
+                  <div style={{padding:'6px 16px 0', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12}}>
+                    <div style={{flex:1, minWidth:0}}>
+                      <div style={{fontWeight:800, fontSize:15, color:'var(--navy)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{itemNombre}</div>
+                      <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>{itemSub}</div>
+                    </div>
+                    <button className="icon-btn" style={{flexShrink:0, width:28, height:28}} onClick={() => setDrawerItem(null)}>{I.x}</button>
+                  </div>
+                  <div style={{display:'flex', borderBottom:'1px solid var(--border)', padding:'0 16px', marginTop:10}}>
+                    <button onClick={() => setDrawerTab('info')} style={{flex:1, padding:'8px 0', fontSize:12, fontWeight:600, border:'none', background:'transparent', borderBottom: drawerTab==='info' ? '2px solid var(--navy)' : '2px solid transparent', color: drawerTab==='info' ? 'var(--navy)' : 'var(--fg-muted)', cursor:'pointer'}}>Info</button>
+                    <button onClick={() => setDrawerTab('timeline')} style={{flex:1, padding:'8px 0', fontSize:12, fontWeight:600, border:'none', background:'transparent', borderBottom: drawerTab==='timeline' ? '2px solid var(--navy)' : '2px solid transparent', color: drawerTab==='timeline' ? 'var(--navy)' : 'var(--fg-muted)', cursor:'pointer'}}>
+                      Timeline{eventos.length > 0 ? ` · ${eventos.length}` : ''}
+                    </button>
+                  </div>
+                  <div style={{overflowY:'auto', flex:1, padding:'14px 16px 32px'}}>
+                    {drawerTab === 'info' && (
+                      <div className="col" style={{gap:12}}>
+                        {isLead ? (
+                          <>
+                            {item.necesidad && <div><div className="eyebrow" style={{fontSize:10}}>Necesidad</div><div style={{fontSize:13}}>{item.necesidad}</div></div>}
+                            {item.telefono && <div><div className="eyebrow" style={{fontSize:10}}>Teléfono</div><div style={{fontSize:13}}>{item.telefono}</div></div>}
+                            {item.email && <div><div className="eyebrow" style={{fontSize:10}}>Email</div><div style={{fontSize:13}}>{item.email}</div></div>}
+                            {(item.presupuesto_estimado > 0) && <div><div className="eyebrow" style={{fontSize:10}}>Presupuesto</div><div style={{fontFamily:'Sora', fontWeight:700, fontSize:14}}>{moneyCurrency(item.presupuesto_estimado, item.moneda || 'PEN')}</div></div>}
+                            <div><div className="eyebrow" style={{fontSize:10}}>Fuente</div><div style={{fontSize:13}}>{item.fuente || 'Manual'}</div></div>
+                            <div><div className="eyebrow" style={{fontSize:10}}>Responsable</div><div style={{fontSize:13}}>{item.responsable || '—'}</div></div>
+                          </>
+                        ) : (
+                          <>
+                            {item.descripcion && <div><div className="eyebrow" style={{fontSize:10}}>Descripción</div><div style={{fontSize:13}}>{item.descripcion}</div></div>}
+                            <div><div className="eyebrow" style={{fontSize:10}}>Etapa</div><div style={{fontSize:13, textTransform:'capitalize'}}>{item.etapa || '—'}</div></div>
+                            <div><div className="eyebrow" style={{fontSize:10}}>Probabilidad</div><div style={{fontSize:13}}>{item.probabilidad || 0}%</div></div>
+                            {item.fecha_cierre_estimada && <div><div className="eyebrow" style={{fontSize:10}}>Cierre estimado</div><div style={{fontSize:13}}>{item.fecha_cierre_estimada}</div></div>}
+                            <div><div className="eyebrow" style={{fontSize:10}}>Responsable</div><div style={{fontSize:13}}>{item.responsable || '—'}</div></div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {drawerTab === 'timeline' && (
+                      eventos.length === 0 ? (
+                        <div style={{textAlign:'center', padding:'32px 0', color:'var(--fg-muted)', fontSize:13}}>Sin actividad registrada.</div>
+                      ) : grupos.map((g, gi) => (
+                        <div key={gi}>
+                          <div style={{display:'flex', alignItems:'center', gap:8, margin:`${gi===0?0:8}px 0 12px`}}>
+                            <div style={{flex:1, height:1, background:'var(--border)'}}/>
+                            <span style={{fontSize:10, fontWeight:700, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.5px', whiteSpace:'nowrap'}}>{g.label}</span>
+                            <div style={{flex:1, height:1, background:'var(--border)'}}/>
+                          </div>
+                          {g.eventos.map((ev, ei) => {
+                            const cfg = tipoConfigDrw[ev.tipo] || tipoConfigDrw.estado;
+                            const isLastEv = gi === grupos.length-1 && ei === g.eventos.length-1;
+                            return (
+                              <div key={ev.id} style={{display:'flex', gap:10, alignItems:'flex-start'}}>
+                                <div style={{display:'flex', flexDirection:'column', alignItems:'center', width:28, flex:'0 0 28px'}}>
+                                  <div style={{width:26, height:26, borderRadius:99, background:cfg.bg, border:`1.5px solid ${cfg.color}`, display:'flex', alignItems:'center', justifyContent:'center', color:cfg.color, flex:'0 0 26px'}}>
+                                    <span style={{width:11, height:11, display:'inline-flex'}}>{cfg.icon}</span>
+                                  </div>
+                                  {!isLastEv && <div style={{width:2, flex:1, background:'var(--border)', marginTop:3, minHeight:16}}/>}
+                                </div>
+                                <div style={{flex:1, paddingBottom: isLastEv ? 0 : 16}}>
+                                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:6, marginBottom:2}}>
+                                    <div style={{fontWeight:700, fontSize:12, color:'var(--fg)', lineHeight:1.35}}>{ev.titulo}</div>
+                                    <div style={{fontSize:10, color:'var(--fg-muted)', flexShrink:0}}>{ev.fecha}</div>
+                                  </div>
+                                  {ev.descripcion && <div style={{fontSize:11, color:'var(--fg-muted)', lineHeight:1.5}}>{ev.descripcion}</div>}
+                                  {ev.aprobacion && (
+                                    <div style={{display:'flex', alignItems:'center', gap:4, marginTop:4, fontSize:11, color:'var(--green-dk)', fontWeight:600}}>
+                                      <span style={{width:11, height:11, display:'inline-flex'}}>{I.check}</span>
+                                      Aprobada por {ev.aprobacion.por}
+                                      {ev.aprobacion.at && <span style={{color:'var(--fg-muted)', fontWeight:400}}> · {ev.aprobacion.at.slice(0,10)}</span>}
+                                    </div>
+                                  )}
+                                  <div style={{fontSize:10, color:'var(--fg-muted)', marginTop:4, display:'flex', alignItems:'center', gap:3}}>
+                                    <span style={{width:10, height:10, display:'inline-flex', opacity:0.6}}>{I.users}</span>
+                                    {ev.usuario}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </>
       ) : screen === 'nueva-actividad' ? (
         <div style={{position:'absolute', top:0, left:0, right:0, bottom:0, background:'var(--bg)', padding:20, zIndex:10, overflowY:'auto'}}>

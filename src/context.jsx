@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { MOCK } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
-import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta } from './services/crmService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta } from './services/crmService.js';
 import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario } from './services/operacionesService.js';
 import { finanzasService } from './services/finanzasService.js';
 import { maestrosService } from './services/maestrosService.js';
@@ -119,6 +119,16 @@ const SLA_PLANTILLAS_DEFAULT = [
   { id: 'sla_soporte_premium', nombre: 'Soporte Premium', tiempo_respuesta_horas: 2, tiempo_resolucion_horas: 12, semaforo_regla: 'Rojo a 90%', estado: 'activo' },
 ];
 
+const DICCIONARIO_COMERCIAL_DEFAULT = [
+  { id: 'dic_inicio_proyecto', categoria: 'Proyecto', clave: 'Inicio del proyecto', texto: 'Inicio del proyecto', estado: 'activo' },
+  { id: 'dic_avance_proyecto', categoria: 'Proyecto', clave: 'Avance del proyecto', texto: 'Avance del proyecto', estado: 'activo' },
+  { id: 'dic_culminado_proyecto', categoria: 'Proyecto', clave: 'Culminado el proyecto', texto: 'Culminado el proyecto', estado: 'activo' },
+  { id: 'dic_anticipo', categoria: 'Pagos', clave: 'Anticipo', texto: 'Anticipo', estado: 'activo' },
+  { id: 'dic_primera_factura', categoria: 'Facturacion', clave: 'Primera factura', texto: 'Primera factura', estado: 'activo' },
+  { id: 'dic_segunda_factura', categoria: 'Facturacion', clave: 'Segunda factura', texto: 'Segunda factura', estado: 'activo' },
+  { id: 'dic_tercera_factura', categoria: 'Facturacion', clave: 'Tercera factura', texto: 'Tercera factura', estado: 'activo' },
+];
+
 function getInitialActivePage() {
   if (typeof window === 'undefined') return 'dashboard';
   const hashPage = window.location.hash.replace(/^#\/?/, '').trim();
@@ -129,7 +139,6 @@ function getInitialActivePage() {
 
 export function AppProvider({ children }) {
   const [active, setActive] = useState(getInitialActivePage);
-  const [quickCreate, setQuickCreate] = useState(null);
   const [activeParams, setActiveParams] = useState({});
   const [roleKey, setRoleKey] = useState('admin');
   const [empresa, setEmpresa] = useState(() => {
@@ -143,8 +152,7 @@ export function AppProvider({ children }) {
 
   const [dark, setDark] = useState(false);
   const [mobileMode, setMobileMode] = useState(false);
-  const [mobileProfile, setMobileProfile] = useState('tecnico');
-  const [createdRecords, setCreatedRecords] = useState({});
+  const [mobileProfile, setMobileProfile] = useState(null);
   const [dataMode] = useState(isSupabaseConfigured() ? 'supabase' : 'mock');
   const [authSession, setAuthSession] = useState(null);
   const [authUser, setAuthUser] = useState(null);
@@ -234,6 +242,7 @@ export function AppProvider({ children }) {
   const [empresaConfig, setEmpresaConfig] = useState({});
   const [seriesDocumentarias, setSeriesDocumentarias] = useState(isSupabaseConfigured() ? [] : SERIES_DOCUMENTARIAS_DEFAULT);
   const [slaPlantillas, setSlaPlantillas] = useState(isSupabaseConfigured() ? [] : SLA_PLANTILLAS_DEFAULT);
+  const [diccionarioComercial, setDiccionarioComercial] = useState(isSupabaseConfigured() ? [] : DICCIONARIO_COMERCIAL_DEFAULT);
   const [monedasImpuestosUnidades, setMonedasImpuestosUnidades] = useState([]);
 
   // Maestros Base Data
@@ -630,13 +639,15 @@ export function AppProvider({ children }) {
         try {
           const { data: cfgData } = await supabase.from('empresa_config').select('*').eq('empresa_id', empresa.id).maybeSingle();
           if (mounted) setEmpresaConfig(cfgData || {});
-          const [{ data: seriesData }, { data: slaData }] = await Promise.all([
+          const [{ data: seriesData }, { data: slaData }, { data: diccionarioData }] = await Promise.all([
             supabase.from('series_documentarias').select('*').eq('empresa_id', empresa.id).order('documento', { ascending: true }),
             supabase.from('sla_plantillas').select('*').eq('empresa_id', empresa.id).order('nombre', { ascending: true }),
+            supabase.from('diccionario_comercial').select('*').eq('empresa_id', empresa.id).order('categoria', { ascending: true }).order('clave', { ascending: true }),
           ]);
           if (mounted) {
             setSeriesDocumentarias(seriesData || []);
             setSlaPlantillas(slaData || []);
+            setDiccionarioComercial(diccionarioData || []);
           }
         } catch (_err) { /* tabla aún no existe, ignorar */ }
 
@@ -885,13 +896,6 @@ export function AppProvider({ children }) {
     loadMembresia();
     return () => { mounted = false; };
   }, [authUser?.id]);
-
-  const addCreatedRecord = (screen, record) => {
-    setCreatedRecords(prev => ({
-      ...prev,
-      [screen]: [record, ...(prev[screen] || [])]
-    }));
-  };
 
   const crmSync = (fn) => {
     if (!isSupabaseConfigured() || !empresa?.id) return;
@@ -1472,16 +1476,21 @@ export function AppProvider({ children }) {
       estado: 'ganada',
       etapa: 'ganada',
       probabilidad: 100,
+      ...(datos.monto_estimado !== undefined ? { monto_estimado: datos.monto_estimado } : {}),
+      ...(datos.moneda ? { moneda: datos.moneda } : {}),
       fecha_cierre_real: datos.fecha_cierre_real || new Date().toISOString().split('T')[0],
       notas: datos.notas || o.notas
     } : o));
-    crmSync(sb => actualizarOportunidad(sb, oppId, {
+    const patch = {
       estado: 'ganada',
       etapa: 'ganada',
       probabilidad: 100,
+      ...(datos.monto_estimado !== undefined ? { monto_estimado: datos.monto_estimado } : {}),
+      ...(datos.moneda ? { moneda: datos.moneda } : {}),
       fecha_cierre_real: datos.fecha_cierre_real || new Date().toISOString().split('T')[0],
       notas: datos.notas
-    }));
+    };
+    crmSync(sb => actualizarOportunidad(sb, oppId, patch));
     auditSync({ modulo: 'crm', entidad: 'oportunidades', entidad_id: oppId, accion: 'ganar', valor_anterior: anterior, valor_nuevo: datos });
 
     addNotificacion(`Oportunidad ganada. Revisar datos para OS.`);
@@ -1489,6 +1498,20 @@ export function AppProvider({ children }) {
     if (datos.crear_osc && datos.cotizacion_id) {
       crearOSCliente(datos.cotizacion_id, datos);
     }
+  };
+
+  const marcarGanadaPorCotizacion = (cot, datos = {}) => {
+    if (!cot?.oportunidad_id) return;
+    const montoAprobado = cot.total_impl ?? cot.total ?? cot.subtotal ?? 0;
+    marcarGanada(cot.oportunidad_id, {
+      cotizacion_id: cot.id,
+      fecha_cierre_real: datos.fecha_cierre_real || datos.aprobacion_fecha_cliente || new Date().toISOString().split('T')[0],
+      monto_estimado: montoAprobado,
+      moneda: cot.moneda || 'PEN',
+      notas: datos.notas,
+      origen_aprobacion: datos.origen_aprobacion || 'cotizacion',
+      canal_aprobacion: datos.canal_aprobacion || null,
+    });
   };
 
   const marcarPerdida = (oppId, motivo) => {
@@ -1719,17 +1742,27 @@ export function AppProvider({ children }) {
   };
 
   const crearCotizacion = async (datos) => {
-    const serieDoc = (seriesDocumentarias || []).find(s => s.documento === 'Cotizaciones' && s.estado === 'activo');
-    const numeroCot = serieDoc
-      ? `${serieDoc.serie}-${Number(serieDoc.siguiente_correlativo).toString().padStart(4, '0')}`
-      : (() => {
-          const year = new Date().getFullYear();
-          const yearCots = cotizaciones.filter(c => c.numero?.startsWith(`COT-${year}`));
-          const maxCorr = yearCots.length
-            ? Math.max(...yearCots.map(c => parseInt(c.numero.split('-').pop()) || 0))
-            : 0;
-          return `COT-${year}-${(maxCorr + 1).toString().padStart(4, '0')}`;
-        })();
+    // Generar número server-side cuando Supabase está disponible para evitar
+    // duplicados cuando el estado local está desactualizado (ej. permisos RLS recién aplicados).
+    let numeroCot;
+    if (isSupabaseConfigured()) {
+      const sb = await getSupabaseClient();
+      const { data: numData, error: numErr } = await sb.rpc('siguiente_numero_cotizacion', { p_empresa_id: empresa.id });
+      if (numErr) throw numErr;
+      numeroCot = numData;
+    } else {
+      const serieDoc = (seriesDocumentarias || []).find(s => s.documento === 'Cotizaciones' && s.estado === 'activo');
+      numeroCot = serieDoc
+        ? `${serieDoc.serie}-${Number(serieDoc.siguiente_correlativo).toString().padStart(4, '0')}`
+        : (() => {
+            const year = new Date().getFullYear();
+            const yearCots = cotizaciones.filter(c => c.numero?.startsWith(`COT-${year}`));
+            const maxCorr = yearCots.length
+              ? Math.max(...yearCots.map(c => parseInt(c.numero.split('-').pop()) || 0))
+              : 0;
+            return `COT-${year}-${(maxCorr + 1).toString().padStart(4, '0')}`;
+          })();
+    }
     const cot = {
       id: generateId('cot'),
       empresa_id: empresa.id,
@@ -1759,14 +1792,13 @@ export function AppProvider({ children }) {
       throw error;
     }
     setCotizaciones(prev => [...prev, cot]);
-    if (serieDoc) {
-      const nextCorr = Number(serieDoc.siguiente_correlativo) + 1;
-      setSeriesDocumentarias(prev => prev.map(s => s.id === serieDoc.id ? { ...s, siguiente_correlativo: nextCorr } : s));
-      if (isSupabaseConfigured()) {
-        getSupabaseClient().then(sb =>
-          sb.from('series_documentarias').update({ siguiente_correlativo: nextCorr }).eq('id', serieDoc.id)
-            .then(({ error }) => { if (error) console.error('[series] increment failed:', error); })
-        );
+    if (!isSupabaseConfigured()) {
+      // En modo local incrementar el correlativo localmente (el RPC lo maneja en Supabase)
+      const serieDocLocal = (seriesDocumentarias || []).find(s => s.documento === 'Cotizaciones' && s.estado === 'activo');
+      if (serieDocLocal) {
+        setSeriesDocumentarias(prev => prev.map(s =>
+          s.id === serieDocLocal.id ? { ...s, siguiente_correlativo: Number(s.siguiente_correlativo) + 1 } : s
+        ));
       }
     }
     auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cot.id, accion: 'crear', valor_nuevo: cot });
@@ -1774,19 +1806,123 @@ export function AppProvider({ children }) {
     return cot.id;
   };
   
+  const ETAPA_ORDER = ['calificacion', 'propuesta', 'negociacion', 'ganada'];
+  const avanzarEtapaOpp = (oppId, targetEtapa) => {
+    const opp = oportunidades.find(o => o.id === oppId);
+    if (!opp) return;
+    const cur = ETAPA_ORDER.indexOf(opp.etapa);
+    const tgt = ETAPA_ORDER.indexOf(targetEtapa);
+    if (tgt <= cur) return;
+    setOportunidades(prev => prev.map(o => o.id === oppId ? { ...o, etapa: targetEtapa, moved_at: Date.now() } : o));
+    crmSync(sb => actualizarOportunidad(sb, oppId, { etapa: targetEtapa }));
+  };
+
   const actualizarCotizacion = (cotId, datos) => {
     const anterior = cotizaciones.find(c => c.id === cotId) || null;
     setCotizaciones(prev => prev.map(c => c.id === cotId ? { ...c, ...datos } : c));
     crmSync(sb => svcActualizarCotizacion(sb, cotId, datos));
     auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotId, accion: 'editar', valor_anterior: anterior, valor_nuevo: datos });
+    if (datos.estado === 'enviada' && anterior?.oportunidad_id) {
+      avanzarEtapaOpp(anterior.oportunidad_id, 'propuesta');
+    }
+    if (datos.subtotal !== undefined && anterior?.oportunidad_id) {
+      const monedaCot = datos.moneda || anterior?.moneda || 'PEN';
+      setOportunidades(prev => prev.map(o => o.id === anterior.oportunidad_id ? { ...o, monto_estimado: datos.subtotal, moneda: monedaCot } : o));
+      crmSync(sb => actualizarOportunidad(sb, anterior.oportunidad_id, { monto_estimado: datos.subtotal, moneda: monedaCot }));
+    }
   };
 
   const aprobarCotizacion = (cotId) => {
     const anterior = cotizaciones.find(c => c.id === cotId) || null;
-    setCotizaciones(prev => prev.map(c => c.id === cotId ? { ...c, estado: 'aprobada' } : c));
-    crmSync(sb => svcActualizarCotizacion(sb, cotId, { estado: 'aprobada' }));
-    auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotId, accion: 'aprobar', valor_anterior: anterior, valor_nuevo: { estado: 'aprobada' } });
+    if (!anterior) return;
+    const hoy = new Date().toISOString().split('T')[0];
+    const datosAprobacion = {
+      estado: 'aprobada',
+      token_activo: false,
+      aprobacion_tipo: 'digital',
+      aprobacion_canal: 'link_publico',
+      aprobacion_fecha_cliente: hoy,
+      aprobacion_registrada_at: new Date().toISOString(),
+    };
+    setCotizaciones(prev => prev.map(c => c.id === cotId ? { ...c, ...datosAprobacion } : c));
+    crmSync(sb => svcActualizarCotizacion(sb, cotId, datosAprobacion));
+    auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotId, accion: 'aprobar', valor_anterior: anterior, valor_nuevo: datosAprobacion });
     addNotificacion(`Cotización aprobada por el cliente.`);
+    marcarGanadaPorCotizacion({ ...anterior, ...datosAprobacion }, {
+      origen_aprobacion: 'digital',
+      canal_aprobacion: 'link_publico',
+      aprobacion_fecha_cliente: hoy,
+    });
+  };
+
+  const aprobarCotizacionInterna = async (cotId) => {
+    const u = (usuarios || []).find(u => u.id === authUser?.id);
+    const nombreAprobador = u?.nombre || authUser?.user_metadata?.nombre || authUser?.email || 'Aprobador';
+    const patch = { aprobada_interna_por: nombreAprobador, aprobada_interna_at: new Date().toISOString() };
+    if (isSupabaseConfigured()) {
+      const sb = await getSupabaseClient();
+      const { error } = await sb.from('cotizaciones').update(patch).eq('id', cotId);
+      if (error) throw error;
+    }
+    setCotizaciones(prev => prev.map(c => c.id === cotId ? { ...c, ...patch } : c));
+    auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotId, accion: 'aprobar_interna', valor_nuevo: patch });
+    addNotificacion(`Cotización aprobada para envío al cliente.`);
+  };
+
+  const registrarAprobacionManual = async (cotId, datos) => {
+    const anterior = cotizaciones.find(c => c.id === cotId) || null;
+    if (!anterior) throw new Error('Cotizacion no encontrada.');
+    const archivos = Array.from(datos.archivos || []);
+    if (!archivos.length) throw new Error('Adjunta al menos una evidencia de aprobacion del cliente.');
+
+    const usuarioRegistro =
+      usuarios.find(u => u.id === authUser?.id)?.nombre ||
+      authUser?.user_metadata?.nombre ||
+      authUser?.user_metadata?.full_name ||
+      authUser?.email ||
+      'Usuario ERP';
+
+    let archivosAprobacion = archivos.map(f => ({
+      nombre: f.name,
+      tipo: f.type,
+      tamanio: f.size,
+      local: true,
+    }));
+
+    if (isSupabaseConfigured() && empresa?.id) {
+      const sb = await getSupabaseClient();
+      archivosAprobacion = [];
+      for (const file of archivos) {
+        archivosAprobacion.push(await subirArchivoSustento(sb, empresa.id, cotId, file));
+      }
+    }
+
+    const fechaCliente = datos.fecha_cliente || new Date().toISOString().split('T')[0];
+    const datosAprobacion = {
+      estado: 'aprobada',
+      token_activo: false,
+      aprobacion_tipo: 'manual',
+      aprobacion_canal: datos.canal,
+      aprobacion_fecha_cliente: fechaCliente,
+      aprobacion_notas: datos.notas || null,
+      aprobacion_registrada_por: usuarioRegistro,
+      aprobacion_registrada_at: new Date().toISOString(),
+      aprobacion_archivos: archivosAprobacion,
+    };
+
+    if (isSupabaseConfigured() && empresa?.id) {
+      await crmPersist(sb => svcActualizarCotizacion(sb, cotId, datosAprobacion));
+    }
+
+    setCotizaciones(prev => prev.map(c => c.id === cotId ? { ...c, ...datosAprobacion } : c));
+    auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotId, accion: 'aprobar_manual', valor_anterior: anterior, valor_nuevo: datosAprobacion });
+    addNotificacion(`Cotizacion aprobada manualmente con sustento.`);
+    marcarGanadaPorCotizacion({ ...anterior, ...datosAprobacion }, {
+      origen_aprobacion: 'manual',
+      canal_aprobacion: datos.canal,
+      aprobacion_fecha_cliente: fechaCliente,
+      notas: datos.notas,
+    });
   };
 
   const subirVersionCotizacion = async (cotId) => {
@@ -1825,6 +1961,7 @@ export function AppProvider({ children }) {
     setCotizaciones(prev => [...prev, nuevaCot]);
     auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: nuevoId, accion: 'nueva_version', valor_anterior: { id: cotId, version: cotAnterior.version }, valor_nuevo: { id: nuevoId, version: nuevaVersion } });
     addNotificacion(`Nueva versión v${nuevaVersion} creada para ${cotAnterior.numero}.`);
+    if (nuevaVersion >= 2 && cotAnterior.oportunidad_id) avanzarEtapaOpp(cotAnterior.oportunidad_id, 'negociacion');
     navigate('cotizaciones', { detail: nuevoId, edit: true });
     return nuevoId;
   };
@@ -1849,6 +1986,7 @@ export function AppProvider({ children }) {
       fecha_fin: datos.fecha_fin,
       sla: datos.sla,
       estado: 'en_ejecucion',
+      centro_beneficio_id: datos.centro_beneficio_id || null,
       saldo_por_ejecutar: cot.total,
       saldo_por_valorizar: cot.total,
       saldo_por_facturar: cot.total,
@@ -1896,6 +2034,7 @@ export function AppProvider({ children }) {
       fecha_fin: datos.fecha_fin || null,
       sla: datos.sla || null,
       estado: datos.estado || 'en_ejecucion',
+      centro_beneficio_id: datos.centro_beneficio_id || null,
       saldo_por_ejecutar: datos.saldo_por_ejecutar ?? monto,
       saldo_por_valorizar: datos.saldo_por_valorizar ?? monto,
       saldo_por_facturar: datos.saldo_por_facturar ?? monto,
@@ -2027,6 +2166,8 @@ export function AppProvider({ children }) {
       direccion_ejecucion: datos.direccion_ejecucion || null,
       responsable: datos.responsable || null,
       tecnico_responsable_id: datos.tecnico_responsable_id || null,
+      centro_costo_id: datos.centro_costo_id || null,
+      centro_beneficio_id: datos.centro_beneficio_id || os.centro_beneficio_id || null,
       costoEst: montoPlanificado,
       costoReal: 0,
       avance: 0,
@@ -2874,14 +3015,17 @@ export function AppProvider({ children }) {
   const recargarParametrosGenerales = async () => {
     if (!isSupabaseConfigured() || !empresa?.id) return;
     const supabase = await getSupabaseClient();
-    const [{ data: seriesData, error: seriesError }, { data: slaData, error: slaError }] = await Promise.all([
+    const [{ data: seriesData, error: seriesError }, { data: slaData, error: slaError }, { data: diccionarioData, error: diccionarioError }] = await Promise.all([
       supabase.from('series_documentarias').select('*').eq('empresa_id', empresa.id).order('documento', { ascending: true }),
       supabase.from('sla_plantillas').select('*').eq('empresa_id', empresa.id).order('nombre', { ascending: true }),
+      supabase.from('diccionario_comercial').select('*').eq('empresa_id', empresa.id).order('categoria', { ascending: true }).order('clave', { ascending: true }),
     ]);
     if (seriesError) throw seriesError;
     if (slaError) throw slaError;
+    if (diccionarioError) throw diccionarioError;
     setSeriesDocumentarias(seriesData || []);
     setSlaPlantillas(slaData || []);
+    setDiccionarioComercial(diccionarioData || []);
   };
 
   const crearSerieDocumentaria = async (datos) => {
@@ -2982,6 +3126,54 @@ export function AppProvider({ children }) {
       if (error) throw error;
     }
     setSlaPlantillas(prev => prev.filter(s => s.id !== id));
+  };
+
+  const crearDiccionarioComercial = async (datos) => {
+    const payload = {
+      id: datos.id || generateId('dic'),
+      empresa_id: empresa?.id,
+      categoria: datos.categoria || 'Comercial',
+      clave: datos.clave || '',
+      texto: datos.texto || '',
+      estado: datos.estado || 'activo',
+    };
+    if (isSupabaseConfigured() && empresa?.id) {
+      const supabase = await getSupabaseClient();
+      const { data, error } = await supabase.from('diccionario_comercial').insert(payload).select('*').single();
+      if (error) throw error;
+      setDiccionarioComercial(prev => [data, ...prev]);
+      return data;
+    }
+    setDiccionarioComercial(prev => [payload, ...prev]);
+    return payload;
+  };
+
+  const actualizarDiccionarioComercial = async (id, datos) => {
+    const payload = {
+      categoria: datos.categoria || 'Comercial',
+      clave: datos.clave || '',
+      texto: datos.texto || '',
+      estado: datos.estado || 'activo',
+      updated_at: new Date().toISOString(),
+    };
+    if (isSupabaseConfigured()) {
+      const supabase = await getSupabaseClient();
+      const { data, error } = await supabase.from('diccionario_comercial').update(payload).eq('id', id).select('*').single();
+      if (error) throw error;
+      setDiccionarioComercial(prev => prev.map(d => d.id === id ? data : d));
+      return data;
+    }
+    setDiccionarioComercial(prev => prev.map(d => d.id === id ? { ...d, ...payload } : d));
+    return payload;
+  };
+
+  const eliminarDiccionarioComercial = async (id) => {
+    if (isSupabaseConfigured()) {
+      const supabase = await getSupabaseClient();
+      const { error } = await supabase.from('diccionario_comercial').delete().eq('id', id);
+      if (error) throw error;
+    }
+    setDiccionarioComercial(prev => prev.filter(d => d.id !== id));
   };
 
   const crearArea = async (area) => {
@@ -3798,6 +3990,21 @@ export function AppProvider({ children }) {
   };
 
   /**
+   * Actualiza fecha y/o horario de una asignación existente.
+   */
+  const actualizarAsignacionCtx = async (asignacionId, { fecha, horaInicio, horaFin }) => {
+    if (isSupabaseConfigured()) {
+      await plannerSvc.actualizarAsignacion(asignacionId, { fecha, horaInicio, horaFin });
+      if (semanaPlanner) await loadPlannerSemana(semanaPlanner.inicio, semanaPlanner.fin);
+    } else {
+      setPlannerAsignaciones(prev => prev.map(a => a.id === asignacionId
+        ? { ...a, ...(fecha !== undefined && { fecha }), hora_inicio_estimada: horaInicio || null, hora_fin_estimada: horaFin || null }
+        : a));
+    }
+    auditSync({ modulo: 'planner', entidad: 'asignaciones', entidad_id: asignacionId, accion: 'actualizar', valor_nuevo: { fecha, horaInicio, horaFin } });
+  };
+
+  /**
    * Detecta técnicos con parte pendiente en los últimos 14 días.
    * Retorna un Set de "tecnicoId__fecha" con partes pendientes.
    */
@@ -3827,32 +4034,33 @@ export function AppProvider({ children }) {
   /**
    * Crea una nueva cuadrilla y la agrega al estado.
    */
-  const crearCuadrillaCtx = async ({ nombre, especialidad, tecnicoIds }) => {
+  const crearCuadrillaCtx = async ({ nombre, descripcion, especialidad, liderTecnicoId, tecnicoIds }) => {
     if (!empresa?.id) return null;
     let nueva;
     if (isSupabaseConfigured()) {
-      nueva = await plannerSvc.crearCuadrilla({ nombre, especialidadPrincipal: especialidad, tecnicoIds, empresaId: empresa.id });
+      nueva = await plannerSvc.crearCuadrilla({ nombre, descripcion, especialidadPrincipal: especialidad, liderTecnicoId, tecnicoIds, empresaId: empresa.id });
       const cuadData = await plannerSvc.getCuadrillas(empresa.id);
       setCuadrillas(cuadData || []);
     } else {
-      const tecnicos = personalOperativo.filter(p => tecnicoIds.includes(p.id));
-      nueva = { id: generateId('cua'), empresa_id: empresa.id, nombre, especialidad_principal: especialidad, activa: true };
-      setCuadrillas(prev => [...prev, { ...nueva, miembros: tecnicos.map(t => ({ id: generateId('cm'), tecnico_id: t.id, tecnico: t })) }]);
+      const tecsList = personalOperativo.filter(p => tecnicoIds.includes(p.id));
+      nueva = { id: generateId('cua'), empresa_id: empresa.id, nombre, descripcion, especialidad_principal: especialidad, lider_id: liderTecnicoId || null, activa: true };
+      setCuadrillas(prev => [...prev, { ...nueva, cuadrilla_miembros: tecsList.map(t => ({ id: generateId('cm'), tecnico_id: t.id })) }]);
     }
     auditSync({ modulo: 'planner', entidad: 'cuadrillas', entidad_id: nueva?.id, accion: 'crear', valor_nuevo: { nombre, tecnicoIds } });
     addNotificacion(`Cuadrilla "${nombre}" creada.`);
     return nueva;
   };
 
-  const actualizarCuadrillaCtx = async (id, { nombre, especialidad, tecnicoIds }) => {
+  const actualizarCuadrillaCtx = async (id, { nombre, descripcion, especialidad, liderTecnicoId, tecnicoIds }) => {
     if (!empresa?.id) return;
     if (isSupabaseConfigured()) {
-      await plannerSvc.actualizarMiembrosCuadrilla(id, tecnicoIds);
-      // Actualizar nombre/especialidad si cambiaron (supongo que actualiza la tabla cuadrillas)
+      await plannerSvc.actualizarCuadrilla(id, { nombre, descripcion, especialidadPrincipal: especialidad, liderTecnicoId, tecnicoIds });
       const cuadData = await plannerSvc.getCuadrillas(empresa.id);
       setCuadrillas(cuadData || []);
     } else {
-      setCuadrillas(prev => prev.map(c => c.id === id ? { ...c, nombre, especialidad_principal: especialidad } : c));
+      setCuadrillas(prev => prev.map(c => c.id === id
+        ? { ...c, nombre, descripcion, especialidad_principal: especialidad, lider_id: liderTecnicoId || null, cuadrilla_miembros: tecnicoIds.map(tid => ({ tecnico_id: tid })) }
+        : c));
     }
     addNotificacion('Cuadrilla actualizada');
   };
@@ -4073,7 +4281,6 @@ export function AppProvider({ children }) {
 
   const contextValue = {
     active, navigate, activeParams,
-    quickCreate, setQuickCreate,
     roleKey, setRoleKey, role, isSuperadmin,
     empresa, setEmpresa,
     dark, setDark,
@@ -4137,7 +4344,7 @@ export function AppProvider({ children }) {
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,
     convertirLead, descartarLead, reactivarLead,
     crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
-    crearCotizacion, aprobarCotizacion, subirVersionCotizacion,
+    crearCotizacion, aprobarCotizacion, aprobarCotizacionInterna, registrarAprobacionManual, subirVersionCotizacion,
     crearOSCliente, crearOSClienteManual,
     registrarUsuario,
     eliminarUsuario,
@@ -4193,17 +4400,18 @@ export function AppProvider({ children }) {
     crearAsignacionesRango,
     agregarTecnicoADia,
     quitarTecnicoDeDia,
+    actualizarAsignacionCtx,
     crearCuadrillaCtx,
     actualizarCuadrillaCtx,
     eliminarCuadrillaCtx,
     partesPendientesSet,
     notificaciones, markNotificacionesRead, addNotificacion,
-    createdRecords, addCreatedRecord,
     // Empresa Config
     empresaConfig, guardarEmpresaConfig, subirImagenEmpresa,
-    seriesDocumentarias, slaPlantillas, recargarParametrosGenerales,
+    seriesDocumentarias, slaPlantillas, diccionarioComercial, recargarParametrosGenerales,
     crearSerieDocumentaria, actualizarSerieDocumentaria, eliminarSerieDocumentaria,
     crearSlaPlantilla, actualizarSlaPlantilla, eliminarSlaPlantilla,
+    crearDiccionarioComercial, actualizarDiccionarioComercial, eliminarDiccionarioComercial,
   };
 
   return (
