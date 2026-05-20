@@ -56,7 +56,20 @@ serve(async (req) => {
 
   if (membershipError) return jsonResponse({ success: false, error: membershipError.message }, 500);
 
-  const isSuperadmin = (memberships || []).some((membership) => {
+  // Cargar es_plataforma de las empresas del caller
+  const callerEmpresaIds = [...new Set((memberships || []).map((m) => m.empresa_id).filter(Boolean))];
+  const { data: callerEmpresasRows } = callerEmpresaIds.length
+    ? await adminClient.from("empresas").select("id, es_plataforma").in("id", callerEmpresaIds)
+    : { data: [] as { id: string; es_plataforma: boolean }[] };
+  const callerEmpresasById = new Map((callerEmpresasRows || []).map((e) => [e.id, e]));
+
+  const isPlatformAdmin = (memberships || []).some((membership) => {
+    const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
+    const empresa = callerEmpresasById.get(membership.empresa_id);
+    return (role?.es_superadmin || role?.es_admin_empresa) && empresa?.es_plataforma;
+  });
+
+  const isSuperadmin = isPlatformAdmin || (memberships || []).some((membership) => {
     const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
     return role?.es_superadmin;
   });

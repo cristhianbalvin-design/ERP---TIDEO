@@ -956,6 +956,13 @@ export const financiamientos = [
 ];
 
 export const movimientosTesoreria = [];
+
+export const cuentasBancarias = [
+  { id: 'cb_001', empresa_id: 'emp_001', nombre: 'Cuenta Corriente BCP Soles', banco: 'BCP', numero_cuenta: '191-1234567-0-88', cci: '00219100123456700885', moneda: 'PEN', tipo: 'corriente', estado: 'activo', saldo_inicial: 490900, creado_en: '2026-01-01T00:00:00Z' },
+  { id: 'cb_002', empresa_id: 'emp_001', nombre: 'Cuenta Ahorros BBVA Soles', banco: 'BBVA', numero_cuenta: '0011-0218-0100015231', cci: '01102180100015231', moneda: 'PEN', tipo: 'ahorros', estado: 'activo', saldo_inicial: 85000, creado_en: '2026-01-01T00:00:00Z' },
+  { id: 'cb_003', empresa_id: 'emp_001', nombre: 'Cuenta Corriente BCP Dólares', banco: 'BCP', numero_cuenta: '191-9876543-1-12', cci: '00219100987654310121', moneda: 'USD', tipo: 'corriente', estado: 'activo', saldo_inicial: 12000, creado_en: '2026-01-01T00:00:00Z' },
+];
+
 export const cxp = [
   { id: 'CXP-001', proveedor: 'Ferreteria Industrial SAC', factura: 'F001-2341', emision: '2026-04-22', vencimiento: '2026-05-07', monto: 450, estado: 'por_pagar' },
   { id: 'CXP-002', proveedor: 'Electroandes', factura: 'F002-1122', emision: '2026-04-20', vencimiento: '2026-04-24', monto: 1250, estado: 'pagada' },
@@ -1584,7 +1591,7 @@ export const MOCK = {
   actividades, hojasCosteo, cotizaciones, osClientes, ots, partes, compras, cxc,
   movimientosBanco, estadoResultados, pantallasPermisos, servicios,
   tarifarios, maestros, backlog, remisiones, solpes, ventas, cajaChica,
-  prestamos, financiamientos, movimientosTesoreria, cxp, inventario, valorizaciones, proveedores, documentosProveedor,
+  prestamos, financiamientos, movimientosTesoreria, cuentasBancarias, cxp, inventario, valorizaciones, proveedores, documentosProveedor,
   evaluacionesProveedor, contactosProveedor, procesosCompra, respuestasCompra,
   ordenesCompra, ordenesServicio, recepciones,
   // Fase 3

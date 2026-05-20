@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { I, money } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
-import { getAssignableUsers } from './lib/hierarchy.js';
-import { VARIABLES_COMERCIALES, insertarTexto, renderTextoComercial } from './lib/textoComercial.js';
+import { getAssignableUsers, canUserSeeOwner, canUserApproveOwner } from './lib/hierarchy.js';
+import { renderTextoComercial } from './lib/textoComercial.js';
+import { SmartTextField } from './components/SmartTextField.jsx';
 
 const currencySymbol = (m = 'PEN') => m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'S/';
 const moneyCurrency = (value, moneda = 'PEN') => money(value, currencySymbol(moneda));
@@ -47,7 +48,8 @@ function CotizacionesInner() {
   const {
     cotizaciones, oportunidades, cuentas, contactos, usuarios, osClientes, hojasCosteo, activeParams,
     navigate, crearCotizacion, actualizarCotizacion, aprobarCotizacion, aprobarCotizacionInterna, registrarAprobacionManual,
-    crearOSCliente, vincularCotizacionOS, subirVersionCotizacion, searchQuery, empresaConfig, diccionarioComercial = [], addNotificacion
+    crearOSCliente, vincularCotizacionOS, subirVersionCotizacion, searchQuery, empresaConfig, diccionarioComercial = [], addNotificacion,
+    authUser, roles
   } = useApp();
   const [osModal, setOsModal] = useState(null);
   const [generandoPDF, setGenerandoPDF] = useState(false);
@@ -219,6 +221,9 @@ function CotizacionesInner() {
 
   const filtered = latestPorNumero.filter(c => {
     const opp = getOpp(c.oportunidad_id);
+    const ownerUserId = c.responsable_id || opp?.responsable_id || null;
+    const ownerName = opp?.responsable || null;
+    if (!canUserSeeOwner({ viewer: authUser, ownerUserId, ownerName, users: usuarios, roles })) return false;
     const cliente = getCuentaNombre(c.cuenta_id || opp?.cuenta_id);
     return !query ||
       c.numero.toLowerCase().includes(query) ||
@@ -334,11 +339,11 @@ function AprobacionManualModal({ onClose, onConfirmar }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" style={{maxWidth:540, width:'100%'}} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+        <div className="modal-head">
           <h2 style={{fontSize:16}}>Registrar aprobación del cliente</h2>
-          <button className="btn-icon" onClick={onClose}>{I.x}</button>
+          <button className="icon-btn" onClick={onClose}>{I.x}</button>
         </div>
         <div className="modal-body" style={{display:'flex', flexDirection:'column', gap:16}}>
           <div className="input-group" style={{margin:0}}>
@@ -852,7 +857,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
   }, [isEdit, contactoId, contactoPrincipalCuenta?.id]);
 
   // ── Bloque 2: partidas ───────────────────────────────────────────────
-  const emptyPartida = () => ({ id: Date.now() + Math.random(), descripcion: '', detalle_items_txt: '', tipo: 'servicio', detalle_cantidad: '', cantidad: 1, precio_unitario: 0, incluido: false });
+  const emptyPartida = () => ({ id: Date.now() + Math.random(), descripcion: '', detalle_items_txt: '', tipo: 'servicio', detalle_cantidad: '', cantidad: 1, precio_unitario: '', incluido: false });
 
   const [partidas, setPartidas] = useState(() => {
     if (cotizacionBase?.items?.length) {
@@ -909,41 +914,6 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
     confidencialidad: cotizacionBase?.cond_confidencialidad ?? cfg.cond_confidencialidad ?? '',
   });
   const setCond = (k, v) => setConds(p => ({ ...p, [k]: v }));
-  const diccionarioActivo = (diccionarioComercial || []).filter(d => d.estado === 'activo');
-  const insertarCond = (key, texto) => {
-    if (!texto) return;
-    setConds(prev => ({ ...prev, [key]: insertarTexto(prev[key], texto) }));
-  };
-  const insertarGlosa = (texto) => {
-    if (!texto) return;
-    setGlosa(prev => insertarTexto(prev, texto));
-  };
-  const insertarDescripcion = (texto) => {
-    if (!texto) return;
-    setDescripcion(prev => insertarTexto(prev, texto));
-  };
-  const insertarPartida = (id, field, texto) => {
-    if (!texto) return;
-    setPartidas(prev => prev.map(p => p.id === id ? { ...p, [field]: insertarTexto(p[field], texto) } : p));
-  };
-  const insertarHito = (id, field, texto) => {
-    if (!texto) return;
-    setHitos(prev => prev.map(h => h.id === id ? { ...h, [field]: insertarTexto(h[field], texto) } : h));
-  };
-  const insertControls = (onInsert) => (
-    <div className="row" style={{gap:8, marginBottom:6, flexWrap:'wrap'}}>
-      <select className="select" defaultValue="" style={{width:'min(100%, 230px)', height:32, fontSize:12}}
-        onChange={e => { onInsert(e.target.value); e.currentTarget.value = ''; }}>
-        <option value="">Insertar variable...</option>
-        {VARIABLES_COMERCIALES.map(v => <option key={v.token} value={v.token}>{v.grupo} - {v.label}</option>)}
-      </select>
-      <select className="select" defaultValue="" style={{width:'min(100%, 250px)', height:32, fontSize:12}}
-        onChange={e => { onInsert(e.target.value); e.currentTarget.value = ''; }}>
-        <option value="">Insertar frase...</option>
-        {diccionarioActivo.map(d => <option key={d.id} value={d.texto}>{d.categoria} - {d.clave}</option>)}
-      </select>
-    </div>
-  );
 
   const COND_LABELS = [
     ['forma_pago',       'Forma de pago y datos bancarios'],
@@ -1102,9 +1072,13 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
           </div>
           <div className="input-group">
             <label>Descripción general del servicio</label>
-            {insertControls(insertarDescripcion)}
-            <textarea className="input" rows="3" value={descripcion} onChange={e => setDescripcion(e.target.value)}
-              placeholder="Describe el alcance general en un párrafo. Aparece antes de la tabla de partidas en el PDF." />
+            <SmartTextField
+              value={descripcion}
+              onChange={setDescripcion}
+              diccionario={diccionarioComercial}
+              rows={3}
+              placeholder="Describe el alcance general en un párrafo. Aparece antes de la tabla de partidas en el PDF."
+            />
           </div>
         </div>
       </div>
@@ -1131,8 +1105,13 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                 <span style={{fontWeight:600, fontSize:11, color:'var(--fg-muted)', minWidth:60, paddingBottom:8}}>Partida {idx + 1}</span>
                 <div className="input-group" style={{margin:0, flex:3}}>
                   <label style={{fontSize:11}}>Descripción</label>
-                  {insertControls(texto => insertarPartida(p.id, 'descripcion', texto))}
-                  <input className="input" value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} placeholder="Nombre del servicio o bien" />
+                  <SmartTextField
+                    value={p.descripcion}
+                    onChange={value => updatePartida(p.id, 'descripcion', value)}
+                    diccionario={diccionarioComercial}
+                    multiline={false}
+                    placeholder="Nombre del servicio o bien"
+                  />
                 </div>
                 <div className="input-group" style={{margin:0, flex:1, minWidth:140}}>
                   <label style={{fontSize:11}}>Tipo</label>
@@ -1169,8 +1148,13 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                 </div>
                 <div className="input-group" style={{margin:0, flex:2}}>
                   <label style={{fontSize:11}}>Detalle de cantidad</label>
-                  {insertControls(texto => insertarPartida(p.id, 'detalle_cantidad', texto))}
-                  <input className="input" value={p.detalle_cantidad} onChange={e => updatePartida(p.id, 'detalle_cantidad', e.target.value)} placeholder="1 proyecto, 2 meses…" />
+                  <SmartTextField
+                    value={p.detalle_cantidad}
+                    onChange={value => updatePartida(p.id, 'detalle_cantidad', value)}
+                    diccionario={diccionarioComercial}
+                    multiline={false}
+                    placeholder="1 proyecto, 2 meses…"
+                  />
                 </div>
                 <div style={{textAlign:'right', minWidth:120, paddingBottom:2}}>
                   <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total partida</div>
@@ -1182,11 +1166,14 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
               {/* Fila 3: sub-ítems (opcional, compacto) */}
               <div className="input-group" style={{margin:0}}>
                 <label style={{fontSize:11}}>Sub-ítems / entregables (una línea = viñeta en PDF)</label>
-                {insertControls(texto => insertarPartida(p.id, 'detalle_items_txt', texto))}
-                <textarea className="input" rows="2" value={p.detalle_items_txt}
-                  onChange={e => updatePartida(p.id, 'detalle_items_txt', e.target.value)}
+                <SmartTextField
+                  value={p.detalle_items_txt}
+                  onChange={value => updatePartida(p.id, 'detalle_items_txt', value)}
+                  diccionario={diccionarioComercial}
+                  rows={2}
                   placeholder="Entregable 1&#10;Entregable 2"
-                  style={{fontSize:12, resize:'vertical'}} />
+                  inputStyle={{fontSize:12}}
+                />
               </div>
             </div>
           ))}
@@ -1234,14 +1221,24 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                       <tr key={h.id}>
                         <td className="num text-muted">{i + 1}</td>
                         <td>
-                          {insertControls(texto => insertarHito(h.id, 'concepto', texto))}
-                          <input className="input" value={h.concepto} onChange={e => updateHito(h.id, 'concepto', e.target.value)} placeholder="Ej: Anticipo" />
+                          <SmartTextField
+                            value={h.concepto}
+                            onChange={value => updateHito(h.id, 'concepto', value)}
+                            diccionario={diccionarioComercial}
+                            multiline={false}
+                            placeholder="Ej: Anticipo"
+                          />
                         </td>
                         <td><input type="number" className="input num" min="0" max="100" value={h.porcentaje} onChange={e => updateHito(h.id, 'porcentaje', e.target.value)} /></td>
                         <td className="num" style={{fontWeight:600}}>{money(Math.round(totalImpl * Number(h.porcentaje || 0) / 100))}</td>
                         <td>
-                          {insertControls(texto => insertarHito(h.id, 'condicion', texto))}
-                          <input className="input" value={h.condicion} onChange={e => updateHito(h.id, 'condicion', e.target.value)} placeholder="Al inicio del trabajo" />
+                          <SmartTextField
+                            value={h.condicion}
+                            onChange={value => updateHito(h.id, 'condicion', value)}
+                            diccionario={diccionarioComercial}
+                            multiline={false}
+                            placeholder="Al inicio del trabajo"
+                          />
                         </td>
                         <td><button className="icon-btn text-danger" onClick={() => removeHito(h.id)}>{I.x}</button></td>
                       </tr>
@@ -1264,8 +1261,13 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
               <button className="btn btn-secondary btn-sm" onClick={addHito}>{I.plus} Agregar hito</button>
               <div className="input-group" style={{marginTop:16}}>
                 <label>Glosa recomendada para las facturas</label>
-                {insertControls(insertarGlosa)}
-                <textarea className="input" rows="2" value={glosa} onChange={e => setGlosa(e.target.value)} placeholder="Texto que irá en las facturas…" />
+                <SmartTextField
+                  value={glosa}
+                  onChange={setGlosa}
+                  diccionario={diccionarioComercial}
+                  rows={2}
+                  placeholder="Texto que irá en las facturas…"
+                />
               </div>
             </>
           )}
@@ -1280,8 +1282,13 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
           {COND_LABELS.map(([key, label]) => (
             <div className="input-group" key={key}>
               <label style={{fontSize:13}}>{label}</label>
-              {insertControls(texto => insertarCond(key, texto))}
-              <textarea className="input" rows="3" value={conds[key]} onChange={e => setCond(key, e.target.value)} placeholder={label + '…'} />
+              <SmartTextField
+                value={conds[key]}
+                onChange={value => setCond(key, value)}
+                diccionario={diccionarioComercial}
+                rows={3}
+                placeholder={label + '…'}
+              />
             </div>
           ))}
         </div>
@@ -1319,8 +1326,8 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
 const CONDICIONES_PAGO = ['Contado', '30 días', '45 días', '60 días', '90 días', '120 días', 'Anticipado', 'Contra entrega'];
 
 function CrearOSModal({ cot, opp, osClientes, cuentas, onClose, onCrearNueva, onVincularExistente }) {
-  const { usuarios, roles, empresa, centrosBeneficio } = useApp();
-  const comerciales = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
+  const { usuarios, roles, empresa, centrosBeneficio, authUser } = useApp();
+  const comerciales = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const getNombre = id => (cuentas || []).find(c => c.id === id)?.razon_social || id;
   const cuenta = (cuentas || []).find(c => c.id === cot.cuenta_id);
   const osExistentes = (osClientes || []).filter(os =>
@@ -1527,150 +1534,1129 @@ function Cotizaciones() {
   return <CotizacionesErrorBoundary><CotizacionesInner /></CotizacionesErrorBoundary>;
 }
 
+const MESES_VAL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MODELO_LABELS = { avance_pct: 'Por avance %', costo_real: 'Por costo real', hitos_pago: 'Por hitos de pago' };
+
 function Valorizacion({ role }) {
-  const { valorizaciones, osClientes, generarValorizacion, ots, searchQuery } = useApp();
-  const canCost = role.permisos.ver_costos || role.permisos.todo;
+  const { valorizaciones, osClientes, cuentas, cotizaciones, partes, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion, emitirFacturaDesdeValorizacion, ots, cierresTecnicos, navigate, searchQuery } = useApp();
   const [editing, setEditing] = useState(false);
+  const [step, setStep] = useState(1);
+  const [selVal, setSelVal] = useState(null);
 
-  // Editor states
+  // Paso 1 state
   const [selOs, setSelOs] = useState('');
-  const [partidas, setPartidas] = useState([{ id: 1, descripcion: 'Avance de obra', cantidad: 1, precio_unitario: 0 }]);
-  const [periodo, setPeriodo] = useState('Mes actual');
+  const [periodoMes, setPeriodoMes] = useState(new Date().getMonth());
+  const [periodoAnio, setPeriodoAnio] = useState(new Date().getFullYear());
+  const [modelo, setModelo] = useState('');
 
-  const addPartida = () => setPartidas(prev => [...prev, { id: Date.now(), descripcion: '', cantidad: 1, precio_unitario: 0 }]);
-  const removePartida = (id) => setPartidas(prev => prev.filter(p => p.id !== id));
-  const updatePartida = (id, field, value) => {
-    setPartidas(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+  // Paso 2 state
+  const [otSeleccionadas, setOtSeleccionadas] = useState([]);
+
+  // Paso 3-4 state
+  const [partidas, setPartidas] = useState([]);
+  const [igvPct, setIgvPct] = useState(18);
+  const [notas, setNotas] = useState('');
+
+  // Ficha state
+  const [fichaTab, setFichaTab] = useState('partidas');
+  const [modalAnular, setModalAnular] = useState(false);
+  const [motivoAnular, setMotivoAnular] = useState('');
+  const [editingValId, setEditingValId] = useState(null);
+  const [confirmarExceso, setConfirmarExceso] = useState(false);
+
+  // List filter states
+  const [filterCliente, setFilterCliente] = useState('');
+  const [filterOs, setFilterOs] = useState('');
+  const [filterEstado, setFilterEstado] = useState('');
+  const [filterPeriodo, setFilterPeriodo] = useState('');
+  const [filterModelo, setFilterModelo] = useState('');
+
+  const periodo = `${MESES_VAL[periodoMes]} ${periodoAnio}`;
+
+  // ── Helpers ──────────────────────────────────────────────────────────
+  const conformidadCompleta = otId => {
+    const c = cierresTecnicos.find(ct => ct.ot_id === otId);
+    return ['digital', 'fisico'].includes(c?.conformidad_cliente?.tipo);
   };
+  const getOs = id => osClientes.find(o => o.id === id);
+  const monedaOs = getOs(selOs)?.moneda || 'PEN';
+  const getCot = osId => (cotizaciones || []).find(c => c.id === getOs(osId)?.cotizacion_id);
+  const getClienteNombre = osId => {
+    const c = (cuentas || []).find(x => x.id === getOs(osId)?.cuenta_id);
+    return c?.razon_social || c?.nombre_comercial || '—';
+  };
+  const getClienteId = osId => getOs(osId)?.cuenta_id;
 
-  const subtotal = partidas.reduce((acc, p) => acc + (p.cantidad * p.precio_unitario), 0);
-  const igv = subtotal * 0.18;
-  const total = subtotal + igv;
+  // OTs for editing
+  const osConOts = osClientes.filter(os => ots.some(ot => ot.os_cliente_id === os.id && ot.estado === 'cerrada' && conformidadCompleta(ot.id)));
 
-  const otsValorizables = selOs ? ots.filter(ot => ot.os_cliente_id === selOs && ot.estado === 'cerrada') : [];
+  // ── PARTE 5: Validation helpers ───────────────────────────────────────
+  // Duplicate OS+periodo in borrador/aprobada (excluding the one being edited)
+  const valDuplicada = selOs && periodo
+    ? valorizaciones.find(v =>
+        v.os_cliente_id === selOs &&
+        v.periodo === periodo &&
+        ['borrador', 'aprobada'].includes(v.estado) &&
+        v.id !== editingValId
+      )
+    : null;
 
-  const handleSave = () => {
-    if (!selOs) {
-      alert('Debe seleccionar una OS Cliente válida.');
-      return;
+  // OT IDs already locked in non-anulada valorizaciones (excluding the one being edited)
+  const otIdsEnUso = new Set(
+    valorizaciones
+      .filter(v => v.estado !== 'anulada' && v.id !== editingValId)
+      .flatMap(v => v.ot_ids || [])
+  );
+
+  // OTs blocked by another valorización
+  const otsDisponibles = selOs ? ots.filter(ot =>
+    ot.os_cliente_id === selOs &&
+    ot.estado === 'cerrada' &&
+    conformidadCompleta(ot.id) &&
+    !otIdsEnUso.has(ot.id)
+  ) : [];
+  const otsConformidadPend = selOs ? ots.filter(ot => ot.os_cliente_id === selOs && ot.estado === 'cerrada' && !conformidadCompleta(ot.id)) : [];
+  const otsBloqueadasOtraVal = selOs ? ots.filter(ot =>
+    ot.os_cliente_id === selOs &&
+    ot.estado === 'cerrada' &&
+    conformidadCompleta(ot.id) &&
+    otIdsEnUso.has(ot.id)
+  ) : [];
+
+  // Partida editors ───────────────────────────────────────────────────
+  const addPartida = () => setPartidas(prev => [...prev, { id: Date.now(), descripcion: '', cantidad: 1, precio_unitario: '' }]);
+  const removePartida = id => setPartidas(prev => prev.filter(p => p.id !== id));
+  const updatePartida = (id, field, value) => setPartidas(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+  const updateMargen = (id, newMargen) => setPartidas(prev => prev.map(p => {
+    if (p.id !== id) return p;
+    const costo = p._costo_real || 0;
+    return { ...p, _margen_pct: newMargen, precio_unitario: Math.round(costo * (1 + newMargen / 100) * 100) / 100 };
+  }));
+
+  // ── Compute partidas from model ───────────────────────────────────────
+  const computePartidas = otIds => {
+    const os = getOs(selOs);
+    const cot = getCot(selOs);
+    const montoBase = cot?.base_imponible || (os?.monto_aprobado ? os.monto_aprobado / 1.18 : 0);
+
+    if (modelo === 'avance_pct') {
+      const basePerOt = otIds.length > 0 ? montoBase / otIds.length : 0;
+      return otIds.map(otId => {
+        const ot = ots.find(o => o.id === otId);
+        const ct = cierresTecnicos.find(c => c.ot_id === otId);
+        const avance = ct?.avance_final ?? ot?.avance ?? 100;
+        const yaVal = valorizaciones
+          .filter(v => (v.ot_ids || []).includes(otId))
+          .reduce((s, v) => s + Number((v.items || []).find(i => i.ot_id === otId)?.precio_unitario || 0), 0);
+        const montoCalc = basePerOt * avance / 100;
+        return {
+          id: `p_${otId}`, ot_id: otId,
+          descripcion: `${ot?.numero || 'OT'} — ${ot?.descripcion || 'Avance de obra'}`,
+          cantidad: 1,
+          precio_unitario: Math.round(Math.max(0, montoCalc - yaVal) * 100) / 100,
+          _avance_pct: avance,
+          _monto_base: Math.round(basePerOt * 100) / 100,
+          _ya_valorizado: yaVal,
+        };
+      });
     }
-    generarValorizacion(selOs, subtotal, igv, total, periodo, {
-      otIds: otsValorizables.map(ot => ot.id),
-      items: partidas.map(p => ({
-        ot_id: p.ot_id || null,
-        descripcion: p.descripcion,
-        cantidad: Number(p.cantidad || 0),
-        precio_unitario: Number(p.precio_unitario || 0)
-      }))
-    });
-    setEditing(false);
+
+    if (modelo === 'costo_real') {
+      const costoRealTodas = otIds.reduce((s, id) => s + Number(ots.find(o => o.id === id)?.costoReal || 0), 0);
+      const defaultMargen = costoRealTodas > 0 && montoBase > 0
+        ? Math.max(5, Math.min(100, Math.round((montoBase / costoRealTodas - 1) * 100)))
+        : 25;
+      return otIds.map(otId => {
+        const ot = ots.find(o => o.id === otId);
+        const ct = cierresTecnicos.find(c => c.ot_id === otId);
+        const partesOt = (partes || []).filter(p => p.ot_id === otId && p.estado === 'aprobado');
+        const horas = Number(ct?.horas_total || 0) || partesOt.reduce((s, p) => s + Number(p.horas || 0), 0);
+        const costoMO = horas * 80;
+        const costoTerceros = Number(ct?.costo_terceros || 0);
+        const costoLogistica = Number(ct?.costo_logistica || 0);
+        const costoRealOt = Number(ot?.costoReal || 0);
+        const costoMateriales = Math.max(0, costoRealOt - costoMO - costoTerceros - costoLogistica);
+        const costoReal = costoMO + costoMateriales + costoTerceros + costoLogistica;
+        const margenPct = defaultMargen;
+        return {
+          id: `p_${otId}`, ot_id: otId,
+          descripcion: `${ot?.numero || 'OT'} — ${ot?.descripcion || 'Servicio ejecutado'}`,
+          cantidad: 1,
+          precio_unitario: Math.round(costoReal * (1 + margenPct / 100) * 100) / 100,
+          _costo_mo: Math.round(costoMO * 100) / 100,
+          _costo_materiales: Math.round(costoMateriales * 100) / 100,
+          _costo_terceros: costoTerceros,
+          _costo_logistica: costoLogistica,
+          _costo_real: Math.round(costoReal * 100) / 100,
+          _margen_pct: margenPct,
+        };
+      });
+    }
+
+    if (modelo === 'hitos_pago') {
+      const hitos = getCot(selOs)?.hitos_pago || [];
+      if (hitos.length === 0) {
+        return [{ id: `h_${Date.now()}`, descripcion: 'Hito — ingrese descripción', cantidad: 1, precio_unitario: 0 }];
+      }
+      return hitos.map((h, i) => ({
+        id: `h_${h.id || i}`, descripcion: h.concepto || `Hito ${i + 1}`,
+        cantidad: 1, precio_unitario: Number(h.monto || 0),
+        _hito_numero: i + 1, _hito_estado: h.estado || 'pendiente',
+      }));
+    }
+    return [];
   };
 
-  if (editing) {
+  // ── Totals ────────────────────────────────────────────────────────────
+  const subtotalVal = partidas.reduce((s, p) => s + Number(p.cantidad || 0) * Number(p.precio_unitario || 0), 0);
+  const igvAmount = Math.round(subtotalVal * (igvPct / 100) * 100) / 100;
+  const totalVal = subtotalVal + igvAmount;
+
+  // ── Step transitions ──────────────────────────────────────────────────
+  const handleSelOs = osId => {
+    setSelOs(osId);
+    const dis = osId ? ots.filter(ot => ot.os_cliente_id === osId && ot.estado === 'cerrada' && conformidadCompleta(ot.id)) : [];
+    setOtSeleccionadas(dis.map(ot => ot.id));
+  };
+  const advanceToStep3 = () => { setPartidas(computePartidas(otSeleccionadas)); setStep(3); };
+  const resetForm = () => {
+    setStep(1); setSelOs(''); setPeriodoMes(new Date().getMonth()); setPeriodoAnio(new Date().getFullYear());
+    setModelo(''); setOtSeleccionadas([]); setPartidas([]); setIgvPct(18); setNotas('');
+    setEditingValId(null); setConfirmarExceso(false);
+  };
+  const resetAndClose = () => { resetForm(); setEditing(false); };
+
+  // ── Edit existing borrador ────────────────────────────────────────────
+  const editarBorrador = v => {
+    const os = getOs(v.os_cliente_id);
+    const [mesStr, anioStr] = (v.periodo || '').split(' ');
+    const mesIdx = MESES_VAL.indexOf(mesStr);
+    setEditingValId(v.id);
+    setSelOs(v.os_cliente_id);
+    setPeriodoMes(mesIdx >= 0 ? mesIdx : new Date().getMonth());
+    setPeriodoAnio(anioStr ? Number(anioStr) : new Date().getFullYear());
+    setModelo(v.modelo_calculo || '');
+    setOtSeleccionadas(v.ot_ids || []);
+    setPartidas((v.items || []).map((item, i) => ({ ...item, id: item.id || `e_${i}` })));
+    setIgvPct(v.subtotal > 0 ? Math.round(((v.igv || 0) / v.subtotal) * 100) : 18);
+    setNotas(v.notas || '');
+    setStep(4);
+    setSelVal(null);
+    setEditing(true);
+  };
+
+  // ── Save ──────────────────────────────────────────────────────────────
+  const handleSave = (estadoFinal = 'aprobada') => {
+    if (!selOs) { alert('Debe seleccionar una OS Cliente.'); return; }
+    const items = partidas.map(p => ({ ot_id: p.ot_id || null, descripcion: p.descripcion, cantidad: Number(p.cantidad || 0), precio_unitario: Number(p.precio_unitario || 0) }));
+    if (editingValId) {
+      actualizarDatosValorizacion(editingValId, {
+        os_cliente_id: selOs, subtotal: subtotalVal, igv: igvAmount, total: totalVal,
+        periodo, modelo_calculo: modelo, notas, items, ot_ids: otSeleccionadas, estadoFinal,
+      });
+    } else {
+      generarValorizacion(selOs, subtotalVal, igvAmount, totalVal, periodo, {
+        otIds: otSeleccionadas, items, modelo_calculo: modelo, notas, estadoFinal,
+      });
+    }
+    resetAndClose();
+  };
+
+  const nextNumero = `VAL-${new Date().getFullYear()}-${String(valorizaciones.length + 1).padStart(3, '0')}`;
+
+  // ── Ficha detail view ─────────────────────────────────────────────────
+  if (selVal) {
+    const v = valorizaciones.find(x => x.id === selVal);
+    if (!v) { setSelVal(null); return null; }
+    const os = getOs(v.os_cliente_id);
+    const clienteNombre = getClienteNombre(v.os_cliente_id);
+    const badgeC = e => ({ aprobada: 'badge-green', facturada: 'badge-navy', anulada: 'badge-red' }[e] || 'badge-gray');
+    const badgeL = e => ({ borrador: 'Borrador', aprobada: 'Aprobada', facturada: 'Facturada', anulada: 'Anulada' }[e] || (e || '—'));
+    const items = v.items || [];
+    const otsIncluidas = (v.ot_ids || []).map(id => ots.find(o => o.id === id)).filter(Boolean);
+    const historial = v.historial || [];
+    const TABS = [{ id: 'partidas', label: 'Partidas' }, { id: 'ots', label: `OTs incluidas (${otsIncluidas.length})` }, { id: 'historial', label: 'Historial' }];
+
     return (
       <>
+        {/* Modal anular */}
+        {modalAnular && (
+          <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center'}}>
+            <div className="card" style={{width:440, padding:28}}>
+              <h3 style={{margin:'0 0 8px'}}>Anular Valorización</h3>
+              <div style={{fontSize:13, color:'var(--fg-muted)', marginBottom:16}}>
+                Esta acción es irreversible. Si la valorización está aprobada, se revertirán los saldos de la OS y el estado de las OTs.
+              </div>
+              <div className="input-group">
+                <label>Motivo de anulación <span style={{color:'var(--danger)'}}>*</span></label>
+                <textarea className="input" rows={3} value={motivoAnular} onChange={e => setMotivoAnular(e.target.value)}
+                  placeholder="Describe el motivo de la anulación..." autoFocus />
+              </div>
+              <div style={{display:'flex', gap:10, marginTop:20, justifyContent:'flex-end'}}>
+                <button className="btn btn-secondary" onClick={() => { setModalAnular(false); setMotivoAnular(''); }}>Cancelar</button>
+                <button className="btn btn-danger" disabled={!motivoAnular.trim()}
+                  onClick={() => { anularValorizacion(v.id, motivoAnular.trim()); setModalAnular(false); setMotivoAnular(''); setSelVal(null); }}>
+                  Confirmar anulación
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
           <div>
-            <button className="btn btn-ghost" onClick={()=>setEditing(false)} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver a Valorizaciones</button>
-            <h1 className="page-title">Generar Valorización</h1>
-            <div className="page-sub">Cálculo de avance y pre-factura</div>
+            <button className="btn btn-ghost" onClick={() => setSelVal(null)} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>
+              ← Volver a Valorizaciones
+            </button>
+            <div style={{display:'flex', alignItems:'center', gap:12}}>
+              <h1 className="page-title" style={{margin:0}}>{v.numero}</h1>
+              <span className={'badge ' + badgeC(v.estado)} style={{fontSize:13}}>{badgeL(v.estado)}</span>
+            </div>
+            <div className="page-sub">
+              <button className="btn btn-ghost" style={{padding:0, fontSize:13, color:'var(--cyan)'}}
+                onClick={() => navigate('os_clientes', { detail: v.os_cliente_id })}>
+                {os?.numero}
+              </button>
+              {' '}— {clienteNombre} · Período: {v.periodo || '—'}
+              {v.estado === 'aprobada' && v.fecha_aprobacion && (
+                <span style={{marginLeft:8, color:'var(--green)'}}>· Aprobada: {v.fecha_aprobacion}</span>
+              )}
+            </div>
           </div>
-          <div className="row">
-            <button className="btn btn-secondary" onClick={()=>setEditing(false)}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleSave}>{I.save} Aprobar Valorización</button>
+          <div className="row" style={{gap:10}}>
+            {v.estado === 'borrador' && <>
+              <button className="btn btn-secondary" onClick={() => editarBorrador(v)}>{I.edit} Editar</button>
+              <button className="btn btn-primary" onClick={() => { aprobarValorizacion(v.id); setSelVal(null); }}>{I.check} Aprobar</button>
+            </>}
+            {v.estado === 'aprobada' && <>
+              <button className="btn btn-secondary" style={{color:'var(--danger)', borderColor:'var(--danger)'}} onClick={() => setModalAnular(true)}>Anular</button>
+              <button className="btn btn-primary" style={{background:'var(--green)'}} onClick={() => emitirFacturaDesdeValorizacion(v.id)}>
+                {I.plus} Generar Factura
+              </button>
+            </>}
           </div>
         </div>
 
-        <div className="card mt-6">
-          <div className="card-body">
-            <div className="grid-2" style={{marginBottom:32}}>
-              <div className="input-group">
-                <label>OS Cliente Asociada</label>
-                <select className="select" value={selOs} onChange={e => setSelOs(e.target.value)}>
-                  <option value="">Seleccione OS Cliente...</option>
-                  {osClientes.map(os => (
-                    <option key={os.id} value={os.id}>{os.numero} - Saldo: {money(os.saldo_por_valorizar)}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="input-group">
-                <label>Período de Ejecución</label>
-                <input type="text" className="input" value={periodo} onChange={e=>setPeriodo(e.target.value)} placeholder="Ej. Enero 2025" />
-              </div>
-            </div>
+        {/* Info cards */}
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginTop:20, marginBottom:16}}>
+          <div className="card" style={{padding:'14px 18px'}}>
+            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>OS Cliente</div>
+            <div style={{fontWeight:600}}>{os?.numero || '—'}</div>
+            <div style={{fontSize:12, color:'var(--fg-muted)'}}>{clienteNombre}</div>
+          </div>
+          <div className="card" style={{padding:'14px 18px'}}>
+            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Período</div>
+            <div style={{fontWeight:600}}>{v.periodo || '—'}</div>
+            <div style={{fontSize:12, color:'var(--fg-muted)'}}>Fecha: {v.fecha || '—'}</div>
+          </div>
+          <div className="card" style={{padding:'14px 18px'}}>
+            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Modelo</div>
+            <div style={{fontWeight:600, fontSize:12}}>{MODELO_LABELS[v.modelo_calculo] || v.modelo_calculo || '—'}</div>
+          </div>
+          <div className="card" style={{padding:'14px 18px'}}>
+            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total</div>
+            <div style={{fontWeight:700, fontSize:16, fontFamily:'Sora', color:'var(--cyan)'}}>{moneyCurrency(v.total, v.moneda)}</div>
+            <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Subtotal: {moneyCurrency(v.subtotal, v.moneda)} + IGV: {moneyCurrency(v.igv, v.moneda)}</div>
+          </div>
+        </div>
 
-            {selOs && (
-              <div className="card" style={{padding:14, marginBottom:20, borderLeft:'3px solid var(--cyan)'}}>
-                <strong>{otsValorizables.length}</strong> OT cerradas pendientes de valorizar para esta OS.
-                {otsValorizables.length === 0 && <span className="text-muted"> Se usara el saldo pendiente de la OS como referencia manual.</span>}
+        {v.estado === 'anulada' && v.motivo_anulacion && (
+          <div style={{marginBottom:16, padding:'12px 16px', borderRadius:8, border:'1px solid var(--danger)', background:'color-mix(in srgb, var(--danger) 6%, transparent)'}}>
+            <div style={{fontWeight:600, fontSize:13, color:'var(--danger)', marginBottom:4}}>Motivo de anulación</div>
+            <div style={{fontSize:13}}>{v.motivo_anulacion}</div>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div style={{display:'flex', borderBottom:'2px solid var(--border)', marginBottom:16, gap:0}}>
+          {TABS.map(t => (
+            <button key={t.id} className="btn btn-ghost"
+              onClick={() => setFichaTab(t.id)}
+              style={{
+                borderRadius:0, padding:'10px 20px', fontWeight: fichaTab === t.id ? 700 : 400,
+                borderBottom: fichaTab === t.id ? '2px solid var(--cyan)' : '2px solid transparent',
+                marginBottom:-2, color: fichaTab === t.id ? 'var(--cyan)' : 'var(--fg-muted)',
+              }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab: Partidas */}
+        {fichaTab === 'partidas' && (
+          <div className="card">
+            {items.length > 0 ? (
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Descripción</th>
+                      <th style={{width:80}} className="num">Cant.</th>
+                      <th style={{width:140}} className="num">P. Unitario</th>
+                      <th style={{width:140}} className="num">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, i) => (
+                      <tr key={i}>
+                        <td>{item.descripcion || '—'}</td>
+                        <td className="num">{item.cantidad}</td>
+                        <td className="num">{moneyCurrency(item.precio_unitario, v.moneda)}</td>
+                        <td className="num" style={{fontWeight:600}}>{moneyCurrency(Number(item.cantidad) * Number(item.precio_unitario), v.moneda)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="card-body" style={{textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>
+                Sin detalle de partidas registradas.
               </div>
             )}
-
-            <div className="row" style={{justifyContent:'space-between', alignItems:'center', marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>
-              <h3>Partidas a Valorizar</h3>
-              <button className="btn btn-secondary btn-sm" onClick={addPartida}>{I.plus} Agregar línea</button>
+            <div style={{padding:'12px 16px', borderTop:'1px solid var(--border)'}}>
+              <div style={{width:280, marginLeft:'auto'}}>
+                <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
+                  <span className="text-muted" style={{fontSize:13}}>Subtotal</span>
+                  <span className="num">{moneyCurrency(v.subtotal, v.moneda)}</span>
+                </div>
+                <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
+                  <span className="text-muted" style={{fontSize:13}}>IGV</span>
+                  <span className="num">{moneyCurrency(v.igv, v.moneda)}</span>
+                </div>
+                <div className="row" style={{justifyContent:'space-between', paddingTop:6, borderTop:'1px solid var(--border)', fontWeight:700, fontSize:15, fontFamily:'Sora'}}>
+                  <span>Total</span>
+                  <span className="num">{moneyCurrency(v.total, v.moneda)}</span>
+                </div>
+              </div>
             </div>
-            
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead><tr><th>Descripción</th><th style={{width:100}}>Cant.</th><th style={{width:120}}>P. Unitario</th><th style={{width:120}}>Subtotal</th><th style={{width:40}}></th></tr></thead>
-                <tbody>
-                  {partidas.map(p => (
-                    <tr key={p.id}>
-                      <td><input type="text" className="input" placeholder="Descripción de avance" value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} /></td>
-                      <td><input type="number" className="input num" min="1" value={p.cantidad} onChange={e => updatePartida(p.id, 'cantidad', e.target.value)} /></td>
-                      <td><input type="number" className="input num" min="0" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', e.target.value)} /></td>
-                      <td className="num" style={{fontWeight:600, paddingRight:16}}>{money(p.cantidad * p.precio_unitario)}</td>
-                      <td><button className="icon-btn text-danger" onClick={() => removePartida(p.id)}>{I.x}</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={{marginTop:24, padding:16, background:'var(--bg-subtle)', borderRadius:8, width:300, marginLeft:'auto'}}>
-              <div className="row" style={{justifyContent:'space-between', marginBottom:8}}><span className="text-muted">Subtotal</span><span className="num">{money(subtotal)}</span></div>
-              <div className="row" style={{justifyContent:'space-between', marginBottom:8}}><span className="text-muted">IGV (18%)</span><span className="num">{money(igv)}</span></div>
-              <div className="row" style={{justifyContent:'space-between', paddingTop:8, borderTop:'1px solid var(--border)', fontWeight:700, fontSize:16, fontFamily:'Sora'}}><span>Total a Valorizar</span><span className="num">{money(total)}</span></div>
-            </div>
+            {v.notas && (
+              <div style={{padding:'12px 16px', borderTop:'1px solid var(--border)'}}>
+                <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Notas</div>
+                <div style={{fontSize:13, whiteSpace:'pre-wrap'}}>{v.notas}</div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* Tab: OTs incluidas */}
+        {fichaTab === 'ots' && (
+          <div className="card card-body">
+            {otsIncluidas.length === 0 ? (
+              <div style={{textAlign:'center', color:'var(--fg-muted)', fontSize:13, padding:24}}>
+                No hay OTs registradas en esta valorización.
+              </div>
+            ) : otsIncluidas.map(ot => {
+              const ct = cierresTecnicos.find(c => c.ot_id === ot.id);
+              return (
+                <div key={ot.id} style={{display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, padding:'12px 14px', marginBottom:8, borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-card)'}}>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{fontWeight:600, fontSize:13}}>{ot.numero}</div>
+                    <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>{ot.descripcion || '—'}</div>
+                    <div style={{display:'flex', gap:20, marginTop:6, fontSize:11, color:'var(--fg-muted)', flexWrap:'wrap'}}>
+                      <span>Avance: <strong style={{color:'var(--cyan)'}}>{ct?.avance_final ?? ot.avance ?? '—'}%</strong></span>
+                      <span>Cierre: <strong style={{color:'var(--fg)'}}>{ct?.fecha || ot.fecha_fin || '—'}</strong></span>
+                      <span>Costo real: <strong style={{color:'var(--fg)'}}>{money(ot.costoReal || 0)}</strong></span>
+                    </div>
+                  </div>
+                  <button className="btn btn-secondary btn-sm" style={{fontSize:11, whiteSpace:'nowrap'}}
+                    onClick={() => navigate('cierre', { detail: ot.id })}>
+                    Ver cierre
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Tab: Historial */}
+        {fichaTab === 'historial' && (
+          <div className="card card-body">
+            {historial.length === 0 ? (
+              <div style={{textAlign:'center', color:'var(--fg-muted)', fontSize:13, padding:24}}>
+                Sin historial de cambios registrado.
+              </div>
+            ) : [...historial].reverse().map((h, i) => (
+              <div key={i} style={{display:'flex', gap:14, padding:'10px 0', borderBottom: i < historial.length - 1 ? '1px solid var(--border)' : 'none'}}>
+                <div style={{
+                  width:8, height:8, borderRadius:'50%', marginTop:5, flexShrink:0,
+                  background: h.estado === 'aprobada' ? 'var(--green)' : h.estado === 'anulada' ? 'var(--danger)' : h.estado === 'facturada' ? 'var(--blue)' : 'var(--fg-muted)',
+                }} />
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600, fontSize:13}}>{h.accion || h.estado || '—'}</div>
+                  <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>
+                    {h.fecha ? new Date(h.fecha).toLocaleString('es-PE', { dateStyle:'medium', timeStyle:'short' }) : '—'}
+                    {h.usuario && <span style={{marginLeft:8}}>· {h.usuario}</span>}
+                  </div>
+                  {h.motivo && <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4, fontStyle:'italic'}}>{h.motivo}</div>}
+                </div>
+                <span className={'badge ' + badgeC(h.estado)}>{badgeL(h.estado)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </>
     );
   }
 
-  const badge = e => e==='aprobada'?'badge-green':e==='facturada'?'badge-navy':e==='revision'?'badge-orange':'badge-gray';
-  const getOSNumero = (id) => osClientes.find(o => o.id === id)?.numero || id;
+  // ── Editing view (4-step wizard) ──────────────────────────────────────
+  if (editing) {
+    const stepLabels = ['Datos generales', 'OTs incluidas', 'Partidas', 'Resumen'];
+    return (
+      <>
+        {/* Header */}
+        <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
+          <div>
+            <button className="btn btn-ghost" onClick={resetAndClose} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver a Valorizaciones</button>
+            <h1 className="page-title">{editingValId ? 'Editar Valorización' : 'Generar Valorización'}</h1>
+            <div className="page-sub">
+              {selOs ? `${getOs(selOs)?.numero} — ${getClienteNombre(selOs)}` : 'Complete los pasos para crear la valorización'}
+            </div>
+          </div>
+          <div className="row">
+            {step > 1 && <button className="btn btn-secondary" onClick={() => setStep(s => s - 1)}>← Anterior</button>}
+            {step < 4 && (
+              <button className="btn btn-primary"
+                disabled={(step === 1 && (!selOs || !modelo || !!valDuplicada)) || (step === 2 && otSeleccionadas.length === 0)}
+                onClick={step === 2 ? advanceToStep3 : () => setStep(s => s + 1)}>
+                Siguiente →
+              </button>
+            )}
+            {step === 4 && (() => {
+              const os4 = getOs(selOs);
+              const saldo4 = Number(os4?.saldo_por_valorizar || 0);
+              const excede4 = saldo4 > 0 && totalVal > saldo4;
+              return <>
+                <button className="btn btn-secondary" onClick={() => handleSave('borrador')}>{I.save} Guardar borrador</button>
+                <button className="btn btn-primary" disabled={partidas.length === 0 || (excede4 && !confirmarExceso)} onClick={() => handleSave('aprobada')}>{I.check} Aprobar Valorización</button>
+              </>;
+            })()}
+          </div>
+        </div>
 
+        {/* Step indicator */}
+        <div style={{display:'flex', gap:0, margin:'16px 0', borderRadius:8, overflow:'hidden', border:'1px solid var(--border)'}}>
+          {stepLabels.map((label, i) => (
+            <div key={i} style={{
+              flex:1, padding:'10px 12px', textAlign:'center', fontSize:12,
+              fontWeight: step === i+1 ? 700 : 400,
+              color: step > i ? 'var(--green)' : step === i+1 ? 'var(--fg)' : 'var(--fg-muted)',
+              borderBottom: `2px solid ${step === i+1 ? 'var(--cyan)' : step > i ? 'var(--green)' : 'transparent'}`,
+              background: step === i+1 ? 'color-mix(in srgb, var(--cyan) 6%, transparent)' : 'var(--bg-card)',
+              borderRight: i < 3 ? '1px solid var(--border)' : 'none',
+            }}>
+              <span style={{
+                display:'inline-flex', alignItems:'center', justifyContent:'center',
+                width:18, height:18, borderRadius:'50%', marginRight:5,
+                background: step > i ? 'var(--green)' : step === i+1 ? 'var(--cyan)' : 'var(--border)',
+                color: step >= i+1 ? '#fff' : 'var(--fg-muted)',
+                fontSize:10, fontWeight:700,
+              }}>
+                {step > i ? '✓' : i+1}
+              </span>
+              {label}
+            </div>
+          ))}
+        </div>
+
+        {/* ─── PASO 1 — Datos generales ─── */}
+        {step === 1 && (
+          <div className="card">
+            <div className="card-body">
+              <div className="grid-2" style={{gap:24}}>
+                <div className="input-group">
+                  <label>N° Valorización</label>
+                  <input className="input" value={nextNumero} readOnly style={{color:'var(--fg-muted)', cursor:'default'}} />
+                </div>
+                <div className="input-group">
+                  <label>Período de ejecución</label>
+                  <div style={{display:'flex', gap:8}}>
+                    <select className="select" style={{flex:2}} value={periodoMes} onChange={e => setPeriodoMes(Number(e.target.value))}>
+                      {MESES_VAL.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                    </select>
+                    <select className="select" style={{flex:1}} value={periodoAnio} onChange={e => setPeriodoAnio(Number(e.target.value))}>
+                      {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>OS Cliente asociada <span style={{color:'var(--danger)'}}>*</span></label>
+                  <select className="select" value={selOs} onChange={e => handleSelOs(e.target.value)}>
+                    <option value="">Seleccione OS Cliente...</option>
+                    {osConOts.map(os => (
+                      <option key={os.id} value={os.id}>
+                        {os.numero} — {getClienteNombre(os.id)} — Saldo: {moneyCurrency(os.saldo_por_valorizar || 0, os.moneda)}
+                      </option>
+                    ))}
+                  </select>
+                  {osConOts.length === 0 && (
+                    <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:6}}>
+                      No hay OS con OTs cerradas y conformidad completa listas para valorizar.
+                    </div>
+                  )}
+                  {valDuplicada && (
+                    <div style={{marginTop:8, padding:'10px 12px', borderRadius:6, fontSize:12, color:'var(--danger)', border:'1px solid var(--danger)', background:'color-mix(in srgb, var(--danger) 6%, transparent)'}}>
+                      Ya existe una valorización en estado <strong>{valDuplicada.estado}</strong> para esta OS en el período <strong>{periodo}</strong> ({valDuplicada.numero}). Cambia el período o anula la existente.
+                    </div>
+                  )}
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Modelo de cálculo <span style={{color:'var(--danger)'}}>*</span></label>
+                  <select className="select" value={modelo} onChange={e => setModelo(e.target.value)}>
+                    <option value="">Seleccione modelo...</option>
+                    <option value="avance_pct">Por avance %</option>
+                    <option value="costo_real">Por costo real</option>
+                    <option value="hitos_pago">Por hitos de pago</option>
+                  </select>
+                  {modelo && (
+                    <div style={{marginTop:8, padding:'10px 12px', borderRadius:6, fontSize:12, color:'var(--fg-muted)', background:'var(--bg-subtle)'}}>
+                      {modelo === 'avance_pct' && '% de avance de cada OT aplicado sobre el monto de cotización, descontando lo ya valorizado.'}
+                      {modelo === 'costo_real' && 'Costo real de ejecución (MO + materiales + terceros + logística) más el margen definido.'}
+                      {modelo === 'hitos_pago' && 'Hitos de pago definidos en la cotización. Selecciona los completados en el período.'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── PASO 2 — OTs incluidas ─── */}
+        {step === 2 && (
+          <div className="card">
+            <div className="card-body">
+              <div style={{marginBottom:16}}>
+                <h3 style={{margin:0}}>OTs disponibles para valorizar</h3>
+                <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
+                  OTs cerradas con conformidad del cliente. Selecciona las que incluirás en esta valorización.
+                </div>
+              </div>
+              {otsDisponibles.length === 0 ? (
+                <div style={{textAlign:'center', padding:32, color:'var(--fg-muted)'}}>
+                  No hay OTs disponibles para esta OS.
+                </div>
+              ) : otsDisponibles.map(ot => {
+                const ct = cierresTecnicos.find(c => c.ot_id === ot.id);
+                const checked = otSeleccionadas.includes(ot.id);
+                return (
+                  <div key={ot.id} style={{
+                    display:'flex', alignItems:'flex-start', gap:12, padding:'12px 14px',
+                    marginBottom:8, borderRadius:6, cursor:'pointer',
+                    border: checked ? '1px solid var(--cyan)' : '1px solid var(--border)',
+                    background: checked ? 'color-mix(in srgb, var(--cyan) 5%, transparent)' : 'var(--bg-card)',
+                  }} onClick={() => setOtSeleccionadas(prev => prev.includes(ot.id) ? prev.filter(id => id !== ot.id) : [...prev, ot.id])}>
+                    <input type="checkbox" checked={checked} readOnly style={{marginTop:3, pointerEvents:'none'}} />
+                    <div style={{flex:1, minWidth:0}}>
+                      <div style={{fontWeight:600, fontSize:13}}>{ot.numero}</div>
+                      <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                        {ot.descripcion || '—'}
+                      </div>
+                      <div style={{display:'flex', gap:20, marginTop:6, fontSize:11, color:'var(--fg-muted)', flexWrap:'wrap'}}>
+                        <span>Cierre: <strong style={{color:'var(--fg)'}}>{ct?.fecha || ot.fecha_fin || '—'}</strong></span>
+                        <span>Avance: <strong style={{color:'var(--cyan)'}}>{ct?.avance_final ?? ot.avance ?? '—'}%</strong></span>
+                        <span>Horas: <strong style={{color:'var(--fg)'}}>{ct?.horas_total || '—'}</strong></span>
+                        <span>Costo real: <strong style={{color:'var(--fg)'}}>{money(ot.costoReal || 0)}</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {otsConformidadPend.length > 0 && (
+                <div style={{marginTop:16, padding:'12px 14px', borderRadius:6, border:'1px solid var(--orange)', background:'color-mix(in srgb, var(--orange) 8%, transparent)'}}>
+                  <div style={{fontWeight:600, fontSize:13, color:'var(--orange)', marginBottom:8}}>
+                    {otsConformidadPend.length} OT{otsConformidadPend.length !== 1 ? 's' : ''} con conformidad pendiente — no disponibles para valorizar
+                  </div>
+                  {otsConformidadPend.map(ot => (
+                    <div key={ot.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', fontSize:12, marginTop:6}}>
+                      <span style={{fontWeight:500}}>{ot.numero} <span style={{color:'var(--fg-muted)', fontWeight:400}}>— {ot.responsable || ''}</span></span>
+                      <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('cierre')}>Registrar conformidad</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {otsBloqueadasOtraVal.length > 0 && (
+                <div style={{marginTop:12, padding:'12px 14px', borderRadius:6, border:'1px solid var(--fg-muted)', background:'var(--bg-subtle)'}}>
+                  <div style={{fontWeight:600, fontSize:13, color:'var(--fg-muted)', marginBottom:6}}>
+                    {otsBloqueadasOtraVal.length} OT{otsBloqueadasOtraVal.length !== 1 ? 's' : ''} incluidas en otra valorización activa
+                  </div>
+                  {otsBloqueadasOtraVal.map(ot => (
+                    <div key={ot.id} style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
+                      {ot.numero} — {ot.descripcion || ''}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ─── PASO 3 — Partidas según modelo ─── */}
+        {step === 3 && (
+          <div className="card">
+            <div className="card-body">
+              <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>
+                <div>
+                  <h3 style={{margin:0}}>Partidas — {MODELO_LABELS[modelo]}</h3>
+                  <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
+                    {modelo === 'avance_pct' && 'Montos calculados. Puedes ajustar el importe a valorizar.'}
+                    {modelo === 'costo_real' && 'Costos tomados de partes aprobados y cierre técnico. Ajusta el margen por OT.'}
+                    {modelo === 'hitos_pago' && 'Incluye los hitos o conceptos a valorizar en este período.'}
+                  </div>
+                </div>
+                {modelo === 'hitos_pago' && (
+                  <button className="btn btn-secondary btn-sm" onClick={addPartida}>{I.plus} Agregar línea</button>
+                )}
+              </div>
+
+              {/* Referencia OS Cliente */}
+              {(() => {
+                const osRef = getOs(selOs);
+                if (!osRef) return null;
+                const aprobado = Number(osRef.monto_aprobado || 0);
+                const saldo    = Number(osRef.saldo_por_valorizar ?? aprobado);
+                const yaVal    = aprobado - saldo;
+                return (
+                  <div style={{display:'flex', gap:24, padding:'10px 14px', borderRadius:6, background:'var(--bg-subtle)', border:'1px solid var(--border)', marginBottom:16, fontSize:13}}>
+                    <div>
+                      <span style={{color:'var(--fg-muted)', marginRight:6}}>Monto aprobado OS:</span>
+                      <strong>{moneyCurrency(aprobado, monedaOs)}</strong>
+                    </div>
+                    <div>
+                      <span style={{color:'var(--fg-muted)', marginRight:6}}>Ya valorizado:</span>
+                      <strong>{moneyCurrency(yaVal, monedaOs)}</strong>
+                    </div>
+                    <div>
+                      <span style={{color:'var(--fg-muted)', marginRight:6}}>Saldo pendiente:</span>
+                      <strong style={{color: saldo < 0 ? 'var(--danger)' : 'var(--green)'}}>{moneyCurrency(saldo, monedaOs)}</strong>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Modelo A — Por avance % */}
+              {modelo === 'avance_pct' && (
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>OT / Descripción</th>
+                        <th style={{width:90}}>Avance</th>
+                        <th style={{width:140}} className="num">Monto Base</th>
+                        <th style={{width:140}} className="num">Ya Valorizado</th>
+                        <th style={{width:160}} className="num">A Valorizar</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {partidas.map(p => (
+                        <tr key={p.id}>
+                          <td style={{fontSize:12}}>{p.descripcion}</td>
+                          <td className="num" style={{fontWeight:700, color:'var(--cyan)'}}>{p._avance_pct}%</td>
+                          <td className="num text-muted">{money(p._monto_base || 0)}</td>
+                          <td className="num text-muted">{money(p._ya_valorizado || 0)}</td>
+                          <td>
+                            <input type="number" className="input num" min="0" value={p.precio_unitario}
+                              onChange={e => updatePartida(p.id, 'precio_unitario', Number(e.target.value))} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Modelo B — Por costo real */}
+              {modelo === 'costo_real' && (
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>OT / Descripción</th>
+                        <th style={{width:100}} className="num">M.O.</th>
+                        <th style={{width:100}} className="num">Materiales</th>
+                        <th style={{width:100}} className="num">Terceros</th>
+                        <th style={{width:90}} className="num">Logística</th>
+                        <th style={{width:120}} className="num">Costo Real</th>
+                        <th style={{width:110}}>Margen %</th>
+                        <th style={{width:130}} className="num">A Valorizar</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {partidas.map(p => (
+                        <tr key={p.id}>
+                          <td style={{fontSize:12}}>{p.descripcion}</td>
+                          <td className="num text-muted">{moneyCurrency(p._costo_mo || 0, monedaOs)}</td>
+                          <td className="num text-muted">{moneyCurrency(p._costo_materiales || 0, monedaOs)}</td>
+                          <td className="num text-muted">{moneyCurrency(p._costo_terceros || 0, monedaOs)}</td>
+                          <td className="num text-muted">{moneyCurrency(p._costo_logistica || 0, monedaOs)}</td>
+                          <td className="num" style={{fontWeight:600}}>{moneyCurrency(p._costo_real || 0, monedaOs)}</td>
+                          <td>
+                            <div style={{display:'flex', alignItems:'center', gap:4}}>
+                              <input type="number" className="input num" min="0" max="200" style={{width:64}}
+                                value={p._margen_pct ?? 25}
+                                onChange={e => updateMargen(p.id, Number(e.target.value))} />
+                              <span style={{fontSize:12, color:'var(--fg-muted)'}}>%</span>
+                            </div>
+                          </td>
+                          <td className="num" style={{fontWeight:700, color:'var(--green)'}}>{moneyCurrency(p.precio_unitario, monedaOs)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Modelo C — Por hitos de pago */}
+              {modelo === 'hitos_pago' && (
+                <>
+                  {!getCot(selOs)?.hitos_pago?.length && (
+                    <div style={{padding:'10px 12px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg-subtle)', marginBottom:16, fontSize:12, color:'var(--fg-muted)'}}>
+                      No se encontraron hitos en la cotización vinculada. Ingresa las partidas manualmente.
+                    </div>
+                  )}
+                  <div className="table-wrap">
+                    <table className="tbl">
+                      <thead>
+                        <tr>
+                          <th>Concepto / Hito</th>
+                          <th style={{width:90}}>Cant.</th>
+                          <th style={{width:140}}>Monto</th>
+                          <th style={{width:40}}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {partidas.map(p => (
+                          <tr key={p.id}>
+                            <td><input type="text" className="input" value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} /></td>
+                            <td><input type="number" className="input num" min="1" value={p.cantidad} onChange={e => updatePartida(p.id, 'cantidad', Number(e.target.value))} /></td>
+                            <td><input type="number" className="input num" min="0" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', Number(e.target.value))} /></td>
+                            <td><button className="icon-btn text-danger" onClick={() => removePartida(p.id)}>{I.x}</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ─── PASO 4 — Resumen y ajustes finales ─── */}
+        {step === 4 && (
+          <div className="card">
+            <div className="card-body">
+              <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>
+                <div>
+                  <h3 style={{margin:0}}>Partidas de la valorización</h3>
+                  <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
+                    Modelo: <strong>{MODELO_LABELS[modelo]}</strong> · Período: <strong>{periodo}</strong>
+                  </div>
+                </div>
+                {modelo === 'hitos_pago' && (
+                  <button className="btn btn-secondary btn-sm" onClick={addPartida}>{I.plus} Agregar línea</button>
+                )}
+              </div>
+
+              {/* Referencia OS Cliente — simulando impacto de esta valorización */}
+              {(() => {
+                const osRef = getOs(selOs);
+                if (!osRef) return null;
+                const aprobado      = Number(osRef.monto_aprobado || 0);
+                const saldo         = Number(osRef.saldo_por_valorizar ?? aprobado);
+                const yaVal         = aprobado - saldo;
+                const saldoFinal    = saldo - totalVal;
+                return (
+                  <div style={{display:'flex', gap:24, padding:'10px 14px', borderRadius:6, background:'var(--bg-subtle)', border:'1px solid var(--border)', marginBottom:16, fontSize:13, flexWrap:'wrap'}}>
+                    <div>
+                      <span style={{color:'var(--fg-muted)', marginRight:6}}>Monto aprobado OS:</span>
+                      <strong>{moneyCurrency(aprobado, monedaOs)}</strong>
+                    </div>
+                    <div>
+                      <span style={{color:'var(--fg-muted)', marginRight:6}}>Ya valorizado:</span>
+                      <strong>{moneyCurrency(yaVal, monedaOs)}</strong>
+                    </div>
+                    <div>
+                      <span style={{color:'var(--fg-muted)', marginRight:6}}>Esta valorización:</span>
+                      <strong style={{color:'var(--cyan)'}}>{moneyCurrency(totalVal, monedaOs)}</strong>
+                    </div>
+                    <div>
+                      <span style={{color:'var(--fg-muted)', marginRight:6}}>Saldo resultante:</span>
+                      <strong style={{color: saldoFinal < 0 ? 'var(--danger)' : 'var(--green)'}}>{moneyCurrency(saldoFinal, monedaOs)}</strong>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {modelo !== 'hitos_pago' && (
+                <div style={{marginBottom:12, padding:'8px 12px', borderRadius:6, background:'color-mix(in srgb, var(--cyan) 8%, transparent)', border:'1px solid color-mix(in srgb, var(--cyan) 30%, transparent)', fontSize:12, color:'var(--fg-muted)'}}>
+                  Para ajustar los montos, regresa al paso <strong>Partidas</strong> y modifica el margen por OT.
+                </div>
+              )}
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Descripción</th>
+                      <th style={{width:90}}>Cant.</th>
+                      <th style={{width:130}} className="num">P. Unitario</th>
+                      <th style={{width:130}} className="num">Subtotal</th>
+                      {modelo === 'hitos_pago' && <th style={{width:40}}></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {partidas.map(p => (
+                      <tr key={p.id}>
+                        {modelo === 'hitos_pago' ? (
+                          <>
+                            <td><input type="text" className="input" value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} /></td>
+                            <td><input type="number" className="input num" min="1" value={p.cantidad} onChange={e => updatePartida(p.id, 'cantidad', e.target.value)} /></td>
+                            <td><input type="number" className="input num" min="0" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', e.target.value)} /></td>
+                            <td className="num" style={{fontWeight:600}}>{moneyCurrency(Number(p.cantidad) * Number(p.precio_unitario), monedaOs)}</td>
+                            <td><button className="icon-btn text-danger" onClick={() => removePartida(p.id)}>{I.x}</button></td>
+                          </>
+                        ) : (
+                          <>
+                            <td style={{fontSize:12}}>{p.descripcion}</td>
+                            <td className="num text-muted">{p.cantidad}</td>
+                            <td className="num">{moneyCurrency(Number(p.precio_unitario), monedaOs)}</td>
+                            <td className="num" style={{fontWeight:600}}>{moneyCurrency(Number(p.cantidad) * Number(p.precio_unitario), monedaOs)}</td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                    {partidas.length === 0 && (
+                      <tr><td colSpan={modelo === 'hitos_pago' ? 5 : 4} style={{textAlign:'center', padding:24, color:'var(--fg-muted)'}}>
+                        Sin partidas — agrega al menos una línea.
+                      </td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Totals */}
+              <div style={{display:'flex', justifyContent:'flex-end', marginTop:24}}>
+                <div style={{width:320, padding:'16px 20px', background:'var(--bg-subtle)', borderRadius:8}}>
+                  <div className="row" style={{justifyContent:'space-between', marginBottom:10}}>
+                    <span className="text-muted">Subtotal</span>
+                    <span className="num">{moneyCurrency(subtotalVal, monedaOs)}</span>
+                  </div>
+                  <div className="row" style={{justifyContent:'space-between', marginBottom:10, alignItems:'center'}}>
+                    <div style={{display:'flex', alignItems:'center', gap:8}}>
+                      <span className="text-muted">IGV</span>
+                      <input type="number" className="input num" min="0" max="100"
+                        style={{width:60, padding:'3px 6px', fontSize:12}}
+                        value={igvPct} onChange={e => setIgvPct(Number(e.target.value))} />
+                      <span style={{fontSize:12, color:'var(--fg-muted)'}}>%</span>
+                    </div>
+                    <span className="num">{moneyCurrency(igvAmount, monedaOs)}</span>
+                  </div>
+                  <div className="row" style={{justifyContent:'space-between', paddingTop:10, borderTop:'1px solid var(--border)', fontWeight:700, fontSize:16, fontFamily:'Sora'}}>
+                    <span>Total a Valorizar</span>
+                    <span className="num">{moneyCurrency(totalVal, monedaOs)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Saldo warning */}
+              {(() => {
+                const os = getOs(selOs);
+                const saldo = Number(os?.saldo_por_valorizar || 0);
+                const excede = saldo > 0 && totalVal > saldo;
+                if (!excede) return null;
+                return (
+                  <div style={{marginTop:20, padding:'14px 16px', borderRadius:8, border:'1px solid var(--orange)', background:'color-mix(in srgb, var(--orange) 8%, transparent)'}}>
+                    <div style={{fontWeight:600, fontSize:13, color:'var(--orange)', marginBottom:4}}>
+                      Total excede el saldo por valorizar
+                    </div>
+                    <div style={{fontSize:12, marginBottom:10}}>
+                      Esta valorización ({moneyCurrency(totalVal, monedaOs)}) supera el saldo disponible de la OS ({moneyCurrency(saldo, monedaOs)}).
+                      Solo confirma si tienes autorización para exceder el monto aprobado.
+                    </div>
+                    <label style={{display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer'}}>
+                      <input type="checkbox" checked={confirmarExceso} onChange={e => setConfirmarExceso(e.target.checked)} />
+                      Confirmo que estoy autorizado a exceder el saldo de la OS
+                    </label>
+                  </div>
+                );
+              })()}
+
+              {/* Notas */}
+              <div className="input-group" style={{marginTop:24}}>
+                <label>Notas <span style={{color:'var(--fg-muted)', fontWeight:400}}>(opcional)</span></label>
+                <textarea className="input" rows={3} value={notas} onChange={e => setNotas(e.target.value)}
+                  placeholder="Observaciones, aclaraciones o condiciones adicionales..." />
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  const badgeClass = e => ({ aprobada: 'badge-green', facturada: 'badge-navy', anulada: 'badge-red' }[e] || 'badge-gray');
+  const badgeLabel = e => ({ borrador: 'Borrador', aprobada: 'Aprobada', facturada: 'Facturada', anulada: 'Anulada' }[e] || (e || '—'));
+
+  // KPIs
+  const hoy = new Date();
+  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+  const valMes = valorizaciones.filter(v => (v.fecha || '').startsWith(mesActual)).length;
+  const montoPendientePEN = valorizaciones.filter(v => v.estado === 'aprobada' && (v.moneda || 'PEN') === 'PEN').reduce((s, v) => s + Number(v.total || 0), 0);
+  const montoPendienteUSD = valorizaciones.filter(v => v.estado === 'aprobada' && v.moneda === 'USD').reduce((s, v) => s + Number(v.total || 0), 0);
+  const montoFacturadoPEN = valorizaciones.filter(v => v.estado === 'facturada' && (v.moneda || 'PEN') === 'PEN').reduce((s, v) => s + Number(v.total || 0), 0);
+  const montoFacturadoUSD = valorizaciones.filter(v => v.estado === 'facturada' && v.moneda === 'USD').reduce((s, v) => s + Number(v.total || 0), 0);
+  const otsListasCount = ots.filter(ot => ot.estado === 'cerrada' && ot.estado !== 'valorizada' && conformidadCompleta(ot.id)).length;
+
+  // Unique filter options from data
+  const clienteOpts = [...new Map(valorizaciones.map(v => {
+    const cId = getClienteId(v.os_cliente_id);
+    return [cId, getClienteNombre(v.os_cliente_id)];
+  })).entries()].filter(([k]) => k);
+  const osOpts = [...new Map(valorizaciones.map(v => [v.os_cliente_id, getOs(v.os_cliente_id)?.numero || v.os_cliente_id])).entries()];
+  const periodoOpts = [...new Set(valorizaciones.map(v => v.periodo).filter(Boolean))];
+  const modeloOpts = [...new Set(valorizaciones.map(v => v.modelo_calculo).filter(Boolean))];
+
+  // Filtering
   const query = searchQuery.toLowerCase();
-  const filteredValorizaciones = valorizaciones.filter(v => 
-    v.numero.toLowerCase().includes(query) ||
-    getOSNumero(v.os_cliente_id).toLowerCase().includes(query) ||
-    (v.periodo || '').toLowerCase().includes(query)
-  );
+  const filtered = valorizaciones.filter(v => {
+    if (filterCliente && getClienteId(v.os_cliente_id) !== filterCliente) return false;
+    if (filterOs && v.os_cliente_id !== filterOs) return false;
+    if (filterEstado && v.estado !== filterEstado) return false;
+    if (filterPeriodo && (v.periodo || '') !== filterPeriodo) return false;
+    if (filterModelo && (v.modelo_calculo || '') !== filterModelo) return false;
+    if (query) {
+      return (v.numero || '').toLowerCase().includes(query) ||
+        (getOs(v.os_cliente_id)?.numero || '').toLowerCase().includes(query) ||
+        getClienteNombre(v.os_cliente_id).toLowerCase().includes(query) ||
+        (v.periodo || '').toLowerCase().includes(query);
+    }
+    return true;
+  });
+
+  const hasFilters = filterCliente || filterOs || filterEstado || filterPeriodo || filterModelo;
 
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Valorizaciones</h1><div className="page-sub">{valorizaciones.length} valorizaciones registradas</div></div>
-        <button className="btn btn-primary" onClick={()=>setEditing(true)}>{I.plus} Generar Valorización</button>
+        <div>
+          <h1 className="page-title">Valorizaciones</h1>
+          <div className="page-sub">{valorizaciones.length} valorizaciones registradas</div>
+        </div>
+        <button className="btn btn-primary" onClick={() => setEditing(true)}>{I.plus} Generar Valorización</button>
       </div>
-      <div className="card mt-6">
+
+      {/* KPIs */}
+      <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:16, marginTop:24, marginBottom:8}}>
+        <div className="card" style={{padding:'16px 20px'}}>
+          <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>Valorizaciones este mes</div>
+          <div style={{fontSize:28, fontWeight:700, fontFamily:'Sora', color:'var(--cyan)'}}>{valMes}</div>
+        </div>
+        <div className="card" style={{padding:'16px 20px'}}>
+          <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>Pendiente de facturar</div>
+          <div style={{fontSize:22, fontWeight:700, fontFamily:'Sora', color:'var(--orange)'}}>{money(montoPendientePEN)}</div>
+          {montoPendienteUSD > 0 && (
+            <div style={{fontSize:22, fontWeight:700, fontFamily:'Sora', color:'var(--orange)', marginTop:2}}>{moneyCurrency(montoPendienteUSD, 'USD')}</div>
+          )}
+          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Estado aprobada</div>
+        </div>
+        <div className="card" style={{padding:'16px 20px'}}>
+          <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>Total facturado</div>
+          <div style={{fontSize:22, fontWeight:700, fontFamily:'Sora', color:'var(--green)'}}>{money(montoFacturadoPEN)}</div>
+          {montoFacturadoUSD > 0 && (
+            <div style={{fontSize:22, fontWeight:700, fontFamily:'Sora', color:'var(--green)', marginTop:2}}>{moneyCurrency(montoFacturadoUSD, 'USD')}</div>
+          )}
+          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Estado facturada</div>
+        </div>
+        <div className="card" style={{padding:'16px 20px'}}>
+          <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>OTs listas para valorizar</div>
+          <div style={{fontSize:28, fontWeight:700, fontFamily:'Sora', color:'var(--cyan)'}}>{otsListasCount}</div>
+          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Cerradas con conformidad</div>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div className="card" style={{marginBottom:8}}>
+        <div style={{padding:'12px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center'}}>
+          <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterCliente} onChange={e => setFilterCliente(e.target.value)}>
+            <option value="">Todos los clientes</option>
+            {clienteOpts.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
+          </select>
+          <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterOs} onChange={e => setFilterOs(e.target.value)}>
+            <option value="">Todas las OS</option>
+            {osOpts.map(([id, num]) => <option key={id} value={id}>{num}</option>)}
+          </select>
+          <select className="select" style={{flex:'1 1 140px', minWidth:120}} value={filterEstado} onChange={e => setFilterEstado(e.target.value)}>
+            <option value="">Todos los estados</option>
+            <option value="borrador">Borrador</option>
+            <option value="aprobada">Aprobada</option>
+            <option value="facturada">Facturada</option>
+            <option value="anulada">Anulada</option>
+          </select>
+          <select className="select" style={{flex:'1 1 140px', minWidth:120}} value={filterPeriodo} onChange={e => setFilterPeriodo(e.target.value)}>
+            <option value="">Todos los períodos</option>
+            {periodoOpts.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterModelo} onChange={e => setFilterModelo(e.target.value)}>
+            <option value="">Todos los modelos</option>
+            {modeloOpts.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          {hasFilters && (
+            <button className="btn btn-ghost btn-sm" onClick={() => { setFilterCliente(''); setFilterOs(''); setFilterEstado(''); setFilterPeriodo(''); setFilterModelo(''); }}>
+              {I.x} Limpiar
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tabla */}
+      <div className="card">
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Valorización</th><th>OS Cliente</th><th>Período</th><th>Subtotal</th><th>IGV</th><th>Total</th><th>Estado</th></tr></thead>
-            <tbody>{filteredValorizaciones.map(r=>(
-              <tr key={r.id} className="hover-row">
-                <td className="mono" style={{fontWeight:600}}>{r.numero}</td>
-                <td className="mono text-muted">{getOSNumero(r.os_cliente_id)}</td>
-                <td className="text-muted">{r.periodo}</td>
-                <td className="num">{money(r.subtotal)}</td>
-                <td className="num">{money(r.igv)}</td>
-                <td className="num" style={{fontWeight:600}}>{money(r.total)}</td>
-                <td><span className={'badge '+badge(r.estado)}>{r.estado.toUpperCase()}</span></td>
+            <thead>
+              <tr>
+                <th>N° Valorización</th>
+                <th>OS Cliente</th>
+                <th>Cliente</th>
+                <th>Período</th>
+                <th>Modelo</th>
+                <th className="num">Subtotal</th>
+                <th className="num">IGV</th>
+                <th className="num">Total</th>
+                <th>Estado</th>
+                <th></th>
               </tr>
-            ))}
-            {filteredValorizaciones.length === 0 && <tr><td colSpan="7" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>{query ? 'No se encontraron resultados' : 'No hay valorizaciones'}</td></tr>}
+            </thead>
+            <tbody>
+              {filtered.map(v => (
+                <tr key={v.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => setSelVal(v.id)}>
+                  <td className="mono" style={{fontWeight:600}}>{v.numero}</td>
+                  <td className="mono text-muted">{getOs(v.os_cliente_id)?.numero || '—'}</td>
+                  <td style={{maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{getClienteNombre(v.os_cliente_id)}</td>
+                  <td className="text-muted">{v.periodo || '—'}</td>
+                  <td className="text-muted" style={{fontSize:12}}>{MODELO_LABELS[v.modelo_calculo] || v.modelo_calculo || '—'}</td>
+                  <td className="num">{moneyCurrency(v.subtotal, v.moneda)}</td>
+                  <td className="num">{moneyCurrency(v.igv, v.moneda)}</td>
+                  <td className="num" style={{fontWeight:600}}>{moneyCurrency(v.total, v.moneda)}</td>
+                  <td>
+                    <span className={'badge ' + badgeClass(v.estado)}>{badgeLabel(v.estado)}</span>
+                  </td>
+                  <td onClick={e => e.stopPropagation()}>
+                    {v.estado === 'aprobada' && (
+                      <button className="btn btn-secondary btn-sm" style={{fontSize:11, whiteSpace:'nowrap'}} onClick={() => emitirFacturaDesdeValorizacion(v.id)}>
+                        Facturar
+                      </button>
+                    )}
+                    {v.estado === 'borrador' && (
+                      <button className="btn btn-primary btn-sm" style={{fontSize:11, whiteSpace:'nowrap'}} onClick={() => aprobarValorizacion(v.id)}>
+                        {I.check} Aprobar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan="10" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
+                  {query || hasFilters ? 'No se encontraron resultados' : 'No hay valorizaciones registradas'}
+                </td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -1873,7 +2859,7 @@ function SeccionCosto({ titulo, badge, items, onChange, readOnly, sugerido, cata
   const safeItems = Array.isArray(items) ? items : [];
   const calcSubtotal = list => list.reduce((s, i) => s + (Number(i.cantidad || 0) * Number(i.costo_unitario || 0)), 0);
 
-  const addItem = () => onChange([...safeItems, { id: Date.now(), descripcion: sugerido || '', cantidad: 1, unidad: 'und', costo_unitario: 0 }]);
+  const addItem = () => onChange([...safeItems, { id: Date.now(), descripcion: sugerido || '', cantidad: 1, unidad: 'und', costo_unitario: '' }]);
   const removeItem = id => onChange(safeItems.filter(i => i.id !== id));
   const updateItem = (id, field, value) => onChange(safeItems.map(i => i.id === id ? { ...i, [field]: value } : i));
   const selectFromCatalogo = (id, srvDescripcion) => {
@@ -1975,12 +2961,39 @@ function ResumenCostos({ hc, moneda = 'PEN' }) {
 }
 
 function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo, aprobarHojaCosteo, navigate }) {
-  const { usuarios, roles, empresa } = useApp();
-  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
+  const { usuarios, roles, empresa, authUser, role } = useApp();
+  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const opp = getOpp(hc.oportunidad_id);
   const hcMoneda = opp?.moneda || hc.moneda || 'PEN';
   const estado = hc.estado || 'borrador';
   const estadoLabel = String(estado).replace('_',' ');
+  const viewer = (usuarios || []).find(u =>
+    u.id === authUser?.id ||
+    u.auth_user_id === authUser?.id ||
+    (u.email && authUser?.email && String(u.email).toLowerCase() === String(authUser.email).toLowerCase())
+  ) || authUser;
+  const ownerUserId = opp?.responsable_id || null;
+  const ownerName = opp?.responsable || hc.responsable_costeo || null;
+  const rolActual = roles?.[authUser?.rol_id || authUser?.rol] || {};
+  const permisosActivos = role?.permisos || {};
+  const permisosRolActual = rolActual?.permisos || {};
+  const tienePermisoAprobarHC = Boolean(
+    permisosActivos.todo ||
+    permisosActivos.tenant_admin ||
+    permisosActivos.aprobar?.includes?.('hoja_costeo') ||
+    permisosRolActual.aprobar?.includes?.('hoja_costeo')
+  );
+  const esResponsableHC = Boolean(
+    (ownerUserId && ownerUserId === authUser?.id) ||
+    (!ownerUserId && ownerName && String(ownerName).trim() === String(viewer?.nombre || '').trim())
+  );
+  const puedeAprobarHC = tienePermisoAprobarHC && canUserApproveOwner({
+    viewer,
+    ownerUserId,
+    ownerName,
+    users: usuarios,
+    roles,
+  });
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState({
     mano_obra: Array.isArray(hc.mano_obra) ? hc.mano_obra : [],
@@ -1992,7 +3005,7 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
     notas: hc.notas || ''
   });
 
-  const puedeEditar = estado !== 'aprobada';
+  const puedeEditar = estado === 'borrador' || (estado === 'en_revision' && puedeAprobarHC);
   const readOnly = !puedeEditar || !editMode;
 
   const handleSave = async () => {
@@ -2032,10 +3045,10 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
           {estado === 'borrador' && (
             <button className="btn btn-primary" onClick={handleEnviarRevision}>{I.send} Enviar a revision</button>
           )}
-          {estado === 'en_revision' && puedeEditar && (
+          {estado === 'en_revision' && (puedeAprobarHC || esResponsableHC) && (
             <button className="btn btn-secondary" onClick={handleVolverBorrador}>{I.edit} Volver a borrador</button>
           )}
-          {estado === 'en_revision' && (
+          {estado === 'en_revision' && puedeAprobarHC && (
             <button className="btn btn-primary" style={{background:'var(--green)'}} onClick={handleAprobar}>{I.check} Aprobar Costeo</button>
           )}
           {estado === 'aprobada' && (
@@ -2069,12 +3082,18 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
         </div>
       )}
 
+      {estado === 'en_revision' && !puedeAprobarHC && (
+        <div style={{ margin: '12px 32px 0', padding: '10px 14px', background: '#fff7ed', borderRadius: 8, borderLeft: '3px solid var(--orange)', fontSize: 13, color: '#9a3412' }}>
+          Pendiente de revision: la jefatura comercial o un nivel superior debe aprobar esta Hoja de Costeo para generar la cotizacion.
+        </div>
+      )}
+
       <div className="cost-editor-shell">
         <div className="cost-editor-grid">
           <div className="cost-lines">
             <SeccionCosto titulo="Mano de Obra" badge="badge-cyan" items={form.mano_obra} readOnly={readOnly} onChange={val => setForm(p=>({...p, mano_obra: val}))} moneda={hcMoneda} />
             <SeccionCosto titulo="Materiales e Insumos" badge="badge-purple" items={form.materiales} readOnly={readOnly} onChange={val => setForm(p=>({...p, materiales: val}))} moneda={hcMoneda} />
-            <SeccionCosto titulo="Servicios Terceros / Alquileres" badge="badge-orange" items={form.servicios_terceros} readOnly={readOnly} onChange={val => setForm(p=>({...p, servicios_terceros: val}))} catalogoOpciones={MOCK.servicios.filter(s => s.estado === 'activo')} moneda={hcMoneda} />
+            <SeccionCosto titulo="Servicios Terceros / Alquileres" badge="badge-orange" items={form.servicios_terceros} readOnly={readOnly} onChange={val => setForm(p=>({...p, servicios_terceros: val}))} moneda={hcMoneda} />
             <SeccionCosto titulo="Logística y Viáticos" badge="badge-gray" items={form.logistica} readOnly={readOnly} onChange={val => setForm(p=>({...p, logistica: val}))} moneda={hcMoneda} />
           </div>
           <aside className="cost-sidebar">
@@ -2117,8 +3136,8 @@ const calcPrecio = f => {
 
 // Subcomponente Editor Hoja de Costeo
 function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
-  const { usuarios, roles, empresa } = useApp();
-  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
+  const { usuarios, roles, empresa, authUser } = useApp();
+  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const [form, setForm] = useState({
     oportunidad_id: opp.id,
     cuenta_id: opp.cuenta_id,
@@ -2177,7 +3196,7 @@ function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
           <div className="cost-lines">
             <SeccionCosto titulo="Mano de Obra" badge="badge-cyan" items={form.mano_obra} onChange={val => setForm(p=>({...p, mano_obra: val}))} moneda={form.moneda} />
             <SeccionCosto titulo="Materiales e Insumos" badge="badge-purple" items={form.materiales} onChange={val => setForm(p=>({...p, materiales: val}))} moneda={form.moneda} />
-            <SeccionCosto titulo="Servicios Terceros / Alquileres" badge="badge-orange" items={form.servicios_terceros} onChange={val => setForm(p=>({...p, servicios_terceros: val}))} catalogoOpciones={MOCK.servicios.filter(s => s.estado === 'activo')} moneda={form.moneda} />
+            <SeccionCosto titulo="Servicios Terceros / Alquileres" badge="badge-orange" items={form.servicios_terceros} onChange={val => setForm(p=>({...p, servicios_terceros: val}))} moneda={form.moneda} />
             <SeccionCosto titulo="Logistica y Viaticos" badge="badge-gray" items={form.logistica} onChange={val => setForm(p=>({...p, logistica: val}))} moneda={form.moneda} />
           </div>
           <aside className="cost-sidebar">

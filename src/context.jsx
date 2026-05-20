@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { MOCK } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
-import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta } from './services/crmService.js';
-import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario } from './services/operacionesService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
+import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT } from './services/operacionesService.js';
 import { finanzasService } from './services/finanzasService.js';
 import { maestrosService } from './services/maestrosService.js';
 import { comprasService } from './services/comprasService.js';
@@ -68,6 +68,11 @@ function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo
   const esSuperadmin = rol?.es_superadmin || false;
   const esAdmin = esSuperadmin || rol?.es_admin_empresa || false;
   const ver = permisosRows.filter(p => p.puede_ver).map(p => p.pantalla);
+  const crear = permisosRows.filter(p => p.puede_crear).map(p => p.pantalla);
+  const editar = permisosRows.filter(p => p.puede_editar).map(p => p.pantalla);
+  const anular = permisosRows.filter(p => p.puede_anular).map(p => p.pantalla);
+  const aprobar = permisosRows.filter(p => p.puede_aprobar).map(p => p.pantalla);
+  const exportar = permisosRows.filter(p => p.puede_exportar).map(p => p.pantalla);
   const verFinanzas = esSuperadmin || permisosRows.some(p => p.puede_ver_finanzas);
   const verCostos = esSuperadmin || permisosRows.some(p => p.puede_ver_costos);
   const puedeAprobar = esSuperadmin || permisosRows.some(p => p.puede_aprobar);
@@ -76,6 +81,11 @@ function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo
     color: esSuperadmin ? 'navy' : esAdmin ? 'purple' : 'cyan',
     permisos: {
       ver,
+      crear,
+      editar,
+      anular,
+      aprobar,
+      exportar,
       todo: esAdmin,
       plataforma: esSuperadmin,
       soporte_tenant: esSuperadmin,
@@ -216,6 +226,11 @@ export function AppProvider({ children }) {
   const [osClientes, setOsClientes] = useState(MOCK.osClientes);
   const [cxp, setCxp] = useState(MOCK.cxp || []);
   const [cxc, setCxc] = useState(MOCK.cxc || []);
+  const [cobrosHistorial, setCobrosHistorial] = useState([]);
+  const [gestionesCobranza, setGestionesCobranza] = useState([]);
+  const [comisiones, setComisiones] = useState([]);
+  const [recibosHonorarios, setRecibosHonorarios] = useState([]);
+  const [cuentasBancarias, setCuentasBancarias] = useState(MOCK.cuentasBancarias || []);
   const [facturas, setFacturas] = useState(MOCK.facturas || []);
   const [comprasGastos, setComprasGastos] = useState(MOCK.compras || []);
   const [financiamientos, setFinanciamientos] = useState(MOCK.financiamientos || []);
@@ -229,6 +244,7 @@ export function AppProvider({ children }) {
   const [backlog, setBacklog] = useState(MOCK.backlog || []);
   const [inventario, setInventario] = useState(MOCK.inventario || []);
   const [solpes, setSolpes] = useState(MOCK.solpes || []);
+  const [cierresTecnicos, setCierresTecnicos] = useState(MOCK.cierresTecnicos || []);
   const [valorizaciones, setValorizaciones] = useState(MOCK.valorizaciones || []);
   const [proveedores, setProveedores] = useState(MOCK.proveedores || []);
   const [evaluacionesProveedor, setEvaluacionesProveedor] = useState(MOCK.evaluacionesProveedor || []);
@@ -609,6 +625,8 @@ export function AppProvider({ children }) {
           setOts(opsData.ots || []);
           setPartes(opsData.partes || []);
           setBacklog(opsData.backlog || []);
+          setPlannerAsignaciones(opsData.plannerAsignaciones || []);
+          setCierresTecnicos(opsData.cierresTecnicos || []);
         }
         
         try {
@@ -657,7 +675,7 @@ export function AppProvider({ children }) {
           const cxcData = await finanzasService.getCxC(empresa.id);
           const cxpData = await finanzasService.getCxP(empresa.id);
           const mbData = await finanzasService.getMovimientosBanco(empresa.id);
-          
+
           if (mounted) {
             setValorizaciones(valData || []);
             setFacturas(facData || []);
@@ -666,6 +684,23 @@ export function AppProvider({ children }) {
             setMovimientosBanco(mbData || []);
           }
         } catch (_err) { /* keep mock on error */ }
+
+        try {
+          const [cobrosData, gestionesData, cuentasBanData, comisionesData, recibosData] = await Promise.all([
+            finanzasService.getCobrosHistorial(empresa.id),
+            finanzasService.getGestionesCobranza(empresa.id),
+            finanzasService.getCuentasBancarias(empresa.id),
+            finanzasService.getComisiones(empresa.id),
+            finanzasService.getRecibosHonorarios(empresa.id),
+          ]);
+          if (mounted) {
+            setCobrosHistorial(cobrosData || []);
+            setGestionesCobranza(gestionesData || []);
+            if ((cuentasBanData || []).length > 0) setCuentasBancarias(cuentasBanData);
+            if ((comisionesData || []).length > 0) setComisiones(comisionesData);
+            if ((recibosData || []).length > 0) setRecibosHonorarios(recibosData);
+          }
+        } catch (_err) { /* tabla aún no existe, ignorar */ }
 
         try {
           const [prvData, evalData, slpData, pcData, ocData, osData, recData, invData] = await Promise.all([
@@ -895,6 +930,20 @@ export function AppProvider({ children }) {
 
     loadMembresia();
     return () => { mounted = false; };
+  }, [authUser?.id]);
+
+  // Carga notificaciones persistentes del sistema al iniciar sesión
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !authUser?.id) return;
+    getSupabaseClient().then(sb =>
+      cargarNotificacionesSistema(sb, authUser.id)
+    ).then(rows => {
+      if (!rows?.length) return;
+      setNotificaciones(prev => [
+        ...rows.map(r => ({ id: r.id, text: r.texto, read: r.leida, time: new Date(r.created_at).toLocaleDateString('es-PE'), _db: true })),
+        ...prev,
+      ]);
+    }).catch(() => {});
   }, [authUser?.id]);
 
   const crmSync = (fn) => {
@@ -1527,6 +1576,121 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'crm', entidad: 'oportunidades', entidad_id: oppId, accion: 'perder', valor_anterior: anterior, valor_nuevo: { motivo } });
   };
 
+  // ─── Acuerdo de comisión por oportunidad ─────────────────────────────────
+  const _acuerdoPatch = (opp, extra) => {
+    const patch = { ...extra };
+    setOportunidades(prev => prev.map(o => o.id === opp.id ? { ...o, ...patch } : o));
+    crmSync(sb => actualizarOportunidad(sb, opp.id, patch));
+  };
+
+  // Usuarios con permiso de aprobar (gerentes/admins) dentro de la empresa
+  const _getGerentes = () => usuarios.filter(u => {
+    if (u.empresa_id && empresa?.id && u.empresa_id !== empresa.id) return false;
+    const rolUsuario = rolesCtx?.[u.rol_id] || rolesCtx?.[u.rol] || null;
+    return rolUsuario?.es_admin_empresa || rolUsuario?.es_superadmin ||
+      u.es_admin_empresa || u.permisos?.aprobar_descuentos || u.permisos?.ver_costos;
+  });
+
+  const _notificarSistema = async (destinatarios, texto) => {
+    addNotificacion(texto);
+    if (!isSupabaseConfigured() || !empresa?.id || !destinatarios.length) return;
+    const sb = await getSupabaseClient();
+    const rows = destinatarios
+      .filter(u => u.auth_user_id)
+      .map(u => ({ empresa_id: empresa.id, user_id: u.auth_user_id, texto }));
+    if (rows.length) insertarNotificacionesSistema(sb, rows).catch(() => {});
+  };
+
+  const _registrarHistorialAcuerdo = async (opp, accion, extra = {}) => {
+    if (!isSupabaseConfigured() || !empresa?.id) return;
+    const fila = {
+      empresa_id: empresa.id,
+      oportunidad_id: opp.id,
+      accion,
+      actor_nombre: authUser?.user_metadata?.nombre || authUser?.email || null,
+      actor_id: authUser?.id || null,
+      acuerdo_pct: extra.pct ?? opp.acuerdo_pct ?? null,
+      acuerdo_bonificacion: extra.bonificacion ?? opp.acuerdo_bonificacion ?? 0,
+      justificacion: extra.justificacion ?? opp.acuerdo_justificacion ?? null,
+      motivo: extra.motivo ?? null,
+    };
+    getSupabaseClient().then(sb => insertarHistorialAcuerdo(sb, fila)).catch(() => {});
+  };
+
+  const actualizarAcuerdoComision = (oppId, campos) => {
+    const opp = oportunidades.find(o => o.id === oppId);
+    if (!opp || ['ganada', 'perdida'].includes(opp.etapa)) return;
+    if (['aprobado'].includes(opp.acuerdo_estado)) return;
+    const nuevoEstado = campos.acuerdo_estado ?? (opp.acuerdo_estado === 'pendiente' ? 'pendiente' : 'borrador');
+    _acuerdoPatch(opp, { ...campos, acuerdo_estado: nuevoEstado });
+    _registrarHistorialAcuerdo(opp, 'propuesta', { pct: campos.acuerdo_pct, bonificacion: campos.acuerdo_bonificacion, justificacion: campos.acuerdo_justificacion });
+  };
+
+  const enviarAcuerdoAAprobacion = async (oppId) => {
+    const opp = oportunidades.find(o => o.id === oppId);
+    if (!opp || ['ganada', 'perdida'].includes(opp.etapa)) return;
+    if (!['borrador', 'rechazado'].includes(opp.acuerdo_estado ?? 'borrador')) return;
+    const pct = opp.acuerdo_pct ?? 0;
+    const bon = opp.acuerdo_bonificacion ?? 0;
+    const moneda = opp.moneda === 'USD' ? 'US$' : 'S/';
+    const texto = `${opp.responsable || 'Vendedor'} propone acuerdo de comisión especial para "${opp.nombre}". % propuesto: ${pct}%. Bonificación: ${moneda} ${Number(bon).toFixed(2)}. Requiere aprobación.`;
+    _acuerdoPatch(opp, { acuerdo_estado: 'pendiente', acuerdo_motivo_rechazo: null });
+    _registrarHistorialAcuerdo(opp, 'envio');
+    await _notificarSistema(_getGerentes(), texto);
+  };
+
+  const retirarAcuerdoComision = (oppId) => {
+    const opp = oportunidades.find(o => o.id === oppId);
+    if (!opp || opp.acuerdo_estado !== 'pendiente') return;
+    _acuerdoPatch(opp, { acuerdo_estado: 'borrador' });
+    _registrarHistorialAcuerdo(opp, 'retiro');
+  };
+
+  const aprobarAcuerdoComision = async (oppId, ajustes = {}) => {
+    const opp = oportunidades.find(o => o.id === oppId);
+    if (!opp || opp.acuerdo_estado !== 'pendiente') return;
+    const aprobadoPor = authUser?.user_metadata?.nombre || authUser?.email || 'Gerente';
+    const pctFinal = ajustes.acuerdo_pct !== undefined ? ajustes.acuerdo_pct : opp.acuerdo_pct;
+    const bonFinal = ajustes.acuerdo_bonificacion !== undefined ? ajustes.acuerdo_bonificacion : opp.acuerdo_bonificacion;
+    const patch = {
+      acuerdo_estado: 'aprobado',
+      acuerdo_aprobado_por: aprobadoPor,
+      acuerdo_aprobado_id: authUser?.id || null,
+      acuerdo_fecha_aprobacion: new Date().toISOString(),
+      acuerdo_motivo_rechazo: null,
+      ...(ajustes.acuerdo_pct !== undefined ? { acuerdo_pct: pctFinal } : {}),
+      ...(ajustes.acuerdo_bonificacion !== undefined ? { acuerdo_bonificacion: bonFinal } : {}),
+    };
+    _acuerdoPatch(opp, patch);
+    const huboAjuste = ajustes.acuerdo_pct !== undefined || ajustes.acuerdo_bonificacion !== undefined;
+    _registrarHistorialAcuerdo(opp, huboAjuste ? 'ajuste_gerente' : 'aprobacion', { pct: pctFinal, bonificacion: bonFinal });
+    const vendedor = usuarios.find(u => u.id === opp.responsable_id || u.auth_user_id === opp.responsable_id || u.nombre === opp.responsable);
+    const textoVend = huboAjuste
+      ? `Tu acuerdo de comisión para "${opp.nombre}" fue aprobado por ${aprobadoPor} con ajustes: ${pctFinal}% · S/ ${Number(bonFinal||0).toFixed(2)} bonificación.`
+      : `Tu acuerdo de comisión para "${opp.nombre}" fue aprobado por ${aprobadoPor}.`;
+    await _notificarSistema(vendedor ? [vendedor] : [], textoVend);
+    addNotificacion(`Acuerdo aprobado para "${opp.nombre}".`);
+  };
+
+  const rechazarAcuerdoComision = async (oppId, motivo) => {
+    const opp = oportunidades.find(o => o.id === oppId);
+    if (!opp || opp.acuerdo_estado !== 'pendiente') return;
+    const rechazadoPor = authUser?.user_metadata?.nombre || authUser?.email || 'Gerente';
+    _acuerdoPatch(opp, { acuerdo_estado: 'rechazado', acuerdo_motivo_rechazo: motivo });
+    _registrarHistorialAcuerdo(opp, 'rechazo', { motivo });
+    const vendedor = usuarios.find(u => u.id === opp.responsable_id || u.auth_user_id === opp.responsable_id || u.nombre === opp.responsable);
+    const textoVend = `Tu acuerdo de comisión para "${opp.nombre}" fue rechazado por ${rechazadoPor}. Motivo: ${motivo}`;
+    await _notificarSistema(vendedor ? [vendedor] : [], textoVend);
+    addNotificacion(`Acuerdo rechazado para "${opp.nombre}".`);
+  };
+
+  const obtenerHistorialAcuerdo = async (oppId) => {
+    if (!isSupabaseConfigured()) return [];
+    const sb = await getSupabaseClient();
+    return cargarHistorialAcuerdo(sb, oppId);
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   const calcularHojaCosteo = (base) => {
     const calcTotales = (items) => (items || []).reduce((s, i) => s + (Number(i.cantidad) * Number(i.costo_unitario)), 0);
     const mo = calcTotales(base.mano_obra);
@@ -1782,6 +1946,7 @@ export function AppProvider({ children }) {
       token_activo: true,
       ...datos,
       cuenta_id: datos.cuenta_id || oportunidades.find(o => o.id === datos.oportunidad_id)?.cuenta_id || null,
+      responsable_id: datos.responsable_id || oportunidades.find(o => o.id === datos.oportunidad_id)?.responsable_id || null,
       items: datos.items || datos.partidas || []
     };
     try {
@@ -2155,6 +2320,24 @@ export function AppProvider({ children }) {
     if (!os) return null;
 
     const montoPlanificado = Number(datos.costo_estimado || datos.costoEst || 0);
+
+    // Heredar desglose de HC si la OS viene de una cotización con HC vinculada
+    let hcDesglose = { est_mo: null, est_materiales: null, est_terceros: null, est_logistica: null };
+    if (os.cotizacion_id) {
+      const cot = cotizaciones.find(c => c.id === os.cotizacion_id);
+      if (cot?.hoja_costeo_id) {
+        const hc = hojasCosteo.find(h => h.id === cot.hoja_costeo_id);
+        if (hc) {
+          hcDesglose = {
+            est_mo: hc.total_mano_obra || null,
+            est_materiales: hc.total_materiales || null,
+            est_terceros: hc.total_servicios_terceros || null,
+            est_logistica: hc.total_logistica || null,
+          };
+        }
+      }
+    }
+
     const ot = {
       id: generateId('ot'),
       empresa_id: empresa.id,
@@ -2181,6 +2364,10 @@ export function AppProvider({ children }) {
       costoReal: 0,
       avance: 0,
       es_adicional: datos.es_adicional || false,
+      est_mo: datos.est_mo ?? hcDesglose.est_mo,
+      est_materiales: datos.est_materiales ?? hcDesglose.est_materiales,
+      est_terceros: datos.est_terceros ?? hcDesglose.est_terceros,
+      est_logistica: datos.est_logistica ?? hcDesglose.est_logistica,
     };
 
     try {
@@ -2219,6 +2406,23 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'operaciones', entidad: 'ordenes_trabajo', entidad_id: otId, accion: 'editar', valor_anterior: anterior, valor_nuevo: datos });
   };
 
+  const eliminarOT = async (otId) => {
+    const ot = ots.find(o => o.id === otId);
+    if (isSupabaseConfigured()) {
+      const result = await opsPersist(sb => svcEliminarOT(sb, otId));
+      if (result?.error) { addNotificacion('No se pudo eliminar la OT.'); return; }
+    }
+    setOts(prev => prev.filter(o => o.id !== otId));
+    if (ot?.os_cliente_id) {
+      setOsClientes(prev => prev.map(os =>
+        os.id === ot.os_cliente_id
+          ? { ...os, ots_asociadas: (os.ots_asociadas || []).filter(id => id !== otId) }
+          : os
+      ));
+    }
+    addNotificacion('OT eliminada.');
+  };
+
   const registrarParteDiario = async (datos) => {
     // Generar número de serie desde Supabase o fallback local
     let numero = null;
@@ -2253,13 +2457,35 @@ export function AppProvider({ children }) {
     addNotificacion(`Parte diario registrado y enviado a revisión.`);
   };
 
+  const actualizarBorradorParteDiario = (parteId, datos) => {
+    setPartes(prev => prev.map(p => p.id === parteId ? { ...p, ...datos } : p));
+    opsSync(sb => svcActualizarParteDiario(sb, parteId, {
+      estado: datos.estado,
+      tecnico_id: datos.tecnico_id,
+      fecha: datos.fecha,
+      horas_normales: datos.horas,
+      actividad: datos.actividad,
+      avance_pct: datos.avance_reportado,
+      materiales: datos.materiales_usados || [],
+      evidencias: datos.evidencias || [],
+      datos_borrador: datos.estado === 'borrador' ? {
+        tareas_trabajadas: datos.tareas_trabajadas || [],
+        actividades_adicionales: datos.actividades_adicionales || [],
+        avance_ajustado_manual: datos.avance_ajustado_manual || false,
+        avance_global: datos.avance_global || datos.avance_reportado || 0,
+        observaciones: datos.observaciones || '',
+        es_restriccion: datos.es_restriccion || false,
+      } : null,
+    }));
+  };
+
   const aprobarParteDiario = (parteId, avanceValidado = null, motivoAprobacion = '') => {
     const parte = partes.find(p => p.id === parteId);
     if (!parte) return;
     const avanceFinal = avanceValidado !== null ? Number(avanceValidado) : (parte.avance_reportado || 0);
     const parteAprobado = { ...parte, estado: 'aprobado', avance_validado: avanceFinal, motivo_aprobacion: motivoAprobacion || undefined };
     setPartes(prev => prev.map(p => p.id === parteId ? parteAprobado : p));
-    opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'aprobado', avance_validado: avanceFinal }));
+    opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'aprobado', avance_pct: avanceFinal, aprobado_at: new Date().toISOString() }));
     auditSync({ modulo: 'operaciones', entidad: 'partes_diarios', entidad_id: parteId, accion: 'aprobar', valor_anterior: parte, valor_nuevo: { estado: 'aprobado', avance_validado: avanceFinal } });
 
     // Costo materiales
@@ -2314,30 +2540,51 @@ export function AppProvider({ children }) {
   const observarParteDiario = (parteId, motivo = '') => {
     if (!motivo.trim()) return;
     setPartes(prev => prev.map(p => p.id === parteId ? { ...p, estado: 'observado', motivo_observacion: motivo } : p));
-    opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'observado', motivo_observacion: motivo }));
+    opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'observado' }));
     addNotificacion('Parte diario observado. El técnico puede corregirlo y reenviarlo.');
   };
 
   const rechazarParteDiario = (parteId, motivo = '') => {
     if (!motivo.trim()) return;
     setPartes(prev => prev.map(p => p.id === parteId ? { ...p, estado: 'rechazado', motivo_rechazo: motivo } : p));
-    opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'rechazado', motivo_rechazo: motivo }));
+    opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'rechazado' }));
     addNotificacion('Parte diario rechazado.');
   };
 
-  const cerrarTecnicamenteOT = (otId, datosCierre) => {
+  const cerrarTecnicamenteOT = async (otId, datosCierre) => {
+    const { conformidad_archivo, ...restDatos } = datosCierre;
+    const cierreId = generateId('cier');
+
+    let tokenConformidad = null;
+    let conformidadArchivoUrl = null;
+    let conformidadArchivoNombre = null;
+
+    if (restDatos.conformidad_cliente?.tipo === 'digital') {
+      tokenConformidad = crypto.randomUUID();
+    } else if (conformidad_archivo && restDatos.conformidad_cliente?.tipo === 'fisico') {
+      try {
+        const res = await opsPersist(sb => svcSubirConformidadOT(sb, empresa.id, cierreId, conformidad_archivo));
+        if (res) { conformidadArchivoUrl = res.url; conformidadArchivoNombre = res.nombre; }
+      } catch (_) {}
+    }
+
     const anterior = ots.find(o => o.id === otId) || null;
-    setOts(prev => prev.map(o => o.id === otId ? { ...o, estado: 'cerrado' } : o));
-    opsSync(sb => svcActualizarOT(sb, otId, { estado: 'cerrado' }));
-    
+    setOts(prev => prev.map(o => o.id === otId ? { ...o, estado: 'cerrada' } : o));
+    opsSync(sb => svcActualizarOT(sb, otId, { estado: 'cerrada' }));
+
     const cierre = {
-      id: generateId('cier'),
+      id: cierreId,
       ot_id: otId,
-      ...datosCierre
+      ...restDatos,
+      token_conformidad: tokenConformidad,
+      conformidad_archivo_url: conformidadArchivoUrl,
+      conformidad_archivo_nombre: conformidadArchivoNombre,
     };
-    
+
+    setCierresTecnicos(prev => [...prev, { ...cierre, ot_id: otId, empresa_id: empresa.id }]);
     opsSync(sb => persistirCierreTecnico(sb, empresa.id, cierre));
     auditSync({ modulo: 'operaciones', entidad: 'ordenes_trabajo', entidad_id: otId, accion: 'cierre_tecnico', valor_anterior: anterior, valor_nuevo: cierre });
+    return { cierreId, tokenConformidad };
 
     // Descontar inventario de los partes aprobados de esta OT
     const partesAprobados = partes.filter(p => p.ot_id === otId && p.estado === 'aprobado');
@@ -2373,6 +2620,11 @@ export function AppProvider({ children }) {
     addNotificacion(`Cierre Técnico registrado para la OT. Inventario consumido.`);
   };
 
+  const actualizarCierreTecnico = async (cierreId, datos) => {
+    setCierresTecnicos(prev => prev.map(c => c.id === cierreId ? { ...c, ...datos } : c));
+    await opsSync(sb => sb.from('cierres_tecnicos').update(datos).eq('id', cierreId));
+  };
+
   const crearSOLPE = (datos) => {
     const slp = {
       id: generateId('slp'),
@@ -2387,41 +2639,45 @@ export function AppProvider({ children }) {
   };
 
   const generarValorizacion = (osClienteId, subtotal, igv, total, periodo, meta = {}) => {
+    const estadoFinal = meta.estadoFinal || 'aprobada';
+    const now = new Date().toISOString().split('T')[0];
     const val = {
       id: generateId('val'),
       empresa_id: empresa.id,
       os_cliente_id: osClienteId,
-      numero: `VAL-${new Date().getFullYear()}-${Math.floor(Math.random()*1000).toString().padStart(3,'0')}`,
-      fecha: new Date().toISOString().split('T')[0],
-      estado: 'aprobada',
+      numero: `VAL-${new Date().getFullYear()}-${String(valorizaciones.length + 1).padStart(3, '0')}`,
+      fecha: now,
+      estado: estadoFinal,
       periodo, subtotal, igv, total,
       moneda: meta.moneda || osClientes.find(os => os.id === osClienteId)?.moneda || 'PEN',
+      modelo_calculo: meta.modelo_calculo || null,
+      notas: meta.notas || null,
       ot_ids: meta.otIds || [],
-      items: meta.items || []
+      items: meta.items || [],
+      fecha_aprobacion: estadoFinal === 'aprobada' ? now : null,
+      historial: [{ accion: estadoFinal === 'borrador' ? 'guardado_borrador' : 'creado', estado: estadoFinal, fecha: now, usuario: authUser?.email || 'Sistema' }],
     };
     setValorizaciones(prev => [...prev, val]);
-    auditSync({ modulo: 'operaciones', entidad: 'valorizaciones', entidad_id: val.id, accion: 'aprobar', valor_nuevo: val });
-    
-    // Descontar de OS Cliente
-    let saldoPorValorizar = null;
-    setOsClientes(prev => prev.map(osc => {
-      if (osc.id === osClienteId) {
-        saldoPorValorizar = Math.max(0, Number(osc.saldo_por_valorizar || 0) - Number(total || 0));
-        return {
-          ...osc,
-          saldo_por_valorizar: saldoPorValorizar
-        };
+    auditSync({ modulo: 'operaciones', entidad: 'valorizaciones', entidad_id: val.id, accion: estadoFinal, valor_nuevo: val });
+
+    if (estadoFinal === 'aprobada') {
+      // Descontar de OS Cliente solo al aprobar
+      let saldoPorValorizar = null;
+      setOsClientes(prev => prev.map(osc => {
+        if (osc.id === osClienteId) {
+          saldoPorValorizar = Math.max(0, Number(osc.saldo_por_valorizar || 0) - Number(total || 0));
+          return { ...osc, saldo_por_valorizar: saldoPorValorizar };
+        }
+        return osc;
+      }));
+      if (saldoPorValorizar !== null) {
+        crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldoPorValorizar }));
       }
-      return osc;
-    }));
 
-    if (saldoPorValorizar !== null) {
-      crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldoPorValorizar }));
-    }
-
-    if (meta.otIds?.length) {
-      setOts(prev => prev.map(ot => meta.otIds.includes(ot.id) ? { ...ot, estado: 'valorizada' } : ot));
-      meta.otIds.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'valorizada' })));
+      if (meta.otIds?.length) {
+        setOts(prev => prev.map(ot => meta.otIds.includes(ot.id) ? { ...ot, estado: 'valorizada' } : ot));
+        meta.otIds.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'valorizada' })));
+      }
     }
 
     if (isSupabaseConfigured()) {
@@ -2437,12 +2693,145 @@ export function AppProvider({ children }) {
           igv: val.igv,
           total: val.total,
           moneda: val.moneda,
-          estado: val.estado
+          estado: val.estado,
+          modelo_calculo: val.modelo_calculo,
+          notas: val.notas,
         });
       });
     }
 
+    addNotificacion(`Valorización ${val.numero} ${estadoFinal === 'borrador' ? 'guardada como borrador' : 'aprobada'}.`);
+  };
+
+  const aprobarValorizacion = (valId) => {
+    const val = valorizaciones.find(v => v.id === valId);
+    if (!val || val.estado !== 'borrador') return;
+
+    const total = Number(val.total || 0);
+    const osClienteId = val.os_cliente_id;
+    const now = new Date().toISOString().split('T')[0];
+    const entrada = { accion: 'aprobado', estado: 'aprobada', fecha: now, usuario: authUser?.email || 'Sistema' };
+
+    setValorizaciones(prev => prev.map(v => v.id === valId ? {
+      ...v, estado: 'aprobada', fecha_aprobacion: now,
+      historial: [...(v.historial || []), entrada],
+    } : v));
+    auditSync({ modulo: 'operaciones', entidad: 'valorizaciones', entidad_id: valId, accion: 'aprobar', valor_nuevo: { ...val, estado: 'aprobada' } });
+
+    let saldoPorValorizar = null;
+    setOsClientes(prev => prev.map(osc => {
+      if (osc.id === osClienteId) {
+        saldoPorValorizar = Math.max(0, Number(osc.saldo_por_valorizar || 0) - total);
+        return { ...osc, saldo_por_valorizar: saldoPorValorizar };
+      }
+      return osc;
+    }));
+    if (saldoPorValorizar !== null) {
+      crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldoPorValorizar }));
+    }
+
+    if (val.ot_ids?.length) {
+      setOts(prev => prev.map(ot => val.ot_ids.includes(ot.id) ? { ...ot, estado: 'valorizada' } : ot));
+      val.ot_ids.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'valorizada' })));
+    }
+
+    if (isSupabaseConfigured()) {
+      finSync(() => finanzasService.actualizarValorizacion(valId, { estado: 'aprobada', fecha_aprobacion: now }));
+    }
+
     addNotificacion(`Valorización ${val.numero} aprobada.`);
+  };
+
+  const anularValorizacion = (valId, motivo) => {
+    const val = valorizaciones.find(v => v.id === valId);
+    if (!val || val.estado === 'facturada') return;
+
+    const fueAprobada = val.estado === 'aprobada';
+    const total = Number(val.total || 0);
+    const osClienteId = val.os_cliente_id;
+    const now = new Date().toISOString().split('T')[0];
+    const entrada = { accion: 'anulado', estado: 'anulada', motivo, fecha: now, usuario: authUser?.email || 'Sistema' };
+
+    setValorizaciones(prev => prev.map(v => v.id === valId ? {
+      ...v, estado: 'anulada', motivo_anulacion: motivo,
+      historial: [...(v.historial || []), entrada],
+    } : v));
+    auditSync({ modulo: 'operaciones', entidad: 'valorizaciones', entidad_id: valId, accion: 'anular', valor_nuevo: { motivo } });
+
+    if (fueAprobada) {
+      let saldoRestaurado = null;
+      setOsClientes(prev => prev.map(osc => {
+        if (osc.id === osClienteId) {
+          saldoRestaurado = Number(osc.saldo_por_valorizar || 0) + total;
+          return { ...osc, saldo_por_valorizar: saldoRestaurado };
+        }
+        return osc;
+      }));
+      if (saldoRestaurado !== null) {
+        crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldoRestaurado }));
+      }
+      if (val.ot_ids?.length) {
+        setOts(prev => prev.map(ot => val.ot_ids.includes(ot.id) ? { ...ot, estado: 'cerrada' } : ot));
+        val.ot_ids.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'cerrada' })));
+      }
+    }
+
+    if (isSupabaseConfigured()) {
+      finSync(() => finanzasService.actualizarValorizacion(valId, { estado: 'anulada', motivo_anulacion: motivo }));
+    }
+
+    addNotificacion(`Valorización ${val.numero} anulada.`);
+  };
+
+  const actualizarDatosValorizacion = (valId, datos) => {
+    const val = valorizaciones.find(v => v.id === valId);
+    if (!val || val.estado !== 'borrador') return;
+
+    const estadoFinal = datos.estadoFinal || 'borrador';
+    const now = new Date().toISOString().split('T')[0];
+    const entrada = { accion: estadoFinal === 'aprobada' ? 'aprobado' : 'editado', estado: estadoFinal, fecha: now, usuario: authUser?.email || 'Sistema' };
+
+    const updated = {
+      ...val,
+      subtotal: datos.subtotal, igv: datos.igv, total: datos.total,
+      periodo: datos.periodo, modelo_calculo: datos.modelo_calculo,
+      notas: datos.notas, items: datos.items || [], ot_ids: datos.ot_ids || [],
+      estado: estadoFinal,
+      ...(estadoFinal === 'aprobada' ? { fecha_aprobacion: now } : {}),
+      historial: [...(val.historial || []), entrada],
+    };
+
+    setValorizaciones(prev => prev.map(v => v.id === valId ? updated : v));
+    auditSync({ modulo: 'operaciones', entidad: 'valorizaciones', entidad_id: valId, accion: estadoFinal === 'aprobada' ? 'aprobar' : 'editar', valor_nuevo: updated });
+
+    if (estadoFinal === 'aprobada') {
+      let saldoPorValorizar = null;
+      setOsClientes(prev => prev.map(osc => {
+        if (osc.id === val.os_cliente_id) {
+          saldoPorValorizar = Math.max(0, Number(osc.saldo_por_valorizar || 0) - Number(datos.total || 0));
+          return { ...osc, saldo_por_valorizar: saldoPorValorizar };
+        }
+        return osc;
+      }));
+      if (saldoPorValorizar !== null) {
+        crmSync(sb => svcActualizarOSCliente(sb, val.os_cliente_id, { saldo_por_valorizar: saldoPorValorizar }));
+      }
+      if (datos.ot_ids?.length) {
+        setOts(prev => prev.map(ot => datos.ot_ids.includes(ot.id) ? { ...ot, estado: 'valorizada' } : ot));
+        datos.ot_ids.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'valorizada' })));
+      }
+    }
+
+    if (isSupabaseConfigured()) {
+      finSync(() => finanzasService.actualizarValorizacion(valId, {
+        subtotal: datos.subtotal, igv: datos.igv, total: datos.total,
+        periodo: datos.periodo, modelo_calculo: datos.modelo_calculo,
+        notas: datos.notas, estado: estadoFinal,
+        ...(estadoFinal === 'aprobada' ? { fecha_aprobacion: now } : {}),
+      }));
+    }
+
+    addNotificacion(`Valorización ${val.numero} ${estadoFinal === 'aprobada' ? 'aprobada' : 'actualizada'}.`);
   };
 
   const registrarUsuario = async (u) => {
@@ -2475,7 +2864,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  const crearUsuarioConAcceso = async ({ nombre, email, password, rol, jefe_user_id = null, asignaciones = [] }) => {
+  const crearUsuarioConAcceso = async ({ nombre, email, password, rol, jefe_user_id = null, asignaciones = [], campo = false, campoModulos = [] }) => {
     if (!isSupabaseConfigured()) {
       addNotificacion('Se requiere Supabase para crear usuarios con acceso.', 'error');
       return;
@@ -2512,8 +2901,29 @@ export function AppProvider({ children }) {
       }
       if (!data?.success) throw new Error(data?.error || 'No se pudo crear el usuario.');
 
-      const nuevoUsuario = data.user;
+      let nuevoUsuario = data.user;
       const uid = nuevoUsuario.id;
+
+      if (campo && campoModulos.length > 0) {
+        try {
+          const mods = [...new Set(campoModulos.filter(Boolean))];
+          const perfilLegacy = ({ tecnico: 'Tecnico', vendedor: 'Vendedor', compras: 'Compras', supervisor: 'Supervisor', gerencia: 'Gerencia', asistencia: 'Asistencia', logistica: 'Logistica' }[mods[0]] || 'Tecnico');
+          const saved = await usuariosService.actualizarUsuarioAcceso({
+            user_id: uid,
+            empresa_id: empresa.id,
+            nombre,
+            email,
+            rol,
+            jefe_user_id: jefe_user_id || null,
+            asignaciones,
+            acceso_campo: true,
+            perfil_campo: perfilLegacy,
+            campo_modulos: mods,
+            estado: 'Activo',
+          });
+          nuevoUsuario = { ...nuevoUsuario, ...saved, campo: true, campoModulos: mods, campo_modulos: mods };
+        } catch { /* si falla el campo, el usuario igual queda creado */ }
+      }
 
       setUsuarios(prev => {
         if (prev.find(u => u.id === uid)) return prev.map(u => u.id === uid ? nuevoUsuario : u);
@@ -2713,77 +3123,101 @@ export function AppProvider({ children }) {
     addNotificacion('Cuenta por Cobrar registrada.');
   };
 
-  const emitirFacturaDesdeValorizacion = async (valorizacionId, datos = {}) => {
-    const valorizacion = valorizaciones.find(v => v.id === valorizacionId);
-    if (!valorizacion) {
-      addNotificacion('No se encontro la valorizacion seleccionada.');
-      return null;
-    }
-
-    const osCliente = osClientes.find(os => os.id === valorizacion.os_cliente_id);
-    const cuentaId = datos.cuenta_id || osCliente?.cuenta_id;
-    if (!cuentaId) {
-      addNotificacion('La valorizacion no tiene cliente asociado para generar CxC.');
-      return null;
-    }
-
+  const emitirFacturaConCxC = async (datos) => {
     const fechaEmision = datos.fecha_emision || new Date().toISOString().split('T')[0];
+    const condicionDias = { '0':0,'15':15,'30':30,'45':45,'60':60,'90':90 }[String(datos.condicion_pago||'30')] ?? 30;
     const fechaVencimiento = datos.fecha_vencimiento || (() => {
       const d = new Date(`${fechaEmision}T00:00:00`);
-      d.setDate(d.getDate() + 30);
+      d.setDate(d.getDate() + condicionDias);
       return d.toISOString().split('T')[0];
     })();
-    const numero = datos.numero || `F001-${Math.floor(Math.random() * 9000 + 1000)}`;
-    const total = Number(valorizacion.total || 0);
-    const subtotal = Number(valorizacion.subtotal || 0);
-    const igv = Number(valorizacion.igv || Math.max(0, total - subtotal));
-    const moneda = valorizacion.moneda || osCliente?.moneda || 'PEN';
+
+    const serieDoc = (seriesDocumentarias || []).find(s => s.documento === 'Facturas' && s.estado === 'activo');
+    const numero = datos.numero || (serieDoc
+      ? `${serieDoc.serie}-${String(Number(serieDoc.siguiente_correlativo)).padStart(4,'0')}`
+      : `F001-${String((facturas||[]).length+1).padStart(4,'0')}`);
 
     const facturaId = await emitirFactura({
-      cuenta_id: cuentaId,
-      valorizacion_id: valorizacion.id,
+      tipo_documento: datos.tipo_documento || 'factura',
+      cuenta_id: datos.cuenta_id,
+      os_cliente_id: datos.os_cliente_id || null,
+      valorizacion_id: datos.valorizacion_id || null,
+      items: datos.items || [],
       numero,
       fecha_emision: fechaEmision,
-      subtotal,
-      igv,
-      total,
-      moneda,
-      estado: 'emitida'
+      fecha_vencimiento: fechaVencimiento,
+      condicion_pago: datos.condicion_pago || '30',
+      subtotal: datos.subtotal,
+      igv: datos.igv,
+      total: datos.total,
+      moneda: datos.moneda || 'PEN',
+      glosa: datos.glosa || null,
+      notas: datos.notas || null,
     });
+
+    if (serieDoc && facturaId) {
+      const nextCorr = Number(serieDoc.siguiente_correlativo) + 1;
+      setSeriesDocumentarias(prev => prev.map(s => s.id === serieDoc.id ? { ...s, siguiente_correlativo: nextCorr } : s));
+      if (isSupabaseConfigured()) {
+        getSupabaseClient().then(sb =>
+          sb.from('series_documentarias').update({ siguiente_correlativo: nextCorr }).eq('id', serieDoc.id)
+            .then(({ error }) => { if (error) console.error('[series] increment failed:', error); })
+        );
+      }
+    }
 
     await generarCxC({
-      cuenta_id: cuentaId,
+      cuenta_id: datos.cuenta_id,
       factura_id: facturaId,
+      os_cliente_id: datos.os_cliente_id || null,
       fecha_emision: fechaEmision,
       fecha_vencimiento: fechaVencimiento,
-      monto_total: total,
+      monto_total: datos.total,
       monto_pagado: 0,
-      saldo: total,
-      moneda,
-      estado: 'por_cobrar'
+      saldo: datos.total,
+      moneda: datos.moneda || 'PEN',
+      estado: 'por_cobrar',
     });
 
-    if (osCliente) {
-      const saldoPorFacturar = Math.max(0, Number(osCliente.saldo_por_facturar || 0) - total);
-      const montoFacturado = Number(osCliente.monto_facturado || 0) + total;
-      setOsClientes(prev => prev.map(os => os.id === osCliente.id ? {
-        ...os,
-        saldo_por_facturar: saldoPorFacturar,
-        monto_facturado: montoFacturado
-      } : os));
-      crmSync(sb => svcActualizarOSCliente(sb, osCliente.id, {
-        saldo_por_facturar: saldoPorFacturar,
-        monto_facturado: montoFacturado
-      }));
+    if (datos.os_cliente_id) {
+      const osCliente = osClientes.find(os => os.id === datos.os_cliente_id);
+      if (osCliente) {
+        const saldoPorFacturar = Math.max(0, Number(osCliente.saldo_por_facturar || 0) - Number(datos.total || 0));
+        const montoFacturado = Number(osCliente.monto_facturado || 0) + Number(datos.total || 0);
+        setOsClientes(prev => prev.map(os => os.id === osCliente.id ? { ...os, saldo_por_facturar: saldoPorFacturar, monto_facturado: montoFacturado } : os));
+        crmSync(sb => svcActualizarOSCliente(sb, osCliente.id, { saldo_por_facturar: saldoPorFacturar, monto_facturado: montoFacturado }));
+      }
     }
 
     addNotificacion(`Factura ${numero} emitida y CxC generada.`);
     return facturaId;
   };
 
+  const emitirFacturaDesdeValorizacion = async (valorizacionId, datos = {}) => {
+    const valorizacion = valorizaciones.find(v => v.id === valorizacionId);
+    if (!valorizacion) { addNotificacion('No se encontró la valorización seleccionada.'); return null; }
+    const osCliente = osClientes.find(os => os.id === valorizacion.os_cliente_id);
+    const cuentaId = datos.cuenta_id || osCliente?.cuenta_id;
+    if (!cuentaId) { addNotificacion('La valorización no tiene cliente asociado.'); return null; }
+
+    return emitirFacturaConCxC({
+      tipo_documento: 'factura',
+      cuenta_id: cuentaId,
+      os_cliente_id: valorizacion.os_cliente_id,
+      valorizacion_id: valorizacion.id,
+      items: valorizacion.items || [],
+      subtotal: Number(valorizacion.subtotal || 0),
+      igv: Number(valorizacion.igv || 0),
+      total: Number(valorizacion.total || 0),
+      moneda: valorizacion.moneda || osCliente?.moneda || 'PEN',
+      ...datos,
+    });
+  };
+
   const registrarCobroCxC = async (cxcId, monto, datos = {}) => {
     const cuentaCobrar = cxc.find(c => c.id === cxcId);
     const montoCobrado = Number(monto || 0);
+    const montoMora = Number(datos.monto_mora || 0);
     let nuevoEstado = '';
     let nuevoSaldo = 0;
     setCxc(prev => prev.map(c => {
@@ -2793,9 +3227,22 @@ export function AppProvider({ children }) {
         const nuevoMonto = pagado + montoCobrado;
         nuevoSaldo = Math.max(0, total - nuevoMonto);
         nuevoEstado = nuevoSaldo <= 0 ? 'cobrada' : 'cobro_parcial';
-        
-        if (nuevoEstado === 'cobrada' && c?.['factura_id']) {
-          setFacturas(fPrev => fPrev.map(f => f.id === c?.['factura_id'] ? { ...f, estado: 'pagada' } : f));
+
+        if (c?.factura_id) {
+          const estadoFac = nuevoEstado === 'cobrada' ? 'cobrada' : 'cobro_parcial';
+          setFacturas(fPrev => fPrev.map(f => f.id === c.factura_id ? { ...f, estado: estadoFac, monto_pagado: nuevoMonto, saldo: nuevoSaldo } : f));
+          if (isSupabaseConfigured()) {
+            finSync(async () => {
+              const sb = await getSupabaseClient();
+              await sb.from('facturas').update({ estado: estadoFac }).eq('id', c.factura_id);
+            });
+          }
+        }
+
+        if (c?.os_cliente_id) {
+          setOsClientes(prev => prev.map(o => o.id === c.os_cliente_id ? {
+            ...o, cobrado: Number(o.cobrado || 0) + montoCobrado,
+          } : o));
         }
 
         return { ...c, monto_pagado: nuevoMonto, pagado: nuevoMonto, saldo: nuevoSaldo, estado: nuevoEstado };
@@ -2803,38 +3250,512 @@ export function AppProvider({ children }) {
       return c;
     }));
 
-    const fecha = datos.fecha || new Date().toISOString().split('T')[0];
+    const fecha = datos.fecha_cobro || datos.fecha || new Date().toISOString().split('T')[0];
+    const cobroId = generateId('cob');
+    const facturaNumero = cuentaCobrar?.facturas?.numero || cuentaCobrar?.factura || cuentaCobrar?.factura_id || cxcId;
+
+    const cobro = {
+      id: cobroId,
+      empresa_id: empresa.id,
+      cxc_id: cxcId,
+      factura_id: cuentaCobrar?.factura_id || null,
+      cuenta_id: cuentaCobrar?.cuenta_id || null,
+      monto_capital: montoCobrado,
+      monto_mora: montoMora,
+      medio_pago: datos.medio_pago || 'Efectivo',
+      cuenta_bancaria: datos.cuenta_bancaria || null,
+      numero_operacion: datos.numero_operacion || datos.referencia || null,
+      fecha_cobro: fecha,
+      notas: datos.notas || null,
+      registrado_por: authUser?.email || 'Sistema',
+      creado_en: new Date().toISOString(),
+    };
+    setCobrosHistorial(prev => [cobro, ...prev]);
+
     const movimiento = {
       id: generateId('tes'),
       empresa_id: empresa.id,
       tipo: 'ingreso',
-      descripcion: datos.descripcion || `Cobro ${cuentaCobrar?.['facturas']?.numero || cuentaCobrar?.factura || cuentaCobrar?.['factura_id'] || cxcId}`,
-      monto: montoCobrado,
+      descripcion: `Cobro ${facturaNumero}`,
+      monto: montoCobrado + montoMora,
       moneda: cuentaCobrar?.moneda || 'PEN',
       fecha,
       cuenta_bancaria: datos.cuenta_bancaria || 'Cuenta principal',
-      referencia: datos.referencia || '',
+      referencia: datos.numero_operacion || datos.referencia || '',
       vinculo_tipo: 'cxc',
       vinculo_id: cxcId,
-      estado: 'registrado'
+      estado: 'registrado',
     };
     setMovimientosTesoreria(prev => [movimiento, ...prev]);
 
     if (cuentaCobrar?.cuenta_id) {
       setCuentas(prev => prev.map(c => c.id === cuentaCobrar.cuenta_id ? {
-        ...c,
-        saldo_cxc: Math.max(0, Number(c.saldo_cxc || 0) - montoCobrado)
+        ...c, saldo_cxc: Math.max(0, Number(c.saldo_cxc || 0) - montoCobrado),
       } : c));
     }
 
     if (isSupabaseConfigured()) {
       finSync(async () => {
         await finanzasService.registrarCobroCxC(cxcId, montoCobrado);
+        await finanzasService.registrarCobroDetalle(cobro);
         await finanzasService.registrarMovimientoTesoreria(movimiento);
       });
     }
-    auditSync({ modulo: 'finanzas', entidad: 'cxc', entidad_id: cxcId, accion: 'cobrar', valor_anterior: cuentaCobrar || null, valor_nuevo: { monto: montoCobrado, estado: nuevoEstado, movimiento } });
-    addNotificacion(`Cobro registrado. Estado: ${nuevoEstado || 'Actualizado'}`);
+
+    // Auto-generar comisión aplicando acuerdo aprobado si existe
+    const osCliente = osClientes.find(os => os.id === cuentaCobrar?.os_cliente_id);
+    const oportunidad = oportunidades.find(op =>
+      op.id === osCliente?.oportunidad_id ||
+      op.os_cliente_id === osCliente?.id
+    );
+    const responsableId = oportunidad?.responsable_id || oportunidad?.responsable || oportunidad?.asignado_a || oportunidad?.usuario || oportunidad?.vendedor_id;
+    if (responsableId) {
+      const vendedor = personalAdmin.find(p =>
+        p.id === responsableId || p.auth_user_id === responsableId || p.nombre === responsableId
+      );
+      if (vendedor?.tiene_comisiones) {
+        const pctBase = Number(vendedor.porcentaje_comision || 0);
+        const acuerdoEstado = oportunidad?.acuerdo_estado || 'sin_acuerdo';
+        let pct = pctBase;
+        let bonificacionAcuerdo = 0;
+        let notaFallback = null;
+
+        if (acuerdoEstado === 'aprobado') {
+          // Usar acuerdo aprobado
+          pct = Number(oportunidad.acuerdo_pct ?? pctBase);
+          // Prorratear bonificación según proporción cobrada sobre factura total
+          const montoCxC = cuentaCobrar?.monto || cuentaCobrar?.saldo || montoCobrado;
+          const proporcion = montoCxC > 0 ? Math.min(1, montoCobrado / montoCxC) : 1;
+          bonificacionAcuerdo = Math.round(Number(oportunidad.acuerdo_bonificacion || 0) * proporcion * 100) / 100;
+        } else if (acuerdoEstado === 'pendiente' || acuerdoEstado === 'rechazado') {
+          // Fallback a % base con advertencia
+          notaFallback = `Se usó el % base (${pctBase}%) porque el acuerdo especial no está aprobado.`;
+        }
+
+        if (pct > 0 || bonificacionAcuerdo > 0) {
+          const montoComision = Math.round(montoCobrado * pct / 100 * 100) / 100;
+          const periodoComision = fecha.slice(0, 7);
+          const comision = {
+            id: generateId('com'),
+            empresa_id: empresa.id,
+            vendedor_id: vendedor.id,
+            vendedor_nombre: vendedor.nombre,
+            cobro_cxc_id: cobroId,
+            cxc_id: cxcId,
+            factura_id: cuentaCobrar?.factura_id || null,
+            os_cliente_id: osCliente?.id || null,
+            oportunidad_id: oportunidad?.id || null,
+            moneda: normalizarMonedaComision(cuentaCobrar?.moneda || osCliente?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN'),
+            monto_cobrado: montoCobrado,
+            porcentaje_base: pctBase,
+            porcentaje_comision: pct,
+            monto_comision: montoComision,
+            bonificacion: bonificacionAcuerdo,
+            monto_total: montoComision + bonificacionAcuerdo,
+            modalidad_pago: vendedor.modalidad_comision || 'Planilla',
+            periodo: periodoComision,
+            estado: 'pendiente_aprobacion',
+            acuerdo_especial: acuerdoEstado === 'aprobado' && Math.abs(Number(pct) - pctBase) > 0.0001,
+            nota_acuerdo: notaFallback,
+            creado_en: new Date().toISOString(),
+          };
+          setComisiones(prev => [comision, ...prev]);
+          if (isSupabaseConfigured()) {
+            finSync(() => finanzasService.registrarComision(comision));
+          }
+          if (notaFallback) addNotificacion(`Comisión generada con % base. ${notaFallback}`);
+        }
+      }
+    }
+
+    auditSync({ modulo: 'finanzas', entidad: 'cxc', entidad_id: cxcId, accion: 'cobrar', valor_anterior: cuentaCobrar || null, valor_nuevo: { monto: montoCobrado, estado: nuevoEstado } });
+    addNotificacion(`Cobro de ${facturaNumero} registrado. Nuevo estado: ${nuevoEstado === 'cobrada' ? 'Cobrada' : 'Cobro parcial'}.`);
+  };
+
+  const registrarGestionCobranza = async (cxcId, datos) => {
+    const gestion = {
+      id: generateId('ges'),
+      empresa_id: empresa.id,
+      cxc_id: cxcId,
+      tipo_gestion: datos.tipo_gestion,
+      resultado: datos.resultado,
+      fecha_gestion: new Date().toISOString().split('T')[0],
+      fecha_proxima_accion: datos.fecha_proxima_accion || null,
+      fecha_acordada_pago: datos.fecha_acordada_pago || null,
+      notas: datos.notas,
+      usuario: authUser?.email || 'Sistema',
+      creado_en: new Date().toISOString(),
+    };
+    setGestionesCobranza(prev => [gestion, ...prev]);
+    setCxc(prev => prev.map(c => c.id === cxcId ? { ...c, estado: 'en_gestion' } : c));
+
+    if (isSupabaseConfigured()) {
+      finSync(async () => {
+        await finanzasService.registrarGestion(gestion);
+        const sb = await getSupabaseClient();
+        await sb.from('cxc').update({ estado: 'en_gestion' }).eq('id', cxcId);
+      });
+    }
+    if (datos.fecha_proxima_accion) {
+      addNotificacion(`Gestión registrada. Próxima acción: ${datos.fecha_proxima_accion}.`);
+    } else {
+      addNotificacion('Gestión de cobranza registrada.');
+    }
+  };
+
+  const aprobarComision = async (comisionId, datos) => {
+    const bonificacion = Number(datos.bonificacion || 0);
+    const notaAprobacion = datos.nota_aprobacion ?? datos.nota ?? null;
+    setComisiones(prev => prev.map(c => c.id === comisionId ? {
+      ...c,
+      estado: 'aprobada',
+      bonificacion,
+      monto_total: Number(c.monto_comision || 0) + bonificacion,
+      nota_aprobacion: notaAprobacion,
+      aprobado_por: authUser?.email || 'Admin',
+      aprobado_en: new Date().toISOString(),
+    } : c));
+    if (isSupabaseConfigured()) {
+      const c = comisiones.find(x => x.id === comisionId);
+      finSync(() => finanzasService.actualizarComision(comisionId, {
+        estado: 'aprobada',
+        bonificacion,
+        monto_total: Number(c?.monto_comision || 0) + bonificacion,
+        nota_aprobacion: notaAprobacion,
+        aprobado_por: authUser?.email || 'Admin',
+        aprobado_en: new Date().toISOString(),
+      }));
+    }
+    addNotificacion('Comisión aprobada.');
+  };
+
+  const rechazarComision = async (comisionId, motivo) => {
+    setComisiones(prev => prev.map(c => c.id === comisionId
+      ? { ...c, estado: 'rechazada', motivo_rechazo: motivo } : c));
+    if (isSupabaseConfigured()) {
+      finSync(() => finanzasService.actualizarComision(comisionId, { estado: 'rechazada', motivo_rechazo: motivo }));
+    }
+    addNotificacion('Comisión rechazada.');
+  };
+
+  const normalizarMonedaComision = (moneda) => {
+    const raw = String(moneda || '').trim().toUpperCase();
+    if (raw.includes('USD') || raw.includes('US$') || raw.includes('DOLAR')) return 'USD';
+    return 'PEN';
+  };
+
+  const monedaDeComision = (comision) => {
+    const cxcRef = cxc.find(x => x.id === comision.cxc_id);
+    const facturaRef = facturas.find(f => f.id === (comision.factura_id || cxcRef?.factura_id));
+    const osRef = osClientes.find(os => os.id === (comision.os_cliente_id || cxcRef?.os_cliente_id));
+    return normalizarMonedaComision(comision.moneda || cxcRef?.moneda || facturaRef?.moneda || osRef?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN');
+  };
+
+  const generarReciboHonorarios = async (vendedorId, moneda = null) => {
+    const aprobadasPendientes = comisiones.filter(c =>
+      c.vendedor_id === vendedorId &&
+      c.estado === 'aprobada' &&
+      c.modalidad_pago === 'Honorarios'
+    );
+    const monedaRecibo = moneda ? normalizarMonedaComision(moneda) : monedaDeComision(aprobadasPendientes[0] || {});
+    const pendientes = aprobadasPendientes.filter(c => monedaDeComision(c) === monedaRecibo);
+    if (!pendientes.length) { addNotificacion('No hay comisiones aprobadas pendientes para este vendedor.'); return null; }
+    const vendedor = personalAdmin.find(p => p.id === vendedorId);
+    const montoBruto = pendientes.reduce((s, c) => s + Number(c.monto_total || 0), 0);
+    const tasaIR = Number(vendedor?.retencion_ir_comision ?? 8) / 100;
+    const retencionIR = Math.round(montoBruto * tasaIR * 100) / 100;
+    const recibo = {
+      id: generateId('rec'),
+      empresa_id: empresa.id,
+      vendedor_id: vendedorId,
+      vendedor_nombre: vendedor?.nombre || vendedorId,
+      vendedor_ruc: vendedor?.ruc_vendedor || vendedor?.ruc || vendedor?.dni || null,
+      periodo: new Date().toISOString().slice(0, 7),
+      comisiones_ids: pendientes.map(c => c.id),
+      moneda: monedaRecibo,
+      monto_bruto: montoBruto,
+      retencion_ir: retencionIR,
+      monto_neto: montoBruto - retencionIR,
+      estado: 'borrador',
+      creado_en: new Date().toISOString(),
+    };
+    setRecibosHonorarios(prev => [recibo, ...prev]);
+    if (isSupabaseConfigured()) {
+      finSync(() => finanzasService.crearReciboHonorarios(recibo));
+    }
+    const simbolo = monedaRecibo === 'USD' ? 'US$' : 'S/';
+    addNotificacion(`Recibo borrador generado. Monto neto: ${simbolo} ${(montoBruto - retencionIR).toFixed(2)}.`);
+    return recibo;
+  };
+
+  const confirmarReciboHonorarios = async (reciboId) => {
+    const recibo = recibosHonorarios.find(r => r.id === reciboId);
+    if (!recibo || recibo.estado !== 'borrador') return;
+    const now = new Date().toISOString().split('T')[0];
+    const movimiento = {
+      id: generateId('mov'),
+      empresa_id: empresa.id,
+      tipo: 'egreso',
+      descripcion: `Honorarios comisiones — ${recibo.vendedor_nombre}`,
+      monto: recibo.monto_neto,
+      moneda: normalizarMonedaComision(recibo.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN'),
+      categoria: 'comision_honorarios',
+      fecha: now,
+      es_manual: true,
+      referencia: reciboId,
+      creado_en: new Date().toISOString(),
+    };
+    setMovimientosTesoreria(prev => [movimiento, ...prev]);
+    setRecibosHonorarios(prev => prev.map(r => r.id === reciboId ? { ...r, estado: 'confirmado' } : r));
+    setComisiones(prev => prev.map(c =>
+      (recibo.comisiones_ids || []).includes(c.id)
+        ? { ...c, estado: 'pagada', pagado_en: new Date().toISOString(), recibo_id: reciboId } : c));
+    if (isSupabaseConfigured()) {
+      finSync(async () => {
+        await finanzasService.registrarMovimientoTesoreria(movimiento);
+        const sb = await getSupabaseClient();
+        await sb.from('recibos_honorarios').update({ estado: 'confirmado' }).eq('id', reciboId);
+        for (const cId of (recibo.comisiones_ids || [])) {
+          await sb.from('comisiones').update({ estado: 'pagada', pagado_en: new Date().toISOString(), recibo_id: reciboId }).eq('id', cId);
+        }
+      });
+    }
+    const simbolo = normalizarMonedaComision(recibo.moneda || empresa?.moneda || empresa?.moneda_base) === 'USD' ? 'US$' : 'S/';
+    addNotificacion(`Recibo confirmado. Egreso de ${simbolo} ${recibo.monto_neto.toFixed(2)} registrado en tesorería.`);
+  };
+
+  const registrarMovimientoManual = async (datos) => {
+    const now = new Date().toISOString().split('T')[0];
+    if (datos.tipo === 'transferencia') {
+      const base = { empresa_id: empresa.id, fecha: datos.fecha || now, descripcion: datos.descripcion || 'Transferencia entre cuentas', monto: Number(datos.monto || 0), categoria: 'transferencia', es_manual: true, referencia: datos.referencia || null, creado_en: new Date().toISOString() };
+      const movE = { ...base, id: generateId('mov'), tipo: 'egreso', cuenta_bancaria_id: datos.cuenta_origen_id || null };
+      const movI = { ...base, id: generateId('mov'), tipo: 'ingreso', cuenta_bancaria_id: datos.cuenta_destino_id || null };
+      setMovimientosTesoreria(prev => [...prev, movE, movI]);
+      if (isSupabaseConfigured()) {
+        finSync(async () => {
+          await finanzasService.registrarMovimientoTesoreria(movE);
+          await finanzasService.registrarMovimientoTesoreria(movI);
+        });
+      }
+    } else {
+      const mov = {
+        id: generateId('mov'),
+        empresa_id: empresa.id,
+        tipo: datos.tipo,
+        fecha: datos.fecha || now,
+        descripcion: datos.descripcion,
+        monto: Number(datos.monto || 0),
+        categoria: datos.categoria || null,
+        cuenta_bancaria_id: datos.tipo === 'ingreso' ? (datos.cuenta_destino_id || null) : (datos.cuenta_origen_id || null),
+        es_manual: true,
+        referencia: datos.referencia || null,
+        creado_en: new Date().toISOString(),
+      };
+      setMovimientosTesoreria(prev => [...prev, mov]);
+      if (isSupabaseConfigured()) {
+        finSync(() => finanzasService.registrarMovimientoTesoreria(mov));
+      }
+    }
+    addNotificacion('Movimiento manual registrado.');
+  };
+
+  const crearCuentaBancaria = async (datos) => {
+    const cuenta = {
+      id: generateId('cb'),
+      empresa_id: empresa.id,
+      nombre: datos.nombre,
+      banco: datos.banco,
+      numero_cuenta: datos.numero_cuenta || null,
+      cci: datos.cci || null,
+      moneda: datos.moneda || 'PEN',
+      tipo: datos.tipo || 'corriente',
+      estado: datos.estado || 'activo',
+      saldo_inicial: Number(datos.saldo_inicial || 0),
+      creado_en: new Date().toISOString(),
+    };
+    setCuentasBancarias(prev => [...prev, cuenta]);
+    if (isSupabaseConfigured()) {
+      finSync(async () => {
+        const saved = await finanzasService.crearCuentaBancaria(cuenta);
+        if (saved?.id !== cuenta.id) setCuentasBancarias(prev => prev.map(c => c.id === cuenta.id ? { ...c, ...saved } : c));
+      });
+    }
+    addNotificacion(`Cuenta bancaria "${cuenta.nombre}" creada.`);
+    return cuenta;
+  };
+
+  const actualizarCuentaBancaria = async (id, updates) => {
+    setCuentasBancarias(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    if (isSupabaseConfigured()) {
+      finSync(() => finanzasService.actualizarCuentaBancaria(id, updates));
+    }
+  };
+
+  const eliminarCuentaBancaria = async (id) => {
+    setCuentasBancarias(prev => prev.filter(c => c.id !== id));
+    if (isSupabaseConfigured()) {
+      finSync(() => finanzasService.eliminarCuentaBancaria(id));
+    }
+    addNotificacion('Cuenta bancaria eliminada.');
+  };
+
+  const anularFactura = (facturaId, motivo) => {
+    const fac = facturas.find(f => f.id === facturaId);
+    if (!fac || fac.estado === 'cobrada') return;
+    setFacturas(prev => prev.map(f => f.id === facturaId ? { ...f, estado: 'anulada', motivo_anulacion: motivo } : f));
+    // Anular CxC vinculada si está por cobrar
+    const cxcVinculada = cxc.find(c => c.factura_id === facturaId && c.estado !== 'cobrada');
+    if (cxcVinculada) {
+      setCxc(prev => prev.map(c => c.id === cxcVinculada.id ? { ...c, estado: 'anulada' } : c));
+      // Part 8: deshacer conciliación bancaria y anular movimiento tesorería vinculados a esta CxC
+      const movBancoVinculado = movimientosBanco.find(m => m.conciliado && m.vinculado_tipo === 'cxc' && m.vinculado_id === cxcVinculada.id);
+      if (movBancoVinculado) {
+        setMovimientosBanco(prev => prev.map(m => m.id === movBancoVinculado.id
+          ? { ...m, conciliado: false, vinculado_tipo: null, vinculado_id: null } : m));
+      }
+      setMovimientosTesoreria(prev => prev.map(m =>
+        (m.vinculo_id === cxcVinculada.id || m.vinculado_id === cxcVinculada.id)
+          ? { ...m, estado: 'anulado' } : m));
+      if (isSupabaseConfigured()) {
+        finSync(async () => {
+          const sb = await getSupabaseClient();
+          await sb.from('cxc').update({ estado: 'anulada' }).eq('id', cxcVinculada.id);
+          if (movBancoVinculado) {
+            await sb.from('movimientos_banco')
+              .update({ conciliado: false, vinculado_tipo: null, vinculado_id: null })
+              .eq('id', movBancoVinculado.id);
+          }
+        });
+      }
+    }
+    if (isSupabaseConfigured()) {
+      finSync(async () => {
+        const sb = await getSupabaseClient();
+        await sb.from('facturas').update({ estado: 'anulada', motivo_anulacion: motivo }).eq('id', facturaId);
+      });
+    }
+    auditSync({ modulo: 'finanzas', entidad: 'facturas', entidad_id: facturaId, accion: 'anular', valor_nuevo: { motivo } });
+    addNotificacion(`Factura ${fac.numero} anulada.`);
+  };
+
+  const emitirNotaCredito = async (facturaOrigenId, datos) => {
+    const facOrigen = facturas.find(f => f.id === facturaOrigenId);
+    if (!facOrigen) return null;
+    const cxcVinc = cxc.find(c => c.factura_id === facturaOrigenId && c.estado !== 'cobrada');
+    const ncCount = facturas.filter(f => f.tipo_documento === 'nota_credito').length + 1;
+    const numero = `NC01-${String(ncCount).padStart(4,'0')}`;
+    const totalAcreditar = Number(datos.total || 0);
+    const now = new Date().toISOString().split('T')[0];
+
+    const ncFac = {
+      id: generateId('fac'),
+      empresa_id: empresa.id,
+      tipo_documento: 'nota_credito',
+      estado: 'emitida',
+      numero,
+      cuenta_id: facOrigen.cuenta_id,
+      os_cliente_id: facOrigen.os_cliente_id || null,
+      valorizacion_id: facOrigen.valorizacion_id || null,
+      factura_origen_id: facturaOrigenId,
+      items: datos.items || [],
+      subtotal: datos.subtotal || totalAcreditar,
+      igv: datos.igv || 0,
+      total: totalAcreditar,
+      moneda: facOrigen.moneda || 'PEN',
+      fecha_emision: now,
+      motivo: datos.motivo || null,
+      notas: datos.notas || null,
+    };
+    setFacturas(prev => [...prev, ncFac]);
+
+    const totalFactura = Number(facOrigen.total || 0);
+    if (totalAcreditar >= totalFactura) {
+      // Anulación total
+      setFacturas(prev => prev.map(f => f.id === facturaOrigenId
+        ? { ...f, estado: 'anulada', motivo_anulacion: `NC emitida: ${numero}` } : f));
+      if (cxcVinc) setCxc(prev => prev.map(c => c.id === cxcVinc.id ? { ...c, estado: 'anulada', saldo: 0 } : c));
+      if (facOrigen.valorizacion_id) {
+        setValorizaciones(prev => prev.map(v => v.id === facOrigen.valorizacion_id ? { ...v, estado: 'aprobada' } : v));
+        if (isSupabaseConfigured()) {
+          finSync(async () => {
+            const sb = await getSupabaseClient();
+            await sb.from('valorizaciones').update({ estado: 'aprobada' }).eq('id', facOrigen.valorizacion_id);
+          });
+        }
+      }
+      if (isSupabaseConfigured()) {
+        finSync(async () => {
+          const sb = await getSupabaseClient();
+          await sb.from('facturas').update({ estado: 'anulada', motivo_anulacion: `NC emitida: ${numero}` }).eq('id', facturaOrigenId);
+          if (cxcVinc) await sb.from('cxc').update({ estado: 'anulada', saldo: 0 }).eq('id', cxcVinc.id);
+        });
+      }
+    } else if (cxcVinc) {
+      // Reducción parcial de CxC
+      const nuevoTotal = Math.max(0, Number(cxcVinc.monto_total || 0) - totalAcreditar);
+      const nuevoSaldo = Math.max(0, Number(cxcVinc.saldo || 0) - totalAcreditar);
+      const nuevoEstado = nuevoSaldo <= 0 ? 'cobrada' : cxcVinc.estado;
+      setCxc(prev => prev.map(c => c.id === cxcVinc.id ? { ...c, monto_total: nuevoTotal, saldo: nuevoSaldo, estado: nuevoEstado } : c));
+      if (isSupabaseConfigured()) {
+        finSync(async () => {
+          const sb = await getSupabaseClient();
+          await sb.from('cxc').update({ monto_total: nuevoTotal, saldo: nuevoSaldo, estado: nuevoEstado }).eq('id', cxcVinc.id);
+        });
+      }
+    }
+
+    if (isSupabaseConfigured()) finSync(async () => { await finanzasService.emitirFactura(ncFac); });
+    auditSync({ modulo: 'finanzas', entidad: 'facturas', entidad_id: ncFac.id, accion: 'emitir_nc', valor_nuevo: ncFac });
+    addNotificacion(`Nota de Crédito ${numero} emitida.`);
+    return ncFac.id;
+  };
+
+  const emitirNotaDebito = async (facturaOrigenId, datos) => {
+    const facOrigen = facturas.find(f => f.id === facturaOrigenId);
+    if (!facOrigen) return null;
+    const cxcVinc = cxc.find(c => c.factura_id === facturaOrigenId);
+    const ndCount = facturas.filter(f => f.tipo_documento === 'nota_debito').length + 1;
+    const numero = `ND01-${String(ndCount).padStart(4,'0')}`;
+    const totalND = Number(datos.total || 0);
+    const now = new Date().toISOString().split('T')[0];
+
+    const ndFac = {
+      id: generateId('fac'),
+      empresa_id: empresa.id,
+      tipo_documento: 'nota_debito',
+      estado: 'emitida',
+      numero,
+      cuenta_id: facOrigen.cuenta_id,
+      os_cliente_id: facOrigen.os_cliente_id || null,
+      valorizacion_id: facOrigen.valorizacion_id || null,
+      factura_origen_id: facturaOrigenId,
+      items: datos.items || [],
+      subtotal: datos.subtotal || totalND,
+      igv: datos.igv || 0,
+      total: totalND,
+      moneda: facOrigen.moneda || 'PEN',
+      fecha_emision: now,
+      motivo: datos.motivo || null,
+      notas: datos.notas || null,
+    };
+    setFacturas(prev => [...prev, ndFac]);
+
+    if (cxcVinc) {
+      const nuevoTotal = Number(cxcVinc.monto_total || 0) + totalND;
+      const nuevoSaldo = Number(cxcVinc.saldo || 0) + totalND;
+      setCxc(prev => prev.map(c => c.id === cxcVinc.id ? { ...c, monto_total: nuevoTotal, saldo: nuevoSaldo } : c));
+      if (isSupabaseConfigured()) {
+        finSync(async () => {
+          const sb = await getSupabaseClient();
+          await sb.from('cxc').update({ monto_total: nuevoTotal, saldo: nuevoSaldo }).eq('id', cxcVinc.id);
+        });
+      }
+    }
+
+    if (isSupabaseConfigured()) finSync(async () => { await finanzasService.emitirFactura(ndFac); });
+    auditSync({ modulo: 'finanzas', entidad: 'facturas', entidad_id: ndFac.id, accion: 'emitir_nd', valor_nuevo: ndFac });
+    addNotificacion(`Nota de Débito ${numero} emitida.`);
+    return ndFac.id;
   };
 
   const generarCxP = async (datos) => {
@@ -2901,6 +3822,11 @@ export function AppProvider({ children }) {
   const conciliarMovimientoBancoConDocumento = async (movId, vinculadoTipo, vinculadoId) => {
     const mov = movimientosBanco.find(m => m.id === movId);
     if (!mov || !vinculadoId) return;
+    // Part 8: bloquear doble conciliación
+    if (mov.conciliado) {
+      addNotificacion('Este movimiento bancario ya está conciliado y no puede vincularse nuevamente.');
+      return;
+    }
 
     if (vinculadoTipo === 'cxc') {
       await registrarCobroCxC(vinculadoId, Number(mov.monto || 0), {
@@ -3948,6 +4874,14 @@ export function AppProvider({ children }) {
     }
   };
 
+  const mergePlannerAsignaciones = (items = []) => {
+    if (!items.length) return;
+    setPlannerAsignaciones(prev => [
+      ...prev.filter(a => !items.some(c => c.id === a.id || (c.ot_id === a.ot_id && c.tecnico_id === a.tecnico_id && c.fecha === a.fecha))),
+      ...items,
+    ]);
+  };
+
   /**
    * Crea asignaciones en lote (tecnico×día) para un rango.
    * Detecta conflictos antes de persistir y los retorna para que el UI muestre el warning.
@@ -3979,6 +4913,7 @@ export function AppProvider({ children }) {
       });
       // Recargar la semana visible
       if (semanaPlanner) await loadPlannerSemana(semanaPlanner.inicio, semanaPlanner.fin);
+      mergePlannerAsignaciones(creadas);
     } else {
       // Modo mock: generar objetos locales
       creadas = tecnicoIds.flatMap(tid =>
@@ -3994,10 +4929,7 @@ export function AppProvider({ children }) {
           cuadrilla_origen_id: cuadrillaOrigenId || null,
         }))
       );
-      setPlannerAsignaciones(prev => [
-        ...prev.filter(a => !creadas.some(c => c.ot_id === a.ot_id && c.tecnico_id === a.tecnico_id && c.fecha === a.fecha)),
-        ...creadas,
-      ]);
+      mergePlannerAsignaciones(creadas);
     }
 
     auditSync({ modulo: 'planner', entidad: 'asignaciones', entidad_id: otId, accion: 'crear_rango', valor_nuevo: { tecnicoIds, fechaInicio, fechaFin } });
@@ -4339,6 +5271,31 @@ export function AppProvider({ children }) {
     return list.length ? list : [{ codigo: empresa?.moneda || 'PEN', nombre: 'Moneda base' }];
   })();
 
+  const usuarioActual = authUser
+    ? usuarios.find(u => u.id === authUser.id || u.email === authUser.email)
+    : null;
+  const esSuperadminPlataforma = Boolean(
+    isSupabaseConfigured()
+      ? todasMembresias.some(m => m.rol?.es_superadmin && m.empresa?.es_plataforma)
+      : role?.permisos?.todo
+  );
+  const authUserConAcceso = authUser ? {
+    ...authUser,
+    ...usuarioActual,
+    id: authUser.id,
+    email: authUser.email,
+    nombre: usuarioActual?.nombre || authUser.user_metadata?.nombre || authUser.user_metadata?.full_name || authUser.email?.split('@')[0],
+    rol: usuarioActual?.rol || membresiaActiva?.rol_id || authUser.rol,
+    empresa_id: empresa?.id || usuarioActual?.empresa_id,
+    asignaciones: usuarioActual?.asignaciones || [],
+    jefe_user_id: usuarioActual?.jefe_user_id || null,
+    nivel_jerarquico: usuarioActual?.nivel_jerarquico || membresiaActiva?.rol?.nivel_jerarquico || (esSuperadminPlataforma ? 'direccion' : undefined),
+    rol_categoria: usuarioActual?.rol_categoria || membresiaActiva?.rol?.categoria || (esSuperadminPlataforma ? 'admin' : undefined),
+    es_admin_empresa: Boolean(usuarioActual?.es_admin_empresa || membresiaActiva?.rol?.es_admin_empresa),
+    es_superadmin: Boolean(usuarioActual?.es_superadmin || membresiaActiva?.rol?.es_superadmin || esSuperadminPlataforma),
+    superadmin_plataforma: esSuperadminPlataforma,
+  } : null;
+
   const contextValue = {
     active, navigate, activeParams,
     roleKey, setRoleKey, role, isSuperadmin,
@@ -4346,7 +5303,7 @@ export function AppProvider({ children }) {
     dark, setDark,
     mobileMode, setMobileMode,
     mobileProfile, setMobileProfile,
-    authSession, authUser, authLoading, authError,
+    authSession, authUser: authUserConAcceso, authLoading, authError,
     signInWithPassword, signUpWithPassword, signOut,
     searchQuery: '',
     dataMode, supabaseStatus, reloadSupabaseFinanceData: loadSupabaseFinanceData,
@@ -4367,6 +5324,9 @@ export function AppProvider({ children }) {
     osClientes, setOsClientes, actualizarOSCliente,
     cxp, setCxp,
     cxc, setCxc,
+    cobrosHistorial, setCobrosHistorial,
+    gestionesCobranza, setGestionesCobranza,
+    comisiones, setComisiones,
     facturas, setFacturas,
     comprasGastos, setComprasGastos,
     financiamientos, setFinanciamientos,
@@ -4376,6 +5336,7 @@ export function AppProvider({ children }) {
     ots, setOts,
     partes, setPartes,
     backlog, setBacklog,
+    cierresTecnicos,
     inventario, setInventario,
     solpes, setSolpes,
     valorizaciones, setValorizaciones,
@@ -4404,6 +5365,7 @@ export function AppProvider({ children }) {
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,
     convertirLead, descartarLead, reactivarLead,
     crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
+    actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision, aprobarAcuerdoComision, rechazarAcuerdoComision, obtenerHistorialAcuerdo,
     crearCotizacion, aprobarCotizacion, aprobarCotizacionInterna, registrarAprobacionManual, subirVersionCotizacion,
     crearOSCliente, crearOSClienteManual,
     registrarUsuario,
@@ -4414,9 +5376,12 @@ export function AppProvider({ children }) {
     registrarActividad,
     actualizarActividad,
     // Fase 2 Actions
-    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, registrarParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, cerrarTecnicamenteOT, crearSOLPE, generarValorizacion,
+    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     // Finanzas Actions
-    emitirFactura, emitirFacturaDesdeValorizacion, generarCxC, registrarCobroCxC, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento,
+    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, anularFactura, emitirNotaCredito, emitirNotaDebito, generarCxC, registrarCobroCxC, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, registrarMovimientoManual,
+    cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,
+    recibosHonorarios, setRecibosHonorarios,
+    aprobarComision, rechazarComision, generarReciboHonorarios, confirmarReciboHonorarios,
     // Maestros Base Actions
     crearCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria,
     // Compras Actions

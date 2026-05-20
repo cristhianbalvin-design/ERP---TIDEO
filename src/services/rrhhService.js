@@ -193,6 +193,12 @@ const normalizarPersonalAdmin = (p = {}) => ({
   dias_vacaciones_disponibles: Number(p.dias_vacaciones_disponibles ?? p.vacaciones_pendientes ?? 0),
   documentos: p.documentos || [],
   centro_costo_id: p.centro_costo_id || null,
+  auth_user_id: p.auth_user_id || null,
+  tiene_comisiones: Boolean(p.tiene_comisiones),
+  porcentaje_comision: p.porcentaje_comision != null ? Number(p.porcentaje_comision) : null,
+  modalidad_comision: p.modalidad_comision || null,
+  ruc_vendedor: p.ruc_vendedor || null,
+  retencion_ir_comision: p.retencion_ir_comision != null ? Number(p.retencion_ir_comision) : 8,
 });
 
 const toPersonalAdminRow = (empresaId, persona = {}) => ({
@@ -232,7 +238,13 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   institucion: persona.institucion || null,
   documentos: persona.documentos || [],
   centro_costo_id: persona.centro_costo_id || null,
+  auth_user_id: persona.auth_user_id || null,
   estado: persona.estado || 'activo',
+  tiene_comisiones: Boolean(persona.tiene_comisiones),
+  porcentaje_comision: persona.porcentaje_comision != null ? Number(persona.porcentaje_comision) : null,
+  modalidad_comision: persona.modalidad_comision || null,
+  ruc_vendedor: persona.ruc_vendedor || null,
+  retencion_ir_comision: persona.retencion_ir_comision != null ? Number(persona.retencion_ir_comision) : 8,
 });
 
 const toPersonalAdminUpdate = (cambios = {}) => {
@@ -248,7 +260,9 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     'vacaciones_pendientes', 'dias_vacaciones_total', 'dias_vacaciones_usados',
     'dias_vacaciones_disponibles', 'contacto_emergencia', 'relacion_emergencia',
     'telefono_emergencia', 'nivel_estudios', 'especialidad', 'institucion',
-    'documentos', 'estado', 'centro_costo_id'
+    'documentos', 'estado', 'centro_costo_id',
+    'auth_user_id', 'tiene_comisiones', 'porcentaje_comision',
+    'modalidad_comision', 'ruc_vendedor', 'retencion_ir_comision'
   ]);
 
   return Object.entries(cambios).reduce((row, [key, value]) => {
@@ -260,7 +274,8 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     }
     row[target] = [
       'sueldo_base', 'remuneracion', 'vacaciones_pendientes',
-      'dias_vacaciones_total', 'dias_vacaciones_usados', 'dias_vacaciones_disponibles'
+      'dias_vacaciones_total', 'dias_vacaciones_usados', 'dias_vacaciones_disponibles',
+      'porcentaje_comision', 'retencion_ir_comision'
     ].includes(target) ? Number(value || 0) : value;
     return row;
   }, {});
@@ -305,7 +320,7 @@ export const rrhhService = {
     if (!empresaId) return [];
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
-      .from('personal_administrativo').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false });
+      .from('personal_administrativo').select('*').eq('empresa_id', empresaId).order('nombre', { ascending: true });
     if (error) { console.error('Error fetching personal_administrativo:', error); return []; }
     return (data || []).map(normalizarPersonalAdmin);
   },

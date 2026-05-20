@@ -297,7 +297,9 @@ export async function persistirOportunidad(supabase, empresaId, opp) {
 }
 
 export async function actualizarOportunidad(supabase, oppId, datos) {
-  const allowed = ['etapa', 'estado', 'probabilidad', 'monto_estimado', 'moneda', 'fecha_cierre_estimada', 'fecha_cierre_real', 'motivo_perdida', 'forecast_ponderado', 'notas', 'competidor'];
+  const allowed = ['etapa', 'estado', 'probabilidad', 'monto_estimado', 'moneda', 'fecha_cierre_estimada', 'fecha_cierre_real', 'motivo_perdida', 'forecast_ponderado', 'notas', 'competidor',
+    'acuerdo_pct', 'acuerdo_bonificacion', 'acuerdo_justificacion', 'acuerdo_estado',
+    'acuerdo_aprobado_por', 'acuerdo_aprobado_id', 'acuerdo_fecha_aprobacion', 'acuerdo_motivo_rechazo'];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
   );
@@ -312,6 +314,7 @@ export async function persistirCotizacion(supabase, empresaId, cot) {
     oportunidad_id: cot.oportunidad_id || null,
     cuenta_id: cot.cuenta_id || null,
     contacto_id: cot.contacto_id || null,
+    responsable_id: cot.responsable_id || null,
     numero: cot.numero,
     version: cot.version || 1,
     estado: cot.estado || 'borrador',
@@ -367,7 +370,7 @@ export async function actualizarCotizacion(supabase, cotId, datos) {
     'fecha_envio', 'token_activo', 'token_aceptacion',
     'aprobacion_tipo', 'aprobacion_canal', 'aprobacion_fecha_cliente',
     'aprobacion_notas', 'aprobacion_registrada_por', 'aprobacion_registrada_at', 'aprobacion_archivos',
-    'centro_beneficio_id',
+    'centro_beneficio_id', 'responsable_id',
   ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
@@ -650,6 +653,42 @@ export async function loadCrmFromSupabase(supabase, empresaId) {
       .filter(r => r.error)
       .map(r => r.error?.message),
   };
+}
+
+export async function insertarNotificacionesSistema(supabase, rows) {
+  if (!isSupabaseMode() || !supabase || !rows?.length) return;
+  return supabase.from('notificaciones_sistema').insert(rows);
+}
+
+export async function cargarNotificacionesSistema(supabase, userId) {
+  if (!isSupabaseMode() || !supabase || !userId) return [];
+  const { data } = await supabase
+    .from('notificaciones_sistema')
+    .select('id, texto, leida, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  return data || [];
+}
+
+export async function marcarNotificacionLeida(supabase, id) {
+  if (!isSupabaseMode() || !supabase) return;
+  return supabase.from('notificaciones_sistema').update({ leida: true }).eq('id', id);
+}
+
+export async function insertarHistorialAcuerdo(supabase, fila) {
+  if (!isSupabaseMode() || !supabase) return;
+  return supabase.from('acuerdo_comision_historial').insert(fila);
+}
+
+export async function cargarHistorialAcuerdo(supabase, oportunidadId) {
+  if (!isSupabaseMode() || !supabase || !oportunidadId) return [];
+  const { data } = await supabase
+    .from('acuerdo_comision_historial')
+    .select('id, accion, actor_nombre, acuerdo_pct, acuerdo_bonificacion, justificacion, motivo, created_at')
+    .eq('oportunidad_id', oportunidadId)
+    .order('created_at', { ascending: true });
+  return data || [];
 }
 
 export async function loadCsFromSupabase(supabase, empresaId) {

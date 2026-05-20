@@ -559,7 +559,7 @@ function LogisticaView({ screen, setScreen }) {
 }
 
 function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setProfile }) {
-  const { agendaEventos, cuentas, contactos, oportunidades, cotizaciones, actividades, leads, historialEstados, oppHistorialEtapas, updateLeadState, convertirLead, descartarLead, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, marcarPerdida, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva, empresa, dataMode, supabaseStatus, signOut, notificaciones, markNotificacionesRead, addNotificacion, monedasActivas } = useApp();
+  const { agendaEventos, cuentas, contactos, oportunidades, cotizaciones, actividades, leads, historialEstados, oppHistorialEtapas, updateLeadState, convertirLead, descartarLead, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, marcarPerdida, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva, empresa, dataMode, supabaseStatus, signOut, notificaciones, markNotificacionesRead, addNotificacion, monedasActivas, personalAdmin, actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const esDelUsuario = valor => normalizarTexto(valor) === normalizarTexto(usuarioMovil.nombre);
   const rolNombre = normalizarTexto(role?.nombre || membresiaActiva?.rol?.nombre);
@@ -600,6 +600,22 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
   const [perdidaError, setPerdidaError] = useState('');
   const [drawerItem, setDrawerItem] = useState(null); // { type: 'lead'|'opp', data: object }
   const [drawerTab, setDrawerTab] = useState('timeline');
+  const [comisionEdit, setComisionEdit] = useState(null); // { pct, bonificacion, justificacion }
+  const [comisionEnviando, setComisionEnviando] = useState(false);
+  const patchDrawerOpp = (oppId, patch) => {
+    setDrawerItem(prev => {
+      if (!prev || prev.type !== 'opp' || prev.data?.id !== oppId) return prev;
+      return { ...prev, data: { ...prev.data, ...patch } };
+    });
+  };
+  useEffect(() => {
+    setDrawerItem(prev => {
+      if (!prev || prev.type !== 'opp') return prev;
+      const latest = oportunidades.find(o => o.id === prev.data?.id);
+      if (!latest || latest === prev.data) return prev;
+      return { ...prev, data: { ...prev.data, ...latest } };
+    });
+  }, [oportunidades]);
   const ESTADOS_LEAD_ORDER = ['nuevo', 'en_contacto', 'calificado'];
   const MOV_CFG = {
     en_contacto: { titulo: 'Primer contacto', placeholder: '¿Cómo fue el primer contacto?' },
@@ -1597,6 +1613,13 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
                     <button onClick={() => setDrawerTab('timeline')} style={{flex:1, padding:'8px 0', fontSize:12, fontWeight:600, border:'none', background:'transparent', borderBottom: drawerTab==='timeline' ? '2px solid var(--navy)' : '2px solid transparent', color: drawerTab==='timeline' ? 'var(--navy)' : 'var(--fg-muted)', cursor:'pointer'}}>
                       Timeline{eventos.length > 0 ? ` · ${eventos.length}` : ''}
                     </button>
+                    {!isLead && (
+                      <button onClick={() => setDrawerTab('comision')} style={{flex:1, padding:'8px 0', fontSize:12, fontWeight:600, border:'none', background:'transparent', borderBottom: drawerTab==='comision' ? '2px solid var(--navy)' : '2px solid transparent', color: drawerTab==='comision' ? 'var(--navy)' : 'var(--fg-muted)', cursor:'pointer', position:'relative'}}>
+                        Comisión
+                        {item?.acuerdo_estado === 'pendiente' && <span style={{position:'absolute', top:6, right:6, width:6, height:6, borderRadius:99, background:'var(--orange)'}}/>}
+                        {item?.acuerdo_estado === 'rechazado' && <span style={{position:'absolute', top:6, right:6, width:6, height:6, borderRadius:99, background:'var(--danger)'}}/>}
+                      </button>
+                    )}
                   </div>
                   <div style={{overflowY:'auto', flex:1, padding:'14px 16px 32px'}}>
                     {drawerTab === 'info' && (
@@ -1666,6 +1689,208 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
                         </div>
                       ))
                     )}
+                    {drawerTab === 'comision' && !isLead && (() => {
+                      const opp = item;
+                      const normNombre = s => (s || '').trim().toLowerCase();
+                      const normEmail = s => (s || '').trim().toLowerCase();
+                      const vendedorUsuario = usuarios.find(u =>
+                        u.id === opp.responsable_id ||
+                        u.auth_user_id === opp.responsable_id ||
+                        normNombre(u.nombre) === normNombre(opp.responsable)
+                      );
+                      const vendedorPersonal = personalAdmin.find(p =>
+                        (vendedorUsuario?.auth_user_id && p.auth_user_id === vendedorUsuario.auth_user_id) ||
+                        (vendedorUsuario?.email && p.email && normEmail(p.email) === normEmail(vendedorUsuario.email)) ||
+                        p.id === opp.responsable_id ||
+                        p.auth_user_id === opp.responsable_id ||
+                        (p.email && normEmail(p.email) === normEmail(opp.responsable)) ||
+                        (authUser?.id === opp.responsable_id && p.email && normEmail(p.email) === normEmail(authUser.email)) ||
+                        normNombre(p.nombre) === normNombre(opp.responsable)
+                      );
+                      const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPersonal?.porcentaje_comision !== undefined
+                        ? Number(vendedorPersonal.porcentaje_comision)
+                        : null;
+                      const monedaSim = opp.moneda === 'USD' ? 'US$' : 'S/';
+                      const estado = opp.acuerdo_estado || 'sin_acuerdo';
+                      const editando = comisionEdit !== null;
+                      const pctVal = editando ? (comisionEdit.pct ?? '') : (opp.acuerdo_pct ?? pctBase ?? '');
+                      const bonVal = editando ? (comisionEdit.bonificacion ?? 0) : Number(opp.acuerdo_bonificacion || 0);
+                      const justVal = editando ? (comisionEdit.justificacion ?? '') : (opp.acuerdo_justificacion || '');
+                      const diffBase = pctBase !== null && pctVal !== '' && Number(pctVal) !== pctBase;
+                      const hayBon = Number(bonVal) > 0;
+                      const requiereAprobacion = hayBon || (pctBase !== null ? diffBase : Number(pctVal || 0) > 0);
+                      const necesitaJustificacion = requiereAprobacion;
+                      const justificacionLista = !necesitaJustificacion || String(justVal || '').trim().length > 0;
+                      const bloqueado = estado === 'aprobado' || ['ganada','perdida'].includes(opp.etapa);
+                      const ESTADO_COLOR = { sin_acuerdo:'var(--fg-muted)', borrador:'var(--fg-muted)', pendiente:'var(--orange)', aprobado:'var(--green)', rechazado:'var(--danger)' };
+                      const ESTADO_LABEL = { sin_acuerdo:'Sin acuerdo especial', borrador:'Borrador', pendiente:'Pendiente de aprobación', aprobado:'Aprobado', rechazado:'Rechazado' };
+
+                      const guardar = () => {
+                        const pct = Number(comisionEdit.pct ?? opp.acuerdo_pct ?? pctBase ?? 0);
+                        const bon = Number(comisionEdit.bonificacion ?? 0);
+                        const justificacion = comisionEdit.justificacion || '';
+                        const esBase = pctBase !== null && pct === pctBase && bon === 0;
+                        const patch = {
+                          acuerdo_pct: pct, acuerdo_bonificacion: bon,
+                          acuerdo_justificacion: justificacion,
+                          acuerdo_estado: esBase ? 'sin_acuerdo' : 'borrador',
+                        };
+                        actualizarAcuerdoComision(opp.id, patch);
+                        patchDrawerOpp(opp.id, patch);
+                        setComisionEdit(null);
+                        mostrarToast(esBase ? 'Acuerdo restablecido a la base' : 'Borrador guardado');
+                      };
+                      const enviar = async () => {
+                        const patch = { acuerdo_estado: 'pendiente', acuerdo_motivo_rechazo: null };
+                        setComisionEnviando(true);
+                        patchDrawerOpp(opp.id, patch);
+                        try {
+                          await enviarAcuerdoAAprobacion(opp.id);
+                          mostrarToast('Propuesta enviada a aprobacion');
+                        } finally {
+                          setComisionEnviando(false);
+                        }
+                      };
+                      const retirar = () => {
+                        const patch = { acuerdo_estado: 'borrador' };
+                        retirarAcuerdoComision(opp.id);
+                        patchDrawerOpp(opp.id, patch);
+                        mostrarToast('Solicitud retirada');
+                      };
+
+                      return (
+                        <div className="col" style={{gap:14}}>
+                          {/* Estado */}
+                          <div style={{display:'flex', alignItems:'center', gap:8, justifyContent:'space-between'}}>
+                            <span style={{fontSize:12, fontWeight:700, color:ESTADO_COLOR[estado] || 'var(--fg-muted)'}}>
+                              {ESTADO_LABEL[estado] || estado}
+                            </span>
+                            {estado === 'aprobado' && opp.acuerdo_aprobado_por && (
+                              <span style={{fontSize:11, color:'var(--fg-muted)'}}>por {opp.acuerdo_aprobado_por}</span>
+                            )}
+                          </div>
+
+                          {/* Rechazo */}
+                          {estado === 'rechazado' && opp.acuerdo_motivo_rechazo && (
+                            <div style={{background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.25)', borderRadius:8, padding:'8px 12px', fontSize:12, color:'var(--danger)'}}>
+                              <strong>Motivo:</strong> {opp.acuerdo_motivo_rechazo}
+                            </div>
+                          )}
+
+                          {/* % base de referencia */}
+                          {pctBase !== null && (
+                            <div style={{fontSize:12, color:'var(--fg-muted)'}}>
+                              Tu comisión base es <strong>{pctBase}%</strong>
+                            </div>
+                          )}
+
+                          {/* Campos */}
+                          {(editando || !bloqueado) && (
+                            <div className="col" style={{gap:10}}>
+                              <div className="input-group" style={{marginBottom:0}}>
+                                <label style={{fontSize:11}}>% Comisión propuesto</label>
+                                {editando ? (
+                                  <>
+                                    <input type="number" min="0" max="100" step="0.01" className="input"
+                                      value={pctVal}
+                                      onChange={e => setComisionEdit(p => ({...p, pct: e.target.value}))}
+                                    />
+                                    {diffBase && pctBase !== null && (
+                                      <div style={{marginTop:4, fontSize:11, color:'#c2410c', background:'rgba(249,115,22,0.08)', borderRadius:6, padding:'4px 8px', lineHeight:1.4}}>
+                                        Difiere del base ({pctBase}%) — requiere aprobación del Gerente.
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div style={{fontSize:14, fontWeight:700, color:'var(--navy)', padding:'6px 0'}}>{pctVal !== '' ? `${pctVal}%` : '—'}</div>
+                                )}
+                              </div>
+                              <div className="input-group" style={{marginBottom:0}}>
+                                <label style={{fontSize:11}}>Bonificación adicional ({monedaSim})</label>
+                                {editando ? (
+                                  <>
+                                    <input type="number" min="0" step="0.01" className="input"
+                                      value={bonVal}
+                                      onChange={e => setComisionEdit(p => ({...p, bonificacion: e.target.value}))}
+                                    />
+                                    {hayBon && (
+                                      <div style={{marginTop:4, fontSize:11, color:'#c2410c', background:'rgba(249,115,22,0.08)', borderRadius:6, padding:'4px 8px', lineHeight:1.4}}>
+                                        Bonificación de {monedaSim} {Number(bonVal).toFixed(2)} — requiere aprobación.
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div style={{fontSize:14, fontWeight:700, color: hayBon ? 'var(--orange)' : 'var(--fg-muted)', padding:'6px 0'}}>{hayBon ? `${monedaSim} ${Number(bonVal).toFixed(2)}` : '—'}</div>
+                                )}
+                              </div>
+                              {(necesitaJustificacion || editando) && (
+                                <div className="input-group" style={{marginBottom:0}}>
+                                  <label style={{fontSize:11}}>Justificación {necesitaJustificacion ? <span style={{color:'var(--danger)'}}>*</span> : ''}</label>
+                                  {editando ? (
+                                    <textarea className="input" rows={2} placeholder="Ej: Cliente estratégico con contrato multianual"
+                                      value={justVal}
+                                      onChange={e => setComisionEdit(p => ({...p, justificacion: e.target.value}))}
+                                      style={{resize:'none'}}
+                                    />
+                                  ) : (
+                                    <div style={{fontSize:12, color:'var(--fg-muted)', padding:'4px 0'}}>{justVal || '—'}</div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Botones */}
+                          {bloqueado ? (
+                            <div style={{fontSize:11, color:'var(--fg-muted)', fontStyle:'italic', textAlign:'center'}}>
+                              {['ganada','perdida'].includes(opp.etapa) ? 'Oportunidad cerrada.' : 'Acuerdo aprobado — no editable.'}
+                            </div>
+                          ) : editando ? (
+                            <div className="col" style={{gap:8}}>
+                              <button className="btn btn-primary" style={{width:'100%', justifyContent:'center'}} disabled={!justificacionLista} onClick={guardar}>
+                                Guardar borrador
+                              </button>
+                              {!justificacionLista && (
+                                <div style={{fontSize:11, color:'var(--danger)', textAlign:'center'}}>La justificación es obligatoria para enviar un acuerdo especial.</div>
+                              )}
+                              <button className="btn btn-ghost" style={{width:'100%', justifyContent:'center'}} onClick={() => setComisionEdit(null)}>
+                                Cancelar
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="col" style={{gap:8}}>
+                              {['sin_acuerdo','borrador','rechazado'].includes(estado) && (
+                                <button className="btn btn-secondary" style={{width:'100%', justifyContent:'center'}}
+                                  onClick={() => setComisionEdit({ pct: opp.acuerdo_pct ?? pctBase ?? '', bonificacion: opp.acuerdo_bonificacion ?? 0, justificacion: opp.acuerdo_justificacion ?? '' })}>
+                                  {estado === 'sin_acuerdo' ? 'Proponer acuerdo especial' : 'Editar propuesta'}
+                                </button>
+                              )}
+                              {['borrador','rechazado'].includes(estado) && requiereAprobacion && (
+                                <button className="btn btn-primary" style={{width:'100%', justifyContent:'center', background:'var(--orange)', borderColor:'var(--orange)'}}
+                                  disabled={comisionEnviando || !justificacionLista}
+                                  onClick={enviar}>
+                                  {comisionEnviando ? 'Enviando...' : 'Enviar a aprobación'}
+                                </button>
+                              )}
+                              {['borrador','rechazado'].includes(estado) && requiereAprobacion && !justificacionLista && (
+                                <div style={{fontSize:11, color:'var(--danger)', textAlign:'center'}}>Agrega una justificación para enviarla.</div>
+                              )}
+                              {estado === 'pendiente' && (
+                                <>
+                                  <div style={{fontSize:12, color:'var(--fg-muted)', fontStyle:'italic', textAlign:'center', padding:'4px 0'}}>
+                                    Esperando aprobación del Gerente Comercial
+                                  </div>
+                                  <button className="btn btn-ghost" style={{width:'100%', justifyContent:'center', color:'var(--fg-muted)', fontSize:12}}
+                                    onClick={retirar}>
+                                    Retirar solicitud
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1971,12 +2196,57 @@ function SupervisorView({ screen, setScreen }) {
 }
 
 function GerenciaView({ screen, setScreen }) {
-  const { ots, cotizaciones, authUser, usuarios } = useApp();
+  const { ots, cotizaciones, authUser, usuarios, oportunidades, personalAdmin, aprobarAcuerdoComision, rechazarAcuerdoComision } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const cxcVencida = MOCK.cxc.filter(c => c.estado === 'vencida').reduce((s, c) => s + c.saldo, 0);
   const otsActivas = ots.filter(o => o.estado === 'programada' || o.estado === 'ejecucion').length;
   const cotAprobar = cotizaciones.filter(c => c.estado === 'enviada' || c.estado === 'negociacion').length;
   const margen = MOCK.biFinanciero.resumen.margen_bruto_pct;
+
+  const [showAcuerdos, setShowAcuerdos] = useState(false);
+  const [acuerdoAprobandoId, setAcuerdoAprobandoId] = useState(null);
+  const [acuerdoAprobandoVals, setAcuerdoAprobandoVals] = useState({ pct: '', bonificacion: '' });
+  const [acuerdoRechazandoId, setAcuerdoRechazandoId] = useState(null);
+  const [acuerdoMotivoRechazo, setAcuerdoMotivoRechazo] = useState('');
+  const [acuerdoLoading, setAcuerdoLoading] = useState(false);
+
+  const acuerdosPendientes = useMemo(() =>
+    (oportunidades || []).filter(o => o.acuerdo_estado === 'pendiente'),
+    [oportunidades]
+  );
+
+  const getPctBase = (opp) => {
+    const vendedorId = opp.responsable_id || opp.vendedor_id;
+    const norm = s => (s || '').trim().toLowerCase();
+    const pa = (personalAdmin || []).find(p =>
+      p.auth_user_id === vendedorId ||
+      p.usuario_id === vendedorId ||
+      p.id === vendedorId ||
+      norm(p.nombre) === norm(opp.responsable) ||
+      (p.email && norm(p.email) === norm(opp.responsable))
+    );
+    return pa?.porcentaje_comision ?? 0;
+  };
+
+  const handleAprobar = async (opp) => {
+    setAcuerdoLoading(true);
+    await aprobarAcuerdoComision(opp.id, {
+      acuerdo_pct: acuerdoAprobandoVals.pct !== '' ? Number(acuerdoAprobandoVals.pct) : opp.acuerdo_pct,
+      acuerdo_bonificacion: acuerdoAprobandoVals.bonificacion !== '' ? Number(acuerdoAprobandoVals.bonificacion) : opp.acuerdo_bonificacion,
+    });
+    setAcuerdoAprobandoId(null);
+    setAcuerdoAprobandoVals({ pct: '', bonificacion: '' });
+    setAcuerdoLoading(false);
+  };
+
+  const handleRechazar = async (opp) => {
+    if (!acuerdoMotivoRechazo.trim()) return;
+    setAcuerdoLoading(true);
+    await rechazarAcuerdoComision(opp.id, acuerdoMotivoRechazo.trim());
+    setAcuerdoRechazandoId(null);
+    setAcuerdoMotivoRechazo('');
+    setAcuerdoLoading(false);
+  };
 
   return <>
     <div className="mobile-header">
@@ -1991,6 +2261,167 @@ function GerenciaView({ screen, setScreen }) {
         <div className="card" style={{padding:12}}><div className="text-muted" style={{fontSize:11}}>OTs activas</div><div style={{fontFamily:'Sora', fontWeight:800, fontSize:18}}>{otsActivas}</div></div>
         <div className="card" style={{padding:12}}><div className="text-muted" style={{fontSize:11}}>CxC vencida</div><div style={{fontFamily:'Sora', fontWeight:800, fontSize:18, color:'var(--danger)'}}>{money(cxcVencida)}</div></div>
       </div>
+
+      {/* Acuerdos de comisión pendientes */}
+      <div
+        className="card"
+        style={{padding:14, marginBottom:14, cursor:'pointer', border: acuerdosPendientes.length ? '1px solid var(--orange)' : undefined}}
+        onClick={() => setShowAcuerdos(v => !v)}
+      >
+        <div className="row" style={{justifyContent:'space-between', alignItems:'center'}}>
+          <div className="row" style={{gap:8, alignItems:'center'}}>
+            <div className="kpi-icon orange" style={{position:'static',width:32,height:32}}>{I.dollar}</div>
+            <div>
+              <div style={{fontWeight:700, fontSize:13}}>Acuerdos de comision pendientes</div>
+              <div className="text-muted" style={{fontSize:11}}>Requieren tu aprobacion</div>
+            </div>
+          </div>
+          <div className="row" style={{gap:6, alignItems:'center'}}>
+            {acuerdosPendientes.length > 0 && (
+              <span style={{background:'var(--orange)', color:'#fff', borderRadius:12, padding:'2px 9px', fontWeight:800, fontSize:14}}>
+                {acuerdosPendientes.length}
+              </span>
+            )}
+            <span style={{color:'var(--fg-muted)', fontSize:16}}>{showAcuerdos ? '▲' : '▼'}</span>
+          </div>
+        </div>
+        {!acuerdosPendientes.length && (
+          <div className="text-muted" style={{fontSize:12, marginTop:8}}>No hay acuerdos pendientes</div>
+        )}
+      </div>
+
+      {showAcuerdos && acuerdosPendientes.length > 0 && (
+        <div className="col" style={{gap:10, marginBottom:14}}>
+          {acuerdosPendientes.map(opp => {
+            const pctBase = getPctBase(opp);
+            const diff = Number(opp.acuerdo_pct ?? 0) - pctBase;
+            const isAprobando = acuerdoAprobandoId === opp.id;
+            const isRechazando = acuerdoRechazandoId === opp.id;
+            return (
+              <div key={opp.id} className="card" style={{padding:14, border:'1px solid var(--orange)'}}>
+                <div style={{fontWeight:700, fontSize:13, marginBottom:2}}>{opp.nombre || opp.titulo || 'Oportunidad'}</div>
+                <div className="text-muted" style={{fontSize:11, marginBottom:8}}>{opp.cliente_nombre || opp.cuenta_nombre || ''}</div>
+                <div className="row" style={{gap:8, flexWrap:'wrap', marginBottom:8}}>
+                  <div style={{fontSize:12}}>
+                    <span className="text-muted">Base: </span>
+                    <span style={{fontWeight:700}}>{pctBase}%</span>
+                  </div>
+                  <div style={{fontSize:12}}>
+                    <span className="text-muted">Propuesto: </span>
+                    <span style={{fontWeight:700, color: diff > 0 ? 'var(--danger)' : diff < 0 ? 'var(--green)' : undefined}}>
+                      {opp.acuerdo_pct ?? pctBase}%
+                    </span>
+                  </div>
+                  {diff !== 0 && (
+                    <span style={{
+                      fontSize:11, fontWeight:700, padding:'1px 7px', borderRadius:8,
+                      background: diff > 0 ? 'var(--danger)' : 'var(--green)',
+                      color:'#fff'
+                    }}>
+                      {diff > 0 ? '+' : ''}{diff.toFixed(1)}pp
+                    </span>
+                  )}
+                  {Number(opp.acuerdo_bonificacion) > 0 && (
+                    <div style={{fontSize:12}}>
+                      <span className="text-muted">Bon: </span>
+                      <span style={{fontWeight:700, color:'var(--orange)'}}>{money(opp.acuerdo_bonificacion)}</span>
+                    </div>
+                  )}
+                </div>
+                {opp.acuerdo_justificacion && (
+                  <div style={{fontSize:11, color:'var(--fg-muted)', fontStyle:'italic', marginBottom:8, padding:'6px 8px', background:'var(--bg-soft)', borderRadius:6}}>
+                    "{opp.acuerdo_justificacion}"
+                  </div>
+                )}
+
+                {!isAprobando && !isRechazando && (
+                  <div className="row" style={{gap:8}}>
+                    <button
+                      className="btn btn-sm flex-1"
+                      style={{background:'var(--green)', color:'#fff', border:'none'}}
+                      onClick={e => { e.stopPropagation(); setAcuerdoAprobandoId(opp.id); setAcuerdoAprobandoVals({ pct: opp.acuerdo_pct ?? '', bonificacion: opp.acuerdo_bonificacion ?? '' }); setAcuerdoRechazandoId(null); }}
+                    >
+                      {I.check} Aprobar
+                    </button>
+                    <button
+                      className="btn btn-sm flex-1"
+                      style={{background:'var(--danger)', color:'#fff', border:'none'}}
+                      onClick={e => { e.stopPropagation(); setAcuerdoRechazandoId(opp.id); setAcuerdoMotivoRechazo(''); setAcuerdoAprobandoId(null); }}
+                    >
+                      {I.x} Rechazar
+                    </button>
+                  </div>
+                )}
+
+                {isAprobando && (
+                  <div onClick={e => e.stopPropagation()}>
+                    <div style={{fontSize:11, fontWeight:600, color:'var(--green)', marginBottom:8}}>Editar valores antes de aprobar:</div>
+                    <div className="row" style={{gap:8, marginBottom:8}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:3}}>% Comision</div>
+                        <input
+                          type="number" step="0.01" min="0" max="100"
+                          className="input"
+                          style={{padding:'6px 8px', fontSize:13}}
+                          value={acuerdoAprobandoVals.pct}
+                          onChange={e => setAcuerdoAprobandoVals(v => ({...v, pct: e.target.value}))}
+                        />
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:3}}>Bonificacion</div>
+                        <input
+                          type="number" step="0.01" min="0"
+                          className="input"
+                          style={{padding:'6px 8px', fontSize:13}}
+                          value={acuerdoAprobandoVals.bonificacion}
+                          onChange={e => setAcuerdoAprobandoVals(v => ({...v, bonificacion: e.target.value}))}
+                        />
+                      </div>
+                    </div>
+                    <div className="row" style={{gap:8}}>
+                      <button
+                        className="btn btn-sm flex-1"
+                        style={{background:'var(--green)', color:'#fff', border:'none'}}
+                        disabled={acuerdoLoading}
+                        onClick={() => handleAprobar(opp)}
+                      >
+                        {acuerdoLoading ? 'Guardando...' : `${I.check} Confirmar aprobacion`}
+                      </button>
+                      <button className="btn btn-sm btn-secondary" style={{flex:'0 0 auto'}} onClick={() => setAcuerdoAprobandoId(null)}>Cancelar</button>
+                    </div>
+                  </div>
+                )}
+
+                {isRechazando && (
+                  <div onClick={e => e.stopPropagation()}>
+                    <div style={{fontSize:11, fontWeight:600, color:'var(--danger)', marginBottom:6}}>Motivo de rechazo (obligatorio):</div>
+                    <textarea
+                      className="input"
+                      rows={2}
+                      style={{width:'100%', resize:'none', fontSize:12, padding:'6px 8px', marginBottom:8}}
+                      placeholder="Explica el motivo del rechazo..."
+                      value={acuerdoMotivoRechazo}
+                      onChange={e => setAcuerdoMotivoRechazo(e.target.value)}
+                    />
+                    <div className="row" style={{gap:8}}>
+                      <button
+                        className="btn btn-sm flex-1"
+                        style={{background:'var(--danger)', color:'#fff', border:'none'}}
+                        disabled={acuerdoLoading || !acuerdoMotivoRechazo.trim()}
+                        onClick={() => handleRechazar(opp)}
+                      >
+                        {acuerdoLoading ? 'Guardando...' : `${I.x} Confirmar rechazo`}
+                      </button>
+                      <button className="btn btn-sm btn-secondary" style={{flex:'0 0 auto'}} onClick={() => setAcuerdoRechazandoId(null)}>Cancelar</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="eyebrow" style={{marginBottom:8}}>Alertas prioritarias</div>
       <div className="col" style={{gap:8}}>
         {[

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
-import { canUserSeeOwner, getAssignableUsers } from './lib/hierarchy.js';
+import { canUserSeeOwner, getAssignableUsers, getUserCategory, getUserHierarchyLevel } from './lib/hierarchy.js';
 import { campanasService } from './services/campanasService.js';
 import { maestrosService } from './services/maestrosService.js';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
@@ -349,15 +349,17 @@ function DonutChart() {
 
 // ============ LEADS KANBAN ============
 function Leads() {
-  const { leads, setLeads, crearLead, actualizarLeadDatos, eliminarLead, updateLeadState, convertirLead, descartarLead, reactivarLead, navigate, usuarios, empresa, monedasActivas, searchQuery, campanas, roles, industrias, actividades, historialEstados, addNotificacion } = useApp();
+  const { leads, setLeads, crearLead, actualizarLeadDatos, eliminarLead, updateLeadState, convertirLead, descartarLead, reactivarLead, navigate, usuarios, empresa, monedasActivas, searchQuery, campanas, roles, industrias, actividades, historialEstados, addNotificacion, authUser } = useApp();
   const [view, setView] = useState('kanban');
-  
+
   const query = searchQuery.toLowerCase();
-  const filteredLeads = leads.filter(l => 
-    l.nombre.toLowerCase().includes(query) ||
-    l.empresa_contacto.toLowerCase().includes(query) ||
-    (l.necesidad || '').toLowerCase().includes(query)
-  );
+  const filteredLeads = leads
+    .filter(l => canUserSeeOwner({ viewer: authUser, ownerUserId: l.responsable_id, ownerName: l.responsable, users: usuarios, roles }))
+    .filter(l =>
+      l.nombre.toLowerCase().includes(query) ||
+      l.empresa_contacto.toLowerCase().includes(query) ||
+      (l.necesidad || '').toLowerCase().includes(query)
+    );
   const [sel, setSel] = useState(null);
   const [modalConvertir, setModalConvertir] = useState(null);
   const [convForm, setConvForm] = useState(null);
@@ -384,7 +386,7 @@ function Leads() {
   const formNuevoBase = { nombre:'', cargo:'', empresa_contacto:'', razon_social:'', ruc:'', industria:'', telefono:'', email:'', fuente:'', campana_id:'', registrado_desde:'web', responsable:'', responsable_id:'', urgencia:'media', necesidad:'', presupuesto_estimado:'', moneda: empresa?.moneda || 'PEN', servicio_interes:'' };
   const [formNuevo, setFormNuevo] = useState(formNuevoBase);
   const [errores, setErrores] = useState({});
-  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
+  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const [campanasForm, setCampanasForm] = useState([]);
   const [loadingCampanasForm, setLoadingCampanasForm] = useState(false);
   const [serviciosCatalogo, setServiciosCatalogo] = useState([]);
@@ -1604,9 +1606,10 @@ function Leads() {
 function Pipeline() {
   const {
     oportunidades, cuentas, actividades, agendaEventos, hojasCosteo, cotizaciones, osClientes,
-    oppHistorialEtapas,
+    oppHistorialEtapas, personalAdmin,
     crearAgendaEvento, crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
-    navigate, activeParams, searchQuery, usuarios, roles, empresa, monedasActivas
+    actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision, aprobarAcuerdoComision, rechazarAcuerdoComision, obtenerHistorialAcuerdo,
+    navigate, activeParams, searchQuery, usuarios, roles, role, empresa, monedasActivas, authUser
   } = useApp();
   const [view, setView] = useState('kanban');
   const [sel, setSel] = useState(null);
@@ -1614,12 +1617,21 @@ function Pipeline() {
   const [agendaOpp, setAgendaOpp] = useState(null);
   const [panelNuevaOpp, setPanelNuevaOpp] = useState(false);
   const [pendingPerdida, setPendingPerdida] = useState(null);
+  // Estado local del bloque de comisión (edición en curso)
+  const [acuerdoEdit, setAcuerdoEdit] = useState(null); // { pct, bonificacion, justificacion }
+  const [acuerdoRechazandoMotivo, setAcuerdoRechazandoMotivo] = useState('');
+  const [acuerdoRechazandoId, setAcuerdoRechazandoId] = useState(null);
+  const [acuerdoAprobandoEdit, setAcuerdoAprobandoEdit] = useState(null); // { pct, bonificacion } ajustables al aprobar
+  const [acuerdoHistorial, setAcuerdoHistorial] = useState([]);
+  const [showHistorial, setShowHistorial] = useState(false);
+  const [acuerdoHistorialCargando, setAcuerdoHistorialCargando] = useState(false);
   const [motivoPerdida, setMotivoPerdida] = useState('');
   const [motivoError, setMotivoError] = useState(false);
   const [dropMsg, setDropMsg] = useState(null);
   const [serviciosOpp, setServiciosOpp] = useState([]);
   const [loadingServiciosOpp, setLoadingServiciosOpp] = useState(false);
-  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id });
+  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
+  const cuentasVisibles = cuentas.filter(c => canUserSeeOwner({ viewer: authUser, ownerUserId: c.responsable_id, ownerName: c.responsable_comercial, users: usuarios, roles }));
   const oppFormBase = {
     nombre: '',
     cuenta_id: '',
@@ -1694,6 +1706,16 @@ function Pipeline() {
     }
   }, [panelNuevaOpp, empresa?.id]);
 
+  useEffect(() => {
+    if (oppDetailTab !== 'Comisión' || !sel?.id || !obtenerHistorialAcuerdo) return;
+    setAcuerdoHistorial([]);
+    setAcuerdoHistorialCargando(true);
+    obtenerHistorialAcuerdo(sel.id)
+      .then(rows => setAcuerdoHistorial(rows || []))
+      .catch(() => setAcuerdoHistorial([]))
+      .finally(() => setAcuerdoHistorialCargando(false));
+  }, [oppDetailTab, sel?.id]);
+
   const cols = [
     { k: 'calificacion', title: 'Calificación', color: '#64748b', hint: 'Confirmaste necesidad, presupuesto y que tiene poder de decisión.' },
     { k: 'propuesta',    title: 'Propuesta',    color: '#06b6d4', hint: 'Le enviaste o presentaste una cotización formal. Esperas respuesta.' },
@@ -1705,10 +1727,12 @@ function Pipeline() {
   const activeOps = oportunidades.filter(o => !['perdida'].includes(o.etapa));
   const query = searchQuery.toLowerCase();
   const getOppCuentaNombre = (id) => cuentas.find(c => c.id === id)?.razon_social || id;
-  const filteredOps = oportunidades.filter(o =>
-    o.nombre.toLowerCase().includes(query) ||
-    getOppCuentaNombre(o.cuenta_id).toLowerCase().includes(query)
-  );
+  const filteredOps = oportunidades
+    .filter(o => canUserSeeOwner({ viewer: authUser, ownerUserId: o.responsable_id, ownerName: o.responsable, users: usuarios, roles }))
+    .filter(o =>
+      o.nombre.toLowerCase().includes(query) ||
+      getOppCuentaNombre(o.cuenta_id).toLowerCase().includes(query)
+    );
   const etapaPipeline = (opp) => opp.etapa === 'cierre' ? 'negociacion' : opp.etapa;
 
   const getOppMontoCotizado = (oppId) => {
@@ -1939,8 +1963,13 @@ function Pipeline() {
                           onDragStart={(e) => { if (!isAuto) startKanbanDrag(e, o.id); }}
                           onDragEnd={endKanbanDrag}
                           onClick={() => setSel(o)}
-                          style={{cursor: 'pointer'}}
+                          style={{cursor: 'pointer', ...(o.acuerdo_estado === 'pendiente' ? {borderLeft: '3px solid var(--orange)'} : {})}}
                         >
+                          {o.acuerdo_estado === 'pendiente' && (
+                            <div style={{display:'inline-flex', alignItems:'center', gap:4, background:'rgba(234,88,12,0.1)', color:'var(--orange)', border:'1px solid var(--orange)', borderRadius:999, fontSize:9, fontWeight:700, padding:'2px 8px', marginBottom:8}}>
+                              ● Comisión pendiente de aprobación
+                            </div>
+                          )}
                           <div style={{fontSize:13, fontWeight:700, color:'var(--navy)', marginBottom:10, lineHeight:1.4}}>
                             {o.nombre}
                           </div>
@@ -2060,6 +2089,72 @@ function Pipeline() {
           { icon: I.target,   label: 'Servicio de interés', value: sel.servicio_interes },
           { icon: I.send,     label: 'Fuente',            value: sel.fuente },
         ].filter(r => r.value);
+
+        // ── Comisión ──────────────────────────────────────────────────────
+        // Lookup de dos pasos: usuario → ficha administrativa
+        // El nombre en usuarios puede ser el email-fallback (ej: "camilo.sinche") si no hay user_metadata.nombre,
+        // mientras que personal_administrativo.nombre es el nombre completo ("Camilo Sinche").
+        // Por eso priorizamos: auth_user_id → email → nombre.
+        const _normNombre = s => (s || '').trim().toLowerCase();
+        const _normEmail = s => (s || '').trim().toLowerCase();
+        const vendedorUsuario = usuarios.find(u =>
+          u.id === sel.responsable_id ||
+          u.auth_user_id === sel.responsable_id ||
+          _normNombre(u.nombre) === _normNombre(sel.responsable)
+        );
+        const vendedorPersonal = personalAdmin.find(p =>
+          (vendedorUsuario?.auth_user_id && p.auth_user_id === vendedorUsuario.auth_user_id) ||
+          (vendedorUsuario?.email && p.email && _normEmail(p.email) === _normEmail(vendedorUsuario.email)) ||
+          p.id === sel.responsable_id ||
+          p.auth_user_id === sel.responsable_id ||
+          _normNombre(p.nombre) === _normNombre(sel.responsable)
+        );
+const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPersonal?.porcentaje_comision !== undefined
+          ? Number(vendedorPersonal.porcentaje_comision)
+          : null;
+        const monedaSimbolo = sel.moneda === 'USD' ? 'US$' : 'S/';
+
+        const acuerdoOpp = {
+          estado: sel.acuerdo_estado || 'sin_acuerdo',
+          pct: sel.acuerdo_pct,
+          bonificacion: sel.acuerdo_bonificacion ?? 0,
+          justificacion: sel.acuerdo_justificacion || '',
+          aprobado_por: sel.acuerdo_aprobado_por || '',
+          fecha_aprobacion: sel.acuerdo_fecha_aprobacion || '',
+          motivo_rechazo: sel.acuerdo_motivo_rechazo || '',
+        };
+
+        // Calcular si el acuerdo requiere aprobación
+        const pctPropuesto = acuerdoEdit?.pct !== undefined ? Number(acuerdoEdit.pct) : (acuerdoOpp.pct !== null && acuerdoOpp.pct !== undefined ? Number(acuerdoOpp.pct) : pctBase);
+        const bonPropuesta = acuerdoEdit?.bonificacion !== undefined ? Number(acuerdoEdit.bonificacion) : Number(acuerdoOpp.bonificacion);
+        const requiereAprobacion = bonPropuesta > 0 || (pctBase !== null ? pctPropuesto !== pctBase : pctPropuesto > 0);
+
+        const estadoBadge = {
+          sin_acuerdo: { label: 'Sin acuerdo especial', cls: 'badge-gray' },
+          borrador:    { label: 'Borrador', cls: 'badge-gray' },
+          pendiente:   { label: 'Pendiente de aprobación', cls: 'badge-orange' },
+          aprobado:    { label: 'Aprobado', cls: 'badge-green' },
+          rechazado:   { label: 'Rechazado', cls: 'badge-red' },
+        };
+        const eb = estadoBadge[acuerdoOpp.estado] || estadoBadge.sin_acuerdo;
+
+        // Tab visible para cualquier rol de categoría comercial (regla global de plataforma) o admin
+        const esRolComercial = getUserCategory(authUser, roles) === 'comercial' || role?.categoria === 'comercial';
+        const nivelJerarquico = getUserHierarchyLevel(authUser, roles);
+        const puedeVerComision = esRolComercial || role?.permisos?.ver_costos || role?.permisos?.todo;
+        // Puede aprobar: admin, o rol comercial de nivel jefatura/supervisor/dirección
+        const puedeAprobar = role?.permisos?.aprobar_descuentos || role?.permisos?.tenant_admin || role?.permisos?.todo ||
+          (esRolComercial && ['direccion', 'jefatura', 'supervisor'].includes(nivelJerarquico));
+        // Es el vendedor responsable
+        const esVendedorResponsable = authUser?.id && (
+          sel.responsable_id === authUser.id ||
+          vendedorPersonal?.auth_user_id === authUser.id
+        );
+        const puedeEditarAcuerdo = !['ganada','perdida'].includes(sel.etapa) &&
+          !['aprobado','pendiente'].includes(acuerdoOpp.estado) &&
+          (esVendedorResponsable || puedeAprobar);
+        // ──────────────────────────────────────────────────────────────────
+
         return (
           <>
             <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
@@ -2103,9 +2198,11 @@ function Pipeline() {
                   </div>
                 </div>
                 <div className="ficha-detail-tabs" style={{padding:'0 22px', borderBottom:'1px solid var(--border)', display:'flex', gap:4, flexWrap:'wrap'}}>
-                  {['Resumen', 'Timeline', 'Acciones'].map(t => (
+                  {['Resumen', 'Timeline', 'Acciones', ...(puedeVerComision ? ['Comisión'] : [])].map(t => (
                     <button key={t} className={`ficha-detail-tab ${oppDetailTab===t?'active':''}`} onClick={() => setOppDetailTab(t)}>
-                      {t}
+                      {t === 'Comisión' && acuerdoOpp.estado === 'pendiente'
+                        ? <>{t} <span style={{display:'inline-block', width:7, height:7, borderRadius:99, background:'var(--orange)', marginLeft:4, verticalAlign:'middle'}}/></>
+                        : t}
                     </button>
                   ))}
                 </div>
@@ -2219,10 +2316,12 @@ function Pipeline() {
                       </button>
                     )}
                     <div className="row" style={{gap:8, marginTop:2}}>
-                      <button className="btn flex-1" style={{justifyContent:'center', background:'var(--green-lt)', color:'var(--green-dk)', border:'1px solid rgba(76,175,80,0.3)', fontWeight:600}}
-                        onClick={() => { marcarGanada(sel.id, {}); setSel(null); }}>
-                        {I.check} Ganar
-                      </button>
+                      {sel.etapa === 'negociacion' && (
+                        <button className="btn flex-1" style={{justifyContent:'center', background:'var(--green-lt)', color:'var(--green-dk)', border:'1px solid rgba(76,175,80,0.3)', fontWeight:600}}
+                          onClick={() => { marcarGanada(sel.id, {}); setSel(null); }}>
+                          {I.check} Ganar
+                        </button>
+                      )}
                       <button className="btn btn-ghost flex-1" style={{justifyContent:'center', color:'var(--danger)', opacity:0.75}}
                         onClick={() => { setPendingPerdida(sel.id); setMotivoPerdida(''); setMotivoError(false); }}>
                         Perder
@@ -2257,6 +2356,378 @@ function Pipeline() {
                 })()}
                   </div>
                 )}
+
+                {/* ── Tab: Comisión ─────────────────────────────────────── */}
+                {oppDetailTab === 'Comisión' && puedeVerComision && (() => {
+                  const editando = acuerdoEdit !== null;
+                  const pctValor = editando ? (acuerdoEdit.pct ?? '') : (acuerdoOpp.pct ?? '');
+                  const bonValor = editando ? (acuerdoEdit.bonificacion ?? 0) : acuerdoOpp.bonificacion;
+                  const justValor = editando ? (acuerdoEdit.justificacion ?? '') : acuerdoOpp.justificacion;
+
+                  const diffPct = pctBase !== null && pctValor !== '' && Number(pctValor) !== pctBase;
+                  const hayBon = Number(bonValor) > 0;
+                  const necesitaJustificacion = diffPct || hayBon;
+                  const bloqueado = acuerdoOpp.estado === 'aprobado' || ['ganada','perdida'].includes(sel.etapa);
+                  const enPendiente = acuerdoOpp.estado === 'pendiente';
+
+                  const guardarBorrador = () => {
+                    if (!acuerdoEdit) return;
+                    const pctRaw = acuerdoEdit.pct !== '' && acuerdoEdit.pct != null ? acuerdoEdit.pct : (acuerdoOpp.pct ?? pctBase ?? 0);
+                    const pct = Number(pctRaw);
+                    const bon = Number(acuerdoEdit.bonificacion ?? 0);
+                    const justificacion = acuerdoEdit.justificacion || '';
+                    const esBaseConBon0 = pctBase !== null && pct === pctBase && bon === 0;
+                    if (esBaseConBon0) {
+                      const ahora = new Date().toISOString();
+                      const patch = {
+                        acuerdo_pct: pct,
+                        acuerdo_bonificacion: bon,
+                        acuerdo_justificacion: justificacion,
+                        acuerdo_estado: 'aprobado',
+                        acuerdo_aprobado_por: 'Automático',
+                        acuerdo_fecha_aprobacion: ahora,
+                      };
+                      actualizarAcuerdoComision(sel.id, patch);
+                      setSel(prev => ({ ...prev, ...patch }));
+                    } else {
+                      const patch = {
+                        acuerdo_pct: pct,
+                        acuerdo_bonificacion: bon,
+                        acuerdo_justificacion: justificacion,
+                        acuerdo_estado: 'borrador',
+                      };
+                      actualizarAcuerdoComision(sel.id, patch);
+                      setSel(prev => ({ ...prev, ...patch }));
+                    }
+                    setAcuerdoEdit(null);
+                  };
+
+                  return (
+                    <div className="col" style={{gap:16, padding:22}}>
+                      {/* Estado badge */}
+                      <div style={{display:'flex', alignItems:'center', gap:10, justifyContent:'space-between'}}>
+                        <div>
+                          <div className="eyebrow" style={{marginBottom:4}}>Acuerdo de comisión</div>
+                          <span className={`badge ${eb.cls}`}>{eb.label}</span>
+                          {sel.responsable && (
+                            <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:5}}>
+                              Comisión base de <strong>{sel.responsable}</strong>:{' '}
+                              {pctBase !== null ? `${pctBase}%` : <em>sin datos</em>}
+                            </div>
+                          )}
+                        </div>
+                        {acuerdoOpp.aprobado_por && (
+                          <div style={{fontSize:11, color:'var(--fg-muted)', textAlign:'right'}}>
+                            <div>Aprobado por <strong>{acuerdoOpp.aprobado_por}</strong></div>
+                            <div>{acuerdoOpp.fecha_aprobacion ? new Date(acuerdoOpp.fecha_aprobacion).toLocaleDateString('es-PE') : ''}</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Motivo rechazo */}
+                      {acuerdoOpp.estado === 'rechazado' && acuerdoOpp.motivo_rechazo && (
+                        <div style={{background:'rgba(239,68,68,0.07)', border:'1px solid rgba(239,68,68,0.25)', borderRadius:8, padding:'10px 14px', fontSize:12, color:'var(--danger)'}}>
+                          <strong>Motivo del rechazo:</strong> {acuerdoOpp.motivo_rechazo}
+                        </div>
+                      )}
+
+                      {/* Campos del acuerdo */}
+                      <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
+                        {/* % Comisión */}
+                        <div style={{padding:'12px 14px', borderBottom:'1px solid var(--border)', background:'var(--bg-subtle)'}}>
+                          <div className="eyebrow" style={{marginBottom:6}}>% Comisión acordada</div>
+                          {editando && !bloqueado ? (
+                            <>
+                              <input
+                                type="number" min="0" max="100" step="0.01"
+                                className="input" style={{width:120}}
+                                value={pctValor}
+                                onChange={e => setAcuerdoEdit(prev => ({ ...prev, pct: e.target.value }))}
+                              />
+                              {pctBase !== null && (
+                                <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>
+                                  Tu comisión base es {pctBase}%
+                                </div>
+                              )}
+                              {pctBase !== null && pctValor !== '' && (() => {
+                                const pctNum = Number(pctValor);
+                                if (pctNum === pctBase) return (
+                                  <div style={{marginTop:6, padding:'6px 10px', background:'rgba(16,185,129,0.1)', border:'1px solid rgba(16,185,129,0.3)', borderRadius:6, fontSize:11, color:'#059669', lineHeight:1.5}}>
+                                    Este % coincide con tu comisión base ({pctBase}%). No requiere aprobación adicional.
+                                  </div>
+                                );
+                                if (pctNum > pctBase) return (
+                                  <div style={{marginTop:6, padding:'6px 10px', background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.3)', borderRadius:6, fontSize:11, color:'#c2410c', lineHeight:1.5}}>
+                                    Tu comisión base es {pctBase}%. Estás proponiendo {pctValor}% — este acuerdo requerirá aprobación del Gerente Comercial o Admin.
+                                  </div>
+                                );
+                                return (
+                                  <div style={{marginTop:6, padding:'6px 10px', background:'rgba(6,182,212,0.1)', border:'1px solid rgba(6,182,212,0.3)', borderRadius:6, fontSize:11, color:'#0e7490', lineHeight:1.5}}>
+                                    Tu comisión base es {pctBase}%. Estás proponiendo {pctValor}% que es menor a tu base.
+                                  </div>
+                                );
+                              })()}
+                            </>
+                          ) : (
+                            <div style={{fontSize:15, fontWeight:700, color:'var(--navy)'}}>
+                              {pctValor !== '' ? `${pctValor}%` : (pctBase !== null ? `${pctBase}% (base)` : '—')}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Bonificación */}
+                        <div style={{padding:'12px 14px', borderBottom:'1px solid var(--border)'}}>
+                          <div className="eyebrow" style={{marginBottom:6}}>Bonificación fija ({monedaSimbolo})</div>
+                          {editando && !bloqueado ? (
+                            <>
+                              <input
+                                type="number" min="0" step="0.01"
+                                className="input" style={{width:160}}
+                                value={bonValor}
+                                onChange={e => setAcuerdoEdit(prev => ({ ...prev, bonificacion: e.target.value }))}
+                              />
+                              {hayBon && (
+                                <div style={{marginTop:6, padding:'6px 10px', background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.3)', borderRadius:6, fontSize:11, color:'#c2410c', lineHeight:1.5}}>
+                                  Estás proponiendo una bonificación adicional de {monedaSimbolo} {Number(bonValor).toFixed(2)} — este acuerdo requerirá aprobación.
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div style={{fontSize:15, fontWeight:700, color: hayBon ? 'var(--orange)' : 'var(--fg-muted)'}}>
+                              {hayBon ? `${monedaSimbolo} ${Number(bonValor).toFixed(2)}` : '—'}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Justificación */}
+                        <div style={{padding:'12px 14px'}}>
+                          <div className="eyebrow" style={{marginBottom:6}}>
+                            Justificación del acuerdo {necesitaJustificacion && <span style={{color:'var(--danger)'}}>*</span>}
+                          </div>
+                          {editando && !bloqueado ? (
+                            <textarea
+                              className="input" rows={3}
+                              placeholder="Ej: Cliente estratégico con contrato multianual"
+                              value={justValor}
+                              onChange={e => setAcuerdoEdit(prev => ({ ...prev, justificacion: e.target.value }))}
+                              style={{resize:'vertical'}}
+                            />
+                          ) : (
+                            <div style={{fontSize:13, color: justValor ? 'var(--fg)' : 'var(--fg-muted)', fontStyle: justValor ? 'normal' : 'italic', lineHeight:1.6}}>
+                              {justValor || 'Sin justificación'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Botones según estado y rol */}
+                      <div className="col" style={{gap:8}}>
+                        {/* Edición: guardar borrador / cancelar */}
+                        {editando && !bloqueado && (
+                          <div className="row" style={{gap:8}}>
+                            <button className="btn btn-primary flex-1" style={{justifyContent:'center'}} onClick={guardarBorrador}>
+                              {I.check} Guardar borrador
+                            </button>
+                            <button className="btn btn-ghost flex-1" style={{justifyContent:'center'}} onClick={() => setAcuerdoEdit(null)}>
+                              Cancelar
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Vendedor en estado sin_acuerdo/borrador/rechazado: editar y enviar */}
+                        {!editando && !bloqueado && ['sin_acuerdo','borrador','rechazado'].includes(acuerdoOpp.estado) && puedeEditarAcuerdo && (
+                          <div className="row" style={{gap:8}}>
+                            <button className="btn btn-secondary flex-1" style={{justifyContent:'center', fontSize:12}}
+                              onClick={() => setAcuerdoEdit({
+                                pct: acuerdoOpp.pct ?? pctBase ?? '',
+                                bonificacion: acuerdoOpp.bonificacion ?? 0,
+                                justificacion: acuerdoOpp.justificacion ?? '',
+                              })}>
+                              {I.edit || '✏️'} {acuerdoOpp.estado === 'sin_acuerdo' ? 'Proponer acuerdo' : acuerdoOpp.estado === 'rechazado' ? 'Corregir y reenviar' : 'Editar borrador'}
+                            </button>
+                            {requiereAprobacion && ['borrador','rechazado'].includes(acuerdoOpp.estado) && (
+                              <button className="btn btn-primary flex-1" style={{justifyContent:'center', fontSize:12, background:'var(--orange)', borderColor:'var(--orange)'}}
+                                onClick={() => enviarAcuerdoAAprobacion(sel.id)}>
+                                Enviar a aprobación
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Vendedor en estado pendiente: info + retirar */}
+                        {!editando && enPendiente && esVendedorResponsable && !puedeAprobar && (
+                          <div className="col" style={{gap:8}}>
+                            <div style={{fontSize:12, color:'var(--fg-muted)', fontStyle:'italic', textAlign:'center', padding:'4px 0'}}>
+                              Esperando aprobación del Gerente Comercial
+                            </div>
+                            <button className="btn btn-ghost" style={{justifyContent:'center', fontSize:12, color:'var(--fg-muted)'}}
+                              onClick={() => retirarAcuerdoComision(sel.id)}>
+                              Retirar solicitud
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Gerente en estado pendiente: aprobar / rechazar */}
+                        {!editando && enPendiente && puedeAprobar && (() => {
+                          if (acuerdoRechazandoId === sel.id) {
+                            return (
+                              <div className="col" style={{gap:8}}>
+                                <textarea className="input" rows={2} placeholder="Motivo del rechazo (obligatorio)"
+                                  value={acuerdoRechazandoMotivo}
+                                  onChange={e => setAcuerdoRechazandoMotivo(e.target.value)}
+                                />
+                                <div className="row" style={{gap:8}}>
+                                  <button className="btn btn-ghost flex-1" style={{justifyContent:'center', fontSize:12}}
+                                    onClick={() => { setAcuerdoRechazandoId(null); setAcuerdoRechazandoMotivo(''); }}>
+                                    Cancelar
+                                  </button>
+                                  <button className="btn flex-1" style={{justifyContent:'center', fontSize:12, background:'var(--danger)', color:'#fff', border:'none'}}
+                                    disabled={!acuerdoRechazandoMotivo.trim()}
+                                    onClick={() => { rechazarAcuerdoComision(sel.id, acuerdoRechazandoMotivo.trim()); setAcuerdoRechazandoId(null); setAcuerdoRechazandoMotivo(''); }}>
+                                    Confirmar rechazo
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+                          if (acuerdoAprobandoEdit !== null && acuerdoAprobandoEdit._oppId === sel.id) {
+                            return (
+                              <div className="col" style={{gap:10}}>
+                                <div style={{fontSize:12, color:'var(--fg-muted)', fontStyle:'italic'}}>
+                                  Puedes ajustar los valores antes de aprobar. El vendedor será notificado si los cambias.
+                                </div>
+                                <div className="grid-2" style={{gap:10}}>
+                                  <div className="input-group">
+                                    <label style={{fontSize:11}}>% Comisión</label>
+                                    <input type="number" min="0" max="100" step="0.01" className="input"
+                                      value={acuerdoAprobandoEdit.pct}
+                                      onChange={e => setAcuerdoAprobandoEdit(prev => ({ ...prev, pct: e.target.value }))}
+                                    />
+                                  </div>
+                                  <div className="input-group">
+                                    <label style={{fontSize:11}}>Bonificación ({monedaSimbolo})</label>
+                                    <input type="number" min="0" step="0.01" className="input"
+                                      value={acuerdoAprobandoEdit.bonificacion}
+                                      onChange={e => setAcuerdoAprobandoEdit(prev => ({ ...prev, bonificacion: e.target.value }))}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="row" style={{gap:8}}>
+                                  <button className="btn btn-ghost flex-1" style={{justifyContent:'center', fontSize:12}}
+                                    onClick={() => setAcuerdoAprobandoEdit(null)}>
+                                    Cancelar
+                                  </button>
+                                  <button className="btn btn-primary flex-1" style={{justifyContent:'center', fontSize:12, background:'var(--green)', borderColor:'var(--green)'}}
+                                    onClick={() => {
+                                      aprobarAcuerdoComision(sel.id, {
+                                        acuerdo_pct: Number(acuerdoAprobandoEdit.pct),
+                                        acuerdo_bonificacion: Number(acuerdoAprobandoEdit.bonificacion),
+                                      });
+                                      setAcuerdoAprobandoEdit(null);
+                                    }}>
+                                    {I.check} Confirmar aprobación
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return (
+                            <>
+                              <button className="btn btn-primary" style={{justifyContent:'center', fontSize:12, background:'var(--green)', borderColor:'var(--green)'}}
+                                onClick={() => setAcuerdoAprobandoEdit({ _oppId: sel.id, pct: acuerdoOpp.pct ?? pctBase ?? 0, bonificacion: acuerdoOpp.bonificacion ?? 0 })}>
+                                {I.check} Aprobar acuerdo
+                              </button>
+                              <button className="btn btn-ghost" style={{justifyContent:'center', fontSize:12, color:'var(--danger)'}}
+                                onClick={() => { setAcuerdoRechazandoId(sel.id); setAcuerdoRechazandoMotivo(''); }}>
+                                Rechazar
+                              </button>
+                              <button className="btn btn-ghost" style={{justifyContent:'center', fontSize:12, color:'var(--fg-muted)'}}
+                                onClick={() => retirarAcuerdoComision(sel.id)}>
+                                Retirar solicitud
+                              </button>
+                            </>
+                          );
+                        })()}
+
+                        {/* Bloqueado */}
+                        {bloqueado && acuerdoOpp.estado !== 'sin_acuerdo' && (
+                          <div style={{fontSize:11, color:'var(--fg-muted)', textAlign:'center', fontStyle:'italic', padding:'4px 0'}}>
+                            {['ganada','perdida'].includes(sel.etapa) ? 'La oportunidad está cerrada — el acuerdo no puede modificarse.' : 'Acuerdo aprobado — no editable.'}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Historial de movimientos */}
+                      <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
+                        <button
+                          className="btn btn-ghost"
+                          style={{width:'100%', justifyContent:'space-between', padding:'12px 14px', borderRadius:0, fontSize:12, fontWeight:600, color:'var(--fg-muted)'}}
+                          onClick={() => setShowHistorial(v => !v)}
+                        >
+                          <span>Historial de movimientos</span>
+                          <span>{showHistorial ? '▲' : '▼'}</span>
+                        </button>
+                        {showHistorial && (
+                          <div style={{padding:'0 14px 14px'}}>
+                            {acuerdoHistorialCargando ? (
+                              <div style={{fontSize:12, color:'var(--fg-muted)', padding:'8px 0'}}>Cargando...</div>
+                            ) : acuerdoHistorial.length === 0 ? (
+                              <div style={{fontSize:12, color:'var(--fg-muted)', padding:'8px 0', fontStyle:'italic'}}>Sin movimientos registrados.</div>
+                            ) : (
+                              <div className="col" style={{gap:0}}>
+                                {acuerdoHistorial.map((h, idx) => {
+                                  const accionLabel = {
+                                    propuesta: 'Propuesta creada',
+                                    envio: 'Enviado a aprobación',
+                                    retiro: 'Solicitud retirada',
+                                    aprobacion: 'Aprobado',
+                                    ajuste_gerente: 'Aprobado con ajuste',
+                                    rechazo: 'Rechazado',
+                                  }[h.accion] || h.accion;
+                                  const accionColor = {
+                                    aprobacion: 'var(--green)',
+                                    ajuste_gerente: 'var(--cyan)',
+                                    rechazo: 'var(--danger)',
+                                    envio: 'var(--orange)',
+                                    retiro: 'var(--fg-muted)',
+                                    propuesta: 'var(--fg-muted)',
+                                  }[h.accion] || 'var(--fg-muted)';
+                                  return (
+                                    <div key={h.id || idx} style={{display:'flex', gap:10, paddingTop:idx === 0 ? 8 : 0}}>
+                                      <div style={{display:'flex', flexDirection:'column', alignItems:'center', width:18, flexShrink:0}}>
+                                        <div style={{width:8, height:8, borderRadius:99, background:accionColor, marginTop:4, flexShrink:0}}/>
+                                        {idx < acuerdoHistorial.length - 1 && <div style={{width:1, flex:1, background:'var(--border)', marginTop:2}}/>}
+                                      </div>
+                                      <div style={{flex:1, paddingBottom:12}}>
+                                        <div style={{fontSize:12, fontWeight:700, color:accionColor}}>{accionLabel}</div>
+                                        <div style={{fontSize:11, color:'var(--fg-muted)'}}>
+                                          {h.actor_nombre || 'Sistema'} · {new Date(h.created_at).toLocaleString('es-PE', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'})}
+                                        </div>
+                                        {(h.acuerdo_pct != null || Number(h.acuerdo_bonificacion) > 0) && (
+                                          <div style={{fontSize:11, marginTop:2}}>
+                                            {h.acuerdo_pct != null && <span style={{marginRight:8}}>{h.acuerdo_pct}% comisión</span>}
+                                            {Number(h.acuerdo_bonificacion) > 0 && <span>+ {money(h.acuerdo_bonificacion)} bon.</span>}
+                                          </div>
+                                        )}
+                                        {(h.justificacion || h.motivo) && (
+                                          <div style={{fontSize:11, color:'var(--fg-muted)', fontStyle:'italic', marginTop:2}}>
+                                            "{h.justificacion || h.motivo}"
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {/* ─────────────────────────────────────────────────────── */}
+
                 </div>
               </div>
             </div>
@@ -2349,7 +2820,7 @@ function Pipeline() {
                   <label>Cuenta *</label>
                   <select className="select" required value={oppForm.cuenta_id} onChange={e=>updateOppForm('cuenta_id',e.target.value)}>
                     <option value="">Seleccionar...</option>
-                    {cuentas.map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial}</option>)}
+                    {cuentasVisibles.map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial}</option>)}
                   </select>
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
@@ -2458,18 +2929,20 @@ function Pipeline() {
 
 // ============ ACTIVIDADES ============
 function Actividades() {
-  const { actividades, cuentas, registrarActividad, actualizarActividad, searchQuery } = useApp();
+  const { actividades, cuentas, registrarActividad, actualizarActividad, searchQuery, authUser, usuarios, roles } = useApp();
   const [view, setView] = useState('agenda'); // 'agenda' | 'lista'
   const [sel, setSel] = useState(null);
   const [modalNew, setModalNew] = useState(false);
 
   const query = searchQuery.toLowerCase();
   const getActCuentaNombre = (id) => cuentas.find(c => c.id === id)?.razon_social || id;
-  const filteredActs = actividades.filter(a => 
-    a.descripcion.toLowerCase().includes(query) ||
-    (a.tipo || '').toLowerCase().includes(query) ||
-    getActCuentaNombre(a.cuenta_id).toLowerCase().includes(query)
-  );
+  const filteredActs = actividades
+    .filter(a => canUserSeeOwner({ viewer: authUser, ownerName: a.responsable, users: usuarios, roles }))
+    .filter(a =>
+      a.descripcion.toLowerCase().includes(query) ||
+      (a.tipo || '').toLowerCase().includes(query) ||
+      getActCuentaNombre(a.cuenta_id).toLowerCase().includes(query)
+    );
 
   const cols = [
     { k: 'vencida', title: 'Vencidas', color: 'var(--danger)' },
@@ -2766,7 +3239,7 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
     ? (hojasCosteo || []).find(h => h.id === cotizacion.hoja_costeo_id && h.estado === 'aprobada')
     : null;
   const hcSaldoNoAsignado = hcVinculada ? (hcVinculada.costo_total || 0) - totalOTsExistentes : 0;
-  const montoBase = Number(os.monto_aprobado || 0);
+  const montoBase = hcVinculada ? (hcVinculada.costo_total || 0) : Number(os.monto_aprobado || 0);
   const saldoBase = montoBase - totalOTsExistentes;
   const totalAsignado = filas.reduce((s, f) => s + Number(f.costo_estimado || 0), 0);
   const saldoLibre = saldoBase - totalAsignado;
@@ -2912,7 +3385,7 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
         </div>
       )}
 
-      {/* Estado del presupuesto */}
+      {/* Control de costo / Valor del contrato */}
       {montoBase > 0 && (
         <div style={{
           background: saldoBase < 0 ? '#fef2f2' : saldoBase === 0 ? '#fff7ed' : '#f0fdf4',
@@ -2920,12 +3393,16 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
           borderRadius: 8, padding: 16, marginBottom: 16
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-            <span style={{ fontWeight: 600, fontSize: 13 }}>Estado del presupuesto</span>
-            <span style={{ fontSize: 13 }}>Total aprobado: <strong>{moneyCurrency(montoBase, os.moneda)}</strong></span>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>
+              {hcVinculada ? 'Control de costo — HC aprobada' : 'Valor del contrato'}
+            </span>
+            <span style={{ fontSize: 13 }}>
+              {hcVinculada ? 'Presupuesto de costo:' : 'Valor del contrato:'} <strong>{moneyCurrency(montoBase, os.moneda)}</strong>
+            </span>
           </div>
           <div style={{ marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, fontSize: 11, color: '#666' }}>
-              <span>Asignado</span><span>{pct}%</span>
+              <span>{hcVinculada ? 'Costo asignado a OTs' : 'Valor asignado a OTs'}</span><span>{pct}%</span>
             </div>
             <div style={{ height: 6, background: 'rgba(0,0,0,0.08)', borderRadius: 3, overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: pct > 100 ? '#ef4444' : pct >= 100 ? '#f97316' : '#3b82f6', borderRadius: 3, transition: 'width .3s' }} />
@@ -2967,13 +3444,17 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingTop: otsExistentes.length > 0 ? 8 : 0, borderTop: otsExistentes.length > 0 ? '1px solid rgba(0,0,0,0.08)' : 'none' }}>
             <div style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-              Saldo disponible: <strong style={{ color: saldoBase < 0 ? '#dc2626' : saldoBase === 0 ? '#d97706' : '#16a34a', fontSize: 14 }}>{moneyCurrency(saldoBase, os.moneda)}</strong>
+              {hcVinculada ? 'Saldo de costo disponible:' : 'Saldo del contrato:'} <strong style={{ color: saldoBase < 0 ? '#dc2626' : saldoBase === 0 ? '#d97706' : '#16a34a', fontSize: 14 }}>{moneyCurrency(saldoBase, os.moneda)}</strong>
             </div>
             {saldoBase <= 0 && (
               <div style={{ fontSize: 12, color: saldoBase < 0 ? '#dc2626' : '#d97706' }}>
                 {saldoBase < 0
-                  ? '⚠ El saldo ya es negativo. La OS ha superado su presupuesto original.'
-                  : '⚠ El presupuesto ya está completamente asignado. Puedes crear una OT adicional fuera del alcance original.'}
+                  ? (hcVinculada
+                      ? '⚠ Los costos superan el presupuesto de la HC. Esta OT será trabajo adicional no planificado.'
+                      : '⚠ El valor asignado supera el contrato. Esta OT será adicional al alcance original.')
+                  : (hcVinculada
+                      ? '⚠ El presupuesto de costo de la HC está completamente asignado. Puedes agregar OTs adicionales.'
+                      : '⚠ El valor del contrato está completamente asignado. Puedes crear OTs adicionales.')}
               </div>
             )}
           </div>
@@ -3015,37 +3496,37 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
                   <td style={{ padding: '6px 10px', color: '#888', verticalAlign: 'middle' }}>{idx + 1}</td>
                   <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
                     {tiposActivos.length > 0 ? (
-                      <select className="form-control" value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} style={{ fontSize: 12 }}>
+                      <select className="select" value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} style={{ fontSize: 12 }}>
                         <option value="">— Servicio —</option>
                         {tiposActivos.map(t => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
                       </select>
                     ) : (
-                      <input className="form-control" value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} placeholder="Servicio" style={{ fontSize: 12 }} />
+                      <input className="input" value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} placeholder="Servicio" style={{ fontSize: 12 }} />
                     )}
                   </td>
                   <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    <select className="form-control" value={fila.centro_costo_id} onChange={e => updFila(fila._id, 'centro_costo_id', e.target.value)} style={{ fontSize: 12 }}>
+                    <select className="select" value={fila.centro_costo_id} onChange={e => updFila(fila._id, 'centro_costo_id', e.target.value)} style={{ fontSize: 12 }}>
                       <option value="">— CECO —</option>
                       {cecos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} – ` : ''}{c.nombre}</option>)}
                     </select>
                   </td>
                   <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    <input className="form-control" type="number" min="0" value={fila.costo_estimado} onChange={e => updFila(fila._id, 'costo_estimado', e.target.value)} style={{ fontSize: 12, textAlign: 'right' }} />
+                    <input className="input" type="number" min="0" value={fila.costo_estimado} onChange={e => updFila(fila._id, 'costo_estimado', e.target.value)} style={{ fontSize: 12, textAlign: 'right' }} />
                   </td>
                   <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    <input className="form-control" type="date" value={fila.fecha_programada} onChange={e => updFila(fila._id, 'fecha_programada', e.target.value)} style={{ fontSize: 12 }} />
+                    <input className="input" type="date" value={fila.fecha_programada} onChange={e => updFila(fila._id, 'fecha_programada', e.target.value)} style={{ fontSize: 12 }} />
                   </td>
                   <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    <input className="form-control" type="date" value={fila.fecha_fin} onChange={e => updFila(fila._id, 'fecha_fin', e.target.value)} style={{ fontSize: 12 }} />
+                    <input className="input" type="date" value={fila.fecha_fin} onChange={e => updFila(fila._id, 'fecha_fin', e.target.value)} style={{ fontSize: 12 }} />
                   </td>
                   <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    <select className="form-control" value={fila.tecnico_responsable_id} onChange={e => updFila(fila._id, 'tecnico_responsable_id', e.target.value)} style={{ fontSize: 12 }}>
+                    <select className="select" value={fila.tecnico_responsable_id} onChange={e => updFila(fila._id, 'tecnico_responsable_id', e.target.value)} style={{ fontSize: 12 }}>
                       <option value="">— Sin asignar —</option>
                       {personal.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                     </select>
                   </td>
                   <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    <select className="form-control" value={fila.prioridad} onChange={e => updFila(fila._id, 'prioridad', e.target.value)} style={{ fontSize: 12 }}>
+                    <select className="select" value={fila.prioridad} onChange={e => updFila(fila._id, 'prioridad', e.target.value)} style={{ fontSize: 12 }}>
                       <option value="normal">Normal</option>
                       <option value="urgente">Urgente</option>
                       <option value="critica">Crítica</option>
@@ -3327,7 +3808,7 @@ function OSCliente() {
   const {
     osClientes, cuentas, cotizaciones, ots, valorizaciones, facturas, cxc,
     activeParams, navigate, searchQuery,
-    cambiarEstadoOS, actualizarHitosFacturacion, vincularCotizacionOS, actualizarOT,
+    cambiarEstadoOS, actualizarHitosFacturacion, vincularCotizacionOS, actualizarOT, eliminarOT,
     actualizarOSCliente, centrosBeneficio,
   } = useApp();
 
@@ -3478,7 +3959,12 @@ function OSCliente() {
             <div className="kpi-card">
               <div className="kpi-label">Valorizado</div>
               <div className="kpi-value">{moneyCurrency(valorizado, os.moneda)}</div>
-              <div className="text-muted" style={{fontSize:11}}>{osVals.length} valorización(es)</div>
+              <div className="text-muted" style={{fontSize:11}}>
+                {osVals.length} valorización(es)
+                {Number(os.saldo_por_valorizar || 0) > 0 && (
+                  <span style={{color:'var(--orange)', marginLeft:6}}>· Saldo: {moneyCurrency(os.saldo_por_valorizar, os.moneda)}</span>
+                )}
+              </div>
             </div>
             <div className="kpi-card">
               <div className="kpi-label">Facturado</div>
@@ -3543,12 +4029,16 @@ function OSCliente() {
           </div>
         </div>
 
-        <div className="tabs" style={{padding:'0 32px'}}>
-          {tabs.map(t => <button key={t} className={`tab ${activeTab===t?'active':''}`} onClick={() => navigate('os_cliente', { detail: os.id, tab: t })}>{t}</button>)}
+        <div className="tabs os-detail-tabs ficha-detail-tabs" style={{padding:'0 32px'}}>
+          {tabs.map(t => (
+            <button key={t} className={`tab ficha-detail-tab ${activeTab===t?'active':''}`} onClick={() => navigate('os_cliente', { detail: os.id, tab: t })}>
+              {t}
+            </button>
+          ))}
         </div>
 
-        <div style={{padding:'16px 32px 40px'}}>
-          <div className="card">
+        <div className="os-detail-content" style={{padding:'16px 32px 40px'}}>
+          <div className="card os-detail-panel">
 
             {activeTab === 'Cotizaciones' && <>
               <div className="card-head" style={{justifyContent:'space-between'}}>
@@ -3578,7 +4068,7 @@ function OSCliente() {
             {activeTab === 'OTs' && <>
               <div className="card-head" style={{justifyContent:'space-between'}}>
                 <h3>Órdenes de Trabajo</h3>
-                {!cerrada && <button className="btn btn-primary" style={{fontSize:12}} data-local-form="true" onClick={() => navigate('os_cliente', { detail: os.id, crear_ot: true })}>{I.plus} Nueva OT</button>}
+                {!cerrada && <button className="btn btn-primary os-local-action" style={{fontSize:12}} data-local-form="true" onClick={() => navigate('os_cliente', { detail: os.id, crear_ot: true })}>{I.plus} Nueva OT</button>}
               </div>
               <div className="table-wrap">
                 <table className="tbl">
@@ -3601,12 +4091,16 @@ function OSCliente() {
                             onClick={() => navigate('ot', { detail: ot.id })}>
                             Editar
                           </button>
-                          {['borrador','programada'].includes(ot.estado) && !cerrada && (
-                            <button className="btn btn-secondary" style={{fontSize:11, padding:'2px 8px', color:'var(--danger)'}}
+                          {['borrador','programada'].includes(ot.estado) && !cerrada && (<>
+                            <button className="btn btn-secondary" style={{fontSize:11, padding:'2px 8px', color:'var(--fg-muted)'}}
                               onClick={() => { if (window.confirm(`¿Desvincular ${ot.numero} de esta OS?`)) actualizarOT(ot.id, { os_cliente_id: null }); }}>
                               Desvincular
                             </button>
-                          )}
+                            <button className="btn btn-secondary" style={{fontSize:11, padding:'2px 8px', color:'var(--danger)'}}
+                              onClick={() => { if (window.confirm(`¿Eliminar ${ot.numero}? Esta acción no se puede deshacer.`)) eliminarOT(ot.id); }}>
+                              Eliminar
+                            </button>
+                          </>)}
                         </td>
                       </tr>
                     ))}
@@ -4714,7 +5208,8 @@ function AgendaComercial() {
     notas: '',
   };
   const [eventoForm, setEventoForm] = useState(eventoFormBase);
-  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true });
+  const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, viewer: authUser });
+  const cuentasVisibles = cuentas.filter(c => canUserSeeOwner({ viewer: authUser, ownerUserId: c.responsable_id, ownerName: c.responsable_comercial, users: usuarios, roles }));
   const updateEventoForm = (field, value) => setEventoForm(prev => ({ ...prev, [field]: value }));
   const cerrarNuevoEvento = () => {
     setPanelNuevoEvento(false);
@@ -5275,7 +5770,7 @@ function AgendaComercial() {
                   <label>Cuenta</label>
                   <select className="select" value={eventoForm.cuenta_id} onChange={e=>updateEventoForm('cuenta_id',e.target.value)}>
                     <option value="">Sin cuenta vinculada</option>
-                    {cuentas.map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial}</option>)}
+                    {cuentasVisibles.map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial}</option>)}
                   </select>
                 </div>
                 <div className="input-group">

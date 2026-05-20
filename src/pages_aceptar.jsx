@@ -340,6 +340,104 @@ export function PaginaAceptacion({ token }) {
   );
 }
 
+export function PaginaConformidadOT({ token }) {
+  const [phase, setPhase] = useState('loading');
+  const [ot, setOt]       = useState(null);
+  const [nombre, setNombre] = useState('');
+  const [dni, setDni]     = useState('');
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    sb.rpc('get_ot_conformidad_publica', { p_token: token })
+      .then(({ data, error: e }) => {
+        if (e || !data) { setPhase('invalid'); return; }
+        if (data.status === 'token_invalido') { setPhase('invalid'); return; }
+        if (data.status === 'ya_firmada') { setOt(data); setPhase('already'); return; }
+        setOt(data.ot);
+        setPhase('ready');
+      })
+      .catch(() => setPhase('invalid'));
+  }, [token]);
+
+  const handleFirmar = async (e) => {
+    e.preventDefault();
+    setError(null);
+    if (!nombre.trim() || !dni.trim()) { setError('Completa todos los campos para continuar.'); return; }
+    setPhase('submitting');
+    let ip = 'desconocida';
+    try { const r = await fetch('https://api.ipify.org?format=json'); ip = (await r.json()).ip; } catch (_) {}
+    const { data: rpc, error: rpcErr } = await sb.rpc('registrar_conformidad_ot', {
+      p_token: token, p_nombre: nombre.trim(), p_dni: dni.trim(), p_ip: ip,
+    });
+    if (rpcErr || !rpc?.ok) {
+      setError(rpc?.error === 'ya_firmada_o_invalida' ? 'Esta conformidad ya fue registrada.' : 'Error al registrar. Intenta de nuevo.');
+      setPhase('ready');
+      return;
+    }
+    setPhase('done');
+  };
+
+  if (phase === 'loading') return (
+    <div style={styles.shell}><div style={styles.card}><div style={{textAlign:'center',padding:'40px 0',color:'#888'}}>Cargando…</div></div></div>
+  );
+  if (phase === 'invalid') return (
+    <div style={styles.shell}><div style={styles.card}><div style={{textAlign:'center',padding:'40px 0'}}>
+      <div style={{fontSize:36,marginBottom:12}}>🔒</div>
+      <div style={{fontSize:18,fontWeight:700,marginBottom:8}}>Enlace inválido o expirado</div>
+      <div style={{color:'#888',fontSize:14}}>Contacta al proveedor del servicio para obtener un nuevo enlace.</div>
+    </div></div></div>
+  );
+  if (phase === 'already') return (
+    <div style={styles.shell}><div style={styles.card}><div style={{textAlign:'center',padding:'40px 0'}}>
+      <div style={{fontSize:36,marginBottom:12}}>✅</div>
+      <div style={{fontSize:18,fontWeight:700,marginBottom:8}}>Conformidad ya registrada</div>
+      <div style={{color:'#888',fontSize:14}}>Registrada el {fmtDt(ot?.fecha)}{ot?.nombre ? ` por ${ot.nombre}` : ''}.</div>
+    </div></div></div>
+  );
+  if (phase === 'done') return (
+    <div style={styles.shell}><div style={{...styles.card,borderTop:'4px solid #1A2B4A'}}><div style={{textAlign:'center',padding:'40px 0'}}>
+      <div style={{fontSize:40,marginBottom:12}}>✅</div>
+      <div style={{fontSize:20,fontWeight:800,color:'#1A2B4A',marginBottom:8}}>¡Conformidad registrada!</div>
+      <div style={{color:'#555',fontSize:14,lineHeight:1.6}}>Tu conformidad para <strong>{ot?.numero}</strong> ha sido registrada con éxito.</div>
+    </div></div></div>
+  );
+
+  return (
+    <div style={styles.shell}>
+      <div style={{background:'#1A2B4A',padding:'12px 20px',marginBottom:20}}>
+        <span style={{color:'#fff',fontWeight:700,fontSize:16}}>Conformidad de Servicio</span>
+      </div>
+      <div style={{maxWidth:560,margin:'0 auto',padding:'0 16px 40px'}}>
+        <div style={{...styles.card,borderTop:'3px solid #1A2B4A',marginBottom:16}}>
+          <div style={{fontSize:11,color:'#607D8B',letterSpacing:1,marginBottom:4}}>ORDEN DE TRABAJO</div>
+          <div style={{fontSize:22,fontWeight:800,color:'#1A2B4A',marginBottom:8}}>{ot?.numero}</div>
+          {ot?.servicio && <div style={{fontSize:13,color:'#555',marginBottom:4}}><strong>Servicio:</strong> {ot.servicio}</div>}
+          {ot?.descripcion_trabajo && <div style={{fontSize:13,color:'#555',marginBottom:4}}><strong>Trabajo realizado:</strong> {ot.descripcion_trabajo}</div>}
+          {ot?.fecha_cierre && <div style={{fontSize:13,color:'#555'}}><strong>Fecha de cierre:</strong> {ot.fecha_cierre}</div>}
+        </div>
+        <div style={{...styles.card,borderTop:'3px solid #1A2B4A'}}>
+          <div style={{fontSize:15,fontWeight:800,color:'#1A2B4A',marginBottom:4}}>Confirmar conformidad</div>
+          <div style={{fontSize:13,color:'#666',marginBottom:20,lineHeight:1.5}}>Al firmar confirmas que el servicio fue realizado correctamente y de acuerdo a lo acordado.</div>
+          <form onSubmit={handleFirmar}>
+            <div style={{marginBottom:14}}>
+              <label style={styles.label}>Nombre completo *</label>
+              <input style={styles.input} value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej: Juan Pérez García" autoComplete="name"/>
+            </div>
+            <div style={{marginBottom:20}}>
+              <label style={styles.label}>DNI *</label>
+              <input style={styles.input} value={dni} onChange={e => setDni(e.target.value)} placeholder="Ej: 12345678" inputMode="numeric" maxLength={15}/>
+            </div>
+            {error && <div style={{background:'#fff0f0',border:'1px solid #ffcccc',borderRadius:6,padding:'10px 14px',color:'#c00',fontSize:13,marginBottom:14}}>{error}</div>}
+            <button type="submit" disabled={phase==='submitting'} style={{width:'100%',padding:14,background:phase==='submitting'?'#aaa':'#1A2B4A',color:'#fff',border:'none',borderRadius:8,fontSize:15,fontWeight:700,cursor:phase==='submitting'?'not-allowed':'pointer'}}>
+              {phase === 'submitting' ? 'Registrando…' : 'Confirmo conformidad del servicio'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const styles = {
   shell: { minHeight: '100vh', background: '#f0f4f8', fontFamily: 'system-ui, sans-serif' },
   card: { background: '#fff', borderRadius: 10, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.07)' },

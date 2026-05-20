@@ -4,10 +4,11 @@ import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient } from './lib/supabaseClient.js';
-import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getPotentialManagers } from './lib/hierarchy.js';
+import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getPotentialManagers, getUserHierarchyLevel, hasTeamScope } from './lib/hierarchy.js';
 import { PHONE_PATTERN, RUC_PATTERN, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { VARIABLES_COMERCIALES } from './lib/textoComercial.js';
 import { maestrosService } from './services/maestrosService.js';
+import { SmartTextField } from './components/SmartTextField.jsx';
 
 // Roles builder, Usuarios, Tenants/Planes, and simple stub pages
 
@@ -2899,6 +2900,94 @@ function Tarifarios() {
   );
 }
 
+function ParamChipGroup({ options, value, onChange }) {
+  return (
+    <div className="params-chip-group">
+      {options.map(opt => {
+        const item = typeof opt === 'string' ? { value: opt, label: opt } : opt;
+        return (
+          <button
+            type="button"
+            key={item.value}
+            className={`params-choice-chip ${value === item.value ? 'active' : ''}`}
+            onClick={() => onChange(item.value)}
+          >
+            {item.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CuentasBancariasSection() {
+  const { cuentasBancarias = [], crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria, addNotificacion } = useApp();
+  const empty = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'' };
+  const [form, setForm] = useState(empty);
+  const [editId, setEditId] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const guardar = async e => {
+    e.preventDefault();
+    if (!form.nombre.trim() || !form.banco.trim()) return;
+    setSaving(true);
+    try {
+      if (editId) {
+        await actualizarCuentaBancaria(editId, { ...form, saldo_inicial: Number(form.saldo_inicial || 0) });
+        addNotificacion('Cuenta bancaria actualizada.');
+      } else {
+        await crearCuentaBancaria({ ...form, saldo_inicial: Number(form.saldo_inicial || 0) });
+      }
+      setForm(empty); setEditId(null);
+    } finally { setSaving(false); }
+  };
+
+  const editar = c => { setForm({ nombre:c.nombre, banco:c.banco, numero_cuenta:c.numero_cuenta||'', cci:c.cci||'', moneda:c.moneda||'PEN', tipo:c.tipo||'corriente', estado:c.estado||'activo', saldo_inicial:String(c.saldo_inicial||0) }); setEditId(c.id); };
+  const cancelar = () => { setForm(empty); setEditId(null); };
+
+  return (
+    <div className="card">
+      <div className="card-head"><h3>Cuentas Bancarias</h3><span className="badge badge-cyan">{cuentasBancarias.length} cuentas</span></div>
+      <form className="card-body" onSubmit={guardar} data-local-form="true" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+        <div className="input-group"><label>Nombre / Alias *</label><input className="input" value={form.nombre} onChange={set('nombre')} placeholder="BCP Soles Principal" required /></div>
+        <div className="input-group"><label>Banco *</label><input className="input" value={form.banco} onChange={set('banco')} placeholder="BCP, BBVA, Interbank..." required /></div>
+        <div className="input-group"><label>N° Cuenta</label><input className="input" value={form.numero_cuenta} onChange={set('numero_cuenta')} placeholder="194-XXXXXXXX-0-XX" /></div>
+        <div className="input-group"><label>CCI</label><input className="input" value={form.cci} onChange={set('cci')} placeholder="002-194-XXXXXXXX-X" /></div>
+        <div className="input-group"><label>Moneda</label><ParamChipGroup value={form.moneda} onChange={value => setForm(p => ({ ...p, moneda: value }))} options={[{ value:'PEN', label:'PEN' }, { value:'USD', label:'USD' }, { value:'EUR', label:'EUR' }]} /></div>
+        <div className="input-group"><label>Tipo</label><ParamChipGroup value={form.tipo} onChange={value => setForm(p => ({ ...p, tipo: value }))} options={[{ value:'corriente', label:'Corriente' }, { value:'ahorros', label:'Ahorros' }, { value:'recaudadora', label:'Recaudadora' }, { value:'caja_chica', label:'Caja chica' }]} /></div>
+        <div className="input-group"><label>Saldo inicial</label><input className="input" type="number" step="0.01" min="0" value={form.saldo_inicial} onChange={set('saldo_inicial')} /></div>
+        <div className="input-group"><label>Estado</label><ParamChipGroup value={form.estado} onChange={value => setForm(p => ({ ...p, estado: value }))} options={[{ value:'activo', label:'Activo' }, { value:'inactivo', label:'Inactivo' }]} /></div>
+        <div className="row" style={{gridColumn:'1/-1', justifyContent:'flex-end', gap:8}}>
+          {editId && <button type="button" className="btn btn-secondary" onClick={cancelar}>Cancelar</button>}
+          <button type="submit" className="btn btn-primary" disabled={saving}>{editId ? I.save : I.plus} {saving ? 'Guardando...' : editId ? 'Actualizar' : 'Agregar cuenta'}</button>
+        </div>
+      </form>
+      <div className="table-wrap">
+        <table className="tbl">
+          <thead><tr><th>Alias</th><th>Banco</th><th>N° Cuenta</th><th>Moneda</th><th>Tipo</th><th>Saldo inicial</th><th>Estado</th><th></th></tr></thead>
+          <tbody>{cuentasBancarias.map(c => (
+            <tr key={c.id}>
+              <td><strong>{c.nombre}</strong></td>
+              <td>{c.banco}</td>
+              <td>{c.numero_cuenta || '—'}</td>
+              <td><span className="badge badge-cyan">{c.moneda}</span></td>
+              <td style={{textTransform:'capitalize'}}>{c.tipo}</td>
+              <td>{Number(c.saldo_inicial||0).toLocaleString('es-PE', {minimumFractionDigits:2})}</td>
+              <td><span className={'badge ' + (c.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{c.estado}</span></td>
+              <td className="row" style={{justifyContent:'flex-end', gap:4}}>
+                <button className="icon-btn" title="Editar" onClick={() => editar(c)} style={{color:'var(--cyan)'}}>{I.edit}</button>
+                <button className="icon-btn" title="Eliminar" onClick={() => { if (window.confirm(`Eliminar "${c.nombre}"?`)) eliminarCuentaBancaria(c.id); }} style={{color:'var(--danger)'}}>{I.trash}</button>
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function Parametros() {
   const {
     empresaConfig, guardarEmpresaConfig, subirImagenEmpresa, addNotificacion,
@@ -2937,6 +3026,7 @@ function Parametros() {
   const [firmaFile, setFirmaFile] = useState(null);
   const [logoPreview, setLogoPreview]   = useState(null);
   const [firmaPreview, setFirmaPreview] = useState(null);
+  const [paramSection, setParamSection] = useState('identidad');
 
   useEffect(() => {
     setDatos({ razon_social: empresaConfig.razon_social||'', ruc: empresaConfig.ruc||'', email_comercial: empresaConfig.email_comercial||'', sitio_web: empresaConfig.sitio_web||'', direccion: empresaConfig.direccion||'', firmante: empresaConfig.firmante||'', cargo_firmante: empresaConfig.cargo_firmante||'' });
@@ -3071,50 +3161,56 @@ function Parametros() {
     setFlujosAlertas(prev => prev.map((row, i) => i === idx ? { ...row, [field]: value } : row));
   };
 
-  const diccionarioActivo = (diccionarioComercial || []).filter(d => d.estado === 'activo');
-  const insertarCond = (field, texto) => {
-    if (!texto) return;
-    setConds(prev => {
-      const actual = prev[field] || '';
-      return { ...prev, [field]: actual ? `${actual}${actual.endsWith(' ') || actual.endsWith('\n') ? '' : ' '}${texto}` : texto };
-    });
-  };
-  const insertControls = (field) => (
-    <div className="row" style={{gap:8, marginBottom:6, flexWrap:'wrap'}}>
-      <select className="input" defaultValue="" style={{maxWidth:240, height:32, fontSize:12}}
-        onChange={e => { insertarCond(field, e.target.value); e.currentTarget.value = ''; }}>
-        <option value="">Insertar variable...</option>
-        {VARIABLES_COMERCIALES.map(v => <option key={v.token} value={v.token}>{v.grupo} - {v.label}</option>)}
-      </select>
-      <select className="input" defaultValue="" style={{maxWidth:260, height:32, fontSize:12}}
-        onChange={e => { insertarCond(field, e.target.value); e.currentTarget.value = ''; }}>
-        <option value="">Insertar frase...</option>
-        {diccionarioActivo.map(d => <option key={d.id} value={d.texto}>{d.categoria} - {d.clave}</option>)}
-      </select>
-    </div>
-  );
-
   const inp = (field) => ({ className:'input', value: datos[field], onChange: e => setDatos(p=>({...p,[field]:e.target.value})) });
-  const ta  = (field, rows=4) => ({ className:'input', rows, value: conds[field], onChange: e => setConds(p=>({...p,[field]:e.target.value})), style:{resize:'vertical'} });
   const pinp = (field) => ({ className:'input', value: parametros[field], onChange: e => setParametros(p=>({...p,[field]:e.target.value})) });
   const monedasActivas = monedasImpuestosUnidades
     .filter(m => m.tipo === 'moneda' && m.estado === 'activo' && m.codigo)
     .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)));
+  const paramsSections = [
+    { key: 'identidad', title: 'Identidad', description: 'Datos legales, marca, firma y colores que viajan a tus PDFs.' },
+    { key: 'comercial', title: 'Condiciones', description: 'Textos base que se precargan en cada cotizacion comercial.' },
+    { key: 'biblioteca', title: 'Biblioteca', description: 'Variables del sistema y frases reutilizables para tus documentos.' },
+    { key: 'documentos', title: 'Documentos', description: 'Series, moneda, impuestos y plantillas fiscales o comerciales.' },
+    { key: 'flujos', title: 'Flujos', description: 'Estados por documento, transiciones y reglas de alerta para cada modulo.' },
+    { key: 'sla', title: 'SLA', description: 'Plantillas de respuesta y resolucion para contratos de servicio.' },
+    { key: 'cuentas', title: 'Cuentas', description: 'Cuentas bancarias, bancos y saldos base para tesoreria y pagos.' },
+  ];
+  const activeParamSection = paramsSections.find(s => s.key === paramSection) || paramsSections[0];
 
   return (
-    <>
-      <div className="page-header">
+    <div className="params-page" data-section={paramSection}>
+      <div className="page-header params-hero">
         <div>
+          <div className="eyebrow">Configuracion</div>
           <h1 className="page-title">Parametros Generales</h1>
-          <div className="page-sub">Series, estados, impuestos, plantillas PDF y plantillas SLA por tenant</div>
+          <div className="page-sub">Identidad, documentos, condiciones comerciales y reglas operativas del tenant</div>
         </div>
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{I.save} {saving ? 'Guardando…' : 'Guardar cambios'}</button>
       </div>
 
+      <div className="params-stepper" role="tablist" aria-label="Secciones de parametros">
+        {paramsSections.map((section) => (
+          <button
+            type="button"
+            key={section.key}
+            className={`params-step ${paramSection === section.key ? 'active' : ''}`}
+            onClick={() => setParamSection(section.key)}
+          >
+            {section.title}
+          </button>
+        ))}
+      </div>
+
+      <div className="params-workspace">
+        <div className="params-section-stack">
+          <div className="params-section-note">
+            <strong>{activeParamSection.title}</strong>
+            <span>{activeParamSection.description}</span>
+          </div>
+
       {/* ── Datos de la empresa ── */}
-      <div className="card mb-6">
+      <div className="card params-card mb-6 params-section params-section-identidad">
         <div className="card-head"><h3>Datos de la empresa</h3><span className="badge badge-cyan">Viajan a todos los documentos</span></div>
-        <div className="card-body" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:16}}>
+        <div className="card-body params-identity-grid">
 
           {/* Logo */}
           <div className="input-group" style={{gridColumn:'1/-1', display:'flex', alignItems:'flex-start', gap:20}}>
@@ -3188,9 +3284,9 @@ function Parametros() {
       </div>
 
       {/* ── Condiciones comerciales por defecto ── */}
-      <div className="card mb-6">
+      <div className="card params-card mb-6 params-section params-section-comercial">
         <div className="card-head"><h3>Condiciones comerciales por defecto</h3><span className="badge badge-purple">Pre-cargadas en cada cotización</span></div>
-        <div className="card-body col" style={{gap:16}}>
+        <div className="card-body params-commercial-grid">
           {[
             ['cond_forma_pago',       'Forma de pago y datos bancarios',       'Ej: 50% adelanto, 50% contra entrega. Cuenta BCP…'],
             ['cond_validez',          'Validez de la oferta',                  'Ej: La presente cotización tiene validez de 30 días calendarios.'],
@@ -3203,20 +3299,25 @@ function Parametros() {
           ].map(([field, label, placeholder]) => (
             <div className="input-group" key={field}>
               <label>{label}</label>
-              {insertControls(field)}
-              <textarea {...ta(field)} placeholder={placeholder}/>
+              <SmartTextField
+                value={conds[field]}
+                onChange={value => setConds(p => ({ ...p, [field]: value }))}
+                diccionario={diccionarioComercial}
+                rows={2}
+                placeholder={placeholder}
+              />
             </div>
           ))}
         </div>
       </div>
 
       {/* ── Secciones existentes ── */}
-      <div className="grid-2 mb-6">
+      <div className="params-split-grid mb-6 params-section params-section-biblioteca">
         <div className="card">
           <div className="card-head"><h3>Variables del sistema</h3><span className="badge badge-cyan">{VARIABLES_COMERCIALES.length} disponibles</span></div>
-          <div className="card-body" style={{display:'grid', gridTemplateColumns:'repeat(2, minmax(0, 1fr))', gap:8}}>
+          <div className="card-body params-token-grid">
             {VARIABLES_COMERCIALES.map(v => (
-              <div key={v.token} style={{border:'1px solid var(--border)', borderRadius:8, padding:'8px 10px', background:'var(--bg-subtle)'}}>
+              <div key={v.token} className="params-token">
                 <div className="eyebrow" style={{marginBottom:3}}>{v.grupo}</div>
                 <div style={{fontSize:12, fontWeight:700}}>{v.label}</div>
                 <div className="mono text-muted" style={{fontSize:11, marginTop:3}}>{v.token}</div>
@@ -3226,11 +3327,11 @@ function Parametros() {
         </div>
         <div className="card">
           <div className="card-head"><h3>Diccionario comercial</h3><span className="badge badge-purple">{diccionarioComercial.length} frases</span></div>
-          <form className="card-body" onSubmit={guardarDicc} style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
-            <div className="input-group"><label>Categoria</label><select className="input" value={diccForm.categoria} onChange={e=>setDiccForm(p=>({...p, categoria:e.target.value}))}>{['Comercial','Proyecto','Pagos','Facturacion','Legal'].map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-            <div className="input-group"><label>Estado</label><select className="input" value={diccForm.estado} onChange={e=>setDiccForm(p=>({...p, estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
+          <form className="card-body params-mini-form" onSubmit={guardarDicc}>
+            <div className="input-group"><label>Categoria</label><ParamChipGroup value={diccForm.categoria} onChange={value=>setDiccForm(p=>({...p, categoria:value}))} options={['Comercial','Proyecto','Pagos','Facturacion','Legal']} /></div>
+            <div className="input-group"><label>Estado</label><ParamChipGroup value={diccForm.estado} onChange={value=>setDiccForm(p=>({...p, estado:value}))} options={[{ value:'activo', label:'Activo' }, { value:'inactivo', label:'Inactivo' }]} /></div>
             <div className="input-group" style={{gridColumn:'1/-1'}}><label>Clave visible</label><input className="input" value={diccForm.clave} onChange={e=>setDiccForm(p=>({...p, clave:e.target.value}))} placeholder="Primera factura"/></div>
-            <div className="input-group" style={{gridColumn:'1/-1'}}><label>Texto a insertar</label><textarea className="input" rows={3} value={diccForm.texto} onChange={e=>setDiccForm(p=>({...p, texto:e.target.value}))} placeholder="Primera factura contra entrega de avance aprobado"/></div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}><label>Texto a insertar</label><textarea className="input" rows={2} value={diccForm.texto} onChange={e=>setDiccForm(p=>({...p, texto:e.target.value}))} placeholder="Primera factura contra entrega de avance aprobado"/></div>
             <div className="row" style={{gridColumn:'1/-1', justifyContent:'flex-end'}}>
               {diccEditId && <button type="button" className="btn btn-secondary" onClick={resetDicc}>Cancelar</button>}
               <button type="submit" className="btn btn-primary" disabled={savingDicc}>{diccEditId ? I.save : I.plus} {savingDicc ? 'Guardando...' : diccEditId ? 'Actualizar frase' : 'Agregar frase'}</button>
@@ -3256,14 +3357,14 @@ function Parametros() {
         </div>
       </div>
 
-      <div className="grid-2">
+      <div className="params-split-grid params-section params-section-documentos">
         <div className="card">
           <div className="card-head"><h3>Series documentarias</h3><span className="badge badge-cyan">{seriesDocumentarias.filter(s => s.estado === 'activo').length} activas</span></div>
           <form className="card-body" onSubmit={guardarSerie} style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
             <div className="input-group"><label>Documento</label><input className="input" value={serieForm.documento} onChange={e=>setSerieForm(p=>({...p, documento:e.target.value}))} placeholder="Cotizaciones"/></div>
             <div className="input-group"><label>Serie</label><input className="input" value={serieForm.serie} onChange={e=>setSerieForm(p=>({...p, serie:e.target.value}))} placeholder="COT-2026"/></div>
             <div className="input-group"><label>Siguiente correlativo</label><input className="input" type="number" min="1" value={serieForm.siguiente_correlativo} onChange={e=>setSerieForm(p=>({...p, siguiente_correlativo:e.target.value}))}/></div>
-            <div className="input-group"><label>Estado</label><select className="input" value={serieForm.estado} onChange={e=>setSerieForm(p=>({...p, estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
+            <div className="input-group"><label>Estado</label><ParamChipGroup value={serieForm.estado} onChange={value=>setSerieForm(p=>({...p, estado:value}))} options={[{ value:'activo', label:'Activo' }, { value:'inactivo', label:'Inactivo' }]} /></div>
             <div className="input-group" style={{gridColumn:'1/-1'}}><label>Regla</label><input className="input" value={serieForm.regla} onChange={e=>setSerieForm(p=>({...p, regla:e.target.value}))} placeholder="Anual por empresa"/></div>
             <div className="row" style={{gridColumn:'1/-1', justifyContent:'flex-end'}}>
               {serieEditId && <button type="button" className="btn btn-secondary" onClick={resetSerie}>Cancelar</button>}
@@ -3304,14 +3405,14 @@ function Parametros() {
             <div className="input-group" style={{gridColumn:'1/-1'}}><label>Zona horaria</label><input {...pinp('zona_horaria')} placeholder="America/Lima"/></div>
             <div className="input-group" style={{gridColumn:'1/-1'}}><label>Plantilla cotizacion</label><input {...pinp('plantilla_cotizacion')} placeholder="TIDEO propuesta tecnica v3"/></div>
             <div className="input-group" style={{gridColumn:'1/-1'}}><label>Plantilla factura</label><input {...pinp('plantilla_factura')} placeholder="Exportacion fiscal externa"/></div>
-            <label className="row" style={{gridColumn:'1/-1', gap:10, padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8}}>
+            <label className="params-toggle-row" style={{gridColumn:'1/-1'}}>
               <input type="checkbox" className="checkbox" checked={parametros.requiere_2fa_financiero} onChange={e=>setParametros(p=>({...p, requiere_2fa_financiero:e.target.checked}))}/>
               <span>Requiere 2FA financiero</span>
             </label>
           </div>
         </div>
       </div>
-      <div className="grid-2 mt-6">
+      <div className="params-section params-section-flujos">
         <div className="card">
           <div className="card-head">
             <h3>Estados por documento</h3>
@@ -3331,6 +3432,8 @@ function Parametros() {
             </table>
           </div>
         </div>
+      </div>
+      <div className="params-section params-section-sla">
         <div className="card">
           <div className="card-head"><h3>Plantillas de SLA (Para Contratos)</h3><span className="badge badge-orange">{slaPlantillas.length} plantillas</span></div>
           <form className="card-body" onSubmit={guardarSla} style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
@@ -3338,7 +3441,7 @@ function Parametros() {
             <div className="input-group"><label>Respuesta (horas)</label><input className="input" type="number" min="0" step="0.5" value={slaForm.tiempo_respuesta_horas} onChange={e=>setSlaForm(p=>({...p, tiempo_respuesta_horas:e.target.value}))}/></div>
             <div className="input-group"><label>Resolucion (horas)</label><input className="input" type="number" min="0" step="0.5" value={slaForm.tiempo_resolucion_horas} onChange={e=>setSlaForm(p=>({...p, tiempo_resolucion_horas:e.target.value}))}/></div>
             <div className="input-group"><label>Semaforo</label><input className="input" value={slaForm.semaforo_regla} onChange={e=>setSlaForm(p=>({...p, semaforo_regla:e.target.value}))} placeholder="Rojo a 80%"/></div>
-            <div className="input-group"><label>Estado</label><select className="input" value={slaForm.estado} onChange={e=>setSlaForm(p=>({...p, estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
+            <div className="input-group"><label>Estado</label><ParamChipGroup value={slaForm.estado} onChange={value=>setSlaForm(p=>({...p, estado:value}))} options={[{ value:'activo', label:'Activo' }, { value:'inactivo', label:'Inactivo' }]} /></div>
             <div className="row" style={{gridColumn:'1/-1', justifyContent:'flex-end'}}>
               {slaEditId && <button type="button" className="btn btn-secondary" onClick={resetSla}>Cancelar</button>}
               <button type="submit" className="btn btn-primary" disabled={savingSla}>{slaEditId ? I.save : I.plus} {savingSla ? 'Guardando...' : slaEditId ? 'Actualizar SLA' : 'Agregar SLA'}</button>
@@ -3364,7 +3467,18 @@ function Parametros() {
           </div>
         </div>
       </div>
-    </>
+      <div className="params-section params-section-cuentas">
+        <CuentasBancariasSection />
+      </div>
+          <div className="params-footer-actions">
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+              {I.save} {saving ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
   );
 }
 
@@ -3372,7 +3486,7 @@ function Parametros() {
 // RRHH ADMINISTRATIVO — Fase 3
 // ============================================================
 function RRHHAdmin() {
-  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH, aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto } = useApp();
+  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH, aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [] } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -3383,7 +3497,8 @@ function RRHHAdmin() {
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo' };
+  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8' };
+  const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const cargosAdminOptions = cargos
     .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Operativo')
@@ -3436,6 +3551,12 @@ function RRHHAdmin() {
       remuneracion: String(p.remuneracion ?? p.sueldo_base ?? ''),
       dias_vacaciones: String(p.dias_vacaciones_total ?? p.dias_vacaciones_disponibles ?? 30),
       estado: p.estado || 'activo',
+      auth_user_id: p.auth_user_id || '',
+      tiene_comisiones: Boolean(p.tiene_comisiones),
+      porcentaje_comision: String(p.porcentaje_comision ?? ''),
+      modalidad_comision: p.modalidad_comision || 'Planilla',
+      ruc_vendedor: p.ruc_vendedor || '',
+      retencion_ir_comision: String(p.retencion_ir_comision ?? '8'),
     });
     setPanelAlta(true);
   };
@@ -3488,7 +3609,13 @@ function RRHHAdmin() {
       estado: formAlta.estado || 'activo',
       fecha_ingreso: formAlta.fecha_inicio || new Date().toISOString().slice(0, 10),
       contacto_emergencia: '', relacion_emergencia: '', telefono_emergencia: '',
-      documentos: []
+      documentos: [],
+      auth_user_id: formAlta.auth_user_id || null,
+      tiene_comisiones: Boolean(formAlta.tiene_comisiones),
+      porcentaje_comision: Number(formAlta.porcentaje_comision || 0),
+      modalidad_comision: formAlta.modalidad_comision || 'Planilla',
+      ruc_vendedor: formAlta.ruc_vendedor || null,
+      retencion_ir_comision: Number(formAlta.retencion_ir_comision || 8),
     };
     try {
       if (editandoId) {
@@ -3535,7 +3662,7 @@ function RRHHAdmin() {
         <div className="card">
           <div style={{padding:'0 20px'}}>
             <div className="tabs">
-              {['ficha','contrato','vacaciones','licencias','solicitudes','documentos'].map(t => (
+              {[...['ficha','contrato','vacaciones','licencias','solicitudes','documentos'], ...(persona.tiene_comisiones ? ['comisiones'] : [])].map(t => (
                 <div key={t} className={'tab '+(tab===t?'active':'')} onClick={() => setTab(t)} style={{textTransform:'capitalize'}}>{t}</div>
               ))}
             </div>
@@ -3690,6 +3817,104 @@ function RRHHAdmin() {
               </div>
             </div>
           )}
+
+          {tab === 'comisiones' && (() => {
+            const misComisiones = comisiones.filter(c => c.vendedor_id === sel);
+            const saldoPendiente = misComisiones
+              .filter(c => c.estado === 'aprobada')
+              .reduce((s, c) => s + Number(c.monto_total || 0), 0);
+            const now = new Date();
+            const periodos6 = Array.from({ length: 6 }, (_, i) => {
+              const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+              return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            });
+            const montoPorPeriodo = periodos6.map(p =>
+              misComisiones
+                .filter(c => c.periodo === p && (c.estado === 'pagada' || c.estado === 'aprobada'))
+                .reduce((s, c) => s + Number(c.monto_total || 0), 0)
+            );
+            const maxMonto = Math.max(...montoPorPeriodo, 1);
+            const barW = 60, barGap = 20, svgW = periodos6.length * (barW + barGap) + barGap, svgH = 120;
+            return (
+              <div className="card-body">
+                {/* KPI saldo pendiente */}
+                <div style={{ display:'flex', alignItems:'center', gap:20, padding:'16px 20px', background:'linear-gradient(135deg, rgba(6,182,212,0.12), rgba(6,182,212,0.04))', border:'1px solid rgba(6,182,212,0.3)', borderRadius:12, marginBottom:24 }}>
+                  <div style={{ width:48, height:48, borderRadius:'50%', background:'rgba(6,182,212,0.15)', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--cyan)', flexShrink:0 }}>{I.dollar}</div>
+                  <div>
+                    <div style={{ fontSize:11, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:2 }}>Saldo acumulado pendiente de pago</div>
+                    <div style={{ fontSize:28, fontWeight:800, color:'var(--cyan)' }}>{money(saldoPendiente)}</div>
+                    <div style={{ fontSize:12, color:'var(--fg-muted)', marginTop:2 }}>
+                      {misComisiones.filter(c => c.estado === 'aprobada').length} comisiones aprobadas sin pagar
+                    </div>
+                  </div>
+                </div>
+
+                {/* Gráfico últimos 6 períodos */}
+                <div style={{ marginBottom:24 }}>
+                  <div style={{ fontWeight:600, fontSize:13, marginBottom:12 }}>Comisiones cobradas por período</div>
+                  <svg viewBox={`0 0 ${svgW} ${svgH + 28}`} style={{ width:'100%', maxWidth:svgW, display:'block' }}>
+                    {periodos6.map((p, i) => {
+                      const x = barGap + i * (barW + barGap);
+                      const h = montoPorPeriodo[i] > 0 ? Math.max(4, Math.round((montoPorPeriodo[i] / maxMonto) * (svgH - 24))) : 0;
+                      const y = svgH - h;
+                      const [yr, mo] = p.split('-');
+                      const label = `${mo}/${yr.slice(2)}`;
+                      return (
+                        <g key={p}>
+                          <rect x={x} y={y} width={barW} height={h} rx={4} fill="rgba(6,182,212,0.7)" />
+                          {montoPorPeriodo[i] > 0 && (
+                            <text x={x + barW / 2} y={y - 4} textAnchor="middle" fontSize={10} fill="var(--fg-muted)">
+                              {`S/${(montoPorPeriodo[i] / 1000).toFixed(1)}k`}
+                            </text>
+                          )}
+                          <text x={x + barW / 2} y={svgH + 16} textAnchor="middle" fontSize={10} fill="var(--fg-muted)">{label}</text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
+
+                {/* Historial completo */}
+                <div style={{ fontWeight:600, fontSize:13, marginBottom:10 }}>Historial completo</div>
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th><th>OS / Oportunidad</th><th>Monto cobrado</th>
+                        <th>Comisión</th><th>Bonificación</th><th>Total</th>
+                        <th>Estado</th><th>Período pago</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {misComisiones.length === 0 && (
+                        <tr><td colSpan={8} style={{ textAlign:'center', color:'var(--fg-muted)', padding:24 }}>Sin comisiones registradas</td></tr>
+                      )}
+                      {misComisiones.map(c => (
+                        <tr key={c.id}>
+                          <td style={{ fontSize:12 }}>{c.creado_en?.slice(0, 10) || '—'}</td>
+                          <td style={{ fontSize:12 }}>
+                            {c.os_cliente_id && <div>OS: {c.os_cliente_id}</div>}
+                            {c.oportunidad_id && <div style={{ color:'var(--fg-muted)' }}>Op: {c.oportunidad_id}</div>}
+                            {!c.os_cliente_id && !c.oportunidad_id && '—'}
+                          </td>
+                          <td>{money(c.monto_cobrado)}</td>
+                          <td>{money(c.monto_comision)} <span style={{ fontSize:11, color:'var(--fg-muted)' }}>({c.porcentaje_comision}%)</span></td>
+                          <td>{c.bonificacion > 0 ? money(c.bonificacion) : '—'}</td>
+                          <td style={{ fontWeight:600 }}>{money(c.monto_total)}</td>
+                          <td>
+                            <span className={`badge badge-${c.estado === 'pagada' ? 'green' : c.estado === 'aprobada' ? 'cyan' : c.estado === 'rechazada' ? 'red' : 'orange'}`}>
+                              {c.estado === 'pendiente_aprobacion' ? 'Pendiente' : c.estado}
+                            </span>
+                          </td>
+                          <td style={{ fontSize:12 }}>{c.periodo || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </>
     );
@@ -3905,8 +4130,8 @@ function RRHHAdmin() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder="ADM-008"/></div>
               <div className="input-group"><label>Modalidad de contrato</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>({...v,modalidad:e.target.value}))}>{['Planilla','Honorarios','CAS','Practicante'].map(m=><option key={m}>{m}</option>)}</select></div>
-              <div className="input-group"><label>Cargo</label><select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{cargosAdminOptions.map(c=><option key={c}>{c}</option>)}</select></div>
-              <div className="input-group"><label>Área</label><select className="select" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))}><option value="">Seleccionar área...</option>{areasOptions.map(a=><option key={a}>{a}</option>)}</select></div>
+              <div className="input-group"><label>Cargo</label>{cargosAdminOptions.length ? <select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{cargosAdminOptions.map(c=><option key={c}>{c}</option>)}</select> : <input className="input" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))} placeholder="Ej: Ejecutivo Comercial"/>}</div>
+              <div className="input-group"><label>Área</label>{areasOptions.length ? <select className="select" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))}><option value="">Seleccionar área...</option>{areasOptions.map(a=><option key={a}>{a}</option>)}</select> : <input className="input" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))} placeholder="Ej: Comercial"/>}</div>
               <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
@@ -3917,9 +4142,63 @@ function RRHHAdmin() {
             </div>
 
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Beneficios</div>
-            <div className="grid-2" style={{gap:14, marginBottom:24}}>
+            <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Días de vacaciones/año</label><input className="input" type="number" min="0" value={formAlta.dias_vacaciones} onChange={e=>setFormAlta(v=>({...v,dias_vacaciones:e.target.value}))}/></div>
               <div className="input-group"><label>Días disponibles</label><input className="input" readOnly value={formAlta.dias_vacaciones || 0} style={{color:'var(--fg-muted)'}}/></div>
+            </div>
+
+            {(() => {
+              return (
+                <>
+                  <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Configuración de comisiones</div>
+                  <div className="grid-2" style={{gap:14, marginBottom:20}}>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}>
+                      <label style={{display:'flex', alignItems:'center', gap:10, cursor:'pointer'}}>
+                        <input type="checkbox" checked={Boolean(formAlta.tiene_comisiones)} onChange={e=>setFormAlta(v=>({...v,tiene_comisiones:e.target.checked}))} style={{width:16, height:16}}/>
+                        <span>Tiene comisiones activas</span>
+                      </label>
+                    </div>
+                    {formAlta.tiene_comisiones && <>
+                      <div className="input-group">
+                        <label>Comisión base (%)</label>
+                        <input className="input" type="number" min="0" max="100" step="0.1" value={formAlta.porcentaje_comision} onChange={e=>setFormAlta(v=>({...v,porcentaje_comision:e.target.value}))} placeholder="5.0"/>
+                        <div className="text-muted" style={{fontSize:11, marginTop:4}}>Porcentaje sobre el monto cobrado de cada factura.</div>
+                      </div>
+                      <div className="input-group">
+                        <label>Modalidad de pago</label>
+                        <select className="select" value={formAlta.modalidad_comision} onChange={e=>setFormAlta(v=>({...v,modalidad_comision:e.target.value}))}>
+                          <option value="Planilla">Planilla</option>
+                          <option value="Honorarios">Honorarios</option>
+                        </select>
+                      </div>
+                      {formAlta.modalidad_comision === 'Honorarios' && <>
+                        <div className="input-group">
+                          <label>RUC del vendedor <span style={{color:'var(--red)'}}>*</span></label>
+                          <input className="input" type="text" inputMode="numeric" maxLength={11} pattern="[0-9]{11}" value={formAlta.ruc_vendedor} onChange={e=>setFormAlta(v=>({...v,ruc_vendedor:e.target.value.replace(/\D/g,'')}))} placeholder="20XXXXXXXXX"/>
+                          <div className="text-muted" style={{fontSize:11, marginTop:4}}>Requerido para emitir recibos por honorarios.</div>
+                        </div>
+                        <div className="input-group">
+                          <label>Retención IR (%)</label>
+                          <input className="input" type="number" min="0" max="30" step="0.5" value={formAlta.retencion_ir_comision} onChange={e=>setFormAlta(v=>({...v,retencion_ir_comision:e.target.value}))} placeholder="8"/>
+                          <div className="text-muted" style={{fontSize:11, marginTop:4}}>Por defecto 8%. Editable si el vendedor está exonerado.</div>
+                        </div>
+                      </>}
+                    </>}
+                  </div>
+                </>
+              );
+            })()}
+
+            <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Acceso al sistema</div>
+            <div style={{marginBottom:24}}>
+              <div className="input-group">
+                <label>Cuenta de usuario <span className="text-muted">(opcional — para aislamiento de datos)</span></label>
+                <select className="select" value={formAlta.auth_user_id} onChange={e=>setFormAlta(v=>({...v,auth_user_id:e.target.value}))}>
+                  <option value="">Sin cuenta vinculada</option>
+                  {usuariosEmpresa.map(u=><option key={u.id} value={u.id}>{u.nombre || u.email} — {u.email}</option>)}
+                </select>
+                <div className="text-muted" style={{fontSize:11, marginTop:5}}>Vincula este colaborador a su cuenta de inicio de sesión para que las políticas de visibilidad se apliquen correctamente.</div>
+              </div>
             </div>
 
             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
@@ -4028,4 +4307,1003 @@ function MetricasSaaS() {
   );
 }
 
-export { Roles, Usuarios, Tenants, Planes, Stub, Maestros, Servicios, Tarifarios, Parametros, RRHHAdmin, MetricasSaaS };
+// ─── ORGANIGRAMA ─────────────────────────────────────────────────────────────
+
+const NIVEL_COLORS = {
+  direccion: '#7c3aed',
+  jefatura: '#2563eb',
+  supervisor: '#0891b2',
+  asesor: '#16a34a',
+  operativo: '#64748b',
+  soporte: '#64748b',
+};
+
+function OrgNodo({ user, depth, getChildren, roles, selId, onSelect }) {
+  const [abierto, setAbierto] = useState(depth < 2);
+  const hijos = getChildren(user.id);
+  const rol = roles?.[user.rol];
+  const nivel = getUserHierarchyLevel(user, roles);
+  const color = NIVEL_COLORS[nivel] || '#64748b';
+  const seleccionado = selId === user.id;
+
+  return (
+    <div style={{ position: 'relative', marginLeft: depth > 0 ? 28 : 0 }}>
+      {depth > 0 && (
+        <div style={{ position: 'absolute', left: -20, top: 19, width: 20, borderTop: '1px solid var(--border)' }} />
+      )}
+      <div
+        onClick={() => onSelect(user)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '7px 12px', borderRadius: 8, marginBottom: 5, cursor: 'pointer',
+          border: `1px solid ${seleccionado ? color : 'var(--border)'}`,
+          background: seleccionado ? `color-mix(in srgb, ${color} 9%, transparent)` : 'var(--card)',
+          borderLeft: `3px solid ${color}`,
+        }}
+      >
+        <div style={{ width: 30, height: 30, borderRadius: '50%', background: color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+          {(user.nombre || '?').split(' ').map(x => x[0]).slice(0, 2).join('')}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.nombre}</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {rol?.nombre || user.rol_nombre || user.rol}
+          </div>
+        </div>
+        {hijos.length > 0 && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setAbierto(x => !x); }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', color: 'var(--fg-muted)', fontSize: 12, borderRadius: 4, flexShrink: 0 }}
+          >
+            {abierto ? '▾' : '▸'} {hijos.length}
+          </button>
+        )}
+      </div>
+      {abierto && hijos.length > 0 && (
+        <div style={{ marginLeft: 16, paddingLeft: 12, borderLeft: '1px dashed var(--border)' }}>
+          {hijos.map(h => (
+            <OrgNodo key={h.id} user={h} depth={depth + 1} getChildren={getChildren} roles={roles} selId={selId} onSelect={onSelect} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Organigrama() {
+  const { usuarios, empresa, empresasPlataforma, roles: rolesCtx, actualizarUsuarioAcceso, addNotificacion, authUser } = useApp();
+  const [filtroEmpresa, setFiltroEmpresa] = useState('');
+  const [selNode, setSelNode] = useState(null);
+  const [nuevoJefeId, setNuevoJefeId] = useState('');
+  const [nuevoRolId, setNuevoRolId] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [guardandoRol, setGuardandoRol] = useState(false);
+
+  const empresaActiva = filtroEmpresa || empresa?.id || '';
+  const usersDeEmpresa = useMemo(
+    () => usuarios.filter(u => !empresaActiva || u.empresa_id === empresaActiva),
+    [usuarios, empresaActiva]
+  );
+  const byId = useMemo(() => new Map(usersDeEmpresa.map(u => [u.id, u])), [usersDeEmpresa]);
+  const roots = useMemo(
+    () => usersDeEmpresa.filter(u => !u.jefe_user_id || !byId.has(u.jefe_user_id)),
+    [usersDeEmpresa, byId]
+  );
+  const getChildren = (userId) => usersDeEmpresa.filter(u => u.jefe_user_id === userId);
+
+  const potentialesJefes = useMemo(() => {
+    if (!selNode) return [];
+    return usersDeEmpresa
+      .filter(u => u.id !== selNode.id && hasTeamScope(u, rolesCtx))
+      .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+  }, [selNode, usersDeEmpresa, rolesCtx]);
+
+  const rolesOpciones = useMemo(
+    () => Object.entries(rolesCtx || {})
+      .filter(([, r]) => !r.es_superadmin && (!empresaActiva || !r.empresa_id || r.empresa_id === empresaActiva))
+      .sort((a, b) => (a[1].nombre || '').localeCompare(b[1].nombre || '', 'es')),
+    [rolesCtx, empresaActiva]
+  );
+
+  const handleGuardarJefe = async () => {
+    if (!selNode) return;
+    setGuardando(true);
+    try {
+      await actualizarUsuarioAcceso(selNode.id, { ...selNode, jefe_user_id: nuevoJefeId || null });
+      setSelNode(s => s ? { ...s, jefe_user_id: nuevoJefeId || null } : null);
+      addNotificacion('Jefe directo actualizado.');
+    } catch {
+      addNotificacion('No se pudo actualizar el jefe.');
+    }
+    setGuardando(false);
+  };
+
+  const handleGuardarRol = async () => {
+    if (!selNode || !nuevoRolId) return;
+    setGuardandoRol(true);
+    try {
+      await actualizarUsuarioAcceso(selNode.id, { ...selNode, rol: nuevoRolId });
+      setSelNode(s => s ? { ...s, rol: nuevoRolId } : null);
+      addNotificacion('Rol actualizado.');
+    } catch {
+      addNotificacion('No se pudo actualizar el rol.');
+    }
+    setGuardandoRol(false);
+  };
+
+  const nivelLabel = (n) => HIERARCHY_LEVELS.find(x => x.value === n)?.label || n;
+  const getEmpresaNombre = (id) => {
+    if (empresa?.id === id) return empresa.nombre;
+    return (empresasPlataforma || []).find(e => e.id === id)?.nombre || id;
+  };
+
+  const isSuperadmin = authUser?.permisos?.plataforma;
+  const selRolEfectivo = nuevoRolId || selNode?.rol;
+  const selNivel = selNode ? (rolesCtx?.[selRolEfectivo]?.nivel_jerarquico || getUserHierarchyLevel(selNode, rolesCtx)) : null;
+  const selColor = NIVEL_COLORS[selNivel] || '#64748b';
+  const selRol = rolesCtx?.[selRolEfectivo];
+  const selJefe = selNode ? byId.get(selNode.jefe_user_id) : null;
+  const selHijos = selNode ? getChildren(selNode.id) : [];
+  const jefeNoChanged = nuevoJefeId === (selNode?.jefe_user_id || '');
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Organigrama</h1>
+          <div className="page-sub">Árbol jerárquico · {usersDeEmpresa.length} usuarios</div>
+        </div>
+        {isSuperadmin && (
+          <select className="input" style={{ width: 240 }} value={filtroEmpresa} onChange={e => { setFiltroEmpresa(e.target.value); setSelNode(null); }}>
+            <option value="">Todas las empresas</option>
+            {[...new Map(usuarios.map(u => [u.empresa_id, getEmpresaNombre(u.empresa_id)])).entries()].map(([id, nombre]) => (
+              <option key={id} value={id}>{nombre}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* Leyenda */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+        {HIERARCHY_LEVELS.map(l => (
+          <div key={l.value} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <div style={{ width: 9, height: 9, borderRadius: '50%', background: NIVEL_COLORS[l.value] || '#64748b', flexShrink: 0 }} />
+            <span style={{ color: 'var(--fg-muted)' }}>{l.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+
+        {/* Árbol */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {roots.length === 0 ? (
+            <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--fg-muted)' }}>
+              No hay usuarios configurados. Ve a Usuarios y asigna un jefe directo a cada persona.
+            </div>
+          ) : (
+            <div className="card" style={{ padding: 20 }}>
+              {roots.map(r => (
+                <OrgNodo
+                  key={r.id} user={r} depth={0}
+                  getChildren={getChildren} roles={rolesCtx}
+                  selId={selNode?.id}
+                  onSelect={u => { setSelNode(u); setNuevoJefeId(u.jefe_user_id || ''); setNuevoRolId(u.rol || ''); }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Panel lateral */}
+        {selNode && (
+          <div className="card" style={{ width: 300, padding: 20, flexShrink: 0, position: 'sticky', top: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Detalle</div>
+              <button className="icon-btn" onClick={() => setSelNode(null)}>{I.x}</button>
+            </div>
+
+            {/* Avatar + nombre */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div style={{ width: 44, height: 44, borderRadius: '50%', background: selColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
+                {(selNode.nombre || '?').split(' ').map(x => x[0]).slice(0, 2).join('')}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selNode.nombre}</div>
+                <div style={{ fontSize: 11, color: 'var(--fg-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selNode.email}</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+              <span className="badge" style={{ background: `color-mix(in srgb, ${selColor} 15%, transparent)`, color: selColor, border: `1px solid color-mix(in srgb, ${selColor} 30%, transparent)` }}>
+                {selRol?.nombre || selNode.rol}
+              </span>
+              <span className="badge badge-gray">{nivelLabel(selNivel)}</span>
+            </div>
+
+            {/* Jefe actual */}
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>Jefe directo actual</div>
+            <div style={{ fontSize: 13, fontWeight: 600, padding: '6px 10px', background: 'var(--bg-subtle)', borderRadius: 6, marginBottom: 16 }}>
+              {selJefe
+                ? <span>{selJefe.nombre}</span>
+                : <span style={{ color: 'var(--fg-muted)', fontStyle: 'italic' }}>Sin jefe (nodo raíz)</span>}
+            </div>
+
+            {/* Cambiar jefe */}
+            <div className="input-group" style={{ marginBottom: 12 }}>
+              <label>Cambiar jefe directo</label>
+              <select className="select" value={nuevoJefeId} onChange={e => setNuevoJefeId(e.target.value)}>
+                <option value="">Sin jefe (nodo raíz)</option>
+                {potentialesJefes.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.nombre} · {rolesCtx?.[u.rol]?.nombre || u.rol_nombre || u.rol}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              className="btn btn-primary"
+              style={{ width: '100%' }}
+              onClick={handleGuardarJefe}
+              disabled={guardando || jefeNoChanged}
+            >
+              {guardando ? 'Guardando...' : 'Guardar jefe'}
+            </button>
+
+            {/* Cambiar rol */}
+            <div style={{ paddingTop: 14, borderTop: '1px solid var(--border)', marginTop: 16, marginBottom: 12 }}>
+              <div className="input-group" style={{ marginBottom: 10 }}>
+                <label>Rol</label>
+                <select className="select" value={nuevoRolId} onChange={e => setNuevoRolId(e.target.value)}>
+                  {rolesOpciones.map(([id, r]) => (
+                    <option key={id} value={id}>
+                      {r.nombre} · {nivelLabel(r.nivel_jerarquico || 'operativo')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className="btn btn-secondary"
+                style={{ width: '100%' }}
+                onClick={handleGuardarRol}
+                disabled={guardandoRol || !nuevoRolId || nuevoRolId === selNode?.rol}
+              >
+                {guardandoRol ? 'Guardando...' : 'Guardar rol'}
+              </button>
+            </div>
+
+            {/* Reportes directos */}
+            {selHijos.length > 0 && (
+              <div style={{ paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 8 }}>
+                  Reportes directos ({selHijos.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {selHijos.map(h => {
+                    const hNivel = getUserHierarchyLevel(h, rolesCtx);
+                    const hColor = NIVEL_COLORS[hNivel] || '#64748b';
+                    return (
+                      <button
+                        key={h.id} type="button"
+                        onClick={() => { setSelNode(h); setNuevoJefeId(h.jefe_user_id || ''); setNuevoRolId(h.rol || ''); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-subtle)', cursor: 'pointer', textAlign: 'left', borderLeft: `3px solid ${hColor}` }}
+                      >
+                        <div style={{ width: 22, height: 22, borderRadius: '50%', background: hColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
+                          {(h.nombre || '?').split(' ').map(x => x[0]).slice(0, 2).join('')}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.nombre}</div>
+                          <div style={{ fontSize: 10, color: 'var(--fg-muted)' }}>{rolesCtx?.[h.rol]?.nombre || h.rol}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function Comisiones() {
+  const {
+    comisiones = [], personalAdmin = [], role, roleKey,
+    oportunidades = [], cuentas = [], cxc = [], facturas = [], osClientes = [],
+    aprobarComision, rechazarComision, generarReciboHonorarios, confirmarReciboHonorarios,
+    aprobarAcuerdoComision, rechazarAcuerdoComision,
+    recibosHonorarios = [], addNotificacion, empresa,
+  } = useApp();
+
+  const puedeAprobar = role?.permisos?.aprobar_descuentos || role?.permisos?.tenant_admin || role?.permisos?.todo;
+  const puedeVerComisiones = role?.permisos?.ver_costos || role?.permisos?.todo || puedeAprobar;
+
+  const periodoActual = new Date().toISOString().slice(0, 7);
+  const ahora = Date.now();
+  const MS_48H = 48 * 60 * 60 * 1000;
+
+  const [mainTab, setMainTab] = useState('comisiones');
+  const [filtVendedor, setFiltVendedor] = useState('');
+  const [filtPeriodo, setFiltPeriodo] = useState('');
+  const [filtEstado, setFiltEstado] = useState('');
+  const [filtModalidad, setFiltModalidad] = useState('');
+  const [panelComision, setPanelComision] = useState(null);
+  const [acuerdoRechazandoId, setAcuerdoRechazandoId] = useState(null);
+  const [acuerdoMotivoRechazo, setAcuerdoMotivoRechazo] = useState('');
+  const [acuerdoAprobandoId, setAcuerdoAprobandoId] = useState(null);
+  const [acuerdoAprobandoVals, setAcuerdoAprobandoVals] = useState({});
+
+  // Acuerdos pendientes: oportunidades con acuerdo_estado = 'pendiente'
+  const acuerdosPendientes = useMemo(() => {
+    return oportunidades
+      .filter(o => o.acuerdo_estado === 'pendiente')
+      .map(o => {
+        const vendedor = personalAdmin.find(p =>
+          p.id === o.responsable_id || p.auth_user_id === o.responsable_id || p.nombre === o.responsable
+        );
+        const cuenta = cuentas.find(c => c.id === o.cuenta_id);
+        const pctBase = Number(vendedor?.porcentaje_comision || 0);
+        const pctProp = Number(o.acuerdo_pct || 0);
+        const diff = pctProp - pctBase;
+        // Estimar cuándo fue enviado (sin timestamp dedicado usamos updated_at o fallback)
+        const enviadoEn = o.updated_at ? new Date(o.updated_at).getTime() : null;
+        const horas48 = enviadoEn ? (ahora - enviadoEn) > MS_48H : false;
+        return { opp: o, vendedor, cuenta, pctBase, pctProp, diff, horas48 };
+      });
+  }, [oportunidades, personalAdmin, cuentas, ahora]);
+
+  const acuerdos48h = acuerdosPendientes.filter(a => a.horas48).length;
+  const [bonif, setBonif] = useState('');
+  const [notaApro, setNotaApro] = useState('');
+  const [modoRechazo, setModoRechazo] = useState(false);
+  const [motivoRechazo, setMotivoRechazo] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [panelRecibo, setPanelRecibo] = useState(null);
+
+  const vendedoresUniq = useMemo(() => {
+    const ids = [...new Set(comisiones.map(c => c.vendedor_id).filter(Boolean))];
+    return ids.map(id => {
+      const c = comisiones.find(x => x.vendedor_id === id);
+      return { id, nombre: c?.vendedor_nombre || id };
+    });
+  }, [comisiones]);
+
+  const periodosUniq = useMemo(() => {
+    return [...new Set(comisiones.map(c => c.periodo).filter(Boolean))].sort().reverse();
+  }, [comisiones]);
+
+  const filtradas = useMemo(() => comisiones.filter(c =>
+    (!filtVendedor || c.vendedor_id === filtVendedor) &&
+    (!filtPeriodo || c.periodo === filtPeriodo) &&
+    (!filtEstado || c.estado === filtEstado) &&
+    (!filtModalidad || c.modalidad_pago === filtModalidad)
+  ), [comisiones, filtVendedor, filtPeriodo, filtEstado, filtModalidad]);
+
+  const pendientes = comisiones.filter(c => c.estado === 'pendiente_aprobacion');
+  const aprobadas = comisiones.filter(c => c.estado === 'aprobada');
+  const pagadasPeriodo = comisiones.filter(c => c.estado === 'pagada' && c.periodo === periodoActual);
+  const monedasResumen = ['PEN', 'USD'];
+  const normalizeMoneda = (moneda) => {
+    const raw = String(moneda || '').trim().toUpperCase();
+    if (raw.includes('USD') || raw.includes('US$') || raw.includes('DOLAR')) return 'USD';
+    return 'PEN';
+  };
+  const moneyComision = (value, moneda = 'PEN') => `${normalizeMoneda(moneda) === 'USD' ? 'US$' : 'S/'} ${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  const isInternalRef = (value) => /^(osc|fac|cxc|com|rec|cob|opp)_/i.test(String(value || '').trim());
+  const firstReadable = (...values) => values
+    .map(v => (v == null ? '' : String(v).trim()))
+    .find(v => v && !isInternalRef(v));
+  const getComisionRefs = (comision = {}) => {
+    const cxcRef = cxc.find(x => x.id === comision.cxc_id || x.id === comision.cobro_cxc_id);
+    const facturaId = comision.factura_id || cxcRef?.factura_id || cxcRef?.facturas?.id;
+    const facturaRef = facturas.find(f => f.id === facturaId) || cxcRef?.facturas || null;
+    const osId = comision.os_cliente_id || cxcRef?.os_cliente_id || facturaRef?.os_cliente_id || facturaRef?.os_clientes?.id || cxcRef?.os_clientes?.id;
+    const osRef = osClientes.find(os => os.id === osId) || cxcRef?.os_clientes || facturaRef?.os_clientes || null;
+    const oportunidadId = comision.oportunidad_id || osRef?.oportunidad_id || facturaRef?.oportunidad_id || cxcRef?.oportunidad_id;
+    const oppRef = oportunidades.find(o => o.id === oportunidadId) || null;
+    const vendedorRef = personalAdmin.find(p => p.id === comision.vendedor_id);
+    return { cxcRef, facturaRef, osRef, oppRef, vendedorRef, facturaId, osId, oportunidadId };
+  };
+  const monedaComision = (comision) => {
+    const { cxcRef, facturaRef, osRef } = getComisionRefs(comision);
+    return normalizeMoneda(comision.moneda || cxcRef?.moneda || facturaRef?.moneda || osRef?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN');
+  };
+  const getOportunidadNombre = (comision) => {
+    const { oppRef } = getComisionRefs(comision);
+    return firstReadable(comision.oportunidad_nombre, oppRef?.nombre, oppRef?.titulo) || '-';
+  };
+  const renderOsFactura = (comision) => {
+    const { cxcRef, facturaRef, osRef, facturaId, osId } = getComisionRefs(comision);
+    const osNumero = firstReadable(comision.os_cliente_numero, osRef?.numero, cxcRef?.os_clientes?.numero, osId);
+    const facturaNumero = firstReadable(comision.factura_numero, facturaRef?.numero, cxcRef?.facturas?.numero, cxcRef?.factura_numero, cxcRef?.factura, facturaId);
+    if (!osNumero && !facturaNumero) return <span style={{ color: 'var(--fg-muted)' }}>-</span>;
+    return (
+      <>
+        {osNumero && <div>OS: {osNumero}</div>}
+        {facturaNumero && <div style={{ color: 'var(--fg-muted)' }}>Fac: {facturaNumero}</div>}
+      </>
+    );
+  };
+  const getPorcentajeBase = (comision) => {
+    const { vendedorRef } = getComisionRefs(comision);
+    const base = comision.porcentaje_base ?? vendedorRef?.porcentaje_comision;
+    return base === null || base === undefined || base === '' ? null : Number(base);
+  };
+  const tieneAcuerdoEspecial = (comision) => {
+    if (comision.acuerdo_especial === true || comision.acuerdo_especial === 'true') return true;
+    const { oppRef } = getComisionRefs(comision);
+    const base = getPorcentajeBase(comision);
+    return oppRef?.acuerdo_estado === 'aprobado'
+      && base !== null
+      && Math.abs(Number(comision.porcentaje_comision || 0) - base) > 0.0001;
+  };
+  const sumByCurrency = (list, field = 'monto_total') => monedasResumen.reduce((acc, moneda) => {
+    acc[moneda] = list
+      .filter(c => monedaComision(c) === moneda)
+      .reduce((s, c) => s + Number(c[field] || 0), 0);
+    return acc;
+  }, {});
+  const renderMoneyStack = (amounts, color) => (
+    <div className="commission-money-stack">
+      {monedasResumen.map(moneda => (
+        <div key={moneda} className="commission-money-line" style={color ? { color } : undefined}>
+          {moneyComision(amounts?.[moneda] || 0, moneda)}
+        </div>
+      ))}
+    </div>
+  );
+  const sumPendientes = sumByCurrency(pendientes);
+  const sumAprobadas = sumByCurrency(aprobadas);
+  const sumPagadas = sumByCurrency(pagadasPeriodo);
+
+  const topVendedor = useMemo(() => {
+    const por = {};
+    comisiones.filter(c => c.estado !== 'rechazada').forEach(c => {
+      const key = c.vendedor_nombre || c.vendedor_id;
+      if (!por[key]) por[key] = { nombre: key, items: [], total: 0 };
+      por[key].items.push(c);
+      por[key].total += Number(c.monto_total || 0);
+    });
+    const sorted = Object.values(por).sort((a, b) => b.total - a.total);
+    return sorted[0] || null;
+  }, [comisiones]);
+
+  const vendedoresHonorariosPendientes = useMemo(() => {
+    const por = {};
+    comisiones.filter(c => c.estado === 'aprobada' && c.modalidad_pago === 'Honorarios').forEach(c => {
+      if (!por[c.vendedor_id]) por[c.vendedor_id] = { id: c.vendedor_id, nombre: c.vendedor_nombre, items: [] };
+      por[c.vendedor_id].items.push(c);
+    });
+    return Object.values(por);
+  }, [comisiones]);
+
+  function abrirPanel(c) {
+    setPanelComision(c);
+    setBonif(c.bonificacion ? String(c.bonificacion) : '');
+    setNotaApro('');
+    setModoRechazo(false);
+    setMotivoRechazo('');
+  }
+
+  async function handleAprobar() {
+    if (!panelComision) return;
+    setGuardando(true);
+    try {
+      await aprobarComision(panelComision.id, {
+        bonificacion: Number(bonif || 0),
+        nota_aprobacion: notaApro,
+      });
+      addNotificacion('Comisión aprobada.');
+      setPanelComision(null);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function handleRechazar() {
+    if (!motivoRechazo.trim()) { addNotificacion('El motivo de rechazo es obligatorio.'); return; }
+    setGuardando(true);
+    try {
+      await rechazarComision(panelComision.id, motivoRechazo.trim());
+      addNotificacion('Comisión rechazada.');
+      setPanelComision(null);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function handleGenerarRecibo(vendedorId, moneda) {
+    const recibo = await generarReciboHonorarios(vendedorId, moneda);
+    if (recibo) setPanelRecibo(recibo);
+  }
+
+  async function handleConfirmarRecibo() {
+    if (!panelRecibo) return;
+    setGuardando(true);
+    try {
+      await confirmarReciboHonorarios(panelRecibo.id);
+      addNotificacion('Recibo de honorarios confirmado y egreso registrado.');
+      setPanelRecibo(null);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  const ESTADO_BADGE = {
+    pendiente_aprobacion: <span className="badge badge-orange">Pendiente</span>,
+    aprobada: <span className="badge badge-cyan">Aprobada</span>,
+    rechazada: <span className="badge badge-red">Rechazada</span>,
+    pagada: <span className="badge badge-green">Pagada</span>,
+  };
+  const panelMoneda = panelComision ? monedaComision(panelComision) : 'PEN';
+  const panelBonificacionPreview = panelComision
+    ? (puedeAprobar && panelComision.estado === 'pendiente_aprobacion'
+      ? Number(bonif || 0)
+      : Number(panelComision.bonificacion || 0))
+    : 0;
+  const panelTotalPreview = panelComision
+    ? Number(panelComision.monto_comision || 0) + panelBonificacionPreview
+    : 0;
+  const panelReciboMoneda = panelRecibo ? normalizeMoneda(panelRecibo.moneda || empresa?.moneda || empresa?.moneda_base) : 'PEN';
+
+  return (
+    <div className="page-content comisiones-page">
+      <div className="page-header">
+        <div>
+          <div className="eyebrow">RRHH</div>
+          <h1 className="page-title">Comisiones</h1>
+          <div className="page-sub">Liquidacion, aprobacion y pago de comisiones comerciales</div>
+        </div>
+      </div>
+
+      {/* Tabs principales */}
+      <div className="ficha-detail-tabs comisiones-tabs">
+        <button className={`ficha-detail-tab ${mainTab==='comisiones'?'active':''}`} onClick={() => setMainTab('comisiones')}>
+          Comisiones
+        </button>
+        {puedeAprobar && (
+          <button className={`ficha-detail-tab ${mainTab==='acuerdos'?'active':''}`} onClick={() => setMainTab('acuerdos')}>
+            Acuerdos pendientes
+            {acuerdosPendientes.length > 0 && (
+              <span style={{marginLeft:6, background: acuerdos48h > 0 ? 'var(--danger)' : 'var(--orange)', color:'#fff', borderRadius:99, padding:'1px 7px', fontSize:10, fontWeight:700}}>
+                {acuerdosPendientes.length}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
+
+      {mainTab === 'acuerdos' && puedeAprobar && (
+        <>
+          {/* KPIs de acuerdos */}
+          <div className="kpi-row" style={{marginBottom:20}}>
+            <div className="kpi-card">
+              <div className="kpi-label">Acuerdos pendientes</div>
+              <div className="kpi-value" style={{color:'var(--orange)'}}>{acuerdosPendientes.length}</div>
+              <div className="kpi-sub">esperando aprobación</div>
+            </div>
+            {acuerdos48h > 0 && (
+              <div className="kpi-card" style={{borderColor:'var(--danger)'}}>
+                <div className="kpi-label" style={{color:'var(--danger)'}}>Sin respuesta +48h</div>
+                <div className="kpi-value" style={{color:'var(--danger)'}}>{acuerdos48h}</div>
+                <div className="kpi-sub" style={{color:'var(--danger)'}}>requieren atención urgente</div>
+              </div>
+            )}
+          </div>
+
+          {acuerdosPendientes.length === 0 ? (
+            <div className="card" style={{textAlign:'center', padding:'40px 20px', color:'var(--fg-muted)'}}>
+              No hay acuerdos de comisión pendientes de aprobación.
+            </div>
+          ) : (
+            <div className="card">
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Vendedor</th>
+                      <th>Oportunidad</th>
+                      <th>Cliente</th>
+                      <th>% Base</th>
+                      <th>% Propuesto</th>
+                      <th>Diferencia</th>
+                      <th>Bonificación</th>
+                      <th>Justificación</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {acuerdosPendientes.map(({ opp, vendedor, cuenta, pctBase, pctProp, diff, horas48 }) => (
+                      <tr key={opp.id} style={horas48 ? {background:'rgba(239,68,68,0.04)'} : {}}>
+                        <td>
+                          <div style={{fontWeight:600}}>{opp.responsable || '—'}</div>
+                          {horas48 && <span className="badge badge-red" style={{fontSize:9, padding:'1px 5px'}}>+48h</span>}
+                        </td>
+                        <td style={{maxWidth:180}}>
+                          <div style={{fontWeight:500, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{opp.nombre}</div>
+                        </td>
+                        <td>{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</td>
+                        <td style={{textAlign:'center'}}>{pctBase > 0 ? `${pctBase}%` : '—'}</td>
+                        <td style={{textAlign:'center', fontWeight:700}}>{pctProp}%</td>
+                        <td style={{textAlign:'center'}}>
+                          <span className={`badge ${diff > 0 ? 'badge-red' : diff < 0 ? 'badge-green' : 'badge-gray'}`}>
+                            {diff > 0 ? `+${diff.toFixed(1)}%` : diff < 0 ? `${diff.toFixed(1)}%` : '= base'}
+                          </span>
+                        </td>
+                        <td style={{textAlign:'right'}}>
+                          {Number(opp.acuerdo_bonificacion || 0) > 0
+                            ? <strong>{opp.moneda === 'USD' ? 'US$ ' : 'S/ '}{Number(opp.acuerdo_bonificacion).toFixed(2)}</strong>
+                            : <span className="text-muted">—</span>}
+                        </td>
+                        <td style={{maxWidth:200, fontSize:12, color:'var(--fg-muted)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}} title={opp.acuerdo_justificacion || ''}>
+                          {opp.acuerdo_justificacion || '—'}
+                        </td>
+                        <td>
+                          {acuerdoAprobandoId === opp.id ? (
+                            <div className="col" style={{gap:6, minWidth:200}}>
+                              <div className="grid-2" style={{gap:6}}>
+                                <div className="input-group" style={{marginBottom:0}}>
+                                  <label style={{fontSize:10}}>% Comisión</label>
+                                  <input type="number" min="0" max="100" step="0.01" className="input" style={{padding:'3px 6px', fontSize:12}}
+                                    value={acuerdoAprobandoVals.pct ?? pctProp}
+                                    onChange={e => setAcuerdoAprobandoVals(p => ({...p, pct: e.target.value}))}
+                                  />
+                                </div>
+                                <div className="input-group" style={{marginBottom:0}}>
+                                  <label style={{fontSize:10}}>Bonif.</label>
+                                  <input type="number" min="0" step="0.01" className="input" style={{padding:'3px 6px', fontSize:12}}
+                                    value={acuerdoAprobandoVals.bon ?? (opp.acuerdo_bonificacion || 0)}
+                                    onChange={e => setAcuerdoAprobandoVals(p => ({...p, bon: e.target.value}))}
+                                  />
+                                </div>
+                              </div>
+                              <div className="row" style={{gap:4}}>
+                                <button className="btn btn-sm btn-ghost flex-1" onClick={() => setAcuerdoAprobandoId(null)}>Cancelar</button>
+                                <button className="btn btn-sm btn-primary flex-1" style={{background:'var(--green)', borderColor:'var(--green)'}}
+                                  onClick={() => {
+                                    aprobarAcuerdoComision(opp.id, {
+                                      acuerdo_pct: Number(acuerdoAprobandoVals.pct ?? pctProp),
+                                      acuerdo_bonificacion: Number(acuerdoAprobandoVals.bon ?? (opp.acuerdo_bonificacion || 0)),
+                                    });
+                                    setAcuerdoAprobandoId(null);
+                                    setAcuerdoAprobandoVals({});
+                                  }}>
+                                  Confirmar
+                                </button>
+                              </div>
+                            </div>
+                          ) : acuerdoRechazandoId === opp.id ? (
+                            <div className="col" style={{gap:6, minWidth:180}}>
+                              <input type="text" className="input" placeholder="Motivo (obligatorio)" style={{padding:'3px 6px', fontSize:12}}
+                                value={acuerdoMotivoRechazo}
+                                onChange={e => setAcuerdoMotivoRechazo(e.target.value)}
+                              />
+                              <div className="row" style={{gap:4}}>
+                                <button className="btn btn-sm btn-ghost flex-1" onClick={() => setAcuerdoRechazandoId(null)}>Cancelar</button>
+                                <button className="btn btn-sm flex-1" style={{background:'var(--danger)', color:'#fff', border:'none', fontSize:12}}
+                                  disabled={!acuerdoMotivoRechazo.trim()}
+                                  onClick={() => {
+                                    rechazarAcuerdoComision(opp.id, acuerdoMotivoRechazo.trim());
+                                    setAcuerdoRechazandoId(null);
+                                    setAcuerdoMotivoRechazo('');
+                                  }}>
+                                  Rechazar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="row" style={{gap:6}}>
+                              <button className="btn btn-sm btn-primary" style={{background:'var(--green)', borderColor:'var(--green)', fontSize:11}}
+                                onClick={() => { setAcuerdoAprobandoId(opp.id); setAcuerdoAprobandoVals({ pct: pctProp, bon: opp.acuerdo_bonificacion || 0 }); }}>
+                                Aprobar
+                              </button>
+                              <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)', fontSize:11}}
+                                onClick={() => { setAcuerdoRechazandoId(opp.id); setAcuerdoMotivoRechazo(''); }}>
+                                Rechazar
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {mainTab === 'comisiones' && <>
+      {/* KPIs */}
+      <div className="kpi-grid comisiones-kpis">
+        <div className="kpi-card">
+          <div className="kpi-label">Pendiente aprobacion</div>
+          {renderMoneyStack(sumPendientes, 'var(--orange)')}
+          <div className="kpi-sub">{pendientes.length} comisiones</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Aprobadas no pagadas</div>
+          {renderMoneyStack(sumAprobadas, 'var(--green)')}
+          <div className="kpi-sub">{aprobadas.length} comisiones</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Pagadas este período</div>
+          {renderMoneyStack(sumPagadas)}
+          <div className="kpi-sub">{periodoActual}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Top vendedor</div>
+          <div className="commission-top-name">{topVendedor?.nombre || 'Sin datos'}</div>
+          {renderMoneyStack(topVendedor ? sumByCurrency(topVendedor.items) : { PEN: 0, USD: 0 })}
+        </div>
+      </div>
+
+      {/* Honorarios pendientes de recibo */}
+      {vendedoresHonorariosPendientes.length > 0 && (
+        <div className="card comisiones-honorarios-card">
+          <div className="card-head">
+            <h3>Recibos de honorarios pendientes</h3>
+            <span className="badge badge-cyan">{vendedoresHonorariosPendientes.length} vendedores</span>
+          </div>
+          <div className="commission-receipt-list">
+            {vendedoresHonorariosPendientes.map(v => {
+              const totales = sumByCurrency(v.items);
+              const monedasConSaldo = monedasResumen.filter(moneda => v.items.some(c => monedaComision(c) === moneda));
+              return (
+                <div key={v.id} className="commission-receipt-card">
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{v.nombre}</div>
+                    <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{v.items.length} comisiones aprobadas</div>
+                  </div>
+                  <div className="commission-receipt-amount">{renderMoneyStack(totales)}</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {monedasConSaldo.map(moneda => (
+                      <button key={moneda} className="btn btn-sm btn-primary" onClick={() => handleGenerarRecibo(v.id, moneda)}>
+                        Generar {moneda}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Filtros */}
+      <div className="card comisiones-filters">
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="input-group" style={{ minWidth: 160, marginBottom: 0 }}>
+            <label>Vendedor</label>
+            <select className="select" value={filtVendedor} onChange={e => setFiltVendedor(e.target.value)}>
+              <option value="">Todos</option>
+              {vendedoresUniq.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+            </select>
+          </div>
+          <div className="input-group" style={{ minWidth: 130, marginBottom: 0 }}>
+            <label>Período</label>
+            <select className="select" value={filtPeriodo} onChange={e => setFiltPeriodo(e.target.value)}>
+              <option value="">Todos</option>
+              {periodosUniq.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div className="input-group" style={{ minWidth: 160, marginBottom: 0 }}>
+            <label>Estado</label>
+            <select className="select" value={filtEstado} onChange={e => setFiltEstado(e.target.value)}>
+              <option value="">Todos</option>
+              <option value="pendiente_aprobacion">Pendiente</option>
+              <option value="aprobada">Aprobada</option>
+              <option value="rechazada">Rechazada</option>
+              <option value="pagada">Pagada</option>
+            </select>
+          </div>
+          <div className="input-group" style={{ minWidth: 140, marginBottom: 0 }}>
+            <label>Modalidad</label>
+            <select className="select" value={filtModalidad} onChange={e => setFiltModalidad(e.target.value)}>
+              <option value="">Todas</option>
+              <option value="Planilla">Planilla</option>
+              <option value="Honorarios">Honorarios</option>
+            </select>
+          </div>
+          {(filtVendedor || filtPeriodo || filtEstado || filtModalidad) && (
+            <button className="btn btn-sm btn-secondary" onClick={() => { setFiltVendedor(''); setFiltPeriodo(''); setFiltEstado(''); setFiltModalidad(''); }}>
+              Limpiar filtros
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tabla */}
+      <div className="card comisiones-table-card">
+        <div style={{ overflowX: 'auto' }}>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Vendedor</th>
+                <th>Oportunidad</th>
+                <th>OS / Factura</th>
+                <th>Monto cobrado</th>
+                <th>%</th>
+                <th>Comisión</th>
+                <th>Bonificación</th>
+                <th>Total</th>
+                <th>Modalidad</th>
+                <th>Período</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtradas.length === 0 && (
+                <tr><td colSpan={12} style={{ textAlign: 'center', color: 'var(--fg-muted)', padding: 32 }}>Sin comisiones</td></tr>
+              )}
+              {filtradas.map(c => (
+                <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => abrirPanel(c)}>
+                  <td><div style={{ fontWeight: 600 }}>{c.vendedor_nombre || c.vendedor_id}</div></td>
+                  <td style={{ maxWidth: 220 }}>
+                    <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={getOportunidadNombre(c)}>
+                      {getOportunidadNombre(c)}
+                    </div>
+                  </td>
+                  <td style={{ fontSize: 12 }}>
+                    {renderOsFactura(c)}
+                  </td>
+                  <td>{moneyComision(c.monto_cobrado, monedaComision(c))}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span>{c.porcentaje_comision}%</span>
+                      {tieneAcuerdoEspecial(c) && <span className="badge badge-green" style={{ fontSize: 10, padding: '1px 6px' }}>Acuerdo</span>}
+                    </div>
+                  </td>
+                  <td>{moneyComision(c.monto_comision, monedaComision(c))}</td>
+                  <td>{c.bonificacion > 0 ? moneyComision(c.bonificacion, monedaComision(c)) : '—'}</td>
+                  <td style={{ fontWeight: 600 }}>{moneyComision(c.monto_total, monedaComision(c))}</td>
+                  <td><span className="badge badge-gray">{c.modalidad_pago}</span></td>
+                  <td style={{ fontSize: 12 }}>{c.periodo}</td>
+                  <td>{ESTADO_BADGE[c.estado] || c.estado}</td>
+                  <td>
+                    {puedeAprobar && c.estado === 'pendiente_aprobacion' && (
+                      <button className="btn btn-sm btn-primary" onClick={e => { e.stopPropagation(); abrirPanel(c); }}>
+                        Revisar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      </>}
+
+      {/* Panel detalle / aprobación */}
+      {panelComision && (
+        <div className="side-panel-backdrop" onClick={() => setPanelComision(null)}>
+          <div className="side-panel" onClick={e => e.stopPropagation()} style={{ width: 420 }}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Comisión</div>
+                <div style={{ fontWeight: 700, fontSize: 17 }}>{panelComision.vendedor_nombre}</div>
+              </div>
+              <button className="btn btn-sm btn-secondary" onClick={() => setPanelComision(null)}>Cerrar</button>
+            </div>
+            <div className="side-panel-body">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
+                {[
+                  ['Período', panelComision.periodo],
+                  ['Estado', ESTADO_BADGE[panelComision.estado]],
+                  ['Modalidad', panelComision.modalidad_pago],
+                  ['Monto cobrado', moneyComision(panelComision.monto_cobrado, panelMoneda)],
+                  ['% comisión', `${panelComision.porcentaje_comision}%`],
+                  ['Monto comisión', moneyComision(panelComision.monto_comision, panelMoneda)],
+                  ['Bonificación', moneyComision(panelBonificacionPreview, panelMoneda)],
+                  ['Total', moneyComision(panelTotalPreview, panelMoneda)],
+                ].map(([label, val]) => (
+                  <div key={label} style={{ background: 'var(--bg-subtle)', borderRadius: 6, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginBottom: 2 }}>{label}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+
+              {panelComision.motivo_rechazo && (
+                <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 12px', marginBottom: 16, fontSize: 12 }}>
+                  <strong>Motivo de rechazo:</strong> {panelComision.motivo_rechazo}
+                </div>
+              )}
+              {panelComision.nota_aprobacion && (
+                <div style={{ background: '#dcfce7', border: '1px solid #86efac', borderRadius: 6, padding: '10px 12px', marginBottom: 16, fontSize: 12 }}>
+                  <strong>Nota:</strong> {panelComision.nota_aprobacion}
+                </div>
+              )}
+
+              {puedeAprobar && panelComision.estado === 'pendiente_aprobacion' && !modoRechazo && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label>Bonificación adicional (opcional)</label>
+                    <input type="number" min="0" step="0.01" placeholder="0.00" value={bonif} onChange={e => setBonif(e.target.value)} />
+                    <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 4 }}>
+                      Total actualizado: <strong style={{ color: 'var(--fg)' }}>{moneyComision(panelTotalPreview, panelMoneda)}</strong>
+                    </div>
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label>Nota de aprobación (opcional)</label>
+                    <input type="text" placeholder="Notas..." value={notaApro} onChange={e => setNotaApro(e.target.value)} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleAprobar} disabled={guardando}>
+                      {guardando ? 'Guardando...' : 'Aprobar'}
+                    </button>
+                    <button className="btn btn-secondary" style={{ color: 'var(--red)' }} onClick={() => setModoRechazo(true)}>
+                      Rechazar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {puedeAprobar && panelComision.estado === 'pendiente_aprobacion' && modoRechazo && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label>Motivo de rechazo <span style={{ color: 'var(--red)' }}>*</span></label>
+                    <input type="text" placeholder="Describe el motivo..." value={motivoRechazo} onChange={e => setMotivoRechazo(e.target.value)} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-secondary" onClick={() => setModoRechazo(false)}>Cancelar</button>
+                    <button className="btn btn-primary" style={{ flex: 1, background: 'var(--red)', borderColor: 'var(--red)' }} onClick={handleRechazar} disabled={guardando || !motivoRechazo.trim()}>
+                      {guardando ? 'Guardando...' : 'Confirmar rechazo'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Panel recibo honorarios */}
+      {panelRecibo && (
+        <div className="side-panel-backdrop" onClick={() => setPanelRecibo(null)}>
+          <div className="side-panel" onClick={e => e.stopPropagation()} style={{ width: 380 }}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Recibo por honorarios</div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>{panelRecibo.vendedor_nombre}</div>
+              </div>
+              <button className="btn btn-sm btn-secondary" onClick={() => setPanelRecibo(null)}>Cerrar</button>
+            </div>
+            <div className="side-panel-body">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+                {[
+                  ['Período', panelRecibo.periodo],
+                  ['N° comisiones', panelRecibo.comisiones_ids?.length || 0],
+                  ['Monto bruto', moneyComision(panelRecibo.monto_bruto, panelReciboMoneda)],
+                  ['Retención IR (8%)', `-${moneyComision(panelRecibo.retencion_ir, panelReciboMoneda)}`],
+                  ['Monto neto', moneyComision(panelRecibo.monto_neto, panelReciboMoneda)],
+                ].map(([label, val]) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--fg-muted)', fontSize: 13 }}>{label}</span>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{val}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 16 }}>
+                Al confirmar se registrará el egreso en Tesorería y se marcarán las comisiones como pagadas.
+              </div>
+              <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleConfirmarRecibo} disabled={guardando}>
+                {guardando ? 'Procesando...' : 'Confirmar y emitir recibo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export { Roles, Usuarios, Tenants, Planes, Stub, Maestros, Servicios, Tarifarios, Parametros, RRHHAdmin, MetricasSaaS, Organigrama, Comisiones };

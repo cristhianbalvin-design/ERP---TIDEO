@@ -37,11 +37,27 @@ export async function persistirOT(supabase, empresaId, ot) {
     avance_pct: ot.avance || 0,
     costo_estimado: ot.costoEst || 0,
     costo_real: ot.costoReal || 0,
+    est_mo: ot.est_mo ?? null,
+    est_materiales: ot.est_materiales ?? null,
+    est_terceros: ot.est_terceros ?? null,
+    est_logistica: ot.est_logistica ?? null,
     centro_costo_id: ot.centro_costo_id || null,
     centro_beneficio_id: ot.centro_beneficio_id || null,
     es_adicional: ot.es_adicional || false,
   };
-  return supabase.from('ordenes_trabajo').insert(row);
+
+  const insert = async (payload) => supabase.from('ordenes_trabajo').insert(payload);
+  let payload = { ...row };
+  for (let i = 0; i < 5; i += 1) {
+    const result = await insert(payload);
+    if (!result?.error) return result;
+    const msg = result.error.message || '';
+    const missingColumn = msg.match(/column "([^"]+)" of relation/)?.[1] || msg.match(/'([^']+)' column/)?.[1];
+    if (!missingColumn || !(missingColumn in payload)) return result;
+    delete payload[missingColumn];
+    if (Object.keys(payload).length === 0) return result;
+  }
+  return insert(payload);
 }
 
 export async function crearOTDesdeOSRpc(supabase, empresaId, osClienteId, ot) {
@@ -63,17 +79,64 @@ export async function crearOTDesdeOSRpc(supabase, empresaId, osClienteId, ot) {
 }
 
 export async function actualizarOT(supabase, otId, datos) {
-  const row = { ...datos };
+  const row = {};
+
+  if (datos.cuenta_id !== undefined) row.cuenta_id = datos.cuenta_id || null;
+  if (datos.os_cliente_id !== undefined) row.os_cliente_id = datos.os_cliente_id || null;
+  if (datos.backlog_id !== undefined) row.backlog_id = datos.backlog_id || null;
+  if (datos.tipo !== undefined || datos.servicio !== undefined) row.servicio = datos.tipo || datos.servicio || 'General';
+  if (datos.descripcion !== undefined) row.descripcion = datos.descripcion || null;
+  if (datos.sede !== undefined || datos.direccion_ejecucion !== undefined) row.direccion_ejecucion = datos.sede || datos.direccion_ejecucion || null;
+  if (datos.fecha_inicio !== undefined || datos.fecha_programada !== undefined) row.fecha_programada = datos.fecha_inicio || datos.fecha_programada || null;
+  if (datos.fecha_fin !== undefined) row.fecha_fin = datos.fecha_fin || null;
+  if (datos.tecnico_responsable_id !== undefined) row.tecnico_responsable_id = datos.tecnico_responsable_id || null;
+  if (datos.supervisor !== undefined) row.supervisor = datos.supervisor || null;
+  if (datos.estado !== undefined) row.estado = datos.estado || 'programada';
+  if (datos.centro_costo_id !== undefined) row.centro_costo_id = datos.centro_costo_id || null;
+  if (datos.centro_beneficio_id !== undefined) row.centro_beneficio_id = datos.centro_beneficio_id || null;
+  if (datos.facturable !== undefined) row.facturable = Boolean(datos.facturable);
+  if (datos.es_adicional !== undefined) row.es_adicional = Boolean(datos.es_adicional);
   if (datos.avance !== undefined) {
     row.avance_pct = datos.avance;
-    delete row.avance;
   }
   if (datos.costoReal !== undefined) {
     row.costo_real = datos.costoReal;
-    delete row.costoReal;
   }
+  if (datos.costoEst !== undefined) row.costo_estimado = datos.costoEst;
+  if (datos.est_mo !== undefined) row.est_mo = datos.est_mo !== '' ? (Number(datos.est_mo) || null) : null;
+  if (datos.est_materiales !== undefined) row.est_materiales = datos.est_materiales !== '' ? (Number(datos.est_materiales) || null) : null;
+  if (datos.est_terceros !== undefined) row.est_terceros = datos.est_terceros !== '' ? (Number(datos.est_terceros) || null) : null;
+  if (datos.est_logistica !== undefined) row.est_logistica = datos.est_logistica !== '' ? (Number(datos.est_logistica) || null) : null;
+  row.updated_at = new Date().toISOString();
   if (!Object.keys(row).length) return;
-  return supabase.from('ordenes_trabajo').update(row).eq('id', otId);
+
+  const update = async (payload) => supabase.from('ordenes_trabajo').update(payload).eq('id', otId);
+  let payload = { ...row };
+
+  for (let i = 0; i < 5; i += 1) {
+    const result = await update(payload);
+    if (!result?.error) return result;
+
+    const missingColumn = result.error.message?.match(/'([^']+)' column/)?.[1];
+    if (!missingColumn || !(missingColumn in payload)) return result;
+
+    delete payload[missingColumn];
+    if (Object.keys(payload).length === 0) return result;
+  }
+
+  return update(payload);
+}
+
+export async function eliminarOT(supabase, otId) {
+  return supabase.from('ordenes_trabajo').delete().eq('id', otId);
+}
+
+export async function subirConformidadOT(supabase, empresaId, cierreId, file) {
+  const path = `${empresaId}/${cierreId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const { error } = await supabase.storage.from('conformidades-ot').upload(path, file);
+  if (error) throw error;
+  const { data: urlData } = supabase.storage.from('conformidades-ot').getPublicUrl(path);
+  return { nombre: file.name, url: urlData.publicUrl };
 }
 
 export async function persistirParteDiario(supabase, empresaId, parte) {
@@ -90,8 +153,33 @@ export async function persistirParteDiario(supabase, empresaId, parte) {
     materiales: parte.materiales_usados || [],
     evidencias: parte.evidencias || [],
     estado: parte.estado || 'en_revision',
+    datos_borrador: parte.estado === 'borrador' ? {
+      tareas_trabajadas: parte.tareas_trabajadas || [],
+      actividades_adicionales: parte.actividades_adicionales || [],
+      avance_ajustado_manual: parte.avance_ajustado_manual || false,
+      avance_global: parte.avance_global || parte.avance_reportado || 0,
+      observaciones: parte.observaciones || '',
+      es_restriccion: parte.es_restriccion || false,
+    } : null,
   };
-  return supabase.from('partes_diarios').insert(row);
+
+  const insert = async (payload) => supabase.from('partes_diarios').insert(payload);
+  let payload = { ...row };
+
+  for (let i = 0; i < 5; i += 1) {
+    const result = await insert(payload);
+    if (!result?.error) return result;
+
+    const msg = result.error.message || '';
+    const missingColumn = msg.match(/column "([^"]+)" of relation/)?.[1]
+      || msg.match(/'([^']+)' column/)?.[1];
+    if (!missingColumn || !(missingColumn in payload)) return result;
+
+    delete payload[missingColumn];
+    if (Object.keys(payload).length === 0) return result;
+  }
+
+  return insert(payload);
 }
 
 export async function actualizarParteDiario(supabase, parteId, datos) {
@@ -103,15 +191,36 @@ export async function persistirCierreTecnico(supabase, empresaId, cierre) {
     id: cierre.id,
     empresa_id: empresaId,
     orden_trabajo_id: cierre.ot_id,
-    fecha_cierre: cierre.fecha || new Date().toISOString().split('T')[0],
+    fecha_cierre: cierre.fecha_fin_real || cierre.fecha || new Date().toISOString().split('T')[0],
     resultado: cierre.resultado || 'conforme',
     observaciones: cierre.observaciones || null,
     conformidad_cliente: cierre.conformidad_cliente || null,
     evidencias: cierre.evidencias || [],
     cerrado_por: cierre.cerrado_por || null,
-    estado: 'cerrado'
+    estado: 'cerrado',
+    descripcion_trabajo: cierre.descripcion_trabajo || null,
+    fecha_inicio_real: cierre.fecha_inicio_real || null,
+    horas_total: cierre.horas_total || 0,
+    avance_final: cierre.avance_final ?? 100,
+    costo_terceros: cierre.costo_terceros || 0,
+    costo_logistica: cierre.costo_logistica || 0,
+    token_conformidad: cierre.token_conformidad || null,
+    conformidad_archivo_url: cierre.conformidad_archivo_url || null,
+    conformidad_archivo_nombre: cierre.conformidad_archivo_nombre || null,
   };
-  return supabase.from('cierres_tecnicos').insert(row);
+
+  const insert = async (payload) => supabase.from('cierres_tecnicos').insert(payload);
+  let payload = { ...row };
+  for (let i = 0; i < 5; i += 1) {
+    const result = await insert(payload);
+    if (!result?.error) return result;
+    const msg = result.error.message || '';
+    const missingColumn = msg.match(/column "([^"]+)" of relation/)?.[1] || msg.match(/'([^']+)' column/)?.[1];
+    if (!missingColumn || !(missingColumn in payload)) return result;
+    delete payload[missingColumn];
+    if (Object.keys(payload).length === 0) return result;
+  }
+  return insert(payload);
 }
 
 export async function consumirInventario(supabase, empresaId, itemsADescontar, otId) {
@@ -150,20 +259,26 @@ export async function loadOpsFromSupabase(supabase, empresaId) {
 
   const q = table => supabase.from(table).select('*').eq('empresa_id', empresaId);
 
-  const [otsR, partesR, backlogR] = await Promise.all([
+  const [otsR, partesR, backlogR, plannerR, cierresR] = await Promise.all([
     q('ordenes_trabajo').order('created_at', { ascending: false }),
     q('partes_diarios').order('created_at', { ascending: false }),
     q('backlog').order('created_at', { ascending: false }),
+    q('planner_asignaciones').neq('estado', 'cancelado').order('fecha', { ascending: true }),
+    q('cierres_tecnicos').order('created_at', { ascending: false }),
   ]);
 
   const mapOT = (ot) => ({
     ...ot,
+    estado: ot.estado === 'cerrado' ? 'cerrada' : ot.estado,
     avance: ot.avance_pct,
     costoEst: ot.costo_estimado,
     costoReal: ot.costo_real,
     tipo: ot.servicio,
     sede: ot.direccion_ejecucion,
     fecha_inicio: ot.fecha_programada,
+    fecha_fin: ot.fecha_fin,
+    facturable: ot.facturable,
+    supervisor: ot.supervisor,
     responsable_id: ot.tecnico_responsable_id,
     cliente: ot.cuenta_id,
     es_adicional: ot.es_adicional || false,
@@ -171,6 +286,7 @@ export async function loadOpsFromSupabase(supabase, empresaId) {
 
   const mapParte = (p) => ({
     ...p,
+    ...(p.datos_borrador || {}),
     ot_id: p.orden_trabajo_id,
     tecnico: p.tecnico_id,
     horas: p.horas_normales,
@@ -179,11 +295,19 @@ export async function loadOpsFromSupabase(supabase, empresaId) {
     materiales_usados: p.materiales || []
   });
 
+  const mapCierre = (c) => ({
+    ...c,
+    ot_id: c.orden_trabajo_id,
+    fecha: c.fecha_cierre,
+  });
+
   return {
     ots: (otsR.data || []).map(mapOT),
     partes: (partesR.data || []).map(mapParte),
     backlog: backlogR.data || [],
-    errors: [otsR, partesR, backlogR]
+    plannerAsignaciones: plannerR.data || [],
+    cierresTecnicos: (cierresR.data || []).map(mapCierre),
+    errors: [otsR, partesR, backlogR, plannerR, cierresR]
       .filter(r => r.error)
       .map(r => r.error?.message),
   };

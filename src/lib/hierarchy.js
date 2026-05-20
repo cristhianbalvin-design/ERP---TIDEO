@@ -51,15 +51,17 @@ export function isActiveUser(user) {
 
 export function isTenantAdmin(user, roles = {}) {
   const role = getRoleForUser(user, roles);
-  return Boolean(role?.es_superadmin || role?.es_admin_empresa || user?.es_superadmin || user?.es_admin_empresa);
+  return Boolean(user?.superadmin_plataforma || role?.es_superadmin || role?.es_admin_empresa || user?.es_superadmin || user?.es_admin_empresa);
 }
 
 export function hasTeamScope(user, roles = {}) {
+  if (user?.superadmin_plataforma) return true;
   if (isTenantAdmin(user, roles)) return true;
   return ['direccion', 'jefatura', 'supervisor'].includes(getUserHierarchyLevel(user, roles));
 }
 
 export function hasTenantScope(user, roles = {}) {
+  if (user?.superadmin_plataforma) return true;
   if (isTenantAdmin(user, roles)) return true;
   return getUserHierarchyLevel(user, roles) === 'direccion';
 }
@@ -74,12 +76,13 @@ export function userMatchesCategory(user, categories = [], roles = {}) {
   return false;
 }
 
-export function getAssignableUsers({ users = [], roles = {}, categories = [], includeAdmins = true, empresaId = null }) {
+export function getAssignableUsers({ users = [], roles = {}, categories = [], includeAdmins = true, empresaId = null, viewer = null }) {
   const allowed = includeAdmins ? [...new Set([...categories, 'admin'])] : categories;
   return users
     .filter(user => isActiveUser(user))
     .filter(user => !empresaId || !user.empresa_id || user.empresa_id === empresaId)
     .filter(user => userMatchesCategory(user, allowed, roles))
+    .filter(user => !viewer || canUserSeeOwner({ viewer, ownerUserId: user.id, ownerName: user.nombre, users, roles }))
     .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
 }
 
@@ -116,4 +119,13 @@ export function canUserSeeOwner({ viewer, ownerUserId, ownerName, users = [], ro
     current = byId.get(current.jefe_user_id);
   }
   return false;
+}
+
+export function canUserApproveOwner({ viewer, ownerUserId, ownerName, users = [], roles = {} }) {
+  if (!viewer) return false;
+  if (isTenantAdmin(viewer, roles) || hasTenantScope(viewer, roles)) return true;
+  if (ownerUserId && ownerUserId === viewer.id) return false;
+  if (!ownerUserId && ownerName && String(ownerName).trim() === String(viewer.nombre || '').trim()) return false;
+  if (!['jefatura', 'supervisor'].includes(getUserHierarchyLevel(viewer, roles))) return false;
+  return canUserSeeOwner({ viewer, ownerUserId, ownerName, users, roles });
 }

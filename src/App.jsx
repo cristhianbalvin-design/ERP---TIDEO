@@ -3,13 +3,13 @@ import { AppProvider, useApp } from './context.jsx';
 import { AuthGate } from './AuthGate.jsx';
 import { Sidebar, Header } from './shell.jsx';
 
-import { Roles, Usuarios, Tenants, Planes, Stub, Maestros, Servicios, Tarifarios, Parametros, RRHHAdmin, MetricasSaaS } from './pages_admin.jsx';
+import { Roles, Usuarios, Tenants, Planes, Stub, Maestros, Servicios, Tarifarios, Parametros, RRHHAdmin, MetricasSaaS, Organigrama, Comisiones } from './pages_admin.jsx';
 import { CSOnboarding, CSPlanes, CSHealthScore, CSRenovaciones, CSFidelizacion, BICustomerSuccess } from './pages_cs.jsx';
 import { IAComercial, IAOperativa, IAFinanciera } from './pages_ia.jsx';
 import { BIFinanciero } from './pages_bi_fin.jsx';
 import { Dashboard, Leads, Pipeline, Actividades, AgendaComercial, OSCliente, Marketing, BIComercial, BIOperativo } from './pages_core.jsx';
 import { Cotizaciones, Valorizacion, Inventario, HojaCosteo } from './pages_extra.jsx';
-import { PaginaAceptacion } from './pages_aceptar.jsx';
+import { PaginaAceptacion, PaginaConformidadOT } from './pages_aceptar.jsx';
 import { CxC, Tesoreria, Resultados, Facturacion, Ventas, CajaChica, PrestamosPersonal, CxP, Presupuestos } from './pages_fin.jsx';
 import { FinanciamientoDeuda } from './pages_fin_deuda.jsx';
 import { MobileFieldView } from './pages_mobile.jsx';
@@ -97,6 +97,7 @@ function MainLayout() {
       case 'asistencia': return <ControlAsistencia />;
       case 'turnos': return <TurnosHorarios />;
       case 'nomina': return <Nomina />;
+      case 'comisiones': return <Comisiones />;
       case 'tickets': return <Tickets />;
       case 'presupuestos': return <Presupuestos />;
       case 'cuentas': return <Cuentas/>;
@@ -116,6 +117,7 @@ function MainLayout() {
       case 'facturacion': return <Facturacion/>;
       case 'roles': return <Roles/>;
       case 'usuarios': return <Usuarios/>;
+      case 'organigrama': return <Organigrama/>;
       case 'tenants': return isSuperadmin ? <Tenants/> : <Dashboard role={role}/>;
       case 'planes': return isSuperadmin ? <Planes/> : <Dashboard role={role}/>;
       case 'actividades': return <Actividades/>;
@@ -185,6 +187,10 @@ export default function App() {
   if (hash.startsWith('#aceptar/')) {
     const token = hash.slice('#aceptar/'.length).split('?')[0];
     return <ErrorBoundary><PaginaAceptacion token={token} /></ErrorBoundary>;
+  }
+  if (hash.startsWith('#conformidad-ot/')) {
+    const token = hash.slice('#conformidad-ot/'.length).split('?')[0];
+    return <ErrorBoundary><PaginaConformidadOT token={token} /></ErrorBoundary>;
   }
   return (
     <ErrorBoundary>

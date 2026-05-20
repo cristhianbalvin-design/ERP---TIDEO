@@ -48,6 +48,7 @@ const SIDEBAR = [
     { key: 'asistencia', label: 'Control de Asistencia', icon: I.clock },
     { key: 'turnos', label: 'Turnos y Horarios', icon: I.calendar },
     { key: 'nomina', label: 'Nomina', icon: I.receipt },
+    { key: 'comisiones', label: 'Comisiones', icon: I.percent },
     { key: 'prestamos_personal', label: 'Prestamos al Personal', icon: I.userCheck },
   ]},
   { section: 'Logistica', items: [
@@ -92,6 +93,7 @@ const SIDEBAR = [
   ]},
   { section: 'Configuracion', items: [
     { key: 'usuarios', label: 'Usuarios', icon: I.users },
+    { key: 'organigrama', label: 'Organigrama', icon: I.users },
     { key: 'roles', label: 'Roles y Permisos', icon: I.shield },
     { key: 'maestros', label: 'Maestros Base', icon: I.settings },
     { key: 'parametros', label: 'Parametros Generales', icon: I.settings },
@@ -171,7 +173,10 @@ function buildSidebarBadges(app) {
 
   return {
     leads: leads.filter(l => !l.convertido && ['nuevo', 'sin_contacto', 'pendiente'].includes(norm(l.estado))).length,
-    pipeline: oportunidades.filter(o => isOpenStatus(o.estado) && (overdue(o.fecha_cierre) || overdue(o.fecha_proximo_contacto) || overdue(o.proxima_accion_fecha))).length,
+    pipeline: new Set([
+      ...oportunidades.filter(o => isOpenStatus(o.estado) && (overdue(o.fecha_cierre) || overdue(o.fecha_proximo_contacto) || overdue(o.proxima_accion_fecha))).map(o => o.id),
+      ...oportunidades.filter(o => norm(o.acuerdo_estado) === 'pendiente').map(o => o.id),
+    ]).size,
     actividades: actividades.filter(a => isOpenStatus(a.estado) && (dueIn(a.fecha, 0) || dueIn(a.proxima_accion_fecha, 0))).length,
     agenda_comercial: agendaEventos.filter(e => isOpenStatus(e.estado) && String(e.fecha || '').slice(0, 10) === todayIso).length,
     hoja_costeo: hojasCosteo.filter(h => ['en_revision', 'pendiente_aprobacion', 'por_aprobar'].includes(norm(h.estado))).length,

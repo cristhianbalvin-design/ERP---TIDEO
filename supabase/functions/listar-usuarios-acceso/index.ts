@@ -72,7 +72,22 @@ serve(async (req) => {
   const rolesById = new Map((rolesRows || []).map((role) => [role.id, role]));
 
   const callerMemberships = (memberships || []).filter((m) => m.user_id === caller.id);
-  const isSuperadmin = callerMemberships.some((m) => {
+
+  // Cargar es_plataforma de las empresas del caller para reconocer admin de plataforma
+  const callerEmpresaIds = [...new Set(callerMemberships.map((m) => m.empresa_id).filter(Boolean))];
+  const { data: callerEmpresasRows } = callerEmpresaIds.length
+    ? await adminClient.from("empresas").select("id, es_plataforma").in("id", callerEmpresaIds)
+    : { data: [] as { id: string; es_plataforma: boolean }[] };
+  const callerEmpresasById = new Map((callerEmpresasRows || []).map((e) => [e.id, e]));
+
+  // Admin o superadmin de una empresa plataforma puede operar sobre cualquier tenant
+  const isPlatformAdmin = callerMemberships.some((m) => {
+    const role = rolesById.get(m.rol_id);
+    const empresa = callerEmpresasById.get(m.empresa_id);
+    return (role?.es_superadmin || role?.es_admin_empresa) && empresa?.es_plataforma;
+  });
+
+  const isSuperadmin = isPlatformAdmin || callerMemberships.some((m) => {
     const role = rolesById.get(m.rol_id);
     return role?.es_superadmin;
   }) || Boolean(callerProfile?.rol && rolesById.get(callerProfile.rol)?.es_superadmin);
@@ -88,7 +103,12 @@ serve(async (req) => {
   }
   const canManagePlatform = isSuperadmin;
 
-  if (empresaId && !isSuperadmin && !manageableEmpresaIds.has(empresaId)) {
+  // Cualquier miembro activo de la empresa puede listar sus colegas (necesario para selectores de asignación).
+  // Solo los admins pueden listar usuarios de otras empresas.
+  const isMemberOfEmpresa = callerMemberships.some((m) => m.empresa_id === empresaId)
+    || callerProfile?.empresa_id === empresaId;
+
+  if (empresaId && !isSuperadmin && !manageableEmpresaIds.has(empresaId) && !isMemberOfEmpresa) {
     return jsonResponse({ success: false, error: "No tienes permiso para listar usuarios de este tenant." }, 403);
   }
 
@@ -217,6 +237,45 @@ serve(async (req) => {
       campo_modulos: membership.campo_modulos || [],
       estado: estadoMap[membership.estado] ?? membership.estado,
     });
+  }
+
+  // ─── Filtro jerárquico descendente ───────────────────────────────────────────
+  // Admin y Dirección ven a todos. El resto solo ve a sí mismo + su equipo hacia abajo.
+  const isAdminOfThisEmpresa = isSuperadmin || (empresaId ? manageableEmpresaIds.has(empresaId) : false);
+
+  if (!isAdminOfThisEmpresa && isMemberOfEmpresa) {
+    const callerRow = rows.get(`${caller.id}:${empresaId}`) ?? [...rows.values()].find((u) => u.id === caller.id);
+    const callerLevel = (callerRow?.nivel_jerarquico ?? "") as string;
+    const hasTenantLevelScope = callerLevel === "direccion";
+
+    if (!hasTenantLevelScope) {
+      // BFS hacia abajo: recolectar todos los reportes directos e indirectos del caller
+      const reportsByJefe = new Map<string, string[]>();
+      for (const user of rows.values()) {
+        const jefeId = user.jefe_user_id as string | null;
+        if (jefeId) {
+          const list = reportsByJefe.get(jefeId) ?? [];
+          list.push(user.id as string);
+          reportsByJefe.set(jefeId, list);
+        }
+      }
+
+      const visible = new Set<string>([caller.id]);
+      const queue: string[] = [caller.id];
+      while (queue.length) {
+        const current = queue.shift()!;
+        for (const reportId of reportsByJefe.get(current) ?? []) {
+          if (!visible.has(reportId)) {
+            visible.add(reportId);
+            queue.push(reportId);
+          }
+        }
+      }
+
+      for (const [key, user] of [...rows.entries()]) {
+        if (!visible.has(user.id as string)) rows.delete(key);
+      }
+    }
   }
 
   return jsonResponse({ success: true, usuarios: [...rows.values()] });

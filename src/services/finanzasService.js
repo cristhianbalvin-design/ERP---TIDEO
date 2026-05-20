@@ -23,6 +23,18 @@ export const finanzasService = {
     return data;
   },
 
+  async actualizarValorizacion(id, updates) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('valorizaciones')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
   async getFacturas(empresaId) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
@@ -55,7 +67,7 @@ export const finanzasService = {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('cxc')
-      .select(`*, cuentas(id, razon_social), facturas(id, numero)`)
+      .select(`*, cuentas(id, razon_social), facturas(id, numero), os_clientes(id, numero)`)
       .eq('empresa_id', empresaId)
       .order('fecha_vencimiento', { ascending: true });
     if (error) throw error;
@@ -69,6 +81,149 @@ export const finanzasService = {
       .insert(payload)
       .select()
       .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async getCobrosHistorial(empresaId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cobros_cxc')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('creado_en', { ascending: false });
+    if (error) throw error;
+    return data;
+  },
+
+  async registrarCobroDetalle(payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cobros_cxc')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async getGestionesCobranza(empresaId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('gestion_cobranza')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('creado_en', { ascending: false });
+    if (error) throw error;
+    return data;
+  },
+
+  async registrarGestion(payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('gestion_cobranza')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async getCuentasBancarias(empresaId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cuentas_bancarias')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('creado_en', { ascending: true });
+    if (error) throw error;
+    return data;
+  },
+
+  async crearCuentaBancaria(payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cuentas_bancarias')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async actualizarCuentaBancaria(id, updates) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cuentas_bancarias')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async eliminarCuentaBancaria(id) {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase
+      .from('cuentas_bancarias')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  async getComisiones(empresaId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('comisiones')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('creado_en', { ascending: false });
+    if (error) throw error;
+    return data;
+  },
+
+  async actualizarComision(id, updates) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('comisiones')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async registrarComision(payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('comisiones')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async crearReciboHonorarios(payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('recibos_honorarios')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async getRecibosHonorarios(empresaId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('recibos_honorarios')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('creado_en', { ascending: false });
     if (error) throw error;
     return data;
   },
