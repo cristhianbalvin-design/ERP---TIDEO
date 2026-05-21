@@ -273,9 +273,31 @@ export const finanzasService = {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('cxp')
-      .select(`*, proveedores(id, razon_social)`)
+      .select(`*, proveedores(id, razon_social), personal_administrativo(id, nombre)`)
       .eq('empresa_id', empresaId)
       .order('fecha_vencimiento', { ascending: true });
+    if (error) throw error;
+    return data;
+  },
+
+  async getCxpPagos(empresaId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cxp_pagos')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('fecha_pago', { ascending: false });
+    if (error) throw error;
+    return data;
+  },
+
+  async insertarCxpPago(payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cxp_pagos')
+      .insert(payload)
+      .select()
+      .single();
     if (error) throw error;
     return data;
   },

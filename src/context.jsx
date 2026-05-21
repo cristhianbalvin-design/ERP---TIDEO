@@ -14,6 +14,9 @@ import { usuariosService } from './services/usuariosService.js';
 import { rolesService } from './services/rolesService.js';
 import { campanasService } from './services/campanasService.js';
 const AppContext = createContext();
+const PLATFORM_SUPERADMIN_EMAIL = 'cristhianbalvin@gmail.com';
+const isPlatformSuperadminEmail = email =>
+  String(email || '').trim().toLowerCase() === PLATFORM_SUPERADMIN_EMAIL;
 
 export function useApp() {
   return useContext(AppContext);
@@ -108,6 +111,28 @@ function normalizarEmpresaSupabase(e) {
     plan: e.plan_id,
     color: '#0ea5e9',
   };
+}
+
+function rolesConPermisosAObjeto(rolesData = [], permisosData = []) {
+  const rolesObj = {};
+  for (const r of rolesData || []) {
+    const pRows = (permisosData || []).filter(p => p.rol_id === r.id);
+    rolesObj[r.id] = {
+      ...r,
+      permisos: {
+        ver: pRows.filter(p => p.puede_ver).map(p => p.pantalla),
+        crear: pRows.filter(p => p.puede_crear).map(p => p.pantalla),
+        editar: pRows.filter(p => p.puede_editar).map(p => p.pantalla),
+        anular: pRows.filter(p => p.puede_anular).map(p => p.pantalla),
+        aprobar: pRows.filter(p => p.puede_aprobar).map(p => p.pantalla),
+        exportar: pRows.filter(p => p.puede_exportar).map(p => p.pantalla),
+        ver_costos: pRows.some(p => p.puede_ver_costos),
+        ver_finanzas: pRows.some(p => p.puede_ver_finanzas),
+        ver_precios: pRows.some(p => p.permisos_extra?.puede_ver_precios),
+      },
+    };
+  }
+  return rolesObj;
 }
 
 function empresaPermiteAcceso(estado) {
@@ -225,6 +250,7 @@ export function AppProvider({ children }) {
   const [cotizaciones, setCotizaciones] = useState(MOCK.cotizaciones);
   const [osClientes, setOsClientes] = useState(MOCK.osClientes);
   const [cxp, setCxp] = useState(MOCK.cxp || []);
+  const [cxpPagos, setCxpPagos] = useState([]);
   const [cxc, setCxc] = useState(MOCK.cxc || []);
   const [cobrosHistorial, setCobrosHistorial] = useState([]);
   const [gestionesCobranza, setGestionesCobranza] = useState([]);
@@ -351,6 +377,8 @@ export function AppProvider({ children }) {
     build: 'access-debug-2026-05-05-01',
     usuariosError: '',
     rolesError: '',
+    usuariosLoading: false,
+    rolesLoading: false,
     usuariosLoadedAt: '',
     rolesLoadedAt: '',
   });
@@ -506,6 +534,7 @@ export function AppProvider({ children }) {
       const facData = await finanzasService.getFacturas(empresaId);
       const cxcData = await finanzasService.getCxC(empresaId);
       const cxpData = await finanzasService.getCxP(empresaId);
+      const cxpPagosData = await finanzasService.getCxpPagos(empresaId);
       const mbData = await finanzasService.getMovimientosBanco(empresaId);
 
       const amortizacion = amortizacionResult.data || [];
@@ -524,6 +553,7 @@ export function AppProvider({ children }) {
       setFacturas(facData || []);
       setCxc(cxcData || []);
       setCxp(cxpData || []);
+      setCxpPagos(cxpPagosData || []);
       setMovimientosBanco(mbData || []);
 
       setSupabaseStatus({
@@ -545,14 +575,107 @@ export function AppProvider({ children }) {
   };
 
   useEffect(() => {
+    if (isSupabaseConfigured() && (!membresiaActiva?.empresa?.id || membresiaActiva.empresa.id !== empresa?.id)) return;
     loadSupabaseFinanceData();
-  }, [empresa?.id, authSession?.user?.id]);
+  }, [empresa?.id, authSession?.user?.id, membresiaActiva?.empresa?.id]);
 
   useEffect(() => {
     if (!isSupabaseConfigured() || !authSession?.user || !empresa?.id) return;
+    if (!membresiaActiva?.empresa?.id || membresiaActiva.empresa.id !== empresa.id) return;
+
+    let mounted = true;
+    const empresaId = empresa.id;
+    const empresaEsPlataforma = Boolean(empresa.es_plataforma);
+    const callerEmail = authUser?.email || '';
+    const callerId = authUser?.id || '';
+    const hasPlatformSuperadminMembership = todasMembresias.some(m => m.rol?.es_superadmin && m.empresa?.es_plataforma);
+
+    setUsuarios([]);
+    setAccessDebug(prev => ({
+      ...prev,
+      usuariosError: '',
+      rolesError: '',
+      usuariosLoading: true,
+      rolesLoading: true,
+      usuariosLoadedAt: '',
+      rolesLoadedAt: '',
+    }));
+
+    const loadAccessData = async () => {
+      const [usuariosResult, rolesResult] = await Promise.allSettled([
+        usuariosService.getUsuarios(empresaId),
+        rolesService.getRolesConPermisos(empresaId),
+      ]);
+
+      if (!mounted) return;
+
+      if (usuariosResult.status === 'fulfilled') {
+        const usrData = usuariosResult.value || [];
+        setUsuarios(usrData);
+        setAccessDebug(prev => ({
+          ...prev,
+          usuariosError: '',
+          usuariosLoading: false,
+          usuariosLoadedAt: new Date().toLocaleTimeString('es-PE'),
+        }));
+
+        const isPlatformSuperadminSupport = isPlatformSuperadminEmail(callerEmail)
+          && !empresaEsPlataforma
+          && hasPlatformSuperadminMembership;
+        if (callerEmail && !isPlatformSuperadminSupport && !usrData.find(u => u.email === callerEmail)) {
+          registrarUsuario({
+            id: callerId,
+            nombre: authUser?.user_metadata?.nombre || callerEmail.split('@')[0],
+            email: callerEmail,
+            rol: 'admin',
+            empresa_id: empresaId,
+            estado: 'Activo',
+          });
+        }
+      } else {
+        const message = usuariosResult.reason?.message || 'Error desconocido';
+        setAccessDebug(prev => ({
+          ...prev,
+          usuariosError: message,
+          usuariosLoading: false,
+        }));
+        addNotificacion(`No se pudieron cargar usuarios: ${message}`);
+      }
+
+      if (rolesResult.status === 'fulfilled') {
+        const { roles: rolesData, permisos: permisosData } = rolesResult.value || {};
+        if (rolesData?.length) {
+          setRolesCtx(rolesConPermisosAObjeto(rolesData, permisosData));
+        } else {
+          setRolesCtx(prev => prev || {});
+        }
+        setAccessDebug(prev => ({
+          ...prev,
+          rolesError: '',
+          rolesLoading: false,
+          rolesLoadedAt: new Date().toLocaleTimeString('es-PE'),
+        }));
+      } else {
+        const message = rolesResult.reason?.message || 'Error desconocido';
+        setAccessDebug(prev => ({
+          ...prev,
+          rolesError: message,
+          rolesLoading: false,
+        }));
+      }
+    };
+
+    loadAccessData();
+    return () => { mounted = false; };
+  }, [empresa?.id, empresa?.es_plataforma, authSession?.user?.id, authUser?.id, authUser?.email, membresiaActiva?.empresa?.id, todasMembresias]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !authSession?.user || !empresa?.id) return;
+    if (!membresiaActiva?.empresa?.id || membresiaActiva.empresa.id !== empresa.id) return;
     
     // Limpiar listas actuales para evitar datos "pegados" de otro tenant
     // usuarios se limpia después del merge con localStorage
+    // Usuarios y roles cargan en un efecto dedicado para responder mas rapido.
     setLeads([]);
     setCuentas([]);
     // ... (opcional otras listas)
@@ -578,6 +701,7 @@ export function AppProvider({ children }) {
         setFacturas([]);
         setCxc([]);
         setCxp([]);
+        setCxpPagos([]);
         setMovimientosBanco([]);
         setProveedores([]);
         setEvaluacionesProveedor([]);
@@ -670,22 +794,6 @@ export function AppProvider({ children }) {
         } catch (_err) { /* tabla aún no existe, ignorar */ }
 
         try {
-          const valData = await finanzasService.getValorizaciones(empresa.id);
-          const facData = await finanzasService.getFacturas(empresa.id);
-          const cxcData = await finanzasService.getCxC(empresa.id);
-          const cxpData = await finanzasService.getCxP(empresa.id);
-          const mbData = await finanzasService.getMovimientosBanco(empresa.id);
-
-          if (mounted) {
-            setValorizaciones(valData || []);
-            setFacturas(facData || []);
-            setCxc(cxcData || []);
-            setCxp(cxpData || []);
-            setMovimientosBanco(mbData || []);
-          }
-        } catch (_err) { /* keep mock on error */ }
-
-        try {
           const [cobrosData, gestionesData, cuentasBanData, comisionesData, recibosData] = await Promise.all([
             finanzasService.getCobrosHistorial(empresa.id),
             finanzasService.getGestionesCobranza(empresa.id),
@@ -763,72 +871,11 @@ export function AppProvider({ children }) {
           if (mounted) setCuadrillas(cuadData || []);
         } catch (_err) { /* keep mock */ }
 
-        try {
-          const usrData = await usuariosService.getUsuarios(empresa.id);
-          if (mounted) {
-            setUsuarios(usrData || []);
-            setAccessDebug(prev => ({ ...prev, usuariosError: '', usuariosLoadedAt: new Date().toLocaleTimeString('es-PE') }));
-            
-            // Auto-sincronizar al admin logueado si no aparece en la lista
-            if (authUser?.email && !usrData?.find(u => u.email === authUser.email)) {
-              console.log('>>> Sincronizando usuario actual con la BD...');
-              registrarUsuario({
-                id: authUser.id,
-                nombre: authUser.user_metadata?.nombre || authUser.email.split('@')[0],
-                email: authUser.email,
-                rol: 'admin',
-                empresa_id: empresa.id,
-                estado: 'Activo'
-              });
-            }
-          }
-        } catch (_err) { 
-          console.error('Error loading usuarios from Supabase:', _err);
-          const message = _err.message || 'Error desconocido';
-          if (mounted) {
-            setAccessDebug(prev => ({ ...prev, usuariosError: message }));
-            addNotificacion(`No se pudieron cargar usuarios: ${message}`);
-          }
-        }
-
-        try {
-          const { roles: rolesData, permisos: permisosData } = await rolesService.getRolesConPermisos(empresa.id);
-          if (mounted && rolesData?.length) {
-            // Convert list to object format if needed, but for the UI it might be easier as list
-            // However, to keep compatibility with MOCK.roles, we might want to store it as object
-            const rolesObj = {};
-            for (const r of rolesData) {
-              const pRows = (permisosData || []).filter(p => p.rol_id === r.id);
-              rolesObj[r.id] = {
-                ...r,
-                permisos: {
-                  ver: pRows.filter(p => p.puede_ver).map(p => p.pantalla),
-                  crear: pRows.filter(p => p.puede_crear).map(p => p.pantalla),
-                  editar: pRows.filter(p => p.puede_editar).map(p => p.pantalla),
-                  anular: pRows.filter(p => p.puede_anular).map(p => p.pantalla),
-                  aprobar: pRows.filter(p => p.puede_aprobar).map(p => p.pantalla),
-                  exportar: pRows.filter(p => p.puede_exportar).map(p => p.pantalla),
-                  ver_costos: pRows.some(p => p.puede_ver_costos),
-                  ver_finanzas: pRows.some(p => p.puede_ver_finanzas),
-                  ver_precios: pRows.some(p => p.permisos_extra?.puede_ver_precios),
-                }
-              };
-            }
-            if (mounted) setRolesCtx(rolesObj);
-            if (mounted) setAccessDebug(prev => ({ ...prev, rolesError: '', rolesLoadedAt: new Date().toLocaleTimeString('es-PE') }));
-          } else if (mounted) {
-            setRolesCtx(prev => prev || {});
-          }
-        } catch (_err) {
-          console.error('Error loading roles from Supabase:', _err);
-          if (mounted) setAccessDebug(prev => ({ ...prev, rolesError: _err.message || 'Error desconocido' }));
-        }
-
       } catch (_err) { /* keep mock on error */ }
     };
     loadCrm();
     return () => { mounted = false; };
-  }, [empresa?.id, authSession?.user?.id]);
+  }, [empresa?.id, authSession?.user?.id, membresiaActiva?.empresa?.id]);
 
   const cargarMembresiaCompleta = async (mem) => {
     try {
@@ -1617,13 +1664,19 @@ export function AppProvider({ children }) {
     getSupabaseClient().then(sb => insertarHistorialAcuerdo(sb, fila)).catch(() => {});
   };
 
-  const actualizarAcuerdoComision = (oppId, campos) => {
+  const actualizarAcuerdoComision = async (oppId, campos) => {
     const opp = oportunidades.find(o => o.id === oppId);
-    if (!opp || ['ganada', 'perdida'].includes(opp.etapa)) return;
-    if (['aprobado'].includes(opp.acuerdo_estado)) return;
+    if (!opp || opp.acuerdo_estado === 'aprobado') return;
     const nuevoEstado = campos.acuerdo_estado ?? (opp.acuerdo_estado === 'pendiente' ? 'pendiente' : 'borrador');
-    _acuerdoPatch(opp, { ...campos, acuerdo_estado: nuevoEstado });
+    const patch = { ...campos, acuerdo_estado: nuevoEstado };
+    setOportunidades(prev => prev.map(o => o.id === oppId ? { ...o, ...patch } : o));
     _registrarHistorialAcuerdo(opp, 'propuesta', { pct: campos.acuerdo_pct, bonificacion: campos.acuerdo_bonificacion, justificacion: campos.acuerdo_justificacion });
+    try {
+      await crmPersist(sb => actualizarOportunidad(sb, oppId, patch));
+      addNotificacion('Borrador guardado.');
+    } catch (err) {
+      addNotificacion(`Error al guardar borrador: ${err?.message || 'Error desconocido.'}`);
+    }
   };
 
   const enviarAcuerdoAAprobacion = async (oppId) => {
@@ -1865,7 +1918,7 @@ export function AppProvider({ children }) {
           );
         }
         auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hcId, accion: 'aprobar', valor_anterior: hc, valor_nuevo: { estado: 'aprobada', cotizacion_id: cotFinal.id } });
-        addNotificacion(`HC aprobada. CotizaciÃ³n borrador generada.`);
+        addNotificacion('HC aprobada. Cotización borrador generada.');
         navigate('cotizaciones', { detail: cotFinal.id });
         return;
       } catch (error) {
@@ -2232,6 +2285,12 @@ export function AppProvider({ children }) {
   const actualizarOSCliente = async (id, datos) => {
     setOsClientes(prev => prev.map(o => o.id === id ? { ...o, ...datos } : o));
     crmSync(sb => svcActualizarOSCliente(sb, id, datos));
+  };
+
+  const vincularCotizacionOS = async (cotizacionId, osId) => {
+    setOsClientes(prev => prev.map(o => o.id === osId ? { ...o, cotizacion_id: cotizacionId } : o));
+    crmSync(sb => svcActualizarOSCliente(sb, osId, { cotizacion_id: cotizacionId }));
+    addNotificacion('Cotización vinculada a la OS.');
   };
 
   const registrarActividad = (datos) => {
@@ -2926,12 +2985,15 @@ export function AppProvider({ children }) {
       }
 
       setUsuarios(prev => {
-        if (prev.find(u => u.id === uid)) return prev.map(u => u.id === uid ? nuevoUsuario : u);
+        const targetEmpresaId = nuevoUsuario.empresa_id || empresa.id;
+        if (prev.find(u => u.id === uid && u.empresa_id === targetEmpresaId)) {
+          return prev.map(u => (u.id === uid && u.empresa_id === targetEmpresaId) ? nuevoUsuario : u);
+        }
         return [...prev, nuevoUsuario];
       });
       addNotificacion(
         data.alreadyExists
-          ? `El usuario ${nombre} ya tenia cuenta. Se agrego al tenant actual.`
+          ? `El usuario ${nombre} ya tenia cuenta. Se agrego al tenant actual y usara su contrasena actual.`
           : `Usuario ${nombre} creado. Ya puede ingresar con la contrasena temporal.`
       );
       return nuevoUsuario;
@@ -3345,7 +3407,10 @@ export function AppProvider({ children }) {
             factura_id: cuentaCobrar?.factura_id || null,
             os_cliente_id: osCliente?.id || null,
             oportunidad_id: oportunidad?.id || null,
-            moneda: normalizarMonedaComision(cuentaCobrar?.moneda || osCliente?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN'),
+            os_cliente_numero: osCliente?.numero || null,
+            factura_numero: facturas.find(f => f.id === cuentaCobrar?.factura_id)?.numero || null,
+            oportunidad_nombre: oportunidad?.nombre || null,
+            moneda: normalizarMonedaComision(cuentaCobrar?.moneda || facturas.find(f => f.id === cuentaCobrar?.factura_id)?.moneda || osCliente?.moneda || oportunidad?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN'),
             monto_cobrado: montoCobrado,
             porcentaje_base: pctBase,
             porcentaje_comision: pct,
@@ -3492,36 +3557,37 @@ export function AppProvider({ children }) {
     const recibo = recibosHonorarios.find(r => r.id === reciboId);
     if (!recibo || recibo.estado !== 'borrador') return;
     const now = new Date().toISOString().split('T')[0];
-    const movimiento = {
-      id: generateId('mov'),
-      empresa_id: empresa.id,
-      tipo: 'egreso',
-      descripcion: `Honorarios comisiones — ${recibo.vendedor_nombre}`,
-      monto: recibo.monto_neto,
+    const fechaVencimiento = (() => {
+      const d = new Date(`${now}T00:00:00`);
+      d.setDate(d.getDate() + 30);
+      return d.toISOString().split('T')[0];
+    })();
+
+    // Genera CxP en lugar de ir directo a Tesorería — trazabilidad completa
+    await generarCxP({
+      tipo_beneficiario: 'personal',
+      personal_id: recibo.vendedor_id || null,
+      concepto: `Honorarios comisiones — ${recibo.vendedor_nombre} ${recibo.periodo}`,
+      recibo_honorarios_id: reciboId,
+      factura_numero: recibo.id,
+      fecha_emision: now,
+      fecha_vencimiento: fechaVencimiento,
+      monto_total: recibo.monto_neto,
+      monto_pagado: 0,
+      saldo: recibo.monto_neto,
       moneda: normalizarMonedaComision(recibo.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN'),
-      categoria: 'comision_honorarios',
-      fecha: now,
-      es_manual: true,
-      referencia: reciboId,
-      creado_en: new Date().toISOString(),
-    };
-    setMovimientosTesoreria(prev => [movimiento, ...prev]);
-    setRecibosHonorarios(prev => prev.map(r => r.id === reciboId ? { ...r, estado: 'confirmado' } : r));
-    setComisiones(prev => prev.map(c =>
-      (recibo.comisiones_ids || []).includes(c.id)
-        ? { ...c, estado: 'pagada', pagado_en: new Date().toISOString(), recibo_id: reciboId } : c));
+      estado: 'por_pagar',
+    });
+
+    setRecibosHonorarios(prev => prev.map(r => r.id === reciboId ? { ...r, estado: 'pendiente_pago' } : r));
     if (isSupabaseConfigured()) {
       finSync(async () => {
-        await finanzasService.registrarMovimientoTesoreria(movimiento);
         const sb = await getSupabaseClient();
-        await sb.from('recibos_honorarios').update({ estado: 'confirmado' }).eq('id', reciboId);
-        for (const cId of (recibo.comisiones_ids || [])) {
-          await sb.from('comisiones').update({ estado: 'pagada', pagado_en: new Date().toISOString(), recibo_id: reciboId }).eq('id', cId);
-        }
+        await sb.from('recibos_honorarios').update({ estado: 'pendiente_pago' }).eq('id', reciboId);
       });
     }
     const simbolo = normalizarMonedaComision(recibo.moneda || empresa?.moneda || empresa?.moneda_base) === 'USD' ? 'US$' : 'S/';
-    addNotificacion(`Recibo confirmado. Egreso de ${simbolo} ${recibo.monto_neto.toFixed(2)} registrado en tesorería.`);
+    addNotificacion(`Recibo confirmado. CxP de ${simbolo} ${recibo.monto_neto.toFixed(2)} generada. Pendiente de pago.`);
   };
 
   const registrarMovimientoManual = async (datos) => {
@@ -3793,14 +3859,30 @@ export function AppProvider({ children }) {
       return c;
     }));
 
+    const now = datos.fecha || new Date().toISOString().split('T')[0];
+
+    // Historial detallado de pagos
+    const registroPago = {
+      id: generateId('cxpp'),
+      empresa_id: empresa.id,
+      cxp_id: cxpId,
+      fecha_pago: now,
+      monto: montoPagado,
+      cuenta_bancaria: datos.cuenta_bancaria || null,
+      referencia: datos.referencia || null,
+      registrado_por: authUser?.id || null,
+      creado_en: new Date().toISOString(),
+    };
+    setCxpPagos(prev => [registroPago, ...prev]);
+
     const movimiento = {
       id: generateId('tes'),
       empresa_id: empresa.id,
       tipo: 'egreso',
-      descripcion: datos.descripcion || `Pago ${cuentaPagar?.factura_numero || cxpId}`,
+      descripcion: datos.descripcion || cuentaPagar?.concepto || `Pago ${cuentaPagar?.factura_numero || cxpId}`,
       monto: montoPagado,
       moneda: cuentaPagar?.moneda || 'PEN',
-      fecha: datos.fecha || new Date().toISOString().split('T')[0],
+      fecha: now,
       cuenta_bancaria: datos.cuenta_bancaria || 'Cuenta principal',
       referencia: datos.referencia || '',
       vinculo_tipo: 'cxp',
@@ -3809,10 +3891,31 @@ export function AppProvider({ children }) {
     };
     setMovimientosTesoreria(prev => [movimiento, ...prev]);
 
+    // Cuando la CxP de honorarios queda pagada, cerrar el ciclo de comisiones
+    const reciboId = cuentaPagar?.recibo_honorarios_id;
+    if (nuevoEstado === 'pagada' && reciboId) {
+      const recibo = recibosHonorarios.find(r => r.id === reciboId);
+      if (recibo) {
+        setRecibosHonorarios(prev => prev.map(r => r.id === reciboId ? { ...r, estado: 'pagado' } : r));
+        setComisiones(prev => prev.map(c =>
+          (recibo.comisiones_ids || []).includes(c.id)
+            ? { ...c, estado: 'pagada', pagado_en: new Date().toISOString(), recibo_id: reciboId } : c));
+      }
+    }
+
     if (isSupabaseConfigured()) {
       finSync(async () => {
         await finanzasService.registrarPagoCxP(cxpId, montoPagado);
+        await finanzasService.insertarCxpPago(registroPago);
         await finanzasService.registrarMovimientoTesoreria(movimiento);
+        if (nuevoEstado === 'pagada' && reciboId) {
+          const sb = await getSupabaseClient();
+          await sb.from('recibos_honorarios').update({ estado: 'pagado' }).eq('id', reciboId);
+          const recibo = recibosHonorarios.find(r => r.id === reciboId);
+          for (const cId of (recibo?.comisiones_ids || [])) {
+            await sb.from('comisiones').update({ estado: 'pagada', pagado_en: new Date().toISOString(), recibo_id: reciboId }).eq('id', cId);
+          }
+        }
       });
     }
     auditSync({ modulo: 'finanzas', entidad: 'cxp', entidad_id: cxpId, accion: 'pagar', valor_anterior: cuentaPagar || null, valor_nuevo: { monto: montoPagado, estado: nuevoEstado, movimiento } });
@@ -4392,7 +4495,7 @@ export function AppProvider({ children }) {
   };
   const eliminarCentroCosto = async (id) => {
     if (isSupabaseConfigured()) {
-      const supabase = await import('./lib/supabaseClient.js').then(m => m.getSupabaseClient());
+      const supabase = await getSupabaseClient();
       const { error } = await supabase.from('centros_costo').delete().eq('id', id);
       if (error) throw error;
     }
@@ -4427,7 +4530,7 @@ export function AppProvider({ children }) {
   };
   const eliminarCentroBeneficio = async (id) => {
     if (isSupabaseConfigured()) {
-      const supabase = await import('./lib/supabaseClient.js').then(m => m.getSupabaseClient());
+      const supabase = await getSupabaseClient();
       const { error } = await supabase.from('centros_beneficio').delete().eq('id', id);
       if (error) throw error;
     }
@@ -5165,26 +5268,9 @@ export function AppProvider({ children }) {
   const cargarRolesAcceso = async () => {
     if (!empresa?.id) return {};
     const { roles: rolesData, permisos: permisosData } = await rolesService.getRolesConPermisos(empresa.id);
-    const rolesObj = {};
-    for (const r of rolesData || []) {
-      const pRows = (permisosData || []).filter(p => p.rol_id === r.id);
-      rolesObj[r.id] = {
-        ...r,
-        permisos: {
-          ver: pRows.filter(p => p.puede_ver).map(p => p.pantalla),
-          crear: pRows.filter(p => p.puede_crear).map(p => p.pantalla),
-          editar: pRows.filter(p => p.puede_editar).map(p => p.pantalla),
-          anular: pRows.filter(p => p.puede_anular).map(p => p.pantalla),
-          aprobar: pRows.filter(p => p.puede_aprobar).map(p => p.pantalla),
-          exportar: pRows.filter(p => p.puede_exportar).map(p => p.pantalla),
-          ver_costos: pRows.some(p => p.puede_ver_costos),
-          ver_finanzas: pRows.some(p => p.puede_ver_finanzas),
-          ver_precios: pRows.some(p => p.permisos_extra?.puede_ver_precios),
-        },
-      };
-    }
+    const rolesObj = rolesConPermisosAObjeto(rolesData, permisosData);
     setRolesCtx(rolesObj);
-    setAccessDebug(prev => ({ ...prev, rolesError: '', rolesLoadedAt: new Date().toLocaleTimeString('es-PE') }));
+    setAccessDebug(prev => ({ ...prev, rolesError: '', rolesLoading: false, rolesLoadedAt: new Date().toLocaleTimeString('es-PE') }));
     return rolesObj;
   };
 
@@ -5323,6 +5409,7 @@ export function AppProvider({ children }) {
     cotizaciones, setCotizaciones, actualizarCotizacion,
     osClientes, setOsClientes, actualizarOSCliente,
     cxp, setCxp,
+    cxpPagos, setCxpPagos,
     cxc, setCxc,
     cobrosHistorial, setCobrosHistorial,
     gestionesCobranza, setGestionesCobranza,
@@ -5367,7 +5454,7 @@ export function AppProvider({ children }) {
     crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
     actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision, aprobarAcuerdoComision, rechazarAcuerdoComision, obtenerHistorialAcuerdo,
     crearCotizacion, aprobarCotizacion, aprobarCotizacionInterna, registrarAprobacionManual, subirVersionCotizacion,
-    crearOSCliente, crearOSClienteManual,
+    crearOSCliente, crearOSClienteManual, vincularCotizacionOS,
     registrarUsuario,
     eliminarUsuario,
     actualizarUsuarioAcceso,

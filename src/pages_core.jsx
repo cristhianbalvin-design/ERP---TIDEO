@@ -31,10 +31,22 @@ const currencySymbol = (moneda = 'PEN') => moneda === 'USD' ? 'US$' : moneda ===
 const moneyCurrency = (value, moneda = 'PEN') => money(value, currencySymbol(moneda));
 
 function Dashboard({ role }) {
-  const { financiamientos, navigate, empresa } = useApp();
+  const { financiamientos, navigate, empresa, cxp } = useApp();
   const [cebeWarning, setCebeWarning] = useState(false);
   const canFin = role.permisos.ver_finanzas || role.permisos.todo;
   const isSuperadmin = role.permisos.plataforma;
+
+  const todayDash = new Date().toISOString().split('T')[0];
+  const cxpVencidas = (cxp || []).filter(c => {
+    if (!c.fecha_vencimiento || Number(c.saldo ?? c.monto_total ?? 0) <= 0 || c.estado === 'pagada') return false;
+    return c.fecha_vencimiento < todayDash;
+  });
+  const cxpPorVencer7 = (cxp || []).filter(c => {
+    if (!c.fecha_vencimiento || Number(c.saldo ?? c.monto_total ?? 0) <= 0 || c.estado === 'pagada') return false;
+    const dias = Math.floor((new Date(`${c.fecha_vencimiento}T00:00:00`) - new Date(`${todayDash}T00:00:00`)) / 86400000);
+    return dias >= 0 && dias <= 7;
+  });
+  const montoCxpVencido = cxpVencidas.reduce((s, c) => s + Number(c.saldo ?? c.monto_total ?? 0), 0);
 
   useEffect(() => {
     let mounted = true;
@@ -56,6 +68,8 @@ function Dashboard({ role }) {
     { label: 'OTs activas', val: '12', sub: '3 en riesgo SLA', icon: I.wrench, color: 'orange' },
     { label: 'Facturación del mes', val: money(298000), delta: '+6%', up: true, icon: I.receipt, color: 'cyan', fin: true },
     { label: 'Pendiente por cobrar', val: money(172900), sub: 'S/ 51.3K vencido', icon: I.dollar, color: 'danger', fin: true },
+    { label: 'CxP vencidas', val: money(montoCxpVencido), sub: `${cxpVencidas.length} documento${cxpVencidas.length !== 1 ? 's' : ''}`, icon: I.clock, color: 'danger', fin: true },
+    { label: 'CxP por vencer (7d)', val: String(cxpPorVencer7.length), sub: cxpPorVencer7.length > 0 ? 'Requieren atención' : 'Al día', icon: I.bell, color: cxpPorVencer7.length > 0 ? 'orange' : 'green', fin: true },
   ].filter(k => !k.fin || canFin);
 
   const healthDist = {
@@ -2095,7 +2109,7 @@ function Pipeline() {
         // El nombre en usuarios puede ser el email-fallback (ej: "camilo.sinche") si no hay user_metadata.nombre,
         // mientras que personal_administrativo.nombre es el nombre completo ("Camilo Sinche").
         // Por eso priorizamos: auth_user_id → email → nombre.
-        const _normNombre = s => (s || '').trim().toLowerCase();
+        const _normNombre = s => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
         const _normEmail = s => (s || '').trim().toLowerCase();
         const vendedorUsuario = usuarios.find(u =>
           u.id === sel.responsable_id ||
@@ -2107,7 +2121,8 @@ function Pipeline() {
           (vendedorUsuario?.email && p.email && _normEmail(p.email) === _normEmail(vendedorUsuario.email)) ||
           p.id === sel.responsable_id ||
           p.auth_user_id === sel.responsable_id ||
-          _normNombre(p.nombre) === _normNombre(sel.responsable)
+          _normNombre(p.nombre) === _normNombre(sel.responsable) ||
+          (p.nombre_completo && _normNombre(p.nombre_completo) === _normNombre(sel.responsable))
         );
 const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPersonal?.porcentaje_comision !== undefined
           ? Number(vendedorPersonal.porcentaje_comision)
@@ -2367,7 +2382,7 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
                   const diffPct = pctBase !== null && pctValor !== '' && Number(pctValor) !== pctBase;
                   const hayBon = Number(bonValor) > 0;
                   const necesitaJustificacion = diffPct || hayBon;
-                  const bloqueado = acuerdoOpp.estado === 'aprobado' || ['ganada','perdida'].includes(sel.etapa);
+                  const bloqueado = acuerdoOpp.estado === 'aprobado';
                   const enPendiente = acuerdoOpp.estado === 'pendiente';
 
                   const guardarBorrador = () => {
@@ -2412,7 +2427,7 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
                           {sel.responsable && (
                             <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:5}}>
                               Comisión base de <strong>{sel.responsable}</strong>:{' '}
-                              {pctBase !== null ? `${pctBase}%` : <em>sin datos</em>}
+                              {pctBase !== null ? `${pctBase}%` : <button className="btn btn-ghost" style={{ padding: 0, fontSize: 11, color: 'var(--cyan)', textDecoration: 'underline' }} onClick={() => navigate('rrhh_admin')}>sin datos — configurar en RRHH</button>}
                             </div>
                           )}
                         </div>
@@ -2869,6 +2884,14 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Notas</label>
                   <textarea className="input" rows={3} value={oppForm.notas} onChange={e=>updateOppForm('notas',e.target.value)} placeholder="Contexto comercial, necesidad o próximos pasos"/>
+                </div>
+              </div>
+
+              <div style={{display:'flex', alignItems:'center', gap:12, padding:'12px 16px', background:'rgba(100,116,139,0.08)', border:'1px solid var(--border)', borderRadius:8, marginBottom:16}}>
+                <span style={{fontSize:18, flexShrink:0}}>📍</span>
+                <div>
+                  <div style={{fontWeight:600, fontSize:13}}>Etapa inicial: Calificación</div>
+                  <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>La oportunidad comienza siempre en Calificación. Avanzará automáticamente a Propuesta al enviar la cotización y a Negociación al versionar.</div>
                 </div>
               </div>
 
@@ -4626,19 +4649,28 @@ function BIComercial() {
   const tasaCierre    = totalCierres > 0 ? Math.round(oppsGanadas.length / totalCierres * 100) : 0;
   const leadsActivos  = leads.filter(l => !l.convertido).length;
 
-  const ETAPAS = [
-    { key:'calificacion',label:'Calificación', color:'var(--cyan)'      },
-    { key:'propuesta',   label:'Propuesta',    color:'var(--purple)'    },
-    { key:'negociacion', label:'Negociación',  color:'var(--orange)'    },
-    { key:'ganada',      label:'Ganada',       color:'var(--green)'     },
-    { key:'perdida',     label:'Perdida',      color:'var(--danger)'    },
+  // Embudo comercial completo (Leads → Ganada)
+  const _fLeadsCalif    = leads.filter(l => l.estado === 'calificado' || l.convertido);
+  const _fCalificacion  = oportunidades.filter(o => o.etapa === 'calificacion');
+  const _fPropuesta     = oportunidades.filter(o => o.etapa === 'propuesta');
+  const _fNegociacion   = oportunidades.filter(o => o.etapa === 'negociacion');
+  const _fGanada        = oportunidades.filter(o => o.etapa === 'ganada');
+  const _fPerdida       = oportunidades.filter(o => o.etapa === 'perdida');
+  const _sumV = opps => opps.reduce((s, o) => s + (o.monto_estimado || 0), 0);
+  const _pct  = (a, b) => b > 0 ? Math.round(a / b * 100) : null;
+
+  const funnelSteps = [
+    { key: 'leads_nuevos', label: 'Leads nuevos',      color: 'var(--cyan)',    count: leads.length,           valor: leads.reduce((s,l) => s + (l.presupuesto_estimado||0), 0), prevCount: null },
+    { key: 'leads_calif',  label: 'Leads calificados', color: '#22d3ee',        count: _fLeadsCalif.length,    valor: _fLeadsCalif.reduce((s,l) => s + (l.presupuesto_estimado||0), 0), prevCount: leads.length },
+    { key: 'calificacion', label: 'Calificación',      color: '#64748b',        count: _fCalificacion.length,  valor: _sumV(_fCalificacion),  prevCount: _fLeadsCalif.length },
+    { key: 'propuesta',    label: 'Propuesta',          color: 'var(--purple)',  count: _fPropuesta.length,     valor: _sumV(_fPropuesta),     prevCount: _fCalificacion.length },
+    { key: 'negociacion',  label: 'Negociación',        color: 'var(--orange)',  count: _fNegociacion.length,   valor: _sumV(_fNegociacion),   prevCount: _fPropuesta.length },
+    { key: 'ganada',       label: 'Ganada',             color: 'var(--green)',   count: _fGanada.length,        valor: _sumV(_fGanada),        prevCount: _fNegociacion.length },
   ];
-  const funnel = ETAPAS.map(e => ({
-    ...e,
-    count: oportunidades.filter(o => o.etapa === e.key).length,
-    valor: oportunidades.filter(o => o.etapa === e.key).reduce((s, o) => s + o.monto_estimado, 0),
-  }));
-  const maxFunnelValor = Math.max(...funnel.map(f => f.valor), 1);
+  const maxFunnelCount = Math.max(...funnelSteps.map(f => f.count), 1);
+  const maxFunnelValor = Math.max(...funnelSteps.map(f => f.valor), 1);
+  const _baseParaPerdida = _fNegociacion.length + _fGanada.length + _fPerdida.length;
+  const pctPerdida = _pct(_fPerdida.length, _baseParaPerdida);
 
   const fuentesMap = {};
   leads.forEach(l => { fuentesMap[l.fuente] = (fuentesMap[l.fuente] || 0) + 1; });
@@ -4753,18 +4785,32 @@ function BIComercial() {
       {tab === 'pipeline' && (
         <div style={{display:'grid', gap:20}}>
           <div className="card">
-            <div className="card-head"><h3>Embudo de Ventas</h3><span className="text-muted" style={{fontSize:12}}>{oportunidades.length} oportunidades</span></div>
-            <div style={{padding:'20px 24px', display:'flex', flexDirection:'column', gap:14}}>
-              {funnel.map((f, i) => (
-                <div key={i} style={{display:'grid', gridTemplateColumns:'120px 1fr 48px 120px', gap:12, alignItems:'center'}}>
-                  <span style={{fontSize:13, fontWeight:500, color:f.key==='perdida'?'var(--fg-muted)':'var(--fg)'}}>{f.label}</span>
-                  <div style={{height:10, background:'var(--bg-subtle)', borderRadius:4}}>
-                    {f.valor > 0 && <div style={{width:Math.round(f.valor/maxFunnelValor*100)+'%', height:'100%', background:f.color, borderRadius:4}}/>}
+            <div className="card-head"><h3>Embudo Comercial Unificado</h3><span className="text-muted" style={{fontSize:12}}>{leads.length} leads · {oportunidades.length} oportunidades</span></div>
+            <div style={{padding:'20px 24px', display:'flex', flexDirection:'column', gap:10}}>
+              {funnelSteps.map((f, i) => {
+                const pct = f.prevCount != null ? _pct(f.count, f.prevCount) : null;
+                return (
+                  <div key={f.key}>
+                    <div style={{display:'grid', gridTemplateColumns:'150px 1fr 52px 130px 80px', gap:12, alignItems:'center'}}>
+                      <span style={{fontSize:13, fontWeight:600, color:f.color}}>{f.label}</span>
+                      <div style={{height:10, background:'var(--bg-subtle)', borderRadius:4}}>
+                        <div style={{width:Math.round(f.count/maxFunnelCount*100)+'%', height:'100%', background:f.color, borderRadius:4, transition:'width .3s'}}/>
+                      </div>
+                      <span style={{fontSize:14, fontWeight:700, color:f.color, textAlign:'center'}}>{f.count}</span>
+                      <span style={{fontSize:12, color:'var(--fg-muted)', textAlign:'right'}}>{money(f.valor)}</span>
+                      <span style={{fontSize:12, textAlign:'right', color: pct != null ? (pct >= 50 ? 'var(--green)' : pct >= 20 ? 'var(--orange)' : 'var(--danger)') : 'var(--fg-muted)'}}>
+                        {pct != null ? pct + '% conv.' : '—'}
+                      </span>
+                    </div>
+                    {f.key === 'ganada' && _baseParaPerdida > 0 && (
+                      <div style={{marginLeft:162, marginTop:6, display:'flex', alignItems:'center', gap:8, padding:'6px 12px', background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:6}}>
+                        <span style={{fontSize:12, color:'var(--danger)', fontWeight:500}}>Perdidas: {_fPerdida.length}</span>
+                        {pctPerdida != null && <span style={{fontSize:11, color:'var(--fg-muted)'}}>({pctPerdida}% tasa de pérdida)</span>}
+                      </div>
+                    )}
                   </div>
-                  <span style={{fontSize:13, fontWeight:700, color:f.color, textAlign:'center'}}>{f.count}</span>
-                  <span style={{fontSize:12, color:'var(--fg-muted)', textAlign:'right'}}>{money(f.valor)}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
           <div className="card">
@@ -4826,7 +4872,7 @@ function BIComercial() {
               <table className="tbl">
                 <thead><tr><th>Nombre</th><th>Empresa</th><th>Fuente</th><th>Urgencia</th><th className="num">Presupuesto est.</th><th>Responsable</th><th>Estado</th></tr></thead>
                 <tbody>
-                  {filteredLeads.map(l => (
+                  {leads.map(l => (
                     <tr key={l.id} className="hover-row">
                       <td style={{fontWeight:600}}>{l.nombre}</td>
                       <td>{l.empresa_contacto}</td>

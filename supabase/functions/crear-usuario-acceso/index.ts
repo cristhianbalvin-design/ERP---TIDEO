@@ -14,8 +14,44 @@ const jsonResponse = (body: unknown, status = 200) =>
 
 const normalizeEmail = (email: unknown) =>
   String(email || "").trim().toLowerCase();
+const PLATFORM_SUPERADMIN_EMAIL = "cristhianbalvin@gmail.com";
+
+const isMissingTable = (error: unknown) => {
+  const err = error as { code?: string; message?: string } | null;
+  const message = String(err?.message || "").toLowerCase();
+  return err?.code === "42P01" || err?.code === "PGRST205" || message.includes("could not find the table");
+};
+
+const getAuthUserById = async (adminClient: ReturnType<typeof createClient>, userId: string) => {
+  const { data, error } = await adminClient.auth.admin.getUserById(userId);
+  if (error) return null;
+  return data?.user || null;
+};
 
 const findAuthUserByEmail = async (adminClient: ReturnType<typeof createClient>, email: string) => {
+  const { data: profileMatch, error: profileMatchError } = await adminClient
+    .from("profiles")
+    .select("user_id")
+    .eq("email", email)
+    .maybeSingle();
+  if (profileMatchError && !isMissingTable(profileMatchError)) throw profileMatchError;
+  if (profileMatch?.user_id) {
+    const user = await getAuthUserById(adminClient, String(profileMatch.user_id));
+    if (user) return user;
+  }
+
+  const { data: legacyMatches, error: legacyMatchError } = await adminClient
+    .from("usuarios")
+    .select("id")
+    .ilike("email", email)
+    .limit(1);
+  if (legacyMatchError) throw legacyMatchError;
+  const legacyMatch = legacyMatches?.[0];
+  if (legacyMatch?.id) {
+    const user = await getAuthUserById(adminClient, String(legacyMatch.id));
+    if (user) return user;
+  }
+
   for (let page = 1; page <= 20; page += 1) {
     const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage: 1000 });
     if (error) throw error;
@@ -24,6 +60,57 @@ const findAuthUserByEmail = async (adminClient: ReturnType<typeof createClient>,
     if (!data?.users?.length || data.users.length < 1000) break;
   }
   return null;
+};
+
+const fetchPlatformAdminFlag = async (
+  adminClient: ReturnType<typeof createClient>,
+  userId: string,
+  email: string | undefined | null,
+) => {
+  if (normalizeEmail(email) !== PLATFORM_SUPERADMIN_EMAIL) return false;
+  const { data, error } = await adminClient
+    .from("platform_admins")
+    .select("user_id, nivel, estado")
+    .eq("user_id", userId)
+    .eq("nivel", "superadmin")
+    .eq("estado", "activo")
+    .maybeSingle();
+  if (error && isMissingTable(error)) return false;
+  if (error) throw error;
+  return Boolean(data?.user_id);
+};
+
+const fetchGlobalProfile = async (adminClient: ReturnType<typeof createClient>, userId: string) => {
+  const { data, error } = await adminClient
+    .from("profiles")
+    .select("user_id, email, nombre, must_change_password")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error && isMissingTable(error)) return null;
+  if (error) throw error;
+  return data || null;
+};
+
+const upsertGlobalProfile = async (
+  adminClient: ReturnType<typeof createClient>,
+  profile: {
+    user_id: string;
+    email: string;
+    nombre: string;
+    must_change_password: boolean;
+  },
+) => {
+  const { error } = await adminClient
+    .from("profiles")
+    .upsert([{
+      user_id: profile.user_id,
+      email: profile.email,
+      nombre: profile.nombre,
+      estado_global: "activo",
+      must_change_password: profile.must_change_password,
+    }], { onConflict: "user_id" });
+  if (error && isMissingTable(error)) return;
+  if (error) throw error;
 };
 
 const allowedScopes = new Set(["tenant", "area", "equipo", "sede", "proyecto", "centro_costo", "custom"]);
@@ -131,7 +218,7 @@ const saveFunctionalAssignments = async (
   for (const item of extras) {
     const role = rolesById.get(item.rol_id);
     if (!role) continue;
-    if (role.empresa_id !== params.empresaId && role.es_superadmin !== true) continue;
+    if (role.empresa_id !== params.empresaId || role.es_superadmin === true) continue;
     if (item.jefe_user_id === params.userId) continue;
     rows.push({
       empresa_id: params.empresaId,
@@ -205,12 +292,8 @@ serve(async (req) => {
   const jefeUserId = String(payload.jefe_user_id || "").trim() || null;
   const asignacionesPayload = payload.asignaciones || [];
 
-  if (!nombre || !email || !password || !empresaId || !rolInput) {
-    return jsonResponse({ success: false, error: "Nombre, email, password, empresa y rol son obligatorios." }, 400);
-  }
-
-  if (password.length < 6) {
-    return jsonResponse({ success: false, error: "La contrasena temporal debe tener al menos 6 caracteres." }, 400);
+  if (!nombre || !email || !empresaId || !rolInput) {
+    return jsonResponse({ success: false, error: "Nombre, email, empresa y rol son obligatorios." }, 400);
   }
 
   const { data: memberships, error: membershipError } = await adminClient
@@ -223,12 +306,39 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: membershipError.message }, 500);
   }
 
-  const callerIsSuperadmin = (memberships || []).some((membership) => {
-    const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
-    return role?.es_superadmin;
-  });
+  const callerEmpresaIds = [...new Set((memberships || []).map((m) => m.empresa_id).filter(Boolean))];
+  const { data: callerEmpresasRows } = callerEmpresaIds.length
+    ? await adminClient.from("empresas").select("id, es_plataforma").in("id", callerEmpresaIds)
+    : { data: [] as { id: string; es_plataforma: boolean }[] };
+  const callerEmpresasById = new Map((callerEmpresasRows || []).map((e) => [e.id, e]));
 
-  const canManage = callerIsSuperadmin || (memberships || []).some((membership) => {
+  const { data: targetEmpresa, error: targetEmpresaError } = await adminClient
+    .from("empresas")
+    .select("id, es_plataforma")
+    .eq("id", empresaId)
+    .maybeSingle();
+  if (targetEmpresaError) return jsonResponse({ success: false, error: targetEmpresaError.message }, 500);
+  if (!targetEmpresa?.id) return jsonResponse({ success: false, error: "El tenant seleccionado no existe." }, 400);
+
+  if (email === PLATFORM_SUPERADMIN_EMAIL && !targetEmpresa.es_plataforma) {
+    return jsonResponse({ success: false, error: "El Superadmin TIDEO solo puede pertenecer al tenant plataforma." }, 403);
+  }
+
+  let callerIsPlatformAdmin = false;
+  try {
+    callerIsPlatformAdmin = await fetchPlatformAdminFlag(adminClient, caller.id, caller.email);
+  } catch (error) {
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : "No se pudo validar el administrador de plataforma." }, 500);
+  }
+
+  const callerHasPlatformSuperadminMembership = (memberships || []).some((membership) => {
+    const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
+    const empresa = callerEmpresasById.get(membership.empresa_id);
+    return role?.es_superadmin && empresa?.es_plataforma && normalizeEmail(caller.email) === PLATFORM_SUPERADMIN_EMAIL;
+  });
+  const callerIsPlatformSuperadmin = callerIsPlatformAdmin || callerHasPlatformSuperadminMembership;
+
+  const canManage = callerIsPlatformSuperadmin || (memberships || []).some((membership) => {
     const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
     return membership.empresa_id === empresaId && role?.es_admin_empresa;
   });
@@ -240,7 +350,7 @@ serve(async (req) => {
   // Resolver el rol por ID exacto dentro del tenant (no se aceptan roles de otros tenants)
   let { data: roleRow, error: roleError } = await adminClient
     .from("roles")
-    .select("id, nombre, categoria, nivel_jerarquico, es_superadmin, es_admin_empresa")
+    .select("id, empresa_id, nombre, categoria, nivel_jerarquico, es_superadmin, es_admin_empresa")
     .eq("id", rolInput)
     .eq("empresa_id", empresaId)
     .eq("activo", true)
@@ -250,7 +360,7 @@ serve(async (req) => {
   if (!roleRow && !roleError) {
     const byName = await adminClient
       .from("roles")
-      .select("id, nombre, categoria, nivel_jerarquico, es_superadmin, es_admin_empresa")
+      .select("id, empresa_id, nombre, categoria, nivel_jerarquico, es_superadmin, es_admin_empresa")
       .eq("empresa_id", empresaId)
       .ilike("nombre", `%${rolInput}%`)
       .eq("activo", true)
@@ -263,9 +373,8 @@ serve(async (req) => {
   if (roleError) return jsonResponse({ success: false, error: roleError.message }, 500);
   if (!roleRow?.id) return jsonResponse({ success: false, error: "El rol seleccionado no existe para este tenant." }, 400);
 
-  // Solo el superadmin puede asignar roles con es_superadmin=true
-  if (roleRow.es_superadmin && !callerIsSuperadmin) {
-    return jsonResponse({ success: false, error: "No puedes asignar un rol de superadmin a un usuario." }, 403);
+  if (roleRow.es_superadmin) {
+    return jsonResponse({ success: false, error: "El rol Superadmin TIDEO no se asigna desde gestion de usuarios." }, 403);
   }
 
   if (jefeUserId) {
@@ -283,36 +392,60 @@ serve(async (req) => {
   let alreadyExists = false;
   let membershipOverwritten = false;
   let uid: string | null = null;
-  const { data: createdUser, error: createError } = await adminClient.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { nombre },
-  });
 
-  if (createError) {
-    const message = createError.message?.toLowerCase() || "";
-    alreadyExists = message.includes("already") || message.includes("registered") || message.includes("exists");
-    if (!alreadyExists) return jsonResponse({ success: false, error: createError.message }, 400);
-    const existingUser = await findAuthUserByEmail(adminClient, email);
-    uid = existingUser?.id || null;
+  let existingAuthUser;
+  try {
+    existingAuthUser = await findAuthUserByEmail(adminClient, email);
+  } catch (error) {
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : "No se pudo validar si el usuario ya existe." }, 500);
+  }
+
+  if (existingAuthUser?.id) {
+    alreadyExists = true;
+    uid = existingAuthUser.id;
+    const { error: reactivateError } = await adminClient.auth.admin.updateUserById(uid, {
+      email_confirm: true,
+      user_metadata: { ...(existingAuthUser.user_metadata || {}), nombre },
+      ban_duration: "none",
+    });
+    if (reactivateError) return jsonResponse({ success: false, error: reactivateError.message }, 400);
   } else {
-    uid = createdUser.user?.id || null;
+    if (!password) {
+      return jsonResponse({ success: false, error: "La contrasena temporal es obligatoria solo para usuarios nuevos." }, 400);
+    }
+    if (password.length < 6) {
+      return jsonResponse({ success: false, error: "La contrasena temporal debe tener al menos 6 caracteres." }, 400);
+    }
+
+    const { data: createdUser, error: createError } = await adminClient.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { nombre },
+    });
+
+    if (createError) {
+      const message = createError.message?.toLowerCase() || "";
+      alreadyExists = message.includes("already") || message.includes("registered") || message.includes("exists");
+      if (!alreadyExists) return jsonResponse({ success: false, error: createError.message }, 400);
+      const racedExistingUser = await findAuthUserByEmail(adminClient, email);
+      uid = racedExistingUser?.id || null;
+      if (uid) {
+        const { error: reactivateError } = await adminClient.auth.admin.updateUserById(uid, {
+          email_confirm: true,
+          user_metadata: { ...(racedExistingUser?.user_metadata || {}), nombre },
+          ban_duration: "none",
+        });
+        if (reactivateError) return jsonResponse({ success: false, error: reactivateError.message }, 400);
+      }
+    } else {
+      uid = createdUser.user?.id || null;
+    }
   }
 
   if (!uid) return jsonResponse({ success: false, error: "No se pudo resolver el usuario Auth creado." }, 500);
   if (jefeUserId === uid) {
     return jsonResponse({ success: false, error: "Un usuario no puede ser su propio jefe directo." }, 400);
-  }
-
-  if (alreadyExists) {
-    const { error: reactivateError } = await adminClient.auth.admin.updateUserById(uid, {
-      password,
-      email_confirm: true,
-      user_metadata: { nombre },
-      ban_duration: "none",
-    });
-    if (reactivateError) return jsonResponse({ success: false, error: reactivateError.message }, 400);
   }
 
   // Detectar si ya existe una membresía activa para este usuario en este tenant
@@ -342,6 +475,36 @@ serve(async (req) => {
 
   if (linkError) return jsonResponse({ success: false, error: linkError.message }, 500);
 
+  const { data: existingProfile, error: existingProfileError } = await adminClient
+    .from("usuarios")
+    .select("*")
+    .eq("id", uid)
+    .maybeSingle();
+
+  if (existingProfileError) return jsonResponse({ success: false, error: existingProfileError.message }, 500);
+
+  let existingGlobalProfile: Record<string, unknown> | null = null;
+  try {
+    existingGlobalProfile = await fetchGlobalProfile(adminClient, uid);
+  } catch (error) {
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : "No se pudo leer el perfil global." }, 500);
+  }
+
+  const mustChangePassword = alreadyExists
+    ? Boolean(existingGlobalProfile?.must_change_password ?? existingProfile?.must_change_password)
+    : true;
+
+  try {
+    await upsertGlobalProfile(adminClient, {
+      user_id: uid,
+      email,
+      nombre,
+      must_change_password: mustChangePassword,
+    });
+  } catch (error) {
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : "No se pudo guardar el perfil global." }, 500);
+  }
+
   const usuario = {
     id: uid,
     nombre,
@@ -349,16 +512,36 @@ serve(async (req) => {
     rol: roleRow.id,
     empresa_id: empresaId,
     estado: "Activo",
-    must_change_password: true,
+    must_change_password: mustChangePassword,
   };
 
-  const { data: savedUser, error: saveError } = await adminClient
-    .from("usuarios")
-    .upsert([usuario])
-    .select()
-    .single();
+  let savedUser: Record<string, unknown> | null = usuario;
+  if (!alreadyExists || !existingProfile || existingProfile.empresa_id === empresaId) {
+    const { data, error: saveError } = await adminClient
+      .from("usuarios")
+      .upsert([usuario])
+      .select()
+      .single();
 
-  if (saveError) return jsonResponse({ success: false, error: saveError.message }, 500);
+    if (saveError) return jsonResponse({ success: false, error: saveError.message }, 500);
+    savedUser = data || usuario;
+  } else {
+    const { error: profileUpdateError } = await adminClient
+      .from("usuarios")
+      .update({ nombre, email, updated_at: new Date().toISOString() })
+      .eq("id", uid);
+
+    if (profileUpdateError) return jsonResponse({ success: false, error: profileUpdateError.message }, 500);
+    savedUser = {
+      ...existingProfile,
+      nombre,
+      email,
+      rol: roleRow.id,
+      empresa_id: empresaId,
+      estado: "Activo",
+      must_change_password: mustChangePassword,
+    };
+  }
 
   let asignaciones: Record<string, unknown>[] = [];
   try {

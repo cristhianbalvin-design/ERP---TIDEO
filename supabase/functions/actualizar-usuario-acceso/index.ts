@@ -13,6 +13,52 @@ const jsonResponse = (body: unknown, status = 200) =>
   });
 
 const normalizeEmail = (email: unknown) => String(email || "").trim().toLowerCase();
+const PLATFORM_SUPERADMIN_EMAIL = "cristhianbalvin@gmail.com";
+
+const isMissingTable = (error: unknown) => {
+  const err = error as { code?: string; message?: string } | null;
+  const message = String(err?.message || "").toLowerCase();
+  return err?.code === "42P01" || err?.code === "PGRST205" || message.includes("could not find the table");
+};
+
+const fetchPlatformAdminFlag = async (
+  adminClient: ReturnType<typeof createClient>,
+  userId: string,
+  email: string | undefined | null,
+) => {
+  if (normalizeEmail(email) !== PLATFORM_SUPERADMIN_EMAIL) return false;
+  const { data, error } = await adminClient
+    .from("platform_admins")
+    .select("user_id, nivel, estado")
+    .eq("user_id", userId)
+    .eq("nivel", "superadmin")
+    .eq("estado", "activo")
+    .maybeSingle();
+  if (error && isMissingTable(error)) return false;
+  if (error) throw error;
+  return Boolean(data?.user_id);
+};
+
+const upsertGlobalProfile = async (
+  adminClient: ReturnType<typeof createClient>,
+  profile: {
+    user_id: string;
+    email: string;
+    nombre: string;
+    estado_global: string;
+  },
+) => {
+  const { error } = await adminClient
+    .from("profiles")
+    .upsert([{
+      user_id: profile.user_id,
+      email: profile.email,
+      nombre: profile.nombre,
+      estado_global: profile.estado_global,
+    }], { onConflict: "user_id" });
+  if (error && isMissingTable(error)) return;
+  if (error) throw error;
+};
 
 const estadoToMembership = (estado: string) => {
   const value = estado.trim().toLowerCase();
@@ -159,7 +205,7 @@ const saveFunctionalAssignments = async (
   for (const item of extras) {
     const role = rolesById.get(item.rol_id);
     if (!role) continue;
-    if (role.empresa_id !== params.empresaId && role.es_superadmin !== true) continue;
+    if (role.empresa_id !== params.empresaId || role.es_superadmin === true) continue;
     if (item.jefe_user_id === params.userId) continue;
     rows.push({
       empresa_id: params.empresaId,
@@ -253,12 +299,39 @@ serve(async (req) => {
 
   if (membershipError) return jsonResponse({ success: false, error: membershipError.message }, 500);
 
-  const callerIsSuperadmin = (memberships || []).some((membership) => {
-    const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
-    return role?.es_superadmin;
-  });
+  const callerEmpresaIds = [...new Set((memberships || []).map((m) => m.empresa_id).filter(Boolean))];
+  const { data: callerEmpresasRows } = callerEmpresaIds.length
+    ? await adminClient.from("empresas").select("id, es_plataforma").in("id", callerEmpresaIds)
+    : { data: [] as { id: string; es_plataforma: boolean }[] };
+  const callerEmpresasById = new Map((callerEmpresasRows || []).map((e) => [e.id, e]));
 
-  const canManage = callerIsSuperadmin || (memberships || []).some((membership) => {
+  const { data: targetEmpresa, error: targetEmpresaError } = await adminClient
+    .from("empresas")
+    .select("id, es_plataforma")
+    .eq("id", empresaId)
+    .maybeSingle();
+  if (targetEmpresaError) return jsonResponse({ success: false, error: targetEmpresaError.message }, 500);
+  if (!targetEmpresa?.id) return jsonResponse({ success: false, error: "El tenant seleccionado no existe." }, 400);
+
+  if (email === PLATFORM_SUPERADMIN_EMAIL && !targetEmpresa.es_plataforma) {
+    return jsonResponse({ success: false, error: "El Superadmin TIDEO solo puede pertenecer al tenant plataforma." }, 403);
+  }
+
+  let callerIsPlatformAdmin = false;
+  try {
+    callerIsPlatformAdmin = await fetchPlatformAdminFlag(adminClient, caller.id, caller.email);
+  } catch (error) {
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : "No se pudo validar el administrador de plataforma." }, 500);
+  }
+
+  const callerHasPlatformSuperadminMembership = (memberships || []).some((membership) => {
+    const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
+    const empresa = callerEmpresasById.get(membership.empresa_id);
+    return role?.es_superadmin && empresa?.es_plataforma && normalizeEmail(caller.email) === PLATFORM_SUPERADMIN_EMAIL;
+  });
+  const callerIsPlatformSuperadmin = callerIsPlatformAdmin || callerHasPlatformSuperadminMembership;
+
+  const canManage = callerIsPlatformSuperadmin || (memberships || []).some((membership) => {
     const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
     return membership.empresa_id === empresaId && role?.es_admin_empresa;
   });
@@ -285,11 +358,11 @@ serve(async (req) => {
 
   if (roleError) return jsonResponse({ success: false, error: roleError.message }, 500);
   if (!roleRow?.id || !roleRow.activo) return jsonResponse({ success: false, error: "El rol seleccionado no existe o esta inactivo." }, 400);
-  if (roleRow.empresa_id !== empresaId && !(callerIsSuperadmin && roleRow.es_superadmin)) {
+  if (roleRow.empresa_id !== empresaId) {
     return jsonResponse({ success: false, error: "El rol seleccionado no pertenece a este tenant." }, 400);
   }
-  if (roleRow.es_superadmin && !callerIsSuperadmin) {
-    return jsonResponse({ success: false, error: "No puedes asignar un rol de superadmin a un usuario." }, 403);
+  if (roleRow.es_superadmin && !(callerIsPlatformSuperadmin && targetEmpresa.es_plataforma && email === PLATFORM_SUPERADMIN_EMAIL)) {
+    return jsonResponse({ success: false, error: "El rol Superadmin TIDEO solo corresponde al usuario de plataforma autorizado." }, 403);
   }
 
   if (jefeUserId === userId) {
@@ -313,6 +386,17 @@ serve(async (req) => {
     user_metadata: { nombre },
   });
   if (authUpdateError) return jsonResponse({ success: false, error: authUpdateError.message }, 400);
+
+  try {
+    await upsertGlobalProfile(adminClient, {
+      user_id: userId,
+      email,
+      nombre,
+      estado_global: estadoMembership === "suspendido" || estadoMembership === "inactivo" ? estadoMembership : "activo",
+    });
+  } catch (error) {
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : "No se pudo guardar el perfil global." }, 500);
+  }
 
   const { error: membershipUpdateError } = await adminClient
     .from("usuarios_empresas")
@@ -342,13 +426,32 @@ serve(async (req) => {
     updated_at: new Date().toISOString(),
   };
 
-  const { data: savedUser, error: saveError } = await adminClient
+  const { data: existingLegacyProfile, error: existingLegacyProfileError } = await adminClient
     .from("usuarios")
-    .upsert([profile], { onConflict: "id" })
-    .select()
-    .single();
+    .select("id, empresa_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (existingLegacyProfileError) return jsonResponse({ success: false, error: existingLegacyProfileError.message }, 500);
 
-  if (saveError) return jsonResponse({ success: false, error: saveError.message }, 500);
+  let savedUser: Record<string, unknown> | null = profile;
+  if (!existingLegacyProfile || existingLegacyProfile.empresa_id === empresaId) {
+    const { data, error: saveError } = await adminClient
+      .from("usuarios")
+      .upsert([profile], { onConflict: "id" })
+      .select()
+      .single();
+
+    if (saveError) return jsonResponse({ success: false, error: saveError.message }, 500);
+    savedUser = data || profile;
+  } else {
+    const { error: updateLegacyError } = await adminClient
+      .from("usuarios")
+      .update({ nombre, email, estado: estadoPerfil, updated_at: new Date().toISOString() })
+      .eq("id", userId);
+
+    if (updateLegacyError) return jsonResponse({ success: false, error: updateLegacyError.message }, 500);
+    savedUser = profile;
+  }
 
   let asignaciones: Record<string, unknown>[] = [];
   try {

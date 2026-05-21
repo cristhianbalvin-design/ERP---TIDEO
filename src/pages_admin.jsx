@@ -441,11 +441,12 @@ function Roles() {
 }
 
 function Usuarios() {
-  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, roles: rolesCtx, accessDebug } = useApp();
+  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, roles: rolesCtx, accessDebug } = useApp();
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('Tideo2026!');
   const [creando, setCreando] = useState(false);
   const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', password: '', asignaciones: [], campo: false, campoModulos: [] });
+  const [mostrarPasswordNuevo, setMostrarPasswordNuevo] = useState(false);
   const [guardandoNuevo, setGuardandoNuevo] = useState(false);
   const [nuevoError, setNuevoError] = useState('');
   const [editando, setEditando] = useState(null);
@@ -477,6 +478,9 @@ function Usuarios() {
   const [filtroTenant, setFiltroTenant] = useState('');
   const [filtroUsuario, setFiltroUsuario] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
+  const normalizarEmail = (value) => String(value || '').trim().toLowerCase();
+  const nuevoEmailNormalizado = normalizarEmail(nuevoForm.email);
+  const nuevoEmailExistente = Boolean(nuevoEmailNormalizado) && usuarios.some(u => normalizarEmail(u.email) === nuevoEmailNormalizado);
 
   const handleReset = async () => {
     if (!resetting) return;
@@ -497,9 +501,16 @@ function Usuarios() {
     try {
       await crearUsuarioConAcceso(nuevoForm);
       setCreando(false);
+      setMostrarPasswordNuevo(false);
       setNuevoForm({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', password: '', asignaciones: [], campo: false, campoModulos: [] });
     } catch (error) {
-      setNuevoError(error?.message || 'No se pudo crear el usuario.');
+      const message = error?.message || 'No se pudo crear el usuario.';
+      if (normalizarEmail(message).includes('contrasena temporal es obligatoria')) {
+        setMostrarPasswordNuevo(true);
+        setNuevoError('Este email no existe todavia. Ingresa una contrasena temporal para crear la cuenta.');
+      } else {
+        setNuevoError(message);
+      }
     }
     setGuardandoNuevo(false);
   };
@@ -668,21 +679,32 @@ function Usuarios() {
     setNuevoForm(p => ({ ...p, rol: rolesOpciones[0][0] }));
   }, [rolesOpciones, nuevoForm.rol]);
 
+  useEffect(() => {
+    if (!nuevoEmailExistente) return;
+    if (mostrarPasswordNuevo) setMostrarPasswordNuevo(false);
+    if (nuevoForm.password) setNuevoForm(p => ({ ...p, password: '' }));
+  }, [nuevoEmailExistente, nuevoForm.password, mostrarPasswordNuevo]);
+
   const getEmpresa = (id) => {
     if (empresa?.id === id) return empresa.nombre;
     const found = (empresasPlataforma || []).find(e => e.id === id);
-    return found ? found.nombre : (MOCK.empresas.find(e => e.id === id)?.nombre || 'Tenant asignado');
+    if (found) return found.nombre;
+    const mem = (todasMembresias || []).find(m => m.empresa_id === id);
+    const memNombre = mem?.empresa?.nombre_comercial || mem?.empresa?.razon_social || mem?.empresa?.nombre;
+    return memNombre || MOCK.empresas.find(e => e.id === id)?.nombre || 'Tenant asignado';
   };
   
   return (
     <>
       <div className="page-header">
         <div><h1 className="page-title">Usuarios</h1><div className="page-sub">{usuarios.length} usuarios · Acceso centralizado</div></div>
-        <button className="btn btn-primary" data-local-form="true" onClick={() => setCreando(true)}>{I.plus} Nuevo usuario</button>
+        <button className="btn btn-primary" data-local-form="true" onClick={() => { setMostrarPasswordNuevo(false); setCreando(true); }}>{I.plus} Nuevo usuario</button>
       </div>
-      {(accessDebug?.usuariosError || accessDebug?.usuariosLoadedAt) && (
+      {(accessDebug?.usuariosLoading || accessDebug?.usuariosError || accessDebug?.usuariosLoadedAt) && (
         <div className={accessDebug?.usuariosError ? 'alert alert-danger' : 'alert alert-info'} style={{marginBottom:16}}>
-          {accessDebug?.usuariosError
+          {accessDebug?.usuariosLoading
+            ? 'Cargando usuarios del tenant...'
+            : accessDebug?.usuariosError
             ? `Usuarios: ${accessDebug.usuariosError}`
             : `Usuarios cargados desde Supabase a las ${accessDebug.usuariosLoadedAt}.`}
         </div>
@@ -902,11 +924,13 @@ function Usuarios() {
           <div className="modal" style={{maxWidth:480}}>
             <div className="modal-head">
               <h2>Nuevo usuario</h2>
-              <button className="icon-btn" onClick={() => setCreando(false)}>{I.x}</button>
+              <button className="icon-btn" onClick={() => { setMostrarPasswordNuevo(false); setCreando(false); }}>{I.x}</button>
             </div>
             <form className="modal-body col" style={{gap:14}} onSubmit={handleCrearUsuario}>
               <p style={{fontSize:13, color:'var(--fg-muted)'}}>
-                Se creará una cuenta de acceso en Supabase Auth. El usuario deberá cambiar su contraseña al primer ingreso.
+                {nuevoEmailExistente
+                  ? 'Este email ya tiene cuenta de acceso. Se agregara al tenant y conservara su contrasena actual.'
+                  : 'Si el email ya existe, se conservara su contrasena actual. Para cuentas nuevas, define una contrasena temporal.'}
               </p>
               {nuevoError && <div className="alert alert-danger">{nuevoError}</div>}
               <div className="input-group">
@@ -915,15 +939,43 @@ function Usuarios() {
               </div>
               <div className="input-group">
                 <label>Email</label>
-                <input className="input" type="email" required value={nuevoForm.email} onChange={e => setNuevoForm(p => ({...p, email: e.target.value}))} />
+                <input
+                  className="input"
+                  type="email"
+                  required
+                  value={nuevoForm.email}
+                  onChange={e => {
+                    setMostrarPasswordNuevo(false);
+                    setNuevoForm(p => ({...p, email: e.target.value, password: ''}));
+                  }}
+                />
               </div>
-              <div className="input-group">
-                <label>Contraseña temporal</label>
-                <div style={{display:'flex', gap:8}}>
-                  <input className="input" required minLength={6} value={nuevoForm.password} onChange={e => setNuevoForm(p => ({...p, password: e.target.value}))} />
-                  <button type="button" className="btn btn-secondary" onClick={() => setNuevoForm(p => ({...p, password: Math.random().toString(36).slice(-8) + '!'}))}>Generar</button>
+              {!nuevoEmailExistente && mostrarPasswordNuevo && (
+                <div className="input-group">
+                  <label>Contraseña temporal <span className="text-muted">(solo cuentas nuevas)</span></label>
+                  <div style={{display:'flex', gap:8}}>
+                    <input
+                      className="input"
+                      minLength={6}
+                      placeholder="Minimo 6 caracteres"
+                      value={nuevoForm.password}
+                      onChange={e => setNuevoForm(p => ({...p, password: e.target.value}))}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setNuevoForm(p => ({...p, password: Math.random().toString(36).slice(-8) + '!'}))}
+                    >
+                      Generar
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
+              {!nuevoEmailExistente && !mostrarPasswordNuevo && (
+                <button type="button" className="btn btn-secondary" onClick={() => setMostrarPasswordNuevo(true)}>
+                  Definir contrasena temporal
+                </button>
+              )}
               <div className="input-group">
                 <label>Rol</label>
                 <select className="input" value={nuevoForm.rol} onChange={e => setNuevoForm(p => ({...p, rol: e.target.value}))}>
@@ -1251,7 +1303,15 @@ function CecoCebePanel({ onClose }) {
 
   const CECO_TIPOS = ['area_funcional','proyecto','sede','temporal'];
   const CEBE_TIPOS = ['linea_servicio','cliente','proyecto','producto','temporal'];
-  const labelTipo = t => ({ area_funcional:'Área funcional', proyecto:'Proyecto', sede:'Sede', temporal:'Temporal', linea_servicio:'Línea de servicio', cliente:'Cliente', producto:'Producto', temporal:'Temporal' }[t] || t);
+  const labelTipo = t => ({
+    area_funcional: 'Área funcional',
+    proyecto: 'Proyecto',
+    sede: 'Sede',
+    temporal: 'Temporal',
+    linea_servicio: 'Línea de servicio',
+    cliente: 'Cliente',
+    producto: 'Producto',
+  }[t] || t);
 
   // ---- CECO ----
   const resetCecoForm = () => { setCecoForm(cecoBase); setCecoEditId(null); setCecoError(''); };
@@ -4616,7 +4676,7 @@ function Comisiones() {
     oportunidades = [], cuentas = [], cxc = [], facturas = [], osClientes = [],
     aprobarComision, rechazarComision, generarReciboHonorarios, confirmarReciboHonorarios,
     aprobarAcuerdoComision, rechazarAcuerdoComision,
-    recibosHonorarios = [], addNotificacion, empresa,
+    recibosHonorarios = [], addNotificacion, empresa, navigate,
   } = useApp();
 
   const puedeAprobar = role?.permisos?.aprobar_descuentos || role?.permisos?.tenant_admin || role?.permisos?.todo;
@@ -4693,7 +4753,7 @@ function Comisiones() {
     return 'PEN';
   };
   const moneyComision = (value, moneda = 'PEN') => `${normalizeMoneda(moneda) === 'USD' ? 'US$' : 'S/'} ${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
-  const isInternalRef = (value) => /^(osc|fac|cxc|com|rec|cob|opp)_/i.test(String(value || '').trim());
+  const isInternalRef = (value) => /^(osc|fac|cxc|com|rec|cob|opp)_/i.test(String(value || '').trim()) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
   const firstReadable = (...values) => values
     .map(v => (v == null ? '' : String(v).trim()))
     .find(v => v && !isInternalRef(v));
@@ -4710,7 +4770,13 @@ function Comisiones() {
   };
   const monedaComision = (comision) => {
     const { cxcRef, facturaRef, osRef } = getComisionRefs(comision);
-    return normalizeMoneda(comision.moneda || cxcRef?.moneda || facturaRef?.moneda || osRef?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN');
+    return normalizeMoneda(
+      comision.moneda ||
+      cxcRef?.moneda || cxcRef?.facturas?.moneda || cxcRef?.os_clientes?.moneda ||
+      facturaRef?.moneda || facturaRef?.os_clientes?.moneda ||
+      osRef?.moneda ||
+      empresa?.moneda || empresa?.moneda_base || 'PEN'
+    );
   };
   const getOportunidadNombre = (comision) => {
     const { oppRef } = getComisionRefs(comision);
@@ -4735,11 +4801,8 @@ function Comisiones() {
   };
   const tieneAcuerdoEspecial = (comision) => {
     if (comision.acuerdo_especial === true || comision.acuerdo_especial === 'true') return true;
-    const { oppRef } = getComisionRefs(comision);
     const base = getPorcentajeBase(comision);
-    return oppRef?.acuerdo_estado === 'aprobado'
-      && base !== null
-      && Math.abs(Number(comision.porcentaje_comision || 0) - base) > 0.0001;
+    return base !== null && Math.abs(Number(comision.porcentaje_comision || 0) - base) > 0.0001;
   };
   const sumByCurrency = (list, field = 'monto_total') => monedasResumen.reduce((acc, moneda) => {
     acc[moneda] = list
@@ -4840,11 +4903,7 @@ function Comisiones() {
     pagada: <span className="badge badge-green">Pagada</span>,
   };
   const panelMoneda = panelComision ? monedaComision(panelComision) : 'PEN';
-  const panelBonificacionPreview = panelComision
-    ? (puedeAprobar && panelComision.estado === 'pendiente_aprobacion'
-      ? Number(bonif || 0)
-      : Number(panelComision.bonificacion || 0))
-    : 0;
+  const panelBonificacionPreview = panelComision ? Number(bonif || 0) : 0;
   const panelTotalPreview = panelComision
     ? Number(panelComision.monto_comision || 0) + panelBonificacionPreview
     : 0;
@@ -5145,8 +5204,16 @@ function Comisiones() {
               {filtradas.map(c => (
                 <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => abrirPanel(c)}>
                   <td><div style={{ fontWeight: 600 }}>{c.vendedor_nombre || c.vendedor_id}</div></td>
-                  <td style={{ maxWidth: 220 }}>
-                    <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={getOportunidadNombre(c)}>
+                  <td
+                    style={{ maxWidth: 220 }}
+                    onClick={e => {
+                      if (c.oportunidad_id) { e.stopPropagation(); navigate('pipeline', { panel: c.oportunidad_id }); }
+                    }}
+                  >
+                    <div
+                      style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: c.oportunidad_id ? 'pointer' : 'default', color: c.oportunidad_id ? 'var(--cyan)' : undefined }}
+                      title={getOportunidadNombre(c)}
+                    >
                       {getOportunidadNombre(c)}
                     </div>
                   </td>
@@ -5157,7 +5224,7 @@ function Comisiones() {
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <span>{c.porcentaje_comision}%</span>
-                      {tieneAcuerdoEspecial(c) && <span className="badge badge-green" style={{ fontSize: 10, padding: '1px 6px' }}>Acuerdo</span>}
+                      {tieneAcuerdoEspecial(c) && <span className="badge badge-green" style={{ fontSize: 10, padding: '1px 6px' }}>Acuerdo especial</span>}
                     </div>
                   </td>
                   <td>{moneyComision(c.monto_comision, monedaComision(c))}</td>
@@ -5211,6 +5278,12 @@ function Comisiones() {
                   </div>
                 ))}
               </div>
+
+              {tieneAcuerdoEspecial(panelComision) && (
+                <div style={{ marginBottom: 12 }}>
+                  <span className="badge badge-green" style={{ fontSize: 11, padding: '2px 8px' }}>Acuerdo especial</span>
+                </div>
+              )}
 
               {panelComision.motivo_rechazo && (
                 <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 12px', marginBottom: 16, fontSize: 12 }}>
@@ -5293,10 +5366,10 @@ function Comisiones() {
                 ))}
               </div>
               <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 16 }}>
-                Al confirmar se registrará el egreso en Tesorería y se marcarán las comisiones como pagadas.
+                Al confirmar se generará una CxP en el módulo financiero. El egreso a Tesorería y el cierre de comisiones ocurren al registrar el pago de esa CxP.
               </div>
               <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleConfirmarRecibo} disabled={guardando}>
-                {guardando ? 'Procesando...' : 'Confirmar y emitir recibo'}
+                {guardando ? 'Procesando...' : 'Confirmar y generar CxP'}
               </button>
             </div>
           </div>

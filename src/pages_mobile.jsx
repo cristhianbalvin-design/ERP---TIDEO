@@ -4,6 +4,7 @@ import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { rrhhService } from './services/rrhhService.js';
 import { PHONE_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
+import { getSupabaseClient } from './lib/supabaseClient.js';
 
 // Mobile field views - all field profiles
 
@@ -836,7 +837,6 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
       });
 
       // Llamar a la Edge Function de Supabase (GPT-4o Vision)
-      const { getSupabaseClient } = await import('./lib/supabaseClient.js');
       const sb = await getSupabaseClient();
       const { data: fnData, error: fnError } = await sb.functions.invoke('extraer-tarjeta-lead', {
         body: { imageBase64 },

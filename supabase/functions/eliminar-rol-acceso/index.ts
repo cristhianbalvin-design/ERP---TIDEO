@@ -12,6 +12,33 @@ const jsonResponse = (body: unknown, status = 200) =>
     headers: { ...cors, "Content-Type": "application/json" },
   });
 
+const PLATFORM_SUPERADMIN_EMAIL = "cristhianbalvin@gmail.com";
+const normalizeEmail = (email: unknown) => String(email || "").trim().toLowerCase();
+
+const isMissingTable = (error: unknown) => {
+  const err = error as { code?: string; message?: string } | null;
+  const message = String(err?.message || "").toLowerCase();
+  return err?.code === "42P01" || err?.code === "PGRST205" || message.includes("could not find the table");
+};
+
+const fetchPlatformAdminFlag = async (
+  adminClient: ReturnType<typeof createClient>,
+  userId: string,
+  email: string | undefined | null,
+) => {
+  if (normalizeEmail(email) !== PLATFORM_SUPERADMIN_EMAIL) return false;
+  const { data, error } = await adminClient
+    .from("platform_admins")
+    .select("user_id, nivel, estado")
+    .eq("user_id", userId)
+    .eq("nivel", "superadmin")
+    .eq("estado", "activo")
+    .maybeSingle();
+  if (error && isMissingTable(error)) return false;
+  if (error) throw error;
+  return Boolean(data?.user_id);
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return jsonResponse({ success: false, error: "Metodo no permitido." }, 405);
@@ -72,11 +99,29 @@ serve(async (req) => {
   if (callerRolesError) return jsonResponse({ success: false, error: callerRolesError.message }, 500);
 
   const callerRolesById = new Map((callerRoles || []).map((callerRole) => [callerRole.id, callerRole]));
+  const callerEmpresaIds = [...new Set((callerMemberships || []).map((m) => m.empresa_id).filter(Boolean))];
+  const { data: callerEmpresasRows } = callerEmpresaIds.length
+    ? await adminClient.from("empresas").select("id, es_plataforma").in("id", callerEmpresaIds)
+    : { data: [] as { id: string; es_plataforma: boolean }[] };
+  const callerEmpresasById = new Map((callerEmpresasRows || []).map((e) => [e.id, e]));
+  let callerIsPlatformAdmin = false;
+  try {
+    callerIsPlatformAdmin = await fetchPlatformAdminFlag(adminClient, caller.id, caller.email);
+  } catch (error) {
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : "No se pudo validar el administrador de plataforma." }, 500);
+  }
+
+  const callerHasPlatformSuperadminMembership = (callerMemberships || []).some((membership) => {
+    const callerRole = callerRolesById.get(membership.rol_id);
+    const empresa = callerEmpresasById.get(membership.empresa_id);
+    return callerRole?.es_superadmin && empresa?.es_plataforma && normalizeEmail(caller.email) === PLATFORM_SUPERADMIN_EMAIL;
+  });
+  const callerIsPlatformSuperadmin = callerIsPlatformAdmin || callerHasPlatformSuperadminMembership;
 
   const canManage = (callerMemberships || []).some((membership) => {
     const callerRole = callerRolesById.get(membership.rol_id);
-    return callerRole?.es_superadmin || (membership.empresa_id === role.empresa_id && callerRole?.es_admin_empresa);
-  });
+    return membership.empresa_id === role.empresa_id && callerRole?.es_admin_empresa;
+  }) || callerIsPlatformSuperadmin;
 
   if (!canManage) return jsonResponse({ success: false, error: "No tienes permiso para eliminar este rol." }, 403);
 
@@ -93,20 +138,12 @@ serve(async (req) => {
     .eq("rol", rolId);
 
   if (profileCountError) return jsonResponse({ success: false, error: profileCountError.message }, 500);
-  if ((profileCount || 0) > 0) {
-    const { error: clearProfilesError } = await adminClient
-      .from("usuarios")
-      .update({ rol: null })
-      .eq("rol", rolId);
-    if (clearProfilesError) return jsonResponse({ success: false, error: clearProfilesError.message }, 500);
-  }
 
-  if ((membershipCount || 0) > 0) {
-    const { error: membershipsDeleteError } = await adminClient
-      .from("usuarios_empresas")
-      .delete()
-      .eq("rol_id", rolId);
-    if (membershipsDeleteError) return jsonResponse({ success: false, error: membershipsDeleteError.message }, 500);
+  if ((membershipCount || 0) > 0 || (profileCount || 0) > 0) {
+    return jsonResponse({
+      success: false,
+      error: "No puedes eliminar este rol porque tiene usuarios asignados. Reasignalos primero.",
+    }, 409);
   }
 
   const { error: permisosError } = await adminClient.from("permisos_roles").delete().eq("rol_id", rolId);

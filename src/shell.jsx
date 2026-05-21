@@ -469,7 +469,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
               {empresa.nombre}
             </div>
             <div style={{fontSize:10, color:'rgba(255,255,255,0.6)', fontWeight:600}}>
-              {isSupabase ? authUser?.email?.split('@')[0] : role.nombre}
+              {isSupabase ? authUser?.email : role.nombre}
             </div>
           </div>
           <div className="avatar" style={{margin:0, width:32, height:32, fontSize:12}}>{avatarText}</div>
