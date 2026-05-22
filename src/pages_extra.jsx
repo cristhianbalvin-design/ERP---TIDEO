@@ -308,6 +308,29 @@ const CANALES_APROBACION = [
   'Otro',
 ];
 
+const EVIDENCIA_APROBACION_MIMES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+const EVIDENCIA_APROBACION_EXTS = ['.pdf', '.jpg', '.jpeg', '.png'];
+const EVIDENCIA_APROBACION_ACCEPT = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  '.pdf',
+  '.jpg',
+  '.jpeg',
+  '.png',
+].join(',');
+const EVIDENCIA_APROBACION_MAX_BYTES = 10 * 1024 * 1024;
+
+const esEvidenciaAprobacionPermitida = (file) => {
+  const tipo = String(file?.type || '').toLowerCase();
+  const nombre = String(file?.name || '').toLowerCase();
+  return EVIDENCIA_APROBACION_MIMES.includes(tipo) ||
+    EVIDENCIA_APROBACION_EXTS.some(ext => nombre.endsWith(ext));
+};
+
+const esCanalAprobacionReunion = canal =>
+  String(canal || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === 'aprobado en reunion';
+
 function AprobacionManualModal({ onClose, onConfirmar }) {
   const hoy = new Date().toISOString().split('T')[0];
   const [canal, setCanal]     = useState('');
@@ -318,25 +341,57 @@ function AprobacionManualModal({ onClose, onConfirmar }) {
   const [loading, setLoading] = useState(false);
 
   const agregarArchivos = (e) => {
-    setArchivos(prev => [...prev, ...Array.from(e.target.files)]);
+    const seleccionados = Array.from(e.target.files || []);
+    const validos = seleccionados.filter(file =>
+      esEvidenciaAprobacionPermitida(file) &&
+      Number(file.size || 0) <= EVIDENCIA_APROBACION_MAX_BYTES
+    );
+    const noPermitidos = seleccionados.filter(file => !esEvidenciaAprobacionPermitida(file));
+    const muyPesados = seleccionados.filter(file =>
+      esEvidenciaAprobacionPermitida(file) &&
+      Number(file.size || 0) > EVIDENCIA_APROBACION_MAX_BYTES
+    );
+
+    if (validos.length) setArchivos(prev => [...prev, ...validos]);
+    if (noPermitidos.length || muyPesados.length) {
+      const partes = [];
+      if (noPermitidos.length) partes.push('Solo se permiten archivos PDF, JPG, JPEG o PNG.');
+      if (muyPesados.length) partes.push('Cada archivo debe pesar como maximo 10 MB.');
+      setError(partes.join(' '));
+    } else if (validos.length) {
+      setError(null);
+    }
     e.target.value = '';
   };
   const quitarArchivo = (i) => setArchivos(prev => prev.filter((_, idx) => idx !== i));
 
   const handleConfirmar = async () => {
+    const canalEsReunion = esCanalAprobacionReunion(canal);
+    const notasTrim = notas.trim();
     if (!canal) { setError('Selecciona el canal de aprobación.'); return; }
     if (!fecha) { setError('Indica la fecha de aprobación del cliente.'); return; }
-    if (!archivos.length) { setError('Adjunta la evidencia de aprobacion del cliente.'); return; }
+    if (canalEsReunion && !notasTrim) { setError('Ingresa notas adicionales para una aprobacion en reunion.'); return; }
+    if (!canalEsReunion && !archivos.length) { setError('Adjunta la evidencia de aprobacion del cliente.'); return; }
+    if (archivos.some(file => !esEvidenciaAprobacionPermitida(file))) {
+      setError('Solo se permiten archivos PDF, JPG, JPEG o PNG.');
+      return;
+    }
+    if (archivos.some(file => Number(file.size || 0) > EVIDENCIA_APROBACION_MAX_BYTES)) {
+      setError('Cada archivo debe pesar como maximo 10 MB.');
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
-      await onConfirmar({ canal, fecha_cliente: fecha, notas: notas.trim() || null, archivos });
+      await onConfirmar({ canal, fecha_cliente: fecha, notas: notasTrim || null, archivos });
     } catch (err) {
       setError(err?.message || 'No se pudo registrar la aprobacion.');
     } finally {
       setLoading(false);
     }
   };
+
+  const canalEsReunion = esCanalAprobacionReunion(canal);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -359,15 +414,15 @@ function AprobacionManualModal({ onClose, onConfirmar }) {
               onChange={e => { setFecha(e.target.value); setError(null); }} />
           </div>
           <div className="input-group" style={{margin:0}}>
-            <label>Notas adicionales</label>
-            <textarea className="input" rows={3} value={notas} onChange={e => setNotas(e.target.value)}
+            <label>Notas adicionales{canalEsReunion ? ' *' : ''}</label>
+            <textarea className="input" rows={3} value={notas} onChange={e => { setNotas(e.target.value); setError(null); }}
               placeholder="Contexto sobre cómo se dio la aprobación…" />
           </div>
           <div className="input-group" style={{margin:0}}>
-            <label>Adjuntar sustento *</label>
+            <label>Adjuntar sustento{canalEsReunion ? ' (opcional)' : ' *'}</label>
             <label style={{display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:6, border:'1px dashed var(--border)', cursor:'pointer', fontSize:13, color:'var(--fg-muted)', background:'var(--bg-subtle)'}}>
-              {I.file} Seleccionar archivos (PDF, imágenes, Word)
-              <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" onChange={agregarArchivos} style={{display:'none'}} />
+              {I.file} Seleccionar archivos (PDF, JPG o PNG)
+              <input type="file" multiple accept={EVIDENCIA_APROBACION_ACCEPT} onChange={agregarArchivos} style={{display:'none'}} />
             </label>
             {archivos.length > 0 && (
               <div style={{marginTop:8, display:'flex', flexDirection:'column', gap:5}}>
@@ -1230,7 +1285,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                           />
                         </td>
                         <td><input type="number" className="input num" min="0" max="100" value={h.porcentaje} onChange={e => updateHito(h.id, 'porcentaje', e.target.value)} /></td>
-                        <td className="num" style={{fontWeight:600}}>{money(Math.round(totalImpl * Number(h.porcentaje || 0) / 100))}</td>
+                        <td className="num" style={{fontWeight:600}}>{moneyCurrency(Math.round(totalImpl * Number(h.porcentaje || 0) / 100), moneda)}</td>
                         <td>
                           <SmartTextField
                             value={h.condicion}

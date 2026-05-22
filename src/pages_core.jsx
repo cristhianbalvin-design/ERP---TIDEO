@@ -1708,6 +1708,16 @@ function Pipeline() {
   }, [activeParams, oportunidades]);
 
   useEffect(() => {
+    if (!sel?.id) return;
+    const actualizada = oportunidades.find(o => o.id === sel.id);
+    if (!actualizada) {
+      setSel(null);
+      return;
+    }
+    if (actualizada !== sel) setSel(actualizada);
+  }, [oportunidades, sel?.id]);
+
+  useEffect(() => {
     if (!panelNuevaOpp) return;
     if (isSupabaseConfigured() && empresa?.id) {
       setLoadingServiciosOpp(true);
@@ -2165,8 +2175,14 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
           sel.responsable_id === authUser.id ||
           vendedorPersonal?.auth_user_id === authUser.id
         );
-        const puedeEditarAcuerdo = !['ganada','perdida'].includes(sel.etapa) &&
+        const cotizacionAprobada = Boolean(cotAprobada);
+        const oportunidadCerrada = ['ganada','perdida'].includes(sel.etapa);
+        const acuerdoCerrado = cotizacionAprobada || oportunidadCerrada;
+        const puedeEditarAcuerdo = !acuerdoCerrado &&
           !['aprobado','pendiente'].includes(acuerdoOpp.estado) &&
+          (esVendedorResponsable || puedeAprobar);
+        const puedeModificarAcuerdoAprobado = acuerdoOpp.estado === 'aprobado' &&
+          !acuerdoCerrado &&
           (esVendedorResponsable || puedeAprobar);
         // ──────────────────────────────────────────────────────────────────
 
@@ -2382,7 +2398,7 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
                   const diffPct = pctBase !== null && pctValor !== '' && Number(pctValor) !== pctBase;
                   const hayBon = Number(bonValor) > 0;
                   const necesitaJustificacion = diffPct || hayBon;
-                  const bloqueado = acuerdoOpp.estado === 'aprobado';
+                  const bloqueado = acuerdoOpp.estado === 'aprobado' && acuerdoCerrado;
                   const enPendiente = acuerdoOpp.estado === 'pendiente';
 
                   const guardarBorrador = () => {
@@ -2391,6 +2407,14 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
                     const pct = Number(pctRaw);
                     const bon = Number(acuerdoEdit.bonificacion ?? 0);
                     const justificacion = acuerdoEdit.justificacion || '';
+                    const sinCambios = acuerdoOpp.estado === 'aprobado' &&
+                      Number(acuerdoOpp.pct ?? pctBase ?? 0) === pct &&
+                      Number(acuerdoOpp.bonificacion ?? 0) === bon &&
+                      String(acuerdoOpp.justificacion || '') === String(justificacion || '');
+                    if (sinCambios) {
+                      setAcuerdoEdit(null);
+                      return;
+                    }
                     const esBaseConBon0 = pctBase !== null && pct === pctBase && bon === 0;
                     if (esBaseConBon0) {
                       const ahora = new Date().toISOString();
@@ -2410,6 +2434,10 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
                         acuerdo_bonificacion: bon,
                         acuerdo_justificacion: justificacion,
                         acuerdo_estado: 'borrador',
+                        acuerdo_aprobado_por: null,
+                        acuerdo_aprobado_id: null,
+                        acuerdo_fecha_aprobacion: null,
+                        acuerdo_motivo_rechazo: null,
                       };
                       actualizarAcuerdoComision(sel.id, patch);
                       setSel(prev => ({ ...prev, ...patch }));
@@ -2633,12 +2661,14 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
                                     Cancelar
                                   </button>
                                   <button className="btn btn-primary flex-1" style={{justifyContent:'center', fontSize:12, background:'var(--green)', borderColor:'var(--green)'}}
-                                    onClick={() => {
-                                      aprobarAcuerdoComision(sel.id, {
+                                    onClick={async () => {
+                                      const ajustes = {
                                         acuerdo_pct: Number(acuerdoAprobandoEdit.pct),
                                         acuerdo_bonificacion: Number(acuerdoAprobandoEdit.bonificacion),
-                                      });
+                                      };
                                       setAcuerdoAprobandoEdit(null);
+                                      const patch = await aprobarAcuerdoComision(sel.id, ajustes);
+                                      if (patch) setSel(prev => prev && prev.id === sel.id ? { ...prev, ...patch } : prev);
                                     }}>
                                     {I.check} Confirmar aprobación
                                   </button>
@@ -2664,10 +2694,26 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
                           );
                         })()}
 
+                        {puedeModificarAcuerdoAprobado && (
+                          <div className="col" style={{gap:6}}>
+                            <button className="btn btn-secondary" style={{justifyContent:'center', fontSize:12}}
+                              onClick={() => setAcuerdoEdit({
+                                pct: acuerdoOpp.pct ?? pctBase ?? '',
+                                bonificacion: acuerdoOpp.bonificacion ?? 0,
+                                justificacion: acuerdoOpp.justificacion ?? '',
+                              })}>
+                              {I.edit} Modificar acuerdo
+                            </button>
+                            <div style={{fontSize:11, color:'var(--fg-muted)', textAlign:'center', fontStyle:'italic'}}>
+                              Disponible hasta que la cotizacion sea aprobada.
+                            </div>
+                          </div>
+                        )}
+
                         {/* Bloqueado */}
                         {bloqueado && acuerdoOpp.estado !== 'sin_acuerdo' && (
                           <div style={{fontSize:11, color:'var(--fg-muted)', textAlign:'center', fontStyle:'italic', padding:'4px 0'}}>
-                            {['ganada','perdida'].includes(sel.etapa) ? 'La oportunidad está cerrada — el acuerdo no puede modificarse.' : 'Acuerdo aprobado — no editable.'}
+                            {cotizacionAprobada ? 'La cotizacion ya esta aprobada - el acuerdo no puede modificarse.' : 'La oportunidad esta cerrada - el acuerdo no puede modificarse.'}
                           </div>
                         )}
                       </div>

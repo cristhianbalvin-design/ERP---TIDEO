@@ -1666,7 +1666,8 @@ export function AppProvider({ children }) {
 
   const actualizarAcuerdoComision = async (oppId, campos) => {
     const opp = oportunidades.find(o => o.id === oppId);
-    if (!opp || opp.acuerdo_estado === 'aprobado') return;
+    const cotizacionAprobada = cotizaciones.some(c => c.oportunidad_id === oppId && c.estado === 'aprobada');
+    if (!opp || (opp.acuerdo_estado === 'aprobado' && (cotizacionAprobada || ['ganada', 'perdida'].includes(opp.etapa)))) return;
     const nuevoEstado = campos.acuerdo_estado ?? (opp.acuerdo_estado === 'pendiente' ? 'pendiente' : 'borrador');
     const patch = { ...campos, acuerdo_estado: nuevoEstado };
     setOportunidades(prev => prev.map(o => o.id === oppId ? { ...o, ...patch } : o));
@@ -1723,6 +1724,7 @@ export function AppProvider({ children }) {
       : `Tu acuerdo de comisión para "${opp.nombre}" fue aprobado por ${aprobadoPor}.`;
     await _notificarSistema(vendedor ? [vendedor] : [], textoVend);
     addNotificacion(`Acuerdo aprobado para "${opp.nombre}".`);
+    return patch;
   };
 
   const rechazarAcuerdoComision = async (oppId, motivo) => {
@@ -2097,7 +2099,10 @@ export function AppProvider({ children }) {
     const anterior = cotizaciones.find(c => c.id === cotId) || null;
     if (!anterior) throw new Error('Cotizacion no encontrada.');
     const archivos = Array.from(datos.archivos || []);
-    if (!archivos.length) throw new Error('Adjunta al menos una evidencia de aprobacion del cliente.');
+    const canalEsReunion = String(datos.canal || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === 'aprobado en reunion';
+    const notasAprobacion = String(datos.notas || '').trim();
+    if (canalEsReunion && !notasAprobacion) throw new Error('Ingresa notas adicionales para una aprobacion en reunion.');
+    if (!canalEsReunion && !archivos.length) throw new Error('Adjunta al menos una evidencia de aprobacion del cliente.');
 
     const usuarioRegistro =
       usuarios.find(u => u.id === authUser?.id)?.nombre ||
@@ -2128,7 +2133,7 @@ export function AppProvider({ children }) {
       aprobacion_tipo: 'manual',
       aprobacion_canal: datos.canal,
       aprobacion_fecha_cliente: fechaCliente,
-      aprobacion_notas: datos.notas || null,
+      aprobacion_notas: notasAprobacion || null,
       aprobacion_registrada_por: usuarioRegistro,
       aprobacion_registrada_at: new Date().toISOString(),
       aprobacion_archivos: archivosAprobacion,
@@ -2140,12 +2145,12 @@ export function AppProvider({ children }) {
 
     setCotizaciones(prev => prev.map(c => c.id === cotId ? { ...c, ...datosAprobacion } : c));
     auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotId, accion: 'aprobar_manual', valor_anterior: anterior, valor_nuevo: datosAprobacion });
-    addNotificacion(`Cotizacion aprobada manualmente con sustento.`);
+    addNotificacion(`Cotizacion aprobada manualmente${archivosAprobacion.length ? ' con sustento' : ''}.`);
     marcarGanadaPorCotizacion({ ...anterior, ...datosAprobacion }, {
       origen_aprobacion: 'manual',
       canal_aprobacion: datos.canal,
       aprobacion_fecha_cliente: fechaCliente,
-      notas: datos.notas,
+      notas: notasAprobacion || null,
     });
   };
 

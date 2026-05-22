@@ -379,9 +379,28 @@ export async function actualizarCotizacion(supabase, cotId, datos) {
   return supabase.from('cotizaciones').update(row).eq('id', cotId);
 }
 
+const SUSTENTO_MIME_BY_EXT = {
+  '.pdf': 'application/pdf',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+};
+
+function getSustentoMime(file) {
+  const declared = String(file?.type || '').toLowerCase();
+  if (['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(declared)) {
+    return declared === 'image/jpg' ? 'image/jpeg' : declared;
+  }
+  const name = String(file?.name || '').toLowerCase();
+  const ext = Object.keys(SUSTENTO_MIME_BY_EXT).find(value => name.endsWith(value));
+  return ext ? SUSTENTO_MIME_BY_EXT[ext] : null;
+}
+
 export async function subirArchivoSustento(supabase, empresaId, cotId, file) {
+  const contentType = getSustentoMime(file);
+  if (!contentType) throw new Error('Solo se permiten archivos PDF, JPG, JPEG o PNG.');
   const path = `${empresaId}/${cotId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-  const { error } = await supabase.storage.from('cotizaciones-sustento').upload(path, file);
+  const { error } = await supabase.storage.from('cotizaciones-sustento').upload(path, file, { contentType });
   if (error) throw error;
   const { data: urlData } = supabase.storage.from('cotizaciones-sustento').getPublicUrl(path);
   return { nombre: file.name, path, url: urlData.publicUrl, tipo: file.type, tamanio: file.size };
