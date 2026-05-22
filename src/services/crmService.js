@@ -327,7 +327,7 @@ export async function persistirCotizacion(supabase, empresaId, cot) {
     igv_pct: cot.igv_pct || 18,
     igv: cot.igv || 0,
     total: cot.total || 0,
-    moneda: cot.moneda || 'PEN',
+    moneda: String(cot.moneda || 'PEN').trim().toUpperCase(),
     condicion_pago: cot.condicion_pago || null,
     descripcion_general: cot.descripcion_general || null,
     validez_tipo: cot.validez_tipo || 'dias',
@@ -375,6 +375,7 @@ export async function actualizarCotizacion(supabase, cotId, datos) {
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
   );
+  if (row.moneda) row.moneda = String(row.moneda || 'PEN').trim().toUpperCase();
   if (!Object.keys(row).length) return;
   return supabase.from('cotizaciones').update(row).eq('id', cotId);
 }

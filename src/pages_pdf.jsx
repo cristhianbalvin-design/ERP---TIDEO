@@ -1,11 +1,10 @@
 import React from 'react';
 import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer';
+import { currencySymbol, normalizeCurrency } from './lib/currency.js';
 import { renderTextoComercial } from './lib/textoComercial.js';
 
 const fmt = (n, sym = 'S/') =>
   sym + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0');
-
-const sym = (m = 'PEN') => m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'S/';
 
 function makeStyles(primary, secondary) {
   return StyleSheet.create({
@@ -83,7 +82,8 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
   const primary   = cfg?.color_primario   || '#1A2B4A';
   const secondary = cfg?.color_secundario || '#607D8B';
   const S   = makeStyles(primary, secondary);
-  const s   = sym(cot.moneda);
+  const moneda = normalizeCurrency(cot.moneda);
+  const s   = currencySymbol(moneda);
   const items = cot.items || cot.partidas || [];
   const pRec = items.filter(p => p.tipo === 'recurrente' && !p.incluido);
   const hayRec = pRec.length > 0;
@@ -150,7 +150,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
             <View style={S.detRow}><Text style={S.detLabel}>Fecha de emisión</Text><Text style={S.detVal}>{cot.fecha}</Text></View>
             <View style={S.detRow}><Text style={S.detLabel}>N° cotización</Text><Text style={S.detVal}>{cot.numero} v{cot.version || 1}</Text></View>
             <View style={S.detRow}><Text style={S.detLabel}>Validez</Text><Text style={S.detVal}>{validezTexto}</Text></View>
-            <View style={S.detRow}><Text style={S.detLabel}>Moneda</Text><Text style={S.detVal}>{cot.moneda}</Text></View>
+            <View style={S.detRow}><Text style={S.detLabel}>Moneda</Text><Text style={S.detVal}>{moneda}</Text></View>
           </View>
         </View>
 

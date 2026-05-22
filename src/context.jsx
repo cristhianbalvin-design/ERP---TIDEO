@@ -2000,6 +2000,7 @@ export function AppProvider({ children }) {
       token_aceptacion: crypto.randomUUID(),
       token_activo: true,
       ...datos,
+      moneda: String(datos.moneda || oportunidades.find(o => o.id === datos.oportunidad_id)?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN').trim().toUpperCase(),
       cuenta_id: datos.cuenta_id || oportunidades.find(o => o.id === datos.oportunidad_id)?.cuenta_id || null,
       responsable_id: datos.responsable_id || oportunidades.find(o => o.id === datos.oportunidad_id)?.responsable_id || null,
       items: datos.items || datos.partidas || []
@@ -2046,7 +2047,7 @@ export function AppProvider({ children }) {
       avanzarEtapaOpp(anterior.oportunidad_id, 'propuesta');
     }
     if (datos.subtotal !== undefined && anterior?.oportunidad_id) {
-      const monedaCot = datos.moneda || anterior?.moneda || 'PEN';
+      const monedaCot = String(datos.moneda || anterior?.moneda || 'PEN').trim().toUpperCase();
       setOportunidades(prev => prev.map(o => o.id === anterior.oportunidad_id ? { ...o, monto_estimado: datos.subtotal, moneda: monedaCot } : o));
       crmSync(sb => actualizarOportunidad(sb, anterior.oportunidad_id, { monto_estimado: datos.subtotal, moneda: monedaCot }));
     }
@@ -5359,7 +5360,8 @@ export function AppProvider({ children }) {
 
   const monedasActivas = (() => {
     const list = (monedasImpuestosUnidades || []).filter(m => m.tipo === 'moneda' && m.estado === 'activo');
-    return list.length ? list : [{ codigo: empresa?.moneda || 'PEN', nombre: 'Moneda base' }];
+    const source = list.length ? list : [{ codigo: empresa?.moneda || empresa?.moneda_base || 'PEN', nombre: 'Moneda base' }];
+    return source.map(m => ({ ...m, codigo: String(m.codigo || 'PEN').trim().toUpperCase() }));
   })();
 
   const usuarioActual = authUser

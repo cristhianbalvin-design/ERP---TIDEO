@@ -27,7 +27,14 @@ function endKanbanDrag(e) {
   e.currentTarget.classList.remove('is-dragging');
 }
 
-const currencySymbol = (moneda = 'PEN') => moneda === 'USD' ? 'US$' : moneda === 'EUR' ? '€' : 'S/';
+const normalizeCurrencyCode = (moneda = 'PEN') => String(moneda || 'PEN').trim().toUpperCase();
+const currencySymbol = (moneda = 'PEN') => {
+  const code = normalizeCurrencyCode(moneda);
+  if (code === 'USD') return 'US$';
+  if (code === 'EUR') return '€';
+  if (code === 'PEN') return 'S/';
+  return code;
+};
 const moneyCurrency = (value, moneda = 'PEN') => money(value, currencySymbol(moneda));
 
 function Dashboard({ role }) {

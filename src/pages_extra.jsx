@@ -6,7 +6,14 @@ import { getAssignableUsers, canUserSeeOwner, canUserApproveOwner } from './lib/
 import { renderTextoComercial } from './lib/textoComercial.js';
 import { SmartTextField } from './components/SmartTextField.jsx';
 
-const currencySymbol = (m = 'PEN') => m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'S/';
+const normalizeCurrencyCode = (m = 'PEN') => String(m || 'PEN').trim().toUpperCase();
+const currencySymbol = (m = 'PEN') => {
+  const code = normalizeCurrencyCode(m);
+  if (code === 'USD') return 'US$';
+  if (code === 'EUR') return '€';
+  if (code === 'PEN') return 'S/';
+  return code;
+};
 const moneyCurrency = (value, moneda = 'PEN') => money(value, currencySymbol(moneda));
 
 const construirPartidasDesdeHC = (hc) => {
@@ -897,7 +904,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
 
   // ── Bloque 1 ────────────────────────────────────────────────────────
   const [numeroCot,   setNumeroCot]   = useState(cotizacionBase?.numero      || '');
-  const [moneda,      setMoneda]      = useState(cotizacionBase?.moneda      || opp?.moneda || 'PEN');
+  const [moneda,      setMoneda]      = useState(() => normalizeCurrencyCode(cotizacionBase?.moneda || opp?.moneda || 'PEN'));
   const [igvPct,      setIgvPct]      = useState(cotizacionBase?.igv_pct     || 18);
   const [validezTipo, setValidezTipo] = useState(cotizacionBase?.validez_tipo  || 'dias');
   const [validezDias, setValidezDias] = useState(cotizacionBase?.validez_dias  || 30);
@@ -905,6 +912,13 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
   const [contactoId,  setContactoId]  = useState(cotizacionBase?.contacto_id || contactoPrincipalCuenta?.id || opp?.contacto_id || contactosCuenta[0]?.id || '');
   const [cebeId,      setCebeId]      = useState(cotizacionBase?.centro_beneficio_id || '');
   const [descripcion, setDescripcion] = useState(cotizacionBase?.descripcion_general || '');
+  const opcionesMoneda = (monedasActivas || [])
+    .map(m => ({ ...m, codigo: normalizeCurrencyCode(m.codigo) }))
+    .filter((m, idx, arr) => m.codigo && arr.findIndex(x => x.codigo === m.codigo) === idx);
+  const monedaNormalizada = normalizeCurrencyCode(moneda);
+  const monedaActual = opcionesMoneda.some(m => m.codigo === monedaNormalizada)
+    ? monedaNormalizada
+    : (opcionesMoneda[0]?.codigo || monedaNormalizada);
 
   useEffect(() => {
     if (isEdit || contactoId || !contactoPrincipalCuenta?.id) return;
@@ -1009,7 +1023,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
         contacto_id:    contactoId || null,
         centro_beneficio_id: cebeId || null,
         ...(isEdit && numeroCot ? { numero: numeroCot.trim() } : {}),
-        moneda, igv_pct: Number(igvPct),
+        moneda: monedaActual, igv_pct: Number(igvPct),
         validez_tipo: validezTipo,
         validez_dias: Number(validezDias),
         validez_fecha: validezTipo === 'fecha_exacta' ? validezFecha : null,
@@ -1075,8 +1089,8 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
           <div className="grid-3" style={{gap:16, marginBottom:16}}>
             <div className="input-group">
               <label>Moneda</label>
-              <select className="select" value={moneda} onChange={e => setMoneda(e.target.value)}>
-                {monedasActivas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre}</option>)}
+              <select className="select" value={monedaActual} onChange={e => setMoneda(normalizeCurrencyCode(e.target.value))}>
+                {opcionesMoneda.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre}</option>)}
               </select>
             </div>
             <div className="input-group">
@@ -1214,7 +1228,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                 <div style={{textAlign:'right', minWidth:120, paddingBottom:2}}>
                   <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total partida</div>
                   <div style={{fontWeight:700, fontSize:16, fontFamily:'Sora', color:'var(--cyan)'}}>
-                    {p.incluido ? <span className="text-muted">Incluido</span> : moneyCurrency(Number(p.cantidad || 0) * Number(p.precio_unitario || 0), moneda)}
+                    {p.incluido ? <span className="text-muted">Incluido</span> : moneyCurrency(Number(p.cantidad || 0) * Number(p.precio_unitario || 0), monedaActual)}
                   </div>
                 </div>
               </div>
@@ -1242,12 +1256,12 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
           <div className={pRec.length > 0 ? 'grid-2' : ''} style={{gap:24, maxWidth: pRec.length > 0 ? '100%' : 380, marginLeft:'auto'}}>
             <div>
               {pRec.length > 0 && <div className="eyebrow" style={{marginBottom:12}}>Implementación</div>}
-              <TotalesBox subtotal={subtImpl} igvPct={igvPct} igv={igvImpl} total={totalImpl} sym={currencySymbol(moneda)} />
+              <TotalesBox subtotal={subtImpl} igvPct={igvPct} igv={igvImpl} total={totalImpl} sym={currencySymbol(monedaActual)} />
             </div>
             {pRec.length > 0 && (
               <div>
                 <div className="eyebrow" style={{marginBottom:12}}>Recurrente mensual</div>
-                <TotalesBox subtotal={subtRec} igvPct={igvPct} igv={igvRec} total={totalRec} suffix="/mes" sym={currencySymbol(moneda)} />
+                <TotalesBox subtotal={subtRec} igvPct={igvPct} igv={igvRec} total={totalRec} suffix="/mes" sym={currencySymbol(monedaActual)} />
               </div>
             )}
           </div>
@@ -1285,7 +1299,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                           />
                         </td>
                         <td><input type="number" className="input num" min="0" max="100" value={h.porcentaje} onChange={e => updateHito(h.id, 'porcentaje', e.target.value)} /></td>
-                        <td className="num" style={{fontWeight:600}}>{moneyCurrency(Math.round(totalImpl * Number(h.porcentaje || 0) / 100), moneda)}</td>
+                        <td className="num" style={{fontWeight:600}}>{moneyCurrency(Math.round(totalImpl * Number(h.porcentaje || 0) / 100), monedaActual)}</td>
                         <td>
                           <SmartTextField
                             value={h.condicion}
