@@ -30,7 +30,7 @@ serve(async (req) => {
           },
           {
             type: "text",
-            text: `Analiza esta factura de proveedor peruana. Responde ÚNICAMENTE con JSON válido, sin texto adicional:
+            text: `Analiza esta factura de proveedor peruana. En una factura electrónica peruana, el EMISOR es quien emite y cobra (el proveedor que vende), y el RECEPTOR es quien recibe y paga (el cliente que compra). Extrae los datos del EMISOR: su RUC va en "ruc" y su razón social va en "proveedor". NO uses los datos del RECEPTOR. Responde ÚNICAMENTE con JSON válido, sin texto adicional:
 {
   "ruc": "",
   "proveedor": "",

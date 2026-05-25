@@ -2833,6 +2833,8 @@ body {
 .mobile-nav-item.active { color: var(--cyan-dk); }
 .dark .mobile-nav-item.active { color: var(--cyan); }
 .mobile-nav-item svg { width: 20px; height: 20px; stroke-width: 1.75; }
+.mobile-icon-lg { display: flex; justify-content: center; margin: 0 auto 10px; }
+.mobile-icon-lg svg { width: 32px; height: 32px; stroke-width: 1.5; }
 
 @media (max-width: 760px) {
   .mobile-field-shell {

@@ -107,6 +107,7 @@ export async function actualizarOT(supabase, otId, datos) {
   if (datos.est_materiales !== undefined) row.est_materiales = datos.est_materiales !== '' ? (Number(datos.est_materiales) || null) : null;
   if (datos.est_terceros !== undefined) row.est_terceros = datos.est_terceros !== '' ? (Number(datos.est_terceros) || null) : null;
   if (datos.est_logistica !== undefined) row.est_logistica = datos.est_logistica !== '' ? (Number(datos.est_logistica) || null) : null;
+  if (datos.est_detalle !== undefined) row.est_detalle = datos.est_detalle;
   row.updated_at = new Date().toISOString();
   if (!Object.keys(row).length) return;
 

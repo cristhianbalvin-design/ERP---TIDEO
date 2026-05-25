@@ -1286,6 +1286,15 @@ function OT({ role }) {
   const [parteFormOT, setParteFormOT] = useState({ tecnico_id: '', fecha: new Date().toISOString().split('T')[0], horas: 8, tareas_trabajadas: [], actividades_adicionales: [] });
   const [editandoDatos, setEditandoDatos] = useState(false);
   const [formDatos, setFormDatos] = useState({});
+  const [estDetalle, setEstDetalle] = useState({ mano_obra: [], materiales: [], terceros: [], logistica: [] });
+  const [expandedCostSections, setExpandedCostSections] = useState({ mano_obra: false, materiales: false, terceros: false, logistica: false });
+  const [showHCRefCostos, setShowHCRefCostos] = useState(false);
+  useEffect(() => {
+    if (sel?.id) {
+      setEstDetalle(sel.est_detalle || { mano_obra: [], materiales: [], terceros: [], logistica: [] });
+      setExpandedCostSections({ mano_obra: false, materiales: false, terceros: false, logistica: false });
+    }
+  }, [sel?.id]);
   const abrirEditDatos = () => {
     setFormDatos({
       centro_costo_id: sel?.centro_costo_id || '',
@@ -2534,9 +2543,8 @@ function OT({ role }) {
             {activeTab === 'Costos' && canCost && (() => {
               const cierreOT = (cierresTecnicos || []).find(ct => ct.ot_id === sel.id);
               const partesAprobados = partesOT.filter(p => p.estado === 'aprobado');
-              const horasReales = cierreOT?.horas_total ?? partesAprobados.reduce((s, p) => s + (p.horas || 0), 0);
+              const costoHoraTec = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
               const moReal = (() => {
-                const costoHoraTec = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
                 if (cierreOT?.horas_total) {
                   const tecResp = (personalOperativo || []).find(t => t.id === sel.tecnico_responsable_id);
                   return cierreOT.horas_total * costoHoraTec(tecResp);
@@ -2550,72 +2558,331 @@ function OT({ role }) {
                 s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
               const terceroReal = cierreOT?.costo_terceros || 0;
               const logisticaReal = cierreOT?.costo_logistica || 0;
-              const costoEst = sel.costoEst || 0;
-              const costoReal = moReal + matReal + terceroReal + logisticaReal;
-              const margen = costoEst > 0 ? Math.round(((costoEst - costoReal) / costoEst) * 100) : 0;
+              const costoRealTotal = moReal + matReal + terceroReal + logisticaReal;
+
+              // MEJORA 2: HC vinculada a través de OS Cliente
+              const hcVinculadaCostos = (() => {
+                if (!osVinculada?.cotizacion_id) return null;
+                const cot = (cotizaciones || []).find(c => c.id === osVinculada.cotizacion_id);
+                if (!cot?.hoja_costeo_id) return null;
+                return (hojasCosteo || []).find(h => h.id === cot.hoja_costeo_id && h.estado === 'aprobada') ?? null;
+              })();
+
+              // MEJORA 1 & 3: totales desde desglose o desde campos agregados
+              const sumSection = (key) => (estDetalle[key] || []).reduce((s, i) => s + (Number(i.subtotal) || 0), 0);
+              const estMoFinal   = (estDetalle.mano_obra  || []).length > 0 ? sumSection('mano_obra')  : (sel.est_mo         ?? null);
+              const estMatFinal  = (estDetalle.materiales || []).length > 0 ? sumSection('materiales') : (sel.est_materiales  ?? null);
+              const estTerFinal  = (estDetalle.terceros   || []).length > 0 ? sumSection('terceros')   : (sel.est_terceros    ?? null);
+              const estLogFinal  = (estDetalle.logistica  || []).length > 0 ? sumSection('logistica')  : (sel.est_logistica   ?? null);
+              const costoEstTotal = (estMoFinal || 0) + (estMatFinal || 0) + (estTerFinal || 0) + (estLogFinal || 0);
+
+              // Item helpers
+              const updItem = (section, idx, field, value) =>
+                setEstDetalle(prev => ({
+                  ...prev,
+                  [section]: (prev[section] || []).map((it, i) => {
+                    if (i !== idx) return it;
+                    const upd = { ...it, [field]: value };
+                    upd.subtotal = section === 'mano_obra'
+                      ? Number(upd.dias || 0) * Number(upd.horas_dia || 0) * Number(upd.costo_hora || 0)
+                      : Number(upd.cantidad || 0) * Number(upd.costo_unit || 0);
+                    return upd;
+                  }),
+                }));
+
+              const addItem = (section) =>
+                setEstDetalle(prev => ({
+                  ...prev,
+                  [section]: [...(prev[section] || []),
+                    section === 'mano_obra'  ? { tecnico_id: '', nombre: '', dias: 1, horas_dia: 8, costo_hora: 0, subtotal: 0 }
+                    : section === 'materiales' ? { inv_id: '', nombre: '', cantidad: 1, unidad: '', costo_unit: 0, subtotal: 0 }
+                    : { descripcion: '', cantidad: 1, unidad: 'und', costo_unit: 0, subtotal: 0 }
+                  ],
+                }));
+
+              const removeItem = (section, idx) =>
+                setEstDetalle(prev => ({ ...prev, [section]: (prev[section] || []).filter((_, i) => i !== idx) }));
+
+              const guardarEstimado = () => {
+                const updates = {
+                  est_mo: estMoFinal, est_materiales: estMatFinal,
+                  est_terceros: estTerFinal, est_logistica: estLogFinal,
+                  costoEst: costoEstTotal, est_detalle: estDetalle,
+                };
+                actualizarOT(sel.id, updates);
+                setSel(s => ({ ...s, ...updates }));
+                addNotificacion('Estimado actualizado.');
+              };
+
               const varPct = (est, real) => {
-                if (est == null || real == null) return null;
-                if (est === 0) return null;
+                if (est == null || real == null || est === 0) return null;
                 return Math.round(((real - est) / est) * 100);
               };
-              const varColor = (pct, est) => {
-                if (pct === null) return 'var(--fg-muted)';
-                if (est == null) return 'var(--fg-muted)';
-                return pct <= 0 ? 'var(--green)' : 'var(--danger)';
-              };
-              const rows = [
-                ['Mano de obra', sel.est_mo ?? null, moReal > 0 ? moReal : null],
-                ['Materiales', sel.est_materiales ?? null, matReal > 0 ? matReal : null],
-                ['Servicios terceros', sel.est_terceros ?? null, terceroReal > 0 ? terceroReal : null],
-                ['Logística y viáticos', sel.est_logistica ?? null, logisticaReal > 0 ? logisticaReal : null],
+              const varColor = (pct) => pct === null ? 'var(--fg-muted)' : pct <= 0 ? 'var(--green)' : 'var(--danger)';
+              const margen = costoEstTotal > 0 && costoRealTotal > 0
+                ? Math.round(((costoEstTotal - costoRealTotal) / costoEstTotal) * 100) : 0;
+
+              const sections = [
+                { key: 'mano_obra',  label: 'Mano de obra',         est: estMoFinal,  real: moReal > 0      ? moReal      : null },
+                { key: 'materiales', label: 'Materiales',            est: estMatFinal, real: matReal > 0     ? matReal     : null },
+                { key: 'terceros',   label: 'Servicios terceros',    est: estTerFinal, real: terceroReal > 0  ? terceroReal  : null },
+                { key: 'logistica',  label: 'Logística y viáticos',  est: estLogFinal, real: logisticaReal > 0 ? logisticaReal : null },
               ];
+              const inputSt = { fontSize: 12, padding: '3px 6px' };
+
               return (
-                <div className="col" style={{gap:16, padding:22}}>
+                <div className="col" style={{ gap: 16, padding: 22 }}>
+
+                  {/* ── MEJORA 2: Referencia HC ── */}
+                  {hcVinculadaCostos && (
+                    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                      <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'space-between', padding: '10px 16px', borderRadius: 0, fontSize: 13 }}
+                        onClick={() => setShowHCRefCostos(v => !v)}>
+                        <span>📋 Referencia Hoja de Costeo</span>
+                        <span style={{ fontSize: 10, color: 'var(--fg-muted)' }}>{showHCRefCostos ? '▲ ocultar' : '▼ ver'}</span>
+                      </button>
+                      {showHCRefCostos && (
+                        <div style={{ padding: '0 16px 14px' }}>
+                          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                                <th style={{ textAlign: 'left', padding: '4px 0', color: 'var(--fg-muted)', fontWeight: 600 }}>Concepto</th>
+                                <th style={{ textAlign: 'right', padding: '4px 0', color: 'var(--fg-muted)', fontWeight: 600 }}>HC aprobada</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {[
+                                ['Mano de obra',       hcVinculadaCostos.total_mano_obra],
+                                ['Materiales',         hcVinculadaCostos.total_materiales],
+                                ['Servicios terceros', hcVinculadaCostos.total_servicios_terceros],
+                                ['Logística',          hcVinculadaCostos.total_logistica],
+                              ].map(([lbl, val]) => (
+                                <tr key={lbl} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                  <td style={{ padding: '5px 0' }}>{lbl}</td>
+                                  <td style={{ textAlign: 'right', padding: '5px 0', fontWeight: 600 }}>{val != null ? money(val) : '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── MEJORA 1: Tabla comparativa con desglose expandible ── */}
                   <div className="table-wrap">
                     <table className="tbl">
                       <thead>
-                        <tr><th>Categoría</th><th className="num">Estimado</th><th className="num">Real</th><th className="num">VAR</th></tr>
+                        <tr>
+                          <th style={{ width: 28 }} />
+                          <th>Categoría</th>
+                          <th className="num">Estimado</th>
+                          <th className="num">Real</th>
+                          <th className="num">VAR</th>
+                        </tr>
                       </thead>
                       <tbody>
-                        {rows.map(([cat, est, real]) => {
+                        {sections.map(({ key, label, est, real }) => {
+                          const expanded = expandedCostSections[key];
+                          const items = estDetalle[key] || [];
                           const pct = varPct(est, real);
+                          const toggleExpand = () => setExpandedCostSections(p => ({ ...p, [key]: !p[key] }));
                           return (
-                            <tr key={cat}>
-                              <td>{cat}</td>
-                              <td className="num">{est != null ? money(est) : '—'}</td>
-                              <td className="num">{real != null ? money(real) : '—'}</td>
-                              <td className="num" style={{color: varColor(pct, est), fontWeight:600}}>
-                                {pct !== null ? `${pct > 0 ? '+' : ''}${pct}%` : '—'}
-                              </td>
-                            </tr>
+                            <React.Fragment key={key}>
+                              <tr style={{ cursor: 'pointer' }} onClick={toggleExpand}>
+                                <td style={{ textAlign: 'center', fontSize: 10, color: 'var(--fg-muted)' }}>{expanded ? '▼' : '▶'}</td>
+                                <td>
+                                  {label}
+                                  {items.length > 0 && <span style={{ fontSize: 11, color: 'var(--cyan)', marginLeft: 6 }}>{items.length} ítem{items.length !== 1 ? 's' : ''}</span>}
+                                </td>
+                                <td className="num">{est != null ? money(est) : '—'}</td>
+                                <td className="num">{real != null ? money(real) : '—'}</td>
+                                <td className="num" style={{ color: varColor(pct), fontWeight: 600 }}>
+                                  {pct !== null ? `${pct > 0 ? '+' : ''}${pct}%` : '—'}
+                                </td>
+                              </tr>
+                              {expanded && (
+                                <tr>
+                                  <td colSpan={5} style={{ padding: 0, background: 'var(--bg-subtle)' }}>
+                                    <div style={{ padding: '10px 12px 12px 28px' }}>
+                                      {items.length > 0 && (
+                                        <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginBottom: 8 }}>
+                                          <thead>
+                                            <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                                              {key === 'mano_obra' ? (
+                                                <>
+                                                  <th style={{ textAlign: 'left', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600 }}>Técnico</th>
+                                                  <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 56 }}>Días</th>
+                                                  <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 62 }}>Hrs/día</th>
+                                                  <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 80 }}>Costo/h</th>
+                                                </>
+                                              ) : key === 'materiales' ? (
+                                                <>
+                                                  <th style={{ textAlign: 'left', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600 }}>Material</th>
+                                                  <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 60 }}>Cant.</th>
+                                                  <th style={{ textAlign: 'left', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 52 }}>Unidad</th>
+                                                  <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 90 }}>Costo u.</th>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <th style={{ textAlign: 'left', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600 }}>Descripción</th>
+                                                  <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 60 }}>Cant.</th>
+                                                  <th style={{ textAlign: 'left', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 60 }}>Unidad</th>
+                                                  <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 90 }}>Costo u.</th>
+                                                </>
+                                              )}
+                                              <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 82 }}>Subtotal</th>
+                                              <th style={{ width: 28 }} />
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {items.map((item, idx) => (
+                                              <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                                {key === 'mano_obra' ? (
+                                                  <>
+                                                    <td style={{ padding: '3px 4px' }}>
+                                                      <select className="select" style={inputSt} value={item.tecnico_id}
+                                                        onChange={e => {
+                                                          const tec = (personalOperativo || []).find(t => t.id === e.target.value);
+                                                          const ch = costoHoraTec(tec);
+                                                          setEstDetalle(prev => ({
+                                                            ...prev,
+                                                            mano_obra: (prev.mano_obra || []).map((it, i) => {
+                                                              if (i !== idx) return it;
+                                                              const upd = { ...it, tecnico_id: e.target.value, nombre: tec?.nombre || '', costo_hora: ch };
+                                                              upd.subtotal = Number(upd.dias || 0) * Number(upd.horas_dia || 0) * ch;
+                                                              return upd;
+                                                            }),
+                                                          }));
+                                                        }}>
+                                                        <option value="">Técnico...</option>
+                                                        {(personalOperativo || []).filter(t => t.estado !== 'inactivo').map(t => (
+                                                          <option key={t.id} value={t.id}>{t.nombre}</option>
+                                                        ))}
+                                                      </select>
+                                                    </td>
+                                                    <td style={{ padding: '3px 4px' }}>
+                                                      <input className="input" type="number" min="0.5" step="0.5" style={{ ...inputSt, width: '100%', textAlign: 'right' }}
+                                                        value={item.dias} onChange={e => updItem('mano_obra', idx, 'dias', e.target.value)} />
+                                                    </td>
+                                                    <td style={{ padding: '3px 4px' }}>
+                                                      <input className="input" type="number" min="0.5" max="24" step="0.5" style={{ ...inputSt, width: '100%', textAlign: 'right' }}
+                                                        value={item.horas_dia} onChange={e => updItem('mano_obra', idx, 'horas_dia', e.target.value)} />
+                                                    </td>
+                                                    <td style={{ padding: '3px 4px', textAlign: 'right', color: 'var(--fg-muted)' }}>
+                                                      {item.costo_hora > 0 ? money(item.costo_hora) : '—'}
+                                                    </td>
+                                                  </>
+                                                ) : key === 'materiales' ? (
+                                                  <>
+                                                    <td style={{ padding: '3px 4px' }}>
+                                                      <select className="select" style={inputSt} value={item.inv_id}
+                                                        onChange={e => {
+                                                          const inv = (inventario || []).find(i => i.id === e.target.value);
+                                                          const cu = Number(inv?.costo_promedio || 0);
+                                                          setEstDetalle(prev => ({
+                                                            ...prev,
+                                                            materiales: (prev.materiales || []).map((it, i) => {
+                                                              if (i !== idx) return it;
+                                                              const upd = { ...it, inv_id: e.target.value, nombre: inv?.nombre || '', unidad: inv?.unidad || '', costo_unit: cu };
+                                                              upd.subtotal = Number(upd.cantidad || 0) * cu;
+                                                              return upd;
+                                                            }),
+                                                          }));
+                                                        }}>
+                                                        <option value="">Material...</option>
+                                                        {(inventario || []).map(inv => (
+                                                          <option key={inv.id} value={inv.id}>{inv.sku} — {inv.nombre}</option>
+                                                        ))}
+                                                      </select>
+                                                    </td>
+                                                    <td style={{ padding: '3px 4px' }}>
+                                                      <input className="input" type="number" min="0" step="0.01" style={{ ...inputSt, width: '100%', textAlign: 'right' }}
+                                                        value={item.cantidad} onChange={e => updItem('materiales', idx, 'cantidad', e.target.value)} />
+                                                    </td>
+                                                    <td style={{ padding: '3px 4px', fontSize: 11, color: 'var(--fg-muted)' }}>{item.unidad || '—'}</td>
+                                                    <td style={{ padding: '3px 4px' }}>
+                                                      <input className="input" type="number" min="0" step="0.01" style={{ ...inputSt, width: '100%', textAlign: 'right' }}
+                                                        value={item.costo_unit} onChange={e => updItem('materiales', idx, 'costo_unit', e.target.value)} />
+                                                    </td>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <td style={{ padding: '3px 4px' }}>
+                                                      <input className="input" style={{ ...inputSt, width: '100%' }} placeholder="Descripción..."
+                                                        value={item.descripcion} onChange={e => updItem(key, idx, 'descripcion', e.target.value)} />
+                                                    </td>
+                                                    <td style={{ padding: '3px 4px' }}>
+                                                      <input className="input" type="number" min="0" step="0.01" style={{ ...inputSt, width: '100%', textAlign: 'right' }}
+                                                        value={item.cantidad} onChange={e => updItem(key, idx, 'cantidad', e.target.value)} />
+                                                    </td>
+                                                    <td style={{ padding: '3px 4px' }}>
+                                                      <input className="input" style={{ ...inputSt, width: '100%' }} placeholder="und"
+                                                        value={item.unidad} onChange={e => updItem(key, idx, 'unidad', e.target.value)} />
+                                                    </td>
+                                                    <td style={{ padding: '3px 4px' }}>
+                                                      <input className="input" type="number" min="0" step="0.01" style={{ ...inputSt, width: '100%', textAlign: 'right' }}
+                                                        value={item.costo_unit} onChange={e => updItem(key, idx, 'costo_unit', e.target.value)} />
+                                                    </td>
+                                                  </>
+                                                )}
+                                                <td style={{ padding: '3px 4px', textAlign: 'right', fontWeight: 600 }}>
+                                                  {item.subtotal > 0 ? money(item.subtotal) : '—'}
+                                                </td>
+                                                <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                                                  <button type="button" className="icon-btn" style={{ fontSize: 11 }} onClick={() => removeItem(key, idx)}>{I.x}</button>
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      )}
+                                      <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => addItem(key)}>
+                                        {I.plus} Agregar ítem
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
                           );
                         })}
-                        <tr style={{borderTop:'2px solid var(--border)', fontWeight:700, background:'var(--bg-subtle)'}}>
+                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, background: 'var(--bg-subtle)' }}>
+                          <td />
                           <td>Total</td>
-                          <td className="num">{costoEst > 0 ? money(costoEst) : '—'}</td>
-                          <td className="num">{costoReal > 0 ? money(costoReal) : '—'}</td>
-                          <td className="num" style={{color: varColor(varPct(costoEst || null, costoReal > 0 ? costoReal : null), costoEst || null), fontWeight:700}}>
-                            {costoEst > 0 && costoReal > 0 ? `${margen <= 0 ? '+' : ''}${-margen}%` : '—'}
+                          <td className="num">{costoEstTotal > 0 ? money(costoEstTotal) : '—'}</td>
+                          <td className="num">{costoRealTotal > 0 ? money(costoRealTotal) : '—'}</td>
+                          <td className="num" style={{ color: varColor(varPct(costoEstTotal || null, costoRealTotal > 0 ? costoRealTotal : null)), fontWeight: 700 }}>
+                            {costoEstTotal > 0 && costoRealTotal > 0 ? `${margen <= 0 ? '+' : ''}${-margen}%` : '—'}
                           </td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
-                  <div className="card" style={{padding:20, textAlign:'center'}}>
-                    <div className="eyebrow" style={{marginBottom:6}}>Margen actual</div>
-                    <div style={{fontSize:32, fontWeight:700, color: margen >= 0 ? 'var(--green)' : 'var(--danger)'}}>{margen}%</div>
-                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>
+
+                  {/* Margen */}
+                  <div className="card" style={{ padding: 20, textAlign: 'center' }}>
+                    <div className="eyebrow" style={{ marginBottom: 6 }}>Margen actual</div>
+                    <div style={{ fontSize: 32, fontWeight: 700, color: margen >= 0 ? 'var(--green)' : 'var(--danger)' }}>{margen}%</div>
+                    <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
                       {cierreOT ? 'Basado en datos del cierre técnico' : 'Basado en partes aprobados — pendiente de cierre'}
                     </div>
                   </div>
-                  {canCost && partesAprobados.length > 0 && (
-                    <div style={{textAlign:'right'}}>
-                      <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => recalcularCostoRealOT(sel.id)}>
-                        Recalcular costo real
-                      </button>
-                      <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Recalcula MO con la tarifa actual de cada técnico</div>
-                    </div>
-                  )}
+
+                  {/* Acciones */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                    {partesAprobados.length > 0 && (
+                      <div>
+                        <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => recalcularCostoRealOT(sel.id)}>
+                          Recalcular costo real
+                        </button>
+                        <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>Recalcula MO con la tarifa actual de cada técnico</div>
+                      </div>
+                    )}
+                    <button className="btn btn-primary" style={{ fontSize: 13, marginLeft: 'auto' }} onClick={guardarEstimado}>
+                      Guardar estimado
+                    </button>
+                  </div>
                 </div>
               );
             })()}

@@ -2104,7 +2104,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
 }
 
 function ComprasView({ screen, setScreen }) {
-  const { authUser, usuarios, crearGasto, generarCxP, ots, centrosCosto } = useApp();
+  const { authUser, usuarios, crearGasto, generarCxP, ots, centrosCosto, empresa } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const fileInputRef = useRef(null);
 
@@ -2119,7 +2119,7 @@ function ComprasView({ screen, setScreen }) {
   const [guardando, setGuardando] = useState(false);
 
   const setC = (k, v) => setCampos(p => ({ ...p, [k]: v }));
-  const otsActivas = (ots || []).filter(o => ['programada','ejecucion'].includes(o.estado));
+  const otsActivas = (ots || []).filter(o => ['programada','ejecucion'].includes(o.estado) && (!empresa?.id || !o.empresa_id || o.empresa_id === empresa.id));
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
 
   const reiniciar = () => {
@@ -2212,9 +2212,9 @@ function ComprasView({ screen, setScreen }) {
         <div className="eyebrow" style={{marginBottom:10}}>Capturar factura · Paso 1 de 2</div>
         <div className="bar" style={{marginBottom:16}}><div style={{width:'33%',background:'var(--cyan)'}}/></div>
         <div className="card" style={{padding:32,textAlign:'center',cursor:'pointer',borderStyle:'dashed'}} onClick={() => fileInputRef.current?.click()}>
-          <div style={{fontSize:36,marginBottom:10,color:'var(--cyan)'}}>{I.camera}</div>
+          <div className="mobile-icon-lg" style={{color:'var(--cyan)'}}>{I.camera}</div>
           <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>Fotografiar factura</div>
-          <div style={{fontSize:12,color:'var(--fg-muted)'}}>Claude extraerá los datos automáticamente</div>
+          <div style={{fontSize:12,color:'var(--fg-muted)'}}>La IA extraerá los datos automáticamente</div>
         </div>
         <button className="btn btn-secondary" style={{width:'100%',marginTop:12}}
           onClick={() => { setCampos(c => ({...c, fecha_emision: new Date().toISOString().split('T')[0]})); setPaso('revision'); }}>
@@ -2227,7 +2227,7 @@ function ComprasView({ screen, setScreen }) {
       <div className="mobile-content" style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:300,gap:14}}>
         <div style={{fontSize:36,color:'var(--cyan)'}}>{I.sparkles}</div>
         <div style={{fontWeight:700,fontSize:15}}>Analizando factura...</div>
-        <div style={{fontSize:12,color:'var(--fg-muted)',textAlign:'center'}}>Claude está leyendo los datos del documento</div>
+        <div style={{fontSize:12,color:'var(--fg-muted)',textAlign:'center'}}>Analizando documento...</div>
       </div>
     )}
 
