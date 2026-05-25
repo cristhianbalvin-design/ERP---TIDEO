@@ -714,11 +714,12 @@ export async function cargarHistorialAcuerdo(supabase, oportunidadId) {
 export async function loadCsFromSupabase(supabase, empresaId) {
   if (!isSupabaseMode() || !supabase || !empresaId) return null;
   const q = table => supabase.from(table).select('*').eq('empresa_id', empresaId);
-  const [renR, onbR, planesR, npsR] = await Promise.all([
+  const [renR, onbR, planesR, npsR, healthR] = await Promise.all([
     q('renovaciones').order('fecha_vencimiento', { ascending: true }),
     q('onboardings').order('created_at', { ascending: false }),
     q('planes_exito').order('created_at', { ascending: false }),
     q('nps_encuestas').order('fecha_envio', { ascending: false }),
+    q('health_scores').order('fecha', { ascending: false }).catch(() => ({ data: [] })),
   ]);
   const hoy = new Date();
   return {
@@ -731,5 +732,6 @@ export async function loadCsFromSupabase(supabase, empresaId) {
     onboardings: onbR.data || [],
     planesExito: planesR.data || [],
     npsEncuestas: npsR.data || [],
+    healthScoresDetalle: healthR.data || [],
   };
 }

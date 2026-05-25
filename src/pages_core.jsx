@@ -2183,8 +2183,8 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
           vendedorPersonal?.auth_user_id === authUser.id
         );
         const cotizacionAprobada = Boolean(cotAprobada);
-        const oportunidadCerrada = ['ganada','perdida'].includes(sel.etapa);
-        const acuerdoCerrado = cotizacionAprobada || oportunidadCerrada;
+        // Solo la cotización aprobada bloquea edición; oportunidad ganada/perdida no debe bloquear
+        const acuerdoCerrado = cotizacionAprobada;
         const puedeEditarAcuerdo = !acuerdoCerrado &&
           !['aprobado','pendiente'].includes(acuerdoOpp.estado) &&
           (esVendedorResponsable || puedeAprobar);
@@ -2481,6 +2481,20 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
                         </div>
                       )}
 
+                      {/* Aviso: acuerdo en proceso de aprobación */}
+                      {enPendiente && !puedeAprobar && (
+                        <div style={{background:'rgba(249,115,22,0.07)', border:'1px solid rgba(249,115,22,0.3)', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#c2410c'}}>
+                          Este acuerdo está en proceso de aprobación y no puede editarse hasta que sea resuelto.
+                        </div>
+                      )}
+
+                      {/* Aviso: acuerdo aprobado y cotización cerrada */}
+                      {bloqueado && (
+                        <div style={{background:'rgba(16,185,129,0.07)', border:'1px solid rgba(16,185,129,0.3)', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#059669'}}>
+                          Este acuerdo ya fue aprobado y la cotización está cerrada. Contacta a tu supervisor para modificarlo.
+                        </div>
+                      )}
+
                       {/* Campos del acuerdo */}
                       <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
                         {/* % Comisión */}
@@ -2717,12 +2731,6 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
                           </div>
                         )}
 
-                        {/* Bloqueado */}
-                        {bloqueado && acuerdoOpp.estado !== 'sin_acuerdo' && (
-                          <div style={{fontSize:11, color:'var(--fg-muted)', textAlign:'center', fontStyle:'italic', padding:'4px 0'}}>
-                            {cotizacionAprobada ? 'La cotizacion ya esta aprobada - el acuerdo no puede modificarse.' : 'La oportunidad esta cerrada - el acuerdo no puede modificarse.'}
-                          </div>
-                        )}
                       </div>
 
                       {/* Historial de movimientos */}
@@ -3883,7 +3891,7 @@ function NuevoHitoModal({ moneda, onClose, onSave }) {
 function OSCliente() {
   const {
     osClientes, cuentas, cotizaciones, ots, valorizaciones, facturas, cxc,
-    activeParams, navigate, searchQuery,
+    activeParams, navigate, searchQuery, usuarios,
     cambiarEstadoOS, actualizarHitosFacturacion, vincularCotizacionOS, actualizarOT, eliminarOT,
     actualizarOSCliente, centrosBeneficio,
   } = useApp();
@@ -3894,6 +3902,17 @@ function OSCliente() {
   const [nuevoHito, setNuevoHito] = useState(null);
   const [vinCotModal, setVinCotModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editandoNumCliente, setEditandoNumCliente] = useState(false);
+  const [numClienteTemp, setNumClienteTemp] = useState('');
+  const [editandoNombre, setEditandoNombre] = useState(false);
+  const [nombreTemp, setNombreTemp] = useState('');
+
+  useEffect(() => {
+    setEditandoNumCliente(false);
+    setNumClienteTemp('');
+    setEditandoNombre(false);
+    setNombreTemp('');
+  }, [activeParams?.detail]);
 
   const getNombre = id => cuentas.find(c => c.id === id)?.razon_social || id;
   const query = searchQuery.toLowerCase();
@@ -3982,10 +4001,47 @@ function OSCliente() {
               <span className={'badge ' + (BADGE[os.estado] || 'badge-gray')} style={{fontSize:12}}>{LABEL[os.estado] || os.estado}</span>
               <span className="badge badge-gray" style={{fontSize:11}}>{os.moneda}</span>
             </h1>
-            <div className="page-sub" style={{flexWrap:'wrap', gap:6}}>
+            <div className="page-sub" style={{flexWrap:'wrap', gap:6, alignItems:'center'}}>
               {os.numero} · Cliente: <strong style={{color:'var(--fg)'}}>{getNombre(os.cuenta_id)}</strong>
               {os.responsable_comercial && <> · {os.responsable_comercial}</>}
-              {os.numero_doc_cliente && <> · OS cliente: <strong>{os.numero_doc_cliente}</strong></>}
+              {editandoNumCliente ? (
+                <span className="row" style={{gap:4, alignItems:'center', marginLeft:4}}>
+                  <span style={{color:'var(--fg-muted)'}}>· Nº OS cliente:</span>
+                  <input
+                    className="input"
+                    style={{fontSize:12, padding:'2px 8px', height:'auto', width:180}}
+                    value={numClienteTemp}
+                    onChange={e => setNumClienteTemp(e.target.value)}
+                    placeholder="Ej. OS-2026-001"
+                    autoFocus
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { actualizarOSCliente(os.id, { numero_doc_cliente: numClienteTemp.trim() || null }); setEditandoNumCliente(false); }
+                      if (e.key === 'Escape') setEditandoNumCliente(false);
+                    }}
+                  />
+                  <button className="btn btn-primary" style={{fontSize:11, padding:'2px 10px', height:'auto'}}
+                    onClick={() => { actualizarOSCliente(os.id, { numero_doc_cliente: numClienteTemp.trim() || null }); setEditandoNumCliente(false); }}>
+                    Guardar
+                  </button>
+                  <button className="btn btn-ghost" style={{fontSize:11, padding:'2px 8px', height:'auto'}}
+                    onClick={() => setEditandoNumCliente(false)}>
+                    Cancelar
+                  </button>
+                </span>
+              ) : (
+                <span className="row" style={{gap:4, alignItems:'center', marginLeft:4}}>
+                  {os.numero_doc_cliente
+                    ? <> · Nº OS cliente: <strong>{os.numero_doc_cliente}</strong></>
+                    : <span style={{color:'var(--fg-muted)', fontSize:12}}>· Sin Nº OS cliente</span>
+                  }
+                  {!cerrada && (
+                    <button className="btn btn-ghost" style={{fontSize:11, padding:'1px 6px', height:'auto', marginLeft:2}}
+                      onClick={() => { setNumClienteTemp(os.numero_doc_cliente || ''); setEditandoNumCliente(true); }}>
+                      ✏
+                    </button>
+                  )}
+                </span>
+              )}
             </div>
             <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8}}>
               <span style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>CEBE:</span>
@@ -4004,6 +4060,66 @@ function OSCliente() {
               ) : (
                 <span style={{fontSize:12}}>
                   {(centrosBeneficio || []).find(c => c.id === os.centro_beneficio_id)?.nombre || <em style={{color:'var(--fg-muted)'}}>Sin asignar</em>}
+                </span>
+              )}
+            </div>
+            <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8}}>
+              <span style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>Nombre OS:</span>
+              {!cerrada && editandoNombre ? (
+                <>
+                  <input
+                    className="input"
+                    style={{fontSize:12, padding:'3px 8px', height:'auto', minWidth:260}}
+                    value={nombreTemp}
+                    onChange={e => setNombreTemp(e.target.value)}
+                    autoFocus
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { actualizarOSCliente(os.id, { nombre: nombreTemp.trim() || null }); setEditandoNombre(false); }
+                      if (e.key === 'Escape') setEditandoNombre(false);
+                    }}
+                  />
+                  <button className="btn btn-primary" style={{fontSize:11, padding:'2px 10px', height:'auto'}}
+                    onClick={() => { actualizarOSCliente(os.id, { nombre: nombreTemp.trim() || null }); setEditandoNombre(false); }}>
+                    Guardar
+                  </button>
+                  <button className="btn btn-ghost" style={{fontSize:11, padding:'2px 8px', height:'auto'}}
+                    onClick={() => setEditandoNombre(false)}>
+                    Cancelar
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span style={{fontSize:12}}>{os.nombre || <em style={{color:'var(--fg-muted)'}}>Sin nombre</em>}</span>
+                  {!cerrada && (
+                    <button className="btn btn-ghost" style={{fontSize:11, padding:'1px 6px', height:'auto'}}
+                      onClick={() => { setNombreTemp(os.nombre || ''); setEditandoNombre(true); }}>
+                      ✏
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+            <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8}}>
+              <span style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>Responsable:</span>
+              {!cerrada ? (
+                <select
+                  className="select"
+                  style={{fontSize:12, padding:'3px 8px', height:'auto', width:'auto', minWidth:200}}
+                  value={os.responsable_comercial_id || ''}
+                  onChange={e => {
+                    const u = (usuarios || []).find(u => u.id === e.target.value);
+                    actualizarOSCliente(os.id, {
+                      responsable_comercial_id: e.target.value || null,
+                      responsable_comercial: u?.nombre || null,
+                    });
+                  }}
+                >
+                  <option value="">— Sin asignar —</option>
+                  {(usuarios || []).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                </select>
+              ) : (
+                <span style={{fontSize:12}}>
+                  {os.responsable_comercial || <em style={{color:'var(--fg-muted)'}}>Sin asignar</em>}
                 </span>
               )}
             </div>

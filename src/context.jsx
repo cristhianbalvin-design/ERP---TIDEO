@@ -13,6 +13,7 @@ import { plataformaService } from './services/plataformaService.js';
 import { usuariosService } from './services/usuariosService.js';
 import { rolesService } from './services/rolesService.js';
 import { campanasService } from './services/campanasService.js';
+import { presupuestosService } from './services/presupuestosService.js';
 const AppContext = createContext();
 const PLATFORM_SUPERADMIN_EMAIL = 'cristhianbalvin@gmail.com';
 const isPlatformSuperadminEmail = email =>
@@ -259,6 +260,9 @@ export function AppProvider({ children }) {
   const [cuentasBancarias, setCuentasBancarias] = useState(MOCK.cuentasBancarias || []);
   const [facturas, setFacturas] = useState(MOCK.facturas || []);
   const [comprasGastos, setComprasGastos] = useState(MOCK.compras || []);
+  const [presupuestos, setPresupuestos] = useState([]);
+  const [presupuestoPartidas, setPresupuestoPartidas] = useState([]);
+  const [presupuestoAprobaciones, setPresupuestoAprobaciones] = useState([]);
   const [financiamientos, setFinanciamientos] = useState(MOCK.financiamientos || []);
   const [movimientosTesoreria, setMovimientosTesoreria] = useState(MOCK.movimientosTesoreria || []);
   const [movimientosBanco, setMovimientosBanco] = useState(MOCK.movimientosBanco || []);
@@ -373,6 +377,15 @@ export function AppProvider({ children }) {
   const addNotificacion = (msg) => {
     setNotificaciones(prev => [{ id: generateId('not'), text: msg, read: false, time: 'Justo ahora' }, ...prev]);
   };
+
+  const [toasts, setToasts] = useState([]);
+  const addToast = (text, tipo = 'warning', link = null) => {
+    const id = generateId('tst');
+    setToasts(prev => [...prev, { id, text, tipo, link }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 12000);
+  };
+  const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id));
+
   const [accessDebug, setAccessDebug] = useState({
     build: 'access-debug-2026-05-05-01',
     usuariosError: '',
@@ -503,51 +516,75 @@ export function AppProvider({ children }) {
     try {
       const supabase = await getSupabaseClient();
       const empresaId = empresa?.id;
+      if (!empresaId) {
+        setSupabaseStatus(prev => ({ ...prev, loading: false }));
+        return;
+      }
+
+      setValorizaciones([]);
+      setFacturas([]);
+      setCxc([]);
+      setCxp([]);
+      setCxpPagos([]);
+      setMovimientosBanco([]);
+
+      const safeFinanceLoad = async (label, loader, fallback = []) => {
+        try {
+          return await loader();
+        } catch (error) {
+          console.error(`[finanzas:${label}]`, error?.message || error, error);
+          return fallback;
+        }
+      };
+
+      const safeSupabaseData = async (label, request, fallback = []) => (
+        safeFinanceLoad(label, async () => {
+          const { data, error } = await request;
+          if (error) throw error;
+          return data || fallback;
+        }, fallback)
+      );
 
       const scoped = table => supabase.from(table).select('*').eq('empresa_id', empresaId);
       const [
-        financiamientosResult,
-        amortizacionResult,
-        pagosResult,
-        gastosResult,
-        tesoreriaResult,
+        financiamientosData,
+        amortizacion,
+        pagos,
+        gastosData,
+        tesoreriaData,
       ] = await Promise.all([
-        scoped('financiamientos').order('fecha_desembolso', { ascending: false }),
-        scoped('tabla_amortizacion').order('numero', { ascending: true }),
-        scoped('pagos_financiamiento').order('fecha_pago', { ascending: false }),
-        scoped('compras_gastos').order('fecha', { ascending: false }),
-        scoped('movimientos_tesoreria').order('fecha', { ascending: false }),
+        safeSupabaseData('financiamientos', scoped('financiamientos').order('fecha_desembolso', { ascending: false })),
+        safeSupabaseData('tabla_amortizacion', scoped('tabla_amortizacion').order('numero', { ascending: true })),
+        safeSupabaseData('pagos_financiamiento', scoped('pagos_financiamiento').order('fecha_pago', { ascending: false })),
+        safeSupabaseData('compras_gastos', scoped('compras_gastos').order('fecha', { ascending: false })),
+        safeSupabaseData('movimientos_tesoreria', scoped('movimientos_tesoreria').order('fecha', { ascending: false })),
       ]);
 
-      const firstError = [
-        financiamientosResult,
-        amortizacionResult,
-        pagosResult,
-        gastosResult,
-        tesoreriaResult,
-      ].find(result => result.error)?.error;
+      const [
+        valData,
+        facData,
+        cxcData,
+        cxpData,
+        cxpPagosData,
+        mbData,
+      ] = await Promise.all([
+        safeFinanceLoad('valorizaciones', () => finanzasService.getValorizaciones(empresaId)),
+        safeFinanceLoad('facturas', () => finanzasService.getFacturas(empresaId)),
+        safeFinanceLoad('cxc', () => finanzasService.getCxC(empresaId)),
+        safeFinanceLoad('cxp', () => finanzasService.getCxP(empresaId)),
+        safeFinanceLoad('cxp_pagos', () => finanzasService.getCxpPagos(empresaId)),
+        safeFinanceLoad('movimientos_banco', () => finanzasService.getMovimientosBanco(empresaId)),
+      ]);
 
-      if (firstError) throw firstError;
-
-      // Nuevos datos de finanzas (facturación y tesorería)
-      const valData = await finanzasService.getValorizaciones(empresaId);
-      const facData = await finanzasService.getFacturas(empresaId);
-      const cxcData = await finanzasService.getCxC(empresaId);
-      const cxpData = await finanzasService.getCxP(empresaId);
-      const cxpPagosData = await finanzasService.getCxpPagos(empresaId);
-      const mbData = await finanzasService.getMovimientosBanco(empresaId);
-
-      const amortizacion = amortizacionResult.data || [];
-      const pagos = pagosResult.data || [];
-      const financiamientosConDetalle = (financiamientosResult.data || []).map(financiamiento => ({
+      const financiamientosConDetalle = (financiamientosData || []).map(financiamiento => ({
         ...financiamiento,
         tabla_amortizacion: amortizacion.filter(cuota => cuota.financiamiento_id === financiamiento.id),
         pagos_realizados: pagos.filter(pago => pago.financiamiento_id === financiamiento.id),
       }));
 
       setFinanciamientos(financiamientosConDetalle);
-      setComprasGastos(gastosResult.data || []);
-      setMovimientosTesoreria(tesoreriaResult.data || []);
+      setComprasGastos(gastosData || []);
+      setMovimientosTesoreria(tesoreriaData || []);
       
       setValorizaciones(valData || []);
       setFacturas(facData || []);
@@ -555,6 +592,16 @@ export function AppProvider({ children }) {
       setCxp(cxpData || []);
       setCxpPagos(cxpPagosData || []);
       setMovimientosBanco(mbData || []);
+
+      // presupuestos
+      const [preData, ppaData, papData] = await Promise.all([
+        safeFinanceLoad('presupuestos', () => presupuestosService.getPresupuestos(empresaId)),
+        safeFinanceLoad('presupuesto_partidas', () => presupuestosService.getPartidas(empresaId)),
+        safeFinanceLoad('presupuesto_aprobaciones', () => presupuestosService.getAprobaciones(empresaId)),
+      ]);
+      setPresupuestos(preData || []);
+      setPresupuestoPartidas(ppaData || []);
+      setPresupuestoAprobaciones(papData || []);
 
       setSupabaseStatus({
         enabled: true,
@@ -697,12 +744,6 @@ export function AppProvider({ children }) {
         setOts([]);
         setPartes([]);
         setBacklog([]);
-        setValorizaciones([]);
-        setFacturas([]);
-        setCxc([]);
-        setCxp([]);
-        setCxpPagos([]);
-        setMovimientosBanco([]);
         setProveedores([]);
         setEvaluacionesProveedor([]);
         setSolpes([]);
@@ -862,6 +903,7 @@ export function AppProvider({ children }) {
             setOnboardings(csData.onboardings || []);
             setPlanesExito(csData.planesExito || []);
             setNpsEncuestas(csData.npsEncuestas || []);
+            if (csData.healthScoresDetalle?.length) setHealthScoresDetalle(csData.healthScoresDetalle);
           }
         } catch (_err) { /* keep mock */ }
 
@@ -2200,11 +2242,15 @@ export function AppProvider({ children }) {
     const cot = cotizaciones.find(c => c.id === cotId);
     if (!cot) return;
 
+    const responsableUser = datos.responsable_comercial_id
+      ? usuarios.find(u => u.id === datos.responsable_comercial_id)
+      : null;
     const osc = {
       id: generateId('osc'),
       empresa_id: empresa.id,
       numero: `OSC-${new Date().getFullYear()}-${Math.floor(Math.random()*1000).toString().padStart(4,'0')}`,
-      numero_doc_cliente: datos.numero_doc_cliente,
+      numero_doc_cliente: datos.numero_doc_cliente || null,
+      nombre: datos.nombre || null,
       cuenta_id: cot.cuenta_id,
       cotizacion_id: cotId,
       oportunidad_id: cot.oportunidad_id,
@@ -2217,6 +2263,9 @@ export function AppProvider({ children }) {
       sla: datos.sla,
       estado: 'en_ejecucion',
       centro_beneficio_id: datos.centro_beneficio_id || null,
+      responsable_comercial_id: datos.responsable_comercial_id || null,
+      responsable_comercial: responsableUser?.nombre || null,
+      observaciones: datos.observaciones || null,
       saldo_por_ejecutar: cot.total,
       saldo_por_valorizar: cot.total,
       saldo_por_facturar: cot.total,
@@ -2701,6 +2750,172 @@ export function AppProvider({ children }) {
     setSolpes(prev => [...prev, slp]);
     auditSync({ modulo: 'compras', entidad: 'solpe_interna', entidad_id: slp.id, accion: 'crear', valor_nuevo: slp });
     addNotificacion(`SOLPE ${slp.numero} generada.`);
+    opsSync(sb => sb.from('solpe_interna').insert([{
+      id: slp.id,
+      empresa_id: empresa.id,
+      codigo: slp.numero,
+      descripcion: slp.descripcion,
+      tipo: slp.tipo || 'bien',
+      prioridad: slp.prioridad || 'normal',
+      centro_costo_id: slp.centro_costo_id || null,
+      estado: 'solicitada',
+    }]));
+  };
+
+  const crearGasto = (datos) => {
+    const gasto = {
+      id: generateId('gasto'),
+      empresa_id: empresa.id,
+      origen_registro: 'backoffice',
+      estado: 'registrado',
+      created_at: new Date().toISOString(),
+      ...datos,
+    };
+    setComprasGastos(prev => [...prev, gasto]);
+    auditSync({ modulo: 'compras', entidad: 'compras_gastos', entidad_id: gasto.id, accion: 'crear', valor_nuevo: gasto });
+    addNotificacion('Gasto registrado.');
+    opsSync(sb => sb.from('compras_gastos').insert([{
+      id: gasto.id,
+      empresa_id: empresa.id,
+      tipo: gasto.tipo || 'gasto',
+      descripcion: gasto.descripcion,
+      categoria: gasto.categoria,
+      monto: gasto.monto,
+      moneda: gasto.moneda || 'PEN',
+      fecha: gasto.fecha,
+      origen_registro: 'backoffice',
+      estado: 'registrado',
+      centro_costo_id: gasto.centro_costo_id || null,
+    }]));
+  };
+
+  // ── Presupuestos ─────────────────────────────────────────────────────────────
+  const crearPresupuesto = async (datos, partidas) => {
+    const pre = {
+      id: generateId('pre'),
+      empresa_id: empresa.id,
+      nombre: datos.nombre,
+      periodo: datos.periodo,
+      centro_costo_id: datos.centro_costo_id || null,
+      cebe_id: datos.cebe_id || null,
+      estado: 'borrador',
+      creado_por: authUser?.email || null,
+      creado_en: new Date().toISOString(),
+      actualizado_en: new Date().toISOString(),
+    };
+    const ppas = (partidas || []).map((p, i) => ({
+      id: generateId('ppa'),
+      empresa_id: empresa.id,
+      presupuesto_id: pre.id,
+      categoria: p.categoria,
+      descripcion: p.descripcion || null,
+      monto_presupuestado: Number(p.monto_presupuestado || 0),
+      moneda: p.moneda || 'PEN',
+      orden: i,
+    }));
+    setPresupuestos(prev => [pre, ...prev]);
+    setPresupuestoPartidas(prev => [...prev, ...ppas]);
+    addNotificacion('Presupuesto creado.');
+    if (isSupabaseConfigured()) {
+      try {
+        await presupuestosService.crearPresupuesto(pre);
+        await presupuestosService.insertarPartidas(ppas);
+      } catch (err) {
+        console.error('[presupuestos] crearPresupuesto:', err?.message || err);
+      }
+    }
+    return pre;
+  };
+
+  const actualizarPresupuestoCtx = async (id, datos, partidas) => {
+    const updates = {
+      nombre: datos.nombre,
+      periodo: datos.periodo,
+      centro_costo_id: datos.centro_costo_id || null,
+      cebe_id: datos.cebe_id || null,
+    };
+    const ppas = (partidas || []).map((p, i) => ({
+      id: p.id || generateId('ppa'),
+      empresa_id: empresa.id,
+      presupuesto_id: id,
+      categoria: p.categoria,
+      descripcion: p.descripcion || null,
+      monto_presupuestado: Number(p.monto_presupuestado || 0),
+      moneda: p.moneda || 'PEN',
+      orden: i,
+    }));
+    setPresupuestos(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+    setPresupuestoPartidas(prev => [...prev.filter(p => p.presupuesto_id !== id), ...ppas]);
+    if (isSupabaseConfigured()) {
+      try {
+        await presupuestosService.actualizarPresupuesto(id, updates);
+        await presupuestosService.reemplazarPartidas(id, ppas);
+      } catch (err) {
+        console.error('[presupuestos] actualizarPresupuesto:', err?.message || err);
+      }
+    }
+  };
+
+  const enviarPresupuestoAAprobacion = async (id, aprobadores) => {
+    const aprs = aprobadores.map((a, i) => ({
+      id: generateId('pap'),
+      empresa_id: empresa.id,
+      presupuesto_id: id,
+      orden: i + 1,
+      aprobador_id: a.id,
+      nombre_aprobador: a.nombre || a.email || a.id,
+      estado: 'pendiente',
+      fecha_accion: null,
+      comentario: null,
+    }));
+    setPresupuestos(prev => prev.map(p => p.id === id ? { ...p, estado: 'en_aprobacion' } : p));
+    setPresupuestoAprobaciones(prev => [...prev.filter(p => p.presupuesto_id !== id), ...aprs]);
+    addNotificacion('Presupuesto enviado a aprobación.');
+    if (isSupabaseConfigured()) {
+      try {
+        await presupuestosService.actualizarPresupuesto(id, { estado: 'en_aprobacion' });
+        await presupuestosService.insertarAprobaciones(aprs);
+      } catch (err) {
+        console.error('[presupuestos] enviarAAprobacion:', err?.message || err);
+      }
+    }
+  };
+
+  const procesarAprobacionPresupuesto = async (presupuestoId, aprobacionId, accion, comentario) => {
+    const now = new Date().toISOString();
+    const nuevoEstadoApr = accion === 'aprobar' ? 'aprobado' : 'rechazado';
+    setPresupuestoAprobaciones(prev => prev.map(a =>
+      a.id === aprobacionId ? { ...a, estado: nuevoEstadoApr, fecha_accion: now, comentario: comentario || null } : a
+    ));
+    if (isSupabaseConfigured()) {
+      try {
+        await presupuestosService.actualizarAprobacion(aprobacionId, { estado: nuevoEstadoApr, fecha_accion: now, comentario: comentario || null });
+      } catch (err) {
+        console.error('[presupuestos] actualizarAprobacion:', err?.message || err);
+      }
+    }
+    if (accion === 'rechazar') {
+      setPresupuestos(prev => prev.map(p => p.id === presupuestoId ? { ...p, estado: 'borrador' } : p));
+      addNotificacion('Presupuesto rechazado — vuelve a borrador.');
+      if (isSupabaseConfigured()) {
+        presupuestosService.actualizarPresupuesto(presupuestoId, { estado: 'borrador' }).catch(() => {});
+      }
+    } else {
+      // verificar si era el último aprobador
+      setPresupuestoAprobaciones(prev => {
+        const cadena = prev.filter(a => a.presupuesto_id === presupuestoId);
+        const actualizado = cadena.map(a => a.id === aprobacionId ? { ...a, estado: 'aprobado', fecha_accion: now, comentario: comentario || null } : a);
+        const todoAprobado = actualizado.every(a => a.estado === 'aprobado');
+        if (todoAprobado) {
+          setPresupuestos(pp => pp.map(p => p.id === presupuestoId ? { ...p, estado: 'aprobado' } : p));
+          addNotificacion('Presupuesto aprobado completamente.');
+          if (isSupabaseConfigured()) {
+            presupuestosService.actualizarPresupuesto(presupuestoId, { estado: 'aprobado' }).catch(() => {});
+          }
+        }
+        return prev;
+      });
+    }
   };
 
   const generarValorizacion = (osClienteId, subtotal, igv, total, periodo, meta = {}) => {
@@ -2761,6 +2976,10 @@ export function AppProvider({ children }) {
           estado: val.estado,
           modelo_calculo: val.modelo_calculo,
           notas: val.notas,
+          ot_ids: val.ot_ids,
+          items: val.items,
+          fecha_aprobacion: val.fecha_aprobacion,
+          historial: val.historial,
         });
       });
     }
@@ -2801,7 +3020,11 @@ export function AppProvider({ children }) {
     }
 
     if (isSupabaseConfigured()) {
-      finSync(() => finanzasService.actualizarValorizacion(valId, { estado: 'aprobada', fecha_aprobacion: now }));
+      finSync(() => finanzasService.actualizarValorizacion(valId, {
+        estado: 'aprobada',
+        fecha_aprobacion: now,
+        historial: [...(val.historial || []), entrada],
+      }));
     }
 
     addNotificacion(`Valorización ${val.numero} aprobada.`);
@@ -2842,7 +3065,11 @@ export function AppProvider({ children }) {
     }
 
     if (isSupabaseConfigured()) {
-      finSync(() => finanzasService.actualizarValorizacion(valId, { estado: 'anulada', motivo_anulacion: motivo }));
+      finSync(() => finanzasService.actualizarValorizacion(valId, {
+        estado: 'anulada',
+        motivo_anulacion: motivo,
+        historial: [...(val.historial || []), entrada],
+      }));
     }
 
     addNotificacion(`Valorización ${val.numero} anulada.`);
@@ -2891,7 +3118,8 @@ export function AppProvider({ children }) {
       finSync(() => finanzasService.actualizarValorizacion(valId, {
         subtotal: datos.subtotal, igv: datos.igv, total: datos.total,
         periodo: datos.periodo, modelo_calculo: datos.modelo_calculo,
-        notas: datos.notas, estado: estadoFinal,
+        notas: datos.notas, items: datos.items || [], ot_ids: datos.ot_ids || [], estado: estadoFinal,
+        historial: updated.historial,
         ...(estadoFinal === 'aprobada' ? { fecha_aprobacion: now } : {}),
       }));
     }
@@ -3372,69 +3600,99 @@ export function AppProvider({ children }) {
 
     // Auto-generar comisión aplicando acuerdo aprobado si existe
     const osCliente = osClientes.find(os => os.id === cuentaCobrar?.os_cliente_id);
-    const oportunidad = oportunidades.find(op =>
-      op.id === osCliente?.oportunidad_id ||
-      op.os_cliente_id === osCliente?.id
-    );
-    const responsableId = oportunidad?.responsable_id || oportunidad?.responsable || oportunidad?.asignado_a || oportunidad?.usuario || oportunidad?.vendedor_id;
-    if (responsableId) {
-      const vendedor = personalAdmin.find(p =>
-        p.id === responsableId || p.auth_user_id === responsableId || p.nombre === responsableId
+
+    // Caso 1: CxC sin OS Cliente vinculada
+    if (!cuentaCobrar?.os_cliente_id) {
+      addToast(
+        'El cobro se registró correctamente, pero no se pudo generar la comisión porque esta CxC no tiene una OS Cliente vinculada. Si corresponde una comisión, vincula la OS manualmente desde la ficha de la CxC.',
+        'warning',
+        { label: 'Ir a CxC', modulo: 'cxc' }
       );
-      if (vendedor?.tiene_comisiones) {
-        const pctBase = Number(vendedor.porcentaje_comision || 0);
-        const acuerdoEstado = oportunidad?.acuerdo_estado || 'sin_acuerdo';
-        let pct = pctBase;
-        let bonificacionAcuerdo = 0;
-        let notaFallback = null;
+    } else {
+      const oportunidad = oportunidades.find(op =>
+        op.id === osCliente?.oportunidad_id ||
+        op.os_cliente_id === osCliente?.id
+      );
+      const responsableId = oportunidad?.responsable_id || oportunidad?.responsable || oportunidad?.asignado_a || oportunidad?.usuario || oportunidad?.vendedor_id;
 
-        if (acuerdoEstado === 'aprobado') {
-          // Usar acuerdo aprobado
-          pct = Number(oportunidad.acuerdo_pct ?? pctBase);
-          // Prorratear bonificación según proporción cobrada sobre factura total
-          const montoCxC = cuentaCobrar?.monto || cuentaCobrar?.saldo || montoCobrado;
-          const proporcion = montoCxC > 0 ? Math.min(1, montoCobrado / montoCxC) : 1;
-          bonificacionAcuerdo = Math.round(Number(oportunidad.acuerdo_bonificacion || 0) * proporcion * 100) / 100;
-        } else if (acuerdoEstado === 'pendiente' || acuerdoEstado === 'rechazado') {
-          // Fallback a % base con advertencia
-          notaFallback = `Se usó el % base (${pctBase}%) porque el acuerdo especial no está aprobado.`;
-        }
+      // Caso 2: OS sin oportunidad vinculada o sin responsable
+      if (!oportunidad || !responsableId) {
+        addToast(
+          'El cobro se registró correctamente, pero no se encontró un vendedor responsable para calcular la comisión. Asigna un responsable a la oportunidad vinculada.',
+          'warning',
+          { label: 'Ir a Pipeline', modulo: 'pipeline' }
+        );
+      } else {
+        const vendedor = personalAdmin.find(p =>
+          p.id === responsableId || p.auth_user_id === responsableId || p.nombre === responsableId
+        );
 
-        if (pct > 0 || bonificacionAcuerdo > 0) {
-          const montoComision = Math.round(montoCobrado * pct / 100 * 100) / 100;
-          const periodoComision = fecha.slice(0, 7);
-          const comision = {
-            id: generateId('com'),
-            empresa_id: empresa.id,
-            vendedor_id: vendedor.id,
-            vendedor_nombre: vendedor.nombre,
-            cobro_cxc_id: cobroId,
-            cxc_id: cxcId,
-            factura_id: cuentaCobrar?.factura_id || null,
-            os_cliente_id: osCliente?.id || null,
-            oportunidad_id: oportunidad?.id || null,
-            os_cliente_numero: osCliente?.numero || null,
-            factura_numero: facturas.find(f => f.id === cuentaCobrar?.factura_id)?.numero || null,
-            oportunidad_nombre: oportunidad?.nombre || null,
-            moneda: normalizarMonedaComision(cuentaCobrar?.moneda || facturas.find(f => f.id === cuentaCobrar?.factura_id)?.moneda || osCliente?.moneda || oportunidad?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN'),
-            monto_cobrado: montoCobrado,
-            porcentaje_base: pctBase,
-            porcentaje_comision: pct,
-            monto_comision: montoComision,
-            bonificacion: bonificacionAcuerdo,
-            monto_total: montoComision + bonificacionAcuerdo,
-            modalidad_pago: vendedor.modalidad_comision || 'Planilla',
-            periodo: periodoComision,
-            estado: 'pendiente_aprobacion',
-            acuerdo_especial: acuerdoEstado === 'aprobado' && Math.abs(Number(pct) - pctBase) > 0.0001,
-            nota_acuerdo: notaFallback,
-            creado_en: new Date().toISOString(),
-          };
-          setComisiones(prev => [comision, ...prev]);
-          if (isSupabaseConfigured()) {
-            finSync(() => finanzasService.registrarComision(comision));
+        // Caso 3: Responsable no existe en personal_administrativo
+        if (!vendedor) {
+          addToast(
+            'El cobro se registró correctamente, pero el vendedor responsable no tiene ficha en RRHH y no se pudo calcular la comisión. Crea la ficha del colaborador en Personal Administrativo.',
+            'warning',
+            { label: 'Ir a RRHH', modulo: 'rrhh_admin' }
+          );
+        } else {
+          const pctBase = Number(vendedor.porcentaje_comision || 0);
+          const acuerdoEstado = oportunidad?.acuerdo_estado || 'sin_acuerdo';
+          let pct = pctBase;
+          let bonificacionAcuerdo = 0;
+          let notaFallback = null;
+
+          if (acuerdoEstado === 'aprobado') {
+            pct = Number(oportunidad.acuerdo_pct ?? pctBase);
+            const montoCxC = cuentaCobrar?.monto || cuentaCobrar?.saldo || montoCobrado;
+            const proporcion = montoCxC > 0 ? Math.min(1, montoCobrado / montoCxC) : 1;
+            bonificacionAcuerdo = Math.round(Number(oportunidad.acuerdo_bonificacion || 0) * proporcion * 100) / 100;
+          } else if (acuerdoEstado === 'pendiente' || acuerdoEstado === 'rechazado') {
+            notaFallback = `Se usó el % base (${pctBase}%) porque el acuerdo especial no está aprobado.`;
           }
-          if (notaFallback) addNotificacion(`Comisión generada con % base. ${notaFallback}`);
+
+          // Caso 4: Vendedor sin comisiones activas o porcentaje cero
+          if (!vendedor.tiene_comisiones || (pct === 0 && bonificacionAcuerdo === 0)) {
+            addToast(
+              `El cobro se registró correctamente. El vendedor responsable (${vendedor.nombre}) no tiene comisiones activas configuradas. Si esto es un error, activa las comisiones en su ficha de Personal Administrativo.`,
+              'warning',
+              { label: 'Ir a RRHH', modulo: 'rrhh_admin' }
+            );
+          } else if (pct > 0 || bonificacionAcuerdo > 0) {
+            const montoComision = Math.round(montoCobrado * pct / 100 * 100) / 100;
+            const periodoComision = fecha.slice(0, 7);
+            const comision = {
+              id: generateId('com'),
+              empresa_id: empresa.id,
+              vendedor_id: vendedor.id,
+              vendedor_nombre: vendedor.nombre,
+              cobro_cxc_id: cobroId,
+              cxc_id: cxcId,
+              factura_id: cuentaCobrar?.factura_id || null,
+              os_cliente_id: osCliente?.id || null,
+              oportunidad_id: oportunidad?.id || null,
+              os_cliente_numero: osCliente?.numero || null,
+              factura_numero: facturas.find(f => f.id === cuentaCobrar?.factura_id)?.numero || null,
+              oportunidad_nombre: oportunidad?.nombre || null,
+              moneda: normalizarMonedaComision(cuentaCobrar?.moneda || facturas.find(f => f.id === cuentaCobrar?.factura_id)?.moneda || osCliente?.moneda || oportunidad?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN'),
+              monto_cobrado: montoCobrado,
+              porcentaje_base: pctBase,
+              porcentaje_comision: pct,
+              monto_comision: montoComision,
+              bonificacion: bonificacionAcuerdo,
+              monto_total: montoComision + bonificacionAcuerdo,
+              modalidad_pago: vendedor.modalidad_comision || 'Planilla',
+              periodo: periodoComision,
+              estado: 'pendiente_aprobacion',
+              acuerdo_especial: acuerdoEstado === 'aprobado' && Math.abs(Number(pct) - pctBase) > 0.0001,
+              nota_acuerdo: notaFallback,
+              creado_en: new Date().toISOString(),
+            };
+            setComisiones(prev => [comision, ...prev]);
+            if (isSupabaseConfigured()) {
+              finSync(() => finanzasService.registrarComision(comision));
+            }
+            if (notaFallback) addNotificacion(`Comisión generada con % base. ${notaFallback}`);
+          }
         }
       }
     }
@@ -3533,8 +3791,26 @@ export function AppProvider({ children }) {
     if (!pendientes.length) { addNotificacion('No hay comisiones aprobadas pendientes para este vendedor.'); return null; }
     const vendedor = personalAdmin.find(p => p.id === vendedorId);
     const montoBruto = pendientes.reduce((s, c) => s + Number(c.monto_total || 0), 0);
-    const tasaIR = Number(vendedor?.retencion_ir_comision ?? 8) / 100;
+
+    // Reglas de exoneración IR (Perú: RH)
+    const today = new Date().toISOString().split('T')[0];
+    const vencSusp = vendedor?.vencimiento_suspension || null;
+    const suspensionVigente = Boolean(vendedor?.suspension_retenciones) && (!vencSusp || vencSusp >= today);
+    const esAgente = Boolean(empresaConfig?.agente_retencion);
+    const tipoCambio = Number(empresaConfig?.tipo_cambio_referencial) || 3.8;
+    const montoBrutoPEN = monedaRecibo === 'USD' ? montoBruto * tipoCambio : montoBruto;
+    const bajoUmbral = montoBrutoPEN <= 1500;
+
+    const aplicaRetencion = !suspensionVigente && esAgente && !bajoUmbral;
+    const tasaIR = aplicaRetencion ? Number(vendedor?.retencion_ir_comision ?? 8) / 100 : 0;
     const retencionIR = Math.round(montoBruto * tasaIR * 100) / 100;
+    const motivo_retencion = aplicaRetencion
+      ? `Se aplica ${tasaIR * 100}% de retención IR (empresa agente de retención, monto supera S/ 1,500, sin constancia de suspensión vigente).`
+      : suspensionVigente
+        ? 'Sin retención: el colaborador tiene constancia de suspensión de retenciones vigente.'
+        : !esAgente
+          ? 'Sin retención: la empresa no es Agente de Retención ante SUNAT.'
+          : 'Sin retención: el monto bruto no supera el umbral de S/ 1,500.';
     const recibo = {
       id: generateId('rec'),
       empresa_id: empresa.id,
@@ -3547,6 +3823,7 @@ export function AppProvider({ children }) {
       monto_bruto: montoBruto,
       retencion_ir: retencionIR,
       monto_neto: montoBruto - retencionIR,
+      motivo_retencion,
       estado: 'borrador',
       creado_en: new Date().toISOString(),
     };
@@ -4104,7 +4381,10 @@ export function AppProvider({ children }) {
     const { error } = await supabase.storage.from('empresa-assets').upload(path, file, { upsert: true, contentType: file.type });
     if (error) throw error;
     const { data: pub } = supabase.storage.from('empresa-assets').getPublicUrl(path);
-    return pub?.publicUrl ? `${pub.publicUrl}?v=${Date.now()}` : null;
+    return {
+      url: pub?.publicUrl ? `${pub.publicUrl}?v=${Date.now()}` : null,
+      path,
+    };
   };
 
   const recargarParametrosGenerales = async () => {
@@ -5423,6 +5703,10 @@ export function AppProvider({ children }) {
     comisiones, setComisiones,
     facturas, setFacturas,
     comprasGastos, setComprasGastos,
+    presupuestos, setPresupuestos,
+    presupuestoPartidas, setPresupuestoPartidas,
+    presupuestoAprobaciones, setPresupuestoAprobaciones,
+    crearPresupuesto, actualizarPresupuestoCtx, enviarPresupuestoAAprobacion, procesarAprobacionPresupuesto,
     financiamientos, setFinanciamientos,
     movimientosTesoreria, setMovimientosTesoreria,
     movimientosBanco, setMovimientosBanco,
@@ -5470,7 +5754,7 @@ export function AppProvider({ children }) {
     registrarActividad,
     actualizarActividad,
     // Fase 2 Actions
-    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
+    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     // Finanzas Actions
     emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, anularFactura, emitirNotaCredito, emitirNotaDebito, generarCxC, registrarCobroCxC, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, registrarMovimientoManual,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,
@@ -5525,6 +5809,7 @@ export function AppProvider({ children }) {
     eliminarCuadrillaCtx,
     partesPendientesSet,
     notificaciones, markNotificacionesRead, addNotificacion,
+    toasts, addToast, removeToast,
     // Empresa Config
     empresaConfig, guardarEmpresaConfig, subirImagenEmpresa,
     seriesDocumentarias, slaPlantillas, diccionarioComercial, recargarParametrosGenerales,

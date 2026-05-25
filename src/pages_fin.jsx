@@ -6,6 +6,7 @@ import { buildEstadoResultados } from './services/estadoResultadosService.js';
 import { buildTesoreriaSummary } from './services/tesoreriaService.js';
 
 // Finanzas: CxC, Tesorería/Match, Estado de Resultados, Facturación
+const symOf = m => m === 'USD' ? 'US$' : 'S/';
 
 function CxCLegacy() {
   const { cxc } = useApp();
@@ -1581,9 +1582,53 @@ function Tesoreria() {
   );
 }
 
+function MultiSelect({ opts, sel, onSel, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const allSel = sel.length === 0;
+  return (
+    <div style={{position:'relative'}}>
+      <button type="button" className="select" style={{cursor:'pointer', textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, minWidth:160}} onClick={()=>setOpen(o=>!o)}>
+        <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1}}>
+          {allSel ? placeholder : `${sel.length} seleccionado${sel.length>1?'s':''}`}
+        </span>
+        <span style={{color:'var(--fg-muted)', fontSize:10}}>▾</span>
+      </button>
+      {open && (
+        <>
+          <div style={{position:'fixed', inset:0, zIndex:99}} onClick={()=>setOpen(false)} />
+          <div style={{position:'absolute', top:'calc(100% + 4px)', left:0, minWidth:220, background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, boxShadow:'0 4px 16px rgba(0,0,0,.15)', zIndex:100, maxHeight:240, overflowY:'auto'}}>
+            <div onClick={()=>{onSel([]); setOpen(false);}} style={{padding:'8px 14px', cursor:'pointer', fontSize:13, fontWeight:allSel?700:400, background:allSel?'var(--bg-subtle)':'transparent', borderBottom:'1px solid var(--border-subtle)'}}>
+              Todos
+            </div>
+            {opts.map(o => {
+              const on = sel.includes(o.id);
+              return (
+                <div key={o.id} onClick={()=>onSel(on ? sel.filter(x=>x!==o.id) : [...sel, o.id])} style={{padding:'8px 14px', cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:8, background:on?'var(--bg-subtle)':'transparent'}}>
+                  <span style={{width:14, height:14, border:'2px solid '+(on?'var(--cyan)':'var(--border)'), borderRadius:3, background:on?'var(--cyan)':'transparent', display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0, color:'#fff', fontSize:9}}>{on?'✓':''}</span>
+                  {o.nombre}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Resultados({ role }) {
-  const [expanded, setExpanded] = useState({ingresos:true, costo:false, gastos:false});
-  const { comprasGastos, ots, empresa } = useApp();
+  const [expanded, setExpanded] = useState({ingresos:true, costo:false, gastos:false, gastosFin:false});
+  const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio } = useApp();
+  const [cecosSel, setCecosSel] = useState([]);
+  const [cebesSel, setCebesSel] = useState([]);
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const now = new Date();
+  const [periodo, setPeriodo] = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
+  const periodoOpts = Array.from({length:12}, (_,i) => {
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    return { v:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, l:`${MESES[d.getMonth()]} ${d.getFullYear()}` };
+  });
+
   const canFin = role.permisos.ver_finanzas || role.permisos.todo;
   if (!canFin) return (
     <div className="card" style={{padding:40, textAlign:'center'}}>
@@ -1592,49 +1637,45 @@ function Resultados({ role }) {
       <div className="text-muted">Tu rol no tiene permiso <code>ver_finanzas</code>. Consulta con el administrador.</div>
     </div>
   );
-  const periodoSeleccionado = '2026-04';
-  const estaEnPeriodo = (fecha, periodo) => (fecha || '').slice(0, 7) === periodo;
-  const monedaSimbolo = moneda => moneda === 'USD' ? 'US$' : 'S/';
-  const moneyByCurrency = totals => {
-    const keys = ['PEN', 'USD'].filter(m => totals[m]).concat(Object.keys(totals).filter(m => !['PEN', 'USD'].includes(m) && totals[m]));
-    return keys.length ? keys.map(m => moneyD(totals[m], monedaSimbolo(m))).join(' · ') : moneyD(0);
-  };
-  const interesesPorMoneda = comprasGastos.filter(g =>
-    g.empresa_id === empresa.id &&
-    g.categoria === 'Gastos financieros' &&
-    estaEnPeriodo(g.fecha, periodoSeleccionado)
-  ).reduce((acc, g) => {
-    const moneda = g.moneda || 'PEN';
-    acc[moneda] = (acc[moneda] || 0) + Number(g.monto || 0);
-    return acc;
-  }, {});
-  const gastosFinancierosIntereses = interesesPorMoneda.PEN || 0;
-  const comisionesBancarias = MOCK.estadoResultados.gastosFin.items.find(i => i.label.toLowerCase().includes('comisiones'))?.valor || 0;
-  const erLegacy = {
-    ...MOCK.estadoResultados,
-    gastosFin: {
-      total: gastosFinancierosIntereses + comisionesBancarias,
-      items: [
-        { label: 'Intereses de prestamos', valor: gastosFinancierosIntereses, valorDisplay: moneyByCurrency(interesesPorMoneda) },
-        { label: 'Comisiones bancarias', valor: comisionesBancarias }
-      ],
-      display: moneyByCurrency({ PEN: gastosFinancierosIntereses + comisionesBancarias, ...Object.fromEntries(Object.entries(interesesPorMoneda).filter(([m]) => m !== 'PEN')) })
-    }
-  };
+
+  const cecosDeEmpresa = (centrosCosto || []).filter(c => c.empresa_id === empresa?.id && c.estado === 'activo');
+  const cebesDeEmpresa = (centrosBeneficio || []).filter(c => c.empresa_id === empresa?.id && c.estado === 'activo');
+
+  const cecosPorCebe = cebesSel.length > 0 ? cecosDeEmpresa.filter(c => cebesSel.includes(c.cebe_id)).map(c => c.id) : null;
+  let efectivoCecos = null;
+  if (cecosSel.length > 0 && cecosPorCebe != null) {
+    efectivoCecos = cecosSel.filter(id => cecosPorCebe.includes(id));
+  } else if (cecosSel.length > 0) {
+    efectivoCecos = cecosSel;
+  } else if (cecosPorCebe != null) {
+    efectivoCecos = cecosPorCebe;
+  }
+
+  const cgFiltrado = efectivoCecos ? comprasGastos.filter(g => efectivoCecos.includes(g.centro_costo_id)) : comprasGastos;
+  const otsFiltradas = efectivoCecos ? ots.filter(o => efectivoCecos.includes(o.centro_costo_id)) : ots;
+
   const { er, utilidadBruta, resultadoOp, resultadoNeto } = buildEstadoResultados({
     base: MOCK.estadoResultados,
-    comprasGastos,
-    ots,
+    comprasGastos: cgFiltrado,
+    ots: otsFiltradas,
     empresa,
-    periodo: periodoSeleccionado,
+    periodo,
   });
+
+  const [yy, mm] = periodo.split('-');
+  const periodoLabel = `${MESES[parseInt(mm)-1]} ${yy}`;
+  const filtroStr = [
+    cecosSel.length ? `CECO: ${cecosDeEmpresa.filter(c=>cecosSel.includes(c.id)).map(c=>c.nombre).join(', ')}` : '',
+    cebesSel.length ? `CEBE: ${cebesDeEmpresa.filter(c=>cebesSel.includes(c.id)).map(c=>c.nombre).join(', ')}` : '',
+  ].filter(Boolean).join(' / ');
+
   const toggle = k => setExpanded(e => ({...e, [k]: !e[k]}));
   const Row = ({label, value, valueDisplay, bold, neg, margen, expandKey, items}) => (
     <>
       <div onClick={() => expandKey && toggle(expandKey)} style={{display:'flex', alignItems:'center', padding:'14px 20px', borderBottom:'1px solid var(--border-subtle)', cursor:expandKey?'pointer':'default', background:bold?'var(--bg-subtle)':'transparent'}}>
         {expandKey && <span style={{marginRight:8, display:'inline-flex', transform: expanded[expandKey]?'rotate(0)':'rotate(-90deg)', transition:'transform 0.2s', color:'var(--fg-muted)'}}>{I.chev}</span>}
         <div style={{flex:1, fontWeight:bold?700:500, fontFamily: bold?'Sora':'inherit', fontSize: bold?15:13}}>{label}</div>
-        {margen && <div style={{marginRight:20, color:'var(--fg-muted)', fontSize:12}}>[{margen}% margen]</div>}
+        {margen != null && <div style={{marginRight:20, color:'var(--fg-muted)', fontSize:12}}>[{margen}% margen]</div>}
         <div className="num" style={{fontFamily:'Sora', fontWeight:bold?700:500, fontSize:bold?16:14, color: neg?'var(--fg-muted)':'var(--fg)', minWidth:140, textAlign:'right'}}>
           {neg && '('}{valueDisplay || money(value)}{neg && ')'}
         </div>
@@ -1650,22 +1691,29 @@ function Resultados({ role }) {
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Estado de Resultados</h1><div className="page-sub">Abril 2026 · Servicios Industriales Norte SAC</div></div>
-        <div className="row">
-          <select className="select" style={{width:160}}><option>Abril 2026</option><option>Marzo 2026</option></select>
+        <div>
+          <h1 className="page-title">Estado de Resultados{filtroStr ? ` — ${filtroStr}` : ''}</h1>
+          <div className="page-sub">{periodoLabel} · {empresa?.nombre || 'Empresa'}</div>
+        </div>
+        <div className="row" style={{gap:8, flexWrap:'wrap'}}>
+          <select className="select" style={{width:160}} value={periodo} onChange={e=>setPeriodo(e.target.value)}>
+            {periodoOpts.map(p=><option key={p.v} value={p.v}>{p.l}</option>)}
+          </select>
+          <MultiSelect opts={cecosDeEmpresa} sel={cecosSel} onSel={setCecosSel} placeholder="CECO: Todos" />
+          <MultiSelect opts={cebesDeEmpresa} sel={cebesSel} onSel={setCebesSel} placeholder="CEBE: Todos" />
           <button className="btn btn-secondary">{I.download} PDF</button>
         </div>
       </div>
       <div className="card">
         <Row label="INGRESOS" value={er.ingresos.total} bold expandKey="ingresos" items={er.ingresos.items}/>
         <Row label="COSTO DE VENTAS" value={er.costoVentas.total} bold neg expandKey="costo" items={er.costoVentas.items}/>
-        <Row label="UTILIDAD BRUTA" value={utilidadBruta} bold margen={Math.round(utilidadBruta/er.ingresos.total*100)}/>
+        <Row label="UTILIDAD BRUTA" value={utilidadBruta} bold margen={er.ingresos.total ? Math.round(utilidadBruta/er.ingresos.total*100) : 0}/>
         <Row label="GASTOS OPERATIVOS" value={er.gastosOp.total} bold neg expandKey="gastos" items={er.gastosOp.items}/>
-        <Row label="RESULTADO OPERATIVO" value={resultadoOp} bold margen={Math.round(resultadoOp/er.ingresos.total*100)}/>
+        <Row label="RESULTADO OPERATIVO" value={resultadoOp} bold margen={er.ingresos.total ? Math.round(resultadoOp/er.ingresos.total*100) : 0}/>
         <Row label="GASTOS FINANCIEROS" value={er.gastosFin.total} valueDisplay={er.gastosFin.display} bold neg expandKey="gastosFin" items={er.gastosFin.items}/>
         <div style={{display:'flex', alignItems:'center', padding:'18px 20px', background:'var(--navy)', color:'#fff'}}>
           <div style={{flex:1, fontFamily:'Sora', fontWeight:700, fontSize:16, letterSpacing:'0.02em'}}>RESULTADO NETO (PEN)</div>
-          <div style={{marginRight:20, color:'rgba(255,255,255,0.7)', fontSize:12}}>[{Math.round(resultadoNeto/er.ingresos.total*100)}% margen]</div>
+          <div style={{marginRight:20, color:'rgba(255,255,255,0.7)', fontSize:12}}>[{er.ingresos.total ? Math.round(resultadoNeto/er.ingresos.total*100) : 0}% margen]</div>
           <div className="num" style={{fontFamily:'Sora', fontWeight:700, fontSize:22, minWidth:140, textAlign:'right', color:'var(--cyan)'}}>{money(resultadoNeto)}</div>
         </div>
       </div>
@@ -3165,6 +3213,11 @@ function CxP() {
   const totalVencido  = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red').reduce((s, c) => s + saldoDe(c), 0);
   const porVencer7    = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-orange' && saldoDe(c) > 0).length;
 
+  const saldosPEN  = cxpFiltrada.filter(c => (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0);
+  const saldosUSD  = cxpFiltrada.filter(c => (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0);
+  const vencidoPEN = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red' && (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0);
+  const vencidoUSD = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red' && (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0);
+
   // ── Handlers ─────────────────────────────────────────────────────────────
   const abrirFicha = c => {
     setSel(c);
@@ -3233,7 +3286,11 @@ function CxP() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Cuentas por Pagar (CxP)</h1>
-          <div className="page-sub">Total por pagar {money(totalPorPagar)} · {money(totalVencido)} vencido</div>
+          <div className="page-sub">
+            Total por pagar {money(saldosPEN)}{saldosUSD > 0 && <> · {money(saldosUSD, 'US$')}</>}
+            {' · '}
+            {money(vencidoPEN)}{vencidoUSD > 0 && <> · {money(vencidoUSD, 'US$')}</>} vencido
+          </div>
         </div>
         <div className="row">
           <button className="btn btn-primary" onClick={() => { setFormCrear(FORM_VACIO); setPanelCrear(true); }}>
@@ -3243,8 +3300,20 @@ function CxP() {
       </div>
 
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
-        <div className="kpi-card"><div className="kpi-label">Pendiente</div><div className="kpi-value">{money(totalPorPagar)}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Vencido</div><div className="kpi-value" style={{color:'var(--danger)'}}>{money(totalVencido)}</div></div>
+        <div className="kpi-card">
+          <div className="kpi-label">Pendiente</div>
+          <div className="kpi-value" style={saldosUSD > 0 ? {fontSize:18} : {}}>
+            {money(saldosPEN)}
+            {saldosUSD > 0 && <div style={{fontSize:13,fontWeight:600,marginTop:2}}>{money(saldosUSD,'US$')}</div>}
+          </div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Vencido</div>
+          <div className="kpi-value" style={{color:'var(--danger)',...(vencidoUSD > 0 ? {fontSize:18} : {})}}>
+            {money(vencidoPEN)}
+            {vencidoUSD > 0 && <div style={{fontSize:13,fontWeight:600,marginTop:2}}>{money(vencidoUSD,'US$')}</div>}
+          </div>
+        </div>
         <div className="kpi-card"><div className="kpi-label">Por vencer (7 d)</div><div className="kpi-value" style={{color:'var(--orange)'}}>{porVencer7}</div></div>
         <div className="kpi-card"><div className="kpi-label">Pagadas</div><div className="kpi-value">{(cxp||[]).filter(c => c.estado === 'pagada').length}</div></div>
       </div>
@@ -3289,9 +3358,9 @@ function CxP() {
                         {sem.badgeCls !== 'badge-gray' && <span className={'badge '+sem.badgeCls} style={{fontSize:9,padding:'1px 5px'}}>{sem.label}</span>}
                       </span>
                     </td>
-                    <td className="num"><strong>{money(totalDe(c))}</strong></td>
-                    <td className="num text-muted">{money(pagadoDe(c))}</td>
-                    <td className="num"><strong>{money(saldoDe(c))}</strong></td>
+                    <td className="num"><strong>{money(totalDe(c), symOf(c.moneda))}</strong></td>
+                    <td className="num text-muted">{money(pagadoDe(c), symOf(c.moneda))}</td>
+                    <td className="num"><strong>{money(saldoDe(c), symOf(c.moneda))}</strong></td>
                     <td onClick={e => e.stopPropagation()}>
                       {saldoDe(c) > 0 && <button className="btn btn-sm btn-primary" onClick={() => abrirFicha(c)}>Pagar</button>}
                     </td>
@@ -3329,7 +3398,7 @@ function CxP() {
               <form className="side-panel-body" onSubmit={guardarPago}>
                 <div className="card" style={{padding:14,marginBottom:16}}>
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                    {[['Total',money(totalDe(sel))],['Pagado',money(pagadoDe(sel))],['Saldo pendiente',money(saldoDe(sel))],['Vencimiento',sel.fecha_vencimiento || '—']].map(([l,v]) => (
+                    {[['Total',money(totalDe(sel),symOf(sel.moneda))],['Pagado',money(pagadoDe(sel),symOf(sel.moneda))],['Saldo pendiente',money(saldoDe(sel),symOf(sel.moneda))],['Vencimiento',sel.fecha_vencimiento || '—']].map(([l,v]) => (
                       <div key={l}><div style={{fontSize:10,color:'var(--fg-muted)',marginBottom:2}}>{l}</div><div style={{fontWeight:600,fontSize:13}}>{v}</div></div>
                     ))}
                   </div>
@@ -3374,7 +3443,7 @@ function CxP() {
                     {pagosDe(sel.id).map((p, i) => (
                       <div key={p.id || i} style={{background:'var(--bg-subtle)',borderRadius:8,padding:'10px 14px'}}>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
-                          <span style={{fontWeight:700,fontSize:15}}>{money(p.monto)}</span>
+                          <span style={{fontWeight:700,fontSize:15}}>{money(p.monto, symOf(sel.moneda))}</span>
                           <span style={{fontSize:12,color:'var(--fg-muted)'}}>{p.fecha_pago}</span>
                         </div>
                         <div style={{fontSize:11,color:'var(--fg-muted)'}}>
@@ -3385,7 +3454,7 @@ function CxP() {
                     ))}
                     <div style={{borderTop:'1px solid var(--border)',paddingTop:10,display:'flex',justifyContent:'space-between',fontSize:13}}>
                       <span style={{color:'var(--fg-muted)'}}>Total pagado</span>
-                      <strong>{money(pagosDe(sel.id).reduce((s,p) => s + Number(p.monto||0), 0))}</strong>
+                      <strong>{money(pagosDe(sel.id).reduce((s,p) => s + Number(p.monto||0), 0), symOf(sel.moneda))}</strong>
                     </div>
                   </div>
                 )}
@@ -3462,126 +3531,495 @@ function CxP() {
   );
 }
 
+const CATS_PRE = ['Materiales','Servicios terceros','Logística','Administrativos','Comerciales','Gastos financieros','Mano de obra'];
+const MESES_PRE = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MESES_C_PRE = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+const BADGE_E = {
+  borrador:      { label:'Borrador',      cls:'badge-cyan'   },
+  en_aprobacion: { label:'En aprobación', cls:'badge-orange'  },
+  aprobado:      { label:'Aprobado',      cls:'badge-green'   },
+  rechazado:     { label:'Rechazado',     cls:'badge-red'     },
+  cerrado:       { label:'Cerrado',       cls:''              },
+};
+
 function Presupuestos() {
-  const [tab, setTab] = useState('control');
-  const S = n => 'S/ ' + n.toLocaleString('es-PE');
-  const pv = Object.entries(MOCK.biFinanciero.presupuesto_vs_real).map(([key, value]) => ({
-    key,
-    partida: key.replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase()),
-    presupuesto: value.presupuesto,
-    real: value.real,
-    variacion: value.real - value.presupuesto,
-    ejecucion_pct: Math.round((value.real / value.presupuesto) * 100)
-  }));
-  const totalPres = pv.reduce((s, p) => s + p.presupuesto, 0);
-  const totalReal = pv.reduce((s, p) => s + p.real, 0);
-  const totalVar  = totalReal - totalPres;
-  const ejecPct   = Math.round(totalReal / totalPres * 100);
+  const {
+    presupuestos, presupuestoPartidas, presupuestoAprobaciones,
+    crearPresupuesto, enviarPresupuestoAAprobacion, procesarAprobacionPresupuesto,
+    comprasGastos, ots, usuarios, empresa, authUser,
+    centrosCosto, centrosBeneficio,
+  } = useApp();
 
-  const alertas = pv.filter(p => p.ejecucion_pct > 100).length;
-  const enLimite = pv.filter(p => p.ejecucion_pct > 80 && p.ejecucion_pct <= 100).length;
+  const now = new Date();
+  const [periodo, setPeriodo]       = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
+  const [tab, setTab]               = useState('control');
+  const [preSelId, setPreSelId]     = useState(null);
+  const [panelNuevo, setPanelNuevo] = useState(false);
+  const [panelDetalle, setPanelDetalle] = useState(null);
+  const [panelEnviar, setPanelEnviar]   = useState(false);
+  const [formPre, setFormPre]       = useState({ nombre:'', periodo, centro_costo_id:'', cebe_id:'' });
+  const [formParts, setFormParts]   = useState([{ categoria:'Materiales', descripcion:'', monto_presupuestado:'' }]);
+  const [aprobadores, setAprobadores] = useState([null]);
+  const [comentarioApr, setComentarioApr] = useState('');
+  const [saving, setSaving]         = useState(false);
 
-  const aprobaciones = [
-    { rol: 'Director General',      fecha: '2026-04-01', estado: 'aprobado',    comentario: 'Aprobado según plan estratégico 2026' },
-    { rol: 'Gerente de Finanzas',   fecha: '2026-04-02', estado: 'aprobado',    comentario: 'Validado con proyecciones de tesorería' },
-    { rol: 'Gerente de Operaciones',fecha: '2026-04-03', estado: 'aprobado',    comentario: 'Confirmado con capacidad operativa' },
-    { rol: 'Contabilidad',          fecha: null,         estado: 'en_revision', comentario: 'Revisando conciliación con EEFF preliminares' },
-  ];
+  const empresaId = empresa?.id;
+
+  const periodoOpts = Array.from({length:12}, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    return { v:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, l:`${MESES_C_PRE[d.getMonth()]} ${d.getFullYear()}` };
+  });
+
+  const [yy, mm] = periodo.split('-');
+  const periodoLabel = `${MESES_PRE[parseInt(mm)-1]} ${yy}`;
+
+  const presDePeriodo = (presupuestos||[]).filter(p => p.empresa_id === empresaId && p.periodo === periodo);
+  const presActivo = preSelId
+    ? (presupuestos||[]).find(p => p.id === preSelId)
+    : presDePeriodo[0] || null;
+
+  const partidas = useMemo(() =>
+    presActivo ? (presupuestoPartidas||[]).filter(p => p.presupuesto_id === presActivo.id).sort((a,b)=>a.orden-b.orden) : [],
+    [presActivo, presupuestoPartidas]);
+
+  const cadena = useMemo(() =>
+    presActivo ? (presupuestoAprobaciones||[]).filter(a => a.presupuesto_id === presActivo.id).sort((a,b)=>a.orden-b.orden) : [],
+    [presActivo, presupuestoAprobaciones]);
+
+  const esPeriodoMensual = periodo.length === 7;
+
+  const calcReal = (categoria) => {
+    if (categoria === 'Mano de obra') {
+      return (ots||[]).filter(o => {
+        if (o.empresa_id !== empresaId) return false;
+        const p = esPeriodoMensual ? (o.fecha_cierre||o.fecha_inicio||'').slice(0,7) : (o.fecha_cierre||o.fecha_inicio||'').slice(0,4);
+        return p === periodo && ['cerrada','facturada'].includes(o.estado);
+      }).reduce((s,o) => s + Number(o.costo_real||0), 0);
+    }
+    return (comprasGastos||[]).filter(g => {
+      if (g.empresa_id !== empresaId) return false;
+      const p = esPeriodoMensual ? (g.fecha||'').slice(0,7) : (g.fecha||'').slice(0,4);
+      return p === periodo && g.categoria === categoria;
+    }).reduce((s,g) => s + Number(g.monto||0), 0);
+  };
+
+  const getDesglose = (categoria) => {
+    if (categoria === 'Mano de obra') {
+      return (ots||[]).filter(o => {
+        if (o.empresa_id !== empresaId) return false;
+        const p = esPeriodoMensual ? (o.fecha_cierre||o.fecha_inicio||'').slice(0,7) : (o.fecha_cierre||o.fecha_inicio||'').slice(0,4);
+        return p === periodo && ['cerrada','facturada'].includes(o.estado);
+      }).map(o => ({ fecha:o.fecha_cierre||o.fecha_inicio||'', descripcion:o.numero?`OT ${o.numero}`:o.nombre||'OT', proveedor:o.tecnico_lider||'—', monto:Number(o.costo_real||0), documento:o.numero||'—' }));
+    }
+    return (comprasGastos||[]).filter(g => {
+      if (g.empresa_id !== empresaId) return false;
+      const p = esPeriodoMensual ? (g.fecha||'').slice(0,7) : (g.fecha||'').slice(0,4);
+      return p === periodo && g.categoria === categoria;
+    }).map(g => ({ fecha:g.fecha||'', descripcion:g.descripcion||'—', proveedor:g.proveedor||'—', monto:Number(g.monto||0), documento:g.numero_documento||g.factura||'—' }));
+  };
+
+  const S = n => n == null ? '—' : 'S/ ' + Number(n).toLocaleString('es-PE', {minimumFractionDigits:0, maximumFractionDigits:0});
+
+  const totPres = partidas.reduce((s,p) => s + Number(p.monto_presupuestado||0), 0);
+  const totReal = partidas.reduce((s,p) => s + calcReal(p.categoria), 0);
+  const varNeta = totReal - totPres;
+  const execPct = totPres > 0 ? Math.round(totReal/totPres*100) : 0;
+  const alertas = partidas.filter(p => calcReal(p.categoria) > Number(p.monto_presupuestado||0));
+
+  const siguienteApr = cadena.find(a => a.estado === 'pendiente');
+  const puedoAprobar = siguienteApr && siguienteApr.aprobador_id === authUser?.id;
+
+  const usuariosEmpresa = (usuarios||[]).filter(u => u.empresa_id === empresaId || !u.empresa_id);
+
+  const guardarNuevo = async () => {
+    if (!formPre.nombre.trim() || !formPre.periodo.trim() || formParts.length === 0) return;
+    setSaving(true);
+    try {
+      const pre = await crearPresupuesto(formPre, formParts);
+      setPreSelId(pre.id);
+      setPanelNuevo(false);
+    } finally { setSaving(false); }
+  };
+
+  const handleEnviar = async () => {
+    const aprs = aprobadores.filter(Boolean);
+    if (!aprs.length || !presActivo) return;
+    setSaving(true);
+    try {
+      await enviarPresupuestoAAprobacion(presActivo.id, aprs);
+      setPanelEnviar(false);
+      setAprobadores([null]);
+    } finally { setSaving(false); }
+  };
+
+  const handleProcesar = async (aprId, accion) => {
+    if (!presActivo) return;
+    await procesarAprobacionPresupuesto(presActivo.id, aprId, accion, comentarioApr);
+    setComentarioApr('');
+  };
+
 
   return (
     <>
+      {/* ── Cabecera ─────────────────────────────────────────────────── */}
       <div className="page-header">
-        <div><h1 className="page-title">Presupuesto vs Real</h1><div className="page-sub">Control presupuestal mensual · Abril 2026</div></div>
-        <div className="row"><button className="btn btn-secondary">{I.download} Exportar</button><button className="btn btn-primary">{I.plus} Solicitar ajuste</button></div>
+        <div>
+          <h1 className="page-title">Presupuesto vs Real</h1>
+          <div className="page-sub">Control presupuestal mensual · {periodoLabel}</div>
+        </div>
+        <div className="row" style={{gap:8, flexWrap:'wrap'}}>
+          <select className="select" style={{width:150}} value={periodo} onChange={e => { setPeriodo(e.target.value); setPreSelId(null); }}>
+            {periodoOpts.map(p => <option key={p.v} value={p.v}>{p.l}</option>)}
+          </select>
+          {presDePeriodo.length > 0 && (
+            <select className="select" style={{width:200}} value={presActivo?.id||''} onChange={e => setPreSelId(e.target.value||null)}>
+              {presDePeriodo.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+          )}
+          {presActivo?.estado === 'borrador' && (
+            <button className="btn btn-secondary" data-local-form="true" onClick={() => setPanelEnviar(true)}>Enviar a aprobación</button>
+          )}
+          <button className="btn btn-primary" data-local-form="true" onClick={() => { setFormPre({nombre:'',periodo,centro_costo_id:'',cebe_id:''}); setFormParts([{categoria:'Materiales',descripcion:'',monto_presupuestado:''}]); setPanelNuevo(true); }}>
+            {I.plus} Nuevo presupuesto
+          </button>
+        </div>
       </div>
 
+      {/* ── KPIs ─────────────────────────────────────────────────────── */}
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
-        <div className="kpi-card"><div className="kpi-label">Presupuesto total</div><div className="kpi-value" style={{fontSize:20}}>{S(totalPres)}</div><div className="kpi-icon cyan">{I.trend}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Ejecutado</div><div className="kpi-value" style={{fontSize:20, color:totalVar>0?'var(--danger)':'var(--green)'}}>{S(totalReal)}</div><div className={'kpi-icon '+(totalVar>0?'red':'green')}>{I.dollar}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Variación neta</div><div className="kpi-value" style={{fontSize:20, color:totalVar>0?'var(--danger)':'var(--green)'}}>{totalVar>0?'+':''}{S(totalVar)}</div><div className={'kpi-icon '+(totalVar>0?'orange':'green')}>{I.alert}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Ejecución global</div><div className="kpi-value" style={{fontSize:20, color:ejecPct>100?'var(--danger)':ejecPct>80?'var(--orange)':'inherit'}}>{ejecPct}%</div><div className="kpi-icon purple">{I.trend}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Presupuesto total</div><div className="kpi-value" style={{fontSize:20}}>{S(totPres)}</div><div className="kpi-icon cyan">{I.trend}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Ejecutado</div><div className="kpi-value" style={{fontSize:20, color:varNeta>0?'var(--danger)':'var(--green)'}}>{S(totReal)}</div><div className={'kpi-icon '+(varNeta>0?'red':'green')}>{I.dollar}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Variación neta</div><div className="kpi-value" style={{fontSize:20, color:varNeta>0?'var(--danger)':'var(--green)'}}>{varNeta>0?'+':''}{S(varNeta)}</div><div className={'kpi-icon '+(varNeta>0?'orange':'green')}>{I.alert}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Ejecución global</div><div className="kpi-value" style={{fontSize:20, color:execPct>100?'var(--danger)':execPct>80?'var(--orange)':'inherit'}}>{execPct}%</div><div className="kpi-icon purple">{I.trend}</div></div>
       </div>
 
-      {alertas > 0 && (
-        <div style={{padding:'12px 16px', background:'rgba(220,38,38,0.08)', border:'1px solid var(--danger)', borderRadius:10, marginBottom:16}} className="row">
-          <span style={{display:'flex',alignItems:'center',flexShrink:0,width:18,height:18,color:'var(--danger)'}}>{I.alert}</span><div><strong>{alertas} partida{alertas>1?'s':''} excedida{alertas>1?'s':''} del presupuesto</strong> · {enLimite} en límite (&gt; 80 %)</div>
+      {/* ── Sin presupuesto ───────────────────────────────────────────── */}
+      {!presActivo && (
+        <div className="card" style={{padding:'48px 24px', textAlign:'center', color:'var(--fg-muted)'}}>
+          No hay presupuesto para {periodoLabel}. Usa "+ Nuevo presupuesto" para crear uno.
         </div>
       )}
 
-      <div className="tabs">
-        <div className={'tab '+(tab==='control'?'active':'')} onClick={()=>setTab('control')}>Control de Gastos</div>
-        <div className={'tab '+(tab==='aprobacion'?'active':'')} onClick={()=>setTab('aprobacion')}>Flujo de Aprobación</div>
-      </div>
+      {presActivo && (
+        <>
+          {/* ── Alerta excedidos ──────────────────────────────────────── */}
+          {alertas.length > 0 && (
+            <div style={{padding:'12px 16px', background:'rgba(220,38,38,0.08)', border:'1px solid var(--danger)', borderRadius:10, marginBottom:16}} className="row">
+              <span style={{display:'flex',alignItems:'center',flexShrink:0,width:18,height:18,color:'var(--danger)'}}>{I.alert}</span>
+              <div><strong>{alertas.length} partida{alertas.length>1?'s':''} excedida{alertas.length>1?'s':''} del presupuesto</strong>: {alertas.map(a=>a.categoria).join(', ')}</div>
+            </div>
+          )}
 
-      {tab === 'control' && (
-        <div className="card">
-          <div className="card-head"><h3>Partidas presupuestales — Abril 2026</h3><span className="text-muted" style={{fontSize:12}}>{pv.length} partidas</span></div>
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead>
-                <tr><th>Partida</th><th className="num">Presupuesto</th><th className="num">Real</th><th className="num">Variación</th><th style={{width:160}}>Ejecución</th><th>Estado</th></tr>
-              </thead>
-              <tbody>
-                {pv.map((p, i) => {
-                  const over = p.ejecucion_pct > 100;
-                  const limit = p.ejecucion_pct > 80;
-                  const barColor = over ? 'var(--danger)' : limit ? 'var(--orange)' : 'var(--green)';
-                  return (
-                    <tr key={i}>
-                      <td style={{fontWeight:600}}>{p.partida}</td>
-                      <td className="num text-muted">{S(p.presupuesto)}</td>
-                      <td className="num"><strong style={{color:over?'var(--danger)':'inherit'}}>{S(p.real)}</strong></td>
-                      <td className="num"><span style={{color:p.variacion>0?'var(--danger)':'var(--green)', fontWeight:600}}>{p.variacion>0?'+':''}{S(p.variacion)}</span></td>
-                      <td>
-                        <div style={{display:'flex', alignItems:'center', gap:8}}>
-                          <div style={{flex:1, height:7, background:'var(--bg-subtle)', borderRadius:4}}>
-                            <div style={{width:Math.min(p.ejecucion_pct,100)+'%', height:'100%', background:barColor, borderRadius:4}}/>
+          {/* ── Tabs ─────────────────────────────────────────────────── */}
+          <div className="tabs">
+            <div className={'tab '+(tab==='control'?'active':'')} onClick={()=>setTab('control')}>Control de Gastos</div>
+            <div className={'tab '+(tab==='aprobacion'?'active':'')} onClick={()=>setTab('aprobacion')}>Flujo de Aprobación</div>
+          </div>
+
+          {/* ── Control de Gastos ─────────────────────────────────────── */}
+          {tab === 'control' && (
+            <div className="card">
+              <div className="card-head">
+                <h3>Partidas presupuestales — {periodoLabel}</h3>
+                <div className="row" style={{gap:8}}>
+                  <span className={`badge ${BADGE_E[presActivo.estado]?.cls||''}`}>{BADGE_E[presActivo.estado]?.label||presActivo.estado}</span>
+                  <span className="text-muted" style={{fontSize:12}}>{partidas.length} partidas</span>
+                </div>
+              </div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr><th>Partida</th><th>Descripción</th><th className="num">Presupuesto</th><th className="num">Real</th><th className="num">Variación</th><th style={{width:160}}>Ejecución</th><th>Estado</th></tr>
+                  </thead>
+                  <tbody>
+                    {partidas.length === 0 && (
+                      <tr><td colSpan={7} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>Sin partidas registradas.</td></tr>
+                    )}
+                    {partidas.map((p, i) => {
+                      const real = calcReal(p.categoria);
+                      const pres = Number(p.monto_presupuestado||0);
+                      const varAbs = real - pres;
+                      const ep = pres > 0 ? Math.round(real/pres*100) : 0;
+                      const over = real > pres;
+                      const limit = ep > 80 && !over;
+                      const barColor = over ? 'var(--danger)' : limit ? 'var(--orange)' : 'var(--green)';
+                      return (
+                        <tr key={p.id} style={{cursor:'pointer'}} onClick={() => setPanelDetalle(p)}>
+                          <td style={{fontWeight:600}}>{p.categoria}</td>
+                          <td style={{color:'var(--fg-muted)',fontSize:12}}>{p.descripcion||'—'}</td>
+                          <td className="num text-muted">{S(pres)}</td>
+                          <td className="num"><strong style={{color:over?'var(--danger)':'inherit'}}>{S(real)}</strong></td>
+                          <td className="num"><span style={{color:varAbs>0?'var(--danger)':'var(--green)',fontWeight:600}}>{varAbs>0?'+':''}{S(varAbs)}</span></td>
+                          <td>
+                            <div style={{display:'flex',alignItems:'center',gap:8}}>
+                              <div style={{flex:1,height:7,background:'var(--bg-subtle)',borderRadius:4}}>
+                                <div style={{width:Math.min(ep,100)+'%',height:'100%',background:barColor,borderRadius:4}}/>
+                              </div>
+                              <span style={{fontSize:12,fontWeight:700,minWidth:36,color:barColor}}>{ep}%</span>
+                            </div>
+                          </td>
+                          <td><span className={'badge '+(over?'badge-red':limit?'badge-orange':'badge-green')}>{over?'Excedido':limit?'En límite':'OK'}</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {partidas.length > 0 && (
+                <div style={{padding:'14px 20px',borderTop:'1px solid var(--border-subtle)',display:'flex',gap:32,justifyContent:'flex-end',fontSize:13}}>
+                  <span className="text-muted">Total presupuesto: <strong style={{color:'var(--fg)'}}>{S(totPres)}</strong></span>
+                  <span className="text-muted">Total ejecutado: <strong style={{color:varNeta>0?'var(--danger)':'var(--green)'}}>{S(totReal)}</strong></span>
+                  <span className="text-muted">Variación: <strong style={{color:varNeta>0?'var(--danger)':'var(--green)'}}>{varNeta>0?'+':''}{S(varNeta)}</strong></span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Flujo de Aprobación ───────────────────────────────────── */}
+          {tab === 'aprobacion' && (
+            <div className="card">
+              <div className="card-head">
+                <h3>Cadena de aprobación</h3>
+                {cadena.length > 0 && (
+                  <span className="badge badge-cyan">{cadena.filter(a=>a.estado==='aprobado').length} de {cadena.length} aprobados</span>
+                )}
+              </div>
+              {cadena.length === 0 ? (
+                <div style={{padding:'32px 24px',textAlign:'center',color:'var(--fg-muted)'}}>
+                  Sin cadena configurada.
+                  {presActivo.estado === 'borrador' && (
+                    <div style={{marginTop:12}}><button className="btn btn-secondary" onClick={()=>setPanelEnviar(true)}>Enviar a aprobación</button></div>
+                  )}
+                </div>
+              ) : (
+                <div style={{padding:'20px 24px',display:'flex',flexDirection:'column',gap:0}}>
+                  {cadena.map((a, i) => {
+                    const aprobado = a.estado === 'aprobado';
+                    const rechazado = a.estado === 'rechazado';
+                    const esActual = siguienteApr?.id === a.id;
+                    return (
+                      <div key={a.id} style={{display:'flex',gap:20,position:'relative'}}>
+                        <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
+                          <div style={{width:36,height:36,borderRadius:'50%',background:aprobado?'var(--green)':rechazado?'var(--danger)':esActual?'var(--accent)':'var(--bg-subtle)',border:'2px solid '+(aprobado?'var(--green)':rechazado?'var(--danger)':esActual?'var(--accent)':'var(--border)'),display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0,color:aprobado||rechazado||esActual?'#fff':'var(--fg-muted)'}}>
+                            {aprobado?'✓':rechazado?'✗':a.orden}
                           </div>
-                          <span style={{fontSize:12, fontWeight:700, minWidth:36, color:barColor}}>{p.ejecucion_pct}%</span>
+                          {i < cadena.length-1 && <div style={{width:2,flex:1,minHeight:32,background:aprobado?'var(--green)':'var(--border)',margin:'4px 0'}}/>}
                         </div>
-                      </td>
-                      <td><span className={'badge '+(over?'badge-red':limit?'badge-orange':'badge-green')}>{over?'Excedido':limit?'En límite':'OK'}</span></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div style={{padding:'14px 20px', borderTop:'1px solid var(--border-subtle)', display:'flex', gap:32, justifyContent:'flex-end', fontFamily:'Sora', fontSize:13}}>
-            <span className="text-muted">Total presupuesto: <strong style={{color:'var(--fg)'}}>{S(totalPres)}</strong></span>
-            <span className="text-muted">Total ejecutado: <strong style={{color:totalVar>0?'var(--danger)':'var(--green)'}}>{S(totalReal)}</strong></span>
-            <span className="text-muted">Variación: <strong style={{color:totalVar>0?'var(--danger)':'var(--green)'}}>{totalVar>0?'+':''}{S(totalVar)}</strong></span>
-          </div>
-        </div>
+                        <div style={{paddingBottom:28,flex:1}}>
+                          <div style={{fontWeight:600,fontSize:14}}>{a.nombre_aprobador}</div>
+                          <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>
+                            {aprobado ? `Aprobado ${a.fecha_accion?new Date(a.fecha_accion).toLocaleDateString('es-PE'):''}` : rechazado ? `Rechazado ${a.fecha_accion?new Date(a.fecha_accion).toLocaleDateString('es-PE'):''}` : esActual ? 'Pendiente — turno actual' : 'Pendiente'}
+                          </div>
+                          {a.comentario && <div style={{fontSize:12,marginTop:6,padding:'8px 12px',background:'var(--bg-subtle)',borderRadius:6,color:'var(--fg-subtle)',borderLeft:'3px solid '+(aprobado?'var(--green)':'var(--border)')}}>{a.comentario}</div>}
+                          {puedoAprobar && esActual && (
+                            <div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap'}}>
+                              <input className="input" style={{flex:1,minWidth:160,fontSize:12}} placeholder="Comentario (opcional)" value={comentarioApr} onChange={e=>setComentarioApr(e.target.value)}/>
+                              <button className="btn btn-primary" style={{fontSize:12}} onClick={()=>handleProcesar(a.id,'aprobar')}>Aprobar</button>
+                              <button className="btn btn-danger" style={{fontSize:12}} onClick={()=>handleProcesar(a.id,'rechazar')}>Rechazar</button>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{paddingTop:8}}>
+                          <span className={'badge '+(aprobado?'badge-green':rechazado?'badge-red':esActual?'badge-orange':'badge-cyan')}>{aprobado?'Aprobado':rechazado?'Rechazado':esActual?'En revisión':'Pendiente'}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
-      {tab === 'aprobacion' && (
-        <div className="card">
-          <div className="card-head"><h3>Cadena de aprobación — Presupuesto 2026</h3><span className="badge badge-cyan">3 de 4 aprobados</span></div>
-          <div style={{padding:'20px 24px', display:'flex', flexDirection:'column', gap:0}}>
-            {aprobaciones.map((a, i) => {
-              const aprobado = a.estado === 'aprobado';
-              return (
-                <div key={i} style={{display:'flex', gap:20, position:'relative'}}>
-                  <div style={{display:'flex', flexDirection:'column', alignItems:'center'}}>
-                    <div style={{width:36, height:36, borderRadius:'50%', background:aprobado?'var(--green)':'var(--bg-subtle)', border:'2px solid '+(aprobado?'var(--green)':'var(--border)'), display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0}}>
-                      {aprobado ? '✓' : '⏳'}
-                    </div>
-                    {i < aprobaciones.length-1 && <div style={{width:2, flex:1, minHeight:32, background:aprobado?'var(--green)':'var(--border)', margin:'4px 0'}}/>}
+      {/* ── Panel: Nuevo presupuesto ──────────────────────────────────── */}
+      {panelNuevo && (
+        <>
+          <div className="side-panel-backdrop" onClick={()=>setPanelNuevo(false)}/>
+          <div className="side-panel" style={{width:'min(520px,96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Nuevo presupuesto</div>
+                <div className="font-display" style={{fontSize:18,fontWeight:700}}>{formPre.periodo||'—'}</div>
+              </div>
+              <button className="icon-btn" onClick={()=>setPanelNuevo(false)}>{I.x}</button>
+            </div>
+            <div className="side-panel-body">
+              <div className="grid-2" style={{gap:12}}>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Nombre del presupuesto <span style={{color:'var(--danger)'}}>*</span></label>
+                  <input className="input" value={formPre.nombre} onChange={e=>setFormPre(p=>({...p,nombre:e.target.value}))} placeholder="Ej. Presupuesto Operativo Mayo 2026" autoFocus/>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Período <span style={{color:'var(--fg-muted)',fontWeight:400}}>(YYYY-MM mensual · YYYY anual)</span></label>
+                  <input className="input" value={formPre.periodo} onChange={e=>setFormPre(p=>({...p,periodo:e.target.value}))} placeholder="2026-05"/>
+                </div>
+                <div className="input-group">
+                  <label>CECO <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
+                  <select className="select" value={formPre.centro_costo_id} onChange={e=>setFormPre(p=>({...p,centro_costo_id:e.target.value}))}>
+                    <option value="">— Todos —</option>
+                    {(centrosCosto||[]).filter(c=>c.empresa_id===empresaId).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>CEBE <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
+                  <select className="select" value={formPre.cebe_id} onChange={e=>setFormPre(p=>({...p,cebe_id:e.target.value}))}>
+                    <option value="">— Todos —</option>
+                    {(centrosBeneficio||[]).filter(c=>c.empresa_id===empresaId).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{marginTop:20,marginBottom:8,fontWeight:600,fontSize:13}}>Partidas presupuestales</div>
+              <div className="card" style={{padding:0,overflow:'hidden',marginBottom:12}}>
+                <table className="tbl" style={{fontSize:13}}>
+                  <thead>
+                    <tr>
+                      <th>Categoría</th>
+                      <th>Descripción</th>
+                      <th className="num">Monto S/</th>
+                      <th style={{width:32}}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formParts.map((fp,i) => (
+                      <tr key={i}>
+                        <td style={{padding:'6px 8px'}}>
+                          <select className="select" value={fp.categoria} onChange={e=>setFormParts(prev=>prev.map((x,j)=>j===i?{...x,categoria:e.target.value}:x))}>
+                            {CATS_PRE.map(c=><option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </td>
+                        <td style={{padding:'6px 8px'}}>
+                          <input className="input" value={fp.descripcion} placeholder="Descripción" onChange={e=>setFormParts(prev=>prev.map((x,j)=>j===i?{...x,descripcion:e.target.value}:x))}/>
+                        </td>
+                        <td style={{padding:'6px 8px'}}>
+                          <input className="input num" type="number" min="0" step="0.01" value={fp.monto_presupuestado} placeholder="0.00" onChange={e=>setFormParts(prev=>prev.map((x,j)=>j===i?{...x,monto_presupuestado:e.target.value}:x))}/>
+                        </td>
+                        <td style={{textAlign:'center',padding:'6px 4px'}}>
+                          <button className="icon-btn" style={{width:24,height:24}} onClick={()=>setFormParts(prev=>prev.filter((_,j)=>j!==i))}>{I.x}</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button className="btn btn-secondary" style={{width:'100%',marginBottom:20}} onClick={()=>setFormParts(prev=>[...prev,{categoria:'Materiales',descripcion:'',monto_presupuestado:''}])}>
+                {I.plus} Agregar partida
+              </button>
+
+              <div className="row mt-6" style={{justifyContent:'flex-end',gap:10}}>
+                <button className="btn btn-secondary" onClick={()=>setPanelNuevo(false)}>Cancelar</button>
+                <button className="btn btn-primary" disabled={saving||!formPre.nombre.trim()||formParts.length===0} onClick={guardarNuevo}>
+                  {saving ? 'Guardando…' : `${I.check} Guardar presupuesto`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Panel: Detalle de partida ─────────────────────────────────── */}
+      {panelDetalle && (
+        <>
+          <div className="side-panel-backdrop" onClick={()=>setPanelDetalle(null)}/>
+          <div className="side-panel" style={{width:'min(600px,96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Detalle de partida</div>
+                <div className="font-display" style={{fontSize:18,fontWeight:700}}>{panelDetalle.categoria}</div>
+                {panelDetalle.descripcion && <div style={{fontSize:13,color:'var(--fg-muted)',marginTop:2}}>{panelDetalle.descripcion}</div>}
+              </div>
+              <button className="icon-btn" onClick={()=>setPanelDetalle(null)}>{I.x}</button>
+            </div>
+            <div className="side-panel-body">
+              <div className="grid-2" style={{gap:12,marginBottom:20}}>
+                <div className="card" style={{padding:'12px 16px'}}>
+                  <div className="eyebrow" style={{marginBottom:6}}>Presupuestado</div>
+                  <div style={{fontSize:22,fontWeight:700}}>{S(panelDetalle.monto_presupuestado)}</div>
+                </div>
+                <div className="card" style={{padding:'12px 16px'}}>
+                  <div className="eyebrow" style={{marginBottom:6}}>Real ejecutado</div>
+                  {(()=>{ const r=calcReal(panelDetalle.categoria); return <div style={{fontSize:22,fontWeight:700,color:r>Number(panelDetalle.monto_presupuestado)?'var(--danger)':'var(--green)'}}>{S(r)}</div>; })()}
+                </div>
+              </div>
+
+              <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>Registros que componen el Real</div>
+              {(()=>{
+                const items = getDesglose(panelDetalle.categoria);
+                if (!items.length) return (
+                  <div className="card" style={{padding:'24px',textAlign:'center',color:'var(--fg-muted)',fontSize:13}}>
+                    Sin registros de {panelDetalle.categoria} para este período.
                   </div>
-                  <div style={{paddingBottom:28, flex:1}}>
-                    <div style={{fontWeight:600, fontSize:14, color:aprobado?'var(--fg)':'var(--fg-muted)'}}>{a.rol}</div>
-                    {a.fecha && <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>{a.fecha}</div>}
-                    <div style={{fontSize:12, marginTop:6, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6, color:'var(--fg-subtle)', borderLeft:'3px solid '+(aprobado?'var(--green)':'var(--border)')}}>{a.comentario}</div>
+                );
+                return (
+                  <div className="card" style={{padding:0,overflow:'hidden'}}>
+                    <table className="tbl">
+                      <thead><tr><th>Fecha</th><th>Descripción</th><th>Proveedor/Técnico</th><th className="num">Monto</th><th>Documento</th></tr></thead>
+                      <tbody>
+                        {items.map((g,i) => (
+                          <tr key={i}>
+                            <td className="text-muted" style={{whiteSpace:'nowrap'}}>{g.fecha}</td>
+                            <td>{g.descripcion}</td>
+                            <td className="text-muted">{g.proveedor}</td>
+                            <td className="num"><strong>{S(g.monto)}</strong></td>
+                            <td className="text-muted">{g.documento}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <div style={{paddingTop:8}}>
-                    <span className={'badge '+(aprobado?'badge-green':'badge-cyan')}>{aprobado?'Aprobado':'En revisión'}</span>
+                );
+              })()}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Panel: Enviar a aprobación ────────────────────────────────── */}
+      {panelEnviar && (
+        <>
+          <div className="side-panel-backdrop" onClick={()=>setPanelEnviar(false)}/>
+          <div className="side-panel" style={{width:'min(440px,96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Enviar a aprobación</div>
+                <div className="font-display" style={{fontSize:18,fontWeight:700}}>{presActivo?.nombre}</div>
+              </div>
+              <button className="icon-btn" onClick={()=>setPanelEnviar(false)}>{I.x}</button>
+            </div>
+            <div className="side-panel-body">
+              <div className="card" style={{padding:'12px 14px',marginBottom:16,fontSize:13,color:'var(--fg-muted)'}}>
+                La cadena es secuencial: cada aprobador solo puede actuar después del anterior. Puedes configurar hasta 4 firmantes.
+              </div>
+              {aprobadores.map((apr,i) => (
+                <div key={i} className="input-group" style={{marginBottom:10}}>
+                  <label>Aprobador {i+1}</label>
+                  <div className="row" style={{gap:8}}>
+                    <select className="select" style={{flex:1}} value={apr?.id||''} onChange={e=>{ const u=usuariosEmpresa.find(u=>u.id===e.target.value); setAprobadores(prev=>prev.map((a,j)=>j===i?(u||null):a)); }}>
+                      <option value="">— Seleccionar usuario —</option>
+                      {usuariosEmpresa.map(u=><option key={u.id} value={u.id}>{u.nombre||u.email}</option>)}
+                    </select>
+                    {aprobadores.length>1 && (
+                      <button className="icon-btn" onClick={()=>setAprobadores(prev=>prev.filter((_,j)=>j!==i))}>{I.x}</button>
+                    )}
                   </div>
                 </div>
-              );
-            })}
+              ))}
+              {aprobadores.length < 4 && (
+                <button className="btn btn-secondary" style={{marginBottom:20}} onClick={()=>setAprobadores(prev=>[...prev,null])}>
+                  {I.plus} Agregar aprobador
+                </button>
+              )}
+              <div className="row mt-6" style={{justifyContent:'flex-end',gap:10}}>
+                <button className="btn btn-secondary" onClick={()=>setPanelEnviar(false)}>Cancelar</button>
+                <button className="btn btn-primary" disabled={saving||aprobadores.filter(Boolean).length===0} onClick={handleEnviar}>
+                  {saving ? 'Enviando…' : 'Enviar a aprobación'}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );

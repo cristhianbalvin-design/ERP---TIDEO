@@ -8,6 +8,7 @@ import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getPotentialManagers, getUserHierarc
 import { PHONE_PATTERN, RUC_PATTERN, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { VARIABLES_COMERCIALES } from './lib/textoComercial.js';
 import { maestrosService } from './services/maestrosService.js';
+const symOf = m => m === 'USD' ? 'US$' : 'S/';
 import { SmartTextField } from './components/SmartTextField.jsx';
 
 // Roles builder, Usuarios, Tenants/Planes, and simple stub pages
@@ -3074,7 +3075,7 @@ function Parametros() {
   const emptySerie = { documento:'', serie:'', siguiente_correlativo:'1', regla:'', estado:'activo' };
   const emptySla = { nombre:'', tiempo_respuesta_horas:'4', tiempo_resolucion_horas:'24', semaforo_regla:'Rojo a 80%', estado:'activo' };
   const emptyDicc = { categoria:'Comercial', clave:'', texto:'', estado:'activo' };
-  const [parametros, setParametros] = useState({ moneda_base:'PEN', igv_defecto:'18', zona_horaria:'America/Lima', plantilla_cotizacion:'TIDEO propuesta tecnica v3', plantilla_factura:'Exportacion fiscal externa', requiere_2fa_financiero:false });
+  const [parametros, setParametros] = useState({ moneda_base:'PEN', igv_defecto:'18', zona_horaria:'America/Lima', plantilla_cotizacion:'TIDEO propuesta tecnica v3', plantilla_factura:'Exportacion fiscal externa', requiere_2fa_financiero:false, agente_retencion:false });
   const [flujosAlertas, setFlujosAlertas] = useState(defaultFlujos);
   const [serieForm, setSerieForm] = useState(emptySerie);
   const [serieEditId, setSerieEditId] = useState(null);
@@ -3099,6 +3100,7 @@ function Parametros() {
       plantilla_cotizacion: empresaConfig.plantilla_cotizacion || 'TIDEO propuesta tecnica v3',
       plantilla_factura: empresaConfig.plantilla_factura || 'Exportacion fiscal externa',
       requiere_2fa_financiero: Boolean(empresaConfig.requiere_2fa_financiero),
+      agente_retencion: Boolean(empresaConfig.agente_retencion),
     });
     const cfgFlujos = Array.isArray(empresaConfig.config_flujos_alertas) ? empresaConfig.config_flujos_alertas : defaultFlujos;
     setFlujosAlertas(cfgFlujos.length ? cfgFlujos : defaultFlujos);
@@ -3119,11 +3121,19 @@ function Parametros() {
       const extra = {};
       const { moneda_base, ...parametrosSinMoneda } = parametros;
       if (logoFile) {
-        try { extra.logo_url = await subirImagenEmpresa('logo', logoFile); } catch (_) { addNotificacion('No se pudo subir el logo; verifique el bucket en Supabase.'); }
+        try {
+          const uploaded = await subirImagenEmpresa('logo', logoFile);
+          extra.logo_url = typeof uploaded === 'string' ? uploaded : uploaded?.url;
+          if (uploaded?.path) extra.logo_path = uploaded.path;
+        } catch (_) { addNotificacion('No se pudo subir el logo; verifique el bucket en Supabase.'); }
         setLogoFile(null);
       }
       if (firmaFile) {
-        try { extra.firma_url = await subirImagenEmpresa('firma', firmaFile); } catch (_) { addNotificacion('No se pudo subir la firma; verifique el bucket en Supabase.'); }
+        try {
+          const uploaded = await subirImagenEmpresa('firma', firmaFile);
+          extra.firma_url = typeof uploaded === 'string' ? uploaded : uploaded?.url;
+          if (uploaded?.path) extra.firma_path = uploaded.path;
+        } catch (_) { addNotificacion('No se pudo subir la firma; verifique el bucket en Supabase.'); }
         setFirmaFile(null);
       }
       await guardarEmpresaConfig({
@@ -3469,6 +3479,11 @@ function Parametros() {
               <input type="checkbox" className="checkbox" checked={parametros.requiere_2fa_financiero} onChange={e=>setParametros(p=>({...p, requiere_2fa_financiero:e.target.checked}))}/>
               <span>Requiere 2FA financiero</span>
             </label>
+            <label className="params-toggle-row" style={{gridColumn:'1/-1'}}>
+              <input type="checkbox" className="checkbox" checked={parametros.agente_retencion} onChange={e=>setParametros(p=>({...p, agente_retencion:e.target.checked}))}/>
+              <span>La empresa es Agente de Retención ante SUNAT</span>
+              <span className="text-muted" style={{fontSize:11, marginLeft:8}}>(Aplica retención del 8% en recibos por honorarios &gt; S/ 1,500)</span>
+            </label>
           </div>
         </div>
       </div>
@@ -3546,7 +3561,7 @@ function Parametros() {
 // RRHH ADMINISTRATIVO — Fase 3
 // ============================================================
 function RRHHAdmin() {
-  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH, aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [] } = useApp();
+  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH, aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [] } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -3557,7 +3572,7 @@ function RRHHAdmin() {
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8' };
+  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'' };
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const cargosAdminOptions = cargos
@@ -3617,6 +3632,11 @@ function RRHHAdmin() {
       modalidad_comision: p.modalidad_comision || 'Planilla',
       ruc_vendedor: p.ruc_vendedor || '',
       retencion_ir_comision: String(p.retencion_ir_comision ?? '8'),
+      ruc_colaborador: p.ruc_colaborador || '',
+      sistema_pensionario: p.sistema_pensionario || 'AFP',
+      retencion_ir: String(p.retencion_ir ?? '8'),
+      suspension_retenciones: Boolean(p.suspension_retenciones),
+      vencimiento_suspension: p.vencimiento_suspension || '',
     });
     setPanelAlta(true);
   };
@@ -3634,8 +3654,12 @@ function RRHHAdmin() {
   const guardarColaborador = async (e) => {
     e.preventDefault();
     if (altaSaving) return;
-    if (!turnosOptions.some(t => t.id === formAlta.turno_id)) {
+    if (formAlta.modalidad !== 'Honorarios' && !turnosOptions.some(t => t.id === formAlta.turno_id)) {
       setAltaError('Selecciona un turno real creado en Supabase antes de guardar el colaborador.');
+      return;
+    }
+    if (formAlta.modalidad === 'Honorarios' && !/^\d{11}$/.test(formAlta.ruc_colaborador)) {
+      setAltaError('El RUC del colaborador debe tener exactamente 11 dígitos numéricos.');
       return;
     }
     if (!formAlta.centro_costo_id) {
@@ -3674,8 +3698,15 @@ function RRHHAdmin() {
       tiene_comisiones: Boolean(formAlta.tiene_comisiones),
       porcentaje_comision: Number(formAlta.porcentaje_comision || 0),
       modalidad_comision: formAlta.modalidad_comision || 'Planilla',
-      ruc_vendedor: formAlta.ruc_vendedor || null,
+      ruc_vendedor: formAlta.modalidad_comision === 'Honorarios'
+        ? (formAlta.modalidad === 'Honorarios' ? (formAlta.ruc_colaborador || null) : (formAlta.ruc_vendedor || null))
+        : null,
       retencion_ir_comision: Number(formAlta.retencion_ir_comision || 8),
+      ruc_colaborador: formAlta.modalidad === 'Honorarios' ? (formAlta.ruc_colaborador || null) : null,
+      sistema_pensionario: formAlta.modalidad === 'Planilla' ? (formAlta.sistema_pensionario || 'AFP') : null,
+      retencion_ir: formAlta.modalidad === 'Honorarios' ? Number(formAlta.retencion_ir || 8) : null,
+      suspension_retenciones: formAlta.modalidad_comision === 'Honorarios' ? Boolean(formAlta.suspension_retenciones) : false,
+      vencimiento_suspension: formAlta.modalidad_comision === 'Honorarios' && formAlta.suspension_retenciones ? (formAlta.vencimiento_suspension || null) : null,
     };
     try {
       if (editandoId) {
@@ -3879,10 +3910,13 @@ function RRHHAdmin() {
           )}
 
           {tab === 'comisiones' && (() => {
+            const isIntRef = v => /^(osc|fac|cxc|com|rec|cob|opp)_/i.test(String(v||'').trim()) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v||'').trim());
+            const getOsLabel = id => { const r = osClientes.find(o => o.id === id); return r?.numero && !isIntRef(r.numero) ? r.numero : null; };
+            const getOppLabel = id => { const r = oportunidades.find(o => o.id === id); return r?.nombre && !isIntRef(r.nombre) ? r.nombre : null; };
             const misComisiones = comisiones.filter(c => c.vendedor_id === sel);
-            const saldoPendiente = misComisiones
-              .filter(c => c.estado === 'aprobada')
-              .reduce((s, c) => s + Number(c.monto_total || 0), 0);
+            const aprobadas = misComisiones.filter(c => c.estado === 'aprobada');
+            const pendientePEN = aprobadas.filter(c => (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + Number(c.monto_total||0), 0);
+            const pendienteUSD = aprobadas.filter(c => (c.moneda||'PEN') === 'USD').reduce((s,c) => s + Number(c.monto_total||0), 0);
             const now = new Date();
             const periodos6 = Array.from({ length: 6 }, (_, i) => {
               const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
@@ -3893,6 +3927,14 @@ function RRHHAdmin() {
                 .filter(c => c.periodo === p && (c.estado === 'pagada' || c.estado === 'aprobada'))
                 .reduce((s, c) => s + Number(c.monto_total || 0), 0)
             );
+            const montoPorPeriodoPEN = periodos6.map(p =>
+              misComisiones.filter(c => c.periodo === p && (c.estado === 'pagada' || c.estado === 'aprobada') && (c.moneda||'PEN') !== 'USD')
+                .reduce((s,c) => s + Number(c.monto_total||0), 0)
+            );
+            const montoPorPeriodoUSD = periodos6.map(p =>
+              misComisiones.filter(c => c.periodo === p && (c.estado === 'pagada' || c.estado === 'aprobada') && (c.moneda||'PEN') === 'USD')
+                .reduce((s,c) => s + Number(c.monto_total||0), 0)
+            );
             const maxMonto = Math.max(...montoPorPeriodo, 1);
             const barW = 60, barGap = 20, svgW = periodos6.length * (barW + barGap) + barGap, svgH = 120;
             return (
@@ -3902,9 +3944,16 @@ function RRHHAdmin() {
                   <div style={{ width:48, height:48, borderRadius:'50%', background:'rgba(6,182,212,0.15)', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--cyan)', flexShrink:0 }}>{I.dollar}</div>
                   <div>
                     <div style={{ fontSize:11, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:2 }}>Saldo acumulado pendiente de pago</div>
-                    <div style={{ fontSize:28, fontWeight:800, color:'var(--cyan)' }}>{money(saldoPendiente)}</div>
+                    <div style={{ fontSize:28, fontWeight:800, color:'var(--cyan)' }}>
+                      {pendienteUSD === 0
+                        ? money(pendientePEN)
+                        : pendientePEN === 0
+                          ? money(pendienteUSD, 'US$')
+                          : <>{money(pendientePEN)}<div style={{fontSize:18,fontWeight:700,marginTop:2}}>{money(pendienteUSD,'US$')}</div></>
+                      }
+                    </div>
                     <div style={{ fontSize:12, color:'var(--fg-muted)', marginTop:2 }}>
-                      {misComisiones.filter(c => c.estado === 'aprobada').length} comisiones aprobadas sin pagar
+                      {aprobadas.length} comisiones aprobadas sin pagar
                     </div>
                   </div>
                 </div>
@@ -3922,11 +3971,15 @@ function RRHHAdmin() {
                       return (
                         <g key={p}>
                           <rect x={x} y={y} width={barW} height={h} rx={4} fill="rgba(6,182,212,0.7)" />
-                          {montoPorPeriodo[i] > 0 && (
-                            <text x={x + barW / 2} y={y - 4} textAnchor="middle" fontSize={10} fill="var(--fg-muted)">
-                              {`S/${(montoPorPeriodo[i] / 1000).toFixed(1)}k`}
-                            </text>
-                          )}
+                          {montoPorPeriodo[i] > 0 && (() => {
+                            const pen = montoPorPeriodoPEN[i], usd = montoPorPeriodoUSD[i];
+                            const lbl = pen > 0 && usd > 0
+                              ? `~${(montoPorPeriodo[i]/1000).toFixed(1)}k`
+                              : usd > 0
+                                ? `US$${(usd/1000).toFixed(1)}k`
+                                : `S/${(pen/1000).toFixed(1)}k`;
+                            return <text x={x + barW / 2} y={y - 4} textAnchor="middle" fontSize={10} fill="var(--fg-muted)">{lbl}</text>;
+                          })()}
                           <text x={x + barW / 2} y={svgH + 16} textAnchor="middle" fontSize={10} fill="var(--fg-muted)">{label}</text>
                         </g>
                       );
@@ -3953,14 +4006,20 @@ function RRHHAdmin() {
                         <tr key={c.id}>
                           <td style={{ fontSize:12 }}>{c.creado_en?.slice(0, 10) || '—'}</td>
                           <td style={{ fontSize:12 }}>
-                            {c.os_cliente_id && <div>OS: {c.os_cliente_id}</div>}
-                            {c.oportunidad_id && <div style={{ color:'var(--fg-muted)' }}>Op: {c.oportunidad_id}</div>}
-                            {!c.os_cliente_id && !c.oportunidad_id && '—'}
+                            {(() => {
+                              const osLabel = c.os_cliente_id ? getOsLabel(c.os_cliente_id) : null;
+                              const oppLabel = c.oportunidad_id ? getOppLabel(c.oportunidad_id) : null;
+                              if (!osLabel && !oppLabel) return '—';
+                              return (<>
+                                {osLabel && <div>OS: {osLabel}</div>}
+                                {oppLabel && <div style={{ color:'var(--fg-muted)' }}>{oppLabel}</div>}
+                              </>);
+                            })()}
                           </td>
-                          <td>{money(c.monto_cobrado)}</td>
-                          <td>{money(c.monto_comision)} <span style={{ fontSize:11, color:'var(--fg-muted)' }}>({c.porcentaje_comision}%)</span></td>
-                          <td>{c.bonificacion > 0 ? money(c.bonificacion) : '—'}</td>
-                          <td style={{ fontWeight:600 }}>{money(c.monto_total)}</td>
+                          <td>{money(c.monto_cobrado, symOf(c.moneda))}</td>
+                          <td>{money(c.monto_comision, symOf(c.moneda))} <span style={{ fontSize:11, color:'var(--fg-muted)' }}>({c.porcentaje_comision}%)</span></td>
+                          <td>{c.bonificacion > 0 ? money(c.bonificacion, symOf(c.moneda)) : '—'}</td>
+                          <td style={{ fontWeight:600 }}>{money(c.monto_total, symOf(c.moneda))}</td>
                           <td>
                             <span className={`badge badge-${c.estado === 'pagada' ? 'green' : c.estado === 'aprobada' ? 'cyan' : c.estado === 'rechazada' ? 'red' : 'orange'}`}>
                               {c.estado === 'pendiente_aprobacion' ? 'Pendiente' : c.estado}
@@ -3972,6 +4031,47 @@ function RRHHAdmin() {
                     </tbody>
                   </table>
                 </div>
+
+                {persona.modalidad_comision === 'Honorarios' && (() => {
+                  const misRecibos = recibosHonorarios.filter(r => r.vendedor_id === sel);
+                  return (
+                    <div style={{ marginTop:28 }}>
+                      <div style={{ fontWeight:600, fontSize:13, marginBottom:10 }}>Recibos de Honorarios</div>
+                      <div className="table-wrap">
+                        <table className="tbl">
+                          <thead>
+                            <tr>
+                              <th>Período</th><th>Comisiones</th><th>Monto bruto</th>
+                              <th>Retención IR</th><th>Monto neto</th><th>N° RHE</th><th>Estado</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {misRecibos.length === 0 && (
+                              <tr><td colSpan={7} style={{ textAlign:'center', color:'var(--fg-muted)', padding:24 }}>
+                                Los recibos aparecerán aquí cuando se procesen las comisiones aprobadas desde el módulo de Comisiones.
+                              </td></tr>
+                            )}
+                            {misRecibos.map(r => (
+                              <tr key={r.id}>
+                                <td style={{ fontSize:12 }}>{r.periodo || '—'}</td>
+                                <td style={{ textAlign:'center' }}>{r.comisiones_ids?.length || 0}</td>
+                                <td>{money(r.monto_bruto, symOf(r.moneda))}</td>
+                                <td style={{ color:'var(--fg-muted)' }}>{money(r.retencion_ir, symOf(r.moneda))}</td>
+                                <td style={{ fontWeight:600 }}>{money(r.monto_neto, symOf(r.moneda))}</td>
+                                <td style={{ fontSize:12 }}>{r.numero_rhe || '—'}</td>
+                                <td>
+                                  <span className={`badge badge-${r.estado === 'pagado' ? 'green' : r.estado === 'pendiente_pago' ? 'orange' : 'gray'}`}>
+                                    {r.estado === 'pendiente_pago' ? 'Pendiente pago' : r.estado === 'pagado' ? 'Pagado' : 'Borrador'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
@@ -4184,6 +4284,13 @@ function RRHHAdmin() {
               <div className="input-group"><label>Teléfono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group"><label>Email corporativo</label><input className="input" type="email" value={formAlta.email} onChange={e=>setFormAlta(v=>({...v,email:e.target.value}))} placeholder="nombre@empresa.pe"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Dirección personal</label><input className="input" value={formAlta.direccion} onChange={e=>setFormAlta(v=>({...v,direccion:e.target.value}))} placeholder="Dirección completa"/></div>
+              {formAlta.modalidad === 'Honorarios' && (
+                <div className="input-group">
+                  <label>RUC <span style={{color:'var(--red)'}}>*</span></label>
+                  <input className="input" type="text" inputMode="numeric" maxLength={11} pattern="[0-9]{11}" value={formAlta.ruc_colaborador} onChange={e=>setFormAlta(v=>({...v,ruc_colaborador:e.target.value.replace(/\D/g,'')}))} placeholder="20XXXXXXXXX"/>
+                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>11 dígitos. Requerido para emitir recibos por honorarios.</div>
+                </div>
+              )}
             </div>
 
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos laborales</div>
@@ -4194,18 +4301,40 @@ function RRHHAdmin() {
               <div className="input-group"><label>Área</label>{areasOptions.length ? <select className="select" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))}><option value="">Seleccionar área...</option>{areasOptions.map(a=><option key={a}>{a}</option>)}</select> : <input className="input" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))} placeholder="Ej: Comercial"/>}</div>
               <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
-              <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
-              <div className="input-group"><label>Fecha inicio contrato *</label><input className="input" type="date" value={formAlta.fecha_inicio} onChange={e=>setFormAlta(v=>({...v,fecha_inicio:e.target.value}))}/></div>
-              <div className="input-group"><label>Fecha fin contrato <span className="text-muted">(vacío = indefinido)</span></label><input className="input" type="date" value={formAlta.fecha_fin} onChange={e=>setFormAlta(v=>({...v,fecha_fin:e.target.value}))}/></div>
-              <div className="input-group"><label>Sueldo base (S/)</label><input className="input" type="number" min="0" value={formAlta.remuneracion} onChange={e=>setFormAlta(v=>({...v,remuneracion:e.target.value}))} placeholder="0"/></div>
+              {formAlta.modalidad !== 'Honorarios' && (
+                <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
+              )}
+              <div className="input-group">
+                <label>{formAlta.modalidad === 'Honorarios' ? 'Fecha inicio del encargo' : 'Fecha inicio contrato *'}</label>
+                <input className="input" type="date" value={formAlta.fecha_inicio} onChange={e=>setFormAlta(v=>({...v,fecha_inicio:e.target.value}))}/>
+              </div>
+              <div className="input-group">
+                <label>{formAlta.modalidad === 'Honorarios' ? 'Fecha fin del encargo' : <span>Fecha fin contrato <span className="text-muted">(vacío = indefinido)</span></span>}</label>
+                <input className="input" type="date" value={formAlta.fecha_fin} onChange={e=>setFormAlta(v=>({...v,fecha_fin:e.target.value}))}/>
+              </div>
+              <div className="input-group">
+                <label>{formAlta.modalidad === 'Honorarios' ? 'Honorario pactado (S/)' : 'Sueldo base (S/)'}</label>
+                <input className="input" type="number" min="0" value={formAlta.remuneracion} onChange={e=>setFormAlta(v=>({...v,remuneracion:e.target.value}))} placeholder="0"/>
+              </div>
               <div className="input-group"><label>Estado</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option><option value="suspendido">Suspendido</option></select></div>
+              {['Planilla','CAS','Practicante'].includes(formAlta.modalidad) && (
+                <div className="input-group">
+                  <label>Sistema pensionario</label>
+                  <select className="select" value={formAlta.sistema_pensionario} onChange={e=>setFormAlta(v=>({...v,sistema_pensionario:e.target.value}))}>
+                    <option value="AFP">AFP</option>
+                    <option value="ONP">ONP</option>
+                  </select>
+                </div>
+              )}
             </div>
 
-            <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Beneficios</div>
-            <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group"><label>Días de vacaciones/año</label><input className="input" type="number" min="0" value={formAlta.dias_vacaciones} onChange={e=>setFormAlta(v=>({...v,dias_vacaciones:e.target.value}))}/></div>
-              <div className="input-group"><label>Días disponibles</label><input className="input" readOnly value={formAlta.dias_vacaciones || 0} style={{color:'var(--fg-muted)'}}/></div>
-            </div>
+            {formAlta.modalidad !== 'Honorarios' && <>
+              <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Beneficios laborales</div>
+              <div className="grid-2" style={{gap:14, marginBottom:20}}>
+                <div className="input-group"><label>Días de vacaciones/año</label><input className="input" type="number" min="0" value={formAlta.dias_vacaciones} onChange={e=>setFormAlta(v=>({...v,dias_vacaciones:e.target.value}))}/></div>
+                <div className="input-group"><label>Días disponibles</label><input className="input" readOnly value={formAlta.dias_vacaciones || 0} style={{color:'var(--fg-muted)'}}/></div>
+              </div>
+            </>}
 
             {(() => {
               return (
@@ -4232,16 +4361,35 @@ function RRHHAdmin() {
                         </select>
                       </div>
                       {formAlta.modalidad_comision === 'Honorarios' && <>
-                        <div className="input-group">
-                          <label>RUC del vendedor <span style={{color:'var(--red)'}}>*</span></label>
-                          <input className="input" type="text" inputMode="numeric" maxLength={11} pattern="[0-9]{11}" value={formAlta.ruc_vendedor} onChange={e=>setFormAlta(v=>({...v,ruc_vendedor:e.target.value.replace(/\D/g,'')}))} placeholder="20XXXXXXXXX"/>
-                          <div className="text-muted" style={{fontSize:11, marginTop:4}}>Requerido para emitir recibos por honorarios.</div>
-                        </div>
+                        {formAlta.modalidad === 'Honorarios' ? (
+                          <div className="input-group" style={{gridColumn:'1/-1'}}>
+                            <div className="text-muted" style={{fontSize:12, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6}}>
+                              RUC para el pago: se usará el RUC ingresado en Datos Personales (<strong>{formAlta.ruc_colaborador || '—'}</strong>).
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="input-group">
+                            <label>RUC del vendedor <span style={{color:'var(--red)'}}>*</span></label>
+                            <input className="input" type="text" inputMode="numeric" maxLength={11} pattern="[0-9]{11}" value={formAlta.ruc_vendedor} onChange={e=>setFormAlta(v=>({...v,ruc_vendedor:e.target.value.replace(/\D/g,'')}))} placeholder="20XXXXXXXXX"/>
+                            <div className="text-muted" style={{fontSize:11, marginTop:4}}>Requerido para emitir recibos por honorarios.</div>
+                          </div>
+                        )}
                         <div className="input-group">
                           <label>Retención IR (%)</label>
                           <input className="input" type="number" min="0" max="30" step="0.5" value={formAlta.retencion_ir_comision} onChange={e=>setFormAlta(v=>({...v,retencion_ir_comision:e.target.value}))} placeholder="8"/>
-                          <div className="text-muted" style={{fontSize:11, marginTop:4}}>Por defecto 8%. Editable si el vendedor está exonerado.</div>
+                          <div className="text-muted" style={{fontSize:11, marginTop:4}}>Por defecto 8%. Solo aplica si la empresa es Agente de Retención, el monto supera S/ 1,500 y no hay suspensión vigente.</div>
                         </div>
+                        <label className="params-toggle-row" style={{gridColumn:'1/-1', cursor:'pointer'}}>
+                          <input type="checkbox" className="checkbox" checked={formAlta.suspension_retenciones} onChange={e=>setFormAlta(v=>({...v,suspension_retenciones:e.target.checked, vencimiento_suspension:''}))}/>
+                          <span>Tiene constancia de suspensión de retenciones</span>
+                        </label>
+                        {formAlta.suspension_retenciones && (
+                          <div className="input-group">
+                            <label>Vencimiento de la constancia <span className="text-muted">(opcional)</span></label>
+                            <input className="input" type="date" value={formAlta.vencimiento_suspension} onChange={e=>setFormAlta(v=>({...v,vencimiento_suspension:e.target.value}))}/>
+                            <div className="text-muted" style={{fontSize:11, marginTop:4}}>Sin fecha = suspensión indefinida. Con fecha = vence el día indicado.</div>
+                          </div>
+                        )}
                       </>}
                     </>}
                   </div>
@@ -4261,6 +4409,7 @@ function RRHHAdmin() {
               </div>
             </div>
 
+            {altaError && <div className="alert alert-danger" style={{marginBottom:12}}>{altaError}</div>}
             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
               <button type="button" className="btn btn-secondary" onClick={cerrarPanelColaborador}>Cancelar</button>
               <button type="submit" className="btn btn-primary" disabled={altaSaving}>{I.save} {altaSaving ? 'Guardando...' : editandoId ? 'Actualizar colaborador' : 'Guardar colaborador'}</button>
@@ -4823,16 +4972,19 @@ function Comisiones() {
   const sumAprobadas = sumByCurrency(aprobadas);
   const sumPagadas = sumByCurrency(pagadasPeriodo);
 
-  const topVendedor = useMemo(() => {
-    const por = {};
-    comisiones.filter(c => c.estado !== 'rechazada').forEach(c => {
-      const key = c.vendedor_nombre || c.vendedor_id;
-      if (!por[key]) por[key] = { nombre: key, items: [], total: 0 };
-      por[key].items.push(c);
-      por[key].total += Number(c.monto_total || 0);
+  const topVendedorPorMoneda = useMemo(() => {
+    const result = {};
+    monedasResumen.forEach(moneda => {
+      const por = {};
+      comisiones.filter(c => c.estado !== 'rechazada' && monedaComision(c) === moneda).forEach(c => {
+        const key = c.vendedor_nombre || c.vendedor_id;
+        if (!por[key]) por[key] = { nombre: key, total: 0 };
+        por[key].total += Number(c.monto_total || 0);
+      });
+      const sorted = Object.values(por).sort((a, b) => b.total - a.total);
+      if (sorted.length > 0) result[moneda] = sorted[0];
     });
-    const sorted = Object.values(por).sort((a, b) => b.total - a.total);
-    return sorted[0] || null;
+    return result;
   }, [comisiones]);
 
   const vendedoresHonorariosPendientes = useMemo(() => {
@@ -5096,9 +5248,34 @@ function Comisiones() {
           <div className="kpi-sub">{periodoActual}</div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-label">Top vendedor</div>
-          <div className="commission-top-name">{topVendedor?.nombre || 'Sin datos'}</div>
-          {renderMoneyStack(topVendedor ? sumByCurrency(topVendedor.items) : { PEN: 0, USD: 0 })}
+          {Object.keys(topVendedorPorMoneda).length === 0 ? (
+            <>
+              <div className="kpi-label">Top vendedor</div>
+              <div className="commission-top-name">Sin datos</div>
+            </>
+          ) : Object.keys(topVendedorPorMoneda).length === 1 ? (
+            (() => {
+              const [[moneda, tv]] = Object.entries(topVendedorPorMoneda);
+              return (
+                <>
+                  <div className="kpi-label">Top vendedor</div>
+                  <div className="commission-top-name">{tv.nombre}</div>
+                  <div style={{fontSize:13, fontWeight:700}}>{moneyComision(tv.total, moneda)}</div>
+                </>
+              );
+            })()
+          ) : (
+            <>
+              <div className="kpi-label">Top vendedor por moneda</div>
+              {Object.entries(topVendedorPorMoneda).map(([moneda, tv]) => (
+                <div key={moneda} style={{marginTop:6}}>
+                  <div style={{fontSize:10, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2}}>{moneda}</div>
+                  <div style={{fontSize:12, fontWeight:600, color:'var(--fg)'}}>{tv.nombre}</div>
+                  <div style={{fontSize:13, fontWeight:700}}>{moneyComision(tv.total, moneda)}</div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
@@ -5351,12 +5528,12 @@ function Comisiones() {
               <button className="btn btn-sm btn-secondary" onClick={() => setPanelRecibo(null)}>Cerrar</button>
             </div>
             <div className="side-panel-body">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
                 {[
                   ['Período', panelRecibo.periodo],
                   ['N° comisiones', panelRecibo.comisiones_ids?.length || 0],
                   ['Monto bruto', moneyComision(panelRecibo.monto_bruto, panelReciboMoneda)],
-                  ['Retención IR (8%)', `-${moneyComision(panelRecibo.retencion_ir, panelReciboMoneda)}`],
+                  [`Retención IR${panelRecibo.retencion_ir > 0 ? '' : ' (S/ 0)'}`, `-${moneyComision(panelRecibo.retencion_ir, panelReciboMoneda)}`],
                   ['Monto neto', moneyComision(panelRecibo.monto_neto, panelReciboMoneda)],
                 ].map(([label, val]) => (
                   <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -5365,6 +5542,12 @@ function Comisiones() {
                   </div>
                 ))}
               </div>
+              {panelRecibo.motivo_retencion && (
+                <div style={{ fontSize: 12, padding: '8px 12px', background: panelRecibo.retencion_ir > 0 ? 'var(--bg-warning, #fff8e1)' : 'var(--bg-subtle)', borderRadius: 6, marginBottom: 14, color: 'var(--fg-muted)', borderLeft: `3px solid ${panelRecibo.retencion_ir > 0 ? 'var(--orange, #f59e0b)' : 'var(--border)'}` }}>
+                  <strong style={{ display: 'block', marginBottom: 2 }}>Regla de retención</strong>
+                  {panelRecibo.motivo_retencion}
+                </div>
+              )}
               <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 16 }}>
                 Al confirmar se generará una CxP en el módulo financiero. El egreso a Tesorería y el cierre de comisiones ocurren al registrar el pago de esa CxP.
               </div>

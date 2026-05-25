@@ -8,8 +8,16 @@ export const finanzasService = {
       .select(`*, os_clientes(id, numero, cuenta_id)`)
       .eq('empresa_id', empresaId)
       .order('fecha', { ascending: false });
-    if (error) throw error;
-    return data;
+    if (!error) return data;
+
+    console.warn('[finanzas] getValorizaciones: fallback sin relacion os_clientes', error?.message || error);
+    const fallback = await supabase
+      .from('valorizaciones')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('fecha', { ascending: false });
+    if (fallback.error) throw fallback.error;
+    return fallback.data;
   },
 
   async crearValorizacion(payload) {

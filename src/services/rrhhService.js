@@ -199,6 +199,8 @@ const normalizarPersonalAdmin = (p = {}) => ({
   modalidad_comision: p.modalidad_comision || null,
   ruc_vendedor: p.ruc_vendedor || null,
   retencion_ir_comision: p.retencion_ir_comision != null ? Number(p.retencion_ir_comision) : 8,
+  suspension_retenciones: Boolean(p.suspension_retenciones),
+  vencimiento_suspension: p.vencimiento_suspension || null,
 });
 
 const toPersonalAdminRow = (empresaId, persona = {}) => ({
@@ -245,6 +247,8 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   modalidad_comision: persona.modalidad_comision || null,
   ruc_vendedor: persona.ruc_vendedor || null,
   retencion_ir_comision: persona.retencion_ir_comision != null ? Number(persona.retencion_ir_comision) : 8,
+  suspension_retenciones: Boolean(persona.suspension_retenciones),
+  vencimiento_suspension: persona.vencimiento_suspension || null,
 });
 
 const toPersonalAdminUpdate = (cambios = {}) => {
@@ -262,7 +266,8 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     'telefono_emergencia', 'nivel_estudios', 'especialidad', 'institucion',
     'documentos', 'estado', 'centro_costo_id',
     'auth_user_id', 'tiene_comisiones', 'porcentaje_comision',
-    'modalidad_comision', 'ruc_vendedor', 'retencion_ir_comision'
+    'modalidad_comision', 'ruc_vendedor', 'retencion_ir_comision',
+    'suspension_retenciones', 'vencimiento_suspension'
   ]);
 
   return Object.entries(cambios).reduce((row, [key, value]) => {

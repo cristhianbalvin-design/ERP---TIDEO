@@ -1,6 +1,6 @@
 # ERP Modular Est├índar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado ÔÇö TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS · Última actualización: 15/05/2026
+### Arquitectura Multitenant SaaS · Última actualización: 22/05/2026
 
 ---
 
@@ -23,18 +23,18 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 
 ---
 
-## 3. Estado de desarrollo — 12/05/2026
+## 3. Estado de desarrollo — 22/05/2026
 
 ### 3.1 Resumen de progreso
 
 | Área | Estado |
 |------|--------|
 | Módulos implementados (construidos) | ~63 |
-| Módulos en prompt pendiente de implementar | 3 |
+| Módulos en prompt pendiente de implementar | 0 |
 | Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase |
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
-| Migraciones SQL aplicadas en Supabase | 078 (última confirmada: leads_campos_reactivacion) |
-| Migraciones creadas pendientes de aplicar | 079 opp_historial_etapas |
+| Migraciones SQL aplicadas en Supabase | 136 (campos de 135/136 aplicados en Supabase, excepto columna `motivo_retencion`) |
+| Migraciones creadas pendientes de aplicar | 137 (retención IR), 138 (presupuestos), parte de 132 (tabla `cxp_pagos`) y columna `motivo_retencion` de 135 (creadas localmente pero pendientes en remoto) |
 
 ### 3.2 Inventario completo de m├│dulos
 
@@ -50,9 +50,9 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 #### CRM y Comercial
 | M├│dulo | Estado | Notas |
 |--------|--------|-------|
-| Cuentas y Contactos | Ô£à Implementado | Pendiente: expandir formulario alta, tab condiciones financieras, nota orientaci├│n flujo |
+| Cuentas y Contactos | ✔ Implementado | Formulario comercial rápido, tab Condiciones Financieras visible con ver_finanzas, badge advertencia orientación de flujo leads. |
 | Leads y Scoring | Ô£à Implementado | Pendiente: agregar Raz├│n Social, RUC, Industria al formulario |
-| Pipeline y Oportunidades | ✔ Implementado | Timeline: movimientos entre etapas registrados en `opp_historial_etapas` (migr. 079 pendiente de aplicar) |
+| Pipeline y Oportunidades | ✔ Implementado | Timeline: movimientos entre etapas registrados en `opp_historial_etapas` (migr. 079 aplicada en Supabase) |
 | Agenda Comercial | Ô£à Implementado | Planificaci├│n de visitas y demos |
 | Actividades Comerciales | Ô£à Implementado | |
 | Hoja de Costeo | Ô£à Implementado | Documento interno entre Oportunidad y Cotizaci├│n. Secciones: MO, materiales, servicios terceros, log├¡stica. Flujo: borrador ÔåÆ en revisi├│n ÔåÆ aprobada ÔåÆ genera cotizaci├│n pre-rellenada |
@@ -78,6 +78,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | Control de Asistencia | ✔ Implementado | 4 tabs: diaria, semanal, mensual, resumen. Tardanzas y horas extra automáticas. Registro masivo. |
 | Turnos y Horarios | ✔ Implementado | Módulo standalone `pages_turnos.jsx`. CRUD completo: crear/editar/eliminar con side-panel. Campos: nombre, entrada/salida, tolerancia, cruza medianoche, días laborables (o variables), refrigerio. Preview de horas efectivas en tiempo real. |
 | Nómina Básica | ✔ Implementado | Cálculo completo: bruto, AFP/ONP, IR 5ta, cargas empresa. Cierre de período → egresos en finanzas. |
+| Comisiones | ✔ Implementado | Liquidación, aprobaciones (acuerdos especiales, +48h sin respuesta), retenciones IR de 4ta categoría según suspensión y tipo de cambio, generación de RHE y CxP asociada. |
 | Pr├®stamos al Personal | Ô£à Implementado (como "Pr├®stamos y Pagos") | Mover a secci├│n RRHH |
 
 #### Log├¡stica
@@ -95,6 +96,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | Órdenes de Compra | ✔ Implementado | Para bienes. Timeline de seguimiento por estados |
 | Órdenes de Servicio Interna | ✔ Implementado | Para servicios tercerizados. Conformidad como cierre |
 | Recepciones | ✔ Implementado | Verificación ítem por ítem. Genera CxP + evaluación proveedor |
+| Compras en Campo / Gastos | ✔ Implementado | Registro manual de egresos/comprobantes con extracción IA. Validación obligatoria de Centro de Costo (CECO). |
 
 #### Administraci├│n y Finanzas
 | M├│dulo | Estado | Notas |
@@ -108,8 +110,8 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | Facturaci├│n | Ô£à Implementado | |
 | Tesorer├¡a / Match Bancario | Ô£à Implementado | |
 | Estado de Resultados | Ô£à Implementado | |
-| Valorizaciones | Ô£à Implementado | |
-| Presupuesto vs Real | Ô£à Implementado | |
+| Valorizaciones | ✔ Implementado | Persistencia nativa del detalle de valorizaciones (items, ot_ids, historial, modelo_calculo, notas, fecha_aprobacion, motivo_anulacion). |
+| Presupuesto vs Real | ✔ Implementado | Control presupuestal mensual y anual por CECO/CEBE, cadena de 4 aprobadores secuenciales, cálculo real automático (MO desde OTs y gastos desde compras) y drill-down interactivo. |
 
 #### Customer Success
 | M├│dulo | Estado |
@@ -152,11 +154,11 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 
 ### 3.3 Prompts pendientes de ejecutar
 
-| Prompt | Descripci├│n | Orden de ejecuci├│n |
-|--------|-------------|-------------------|
-| `prompt_fix_maestros_rrhh.md` | Correcci├│n arquitectura Maestros Base (eliminar Personal, agregar Especialidades/Tipos de servicio/Almacenes) | 1 |
-| `prompt_fix_clientes_arquitectura.md` | Clientes solo lectura en Maestros Base, formulario nueva cuenta expandido, tab condiciones financieras | 2 |
-| `prompt_fix_lead_cuenta_flujo.md` | Formulario lead con RUC/Raz├│n social, convertir lead, flujo completo CRM | 3 |
+| Prompt | Descripción | Estado |
+|--------|-------------|--------|
+| `prompt_fix_maestros_rrhh.md` | Corrección arquitectura Maestros Base (eliminar Personal, agregar Especialidades/Tipos de servicio/Almacenes) | ✔ Completado y Aplicado |
+| `prompt_fix_clientes_arquitectura.md` | Clientes solo lectura en Maestros Base, formulario nueva cuenta expandido, tab condiciones financieras | ✔ Completado y Aplicado |
+| `prompt_fix_lead_cuenta_flujo.md` | Formulario lead con RUC/Razón social, convertir lead, flujo completo CRM | ✔ Completado y Aplicado |
 
 ### 3.4 Estructura de archivos fuente
 
@@ -164,15 +166,16 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 |---------|----------------|---------------|
 | `src/App.jsx` | Router principal, switch de rutas | 44 KB |
 | `src/data.js` | Todos los datasets mock (MOCK export) | 108 KB |
-| `src/context.jsx` | Estado global, funciones de mutación, CRM sync, historial etapas, asistencia, planner | 153 KB |
+| `src/context.jsx` | Estado global, funciones de mutación, CRM sync, historial etapas, asistencia, planner | 259 KB |
 | `src/shell.jsx` | Layout, sidebar, header, dark mode, simulador de roles | 26 KB |
 | `src/pages_core.jsx` | Dashboard, CRM, Leads, Pipeline, Campañas, BI Comercial, BI Operativo | 228 KB |
-| `src/pages_ops.jsx` | OT, Partes, Planner, Tickets, RRHH, Compras, Cuentas 360° | 319 KB |
-| `src/pages_admin.jsx` | Configuración, Usuarios, Roles, Maestros, Tesorería, ER, CxC, CxP | 149 KB |
+| `src/pages_ops.jsx` | OT, Partes, Planner, Tickets, RRHH, Compras, Cuentas 360° | 505 KB |
+| `src/pages_admin.jsx` | Configuración, Usuarios, Roles, Maestros, Tesorería, ER, CxC, CxP, Comisiones, Organigrama | 331 KB |
 | `src/pages_turnos.jsx` | Turnos y Horarios (CRUD completo, standalone) | 12 KB |
 | `src/pages_api_keys.jsx` | API Keys — generación, permisos, revocación, one-time display | 16 KB |
-| `src/pages_fin.jsx` | CxC, CxP, Facturación, Tesorería, Presupuesto | 63 KB |
-| `src/pages_bi_fin.jsx` | BI Financiero | 20 KB |
+| `src/pages_fin.jsx` | CxC, CxP, Facturación, Tesorería, Presupuesto vs Real, Caja Chica, Préstamos | 236 KB |
+| `src/pages_bi_fin.jsx` | BI Financiero (incluye Tab de Presupuestos) | 62 KB |
+| `src/services/presupuestosService.js` | CRUD presupuestos, partidas, aprobaciones de presupuesto | 2.8 KB |
 | `src/pages_ia.jsx` | IA Comercial, Operativa, Financiera + Historial auditado | 54 KB |
 | `src/pages_cs.jsx` | Customer Success completo | 46 KB |
 | `src/icons.jsx` | Iconografía, helpers money/moneyD | 8.6 KB |
@@ -401,6 +404,7 @@ RRHH                          ÔåÉ SECCI├ôN NUEVA
   Control de Asistencia
   Turnos y Horarios
   N├│mina
+  Comisiones                  ÔåÉ NUEVO
   Pr├®stamos al Personal
 
 LOG├ìSTICA
@@ -619,9 +623,14 @@ Crear roles con nombre libre. Clonar. Matriz de permisos por pantalla: Ver | Cre
 
 ---
 
-### 8.6 CRM ÔÇö Cuentas y Contactos
+### 8.6 CRM — Cuentas y Contactos
 
-Fuente de verdad del cliente. Clasificaci├│n, industria, segmento, responsable comercial y CS. Contactos con rol. Relaci├│n muchos-a-muchos. Vista 360┬░ con tabs: Resumen, Oportunidades, Cotizaciones, OS Cliente, OTs, Facturas, Cobranza, Actividades, Contactos, **Customer Success 360┬░** (health score + dimensiones + onboarding + renovaci├│n + NPS), **Condiciones comerciales** (solo con `ver_finanzas`: condici├│n de pago, l├¡mite cr├®dito, riesgo, datos fiscales). Indicador "Condiciones pendientes" si faltan datos financieros.
+Fuente de verdad del cliente. Clasificación, industria, segmento, responsable comercial y CS. Contactos con rol. Relación muchos-a-muchos. Vista 360° con tabs: Resumen, Oportunidades, Cotizaciones, OS Cliente, OTs, Facturas, Cobranza, Actividades, Contactos, **Customer Success 360°** (health score + dimensiones + onboarding + renovación + NPS), **Condiciones comerciales** (solo con `ver_finanzas`: condición de pago, límite crédito, riesgo, datos fiscales). Indicador "Condiciones pendientes" si faltan datos financieros.
+
+**Mejoras de Cuentas y Contactos:**
+- **Alta comercial en dos momentos:** Momento 1 (Alta comercial rápida) y Momento 2 (Condiciones financieras y fiscales) están completamente desarrollados.
+- **Ficha 360° del Cliente:** Integración del panel CS 360° y panel financiero restringido por RLS y permisos.
+- **En proceso:** Optimización en la usabilidad del filtrado rápido y asignación de gestor comercial/CS.
 
 ---
 
@@ -631,9 +640,14 @@ Kanban por estado: Nuevo ÔåÆ En contacto ÔåÆ Calificado ÔåÆ Convertido 
 
 ---
 
-### 8.8 CRM ÔÇö Pipeline y Oportunidades
+### 8.8 CRM — Pipeline y Oportunidades
 
-Kanban: Prospecci├│n ÔåÆ Calificaci├│n ÔåÆ Propuesta ÔåÆ Negociaci├│n ÔåÆ Ganada ÔåÆ Perdida. Panel lateral con timeline de actividades. Motivo de p├®rdida obligatorio. Forecast ponderado. Conversi├│n a cotizaci├│n y OS Cliente.
+Kanban: Prospección → Calificación → Propuesta → Negociación → Ganada → Perdida. Panel lateral con timeline de actividades. Motivo de pérdida obligatorio. Forecast ponderado. Conversión a cotización y OS Cliente.
+
+**Reglas de Automatización de Etapas:**
+- **Cotización enviada:** Mueve automáticamente la oportunidad a la etapa de **Propuesta**.
+- **Creación de nueva versión (v2 o superior):** Mueve automáticamente la oportunidad a la etapa de **Negociación**.
+- **Aprobación de cotización (digital o manual):** Mueve automáticamente la oportunidad a la etapa de **Ganada** con probabilidad 100%.
 
 ---
 
@@ -751,6 +765,49 @@ Registro manual: seleccionar trabajador, fecha, hora de entrada, hora de salida.
 
 ---
 
+### 8.18b RRHH ÔÇö Liquidaci├│n y Aprobaci├│n de Comisiones
+
+M├│dulo central para la liquidaci├│n, aprobaci├│n de acuerdos especiales y pago de comisiones comerciales.
+
+**1. Origen y Atribuci├│n Autom├ítica:**
+*   Las comisiones se generan en tiempo real al registrarse un cobro de CxC en el m├│dulo de Administraci├│n.
+*   Si la oportunidad asociada a la venta posee un acuerdo de comisi├│n especial, se calcula en base a ese porcentaje (`acuerdo_pct`) y su bonificaci├│n. De lo contrario, se usa el porcentaje base del vendedor en su ficha de personal.
+*   Si el vendedor no existe en `personal_administrativo` o no tiene comisiones activas en su ficha, se lanza una alerta/toast en tiempo real en la pantalla.
+
+**2. Gesti├│n de Acuerdos Especiales:**
+*   **Aprobaci├│n de Acuerdos:** Los gerentes y administradores pueden aprobar o rechazar acuerdos comerciales de comisiones especiales desde la pestaña *Acuerdos pendientes*.
+*   **Alerta +48h:** Se incluye un indicador de urgencia de color rojo para aquellos acuerdos de comisiones especiales que lleven m├ís de 48 horas sin respuesta.
+
+**3. Liquidaci├│n y Canales de Pago:**
+*   **Planilla:** Si la modalidad de comisi├i├│n es Planilla, al cerrar el per├¡odo de comisiones se integran en la remuneraci├│n bruta del trabajador para su c├ílculo mensual.
+*   **Honorarios (Recibos por Honorarios):** Si la modalidad es Honorarios, se genera una orden de RHE agrupando sus comisiones aprobadas. Al confirmarse el recibo en el m├│dulo de Comisiones, se crea autom├íticamente una Cuenta por Pagar (CxP) de tipo `personal` en el m├│dulo financiero.
+
+**4. Reglas de Retenci├│n del Impuesto a la Renta de 4ta Categor├¡a (RHE - Per├║):**
+*   **Agente de Retenci├│n:** Se eval├║a si la empresa es agente de retenci├│n (`agente_retencion = true` en `empresa_config`).
+*   **Monto Umbral:** Si el monto bruto convertido a soles (PEN) usando el tipo de cambio referencial (para transacciones en USD) supera S/ 1,500.
+*   **Exenci├│n por Suspensi├│n:** Se verifica si el colaborador tiene una constancia de suspensi├│n de retenciones activa para el per├¡odo actual (`suspension_retenciones = true` y fecha `vencimiento_suspension >= hoy`).
+*   **Retenci├│n:** Si aplica, se deduce el porcentaje configurado (8% por defecto) y se registra el sustento de retenci├│n/exoneraci├│n en el campo `motivo_retencion`.
+
+**5. Formulario y Ficha de Colaborador (RRHH > Personal Administrativo):**
+*   El formulario de edici├│n del colaborador se adapta din├ímicamente seg├║n su modalidad de contrato:
+    *   **Contrato de Planilla:** Muestra campos de turnos, AFP/ONP, sueldo base y beneficios sociales de ley.
+    *   **Contrato de Honorarios:** Oculta turnos asignados, AFP/ONP y beneficios laborales. Cambia la etiqueta de sueldo a *"Honorario pactado"* y las fechas del contrato pasan a llamarse *"Inicio del encargo"* y *"Fin del encargo"*. Requiere obligatoriamente un RUC v├ílido de 11 d├¡gitos.
+*   Secci├│n **Configuraci├│n de Comisiones**: Contiene toggle para activar comisiones, porcentaje base de comisi├│n, modalidad de pago, RUC de comisiones (vendedor), retención de IR de comisiones, suspensión de retenciones y fecha de vencimiento. Los campos de RUC y retención IR se muestran/ocultan dinámicamente en tiempo real según la modalidad de pago seleccionada.
+
+**Bugs de CxC y Comisiones corregidos (10 bugs):**
+1. **Tolerancia a Supabase real:** Remoción de fallbacks en RHE y CxP con inserciones reales directas a BD Supabase.
+2. **Normalización de moneda:** Conversión PEN / USD estandarizada para evitar inconsistencias en agrupaciones.
+3. **Cálculo de retención de IR de 4ta:** Cálculo dinámico con tipo de cambio para el umbral de S/ 1,500.
+4. **Propagación de RUC:** Carga automática del RUC del vendedor para la generación del RHE.
+5. **Registro de justificación:** Guardado correcto del sustento de retención en el campo `motivo_retencion` en BD.
+6. **Generación automática de CxP:** Creación de CxP tipo `personal` vinculada al ID del recibo.
+7. **Importación de CxC:** Carga limpia de saldos sin duplicaciones de registros.
+8. **Filtrado por moneda en RHE:** Agrupación selectiva de comisiones aprobadas según la moneda de origen.
+9. **Validación de RUC en ficha:** Exigencia obligatoria de RUC de 11 dígitos y bloqueo de comisiones si no hay modalidad de pago.
+10. **Comisiones en planilla:** Egreso integrado en la nómina bruta para comisiones bajo modalidad Planilla.
+
+---
+
 ### 8.19 RRHH ÔÇö Pr├®stamos al Personal
 
 Pr├®stamos que la empresa otorga a sus trabajadores. Naturaleza: activo (nos deben). Se descuenta en n├│mina. Tabla con empleado, monto, cuotas, avance pagado, estado. Toggle "Descontar autom├íticamente en n├│mina". No confundir con financiamiento recibido.
@@ -759,7 +816,11 @@ Pr├®stamos que la empresa otorga a sus trabajadores. Naturaleza: activo (nos 
 
 ### 8.20 SOLPE Interna
 
-Origen de toda necesidad de compra. Desde OT o parte diario. Clasificaci├│n, urgencia, centro de costo. Flujo visual: Borrador ÔåÆ Solicitada ÔåÆ Aprobada ÔåÆ Atendida. Al aprobarse, Compras la recibe y genera el proceso de cotizaci├│n.
+Origen de toda necesidad de compra. Desde OT o parte diario. Clasificación, urgencia, centro de costo. Flujo visual: Borrador → Solicitada → Aprobada → Atendida. Al aprobarse, Compras la recibe y genera el proceso de cotización.
+
+**Validación y Selección:**
+- El campo de **Centro de Costo (CECO)** es **obligatorio** en el formulario de creación de SOLPE.
+- Cuenta con un selector funcional que carga dinámicamente los CECOs activos de la empresa.
 
 ---
 
@@ -799,9 +860,18 @@ Para servicios tercerizados. Mismo patr├│n que OC pero con alcance, entregab
 
 ---
 
-### 8.26 Compras ÔÇö Recepciones
+### 8.26 Compras — Recepciones
 
-Confirmar que lo pedido lleg├│ y en qu├® condici├│n. Verificaci├│n ├¡tem por ├¡tem (pedido vs recibido). Tipo: total, parcial u observada. Al confirmar: actualiza OC, ingresa bienes a inventario (si es compra), genera CxP, crea evaluaci├│n post-servicio en ficha del proveedor.
+Confirmar que lo pedido llegó y en qué condición. Verificación ítem por ítem (pedido vs recibido). Tipo: total, parcial u observada. Al confirmar: actualiza OC, ingresa bienes a inventario (si es compra), genera CxP, crea evaluación post-servicio en ficha del proveedor.
+
+---
+
+### 8.26b Compras en Campo y Registro de Gastos
+
+Registro estructurado de egresos menores y adquisiciones directas fuera del flujo ordinario de Órdenes de Compra.
+*   **Origen:** Puede ser registrado desde campo vía PWA móvil (con foto del comprobante y extracción automática de datos mediante IA) o cargado manualmente desde el backoffice (Administración / Finanzas).
+*   **Validación obligatoria de CECO:** El campo de **Centro de Costo (CECO)** es **estrictamente obligatorio** para guardar cualquier gasto. Si no se selecciona un CECO activo, el sistema bloquea el registro con una alerta visual de error.
+*   **Impacto Financiero:** Todos los registros en `compras_gastos` se integran automáticamente en la visualización del Estado de Resultados y en el BI Financiero bajo el período y CECO correspondientes.
 
 ---
 
@@ -814,6 +884,8 @@ Costo estimado vs real. Mano de obra (desde parte diario ├ù costo hora real),
 ### 8.28 Valorizaci├│n
 
 Agrupar OTs cerradas por cliente/per├¡odo. Aplicar tarifas, descuentos, penalidades, impuestos. Flujo de aprobaci├│n. Control de OTs valorizadas y pendientes. PDF.
+
+**Detalle de Valorizaciones y Persistencia:** La tabla `valorizaciones` incluye persistencia nativa del JSON de partidas (`items`), las OTs vinculadas (`ot_ids`), y el historial de acciones y aprobaciones (`historial`). También almacena el modelo de cálculo utilizado, notas explicativas, fecha de aprobación final y motivo de anulación en caso de cancelación.
 
 ---
 
@@ -847,7 +919,7 @@ GASTOS FINANCIEROS
 RESULTADO NETO ÔåÆ margen %
 ```
 
-Filtros: per├¡odo, cliente, proyecto, centro de costo. Drill-down por categor├¡a. Comparativo per├¡odo anterior.
+Filtros: período, cliente, proyecto, centro de costo (CECO) y centro de beneficio (CEBE) completamente funcionales mediante MultiSelect. Drill-down por categoría. Comparativo período anterior.
 
 ---
 
@@ -869,7 +941,29 @@ Tipos: bancario, tercero (persona natural/empresa), leasing, l├¡nea de cr├�
 
 ### 8.33 Presupuesto vs Real
 
-Por proyecto/centro de costo. Aprobaci├│n con cadena visual (4 aprobadores con estado). Comparaci├│n real vs presupuesto con variaciones absolutas y porcentuales. Alertas por desviaci├│n. Proyecci├│n de cierre.
+Módulo completo de control presupuestal que permite contrastar los gastos proyectados contra los egresos reales de la operación en períodos mensuales (`YYYY-MM`) o anuales (`YYYY`), opcionalmente filtrando por Centro de Costo (CECO) y Centro de Beneficio (CEBE).
+
+**Filtros en BI Financiero y Presupuestos:**
+- Los filtros por **CECO** y **CEBE** son funcionales en la vista de **BI Financiero** y en el módulo **Presupuesto vs Real** (recalculando los costos reales y variaciones en tiempo real).
+
+**1. Presupuestos y Partidas:**
+*   Creaci├│n e ingreso de presupuestos con su respectivo t├¡tulo y per├¡odo.
+*   Gesti├│n de partidas agrupadas por categor├¡a (Materiales, Mano de obra, Servicios de Terceros, Log├¡stica, Gastos, etc.) con sus montos estimados en soles (PEN) y su descripci├│n.
+
+**2. Cadena de Aprobaci├│n Secuencial:**
+*   Aprobaci├│n de presupuestos mediante una cadena de firmas secuencial de hasta 4 niveles de aprobadores seleccionables de la lista de usuarios.
+*   El estado del presupuesto cambia de `borrador` ÔåÆ `en_aprobacion` ÔåÆ `aprobado` (cuando firman todos) o `rechazado` (si alg├║n firmante rechaza, capturando obligatoriamente su comentario).
+
+**3. C├ílculo Autom├ítico del Real Ejecutado:**
+*   **Mano de Obra:** Se obtiene del costo real acumulado de las ├ôrdenes de Trabajo (OT) que se cerraron o facturaron dentro del per├¡odo presupuestado (coincidiendo con el CECO de la partida).
+*   **Otras Categor├¡as:** Se obtiene autom├íticamente a partir del total de compras y egresos registrados en `compras_gastos` en el per├¡odo de an├ílisis que tengan asignada la misma categor├¡a y CECO.
+
+**4. Variaciones y Sem├íforos de Alerta:**
+*   El sistema calcula en tiempo real la variaci├│n neta absoluta y el porcentaje de ejecuci├│n presupuestal.
+*   Las partidas se marcan visualmente con sem├íforos de estado: `OK` (ejecución menor a 80%), `En l├¡mite` (80%-100%, barra naranja) o `Excedido` (mayor a 100%, barra roja), desplegando una alerta general en la parte superior si existen partidas excedidas.
+
+**5. Desglose y Drill-down de Comprobantes:**
+*   Al hacer clic en cualquier partida presupuestal en el panel, se despliega un listado detallado (con fecha, descripci├│n, proveedor o t├®cnico, documento de origen y monto) con todas las transacciones individuales (gastos o OTs) que conforman el costo real total de esa partida para una auditor├¡a transparente.
 
 ---
 
@@ -1004,7 +1098,7 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 ### 9.3 Tablas de negocio (todas con empresa_id)
 
-**CRM:** cuentas, contactos, relacion_cuenta_contacto, leads (+campana_id), oportunidades (+campana_id), campanas, etapas_pipeline, actividades_comerciales, health_score_cliente, lead_historial_estados (append-only, cargada en boot desde Supabase), opp_historial_etapas (append-only, migración 079 pendiente de aplicar).
+**CRM:** cuentas, contactos, relacion_cuenta_contacto, leads (+campana_id), oportunidades (+campana_id), campanas, etapas_pipeline, actividades_comerciales, health_score_cliente, lead_historial_estados (append-only, cargada en boot desde Supabase), opp_historial_etapas (id, empresa_id, opp_id, cuenta_id, etapa_desde, etapa_hasta, usuario, creado_en - aplicada en Supabase).
 
 **Integraciones:** api_keys (empresa_id, key_hash, descripcion, permisos text[], activo, creado_por, ultimo_uso_en).
 
@@ -1014,11 +1108,17 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 **Inventario y compras:** almacenes, stock, movimientos_inventario, kardex, solpe_interna, proveedores, documentos_proveedor, evaluaciones_proveedor, contactos_proveedor, procesos_compra, ordenes_compra, ordenes_servicio, recepciones, conformidad_proveedor, traslados_logisticos.
 
-**RRHH:** personal_operativo (+turno_id, sueldo_base, sistema_pensionario), personal_administrativo, turnos, registros_asistencia, periodos_nomina, detalle_nomina, prestamos_personal.
+**RRHH:** personal_operativo (+turno_id, sueldo_base, sistema_pensionario), personal_administrativo, turnos, registros_asistencia, periodos_nomina, detalle_nomina, prestamos_personal, recibos_honorarios (id, empresa_id, vendedor_id, vendedor_nombre, vendedor_ruc, periodo, comisiones_ids, monto_bruto, retencion_ir, monto_neto, estado, creado_en, moneda, personal_id).
 
 **Financiamiento:** financiamientos, tabla_amortizacion, pagos_financiamiento.
 
-**Finanzas:** costos_ot, ventas, compras_gastos (+imagen_comprobante, origen_registro, datos_extraidos_ia), caja_chica, anticipos, facturas, cxc, cobranzas, cxp, pagos, flujo_caja, presupuestos.
+**Finanzas:** costos_ot, ventas, compras_gastos (+imagen_comprobante, origen_registro, datos_extraidos_ia), caja_chica, anticipos, facturas, cxc, cobranzas, cxp (id, empresa_id, proveedor_id, factura_numero, factura_imagen_url, fecha_emision, fecha_vencimiento, monto_total, monto_pagado, saldo, moneda, estado, created_at, updated_at, tipo_beneficiario, personal_id, recibo_honorarios_id, concepto), pagos, flujo_caja.
+
+**Presupuestos y Pagos (Verificado: Migraciones 137, 138 y cxp_pagos de 132 siguen PENDIENTES de aplicar en remoto / Local-only):**
+- `cxp_pagos` (id, empresa_id, cxp_id, fecha_pago, monto, cuenta_bancaria, referencia, registrado_por, creado_en)
+- `presupuestos` (id, empresa_id, nombre, periodo, centro_costo_id, cebe_id, estado, creado_por, creado_en, actualizado_en)
+- `presupuesto_partidas` (id, empresa_id, presupuesto_id, categoria, descripcion, monto_presupuestado, moneda, orden)
+- `presupuesto_aprobaciones` (id, empresa_id, presupuesto_id, orden, aprobador_id, nombre_aprobador, estado, fecha_accion, comentario)
 
 **Customer Success:** onboardings, planes_exito, health_scores, churn_planes, renovaciones, nps_encuestas, referidos, casos_exito.
 
@@ -1047,13 +1147,22 @@ Sin permiso "Ver" ÔåÆ pantalla no aparece en sidebar. Permisos de costos/prec
 **Sincronización bidireccional:** `usuarios_empresas` sigue siendo la membresía oficial. El trigger `trg_usuarios_empresas_sync_asignacion_principal` crea/actualiza/desactiva la asignación principal en `usuarios_asignaciones` cuando cambia el rol o el estado del usuario en `usuarios_empresas`. El backfill de la migración 070 copia todos los usuarios activos existentes.
 
 ### 10.3 CRM y comercial
-Lead requiere fuente y responsable. Oportunidad perdida requiere motivo. OT facturable requiere OS Cliente. Descuento sobre l├¡mite requiere aprobaci├│n. No duplicar facturaci├│n por el mismo alcance.
+*   **Reglas de Automatización de Etapas del Pipeline:**
+    *   **Propuesta:** Se cambia automáticamente al enviar al menos una cotización al cliente.
+    *   **Negociación:** Se cambia automáticamente al generar una nueva versión (v2 o superior) de una cotización ya existente.
+    *   **Ganada:** Se cambia automáticamente al aprobarse la cotización (ya sea de forma digital o manual), lo que activa la opción de crear la OS Cliente correspondiente.
+    *   **Perdida:** Es la única transición netamente manual y requiere obligatoriamente que el usuario ingrese un motivo de pérdida detallado.
+*   Lead requiere fuente y responsable. OT facturable requiere OS Cliente. Descuento sobre límite requiere aprobación. No duplicar facturación por el mismo alcance.
 
 ### 10.4 Compras
 Solo proveedores homologados en selectores de OC. Bloqueados no aparecen. Toda recepci├│n actualiza: OC + inventario (si bien) + CxP + evaluaci├│n proveedor.
 
 ### 10.5 RRHH y n├│mina
 N├│mina Ôëá costo de OT. Son dos mediciones independientes. Solo los **intereses** de financiamiento son gasto financiero en ER. El capital reduce el pasivo. Pr├®stamos al personal Ôëá financiamiento recibido.
+
+**Comisiones y RHE (Impuestos):** Las comisiones liquidadas por RHE se gravan con retenci├│n de IR de 4ta categor├¡a (8% por defecto) si la empresa es agente de retenci├│n (`agente_retencion = true`), el recibo supera el umbral de S/ 1,500 en PEN (calculado con `tipo_cambio_referencial` en cobros en USD) y el colaborador no tiene suspensi├│n de retenciones activa. Toda liquidaci├│n de RHE confirmada genera autom├íticamente una CxP de tipo `personal` para el colaborador.
+
+**Activos para PDF:** Para la emisi├│n de PDFs de cotizaciones, facturas, valorizaciones y boletas, la empresa puede cargar su `logo_url` y `firma_url` en `empresa_config`. Estos archivos se almacenan de manera p├║blica en el bucket `empresa-assets` para garantizar su renderizaci├│n correcta en los generadores de PDF del servidor y del cliente.
 
 ### 10.6 Campo
 `origen_registro = campo` en todo registro de campo. GPS autom├ítico al iniciar parte. Gasto de campo queda "pendiente revisi├│n backoffice". Datos IA en `datos_extraidos_ia` para auditor├¡a.
@@ -1125,7 +1234,9 @@ No eliminar ÔåÆ anular con motivo y usuario. Modificaciones cr├¡ticas regi
 
 | Fecha | Cambios principales |
 |-------|---------------------|
-| 15/05/2026 | **Persistencia de Timeline — Leads y Oportunidades (migraciones 077-079):** `lead_historial_estados` existía en Supabase (migr. 077) pero no se cargaba al iniciar — corregido en `loadCrmFromSupabase` de `crmService.js`. `opp_historial_etapas` creada como tabla append-only (migr. 079 **pendiente de aplicar en SQL Editor**). `actualizarEtapaOportunidad` en `context.jsx` registra el movimiento optimísticamente y persiste en Supabase en paralelo. El timeline del Pipeline y de Cuentas 360° ahora muestran cambios de etapa persistidos. |
+| 22/05/2026 | **Alineación, Hardening de Comisiones e Integraciones (Fase 3):**<br>- **Migraciones 135 y 136 aplicadas y verificadas en Supabase:** campos `moneda` y `personal_id` en `recibos_honorarios`, campos `tipo_beneficiario`, `personal_id`, `recibo_honorarios_id` y `concepto` en `cxp`.<br>- **Flujo completo de comisiones verificado punta a punta en Supabase real:** cobro CxC → comisión automática → aprobación → RHE → CxP tipo personal → pago Tesorería.<br>- **10 bugs corregidos en módulos CxC y Comisiones.**<br>- **Pipeline automático por eventos implementado y verificado:** Propuesta al enviar cotización, Negociación al versionar, Ganada al aprobar.<br>- **Embudo BI Comercial completo desde Leads hasta Ganada con Perdida como dato lateral.**<br>- **Ficha colaborador dinámica planilla vs honorarios:** campos condicionales en tiempo real, caso mixto contrato Planilla + comisión Honorarios funcionando.<br>- **CxP extendida con filtro Colaboradores, creación manual e historial de pagos parciales via cxp_pagos.**<br>- **Mejoras Cuentas y Contactos:** formulario completo, cuenta bancaria del cliente, CS 360° con datos reales, filtros en galería.<br>- **CECO obligatorio en SOLPE y Compras/Gastos.**<br>- **Filtros CECO/CEBE en Estado de Resultados y BI Financiero.**<br>- **Badge Campo en Partes Diarios.**<br>- **Conformidad digital habilitada en Cierre Técnico.** |
+| 22/05/2026 | **Módulos de Presupuestos, Comisiones y Activos PDF:** Integración completa del módulo Presupuesto vs Real (tablas `presupuestos`, `presupuesto_partidas`, `presupuesto_aprobaciones`) con flujo secuencial de 4 aprobadores, cálculo del Real (OTs + Gastos) y drill-down interactivo. Implementación del módulo de Comisiones con aprobación de acuerdos comerciales especiales (+48h alert), generación de RHE y CxP tipo personal (colaborador). Reglas dinámicas de retención de IR (umbral S/1,500, agente de retención, suspensión de retenciones). Campos para logo y firma corporativa en `empresa_config` con bucket público `empresa-assets`. Persistencia de detalle de valorizaciones (items, ot_ids, historial). |
+| 15/05/2026 | **Persistencia de Timeline — Leads y Oportunidades (migraciones 077-079):** `lead_historial_estados` existía en Supabase (migr. 077) pero no se cargaba al iniciar — corregido en `loadCrmFromSupabase` de `crmService.js`. `opp_historial_etapas` creada como tabla append-only (migr. 079 **aplicada y verificada**). `actualizarEtapaOportunidad` en `context.jsx` registra el movimiento optimísticamente y persiste en Supabase en paralelo. El timeline del Pipeline y de Cuentas 360° ahora muestran cambios de etapa persistidos. |
 | 12/05/2026 | **Conexión módulo Turnos y Horarios:** `pages_turnos.jsx` existía como módulo standalone completo pero nunca era importado — App.jsx seguía usando la versión de `pages_ops.jsx`. Corregido: App.jsx ahora importa `TurnosHorarios` desde `pages_turnos.jsx`; removido de la exportación de `pages_ops.jsx`. También corregido bug de import default vs named (`import { rrhhService }` en lugar de `import rrhhService`). `rrhhService.js` extendido con `actualizarTurno` y `eliminarTurno`. El módulo activo tiene: CRUD completo (crear/editar/eliminar), tabla con columna Refrigerio, side-panel con cálculo de horas efectivas en tiempo real, días laborables con selección visual, toggle "cruza medianoche". |
 | 12/05/2026 | **Asignaciones funcionales multirol (migracion 070):** nueva tabla `usuarios_asignaciones` con rol, categoria, nivel jerarquico, jefe funcional, alcance y bandera principal. Backfill automatico desde `usuarios_empresas`. Triggers mantienen sincronizada la asignacion principal. Nuevas funciones `usuario_puede_ver_registro` y jerarquia basada en asignaciones. UI de Usuarios mantiene el flujo simple y agrega un bloque colapsado de asignaciones adicionales opcionales para empresas grandes o estructuras matriciales. |
 | 12/05/2026 | **Jerarquia transversal de roles y usuarios (migracion 069):** `roles.nivel_jerarquico` y `usuarios_empresas.jefe_user_id` permiten estructura por equipos en cualquier area. Nueva regla: direccion/admin ve tenant completo, jefatura/supervisor ve subordinados recursivos y asesor/operativo ve registros propios. UI de Roles agrega Categoria + Nivel; UI de Usuarios agrega Jefe directo. Selectores de responsables filtran por categoria de rol. |

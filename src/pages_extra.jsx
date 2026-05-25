@@ -5,6 +5,7 @@ import { useApp } from './context.jsx';
 import { getAssignableUsers, canUserSeeOwner, canUserApproveOwner } from './lib/hierarchy.js';
 import { renderTextoComercial } from './lib/textoComercial.js';
 import { SmartTextField } from './components/SmartTextField.jsx';
+import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 
 const normalizeCurrencyCode = (m = 'PEN') => String(m || 'PEN').trim().toUpperCase();
 const currencySymbol = (m = 'PEN') => {
@@ -15,6 +16,83 @@ const currencySymbol = (m = 'PEN') => {
   return code;
 };
 const moneyCurrency = (value, moneda = 'PEN') => money(value, currencySymbol(moneda));
+const EMPRESA_ASSETS_BUCKET = 'empresa-assets';
+
+const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = reject;
+  reader.readAsDataURL(blob);
+});
+
+const rasterizeImageForPdf = (src) => new Promise((resolve, reject) => {
+  const img = new Image();
+  img.onload = () => {
+    const maxWidth = 900;
+    const maxHeight = 360;
+    const width = img.naturalWidth || img.width || 1;
+    const height = img.naturalHeight || img.height || 1;
+    const scale = Math.min(1, maxWidth / width, maxHeight / height);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    resolve(canvas.toDataURL('image/png'));
+  };
+  img.onerror = reject;
+  img.src = src;
+});
+
+const pdfReadyDataUrl = async (dataUrl) => {
+  if (!dataUrl || /^data:image\/(?:png|jpe?g);/i.test(dataUrl)) return dataUrl;
+  try {
+    return await rasterizeImageForPdf(dataUrl);
+  } catch {
+    return dataUrl;
+  }
+};
+
+const blobToPdfReadyDataUrl = async (blob) => {
+  const dataUrl = await blobToDataUrl(blob);
+  return pdfReadyDataUrl(dataUrl);
+};
+
+const empresaAssetPathFromUrl = (url) => {
+  if (!url) return null;
+  const clean = String(url).split('?')[0].split('#')[0];
+  const markers = [
+    `/storage/v1/object/public/${EMPRESA_ASSETS_BUCKET}/`,
+    `/storage/v1/object/sign/${EMPRESA_ASSETS_BUCKET}/`,
+  ];
+  const marker = markers.find(m => clean.includes(m));
+  if (!marker) return null;
+  return decodeURIComponent(clean.slice(clean.indexOf(marker) + marker.length));
+};
+
+const pdfAssetSource = async ({ url, path }) => {
+  const directUrl = typeof url === 'string' ? url.trim() : '';
+  if (directUrl.startsWith('data:')) return pdfReadyDataUrl(directUrl);
+
+  const storagePath = path || empresaAssetPathFromUrl(directUrl);
+  if (storagePath && isSupabaseConfigured()) {
+    try {
+      const supabase = await getSupabaseClient();
+      const { data, error } = await supabase.storage.from(EMPRESA_ASSETS_BUCKET).download(storagePath);
+      if (!error && data) return await blobToPdfReadyDataUrl(data);
+    } catch {
+      // Fallback to the public URL below.
+    }
+  }
+
+  if (!directUrl) return null;
+  try {
+    const res = await fetch(directUrl, { cache: 'reload' });
+    if (res.ok) return await blobToPdfReadyDataUrl(await res.blob());
+  } catch {
+    // React-PDF still gets a chance with the original URL.
+  }
+  return directUrl;
+};
 
 const construirPartidasDesdeHC = (hc) => {
   const margen = Math.min(Math.max(Number(hc.margen_objetivo_pct || 35), 0), 95) / 100;
@@ -128,23 +206,6 @@ function CotizacionesInner() {
     const cuenta  = getCuenta(cot.cuenta_id || opp?.cuenta_id);
     const contacto = getContacto(cot.contacto_id || opp?.contacto_id);
 
-    const urlToDataUrl = async (url) => {
-      if (!url || url.startsWith('data:')) return url;
-      try {
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        const blob = await res.blob();
-        return await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-      } catch {
-        return null;
-      }
-    };
-
     const handleDescargarPDF = async () => {
       setGenerandoPDF(true);
       try {
@@ -155,15 +216,19 @@ function CotizacionesInner() {
         }
         const cfg = empresaConfig || {};
         const [logoDataUrl, firmaDataUrl, QRCode] = await Promise.all([
-          urlToDataUrl(cfg.logo_url),
-          urlToDataUrl(cfg.firma_url),
+          pdfAssetSource({ url: cfg.logo_url, path: cfg.logo_path }),
+          pdfAssetSource({ url: cfg.firma_url, path: cfg.firma_path }),
           import('qrcode').then(m => m.default),
         ]);
         const aceptarUrl = (import.meta.env.VITE_APP_URL || window.location.origin) + '/#aceptar/' + token;
         const qrDataUrl = await QRCode.toDataURL(aceptarUrl, { width: 200, margin: 1 });
         const { pdf } = await import('@react-pdf/renderer');
         const { CotizacionPDF } = await import('./pages_pdf.jsx');
-        const cfgPDF = { ...cfg, logo_url: logoDataUrl || undefined, firma_url: firmaDataUrl || undefined };
+        const cfgPDF = {
+          ...cfg,
+          logo_url: logoDataUrl || cfg.logo_url || undefined,
+          firma_url: firmaDataUrl || cfg.firma_url || undefined,
+        };
         const blob = await pdf(
           <CotizacionPDF cot={cot} cuenta={cuenta} contacto={contacto} opp={opp} cfg={cfgPDF} qrDataUrl={qrDataUrl} />
         ).toBlob();
@@ -1395,8 +1460,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
 const CONDICIONES_PAGO = ['Contado', '30 días', '45 días', '60 días', '90 días', '120 días', 'Anticipado', 'Contra entrega'];
 
 function CrearOSModal({ cot, opp, osClientes, cuentas, onClose, onCrearNueva, onVincularExistente }) {
-  const { usuarios, roles, empresa, centrosBeneficio, authUser } = useApp();
-  const comerciales = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
+  const { usuarios, centrosBeneficio } = useApp();
   const getNombre = id => (cuentas || []).find(c => c.id === id)?.razon_social || id;
   const cuenta = (cuentas || []).find(c => c.id === cot.cuenta_id);
   const osExistentes = (osClientes || []).filter(os =>
@@ -1413,7 +1477,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, onClose, onCrearNueva, on
   const [tieneNumero, setTieneNumero] = useState(null);
   const [form, setForm] = useState({
     numero_doc_cliente: '',
-    nombre: opp?.nombre || cot.numero || '',
+    nombre: opp?.nombre || opp?.servicio_interes || '',
     responsable_comercial_id: opp?.responsable_id || '',
     moneda: cot.moneda || 'PEN',
     fecha_inicio: today,
@@ -1541,7 +1605,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, onClose, onCrearNueva, on
               <label>Responsable comercial</label>
               <select className="select" value={form.responsable_comercial_id} onChange={e => upd('responsable_comercial_id', e.target.value)}>
                 <option value="">Sin asignar</option>
-                {comerciales.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
               </select>
             </div>
           </div>

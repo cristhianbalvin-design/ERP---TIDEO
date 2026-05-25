@@ -56,8 +56,48 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+function ToastContainer() {
+  const { toasts, removeToast, navigate } = useApp();
+  if (!toasts.length) return null;
+  return (
+    <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 400 }}>
+      {toasts.map(t => (
+        <div key={t.id} style={{
+          background: '#fffbeb',
+          border: '1px solid #f59e0b',
+          borderLeft: '4px solid #f59e0b',
+          borderRadius: 8,
+          padding: '12px 14px',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⚠️</span>
+            <p style={{ fontSize: 13, color: '#92400e', margin: 0, lineHeight: 1.5 }}>{t.text}</p>
+            <button
+              onClick={() => removeToast(t.id)}
+              style={{ marginLeft: 'auto', flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 16, lineHeight: 1, padding: 0 }}
+              title="Cerrar"
+            >×</button>
+          </div>
+          {t.link && (
+            <button
+              onClick={() => { navigate(t.link.modulo, t.link.params || {}); removeToast(t.id); }}
+              style={{ alignSelf: 'flex-start', background: 'none', border: '1px solid #f59e0b', borderRadius: 6, padding: '3px 10px', fontSize: 12, color: '#92400e', cursor: 'pointer', fontWeight: 600 }}
+            >
+              {t.link.label} →
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function MainLayout() {
-  const { 
+  const {
     active, navigate, role, roleKey, setRoleKey, isSuperadmin,
     empresa, setEmpresa, dark, setDark, mobileMode, setMobileMode,
     mobileProfile, setMobileProfile
@@ -178,6 +218,7 @@ function MainLayout() {
           {Page()}
         </main>
       </div>
+      <ToastContainer />
     </div>
   );
 }

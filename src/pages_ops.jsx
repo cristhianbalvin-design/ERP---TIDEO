@@ -10,7 +10,7 @@ import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sa
 
 // ============ CUENTAS Y CONTACTOS ============
 function Cuentas() {
-  const { cuentas, setCuentas, crearCuenta, actualizarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, usuarios, roles, navigate, empresa, addNotificacion, role, authUser } = useApp();
+  const { cuentas, setCuentas, crearCuenta, actualizarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, usuarios, roles, navigate, empresa, addNotificacion, role, authUser, healthScoresDetalle, onboardings, planesExito, npsEncuestas, renovaciones } = useApp();
   const [sel, setSel] = useState(null);
   const [condEdit, setCondEdit] = useState({});
   const [condEditing, setCondEditing] = useState(false);
@@ -21,16 +21,22 @@ function Cuentas() {
   const [contactForm, setContactForm] = useState({ nombre:'', cargo:'', telefono:'', email:'', principal:false });
   const [formCuenta, setFormCuenta] = useState({
     razon_social: '',
+    nombre_comercial: '',
     ruc: '',
+    pais: 'Perú',
+    tipo: 'prospecto',
     industria: '',
+    tamano: '',
+    telefono_empresa: '',
+    email_corporativo: '',
+    direccion: '',
     nombre_contacto: '',
     cargo_contacto: '',
     telefono: '',
     email: '',
-    direccion: '',
     responsable_comercial: '',
-    tamano: '',
-    fuente_origen: ''
+    fuente_origen: '',
+    notas: ''
   });
   const [activeTab, setActiveTab] = useState('Resumen');
   const canFinanzas = role?.permisos?.ver_finanzas;
@@ -38,15 +44,20 @@ function Cuentas() {
   const [editCuentaForm, setEditCuentaForm] = useState({});
   const [confirmDelCuenta, setConfirmDelCuenta] = useState(null);
   const [confirmDelContacto, setConfirmDelContacto] = useState(null);
+  const [filtroTexto, setFiltroTexto] = useState('');
+  const [filtroTipo, setFiltroTipo] = useState('');
+  const [filtroIndustria, setFiltroIndustria] = useState('');
+  const [filtroResponsable, setFiltroResponsable] = useState('');
+  const [filtroCondiciones, setFiltroCondiciones] = useState('');
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const cuentaContactos = sel ? contactos.filter(c => c.cuenta_id === sel.id) : [];
   const contactoPrincipal = cuentaContactos.find(c => c.principal || c.es_principal) || cuentaContactos[0] || null;
 
-  const csHealth  = sel ? MOCK.healthScoresDetalle.find(h => h.cuenta_id === sel.id) : null;
-  const csOb      = sel ? MOCK.onboardings.find(o => o.cuenta_id === sel.id) : null;
-  const csPlan    = sel ? MOCK.planesExito.find(p => p.cuenta_id === sel.id) : null;
-  const csNps     = sel ? [...MOCK.npsEncuestas].filter(n => n.cuenta_id === sel.id).sort((a,b) => (b.fecha_respuesta||'').localeCompare(a.fecha_respuesta||''))[0] : null;
-  const csRenov   = sel ? MOCK.renovaciones.find(r => r.cuenta_id === sel.id) : null;
+  const csHealth  = sel ? healthScoresDetalle.find(h => h.cuenta_id === sel.id) : null;
+  const csOb      = sel ? onboardings.find(o => o.cuenta_id === sel.id) : null;
+  const csPlan    = sel ? planesExito.find(p => p.cuenta_id === sel.id) : null;
+  const csNps     = sel ? [...npsEncuestas].filter(n => n.cuenta_id === sel.id).sort((a,b) => (b.fecha_respuesta||'').localeCompare(a.fecha_respuesta||''))[0] : null;
+  const csRenov   = sel ? renovaciones.find(r => r.cuenta_id === sel.id) : null;
   const dimLabels = { comercial:'Comercial', operativa:'Operativa', financiera:'Financiera', soporte:'Soporte', satisfaccion:'Satisfacción' };
 
   const [tlFiltro, setTlFiltro] = useState('todos');
@@ -132,18 +143,18 @@ function Cuentas() {
       eventos.push({ id:`cxc-${c.id}`, tipo:'cobranza', fecha:c.emision, titulo:`Cobranza: ${c.factura}`, descripcion:`${c.estado} · ${money(c.total)}`, usuario:null, nav:null });
     });
 
-    // Customer Success (desde MOCK)
-    const csObLoc = MOCK.onboardings.find(o => o.cuenta_id===cId);
+    // Customer Success
+    const csObLoc = onboardings.find(o => o.cuenta_id===cId);
     if (csObLoc?.estado==='completado') eventos.push({ id:'cs-ob', tipo:'cs', fecha:csObLoc.fecha_cierre||csObLoc.fecha_inicio, titulo:'Onboarding completado', descripcion:csObLoc.tipo_servicio, usuario:null, nav:null });
-    const csNpsLoc = [...MOCK.npsEncuestas].filter(n => n.cuenta_id===cId).sort((a,b)=>(b.fecha_respuesta||'').localeCompare(a.fecha_respuesta||''))[0];
+    const csNpsLoc = [...npsEncuestas].filter(n => n.cuenta_id===cId).sort((a,b)=>(b.fecha_respuesta||'').localeCompare(a.fecha_respuesta||''))[0];
     if (csNpsLoc) eventos.push({ id:'cs-nps', tipo:'cs', fecha:csNpsLoc.fecha_respuesta, titulo:`NPS registrado: ${csNpsLoc.score}`, descripcion:`${csNpsLoc.clasificacion}${csNpsLoc.comentario?` · "${csNpsLoc.comentario}"`:''}`, usuario:null, nav:null });
-    const csRenovLoc = MOCK.renovaciones.find(r => r.cuenta_id===cId);
+    const csRenovLoc = renovaciones.find(r => r.cuenta_id===cId);
     if (csRenovLoc) eventos.push({ id:'cs-renov', tipo:'cs', fecha:csRenovLoc.fecha_renovacion||csRenovLoc.fecha_vencimiento, titulo:`Renovación: ${csRenovLoc.servicio}`, descripcion:`${csRenovLoc.estado||''} · ${money(csRenovLoc.monto_contrato)}`, usuario:null, nav:null });
-    const csHLoc = MOCK.healthScoresDetalle.find(h => h.cuenta_id===cId);
+    const csHLoc = healthScoresDetalle.find(h => h.cuenta_id===cId);
     if (csHLoc?.score_total < 40) eventos.push({ id:'cs-health', tipo:'cs', fecha:csHLoc.fecha||new Date().toISOString().slice(0,10), titulo:'Health score bajo umbral crítico', descripcion:`Score: ${csHLoc.score_total} · ${csHLoc.semaforo}`, usuario:null, nav:null });
 
     return eventos.filter(e => e.fecha).sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
-  }, [sel, leads, historialEstados, actividades, oportunidades, cotizaciones, hojasCosteo, osClientes, ots, valorizaciones, facturas, cxc, oppHistorialEtapas]);
+  }, [sel, leads, historialEstados, actividades, oportunidades, cotizaciones, hojasCosteo, osClientes, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, onboardings, npsEncuestas, renovaciones, healthScoresDetalle]);
 
   const getHealthColor = (score) => {
     if (score === null || score === undefined) return 'gray';
@@ -218,7 +229,7 @@ function Cuentas() {
     setFormCuenta(prev => ({ ...prev, [field]: value }));
   };
 
-  const formCuentaBase = { razon_social:'', ruc:'', industria:'', nombre_contacto:'', cargo_contacto:'', telefono:'', email:'', direccion:'', responsable_comercial:'', tamano:'', fuente_origen:'' };
+  const formCuentaBase = { razon_social:'', nombre_comercial:'', ruc:'', pais:'Perú', tipo:'prospecto', industria:'', tamano:'', telefono_empresa:'', email_corporativo:'', direccion:'', nombre_contacto:'', cargo_contacto:'', telefono:'', email:'', responsable_comercial:'', fuente_origen:'', notas:'' };
   const contactFormBase = { nombre:'', cargo:'', telefono:'', email:'', principal:false };
 
   const startNuevoContacto = () => {
@@ -336,8 +347,9 @@ function Cuentas() {
       id: `cta_${Date.now().toString(36)}`,
       empresa_id: empresa.id,
       razon_social: formCuenta.razon_social || 'Nueva cuenta sin nombre',
-      nombre_comercial: formCuenta.razon_social || 'Nueva cuenta',
-      tipo: 'prospecto',
+      nombre_comercial: formCuenta.nombre_comercial || formCuenta.razon_social || 'Nueva cuenta',
+      tipo: formCuenta.tipo || 'prospecto',
+      pais: formCuenta.pais || 'Perú',
       industria: formCuenta.industria || 'Por definir',
       tamano: formCuenta.tamano || 'Por definir',
       estado: 'activo',
@@ -352,10 +364,13 @@ function Cuentas() {
       margen_acumulado: null,
       saldo_cxc: 0,
       direccion: formCuenta.direccion || 'Por definir',
+      telefono_empresa: formCuenta.telefono_empresa || null,
+      email_corporativo: formCuenta.email_corporativo || null,
       telefono: formCuenta.telefono,
       email: formCuenta.email,
       ruc: formCuenta.ruc || 'Pendiente',
       fuente_origen: formCuenta.fuente_origen || null,
+      notas: formCuenta.notas || null,
       nombre_contacto: formCuenta.nombre_contacto,
       cargo_contacto: formCuenta.cargo_contacto
     };
@@ -365,18 +380,82 @@ function Cuentas() {
     setFormCuenta(formCuentaBase);
   };
 
+  const canVerEquipo = role?.permisos?.ver_agenda_equipo || role?.permisos?.todo;
+  const industriasDisponibles = [...new Set(cuentas.map(c => c.industria).filter(Boolean).filter(i => i !== 'Por definir'))].sort();
+  const responsablesDisponibles = [...new Set(cuentas.map(c => c.responsable_comercial).filter(Boolean).filter(r => r !== 'Sin asignar'))].sort();
+
+  const cuentasBase = cuentas.filter(c => canUserSeeOwner({ viewer: authUser, ownerUserId: c.responsable_id, ownerName: c.responsable_comercial, users: usuarios, roles }));
+  const cuentasFiltradas = cuentasBase.filter(c => {
+    const txt = filtroTexto.trim().toLowerCase();
+    if (txt && ![ c.nombre_comercial, c.razon_social, c.ruc ].some(v => (v||'').toLowerCase().includes(txt))) return false;
+    if (filtroTipo && c.tipo !== filtroTipo) return false;
+    if (filtroIndustria && c.industria !== filtroIndustria) return false;
+    if (filtroResponsable && c.responsable_comercial !== filtroResponsable) return false;
+    if (filtroCondiciones === 'completas' && (!c.condicion_pago || c.condicion_pago === 'Por definir')) return false;
+    if (filtroCondiciones === 'pendientes' && c.condicion_pago && c.condicion_pago !== 'Por definir') return false;
+    return true;
+  });
+  const hayFiltros = filtroTexto || filtroTipo || filtroIndustria || filtroResponsable || filtroCondiciones;
+
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Cuentas y Contactos</h1><div className="page-sub">{cuentas.length} cuentas activas</div></div>
+        <div>
+          <h1 className="page-title">Cuentas y Contactos</h1>
+          <div className="page-sub">{hayFiltros ? `${cuentasFiltradas.length} de ${cuentasBase.length} cuentas` : `${cuentasBase.length} cuentas activas`}</div>
+        </div>
         <button className="btn btn-primary" data-local-form="true" onClick={() => setNewOpen(true)}>{I.plus} Nueva cuenta</button>
       </div>
       <div style={{marginBottom:16, padding:'12px 16px', background:'rgba(6,182,212,0.06)', border:'1px solid var(--border)', borderLeft:'3px solid var(--cyan)', borderRadius:8, fontSize:13}}>
         <strong>Recomendación: </strong><span className="text-muted">El flujo ideal es registrar primero un <strong>Lead</strong> y convertirlo desde el módulo de Leads. Esto pre-completa la cuenta con el RUC, razón social e industria del prospecto.</span>
         <button className="btn btn-ghost btn-sm" style={{marginLeft:12}} onClick={()=>navigate('leads')}>Ir a Leads</button>
       </div>
+
+      {/* ── Barra de filtros ── */}
+      <div style={{display:'flex', flexWrap:'wrap', gap:8, marginBottom:16, alignItems:'center'}}>
+        <input
+          className="input"
+          style={{height:34, width:220, fontSize:13}}
+          placeholder="Buscar por nombre, razón social o RUC..."
+          value={filtroTexto}
+          onChange={e => setFiltroTexto(e.target.value)}
+        />
+        <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:140}} value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
+          <option value="">Todos los tipos</option>
+          <option value="cliente">Cliente</option>
+          <option value="prospecto">Prospecto</option>
+          <option value="partner">Partner</option>
+          <option value="proveedor_estrategico">Proveedor estratégico</option>
+        </select>
+        <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:140}} value={filtroIndustria} onChange={e => setFiltroIndustria(e.target.value)}>
+          <option value="">Todas las industrias</option>
+          {industriasDisponibles.map(i => <option key={i} value={i}>{i}</option>)}
+        </select>
+        {canVerEquipo && (
+          <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:160}} value={filtroResponsable} onChange={e => setFiltroResponsable(e.target.value)}>
+            <option value="">Todos los responsables</option>
+            {responsablesDisponibles.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        )}
+        <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:180}} value={filtroCondiciones} onChange={e => setFiltroCondiciones(e.target.value)}>
+          <option value="">Estado de condiciones</option>
+          <option value="completas">Condiciones completas</option>
+          <option value="pendientes">Condiciones pendientes</option>
+        </select>
+        {hayFiltros && (
+          <button className="btn btn-ghost btn-sm" onClick={() => { setFiltroTexto(''); setFiltroTipo(''); setFiltroIndustria(''); setFiltroResponsable(''); setFiltroCondiciones(''); }}>
+            Limpiar filtros
+          </button>
+        )}
+      </div>
+
       <div className="account-gallery">
-        {cuentas.filter(c => canUserSeeOwner({ viewer: authUser, ownerUserId: c.responsable_id, ownerName: c.responsable_comercial, users: usuarios, roles })).map(c => {
+        {cuentasFiltradas.length === 0 && (
+          <div style={{gridColumn:'1/-1', padding:'32px 16px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>
+            No hay cuentas que coincidan con los filtros aplicados.
+          </div>
+        )}
+        {cuentasFiltradas.map(c => {
           const logoUrl = getCuentaLogo(c);
           return (
             <article key={c.id} className="account-card" onClick={() => { setSel({ ...c, logo_url: logoUrl }); setActiveTab('Resumen'); setContactEditId(null); setCondEditing(false); setCondEdit({}); }}>
@@ -447,6 +526,16 @@ function Cuentas() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Razón social *</label><input className="input" required value={formCuenta.razon_social} onChange={e=>updateCuentaForm('razon_social', e.target.value)} autoFocus placeholder="Nombre legal de la empresa"/></div>
               <div className="input-group"><label>RUC <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>· 11 dígitos</span></label><input className="input" value={formCuenta.ruc} onChange={e=>updateCuentaForm('ruc', sanitizeRuc(e.target.value))} placeholder="20xxxxxxxxx" inputMode="numeric" pattern={RUC_PATTERN} maxLength={11}/></div>
+              <div className="input-group"><label>Nombre comercial</label><input className="input" value={formCuenta.nombre_comercial} onChange={e=>updateCuentaForm('nombre_comercial', e.target.value)} placeholder="Si es diferente a la razón social"/></div>
+              <div className="input-group"><label>País</label><select className="select" value={formCuenta.pais} onChange={e=>updateCuentaForm('pais', e.target.value)}>
+                {['Perú','Chile','Colombia','México','Ecuador','Bolivia','Argentina','Brasil','Uruguay','Otro'].map(p=><option key={p}>{p}</option>)}
+              </select></div>
+              <div className="input-group"><label>Tipo de cuenta</label><select className="select" value={formCuenta.tipo} onChange={e=>updateCuentaForm('tipo', e.target.value)}>
+                <option value="prospecto">Prospecto</option>
+                <option value="cliente">Cliente</option>
+                <option value="partner">Partner</option>
+                <option value="proveedor_estrategico">Proveedor estratégico</option>
+              </select></div>
               <div className="input-group"><label>Industria</label><select className="select" value={formCuenta.industria} onChange={e=>updateCuentaForm('industria', e.target.value)}>
                 <option value="">Seleccionar...</option>
                 {['Minería','Industrial','Construcción','Agroindustria','Facilities','Energía','Petróleo & Gas','Logística','Otro'].map(i=><option key={i}>{i}</option>)}
@@ -455,6 +544,8 @@ function Cuentas() {
                 <option value="">Seleccionar...</option>
                 {['pequeña','mediana','grande','corporativo'].map(t=><option key={t}>{t}</option>)}
               </select></div>
+              <div className="input-group"><label>Teléfono empresa</label><input className="input" type="tel" inputMode="numeric" value={formCuenta.telefono_empresa} onChange={e=>updateCuentaForm('telefono_empresa', e.target.value)} placeholder="01XXXXXXX o 9XXXXXXXX"/></div>
+              <div className="input-group"><label>Email corporativo</label><input className="input" type="email" value={formCuenta.email_corporativo} onChange={e=>updateCuentaForm('email_corporativo', e.target.value)} placeholder="info@empresa.pe"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Dirección</label><input className="input" value={formCuenta.direccion} onChange={e=>updateCuentaForm('direccion', e.target.value)} placeholder="Dirección fiscal o principal"/></div>
             </div>
 
@@ -462,8 +553,8 @@ function Cuentas() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Nombre del contacto</label><input className="input" value={formCuenta.nombre_contacto} onChange={e=>updateCuentaForm('nombre_contacto', e.target.value)} placeholder="Nombre y apellido"/></div>
               <div className="input-group"><label>Cargo</label><input className="input" value={formCuenta.cargo_contacto} onChange={e=>updateCuentaForm('cargo_contacto', e.target.value)} placeholder="Ej: Gerente de Operaciones"/></div>
-              <div className="input-group"><label>Teléfono</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formCuenta.telefono} onChange={e=>updateCuentaForm('telefono', sanitizePhone(e.target.value))} placeholder="9XXXXXXXX"/></div>
-              <div className="input-group"><label>Email</label><input className="input" type="email" value={formCuenta.email} onChange={e=>updateCuentaForm('email', e.target.value)} placeholder="contacto@empresa.pe"/></div>
+              <div className="input-group"><label>Teléfono directo</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formCuenta.telefono} onChange={e=>updateCuentaForm('telefono', sanitizePhone(e.target.value))} placeholder="9XXXXXXXX"/></div>
+              <div className="input-group"><label>Email personal</label><input className="input" type="email" value={formCuenta.email} onChange={e=>updateCuentaForm('email', e.target.value)} placeholder="contacto@empresa.pe"/></div>
             </div>
 
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Asignación</div>
@@ -476,6 +567,11 @@ function Cuentas() {
                 <option value="">Seleccionar...</option>
                 {['Referido','Prospección directa','Evento / Feria','Web','Otro'].map(f=><option key={f}>{f}</option>)}
               </select></div>
+            </div>
+
+            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Notas iniciales</div>
+            <div style={{marginBottom:20}}>
+              <textarea className="input" rows={3} style={{resize:'vertical', minHeight:72}} value={formCuenta.notas} onChange={e=>updateCuentaForm('notas', e.target.value)} placeholder="Contexto inicial, cómo llegó el prospecto, observaciones relevantes..."/>
             </div>
 
             <div style={{padding:'10px 14px', background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.3)', borderRadius:8, fontSize:12, color:'var(--fg-muted)', marginBottom:20}}>
@@ -799,85 +895,95 @@ function Cuentas() {
                       <div style={{fontSize:48, fontWeight:800, lineHeight:1, color: csHealth.score_total>=70?'var(--green)':csHealth.score_total>=40?'var(--warning)':'var(--danger)'}}>{csHealth.score_total}</div>
                       <div style={{fontSize:12, color:'var(--fg-subtle)', marginBottom:8}}>Tendencia: <strong>{csHealth.tendencia}</strong></div>
                     </div>
-                    <div className="col" style={{gap:8}}>
-                      {Object.entries(csHealth.dimensiones).map(([dim, d]) => (
-                        <div key={dim} style={{display:'grid', gridTemplateColumns:'90px 1fr 36px', gap:8, alignItems:'center'}}>
-                          <span style={{fontSize:11, color:'var(--fg-subtle)'}}>{dimLabels[dim]}</span>
-                          <div style={{background:'var(--bg-subtle)', borderRadius:3, height:6}}>
-                            <div style={{width:d.score+'%', height:'100%', background:d.score>=70?'var(--green)':d.score>=40?'var(--warning)':'var(--danger)', borderRadius:3}}/>
+                    {csHealth.dimensiones && (
+                      <div className="col" style={{gap:8}}>
+                        {Object.entries(csHealth.dimensiones).map(([dim, d]) => (
+                          <div key={dim} style={{display:'grid', gridTemplateColumns:'90px 1fr 36px', gap:8, alignItems:'center'}}>
+                            <span style={{fontSize:11, color:'var(--fg-subtle)'}}>{dimLabels[dim] || dim}</span>
+                            <div style={{background:'var(--bg-subtle)', borderRadius:3, height:6}}>
+                              <div style={{width:(d.score||0)+'%', height:'100%', background:(d.score||0)>=70?'var(--green)':(d.score||0)>=40?'var(--warning)':'var(--danger)', borderRadius:3}}/>
+                            </div>
+                            <span style={{fontSize:11, fontWeight:600, textAlign:'right'}}>{d.score}</span>
                           </div>
-                          <span style={{fontSize:11, fontWeight:600, textAlign:'right'}}>{d.score}</span>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin health score registrado para esta cuenta.</div>
+                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin health score registrado para este cliente.</div>
                 )}
 
                 {/* ── Onboarding ── */}
-                {csOb && (
+                {csOb ? (
                   <div className="card p-4">
                     <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
                       <div className="eyebrow">Onboarding</div>
                       <span className={'badge ' + (csOb.estado==='completado'?'badge-green':csOb.estado==='en_progreso'?'badge-cyan':'badge-gray')}>{csOb.estado}</span>
                     </div>
-                    <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>{csOb.tipo_servicio}</div>
-                    <div style={{fontSize:12, color:'var(--fg-subtle)', marginBottom:6}}>
-                      {csOb.checklist.filter(c=>c.completado).length}/{csOb.checklist.length} hitos completados
-                    </div>
-                    <div style={{background:'var(--bg-subtle)', borderRadius:3, height:6}}>
-                      <div style={{width: Math.round(csOb.checklist.filter(c=>c.completado).length/csOb.checklist.length*100)+'%', height:'100%', background:'var(--cyan)', borderRadius:3}}/>
-                    </div>
+                    <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>{csOb.tipo_servicio || csOb.nombre || '—'}</div>
+                    {csOb.checklist?.length > 0 && (
+                      <>
+                        <div style={{fontSize:12, color:'var(--fg-subtle)', marginBottom:6}}>
+                          {csOb.checklist.filter(c=>c.completado).length}/{csOb.checklist.length} hitos completados
+                        </div>
+                        <div style={{background:'var(--bg-subtle)', borderRadius:3, height:6}}>
+                          <div style={{width: Math.round(csOb.checklist.filter(c=>c.completado).length/csOb.checklist.length*100)+'%', height:'100%', background:'var(--cyan)', borderRadius:3}}/>
+                        </div>
+                      </>
+                    )}
                   </div>
+                ) : (
+                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin onboarding registrado para este cliente.</div>
                 )}
 
                 {/* ── Plan de Éxito ── */}
-                {csPlan && (
+                {csPlan ? (
                   <div className="card p-4">
                     <div className="eyebrow" style={{marginBottom:8}}>Plan de Éxito</div>
-                    <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>{csPlan.objetivo}</div>
+                    <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>{csPlan.objetivo || csPlan.nombre || '—'}</div>
                     <div className="row" style={{gap:16, fontSize:12, color:'var(--fg-subtle)'}}>
-                      <span>Adopción: <strong style={{color:'var(--cyan)'}}>{csPlan.adopcion_pct}%</strong></span>
-                      <span>Reuniones: {csPlan.reuniones.length}</span>
+                      {csPlan.adopcion_pct != null && <span>Adopción: <strong style={{color:'var(--cyan)'}}>{csPlan.adopcion_pct}%</strong></span>}
+                      {csPlan.reuniones?.length > 0 && <span>Reuniones: {csPlan.reuniones.length}</span>}
                     </div>
-                    {csPlan.alertas.length > 0 && (
+                    {csPlan.alertas?.length > 0 && (
                       <div style={{marginTop:8, padding:'6px 10px', background:'rgba(251,191,36,0.1)', borderRadius:6, fontSize:12, color:'var(--warning)'}}>
                         ⚠ {csPlan.alertas[0]}
                       </div>
                     )}
                   </div>
+                ) : (
+                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin plan de éxito registrado para este cliente.</div>
                 )}
 
                 {/* ── Renovación ── */}
-                {csRenov && (
+                {csRenov ? (
                   <div className="card p-4">
                     <div className="eyebrow" style={{marginBottom:8}}>Renovación</div>
                     <div className="row" style={{justifyContent:'space-between', marginBottom:4}}>
-                      <span style={{fontSize:13, fontWeight:600}}>{csRenov.servicio}</span>
-                      <span className={'badge ' + (csRenov.dias_restantes<=30?'badge-red':csRenov.dias_restantes<=60?'badge-yellow':'badge-green')}>{csRenov.dias_restantes}d restantes</span>
+                      <span style={{fontSize:13, fontWeight:600}}>{csRenov.servicio || csRenov.nombre || '—'}</span>
+                      {csRenov.dias_restantes != null && <span className={'badge ' + (csRenov.dias_restantes<=30?'badge-red':csRenov.dias_restantes<=60?'badge-yellow':'badge-green')}>{csRenov.dias_restantes}d restantes</span>}
                     </div>
-                    <div style={{fontSize:12, color:'var(--fg-subtle)'}}>Vence: {csRenov.fecha_vencimiento} · {money(csRenov.monto_contrato)}</div>
+                    <div style={{fontSize:12, color:'var(--fg-subtle)'}}>Vence: {csRenov.fecha_vencimiento || '—'}{csRenov.monto_contrato ? ` · ${money(csRenov.monto_contrato)}` : ''}</div>
                   </div>
+                ) : (
+                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin renovación registrada para este cliente.</div>
                 )}
 
                 {/* ── Último NPS ── */}
-                {csNps && (
+                {csNps ? (
                   <div className="card p-4">
                     <div className="eyebrow" style={{marginBottom:8}}>Último NPS</div>
                     <div className="row" style={{alignItems:'center', gap:12}}>
                       <div style={{fontSize:40, fontWeight:800, color:csNps.score>=9?'var(--green)':csNps.score>=7?'var(--warning)':'var(--danger)'}}>{csNps.score}</div>
                       <div>
-                        <span className={'badge ' + (csNps.clasificacion==='promotor'?'badge-green':csNps.clasificacion==='neutro'?'badge-yellow':'badge-red')}>{csNps.clasificacion}</span>
+                        {csNps.clasificacion && <span className={'badge ' + (csNps.clasificacion==='promotor'?'badge-green':csNps.clasificacion==='neutro'?'badge-yellow':'badge-red')}>{csNps.clasificacion}</span>}
                         <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>{csNps.fecha_respuesta}</div>
                       </div>
                     </div>
                     {csNps.comentario && <div style={{fontSize:12, color:'var(--fg-subtle)', marginTop:8, fontStyle:'italic'}}>"{csNps.comentario}"</div>}
                   </div>
-                )}
-
-                {!csHealth && !csOb && !csPlan && !csRenov && !csNps && (
-                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin actividades de Customer Success registradas.</div>
+                ) : (
+                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin NPS registrado aún para este cliente.</div>
                 )}
               </div>
             )}
@@ -934,6 +1040,30 @@ function Cuentas() {
                             </select>
                           ) : (
                             <input className="input" disabled={!condEditing || condSaving} type="text" inputMode={k === 'ruc' ? 'numeric' : undefined} pattern={k === 'ruc' ? RUC_PATTERN : undefined} maxLength={k === 'ruc' ? 11 : undefined} value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]: k === 'ruc' ? sanitizeRuc(e.target.value) : e.target.value}))}/>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="card">
+                  <div className="card-head"><h3>Cuenta bancaria del cliente</h3><span className="text-muted" style={{fontSize:12}}>Para devoluciones y transferencias al cliente</span></div>
+                  <div className="card-body">
+                    <div className="grid-2" style={{gap:16}}>
+                      {[
+                        { k:'banco_cliente', label:'Banco', type:'text', placeholder:'Ej: BCP, Interbank, BBVA' },
+                        { k:'tipo_cuenta_bancaria', label:'Tipo de cuenta', type:'select', opts:['','Corriente','Ahorros'] },
+                        { k:'nro_cuenta_cliente', label:'Número de cuenta', type:'text', placeholder:'Nro. de cuenta' },
+                        { k:'cci_cliente', label:'CCI', type:'text', placeholder:'Código de cuenta interbancario' },
+                      ].map(({k, label, type, opts, placeholder}) => (
+                        <div className="input-group" key={k}>
+                          <label style={{fontSize:11}}>{label}</label>
+                          {type === 'select' ? (
+                            <select className="select" disabled={!condEditing || condSaving} value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]:e.target.value}))}>
+                              {opts.map(o=><option key={o} value={o}>{o || 'Seleccionar...'}</option>)}
+                            </select>
+                          ) : (
+                            <input className="input" disabled={!condEditing || condSaving} type="text" placeholder={placeholder} value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]:e.target.value}))}/>
                           )}
                         </div>
                       ))}
@@ -2949,7 +3079,7 @@ function Partes() {
                   <td className="mono" style={{fontWeight:600}}>{getNumeroParte(p)}</td>
                   <td className="mono">{getOTNumero(p.ot_id)}</td>
                   <td style={{maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{getCuenta(p.ot_id)}</td>
-                  <td>{p.tecnico}</td>
+                  <td style={{display:'flex', alignItems:'center', gap:6, flexWrap:'wrap'}}>{p.tecnico}{['campo','mobile'].includes(p.origen) && <span className="badge badge-cyan" style={{fontSize:10}}>{I.camera}Campo</span>}</td>
                   <td className="text-muted">{p.fecha}</td>
                   <td className="num">{p.horas}h</td>
                   <td style={{width:110}}>
@@ -3002,6 +3132,7 @@ function Partes() {
 
               <div className="parte-review-chips">
                 <span className={`badge ${estadoBadge}`}>{estadoLabel}</span>
+                {['campo','mobile'].includes(sel.origen) && <span className="badge badge-cyan" style={{fontSize:10}}>{I.camera}Campo</span>}
                 <button className="btn btn-ghost" style={{padding:0, color:'var(--cyan)', fontWeight:600, fontSize:12}} onClick={() => { cerrarPanel(); navigate('ot', { detail: sel.ot_id }); }}>{getOTNumero(sel.ot_id)} ↗</button>
                 <span className="badge badge-gray">{getCuenta(sel.ot_id)}</span>
                 {sel.es_restriccion && <span className="badge badge-red">Restriccion reportada</span>}
@@ -3801,17 +3932,33 @@ function Recepciones() {
   );
 }
 
+const GASTO_FORM_INIT = { descripcion: '', categoria: 'Materiales', monto: '', moneda: 'PEN', fecha: new Date().toISOString().split('T')[0], num_comprobante: '', tipo_comprobante: 'Factura', centro_costo_id: '' };
+
 function Compras() {
-  const { comprasGastos, proveedores, ordenesCompra, ordenesServicio, recepciones } = useApp();
+  const { comprasGastos, proveedores, ordenesCompra, ordenesServicio, recepciones, crearGasto, centrosCosto } = useApp();
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Compras en Campo');
+  const [showGastoForm, setShowGastoForm] = useState(false);
+  const [gastoForm, setGastoForm] = useState(GASTO_FORM_INIT);
+  const [errCecoGasto, setErrCecoGasto] = useState(false);
   const comprasRows = comprasGastos.length ? comprasGastos : MOCK.compras;
+  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+
+  const setG = (k, v) => { setGastoForm(p => ({ ...p, [k]: v })); if (k === 'centro_costo_id') setErrCecoGasto(false); };
+
+  const handleGastoSubmit = () => {
+    if (!gastoForm.centro_costo_id) { setErrCecoGasto(true); return; }
+    crearGasto({ ...gastoForm, monto: parseFloat(gastoForm.monto) || 0, tipo: 'gasto' });
+    setGastoForm(GASTO_FORM_INIT);
+    setErrCecoGasto(false);
+    setShowGastoForm(false);
+  };
 
   return (
     <>
       <div className="page-header">
         <div><h1 className="page-title">Compras, Gastos y Proveedores</h1><div className="page-sub">Abastecimiento estructurado y gestión de proveedores</div></div>
-        <button className="btn btn-primary">{I.plus} Nuevo Registro</button>
+        <button className="btn btn-primary" onClick={() => setShowGastoForm(true)}>{I.plus} Nuevo Registro</button>
       </div>
       <div className="tabs">
         {['Compras en Campo', 'Proveedores', 'Órdenes de Compra (OC)', 'Órdenes de Servicio (OSI)', 'Recepción y Conformidad'].map(t => (
@@ -3947,6 +4094,80 @@ function Compras() {
               <button className="btn btn-primary flex-1">{I.check} Validar y registrar</button>
               <button className="btn btn-secondary">{I.edit} Corregir datos</button>
               <button className="btn btn-ghost">Rechazar</button>
+            </div>
+          </div>
+        </div>
+      </>}
+
+      {showGastoForm && <>
+        <div className="side-panel-backdrop" onClick={() => setShowGastoForm(false)} />
+        <div className="side-panel">
+          <div className="side-panel-head">
+            <div>
+              <div className="eyebrow">Backoffice</div>
+              <div className="font-display" style={{fontSize:18, fontWeight:700, marginTop:2}}>Registrar Gasto</div>
+            </div>
+            <button className="icon-btn" onClick={() => setShowGastoForm(false)}>{I.x}</button>
+          </div>
+          <div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:16}}>
+            <div className="form-group">
+              <label className="form-label">Proveedor / Descripción del gasto *</label>
+              <input className="input" placeholder="Ej: Ferretería Industrial SAC, Viáticos Lima..." value={gastoForm.descripcion} onChange={e => setG('descripcion', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Categoría *</label>
+              <select className="select" value={gastoForm.categoria} onChange={e => setG('categoria', e.target.value)}>
+                <option value="Materiales">Materiales</option>
+                <option value="Servicios terceros">Servicios terceros</option>
+                <option value="Logística">Logística</option>
+                <option value="Administrativos">Administrativos</option>
+                <option value="Comerciales">Comerciales</option>
+                <option value="Gastos financieros">Gastos financieros</option>
+              </select>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'2fr 1fr', gap:12}}>
+              <div className="form-group">
+                <label className="form-label">Monto *</label>
+                <input className="input" type="number" min="0" step="0.01" placeholder="0.00" value={gastoForm.monto} onChange={e => setG('monto', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Moneda</label>
+                <select className="select" value={gastoForm.moneda} onChange={e => setG('moneda', e.target.value)}>
+                  <option value="PEN">PEN</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Fecha *</label>
+              <input className="input" type="date" value={gastoForm.fecha} onChange={e => setG('fecha', e.target.value)} />
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+              <div className="form-group">
+                <label className="form-label">N° Comprobante</label>
+                <input className="input" placeholder="F001-0001" value={gastoForm.num_comprobante} onChange={e => setG('num_comprobante', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Tipo comprobante</label>
+                <select className="select" value={gastoForm.tipo_comprobante} onChange={e => setG('tipo_comprobante', e.target.value)}>
+                  <option value="Factura">Factura</option>
+                  <option value="Boleta">Boleta</option>
+                  <option value="Recibo">Recibo</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Centro de Costo (CECO) *</label>
+              <select className={`select ${errCecoGasto ? 'input-error' : ''}`} value={gastoForm.centro_costo_id} onChange={e => setG('centro_costo_id', e.target.value)}>
+                <option value="">— Seleccionar CECO —</option>
+                {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+              </select>
+              {errCecoGasto && <div style={{color:'var(--danger, #ef4444)', fontSize:12, marginTop:4}}>El CECO es obligatorio para registrar un gasto.</div>}
+            </div>
+            <div className="row" style={{gap:8, marginTop:8}}>
+              <button className="btn btn-primary flex-1" onClick={handleGastoSubmit}>{I.check} Registrar Gasto</button>
+              <button className="btn btn-ghost" onClick={() => setShowGastoForm(false)}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -4185,7 +4406,7 @@ function Cierre() {
   const canCost = role?.permisos?.ver_costos || role?.permisos?.todo;
   const [sel, setSel] = useState(null);
   const [tabCierre, setTabCierre] = useState('resumen');
-  const [confForm, setConfForm] = useState({ tipo: 'fisico' });
+  const [confForm, setConfForm] = useState({ tipo: 'fisico', nombre_firmante: '', fecha_firma: new Date().toISOString().split('T')[0], referencia: '' });
   const [guardandoConf, setGuardandoConf] = useState(false);
 
   useEffect(() => {
@@ -4531,10 +4752,10 @@ function Cierre() {
                           <div className="col" style={{gap:8, marginBottom:14}}>
                             {[
                               { val: 'fisico', label: 'Documento físico', desc: 'El cliente firmó un documento físico de conformidad.' },
-                              { val: 'digital', label: 'Firma digital', desc: 'Próximamente disponible.', disabled: true },
+                              { val: 'digital', label: 'Conformidad digital', desc: 'Se registra nombre, fecha y referencia del documento digital.' },
                             ].map(opt => (
-                              <label key={opt.val} style={{display:'flex', gap:10, padding:'10px 12px', borderRadius:6, border:`1.5px solid ${confForm.tipo === opt.val ? 'var(--cyan)' : 'var(--border)'}`, background: confForm.tipo === opt.val ? 'color-mix(in srgb, var(--cyan) 6%, transparent)' : 'var(--bg)', cursor: opt.disabled ? 'default' : 'pointer', opacity: opt.disabled ? 0.5 : 1}}>
-                                <input type="radio" name="conf_tipo" value={opt.val} checked={confForm.tipo === opt.val} disabled={opt.disabled} onChange={() => !opt.disabled && setConfForm({ tipo: opt.val })} style={{marginTop:2, flexShrink:0}}/>
+                              <label key={opt.val} style={{display:'flex', gap:10, padding:'10px 12px', borderRadius:6, border:`1.5px solid ${confForm.tipo === opt.val ? 'var(--cyan)' : 'var(--border)'}`, background: confForm.tipo === opt.val ? 'color-mix(in srgb, var(--cyan) 6%, transparent)' : 'var(--bg)', cursor:'pointer'}}>
+                                <input type="radio" name="conf_tipo" value={opt.val} checked={confForm.tipo === opt.val} onChange={() => setConfForm(v => ({...v, tipo: opt.val}))} style={{marginTop:2, flexShrink:0}}/>
                                 <div>
                                   <div style={{fontWeight:600, fontSize:13}}>{opt.label}</div>
                                   <div style={{fontSize:12, color:'var(--fg-muted)'}}>{opt.desc}</div>
@@ -4542,15 +4763,35 @@ function Cierre() {
                               </label>
                             ))}
                           </div>
+                          {confForm.tipo === 'digital' && (
+                            <div className="col" style={{gap:8, marginBottom:14}}>
+                              <div className="input-group" style={{margin:0}}>
+                                <label style={{fontSize:12}}>Nombre completo del firmante <span style={{color:'var(--danger)'}}>*</span></label>
+                                <input className="input" style={{fontSize:13}} value={confForm.nombre_firmante} onChange={e => setConfForm(v => ({...v, nombre_firmante: e.target.value}))} placeholder="Nombre y apellido"/>
+                              </div>
+                              <div className="input-group" style={{margin:0}}>
+                                <label style={{fontSize:12}}>Fecha de firma <span style={{color:'var(--danger)'}}>*</span></label>
+                                <input className="input" type="date" style={{fontSize:13}} value={confForm.fecha_firma} onChange={e => setConfForm(v => ({...v, fecha_firma: e.target.value}))}/>
+                              </div>
+                              <div className="input-group" style={{margin:0}}>
+                                <label style={{fontSize:12}}>Código / referencia del documento <span className="text-muted">(opcional)</span></label>
+                                <input className="input" style={{fontSize:13}} value={confForm.referencia} onChange={e => setConfForm(v => ({...v, referencia: e.target.value}))} placeholder="Ej: DOC-2026-001"/>
+                              </div>
+                            </div>
+                          )}
                           <button
                             className="btn btn-primary btn-sm"
-                            disabled={guardandoConf}
+                            disabled={guardandoConf || (confForm.tipo === 'digital' && (!confForm.nombre_firmante.trim() || !confForm.fecha_firma))}
                             onClick={async () => {
                               if (!c) return;
                               setGuardandoConf(true);
-                              await actualizarCierreTecnico(c.id, {
-                                conformidad_cliente: { tipo: confForm.tipo, registrado_at: new Date().toISOString() }
-                              });
+                              const payload = { tipo: confForm.tipo, registrado_at: new Date().toISOString() };
+                              if (confForm.tipo === 'digital') {
+                                payload.nombre_firmante = confForm.nombre_firmante.trim();
+                                payload.fecha_firma = confForm.fecha_firma;
+                                if (confForm.referencia.trim()) payload.referencia = confForm.referencia.trim();
+                              }
+                              await actualizarCierreTecnico(c.id, { conformidad_cliente: payload });
                               setGuardandoConf(false);
                               addNotificacion('Conformidad registrada correctamente.');
                             }}
@@ -4657,17 +4898,34 @@ function Remision() {
   );
 }
 
+const SOLPE_FORM_INIT = { descripcion: '', tipo: 'bien', prioridad: 'normal', solicitante: '', centro_costo_id: '' };
+
 function SOLPE() {
-  const { solpes, ots, searchQuery } = useApp();
+  const { solpes, ots, searchQuery, crearSOLPE, centrosCosto } = useApp();
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(SOLPE_FORM_INIT);
+  const [errCeco, setErrCeco] = useState(false);
+
   const getOTNumero = (id) => ots.find(o => o.id === id)?.numero || id;
+  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
 
   const query = searchQuery.toLowerCase();
-  const filteredSolpes = solpes.filter(s => 
-    s.numero.toLowerCase().includes(query) ||
+  const filteredSolpes = solpes.filter(s =>
+    (s.numero || '').toLowerCase().includes(query) ||
     getOTNumero(s.ot_id).toLowerCase().includes(query) ||
-    s.solicitante.toLowerCase().includes(query) ||
+    (s.solicitante || '').toLowerCase().includes(query) ||
     (s.centro_costo || '').toLowerCase().includes(query)
   );
+
+  const handleSubmit = () => {
+    if (!form.centro_costo_id) { setErrCeco(true); return; }
+    crearSOLPE({ ...form, fecha: new Date().toISOString().split('T')[0] });
+    setForm(SOLPE_FORM_INIT);
+    setErrCeco(false);
+    setShowForm(false);
+  };
+
+  const set = (k, v) => { setForm(p => ({ ...p, [k]: v })); if (k === 'centro_costo_id') setErrCeco(false); };
 
   return (
     <>
@@ -4676,6 +4934,7 @@ function SOLPE() {
           <h1 className="page-title">SOLPE (Pedidos Internos)</h1>
           <div className="page-sub">Requerimientos de almacén generados por el equipo técnico</div>
         </div>
+        <button className="btn btn-primary" onClick={() => setShowForm(true)}>{I.plus} Nueva SOLPE</button>
       </div>
       <div className="card mt-6">
         <div className="table-wrap">
@@ -4684,44 +4943,101 @@ function SOLPE() {
               <tr>
                 <th>N° SOLPE</th>
                 <th>OT Asociada</th>
-                <th>Solicitante</th>
+                <th>Área / Solicitante</th>
                 <th>Centro de Costo</th>
-                <th>N° Items</th>
+                <th>Tipo</th>
+                <th>Urgencia</th>
                 <th>Fecha</th>
                 <th>Estado</th>
                 <th>Acción</th>
               </tr>
             </thead>
             <tbody>
-              {filteredSolpes.map(s => (
-                <tr key={s.id} className="hover-row">
-                  <td className="mono" style={{fontWeight:600}}>{s.numero}</td>
-                  <td className="mono">{getOTNumero(s.ot_id)}</td>
-                  <td>{s.solicitante}</td>
-                  <td className="text-muted">{s.centro_costo}</td>
-                  <td>{s.items?.length || 0} items</td>
-                  <td className="text-muted">{s.fecha}</td>
-                  <td>
-                    <span className={'badge ' + (s.estado==='atendida'?'badge-green':s.estado==='solicitada'?'badge-orange':'badge-gray')}>
-                      {s.estado.toUpperCase()}
-                    </span>
-                  </td>
-                  <td>
-                    {s.estado === 'solicitada' ? (
-                      <button className="btn btn-sm btn-primary">Atender</button>
-                    ) : (
-                      <button className="btn btn-sm btn-ghost">Ver detalles</button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {solpes.length === 0 && (
-                <tr><td colSpan="8" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>No hay SOLPEs registradas.</td></tr>
+              {filteredSolpes.map(s => {
+                const ceco = cecosActivos.find(c => c.id === s.centro_costo_id);
+                return (
+                  <tr key={s.id} className="hover-row">
+                    <td className="mono" style={{fontWeight:600}}>{s.numero}</td>
+                    <td className="mono">{getOTNumero(s.ot_id)}</td>
+                    <td>{s.solicitante}</td>
+                    <td className="text-muted">{ceco ? `${ceco.codigo} — ${ceco.nombre}` : (s.centro_costo || '—')}</td>
+                    <td>{s.tipo || '—'}</td>
+                    <td>{s.prioridad || '—'}</td>
+                    <td className="text-muted">{s.fecha}</td>
+                    <td>
+                      <span className={'badge ' + (s.estado==='atendida'?'badge-green':s.estado==='solicitada'?'badge-orange':'badge-gray')}>
+                        {(s.estado || '').toUpperCase()}
+                      </span>
+                    </td>
+                    <td>
+                      {s.estado === 'solicitada' ? (
+                        <button className="btn btn-sm btn-primary">Atender</button>
+                      ) : (
+                        <button className="btn btn-sm btn-ghost">Ver detalles</button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredSolpes.length === 0 && (
+                <tr><td colSpan="9" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>No hay SOLPEs registradas.</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {showForm && <>
+        <div className="side-panel-backdrop" onClick={() => setShowForm(false)} />
+        <div className="side-panel">
+          <div className="side-panel-head">
+            <div>
+              <div className="eyebrow">Nueva solicitud</div>
+              <div className="font-display" style={{fontSize:18, fontWeight:700, marginTop:2}}>Nueva SOLPE</div>
+            </div>
+            <button className="icon-btn" onClick={() => setShowForm(false)}>{I.x}</button>
+          </div>
+          <div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:16}}>
+            <div className="form-group">
+              <label className="form-label">Descripción de la necesidad *</label>
+              <textarea className="input" rows={3} placeholder="Describe el requerimiento..." value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+              <div className="form-group">
+                <label className="form-label">Tipo *</label>
+                <select className="select" value={form.tipo} onChange={e => set('tipo', e.target.value)}>
+                  <option value="bien">Bien</option>
+                  <option value="servicio">Servicio</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Urgencia *</label>
+                <select className="select" value={form.prioridad} onChange={e => set('prioridad', e.target.value)}>
+                  <option value="normal">Normal</option>
+                  <option value="urgente">Urgente</option>
+                  <option value="critica">Crítica</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Área solicitante *</label>
+              <input className="input" placeholder="Ej: Mantenimiento, Operaciones..." value={form.solicitante} onChange={e => set('solicitante', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Centro de Costo (CECO) *</label>
+              <select className={`select ${errCeco ? 'input-error' : ''}`} value={form.centro_costo_id} onChange={e => set('centro_costo_id', e.target.value)}>
+                <option value="">— Seleccionar CECO —</option>
+                {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+              </select>
+              {errCeco && <div style={{color:'var(--danger, #ef4444)', fontSize:12, marginTop:4}}>El CECO es obligatorio para crear una SOLPE.</div>}
+            </div>
+            <div className="row" style={{gap:8, marginTop:8}}>
+              <button className="btn btn-primary flex-1" onClick={handleSubmit}>{I.check} Crear SOLPE</button>
+              <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      </>}
     </>
   );
 }
