@@ -1,1 +1,868 @@
 [BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[2m1:28:25 a. m.[22m [31m[1m[vite][22m[39m [31mInternal server error: D:\VIBECODING\ERP - TIDEO\src\pages_core.jsx: Expected corresponding JSX closing tag for <div>. (5260:10)
+
+[0m [90m 5258 |[31m               {renderTooltipTotal([32m'Promedio'[31m[33m,[31m ticketLines[33m,[31m [32m'—'[31m)}
+ [90m 5259 |[31m             [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+[31m[1m>[22m[31m[90m 5260 |[31m           [33m<[31m[33m/[31m[33mKpiTooltip[31m[33m>[31m
+ [90m      |[31m           [31m[1m^[22m[31m
+ [90m 5261 |[31m         [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5262 |[31m         [33m<[31m[33mdiv[31m className[33m=[31m[32m"kpi-card bi-kpi-card"[31m tabIndex[33m=[31m{[35m0[31m}[33m>[31m
+ [90m 5263 |[31m           [33m<[31m[33mdiv[31m className[33m=[31m[32m"kpi-label"[31m[33m>[31m[33mLeads[31m activos[33m<[31m[33m/[31m[33mdiv[31m[33m>[31m[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_core.jsx[39m:5260:10
+[33m  5258|                {renderTooltipTotal('Promedio', ticketLines, '—')}
+  5259|              </div>
+  5260|            </KpiTooltip>
+     |            ^
+  5261|          </div>
+  5262|          <div className="kpi-card bi-kpi-card" tabIndex={0}>[39m
+      at constructor (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:365:19)
+      at JSXParserMixin.raise (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6599:19)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4727:16)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4698:32)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at JSXParserMixin.parseExpressionBase (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10784:23)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12421:16)
+      at JSXParserMixin.parseExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:17)
+      at JSXParserMixin.parseReturnStatement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13142:28)
+      at JSXParserMixin.parseStatementContent (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12798:21)
+      at JSXParserMixin.parseStatementLike (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12767:17)
+      at JSXParserMixin.parseStatementListItem (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12747:17)
+      at JSXParserMixin.parseBlockOrModuleBlockBody (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13316:61)
+      at JSXParserMixin.parseBlockBody (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13309:10)
+      at JSXParserMixin.parseBlock (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13297:10)
+      at JSXParserMixin.parseFunctionBody (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12100:24)
+      at JSXParserMixin.parseFunctionBodyAndFinish (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12086:10)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13445:12
+      at JSXParserMixin.withSmartMixTopicForbiddingContext (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12403:14)
+      at JSXParserMixin.parseFunction (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13444:10)
+      at JSXParserMixin.parseFunctionStatement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13125:17)
+      at JSXParserMixin.parseStatementContent (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12791:21)
+      at JSXParserMixin.parseStatementLike (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12767:17)
+      at JSXParserMixin.parseModuleItem (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12744:17)
+      at JSXParserMixin.parseBlockOrModuleBlockBody (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13316:36)
+      at JSXParserMixin.parseBlockBody (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13309:10)
+      at JSXParserMixin.parseProgram (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12622:10)
+[2m1:30:04 a. m.[22m [31m[1m[vite][22m[39m [31mInternal server error: D:\VIBECODING\ERP - TIDEO\src\pages_core.jsx: Unexpected token, expected "," (5369:20)
+
+[0m [90m 5367 |[31m                       [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5368 |[31m                     [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+[31m[1m>[22m[31m[90m 5369 |[31m                     {f[33m.[31mkey [33m===[31m [32m'ganada'[31m [33m&&[31m _baseParaPerdida [33m>[31m [35m0[31m [33m&&[31m (
+ [90m      |[31m                     [31m[1m^[22m[31m
+ [90m 5370 |[31m                       [33m<[31m[33mdiv[31m className[33m=[31m[32m"bi-funnel-loss"[31m[33m>[31m
+ [90m 5371 |[31m                         [33m<[31m[33mspan[31m style[33m=[31m{{fontSize[33m:[31m[35m12[31m[33m,[31m color[33m:[31m[32m'var(--danger)'[31m[33m,[31m fontWeight[33m:[31m[35m500[31m}}[33m>[31m[33mPerdidas[31m[33m:[31m {_fPerdida[33m.[31mlength}[33m<[31m[33m/[31m[33mspan[31m[33m>[31m
+ [90m 5372 |[31m                         {pctPerdida [33m!=[31m [36mnull[31m [33m&&[31m [33m<[31m[33mspan[31m style[33m=[31m{{fontSize[33m:[31m[35m11[31m[33m,[31m color[33m:[31m[32m'var(--fg-muted)'[31m}}[33m>[31m({pctPerdida}[33m%[31m tasa de pérdida)[33m<[31m[33m/[31m[33mspan[31m[33m>[31m}[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_core.jsx[39m:5369:20
+[33m  5367|                        </div>
+  5368|                      </div>
+  5369|                      {f.key === 'ganada' && _baseParaPerdida > 0 && (
+     |                      ^
+  5370|                        <div className="bi-funnel-loss">
+  5371|                          <span style={{fontSize:12, color:'var(--danger)', fontWeight:500}}>Perdidas: {_fPerdida.length}</span>[39m
+      at constructor (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:365:19)
+      at JSXParserMixin.raise (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6599:19)
+      at JSXParserMixin.unexpected (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6619:16)
+      at JSXParserMixin.expect (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6899:12)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11661:14)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at JSXParserMixin.parseExpressionBase (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10784:23)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12421:16)
+      at JSXParserMixin.parseExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:17)
+      at JSXParserMixin.parseReturnStatement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13142:28)
+      at JSXParserMixin.parseStatementContent (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12798:21)
+      at JSXParserMixin.parseStatementLike (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12767:17)
+      at JSXParserMixin.parseStatementListItem (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12747:17)
+      at JSXParserMixin.parseBlockOrModuleBlockBody (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13316:61)
+      at JSXParserMixin.parseBlockBody (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13309:10)
+      at JSXParserMixin.parseBlock (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13297:10)
+      at JSXParserMixin.parseFunctionBody (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12100:24)
+      at JSXParserMixin.parseArrowExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12075:10)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11687:12)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseExprListItem (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12175:18)
+      at JSXParserMixin.parseCallExpressionArguments (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11252:22)
+      at JSXParserMixin.parseCoverCallAndAsyncArrowHead (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11186:29)
+      at JSXParserMixin.parseSubscript (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11120:19)
+      at JSXParserMixin.parseSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11094:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11085:17)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+[2m1:30:32 a. m.[22m [31m[1m[vite][22m[39m [31mInternal server error: D:\VIBECODING\ERP - TIDEO\src\pages_core.jsx: Unexpected token, expected "," (5369:20)
+
+[0m [90m 5367 |[31m                     [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5368 |[31m                     [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+[31m[1m>[22m[31m[90m 5369 |[31m                     {f[33m.[31mkey [33m===[31m [32m'ganada'[31m [33m&&[31m _baseParaPerdida [33m>[31m [35m0[31m [33m&&[31m (
+ [90m      |[31m                     [31m[1m^[22m[31m
+ [90m 5370 |[31m                       [33m<[31m[33mdiv[31m className[33m=[31m[32m"bi-funnel-loss"[31m[33m>[31m
+ [90m 5371 |[31m                         [33m<[31m[33mspan[31m style[33m=[31m{{fontSize[33m:[31m[35m12[31m[33m,[31m color[33m:[31m[32m'var(--danger)'[31m[33m,[31m fontWeight[33m:[31m[35m500[31m}}[33m>[31m[33mPerdidas[31m[33m:[31m {_fPerdida[33m.[31mlength}[33m<[31m[33m/[31m[33mspan[31m[33m>[31m
+ [90m 5372 |[31m                         {pctPerdida [33m!=[31m [36mnull[31m [33m&&[31m [33m<[31m[33mspan[31m style[33m=[31m{{fontSize[33m:[31m[35m11[31m[33m,[31m color[33m:[31m[32m'var(--fg-muted)'[31m}}[33m>[31m({pctPerdida}[33m%[31m tasa de pérdida)[33m<[31m[33m/[31m[33mspan[31m[33m>[31m}[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_core.jsx[39m:5369:20
+[33m  5367|                      </div>
+  5368|                      </div>
+  5369|                      {f.key === 'ganada' && _baseParaPerdida > 0 && (
+     |                      ^
+  5370|                        <div className="bi-funnel-loss">
+  5371|                          <span style={{fontSize:12, color:'var(--danger)', fontWeight:500}}>Perdidas: {_fPerdida.length}</span>[39m
+      at constructor (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:365:19)
+      at JSXParserMixin.raise (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6599:19)
+      at JSXParserMixin.unexpected (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6619:16)
+      at JSXParserMixin.expect (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6899:12)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11661:14)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at JSXParserMixin.parseExpressionBase (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10784:23)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12421:16)
+      at JSXParserMixin.parseExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:17)
+      at JSXParserMixin.parseReturnStatement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13142:28)
+      at JSXParserMixin.parseStatementContent (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12798:21)
+      at JSXParserMixin.parseStatementLike (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12767:17)
+      at JSXParserMixin.parseStatementListItem (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12747:17)
+      at JSXParserMixin.parseBlockOrModuleBlockBody (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13316:61)
+      at JSXParserMixin.parseBlockBody (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13309:10)
+      at JSXParserMixin.parseBlock (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:13297:10)
+      at JSXParserMixin.parseFunctionBody (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12100:24)
+      at JSXParserMixin.parseArrowExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12075:10)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11687:12)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseExprListItem (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12175:18)
+      at JSXParserMixin.parseCallExpressionArguments (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11252:22)
+      at JSXParserMixin.parseCoverCallAndAsyncArrowHead (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11186:29)
+      at JSXParserMixin.parseSubscript (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11120:19)
+      at JSXParserMixin.parseSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11094:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11085:17)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+[2m7:42:55 a. m.[22m [31m[1m[vite][22m[39m [31mInternal server error: D:\VIBECODING\ERP - TIDEO\src\pages_core.jsx: Adjacent JSX elements must be wrapped in an enclosing tag. Did you want a JSX fragment <>...</>? (5530:10)
+
+[0m [90m 5528 |[31m             [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5529 |[31m           [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+[31m[1m>[22m[31m[90m 5530 |[31m           [33m<[31m[33mdiv[31m className[33m=[31m[32m"card"[31m[33m>[31m
+ [90m      |[31m           [31m[1m^[22m[31m
+ [90m 5531 |[31m             [33m<[31m[33mdiv[31m className[33m=[31m[32m"card-head"[31m[33m>[31m[33m<[31m[33mh3[31m[33m>[31m[33mAnálisis[31m de [33mCompetencia[31m[33m<[31m[33m/[31m[33mh3[31m[33m>[31m[33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5532 |[31m             [33m<[31m[33mdiv[31m className[33m=[31m[32m"table-wrap"[31m[33m>[31m
+ [90m 5533 |[31m               [33m<[31m[33mtable[31m className[33m=[31m[32m"tbl"[31m[33m>[31m[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_core.jsx[39m:5530:10
+[33m  5528|              </div>
+  5529|            </div>
+  5530|            <div className="card">
+     |            ^
+  5531|              <div className="card-head"><h3>Análisis de Competencia</h3></div>
+  5532|              <div className="table-wrap">[39m
+      at constructor (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:365:19)
+      at JSXParserMixin.raise (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6599:19)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4742:18)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOpBaseRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10986:34)
+      at JSXParserMixin.parseExprOpRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10981:21)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10947:27)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10953:21)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10908:17)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at JSXParserMixin.parseExpressionBase (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10784:23)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:17)
+      at JSXParserMixin.jsxParseExpressionContainer (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4632:31)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4711:36)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+[2m7:43:24 a. m.[22m [31m[1m[vite][22m[39m [31mInternal server error: D:\VIBECODING\ERP - TIDEO\src\pages_core.jsx: Adjacent JSX elements must be wrapped in an enclosing tag. Did you want a JSX fragment <>...</>? (5530:10)
+
+[0m [90m 5528 |[31m             [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5529 |[31m           [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+[31m[1m>[22m[31m[90m 5530 |[31m           [33m<[31m[33mdiv[31m className[33m=[31m[32m"card"[31m[33m>[31m
+ [90m      |[31m           [31m[1m^[22m[31m
+ [90m 5531 |[31m             [33m<[31m[33mdiv[31m className[33m=[31m[32m"card-head"[31m[33m>[31m[33m<[31m[33mh3[31m[33m>[31m[33mAnálisis[31m de [33mCompetencia[31m[33m<[31m[33m/[31m[33mh3[31m[33m>[31m[33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5532 |[31m             [33m<[31m[33mdiv[31m className[33m=[31m[32m"table-wrap"[31m[33m>[31m
+ [90m 5533 |[31m               [33m<[31m[33mtable[31m className[33m=[31m[32m"tbl"[31m[33m>[31m[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_core.jsx[39m:5530:10
+[33m  5528|              </div>
+  5529|            </div>
+  5530|            <div className="card">
+     |            ^
+  5531|              <div className="card-head"><h3>Análisis de Competencia</h3></div>
+  5532|              <div className="table-wrap">[39m
+      at constructor (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:365:19)
+      at JSXParserMixin.raise (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6599:19)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4742:18)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOpBaseRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10986:34)
+      at JSXParserMixin.parseExprOpRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10981:21)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10947:27)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10953:21)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10908:17)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at JSXParserMixin.parseExpressionBase (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10784:23)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:17)
+      at JSXParserMixin.jsxParseExpressionContainer (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4632:31)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4711:36)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+[2m7:43:34 a. m.[22m [31m[1m[vite][22m[39m [31mInternal server error: D:\VIBECODING\ERP - TIDEO\src\pages_core.jsx: Adjacent JSX elements must be wrapped in an enclosing tag. Did you want a JSX fragment <>...</>? (5531:10)
+
+[0m [90m 5529 |[31m             [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5530 |[31m           [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+[31m[1m>[22m[31m[90m 5531 |[31m           [33m<[31m[33mdiv[31m className[33m=[31m[32m"card"[31m[33m>[31m
+ [90m      |[31m           [31m[1m^[22m[31m
+ [90m 5532 |[31m             [33m<[31m[33mdiv[31m className[33m=[31m[32m"card-head"[31m[33m>[31m[33m<[31m[33mh3[31m[33m>[31m[33mAnálisis[31m de [33mCompetencia[31m[33m<[31m[33m/[31m[33mh3[31m[33m>[31m[33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5533 |[31m             [33m<[31m[33mdiv[31m className[33m=[31m[32m"table-wrap"[31m[33m>[31m
+ [90m 5534 |[31m               [33m<[31m[33mtable[31m className[33m=[31m[32m"tbl"[31m[33m>[31m[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_core.jsx[39m:5531:10
+[33m  5529|              </div>
+  5530|            </div>
+  5531|            <div className="card">
+     |            ^
+  5532|              <div className="card-head"><h3>Análisis de Competencia</h3></div>
+  5533|              <div className="table-wrap">[39m
+      at constructor (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:365:19)
+      at JSXParserMixin.raise (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6599:19)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4742:18)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOpBaseRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10986:34)
+      at JSXParserMixin.parseExprOpRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10981:21)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10947:27)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10953:21)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10908:17)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at JSXParserMixin.parseExpressionBase (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10784:23)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:17)
+      at JSXParserMixin.jsxParseExpressionContainer (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4632:31)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4711:36)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+[2m7:43:38 a. m.[22m [31m[1m[vite][22m[39m [31mInternal server error: D:\VIBECODING\ERP - TIDEO\src\pages_core.jsx: Adjacent JSX elements must be wrapped in an enclosing tag. Did you want a JSX fragment <>...</>? (5530:10)
+
+[0m [90m 5528 |[31m             [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5529 |[31m           [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+[31m[1m>[22m[31m[90m 5530 |[31m           [33m<[31m[33mdiv[31m className[33m=[31m[32m"card"[31m[33m>[31m
+ [90m      |[31m           [31m[1m^[22m[31m
+ [90m 5531 |[31m             [33m<[31m[33mdiv[31m className[33m=[31m[32m"card-head"[31m[33m>[31m[33m<[31m[33mh3[31m[33m>[31m[33mAnálisis[31m de [33mCompetencia[31m[33m<[31m[33m/[31m[33mh3[31m[33m>[31m[33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5532 |[31m             [33m<[31m[33mdiv[31m className[33m=[31m[32m"table-wrap"[31m[33m>[31m
+ [90m 5533 |[31m               [33m<[31m[33mtable[31m className[33m=[31m[32m"tbl"[31m[33m>[31m[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_core.jsx[39m:5530:10
+[33m  5528|              </div>
+  5529|            </div>
+  5530|            <div className="card">
+     |            ^
+  5531|              <div className="card-head"><h3>Análisis de Competencia</h3></div>
+  5532|              <div className="table-wrap">[39m
+      at constructor (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:365:19)
+      at JSXParserMixin.raise (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6599:19)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4742:18)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOpBaseRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10986:34)
+      at JSXParserMixin.parseExprOpRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10981:21)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10947:27)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10953:21)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10908:17)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at JSXParserMixin.parseExpressionBase (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10784:23)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:17)
+      at JSXParserMixin.jsxParseExpressionContainer (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4632:31)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4711:36)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+[2m7:43:52 a. m.[22m [31m[1m[vite][22m[39m [31mInternal server error: D:\VIBECODING\ERP - TIDEO\src\pages_core.jsx: Adjacent JSX elements must be wrapped in an enclosing tag. Did you want a JSX fragment <>...</>? (5529:10)
+
+[0m [90m 5527 |[31m             [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5528 |[31m           [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+[31m[1m>[22m[31m[90m 5529 |[31m           [33m<[31m[33mdiv[31m className[33m=[31m[32m"card"[31m[33m>[31m
+ [90m      |[31m           [31m[1m^[22m[31m
+ [90m 5530 |[31m             [33m<[31m[33mdiv[31m className[33m=[31m[32m"card-head"[31m[33m>[31m[33m<[31m[33mh3[31m[33m>[31m[33mAnálisis[31m de [33mCompetencia[31m[33m<[31m[33m/[31m[33mh3[31m[33m>[31m[33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5531 |[31m             [33m<[31m[33mdiv[31m className[33m=[31m[32m"table-wrap"[31m[33m>[31m
+ [90m 5532 |[31m               [33m<[31m[33mtable[31m className[33m=[31m[32m"tbl"[31m[33m>[31m[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_core.jsx[39m:5529:10
+[33m  5527|              </div>
+  5528|            </div>
+  5529|            <div className="card">
+     |            ^
+  5530|              <div className="card-head"><h3>Análisis de Competencia</h3></div>
+  5531|              <div className="table-wrap">[39m
+      at constructor (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:365:19)
+      at JSXParserMixin.raise (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6599:19)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4742:18)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOpBaseRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10986:34)
+      at JSXParserMixin.parseExprOpRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10981:21)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10947:27)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10953:21)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10908:17)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at JSXParserMixin.parseExpressionBase (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10784:23)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:17)
+      at JSXParserMixin.jsxParseExpressionContainer (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4632:31)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4711:36)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+[2m7:46:17 a. m.[22m [31m[1m[vite][22m[39m [31mInternal server error: D:\VIBECODING\ERP - TIDEO\src\pages_core.jsx: Expected corresponding JSX closing tag for <div>. (5570:4)
+
+[0m [90m 5568 |[31m         [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5569 |[31m       )}
+[31m[1m>[22m[31m[90m 5570 |[31m     [33m<[31m[33m/[31m[33m>[31m
+ [90m      |[31m     [31m[1m^[22m[31m
+ [90m 5571 |[31m   )[33m;[31m
+ [90m 5572 |[31m }
+ [90m 5573 |[31m[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_core.jsx[39m:5570:4
+[33m  5568|          </div>
+  5569|        )}
+  5570|      </>
+     |      ^
+  5571|    );
+  5572|  }[39m
+      at constructor (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:365:19)
+      at JSXParserMixin.raise (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6599:19)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4722:14)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOpBaseRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10986:34)
+      at JSXParserMixin.parseExprOpRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10981:21)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10947:27)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10953:21)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10908:17)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at JSXParserMixin.parseExpressionBase (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10784:23)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:17)
+      at JSXParserMixin.jsxParseExpressionContainer (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4632:31)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4711:36)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+[2m7:46:30 a. m.[22m [31m[1m[vite][22m[39m [31mInternal server error: D:\VIBECODING\ERP - TIDEO\src\pages_core.jsx: Expected corresponding JSX closing tag for <div>. (5571:4)
+
+[0m [90m 5569 |[31m         [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5570 |[31m       )}
+[31m[1m>[22m[31m[90m 5571 |[31m     [33m<[31m[33m/[31m[33m>[31m
+ [90m      |[31m     [31m[1m^[22m[31m
+ [90m 5572 |[31m   )[33m;[31m
+ [90m 5573 |[31m }
+ [90m 5574 |[31m[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_core.jsx[39m:5571:4
+[33m  5569|          </div>
+  5570|        )}
+  5571|      </>
+     |      ^
+  5572|    );
+  5573|  }[39m
+      at constructor (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:365:19)
+      at JSXParserMixin.raise (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6599:19)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4722:14)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOpBaseRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10986:34)
+      at JSXParserMixin.parseExprOpRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10981:21)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10947:27)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10953:21)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10908:17)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at JSXParserMixin.parseExpressionBase (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10784:23)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:17)
+      at JSXParserMixin.jsxParseExpressionContainer (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4632:31)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4711:36)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+[2m7:46:49 a. m.[22m [31m[1m[vite][22m[39m [31mInternal server error: D:\VIBECODING\ERP - TIDEO\src\pages_core.jsx: Expected corresponding JSX closing tag for <div>. (5572:4)
+
+[0m [90m 5570 |[31m         [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5571 |[31m       )}
+[31m[1m>[22m[31m[90m 5572 |[31m     [33m<[31m[33m/[31m[33m>[31m
+ [90m      |[31m     [31m[1m^[22m[31m
+ [90m 5573 |[31m   )[33m;[31m
+ [90m 5574 |[31m }
+ [90m 5575 |[31m[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_core.jsx[39m:5572:4
+[33m  5570|          </div>
+  5571|        )}
+  5572|      </>
+     |      ^
+  5573|    );
+  5574|  }[39m
+      at constructor (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:365:19)
+      at JSXParserMixin.raise (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6599:19)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4722:14)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOpBaseRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10986:34)
+      at JSXParserMixin.parseExprOpRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10981:21)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10947:27)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10953:21)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10908:17)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at JSXParserMixin.parseExpressionBase (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10784:23)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:17)
+      at JSXParserMixin.jsxParseExpressionContainer (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4632:31)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4711:36)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+[2m7:47:32 a. m.[22m [31m[1m[vite][22m[39m [31mInternal server error: D:\VIBECODING\ERP - TIDEO\src\pages_core.jsx: Expected corresponding JSX closing tag for <div>. (5576:4)
+
+[0m [90m 5574 |[31m         [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 5575 |[31m       )}
+[31m[1m>[22m[31m[90m 5576 |[31m     [33m<[31m[33m/[31m[33m>[31m
+ [90m      |[31m     [31m[1m^[22m[31m
+ [90m 5577 |[31m   )[33m;[31m
+ [90m 5578 |[31m }
+ [90m 5579 |[31m[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_core.jsx[39m:5576:4
+[33m  5574|          </div>
+  5575|        )}
+  5576|      </>
+     |      ^
+  5577|    );
+  5578|  }[39m
+      at constructor (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:365:19)
+      at JSXParserMixin.raise (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:6599:19)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4722:14)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11331:23)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4764:20)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOpBaseRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10986:34)
+      at JSXParserMixin.parseExprOpRightExpr (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10981:21)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10947:27)
+      at JSXParserMixin.parseExprOp (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10953:21)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10908:17)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at JSXParserMixin.parseExpressionBase (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10784:23)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10780:17)
+      at JSXParserMixin.jsxParseExpressionContainer (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4632:31)
+      at JSXParserMixin.jsxParseElementAt (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4711:36)
+      at JSXParserMixin.jsxParseElement (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4749:17)
+      at JSXParserMixin.parseExprAtom (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:4759:19)
+      at JSXParserMixin.parseExprSubscripts (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11081:23)
+      at JSXParserMixin.parseUpdate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11066:21)
+      at JSXParserMixin.parseMaybeUnary (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11046:23)
+      at JSXParserMixin.parseMaybeUnaryOrPrivate (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10899:61)
+      at JSXParserMixin.parseExprOps (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10904:23)
+      at JSXParserMixin.parseMaybeConditional (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10881:23)
+      at JSXParserMixin.parseMaybeAssign (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10831:21)
+      at D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:39
+      at JSXParserMixin.allowInAnd (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12426:12)
+      at JSXParserMixin.parseMaybeAssignAllowIn (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:10800:17)
+      at JSXParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:12493:17)
+      at JSXParserMixin.parseParenAndDistinguishExpression (D:\VIBECODING\ERP - TIDEO\node_modules\@babel\parser\lib\index.js:11675:28)
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of D:\VIBECODING\ERP - TIDEO\src\pages_ops.jsx as it exceeds the max of 500KB.
+[2m12:37:06 p. m.[22m [33m[1m[vite][22m[39m [33mwarning: [33mDuplicate "style" attribute in JSX element[33m
+2278|              {[['monto_sin_igv', 'Sin IGV'], ['igv', 'IGV'], ['monto_total', 'Total *']].map(([k, l]) =>
+2279|            <div key={k}>
+2280|                  <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginBottom: 3 }} className="row" style={{ gap: 3 }}><span className="badge badge-purple" style={{ fontSize: 8, padding: '0 3px' }}>IA</span>{l}</div>
+   |                                                                                                           ^
+2281|                  <input className="input" type="number" step="0.01" value={campos[k]} onChange={(e) => setC(k, e.target.value)} placeholder="0.00" />
+2282|                </div>
+[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/pages_mobile.jsx[39m

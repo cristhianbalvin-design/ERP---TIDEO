@@ -1256,6 +1256,77 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'crm', entidad: 'leads', entidad_id: lead.id, accion: 'crear', valor_nuevo: lead });
   };
 
+  const normalizarMonedaCrm = moneda => String(moneda || empresa?.moneda || empresa?.moneda_base || 'PEN').trim().toUpperCase();
+  const PROBABILIDAD_ETAPA_OPP = { calificacion: 20, propuesta: 40, negociacion: 70, cierre: 70, ganada: 100, perdida: 0 };
+  const probabilidadPorEtapaOpp = etapa => PROBABILIDAD_ETAPA_OPP[String(etapa || 'calificacion').toLowerCase()] ?? 20;
+  const forecastPorEtapaOpp = (opp, etapa) => Number(opp?.monto_estimado || 0) * probabilidadPorEtapaOpp(etapa) / 100;
+  const getLeadIdDeOportunidad = opp => opp?.lead_id || opp?.lead_origen || null;
+
+  useEffect(() => {
+    if (isSupabaseConfigured()) {
+      if (
+        supabaseStatus.loading ||
+        !authSession?.user ||
+        !empresa?.id ||
+        !membresiaActiva?.empresa?.id ||
+        membresiaActiva.empresa.id !== empresa.id
+      ) return;
+    }
+    if (!oportunidades.length) return;
+
+    const pendientes = oportunidades.filter(o => {
+      const estado = String(o.estado || '').toLowerCase();
+      const etapa = String(o.etapa || 'calificacion').toLowerCase();
+      if (estado === 'ganada' || estado === 'perdida' || etapa === 'ganada' || etapa === 'perdida') return false;
+      const probabilidad = probabilidadPorEtapaOpp(etapa);
+      const forecast = Number(o.monto_estimado || 0) * probabilidad / 100;
+      return (
+        Number(o.probabilidad ?? -1) !== probabilidad ||
+        Math.abs(Number(o.forecast_ponderado ?? -1) - forecast) > 0.01
+      );
+    });
+
+    if (!pendientes.length) return;
+
+    const patchById = pendientes.reduce((acc, o) => {
+      const etapa = String(o.etapa || 'calificacion').toLowerCase();
+      const probabilidad = probabilidadPorEtapaOpp(etapa);
+      acc[o.id] = {
+        probabilidad,
+        forecast_ponderado: Number(o.monto_estimado || 0) * probabilidad / 100,
+      };
+      return acc;
+    }, {});
+
+    setOportunidades(prev => prev.map(o => patchById[o.id] ? { ...o, ...patchById[o.id] } : o));
+    pendientes.forEach(o => {
+      crmSync(sb => actualizarOportunidad(sb, o.id, patchById[o.id]));
+    });
+  }, [empresa?.id, oportunidades, authSession?.user, membresiaActiva?.empresa?.id, supabaseStatus.loading]);
+
+  const sincronizarPotencialLeadDesdeOportunidad = (opp, { monto, moneda }) => {
+    const leadId = getLeadIdDeOportunidad(opp);
+    if (!leadId) return;
+    const patch = {};
+    if (monto !== undefined) patch.presupuesto_estimado = Number(monto || 0);
+    if (moneda) patch.moneda = normalizarMonedaCrm(moneda);
+    if (!Object.keys(patch).length) return;
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ...patch } : l));
+    crmSync(sb => actualizarLead(sb, leadId, patch));
+  };
+  const sincronizarMontoOportunidadYLead = (oppId, { monto, moneda }) => {
+    if (!oppId || monto === undefined) return;
+    const opp = oportunidades.find(o => o.id === oppId);
+    const montoNum = Number(monto || 0);
+    const monedaNorm = normalizarMonedaCrm(moneda || opp?.moneda);
+    const probabilidad = probabilidadPorEtapaOpp(opp?.etapa);
+    const forecast_ponderado = montoNum * probabilidad / 100;
+    const patch = { monto_estimado: montoNum, moneda: monedaNorm, forecast_ponderado };
+    setOportunidades(prev => prev.map(o => o.id === oppId ? { ...o, ...patch } : o));
+    crmSync(sb => actualizarOportunidad(sb, oppId, patch));
+    sincronizarPotencialLeadDesdeOportunidad(opp, { monto: montoNum, moneda: monedaNorm });
+  };
+
   const actualizarLeadDatos = (leadId, datos) => {
     const anterior = leads.find(l => l.id === leadId) || null;
     const payload = { ...datos };
@@ -1268,6 +1339,25 @@ export function AppProvider({ children }) {
       nombre_contacto: payload.nombre ?? payload.nombre_contacto,
       empresa_nombre: payload.empresa_contacto ?? payload.empresa_nombre,
     }));
+    if (payload.presupuesto_estimado !== undefined || payload.moneda !== undefined) {
+      const patchOpp = {
+        ...(payload.presupuesto_estimado !== undefined ? { monto_estimado: payload.presupuesto_estimado } : {}),
+        ...(payload.moneda !== undefined ? { moneda: normalizarMonedaCrm(payload.moneda) } : {}),
+      };
+      oportunidades
+        .filter(o => getLeadIdDeOportunidad(o) === leadId)
+        .filter(o => !cotizaciones.some(c => c.oportunidad_id === o.id))
+        .forEach(o => {
+          const patchConForecast = {
+            ...patchOpp,
+            ...(patchOpp.monto_estimado !== undefined
+              ? { forecast_ponderado: Number(patchOpp.monto_estimado || 0) * probabilidadPorEtapaOpp(o.etapa) / 100 }
+              : {}),
+          };
+          setOportunidades(prev => prev.map(opp => opp.id === o.id ? { ...opp, ...patchConForecast } : opp));
+          crmSync(sb => actualizarOportunidad(sb, o.id, patchConForecast));
+        });
+    }
     auditSync({ modulo: 'crm', entidad: 'leads', entidad_id: leadId, accion: 'editar', valor_anterior: anterior, valor_nuevo: payload });
     addNotificacion('Lead actualizado.');
   };
@@ -1474,6 +1564,9 @@ export function AppProvider({ children }) {
     };
 
     const newOppId = generateId('opp');
+    const etapaInicialOpp = datosConversion.etapa_inicial || 'calificacion';
+    const montoInicialOpp = Number(datosConversion.monto_estimado || lead.presupuesto_estimado || 0);
+    const probInicialOpp = probabilidadPorEtapaOpp(etapaInicialOpp);
     const nuevaOportunidad = {
       id: newOppId,
       empresa_id: empresa.id,
@@ -1481,11 +1574,11 @@ export function AppProvider({ children }) {
       contacto_id: contactoId,
       nombre: datosConversion.nombre_oportunidad,
       servicio_interes: lead.necesidad,
-      etapa: datosConversion.etapa_inicial || 'calificacion',
-      monto_estimado: datosConversion.monto_estimado || lead.presupuesto_estimado,
+      etapa: etapaInicialOpp,
+      monto_estimado: montoInicialOpp,
       moneda: datosConversion.moneda || lead.moneda || 'PEN',
-      probabilidad: 30,
-      forecast_ponderado: (datosConversion.monto_estimado || lead.presupuesto_estimado) * 0.3,
+      probabilidad: probInicialOpp,
+      forecast_ponderado: montoInicialOpp * probInicialOpp / 100,
       fecha_cierre_estimada: null,
       fuente: lead.fuente,
       campana_id: lead.campana_id || null,
@@ -1557,14 +1650,19 @@ export function AppProvider({ children }) {
   };
 
   const crearOportunidad = (datos) => {
+    const etapaInicial = datos.etapa || 'calificacion';
+    const montoInicial = Number(datos.monto_estimado || 0);
+    const probInicial = datos.probabilidad ?? probabilidadPorEtapaOpp(etapaInicial);
     const opp = {
       id: generateId('opp'),
       empresa_id: empresa.id,
       estado: 'abierta',
       fecha_creacion: new Date().toISOString().split('T')[0],
-      probabilidad: 30,
-      forecast_ponderado: (datos.monto_estimado || 0) * 0.3,
-      ...datos
+      ...datos,
+      etapa: etapaInicial,
+      monto_estimado: montoInicial,
+      probabilidad: probInicial,
+      forecast_ponderado: montoInicial * probInicial / 100,
     };
     setOportunidades(prev => [...prev, opp]);
     crmSync(sb => persistirOportunidad(sb, empresa.id, opp));
@@ -1573,6 +1671,7 @@ export function AppProvider({ children }) {
 
   const actualizarEtapaOportunidad = (oppId, nuevaEtapa) => {
     const opp = oportunidades.find(o => o.id === oppId);
+    if (!opp) return false;
     if (nuevaEtapa === 'propuesta') {
       const tieneCotEnviada = cotizaciones.some(
         c => c.oportunidad_id === oppId && ['enviada', 'aprobada', 'ganada', 'convertida'].includes(c.estado)
@@ -1603,17 +1702,22 @@ export function AppProvider({ children }) {
         })).catch(() => {});
       }
     }
-    setOportunidades(prev => prev.map(o => o.id === oppId ? { ...o, etapa: nuevaEtapa, moved_at: Date.now() } : o));
-    crmSync(sb => actualizarOportunidad(sb, oppId, { etapa: nuevaEtapa }));
+    const probabilidad = probabilidadPorEtapaOpp(nuevaEtapa);
+    const forecast_ponderado = forecastPorEtapaOpp(opp, nuevaEtapa);
+    const patch = { etapa: nuevaEtapa, probabilidad, forecast_ponderado };
+    setOportunidades(prev => prev.map(o => o.id === oppId ? { ...o, ...patch, moved_at: Date.now() } : o));
+    crmSync(sb => actualizarOportunidad(sb, oppId, patch));
   };
 
   const marcarGanada = (oppId, datos) => {
     const anterior = oportunidades.find(o => o.id === oppId) || null;
+    const montoGanado = Number(datos.monto_estimado !== undefined ? datos.monto_estimado : anterior?.monto_estimado || 0);
     setOportunidades(prev => prev.map(o => o.id === oppId ? {
       ...o,
       estado: 'ganada',
       etapa: 'ganada',
       probabilidad: 100,
+      forecast_ponderado: montoGanado,
       ...(datos.monto_estimado !== undefined ? { monto_estimado: datos.monto_estimado } : {}),
       ...(datos.moneda ? { moneda: datos.moneda } : {}),
       fecha_cierre_real: datos.fecha_cierre_real || new Date().toISOString().split('T')[0],
@@ -1623,12 +1727,19 @@ export function AppProvider({ children }) {
       estado: 'ganada',
       etapa: 'ganada',
       probabilidad: 100,
+      forecast_ponderado: montoGanado,
       ...(datos.monto_estimado !== undefined ? { monto_estimado: datos.monto_estimado } : {}),
       ...(datos.moneda ? { moneda: datos.moneda } : {}),
       fecha_cierre_real: datos.fecha_cierre_real || new Date().toISOString().split('T')[0],
       notas: datos.notas
     };
     crmSync(sb => actualizarOportunidad(sb, oppId, patch));
+    if (datos.monto_estimado !== undefined || datos.moneda) {
+      sincronizarPotencialLeadDesdeOportunidad(anterior, {
+        monto: datos.monto_estimado !== undefined ? datos.monto_estimado : anterior?.monto_estimado,
+        moneda: datos.moneda || anterior?.moneda,
+      });
+    }
     auditSync({ modulo: 'crm', entidad: 'oportunidades', entidad_id: oppId, accion: 'ganar', valor_anterior: anterior, valor_nuevo: datos });
 
     addNotificacion(`Oportunidad ganada. Revisar datos para OS.`);
@@ -1640,7 +1751,7 @@ export function AppProvider({ children }) {
 
   const marcarGanadaPorCotizacion = (cot, datos = {}) => {
     if (!cot?.oportunidad_id) return;
-    const montoAprobado = cot.total_impl ?? cot.total ?? cot.subtotal ?? 0;
+    const montoAprobado = cot.subtotal ?? cot.subtotal_impl ?? cot.total_impl ?? cot.total ?? 0;
     marcarGanada(cot.oportunidad_id, {
       cotizacion_id: cot.id,
       fecha_cierre_real: datos.fecha_cierre_real || datos.aprobacion_fecha_cliente || new Date().toISOString().split('T')[0],
@@ -1659,9 +1770,10 @@ export function AppProvider({ children }) {
       estado: 'perdida',
       etapa: 'perdida',
       probabilidad: 0,
+      forecast_ponderado: 0,
       motivo_perdida: motivo
     } : o));
-    crmSync(sb => actualizarOportunidad(sb, oppId, { estado: 'perdida', etapa: 'perdida', probabilidad: 0, motivo_perdida: motivo }));
+    crmSync(sb => actualizarOportunidad(sb, oppId, { estado: 'perdida', etapa: 'perdida', probabilidad: 0, forecast_ponderado: 0, motivo_perdida: motivo }));
     auditSync({ modulo: 'crm', entidad: 'oportunidades', entidad_id: oppId, accion: 'perder', valor_anterior: anterior, valor_nuevo: { motivo } });
   };
 
@@ -1952,6 +2064,9 @@ export function AppProvider({ children }) {
           ? prev.map(c => c.id === cotFinal.id ? { ...c, ...cotFinal } : c)
           : [...prev, cotFinal]
         );
+        if (cotFinal.oportunidad_id && Number(cotFinal.subtotal || 0) > 0) {
+          sincronizarMontoOportunidadYLead(cotFinal.oportunidad_id, { monto: cotFinal.subtotal, moneda: cotFinal.moneda });
+        }
         setHojasCosteo(prev => prev.map(h => h.id === hcId ? { ...h, ...hcFinal } : h));
         if (serieDocHC) {
           const nextCorr = Number(serieDocHC.siguiente_correlativo) + 1;
@@ -2055,6 +2170,9 @@ export function AppProvider({ children }) {
       throw error;
     }
     setCotizaciones(prev => [...prev, cot]);
+    if (cot.oportunidad_id && Number(cot.subtotal || 0) > 0) {
+      sincronizarMontoOportunidadYLead(cot.oportunidad_id, { monto: cot.subtotal, moneda: cot.moneda });
+    }
     if (!isSupabaseConfigured()) {
       // En modo local incrementar el correlativo localmente (el RPC lo maneja en Supabase)
       const serieDocLocal = (seriesDocumentarias || []).find(s => s.documento === 'Cotizaciones' && s.estado === 'activo');
@@ -2076,8 +2194,11 @@ export function AppProvider({ children }) {
     const cur = ETAPA_ORDER.indexOf(opp.etapa);
     const tgt = ETAPA_ORDER.indexOf(targetEtapa);
     if (tgt <= cur) return;
-    setOportunidades(prev => prev.map(o => o.id === oppId ? { ...o, etapa: targetEtapa, moved_at: Date.now() } : o));
-    crmSync(sb => actualizarOportunidad(sb, oppId, { etapa: targetEtapa }));
+    const probabilidad = probabilidadPorEtapaOpp(targetEtapa);
+    const forecast_ponderado = forecastPorEtapaOpp(opp, targetEtapa);
+    const patch = { etapa: targetEtapa, probabilidad, forecast_ponderado };
+    setOportunidades(prev => prev.map(o => o.id === oppId ? { ...o, ...patch, moved_at: Date.now() } : o));
+    crmSync(sb => actualizarOportunidad(sb, oppId, patch));
   };
 
   const actualizarCotizacion = (cotId, datos) => {
@@ -2090,8 +2211,7 @@ export function AppProvider({ children }) {
     }
     if (datos.subtotal !== undefined && anterior?.oportunidad_id) {
       const monedaCot = String(datos.moneda || anterior?.moneda || 'PEN').trim().toUpperCase();
-      setOportunidades(prev => prev.map(o => o.id === anterior.oportunidad_id ? { ...o, monto_estimado: datos.subtotal, moneda: monedaCot } : o));
-      crmSync(sb => actualizarOportunidad(sb, anterior.oportunidad_id, { monto_estimado: datos.subtotal, moneda: monedaCot }));
+      sincronizarMontoOportunidadYLead(anterior.oportunidad_id, { monto: datos.subtotal, moneda: monedaCot });
     }
   };
 
@@ -2613,7 +2733,8 @@ export function AppProvider({ children }) {
 
     // Costo mano de obra (horas × costo_hora del técnico)
     const tecnico = personalOperativo.find(p => p.id === parte.tecnico_id);
-    const costoManoObra = (parte.horas || 0) * (tecnico?.costo_hora || 0);
+    const costoHora = Number(tecnico?.costo_hora_real ?? tecnico?.costo ?? tecnico?.costo_hora ?? 0);
+    const costoManoObra = Number(parte.horas || 0) * costoHora;
 
     setOts(prev => prev.map(o => {
       if (o.id !== parte.ot_id) return o;
@@ -2663,6 +2784,28 @@ export function AppProvider({ children }) {
     setPartes(prev => prev.map(p => p.id === parteId ? { ...p, estado: 'rechazado', motivo_rechazo: motivo } : p));
     opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'rechazado' }));
     addNotificacion('Parte diario rechazado.');
+  };
+
+  const recalcularCostoRealOT = (otId) => {
+    const partesAprobados = partes.filter(p => p.ot_id === otId && p.estado === 'aprobado');
+    const costoHoraTec = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+
+    const costoMO = partesAprobados.reduce((s, p) => {
+      const tec = (personalOperativo || []).find(t => t.id === p.tecnico_id);
+      return s + Number(p.horas || 0) * costoHoraTec(tec);
+    }, 0);
+
+    const costoMat = partesAprobados.reduce((s, p) =>
+      s + (p.materiales_usados || []).reduce((sm, m) => {
+        const itemInv = inventario.find(i => i.sku === m.sku);
+        return sm + (m.cantidad || 0) * (itemInv?.costo_promedio || m.costo_unitario || 0);
+      }, 0), 0);
+
+    const nuevosCostoReal = costoMO + costoMat;
+    setOts(prev => prev.map(o => o.id === otId ? { ...o, costoReal: nuevosCostoReal } : o));
+    opsSync(sb => svcActualizarOT(sb, otId, { costoReal: nuevosCostoReal }));
+    addNotificacion(`OT recalculada: costo real MO = ${costoMO.toFixed(2)}, materiales = ${costoMat.toFixed(2)}.`);
+    return nuevosCostoReal;
   };
 
   const cerrarTecnicamenteOT = async (otId, datosCierre) => {
@@ -2787,6 +2930,7 @@ export function AppProvider({ children }) {
       estado: 'registrado',
       centro_costo_id: gasto.centro_costo_id || null,
     }]));
+    return gasto;
   };
 
   // ── Presupuestos ─────────────────────────────────────────────────────────────
@@ -4958,7 +5102,7 @@ export function AppProvider({ children }) {
     return guardada;
   };
 
-  const registrarRecepcionConCxP = async ({ origenTipo, origenId, observaciones = '' }) => {
+  const registrarRecepcionConCxP = async ({ origenTipo, origenId, observaciones = '', facturaNumero = '', fechaEmision: fechaEmisionParam = '', fechaVencimiento: fechaVencimientoParam = '', archivoFacturaUrl = '' }) => {
     const isOC = origenTipo === 'oc';
     const base = isOC
       ? ordenesCompra.find(o => o.id === origenId)
@@ -4969,7 +5113,7 @@ export function AppProvider({ children }) {
     }
 
     const fecha = new Date().toISOString().split('T')[0];
-    const fechaVencimiento = (() => {
+    const fechaVencimientoAuto = (() => {
       const d = new Date(`${fecha}T00:00:00`);
       d.setDate(d.getDate() + 30);
       return d.toISOString().split('T')[0];
@@ -5083,14 +5227,15 @@ export function AppProvider({ children }) {
     if (!observaciones) {
       await generarCxP({
         proveedor_id: base.proveedor_id,
-        factura_numero: `PROV-${base.codigo || base.id}`,
-        fecha_emision: fecha,
-        fecha_vencimiento: fechaVencimiento,
+        factura_numero: facturaNumero || `PROV-${base.codigo || base.id}`,
+        fecha_emision: fechaEmisionParam || fecha,
+        fecha_vencimiento: fechaVencimientoParam || fechaVencimientoAuto,
         monto_total: Number(base.total || 0),
         monto_pagado: 0,
         saldo: Number(base.total || 0),
         moneda: base.moneda || 'PEN',
-        estado: 'por_pagar'
+        estado: 'por_pagar',
+        ...(archivoFacturaUrl ? { archivo_factura_url: archivoFacturaUrl } : {})
       });
     }
 
@@ -5743,6 +5888,7 @@ export function AppProvider({ children }) {
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,
     convertirLead, descartarLead, reactivarLead,
     crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
+    probabilidadPorEtapaOpp, forecastPorEtapaOpp,
     actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision, aprobarAcuerdoComision, rechazarAcuerdoComision, obtenerHistorialAcuerdo,
     crearCotizacion, aprobarCotizacion, aprobarCotizacionInterna, registrarAprobacionManual, subirVersionCotizacion,
     crearOSCliente, crearOSClienteManual, vincularCotizacionOS,
@@ -5754,7 +5900,7 @@ export function AppProvider({ children }) {
     registrarActividad,
     actualizarActividad,
     // Fase 2 Actions
-    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
+    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, recalcularCostoRealOT, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     // Finanzas Actions
     emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, anularFactura, emitirNotaCredito, emitirNotaDebito, generarCxC, registrarCobroCxC, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, registrarMovimientoManual,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,

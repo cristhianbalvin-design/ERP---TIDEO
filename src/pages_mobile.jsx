@@ -2104,39 +2104,202 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
 }
 
 function ComprasView({ screen, setScreen }) {
-  const { authUser, usuarios } = useApp();
+  const { authUser, usuarios, crearGasto, generarCxP, ots, centrosCosto } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
+  const fileInputRef = useRef(null);
+
+  const [paso, setPaso] = useState('inicio');
+  const [fotoUrl, setFotoUrl] = useState('');
+  const [campos, setCampos] = useState({ ruc:'', proveedor:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
+  const [extractError, setExtractError] = useState(false);
+  const [otId, setOtId] = useState('');
+  const [cecoId, setCecoId] = useState('');
+  const [genCxP, setGenCxP] = useState(false);
+  const [cxpVence, setCxpVence] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  const setC = (k, v) => setCampos(p => ({ ...p, [k]: v }));
+  const otsActivas = (ots || []).filter(o => ['programada','ejecucion'].includes(o.estado));
+  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+
+  const reiniciar = () => {
+    if (fotoUrl) URL.revokeObjectURL(fotoUrl);
+    setFotoUrl(''); setExtractError(false); setOtId(''); setCecoId(''); setGenCxP(false); setCxpVence(''); setGuardando(false);
+    setCampos({ ruc:'', proveedor:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
+    setPaso('inicio');
+  };
+
+  const analizarFoto = async (file) => {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setFotoUrl(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
+    setExtractError(false);
+    setPaso('analizando');
+    try {
+      const imageBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const sb = await getSupabaseClient();
+      const { data: fnData, error: fnError } = await sb.functions.invoke('extraer-factura', { body: { imageBase64 } });
+      if (fnError || !fnData?.success) throw new Error('failed');
+      const d = fnData.data || {};
+      setCampos({
+        ruc: d.ruc || '',
+        proveedor: d.proveedor || '',
+        num_factura: d.num_factura || '',
+        fecha_emision: d.fecha_emision || new Date().toISOString().split('T')[0],
+        monto_sin_igv: d.monto_sin_igv != null ? String(d.monto_sin_igv) : '',
+        igv: d.igv != null ? String(d.igv) : '',
+        monto_total: d.monto_total != null ? String(d.monto_total) : '',
+      });
+    } catch {
+      setExtractError(true);
+      setCampos({ ruc:'', proveedor:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
+    }
+    setPaso('revision');
+  };
+
+  const guardar = async () => {
+    if (!cecoId || (genCxP && !cxpVence)) return;
+    setGuardando(true);
+    try {
+      const monto = parseFloat(campos.monto_total) || parseFloat(campos.monto_sin_igv) || 0;
+      const gastoBase = {
+        descripcion: campos.proveedor || 'Gasto en campo',
+        categoria: 'Materiales',
+        monto, moneda: 'PEN',
+        fecha: campos.fecha_emision || new Date().toISOString().split('T')[0],
+        num_comprobante: campos.num_factura || '',
+        tipo_comprobante: 'Factura',
+        centro_costo_id: cecoId,
+        tipo: 'gasto', campo: true,
+        ruc_proveedor: campos.ruc || '',
+        ot_id: otId || null,
+      };
+      if (genCxP) {
+        const cxpId = `cxp_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
+        const gasto = crearGasto({ ...gastoBase, cxp_id: cxpId });
+        await generarCxP({
+          id: cxpId, proveedor_id: null, tipo_beneficiario: 'proveedor',
+          factura_numero: campos.num_factura || null,
+          concepto: campos.proveedor || 'Gasto en campo',
+          fecha_emision: campos.fecha_emision, fecha_vencimiento: cxpVence,
+          monto_total: monto, moneda: 'PEN', estado: 'por_pagar', gasto_id: gasto.id,
+        });
+      } else {
+        crearGasto(gastoBase);
+      }
+      reiniciar();
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   return <>
     <div className="mobile-header">
       <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Compras</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>{usuarioMovil.nombre}</div></div>
       <div className="avatar" style={{width:34,height:34}}>{usuarioMovil.iniciales}</div>
     </div>
-    <div className="mobile-content">
-      <div className="eyebrow" style={{marginBottom:10}}>Capturar factura · Paso 2 de 3</div>
-      <div className="bar" style={{marginBottom:16}}><div style={{width:'66%',background:'var(--cyan)'}}/></div>
-      <div className="card" style={{padding:0,overflow:'hidden',marginBottom:14}}>
-        <div style={{background:'linear-gradient(135deg,#1A2B4A,#0F1B30)',height:120,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.5)',position:'relative'}}>
-          <div style={{position:'absolute',top:8,right:8}} className="badge badge-cyan">Foto capturada</div>
-          {I.receipt}
+
+    <input ref={fileInputRef} type="file" accept="image/*" capture="environment" style={{display:'none'}}
+      onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) analizarFoto(f); }}/>
+
+    {paso === 'inicio' && (
+      <div className="mobile-content">
+        <div className="eyebrow" style={{marginBottom:10}}>Capturar factura · Paso 1 de 2</div>
+        <div className="bar" style={{marginBottom:16}}><div style={{width:'33%',background:'var(--cyan)'}}/></div>
+        <div className="card" style={{padding:32,textAlign:'center',cursor:'pointer',borderStyle:'dashed'}} onClick={() => fileInputRef.current?.click()}>
+          <div style={{fontSize:36,marginBottom:10,color:'var(--cyan)'}}>{I.camera}</div>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>Fotografiar factura</div>
+          <div style={{fontSize:12,color:'var(--fg-muted)'}}>Claude extraerá los datos automáticamente</div>
+        </div>
+        <button className="btn btn-secondary" style={{width:'100%',marginTop:12}}
+          onClick={() => { setCampos(c => ({...c, fecha_emision: new Date().toISOString().split('T')[0]})); setPaso('revision'); }}>
+          Ingresar datos manualmente
+        </button>
+      </div>
+    )}
+
+    {paso === 'analizando' && (
+      <div className="mobile-content" style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:300,gap:14}}>
+        <div style={{fontSize:36,color:'var(--cyan)'}}>{I.sparkles}</div>
+        <div style={{fontWeight:700,fontSize:15}}>Analizando factura...</div>
+        <div style={{fontSize:12,color:'var(--fg-muted)',textAlign:'center'}}>Claude está leyendo los datos del documento</div>
+      </div>
+    )}
+
+    {paso === 'revision' && (
+      <div className="mobile-content">
+        <div className="eyebrow" style={{marginBottom:10}}>Verificar y guardar · Paso 2 de 2</div>
+        <div className="bar" style={{marginBottom:12}}><div style={{width:'100%',background:'var(--cyan)'}}/></div>
+
+        {extractError && (
+          <div style={{background:'var(--orange-lt,#fff7ed)',color:'var(--orange-dk,#92400e)',border:'1px solid var(--orange)',borderRadius:8,padding:'10px 14px',fontSize:13,marginBottom:12}}>
+            No se pudo leer la factura automáticamente. Completa los datos manualmente.
+          </div>
+        )}
+
+        {fotoUrl && <img src={fotoUrl} alt="Factura" style={{width:'100%',borderRadius:8,marginBottom:12,maxHeight:140,objectFit:'cover'}}/>}
+
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {[['ruc','RUC proveedor','20512345678','text'],['proveedor','Proveedor','Ferretería Industrial SAC','text'],['num_factura','N° Factura','F001-0001','text']].map(([k,l,ph,t]) => (
+            <div key={k}>
+              <div className="eyebrow row" style={{gap:4,marginBottom:3}}><span className="badge badge-purple" style={{fontSize:8,padding:'0 4px'}}>IA</span>{l}</div>
+              <input className="input" type={t} value={campos[k]} onChange={e=>setC(k,e.target.value)} placeholder={ph}/>
+            </div>
+          ))}
+          <div>
+            <div className="eyebrow row" style={{gap:4,marginBottom:3}}><span className="badge badge-purple" style={{fontSize:8,padding:'0 4px'}}>IA</span>Fecha emisión</div>
+            <input className="input" type="date" value={campos.fecha_emision} onChange={e=>setC('fecha_emision',e.target.value)}/>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+            {[['monto_sin_igv','Sin IGV'],['igv','IGV'],['monto_total','Total *']].map(([k,l]) => (
+              <div key={k}>
+                <div style={{fontSize:10,color:'var(--fg-muted)',marginBottom:3,display:'flex',gap:3,alignItems:'center'}}><span className="badge badge-purple" style={{fontSize:8,padding:'0 3px'}}>IA</span>{l}</div>
+                <input className="input" type="number" step="0.01" value={campos[k]} onChange={e=>setC(k,e.target.value)} placeholder="0.00"/>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>OT asignada</div>
+            <select className="select" value={otId} onChange={e=>setOtId(e.target.value)}>
+              <option value="">— Sin OT —</option>
+              {otsActivas.map(o=><option key={o.id} value={o.id}>{o.numero||o.id}{o.descripcion?` – ${o.descripcion}`:''}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Centro de Costo <span style={{color:'var(--danger)'}}>*</span></div>
+            <select className="select" value={cecoId} onChange={e=>setCecoId(e.target.value)}>
+              <option value="">— Seleccionar CECO —</option>
+              {cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+            </select>
+          </div>
+          <div style={{background:'var(--bg-subtle)',borderRadius:8,padding:'10px 12px'}}>
+            <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',margin:0}}>
+              <input type="checkbox" checked={genCxP} onChange={e=>setGenCxP(e.target.checked)}/>
+              <span style={{fontWeight:600,fontSize:13}}>Generar Cuenta por Pagar</span>
+            </label>
+            {genCxP && (
+              <div style={{marginTop:10}}>
+                <div style={{fontSize:12,marginBottom:4}}>Fecha vencimiento <span style={{color:'var(--danger)'}}>*</span></div>
+                <input className="input" type="date" value={cxpVence} onChange={e=>setCxpVence(e.target.value)}/>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="row mt-6" style={{gap:8}}>
+          <button className="btn btn-secondary" onClick={reiniciar}>Nueva foto</button>
+          <button className="btn btn-primary flex-1" onClick={guardar} disabled={guardando || !cecoId || (genCxP && !cxpVence)}>
+            {guardando ? 'Guardando...' : `${I.check} Guardar gasto`}
+          </button>
         </div>
       </div>
-      <div style={{fontSize:12,fontWeight:600,marginBottom:10}}>Verifica los datos extraídos por IA</div>
-      {[
-        {l:'Proveedor', v:'Ferretería Industrial SAC'},
-        {l:'N° documento', v:'F001-2341'},
-        {l:'Fecha', v:'22/04/2026'},
-        {l:'Monto', v:'S/ 450.00'},
-      ].map((f,i)=>(
-        <div key={i} style={{padding:10,border:'1px solid var(--border)',borderRadius:8,marginBottom:8}}>
-          <div className="row" style={{justifyContent:'space-between',marginBottom:2}}>
-            <div className="eyebrow" style={{fontSize:10}}>{f.l}</div>
-            <span className="badge badge-purple" style={{fontSize:9,padding:'1px 6px'}}>IA</span>
-          </div>
-          <div style={{fontWeight:600,fontSize:13}}>{f.v}</div>
-        </div>
-      ))}
-      <button className="btn btn-primary btn-lg" style={{width:'100%',marginTop:10}}>Siguiente → Asignar OT</button>
-    </div>
+    )}
+
     <div className="mobile-nav">
       <div className="mobile-nav-item active">{I.camera}Capturar</div>
       <div className="mobile-nav-item">{I.list}Historial</div>

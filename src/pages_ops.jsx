@@ -1179,13 +1179,13 @@ function Cuentas() {
 }
 
 function OT({ role }) {
-  const { ots, cuentas, partes, osClientes, usuarios, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, almacenes, addNotificacion } = useApp();
+  const { ots, cuentas, partes, osClientes, usuarios, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, recalcularCostoRealOT } = useApp();
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Resumen');
   const [panel] = useState(false);
   const [confirmAnular, setConfirmAnular] = useState(false);
 
-  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: new Date().toISOString().split('T')[0], fecha_fin: '' };
+  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: new Date().toISOString().split('T')[0], fecha_fin: '', est_mo: '', est_materiales: '', est_terceros: '', est_logistica: '' };
   const [panelNuevaOT, setPanelNuevaOT] = useState(false);
   const [formNuevaOT, setFormNuevaOT] = useState(formNuevaOTBase);
   const [errorNuevaOT, setErrorNuevaOT] = useState('');
@@ -1209,6 +1209,26 @@ function OT({ role }) {
   const puedeTenerOSCliente = permiteOSCliente(formNuevaOT.tipo);
   const osSeleccionada = puedeTenerOSCliente && formNuevaOT.os_cliente_id ? osClientes.find(o => o.id === formNuevaOT.os_cliente_id) : null;
   const cebeHeredado = osSeleccionada ? (centrosBeneficio || []).find(c => c.id === osSeleccionada.centro_beneficio_id) : null;
+
+  const hcReferencia = (() => {
+    if (!osSeleccionada?.cotizacion_id) return null;
+    const cot = (cotizaciones || []).find(c => c.id === osSeleccionada.cotizacion_id);
+    if (!cot?.hoja_costeo_id) return null;
+    return (hojasCosteo || []).find(h => h.id === cot.hoja_costeo_id && h.estado === 'aprobada') ?? null;
+  })();
+
+  const itemsCotizacion = (() => {
+    if (!osSeleccionada?.cotizacion_id) return [];
+    const cot = (cotizaciones || []).find(c => c.id === osSeleccionada.cotizacion_id);
+    return (cot?.items || []).map(i => i.descripcion || i.nombre).filter(Boolean);
+  })();
+
+  const totalEstimadoNuevaOT = (
+    (parseFloat(formNuevaOT.est_mo) || 0) +
+    (parseFloat(formNuevaOT.est_materiales) || 0) +
+    (parseFloat(formNuevaOT.est_terceros) || 0) +
+    (parseFloat(formNuevaOT.est_logistica) || 0)
+  );
 
   const cerrarPanelNuevaOT = () => { setPanelNuevaOT(false); setFormNuevaOT(formNuevaOTBase); setErrorNuevaOT(''); };
 
@@ -1236,7 +1256,14 @@ function OT({ role }) {
         estado: 'programada',
       };
       if (formNuevaOT.os_cliente_id) {
-        await crearOTDesdeOS(formNuevaOT.os_cliente_id, { ...datos, costo_estimado: 0 });
+        await crearOTDesdeOS(formNuevaOT.os_cliente_id, {
+          ...datos,
+          est_mo: formNuevaOT.est_mo !== '' ? Number(formNuevaOT.est_mo) : null,
+          est_materiales: formNuevaOT.est_materiales !== '' ? Number(formNuevaOT.est_materiales) : null,
+          est_terceros: formNuevaOT.est_terceros !== '' ? Number(formNuevaOT.est_terceros) : null,
+          est_logistica: formNuevaOT.est_logistica !== '' ? Number(formNuevaOT.est_logistica) : null,
+          costo_estimado: totalEstimadoNuevaOT,
+        });
       } else {
         crearOT({ ...datos, centro_beneficio_id: formNuevaOT.centro_beneficio_id });
       }
@@ -2505,47 +2532,70 @@ function OT({ role }) {
 
             {/* ── TAB COSTOS ── */}
             {activeTab === 'Costos' && canCost && (() => {
+              const cierreOT = (cierresTecnicos || []).find(ct => ct.ot_id === sel.id);
               const partesAprobados = partesOT.filter(p => p.estado === 'aprobado');
-              const horasReales = partesAprobados.reduce((s, p) => s + (p.horas || 0), 0);
-              const moReal = horasReales * 45;
+              const horasReales = cierreOT?.horas_total ?? partesAprobados.reduce((s, p) => s + (p.horas || 0), 0);
+              const moReal = (() => {
+                const costoHoraTec = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+                if (cierreOT?.horas_total) {
+                  const tecResp = (personalOperativo || []).find(t => t.id === sel.tecnico_responsable_id);
+                  return cierreOT.horas_total * costoHoraTec(tecResp);
+                }
+                return partesAprobados.reduce((s, p) => {
+                  const tec = (personalOperativo || []).find(t => t.id === p.tecnico_id);
+                  return s + (p.horas || 0) * costoHoraTec(tec);
+                }, 0);
+              })();
               const matReal = partesAprobados.reduce((s, p) =>
                 s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
+              const terceroReal = cierreOT?.costo_terceros || 0;
+              const logisticaReal = cierreOT?.costo_logistica || 0;
               const costoEst = sel.costoEst || 0;
-              const costoReal = sel.costoReal || (moReal + matReal);
+              const costoReal = moReal + matReal + terceroReal + logisticaReal;
               const margen = costoEst > 0 ? Math.round(((costoEst - costoReal) / costoEst) * 100) : 0;
+              const varPct = (est, real) => {
+                if (est == null || real == null) return null;
+                if (est === 0) return null;
+                return Math.round(((real - est) / est) * 100);
+              };
+              const varColor = (pct, est) => {
+                if (pct === null) return 'var(--fg-muted)';
+                if (est == null) return 'var(--fg-muted)';
+                return pct <= 0 ? 'var(--green)' : 'var(--danger)';
+              };
               const rows = [
                 ['Mano de obra', sel.est_mo ?? null, moReal > 0 ? moReal : null],
                 ['Materiales', sel.est_materiales ?? null, matReal > 0 ? matReal : null],
-                ['Servicios terceros', sel.est_terceros ?? null, null],
-                ['Logística y viáticos', sel.est_logistica ?? null, null],
+                ['Servicios terceros', sel.est_terceros ?? null, terceroReal > 0 ? terceroReal : null],
+                ['Logística y viáticos', sel.est_logistica ?? null, logisticaReal > 0 ? logisticaReal : null],
               ];
               return (
                 <div className="col" style={{gap:16, padding:22}}>
                   <div className="table-wrap">
                     <table className="tbl">
                       <thead>
-                        <tr><th>Categoría</th><th className="num">Estimado</th><th className="num">Real</th><th className="num">Diferencia</th></tr>
+                        <tr><th>Categoría</th><th className="num">Estimado</th><th className="num">Real</th><th className="num">VAR</th></tr>
                       </thead>
                       <tbody>
                         {rows.map(([cat, est, real]) => {
-                          const diff = (est || 0) - (real || 0);
+                          const pct = varPct(est, real);
                           return (
                             <tr key={cat}>
                               <td>{cat}</td>
                               <td className="num">{est != null ? money(est) : '—'}</td>
                               <td className="num">{real != null ? money(real) : '—'}</td>
-                              <td className="num" style={{color: est != null && real != null ? (diff >= 0 ? 'var(--green)' : 'var(--danger)') : 'var(--fg-muted)', fontWeight:600}}>
-                                {est != null && real != null ? ((diff >= 0 ? '+' : '') + money(diff)) : '—'}
+                              <td className="num" style={{color: varColor(pct, est), fontWeight:600}}>
+                                {pct !== null ? `${pct > 0 ? '+' : ''}${pct}%` : '—'}
                               </td>
                             </tr>
                           );
                         })}
                         <tr style={{borderTop:'2px solid var(--border)', fontWeight:700, background:'var(--bg-subtle)'}}>
                           <td>Total</td>
-                          <td className="num">{money(costoEst)}</td>
-                          <td className="num">{money(costoReal)}</td>
-                          <td className="num" style={{color: (costoEst - costoReal) >= 0 ? 'var(--green)' : 'var(--danger)', fontWeight:700}}>
-                            {(costoEst - costoReal) >= 0 ? '+' : ''}{money(costoEst - costoReal)}
+                          <td className="num">{costoEst > 0 ? money(costoEst) : '—'}</td>
+                          <td className="num">{costoReal > 0 ? money(costoReal) : '—'}</td>
+                          <td className="num" style={{color: varColor(varPct(costoEst || null, costoReal > 0 ? costoReal : null), costoEst || null), fontWeight:700}}>
+                            {costoEst > 0 && costoReal > 0 ? `${margen <= 0 ? '+' : ''}${-margen}%` : '—'}
                           </td>
                         </tr>
                       </tbody>
@@ -2554,8 +2604,18 @@ function OT({ role }) {
                   <div className="card" style={{padding:20, textAlign:'center'}}>
                     <div className="eyebrow" style={{marginBottom:6}}>Margen actual</div>
                     <div style={{fontSize:32, fontWeight:700, color: margen >= 0 ? 'var(--green)' : 'var(--danger)'}}>{margen}%</div>
-                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Basado en costos reales de partes aprobados</div>
+                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>
+                      {cierreOT ? 'Basado en datos del cierre técnico' : 'Basado en partes aprobados — pendiente de cierre'}
+                    </div>
                   </div>
+                  {canCost && partesAprobados.length > 0 && (
+                    <div style={{textAlign:'right'}}>
+                      <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => recalcularCostoRealOT(sel.id)}>
+                        Recalcular costo real
+                      </button>
+                      <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Recalcula MO con la tarifa actual de cada técnico</div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -2641,7 +2701,9 @@ function OT({ role }) {
 
       {showCierreForm && sel && (() => {
         const partesAprobados = partes.filter(p => p.ot_id === sel.id && p.estado === 'aprobado');
-        const moReal = Number(cierreForm.horas_total) * 45;
+        const costoHoraTec = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+        const tecResp = (personalOperativo || []).find(t => t.id === sel.tecnico_responsable_id);
+        const moReal = Number(cierreForm.horas_total || 0) * costoHoraTec(tecResp);
         const matReal = partesAprobados.reduce((s, p) => s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
         const costoEst = sel.costoEst || 0;
         const costoReal = moReal + matReal + Number(cierreForm.costo_terceros || 0) + Number(cierreForm.costo_logistica || 0);
@@ -2912,7 +2974,14 @@ function OT({ role }) {
               <div className="grid-2" style={{gap:16, marginBottom:20}}>
                 <div className="input-group">
                   <label>Servicio / tipo de trabajo</label>
-                  {tiposActivos.length > 0 ? (
+                  {itemsCotizacion.length > 0 ? (
+                    <>
+                      <input className="input" list="svc-sugerencias-nueva-ot" value={formNuevaOT.servicio} onChange={e => updNuevaOT('servicio', e.target.value)} placeholder="Elige de la cotización o escribe..." />
+                      <datalist id="svc-sugerencias-nueva-ot">
+                        {itemsCotizacion.map((s, i) => <option key={i} value={s} />)}
+                      </datalist>
+                    </>
+                  ) : tiposActivos.length > 0 ? (
                     <select className="select" value={formNuevaOT.servicio} onChange={e => updNuevaOT('servicio', e.target.value)}>
                       <option value="">Seleccionar servicio...</option>
                       {tiposActivos.map(t => <option key={t.id} value={t.nombre}>{t.codigo ? `[${t.codigo}] ` : ''}{t.nombre}</option>)}
@@ -2941,6 +3010,36 @@ function OT({ role }) {
                   <textarea className="input" rows="3" value={formNuevaOT.descripcion} onChange={e => updNuevaOT('descripcion', e.target.value)} placeholder="Describe el trabajo a realizar..." />
                 </div>
               </div>
+
+              <div className="eyebrow" style={{marginBottom:12}}>Estimado de costos <span style={{fontSize:11, fontWeight:400, color:'var(--fg-muted)'}}>— opcional</span></div>
+              {formNuevaOT.os_cliente_id && !hcReferencia && (
+                <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:12, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6}}>
+                  Sin hoja de costeo vinculada. El estimado es referencial.
+                </div>
+              )}
+              <div className="grid-2" style={{gap:16, marginBottom:8}}>
+                {[
+                  { key: 'est_mo', label: 'Mano de obra', hcVal: hcReferencia?.total_mano_obra ?? null },
+                  { key: 'est_materiales', label: 'Materiales', hcVal: hcReferencia?.total_materiales ?? null },
+                  { key: 'est_terceros', label: 'Servicios terceros', hcVal: hcReferencia?.total_servicios_terceros ?? null },
+                  { key: 'est_logistica', label: 'Logística', hcVal: hcReferencia?.total_logistica ?? null },
+                ].map(({ key, label, hcVal }) => (
+                  <div className="input-group" key={key}>
+                    <label style={{display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
+                      <span>{label}</span>
+                      {hcVal != null && <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Ref. HC: {money(hcVal)}</span>}
+                    </label>
+                    <input className="input" type="number" min="0" step="0.01" value={formNuevaOT[key]} onChange={e => updNuevaOT(key, e.target.value)} placeholder="0.00" />
+                  </div>
+                ))}
+              </div>
+              {totalEstimadoNuevaOT > 0 && (
+                <div style={{display:'flex', justifyContent:'flex-end', alignItems:'center', gap:8, padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:6, marginBottom:20}}>
+                  <span style={{fontSize:12, color:'var(--fg-muted)'}}>Total estimado:</span>
+                  <span style={{fontWeight:700, fontSize:15}}>{money(totalEstimadoNuevaOT)}</span>
+                </div>
+              )}
+              {totalEstimadoNuevaOT === 0 && <div style={{marginBottom:20}}/>}
 
               <div className="row" style={{justifyContent:'flex-end', gap:8}}>
                 <button className="btn btn-secondary" onClick={cerrarPanelNuevaOT}>Cancelar</button>
@@ -3854,6 +3953,11 @@ function Recepciones() {
   const [origen, setOrigen] = useState('');
   const [obs, setObs] = useState('');
   const [tab, setTab] = useState('todos');
+  const [facturaNum, setFacturaNum] = useState('');
+  const [facturaEmision, setFacturaEmision] = useState(new Date().toISOString().split('T')[0]);
+  const [facturaVencimiento, setFacturaVencimiento] = useState('');
+  const [facturaArchivoUrl, setFacturaArchivoUrl] = useState('');
+  const cerrarPanel = () => { setPanel(false); setOrigen(''); setObs(''); setFacturaNum(''); setFacturaEmision(new Date().toISOString().split('T')[0]); setFacturaVencimiento(''); setFacturaArchivoUrl(''); };
   const proveedorNombre = id => proveedores.find(p => p.id === id)?.razon_social || id || '-';
   const origenInfo = r => {
     const ocId = r.orden_compra_id || r.oc_id;
@@ -3871,12 +3975,12 @@ function Recepciones() {
     event.preventDefault();
     const [tipo, id] = origen.split(':');
     if (!tipo || !id) return;
-    const creada = await registrarRecepcionConCxP({ origenTipo: tipo, origenId: id, observaciones: obs.trim() });
-    if (creada) {
-      setPanel(false);
-      setOrigen('');
-      setObs('');
-    }
+    const creada = await registrarRecepcionConCxP({
+      origenTipo: tipo, origenId: id, observaciones: obs.trim(),
+      facturaNumero: facturaNum.trim(), fechaEmision: facturaEmision,
+      fechaVencimiento: facturaVencimiento, archivoFacturaUrl: facturaArchivoUrl
+    });
+    if (creada) cerrarPanel();
   };
 
   return (
@@ -3905,9 +4009,9 @@ function Recepciones() {
       </div>
       {panel && (
         <>
-          <div className="side-panel-backdrop" onClick={() => setPanel(false)}/>
+          <div className="side-panel-backdrop" onClick={cerrarPanel}/>
           <div className="side-panel" style={{width:'min(600px,96vw)'}}>
-            <div className="side-panel-head"><div><div className="eyebrow">Registro de recepcion</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Conformidad proveedor</div></div><button className="icon-btn" onClick={() => setPanel(false)}>{I.x}</button></div>
+            <div className="side-panel-head"><div><div className="eyebrow">Registro de recepcion</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Conformidad proveedor</div></div><button className="icon-btn" onClick={cerrarPanel}>{I.x}</button></div>
             <form className="side-panel-body" onSubmit={guardar}>
               <div className="input-group">
                 <label>OC/OS origen</label>
@@ -3916,13 +4020,38 @@ function Recepciones() {
                   {origenes.map(o => <option key={`${o.tipo}:${o.id}`} value={`${o.tipo}:${o.id}`}>{o.codigo} - {proveedorNombre(o.proveedor_id)} - {money(o.total || 0)}</option>)}
                 </select>
               </div>
-              <div className="input-group mt-6">
+              <div className="input-group mt-4">
                 <label>Observaciones</label>
-                <textarea className="input" rows="4" value={obs} onChange={e => setObs(e.target.value)} placeholder="Dejar vacio para registrar conforme y generar CxP"/>
+                <textarea className="input" rows="3" value={obs} onChange={e => setObs(e.target.value)} placeholder="Dejar vacio para registrar conforme y generar CxP"/>
+              </div>
+              <div style={{borderTop:'1px solid var(--border)',marginTop:20,paddingTop:16}}>
+                <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>Datos de la factura del proveedor</div>
+                <div className="input-group">
+                  <label>N° Factura <span style={{color:'var(--danger)'}}>*</span></label>
+                  <input className="input" value={facturaNum} onChange={e => setFacturaNum(e.target.value)} placeholder="E001-000123" required/>
+                </div>
+                <div className="grid-2 mt-4" style={{gap:12,gridTemplateColumns:'1fr 1fr'}}>
+                  <div className="input-group">
+                    <label>Fecha de emisión <span style={{color:'var(--danger)'}}>*</span></label>
+                    <input className="input" type="date" value={facturaEmision} onChange={e => setFacturaEmision(e.target.value)} required/>
+                  </div>
+                  <div className="input-group">
+                    <label>Fecha de vencimiento <span style={{color:'var(--danger)'}}>*</span></label>
+                    <input className="input" type="date" value={facturaVencimiento} onChange={e => setFacturaVencimiento(e.target.value)} required/>
+                  </div>
+                </div>
+                <div className="input-group mt-4">
+                  <label>Adjuntar factura (foto o PDF)</label>
+                  <input className="input" type="file" accept="image/*,.pdf" onChange={e => {
+                    const file = e.target.files[0];
+                    setFacturaArchivoUrl(file ? URL.createObjectURL(file) : '');
+                  }}/>
+                  {facturaArchivoUrl && <div style={{fontSize:12,color:'var(--green)',marginTop:4}}>Archivo adjunto listo.</div>}
+                </div>
               </div>
               <div className="row mt-6" style={{justifyContent:'flex-end'}}>
-                <button type="button" className="btn btn-secondary" onClick={() => setPanel(false)}>Cancelar</button>
-                <button className="btn btn-primary" type="submit" disabled={!origen}>Confirmar recepcion</button>
+                <button type="button" className="btn btn-secondary" onClick={cerrarPanel}>Cancelar</button>
+                <button className="btn btn-primary" type="submit" disabled={!origen || !facturaNum.trim() || !facturaEmision || !facturaVencimiento}>Confirmar recepcion</button>
               </div>
             </form>
           </div>
@@ -3935,23 +4064,46 @@ function Recepciones() {
 const GASTO_FORM_INIT = { descripcion: '', categoria: 'Materiales', monto: '', moneda: 'PEN', fecha: new Date().toISOString().split('T')[0], num_comprobante: '', tipo_comprobante: 'Factura', centro_costo_id: '' };
 
 function Compras() {
-  const { comprasGastos, proveedores, ordenesCompra, ordenesServicio, recepciones, crearGasto, centrosCosto } = useApp();
+  const { comprasGastos, proveedores, ordenesCompra, ordenesServicio, recepciones, crearGasto, generarCxP, centrosCosto } = useApp();
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Compras en Campo');
   const [showGastoForm, setShowGastoForm] = useState(false);
   const [gastoForm, setGastoForm] = useState(GASTO_FORM_INIT);
   const [errCecoGasto, setErrCecoGasto] = useState(false);
+  const [gastoGeneraCxP, setGastoGeneraCxP] = useState(false);
+  const [gastoCxpProvId, setGastoCxpProvId] = useState('');
+  const [gastoCxpVence, setGastoCxpVence] = useState('');
   const comprasRows = comprasGastos.length ? comprasGastos : MOCK.compras;
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
 
   const setG = (k, v) => { setGastoForm(p => ({ ...p, [k]: v })); if (k === 'centro_costo_id') setErrCecoGasto(false); };
 
-  const handleGastoSubmit = () => {
+  const resetGastoForm = () => { setGastoForm(GASTO_FORM_INIT); setErrCecoGasto(false); setGastoGeneraCxP(false); setGastoCxpProvId(''); setGastoCxpVence(''); setShowGastoForm(false); };
+
+  const handleGastoSubmit = async () => {
     if (!gastoForm.centro_costo_id) { setErrCecoGasto(true); return; }
-    crearGasto({ ...gastoForm, monto: parseFloat(gastoForm.monto) || 0, tipo: 'gasto' });
-    setGastoForm(GASTO_FORM_INIT);
-    setErrCecoGasto(false);
-    setShowGastoForm(false);
+    if (gastoGeneraCxP && !gastoCxpVence) return;
+    const gastoData = { ...gastoForm, monto: parseFloat(gastoForm.monto) || 0, tipo: 'gasto' };
+    if (gastoGeneraCxP) {
+      const cxpPrefixId = `cxp_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
+      const gasto = crearGasto({ ...gastoData, cxp_id: cxpPrefixId });
+      await generarCxP({
+        id: cxpPrefixId,
+        proveedor_id: gastoCxpProvId || null,
+        tipo_beneficiario: 'proveedor',
+        factura_numero: gastoForm.num_comprobante || null,
+        concepto: gastoForm.descripcion,
+        fecha_emision: gastoForm.fecha,
+        fecha_vencimiento: gastoCxpVence,
+        monto_total: parseFloat(gastoForm.monto) || 0,
+        moneda: gastoForm.moneda || 'PEN',
+        estado: 'por_pagar',
+        gasto_id: gasto.id,
+      });
+    } else {
+      crearGasto(gastoData);
+    }
+    resetGastoForm();
   };
 
   return (
@@ -3970,7 +4122,7 @@ function Compras() {
           <table className="tbl">
             {activeTab === 'Compras en Campo' && (
               <>
-                <thead><tr><th>#</th><th>Proveedor</th><th>Documento</th><th>Monto</th><th>OT</th><th>Fecha</th><th>Estado</th><th>Origen</th></tr></thead>
+                <thead><tr><th>#</th><th>Proveedor</th><th>Documento</th><th>Monto</th><th>OT</th><th>Fecha</th><th>Estado</th><th>Origen</th><th>CxP</th></tr></thead>
                 <tbody>{comprasRows.map(c => (
                   <tr key={c.id} onClick={() => c.campo && setSel(c)}>
                     <td className="mono">{c.id}</td>
@@ -3981,6 +4133,7 @@ function Compras() {
                     <td className="text-muted">{c.fecha}</td>
                     <td><span className={'badge '+(c.estado==='pagado'||c.estado==='registrado'?'badge-green':c.estado==='pendiente_revision'?'badge-cyan':'badge-gray')}>{String(c.estado || 'registrado').replace('_',' ')}</span></td>
                     <td>{c.campo ? <span className="badge badge-cyan">{I.camera}Campo</span> : c.origen === 'nomina' ? <span className="badge badge-purple">Nomina</span> : null}</td>
+                    <td>{c.cxp_id ? <span className="badge badge-green" title={c.cxp_id}>{I.receipt} CxP</span> : <span className="text-muted" style={{fontSize:12}}>—</span>}</td>
                   </tr>
                 ))}</tbody>
               </>
@@ -4100,14 +4253,14 @@ function Compras() {
       </>}
 
       {showGastoForm && <>
-        <div className="side-panel-backdrop" onClick={() => setShowGastoForm(false)} />
+        <div className="side-panel-backdrop" onClick={resetGastoForm} />
         <div className="side-panel">
           <div className="side-panel-head">
             <div>
               <div className="eyebrow">Backoffice</div>
               <div className="font-display" style={{fontSize:18, fontWeight:700, marginTop:2}}>Registrar Gasto</div>
             </div>
-            <button className="icon-btn" onClick={() => setShowGastoForm(false)}>{I.x}</button>
+            <button className="icon-btn" onClick={resetGastoForm}>{I.x}</button>
           </div>
           <div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:16}}>
             <div className="form-group">
@@ -4165,9 +4318,33 @@ function Compras() {
               </select>
               {errCecoGasto && <div style={{color:'var(--danger, #ef4444)', fontSize:12, marginTop:4}}>El CECO es obligatorio para registrar un gasto.</div>}
             </div>
+            <div style={{background:'var(--bg-subtle)',borderRadius:8,padding:'12px 14px'}}>
+              <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',margin:0}}>
+                <input type="checkbox" checked={gastoGeneraCxP} onChange={e => setGastoGeneraCxP(e.target.checked)}/>
+                <span style={{fontWeight:600,fontSize:13}}>Generar Cuenta por Pagar</span>
+              </label>
+              <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:4,paddingLeft:24}}>Esta factura quedará pendiente de pago en Administración.</div>
+              {gastoGeneraCxP && (
+                <div style={{marginTop:12,display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                  <div className="form-group" style={{margin:0}}>
+                    <label className="form-label">Proveedor (opcional)</label>
+                    <select className="select" value={gastoCxpProvId} onChange={e => setGastoCxpProvId(e.target.value)}>
+                      <option value="">— De la lista —</option>
+                      {(proveedores || []).filter(p => p.estado !== 'inactivo').map(p => (
+                        <option key={p.id} value={p.id}>{p.razon_social}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{margin:0}}>
+                    <label className="form-label">Fecha vencimiento <span style={{color:'var(--danger)'}}>*</span></label>
+                    <input className="input" type="date" value={gastoCxpVence} onChange={e => setGastoCxpVence(e.target.value)}/>
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="row" style={{gap:8, marginTop:8}}>
-              <button className="btn btn-primary flex-1" onClick={handleGastoSubmit}>{I.check} Registrar Gasto</button>
-              <button className="btn btn-ghost" onClick={() => setShowGastoForm(false)}>Cancelar</button>
+              <button className="btn btn-primary flex-1" onClick={handleGastoSubmit} disabled={gastoGeneraCxP && !gastoCxpVence}>{I.check} Registrar Gasto</button>
+              <button className="btn btn-ghost" onClick={resetGastoForm}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -4571,7 +4748,17 @@ function Cierre() {
                 const os = getOS(o.os_cliente_id);
                 const partesAp = partes.filter(p => p.ot_id === o.id && p.estado === 'aprobado');
                 const horasReal = c?.horas_total ?? partesAp.reduce((s, p) => s + (p.horas || 0), 0);
-                const moReal = horasReal * 45;
+                const costoHoraTec_ = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+                const moReal = (() => {
+                  if (c?.horas_total) {
+                    const tecR = (personalOperativo || []).find(t => t.id === o.tecnico_responsable_id);
+                    return c.horas_total * costoHoraTec_(tecR);
+                  }
+                  return partesAp.reduce((s, p) => {
+                    const tec = (personalOperativo || []).find(t => t.id === p.tecnico_id);
+                    return s + (p.horas || 0) * costoHoraTec_(tec);
+                  }, 0);
+                })();
                 const matReal = partesAp.reduce((s, p) => s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
                 const costoReal = moReal + matReal;
                 const confTipo = conformidadTipo(o);
@@ -4614,7 +4801,17 @@ function Cierre() {
         const os = getOS(sel.os_cliente_id);
         const partesAp = partes.filter(p => p.ot_id === sel.id && p.estado === 'aprobado').sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
         const horasReal = c?.horas_total ?? partesAp.reduce((s, p) => s + (p.horas || 0), 0);
-        const moReal = horasReal * 45;
+        const costoHoraTec__ = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+        const moReal = (() => {
+          if (c?.horas_total) {
+            const tecR = (personalOperativo || []).find(t => t.id === sel.tecnico_responsable_id);
+            return c.horas_total * costoHoraTec__(tecR);
+          }
+          return partesAp.reduce((s, p) => {
+            const tec = (personalOperativo || []).find(t => t.id === p.tecnico_id);
+            return s + (p.horas || 0) * costoHoraTec__(tec);
+          }, 0);
+        })();
         const matReal = partesAp.reduce((s, p) => s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
         const terceroReal = c?.costo_terceros || 0;
         const logisticaReal = c?.costo_logistica || 0;
@@ -5224,7 +5421,7 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
                           {conflicto && sel && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'var(--danger)',color:'#fff'}}>Conflicto</span>}
                         </div>
                         <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:1}}>
-                          {t.cargo}{t.costo_hora?` · S/${t.costo_hora}/h`:''}{turno?` · Turno: ${turno.nombre}`:''}
+                          {t.cargo}{(t.costo_hora_real??t.costo??t.costo_hora)?` · S/${t.costo_hora_real??t.costo??t.costo_hora}/h`:''}{turno?` · Turno: ${turno.nombre}`:''}
                         </div>
                         {conflicto && sel && (
                           <div style={{fontSize:11,color:'var(--danger)',marginTop:3}}>

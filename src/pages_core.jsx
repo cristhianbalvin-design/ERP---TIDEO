@@ -36,6 +36,62 @@ const currencySymbol = (moneda = 'PEN') => {
   return code;
 };
 const moneyCurrency = (value, moneda = 'PEN') => money(value, currencySymbol(moneda));
+const getCotizacionAprobadaOpp = (opp, cotizaciones = []) => {
+  if (!opp?.id) return null;
+  const aprobadas = (cotizaciones || []).filter(c =>
+    c.oportunidad_id === opp.id &&
+    ['aprobada', 'convertida'].includes(String(c.estado || '').toLowerCase())
+  );
+  if (!aprobadas.length) return null;
+  return aprobadas.reduce((best, c) => {
+    const cv = Number(c.version || 1);
+    const bv = Number(best.version || 1);
+    if (cv !== bv) return cv > bv ? c : best;
+    return String(c.fecha || c.created_at || '') > String(best.fecha || best.created_at || '') ? c : best;
+  }, aprobadas[0]);
+};
+const getOppMontoReal = (opp, cotizaciones = []) => {
+  const cot = getCotizacionAprobadaOpp(opp, cotizaciones);
+  const monto = cot
+    ? Number(cot.subtotal ?? cot.subtotal_impl ?? cot.total_impl ?? cot.total ?? 0)
+    : Number(opp?.monto_estimado || 0);
+  return {
+    monto: Number.isFinite(monto) ? monto : 0,
+    moneda: normalizeCurrencyCode(cot?.moneda || opp?.moneda || 'PEN'),
+    cotizacion: cot,
+  };
+};
+const PROBABILIDAD_ETAPA_OPP_UI = {
+  calificacion: 20,
+  propuesta: 40,
+  negociacion: 70,
+  cierre: 70,
+  ganada: 100,
+  perdida: 0,
+};
+const getOppProbabilidadReal = (opp) => {
+  const estado = String(opp?.estado || '').toLowerCase();
+  const etapa = String(opp?.etapa || 'calificacion').toLowerCase();
+  if (estado === 'ganada' || etapa === 'ganada') return 100;
+  if (estado === 'perdida' || etapa === 'perdida') return 0;
+  return PROBABILIDAD_ETAPA_OPP_UI[etapa] ?? 20;
+};
+const getOppForecastReal = (opp, cotizaciones = []) => {
+  const real = getOppMontoReal(opp, cotizaciones);
+  const prob = getOppProbabilidadReal(opp);
+  return { monto: real.monto * prob / 100, moneda: real.moneda };
+};
+const getPersonalAsignableOT = (personalOperativo = [], personalAdmin = []) => {
+  const estadosExcluidos = new Set(['inactivo', 'inactiva', 'baja', 'cesado', 'cesada', 'eliminado', 'eliminada']);
+  const porId = new Map();
+  [...(personalOperativo || []), ...(personalAdmin || [])].forEach(p => {
+    if (!p?.id) return;
+    const estado = String(p.estado || 'activo').toLowerCase();
+    if (estadosExcluidos.has(estado)) return;
+    if (!porId.has(p.id)) porId.set(p.id, p);
+  });
+  return Array.from(porId.values()).sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
+};
 
 function Dashboard({ role }) {
   const { financiamientos, navigate, empresa, cxp } = useApp();
@@ -370,7 +426,7 @@ function DonutChart() {
 
 // ============ LEADS KANBAN ============
 function Leads() {
-  const { leads, setLeads, crearLead, actualizarLeadDatos, eliminarLead, updateLeadState, convertirLead, descartarLead, reactivarLead, navigate, usuarios, empresa, monedasActivas, searchQuery, campanas, roles, industrias, actividades, historialEstados, addNotificacion, authUser } = useApp();
+  const { leads, setLeads, crearLead, actualizarLeadDatos, eliminarLead, updateLeadState, convertirLead, descartarLead, reactivarLead, navigate, usuarios, empresa, monedasActivas, searchQuery, campanas, roles, industrias, actividades, historialEstados, oportunidades, cotizaciones, addNotificacion, authUser } = useApp();
   const [view, setView] = useState('kanban');
 
   const query = searchQuery.toLowerCase();
@@ -413,8 +469,50 @@ function Leads() {
   const [serviciosCatalogo, setServiciosCatalogo] = useState([]);
   const [loadingServiciosCatalogo, setLoadingServiciosCatalogo] = useState(false);
 
+  const getLeadOportunidad = lead => (oportunidades || []).find(o => o.lead_id === lead.id || o.lead_origen === lead.id);
+  const getLatestCotizacion = oppId => {
+    const oppCots = (cotizaciones || []).filter(c => c.oportunidad_id === oppId);
+    if (!oppCots.length) return null;
+    return oppCots.reduce((best, c) => {
+      const cv = Number(c.version || 1);
+      const bv = Number(best.version || 1);
+      if (cv !== bv) return cv > bv ? c : best;
+      return String(c.fecha || c.created_at || '') > String(best.fecha || best.created_at || '') ? c : best;
+    }, oppCots[0]);
+  };
+  const getLeadPotencial = lead => {
+    const opp = getLeadOportunidad(lead);
+    const cot = opp ? getLatestCotizacion(opp.id) : null;
+    const montoCot = Number(cot?.subtotal ?? cot?.subtotal_impl ?? 0);
+    if (cot) return { monto: Number.isFinite(montoCot) ? montoCot : 0, moneda: cot.moneda || opp?.moneda || lead.moneda || 'PEN', fuente: 'cotizacion' };
+    if (opp && Number(opp.monto_estimado || 0) > 0) return { monto: Number(opp.monto_estimado || 0), moneda: opp.moneda || lead.moneda || 'PEN', fuente: 'oportunidad' };
+    return { monto: Number(lead.presupuesto_estimado || 0), moneda: lead.moneda || 'PEN', fuente: 'lead' };
+  };
+  const getLeadEditState = lead => {
+    const opp = lead ? getLeadOportunidad(lead) : null;
+    const cot = opp ? getLatestCotizacion(opp.id) : null;
+    return {
+      montoBloqueado: Boolean(cot),
+      potencial: lead ? getLeadPotencial(lead) : null,
+    };
+  };
+  const potencialPorMoneda = list => {
+    const acc = {};
+    list.forEach(l => {
+      const p = getLeadPotencial(l);
+      const moneda = normalizeCurrencyCode(p.moneda);
+      acc[moneda] = (acc[moneda] || 0) + p.monto;
+    });
+    return Object.entries(acc).sort(([a], [b]) => (a === 'PEN' ? -1 : b === 'PEN' ? 1 : a.localeCompare(b)));
+  };
+  const formatPotencialPorMoneda = list => {
+    const lines = potencialPorMoneda(list);
+    return lines.length ? lines.map(([moneda, monto]) => moneyCurrency(monto, moneda)).join(' · ') : moneyCurrency(0, empresa?.moneda || 'PEN');
+  };
+
   useEffect(() => {
     if (!modalConvertir) return;
+    const potencial = getLeadPotencial(modalConvertir);
     setConvForm({
       nombre_comercial: modalConvertir.empresa_contacto || '',
       razon_social: modalConvertir.razon_social || modalConvertir.empresa_contacto || '',
@@ -426,11 +524,11 @@ function Leads() {
       contacto_telefono: modalConvertir.telefono || '',
       contacto_email: modalConvertir.email || '',
       nombre_oportunidad: `${modalConvertir.necesidad?.slice(0,50) || 'Venta'} — ${modalConvertir.empresa_contacto}`,
-      monto_estimado: modalConvertir.presupuesto_estimado || '',
-      moneda: modalConvertir.moneda || 'PEN',
+      monto_estimado: potencial.monto || '',
+      moneda: potencial.moneda || 'PEN',
       etapa_inicial: 'calificacion'
     });
-  }, [modalConvertir]);
+  }, [modalConvertir, oportunidades, cotizaciones]);
 
   useEffect(() => {
     if (!panelNuevo) return;
@@ -477,6 +575,7 @@ function Leads() {
     const responsable = lead.responsable_id
       ? comercialesAsignables.find(u => u.id === lead.responsable_id)
       : comercialesAsignables.find(u => String(u.nombre || '').trim() === String(lead.responsable || '').trim());
+    const potencial = getLeadPotencial(lead);
     setFormNuevo({
       ...formNuevoBase,
       nombre: lead.nombre || lead.nombre_contacto || '',
@@ -494,8 +593,8 @@ function Leads() {
       responsable_id: responsable?.id || lead.responsable_id || '',
       urgencia: lead.urgencia || 'media',
       necesidad: lead.necesidad || '',
-      presupuesto_estimado: lead.presupuesto_estimado ?? '',
-      moneda: lead.moneda || 'PEN',
+      presupuesto_estimado: potencial.monto ?? '',
+      moneda: potencial.moneda || lead.moneda || 'PEN',
       servicio_interes: lead.servicio_interes || '',
     });
     setEditandoLead(lead);
@@ -515,13 +614,17 @@ function Leads() {
   const guardarLead = (e) => {
     e.preventDefault();
     const errs = {};
-    if (!formNuevo.nombre) errs.nombre = true;
-    if (!formNuevo.empresa_contacto) errs.empresa_contacto = true;
-    if (!formNuevo.responsable_id) errs.responsable = true;
+    const esLeadConvertidoActual = Boolean(editandoLead && (editandoLead.convertido || editandoLead.estado === 'convertido'));
+    if (!esLeadConvertidoActual && !formNuevo.nombre) errs.nombre = true;
+    if (!esLeadConvertidoActual && !formNuevo.empresa_contacto) errs.empresa_contacto = true;
+    if (!esLeadConvertidoActual && !formNuevo.responsable_id) errs.responsable = true;
     if (formNuevo.telefono && !isValidPhone(formNuevo.telefono)) errs.telefono = 'El teléfono debe tener 9 dígitos y comenzar con 9';
     if (formNuevo.ruc && !isValidRuc(formNuevo.ruc)) errs.ruc = 'El RUC debe tener 11 números y comenzar con 1 o 2';
     if (Object.keys(errs).length) { setErrores(errs); return; }
-    const datos = {
+    const editStateActual = editandoLead ? getLeadEditState(editandoLead) : { montoBloqueado: false };
+    const datos = esLeadConvertidoActual ? {
+      urgencia: formNuevo.urgencia,
+    } : {
       nombre: formNuevo.nombre,
       cargo: formNuevo.cargo,
       empresa_contacto: formNuevo.empresa_contacto,
@@ -538,10 +641,12 @@ function Leads() {
       responsable_id: formNuevo.responsable_id,
       urgencia: formNuevo.urgencia,
       necesidad: formNuevo.necesidad,
-      presupuesto_estimado: Number(formNuevo.presupuesto_estimado) || 0,
-      moneda: formNuevo.moneda,
       servicio_interes: formNuevo.servicio_interes || null,
     };
+    if (!esLeadConvertidoActual && !editStateActual.montoBloqueado) {
+      datos.presupuesto_estimado = Number(formNuevo.presupuesto_estimado) || 0;
+      datos.moneda = formNuevo.moneda;
+    }
     if (editandoLead) {
       actualizarLeadDatos(editandoLead.id, datos);
     } else {
@@ -589,7 +694,7 @@ function Leads() {
       return;
     }
     if (lead.estado === targetStatus) return;
-    if (targetStatus === 'calificado' && !(lead.presupuesto_estimado > 0)) {
+    if (targetStatus === 'calificado' && !(getLeadPotencial(lead).monto > 0)) {
       showKanbanToast('Para calificar este lead debes registrar un presupuesto estimado.');
       return;
     }
@@ -616,7 +721,7 @@ function Leads() {
     );
 
     const tieneRuc           = !!(lead.ruc && String(lead.ruc).trim());
-    const tienePresupuesto   = (lead.presupuesto_estimado || 0) > 0;
+    const tienePresupuesto   = (getLeadPotencial(lead).monto || 0) > 0;
     const tieneNecesidad     = !!(lead.necesidad && String(lead.necesidad).trim());
     const tieneResponsable   = !!(lead.responsable_id || lead.responsable);
     const fueReactivado      = (lead.veces_reactivado || 0) > 0;
@@ -657,7 +762,16 @@ function Leads() {
   };
 
   const leadsActivos = leads.filter(l => !['convertido','descartado'].includes(l.estado));
-  const potencialTotal = leadsActivos.reduce((s,l) => s + (l.presupuesto_estimado||0), 0);
+  const potencialTotal = formatPotencialPorMoneda(leadsActivos);
+  const editState = editandoLead ? getLeadEditState(editandoLead) : { montoBloqueado: false, potencial: null };
+  const editandoLeadConvertido = Boolean(editandoLead && (editandoLead.convertido || editandoLead.estado === 'convertido'));
+  const campoBloqueadoConvertido = editandoLeadConvertido;
+  const montoBloqueado = editState.montoBloqueado || editandoLeadConvertido;
+  const motivoBloqueoMonto = editState.montoBloqueado ? 'Cotizacion vinculada' : editandoLeadConvertido ? 'Oportunidad vinculada' : '';
+  const estiloBloqueado = bloqueado => bloqueado ? { background:'var(--bg-subtle)', color:'var(--fg-muted)', cursor:'not-allowed' } : undefined;
+  const LockHint = ({ children }) => (
+    <span className="lead-lock-hint">{children}</span>
+  );
   
   return (
     <>
@@ -667,7 +781,7 @@ function Leads() {
           <div className="page-sub" style={{marginTop:4, display:'flex', alignItems:'center', gap:10}}>
             <span>{leadsActivos.length} lead{leadsActivos.length !== 1 ? 's' : ''} activo{leadsActivos.length !== 1 ? 's' : ''}</span>
             <span style={{width:4, height:4, borderRadius:99, background:'var(--border)'}}/>
-            <span>Potencial total <strong>{money(potencialTotal)}</strong></span>
+            <span>Potencial total <strong>{potencialTotal}</strong></span>
           </div>
         </div>
         <div className="row" style={{gap:12}}>
@@ -683,8 +797,8 @@ function Leads() {
       <div className="pipeline-kpi-grid" style={{gridTemplateColumns:'repeat(5, 1fr)'}}>
         {cols.map((c, i) => {
           const list = filteredLeads.filter(l => l.estado === c.k);
-          const sumPEN = list.reduce((s,l) => l.moneda !== 'USD' ? s + (l.presupuesto_estimado||0) : s, 0);
-          const sumUSD = list.reduce((s,l) => l.moneda === 'USD' ? s + (l.presupuesto_estimado||0) : s, 0);
+          const sumPEN = list.reduce((s,l) => { const p = getLeadPotencial(l); return normalizeCurrencyCode(p.moneda) === 'PEN' ? s + p.monto : s; }, 0);
+          const sumUSD = list.reduce((s,l) => { const p = getLeadPotencial(l); return normalizeCurrencyCode(p.moneda) === 'USD' ? s + p.monto : s; }, 0);
           const icons = [I.plus, I.users, I.star, I.check, I.x];
           const colors = ['var(--cyan)', 'var(--orange)', 'var(--purple)', 'var(--green)', 'var(--slate-400)'];
           return (
@@ -732,6 +846,7 @@ function Leads() {
                           const diasSinActividad = Number(l.dias_sin_actividad || 0);
                           const diasColor = diasSinActividad >= 7 ? 'badge-red' : diasSinActividad >= 3 ? 'badge-orange' : 'badge-gray';
                           const { score: lScore, label: lLabel, color: lColor } = calcularScoreLead(l);
+                          const potencial = getLeadPotencial(l);
                           return (
                         <div
                           key={l.id}
@@ -765,7 +880,7 @@ function Leads() {
                           </div>
                           
                           <div style={{fontSize:14, fontWeight:800, color: 'var(--navy)', marginBottom:8}}>
-                            {moneyCurrency(l.presupuesto_estimado, l.moneda)}
+                            {moneyCurrency(potencial.monto, potencial.moneda)}
                           </div>
 
                           <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:10}}>
@@ -821,17 +936,20 @@ function Leads() {
                 </tr>
               </thead>
               <tbody>
-                {filteredLeads.map(l => (
-                  <tr key={l.id} className="hover-row" onClick={() => setSel(l)}>
-                    <td><div style={{fontWeight:600}}>{l.nombre}</div><div className="text-muted" style={{fontSize:11}}>{l.cargo}</div></td>
-                    <td>{l.empresa_contacto}</td>
-                    <td><strong>{moneyCurrency(l.presupuesto_estimado, l.moneda)}</strong></td>
-                    <td><span className="badge badge-gray">{l.fuente}</span></td>
-                    <td>{l.responsable}</td>
-                    <td className="text-muted">{l.fecha_creacion}</td>
-                    <td><span className={'badge badge-' + (l.estado==='convertido'?'green':l.estado==='descartado'?'gray':'cyan')}>{(l.estado || '').toUpperCase()}</span></td>
-                  </tr>
-                ))}
+                {filteredLeads.map(l => {
+                  const potencial = getLeadPotencial(l);
+                  return (
+                    <tr key={l.id} className="hover-row" onClick={() => setSel(l)}>
+                      <td><div style={{fontWeight:600}}>{l.nombre}</div><div className="text-muted" style={{fontSize:11}}>{l.cargo}</div></td>
+                      <td>{l.empresa_contacto}</td>
+                      <td><strong>{moneyCurrency(potencial.monto, potencial.moneda)}</strong></td>
+                      <td><span className="badge badge-gray">{l.fuente}</span></td>
+                      <td>{l.responsable}</td>
+                      <td className="text-muted">{l.fecha_creacion}</td>
+                      <td><span className={'badge badge-' + (l.estado==='convertido'?'green':l.estado==='descartado'?'gray':'cyan')}>{(l.estado || '').toUpperCase()}</span></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -844,6 +962,7 @@ function Leads() {
         const estadoBadge = sel.estado === 'convertido' ? 'badge-green' : sel.estado === 'descartado' ? 'badge-gray' : 'badge-cyan';
         const urgenciaBadge = sel.urgencia === 'alta' ? 'badge-red' : sel.urgencia === 'baja' ? 'badge-gray' : 'badge-orange';
         const campanaNombre = sel.campana_id ? (campanas.find(c => c.id === sel.campana_id)?.nombre || sel.campana_id) : (sel.campana || '');
+        const potencialSel = getLeadPotencial(sel);
         const Field = ({ label, value, strong }) => (
           <div style={{minWidth:0}}>
             <div className="eyebrow" style={{marginBottom:5}}>{label}</div>
@@ -935,8 +1054,8 @@ function Leads() {
                     </div>
                     <div style={{padding:18, border:'1px solid var(--border)', borderRadius:10, background:'var(--surface)', boxShadow:'var(--shadow-sm)'}}>
                       <div className="eyebrow" style={{marginBottom:8}}>Potencial</div>
-                      <div className="font-display" style={{fontSize:24, fontWeight:800, color:'var(--navy)'}}>{moneyCurrency(sel.presupuesto_estimado, sel.moneda)}</div>
-                      <div className="text-muted" style={{fontSize:12, marginTop:8}}>{sel.moneda || 'PEN'} · {sel.fuente || 'Fuente pendiente'}</div>
+                      <div className="font-display" style={{fontSize:24, fontWeight:800, color:'var(--navy)'}}>{moneyCurrency(potencialSel.monto, potencialSel.moneda)}</div>
+                      <div className="text-muted" style={{fontSize:12, marginTop:8}}>{potencialSel.moneda || 'PEN'} · {potencialSel.fuente === 'cotizacion' ? 'Cotización vinculada' : sel.fuente || 'Fuente pendiente'}</div>
                     </div>
                   </div>
                 </div>
@@ -966,7 +1085,7 @@ function Leads() {
                   <div style={{border:'1px solid var(--border)', borderRadius:10, padding:16, background:'var(--surface)'}}>
                     <SectionTitle icon={I.target} title="Oportunidad" color="var(--orange)" />
                     <div style={{display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:14, marginBottom:14}}>
-                      <Field label="Presupuesto estimado" value={moneyCurrency(sel.presupuesto_estimado, sel.moneda)} strong />
+                      <Field label="Presupuesto estimado" value={moneyCurrency(potencialSel.monto, potencialSel.moneda)} strong />
                       <Field label="Urgencia" value={sel.urgencia} />
                       <Field label="Dias sin actividad" value={`${diasSinActividad} dias`} strong />
                       {sel.servicio_interes && <Field label="Servicio de interés" value={sel.servicio_interes} style={{gridColumn:'1/-1'}} />}
@@ -995,14 +1114,16 @@ function Leads() {
                     </div>
                   )}
 
-                  {!['convertido', 'descartado'].includes(sel.estado) && (
+                  {sel.estado !== 'descartado' && (
                     <div className="row" style={{gap:10, justifyContent:'flex-end', paddingTop:4, flexWrap:'wrap'}}>
-                      {sel.estado === 'calificado' && (
+                      {sel.estado === 'calificado' && !sel.convertido && (
                         <button className="btn btn-primary" style={{minWidth:160}} onClick={() => { setModalConvertir(sel); setSel(null); }}>{I.check} Convertir</button>
                       )}
                       <button className="btn btn-secondary" onClick={() => navigate('actividades')}>Registrar Actividad</button>
                       <button className="btn btn-secondary" onClick={() => abrirEditarLead(sel)}>{I.edit} Editar</button>
-                      <button className="btn btn-ghost" onClick={() => { abrirMoverModal(sel, 'descartado'); setSel(null); }}>Descartar</button>
+                      {sel.estado !== 'convertido' && (
+                        <button className="btn btn-ghost" onClick={() => { abrirMoverModal(sel, 'descartado'); setSel(null); }}>Descartar</button>
+                      )}
                       {sel.estado === 'nuevo' && (
                         <button className="btn btn-ghost" style={{color:'var(--danger)'}} onClick={() => setModalEliminarLead(sel)}>{I.trash} Eliminar</button>
                       )}
@@ -1203,13 +1324,19 @@ function Leads() {
                 {sel.motivo_descarte && <div><div className="eyebrow">Motivo Descarte</div><div className="text-muted">{sel.motivo_descarte}</div></div>}
               </div>
 
-              {!['convertido', 'descartado'].includes(sel.estado) && (
+              {sel.estado !== 'descartado' && (
                 <div className="row mt-6" style={{gap:10}}>
-                  <button className="btn btn-primary flex-1" onClick={() => { setModalConvertir(sel); setSel(null); }}>{I.check} Convertir</button>
+                  {sel.estado !== 'convertido' && (
+                    <button className="btn btn-primary flex-1" onClick={() => { setModalConvertir(sel); setSel(null); }}>{I.check} Convertir</button>
+                  )}
                   <button className="btn btn-secondary" onClick={() => navigate('actividades')}>Registrar Actividad</button>
                   <button className="btn btn-secondary" onClick={() => abrirEditarLead(sel)}>{I.edit} Editar</button>
-                  <button className="btn btn-ghost" onClick={() => { setModalDescartar(sel); setSel(null); }}>Descartar</button>
-                  <button className="icon-btn" title="Eliminar lead" style={{color:'var(--danger)'}} onClick={() => confirmarEliminarLead(sel)}>{I.trash}</button>
+                  {sel.estado !== 'convertido' && (
+                    <>
+                      <button className="btn btn-ghost" onClick={() => { setModalDescartar(sel); setSel(null); }}>Descartar</button>
+                      <button className="icon-btn" title="Eliminar lead" style={{color:'var(--danger)'}} onClick={() => confirmarEliminarLead(sel)}>{I.trash}</button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1402,7 +1529,7 @@ function Leads() {
                 <button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}}
                   onClick={() => {
                     const { lead, destino } = modalMoverLead;
-                    if (destino === 'calificado' && !(lead.presupuesto_estimado > 0)) {
+                    if (destino === 'calificado' && !(getLeadPotencial(lead).monto > 0)) {
                       setMoverError('Para calificar este lead debes registrar un presupuesto estimado.');
                       return;
                     }
@@ -1522,62 +1649,80 @@ function Leads() {
             <div>
               <div className="eyebrow">Registro de lead</div>
               <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>{editandoLead ? 'Editar lead' : 'Nuevo lead'}</div>
+              {editandoLeadConvertido && (
+                <div className="lead-converted-note">
+                  <div className="lead-converted-note-title">Este lead ya fue convertido. La ficha del lead queda como registro de origen.</div>
+                  <div>Los datos bloqueados se actualizan desde:</div>
+                  <div className="lead-converted-note-grid">
+                    <span>Cuenta y empresa</span><strong>Cuentas y Contactos</strong>
+                    <span>Contacto</span><strong>Ficha de la cuenta, seccion Contactos</strong>
+                    <span>Monto y moneda</span><strong>{editState.montoBloqueado ? 'Cotizacion vinculada' : 'Oportunidad vinculada / Pipeline'}</strong>
+                    <span>Datos comerciales</span><strong>Ficha de Oportunidad / Pipeline</strong>
+                  </div>
+                  <div className="lead-converted-note-muted">Algunos datos permanecen bloqueados para conservar trazabilidad del origen comercial.</div>
+                </div>
+              )}
             </div>
             <button className="icon-btn" onClick={cerrarPanelLead}>{I.x}</button>
           </div>
           <form className="side-panel-body" onSubmit={guardarLead}>
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Datos del contacto</div>
+            {campoBloqueadoConvertido && <div className="lead-section-lock-note">Se actualiza desde la ficha de la cuenta, seccion Contactos.</div>}
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group" style={{gridColumn:'1/-1'}}>
-                <label>Nombre del contacto *</label>
-                <input className={'input'+(errores.nombre?' border-danger':'')} value={formNuevo.nombre} onChange={e=>updateNuevo('nombre',e.target.value)} placeholder="Ej: Carlos Huanca" autoFocus/>
+                <label>Nombre del contacto * {campoBloqueadoConvertido && <LockHint>Ficha de cuenta / Contactos</LockHint>}</label>
+                <input className={'input'+(errores.nombre?' border-danger':'')} value={formNuevo.nombre} onChange={e=>updateNuevo('nombre',e.target.value)} placeholder="Ej: Carlos Huanca" autoFocus={!campoBloqueadoConvertido} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/>
                 {errores.nombre && <span style={{fontSize:11,color:'var(--danger)'}}>Campo requerido</span>}
               </div>
-              <div className="input-group"><label>Cargo</label><input className="input" value={formNuevo.cargo} onChange={e=>updateNuevo('cargo',e.target.value)} placeholder="Ej: Jefe de Mantenimiento"/></div>
+              <div className="input-group"><label>Cargo {campoBloqueadoConvertido && <LockHint>Ficha de cuenta / Contactos</LockHint>}</label><input className="input" value={formNuevo.cargo} onChange={e=>updateNuevo('cargo',e.target.value)} placeholder="Ej: Jefe de Mantenimiento" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div>
               <div className="input-group">
                 <label>Teléfono</label>
-                <input className={'input'+(errores.telefono?' border-danger':'')} type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formNuevo.telefono} onChange={e=>updateNuevo('telefono',sanitizePhone(e.target.value))} placeholder="9XXXXXXXX"/>
+                {campoBloqueadoConvertido && <LockHint>Ficha de cuenta / Contactos</LockHint>}
+                <input className={'input'+(errores.telefono?' border-danger':'')} type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formNuevo.telefono} onChange={e=>updateNuevo('telefono',sanitizePhone(e.target.value))} placeholder="9XXXXXXXX" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/>
                 {errores.telefono && <span style={{fontSize:11,color:'var(--danger)'}}>{errores.telefono}</span>}
               </div>
-              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email</label><input className="input" type="email" value={formNuevo.email} onChange={e=>updateNuevo('email',e.target.value)} placeholder="contacto@empresa.pe"/></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email {campoBloqueadoConvertido && <LockHint>Ficha de cuenta / Contactos</LockHint>}</label><input className="input" type="email" value={formNuevo.email} onChange={e=>updateNuevo('email',e.target.value)} placeholder="contacto@empresa.pe" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div>
             </div>
 
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Datos de la empresa</div>
+            {campoBloqueadoConvertido && <div className="lead-section-lock-note">Se actualiza desde Cuentas y Contactos.</div>}
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group">
-                <label>Nombre comercial *</label>
-                <input className={'input'+(errores.empresa_contacto?' border-danger':'')} value={formNuevo.empresa_contacto} onChange={e=>updateNuevo('empresa_contacto',e.target.value)} placeholder="Ej: Minera San Cristóbal SAC"/>
+                <label>Nombre comercial * {campoBloqueadoConvertido && <LockHint>Cuentas y Contactos</LockHint>}</label>
+                <input className={'input'+(errores.empresa_contacto?' border-danger':'')} value={formNuevo.empresa_contacto} onChange={e=>updateNuevo('empresa_contacto',e.target.value)} placeholder="Ej: Minera San Cristóbal SAC" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/>
                 {errores.empresa_contacto && <span style={{fontSize:11,color:'var(--danger)'}}>Campo requerido</span>}
               </div>
-              <div className="input-group"><label>Razón social legal</label><input className="input" value={formNuevo.razon_social} onChange={e=>updateNuevo('razon_social',e.target.value)} placeholder="Si difiere del nombre comercial"/></div>
+              <div className="input-group"><label>Razón social legal</label><input className="input" value={formNuevo.razon_social} onChange={e=>updateNuevo('razon_social',e.target.value)} placeholder="Si difiere del nombre comercial" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div>
               <div className="input-group">
                 <label>RUC <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>· 11 dígitos</span></label>
-                <input className={'input'+(errores.ruc?' border-danger':'')} value={formNuevo.ruc} onChange={e=>updateNuevo('ruc',sanitizeRuc(e.target.value))} placeholder="20xxxxxxxxx" inputMode="numeric" pattern={RUC_PATTERN} maxLength={11}/>
+                {campoBloqueadoConvertido && <LockHint>Cuentas y Contactos</LockHint>}
+                <input className={'input'+(errores.ruc?' border-danger':'')} value={formNuevo.ruc} onChange={e=>updateNuevo('ruc',sanitizeRuc(e.target.value))} placeholder="20xxxxxxxxx" inputMode="numeric" pattern={RUC_PATTERN} maxLength={11} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/>
                 {errores.ruc && <span style={{fontSize:11,color:'var(--danger)'}}>{errores.ruc}</span>}
               </div>
-              <div className="input-group"><label>Industria</label><select className="select" value={formNuevo.industria} onChange={e=>updateNuevo('industria',e.target.value)}>
+              <div className="input-group"><label>Industria {campoBloqueadoConvertido && <LockHint>Cuentas y Contactos</LockHint>}</label><select className="select" value={formNuevo.industria} onChange={e=>updateNuevo('industria',e.target.value)} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}>
                 <option value="">Seleccionar...</option>
                 {['Mineria','Industrial','Construccion','Agroindustria','Facilities','Energia','Petroleo & Gas','Logistica','Retail','Salud','Educacion','Tecnologia','Servicios profesionales','Sector publico','Otro'].map(i=><option key={i}>{i}</option>)}
               </select></div>
             </div>
 
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Oportunidad</div>
+            {campoBloqueadoConvertido && <div className="lead-section-lock-note">Se actualiza desde la ficha de Oportunidad en Pipeline. Monto y moneda dependen de la cotizacion u oportunidad vinculada.</div>}
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Necesidad / Descripción</label><textarea className="input" rows={2} value={formNuevo.necesidad} onChange={e=>updateNuevo('necesidad',e.target.value)} placeholder="Ej: Mantenimiento de fajas transportadoras, 3 unidades con desgaste crítico"/></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Necesidad / Descripción</label><textarea className="input" rows={2} value={formNuevo.necesidad} onChange={e=>updateNuevo('necesidad',e.target.value)} placeholder="Ej: Mantenimiento de fajas transportadoras, 3 unidades con desgaste crítico" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}>
                 <label>Servicio de interés <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>· opcional</span></label>
-                <select className="select" value={formNuevo.servicio_interes} onChange={e=>updateNuevo('servicio_interes',e.target.value)}>
+                <select className="select" value={formNuevo.servicio_interes} onChange={e=>updateNuevo('servicio_interes',e.target.value)} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}>
                   <option value="">{loadingServiciosCatalogo ? 'Cargando servicios...' : 'Sin especificar'}</option>
                   {serviciosCatalogo.map(s=><option key={s.id || s.codigo} value={s.descripcion}>{s.descripcion}</option>)}
                 </select>
               </div>
               <div className="input-group">
-                <label>Presupuesto estimado</label>
-                <input className="input" type="number" min="0" step="0.01" value={formNuevo.presupuesto_estimado} onChange={e=>updateNuevo('presupuesto_estimado',e.target.value)} placeholder="0"/>
+                <label>Presupuesto estimado {motivoBloqueoMonto && <LockHint>{motivoBloqueoMonto}</LockHint>}</label>
+                <input className="input" type="number" min="0" step="0.01" value={formNuevo.presupuesto_estimado} onChange={e=>updateNuevo('presupuesto_estimado',e.target.value)} placeholder="0" disabled={montoBloqueado} style={estiloBloqueado(montoBloqueado)}/>
               </div>
               <div className="input-group">
-                <label>Moneda</label>
-                <select className="select" value={formNuevo.moneda} onChange={e=>updateNuevo('moneda',e.target.value)}>
+                <label>Moneda {motivoBloqueoMonto && <LockHint>{motivoBloqueoMonto}</LockHint>}</label>
+                <select className="select" value={formNuevo.moneda} onChange={e=>updateNuevo('moneda',e.target.value)} disabled={montoBloqueado} style={estiloBloqueado(montoBloqueado)}>
                   {monedasActivas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre}</option>)}
                 </select>
               </div>
@@ -1587,27 +1732,29 @@ function Leads() {
             </div>
 
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Asignación</div>
+            {campoBloqueadoConvertido && <div className="lead-section-lock-note">Los datos de origen permanecen bloqueados para conservar trazabilidad.</div>}
             <div className="grid-2" style={{gap:14, marginBottom:24}}>
               <div className="input-group">
-                <label>Responsable comercial *</label>
-                <select className={'select'+(errores.responsable?' border-danger':'')} value={formNuevo.responsable_id} onChange={e=>updateResponsableNuevo(e.target.value)}>
+                <label>Responsable comercial * {campoBloqueadoConvertido && <LockHint>Ficha de Oportunidad / Pipeline</LockHint>}</label>
+                <select className={'select'+(errores.responsable?' border-danger':'')} value={formNuevo.responsable_id} onChange={e=>updateResponsableNuevo(e.target.value)} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}>
                   <option value="">Seleccionar...</option>
                   {comercialesAsignables.map(u=><option key={u.id} value={u.id}>{u.nombre}</option>)}
                 </select>
                 {errores.responsable && <span style={{fontSize:11,color:'var(--danger)'}}>Campo requerido</span>}
               </div>
-              <div className="input-group"><label>Fuente</label><select className="select" value={formNuevo.fuente} onChange={e=>updateNuevo('fuente',e.target.value)}>
+              <div className="input-group"><label>Fuente {campoBloqueadoConvertido && <LockHint>Trazabilidad del lead</LockHint>}</label><select className="select" value={formNuevo.fuente} onChange={e=>updateNuevo('fuente',e.target.value)} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}>
                 <option value="">Seleccionar...</option>
                 {['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].map(f=><option key={f}>{f}</option>)}
               </select></div>
               <div className="input-group">
                 <label>Campaña de origen{loadingCampanasForm && <span className="text-muted" style={{fontWeight:400,marginLeft:6,fontSize:11}}>cargando…</span>}</label>
-                <select className="select" value={formNuevo.campana_id} onChange={e=>updateNuevo('campana_id',e.target.value)} disabled={loadingCampanasForm}>
+                {campoBloqueadoConvertido && <LockHint>Trazabilidad del lead</LockHint>}
+                <select className="select" value={formNuevo.campana_id} onChange={e=>updateNuevo('campana_id',e.target.value)} disabled={loadingCampanasForm || campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}>
                   <option value="">Sin campaña (orgánico / referido)</option>
                   {campanasForm.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </select>
               </div>
-              <div className="input-group"><label>Registrado desde</label><select className="select" value={formNuevo.registrado_desde} onChange={e=>updateNuevo('registrado_desde',e.target.value)}>
+              <div className="input-group"><label>Registrado desde {campoBloqueadoConvertido && <LockHint>Trazabilidad del lead</LockHint>}</label><select className="select" value={formNuevo.registrado_desde} onChange={e=>updateNuevo('registrado_desde',e.target.value)} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}>
                 <option value="web">Web / CRM</option><option value="campo">Campo (app móvil)</option>
               </select></div>
             </div>
@@ -1630,7 +1777,8 @@ function Pipeline() {
     oppHistorialEtapas, personalAdmin,
     crearAgendaEvento, crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
     actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision, aprobarAcuerdoComision, rechazarAcuerdoComision, obtenerHistorialAcuerdo,
-    navigate, activeParams, searchQuery, usuarios, roles, role, empresa, monedasActivas, authUser
+    navigate, activeParams, searchQuery, usuarios, roles, role, empresa, monedasActivas, authUser,
+    probabilidadPorEtapaOpp, forecastPorEtapaOpp
   } = useApp();
   const [view, setView] = useState('kanban');
   const [sel, setSel] = useState(null);
@@ -1688,20 +1836,23 @@ function Pipeline() {
   };
   const guardarNuevaOpp = (event) => {
     event.preventDefault();
+    const etapaInicial = 'calificacion';
+    const montoEstimado = Number(oppForm.monto_estimado || 0);
+    const probabilidadInicial = probabilidadPorEtapaOpp(etapaInicial);
     crearOportunidad({
       cuenta_id: oppForm.cuenta_id || cuentas[0]?.id || null,
       nombre: oppForm.nombre || 'Nueva oportunidad',
       servicio_interes: oppForm.servicio_interes || oppForm.nombre || 'Servicio por definir',
-      monto_estimado: Number(oppForm.monto_estimado || 0),
+      monto_estimado: montoEstimado,
       moneda: oppForm.moneda || 'PEN',
       responsable: oppForm.responsable || 'Por asignar',
       responsable_id: oppForm.responsable_id || null,
       fecha_cierre_estimada: oppForm.fecha_cierre_estimada || null,
       fuente: oppForm.fuente || null,
       notas: oppForm.notas || null,
-      etapa: 'calificacion',
-      probabilidad: 30,
-      forecast_ponderado: Number(oppForm.monto_estimado || 0) * 0.3,
+      etapa: etapaInicial,
+      probabilidad: probabilidadInicial,
+      forecast_ponderado: forecastPorEtapaOpp({ monto_estimado: montoEstimado }, etapaInicial),
       fecha_creacion: new Date().toISOString().split('T')[0],
     });
     cerrarNuevaOpp();
@@ -1767,18 +1918,37 @@ function Pipeline() {
   const etapaPipeline = (opp) => opp.etapa === 'cierre' ? 'negociacion' : opp.etapa;
 
   const getOppMontoCotizado = (oppId) => {
-    const oppCots = cotizaciones.filter(c => c.oportunidad_id === oppId);
-    if (!oppCots.length) return null;
-    const latest = oppCots.reduce((best, c) => (c.version || 1) > (best.version || 1) ? c : best, oppCots[0]);
-    return { subtotal: latest.subtotal || 0, moneda: latest.moneda || 'PEN' };
+    const opp = oportunidades.find(o => o.id === oppId);
+    const cot = getCotizacionAprobadaOpp(opp, cotizaciones);
+    return cot ? { subtotal: Number(cot.subtotal ?? cot.subtotal_impl ?? cot.total_impl ?? cot.total ?? 0), moneda: cot.moneda || 'PEN' } : null;
   };
-  const getOppMontoEfectivo = (o) => {
-    const cot = getOppMontoCotizado(o.id);
-    return cot ? cot.subtotal : (o.monto_estimado || 0);
-  };
+  const getOppMontoEfectivo = (o) => getOppMontoReal(o, cotizaciones).monto;
 
-  const total = activeOps.reduce((s,o) => s + getOppMontoEfectivo(o), 0);
-  const forecast = activeOps.reduce((s,o)=>s+(o.forecast_ponderado||0),0);
+  const monedaBasePipeline = normalizeCurrencyCode(empresa?.moneda || empresa?.moneda_base || 'PEN');
+  const sortPipelineCurrencyLines = lines => {
+    const order = Array.from(new Set([monedaBasePipeline, 'PEN', 'USD', 'EUR']));
+    return [...lines].sort((a, b) => {
+      const ai = order.indexOf(a.moneda);
+      const bi = order.indexOf(b.moneda);
+      if (ai !== -1 || bi !== -1) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      return a.moneda.localeCompare(b.moneda);
+    });
+  };
+  const sumPipelineByCurrency = (rows, getReal) => sortPipelineCurrencyLines(Object.entries(rows.reduce((acc, row) => {
+    const real = getReal(row);
+    acc[real.moneda] = (acc[real.moneda] || 0) + Number(real.monto || 0);
+    return acc;
+  }, {})).map(([moneda, monto]) => ({ moneda, monto })));
+  const pipelineTotalLines = sumPipelineByCurrency(activeOps, o => getOppMontoReal(o, cotizaciones));
+  const pipelineForecastLines = sumPipelineByCurrency(activeOps, o => getOppForecastReal(o, cotizaciones));
+  const renderPipelineHeaderMoney = lines => {
+    const rows = lines.length ? lines : [{ moneda: monedaBasePipeline, monto: 0 }];
+    return (
+      <strong style={{display:'inline-flex', flexDirection:'column', gap:2, lineHeight:1.15, verticalAlign:'top'}}>
+        {rows.map(row => <span key={row.moneda}>{moneyCurrency(Math.round(row.monto), row.moneda)}</span>)}
+      </strong>
+    );
+  };
 
   const ETAPAS_AUTO = ['propuesta', 'negociacion', 'ganada'];
   const handleDrop = (e, targetStatus) => {
@@ -1918,9 +2088,9 @@ function Pipeline() {
           <div className="page-sub" style={{marginTop:4, display:'flex', alignItems:'center', gap:10}}>
             <span>{activeOps.length} oportunidad{activeOps.length !== 1 ? 'es' : ''}</span>
             <span style={{width:4, height:4, borderRadius:99, background:'var(--border)'}}/>
-            <span>Pipeline total <strong>{money(total)}</strong></span>
+            <span>Pipeline total {renderPipelineHeaderMoney(pipelineTotalLines)}</span>
             <span style={{width:4, height:4, borderRadius:99, background:'var(--border)'}}/>
-            <span>Forecast <strong>{money(Math.round(forecast))}</strong></span>
+            <span>Forecast {renderPipelineHeaderMoney(pipelineForecastLines)}</span>
             <span style={{color:'var(--fg-subtle)', cursor:'help'}} title="Calculado en base a probabilidad por etapa">{I.info}</span>
           </div>
         </div>
@@ -1940,8 +2110,8 @@ function Pipeline() {
       <div className="pipeline-kpi-grid" style={{gridTemplateColumns:'repeat(5, 1fr)'}}>
         {cols.map((c, i) => {
           const ops = filteredOps.filter(o => etapaPipeline(o) === c.k);
-          const sumPEN = ops.reduce((s,o) => { const cot = getOppMontoCotizado(o.id); const moneda = cot ? cot.moneda : (o.moneda||'PEN'); const monto = cot ? cot.subtotal : (o.monto_estimado||0); return moneda !== 'USD' ? s + monto : s; }, 0);
-          const sumUSD = ops.reduce((s,o) => { const cot = getOppMontoCotizado(o.id); const moneda = cot ? cot.moneda : (o.moneda||'PEN'); const monto = cot ? cot.subtotal : (o.monto_estimado||0); return moneda === 'USD' ? s + monto : s; }, 0);
+          const sumPEN = ops.reduce((s,o) => { const real = getOppMontoReal(o, cotizaciones); return real.moneda !== 'USD' ? s + real.monto : s; }, 0);
+          const sumUSD = ops.reduce((s,o) => { const real = getOppMontoReal(o, cotizaciones); return real.moneda === 'USD' ? s + real.monto : s; }, 0);
           const icons = [I.star, I.file, I.hand, I.check, I.x];
           return (
             <div key={c.k} className={`pipeline-kpi-card ${c.k} hover-raise`} style={{ '--accent': c.color }}>
@@ -2009,7 +2179,7 @@ function Pipeline() {
                           </div>
                           
                           <div style={{fontSize:14, fontWeight:800, color:'var(--navy)', marginBottom:12}}>
-                            {(() => { const cot = getOppMontoCotizado(o.id); return cot ? moneyCurrency(cot.subtotal, cot.moneda) : moneyCurrency(o.monto_estimado, o.moneda); })()}
+                            {(() => { const real = getOppMontoReal(o, cotizaciones); return moneyCurrency(real.monto, real.moneda); })()}
                           </div>
   
                           <div className="row" style={{justifyContent:'space-between', borderTop:'1px solid var(--border-subtle)', paddingTop:12, marginTop:4}}>
@@ -2059,9 +2229,9 @@ function Pipeline() {
                   <tr key={o.id} className="hover-row" onClick={() => setSel(o)}>
                     <td style={{fontWeight:600}}>{o.nombre}</td>
                     <td>{getOppCuentaNombre(o.cuenta_id)}</td>
-                    <td><strong>{moneyCurrency(o.monto_estimado, o.moneda)}</strong></td>
+                    <td><strong>{(() => { const real = getOppMontoReal(o, cotizaciones); return moneyCurrency(real.monto, real.moneda); })()}</strong></td>
                     <td><span className="badge badge-cyan">{(o.etapa || '').toUpperCase()}</span></td>
-                    <td>{o.probabilidad}%</td>
+                    <td>{getOppProbabilidadReal(o)}%</td>
                     <td className="text-muted">{o.fecha_cierre_estimada}</td>
                     <td>{o.responsable}</td>
                   </tr>
@@ -2083,13 +2253,14 @@ function Pipeline() {
           perdida:      { bg:'var(--orange-lt)',        color:'var(--orange-dk)', label:'Perdida' },
         };
         const ec = etapaMap[sel.etapa] || { bg:'var(--border)', color:'var(--fg-muted)', label: sel.etapa };
-        const prob = Math.min(100, Math.max(0, sel.probabilidad || 0));
+        const prob = Math.min(100, Math.max(0, getOppProbabilidadReal(sel)));
         const cotOpps = cotizaciones.filter(c => c.oportunidad_id === sel.id);
         const hojaOpps = hojasCosteo.filter(h => h.oportunidad_id === sel.id);
         const osExistente = osClientes.find(o => o.oportunidad_id === sel.id);
         const cotAprobada = cotOpps.find(c => c.estado === 'aprobada');
         const montoCotizado = getOppMontoCotizado(sel.id);
-        const montoDisplay = montoCotizado ? moneyCurrency(montoCotizado.subtotal, montoCotizado.moneda) : moneyCurrency(sel.monto_estimado, sel.moneda);
+        const montoRealSel = getOppMontoReal(sel, cotizaciones);
+        const montoDisplay = moneyCurrency(montoRealSel.monto, montoRealSel.moneda);
         const actividadCount = timelineSel.filter(t => ['Actividad','Agenda'].includes(t.tipo)).length;
         const oppHealthBase = [
           sel.cuenta_id ? 10 : 0,
@@ -2252,7 +2423,7 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
                 <div className="grid-3" style={{gap:10}}>
                   <div style={{background:'var(--bg-subtle)', borderRadius:10, padding:'12px 10px', border:'1px solid var(--border)', textAlign:'center'}}>
                     <div className="eyebrow" style={{marginBottom:5}}>Monto</div>
-                    <div style={{fontFamily:'Sora,sans-serif', fontSize:16, fontWeight:700, color:'var(--cyan-dk)', lineHeight:1.2}}>{(() => { const cot = getOppMontoCotizado(sel.id); return cot ? moneyCurrency(cot.subtotal, cot.moneda) : moneyCurrency(sel.monto_estimado, sel.moneda); })()}</div>
+                    <div style={{fontFamily:'Sora,sans-serif', fontSize:16, fontWeight:700, color:'var(--cyan-dk)', lineHeight:1.2}}>{montoDisplay}</div>
                   </div>
                   <div style={{background:'var(--bg-subtle)', borderRadius:10, padding:'12px 10px', border:'1px solid var(--border)', textAlign:'center'}}>
                     <div className="eyebrow" style={{marginBottom:5}}>Prob.</div>
@@ -3287,19 +3458,24 @@ function Actividades() {
 
 // ============ OS CLIENTE ============
 function FormCrearMultiplesOTs({ os, onCancel }) {
-  const { cotizaciones, tiposServicio, personalOperativo, centrosCosto, centrosBeneficio, crearOTDesdeOS, navigate, ots, hojasCosteo } = useApp();
+  const { cotizaciones, tiposServicio, personalOperativo, personalAdmin, centrosCosto, centrosBeneficio, crearOTDesdeOS, navigate, ots, hojasCosteo } = useApp();
   const hoy = new Date().toISOString().split('T')[0];
   const cotizacion = cotizaciones.find(c => c.id === os.cotizacion_id) || null;
   const tiposActivos = (tiposServicio || []).filter(t => t.estado !== 'inactivo');
-  const personal = (personalOperativo || []).filter(p => p.estado === 'activo');
+  const personal = getPersonalAsignableOT(personalOperativo, personalAdmin);
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const cebeHeredado = (centrosBeneficio || []).find(c => c.id === os.centro_beneficio_id);
+
+  const itemsSugeridos = cotizacion ? (cotizacion.items || []).map(i => i.servicio || i.descripcion).filter(Boolean) : [];
 
   const crearFila = (defaults = {}) => ({
     _id: Date.now() + Math.random(),
     servicio: defaults.servicio || '',
     descripcion: defaults.descripcion || `Ejecucion de ${os.numero}`,
-    costo_estimado: defaults.costo_estimado !== undefined ? defaults.costo_estimado : '',
+    est_mo: defaults.est_mo !== undefined ? defaults.est_mo : '',
+    est_materiales: defaults.est_materiales !== undefined ? defaults.est_materiales : '',
+    est_terceros: defaults.est_terceros !== undefined ? defaults.est_terceros : '',
+    est_logistica: defaults.est_logistica !== undefined ? defaults.est_logistica : '',
     centro_costo_id: defaults.centro_costo_id || '',
     fecha_programada: os.fecha_inicio || hoy,
     fecha_fin: os.fecha_fin || '',
@@ -3325,7 +3501,8 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
   const hcSaldoNoAsignado = hcVinculada ? (hcVinculada.costo_total || 0) - totalOTsExistentes : 0;
   const montoBase = hcVinculada ? (hcVinculada.costo_total || 0) : Number(os.monto_aprobado || 0);
   const saldoBase = montoBase - totalOTsExistentes;
-  const totalAsignado = filas.reduce((s, f) => s + Number(f.costo_estimado || 0), 0);
+  const filaTotal = (f) => (parseFloat(f.est_mo)||0) + (parseFloat(f.est_materiales)||0) + (parseFloat(f.est_terceros)||0) + (parseFloat(f.est_logistica)||0);
+  const totalAsignado = filas.reduce((s, f) => s + filaTotal(f), 0);
   const saldoLibre = saldoBase - totalAsignado;
   const pct = montoBase > 0 ? Math.min(100, Math.round(((totalOTsExistentes + totalAsignado) / montoBase) * 100)) : 0;
   const nOTs = filas.length;
@@ -3342,7 +3519,16 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
     try {
       for (const fila of filas) {
         const { _id, ...datos } = fila;
-        const otId = await crearOTDesdeOS(os.id, { ...datos, es_adicional: esAdicional });
+        const totalFila = filaTotal(fila);
+        const otId = await crearOTDesdeOS(os.id, {
+          ...datos,
+          est_mo: fila.est_mo !== '' ? Number(fila.est_mo) : null,
+          est_materiales: fila.est_materiales !== '' ? Number(fila.est_materiales) : null,
+          est_terceros: fila.est_terceros !== '' ? Number(fila.est_terceros) : null,
+          est_logistica: fila.est_logistica !== '' ? Number(fila.est_logistica) : null,
+          costo_estimado: totalFila,
+          es_adicional: esAdicional,
+        });
         if (!otId) throw new Error('No se pudo crear una de las OTs.');
       }
       navigate('os_cliente', { detail: os.id, tab: 'OTs' });
@@ -3548,17 +3734,22 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
       {/* Grid de OTs */}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>Órdenes de Trabajo a crear</div>
+        {!hcVinculada && cotizacion && (
+          <div style={{ padding: '8px 16px', background: '#fafafa', borderBottom: '1px solid #f3f4f6', fontSize: 11, color: '#888' }}>
+            Sin hoja de costeo vinculada. El estimado es referencial.
+          </div>
+        )}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 28 }} />
-              <col style={{ width: '22%' }} />
-              <col style={{ width: '22%' }} />
-              <col style={{ width: 95 }} />
-              <col style={{ width: 108 }} />
-              <col style={{ width: 108 }} />
-              <col style={{ width: '18%' }} />
-              <col style={{ width: 88 }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: 220 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: 82 }} />
               <col style={{ width: 28 }} />
             </colgroup>
             <thead>
@@ -3566,67 +3757,100 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
                 <th style={{ padding: '8px 6px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>#</th>
                 <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Servicio *</th>
                 <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>CECO *</th>
-                <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Monto est. ({currencySymbol(os.moneda)})</th>
+                <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>
+                  Estimado de costos ({currencySymbol(os.moneda)})
+                  {hcVinculada && <span style={{ fontWeight: 400, color: '#888', fontSize: 10, marginLeft: 4 }}>— Ref. HC</span>}
+                </th>
                 <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Inicio</th>
                 <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Fin</th>
-                <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Técnico</th>
+                <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Colaborador</th>
                 <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Prioridad</th>
                 <th style={{ padding: '8px 4px', borderBottom: '1px solid #e5e7eb' }}></th>
               </tr>
             </thead>
             <tbody>
-              {filas.map((fila, idx) => (
-                <tr key={fila._id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: '6px 10px', color: '#888', verticalAlign: 'middle' }}>{idx + 1}</td>
-                  <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    {tiposActivos.length > 0 ? (
-                      <select className="select" value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} style={{ fontSize: 12 }}>
-                        <option value="">— Servicio —</option>
-                        {tiposActivos.map(t => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
+              {filas.map((fila, idx) => {
+                const totalFila_ = filaTotal(fila);
+                const sym = currencySymbol(os.moneda);
+                return (
+                  <tr key={fila._id} style={{ borderBottom: '1px solid #f3f4f6', verticalAlign: 'top' }}>
+                    <td style={{ padding: '10px 6px', color: '#888' }}>{idx + 1}</td>
+                    <td style={{ padding: '4px 6px' }}>
+                      {itemsSugeridos.length > 0 ? (
+                        <>
+                          <input className="input" list={`svc-list-${fila._id}`} value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} placeholder="Elige o escribe..." style={{ fontSize: 12 }} />
+                          <datalist id={`svc-list-${fila._id}`}>
+                            {itemsSugeridos.map((s, i) => <option key={i} value={s} />)}
+                          </datalist>
+                        </>
+                      ) : tiposActivos.length > 0 ? (
+                        <select className="select" value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} style={{ fontSize: 12 }}>
+                          <option value="">— Servicio —</option>
+                          {tiposActivos.map(t => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
+                        </select>
+                      ) : (
+                        <input className="input" value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} placeholder="Servicio" style={{ fontSize: 12 }} />
+                      )}
+                    </td>
+                    <td style={{ padding: '4px 6px' }}>
+                      <select className="select" value={fila.centro_costo_id} onChange={e => updFila(fila._id, 'centro_costo_id', e.target.value)} style={{ fontSize: 12 }}>
+                        <option value="">— CECO —</option>
+                        {cecos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} – ` : ''}{c.nombre}</option>)}
                       </select>
-                    ) : (
-                      <input className="input" value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} placeholder="Servicio" style={{ fontSize: 12 }} />
-                    )}
-                  </td>
-                  <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    <select className="select" value={fila.centro_costo_id} onChange={e => updFila(fila._id, 'centro_costo_id', e.target.value)} style={{ fontSize: 12 }}>
-                      <option value="">— CECO —</option>
-                      {cecos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} – ` : ''}{c.nombre}</option>)}
-                    </select>
-                  </td>
-                  <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    <input className="input" type="number" min="0" value={fila.costo_estimado} onChange={e => updFila(fila._id, 'costo_estimado', e.target.value)} style={{ fontSize: 12, textAlign: 'right' }} />
-                  </td>
-                  <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    <input className="input" type="date" value={fila.fecha_programada} onChange={e => updFila(fila._id, 'fecha_programada', e.target.value)} style={{ fontSize: 12 }} />
-                  </td>
-                  <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    <input className="input" type="date" value={fila.fecha_fin} onChange={e => updFila(fila._id, 'fecha_fin', e.target.value)} style={{ fontSize: 12 }} />
-                  </td>
-                  <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    <select className="select" value={fila.tecnico_responsable_id} onChange={e => updFila(fila._id, 'tecnico_responsable_id', e.target.value)} style={{ fontSize: 12 }}>
-                      <option value="">— Sin asignar —</option>
-                      {personal.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                    </select>
-                  </td>
-                  <td style={{ padding: '4px 6px', verticalAlign: 'middle' }}>
-                    <select className="select" value={fila.prioridad} onChange={e => updFila(fila._id, 'prioridad', e.target.value)} style={{ fontSize: 12 }}>
-                      <option value="normal">Normal</option>
-                      <option value="urgente">Urgente</option>
-                      <option value="critica">Crítica</option>
-                    </select>
-                  </td>
-                  <td style={{ padding: '4px 6px', textAlign: 'center', verticalAlign: 'middle' }}>
-                    <button className="btn btn-sm" style={{ padding: '2px 6px', color: '#ef4444', background: 'none', border: 'none', fontSize: 16, lineHeight: 1 }} onClick={() => removeFila(fila._id)} disabled={filas.length === 1} title="Eliminar fila">×</button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td style={{ padding: '4px 6px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                        {[
+                          { key: 'est_mo', label: 'Mano de obra', hcVal: hcVinculada?.total_mano_obra },
+                          { key: 'est_materiales', label: 'Materiales', hcVal: hcVinculada?.total_materiales },
+                          { key: 'est_terceros', label: 'Terc.', hcVal: hcVinculada?.total_servicios_terceros },
+                          { key: 'est_logistica', label: 'Logística', hcVal: hcVinculada?.total_logistica },
+                        ].map(({ key, label, hcVal }) => (
+                          <div key={key}>
+                            <div style={{ fontSize: 10, color: '#888', marginBottom: 2, lineHeight: 1.2 }}>
+                              {label}{hcVal != null ? <span style={{ color: '#aaa' }}> {sym}{Number(hcVal).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span> : ''}
+                            </div>
+                            <input className="input" type="number" min="0" step="0.01" value={fila[key]} onChange={e => updFila(fila._id, key, e.target.value)} placeholder="0.00" style={{ fontSize: 11, textAlign: 'right', padding: '3px 6px' }} />
+                          </div>
+                        ))}
+                      </div>
+                      {totalFila_ > 0 && (
+                        <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 700, marginTop: 5, color: '#374151' }}>
+                          Total: {moneyCurrency(totalFila_, os.moneda)}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '4px 6px' }}>
+                      <input className="input" type="date" value={fila.fecha_programada} onChange={e => updFila(fila._id, 'fecha_programada', e.target.value)} style={{ fontSize: 12 }} />
+                    </td>
+                    <td style={{ padding: '4px 6px' }}>
+                      <input className="input" type="date" value={fila.fecha_fin} onChange={e => updFila(fila._id, 'fecha_fin', e.target.value)} style={{ fontSize: 12 }} />
+                    </td>
+                    <td style={{ padding: '4px 6px' }}>
+                      <select className="select" value={fila.tecnico_responsable_id} onChange={e => updFila(fila._id, 'tecnico_responsable_id', e.target.value)} style={{ fontSize: 12 }}>
+                        <option value="">— Sin asignar —</option>
+                        {personal.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` — ${p.cargo}` : ''}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: '4px 6px' }}>
+                      <select className="select" value={fila.prioridad} onChange={e => updFila(fila._id, 'prioridad', e.target.value)} style={{ fontSize: 12 }}>
+                        <option value="normal">Normal</option>
+                        <option value="urgente">Urgente</option>
+                        <option value="critica">Crítica</option>
+                      </select>
+                    </td>
+                    <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                      <button className="btn btn-sm" style={{ padding: '2px 6px', color: '#ef4444', background: 'none', border: 'none', fontSize: 16, lineHeight: 1 }} onClick={() => removeFila(fila._id)} disabled={filas.length === 1} title="Eliminar fila">×</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
         <div style={{ padding: '10px 16px', borderTop: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 16 }}>
           <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => addFila()}>+ Agregar OT</button>
-          <span style={{ fontSize: 11, color: '#888' }}>El monto es referencial. El costo real se acumula automáticamente desde los Partes Diarios (horas × costo/hora + materiales + gastos de campo).</span>
+          <span style={{ fontSize: 11, color: '#888' }}>El costo real se acumula automáticamente desde los Partes Diarios (horas × costo/hora + materiales + gastos de campo).</span>
         </div>
       </div>
     </div>
@@ -3634,7 +3858,7 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
 }
 
 function FormCrearOT({ os, onSave, onCancel }) {
-  const { personalOperativo, tiposServicio, centrosCosto, centrosBeneficio } = useApp();
+  const { personalOperativo, personalAdmin, tiposServicio, centrosCosto, centrosBeneficio } = useApp();
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const cebeHeredado = (centrosBeneficio || []).find(c => c.id === os.centro_beneficio_id);
   const [form, setForm] = useState({
@@ -3656,7 +3880,7 @@ function FormCrearOT({ os, onSave, onCancel }) {
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const tiposActivos = tiposServicio.filter(t => t.estado !== 'inactivo');
-  const personal = personalOperativo.filter(p => p.estado === 'activo');
+  const personal = getPersonalAsignableOT(personalOperativo, personalAdmin);
 
   const handleServicioChange = (e) => {
     const val = e.target.value;
@@ -3774,7 +3998,7 @@ function FormCrearOT({ os, onSave, onCancel }) {
             <div className="eyebrow" style={{marginBottom:12}}>Responsables</div>
             <div className="grid-2" style={{gap:16}}>
               <div className="input-group">
-                <label>Técnico responsable</label>
+                <label>Colaborador responsable</label>
                 <select className="select" value={form.tecnico_responsable_id} onChange={e => upd('tecnico_responsable_id', e.target.value)}>
                   <option value="">Sin asignar</option>
                   {personal.map(p => (
@@ -4807,79 +5031,381 @@ function Marketing() {
 
 function BIComercial() {
   const [tab, setTab] = useState('pipeline');
-  const { oportunidades, leads, cuentas, campanas } = useApp();
+  const [periodo, setPeriodo] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const { oportunidades, leads, cuentas, campanas, empresa, oppHistorialEtapas, cotizaciones } = useApp();
 
-  const oppsAbiertas  = oportunidades.filter(o => o.estado === 'abierta');
-  const oppsGanadas   = oportunidades.filter(o => o.estado === 'ganada');
-  const oppsPerdidas  = oportunidades.filter(o => o.estado === 'perdida');
-  const forecastTotal = oppsAbiertas.reduce((s, o) => s + (o.forecast_ponderado || 0), 0);
-  const ticketProm    = oportunidades.length ? Math.round(oportunidades.reduce((s, o) => s + o.monto_estimado, 0) / oportunidades.length) : 0;
+  const monedaBase = normalizeCurrencyCode(empresa?.moneda || empresa?.moneda_base || 'PEN');
+  const getMoneda = item => normalizeCurrencyCode(item?.moneda || monedaBase);
+  const getCreatedAt = item => item?.created_at || item?.fecha_creacion || null;
+  const isInPeriodo = date => String(date || '').slice(0, 7) === periodo;
+  const periodoDate = new Date(`${periodo}-01T00:00:00`);
+  const periodoLabel = Number.isNaN(periodoDate.getTime())
+    ? periodo
+    : periodoDate.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase());
+
+  const sortCurrencyLines = lines => {
+    const order = Array.from(new Set([monedaBase, 'PEN', 'USD', 'EUR']));
+    return [...lines].sort((a, b) => {
+      const ai = order.indexOf(a.moneda);
+      const bi = order.indexOf(b.moneda);
+      if (ai !== -1 || bi !== -1) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      return a.moneda.localeCompare(b.moneda);
+    });
+  };
+  const sumByCurrency = (rows, getAmount) => sortCurrencyLines(Object.entries(rows.reduce((acc, row) => {
+    const moneda = getMoneda(row);
+    acc[moneda] = (acc[moneda] || 0) + Number(getAmount(row) || 0);
+    return acc;
+  }, {})).map(([moneda, valor]) => ({ moneda, valor })));
+  const etapaLabel = etapa => ({
+    calificacion: 'Calificacion',
+    propuesta: 'Propuesta',
+    negociacion: 'Negociacion',
+    cierre: 'Cierre',
+    ganada: 'Ganada',
+    perdida: 'Perdida',
+  }[String(etapa || '').toLowerCase()] || String(etapa || 'Sin etapa'));
+  const avgByCurrency = (rows, getAmount) => sortCurrencyLines(Object.entries(rows.reduce((acc, row) => {
+    const moneda = getMoneda(row);
+    if (!acc[moneda]) acc[moneda] = { total: 0, count: 0 };
+    acc[moneda].total += Number(getAmount(row) || 0);
+    acc[moneda].count += 1;
+    return acc;
+  }, {})).map(([moneda, data]) => ({ moneda, valor: data.count ? Math.round(data.total / data.count) : 0 })));
+  const sumOppsByCurrency = rows => sortCurrencyLines(Object.entries(rows.reduce((acc, opp) => {
+    const real = getOppMontoReal(opp, cotizaciones);
+    acc[real.moneda] = (acc[real.moneda] || 0) + real.monto;
+    return acc;
+  }, {})).map(([moneda, valor]) => ({ moneda, valor })));
+  const avgOppsByCurrency = rows => sortCurrencyLines(Object.entries(rows.reduce((acc, opp) => {
+    const real = getOppMontoReal(opp, cotizaciones);
+    if (!acc[real.moneda]) acc[real.moneda] = { total: 0, count: 0 };
+    acc[real.moneda].total += real.monto;
+    acc[real.moneda].count += 1;
+    return acc;
+  }, {})).map(([moneda, data]) => ({ moneda, valor: data.count ? Math.round(data.total / data.count) : 0 })));
+  const forecastOppsByCurrency = rows => sortCurrencyLines(Object.entries(rows.reduce((acc, opp) => {
+    const forecast = getOppForecastReal(opp, cotizaciones);
+    acc[forecast.moneda] = (acc[forecast.moneda] || 0) + forecast.monto;
+    return acc;
+  }, {})).map(([moneda, valor]) => ({ moneda, valor })));
+  const formatMoneyLinesInline = (lines, empty = '—') => lines.length
+    ? lines.map(row => moneyCurrency(row.valor, row.moneda)).join(' · ')
+    : empty;
+  const renderFunnelMoneyLines = (lines) => {
+    const rows = lines.length ? lines : [{ moneda: monedaBase, valor: 0 }];
+    return (
+      <div className="bi-funnel-money">
+        {rows.map(row => <span key={row.moneda}>{moneyCurrency(row.valor, row.moneda)}</span>)}
+      </div>
+    );
+  };
+  const renderMoneyLines = (lines, { kpi = false, empty = null } = {}) => {
+    if (!lines.length && empty != null) {
+      return (
+        <div className={kpi ? 'kpi-value' : undefined} style={{ fontSize: kpi ? 20 : 12, lineHeight: 1.2, color: kpi ? undefined : 'var(--fg-muted)' }}>
+          {empty}
+        </div>
+      );
+    }
+    const rows = lines.length ? lines : [{ moneda: monedaBase, valor: 0 }];
+    return (
+      <div
+        className={kpi ? 'kpi-value' : undefined}
+        style={{
+          fontSize: kpi ? 20 : 12,
+          lineHeight: rows.length > 1 ? 1.28 : 1.2,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: kpi ? 'flex-start' : 'flex-end',
+          gap: rows.length > 1 ? 2 : 0,
+          color: kpi ? undefined : 'var(--fg-muted)',
+        }}
+      >
+        {rows.map(row => <span key={row.moneda}>{moneyCurrency(row.valor, row.moneda)}</span>)}
+      </div>
+    );
+  };
+
+  const leadsPeriodo = leads.filter(l => isInPeriodo(getCreatedAt(l)));
+  const oportunidadesPeriodo = oportunidades.filter(o => isInPeriodo(getCreatedAt(o)));
+  const oppStageDate = (opp, etapa) => {
+    const event = (oppHistorialEtapas || [])
+      .filter(h => (h.opp_id || h.oportunidad_id) === opp.id && h.etapa_hasta === etapa)
+      .sort((a, b) => String(b.creado_en || b.fecha || '').localeCompare(String(a.creado_en || a.fecha || '')))[0];
+    return event?.creado_en || event?.fecha || opp.fecha_cierre_real || null;
+  };
+
+  const oppsAbiertas  = oportunidadesPeriodo.filter(o => o.estado === 'abierta');
+  const oppsGanadas   = oportunidades.filter(o => o.estado === 'ganada' && isInPeriodo(oppStageDate(o, 'ganada')));
+  const oppsPerdidas  = oportunidades.filter(o => o.estado === 'perdida' && isInPeriodo(oppStageDate(o, 'perdida') || getCreatedAt(o)));
+  const forecastLines = forecastOppsByCurrency(oppsAbiertas);
+  const ticketLines   = avgOppsByCurrency(oppsGanadas);
+  const pipelinePromLines = avgOppsByCurrency(oppsAbiertas);
   const totalCierres  = oppsGanadas.length + oppsPerdidas.length;
-  const tasaCierre    = totalCierres > 0 ? Math.round(oppsGanadas.length / totalCierres * 100) : 0;
-  const leadsActivos  = leads.filter(l => !l.convertido).length;
+  const tasaCierre    = totalCierres > 0 ? Math.min(100, Math.round(oppsGanadas.length / totalCierres * 100)) : 0;
+  const leadsActivosRows = leadsPeriodo.filter(l => !l.convertido && l.estado !== 'convertido');
+  const leadsActivos  = leadsActivosRows.length;
+  const leadEstadoKey = lead => String(lead.estado || 'sin_estado').toLowerCase().trim().replace(/\s+/g, '_');
+  const leadsActivosBreakdown = [
+    { key: 'nuevo', label: 'en nuevo', count: leadsActivosRows.filter(l => leadEstadoKey(l) === 'nuevo').length },
+    { key: 'contacto', label: 'en contacto', count: leadsActivosRows.filter(l => ['contacto', 'en_contacto'].includes(leadEstadoKey(l))).length },
+    { key: 'calificado', label: 'calificados', count: leadsActivosRows.filter(l => leadEstadoKey(l) === 'calificado').length },
+  ];
+  const forecastTooltipRows = oppsAbiertas.map(opp => {
+    const real = getOppMontoReal(opp, cotizaciones);
+    const forecast = getOppForecastReal(opp, cotizaciones);
+    return {
+      id: opp.id,
+      nombre: opp.nombre,
+      etapa: etapaLabel(opp.etapa),
+      monto: real.monto,
+      forecast: forecast.monto,
+      moneda: forecast.moneda,
+      probabilidad: getOppProbabilidadReal(opp),
+    };
+  });
+  const ticketTooltipRows = oppsGanadas.map(opp => {
+    const real = getOppMontoReal(opp, cotizaciones);
+    return {
+      id: opp.id,
+      nombre: opp.nombre,
+      monto: real.monto,
+      moneda: real.moneda,
+    };
+  });
 
-  // Embudo comercial completo (Leads → Ganada)
-  const _fLeadsCalif    = leads.filter(l => l.estado === 'calificado' || l.convertido);
-  const _fCalificacion  = oportunidades.filter(o => o.etapa === 'calificacion');
-  const _fPropuesta     = oportunidades.filter(o => o.etapa === 'propuesta');
-  const _fNegociacion   = oportunidades.filter(o => o.etapa === 'negociacion');
-  const _fGanada        = oportunidades.filter(o => o.etapa === 'ganada');
-  const _fPerdida       = oportunidades.filter(o => o.etapa === 'perdida');
-  const _sumV = opps => opps.reduce((s, o) => s + (o.monto_estimado || 0), 0);
-  const _pct  = (a, b) => b > 0 ? Math.round(a / b * 100) : null;
+  const etapaRank = { prospeccion: 0, calificacion: 1, propuesta: 2, negociacion: 3, cierre: 3, ganada: 4 };
+  const getEtapaComparable = opp => opp.estado === 'ganada' ? 'ganada' : (opp.etapa || '');
+  const isStageAtLeast = (opp, etapa) => (etapaRank[getEtapaComparable(opp)] ?? -1) >= etapaRank[etapa];
+  const _fLeadsCalifNoConv = leadsPeriodo.filter(l => l.estado === 'calificado' && !l.convertido);
+  const _fLeadsConvertidos = leadsPeriodo.filter(l => l.convertido || l.estado === 'convertido');
+  const _fLeadsCalif    = [..._fLeadsCalifNoConv, ..._fLeadsConvertidos];
+  const _fGanada        = oportunidadesPeriodo.filter(o => o.etapa === 'ganada' || o.estado === 'ganada');
+  const _fPerdida       = oportunidadesPeriodo.filter(o => o.etapa === 'perdida');
+  const _oppsCalifOMas  = oportunidadesPeriodo.filter(o => isStageAtLeast(o, 'calificacion'));
+  const _oppsPropOMas   = oportunidadesPeriodo.filter(o => isStageAtLeast(o, 'propuesta'));
+  const _oppsNegOMas    = oportunidadesPeriodo.filter(o => isStageAtLeast(o, 'negociacion'));
+  const _pct  = (a, b) => b > 0 ? Math.min(100, Math.round(a / b * 100)) : null;
 
   const funnelSteps = [
-    { key: 'leads_nuevos', label: 'Leads nuevos',      color: 'var(--cyan)',    count: leads.length,           valor: leads.reduce((s,l) => s + (l.presupuesto_estimado||0), 0), prevCount: null },
-    { key: 'leads_calif',  label: 'Leads calificados', color: '#22d3ee',        count: _fLeadsCalif.length,    valor: _fLeadsCalif.reduce((s,l) => s + (l.presupuesto_estimado||0), 0), prevCount: leads.length },
-    { key: 'calificacion', label: 'Calificación',      color: '#64748b',        count: _fCalificacion.length,  valor: _sumV(_fCalificacion),  prevCount: _fLeadsCalif.length },
-    { key: 'propuesta',    label: 'Propuesta',          color: 'var(--purple)',  count: _fPropuesta.length,     valor: _sumV(_fPropuesta),     prevCount: _fCalificacion.length },
-    { key: 'negociacion',  label: 'Negociación',        color: 'var(--orange)',  count: _fNegociacion.length,   valor: _sumV(_fNegociacion),   prevCount: _fPropuesta.length },
-    { key: 'ganada',       label: 'Ganada',             color: 'var(--green)',   count: _fGanada.length,        valor: _sumV(_fGanada),        prevCount: _fNegociacion.length },
+    { key: 'leads_totales', label: 'Leads totales',      color: 'var(--cyan)',    count: leadsPeriodo.length,     values: sumByCurrency(leadsPeriodo, l => l.presupuesto_estimado || 0), pct: null, note: 'del periodo' },
+    { key: 'leads_calif',   label: 'Leads calificados',  color: '#22d3ee',        count: _fLeadsCalif.length,     values: sumByCurrency(_fLeadsCalif, l => l.presupuesto_estimado || 0), pct: _pct(_fLeadsCalif.length, leadsPeriodo.length), note: 'calificados o convertidos' },
+    { key: 'calificacion',  label: 'Calificación',       color: '#64748b',        count: _oppsCalifOMas.length,   values: sumOppsByCurrency(_oppsCalifOMas), pct: _pct(_oppsCalifOMas.length, _fLeadsCalif.length), note: 'opp / leads calificados' },
+    { key: 'propuesta',     label: 'Propuesta',           color: 'var(--purple)',  count: _oppsPropOMas.length,    values: sumOppsByCurrency(_oppsPropOMas), pct: _pct(_oppsPropOMas.length, _oppsCalifOMas.length), note: 'llegaron a esta etapa o mas' },
+    { key: 'negociacion',   label: 'Negociación',         color: 'var(--orange)',  count: _oppsNegOMas.length,     values: sumOppsByCurrency(_oppsNegOMas), pct: _pct(_oppsNegOMas.length, _oppsPropOMas.length), note: 'llegaron a esta etapa o mas' },
+    { key: 'ganada',        label: 'Ganada',              color: 'var(--green)',   count: _fGanada.length,         values: sumOppsByCurrency(_fGanada), pct: _pct(_fGanada.length, _oppsNegOMas.length), note: 'ganadas' },
   ];
   const maxFunnelCount = Math.max(...funnelSteps.map(f => f.count), 1);
-  const maxFunnelValor = Math.max(...funnelSteps.map(f => f.valor), 1);
-  const _baseParaPerdida = _fNegociacion.length + _fGanada.length + _fPerdida.length;
+  const _baseParaPerdida = _oppsNegOMas.length + _fPerdida.length;
   const pctPerdida = _pct(_fPerdida.length, _baseParaPerdida);
 
   const fuentesMap = {};
-  leads.forEach(l => { fuentesMap[l.fuente] = (fuentesMap[l.fuente] || 0) + 1; });
+  leadsPeriodo.forEach(l => { fuentesMap[l.fuente] = (fuentesMap[l.fuente] || 0) + 1; });
   const fuentesArr = Object.entries(fuentesMap).sort((a, b) => b[1] - a[1]);
-  const maxFuente  = Math.max(...Object.values(fuentesMap), 1);
-  const urgMap     = { alta: leads.filter(l=>l.urgencia==='alta').length, media: leads.filter(l=>l.urgencia==='media').length, baja: leads.filter(l=>l.urgencia==='baja').length };
+  const urgMap     = { alta: leadsPeriodo.filter(l=>l.urgencia==='alta').length, media: leadsPeriodo.filter(l=>l.urgencia==='media').length, baja: leadsPeriodo.filter(l=>l.urgencia==='baja').length };
+  const percentLabel = (value, total) => total > 0 ? `${Math.round(value / total * 100)}%` : '—';
+  const periodoBase = Number.isNaN(periodoDate.getTime()) ? new Date() : periodoDate;
+  const leadsTrend = Array.from({ length: 6 }, (_, index) => {
+    const d = new Date(periodoBase.getFullYear(), periodoBase.getMonth() - (5 - index), 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return {
+      key,
+      mes: d.toLocaleDateString('es-PE', { month: 'short' }).replace('.', '').replace(/^\w/, c => c.toUpperCase()),
+      leads: leads.filter(l => String(getCreatedAt(l) || '').slice(0, 7) === key).length,
+    };
+  });
 
   const respMap = {};
   oppsAbiertas.forEach(o => {
-    if (!respMap[o.responsable]) respMap[o.responsable] = { count: 0, forecast: 0 };
+    if (!respMap[o.responsable]) respMap[o.responsable] = { count: 0, forecast: {} };
     respMap[o.responsable].count++;
-    respMap[o.responsable].forecast += o.forecast_ponderado || 0;
+    const forecast = getOppForecastReal(o, cotizaciones);
+    respMap[o.responsable].forecast[forecast.moneda] = (respMap[o.responsable].forecast[forecast.moneda] || 0) + forecast.monto;
   });
-  const maxResp = Math.max(...Object.values(respMap).map(r => r.forecast), 1);
+  const respForecastLines = data => sortCurrencyLines(Object.entries(data.forecast).map(([moneda, valor]) => ({ moneda, valor })));
+  const respForecastValue = data => respForecastLines(data).reduce((sum, row) => sum + Number(row.valor || 0), 0);
 
-  const tendencia = [
-    { mes:'Nov', ventas:2, valor:85000  },
-    { mes:'Dic', ventas:1, valor:42000  },
-    { mes:'Ene', ventas:3, valor:120000 },
-    { mes:'Feb', ventas:2, valor:95000  },
-    { mes:'Mar', ventas:4, valor:168000 },
-    { mes:'Abr', ventas:oppsGanadas.length, valor: oppsGanadas.reduce((s,o)=>s+o.monto_estimado,0)||28500 },
-  ];
-  const maxTend = Math.max(...tendencia.map(t => t.valor), 1);
+  const tendencia = Array.from({ length: 6 }, (_, index) => {
+    const d = new Date(periodoBase.getFullYear(), periodoBase.getMonth() - (5 - index), 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const ops = oportunidades.filter(o => {
+      if (o.estado !== 'ganada') return false;
+      const fechasGanada = [oppStageDate(o, 'ganada'), o.fecha_cierre_real].filter(Boolean);
+      return fechasGanada.some(fecha => String(fecha).slice(0, 7) === key);
+    });
+    const values = sumOppsByCurrency(ops);
+    return {
+      key,
+      mes: d.toLocaleDateString('es-PE', { month: 'short' }).replace('.', '').replace(/^\w/, c => c.toUpperCase()),
+      ventas: ops.length,
+      values,
+      valor: values.reduce((sum, row) => sum + Number(row.valor || 0), 0),
+    };
+  });
 
   const etapaBadge = { calificacion:'badge-cyan', propuesta:'badge-purple', negociacion:'badge-orange' };
   const getNombre  = id => { const c = cuentas.find(c => c.id === id); return c?.razon_social || c?.nombre_comercial || id; };
+  const KpiTooltip = ({ title, description, items, footerLabel, footerValue }) => (
+    <div className="bi-kpi-tooltip" role="tooltip">
+      <div className="bi-tooltip-title">{title}</div>
+      <div className="bi-tooltip-description">{description}</div>
+      <div className="bi-tooltip-separator" />
+      <div className="bi-tooltip-items">
+        {items.length ? items.map((item, index) => (
+          <div key={`${item.label}-${index}`} className="bi-tooltip-row">
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        )) : (
+          <div className="bi-tooltip-row is-empty">
+            <span>Sin datos en el periodo</span>
+            <strong>-</strong>
+          </div>
+        )}
+      </div>
+      <div className="bi-tooltip-separator" />
+      <div className="bi-tooltip-row bi-tooltip-result">
+        <span>{footerLabel}</span>
+        <strong>{footerValue}</strong>
+      </div>
+    </div>
+  );
+  const BiBarChart = ({ data }) => {
+    const rows = Array.isArray(data) ? data : [];
+    const maxValue = Math.max(...rows.map(row => Number(row.value || 0)), 1);
+    return (
+      <div style={{padding:'20px 24px'}}>
+        <div style={{display:'flex', gap:18, justifyContent:'center', alignItems:'stretch', height:200}}>
+          {rows.map(row => {
+            const value = Number(row.value || 0);
+            const height = value > 0 ? `${value / maxValue * 100}%` : 4;
+            return (
+              <div key={row.key || row.label} style={{width:60, flex:'0 0 60px', display:'flex', flexDirection:'column', alignItems:'center'}}>
+                <div style={{fontSize:12, fontWeight:500, color:'var(--color-text-primary, var(--fg))', textAlign:'center', minHeight:16, marginBottom:4, whiteSpace:'nowrap'}}>
+                  {value > 0 ? row.valueLabel : '—'}
+                </div>
+                <div style={{flex:1, width:60, display:'flex', alignItems:'flex-end'}}>
+                  <div
+                    style={{
+                      width:'100%',
+                      height,
+                      background: row.color || 'var(--cyan)',
+                      borderRadius:'4px 4px 0 0',
+                      opacity: row.opacity ?? 1,
+                    }}
+                  />
+                </div>
+                <div style={{fontSize:11, color:'var(--fg-subtle)', textAlign:'center', marginTop:6}}>{row.label}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+  const BiMetricRows = ({ rows, empty = 'Sin datos en el período' }) => {
+    const items = Array.isArray(rows) ? rows : [];
+    const maxValue = Math.max(...items.map(row => Number(row.barValue ?? row.number ?? 0)), 1);
+    if (!items.length) return <div className="bi-metric-empty">{empty}</div>;
+    return (
+      <div className="bi-metric-list">
+        {items.map((row, index) => {
+          const color = row.color || 'var(--cyan)';
+          const barValue = Number(row.barValue ?? row.number ?? 0);
+          return (
+            <div key={row.key || row.label || index} className="bi-metric-row" style={{'--accent': color}}>
+              <div className="bi-metric-label">{row.label}</div>
+              <div className="bi-metric-bar">
+                <div style={{width:`${Math.round(barValue / maxValue * 100)}%`, background:color}} />
+              </div>
+              <div className="bi-metric-number-block">
+                <div className="bi-metric-number">{row.number}</div>
+                <div className="bi-metric-note">{row.note}</div>
+              </div>
+              <div className="bi-metric-value">{row.value}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">BI Comercial</h1><div className="page-sub">Pipeline, leads y rendimiento comercial · Abril 2026</div></div>
-        <button className="btn btn-secondary">{I.download} Exportar</button>
+        <div><h1 className="page-title">BI Comercial</h1><div className="page-sub">Pipeline, leads y rendimiento comercial · {periodoLabel}</div></div>
+        <div className="row" style={{gap:10}}>
+          <input className="input" type="month" value={periodo} onChange={e=>setPeriodo(e.target.value)} style={{width:150}}/>
+          <button className="btn btn-secondary">{I.download} Exportar</button>
+        </div>
       </div>
 
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
-        <div className="kpi-card"><div className="kpi-label">Forecast pipeline</div><div className="kpi-value" style={{fontSize:20}}>{money(forecastTotal)}</div><div className="kpi-icon cyan">{I.trend}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Tasa de cierre</div><div className="kpi-value" style={{color:tasaCierre>=50?'var(--green)':'var(--orange)'}}>{tasaCierre}%</div><div className={'kpi-icon '+(tasaCierre>=50?'green':'orange')}>{I.target}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Ticket promedio</div><div className="kpi-value" style={{fontSize:20}}>{money(ticketProm)}</div><div className="kpi-icon purple">{I.dollar}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Leads activos</div><div className="kpi-value">{leadsActivos}</div><div className="kpi-icon orange">{I.users}</div></div>
+        <div className="kpi-card bi-kpi-card" tabIndex={0}>
+          <div className="kpi-label">Forecast pipeline</div>
+          {renderMoneyLines(forecastLines, { kpi: true })}
+          <div className="text-muted" style={{fontSize:11, marginTop:6}}>Pipeline promedio: {formatMoneyLinesInline(pipelinePromLines)}</div>
+          <div className="kpi-icon cyan">{I.trend}</div>
+          <KpiTooltip
+            title="FORECAST PIPELINE"
+            description="suma del monto ponderado por probabilidad de cada oportunidad abierta"
+            items={forecastTooltipRows.map(row => ({
+              label: `${row.nombre} · ${row.etapa}`,
+              value: moneyCurrency(row.forecast, row.moneda),
+            }))}
+            footerLabel="Total"
+            footerValue={formatMoneyLinesInline(forecastLines)}
+          />
+        </div>
+        <div className="kpi-card bi-kpi-card" tabIndex={0}>
+          <div className="kpi-label">Tasa de cierre</div>
+          <div className="kpi-value" style={{color:tasaCierre>=50?'var(--green)':'var(--orange)'}}>{tasaCierre}%</div>
+          <div className={'kpi-icon '+(tasaCierre>=50?'green':'orange')}>{I.target}</div>
+          <KpiTooltip
+            title="TASA DE CIERRE"
+            description="porcentaje de oportunidades ganadas sobre oportunidades cerradas"
+            items={[
+              { label: 'Ganadas', value: oppsGanadas.length },
+              { label: 'Perdidas', value: oppsPerdidas.length },
+            ]}
+            footerLabel="Tasa"
+            footerValue={`${tasaCierre}%`}
+          />
+        </div>
+        <div className="kpi-card bi-kpi-card" tabIndex={0}>
+          <div className="kpi-label">Ticket promedio</div>
+          {renderMoneyLines(ticketLines, { kpi: true, empty: '—' })}
+          <div className="kpi-icon purple">{I.dollar}</div>
+          <KpiTooltip
+            title="TICKET PROMEDIO"
+            description="monto promedio de oportunidades ganadas en el periodo"
+            items={ticketTooltipRows.map(row => ({
+              label: row.nombre,
+              value: moneyCurrency(row.monto, row.moneda),
+            }))}
+            footerLabel="Promedio"
+            footerValue={formatMoneyLinesInline(ticketLines, '—')}
+          />
+        </div>
+        <div className="kpi-card bi-kpi-card" tabIndex={0}>
+          <div className="kpi-label">Leads activos</div>
+          <div className="kpi-value">{leadsActivos}</div>
+          <div className="kpi-icon orange">{I.users}</div>
+          <KpiTooltip
+            title="LEADS ACTIVOS"
+            description="leads que aun no han sido convertidos en oportunidad"
+            items={leadsActivosBreakdown.map(row => ({
+              label: row.label.replace(/^en /, 'En ').replace(/^calificados$/, 'Calificados'),
+              value: row.count,
+            }))}
+            footerLabel="Total activos"
+            footerValue={leadsActivos}
+          />
+        </div>
       </div>
 
       <div className="tabs">
@@ -4891,18 +5417,18 @@ function BIComercial() {
 
       {tab === 'campanas' && (() => {
         const metCamp = (camp) => {
-          const lg = leads.filter(l => l.campana_id === camp.id);
+          const lg = leadsPeriodo.filter(l => l.campana_id === camp.id);
           const lc = lg.filter(l => l.convertido);
-          const og = oportunidades.filter(o => o.campana_id === camp.id && o.estado === 'ganada');
-          const ing = og.reduce((s, o) => s + (o.monto_estimado || 0), 0);
+          const og = oportunidadesPeriodo.filter(o => o.campana_id === camp.id && o.estado === 'ganada');
+          const ing = og.reduce((s, o) => s + getOppMontoReal(o, cotizaciones).monto, 0);
           const p = camp.presupuesto || 0;
-          return { leadsGen: lg.length, leadsConv: lc.length, oppsGanadas: og.length, ingresoAtribuido: ing, cpl: lg.length > 0 ? p / lg.length : 0, roi: p > 0 ? (ing - p) / p * 100 : 0, tasaConv: lg.length > 0 ? lc.length / lg.length * 100 : 0 };
+          return { leadsGen: lg.length, leadsConv: lc.length, oppsGanadas: og.length, ingresoAtribuido: ing, moneda: og[0] ? getOppMontoReal(og[0], cotizaciones).moneda : getMoneda(camp), cpl: lg.length > 0 ? p / lg.length : 0, roi: p > 0 ? (ing - p) / p * 100 : 0, tasaConv: lg.length > 0 ? Math.min(100, lc.length / lg.length * 100) : 0 };
         };
         const maxLeads = Math.max(...(campanas||[]).map(c => metCamp(c).leadsGen), 1);
         return (
           <div style={{display:'grid',gap:20}}>
             <div className="card">
-              <div className="card-head"><h3>Leads por campaña</h3><span className="text-muted" style={{fontSize:12}}>{leads.filter(l=>l.campana_id).length} leads atribuidos</span></div>
+              <div className="card-head"><h3>Leads por campaña</h3><span className="text-muted" style={{fontSize:12}}>{leadsPeriodo.filter(l=>l.campana_id).length} leads atribuidos</span></div>
               <div style={{padding:'16px 24px',display:'flex',flexDirection:'column',gap:16}}>
                 {(campanas||[]).map(c => {
                   const m = metCamp(c);
@@ -4936,8 +5462,8 @@ function BIComercial() {
                           <td style={{fontWeight:700}}>{m.leadsGen}</td>
                           <td><span style={{fontWeight:600,color:m.tasaConv>20?'var(--green)':'var(--fg)'}}>{m.tasaConv.toFixed(0)}%</span></td>
                           <td>{m.oppsGanadas}</td>
-                          <td className="num" style={{color:'var(--green)',fontWeight:600}}>{money(m.ingresoAtribuido)}</td>
-                          <td className="num">{m.leadsGen>0?money(m.cpl):'—'}</td>
+                          <td className="num" style={{color:'var(--green)',fontWeight:600}}>{moneyCurrency(m.ingresoAtribuido, m.moneda)}</td>
+                          <td className="num">{m.leadsGen>0?moneyCurrency(m.cpl, getMoneda(c)):'—'}</td>
                           <td className="num"><span style={{fontWeight:700,color:m.roi>0?'var(--green)':m.roi<0?'var(--danger)':'var(--fg-muted)'}}>{c.presupuesto>0?m.roi.toFixed(0)+'%':'—'}</span></td>
                         </tr>
                       );
@@ -4954,25 +5480,30 @@ function BIComercial() {
       {tab === 'pipeline' && (
         <div style={{display:'grid', gap:20}}>
           <div className="card">
-            <div className="card-head"><h3>Embudo Comercial Unificado</h3><span className="text-muted" style={{fontSize:12}}>{leads.length} leads · {oportunidades.length} oportunidades</span></div>
-            <div style={{padding:'20px 24px', display:'flex', flexDirection:'column', gap:10}}>
+            <div className="card-head"><h3>Embudo Comercial Unificado</h3><span className="text-muted" style={{fontSize:12}}>{leadsPeriodo.length} leads · {oportunidadesPeriodo.length} oportunidades</span></div>
+            <div className="bi-funnel">
               {funnelSteps.map((f, i) => {
-                const pct = f.prevCount != null ? _pct(f.count, f.prevCount) : null;
+                const pct = f.pct;
                 return (
-                  <div key={f.key}>
-                    <div style={{display:'grid', gridTemplateColumns:'150px 1fr 52px 130px 80px', gap:12, alignItems:'center'}}>
-                      <span style={{fontSize:13, fontWeight:600, color:f.color}}>{f.label}</span>
-                      <div style={{height:10, background:'var(--bg-subtle)', borderRadius:4}}>
-                        <div style={{width:Math.round(f.count/maxFunnelCount*100)+'%', height:'100%', background:f.color, borderRadius:4, transition:'width .3s'}}/>
+                  <div key={f.key} className="bi-funnel-row">
+                    <div className="bi-funnel-stage" style={{color:f.color}}>{f.label}</div>
+                    <div className="bi-funnel-bar">
+                      <div style={{width:Math.round(f.count/maxFunnelCount*100)+'%', background:f.color}}/>
+                    </div>
+                    <div className="bi-funnel-count-block">
+                      <div className="bi-funnel-count" style={{color:f.color}}>{f.count}</div>
+                      {f.note && <div className="bi-funnel-note">{f.note}</div>}
+                    </div>
+                    <div className="bi-funnel-result">
+                      <div className="bi-funnel-values">
+                      {renderFunnelMoneyLines(f.values)}
+                    </div>
+                      <div className={pct != null ? 'bi-funnel-pct' : 'bi-funnel-pct muted'}>
+                      {pct != null ? pct + '%' : '—'}
                       </div>
-                      <span style={{fontSize:14, fontWeight:700, color:f.color, textAlign:'center'}}>{f.count}</span>
-                      <span style={{fontSize:12, color:'var(--fg-muted)', textAlign:'right'}}>{money(f.valor)}</span>
-                      <span style={{fontSize:12, textAlign:'right', color: pct != null ? (pct >= 50 ? 'var(--green)' : pct >= 20 ? 'var(--orange)' : 'var(--danger)') : 'var(--fg-muted)'}}>
-                        {pct != null ? pct + '% conv.' : '—'}
-                      </span>
                     </div>
                     {f.key === 'ganada' && _baseParaPerdida > 0 && (
-                      <div style={{marginLeft:162, marginTop:6, display:'flex', alignItems:'center', gap:8, padding:'6px 12px', background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:6}}>
+                      <div className="bi-funnel-loss">
                         <span style={{fontSize:12, color:'var(--danger)', fontWeight:500}}>Perdidas: {_fPerdida.length}</span>
                         {pctPerdida != null && <span style={{fontSize:11, color:'var(--fg-muted)'}}>({pctPerdida}% tasa de pérdida)</span>}
                       </div>
@@ -4988,17 +5519,21 @@ function BIComercial() {
               <table className="tbl">
                 <thead><tr><th>Oportunidad</th><th>Etapa</th><th>Responsable</th><th>Fuente</th><th className="num">Monto est.</th><th className="num">Forecast</th><th>Cierre est.</th></tr></thead>
                 <tbody>
-                  {oppsAbiertas.sort((a,b)=>(b.forecast_ponderado||0)-(a.forecast_ponderado||0)).map(o => (
-                    <tr key={o.id} className="hover-row">
-                      <td><div style={{fontWeight:600,fontSize:13}}>{o.nombre}</div><div className="text-muted" style={{fontSize:11}}>{getNombre(o.cuenta_id)}</div></td>
-                      <td><span className={'badge '+(etapaBadge[o.etapa]||'badge-gray')} style={{textTransform:'capitalize'}}>{o.etapa}</span></td>
-                      <td>{o.responsable}</td>
-                      <td><span className="badge badge-gray" style={{fontSize:11}}>{o.fuente}</span></td>
-                      <td className="num">{money(o.monto_estimado)}</td>
-                      <td className="num"><strong style={{color:'var(--green)'}}>{money(o.forecast_ponderado||0)}</strong></td>
-                      <td className="text-muted" style={{fontSize:12}}>{o.fecha_cierre_estimada}</td>
-                    </tr>
-                  ))}
+                  {oppsAbiertas.sort((a,b)=>getOppForecastReal(b, cotizaciones).monto-getOppForecastReal(a, cotizaciones).monto).map(o => {
+                    const real = getOppMontoReal(o, cotizaciones);
+                    const forecast = getOppForecastReal(o, cotizaciones);
+                    return (
+                      <tr key={o.id} className="hover-row">
+                        <td><div style={{fontWeight:600,fontSize:13}}>{o.nombre}</div><div className="text-muted" style={{fontSize:11}}>{getNombre(o.cuenta_id)}</div></td>
+                        <td><span className={'badge '+(etapaBadge[o.etapa]||'badge-gray')} style={{textTransform:'capitalize'}}>{o.etapa}</span></td>
+                        <td>{o.responsable}</td>
+                        <td><span className="badge badge-gray" style={{fontSize:11}}>{o.fuente}</span></td>
+                        <td className="num">{moneyCurrency(real.monto, real.moneda)}</td>
+                        <td className="num"><strong style={{color:'var(--green)'}}>{moneyCurrency(forecast.monto, forecast.moneda)}</strong></td>
+                        <td className="text-muted" style={{fontSize:12}}>{o.fecha_cierre_estimada}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -5008,50 +5543,75 @@ function BIComercial() {
 
       {tab === 'leads' && (
         <div style={{display:'grid', gap:20}}>
-          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
-            <div className="card">
-              <div className="card-head"><h3>Leads por Fuente</h3><span className="text-muted" style={{fontSize:12}}>{leads.length} total</span></div>
-              <div style={{padding:'16px 24px', display:'flex', flexDirection:'column', gap:14}}>
-                {fuentesArr.map(([fuente, cnt], i) => (
-                  <div key={i} style={{display:'grid', gridTemplateColumns:'150px 1fr 32px', gap:10, alignItems:'center'}}>
-                    <span style={{fontSize:13}}>{fuente}</span>
-                    <div style={{height:8, background:'var(--bg-subtle)', borderRadius:4}}>
-                      <div style={{width:Math.round(cnt/maxFuente*100)+'%', height:'100%', background:'var(--cyan)', borderRadius:4}}/>
-                    </div>
-                    <span style={{fontSize:13, fontWeight:700}}>{cnt}</span>
-                  </div>
-                ))}
+          <div className="card">
+            <div className="card-head"><h3>Distribución de Leads</h3><span className="badge badge-cyan">{leadsPeriodo.length}</span></div>
+            <div style={{padding:'16px 24px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:28}}>
+              <div style={{display:'flex', flexDirection:'column', gap:14}}>
+                <div className="eyebrow">Leads por Fuente</div>
+                <BiMetricRows
+                  rows={fuentesArr.map(([fuente, cnt]) => ({
+                    key: fuente || 'sin_fuente',
+                    label: fuente || 'Sin fuente',
+                    color: 'var(--cyan)',
+                    barValue: cnt,
+                    number: cnt,
+                    note: 'del período',
+                    value: percentLabel(cnt, leadsPeriodo.length),
+                  }))}
+                  empty="Sin leads en el período"
+                />
               </div>
-            </div>
-            <div className="card">
-              <div className="card-head"><h3>Leads por Urgencia</h3></div>
-              <div style={{padding:'24px', display:'flex', flexDirection:'column', gap:16}}>
-                {[{k:'alta',label:'Alta urgencia',color:'var(--danger)',badge:'badge-red'},{k:'media',label:'Media urgencia',color:'var(--orange)',badge:'badge-orange'},{k:'baja',label:'Baja urgencia',color:'var(--green)',badge:'badge-green'}].map(u => (
-                  <div key={u.k} className="row" style={{justifyContent:'space-between', padding:'14px 16px', background:'var(--bg-subtle)', borderRadius:8, borderLeft:'3px solid '+u.color}}>
-                    <span style={{fontSize:13, fontWeight:500}}>{u.label}</span>
-                    <span className={'badge '+u.badge} style={{fontSize:14, padding:'2px 12px'}}>{urgMap[u.k]}</span>
-                  </div>
-                ))}
+              <div style={{display:'flex', flexDirection:'column', gap:14}}>
+                <div className="eyebrow">Leads por Urgencia</div>
+                <BiMetricRows
+                  rows={[
+                    { key:'alta', label:'Alta urgencia', color:'var(--danger)', count:urgMap.alta },
+                    { key:'media', label:'Media urgencia', color:'var(--orange)', count:urgMap.media },
+                    { key:'baja', label:'Baja urgencia', color:'var(--green)', count:urgMap.baja },
+                  ].map(u => ({
+                    key: u.key,
+                    label: u.label,
+                    color: u.color,
+                    barValue: u.count,
+                    number: u.count,
+                    note: 'de los leads',
+                    value: percentLabel(u.count, leadsPeriodo.length),
+                  }))}
+                />
               </div>
             </div>
           </div>
           <div className="card">
-            <div className="card-head"><h3>Leads — Detalle</h3></div>
+            <div className="card-head"><h3>Evolución de Leads — últimos 6 meses</h3><span className="badge badge-cyan">{leadsPeriodo.length}</span></div>
+            <BiBarChart
+              data={leadsTrend.map(t => ({
+                key: t.key,
+                label: t.mes,
+                value: t.leads,
+                valueLabel: String(t.leads),
+                color: t.key === periodo ? 'var(--cyan)' : 'var(--navy)',
+                opacity: t.key === periodo ? 1 : 0.65,
+              }))}
+            />
+          </div>
+          <div className="card">
+            <div className="card-head"><h3>Leads — Detalle</h3><span className="badge badge-cyan">{leadsPeriodo.length}</span></div>
             <div className="table-wrap">
               <table className="tbl">
                 <thead><tr><th>Nombre</th><th>Empresa</th><th>Fuente</th><th>Urgencia</th><th className="num">Presupuesto est.</th><th>Responsable</th><th>Estado</th></tr></thead>
                 <tbody>
-                  {leads.map(l => (
+                  {leadsPeriodo.map(l => (
                     <tr key={l.id} className="hover-row">
                       <td style={{fontWeight:600}}>{l.nombre}</td>
                       <td>{l.empresa_contacto}</td>
                       <td><span className="badge badge-gray" style={{fontSize:11}}>{l.fuente}</span></td>
                       <td><span className={'badge '+(l.urgencia==='alta'?'badge-red':l.urgencia==='media'?'badge-orange':'badge-green')} style={{fontSize:11}}>{l.urgencia}</span></td>
-                      <td className="num">{money(l.presupuesto_estimado)}</td>
+                      <td className="num">{moneyCurrency(l.presupuesto_estimado, getMoneda(l))}</td>
                       <td>{l.responsable}</td>
                       <td><span className={'badge '+(l.estado==='calificado'?'badge-cyan':l.estado==='nuevo'?'badge-gray':l.estado==='en_contacto'?'badge-purple':'badge-orange')} style={{textTransform:'capitalize'}}>{l.estado.replace('_',' ')}</span></td>
                     </tr>
                   ))}
+                  {!leadsPeriodo.length && <tr><td colSpan={7} className="text-muted" style={{textAlign:'center', padding:24}}>Sin leads en el período</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -5061,65 +5621,37 @@ function BIComercial() {
 
       {tab === 'rendimiento' && (
         <div style={{display:'grid', gap:20}}>
-          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
-            <div className="card">
-              <div className="card-head"><h3>Ventas cerradas — últimos 6 meses</h3></div>
-              <div style={{padding:'20px 24px'}}>
-                <div style={{display:'flex', gap:8, alignItems:'flex-end', height:160}}>
-                  {tendencia.map((t, i) => (
-                    <div key={i} style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:6}}>
-                      <div style={{flex:1, width:'100%', display:'flex', alignItems:'flex-end'}}>
-                        <div style={{width:'100%', height:Math.round(t.valor/maxTend*140)+'px', background:i===5?'var(--cyan)':'var(--navy)', borderRadius:'3px 3px 0 0', opacity:i===5?1:0.65}}/>
-                      </div>
-                      <div style={{fontSize:11, color:'var(--fg-subtle)'}}>{t.mes}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="card-head"><h3>Forecast por Responsable</h3></div>
-              <div style={{padding:'16px 24px', display:'flex', flexDirection:'column', gap:16}}>
-                {Object.entries(respMap).sort((a,b)=>b[1].forecast-a[1].forecast).map(([resp, data], i) => (
-                  <div key={i}>
-                    <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
-                      <span style={{fontSize:13, fontWeight:500}}>{resp}</span>
-                      <span style={{fontSize:12, color:'var(--fg-muted)'}}>{data.count} opp · <strong style={{color:'var(--fg)'}}>{money(data.forecast)}</strong></span>
-                    </div>
-                    <div style={{height:7, background:'var(--bg-subtle)', borderRadius:4}}>
-                      <div style={{width:Math.round(data.forecast/maxResp*100)+'%', height:'100%', background:'var(--cyan)', borderRadius:4}}/>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <div className="card">
+            <div className="card-head"><h3>Forecast por Responsable</h3></div>
+            <div style={{padding:'16px 24px'}}>
+              <BiMetricRows
+                rows={Object.entries(respMap)
+                  .sort((a,b)=>respForecastValue(b[1])-respForecastValue(a[1]))
+                  .map(([resp, data]) => ({
+                    key: resp,
+                    label: resp,
+                    color: 'var(--cyan)',
+                    barValue: respForecastValue(data),
+                    number: data.count,
+                    note: 'oportunidades',
+                    value: formatMoneyLinesInline(respForecastLines(data), '—'),
+                  }))}
+                empty="Sin oportunidades abiertas"
+              />
             </div>
           </div>
           <div className="card">
-            <div className="card-head"><h3>Análisis de Competencia</h3></div>
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead><tr><th>Oportunidad</th><th>Responsable</th><th>Competidor</th><th>Estado</th><th className="num">Monto</th><th>Probabilidad</th></tr></thead>
-                <tbody>
-                  {oportunidades.filter(o => o.competidor).map(o => (
-                    <tr key={o.id} className="hover-row">
-                      <td style={{fontWeight:600}}>{o.nombre}</td>
-                      <td>{o.responsable}</td>
-                      <td><span className="badge badge-orange" style={{fontSize:11}}>{o.competidor}</span></td>
-                      <td><span className={'badge '+(o.estado==='ganada'?'badge-green':o.estado==='perdida'?'badge-red':'badge-cyan')}>{o.estado}</span></td>
-                      <td className="num">{money(o.monto_estimado)}</td>
-                      <td>
-                        <div style={{display:'flex', alignItems:'center', gap:8}}>
-                          <div style={{width:80, height:6, background:'var(--bg-subtle)', borderRadius:3}}>
-                            <div style={{width:o.probabilidad+'%', height:'100%', background:o.probabilidad>=70?'var(--green)':o.probabilidad>=40?'var(--orange)':'var(--danger)', borderRadius:3}}/>
-                          </div>
-                          <span style={{fontSize:12, fontWeight:600}}>{o.probabilidad}%</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <div className="card-head"><h3>Ventas cerradas — últimos 6 meses</h3><span className="badge badge-cyan">{oppsGanadas.length}</span></div>
+            <BiBarChart
+              data={tendencia.map(t => ({
+                key: t.key,
+                label: t.mes,
+                value: t.valor,
+                valueLabel: formatMoneyLinesInline(t.values, '—'),
+                color: t.key === periodo ? 'var(--cyan)' : 'var(--navy)',
+                opacity: t.key === periodo ? 1 : 0.65,
+              }))}
+            />
           </div>
         </div>
       )}

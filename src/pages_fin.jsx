@@ -3159,6 +3159,7 @@ function CxP() {
   // Form: nueva CxP
   const FORM_VACIO = { proveedor_id: '', factura_numero: '', fecha_emision: today, fecha_vencimiento: '', monto_total: '', moneda: 'PEN', concepto: '' };
   const [formCrear, setFormCrear] = useState(FORM_VACIO);
+  const [archivoCrearUrl, setArchivoCrearUrl] = useState('');
 
   // Filtro tipo
   const [filtTipo, setFiltTipo] = useState('todos');
@@ -3258,9 +3259,11 @@ function CxP() {
         saldo:             Number(formCrear.monto_total),
         moneda:            formCrear.moneda || 'PEN',
         estado:            'por_pagar',
+        ...(archivoCrearUrl ? { archivo_factura_url: archivoCrearUrl } : {})
       });
       setPanelCrear(false);
       setFormCrear(FORM_VACIO);
+      setArchivoCrearUrl('');
     } finally {
       setGuardando(false);
     }
@@ -3361,7 +3364,8 @@ function CxP() {
                     <td className="num"><strong>{money(totalDe(c), symOf(c.moneda))}</strong></td>
                     <td className="num text-muted">{money(pagadoDe(c), symOf(c.moneda))}</td>
                     <td className="num"><strong>{money(saldoDe(c), symOf(c.moneda))}</strong></td>
-                    <td onClick={e => e.stopPropagation()}>
+                    <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
+                      {c.archivo_factura_url && <a href={c.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:6}} title="Ver comprobante adjunto">{I.file}</a>}
                       {saldoDe(c) > 0 && <button className="btn btn-sm btn-primary" onClick={() => abrirFicha(c)}>Pagar</button>}
                     </td>
                   </tr>
@@ -3389,7 +3393,7 @@ function CxP() {
             </div>
 
             <div className="tabs" style={{padding:'0 20px'}}>
-              {[{id:'pago',label:'Registrar pago'},{id:'historial',label:`Historial (${pagosDe(sel.id).length})`}].map(t => (
+              {[{id:'pago',label:'Registrar pago'},{id:'historial',label:`Historial (${pagosDe(sel.id).length})`},...(sel.archivo_factura_url?[{id:'comprobante',label:'Comprobante'}]:[])].map(t => (
                 <div key={t.id} className={'tab '+(fichaTab===t.id?'active':'')} onClick={() => setFichaTab(t.id)}>{t.label}</div>
               ))}
             </div>
@@ -3402,6 +3406,11 @@ function CxP() {
                       <div key={l}><div style={{fontSize:10,color:'var(--fg-muted)',marginBottom:2}}>{l}</div><div style={{fontWeight:600,fontSize:13}}>{v}</div></div>
                     ))}
                   </div>
+                  {sel.gasto_id && (
+                    <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid var(--border-subtle)',fontSize:12,color:'var(--fg-muted)',display:'flex',alignItems:'center',gap:6}}>
+                      {I.receipt} Originada desde gasto: <span className="mono" style={{fontWeight:600,color:'var(--fg)'}}>{sel.gasto_id}</span>
+                    </div>
+                  )}
                 </div>
                 {saldoDe(sel) > 0 ? (
                   <>
@@ -3460,6 +3469,17 @@ function CxP() {
                 )}
               </div>
             )}
+
+            {fichaTab === 'comprobante' && sel.archivo_factura_url && (
+              <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:12,alignItems:'center'}}>
+                {/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(sel.archivo_factura_url) || sel.archivo_factura_url.startsWith('blob:') ? (
+                  <img src={sel.archivo_factura_url} alt="Comprobante" style={{maxWidth:'100%',borderRadius:8,border:'1px solid var(--border)'}}/>
+                ) : null}
+                <a href={sel.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{width:'100%',justifyContent:'center'}}>
+                  {I.file} Abrir comprobante en nueva pestaña
+                </a>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -3467,7 +3487,7 @@ function CxP() {
       {/* ── Panel crear CxP manual ─────────────────────────────────────── */}
       {panelCrear && (
         <>
-          <div className="side-panel-backdrop" onClick={() => setPanelCrear(false)}/>
+          <div className="side-panel-backdrop" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); }}/>
           <div className="side-panel" style={{width:'min(560px, 96vw)'}}>
             <div className="side-panel-head">
               <div>
@@ -3518,9 +3538,17 @@ function CxP() {
                   <label>Concepto (opcional)</label>
                   <input className="input" value={formCrear.concepto} onChange={e => setFormCrear(v => ({...v,concepto:e.target.value}))} placeholder="Descripción del gasto o servicio"/>
                 </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Adjuntar comprobante (foto o PDF)</label>
+                  <input className="input" type="file" accept="image/*,.pdf" onChange={e => {
+                    const file = e.target.files[0];
+                    setArchivoCrearUrl(file ? URL.createObjectURL(file) : '');
+                  }}/>
+                  {archivoCrearUrl && <div style={{fontSize:12,color:'var(--green)',marginTop:4}}>Archivo adjunto listo.</div>}
+                </div>
               </div>
               <div className="row mt-6" style={{justifyContent:'flex-end'}}>
-                <button type="button" className="btn btn-secondary" onClick={() => setPanelCrear(false)}>Cancelar</button>
+                <button type="button" className="btn btn-secondary" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); }}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : 'Registrar CxP'}</button>
               </div>
             </form>
