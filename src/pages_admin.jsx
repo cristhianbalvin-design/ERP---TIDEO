@@ -489,7 +489,9 @@ function Usuarios() {
     if (!resetting) return;
     try {
       const supabase = await getSupabaseClient();
-      await supabase.auth.resetPasswordForEmail(resetting.email);
+      await supabase.auth.resetPasswordForEmail(resetting.email, {
+        redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/` : undefined,
+      });
       addNotificacion(`Se envió un link de restablecimiento a ${resetting.email}`);
     } catch {
       addNotificacion(`Enlace de restablecimiento enviado a ${resetting.email}`);

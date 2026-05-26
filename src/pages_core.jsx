@@ -2150,6 +2150,15 @@ function Pipeline() {
     const user = comercialesAsignables.find(u => u.id === userId);
     setOppForm(prev => ({ ...prev, responsable_id: user?.id || '', responsable: user?.nombre || '' }));
   };
+  const updateOppCuenta = (cuentaId) => {
+    const cuenta = cuentasVisibles.find(c => c.id === cuentaId);
+    setOppForm(prev => ({
+      ...prev,
+      cuenta_id: cuentaId,
+      responsable_id: cuenta?.responsable_id || prev.responsable_id,
+      responsable: cuenta?.responsable_comercial || prev.responsable,
+    }));
+  };
   const cerrarNuevaOpp = () => {
     setPanelNuevaOpp(false);
     setOppForm(oppFormBase);
@@ -3385,7 +3394,7 @@ const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPerson
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Cuenta *</label>
-                  <select className="select" required value={oppForm.cuenta_id} onChange={e=>updateOppForm('cuenta_id',e.target.value)}>
+                  <select className="select" required value={oppForm.cuenta_id} onChange={e=>updateOppCuenta(e.target.value)}>
                     <option value="">Seleccionar...</option>
                     {cuentasVisibles.map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial}</option>)}
                   </select>
