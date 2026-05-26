@@ -41,6 +41,7 @@ export async function persistirOT(supabase, empresaId, ot) {
     est_materiales: ot.est_materiales ?? null,
     est_terceros: ot.est_terceros ?? null,
     est_logistica: ot.est_logistica ?? null,
+    est_detalle: ot.est_detalle || null,
     centro_costo_id: ot.centro_costo_id || null,
     centro_beneficio_id: ot.centro_beneficio_id || null,
     es_adicional: ot.es_adicional || false,
@@ -145,13 +146,16 @@ export async function persistirParteDiario(supabase, empresaId, parte) {
     id: parte.id,
     empresa_id: empresaId,
     orden_trabajo_id: parte.ot_id,
-    tecnico_id: parte.tecnico_id || parte.tecnico || null,
+    tecnico_id: parte.tecnico_id || null,
+    tecnico_nombre: parte.tecnico || null,
     fecha: parte.fecha || new Date().toISOString().split('T')[0],
     horas_normales: parte.horas || 0,
     numero: parte.numero || null,
     actividad: parte.actividad || parte.descripcion || null,
     avance_pct: parte.avance_reportado || 0,
     materiales: parte.materiales_usados || [],
+    logistica_lineas: parte.logistica_lineas || [],
+    terceros_lineas: parte.terceros_lineas || [],
     evidencias: parte.evidencias || [],
     estado: parte.estado || 'en_revision',
     datos_borrador: parte.estado === 'borrador' ? {
@@ -184,7 +188,27 @@ export async function persistirParteDiario(supabase, empresaId, parte) {
 }
 
 export async function actualizarParteDiario(supabase, parteId, datos) {
-  return supabase.from('partes_diarios').update(datos).eq('id', parteId);
+  const doUpdate = async (payload) =>
+    supabase.from('partes_diarios').update(payload).eq('id', parteId).select('id');
+
+  let payload = { ...datos };
+  for (let i = 0; i < 5; i++) {
+    const result = await doUpdate(payload);
+    if (!result?.error) {
+      if (!result.data?.length) {
+        return { ...result, error: { message: 'No se actualizó ningún registro. Verifica permisos (RLS).' } };
+      }
+      return result;
+    }
+    const msg = result.error.message || '';
+    const missingColumn =
+      msg.match(/column "([^"]+)" of relation/)?.[1] ||
+      msg.match(/'([^']+)' column/)?.[1];
+    if (!missingColumn || !(missingColumn in payload)) return result;
+    delete payload[missingColumn];
+    if (Object.keys(payload).length === 0) return result;
+  }
+  return doUpdate(payload);
 }
 
 export async function persistirCierreTecnico(supabase, empresaId, cierre) {
@@ -289,11 +313,14 @@ export async function loadOpsFromSupabase(supabase, empresaId) {
     ...p,
     ...(p.datos_borrador || {}),
     ot_id: p.orden_trabajo_id,
-    tecnico: p.tecnico_id,
+    tecnico_id: p.tecnico_id,
+    tecnico: p.tecnico_nombre || p.tecnico_id,
     horas: p.horas_normales,
     avance_reportado: p.avance_pct,
     actividades: p.actividad,
-    materiales_usados: p.materiales || []
+    materiales_usados: p.materiales || [],
+    logistica_lineas: p.logistica_lineas || [],
+    terceros_lineas: p.terceros_lineas || [],
   });
 
   const mapCierre = (c) => ({

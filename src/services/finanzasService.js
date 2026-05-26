@@ -205,11 +205,17 @@ export const finanzasService = {
 
   async registrarComision(payload) {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('comisiones')
-      .insert(payload)
-      .select()
-      .single();
+    const insert = async (p) => supabase.from('comisiones').insert(p).select().single();
+    let p = { ...payload };
+    for (let i = 0; i < 5; i++) {
+      const { data, error } = await insert(p);
+      if (!error) return data;
+      const col = error.message?.match(/column "([^"]+)" of relation/)?.[1]
+        || error.message?.match(/'([^']+)' column/)?.[1];
+      if (!col || !(col in p)) throw error;
+      delete p[col];
+    }
+    const { data, error } = await insert(p);
     if (error) throw error;
     return data;
   },

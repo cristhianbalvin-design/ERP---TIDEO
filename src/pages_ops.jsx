@@ -1179,13 +1179,13 @@ function Cuentas() {
 }
 
 function OT({ role }) {
-  const { ots, cuentas, partes, osClientes, usuarios, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, recalcularCostoRealOT } = useApp();
+  const { ots, cuentas, partes, osClientes, usuarios, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, recalcularCostoRealOT, enviarParteARevision } = useApp();
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Resumen');
   const [panel] = useState(false);
   const [confirmAnular, setConfirmAnular] = useState(false);
 
-  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: new Date().toISOString().split('T')[0], fecha_fin: '', est_mo: '', est_materiales: '', est_terceros: '', est_logistica: '' };
+  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: '', est_mo: '', est_materiales: '', est_terceros: '', est_logistica: '' };
   const [panelNuevaOT, setPanelNuevaOT] = useState(false);
   const [formNuevaOT, setFormNuevaOT] = useState(formNuevaOTBase);
   const [errorNuevaOT, setErrorNuevaOT] = useState('');
@@ -1203,7 +1203,7 @@ function OT({ role }) {
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
   const tiposActivos = (tiposServicio || []).filter(t => t.estado !== 'inactivo');
-  const personal = (personalOperativo || []).filter(p => p.estado === 'activo');
+  const personal = [...(personalOperativo || []), ...(personalAdmin || [])].filter(p => p.estado === 'activo');
 
   const debeTenerOSCliente = tiposConOSObligatoria.includes(formNuevaOT.tipo);
   const puedeTenerOSCliente = permiteOSCliente(formNuevaOT.tipo);
@@ -1251,8 +1251,7 @@ function OT({ role }) {
         descripcion: formNuevaOT.descripcion,
         tecnico_responsable_id: formNuevaOT.tecnico_responsable_id,
         prioridad: formNuevaOT.prioridad,
-        fecha_programada: formNuevaOT.fecha_programada,
-        fecha_fin: formNuevaOT.fecha_fin,
+        fecha_programada: formNuevaOT.fecha_programada || null,
         estado: 'programada',
       };
       if (formNuevaOT.os_cliente_id) {
@@ -1303,9 +1302,8 @@ function OT({ role }) {
       facturable: sel?.facturable !== false,
       tecnico_responsable_id: sel?.tecnico_responsable_id || '',
       supervisor: sel?.supervisor || '',
-      sede: sel?.sede || '',
-      fecha_inicio: sel?.fecha_inicio || '',
-      fecha_fin: sel?.fecha_fin || sel?.fecha_programada || '',
+      sede: sel?.sede || osVinculada?.sede || '',
+      fecha_programada: sel?.fecha_programada || '',
       descripcion: sel?.descripcion || '',
       est_mo: sel?.est_mo ?? '',
       est_materiales: sel?.est_materiales ?? '',
@@ -1340,7 +1338,7 @@ function OT({ role }) {
   const prioridadMeta = { normal: ['badge-gray','Normal'], urgente: ['badge-orange','Urgente'], critica: ['badge-red','Crítica'] };
   const asignacionesOT = sel ? plannerAsignaciones.filter(a => a.ot_id === sel.id && a.estado !== 'cancelado') : [];
   const tecnicosAsignadosOT = new Set(asignacionesOT.map(a => a.tecnico_id)).size;
-  const tecnicosDeOT = [...new Set(asignacionesOT.map(a => a.tecnico_id))].map(id => personalOperativo.find(p => p.id === id)).filter(Boolean);
+  const tecnicosDeOT = [...new Set(asignacionesOT.map(a => a.tecnico_id))].map(id => [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === id)).filter(Boolean);
   const tareasOT = sel?.tareas || [];
   const tareasCompletadasOT = tareasOT.filter(t => t.completado || t.estado === 'completada').length;
   const avanceOperativo = sel ? (
@@ -1355,7 +1353,7 @@ function OT({ role }) {
   const avanceBg = avanceOperativo >= 80 ? 'rgba(16,185,129,0.08)' : avanceOperativo >= 45 ? 'rgba(249,115,22,0.08)' : 'rgba(6,182,212,0.08)';
   const criteriosOT = sel ? [
     { ok: !!sel.centro_costo_id, text: 'CECO asignado' },
-    { ok: !!sel.fecha_inicio || !!sel.fecha_programada, text: 'Fecha programada' },
+    { ok: !!sel.fecha_programada, text: 'Fecha comprometida' },
     { ok: tecnicosAsignadosOT > 0, text: `${tecnicosAsignadosOT || 'Sin'} tecnico${tecnicosAsignadosOT === 1 ? '' : 's'} asignado${tecnicosAsignadosOT === 1 ? '' : 's'}` },
     { ok: sel.sla !== 'vencido', warn: sel.sla === 'riesgo', text: sel.sla === 'vencido' ? 'SLA vencido' : sel.sla === 'riesgo' ? 'SLA en riesgo' : 'SLA OK' },
     { ok: partesOT.length > 0, text: `${partesOT.length || 'Sin'} parte${partesOT.length === 1 ? '' : 's'} diario${partesOT.length === 1 ? '' : 's'}` },
@@ -1444,7 +1442,7 @@ function OT({ role }) {
 
   const abrirNuevoParte = () => {
     const hoyStr = new Date().toISOString().split('T')[0];
-    const tecAutoId = authUser ? (personalOperativo.find(p => p.id === authUser.id)?.id || '') : '';
+    const tecAutoId = authUser ? ([...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === authUser.id)?.id || '') : '';
     setParteFormOT({
       tecnico_id: tecAutoId,
       fecha: hoyStr,
@@ -1493,6 +1491,8 @@ function OT({ role }) {
       avance_global: parte.avance_global || parte.avance_reportado || 0,
       avance_ajustado_manual: parte.avance_ajustado_manual || (!parte.tareas_trabajadas?.length && !parte.actividades_adicionales?.length && (parte.avance_reportado || 0) > 0),
       materiales_lineas: (parte.materiales_usados || []).map(m => ({ inv_id: m.inv_id || m.sku || '', cantidad: m.cantidad || 0, almacen_id: m.almacen_id || '' })),
+      terceros_lineas: (parte.terceros_lineas || []).map(l => ({ descripcion: l.descripcion || '', monto: l.monto ?? '' })),
+      logistica_lineas: (parte.logistica_lineas || []).map(l => ({ descripcion: l.descripcion || '', monto: l.monto ?? '' })),
       evidencias: parte.evidencias || [],
       observaciones: parte.observaciones || '',
       es_restriccion: parte.es_restriccion || false,
@@ -1515,16 +1515,17 @@ function OT({ role }) {
   };
 
   const buildPartePayload = (modo) => {
-    const tecnicoObj = personalOperativo.find(p => p.id === parteFormOT.tecnico_id);
+    const tecnicoObj = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === parteFormOT.tecnico_id);
     const tareasActivas = parteFormOT.tareas_trabajadas.filter(t => t.trabajado);
     const actividadesTexto = [
       ...tareasActivas.map(t => `${t.nombre}${t.avance_hoy ? ` (+${t.avance_hoy}%)` : ''}`),
       ...parteFormOT.actividades_adicionales.filter(a => a.descripcion.trim()).map(a => a.descripcion + (a.avance_estimado ? ` (+${a.avance_estimado}%)` : '')),
     ].join('\n');
     const avanceCalculado = tareasActivas.reduce((s, t) => s + (Number(t.avance_hoy) || 0), 0) + parteFormOT.actividades_adicionales.reduce((s, a) => s + (Number(a.avance_estimado) || 0), 0);
-    const materialesUsados = parteFormOT.materiales_lineas.filter(m => m.inv_id && Number(m.cantidad) > 0).map(m => {
-      const item = inventario.find(i => i.id === m.inv_id);
-      return { sku: item?.sku || m.inv_id, nombre: item?.nombre || '', cantidad: Number(m.cantidad), almacen_id: m.almacen_id };
+    const materialesUsados = parteFormOT.materiales_lineas.filter(m => m.mat_id && Number(m.cantidad) > 0).map(m => {
+      const cat = (catalogoMateriales || []).find(x => x.id === m.mat_id);
+      const inv = (inventario || []).find(x => x.material_id === m.mat_id);
+      return { material_id: m.mat_id, sku: cat?.codigo || inv?.sku || m.mat_id, nombre: cat?.descripcion || inv?.nombre || '', unidad: cat?.unidad || inv?.unidad || '', cantidad: Number(m.cantidad), costo_unitario: Number(cat?.costo_promedio || inv?.costo_promedio || 0) };
     });
     const estadoParte = modo === 'borrador' ? 'borrador' : parteFormOT.es_restriccion ? 'con_restriccion' : 'en_revision';
     return {
@@ -1541,12 +1542,14 @@ function OT({ role }) {
       tareas_trabajadas: tareasActivas,
       actividades_adicionales: parteFormOT.actividades_adicionales,
       materiales_usados: materialesUsados,
+      terceros_lineas: (parteFormOT.terceros_lineas || []).filter(l => l.descripcion?.trim() && Number(l.monto) > 0).map(l => ({ descripcion: l.descripcion, monto: Number(l.monto) })),
+      logistica_lineas: (parteFormOT.logistica_lineas || []).filter(l => l.descripcion?.trim() && Number(l.monto) > 0).map(l => ({ descripcion: l.descripcion, monto: Number(l.monto) })),
       evidencias: parteFormOT.evidencias.map(e => ({ nombre: e.nombre, tipo: e.tipo, tamanio: e.tamanio })),
       observaciones: parteFormOT.observaciones,
       es_restriccion: parteFormOT.es_restriccion,
     };
   };
-  const parteFormReset = { tecnico_id: '', fecha: new Date().toISOString().split('T')[0], horas: 8, tareas_trabajadas: [], actividades_adicionales: [], avance_global: '', avance_ajustado_manual: false, materiales_lineas: [], evidencias: [], observaciones: '', es_restriccion: false };
+  const parteFormReset = { tecnico_id: '', fecha: new Date().toISOString().split('T')[0], horas: 8, tareas_trabajadas: [], actividades_adicionales: [], avance_global: '', avance_ajustado_manual: false, materiales_lineas: [], terceros_lineas: [], logistica_lineas: [], evidencias: [], observaciones: '', es_restriccion: false };
   const submitParteDesdOT = async (e, modo = 'revision') => {
     if (e) e.preventDefault();
     if (!parteFormOT.tecnico_id) return;
@@ -1589,6 +1592,31 @@ function OT({ role }) {
       setActiveTab(activeParams.tab || 'Resumen');
     }
   }, [activeParams?.detail, activeParams?.tab, ots]);
+
+  const calcCostoRealLive = (ot) => {
+    const aprobados = (partes || []).filter(p => p.ot_id === ot.id && p.estado === 'aprobado');
+    if (!aprobados.length) return ot.costoReal || 0;
+    const costoHoraTec = (id) => {
+      const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === id);
+      const moItem = (ot.est_detalle?.mano_obra || []).find(m => m.tecnico_id === id);
+      if (moItem?.costo_hora > 0) return moItem.costo_hora;
+      const explicit = Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+      if (explicit > 0) return explicit;
+      const rem = Number(tec?.remuneracion ?? 0);
+      return rem > 0 ? Math.round(rem / 240 * 100) / 100 : 0;
+    };
+    const mo = aprobados.reduce((s, p) => s + (p.horas || 0) * costoHoraTec(p.tecnico_id), 0);
+    const mat = aprobados.reduce((s, p) =>
+      s + (p.materiales_usados || []).reduce((sm, m) => {
+        const inv = (inventario || []).find(i => i.sku === m.sku);
+        return sm + (m.cantidad || 0) * (inv?.costo_promedio || m.costo_unitario || 0);
+      }, 0), 0);
+    const ter = aprobados.reduce((s, p) =>
+      s + (p.terceros_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0);
+    const log = aprobados.reduce((s, p) =>
+      s + (p.logistica_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0);
+    return mo + mat + ter + log;
+  };
 
   return (
     <>
@@ -1657,7 +1685,7 @@ function OT({ role }) {
                   </td>
                   <td><span className={'badge '+(o.sla==='vencido'?'badge-red':o.sla==='riesgo'?'badge-orange':'badge-green')}>{o.sla==='vencido'?'Vencido':o.sla==='riesgo'?'Riesgo':'OK'}</span></td>
                   <td className="text-muted">{o.responsable}</td>
-                  {canCost && <td className="num">{money(o.costoReal||0, otSym(o))}<span className="text-subtle"> / {money(o.costoEst||0, otSym(o))}</span></td>}
+                  {canCost && <td className="num">{money(calcCostoRealLive(o), otSym(o))}<span className="text-subtle"> / {money(o.costoEst||0, otSym(o))}</span></td>}
                   <td style={{width:120}}>
                     <div className="bar"><div style={{width:(o.avance||0)+'%', background: o.avance===100?'var(--green)':'var(--cyan)'}}/></div>
                     <div style={{fontSize:11,marginTop:2}}>{o.avance||0}%</div>
@@ -1953,36 +1981,24 @@ function OT({ role }) {
                         </div>
                         <div className="input-group">
                           <label>Supervisor</label>
-                          <input className="input" value={formDatos.supervisor} onChange={e => setFormDatos(p => ({...p, supervisor: e.target.value}))} placeholder="Nombre del supervisor" />
+                          <select className="select" value={formDatos.supervisor} onChange={e => setFormDatos(p => ({...p, supervisor: e.target.value}))}>
+                            <option value="">Sin asignar</option>
+                            {personal.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                          </select>
                         </div>
                         <div className="input-group">
                           <label>Sede</label>
                           <input className="input" value={formDatos.sede} onChange={e => setFormDatos(p => ({...p, sede: e.target.value}))} placeholder="Sede" />
                         </div>
                         <div className="input-group">
-                          <label>Fecha de inicio</label>
-                          <input className="input" type="date" value={formDatos.fecha_inicio} onChange={e => setFormDatos(p => ({...p, fecha_inicio: e.target.value}))} />
-                        </div>
-                        <div className="input-group">
-                          <label>Fecha fin programada</label>
-                          <input className="input" type="date" value={formDatos.fecha_fin} onChange={e => setFormDatos(p => ({...p, fecha_fin: e.target.value}))} />
+                          <label>Fecha fin comprometida</label>
+                          <input className="input" type="date" value={formDatos.fecha_programada} onChange={e => setFormDatos(p => ({...p, fecha_programada: e.target.value}))} />
                         </div>
                       </div>
                       <div className="input-group">
                         <label>Descripción / Alcance</label>
                         <textarea className="input" rows={3} value={formDatos.descripcion} onChange={e => setFormDatos(p => ({...p, descripcion: e.target.value}))} placeholder="Describe el alcance de la OT..." style={{resize:'vertical'}} />
                       </div>
-                      {canCost && (
-                        <div>
-                          <div style={{fontWeight:600, fontSize:12, color:'var(--fg-muted)', marginBottom:8, textTransform:'uppercase', letterSpacing:.4}}>Presupuesto estimado por categoría (opcional)</div>
-                          <div className="grid-2" style={{gap:10}}>
-                            <div className="input-group"><label>Mano de obra</label><input className="input" type="number" min="0" step="0.01" value={formDatos.est_mo} onChange={e => setFormDatos(p => ({...p, est_mo: e.target.value}))} placeholder="0.00"/></div>
-                            <div className="input-group"><label>Materiales</label><input className="input" type="number" min="0" step="0.01" value={formDatos.est_materiales} onChange={e => setFormDatos(p => ({...p, est_materiales: e.target.value}))} placeholder="0.00"/></div>
-                            <div className="input-group"><label>Servicios terceros</label><input className="input" type="number" min="0" step="0.01" value={formDatos.est_terceros} onChange={e => setFormDatos(p => ({...p, est_terceros: e.target.value}))} placeholder="0.00"/></div>
-                            <div className="input-group"><label>Logística y viáticos</label><input className="input" type="number" min="0" step="0.01" value={formDatos.est_logistica} onChange={e => setFormDatos(p => ({...p, est_logistica: e.target.value}))} placeholder="0.00"/></div>
-                          </div>
-                        </div>
-                      )}
                       <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
                         <button className="btn btn-secondary btn-sm" onClick={() => setEditandoDatos(false)}>Cancelar</button>
                         <button className="btn btn-primary btn-sm" onClick={guardarDatos}>Guardar cambios</button>
@@ -2018,8 +2034,9 @@ function OT({ role }) {
                         </div>
                         <div><div className="eyebrow">Responsable</div><div>{responsableNombre}</div></div>
                         <div><div className="eyebrow">Supervisor</div><div>{supervisorNombre}</div></div>
-                        <div><div className="eyebrow">Fecha de inicio</div><div>{sel.fecha_inicio || '—'}</div></div>
-                        <div><div className="eyebrow">Fecha fin programada</div><div>{sel.fecha_fin || sel.fecha_programada || '—'}</div></div>
+                        <div><div className="eyebrow">Fecha comprometida</div><div>{sel.fecha_programada || '—'}</div></div>
+                        <div><div className="eyebrow">Inicio real</div><div>{partesOT.some(p => p.estado === 'aprobado') ? (sel.fecha_inicio || '—') : <span style={{fontSize:11,color:'var(--fg-muted)'}}>Pendiente primer parte</span>}</div></div>
+                        <div><div className="eyebrow">Fin real</div><div>{partesOT.some(p => p.estado === 'aprobado') ? (sel.fecha_fin || '—') : <span style={{fontSize:11,color:'var(--fg-muted)'}}>En ejecución</span>}</div></div>
                       </div>
                       <div style={{background:'var(--bg-subtle)', padding:16, borderRadius:8, marginTop:14}}>
                         <div className="eyebrow" style={{marginBottom:8}}>Descripción / Alcance</div>
@@ -2153,7 +2170,7 @@ function OT({ role }) {
                   <h3 style={{margin:0}}>Personal Asignado</h3>
                   <div className="row" style={{gap:8}}>
                     {!['cerrada','facturada','anulada'].includes(sel.estado) && (
-                      <button className="btn btn-secondary btn-sm" onClick={() => setShowAsignarTec(s => !s)}>{I.plus} Asignar técnico</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setShowAsignarTec(s => !s)}>{I.plus} Asignar colaborador</button>
                     )}
                     <button className="btn btn-secondary btn-sm" onClick={() => navigate('planner')}>Gestionar en Planner</button>
                   </div>
@@ -2163,10 +2180,10 @@ function OT({ role }) {
                   <form className="card" style={{padding:16, marginBottom:16, border:'1px solid var(--cyan)'}} onSubmit={submitAsignarTec}>
                     <div className="grid-3" style={{gap:12}}>
                       <div className="input-group" style={{gridColumn:'1/-1'}}>
-                        <label>Técnico *</label>
+                        <label>Colaborador *</label>
                         <select className="select" value={asignarTecForm.tecnico_id} onChange={e => setAsignarTecForm(s => ({...s, tecnico_id: e.target.value}))} required>
                           <option value="">Seleccionar...</option>
-                          {personalOperativo.map(p => <option key={p.id} value={p.id}>{p.nombre} — {p.cargo || 'Técnico'}</option>)}
+                          {[...(personalOperativo || []), ...(personalAdmin || [])].filter(p => p.estado === 'activo').map(p => <option key={p.id} value={p.id}>{p.nombre} — {p.cargo || 'Colaborador'}</option>)}
                         </select>
                       </div>
                       <div className="input-group">
@@ -2205,7 +2222,7 @@ function OT({ role }) {
                   return (
                     <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:16}}>
                       {Object.entries(porTecnico).map(([tecId, items]) => {
-                        const tec = personalOperativo.find(t => t.id === tecId) || {};
+                        const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === tecId) || {};
                         const totalHoras = items.reduce((s, a) => {
                           if (!a.hora_inicio_estimada || !a.hora_fin_estimada) return s;
                           const [h1, m1] = a.hora_inicio_estimada.split(':').map(Number);
@@ -2284,14 +2301,14 @@ function OT({ role }) {
                           </div>
                         </div>
                         <div className="input-group">
-                          <label>Técnico *</label>
+                          <label>Colaborador *</label>
                           {tecnicosDeOT.length > 0 ? (
                             <select className="select" value={parteFormOT.tecnico_id} onChange={e => updParteHorasTecnico(e.target.value)} required>
-                              <option value="">Seleccionar técnico...</option>
+                              <option value="">Seleccionar...</option>
                               {tecnicosDeOT.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.cargo ? ` — ${t.cargo}` : ''}</option>)}
                             </select>
                           ) : (
-                            <div style={{fontSize:12, color:'var(--fg-muted)', padding:'6px 0'}}>No hay técnicos asignados a esta OT en el Planner. Asigna uno desde la pestaña Personal y Recursos.</div>
+                            <div style={{fontSize:12, color:'var(--fg-muted)', padding:'6px 0'}}>No hay colaboradores asignados a esta OT en el Planner. Asigna uno desde la pestaña Personal y Recursos.</div>
                           )}
                         </div>
                       </div>
@@ -2389,37 +2406,96 @@ function OT({ role }) {
                         {parteFormOT.materiales_lineas.length > 0 && (
                           <div className="col" style={{gap:8, marginBottom:8}}>
                             {parteFormOT.materiales_lineas.map((m, idx) => {
-                              const item = inventario.find(i => i.id === m.inv_id);
+                              const cat = (catalogoMateriales || []).find(x => x.id === m.mat_id);
+                              const filtrados = m.query
+                                ? (catalogoMateriales || []).filter(x => `${x.codigo} ${x.descripcion}`.toLowerCase().includes(m.query.toLowerCase())).slice(0, 8)
+                                : [];
+                              const updLine = (patch) => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.map((x, i) => i === idx ? {...x, ...patch} : x) }));
                               return (
-                                <div key={idx} style={{display:'grid', gridTemplateColumns:'2fr 1fr 1.5fr auto', gap:8, alignItems:'center'}}>
-                                  <div>
-                                    <select className="select" value={m.inv_id} onChange={e => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.map((x, i) => i === idx ? {...x, inv_id: e.target.value} : x) }))}>
-                                      <option value="">Seleccionar material...</option>
-                                      {(inventario || []).map(it => (
-                                        <option key={it.id} value={it.id}>{it.sku} — {it.nombre} (Stock: {it.stock_actual} {it.unidad})</option>
-                                      ))}
-                                    </select>
+                                <div key={idx} style={{display:'grid', gridTemplateColumns:'2fr 1fr auto', gap:8, alignItems:'start'}}>
+                                  <div style={{position:'relative'}}>
+                                    <input
+                                      className="input"
+                                      placeholder="Buscar material por código o nombre..."
+                                      value={m.mat_id ? `${cat?.codigo} — ${cat?.descripcion}` : (m.query || '')}
+                                      onChange={e => updLine({ query: e.target.value, mat_id: '' })}
+                                      onFocus={e => { if (!m.mat_id) updLine({ query: e.target.value }); }}
+                                      autoComplete="off"
+                                    />
+                                    {filtrados.length > 0 && (
+                                      <div className="autocomplete-menu autocomplete-menu-inline" style={{maxHeight:200}}>
+                                        {filtrados.map(it => (
+                                          <div key={it.id}
+                                            onMouseDown={e => { e.preventDefault(); updLine({ mat_id: it.id, query: '' }); }}
+                                            className="autocomplete-option"
+                                          >
+                                            <div className="autocomplete-option-title"><span className="mono autocomplete-code">{it.codigo}</span>{it.descripcion}</div>
+                                            <div className="autocomplete-option-meta">{it.unidad || 'Sin unidad'}</div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
                                   <div style={{display:'flex', alignItems:'center', gap:4}}>
-                                    <input className="input" type="number" min="0.01" step="0.01" placeholder="Cant." value={m.cantidad} onChange={e => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.map((x, i) => i === idx ? {...x, cantidad: e.target.value} : x) }))} />
-                                    {item && <span style={{fontSize:11, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>{item.unidad}</span>}
+                                    <input className="input" type="number" min="0.01" step="0.01" placeholder="Cant." value={m.cantidad} onChange={e => updLine({ cantidad: e.target.value })} />
+                                    {cat && <span style={{fontSize:11, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>{cat.unidad}</span>}
                                   </div>
-                                  <select className="select" value={m.almacen_id} onChange={e => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.map((x, i) => i === idx ? {...x, almacen_id: e.target.value} : x) }))}>
-                                    <option value="">Almacén origen</option>
-                                    {(almacenes || []).filter(a => a.estado !== 'inactivo').map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-                                  </select>
-                                  <button type="button" className="icon-btn" onClick={() => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.filter((_, i) => i !== idx) }))}>{I.x}</button>
+                                  <button type="button" className="icon-btn" style={{marginTop:6}} onClick={() => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.filter((_, i) => i !== idx) }))}>{I.x}</button>
                                 </div>
                               );
                             })}
                           </div>
                         )}
-                        <button type="button" className="btn btn-ghost" style={{fontSize:12}} onClick={() => setParteFormOT(s => ({ ...s, materiales_lineas: [...s.materiales_lineas, { inv_id: '', cantidad: '', almacen_id: '' }] }))}>
+                        <button type="button" className="btn btn-ghost" style={{fontSize:12}} onClick={() => setParteFormOT(s => ({ ...s, materiales_lineas: [...s.materiales_lineas, { mat_id: '', query: '', cantidad: '' }] }))}>
                           {I.plus} Agregar material
                         </button>
                       </div>
 
-                      {/* — Sección 5: Evidencias — */}
+                      {/* — Sección 5: Servicios de terceros — */}
+                      <div style={{marginBottom:16}}>
+                        <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
+                          Servicios de terceros
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional — subcontratistas, alquileres, servicios externos</span>
+                        </div>
+                        {(parteFormOT.terceros_lineas || []).length > 0 && (
+                          <div className="col" style={{gap:8, marginBottom:8}}>
+                            {parteFormOT.terceros_lineas.map((l, idx) => (
+                              <div key={idx} style={{display:'grid', gridTemplateColumns:'2fr 1fr auto', gap:8, alignItems:'center'}}>
+                                <input className="input" placeholder="Descripción del servicio" value={l.descripcion} onChange={e => setParteFormOT(s => ({ ...s, terceros_lineas: s.terceros_lineas.map((x, i) => i === idx ? {...x, descripcion: e.target.value} : x) }))} />
+                                <input className="input" type="number" min="0" step="0.01" placeholder="Monto" value={l.monto} onChange={e => setParteFormOT(s => ({ ...s, terceros_lineas: s.terceros_lineas.map((x, i) => i === idx ? {...x, monto: e.target.value} : x) }))} />
+                                <button type="button" className="icon-btn" onClick={() => setParteFormOT(s => ({ ...s, terceros_lineas: s.terceros_lineas.filter((_, i) => i !== idx) }))}>{I.x}</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <button type="button" className="btn btn-ghost" style={{fontSize:12}} onClick={() => setParteFormOT(s => ({ ...s, terceros_lineas: [...(s.terceros_lineas || []), { descripcion: '', monto: '' }] }))}>
+                          {I.plus} Agregar servicio de tercero
+                        </button>
+                      </div>
+
+                      {/* — Sección 6: Logística y viáticos — */}
+                      <div style={{marginBottom:16}}>
+                        <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
+                          Logística y viáticos
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional — transporte, hospedaje, alimentación, combustible</span>
+                        </div>
+                        {(parteFormOT.logistica_lineas || []).length > 0 && (
+                          <div className="col" style={{gap:8, marginBottom:8}}>
+                            {parteFormOT.logistica_lineas.map((l, idx) => (
+                              <div key={idx} style={{display:'grid', gridTemplateColumns:'2fr 1fr auto', gap:8, alignItems:'center'}}>
+                                <input className="input" placeholder="Descripción del gasto" value={l.descripcion} onChange={e => setParteFormOT(s => ({ ...s, logistica_lineas: s.logistica_lineas.map((x, i) => i === idx ? {...x, descripcion: e.target.value} : x) }))} />
+                                <input className="input" type="number" min="0" step="0.01" placeholder="Monto" value={l.monto} onChange={e => setParteFormOT(s => ({ ...s, logistica_lineas: s.logistica_lineas.map((x, i) => i === idx ? {...x, monto: e.target.value} : x) }))} />
+                                <button type="button" className="icon-btn" onClick={() => setParteFormOT(s => ({ ...s, logistica_lineas: s.logistica_lineas.filter((_, i) => i !== idx) }))}>{I.x}</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <button type="button" className="btn btn-ghost" style={{fontSize:12}} onClick={() => setParteFormOT(s => ({ ...s, logistica_lineas: [...(s.logistica_lineas || []), { descripcion: '', monto: '' }] }))}>
+                          {I.plus} Agregar gasto logístico
+                        </button>
+                      </div>
+
+                      {/* — Sección 7: Evidencias — */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
                           Evidencias
@@ -2443,8 +2519,8 @@ function OT({ role }) {
                           </div>
                         )}
                         <label className="btn btn-ghost" style={{fontSize:12, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6}}>
-                          📎 Adjuntar archivo
-                          <input type="file" accept="image/*,.pdf" multiple style={{display:'none'}} onChange={e => {
+                          📎 Adjuntar archivo (imagen, PDF, Word)
+                          <input type="file" accept="image/*,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple style={{display:'none'}} onChange={e => {
                             const files = Array.from(e.target.files || []);
                             const nuevas = files.map(f => ({ nombre: f.name, tipo: f.type, tamanio: f.size, url: URL.createObjectURL(f) }));
                             setParteFormOT(s => ({ ...s, evidencias: [...s.evidencias, ...nuevas] }));
@@ -2453,7 +2529,7 @@ function OT({ role }) {
                         </label>
                       </div>
 
-                      {/* — Sección 6: Observaciones / Restricciones — */}
+                      {/* — Sección 8: Observaciones / Restricciones — */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Observaciones o restricciones</div>
                         <textarea
@@ -2510,13 +2586,16 @@ function OT({ role }) {
                           <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>
                             <div style={{fontWeight:600, fontSize:13}}>{p.tecnico}</div>
                             <div style={{display:'flex', alignItems:'center', gap:8}}>
-                              {p.estado === 'borrador' && !showNuevoParte && (
+                              {(['borrador','rechazado','observado'].includes(p.estado)) && !showNuevoParte && (<>
                                 <button type="button" className="btn btn-ghost btn-sm" style={{padding:'2px 10px', fontSize:12}} onClick={() => abrirEditarBorrador(p)}>
                                   {I.edit} Editar
                                 </button>
-                              )}
-                              <span className={`badge ${p.estado==='aprobado'?'badge-green':p.estado==='observado'?'badge-red':p.estado==='con_restriccion'?'badge-red':p.estado==='borrador'?'badge-gray':'badge-orange'}`}>
-                                {p.estado==='aprobado'?'Aprobado':p.estado==='observado'?'Observado':p.estado==='con_restriccion'?'Con restricción':p.estado==='borrador'?'Borrador':'Pendiente'}
+                                <button type="button" className="btn btn-primary btn-sm" style={{padding:'2px 10px', fontSize:12}} onClick={() => enviarParteARevision(p.id)}>
+                                  Enviar a revisión
+                                </button>
+                              </>)}
+                              <span className={`badge ${p.estado==='aprobado'?'badge-green':p.estado==='rechazado'?'badge-red':p.estado==='observado'?'badge-orange':p.estado==='con_restriccion'?'badge-red':p.estado==='borrador'?'badge-gray':'badge-orange'}`}>
+                                {p.estado==='aprobado'?'Aprobado':p.estado==='rechazado'?'Rechazado':p.estado==='observado'?'Observado':p.estado==='con_restriccion'?'Con restricción':p.estado==='borrador'?'Borrador':'Pendiente'}
                               </span>
                             </div>
                           </div>
@@ -2543,21 +2622,26 @@ function OT({ role }) {
             {activeTab === 'Costos' && canCost && (() => {
               const cierreOT = (cierresTecnicos || []).find(ct => ct.ot_id === sel.id);
               const partesAprobados = partesOT.filter(p => p.estado === 'aprobado');
-              const costoHoraTec = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+              const costoHoraTec = (personaId) => {
+                const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === personaId);
+                const explicit = Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+                if (explicit > 0) return explicit;
+                const rem = Number(tec?.remuneracion ?? 0);
+                return rem > 0 ? Math.round(rem / 240 * 100) / 100 : 0;
+              };
+              const costoHoraOT = (tecnicoId) => {
+                const moItem = (sel.est_detalle?.mano_obra || []).find(m => m.tecnico_id === tecnicoId);
+                if (moItem?.costo_hora > 0) return moItem.costo_hora;
+                return costoHoraTec(tecnicoId);
+              };
               const moReal = (() => {
-                if (cierreOT?.horas_total) {
-                  const tecResp = (personalOperativo || []).find(t => t.id === sel.tecnico_responsable_id);
-                  return cierreOT.horas_total * costoHoraTec(tecResp);
-                }
-                return partesAprobados.reduce((s, p) => {
-                  const tec = (personalOperativo || []).find(t => t.id === p.tecnico_id);
-                  return s + (p.horas || 0) * costoHoraTec(tec);
-                }, 0);
+                if (cierreOT?.horas_total) return cierreOT.horas_total * costoHoraOT(sel.tecnico_responsable_id);
+                return partesAprobados.reduce((s, p) => s + (p.horas || 0) * costoHoraOT(p.tecnico_id), 0);
               })();
               const matReal = partesAprobados.reduce((s, p) =>
                 s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
-              const terceroReal = cierreOT?.costo_terceros || 0;
-              const logisticaReal = cierreOT?.costo_logistica || 0;
+              const terceroReal = partesAprobados.reduce((s, p) => s + (p.terceros_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0) + (cierreOT?.costo_terceros || 0);
+              const logisticaReal = partesAprobados.reduce((s, p) => s + (p.logistica_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0) + (cierreOT?.costo_logistica || 0);
               const costoRealTotal = moReal + matReal + terceroReal + logisticaReal;
 
               // MEJORA 2: HC vinculada a través de OS Cliente
@@ -2629,6 +2713,8 @@ function OT({ role }) {
                 { key: 'logistica',  label: 'Logística y viáticos',  est: estLogFinal, real: logisticaReal > 0 ? logisticaReal : null },
               ];
               const inputSt = { fontSize: 12, padding: '3px 6px' };
+              const monedaOT = osVinculada?.moneda || 'PEN';
+              const monSym = monedaOT === 'USD' ? 'US$' : monedaOT === 'EUR' ? '€' : 'S/';
 
               return (
                 <div className="col" style={{ gap: 16, padding: 22 }}>
@@ -2659,7 +2745,7 @@ function OT({ role }) {
                               ].map(([lbl, val]) => (
                                 <tr key={lbl} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                                   <td style={{ padding: '5px 0' }}>{lbl}</td>
-                                  <td style={{ textAlign: 'right', padding: '5px 0', fontWeight: 600 }}>{val != null ? money(val) : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '5px 0', fontWeight: 600 }}>{val != null ? money(val, monSym) : '—'}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -2695,8 +2781,8 @@ function OT({ role }) {
                                   {label}
                                   {items.length > 0 && <span style={{ fontSize: 11, color: 'var(--cyan)', marginLeft: 6 }}>{items.length} ítem{items.length !== 1 ? 's' : ''}</span>}
                                 </td>
-                                <td className="num">{est != null ? money(est) : '—'}</td>
-                                <td className="num">{real != null ? money(real) : '—'}</td>
+                                <td className="num">{est != null ? money(est, monSym) : '—'}</td>
+                                <td className="num">{real != null ? money(real, monSym) : '—'}</td>
                                 <td className="num" style={{ color: varColor(pct), fontWeight: 600 }}>
                                   {pct !== null ? `${pct > 0 ? '+' : ''}${pct}%` : '—'}
                                 </td>
@@ -2743,8 +2829,8 @@ function OT({ role }) {
                                                     <td style={{ padding: '3px 4px' }}>
                                                       <select className="select" style={inputSt} value={item.tecnico_id}
                                                         onChange={e => {
-                                                          const tec = (personalOperativo || []).find(t => t.id === e.target.value);
-                                                          const ch = costoHoraTec(tec);
+                                                          const ch = costoHoraTec(e.target.value);
+                                                          const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === e.target.value);
                                                           setEstDetalle(prev => ({
                                                             ...prev,
                                                             mano_obra: (prev.mano_obra || []).map((it, i) => {
@@ -2756,7 +2842,7 @@ function OT({ role }) {
                                                           }));
                                                         }}>
                                                         <option value="">Técnico...</option>
-                                                        {(personalOperativo || []).filter(t => t.estado !== 'inactivo').map(t => (
+                                                        {[...(personalOperativo || []), ...(personalAdmin || [])].filter(t => t.estado !== 'inactivo').map(t => (
                                                           <option key={t.id} value={t.id}>{t.nombre}</option>
                                                         ))}
                                                       </select>
@@ -2770,7 +2856,7 @@ function OT({ role }) {
                                                         value={item.horas_dia} onChange={e => updItem('mano_obra', idx, 'horas_dia', e.target.value)} />
                                                     </td>
                                                     <td style={{ padding: '3px 4px', textAlign: 'right', color: 'var(--fg-muted)' }}>
-                                                      {item.costo_hora > 0 ? money(item.costo_hora) : '—'}
+                                                      {item.costo_hora > 0 ? money(item.costo_hora, monSym) : '—'}
                                                     </td>
                                                   </>
                                                 ) : key === 'materiales' ? (
@@ -2827,7 +2913,7 @@ function OT({ role }) {
                                                   </>
                                                 )}
                                                 <td style={{ padding: '3px 4px', textAlign: 'right', fontWeight: 600 }}>
-                                                  {item.subtotal > 0 ? money(item.subtotal) : '—'}
+                                                  {item.subtotal > 0 ? money(item.subtotal, monSym) : '—'}
                                                 </td>
                                                 <td style={{ padding: '3px 4px', textAlign: 'center' }}>
                                                   <button type="button" className="icon-btn" style={{ fontSize: 11 }} onClick={() => removeItem(key, idx)}>{I.x}</button>
@@ -2850,8 +2936,8 @@ function OT({ role }) {
                         <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, background: 'var(--bg-subtle)' }}>
                           <td />
                           <td>Total</td>
-                          <td className="num">{costoEstTotal > 0 ? money(costoEstTotal) : '—'}</td>
-                          <td className="num">{costoRealTotal > 0 ? money(costoRealTotal) : '—'}</td>
+                          <td className="num">{costoEstTotal > 0 ? money(costoEstTotal, monSym) : '—'}</td>
+                          <td className="num">{costoRealTotal > 0 ? money(costoRealTotal, monSym) : '—'}</td>
                           <td className="num" style={{ color: varColor(varPct(costoEstTotal || null, costoRealTotal > 0 ? costoRealTotal : null)), fontWeight: 700 }}>
                             {costoEstTotal > 0 && costoRealTotal > 0 ? `${margen <= 0 ? '+' : ''}${-margen}%` : '—'}
                           </td>
@@ -2968,9 +3054,9 @@ function OT({ role }) {
 
       {showCierreForm && sel && (() => {
         const partesAprobados = partes.filter(p => p.ot_id === sel.id && p.estado === 'aprobado');
-        const costoHoraTec = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
-        const tecResp = (personalOperativo || []).find(t => t.id === sel.tecnico_responsable_id);
-        const moReal = Number(cierreForm.horas_total || 0) * costoHoraTec(tecResp);
+        const costoHoraTecObj = (tec) => { const e = Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0); if (e > 0) return e; return Math.round(Number(tec?.remuneracion ?? 0) / 240 * 100) / 100; };
+        const tecResp = [...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === sel.tecnico_responsable_id);
+        const moReal = Number(cierreForm.horas_total || 0) * costoHoraTecObj(tecResp);
         const matReal = partesAprobados.reduce((s, p) => s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
         const costoEst = sel.costoEst || 0;
         const costoReal = moReal + matReal + Number(cierreForm.costo_terceros || 0) + Number(cierreForm.costo_logistica || 0);
@@ -3265,12 +3351,8 @@ function OT({ role }) {
                   </select>
                 </div>
                 <div className="input-group">
-                  <label>Fecha de inicio</label>
+                  <label>Fecha fin comprometida</label>
                   <input className="input" type="date" value={formNuevaOT.fecha_programada} onChange={e => updNuevaOT('fecha_programada', e.target.value)} />
-                </div>
-                <div className="input-group">
-                  <label>Fecha fin programada</label>
-                  <input className="input" type="date" value={formNuevaOT.fecha_fin} onChange={e => updNuevaOT('fecha_fin', e.target.value)} />
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Descripción / alcance</label>
@@ -3321,9 +3403,9 @@ function OT({ role }) {
 }
 
 function Partes() {
-  const { partes, ots, cuentas, aprobarParteDiario, observarParteDiario, rechazarParteDiario, navigate } = useApp();
+  const { partes, ots, cuentas, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, navigate } = useApp();
   const [sel, setSel] = useState(null);
-  const [modoAccion, setModoAccion] = useState(null); // null | 'aprobar' | 'observar' | 'rechazar'
+  const [modoAccion, setModoAccion] = useState(null); // null | 'aprobar' | 'observar' | 'rechazar' | 'reabrir'
   const [avanceAprobacion, setAvanceAprobacion] = useState(0);
   const [motivoAccion, setMotivoAccion] = useState('');
   const [filtroOT, setFiltroOT] = useState('');
@@ -3453,11 +3535,14 @@ function Partes() {
                     <div style={{fontSize:11, marginTop:2}}>+{p.avance_reportado||0}%</div>
                   </td>
                   <td>
-                    <span className={`badge ${p.estado==='aprobado'?'badge-green':p.estado==='observado'?'badge-red':'badge-orange'}`}>
-                      {p.estado === 'en_revision' ? 'Pendiente' : p.estado.replace('_', ' ')}
+                    <span className={`badge ${p.estado==='aprobado'?'badge-green':p.estado==='rechazado'?'badge-red':p.estado==='observado'?'badge-orange':p.estado==='borrador'?'badge-gray':'badge-orange'}`}>
+                      {p.estado === 'en_revision' ? 'Pendiente' : p.estado === 'borrador' ? 'Borrador' : p.estado === 'rechazado' ? 'Rechazado' : p.estado.replace('_', ' ')}
                     </span>
                   </td>
                   <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
+                    {['borrador','rechazado','observado'].includes(p.estado) && (
+                      <button className="btn btn-primary" style={{fontSize:11, padding:'2px 8px'}} onClick={() => enviarParteARevision(p.id)}>Enviar a revisión</button>
+                    )}
                     {p.estado === 'en_revision' && <>
                       <button className="btn btn-primary" style={{fontSize:11, padding:'2px 8px', marginRight:4}} onClick={() => aprobarParteDiario(p.id)}>{I.check}</button>
                       <button className="btn btn-secondary" style={{fontSize:11, padding:'2px 8px', color:'var(--danger)'}} onClick={() => observarParteDiario(p.id)}>Obs.</button>
@@ -3578,6 +3663,42 @@ function Partes() {
                   </div>
                 )}
 
+                {/* Terceros */}
+                {(sel.terceros_lineas?.length || 0) > 0 && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Servicios de terceros</div>
+                    <table className="tbl" style={{fontSize:12}}>
+                      <thead><tr><th>Descripción</th><th className="num">Monto</th></tr></thead>
+                      <tbody>
+                        {sel.terceros_lineas.map((l, i) => (
+                          <tr key={i}>
+                            <td>{l.descripcion}</td>
+                            <td className="num" style={{fontWeight:600}}>{Number(l.monto || 0).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Logística */}
+                {(sel.logistica_lineas?.length || 0) > 0 && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Logística y viáticos</div>
+                    <table className="tbl" style={{fontSize:12}}>
+                      <thead><tr><th>Descripción</th><th className="num">Monto</th></tr></thead>
+                      <tbody>
+                        {sel.logistica_lineas.map((l, i) => (
+                          <tr key={i}>
+                            <td>{l.descripcion}</td>
+                            <td className="num" style={{fontWeight:600}}>{Number(l.monto || 0).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
                 {/* Evidencias */}
                 {(sel.evidencias?.length || 0) > 0 && (
                   <div>
@@ -3614,6 +3735,37 @@ function Partes() {
                   <div style={{background:'color-mix(in srgb, var(--danger) 8%, transparent)', border:'1px solid var(--danger)', borderRadius:6, padding:12}}>
                     <div style={{fontWeight:600, fontSize:12, color:'var(--danger)', marginBottom:4}}>Motivo de rechazo</div>
                     <div style={{fontSize:13}}>{sel.motivo_rechazo}</div>
+                  </div>
+                )}
+
+                {/* ── Reabrir parte aprobado ── */}
+                {sel.estado === 'aprobado' && (
+                  <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
+                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>Corrección</div>
+                    {modoAccion !== 'reabrir' ? (
+                      <div style={{padding:16}}>
+                        <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:10}}>
+                          Reabrir el parte lo devuelve a borrador. Los costos y avance de la OT se recalculan sin este parte hasta que sea re-aprobado.
+                        </div>
+                        <button className="btn btn-secondary" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => setModoAccion('reabrir')}>
+                          Reabrir para editar
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{padding:16, gap:12}} className="col">
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverá a borrador y el técnico podrá editarlo. El avance y costo de la OT se recalcularán en ese momento.</div>
+                        <div className="input-group">
+                          <label style={{fontSize:12}}>Motivo de reapertura <span style={{color:'var(--fg-muted)'}}>(opcional)</span></label>
+                          <textarea className="input" rows={2} placeholder="Ej: Error en horas registradas..." value={motivoAccion} onChange={e => setMotivoAccion(e.target.value)} style={{resize:'vertical'}} autoFocus />
+                        </div>
+                        <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => { setModoAccion(null); setMotivoAccion(''); }}>Cancelar</button>
+                          <button className="btn btn-sm" style={{background:'var(--orange)', color:'#fff'}} onClick={() => { reabrirParteDiario(sel.id, motivoAccion); cerrarPanel(); }}>
+                            Confirmar reapertura
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -5015,16 +5167,10 @@ function Cierre() {
                 const os = getOS(o.os_cliente_id);
                 const partesAp = partes.filter(p => p.ot_id === o.id && p.estado === 'aprobado');
                 const horasReal = c?.horas_total ?? partesAp.reduce((s, p) => s + (p.horas || 0), 0);
-                const costoHoraTec_ = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+                const _ch = (id) => { const t = [...(personalOperativo||[]),...(personalAdmin||[])].find(x=>x.id===id); const e=Number(t?.costo_hora_real??t?.costo??t?.costo_hora??0); return e>0?e:Math.round(Number(t?.remuneracion??0)/240*100)/100; };
                 const moReal = (() => {
-                  if (c?.horas_total) {
-                    const tecR = (personalOperativo || []).find(t => t.id === o.tecnico_responsable_id);
-                    return c.horas_total * costoHoraTec_(tecR);
-                  }
-                  return partesAp.reduce((s, p) => {
-                    const tec = (personalOperativo || []).find(t => t.id === p.tecnico_id);
-                    return s + (p.horas || 0) * costoHoraTec_(tec);
-                  }, 0);
+                  if (c?.horas_total) return c.horas_total * _ch(o.tecnico_responsable_id);
+                  return partesAp.reduce((s, p) => s + (p.horas || 0) * _ch(p.tecnico_id), 0);
                 })();
                 const matReal = partesAp.reduce((s, p) => s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
                 const costoReal = moReal + matReal;
@@ -5068,16 +5214,10 @@ function Cierre() {
         const os = getOS(sel.os_cliente_id);
         const partesAp = partes.filter(p => p.ot_id === sel.id && p.estado === 'aprobado').sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
         const horasReal = c?.horas_total ?? partesAp.reduce((s, p) => s + (p.horas || 0), 0);
-        const costoHoraTec__ = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+        const _ch2 = (id) => { const t = [...(personalOperativo||[]),...(personalAdmin||[])].find(x=>x.id===id); const e=Number(t?.costo_hora_real??t?.costo??t?.costo_hora??0); return e>0?e:Math.round(Number(t?.remuneracion??0)/240*100)/100; };
         const moReal = (() => {
-          if (c?.horas_total) {
-            const tecR = (personalOperativo || []).find(t => t.id === sel.tecnico_responsable_id);
-            return c.horas_total * costoHoraTec__(tecR);
-          }
-          return partesAp.reduce((s, p) => {
-            const tec = (personalOperativo || []).find(t => t.id === p.tecnico_id);
-            return s + (p.horas || 0) * costoHoraTec__(tec);
-          }, 0);
+          if (c?.horas_total) return c.horas_total * _ch2(sel.tecnico_responsable_id);
+          return partesAp.reduce((s, p) => s + (p.horas || 0) * _ch2(p.tecnico_id), 0);
         })();
         const matReal = partesAp.reduce((s, p) => s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
         const terceroReal = c?.costo_terceros || 0;
@@ -6092,6 +6232,54 @@ function TabCuadrillas({ cuadrillas, tecnicos, especialidades, crearCuadrillaCtx
   );
 }
 
+function OTBandejaCard({ ot, cuentas, dragOtId, setDragOtId, setModalAsig, enCurso = false, diasAsignados = 0 }) {
+  const cli = cuentas.find(c => c.id === ot.cuenta_id);
+  const pk = prioKey(ot.prioridad);
+  const prioColor = otPriorityColor(ot.prioridad);
+  const prioLabel = PRIORIDAD_LABEL[pk] || 'Normal';
+  const fechaLimite = ot.fecha_limite || ot.fecha_programada;
+  const vencida = fechaLimite && new Date(fechaLimite) < new Date();
+  return (
+    <div
+      draggable
+      onDragStart={e => { e.dataTransfer.setData('otId', ot.id); setDragOtId(ot.id); }}
+      onDragEnd={() => setDragOtId(null)}
+      title={enCurso ? 'Arrastra para agregar más días' : 'Arrastra para asignar a un colaborador'}
+      style={{
+        background: enCurso ? 'color-mix(in srgb, var(--cyan) 5%, var(--surface))' : 'var(--surface)',
+        border: enCurso ? '1px solid color-mix(in srgb, var(--cyan) 30%, var(--border))' : '1px solid var(--border)',
+        borderTop: `3px solid ${enCurso ? 'var(--cyan)' : prioColor}`,
+        borderRadius: 12,
+        padding: '10px 14px',
+        cursor: 'grab',
+        userSelect: 'none',
+        width: 240,
+        transition: 'box-shadow 0.15s, opacity 0.15s',
+        boxShadow: dragOtId === ot.id ? '0 8px 20px rgba(0,0,0,0.15)' : '0 1px 3px rgba(0,0,0,0.04)',
+        opacity: dragOtId === ot.id ? 0.45 : 1,
+      }}>
+      <div className="row" style={{justifyContent:'space-between', marginBottom:6, alignItems:'center'}}>
+        <div className="row" style={{gap:6, alignItems:'center'}}>
+          <span style={{fontSize:14, color:'var(--fg-muted)', lineHeight:1}}>⠿</span>
+          <div style={{fontWeight:800, color: enCurso ? 'var(--cyan)' : 'var(--cyan)', fontSize:13}}>{ot.numero}</div>
+        </div>
+        <div className="row" style={{gap:4, alignItems:'center'}}>
+          {!enCurso && <span style={{fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:4, background:prioColor, color:'#fff'}}>{prioLabel}</span>}
+          {enCurso && <span style={{fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:4, background:'var(--cyan)', color:'#fff'}}>{diasAsignados}d</span>}
+          <button className="btn btn-ghost btn-sm" style={{padding:2}} title="Asignar por rango" onClick={e => { e.stopPropagation(); setModalAsig({ otId: ot.id }); }}>{I.calendar}</button>
+        </div>
+      </div>
+      <div style={{fontWeight:600, fontSize:12, marginBottom:2}}>{cli?.razon_social || 'Cliente desconocido'}</div>
+      <div style={{fontSize:11, color:'var(--fg-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom: fechaLimite ? 5 : 0}}>{ot.servicio || ot.descripcion}</div>
+      {fechaLimite && (
+        <div style={{fontSize:10, fontWeight:600, color: vencida ? 'var(--danger)' : 'var(--fg-muted)', display:'flex', alignItems:'center', gap:4}}>
+          <span className="planner-inline-icon">{I.calendar}</span> Límite: {fechaLimite}{vencida ? ' ⚠' : ''}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Planner() {
   const {
     searchQuery, personalOperativo, ots, cuentas, navigate,
@@ -6184,20 +6372,27 @@ function Planner() {
   const query = searchQuery.toLowerCase();
   const getCuentaNombre = id => cuentas.find(c => c.id === id)?.razon_social || id;
 
+  const ESTADOS_TERMINAL = ['anulada', 'cerrada', 'valorizada', 'facturada'];
+  const sortPorPrioridad = (a, b) => {
+    const pa = PRIORIDAD_ORDER[prioKey(a.prioridad)] ?? 2;
+    const pb = PRIORIDAD_ORDER[prioKey(b.prioridad)] ?? 2;
+    if (pa !== pb) return pa - pb;
+    const fa = a.fecha_limite || a.fecha_programada || '9999';
+    const fb = b.fecha_limite || b.fecha_programada || '9999';
+    return fa.localeCompare(fb);
+  };
+  const tieneAsignacion = (otId) => plannerAsignaciones.some(a => a.ot_id === otId && a.estado !== 'cancelado');
+
   const sinAsignar = useMemo(() => {
     return ots
-      .filter(ot => {
-        if (['anulada', 'cerrada', 'valorizada', 'facturada'].includes(ot.estado)) return false;
-        return !plannerAsignaciones.some(a => a.ot_id === ot.id);
-      })
-      .sort((a, b) => {
-        const pa = PRIORIDAD_ORDER[prioKey(a.prioridad)] ?? 2;
-        const pb = PRIORIDAD_ORDER[prioKey(b.prioridad)] ?? 2;
-        if (pa !== pb) return pa - pb;
-        const fa = a.fecha_limite || a.fecha_fin || '9999';
-        const fb = b.fecha_limite || b.fecha_fin || '9999';
-        return fa.localeCompare(fb);
-      });
+      .filter(ot => !ESTADOS_TERMINAL.includes(ot.estado) && !tieneAsignacion(ot.id))
+      .sort(sortPorPrioridad);
+  }, [ots, plannerAsignaciones]);
+
+  const enEjecucionPlanner = useMemo(() => {
+    return ots
+      .filter(ot => !ESTADOS_TERMINAL.includes(ot.estado) && tieneAsignacion(ot.id))
+      .sort(sortPorPrioridad);
   }, [ots, plannerAsignaciones]);
 
   const filteredRenovaciones = [...renovaciones]
@@ -6335,61 +6530,37 @@ function Planner() {
             </div>
           </div>
 
-          {sinAsignar.length > 0 && (
+          {(sinAsignar.length > 0 || enEjecucionPlanner.length > 0) && (
             <div className="card">
               <div className="card-head">
-                <h3>Bandeja de Pendientes</h3>
-                <span className="badge badge-orange">{sinAsignar.length}</span>
-                <span style={{fontSize:11, color:'var(--fg-muted)', marginLeft:8}}>Arrastra a un técnico o usa el botón para asignar rango</span>
+                <h3>Bandeja de OTs</h3>
+                <div className="row" style={{gap:8}}>
+                  {sinAsignar.length > 0 && <span className="badge badge-orange">{sinAsignar.length} sin asignar</span>}
+                  {enEjecucionPlanner.length > 0 && <span className="badge badge-cyan">{enEjecucionPlanner.length} en curso</span>}
+                </div>
+                <span style={{fontSize:11, color:'var(--fg-muted)', marginLeft:8, display:'inline-flex', alignItems:'center', gap:4}}>Arrastra a un técnico o usa <span className="planner-inline-icon">{I.calendar}</span> para asignar rango</span>
               </div>
-              <div style={{display:'flex', flexWrap:'wrap', gap:10, padding:'0 20px 20px'}}>
-                {sinAsignar.map(ot => {
-                  const cli = cuentas.find(c => c.id === ot.cuenta_id);
-                  const pk = prioKey(ot.prioridad);
-                  const prioColor = otPriorityColor(ot.prioridad);
-                  const prioLabel = PRIORIDAD_LABEL[pk] || 'Normal';
-                  const fechaLimite = ot.fecha_limite || ot.fecha_fin;
-                  const vencida = fechaLimite && new Date(fechaLimite) < new Date();
-                  return (
-                    <div key={ot.id}
-                      draggable
-                      onDragStart={e => { e.dataTransfer.setData('otId', ot.id); setDragOtId(ot.id); }}
-                      onDragEnd={() => setDragOtId(null)}
-                      title="Arrastra para asignar a un colaborador"
-                      style={{
-                        background: 'var(--surface)',
-                        border: '1px solid var(--border)',
-                        borderTop: `3px solid ${prioColor}`,
-                        borderRadius: 12,
-                        padding: '10px 14px',
-                        cursor: 'grab',
-                        userSelect: 'none',
-                        width: 240,
-                        transition: 'box-shadow 0.15s, opacity 0.15s',
-                        boxShadow: dragOtId === ot.id ? '0 8px 20px rgba(0,0,0,0.15)' : '0 1px 3px rgba(0,0,0,0.04)',
-                        opacity: dragOtId === ot.id ? 0.45 : 1
-                      }}>
-                      <div className="row" style={{justifyContent:'space-between', marginBottom:6, alignItems:'center'}}>
-                        <div className="row" style={{gap:6, alignItems:'center'}}>
-                          <span style={{fontSize:14, color:'var(--fg-muted)', lineHeight:1, cursor:'grab'}}>⠿</span>
-                          <div style={{fontWeight:800, color:'var(--cyan)', fontSize:13}}>{ot.numero}</div>
-                        </div>
-                        <div className="row" style={{gap:4, alignItems:'center'}}>
-                          <span style={{fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:4, background:prioColor, color:'#fff'}}>{prioLabel}</span>
-                          <button className="btn btn-ghost btn-sm" style={{padding:2, cursor:'pointer'}} title="Asignar por rango" onClick={e => { e.stopPropagation(); setModalAsig({ otId: ot.id }); }}>{I.calendar}</button>
-                        </div>
-                      </div>
-                      <div style={{fontWeight:600, fontSize:12, marginBottom:2}}>{cli?.razon_social || 'Cliente desconocido'}</div>
-                      <div style={{fontSize:11, color:'var(--fg-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom: fechaLimite ? 5 : 0}}>{ot.servicio || ot.descripcion}</div>
-                      {fechaLimite && (
-                        <div style={{fontSize:10, fontWeight:600, color: vencida ? 'var(--danger)' : 'var(--fg-muted)'}}>
-                          {I.calendar} Límite: {fechaLimite}{vencida ? ' ⚠' : ''}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+
+              {sinAsignar.length > 0 && (
+                <>
+                  <div style={{padding:'4px 20px 8px', fontSize:11, fontWeight:700, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:.5}}>Sin asignar</div>
+                  <div style={{display:'flex', flexWrap:'wrap', gap:10, padding:'0 20px 16px'}}>
+                    {sinAsignar.map(ot => <OTBandejaCard key={ot.id} ot={ot} cuentas={cuentas} dragOtId={dragOtId} setDragOtId={setDragOtId} setModalAsig={setModalAsig} />)}
+                  </div>
+                </>
+              )}
+
+              {enEjecucionPlanner.length > 0 && (
+                <>
+                  <div style={{padding:'4px 20px 8px', fontSize:11, fontWeight:700, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5, borderTop: sinAsignar.length > 0 ? '1px solid var(--border-subtle)' : 'none', marginTop: sinAsignar.length > 0 ? 4 : 0}}>En curso — agregar más días</div>
+                  <div style={{display:'flex', flexWrap:'wrap', gap:10, padding:'0 20px 20px'}}>
+                    {enEjecucionPlanner.map(ot => {
+                      const diasAsignados = new Set(plannerAsignaciones.filter(a => a.ot_id === ot.id && a.estado !== 'cancelado').map(a => a.fecha)).size;
+                      return <OTBandejaCard key={ot.id} ot={ot} cuentas={cuentas} dragOtId={dragOtId} setDragOtId={setDragOtId} setModalAsig={setModalAsig} enCurso diasAsignados={diasAsignados} />;
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

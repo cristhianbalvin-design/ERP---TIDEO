@@ -14,6 +14,13 @@ import { usuariosService } from './services/usuariosService.js';
 import { rolesService } from './services/rolesService.js';
 import { campanasService } from './services/campanasService.js';
 import { presupuestosService } from './services/presupuestosService.js';
+import { getTipoCambioHoy, convertirMonto as convertirMontoFn } from './services/tipoCambioService.js';
+import {
+  getMateriales, crearMaterial as svcCrearMaterial, actualizarMaterial as svcActualizarMaterial, eliminarMaterial as svcEliminarMaterial,
+  getMaterialGrupos, crearMaterialGrupo as svcCrearGrupo, actualizarMaterialGrupo as svcActualizarGrupo, eliminarMaterialGrupo as svcEliminarGrupo,
+  getMaterialFamilias, crearMaterialFamilia as svcCrearFamilia, actualizarMaterialFamilia as svcActualizarFamilia, eliminarMaterialFamilia as svcEliminarFamilia,
+  getMaterialSubfamilias, crearMaterialSubfamilia as svcCrearSubfamilia, actualizarMaterialSubfamilia as svcActualizarSubfamilia, eliminarMaterialSubfamilia as svcEliminarSubfamilia,
+} from './services/materialService.js';
 const AppContext = createContext();
 const PLATFORM_SUPERADMIN_EMAIL = 'cristhianbalvin@gmail.com';
 const isPlatformSuperadminEmail = email =>
@@ -301,6 +308,10 @@ export function AppProvider({ children }) {
   const [industrias, setIndustrias] = useState([]);
   const [centrosCosto, setCentrosCosto] = useState([]);
   const [centrosBeneficio, setCentrosBeneficio] = useState([]);
+  const [materialGrupos, setMaterialGrupos] = useState([]);
+  const [materialFamilias, setMaterialFamilias] = useState([]);
+  const [materialSubfamilias, setMaterialSubfamilias] = useState([]);
+  const [materiales, setMateriales] = useState([]);
 
   // Personal Operativo (separado del admin, estado propio)
   const [personalOperativo, setPersonalOperativo] = useState([]);
@@ -328,6 +339,7 @@ export function AppProvider({ children }) {
   const [registrosAsistencia, setRegistrosAsistencia] = useState(MOCK.registrosAsistencia || []);
   const [periodosNomina, setPeriodosNomina] = useState(MOCK.periodosNomina || []);
   const [trabajadoresDatosNomina, setTrabajadoresDatosNomina] = useState(MOCK.trabajadoresDatosNomina || {});
+  const [tipoCambioHoy, setTipoCambioHoy] = useState({ cargando: true, usd: null, eur: null, fecha: null, desactualizado: false });
 
   const [rolesCtx, setRolesCtx] = useState(() => {
     if (isSupabaseConfigured()) return {};
@@ -820,6 +832,21 @@ export function AppProvider({ children }) {
         } catch (_err) { /* keep mock */ }
 
         try {
+          const [mg, mf, ms, mat] = await Promise.all([
+            getMaterialGrupos(empresa.id),
+            getMaterialFamilias(empresa.id),
+            getMaterialSubfamilias(empresa.id),
+            getMateriales(empresa.id),
+          ]);
+          if (mounted) {
+            setMaterialGrupos(mg || []);
+            setMaterialFamilias(mf || []);
+            setMaterialSubfamilias(ms || []);
+            setMateriales(mat || []);
+          }
+        } catch (_err) { /* tabla aún no existe */ }
+
+        try {
           const { data: cfgData } = await supabase.from('empresa_config').select('*').eq('empresa_id', empresa.id).maybeSingle();
           if (mounted) setEmpresaConfig(cfgData || {});
           const [{ data: seriesData }, { data: slaData }, { data: diccionarioData }] = await Promise.all([
@@ -906,6 +933,17 @@ export function AppProvider({ children }) {
             if (csData.healthScoresDetalle?.length) setHealthScoresDetalle(csData.healthScoresDetalle);
           }
         } catch (_err) { /* keep mock */ }
+
+        // Tipo de cambio del día
+        try {
+          const tc = await getTipoCambioHoy(supabase);
+          if (mounted) setTipoCambioHoy(tc
+            ? { ...tc, cargando: false }
+            : { cargando: false, usd: null, eur: null, fecha: null, desactualizado: false }
+          );
+        } catch (_err) {
+          if (mounted) setTipoCambioHoy(p => ({ ...p, cargando: false }));
+        }
 
         // Planner v2: cargar cuadrillas (asignaciones se cargan on-demand por semana)
         try {
@@ -2602,6 +2640,7 @@ export function AppProvider({ children }) {
       est_materiales: datos.est_materiales ?? hcDesglose.est_materiales,
       est_terceros: datos.est_terceros ?? hcDesglose.est_terceros,
       est_logistica: datos.est_logistica ?? hcDesglose.est_logistica,
+      est_detalle: datos.est_detalle || null,
     };
 
     try {
@@ -2696,11 +2735,14 @@ export function AppProvider({ children }) {
     opsSync(sb => svcActualizarParteDiario(sb, parteId, {
       estado: datos.estado,
       tecnico_id: datos.tecnico_id,
+      tecnico_nombre: datos.tecnico || null,
       fecha: datos.fecha,
       horas_normales: datos.horas,
       actividad: datos.actividad,
       avance_pct: datos.avance_reportado,
       materiales: datos.materiales_usados || [],
+      logistica_lineas: datos.logistica_lineas || [],
+      terceros_lineas: datos.terceros_lineas || [],
       evidencias: datos.evidencias || [],
       datos_borrador: datos.estado === 'borrador' ? {
         tareas_trabajadas: datos.tareas_trabajadas || [],
@@ -2713,6 +2755,15 @@ export function AppProvider({ children }) {
     }));
   };
 
+  // Costo hora unificado: busca en personal operativo y admin; fallback remuneracion/240
+  const calcCostoHora = (personaId) => {
+    const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === personaId);
+    const explicit = Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+    if (explicit > 0) return explicit;
+    const rem = Number(tec?.remuneracion ?? 0);
+    return rem > 0 ? Math.round(rem / 240 * 100) / 100 : 0;
+  };
+
   const aprobarParteDiario = (parteId, avanceValidado = null, motivoAprobacion = '') => {
     const parte = partes.find(p => p.id === parteId);
     if (!parte) return;
@@ -2721,20 +2772,6 @@ export function AppProvider({ children }) {
     setPartes(prev => prev.map(p => p.id === parteId ? parteAprobado : p));
     opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'aprobado', avance_pct: avanceFinal, aprobado_at: new Date().toISOString() }));
     auditSync({ modulo: 'operaciones', entidad: 'partes_diarios', entidad_id: parteId, accion: 'aprobar', valor_anterior: parte, valor_nuevo: { estado: 'aprobado', avance_validado: avanceFinal } });
-
-    // Costo materiales
-    let costoMateriales = 0;
-    if (parte.materiales_usados) {
-      parte.materiales_usados.forEach(mu => {
-        const itemInv = inventario.find(i => i.sku === mu.sku);
-        if (itemInv) costoMateriales += (mu.cantidad * itemInv.costo_promedio);
-      });
-    }
-
-    // Costo mano de obra (horas × costo_hora del técnico)
-    const tecnico = personalOperativo.find(p => p.id === parte.tecnico_id);
-    const costoHora = Number(tecnico?.costo_hora_real ?? tecnico?.costo ?? tecnico?.costo_hora ?? 0);
-    const costoManoObra = Number(parte.horas || 0) * costoHora;
 
     setOts(prev => prev.map(o => {
       if (o.id !== parte.ot_id) return o;
@@ -2761,9 +2798,30 @@ export function AppProvider({ children }) {
         nuevoAvance = Math.min(100, partesAprobadosOT.reduce((s, p) => s + (Number(p.avance_validado) || 0), 0));
       }
 
+      // Recalcular costo real completo desde los partes aprobados
+      const costoMO = partesAprobadosOT.reduce((s, p) => {
+        const moIt = (o.est_detalle?.mano_obra || []).find(m => m.tecnico_id === p.tecnico_id);
+        const ch = (moIt?.costo_hora > 0) ? moIt.costo_hora : calcCostoHora(p.tecnico_id);
+        return s + Number(p.horas || 0) * ch;
+      }, 0);
+      const costoMat = partesAprobadosOT.reduce((s, p) =>
+        s + (p.materiales_usados || []).reduce((sm, m) => {
+          const itemInv = inventario.find(i => i.sku === m.sku);
+          return sm + (m.cantidad || 0) * (itemInv?.costo_promedio || m.costo_unitario || 0);
+        }, 0), 0);
+      const costoTerceros = partesAprobadosOT.reduce((s, p) =>
+        s + (p.terceros_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0);
+      const costoLogistica = partesAprobadosOT.reduce((s, p) =>
+        s + (p.logistica_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0);
+
+      const fechasPartes = partesAprobadosOT.map(p => p.fecha).filter(Boolean).sort();
+      const nuevaFechaInicio = o.fecha_inicio || fechasPartes[0] || null;
+      const nuevaFechaFin = fechasPartes[fechasPartes.length - 1] || o.fecha_fin || null;
       const nuevosDatos = {
         avance: nuevoAvance,
-        costoReal: (o.costoReal || 0) + costoMateriales + costoManoObra,
+        costoReal: costoMO + costoMat + costoTerceros + costoLogistica,
+        fecha_inicio: nuevaFechaInicio,
+        fecha_fin: nuevaFechaFin,
       };
       opsSync(sb => svcActualizarOT(sb, o.id, nuevosDatos));
       return { ...o, ...nuevosDatos };
@@ -2786,13 +2844,83 @@ export function AppProvider({ children }) {
     addNotificacion('Parte diario rechazado.');
   };
 
+  const enviarParteARevision = (parteId) => {
+    const parte = partes.find(p => p.id === parteId);
+    if (!parte || !['borrador', 'rechazado', 'observado'].includes(parte.estado)) return;
+    setPartes(prev => prev.map(p => p.id === parteId ? { ...p, estado: 'en_revision' } : p));
+    opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'en_revision' }));
+    addNotificacion('Parte enviado a revisión.');
+  };
+
+  const reabrirParteDiario = (parteId, motivo = '') => {
+    const parte = partes.find(p => p.id === parteId);
+    if (!parte || parte.estado !== 'aprobado') return;
+
+    setPartes(prev => prev.map(p => p.id === parteId ? { ...p, estado: 'borrador', motivo_reapertura: motivo || undefined } : p));
+    opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'borrador' }));
+    auditSync({ modulo: 'operaciones', entidad: 'partes_diarios', entidad_id: parteId, accion: 'reabrir', valor_anterior: { estado: 'aprobado' }, valor_nuevo: { estado: 'borrador', motivo } });
+
+    // Recalcular OT desde los partes aprobados restantes (sin este)
+    setOts(prev => prev.map(o => {
+      if (o.id !== parte.ot_id) return o;
+      const restantes = partes.filter(p => p.ot_id === o.id && p.id !== parteId && p.estado === 'aprobado');
+
+      // Avance
+      const tareas = o.tareas || [];
+      const tareasConPeso = tareas.filter(t => Number(t.peso) > 0);
+      let nuevoAvance;
+      if (tareasConPeso.length > 0) {
+        let pond = 0;
+        tareasConPeso.forEach(tarea => {
+          let ac = 0;
+          restantes.forEach(p => {
+            const tt = (p.tareas_trabajadas || []).find(t => String(t.tarea_id) === String(tarea.id));
+            if (tt) ac += Number(tt.avance_hoy) || 0;
+          });
+          pond += (Number(tarea.peso) / 100) * Math.min(100, ac);
+        });
+        nuevoAvance = Math.min(100, Math.round(pond));
+      } else {
+        nuevoAvance = Math.min(100, restantes.reduce((s, p) => s + (Number(p.avance_validado) || 0), 0));
+      }
+
+      // Costos
+      const costoMO = restantes.reduce((s, p) => {
+        const moIt = (o.est_detalle?.mano_obra || []).find(m => m.tecnico_id === p.tecnico_id);
+        const ch = (moIt?.costo_hora > 0) ? moIt.costo_hora : calcCostoHora(p.tecnico_id);
+        return s + Number(p.horas || 0) * ch;
+      }, 0);
+      const costoMat = restantes.reduce((s, p) =>
+        s + (p.materiales_usados || []).reduce((sm, m) => {
+          const itemInv = inventario.find(i => i.sku === m.sku);
+          return sm + (m.cantidad || 0) * (itemInv?.costo_promedio || m.costo_unitario || 0);
+        }, 0), 0);
+      const costoTerceros = restantes.reduce((s, p) => s + (p.terceros_lineas || []).reduce((sm, l) => sm + Number(l.monto || 0), 0), 0);
+      const costoLogistica = restantes.reduce((s, p) => s + (p.logistica_lineas || []).reduce((sm, l) => sm + Number(l.monto || 0), 0), 0);
+
+      // Fechas
+      const fechas = restantes.map(p => p.fecha).filter(Boolean).sort();
+      const nuevosDatos = {
+        avance: nuevoAvance,
+        costoReal: costoMO + costoMat + costoTerceros + costoLogistica,
+        fecha_inicio: fechas[0] || null,
+        fecha_fin: fechas[fechas.length - 1] || null,
+      };
+      opsSync(sb => svcActualizarOT(sb, o.id, nuevosDatos));
+      return { ...o, ...nuevosDatos };
+    }));
+
+    addNotificacion('Parte reabierto como borrador. Ya puede ser editado por el técnico.');
+  };
+
   const recalcularCostoRealOT = (otId) => {
     const partesAprobados = partes.filter(p => p.ot_id === otId && p.estado === 'aprobado');
-    const costoHoraTec = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
 
+    const ot = ots.find(o => o.id === otId);
     const costoMO = partesAprobados.reduce((s, p) => {
-      const tec = (personalOperativo || []).find(t => t.id === p.tecnico_id);
-      return s + Number(p.horas || 0) * costoHoraTec(tec);
+      const moItem = (ot?.est_detalle?.mano_obra || []).find(m => m.tecnico_id === p.tecnico_id);
+      const ch = (moItem?.costo_hora > 0) ? moItem.costo_hora : calcCostoHora(p.tecnico_id);
+      return s + Number(p.horas || 0) * ch;
     }, 0);
 
     const costoMat = partesAprobados.reduce((s, p) =>
@@ -2800,11 +2928,15 @@ export function AppProvider({ children }) {
         const itemInv = inventario.find(i => i.sku === m.sku);
         return sm + (m.cantidad || 0) * (itemInv?.costo_promedio || m.costo_unitario || 0);
       }, 0), 0);
+    const costoTerceros = partesAprobados.reduce((s, p) =>
+      s + (p.terceros_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0);
+    const costoLogistica = partesAprobados.reduce((s, p) =>
+      s + (p.logistica_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0);
 
-    const nuevosCostoReal = costoMO + costoMat;
+    const nuevosCostoReal = costoMO + costoMat + costoTerceros + costoLogistica;
     setOts(prev => prev.map(o => o.id === otId ? { ...o, costoReal: nuevosCostoReal } : o));
     opsSync(sb => svcActualizarOT(sb, otId, { costoReal: nuevosCostoReal }));
-    addNotificacion(`OT recalculada: costo real MO = ${costoMO.toFixed(2)}, materiales = ${costoMat.toFixed(2)}.`);
+    addNotificacion(`OT recalculada: MO=${costoMO.toFixed(2)}, mat=${costoMat.toFixed(2)}, terceros=${costoTerceros.toFixed(2)}, logística=${costoLogistica.toFixed(2)}.`);
     return nuevosCostoReal;
   };
 
@@ -3072,6 +3204,7 @@ export function AppProvider({ children }) {
       numero: `VAL-${new Date().getFullYear()}-${String(valorizaciones.length + 1).padStart(3, '0')}`,
       fecha: now,
       estado: estadoFinal,
+      tipo: (meta.otIds || []).some(id => ots.find(o => o.id === id)?.estado === 'ejecucion') ? 'avance' : 'final',
       periodo, subtotal, igv, total,
       moneda: meta.moneda || osClientes.find(os => os.id === osClienteId)?.moneda || 'PEN',
       modelo_calculo: meta.modelo_calculo || null,
@@ -3099,8 +3232,11 @@ export function AppProvider({ children }) {
       }
 
       if (meta.otIds?.length) {
-        setOts(prev => prev.map(ot => meta.otIds.includes(ot.id) ? { ...ot, estado: 'valorizada' } : ot));
-        meta.otIds.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'valorizada' })));
+        const otsCerradas = ots.filter(o => meta.otIds.includes(o.id) && o.estado === 'cerrada').map(o => o.id);
+        if (otsCerradas.length) {
+          setOts(prev => prev.map(ot => otsCerradas.includes(ot.id) ? { ...ot, estado: 'valorizada' } : ot));
+          otsCerradas.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'valorizada' })));
+        }
       }
     }
 
@@ -3112,6 +3248,7 @@ export function AppProvider({ children }) {
           os_cliente_id: val.os_cliente_id,
           numero: val.numero,
           fecha: val.fecha,
+          tipo: val.tipo,
           periodo: val.periodo,
           subtotal: val.subtotal,
           igv: val.igv,
@@ -3159,8 +3296,11 @@ export function AppProvider({ children }) {
     }
 
     if (val.ot_ids?.length) {
-      setOts(prev => prev.map(ot => val.ot_ids.includes(ot.id) ? { ...ot, estado: 'valorizada' } : ot));
-      val.ot_ids.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'valorizada' })));
+      const otsCerradas = ots.filter(o => val.ot_ids.includes(o.id) && o.estado === 'cerrada').map(o => o.id);
+      if (otsCerradas.length) {
+        setOts(prev => prev.map(ot => otsCerradas.includes(ot.id) ? { ...ot, estado: 'valorizada' } : ot));
+        otsCerradas.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'valorizada' })));
+      }
     }
 
     if (isSupabaseConfigured()) {
@@ -3203,8 +3343,11 @@ export function AppProvider({ children }) {
         crmSync(sb => svcActualizarOSCliente(sb, osClienteId, { saldo_por_valorizar: saldoRestaurado }));
       }
       if (val.ot_ids?.length) {
-        setOts(prev => prev.map(ot => val.ot_ids.includes(ot.id) ? { ...ot, estado: 'cerrada' } : ot));
-        val.ot_ids.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'cerrada' })));
+        const otsARevertir = ots.filter(o => val.ot_ids.includes(o.id) && o.estado === 'valorizada').map(o => o.id);
+        if (otsARevertir.length) {
+          setOts(prev => prev.map(ot => otsARevertir.includes(ot.id) ? { ...ot, estado: 'cerrada' } : ot));
+          otsARevertir.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'cerrada' })));
+        }
       }
     }
 
@@ -3232,6 +3375,7 @@ export function AppProvider({ children }) {
       subtotal: datos.subtotal, igv: datos.igv, total: datos.total,
       periodo: datos.periodo, modelo_calculo: datos.modelo_calculo,
       notas: datos.notas, items: datos.items || [], ot_ids: datos.ot_ids || [],
+      tipo: (datos.ot_ids || []).some(id => ots.find(o => o.id === id)?.estado === 'ejecucion') ? 'avance' : 'final',
       estado: estadoFinal,
       ...(estadoFinal === 'aprobada' ? { fecha_aprobacion: now } : {}),
       historial: [...(val.historial || []), entrada],
@@ -3253,8 +3397,11 @@ export function AppProvider({ children }) {
         crmSync(sb => svcActualizarOSCliente(sb, val.os_cliente_id, { saldo_por_valorizar: saldoPorValorizar }));
       }
       if (datos.ot_ids?.length) {
-        setOts(prev => prev.map(ot => datos.ot_ids.includes(ot.id) ? { ...ot, estado: 'valorizada' } : ot));
-        datos.ot_ids.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'valorizada' })));
+        const otsCerradas = ots.filter(o => datos.ot_ids.includes(o.id) && o.estado === 'cerrada').map(o => o.id);
+        if (otsCerradas.length) {
+          setOts(prev => prev.map(ot => otsCerradas.includes(ot.id) ? { ...ot, estado: 'valorizada' } : ot));
+          otsCerradas.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'valorizada' })));
+        }
       }
     }
 
@@ -3263,6 +3410,7 @@ export function AppProvider({ children }) {
         subtotal: datos.subtotal, igv: datos.igv, total: datos.total,
         periodo: datos.periodo, modelo_calculo: datos.modelo_calculo,
         notas: datos.notas, items: datos.items || [], ot_ids: datos.ot_ids || [], estado: estadoFinal,
+        tipo: updated.tipo,
         historial: updated.historial,
         ...(estadoFinal === 'aprobada' ? { fecha_aprobacion: now } : {}),
       }));
@@ -3804,6 +3952,11 @@ export function AppProvider({ children }) {
           } else if (pct > 0 || bonificacionAcuerdo > 0) {
             const montoComision = Math.round(montoCobrado * pct / 100 * 100) / 100;
             const periodoComision = fecha.slice(0, 7);
+            const monedaComision = normalizarMonedaComision(cuentaCobrar?.moneda || facturas.find(f => f.id === cuentaCobrar?.factura_id)?.moneda || osCliente?.moneda || oportunidad?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN');
+            const tcUSDaPENHoy = tipoCambioHoy.usd ? Math.round(100 / tipoCambioHoy.usd) / 100 : null;
+            const montoCobradoPEN = monedaComision === 'USD' && tipoCambioHoy.usd
+              ? Math.round(montoCobrado / tipoCambioHoy.usd * 100) / 100
+              : montoCobrado;
             const comision = {
               id: generateId('com'),
               empresa_id: empresa.id,
@@ -3817,7 +3970,7 @@ export function AppProvider({ children }) {
               os_cliente_numero: osCliente?.numero || null,
               factura_numero: facturas.find(f => f.id === cuentaCobrar?.factura_id)?.numero || null,
               oportunidad_nombre: oportunidad?.nombre || null,
-              moneda: normalizarMonedaComision(cuentaCobrar?.moneda || facturas.find(f => f.id === cuentaCobrar?.factura_id)?.moneda || osCliente?.moneda || oportunidad?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN'),
+              moneda: monedaComision,
               monto_cobrado: montoCobrado,
               porcentaje_base: pctBase,
               porcentaje_comision: pct,
@@ -3829,6 +3982,8 @@ export function AppProvider({ children }) {
               estado: 'pendiente_aprobacion',
               acuerdo_especial: acuerdoEstado === 'aprobado' && Math.abs(Number(pct) - pctBase) > 0.0001,
               nota_acuerdo: notaFallback,
+              tc_pen_usd: tcUSDaPENHoy,
+              retencion_ir: montoCobradoPEN > 1500,
               creado_en: new Date().toISOString(),
             };
             setComisiones(prev => [comision, ...prev]);
@@ -4974,6 +5129,79 @@ export function AppProvider({ children }) {
     }
   };
 
+  // ─── Materiales ─────────────────────────────────────────────────────────────
+  const recargarMateriales = async () => {
+    if (!empresa?.id) return;
+    const [mg, mf, ms, mat] = await Promise.all([
+      getMaterialGrupos(empresa.id), getMaterialFamilias(empresa.id),
+      getMaterialSubfamilias(empresa.id), getMateriales(empresa.id),
+    ]);
+    setMaterialGrupos(mg || []);
+    setMaterialFamilias(mf || []);
+    setMaterialSubfamilias(ms || []);
+    setMateriales(mat || []);
+  };
+
+  const crearMatGrupo = async (datos) => {
+    const data = await svcCrearGrupo(empresa.id, datos);
+    setMaterialGrupos(prev => [...prev, data]);
+    return data;
+  };
+  const actualizarMatGrupo = async (id, datos) => {
+    const data = await svcActualizarGrupo(id, datos);
+    setMaterialGrupos(prev => prev.map(x => x.id === id ? data : x));
+    return data;
+  };
+  const eliminarMatGrupo = async (id) => {
+    await svcEliminarGrupo(id);
+    setMaterialGrupos(prev => prev.filter(x => x.id !== id));
+  };
+
+  const crearMatFamilia = async (datos) => {
+    const data = await svcCrearFamilia(empresa.id, datos);
+    setMaterialFamilias(prev => [...prev, data]);
+    return data;
+  };
+  const actualizarMatFamilia = async (id, datos) => {
+    const data = await svcActualizarFamilia(id, datos);
+    setMaterialFamilias(prev => prev.map(x => x.id === id ? data : x));
+    return data;
+  };
+  const eliminarMatFamilia = async (id) => {
+    await svcEliminarFamilia(id);
+    setMaterialFamilias(prev => prev.filter(x => x.id !== id));
+  };
+
+  const crearMatSubfamilia = async (datos) => {
+    const data = await svcCrearSubfamilia(empresa.id, datos);
+    setMaterialSubfamilias(prev => [...prev, data]);
+    return data;
+  };
+  const actualizarMatSubfamilia = async (id, datos) => {
+    const data = await svcActualizarSubfamilia(id, datos);
+    setMaterialSubfamilias(prev => prev.map(x => x.id === id ? data : x));
+    return data;
+  };
+  const eliminarMatSubfamilia = async (id) => {
+    await svcEliminarSubfamilia(id);
+    setMaterialSubfamilias(prev => prev.filter(x => x.id !== id));
+  };
+
+  const crearMaterialCtx = async (datos) => {
+    const data = await svcCrearMaterial(empresa.id, datos);
+    setMateriales(prev => [...prev, data]);
+    return data;
+  };
+  const actualizarMaterialCtx = async (id, datos) => {
+    const data = await svcActualizarMaterial(id, datos);
+    setMateriales(prev => prev.map(x => x.id === id ? data : x));
+    return data;
+  };
+  const eliminarMaterialCtx = async (id) => {
+    await svcEliminarMaterial(id);
+    setMateriales(prev => prev.filter(x => x.id !== id));
+  };
+
   const registrarProveedor = async (proveedor) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await comprasService.crearProveedor(empresa.id, proveedor);
@@ -5883,6 +6111,11 @@ export function AppProvider({ children }) {
     crearMonedaImpuestoUnidad, actualizarMonedaImpuestoUnidad, eliminarMonedaImpuestoUnidad,
     centrosCosto, setCentrosCosto, crearCentroCosto, actualizarCentroCosto, eliminarCentroCosto, importarCentrosCosto,
     centrosBeneficio, setCentrosBeneficio, crearCentroBeneficio, actualizarCentroBeneficio, eliminarCentroBeneficio, importarCentrosBeneficio,
+    materialGrupos, materialFamilias, materialSubfamilias, materiales, setMateriales,
+    crearMatGrupo, actualizarMatGrupo, eliminarMatGrupo,
+    crearMatFamilia, actualizarMatFamilia, eliminarMatFamilia,
+    crearMatSubfamilia, actualizarMatSubfamilia, eliminarMatSubfamilia,
+    crearMaterialCtx, actualizarMaterialCtx, eliminarMaterialCtx, recargarMateriales,
 
     // Actions
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,
@@ -5900,7 +6133,7 @@ export function AppProvider({ children }) {
     registrarActividad,
     actualizarActividad,
     // Fase 2 Actions
-    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, recalcularCostoRealOT, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
+    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     // Finanzas Actions
     emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, anularFactura, emitirNotaCredito, emitirNotaDebito, generarCxC, registrarCobroCxC, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, registrarMovimientoManual,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,
@@ -5956,6 +6189,10 @@ export function AppProvider({ children }) {
     partesPendientesSet,
     notificaciones, markNotificacionesRead, addNotificacion,
     toasts, addToast, removeToast,
+    tipoCambioHoy,
+    convertirMonto: (monto, origen, destino) => convertirMontoFn(monto, origen, destino, tipoCambioHoy),
+    tcPENaUSD: tipoCambioHoy.usd || null,
+    tcUSDaPEN: tipoCambioHoy.usd ? Math.round(1 / tipoCambioHoy.usd * 100) / 100 : null,
     // Empresa Config
     empresaConfig, guardarEmpresaConfig, subirImagenEmpresa,
     seriesDocumentarias, slaPlantillas, diccionarioComercial, recargarParametrosGenerales,

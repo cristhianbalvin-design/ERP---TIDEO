@@ -8,6 +8,8 @@ import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getPotentialManagers, getUserHierarc
 import { PHONE_PATTERN, RUC_PATTERN, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { VARIABLES_COMERCIALES } from './lib/textoComercial.js';
 import { maestrosService } from './services/maestrosService.js';
+import { importarMaterialesMasivo } from './services/materialService.js';
+import * as XLSX from 'xlsx';
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
 import { SmartTextField } from './components/SmartTextField.jsx';
 
@@ -1827,6 +1829,520 @@ function CecoCebePanel({ onClose }) {
   );
 }
 
+// ─── helpers materiales ───────────────────────────────────────────────────────
+function computeNextCodigo(subfamiliaId, grupos, familias, subfamilias, materiales, empresaId) {
+  const sub = subfamilias.find(s => s.id === subfamiliaId);
+  if (!sub) return '';
+  const fam = familias.find(f => f.id === sub.familia_id);
+  if (!fam) return '';
+  const grp = grupos.find(g => g.id === fam.grupo_id);
+  if (!grp) return '';
+  const prefix = grp.codigo.padStart(2,'0') + fam.codigo.padStart(2,'0') + sub.codigo.padStart(2,'0');
+  const existentes = materiales.filter(m => m.subfamilia_id === subfamiliaId && (m.empresa_id === empresaId || !m.empresa_id) && typeof m.codigo === 'string' && m.codigo.length === 10 && m.codigo.startsWith(prefix));
+  const maxCorr = existentes.reduce((max, m) => { const n = parseInt(m.codigo.slice(6), 10); return isNaN(n) ? max : Math.max(max, n); }, 0);
+  return prefix + String(maxCorr + 1).padStart(4, '0');
+}
+
+// ─── MaterialesMaestro ────────────────────────────────────────────────────────
+function MaterialesMaestro({ onClose }) {
+  const {
+    empresa, addNotificacion,
+    materialGrupos, materialFamilias, materialSubfamilias, materiales,
+    crearMatGrupo, actualizarMatGrupo, eliminarMatGrupo,
+    crearMatFamilia, actualizarMatFamilia, eliminarMatFamilia,
+    crearMatSubfamilia, actualizarMatSubfamilia, eliminarMatSubfamilia,
+    crearMaterialCtx, actualizarMaterialCtx, eliminarMaterialCtx, recargarMateriales,
+    almacenes,
+  } = useApp();
+
+  const [tab, setTab] = useState('catalogo');
+  const [filtros, setFiltros] = useState({ grupoId: '', familiaId: '', subfamiliaId: '', estado: '', texto: '' });
+  const [editandoId, setEditandoId] = useState(null);
+  const matBase = { descripcion: '', unidad: '', grupo_id: '', familia_id: '', subfamilia_id: '', nro_parte: '', unidades_contenidas: 1, almacen_id: '', ubicacion: '', observacion: '', precio_unitario: 0, estado: 'activo' };
+  const [formMat, setFormMat] = useState(matBase);
+  const [saving, setSaving] = useState(false);
+  const [formErr, setFormErr] = useState('');
+  const [importando, setImportando] = useState(false);
+  const [resultImport, setResultImport] = useState(null);
+
+  // Jerarquía state
+  const [selGrupoJ, setSelGrupoJ] = useState('');
+  const [selFamiliaJ, setSelFamiliaJ] = useState('');
+  const formGBase = { codigo: '', nombre: '', estado: 'activo' };
+  const formFBase = { codigo: '', nombre: '', estado: 'activo' };
+  const formSBase = { codigo: '', nombre: '', estado: 'activo' };
+  const [formG, setFormG] = useState(formGBase);
+  const [formF, setFormF] = useState(formFBase);
+  const [formS, setFormS] = useState(formSBase);
+  const [editGId, setEditGId] = useState(null);
+  const [editFId, setEditFId] = useState(null);
+  const [editSId, setEditSId] = useState(null);
+  const [jerarErr, setJerarErr] = useState('');
+
+  // Filtros de familia/subfamilia en catálogo
+  const familiasFiltradas = filtros.grupoId
+    ? materialFamilias.filter(f => f.grupo_id === filtros.grupoId)
+    : materialFamilias;
+  const subfamiliasFiltradas = filtros.familiaId
+    ? materialSubfamilias.filter(s => s.familia_id === filtros.familiaId)
+    : (filtros.grupoId ? materialSubfamilias.filter(s => familiasFiltradas.some(f => f.id === s.familia_id)) : materialSubfamilias);
+
+  // Selectors en form: familias/subfamilias filtradas por selección
+  const formFamilias = formMat.grupo_id ? materialFamilias.filter(f => f.grupo_id === formMat.grupo_id) : [];
+  const formSubfamilias = formMat.familia_id ? materialSubfamilias.filter(s => s.familia_id === formMat.familia_id) : [];
+  const codigoAuto = formMat.subfamilia_id ? computeNextCodigo(formMat.subfamilia_id, materialGrupos, materialFamilias, materialSubfamilias, materiales, empresa?.id) : '';
+
+  // Búsqueda en catálogo
+  const materialsFiltrados = materiales.filter(m => {
+    if (filtros.grupoId && m.grupo_id !== filtros.grupoId) return false;
+    if (filtros.familiaId && m.familia_id !== filtros.familiaId) return false;
+    if (filtros.subfamiliaId && m.subfamilia_id !== filtros.subfamiliaId) return false;
+    if (filtros.estado && m.estado !== filtros.estado) return false;
+    if (filtros.texto) {
+      const q = filtros.texto.toLowerCase();
+      if (!m.codigo?.toLowerCase().includes(q) && !m.descripcion?.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  const grupoNombre = (id) => materialGrupos.find(g => g.id === id)?.nombre || '—';
+  const famNombre = (id) => materialFamilias.find(f => f.id === id)?.nombre || '—';
+  const subNombre = (id) => materialSubfamilias.find(s => s.id === id)?.nombre || '—';
+  const almNombre = (id) => almacenes.find(a => a.id === id)?.nombre || '—';
+
+  const editarMaterial = (m) => {
+    setFormMat({ descripcion: m.descripcion || '', unidad: m.unidad || '', grupo_id: m.grupo_id || '', familia_id: m.familia_id || '', subfamilia_id: m.subfamilia_id || '', nro_parte: m.nro_parte || '', unidades_contenidas: m.unidades_contenidas ?? 1, almacen_id: m.almacen_id || '', ubicacion: m.ubicacion || '', observacion: m.observacion || '', precio_unitario: m.precio_unitario ?? 0, estado: m.estado || 'activo' });
+    setEditandoId(m.id);
+    setFormErr('');
+  };
+
+  const resetFormMat = () => { setFormMat(matBase); setEditandoId(null); setFormErr(''); };
+
+  const guardarMaterial = async (e) => {
+    e.preventDefault();
+    if (!formMat.descripcion.trim()) { setFormErr('La descripción es obligatoria.'); return; }
+    if (!formMat.unidad.trim()) { setFormErr('La unidad es obligatoria.'); return; }
+    setSaving(true); setFormErr('');
+    try {
+      const codigo = editandoId ? undefined : (codigoAuto || undefined);
+      if (editandoId) {
+        await actualizarMaterialCtx(editandoId, formMat);
+        addNotificacion('Material actualizado.');
+      } else {
+        await crearMaterialCtx({ ...formMat, codigo });
+        addNotificacion('Material creado.');
+      }
+      resetFormMat();
+    } catch (err) { setFormErr(err.message || 'Error al guardar.'); } finally { setSaving(false); }
+  };
+
+  const eliminarMat = async (m) => {
+    if (!window.confirm(`Eliminar "${m.descripcion}"?`)) return;
+    try { await eliminarMaterialCtx(m.id); addNotificacion('Material eliminado.'); }
+    catch (err) { addNotificacion(err.message, 'error'); }
+  };
+
+  const withImportTimeout = (promise, ms, message) => {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+    });
+    return Promise.race([promise.finally(() => clearTimeout(timer)), timeout]);
+  };
+
+  // ─── Importación Excel ────────────────────────────────────────────────────
+  const importarExcel = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setImportando(true);
+    setResultImport(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      // Columnas esperadas: Cod Grupo, Grupo, Cod Familia, Familia, Cod Sub-Familia, Sub-Familia, Correlativo, Codigo, Descripcion, Nro Parte, UM, Unidades Contenidas, Estado, Almacen, Ubicacion, Observacion, P.U. S/
+      const filas = rows.map(r => ({
+        cod_grupo: String(r['Cod Grupo'] ?? r['cod_grupo'] ?? '').trim(),
+        grupo: String(r['Grupo'] ?? r['grupo'] ?? '').trim(),
+        cod_familia: String(r['Cod Familia'] ?? r['cod_familia'] ?? '').trim(),
+        familia: String(r['Familia'] ?? r['familia'] ?? '').trim(),
+        cod_subfamilia: String(r['Cod Sub-Familia'] ?? r['cod_subfamilia'] ?? '').trim(),
+        subfamilia: String(r['Sub-Familia'] ?? r['subfamilia'] ?? '').trim(),
+        codigo: String(r['Codigo'] ?? r['codigo'] ?? '').trim() || null,
+        descripcion: String(r['Descripcion'] ?? r['descripcion'] ?? '').trim(),
+        nro_parte: String(r['Nro Parte'] ?? r['nro_parte'] ?? '').trim(),
+        unidad: String(r['UM'] ?? r['unidad'] ?? '').trim(),
+        unidades_contenidas: Number(r['Unidades Contenidas'] ?? r['unidades_contenidas'] ?? 1) || 1,
+        estado: String(r['Estado'] ?? 'activo').trim() || 'activo',
+        almacen: String(r['Almacen'] ?? r['almacen'] ?? '').trim(),
+        ubicacion: String(r['Ubicacion'] ?? r['ubicacion'] ?? '').trim(),
+        observacion: String(r['Observacion'] ?? r['observacion'] ?? '').trim(),
+        precio_unitario: Number(r['P.U. S/'] ?? r['precio_unitario'] ?? 0) || 0,
+      })).filter(f => {
+        if (!f.cod_grupo || !f.cod_familia || !f.cod_subfamilia) return false;
+        if (!f.descripcion) return false;
+        if (!f.unidad) return false;
+        return true;
+      });
+      if (!filas.length) { setResultImport({ creados: 0, actualizados: 0, errores: [{ fila: '—', error: 'No se encontraron filas válidas en el archivo.' }] }); return; }
+      const importTimeoutMs = Math.max(45000, Math.min(180000, filas.length * 900));
+      const res = await withImportTimeout(
+        importarMaterialesMasivo(empresa.id, filas),
+        importTimeoutMs,
+        'La importacion esta demorando mas de lo esperado. Revisa tu conexion o intenta con menos filas.'
+      );
+      await withImportTimeout(
+        recargarMateriales(),
+        30000,
+        'La importacion termino, pero no se pudo recargar el catalogo automaticamente.'
+      );
+      setResultImport(res);
+    } catch (err) {
+      setResultImport({ creados: 0, actualizados: 0, errores: [{ fila: '—', error: err.message }] });
+    } finally { setImportando(false); }
+  };
+
+  // ─── Jerarquía CRUD ───────────────────────────────────────────────────────
+  const guardarGrupo = async (e) => {
+    e.preventDefault(); setJerarErr('');
+    if (!formG.codigo.trim() || !formG.nombre.trim()) { setJerarErr('Código y nombre requeridos.'); return; }
+    try {
+      if (editGId) { await actualizarMatGrupo(editGId, formG); setEditGId(null); }
+      else { await crearMatGrupo(formG); }
+      setFormG(formGBase);
+    } catch (err) { setJerarErr(err.message); }
+  };
+  const guardarFamilia = async (e) => {
+    e.preventDefault(); setJerarErr('');
+    if (!selGrupoJ) { setJerarErr('Selecciona un grupo primero.'); return; }
+    if (!formF.codigo.trim() || !formF.nombre.trim()) { setJerarErr('Código y nombre requeridos.'); return; }
+    try {
+      if (editFId) { await actualizarMatFamilia(editFId, { ...formF, grupo_id: selGrupoJ }); setEditFId(null); }
+      else { await crearMatFamilia({ ...formF, grupo_id: selGrupoJ }); }
+      setFormF(formFBase);
+    } catch (err) { setJerarErr(err.message); }
+  };
+  const guardarSubfamilia = async (e) => {
+    e.preventDefault(); setJerarErr('');
+    if (!selFamiliaJ) { setJerarErr('Selecciona una familia primero.'); return; }
+    if (!formS.codigo.trim() || !formS.nombre.trim()) { setJerarErr('Código y nombre requeridos.'); return; }
+    try {
+      if (editSId) { await actualizarMatSubfamilia(editSId, { ...formS, familia_id: selFamiliaJ }); setEditSId(null); }
+      else { await crearMatSubfamilia({ ...formS, familia_id: selFamiliaJ }); }
+      setFormS(formSBase);
+    } catch (err) { setJerarErr(err.message); }
+  };
+
+  const familiasPorGrupo = selGrupoJ ? materialFamilias.filter(f => f.grupo_id === selGrupoJ) : [];
+  const subfamiliasPorFamilia = selFamiliaJ ? materialSubfamilias.filter(s => s.familia_id === selFamiliaJ) : [];
+
+  return (
+    <>
+      <div className="side-panel-backdrop" onClick={onClose} />
+      <div className="side-panel" style={{ width: 'min(980px, 98vw)' }}>
+        <div className="side-panel-head">
+          <div>
+            <div className="eyebrow">Gestión de catálogo</div>
+            <div className="font-display" style={{ fontSize: 22, fontWeight: 700, marginTop: 2 }}>Materiales e Insumos</div>
+            <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>{materiales.length} materiales · {materialGrupos.length} grupos · {materialFamilias.length} familias</div>
+          </div>
+          <button className="icon-btn" onClick={onClose}>{I.x}</button>
+        </div>
+        <div className="side-panel-body">
+          {/* Tabs */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid var(--border)' }}>
+            {[['catalogo', 'Catálogo de materiales'], ['jerarquia', 'Jerarquía (Grupos / Familias / Sub-familias)']].map(([id, label]) => (
+              <button key={id} onClick={() => setTab(id)} style={{ padding: '8px 18px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: tab === id ? 700 : 400, borderBottom: tab === id ? '2px solid var(--cyan)' : '2px solid transparent', color: tab === id ? 'var(--cyan)' : 'var(--fg-muted)', marginBottom: -2, fontSize: 13 }}>{label}</button>
+            ))}
+          </div>
+
+          {tab === 'catalogo' && (
+            <>
+              {/* Cabecera con botón importar */}
+              <div className="row" style={{ gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                <label className={'btn btn-secondary' + (importando ? ' disabled' : '')} style={{ cursor: importando ? 'not-allowed' : 'pointer' }}>
+                  {importando ? 'Importando...' : <>{I.download} Importar Excel</>}
+                  <input type="file" accept=".xlsx,.xls" onChange={importarExcel} style={{ display: 'none' }} disabled={importando} />
+                </label>
+                {resultImport && (
+                  <div style={{ fontSize: 12, background: resultImport.errores?.length ? 'var(--danger-lt)' : 'var(--success-lt)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 12px' }}>
+                    <strong>Resultado importación:</strong> {resultImport.creados} creados · {resultImport.actualizados} actualizados
+                    {resultImport.errores?.length > 0 && (
+                      <div style={{ marginTop: 4 }}>
+                        {resultImport.errores.slice(0, 5).map((e, i) => <div key={i} style={{ color: 'var(--danger)' }}>⚠ {e.fila}: {e.error}</div>)}
+                        {resultImport.errores.length > 5 && <div>...y {resultImport.errores.length - 5} errores más</div>}
+                      </div>
+                    )}
+                    <button onClick={() => setResultImport(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--fg-muted)', marginLeft: 8 }}>×</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Filtros */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 14 }}>
+                <select className="select" value={filtros.grupoId} onChange={e => setFiltros(p => ({ ...p, grupoId: e.target.value, familiaId: '', subfamiliaId: '' }))}>
+                  <option value="">Todos los grupos</option>
+                  {materialGrupos.map(g => <option key={g.id} value={g.id}>{g.codigo} - {g.nombre}</option>)}
+                </select>
+                <select className="select" value={filtros.familiaId} onChange={e => setFiltros(p => ({ ...p, familiaId: e.target.value, subfamiliaId: '' }))}>
+                  <option value="">Todas las familias</option>
+                  {familiasFiltradas.map(f => <option key={f.id} value={f.id}>{f.codigo} - {f.nombre}</option>)}
+                </select>
+                <select className="select" value={filtros.subfamiliaId} onChange={e => setFiltros(p => ({ ...p, subfamiliaId: e.target.value }))}>
+                  <option value="">Todas las sub-familias</option>
+                  {subfamiliasFiltradas.map(s => <option key={s.id} value={s.id}>{s.codigo} - {s.nombre}</option>)}
+                </select>
+                <select className="select" value={filtros.estado} onChange={e => setFiltros(p => ({ ...p, estado: e.target.value }))}>
+                  <option value="">Todos los estados</option>
+                  <option value="activo">Activo</option>
+                  <option value="inactivo">Inactivo</option>
+                </select>
+                <input className="input" placeholder="Buscar código o descripción..." value={filtros.texto} onChange={e => setFiltros(p => ({ ...p, texto: e.target.value }))} />
+              </div>
+
+              {/* Formulario nuevo/editar */}
+              {formErr && <div className="alert alert-danger" style={{ marginBottom: 12 }}>{formErr}</div>}
+              <form className="card" style={{ padding: 14, marginBottom: 16 }} onSubmit={guardarMaterial}>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>{editandoId ? 'Editar material' : 'Nuevo material'}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+                  <div className="input-group">
+                    <label>Grupo</label>
+                    <select className="select" value={formMat.grupo_id} onChange={e => setFormMat(p => ({ ...p, grupo_id: e.target.value, familia_id: '', subfamilia_id: '' }))}>
+                      <option value="">Seleccionar...</option>
+                      {materialGrupos.map(g => <option key={g.id} value={g.id}>{g.codigo} - {g.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>Familia</label>
+                    <select className="select" value={formMat.familia_id} onChange={e => setFormMat(p => ({ ...p, familia_id: e.target.value, subfamilia_id: '' }))} disabled={!formMat.grupo_id}>
+                      <option value="">Seleccionar...</option>
+                      {formFamilias.map(f => <option key={f.id} value={f.id}>{f.codigo} - {f.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>Sub-familia</label>
+                    <select className="select" value={formMat.subfamilia_id} onChange={e => setFormMat(p => ({ ...p, subfamilia_id: e.target.value }))} disabled={!formMat.familia_id}>
+                      <option value="">Seleccionar...</option>
+                      {formSubfamilias.map(s => <option key={s.id} value={s.id}>{s.codigo} - {s.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>Código <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>· Auto</span></label>
+                    <input className="input" readOnly value={editandoId ? (materiales.find(m => m.id === editandoId)?.codigo || '') : (codigoAuto || '—')} style={{ color: 'var(--fg-muted)', background: 'var(--bg-subtle)', cursor: 'default' }} />
+                  </div>
+                  <div className="input-group" style={{ gridColumn: 'span 2' }}>
+                    <label>Descripción *</label>
+                    <input className="input" required value={formMat.descripcion} onChange={e => setFormMat(p => ({ ...p, descripcion: e.target.value }))} placeholder="Ej: Tornillo hexagonal M8x25mm" />
+                  </div>
+                  <div className="input-group">
+                    <label>UM *</label>
+                    <input className="input" required value={formMat.unidad} onChange={e => setFormMat(p => ({ ...p, unidad: e.target.value }))} placeholder="Ej: und, kg, m" />
+                  </div>
+                  <div className="input-group">
+                    <label>Nro Parte</label>
+                    <input className="input" value={formMat.nro_parte} onChange={e => setFormMat(p => ({ ...p, nro_parte: e.target.value }))} placeholder="Código del fabricante" />
+                  </div>
+                  <div className="input-group">
+                    <label>Unidades contenidas</label>
+                    <input className="input" type="number" min="0.01" step="0.01" value={formMat.unidades_contenidas} onChange={e => setFormMat(p => ({ ...p, unidades_contenidas: e.target.value }))} />
+                  </div>
+                  <div className="input-group">
+                    <label>Almacén por defecto</label>
+                    <select className="select" value={formMat.almacen_id} onChange={e => setFormMat(p => ({ ...p, almacen_id: e.target.value }))}>
+                      <option value="">Sin asignar</option>
+                      {almacenes.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>Ubicación</label>
+                    <input className="input" value={formMat.ubicacion} onChange={e => setFormMat(p => ({ ...p, ubicacion: e.target.value }))} placeholder="Ej: Pasillo A, Estante 3" />
+                  </div>
+                  <div className="input-group">
+                    <label>Precio unitario S/</label>
+                    <input className="input" type="number" min="0" step="0.01" value={formMat.precio_unitario} onChange={e => setFormMat(p => ({ ...p, precio_unitario: e.target.value }))} />
+                  </div>
+                  <div className="input-group" style={{ gridColumn: 'span 2' }}>
+                    <label>Observación</label>
+                    <input className="input" value={formMat.observacion} onChange={e => setFormMat(p => ({ ...p, observacion: e.target.value }))} />
+                  </div>
+                  <div className="input-group">
+                    <label>Estado</label>
+                    <select className="select" value={formMat.estado} onChange={e => setFormMat(p => ({ ...p, estado: e.target.value }))}>
+                      <option value="activo">Activo</option>
+                      <option value="inactivo">Inactivo</option>
+                    </select>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                    {editandoId && <button type="button" className="btn btn-secondary" onClick={resetFormMat}>Cancelar</button>}
+                    <button className="btn btn-primary" type="submit" disabled={saving} style={{ minWidth: 160 }}>{saving ? 'Guardando...' : editandoId ? 'Actualizar material' : <>{I.plus} Agregar material</>}</button>
+                  </div>
+                </div>
+              </form>
+
+              {/* Tabla catálogo */}
+              <div className="card">
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Código</th>
+                        <th>Descripción</th>
+                        <th>Grupo / Familia / Sub-familia</th>
+                        <th>UM</th>
+                        <th style={{ textAlign: 'right' }}>Precio unit.</th>
+                        <th>Almacén</th>
+                        <th>Estado</th>
+                        <th style={{ textAlign: 'right' }}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {materialsFiltrados.length === 0 && (
+                        <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--fg-muted)', padding: 24 }}>Sin materiales{Object.values(filtros).some(Boolean) ? ' para estos filtros' : '. Agrega uno arriba o importa desde Excel.'}</td></tr>
+                      )}
+                      {materialsFiltrados.map(m => (
+                        <tr key={m.id} style={{ background: editandoId === m.id ? 'var(--bg-subtle)' : '' }}>
+                          <td className="mono" style={{ fontSize: 12 }}>{m.codigo || '—'}</td>
+                          <td><strong>{m.descripcion}</strong>{m.nro_parte && <div className="text-muted" style={{ fontSize: 11 }}>P/N: {m.nro_parte}</div>}</td>
+                          <td className="text-muted" style={{ fontSize: 11 }}>{m.grupo_id ? grupoNombre(m.grupo_id) : '—'} / {m.familia_id ? famNombre(m.familia_id) : '—'} / {m.subfamilia_id ? subNombre(m.subfamilia_id) : '—'}</td>
+                          <td>{m.unidad}</td>
+                          <td style={{ textAlign: 'right' }}>{m.precio_unitario > 0 ? `S/ ${Number(m.precio_unitario).toFixed(2)}` : '—'}</td>
+                          <td className="text-muted" style={{ fontSize: 11 }}>{m.almacen_id ? almNombre(m.almacen_id) : '—'}</td>
+                          <td><span className={'badge ' + (m.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{m.estado}</span></td>
+                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <button className="icon-btn" title="Editar" onClick={() => editarMaterial(m)} style={{ color: 'var(--cyan)' }}>{I.edit}</button>
+                            <button className="icon-btn" title="Eliminar" onClick={() => eliminarMat(m)} style={{ color: 'var(--danger)' }}>{I.trash}</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+
+          {tab === 'jerarquia' && (
+            <>
+              {jerarErr && <div className="alert alert-danger" style={{ marginBottom: 12 }}>{jerarErr}</div>}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+
+                {/* Grupos */}
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Grupos</div>
+                  <form onSubmit={guardarGrupo} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                    <input className="input" placeholder="Código (2 dígitos)" value={formG.codigo} onChange={e => setFormG(p => ({ ...p, codigo: e.target.value }))} maxLength={2} />
+                    <input className="input" placeholder="Nombre del grupo *" value={formG.nombre} onChange={e => setFormG(p => ({ ...p, nombre: e.target.value }))} />
+                    <select className="select" value={formG.estado} onChange={e => setFormG(p => ({ ...p, estado: e.target.value }))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {editGId && <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setEditGId(null); setFormG(formGBase); }}>Cancelar</button>}
+                      <button className="btn btn-primary btn-sm" type="submit">{editGId ? 'Actualizar' : <>{I.plus} Agregar</>}</button>
+                    </div>
+                  </form>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {materialGrupos.map(g => (
+                      <div key={g.id} style={{ padding: '8px 10px', border: '1px solid', borderRadius: 6, background: selGrupoJ === g.id ? 'var(--cyan-lt)' : 'var(--bg-card)', borderColor: selGrupoJ === g.id ? 'var(--cyan)' : 'var(--border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <button type="button" onClick={() => { setSelGrupoJ(g.id); setSelFamiliaJ(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, flex: 1 }}>
+                            <span className="mono" style={{ fontSize: 11, color: 'var(--cyan-dk)' }}>{g.codigo}</span> <strong style={{ fontSize: 13 }}>{g.nombre}</strong>
+                            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2 }}>{materialFamilias.filter(f => f.grupo_id === g.id).length} familias</div>
+                          </button>
+                          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                            <button type="button" className="icon-btn" style={{ color: 'var(--cyan)', fontSize: 12 }} onClick={() => { setFormG({ codigo: g.codigo, nombre: g.nombre, estado: g.estado }); setEditGId(g.id); }}>{I.edit}</button>
+                            <button type="button" className="icon-btn" style={{ color: 'var(--danger)', fontSize: 12 }} onClick={() => { if(window.confirm(`Eliminar grupo "${g.nombre}"?`)) eliminarMatGrupo(g.id).catch(err => setJerarErr(err.message)); }}>{I.trash}</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {materialGrupos.length === 0 && <div style={{ color: 'var(--fg-muted)', fontSize: 12 }}>Sin grupos aún.</div>}
+                  </div>
+                </div>
+
+                {/* Familias */}
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Familias</div>
+                  <select className="select" style={{ marginBottom: 10 }} value={selGrupoJ} onChange={e => { setSelGrupoJ(e.target.value); setSelFamiliaJ(''); }}>
+                    <option value="">— Seleccionar grupo —</option>
+                    {materialGrupos.map(g => <option key={g.id} value={g.id}>{g.codigo} · {g.nombre}</option>)}
+                  </select>
+                  {selGrupoJ && (
+                    <form onSubmit={guardarFamilia} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                      <input className="input" placeholder="Código (2 dígitos)" value={formF.codigo} onChange={e => setFormF(p => ({ ...p, codigo: e.target.value }))} maxLength={2} />
+                      <input className="input" placeholder="Nombre de la familia *" value={formF.nombre} onChange={e => setFormF(p => ({ ...p, nombre: e.target.value }))} />
+                      <select className="select" value={formF.estado} onChange={e => setFormF(p => ({ ...p, estado: e.target.value }))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {editFId && <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setEditFId(null); setFormF(formFBase); }}>Cancelar</button>}
+                        <button className="btn btn-primary btn-sm" type="submit">{editFId ? 'Actualizar' : <>{I.plus} Agregar</>}</button>
+                      </div>
+                    </form>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {familiasPorGrupo.map(f => (
+                      <div key={f.id} style={{ padding: '8px 10px', border: '1px solid', borderRadius: 6, background: selFamiliaJ === f.id ? 'var(--cyan-lt)' : 'var(--bg-card)', borderColor: selFamiliaJ === f.id ? 'var(--cyan)' : 'var(--border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <button type="button" onClick={() => setSelFamiliaJ(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, flex: 1 }}>
+                            <span className="mono" style={{ fontSize: 11, color: 'var(--cyan-dk)' }}>{f.codigo}</span> <strong style={{ fontSize: 13 }}>{f.nombre}</strong>
+                            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2 }}>{materialSubfamilias.filter(s => s.familia_id === f.id).length} sub-familias</div>
+                          </button>
+                          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                            <button type="button" className="icon-btn" style={{ color: 'var(--cyan)', fontSize: 12 }} onClick={() => { setFormF({ codigo: f.codigo, nombre: f.nombre, estado: f.estado }); setEditFId(f.id); }}>{I.edit}</button>
+                            <button type="button" className="icon-btn" style={{ color: 'var(--danger)', fontSize: 12 }} onClick={() => { if(window.confirm(`Eliminar familia "${f.nombre}"?`)) eliminarMatFamilia(f.id).catch(err => setJerarErr(err.message)); }}>{I.trash}</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {selGrupoJ && familiasPorGrupo.length === 0 && <div style={{ color: 'var(--fg-muted)', fontSize: 12 }}>Sin familias en este grupo.</div>}
+                    {!selGrupoJ && <div style={{ color: 'var(--fg-muted)', fontSize: 12 }}>Selecciona un grupo arriba.</div>}
+                  </div>
+                </div>
+
+                {/* Sub-familias */}
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Sub-familias</div>
+                  <select className="select" style={{ marginBottom: 10 }} value={selFamiliaJ} onChange={e => setSelFamiliaJ(e.target.value)}>
+                    <option value="">— Seleccionar familia —</option>
+                    {familiasPorGrupo.map(f => <option key={f.id} value={f.id}>{f.codigo} · {f.nombre}</option>)}
+                  </select>
+                  {selFamiliaJ && (
+                    <form onSubmit={guardarSubfamilia} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                      <input className="input" placeholder="Código (2 dígitos)" value={formS.codigo} onChange={e => setFormS(p => ({ ...p, codigo: e.target.value }))} maxLength={2} />
+                      <input className="input" placeholder="Nombre de la sub-familia *" value={formS.nombre} onChange={e => setFormS(p => ({ ...p, nombre: e.target.value }))} />
+                      <select className="select" value={formS.estado} onChange={e => setFormS(p => ({ ...p, estado: e.target.value }))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {editSId && <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setEditSId(null); setFormS(formSBase); }}>Cancelar</button>}
+                        <button className="btn btn-primary btn-sm" type="submit">{editSId ? 'Actualizar' : <>{I.plus} Agregar</>}</button>
+                      </div>
+                    </form>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {subfamiliasPorFamilia.map(s => (
+                      <div key={s.id} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-card)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ flex: 1 }}>
+                            <span className="mono" style={{ fontSize: 11, color: 'var(--cyan-dk)' }}>{s.codigo}</span> <strong style={{ fontSize: 13 }}>{s.nombre}</strong>
+                            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2 }}>{materiales.filter(m => m.subfamilia_id === s.id).length} materiales</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                            <button type="button" className="icon-btn" style={{ color: 'var(--cyan)', fontSize: 12 }} onClick={() => { setFormS({ codigo: s.codigo, nombre: s.nombre, estado: s.estado }); setEditSId(s.id); }}>{I.edit}</button>
+                            <button type="button" className="icon-btn" style={{ color: 'var(--danger)', fontSize: 12 }} onClick={() => { if(window.confirm(`Eliminar sub-familia "${s.nombre}"?`)) eliminarMatSubfamilia(s.id).catch(err => setJerarErr(err.message)); }}>{I.trash}</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {selFamiliaJ && subfamiliasPorFamilia.length === 0 && <div style={{ color: 'var(--fg-muted)', fontSize: 12 }}>Sin sub-familias en esta familia.</div>}
+                    {!selFamiliaJ && <div style={{ color: 'var(--fg-muted)', fontSize: 12 }}>Selecciona una familia arriba.</div>}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ============ CONFIGURACIÓN Y MAESTROS ============
 function Maestros() {
   const {
@@ -2392,7 +2908,9 @@ function Maestros() {
 
       {showCecoCebe && <CecoCebePanel onClose={() => setShowCecoCebe(false)} />}
 
-      {sel && <>
+      {sel?.id === 'mst_materiales' && <MaterialesMaestro onClose={() => setSel(null)} />}
+
+      {sel && sel.id !== 'mst_materiales' && <>
         <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
         <div className="side-panel" style={{width:'min(800px, 96vw)'}}>
           <div className="side-panel-head">
@@ -3057,11 +3575,22 @@ function Parametros() {
     crearSerieDocumentaria, actualizarSerieDocumentaria, eliminarSerieDocumentaria,
     crearSlaPlantilla, actualizarSlaPlantilla, eliminarSlaPlantilla,
     crearDiccionarioComercial, actualizarDiccionarioComercial, eliminarDiccionarioComercial,
+    tipoCambioHoy,
   } = useApp();
   const [saving, setSaving] = useState(false);
   const [savingSerie, setSavingSerie] = useState(false);
   const [savingSla, setSavingSla] = useState(false);
   const [savingDicc, setSavingDicc] = useState(false);
+
+  // ── Tipos de Cambio ──
+  const [tcHoy, setTcHoy] = useState(null);
+  const [historialTC, setHistorialTC] = useState([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
+  const [actualizando, setActualizando] = useState(false);
+  const hoy = new Date().toISOString().split('T')[0];
+  const [tcManual, setTcManual] = useState({ fecha: hoy, usd: '', eur: '', fuente: 'manual' });
+  const [savingManual, setSavingManual] = useState(false);
+  const [savedMsg, setSavedMsg] = useState('');
 
   const [datos, setDatos] = useState({ razon_social:'', ruc:'', email_comercial:'', sitio_web:'', direccion:'', firmante:'', cargo_firmante:'' });
   const [conds, setConds] = useState({ cond_forma_pago:'', cond_validez:'', cond_penalidad:'', cond_inicio_proyecto:'', cond_alcance:'', cond_integraciones:'', cond_confidencialidad:'', cond_glosa_factura:'' });
@@ -3107,6 +3636,68 @@ function Parametros() {
     if (empresaConfig.logo_url) setLogoPreview(empresaConfig.logo_url);
     if (empresaConfig.firma_url) setFirmaPreview(empresaConfig.firma_url);
   }, [empresaConfig]);
+
+  useEffect(() => {
+    if (paramSection !== 'tipo_cambio') return;
+    setLoadingHistorial(true);
+    getSupabaseClient().then(supabase =>
+      supabase.from('tipo_cambio_historico').select('*').eq('moneda_base', 'PEN')
+        .order('fecha', { ascending: false }).limit(30)
+    ).then(({ data }) => {
+      setHistorialTC(data || []);
+      if (data?.[0]) setTcHoy(data[0]);
+      else if (tipoCambioHoy?.usd) setTcHoy(tipoCambioHoy);
+      setLoadingHistorial(false);
+    }).catch(() => {
+      if (tipoCambioHoy?.usd) setTcHoy(tipoCambioHoy);
+      setLoadingHistorial(false);
+    });
+  }, [paramSection]);
+
+  const handleActualizarTC = async () => {
+    setActualizando(true);
+    try {
+      const res = await fetch('https://open.er-api.com/v6/latest/PEN');
+      const json = await res.json();
+      if (json.result !== 'success') throw new Error('La API no devolvió datos válidos.');
+      const row = { fecha: hoy, moneda_base: 'PEN', usd: json.rates?.USD ?? null, eur: json.rates?.EUR ?? null, fuente: 'open.er-api.com' };
+      const supabase = await getSupabaseClient();
+      const { error } = await supabase.from('tipo_cambio_historico').upsert(row, { onConflict: 'fecha,moneda_base' });
+      if (error) throw error;
+      const { data } = await supabase.from('tipo_cambio_historico').select('*').eq('moneda_base', 'PEN').order('fecha', { ascending: false }).limit(30);
+      setHistorialTC(data || []);
+      setTcHoy({ ...row, creado_en: new Date().toISOString() });
+      addNotificacion('Tipo de cambio actualizado desde open.er-api.com');
+    } catch (err) {
+      addNotificacion(`No se pudo actualizar el TC: ${err?.message || 'error'}`);
+    } finally {
+      setActualizando(false);
+    }
+  };
+
+  const handleGuardarManual = async (e) => {
+    e.preventDefault();
+    const usdVal = Number(tcManual.usd);
+    const eurVal = Number(tcManual.eur);
+    if (!usdVal || !eurVal) { addNotificacion('Ingresa valores válidos para USD y EUR.'); return; }
+    setSavingManual(true); setSavedMsg('');
+    try {
+      const row = { fecha: tcManual.fecha || hoy, moneda_base: 'PEN', usd: 1 / usdVal, eur: 1 / eurVal, fuente: tcManual.fuente || 'manual' };
+      const supabase = await getSupabaseClient();
+      const { error } = await supabase.from('tipo_cambio_historico').upsert(row, { onConflict: 'fecha,moneda_base' });
+      if (error) throw error;
+      const { data } = await supabase.from('tipo_cambio_historico').select('*').eq('moneda_base', 'PEN').order('fecha', { ascending: false }).limit(30);
+      setHistorialTC(data || []);
+      if (data?.[0]) setTcHoy(data[0]);
+      setSavedMsg('Tipo de cambio guardado correctamente.');
+      setTcManual({ fecha: hoy, usd: '', eur: '', fuente: 'manual' });
+      addNotificacion('TC manual guardado.');
+    } catch (err) {
+      addNotificacion(`Error al guardar TC: ${err?.message || 'error'}`);
+    } finally {
+      setSavingManual(false);
+    }
+  };
 
   const pickImagen = (campo, setFile, setPreview) => (e) => {
     const file = e.target.files?.[0];
@@ -3244,6 +3835,7 @@ function Parametros() {
     { key: 'flujos', title: 'Flujos', description: 'Estados por documento, transiciones y reglas de alerta para cada modulo.' },
     { key: 'sla', title: 'SLA', description: 'Plantillas de respuesta y resolucion para contratos de servicio.' },
     { key: 'cuentas', title: 'Cuentas', description: 'Cuentas bancarias, bancos y saldos base para tesoreria y pagos.' },
+    { key: 'tipo_cambio', title: 'Tipos de Cambio', description: 'Historial diario de tipos de cambio. Fuente: open.er-api.com con ingreso manual como respaldo.' },
   ];
   const activeParamSection = paramsSections.find(s => s.key === paramSection) || paramsSections[0];
 
@@ -3545,11 +4137,146 @@ function Parametros() {
       <div className="params-section params-section-cuentas">
         <CuentasBancariasSection />
       </div>
+
+      {/* ── Tipos de Cambio ── */}
+      <div className="params-section params-section-tipo_cambio">
+        {(() => {
+          const tcUSD = tcHoy?.usd ? Math.round(1 / tcHoy.usd * 10000) / 10000 : null;
+          const tcEUR = tcHoy?.eur ? Math.round(1 / tcHoy.eur * 10000) / 10000 : null;
+          const creado = tcHoy?.creado_en ? new Date(tcHoy.creado_en) : null;
+          const esDesactualizado = creado ? (Date.now() - creado.getTime()) > 12 * 3600 * 1000 : false;
+          const horaStr = creado ? creado.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : null;
+          return (
+            <>
+              {/* Bloque 1 — TC del día */}
+              <div className="card params-card mb-6">
+                <div className="card-head">
+                  <h3>TC del día</h3>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {esDesactualizado && <span className="badge badge-orange">Desactualizado</span>}
+                    <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={handleActualizarTC} disabled={actualizando}>
+                      {actualizando ? 'Actualizando...' : '↻ Actualizar ahora'}
+                    </button>
+                  </div>
+                </div>
+                <div className="card-body">
+                  {tcHoy ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+                      <div style={{ background: 'var(--bg-subtle)', borderRadius: 10, padding: '16px 20px' }}>
+                        <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>Fecha</div>
+                        <div style={{ fontWeight: 700, fontSize: 15 }}>{tcHoy.fecha}</div>
+                        {horaStr && <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2 }}>Actualizado {horaStr}</div>}
+                      </div>
+                      <div style={{ background: 'var(--bg-subtle)', borderRadius: 10, padding: '16px 20px' }}>
+                        <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>Dólar americano</div>
+                        <div style={{ fontWeight: 700, fontSize: 20 }}>S/ {tcUSD?.toFixed(4) ?? '—'}</div>
+                        <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>por 1 USD</div>
+                      </div>
+                      <div style={{ background: 'var(--bg-subtle)', borderRadius: 10, padding: '16px 20px' }}>
+                        <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>Euro</div>
+                        <div style={{ fontWeight: 700, fontSize: 20 }}>S/ {tcEUR?.toFixed(4) ?? '—'}</div>
+                        <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>por 1 EUR</div>
+                      </div>
+                      <div style={{ background: 'var(--bg-subtle)', borderRadius: 10, padding: '16px 20px' }}>
+                        <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>Fuente</div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{tcHoy.fuente || '—'}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
+                      {loadingHistorial ? 'Cargando...' : 'Sin datos de tipo de cambio. Haz clic en "Actualizar ahora".'}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Bloque 2 — Historial */}
+              <div className="card params-card mb-6">
+                <div className="card-head"><h3>Historial de tipos de cambio</h3><span className="badge badge-gray" style={{ fontSize: 11 }}>Últimos 30 registros</span></div>
+                <div className="card-body" style={{ padding: 0 }}>
+                  {loadingHistorial ? (
+                    <div style={{ padding: 20, color: 'var(--fg-muted)', fontSize: 13 }}>Cargando historial...</div>
+                  ) : historialTC.length === 0 ? (
+                    <div style={{ padding: 20, color: 'var(--fg-muted)', fontSize: 13 }}>Sin registros históricos.</div>
+                  ) : (
+                    <div className="table-wrap">
+                      <table className="tbl">
+                        <thead>
+                          <tr>
+                            <th>Fecha</th>
+                            <th style={{ textAlign: 'right' }}>USD (S/ por 1 USD)</th>
+                            <th style={{ textAlign: 'right' }}>EUR (S/ por 1 EUR)</th>
+                            <th>Fuente</th>
+                            <th>Registrado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historialTC.map(r => {
+                            const rUSD = r.usd ? Math.round(1 / r.usd * 10000) / 10000 : null;
+                            const rEUR = r.eur ? Math.round(1 / r.eur * 10000) / 10000 : null;
+                            const rHora = r.creado_en ? new Date(r.creado_en).toLocaleString('es-PE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+                            return (
+                              <tr key={r.id}>
+                                <td style={{ fontWeight: 600 }}>{r.fecha}</td>
+                                <td style={{ textAlign: 'right' }}>{rUSD != null ? `S/ ${rUSD.toFixed(4)}` : '—'}</td>
+                                <td style={{ textAlign: 'right' }}>{rEUR != null ? `S/ ${rEUR.toFixed(4)}` : '—'}</td>
+                                <td style={{ color: 'var(--fg-muted)', fontSize: 12 }}>{r.fuente || '—'}</td>
+                                <td style={{ color: 'var(--fg-muted)', fontSize: 12 }}>{rHora}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Bloque 3 — Ingreso manual */}
+              <div className="card params-card">
+                <div className="card-head"><h3>Ingreso manual de TC</h3></div>
+                <div className="card-body">
+                  <form onSubmit={handleGuardarManual} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, alignItems: 'end' }}>
+                    <div className="input-group" style={{ margin: 0 }}>
+                      <label>Fecha</label>
+                      <input className="input" type="date" value={tcManual.fecha} onChange={e => setTcManual(p => ({ ...p, fecha: e.target.value }))} />
+                    </div>
+                    <div className="input-group" style={{ margin: 0 }}>
+                      <label>USD (S/ por 1 USD)</label>
+                      <input className="input" type="number" step="0.0001" min="0.01" placeholder="ej: 3.4200" value={tcManual.usd} onChange={e => setTcManual(p => ({ ...p, usd: e.target.value }))} />
+                    </div>
+                    <div className="input-group" style={{ margin: 0 }}>
+                      <label>EUR (S/ por 1 EUR)</label>
+                      <input className="input" type="number" step="0.0001" min="0.01" placeholder="ej: 3.7500" value={tcManual.eur} onChange={e => setTcManual(p => ({ ...p, eur: e.target.value }))} />
+                    </div>
+                    <div className="input-group" style={{ margin: 0 }}>
+                      <label>Fuente</label>
+                      <input className="input" placeholder="manual" value={tcManual.fuente} onChange={e => setTcManual(p => ({ ...p, fuente: e.target.value }))} />
+                    </div>
+                    <div>
+                      <button type="submit" className="btn btn-primary" disabled={savingManual} style={{ width: '100%' }}>
+                        {savingManual ? 'Guardando...' : 'Guardar TC'}
+                      </button>
+                    </div>
+                  </form>
+                  {savedMsg && <div className="badge badge-green" style={{ marginTop: 12 }}>{savedMsg}</div>}
+                  <p style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 10 }}>
+                    Los valores ingresados se convierten automáticamente al formato interno (1/valor) para mantener consistencia con los registros de la API.
+                  </p>
+                </div>
+              </div>
+            </>
+          );
+        })()}
+      </div>
+
+          {paramSection !== 'tipo_cambio' && (
           <div className="params-footer-actions">
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
               {I.save} {saving ? 'Guardando...' : 'Guardar cambios'}
             </button>
           </div>
+          )}
         </div>
 
       </div>

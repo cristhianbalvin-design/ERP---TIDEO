@@ -379,7 +379,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
 }
 
 export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey, dark, setDark, setMobileMode, openSelectorSignal }) {
-  const { notificaciones, markNotificacionesRead, dataMode, authUser, todasMembresias, seleccionarEmpresa, signOut } = useApp();
+  const { notificaciones, markNotificacionesRead, dataMode, authUser, todasMembresias, seleccionarEmpresa, signOut, tipoCambioHoy } = useApp();
   const [compOpen, setCompOpen] = useState(false);
   useEffect(() => { if (openSelectorSignal > 0) setCompOpen(true); }, [openSelectorSignal]);
   const [roleOpen, setRoleOpen] = useState(false);
@@ -418,6 +418,27 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
       
 
       <div className="header-spacer"/>
+
+      {tipoCambioHoy?.usd && !tipoCambioHoy.cargando && (() => {
+        const tcUSD = Math.round(1 / tipoCambioHoy.usd * 100) / 100;
+        const tcEUR = tipoCambioHoy.eur ? Math.round(1 / tipoCambioHoy.eur * 100) / 100 : null;
+        const esHoy = tipoCambioHoy.fecha === new Date().toISOString().split('T')[0];
+        const fechaLabel = esHoy ? 'hoy' : (tipoCambioHoy.fecha || '').slice(5).replace('-', '/');
+        const tooltip = [
+          `1 USD = S/ ${tcUSD.toFixed(2)}`,
+          tcEUR ? `1 EUR = S/ ${tcEUR.toFixed(2)}` : '',
+          `Fuente: ${tipoCambioHoy.fuente || 'open.er-api.com'}`,
+          `Actualizado: ${(tipoCambioHoy.fecha || '').split('-').reverse().join('/')}`,
+        ].filter(Boolean).join('\n');
+        return (
+          <div
+            title={tooltip}
+            style={{ fontSize: 11, fontWeight: 700, color: tipoCambioHoy.desactualizado ? '#f97316' : 'rgba(255,255,255,0.55)', letterSpacing: '0.01em', cursor: 'default', whiteSpace: 'nowrap', userSelect: 'none' }}
+          >
+            TC: S/ {tcUSD.toFixed(2)} · {fechaLabel}{tipoCambioHoy.desactualizado ? ' ⚠️' : ''}
+          </div>
+        );
+      })()}
 
       <div className="row" style={{gap:8}}>
         <button className="icon-btn" onClick={() => setMobileMode(true)} title="Modo campo">{I.mobile}</button>

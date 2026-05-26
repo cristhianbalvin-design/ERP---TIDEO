@@ -2119,7 +2119,8 @@ function ComprasView({ screen, setScreen }) {
   const [guardando, setGuardando] = useState(false);
 
   const setC = (k, v) => setCampos(p => ({ ...p, [k]: v }));
-  const otsActivas = (ots || []).filter(o => ['programada','ejecucion'].includes(o.estado) && (!empresa?.id || !o.empresa_id || o.empresa_id === empresa.id));
+  const ESTADOS_CERRADOS = ['cerrada','cerrada_tecnica','anulada','valorizada','facturada','cerrado_conforme'];
+  const otsActivas = (ots || []).filter(o => !ESTADOS_CERRADOS.includes(o.estado) && (!empresa?.id || !o.empresa_id || o.empresa_id === empresa.id));
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
 
   const reiniciar = () => {
@@ -2192,7 +2193,7 @@ function ComprasView({ screen, setScreen }) {
       } else {
         crearGasto(gastoBase);
       }
-      reiniciar();
+      setPaso('guardado');
     } finally {
       setGuardando(false);
     }
@@ -2294,9 +2295,25 @@ function ComprasView({ screen, setScreen }) {
         <div className="row mt-6" style={{gap:8}}>
           <button className="btn btn-secondary" onClick={reiniciar}>Nueva foto</button>
           <button className="btn btn-primary flex-1" onClick={guardar} disabled={guardando || !cecoId || (genCxP && !cxpVence)}>
-            {guardando ? 'Guardando...' : `${I.check} Guardar gasto`}
+            {guardando ? 'Guardando...' : <>{I.check} Guardar gasto</>}
           </button>
         </div>
+      </div>
+    )}
+
+    {paso === 'guardado' && (
+      <div className="mobile-content" style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:300,gap:16,textAlign:'center'}}>
+        <div style={{width:56,height:56,borderRadius:'50%',background:'var(--green-lt,#f0fdf4)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--green)'}}>
+          {I.check}
+        </div>
+        <div style={{fontWeight:700,fontSize:16}}>Gasto guardado</div>
+        <div style={{fontSize:13,color:'var(--fg-muted)'}}>
+          {campos.proveedor || 'Gasto en campo'} — {campos.monto_total ? `S/ ${campos.monto_total}` : ''}
+          {genCxP && <div style={{marginTop:4,fontSize:12}}>CxP generada</div>}
+        </div>
+        <button className="btn btn-primary" style={{marginTop:8}} onClick={reiniciar}>
+          {I.camera} Nueva captura
+        </button>
       </div>
     )}
 

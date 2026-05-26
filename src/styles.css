@@ -1314,6 +1314,7 @@ body {
 .btn svg { width: 15px; height: 15px; stroke-width: 2; }
 .btn-primary { background: var(--green); color: #fff; }
 .btn-primary:hover { background: var(--green-dk); }
+.btn:disabled, .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
 .btn-secondary { background: var(--surface); color: var(--fg); border-color: var(--border); }
 .btn-secondary:hover { background: var(--surface-hover); border-color: var(--slate-300); }
 .btn-navy { background: var(--navy); color: #fff; }
@@ -1701,7 +1702,8 @@ body {
 .params-page[data-section="documentos"] .params-section-documentos,
 .params-page[data-section="flujos"] .params-section-flujos,
 .params-page[data-section="sla"] .params-section-sla,
-.params-page[data-section="cuentas"] .params-section-cuentas {
+.params-page[data-section="cuentas"] .params-section-cuentas,
+.params-page[data-section="tipo_cambio"] .params-section-tipo_cambio {
   display: block;
 }
 .params-page[data-section="biblioteca"] .params-section-biblioteca.params-split-grid,
@@ -3469,6 +3471,76 @@ body {
 .text-muted { color: var(--fg-muted); }
 .text-subtle { color: var(--fg-subtle); }
 .mt-4 { margin-top: 16px; } .mt-6 { margin-top: 24px; } .mb-4 { margin-bottom: 16px; }
+
+/* Autocomplete */
+.autocomplete-menu {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(26,43,74,0.14), 0 2px 6px rgba(26,43,74,0.08);
+  color: var(--fg);
+  overflow-y: auto;
+}
+.autocomplete-menu-floating {
+  position: fixed;
+  z-index: 9999;
+}
+.autocomplete-menu-inline {
+  position: relative;
+  z-index: 3;
+  min-width: 0;
+  margin-top: 5px;
+  margin-bottom: 4px;
+}
+.autocomplete-option {
+  padding: 7px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface);
+}
+.autocomplete-option:last-child { border-bottom: 0; }
+.autocomplete-option:hover { background: var(--surface-hover); }
+.autocomplete-option-title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--fg);
+}
+.autocomplete-option-meta {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--fg-muted);
+  margin-top: 2px;
+}
+.autocomplete-code {
+  color: var(--cyan-dk);
+  margin-right: 6px;
+}
+.autocomplete-create-option {
+  color: var(--cyan);
+  font-size: 12px;
+  font-weight: 700;
+  border-top: 1px solid var(--border);
+}
+.autocomplete-empty {
+  padding: 10px 14px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+.planner-inline-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  color: currentColor;
+}
+.planner-inline-icon svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+}
 
 /* Dropdown */
 .dropdown {

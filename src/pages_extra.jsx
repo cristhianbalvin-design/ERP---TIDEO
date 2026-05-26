@@ -1671,7 +1671,7 @@ const MESES_VAL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Ago
 const MODELO_LABELS = { avance_pct: 'Por avance %', costo_real: 'Por costo real', hitos_pago: 'Por hitos de pago' };
 
 function Valorizacion({ role }) {
-  const { valorizaciones, osClientes, cuentas, cotizaciones, partes, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion, emitirFacturaDesdeValorizacion, ots, cierresTecnicos, navigate, searchQuery } = useApp();
+  const { valorizaciones, osClientes, cuentas, cotizaciones, partes, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion, emitirFacturaDesdeValorizacion, ots, cierresTecnicos, navigate, searchQuery, personalOperativo, personalAdmin } = useApp();
   const [editing, setEditing] = useState(false);
   const [step, setStep] = useState(1);
   const [selVal, setSelVal] = useState(null);
@@ -1711,6 +1711,8 @@ function Valorizacion({ role }) {
     const c = cierresTecnicos.find(ct => ct.ot_id === otId);
     return ['digital', 'fisico'].includes(c?.conformidad_cliente?.tipo);
   };
+  // OTs en ejecucion no tienen cierre técnico aún: la conformidad se gestiona externamente para avance parcial
+  const conformidadOK = ot => ot.estado === 'ejecucion' || conformidadCompleta(ot.id);
   const getOs = id => osClientes.find(o => o.id === id);
   const monedaOs = getOs(selOs)?.moneda || 'PEN';
   const getCot = osId => (cotizaciones || []).find(c => c.id === getOs(osId)?.cotizacion_id);
@@ -1721,7 +1723,8 @@ function Valorizacion({ role }) {
   const getClienteId = osId => getOs(osId)?.cuenta_id;
 
   // OTs for editing
-  const osConOts = osClientes.filter(os => ots.some(ot => ot.os_cliente_id === os.id && ot.estado === 'cerrada' && conformidadCompleta(ot.id)));
+  const ESTADOS_VALORIZABLES = ['ejecucion', 'cerrada'];
+  const osConOts = osClientes.filter(os => ots.some(ot => ot.os_cliente_id === os.id && ESTADOS_VALORIZABLES.includes(ot.estado) && conformidadOK(ot)));
 
   // ── PARTE 5: Validation helpers ───────────────────────────────────────
   // Duplicate OS+periodo in borrador/aprobada (excluding the one being edited)
@@ -1734,26 +1737,29 @@ function Valorizacion({ role }) {
       )
     : null;
 
-  // OT IDs already locked in non-anulada valorizaciones (excluding the one being edited)
-  const otIdsEnUso = new Set(
+  // Solo bloquear OTs en borradores sin aprobar (evitar doble selección simultánea)
+  const otIdsEnBorrador = new Set(
     valorizaciones
-      .filter(v => v.estado !== 'anulada' && v.id !== editingValId)
+      .filter(v => v.estado === 'borrador' && v.id !== editingValId)
       .flatMap(v => v.ot_ids || [])
   );
 
-  // OTs blocked by another valorización
   const otsDisponibles = selOs ? ots.filter(ot =>
     ot.os_cliente_id === selOs &&
-    ot.estado === 'cerrada' &&
-    conformidadCompleta(ot.id) &&
-    !otIdsEnUso.has(ot.id)
+    ESTADOS_VALORIZABLES.includes(ot.estado) &&
+    conformidadOK(ot) &&
+    !otIdsEnBorrador.has(ot.id)
   ) : [];
-  const otsConformidadPend = selOs ? ots.filter(ot => ot.os_cliente_id === selOs && ot.estado === 'cerrada' && !conformidadCompleta(ot.id)) : [];
-  const otsBloqueadasOtraVal = selOs ? ots.filter(ot =>
+  const otsConformidadPend = selOs ? ots.filter(ot =>
     ot.os_cliente_id === selOs &&
-    ot.estado === 'cerrada' &&
-    conformidadCompleta(ot.id) &&
-    otIdsEnUso.has(ot.id)
+    ESTADOS_VALORIZABLES.includes(ot.estado) &&
+    !conformidadOK(ot)
+  ) : [];
+  const otsBloqueadasBorrador = selOs ? ots.filter(ot =>
+    ot.os_cliente_id === selOs &&
+    ESTADOS_VALORIZABLES.includes(ot.estado) &&
+    conformidadOK(ot) &&
+    otIdsEnBorrador.has(ot.id)
   ) : [];
 
   // Partida editors ───────────────────────────────────────────────────
@@ -1795,6 +1801,14 @@ function Valorizacion({ role }) {
     }
 
     if (modelo === 'costo_real') {
+      const allPersonal = [...(personalOperativo || []), ...(personalAdmin || [])];
+      const calcCostoHora = (personaId) => {
+        const p = allPersonal.find(x => x.id === personaId);
+        const explicit = Number(p?.costo_hora_real ?? p?.costo ?? p?.costo_hora ?? 0);
+        if (explicit > 0) return explicit;
+        const rem = Number(p?.remuneracion ?? 0);
+        return rem > 0 ? Math.round(rem / 240 * 100) / 100 : 0;
+      };
       const costoRealTodas = otIds.reduce((s, id) => s + Number(ots.find(o => o.id === id)?.costoReal || 0), 0);
       const defaultMargen = costoRealTodas > 0 && montoBase > 0
         ? Math.max(5, Math.min(100, Math.round((montoBase / costoRealTodas - 1) * 100)))
@@ -1803,12 +1817,15 @@ function Valorizacion({ role }) {
         const ot = ots.find(o => o.id === otId);
         const ct = cierresTecnicos.find(c => c.ot_id === otId);
         const partesOt = (partes || []).filter(p => p.ot_id === otId && p.estado === 'aprobado');
-        const horas = Number(ct?.horas_total || 0) || partesOt.reduce((s, p) => s + Number(p.horas || 0), 0);
-        const costoMO = horas * 80;
-        const costoTerceros = Number(ct?.costo_terceros || 0);
-        const costoLogistica = Number(ct?.costo_logistica || 0);
-        const costoRealOt = Number(ot?.costoReal || 0);
-        const costoMateriales = Math.max(0, costoRealOt - costoMO - costoTerceros - costoLogistica);
+        const costoMO = partesOt.reduce((s, p) => s + Number(p.horas || 0) * calcCostoHora(p.tecnico_id), 0);
+        const costoMateriales = partesOt.reduce((s, p) =>
+          s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
+        const costoTerceros = partesOt.reduce((s, p) =>
+          s + (p.terceros_lineas || []).reduce((sm, l) => sm + Number(l.monto || 0), 0), 0)
+          + Number(ct?.costo_terceros || 0);
+        const costoLogistica = partesOt.reduce((s, p) =>
+          s + (p.logistica_lineas || []).reduce((sm, l) => sm + Number(l.monto || 0), 0), 0)
+          + Number(ct?.costo_logistica || 0);
         const costoReal = costoMO + costoMateriales + costoTerceros + costoLogistica;
         const margenPct = defaultMargen;
         return {
@@ -1818,8 +1835,8 @@ function Valorizacion({ role }) {
           precio_unitario: Math.round(costoReal * (1 + margenPct / 100) * 100) / 100,
           _costo_mo: Math.round(costoMO * 100) / 100,
           _costo_materiales: Math.round(costoMateriales * 100) / 100,
-          _costo_terceros: costoTerceros,
-          _costo_logistica: costoLogistica,
+          _costo_terceros: Math.round(costoTerceros * 100) / 100,
+          _costo_logistica: Math.round(costoLogistica * 100) / 100,
           _costo_real: Math.round(costoReal * 100) / 100,
           _margen_pct: margenPct,
         };
@@ -1848,7 +1865,7 @@ function Valorizacion({ role }) {
   // ── Step transitions ──────────────────────────────────────────────────
   const handleSelOs = osId => {
     setSelOs(osId);
-    const dis = osId ? ots.filter(ot => ot.os_cliente_id === osId && ot.estado === 'cerrada' && conformidadCompleta(ot.id)) : [];
+    const dis = osId ? ots.filter(ot => ot.os_cliente_id === osId && ESTADOS_VALORIZABLES.includes(ot.estado) && conformidadOK(ot)) : [];
     setOtSeleccionadas(dis.map(ot => ot.id));
   };
   const advanceToStep3 = () => { setPartidas(computePartidas(otSeleccionadas)); setStep(3); };
@@ -1944,6 +1961,16 @@ function Valorizacion({ role }) {
             <div style={{display:'flex', alignItems:'center', gap:12}}>
               <h1 className="page-title" style={{margin:0}}>{v.numero}</h1>
               <span className={'badge ' + badgeC(v.estado)} style={{fontSize:13}}>{badgeL(v.estado)}</span>
+              {v.tipo === 'avance' && (
+                <span style={{fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:4, background:'color-mix(in srgb, var(--orange) 15%, transparent)', color:'var(--orange)'}}>
+                  Avance parcial
+                </span>
+              )}
+              {v.tipo === 'final' && (
+                <span style={{fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:4, background:'color-mix(in srgb, var(--green) 15%, transparent)', color:'var(--green)'}}>
+                  Valorización final
+                </span>
+              )}
             </div>
             <div className="page-sub">
               <button className="btn btn-ghost" style={{padding:0, fontSize:13, color:'var(--cyan)'}}
@@ -2088,7 +2115,7 @@ function Valorizacion({ role }) {
                     <div style={{display:'flex', gap:20, marginTop:6, fontSize:11, color:'var(--fg-muted)', flexWrap:'wrap'}}>
                       <span>Avance: <strong style={{color:'var(--cyan)'}}>{ct?.avance_final ?? ot.avance ?? '—'}%</strong></span>
                       <span>Cierre: <strong style={{color:'var(--fg)'}}>{ct?.fecha || ot.fecha_fin || '—'}</strong></span>
-                      <span>Costo real: <strong style={{color:'var(--fg)'}}>{money(ot.costoReal || 0)}</strong></span>
+                      <span>Costo real: <strong style={{color:'var(--fg)'}}>{moneyCurrency(ot.costoReal || 0, monedaOs)}</strong></span>
                     </div>
                   </div>
                   <button className="btn btn-secondary btn-sm" style={{fontSize:11, whiteSpace:'nowrap'}}
@@ -2223,7 +2250,7 @@ function Valorizacion({ role }) {
                   </select>
                   {osConOts.length === 0 && (
                     <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:6}}>
-                      No hay OS con OTs cerradas y conformidad completa listas para valorizar.
+                      No hay OS con OTs en ejecución o cerradas con conformidad registrada.
                     </div>
                   )}
                   {valDuplicada && (
@@ -2260,7 +2287,7 @@ function Valorizacion({ role }) {
               <div style={{marginBottom:16}}>
                 <h3 style={{margin:0}}>OTs disponibles para valorizar</h3>
                 <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
-                  OTs cerradas con conformidad del cliente. Selecciona las que incluirás en esta valorización.
+                  OTs en ejecución o cerradas con conformidad del cliente. Las de avance parcial no cambian de estado al valorizar.
                 </div>
               </div>
               {otsDisponibles.length === 0 ? (
@@ -2270,6 +2297,7 @@ function Valorizacion({ role }) {
               ) : otsDisponibles.map(ot => {
                 const ct = cierresTecnicos.find(c => c.ot_id === ot.id);
                 const checked = otSeleccionadas.includes(ot.id);
+                const esEjecucion = ot.estado === 'ejecucion';
                 return (
                   <div key={ot.id} style={{
                     display:'flex', alignItems:'flex-start', gap:12, padding:'12px 14px',
@@ -2279,15 +2307,24 @@ function Valorizacion({ role }) {
                   }} onClick={() => setOtSeleccionadas(prev => prev.includes(ot.id) ? prev.filter(id => id !== ot.id) : [...prev, ot.id])}>
                     <input type="checkbox" checked={checked} readOnly style={{marginTop:3, pointerEvents:'none'}} />
                     <div style={{flex:1, minWidth:0}}>
-                      <div style={{fontWeight:600, fontSize:13}}>{ot.numero}</div>
+                      <div style={{display:'flex', alignItems:'center', gap:8}}>
+                        <span style={{fontWeight:600, fontSize:13}}>{ot.numero}</span>
+                        <span style={{
+                          fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:4,
+                          background: esEjecucion ? 'color-mix(in srgb, var(--orange) 15%, transparent)' : 'color-mix(in srgb, var(--green) 15%, transparent)',
+                          color: esEjecucion ? 'var(--orange)' : 'var(--green)',
+                        }}>
+                          {esEjecucion ? 'En ejecución' : 'Cerrada'}
+                        </span>
+                      </div>
                       <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
                         {ot.descripcion || '—'}
                       </div>
                       <div style={{display:'flex', gap:20, marginTop:6, fontSize:11, color:'var(--fg-muted)', flexWrap:'wrap'}}>
-                        <span>Cierre: <strong style={{color:'var(--fg)'}}>{ct?.fecha || ot.fecha_fin || '—'}</strong></span>
+                        {!esEjecucion && <span>Cierre: <strong style={{color:'var(--fg)'}}>{ct?.fecha || ot.fecha_fin || '—'}</strong></span>}
                         <span>Avance: <strong style={{color:'var(--cyan)'}}>{ct?.avance_final ?? ot.avance ?? '—'}%</strong></span>
                         <span>Horas: <strong style={{color:'var(--fg)'}}>{ct?.horas_total || '—'}</strong></span>
-                        <span>Costo real: <strong style={{color:'var(--fg)'}}>{money(ot.costoReal || 0)}</strong></span>
+                        <span>Costo real: <strong style={{color:'var(--fg)'}}>{moneyCurrency(ot.costoReal || 0, monedaOs)}</strong></span>
                       </div>
                     </div>
                   </div>
@@ -2306,12 +2343,12 @@ function Valorizacion({ role }) {
                   ))}
                 </div>
               )}
-              {otsBloqueadasOtraVal.length > 0 && (
+              {otsBloqueadasBorrador.length > 0 && (
                 <div style={{marginTop:12, padding:'12px 14px', borderRadius:6, border:'1px solid var(--fg-muted)', background:'var(--bg-subtle)'}}>
                   <div style={{fontWeight:600, fontSize:13, color:'var(--fg-muted)', marginBottom:6}}>
-                    {otsBloqueadasOtraVal.length} OT{otsBloqueadasOtraVal.length !== 1 ? 's' : ''} incluidas en otra valorización activa
+                    {otsBloqueadasBorrador.length} OT{otsBloqueadasBorrador.length !== 1 ? 's' : ''} en borrador sin aprobar — no disponibles
                   </div>
-                  {otsBloqueadasOtraVal.map(ot => (
+                  {otsBloqueadasBorrador.map(ot => (
                     <div key={ot.id} style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
                       {ot.numero} — {ot.descripcion || ''}
                     </div>
@@ -2433,6 +2470,18 @@ function Valorizacion({ role }) {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr style={{borderTop:'2px solid var(--border)'}}>
+                        <td style={{fontWeight:700, fontSize:13}}>Total a valorizar</td>
+                        <td className="num" style={{fontWeight:600, color:'var(--fg-muted)'}}>{moneyCurrency(partidas.reduce((s,p) => s + (p._costo_mo||0), 0), monedaOs)}</td>
+                        <td className="num" style={{fontWeight:600, color:'var(--fg-muted)'}}>{moneyCurrency(partidas.reduce((s,p) => s + (p._costo_materiales||0), 0), monedaOs)}</td>
+                        <td className="num" style={{fontWeight:600, color:'var(--fg-muted)'}}>{moneyCurrency(partidas.reduce((s,p) => s + (p._costo_terceros||0), 0), monedaOs)}</td>
+                        <td className="num" style={{fontWeight:600, color:'var(--fg-muted)'}}>{moneyCurrency(partidas.reduce((s,p) => s + (p._costo_logistica||0), 0), monedaOs)}</td>
+                        <td className="num" style={{fontWeight:700}}>{moneyCurrency(partidas.reduce((s,p) => s + (p._costo_real||0), 0), monedaOs)}</td>
+                        <td />
+                        <td className="num" style={{fontWeight:700, fontSize:14, color:'var(--green)'}}>{moneyCurrency(partidas.reduce((s,p) => s + (Number(p.precio_unitario)||0), 0), monedaOs)}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )}
@@ -2636,7 +2685,7 @@ function Valorizacion({ role }) {
   const montoPendienteUSD = valorizaciones.filter(v => v.estado === 'aprobada' && v.moneda === 'USD').reduce((s, v) => s + Number(v.total || 0), 0);
   const montoFacturadoPEN = valorizaciones.filter(v => v.estado === 'facturada' && (v.moneda || 'PEN') === 'PEN').reduce((s, v) => s + Number(v.total || 0), 0);
   const montoFacturadoUSD = valorizaciones.filter(v => v.estado === 'facturada' && v.moneda === 'USD').reduce((s, v) => s + Number(v.total || 0), 0);
-  const otsListasCount = ots.filter(ot => ot.estado === 'cerrada' && ot.estado !== 'valorizada' && conformidadCompleta(ot.id)).length;
+  const otsListasCount = ots.filter(ot => ESTADOS_VALORIZABLES.includes(ot.estado) && conformidadOK(ot)).length;
 
   // Unique filter options from data
   const clienteOpts = [...new Map(valorizaciones.map(v => {
@@ -2701,7 +2750,7 @@ function Valorizacion({ role }) {
         <div className="card" style={{padding:'16px 20px'}}>
           <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>OTs listas para valorizar</div>
           <div style={{fontSize:28, fontWeight:700, fontFamily:'Sora', color:'var(--cyan)'}}>{otsListasCount}</div>
-          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Cerradas con conformidad</div>
+          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Con conformidad registrada</div>
         </div>
       </div>
 
@@ -2769,7 +2818,11 @@ function Valorizacion({ role }) {
                   <td className="num">{moneyCurrency(v.igv, v.moneda)}</td>
                   <td className="num" style={{fontWeight:600}}>{moneyCurrency(v.total, v.moneda)}</td>
                   <td>
-                    <span className={'badge ' + badgeClass(v.estado)}>{badgeLabel(v.estado)}</span>
+                    <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
+                      <span className={'badge ' + badgeClass(v.estado)}>{badgeLabel(v.estado)}</span>
+                      {v.tipo === 'avance' && <span style={{fontSize:10, fontWeight:700, padding:'2px 5px', borderRadius:3, background:'color-mix(in srgb, var(--orange) 15%, transparent)', color:'var(--orange)'}}>Avance</span>}
+                      {v.tipo === 'final' && <span style={{fontSize:10, fontWeight:700, padding:'2px 5px', borderRadius:3, background:'color-mix(in srgb, var(--green) 15%, transparent)', color:'var(--green)'}}>Final</span>}
+                    </div>
                   </td>
                   <td onClick={e => e.stopPropagation()}>
                     {v.estado === 'aprobada' && (

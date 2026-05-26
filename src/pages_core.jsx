@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
@@ -7,6 +7,326 @@ import { campanasService } from './services/campanasService.js';
 import { maestrosService } from './services/maestrosService.js';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
+
+function computeNextMaterialCode(subfamiliaId, grupos, familias, subfamilias, materiales, empresaId) {
+  const sub = subfamilias.find(s => s.id === subfamiliaId);
+  if (!sub) return '';
+  const fam = familias.find(f => f.id === sub.familia_id);
+  if (!fam) return '';
+  const grp = grupos.find(g => g.id === fam.grupo_id);
+  if (!grp) return '';
+  const prefix = String(grp.codigo || '').padStart(2, '0') + String(fam.codigo || '').padStart(2, '0') + String(sub.codigo || '').padStart(2, '0');
+  const existentes = materiales.filter(m => m.subfamilia_id === subfamiliaId && (m.empresa_id === empresaId || !m.empresa_id) && typeof m.codigo === 'string' && m.codigo.length === 10 && m.codigo.startsWith(prefix));
+  const maxCorr = existentes.reduce((max, m) => {
+    const n = parseInt(m.codigo.slice(6), 10);
+    return Number.isNaN(n) ? max : Math.max(max, n);
+  }, 0);
+  return prefix + String(maxCorr + 1).padStart(4, '0');
+}
+
+// ─── MaterialAutocomplete ─────────────────────────────────────────────────────
+// Busca en materiales (catálogo completo). Muestra stock como dato informativo.
+// onSelect({ mat_id, nombre, unidad, costo_unit })
+// onCreateNew(texto) → modal completo de creación
+function MaterialAutocomplete({ value, onChange, materiales = [], inventario = [], style = {}, inlineOptions = false }) {
+  const [query, setQuery] = useState(value?.nombre || '');
+  const [open, setOpen] = useState(false);
+  const [dropRect, setDropRect] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const ref = useRef(null);
+  const {
+    crearMaterialCtx, empresa, addNotificacion,
+    materialGrupos = [], materialFamilias = [], materialSubfamilias = [], almacenes = [],
+  } = useApp();
+  const materialFormBase = { descripcion: '', unidad: '', grupo_id: '', familia_id: '', subfamilia_id: '', nro_parte: '', unidades_contenidas: '1', almacen_id: '', ubicacion: '', observacion: '', precio_unitario: '0', estado: 'activo' };
+  const [modalForm, setModalForm] = useState(materialFormBase);
+  const [modalError, setModalError] = useState('');
+  const [creando, setCreando] = useState(false);
+
+  useEffect(() => { setQuery(value?.nombre || ''); }, [value?.nombre]);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (inlineOptions) return;
+    if (open && ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      setDropRect({ top: r.bottom + 2, left: r.left, width: r.width });
+    }
+  }, [inlineOptions, open, query]);
+
+  const q = query.trim().toLowerCase();
+  const resultados = q.length >= 2
+    ? materiales.filter(m => m.estado !== 'inactivo' && (m.codigo?.toLowerCase().includes(q) || m.descripcion?.toLowerCase().includes(q) || m.nro_parte?.toLowerCase().includes(q))).slice(0, 12)
+    : [];
+  const showOptions = open && q.length >= 2;
+  const optionsStyle = inlineOptions
+    ? { width: '100%', maxHeight: 220 }
+    : dropRect
+      ? { minWidth: Math.max(dropRect.width, 320), maxWidth: 480, maxHeight: 280, top: dropRect.top, left: dropRect.left }
+      : null;
+
+  const seleccionar = (m) => {
+    setQuery(m.descripcion);
+    setOpen(false);
+    const stockItem = inventario.find(i => i.material_id === m.id || i.sku === m.codigo);
+    onChange({ mat_id: m.id, nombre: m.descripcion, unidad: m.unidad || '', costo_unit: Number(m.precio_unitario) || 0, stock: Number(stockItem?.cantidad ?? stockItem?.stock ?? 0) });
+  };
+
+  const abrirModal = (txt) => {
+    setModalForm({ ...materialFormBase, descripcion: txt });
+    setModalError('');
+    setShowModal(true);
+    setOpen(false);
+  };
+
+  const formFamilias = modalForm.grupo_id ? materialFamilias.filter(f => f.grupo_id === modalForm.grupo_id) : [];
+  const formSubfamilias = modalForm.familia_id ? materialSubfamilias.filter(s => s.familia_id === modalForm.familia_id) : [];
+  const codigoAuto = modalForm.subfamilia_id ? computeNextMaterialCode(modalForm.subfamilia_id, materialGrupos, materialFamilias, materialSubfamilias, materiales, empresa?.id) : '';
+
+  const guardarNuevo = async () => {
+    if (!modalForm.grupo_id || !modalForm.familia_id || !modalForm.subfamilia_id) {
+      setModalError('Selecciona grupo, familia y sub-familia para generar el codigo del maestro.');
+      return;
+    }
+    if (!modalForm.descripcion.trim() || !modalForm.unidad.trim()) {
+      setModalError('Completa descripcion y unidad antes de guardar.');
+      return;
+    }
+    if (!codigoAuto) {
+      setModalError('No se pudo generar el codigo automatico para esta sub-familia.');
+      return;
+    }
+    setCreando(true);
+    setModalError('');
+    try {
+      const payload = {
+        ...modalForm,
+        codigo: codigoAuto,
+        descripcion: modalForm.descripcion.trim(),
+        unidad: modalForm.unidad.trim(),
+        nro_parte: modalForm.nro_parte.trim() || null,
+        unidades_contenidas: Number(modalForm.unidades_contenidas) || 1,
+        almacen_id: modalForm.almacen_id || null,
+        ubicacion: modalForm.ubicacion.trim() || null,
+        observacion: modalForm.observacion.trim() || null,
+        precio_unitario: Number(modalForm.precio_unitario) || 0,
+      };
+      const m = await crearMaterialCtx(payload);
+      addNotificacion('Material creado.');
+      seleccionar(m);
+      setShowModal(false);
+    } catch (err) {
+      setModalError(err.message || 'No se pudo crear el material.');
+      addNotificacion(err.message, 'error');
+    } finally { setCreando(false); }
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative', ...style }}>
+      <input
+        className="input"
+        style={{ fontSize: 11, padding: '3px 5px', width: '100%' }}
+        value={query}
+        placeholder="Buscar material..."
+        onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onChange({ mat_id: '', nombre: '', unidad: '', costo_unit: 0, stock: 0 }); }}
+        onFocus={() => { if (q.length >= 2) setOpen(true); }}
+      />
+      {showOptions && optionsStyle && (
+        <div className={`autocomplete-menu ${inlineOptions ? 'autocomplete-menu-inline' : 'autocomplete-menu-floating'}`} style={optionsStyle}>
+          {resultados.map(m => {
+            const stockItem = inventario.find(i => i.material_id === m.id || i.sku === m.codigo);
+            const stock = Number(stockItem?.cantidad ?? stockItem?.stock ?? 0);
+            return (
+              <div key={m.id} onMouseDown={() => seleccionar(m)} className="autocomplete-option">
+                <div className="autocomplete-option-title"><span className="mono autocomplete-code">{m.codigo}</span>{m.descripcion}</div>
+                <div className="autocomplete-option-meta">{m.unidad} · Precio ref: S/ {Number(m.precio_unitario || 0).toFixed(2)} · <span>Stock: {stock} {m.unidad}</span></div>
+              </div>
+            );
+          })}
+          <div onMouseDown={() => abrirModal(query)} className="autocomplete-option autocomplete-create-option">
+            + Crear material: "{query}"
+          </div>
+        </div>
+      )}
+      {showModal && (
+        <div className="modal-backdrop" style={{ zIndex: 1100 }}>
+          <div className="modal" style={{ maxWidth: 860, width: 'min(860px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-head"><h2>Nuevo material</h2><button type="button" className="icon-btn" onClick={() => setShowModal(false)}>{I.x}</button></div>
+            <div className="modal-body col" style={{ gap: 14, overflowY: 'auto' }}>
+              {modalError && <div className="alert alert-danger">{modalError}</div>}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                <div className="input-group">
+                  <label>Grupo *</label>
+                  <select className="select" value={modalForm.grupo_id} onChange={e => setModalForm(p => ({ ...p, grupo_id: e.target.value, familia_id: '', subfamilia_id: '' }))}>
+                    <option value="">{materialGrupos.length ? 'Seleccionar...' : 'Sin grupos'}</option>
+                    {materialGrupos.map(g => <option key={g.id} value={g.id}>{g.codigo} - {g.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Familia *</label>
+                  <select className="select" value={modalForm.familia_id} onChange={e => setModalForm(p => ({ ...p, familia_id: e.target.value, subfamilia_id: '' }))} disabled={!modalForm.grupo_id}>
+                    <option value="">Seleccionar...</option>
+                    {formFamilias.map(f => <option key={f.id} value={f.id}>{f.codigo} - {f.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Sub-familia *</label>
+                  <select className="select" value={modalForm.subfamilia_id} onChange={e => setModalForm(p => ({ ...p, subfamilia_id: e.target.value }))} disabled={!modalForm.familia_id}>
+                    <option value="">Seleccionar...</option>
+                    {formSubfamilias.map(s => <option key={s.id} value={s.id}>{s.codigo} - {s.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Codigo</label>
+                  <input className="input" readOnly value={codigoAuto || '-'} style={{ color: 'var(--fg-muted)', background: 'var(--bg-subtle)', cursor: 'default' }} />
+                </div>
+                <div className="input-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Descripcion *</label>
+                  <input className="input" value={modalForm.descripcion} onChange={e => setModalForm(p => ({ ...p, descripcion: e.target.value }))} placeholder="Ej: Tornillo hexagonal M8x25mm" />
+                </div>
+                <div className="input-group">
+                  <label>UM *</label>
+                  <input className="input" value={modalForm.unidad} onChange={e => setModalForm(p => ({ ...p, unidad: e.target.value }))} placeholder="und, kg, m" />
+                </div>
+                <div className="input-group">
+                  <label>Nro parte</label>
+                  <input className="input" value={modalForm.nro_parte} onChange={e => setModalForm(p => ({ ...p, nro_parte: e.target.value }))} placeholder="Codigo del fabricante" />
+                </div>
+                <div className="input-group">
+                  <label>Unidades contenidas</label>
+                  <input className="input" type="number" min="0.01" step="0.01" value={modalForm.unidades_contenidas} onChange={e => setModalForm(p => ({ ...p, unidades_contenidas: e.target.value }))} />
+                </div>
+                <div className="input-group">
+                  <label>Almacen por defecto</label>
+                  <select className="select" value={modalForm.almacen_id} onChange={e => setModalForm(p => ({ ...p, almacen_id: e.target.value }))}>
+                    <option value="">Sin asignar</option>
+                    {almacenes.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Ubicacion</label>
+                  <input className="input" value={modalForm.ubicacion} onChange={e => setModalForm(p => ({ ...p, ubicacion: e.target.value }))} placeholder="Ej: Pasillo A, Estante 3" />
+                </div>
+                <div className="input-group">
+                  <label>Precio unitario S/</label>
+                  <input className="input" type="number" min="0" step="0.01" value={modalForm.precio_unitario} onChange={e => setModalForm(p => ({ ...p, precio_unitario: e.target.value }))} />
+                </div>
+                <div className="input-group">
+                  <label>Estado</label>
+                  <select className="select" value={modalForm.estado} onChange={e => setModalForm(p => ({ ...p, estado: e.target.value }))}>
+                    <option value="activo">Activo</option>
+                    <option value="inactivo">Inactivo</option>
+                  </select>
+                </div>
+                <div className="input-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Observacion</label>
+                  <textarea className="input" rows={2} value={modalForm.observacion} onChange={e => setModalForm(p => ({ ...p, observacion: e.target.value }))} style={{ resize: 'vertical' }} />
+                </div>
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
+              <button type="button" className="btn btn-primary" onClick={guardarNuevo} disabled={creando || !modalForm.grupo_id || !modalForm.familia_id || !modalForm.subfamilia_id || !modalForm.descripcion.trim() || !modalForm.unidad.trim()}>{creando ? 'Guardando...' : 'Guardar y seleccionar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ColaboradorAutocomplete ──────────────────────────────────────────────────
+// Busca en personalOperativo + personalAdmin combinados.
+// onSelect({ id, nombre, costo_hora, costo_hora_pen })
+function ColaboradorAutocomplete({ value, onChange, personalOperativo = [], personalAdmin = [], monedaOT = 'PEN', tipoCambioHoy, style = {}, inlineOptions = false }) {
+  const [query, setQuery] = useState(value?.nombre || '');
+  const [open, setOpen] = useState(false);
+  const [dropRect, setDropRect] = useState(null);
+  const ref = useRef(null);
+
+  useEffect(() => { setQuery(value?.nombre || ''); }, [value?.nombre]);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (inlineOptions) return;
+    if (open && ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      setDropRect({ top: r.bottom + 2, left: r.left, width: r.width });
+    }
+  }, [inlineOptions, open, query]);
+
+  const todos = getPersonalAsignableOT(personalOperativo, personalAdmin);
+  const q = query.trim().toLowerCase();
+  const resultados = q.length >= 2
+    ? todos.filter(p => p.nombre?.toLowerCase().includes(q)).slice(0, 10)
+    : [];
+
+  const costoHoraPEN = (p) => {
+    const explicit = Number(p?.costo_hora_real ?? p?.costo ?? p?.costo_hora ?? 0);
+    if (explicit > 0) return explicit;
+    const rem = Number(p?.remuneracion ?? 0);
+    return rem > 0 ? Math.round(rem / 240 * 100) / 100 : 0;
+  };
+
+  const seleccionar = (p) => {
+    setQuery(p.nombre);
+    setOpen(false);
+    const chPEN = costoHoraPEN(p);
+    const esUSD = monedaOT === 'USD' && tipoCambioHoy?.usd;
+    const ch = esUSD ? Math.round(chPEN * tipoCambioHoy.usd * 100) / 100 : chPEN;
+    onChange({ id: p.id, nombre: p.nombre, costo_hora: ch, costo_hora_pen: chPEN });
+  };
+
+  const esOp = (p) => personalOperativo.some(op => op.id === p.id);
+  const showOptions = open && q.length >= 2;
+  const optionsStyle = inlineOptions
+    ? { width: '100%', maxHeight: 190 }
+    : dropRect
+      ? { minWidth: Math.max(dropRect.width, 300), maxWidth: 440, maxHeight: 260, top: dropRect.top, left: dropRect.left }
+      : null;
+
+  return (
+    <div ref={ref} style={{ position: 'relative', ...style }}>
+      <input
+        className="input"
+        style={{ fontSize: 11, padding: '3px 5px', width: '100%' }}
+        value={query}
+        placeholder="Buscar colaborador..."
+        onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onChange({ id: '', nombre: '', costo_hora: 0, costo_hora_pen: 0 }); }}
+        onFocus={() => { if (q.length >= 2) setOpen(true); }}
+      />
+      {showOptions && optionsStyle && (
+        <div className={`autocomplete-menu ${inlineOptions ? 'autocomplete-menu-inline' : 'autocomplete-menu-floating'}`} style={optionsStyle}>
+          {resultados.length === 0 && <div className="autocomplete-empty">Sin resultados</div>}
+          {resultados.map(p => {
+            const chPEN = costoHoraPEN(p);
+            const esUSD = monedaOT === 'USD' && tipoCambioHoy?.usd;
+            const ch = esUSD ? Math.round(chPEN * tipoCambioHoy.usd * 100) / 100 : chPEN;
+            return (
+              <div key={p.id} onMouseDown={() => seleccionar(p)} className="autocomplete-option">
+                <div className="autocomplete-option-title">{p.nombre}</div>
+                <div className="autocomplete-option-meta">
+                  {p.cargo || (esOp(p) ? 'Operativo' : 'Administrativo')}
+                  {chPEN > 0 && <> · S/ {chPEN.toFixed(2)}/h{esUSD && ch > 0 ? ` ≈ US$ ${ch.toFixed(2)}/h` : ''}</>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Dashboard, CRM screens
 
@@ -3458,24 +3778,22 @@ function Actividades() {
 
 // ============ OS CLIENTE ============
 function FormCrearMultiplesOTs({ os, onCancel }) {
-  const { cotizaciones, tiposServicio, personalOperativo, personalAdmin, centrosCosto, centrosBeneficio, crearOTDesdeOS, navigate, ots, hojasCosteo } = useApp();
+  const { cotizaciones, tiposServicio, personalOperativo, personalAdmin, centrosCosto, centrosBeneficio, crearOTDesdeOS, actualizarOT, navigate, ots, hojasCosteo, inventario, tipoCambioHoy, materiales: catalogoMateriales = [] } = useApp();
   const hoy = new Date().toISOString().split('T')[0];
   const cotizacion = cotizaciones.find(c => c.id === os.cotizacion_id) || null;
   const tiposActivos = (tiposServicio || []).filter(t => t.estado !== 'inactivo');
   const personal = getPersonalAsignableOT(personalOperativo, personalAdmin);
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const cebeHeredado = (centrosBeneficio || []).find(c => c.id === os.centro_beneficio_id);
-
   const itemsSugeridos = cotizacion ? (cotizacion.items || []).map(i => i.servicio || i.descripcion).filter(Boolean) : [];
+  const costoHoraTec = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
 
   const crearFila = (defaults = {}) => ({
     _id: Date.now() + Math.random(),
+    _expanded: true,
+    _secciones: { mano_obra: true, materiales: true, terceros: true, logistica: true },
     servicio: defaults.servicio || '',
     descripcion: defaults.descripcion || `Ejecucion de ${os.numero}`,
-    est_mo: defaults.est_mo !== undefined ? defaults.est_mo : '',
-    est_materiales: defaults.est_materiales !== undefined ? defaults.est_materiales : '',
-    est_terceros: defaults.est_terceros !== undefined ? defaults.est_terceros : '',
-    est_logistica: defaults.est_logistica !== undefined ? defaults.est_logistica : '',
     centro_costo_id: defaults.centro_costo_id || '',
     fecha_programada: os.fecha_inicio || hoy,
     fecha_fin: os.fecha_fin || '',
@@ -3483,33 +3801,107 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
     facturable: defaults.facturable ?? true,
     tecnico_responsable_id: '',
     direccion_ejecucion: os.sede || '',
+    est_detalle: { mano_obra: [], materiales: [], terceros: [], logistica: [] },
   });
 
-  const [filas, setFilas] = useState([crearFila()]);
+  const [filas, setFilas] = useState(() => [crearFila()]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const seccionTotal = (det, key) => (det?.[key] || []).reduce((s, i) => s + (Number(i.subtotal) || 0), 0);
+  const filaTotal = (f) => ['mano_obra', 'materiales', 'terceros', 'logistica'].reduce((s, k) => s + seccionTotal(f.est_detalle, k), 0);
 
   const addFila = (defaults = {}) => setFilas(prev => [...prev, crearFila(defaults)]);
   const removeFila = (id) => setFilas(prev => prev.filter(f => f._id !== id));
   const updFila = (id, k, v) => setFilas(prev => prev.map(f => f._id === id ? { ...f, [k]: v } : f));
+  const toggleSec = (filaId, section) =>
+    setFilas(prev => prev.map(f => f._id !== filaId ? f : { ...f, _secciones: { ...f._secciones, [section]: !(f._secciones?.[section] ?? true) } }));
 
-  const otsExistentes = (ots || []).filter(o => o.os_cliente_id === os.id && !['anulada'].includes(o.estado));
-  const totalOTsExistentes = otsExistentes.reduce((s, o) => s + Number(o.costoEst || o.costo_estimado || 0), 0);
+  const updItem = (filaId, section, idx, field, value) =>
+    setFilas(prev => prev.map(f => {
+      if (f._id !== filaId) return f;
+      const det = f.est_detalle || { mano_obra: [], materiales: [], terceros: [], logistica: [] };
+      const items = (det[section] || []).map((it, i) => {
+        if (i !== idx) return it;
+        const upd = { ...it, [field]: value };
+        upd.subtotal = section === 'mano_obra'
+          ? Number(upd.dias || 0) * Number(upd.horas_dia || 0) * Number(upd.costo_hora || 0)
+          : Number(upd.cantidad || 0) * Number(upd.costo_unit || 0);
+        return upd;
+      });
+      return { ...f, est_detalle: { ...det, [section]: items } };
+    }));
+
+  const addItem = (filaId, section) =>
+    setFilas(prev => prev.map(f => {
+      if (f._id !== filaId) return f;
+      const det = f.est_detalle || { mano_obra: [], materiales: [], terceros: [], logistica: [] };
+      const newItem = section === 'mano_obra' ? { tecnico_id: '', nombre: '', dias: 1, horas_dia: 8, costo_hora: 0, subtotal: 0 }
+        : section === 'materiales' ? { inv_id: '', nombre: '', cantidad: 1, unidad: '', costo_unit: 0, subtotal: 0 }
+        : { descripcion: '', cantidad: 1, unidad: 'und', costo_unit: 0, subtotal: 0 };
+      return { ...f, est_detalle: { ...det, [section]: [...(det[section] || []), newItem] } };
+    }));
+
+  const removeItem = (filaId, section, idx) =>
+    setFilas(prev => prev.map(f => {
+      if (f._id !== filaId) return f;
+      const det = f.est_detalle || { mano_obra: [], materiales: [], terceros: [], logistica: [] };
+      return { ...f, est_detalle: { ...det, [section]: (det[section] || []).filter((_, i) => i !== idx) } };
+    }));
+
+  const updTecnicoItem = (filaId, idx, { id: tecnicoId, nombre, costo_hora: ch, costo_hora_pen: chPEN }) =>
+    setFilas(prev => prev.map(f => {
+      if (f._id !== filaId) return f;
+      const det = f.est_detalle || { mano_obra: [], materiales: [], terceros: [], logistica: [] };
+      const items = (det.mano_obra || []).map((it, i) => {
+        if (i !== idx) return it;
+        const upd = { ...it, tecnico_id: tecnicoId, nombre, costo_hora: ch, costo_hora_pen: chPEN };
+        upd.subtotal = Number(upd.dias || 0) * Number(upd.horas_dia || 0) * ch;
+        return upd;
+      });
+      return { ...f, est_detalle: { ...det, mano_obra: items } };
+    }));
+
+  const updMaterialItem = (filaId, idx, { mat_id, nombre, unidad, costo_unit }) =>
+    setFilas(prev => prev.map(f => {
+      if (f._id !== filaId) return f;
+      const det = f.est_detalle || { mano_obra: [], materiales: [], terceros: [], logistica: [] };
+      const items = (det.materiales || []).map((it, i) => {
+        if (i !== idx) return it;
+        const upd = { ...it, inv_id: mat_id, nombre, unidad, costo_unit };
+        upd.subtotal = Number(upd.cantidad || 0) * costo_unit;
+        return upd;
+      });
+      return { ...f, est_detalle: { ...det, materiales: items } };
+    }));
+
   const hcVinculada = cotizacion?.hoja_costeo_id
     ? (hojasCosteo || []).find(h => h.id === cotizacion.hoja_costeo_id && h.estado === 'aprobada')
     : null;
+
+  const importarDesdeHC = (filaId) => {
+    if (!hcVinculada) return;
+    setFilas(prev => prev.map(f => f._id !== filaId ? f : {
+      ...f,
+      est_detalle: {
+        mano_obra: hcVinculada.total_mano_obra > 0 ? [{ tecnico_id: '', nombre: 'Referencia HC', dias: 1, horas_dia: 1, costo_hora: Number(hcVinculada.total_mano_obra), subtotal: Number(hcVinculada.total_mano_obra) }] : [],
+        materiales: hcVinculada.total_materiales > 0 ? [{ inv_id: '', nombre: 'Materiales (HC)', cantidad: 1, unidad: 'global', costo_unit: Number(hcVinculada.total_materiales), subtotal: Number(hcVinculada.total_materiales) }] : [],
+        terceros: hcVinculada.total_servicios_terceros > 0 ? [{ descripcion: 'Servicios terceros (HC)', cantidad: 1, unidad: 'global', costo_unit: Number(hcVinculada.total_servicios_terceros), subtotal: Number(hcVinculada.total_servicios_terceros) }] : [],
+        logistica: hcVinculada.total_logistica > 0 ? [{ descripcion: 'Logística (HC)', cantidad: 1, unidad: 'global', costo_unit: Number(hcVinculada.total_logistica), subtotal: Number(hcVinculada.total_logistica) }] : [],
+      },
+    }));
+  };
+
+  const otsExistentes = (ots || []).filter(o => o.os_cliente_id === os.id && !['anulada'].includes(o.estado));
+  const totalOTsExistentes = otsExistentes.reduce((s, o) => s + Number(o.costoEst || o.costo_estimado || 0), 0);
   const hcSaldoNoAsignado = hcVinculada ? (hcVinculada.costo_total || 0) - totalOTsExistentes : 0;
   const montoBase = hcVinculada ? (hcVinculada.costo_total || 0) : Number(os.monto_aprobado || 0);
-  const saldoBase = montoBase - totalOTsExistentes;
-  const filaTotal = (f) => (parseFloat(f.est_mo)||0) + (parseFloat(f.est_materiales)||0) + (parseFloat(f.est_terceros)||0) + (parseFloat(f.est_logistica)||0);
   const totalAsignado = filas.reduce((s, f) => s + filaTotal(f), 0);
+  const saldoBase = montoBase - totalOTsExistentes;
   const saldoLibre = saldoBase - totalAsignado;
   const pct = montoBase > 0 ? Math.min(100, Math.round(((totalOTsExistentes + totalAsignado) / montoBase) * 100)) : 0;
   const nOTs = filas.length;
-  const esAdicional = montoBase > 0 && (
-    (saldoBase <= 0 && totalAsignado > 0) ||
-    (saldoBase > 0 && saldoLibre < 0)
-  );
+  const esAdicional = montoBase > 0 && ((saldoBase <= 0 && totalAsignado > 0) || (saldoBase > 0 && saldoLibre < 0));
 
   const submit = async () => {
     if (filas.some(f => !f.servicio.trim())) { setError('Todas las OTs deben tener un servicio asignado.'); return; }
@@ -3518,18 +3910,25 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
     setSaving(true); setError('');
     try {
       for (const fila of filas) {
-        const { _id, ...datos } = fila;
-        const totalFila = filaTotal(fila);
+        const { _id, _expanded, _secciones, est_detalle: det, ...datos } = fila;
+        const d = det || { mano_obra: [], materiales: [], terceros: [], logistica: [] };
+        const mo  = seccionTotal(d, 'mano_obra');
+        const mat = seccionTotal(d, 'materiales');
+        const ter = seccionTotal(d, 'terceros');
+        const log = seccionTotal(d, 'logistica');
+        const total = mo + mat + ter + log;
+        const usaTC = os.moneda === 'USD' && tipoCambioHoy?.usd && (d.mano_obra || []).some(it => it.costo_hora_pen > 0);
+        const detFinal = usaTC ? { ...d, tc_usado: { usd: tipoCambioHoy.usd, fecha: tipoCambioHoy.fecha } } : d;
         const otId = await crearOTDesdeOS(os.id, {
           ...datos,
-          est_mo: fila.est_mo !== '' ? Number(fila.est_mo) : null,
-          est_materiales: fila.est_materiales !== '' ? Number(fila.est_materiales) : null,
-          est_terceros: fila.est_terceros !== '' ? Number(fila.est_terceros) : null,
-          est_logistica: fila.est_logistica !== '' ? Number(fila.est_logistica) : null,
-          costo_estimado: totalFila,
-          es_adicional: esAdicional,
+          est_mo: mo || null, est_materiales: mat || null, est_terceros: ter || null, est_logistica: log || null,
+          costo_estimado: total, est_detalle: detFinal, es_adicional: esAdicional,
         });
         if (!otId) throw new Error('No se pudo crear una de las OTs.');
+        // Guardar est_detalle via actualizarOT (el RPC no lo incluye)
+        if (Object.values(d).some(arr => arr.length > 0) || usaTC) {
+          actualizarOT(otId, { est_detalle: detFinal });
+        }
       }
       navigate('os_cliente', { detail: os.id, tab: 'OTs' });
     } catch (err) {
@@ -3537,26 +3936,23 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
     } finally { setSaving(false); }
   };
 
+  const inSt = { fontSize: 12, padding: '4px 6px' };
+
   return (
     <div style={{ padding: '0 0 40px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 0 16px' }}>
         <div>
-          <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>
-            {os.numero} › Nueva{nOTs > 1 ? 's' : ''} Orden{nOTs > 1 ? 'es' : ''} de Trabajo
-          </div>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
-            {nOTs <= 1 ? 'Nueva OT' : `Nuevas OTs (${nOTs})`}
-          </h2>
+          <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>{os.numero} › Nueva{nOTs > 1 ? 's' : ''} Orden{nOTs > 1 ? 'es' : ''} de Trabajo</div>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{nOTs <= 1 ? 'Nueva OT' : `Nuevas OTs (${nOTs})`}</h2>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {!saving && !filas.every(f => f.servicio.trim() && f.centro_costo_id) && (
+            <span style={{ fontSize: 11, color: '#ef4444' }}>Completa Servicio y CECO en cada fila</span>
+          )}
           <button className="btn btn-secondary" onClick={onCancel} disabled={saving}>Cancelar</button>
-          <button
-            className="btn btn-primary"
-            style={esAdicional ? { background: '#f97316', borderColor: '#f97316' } : {}}
-            onClick={submit}
-            disabled={saving || !filas.every(f => f.servicio.trim() && f.centro_costo_id)}
-          >
+          <button className="btn btn-primary" style={esAdicional ? { background: '#f97316', borderColor: '#f97316' } : {}}
+            onClick={submit} disabled={saving || !filas.every(f => f.servicio.trim() && f.centro_costo_id)}>
             {saving ? 'Creando...' : esAdicional
               ? `Crear ${nOTs} OT${nOTs > 1 ? 's' : ''} adicional${nOTs > 1 ? 'es' : ''}`
               : `Crear ${nOTs} OT${nOTs > 1 ? 's' : ''}`}
@@ -3566,7 +3962,7 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
 
       {error && <div className="alert alert-danger" style={{ marginBottom: 16 }}>{error}</div>}
 
-      {/* CEBE heredado de la OS */}
+      {/* CEBE heredado */}
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 16 }}>
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Centro de Beneficio (CEBE) — heredado de la OS</label>
         <div style={{ padding: '8px 10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, color: cebeHeredado ? '#111' : '#ef4444' }}>
@@ -3606,12 +4002,8 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
                     <td style={{ padding: '6px 8px', textAlign: 'right' }}>{item.precio_unitario != null ? moneyCurrency(item.precio_unitario, os.moneda) : '—'}</td>
                     <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{item.subtotal != null ? moneyCurrency(item.subtotal, os.moneda) : '—'}</td>
                     <td style={{ padding: '6px 4px', textAlign: 'center' }}>
-                      <button
-                        className="btn btn-sm"
-                        style={{ fontSize: 11, padding: '2px 8px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}
-                        onClick={() => addFila({ servicio: item.servicio || item.descripcion || '', costo_estimado: item.subtotal || '' })}
-                        title="Agregar como OT"
-                      >→ OT</button>
+                      <button className="btn btn-sm" style={{ fontSize: 11, padding: '2px 8px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}
+                        onClick={() => addFila({ servicio: item.servicio || item.descripcion || '' })} title="Agregar como OT">→ OT</button>
                     </td>
                   </tr>
                 ))}
@@ -3621,7 +4013,7 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
         </div>
       )}
 
-      {/* Referencia de Hoja de Costeo aprobada */}
+      {/* HC vinculada */}
       {hcVinculada && (
         <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: 16, marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
@@ -3629,46 +4021,26 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
             <span style={{ fontSize: 12, color: '#0369a1' }}>{hcVinculada.numero} · <span className="badge badge-green" style={{ fontSize: 10 }}>Aprobada</span></span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px 16px', marginBottom: 10, fontSize: 13 }}>
-            {[
-              ['Mano de Obra', hcVinculada.total_mano_obra || 0],
-              ['Materiales', hcVinculada.total_materiales || 0],
-              ['Servicios Terceros', hcVinculada.total_servicios_terceros || 0],
-              ['Logística', hcVinculada.total_logistica || 0],
-            ].map(([label, val]) => (
-              <div key={label}>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 1 }}>{label}</div>
-                <div style={{ fontWeight: 600 }}>{moneyCurrency(val, os.moneda)}</div>
-              </div>
+            {[['Mano de Obra', hcVinculada.total_mano_obra || 0], ['Materiales', hcVinculada.total_materiales || 0], ['Servicios Terceros', hcVinculada.total_servicios_terceros || 0], ['Logística', hcVinculada.total_logistica || 0]].map(([label, val]) => (
+              <div key={label}><div style={{ fontSize: 11, color: '#64748b', marginBottom: 1 }}>{label}</div><div style={{ fontWeight: 600 }}>{moneyCurrency(val, os.moneda)}</div></div>
             ))}
           </div>
           <div style={{ borderTop: '1px solid #bae6fd', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <div style={{ fontSize: 13 }}>
               Costo total HC: <strong>{moneyCurrency(hcVinculada.costo_total || 0, os.moneda)}</strong>
-              {otsExistentes.length > 0 && (
-                <span style={{ marginLeft: 16 }}>
-                  Saldo sin asignar a OTs: <strong style={{ color: hcSaldoNoAsignado < 0 ? '#dc2626' : '#0369a1' }}>{moneyCurrency(hcSaldoNoAsignado, os.moneda)}</strong>
-                </span>
-              )}
+              {otsExistentes.length > 0 && <span style={{ marginLeft: 16 }}>Saldo sin asignar: <strong style={{ color: hcSaldoNoAsignado < 0 ? '#dc2626' : '#0369a1' }}>{moneyCurrency(hcSaldoNoAsignado, os.moneda)}</strong></span>}
             </div>
-            <div style={{ fontSize: 11, color: '#0369a1' }}>Puedes usar este valor como referencia para distribuir el costo entre las OTs de esta OS</div>
+            <div style={{ fontSize: 11, color: '#0369a1' }}>Usa "Importar desde HC" en cada OT para copiar los valores como punto de partida editable.</div>
           </div>
         </div>
       )}
 
-      {/* Control de costo / Valor del contrato */}
+      {/* Control de costo */}
       {montoBase > 0 && (
-        <div style={{
-          background: saldoBase < 0 ? '#fef2f2' : saldoBase === 0 ? '#fff7ed' : '#f0fdf4',
-          border: `1px solid ${saldoBase < 0 ? '#fca5a5' : saldoBase === 0 ? '#fed7aa' : '#86efac'}`,
-          borderRadius: 8, padding: 16, marginBottom: 16
-        }}>
+        <div style={{ background: saldoBase < 0 ? '#fef2f2' : saldoBase === 0 ? '#fff7ed' : '#f0fdf4', border: `1px solid ${saldoBase < 0 ? '#fca5a5' : saldoBase === 0 ? '#fed7aa' : '#86efac'}`, borderRadius: 8, padding: 16, marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-            <span style={{ fontWeight: 600, fontSize: 13 }}>
-              {hcVinculada ? 'Control de costo — HC aprobada' : 'Valor del contrato'}
-            </span>
-            <span style={{ fontSize: 13 }}>
-              {hcVinculada ? 'Presupuesto de costo:' : 'Valor del contrato:'} <strong>{moneyCurrency(montoBase, os.moneda)}</strong>
-            </span>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>{hcVinculada ? 'Control de costo — HC aprobada' : 'Valor del contrato'}</span>
+            <span style={{ fontSize: 13 }}>{hcVinculada ? 'Presupuesto de costo:' : 'Valor del contrato:'} <strong>{moneyCurrency(montoBase, os.moneda)}</strong></span>
           </div>
           <div style={{ marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, fontSize: 11, color: '#666' }}>
@@ -3682,25 +4054,14 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
             <div style={{ marginBottom: 10 }}>
               <div style={{ fontSize: 11, color: '#888', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>OTs ya vinculadas</div>
               <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'rgba(0,0,0,0.04)' }}>
-                    <th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600 }}>OT</th>
-                    <th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600 }}>Servicio</th>
-                    <th style={{ padding: '3px 6px', textAlign: 'right', fontWeight: 600 }}>Monto est.</th>
-                    <th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600 }}>Estado</th>
-                  </tr>
-                </thead>
+                <thead><tr style={{ background: 'rgba(0,0,0,0.04)' }}><th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600 }}>OT</th><th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600 }}>Servicio</th><th style={{ padding: '3px 6px', textAlign: 'right', fontWeight: 600 }}>Monto est.</th><th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600 }}>Estado</th></tr></thead>
                 <tbody>
                   {otsExistentes.map(ot => (
                     <tr key={ot.id} style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
                       <td style={{ padding: '3px 6px', fontFamily: 'monospace', fontWeight: 600 }}>{ot.numero}</td>
                       <td style={{ padding: '3px 6px' }}>{ot.tipo || ot.servicio || '—'}</td>
                       <td style={{ padding: '3px 6px', textAlign: 'right' }}>{moneyCurrency(ot.costoEst || ot.costo_estimado || 0, os.moneda)}</td>
-                      <td style={{ padding: '3px 6px' }}>
-                        <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 8, background: 'rgba(0,0,0,0.06)', color: '#555' }}>
-                          {(ot.estado || 'programada').replace(/_/g, ' ')}
-                        </span>
-                      </td>
+                      <td style={{ padding: '3px 6px' }}><span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 8, background: 'rgba(0,0,0,0.06)', color: '#555' }}>{(ot.estado || 'programada').replace(/_/g, ' ')}</span></td>
                     </tr>
                   ))}
                   <tr style={{ borderTop: '1px solid rgba(0,0,0,0.1)' }}>
@@ -3718,139 +4079,214 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
             </div>
             {saldoBase <= 0 && (
               <div style={{ fontSize: 12, color: saldoBase < 0 ? '#dc2626' : '#d97706' }}>
-                {saldoBase < 0
-                  ? (hcVinculada
-                      ? '⚠ Los costos superan el presupuesto de la HC. Esta OT será trabajo adicional no planificado.'
-                      : '⚠ El valor asignado supera el contrato. Esta OT será adicional al alcance original.')
-                  : (hcVinculada
-                      ? '⚠ El presupuesto de costo de la HC está completamente asignado. Puedes agregar OTs adicionales.'
-                      : '⚠ El valor del contrato está completamente asignado. Puedes crear OTs adicionales.')}
+                {saldoBase < 0 ? (hcVinculada ? '⚠ Los costos superan el presupuesto de la HC. Esta OT será trabajo adicional no planificado.' : '⚠ El valor asignado supera el contrato. Esta OT será adicional al alcance original.') : (hcVinculada ? '⚠ El presupuesto de costo de la HC está completamente asignado. Puedes agregar OTs adicionales.' : '⚠ El valor del contrato está completamente asignado. Puedes crear OTs adicionales.')}
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Grid de OTs */}
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>Órdenes de Trabajo a crear</div>
-        {!hcVinculada && cotizacion && (
-          <div style={{ padding: '8px 16px', background: '#fafafa', borderBottom: '1px solid #f3f4f6', fontSize: 11, color: '#888' }}>
-            Sin hoja de costeo vinculada. El estimado es referencial.
-          </div>
-        )}
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-            <colgroup>
-              <col style={{ width: 28 }} />
-              <col style={{ width: '20%' }} />
-              <col style={{ width: '20%' }} />
-              <col style={{ width: 220 }} />
-              <col style={{ width: 100 }} />
-              <col style={{ width: 100 }} />
-              <col style={{ width: '16%' }} />
-              <col style={{ width: 82 }} />
-              <col style={{ width: 28 }} />
-            </colgroup>
-            <thead>
-              <tr style={{ background: '#f9fafb' }}>
-                <th style={{ padding: '8px 6px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>#</th>
-                <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Servicio *</th>
-                <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>CECO *</th>
-                <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>
-                  Estimado de costos ({currencySymbol(os.moneda)})
-                  {hcVinculada && <span style={{ fontWeight: 400, color: '#888', fontSize: 10, marginLeft: 4 }}>— Ref. HC</span>}
-                </th>
-                <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Inicio</th>
-                <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Fin</th>
-                <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Colaborador</th>
-                <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600, borderBottom: '1px solid #e5e7eb' }}>Prioridad</th>
-                <th style={{ padding: '8px 4px', borderBottom: '1px solid #e5e7eb' }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filas.map((fila, idx) => {
-                const totalFila_ = filaTotal(fila);
-                const sym = currencySymbol(os.moneda);
-                return (
-                  <tr key={fila._id} style={{ borderBottom: '1px solid #f3f4f6', verticalAlign: 'top' }}>
-                    <td style={{ padding: '10px 6px', color: '#888' }}>{idx + 1}</td>
-                    <td style={{ padding: '4px 6px' }}>
-                      {itemsSugeridos.length > 0 ? (
-                        <>
-                          <input className="input" list={`svc-list-${fila._id}`} value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} placeholder="Elige o escribe..." style={{ fontSize: 12 }} />
-                          <datalist id={`svc-list-${fila._id}`}>
-                            {itemsSugeridos.map((s, i) => <option key={i} value={s} />)}
-                          </datalist>
-                        </>
-                      ) : tiposActivos.length > 0 ? (
-                        <select className="select" value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} style={{ fontSize: 12 }}>
-                          <option value="">— Servicio —</option>
-                          {tiposActivos.map(t => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
-                        </select>
-                      ) : (
-                        <input className="input" value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} placeholder="Servicio" style={{ fontSize: 12 }} />
-                      )}
-                    </td>
-                    <td style={{ padding: '4px 6px' }}>
-                      <select className="select" value={fila.centro_costo_id} onChange={e => updFila(fila._id, 'centro_costo_id', e.target.value)} style={{ fontSize: 12 }}>
-                        <option value="">— CECO —</option>
-                        {cecos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} – ` : ''}{c.nombre}</option>)}
-                      </select>
-                    </td>
-                    <td style={{ padding: '4px 6px' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                        {[
-                          { key: 'est_mo', label: 'Mano de obra', hcVal: hcVinculada?.total_mano_obra },
-                          { key: 'est_materiales', label: 'Materiales', hcVal: hcVinculada?.total_materiales },
-                          { key: 'est_terceros', label: 'Terc.', hcVal: hcVinculada?.total_servicios_terceros },
-                          { key: 'est_logistica', label: 'Logística', hcVal: hcVinculada?.total_logistica },
-                        ].map(({ key, label, hcVal }) => (
-                          <div key={key}>
-                            <div style={{ fontSize: 10, color: '#888', marginBottom: 2, lineHeight: 1.2 }}>
-                              {label}{hcVal != null ? <span style={{ color: '#aaa' }}> {sym}{Number(hcVal).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span> : ''}
-                            </div>
-                            <input className="input" type="number" min="0" step="0.01" value={fila[key]} onChange={e => updFila(fila._id, key, e.target.value)} placeholder="0.00" style={{ fontSize: 11, textAlign: 'right', padding: '3px 6px' }} />
-                          </div>
-                        ))}
-                      </div>
-                      {totalFila_ > 0 && (
-                        <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 700, marginTop: 5, color: '#374151' }}>
-                          Total: {moneyCurrency(totalFila_, os.moneda)}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '4px 6px' }}>
-                      <input className="input" type="date" value={fila.fecha_programada} onChange={e => updFila(fila._id, 'fecha_programada', e.target.value)} style={{ fontSize: 12 }} />
-                    </td>
-                    <td style={{ padding: '4px 6px' }}>
-                      <input className="input" type="date" value={fila.fecha_fin} onChange={e => updFila(fila._id, 'fecha_fin', e.target.value)} style={{ fontSize: 12 }} />
-                    </td>
-                    <td style={{ padding: '4px 6px' }}>
-                      <select className="select" value={fila.tecnico_responsable_id} onChange={e => updFila(fila._id, 'tecnico_responsable_id', e.target.value)} style={{ fontSize: 12 }}>
-                        <option value="">— Sin asignar —</option>
-                        {personal.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` — ${p.cargo}` : ''}</option>)}
-                      </select>
-                    </td>
-                    <td style={{ padding: '4px 6px' }}>
-                      <select className="select" value={fila.prioridad} onChange={e => updFila(fila._id, 'prioridad', e.target.value)} style={{ fontSize: 12 }}>
-                        <option value="normal">Normal</option>
-                        <option value="urgente">Urgente</option>
-                        <option value="critica">Crítica</option>
-                      </select>
-                    </td>
-                    <td style={{ padding: '4px 6px', textAlign: 'center' }}>
-                      <button className="btn btn-sm" style={{ padding: '2px 6px', color: '#ef4444', background: 'none', border: 'none', fontSize: 16, lineHeight: 1 }} onClick={() => removeFila(fila._id)} disabled={filas.length === 1} title="Eliminar fila">×</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {/* OTs a crear */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>Órdenes de Trabajo a crear</div>
+          {!hcVinculada && cotizacion && <span style={{ fontSize: 11, color: '#888' }}>Sin hoja de costeo vinculada — el estimado es referencial.</span>}
         </div>
-        <div style={{ padding: '10px 16px', borderTop: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 16 }}>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {filas.map((fila, idx) => {
+            const det = fila.est_detalle || { mano_obra: [], materiales: [], terceros: [], logistica: [] };
+            const mo  = seccionTotal(det, 'mano_obra');
+            const mat = seccionTotal(det, 'materiales');
+            const ter = seccionTotal(det, 'terceros');
+            const log = seccionTotal(det, 'logistica');
+            const total = mo + mat + ter + log;
+            const isExp = fila._expanded;
+
+            return (
+              <div key={fila._id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}>
+                {/* Compact row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '22px 1fr 1fr 90px 90px 1fr 88px auto', gap: '6px 8px', padding: '10px 12px', alignItems: 'center', borderBottom: isExp ? '1px solid #e5e7eb' : 'none' }}>
+                  <span style={{ color: '#9ca3af', fontSize: 12, textAlign: 'center' }}>{idx + 1}</span>
+                  {/* Servicio */}
+                  <div>
+                    {itemsSugeridos.length > 0 ? (
+                      <><input className="input" list={`svc-${fila._id}`} value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} placeholder="Servicio *" style={inSt} /><datalist id={`svc-${fila._id}`}>{itemsSugeridos.map((s, i) => <option key={i} value={s} />)}</datalist></>
+                    ) : tiposActivos.length > 0 ? (
+                      <select className="select" value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} style={inSt}><option value="">— Servicio * —</option>{tiposActivos.map(t => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}</select>
+                    ) : (
+                      <input className="input" value={fila.servicio} onChange={e => updFila(fila._id, 'servicio', e.target.value)} placeholder="Servicio *" style={inSt} />
+                    )}
+                  </div>
+                  {/* CECO */}
+                  <select className="select" value={fila.centro_costo_id} onChange={e => updFila(fila._id, 'centro_costo_id', e.target.value)} style={inSt}>
+                    <option value="">— CECO * —</option>
+                    {cecos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} – ` : ''}{c.nombre}</option>)}
+                  </select>
+                  {/* Fechas */}
+                  <input className="input" type="date" value={fila.fecha_programada} onChange={e => updFila(fila._id, 'fecha_programada', e.target.value)} style={inSt} />
+                  <input className="input" type="date" value={fila.fecha_fin} onChange={e => updFila(fila._id, 'fecha_fin', e.target.value)} style={inSt} />
+                  {/* Colaborador */}
+                  <ColaboradorAutocomplete
+                    value={{ id: fila.tecnico_responsable_id, nombre: personal.find(p => p.id === fila.tecnico_responsable_id)?.nombre || '' }}
+                    onChange={sel => updFila(fila._id, 'tecnico_responsable_id', sel.id)}
+                    personalOperativo={personalOperativo}
+                    personalAdmin={personalAdmin}
+                    monedaOT={os.moneda}
+                    tipoCambioHoy={tipoCambioHoy}
+                    style={inSt}
+                  />
+                  {/* Prioridad */}
+                  <select className="select" value={fila.prioridad} onChange={e => updFila(fila._id, 'prioridad', e.target.value)} style={inSt}>
+                    <option value="normal">Normal</option><option value="urgente">Urgente</option><option value="critica">Crítica</option>
+                  </select>
+                  {/* Total + toggle + delete */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', color: total > 0 ? '#111' : '#9ca3af' }}>{moneyCurrency(total, os.moneda)}</span>
+                    <button type="button" style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: isExp ? '#eff6ff' : '#f9fafb', color: isExp ? '#1d4ed8' : '#6b7280', border: '1px solid #e5e7eb', cursor: 'pointer', whiteSpace: 'nowrap' }} onClick={() => updFila(fila._id, '_expanded', !isExp)}>{isExp ? '▲ ocultar' : '▼ detallar'}</button>
+                    <button type="button" style={{ padding: '2px 6px', color: '#ef4444', background: 'none', border: 'none', fontSize: 16, lineHeight: 1, cursor: filas.length === 1 ? 'not-allowed' : 'pointer', opacity: filas.length === 1 ? 0.3 : 1 }} onClick={() => removeFila(fila._id)} disabled={filas.length === 1}>×</button>
+                  </div>
+                </div>
+
+                {/* Expanded detail panel */}
+                {isExp && (
+                  <div style={{ padding: '16px 16px 20px' }}>
+                    {hcVinculada && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                        <button type="button" className="btn btn-secondary" style={{ fontSize: 11 }} onClick={() => importarDesdeHC(fila._id)}>📋 Importar desde HC</button>
+                      </div>
+                    )}
+
+                    {/* 4 sections */}
+                    {[
+                      { key: 'mano_obra',  label: 'Mano de obra',        hcVal: hcVinculada?.total_mano_obra,          secTotal: mo  },
+                      { key: 'materiales', label: 'Materiales',           hcVal: hcVinculada?.total_materiales,         secTotal: mat },
+                      { key: 'terceros',   label: 'Servicios terceros',   hcVal: hcVinculada?.total_servicios_terceros, secTotal: ter },
+                      { key: 'logistica',  label: 'Logística y viáticos', hcVal: hcVinculada?.total_logistica,          secTotal: log },
+                    ].map(({ key, label, hcVal, secTotal }) => {
+                      const items = det[key] || [];
+                      const secExp = fila._secciones?.[key] ?? true;
+                      return (
+                        <div key={key} style={{ marginBottom: 10, border: '1px solid #f3f4f6', borderRadius: 6, overflow: 'hidden' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#f9fafb', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSec(fila._id, key)}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <span style={{ fontSize: 10, color: '#9ca3af' }}>{secExp ? '▼' : '▶'}</span>
+                              <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#374151' }}>{label}</span>
+                              {hcVal != null && <span style={{ fontSize: 11, color: '#6b7280' }}>Ref. HC: {moneyCurrency(hcVal, os.moneda)}</span>}
+                            </div>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: secTotal > 0 ? '#111' : '#9ca3af' }}>{moneyCurrency(secTotal, os.moneda)}</span>
+                          </div>
+                          {secExp && (
+                            <div style={{ padding: '10px 12px' }}>
+                              {items.length > 0 && (
+                                <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginBottom: 8 }}>
+                                  <thead>
+                                    <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                                      {key === 'mano_obra' ? (
+                                        <><th style={{ textAlign: 'left', padding: '3px 4px', color: '#6b7280', fontWeight: 600 }}>Colaborador</th><th style={{ textAlign: 'right', padding: '3px 4px', color: '#6b7280', fontWeight: 600, width: 54 }}>Días</th><th style={{ textAlign: 'right', padding: '3px 4px', color: '#6b7280', fontWeight: 600, width: 62 }}>Hrs/día</th><th style={{ textAlign: 'right', padding: '3px 4px', color: '#6b7280', fontWeight: 600, width: 88 }}>Costo/h</th></>
+                                      ) : key === 'materiales' ? (
+                                        <><th style={{ textAlign: 'left', padding: '3px 4px', color: '#6b7280', fontWeight: 600 }}>Material</th><th style={{ textAlign: 'right', padding: '3px 4px', color: '#6b7280', fontWeight: 600, width: 58 }}>Cant.</th><th style={{ textAlign: 'left', padding: '3px 4px', color: '#6b7280', fontWeight: 600, width: 52 }}>Unidad</th><th style={{ textAlign: 'right', padding: '3px 4px', color: '#6b7280', fontWeight: 600, width: 90 }}>Costo u.</th></>
+                                      ) : (
+                                        <><th style={{ textAlign: 'left', padding: '3px 4px', color: '#6b7280', fontWeight: 600 }}>Descripción</th><th style={{ textAlign: 'right', padding: '3px 4px', color: '#6b7280', fontWeight: 600, width: 58 }}>Cant.</th><th style={{ textAlign: 'left', padding: '3px 4px', color: '#6b7280', fontWeight: 600, width: 58 }}>Unidad</th><th style={{ textAlign: 'right', padding: '3px 4px', color: '#6b7280', fontWeight: 600, width: 90 }}>Costo u.</th></>
+                                      )}
+                                      <th style={{ textAlign: 'right', padding: '3px 4px', color: '#6b7280', fontWeight: 600, width: 84 }}>Subtotal</th>
+                                      <th style={{ width: 24 }} />
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {items.map((item, itemIdx) => (
+                                      <tr key={itemIdx} style={{ borderBottom: '1px solid #f9fafb' }}>
+                                        {key === 'mano_obra' ? (
+                                          <>
+                                            <td style={{ padding: '3px 4px' }}>
+                                              <ColaboradorAutocomplete
+                                                value={{ id: item.tecnico_id, nombre: item.nombre }}
+                                                onChange={sel => updTecnicoItem(fila._id, itemIdx, sel)}
+                                                personalOperativo={personalOperativo}
+                                                personalAdmin={personalAdmin}
+                                                monedaOT={os.moneda}
+                                                tipoCambioHoy={tipoCambioHoy}
+                                                inlineOptions
+                                              />
+                                            </td>
+                                            <td style={{ padding: '3px 4px' }}><input className="input" type="number" min="0.5" step="0.5" style={{ fontSize: 11, padding: '3px 5px', width: '100%', textAlign: 'right' }} value={item.dias} onChange={e => updItem(fila._id, 'mano_obra', itemIdx, 'dias', e.target.value)} /></td>
+                                            <td style={{ padding: '3px 4px' }}><input className="input" type="number" min="0.5" max="24" step="0.5" style={{ fontSize: 11, padding: '3px 5px', width: '100%', textAlign: 'right' }} value={item.horas_dia} onChange={e => updItem(fila._id, 'mano_obra', itemIdx, 'horas_dia', e.target.value)} /></td>
+                                            <td style={{ padding: '3px 4px', textAlign: 'right', color: '#6b7280', fontSize: 11 }}>
+                                              {item.costo_hora > 0 ? (
+                                                <>
+                                                  <div>{moneyCurrency(item.costo_hora, os.moneda)}</div>
+                                                  {os.moneda === 'USD' && item.costo_hora_pen > 0 && tipoCambioHoy?.usd && (
+                                                    <div style={{ fontSize: 9, color: '#9ca3af', whiteSpace: 'nowrap' }} title={`TC: ${(1/tipoCambioHoy.usd).toFixed(2)} · ${tipoCambioHoy.fecha}`}>
+                                                      S/ {item.costo_hora_pen.toFixed(2)}/h
+                                                    </div>
+                                                  )}
+                                                </>
+                                              ) : '—'}
+                                            </td>
+                                          </>
+                                        ) : key === 'materiales' ? (
+                                          <>
+                                            <td style={{ padding: '3px 4px' }}>
+                                              <MaterialAutocomplete
+                                                value={{ mat_id: item.inv_id, nombre: item.nombre }}
+                                                onChange={sel => updMaterialItem(fila._id, itemIdx, sel)}
+                                                materiales={catalogoMateriales}
+                                                inventario={inventario}
+                                                inlineOptions
+                                              />
+                                            </td>
+                                            <td style={{ padding: '3px 4px' }}><input className="input" type="number" min="0" step="0.01" style={{ fontSize: 11, padding: '3px 5px', width: '100%', textAlign: 'right' }} value={item.cantidad} onChange={e => updItem(fila._id, 'materiales', itemIdx, 'cantidad', e.target.value)} /></td>
+                                            <td style={{ padding: '3px 4px', fontSize: 11, color: '#6b7280' }}>{item.unidad || '—'}</td>
+                                            <td style={{ padding: '3px 4px' }}><input className="input" type="number" min="0" step="0.01" style={{ fontSize: 11, padding: '3px 5px', width: '100%', textAlign: 'right' }} value={item.costo_unit} onChange={e => updItem(fila._id, 'materiales', itemIdx, 'costo_unit', e.target.value)} /></td>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <td style={{ padding: '3px 4px' }}><input className="input" style={{ fontSize: 11, padding: '3px 5px', width: '100%' }} placeholder="Descripción..." value={item.descripcion} onChange={e => updItem(fila._id, key, itemIdx, 'descripcion', e.target.value)} /></td>
+                                            <td style={{ padding: '3px 4px' }}><input className="input" type="number" min="0" step="0.01" style={{ fontSize: 11, padding: '3px 5px', width: '100%', textAlign: 'right' }} value={item.cantidad} onChange={e => updItem(fila._id, key, itemIdx, 'cantidad', e.target.value)} /></td>
+                                            <td style={{ padding: '3px 4px' }}><input className="input" style={{ fontSize: 11, padding: '3px 5px', width: '100%' }} placeholder="und" value={item.unidad} onChange={e => updItem(fila._id, key, itemIdx, 'unidad', e.target.value)} /></td>
+                                            <td style={{ padding: '3px 4px' }}><input className="input" type="number" min="0" step="0.01" style={{ fontSize: 11, padding: '3px 5px', width: '100%', textAlign: 'right' }} value={item.costo_unit} onChange={e => updItem(fila._id, key, itemIdx, 'costo_unit', e.target.value)} /></td>
+                                          </>
+                                        )}
+                                        <td style={{ padding: '3px 4px', textAlign: 'right', fontWeight: 600 }}>{item.subtotal > 0 ? moneyCurrency(item.subtotal, os.moneda) : '—'}</td>
+                                        <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                                          <button type="button" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' }} onClick={() => removeItem(fila._id, key, itemIdx)}>×</button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                              <button type="button" style={{ fontSize: 11, padding: '3px 10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 4, cursor: 'pointer', color: '#374151' }} onClick={() => addItem(fila._id, key)}>
+                                + Agregar {key === 'mano_obra' ? 'colaborador' : key === 'materiales' ? 'material' : key === 'terceros' ? 'servicio' : 'gasto'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Resumen */}
+                    <div style={{ borderTop: '2px solid #e5e7eb', paddingTop: 12, marginTop: 4 }}>
+                      {[['Mano de obra', mo], ['Materiales', mat], ['Servicios terceros', ter], ['Logística y viáticos', log]].map(([lbl, val]) => (
+                        <div key={lbl} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0', color: val > 0 ? '#374151' : '#9ca3af' }}>
+                          <span>{lbl}</span><span>{moneyCurrency(val, os.moneda)}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 14, marginTop: 8, paddingTop: 8, borderTop: '1px solid #e5e7eb' }}>
+                        <span>Total estimado</span>
+                        <span style={{ color: total > 0 ? '#111' : '#9ca3af' }}>{moneyCurrency(total, os.moneda)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 16 }}>
           <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => addFila()}>+ Agregar OT</button>
-          <span style={{ fontSize: 11, color: '#888' }}>El costo real se acumula automáticamente desde los Partes Diarios (horas × costo/hora + materiales + gastos de campo).</span>
+          <span style={{ fontSize: 11, color: '#888' }}>El costo real se acumula automáticamente desde los Partes Diarios.</span>
         </div>
       </div>
     </div>
@@ -3999,12 +4435,14 @@ function FormCrearOT({ os, onSave, onCancel }) {
             <div className="grid-2" style={{gap:16}}>
               <div className="input-group">
                 <label>Colaborador responsable</label>
-                <select className="select" value={form.tecnico_responsable_id} onChange={e => upd('tecnico_responsable_id', e.target.value)}>
-                  <option value="">Sin asignar</option>
-                  {personal.map(p => (
-                    <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` — ${p.cargo}` : ''}</option>
-                  ))}
-                </select>
+                <ColaboradorAutocomplete
+                  value={{ id: form.tecnico_responsable_id, nombre: personal.find(p => p.id === form.tecnico_responsable_id)?.nombre || '' }}
+                  onChange={sel => upd('tecnico_responsable_id', sel.id)}
+                  personalOperativo={personalOperativo}
+                  personalAdmin={personalAdmin}
+                  monedaOT={os?.moneda || 'PEN'}
+                  tipoCambioHoy={null}
+                />
               </div>
               <div className="input-group">
                 <label>Supervisor</label>
