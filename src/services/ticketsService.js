@@ -24,9 +24,9 @@ function cleanTicketPayload(ticket = {}, { includeId = false } = {}) {
     cuenta_nombre: ticket.cuenta_nombre || null,
     responsable_id: ticket.responsable_id || null,
     responsable_nombre: ticket.responsable_nombre || null,
-    creado_por: ticket.creado_por || null,
   };
 
+  if (ticket.creado_por !== undefined) payload.creado_por = ticket.creado_por || null;
   if (includeId && ticket.id) payload.id = ticket.id;
   return payload;
 }

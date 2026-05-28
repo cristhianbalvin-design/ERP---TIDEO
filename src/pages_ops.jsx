@@ -6786,6 +6786,19 @@ function emptyTicketForm() {
   };
 }
 
+function ticketToForm(ticket) {
+  if (!ticket) return emptyTicketForm();
+  return {
+    titulo: ticket.titulo || '',
+    descripcion: ticket.descripcion || '',
+    prioridad: ticket.prioridad || 'media',
+    tipo: ticket.tipo || 'consulta',
+    canal_entrada: ticket.canal_entrada || 'backoffice',
+    cuenta_id: ticket.cuenta_id || '',
+    responsable_id: ticket.responsable_id || '',
+  };
+}
+
 function createTicketDraftId() {
   return globalThis.crypto?.randomUUID?.() || `ticket_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
@@ -6801,6 +6814,9 @@ function Tickets() {
   const [form, setForm] = useState(emptyTicketForm);
   const [draftTicketId, setDraftTicketId] = useState(createTicketDraftId);
   const [detailTicketId, setDetailTicketId] = useState(null);
+  const [detailForm, setDetailForm] = useState(emptyTicketForm);
+  const [detailSaving, setDetailSaving] = useState(false);
+  const [detailEditing, setDetailEditing] = useState(false);
 
   const useSupabaseTickets = dataMode === 'supabase';
 
@@ -6834,6 +6850,12 @@ function Tickets() {
     return () => { alive = false; };
   }, [empresa?.id, useSupabaseTickets]);
 
+  useEffect(() => {
+    const current = (tickets || []).find(ticket => ticket.id === detailTicketId);
+    setDetailForm(ticketToForm(current));
+    setDetailEditing(false);
+  }, [detailTicketId, tickets]);
+
   const cuentaNombre = cuenta => cuenta?.nombre_comercial || cuenta?.razon_social || cuenta?.nombre || cuenta?.id || '';
   const usuarioNombre = usuario => usuario?.nombre || usuario?.email || usuario?.id || '';
   const cuentaById = id => (cuentas || []).find(c => c.id === id);
@@ -6845,6 +6867,10 @@ function Tickets() {
 
   const updateForm = (key, value) => {
     setForm(prev => ({ ...prev, [key]: value }));
+  };
+
+  const updateDetailForm = (key, value) => {
+    setDetailForm(prev => ({ ...prev, [key]: value }));
   };
 
   const abrirNuevoTicket = () => {
@@ -6859,6 +6885,7 @@ function Tickets() {
   };
 
   const abrirDetalleTicket = ticketId => {
+    setDetailEditing(false);
     setDetailTicketId(ticketId);
   };
 
@@ -6954,6 +6981,51 @@ function Tickets() {
         setTickets(original);
         addNotificacion(`No se pudo actualizar el ticket: ${error.message}`);
       });
+  };
+
+  const guardarDetalleTicket = async () => {
+    const current = tickets.find(ticket => ticket.id === detailTicketId);
+    if (!current || current.estado !== 'abierto') return;
+
+    const titulo = detailForm.titulo.trim();
+    if (!titulo) {
+      addNotificacion('Ingresa el titulo del ticket.');
+      return;
+    }
+
+    const cuenta = cuentaById(detailForm.cuenta_id);
+    const responsable = usuarioById(detailForm.responsable_id);
+    const payload = {
+      titulo,
+      descripcion: detailForm.descripcion.trim(),
+      prioridad: detailForm.prioridad,
+      tipo: detailForm.tipo,
+      canal_entrada: detailForm.canal_entrada,
+      estado: current.estado,
+      cuenta_id: detailForm.cuenta_id || null,
+      cuenta_nombre: cuenta ? cuentaNombre(cuenta) : null,
+      responsable_id: detailForm.responsable_id || null,
+      responsable_nombre: responsable ? usuarioNombre(responsable) : null,
+      creado_por: current.creado_por || null,
+    };
+
+    setDetailSaving(true);
+    try {
+      const updated = useSupabaseTickets
+        ? await ticketsService.actualizarTicket(current.id, payload)
+        : { ...current, ...payload, actualizado_en: new Date().toISOString() };
+      setTickets(prev => prev.map(ticket => (
+        ticket.id === current.id
+          ? { ...ticket, ...updated, moved_at: ticket.moved_at }
+          : ticket
+      )));
+      addNotificacion(`${updated.numero || current.numero || 'Ticket'} guardado.`);
+    } catch (error) {
+      console.error('Error guardando ticket:', error);
+      addNotificacion(`No se pudo guardar el ticket: ${error.message}`);
+    } finally {
+      setDetailSaving(false);
+    }
   };
 
   const handleDrop = (event, targetStatus) => {
@@ -7089,8 +7161,11 @@ function Tickets() {
           </div>
         </div>
 
-        <div className="row" style={{gap:6, flexWrap:'wrap', marginTop:12}}>
-          {actionButtons}
+        <div style={{borderTop:'1px solid var(--border-subtle)', paddingTop:10, marginTop:10}}>
+          <div className="text-muted" style={{fontSize:10, fontWeight:700, marginBottom:6}}>Mover a</div>
+          <div className="row" style={{gap:6, flexWrap:'wrap'}}>
+            {actionButtons}
+          </div>
         </div>
       </div>
     );
@@ -7181,12 +7256,24 @@ function Tickets() {
   );
   const ticketsView = loading ? loadingBlock : (view === 'kanban' ? kanbanContent : tableContent);
   const selectedTicket = detailTicketId ? tickets.find(ticket => ticket.id === detailTicketId) : null;
+  const selectedTicketCanEdit = selectedTicket?.estado === 'abierto';
+  const selectedTicketEditable = selectedTicketCanEdit && detailEditing;
+  const selectedTicketTitle = selectedTicketEditable ? (detailForm.titulo || selectedTicket?.titulo || '') : (selectedTicket?.titulo || '');
+  const selectedPriority = selectedTicketEditable ? detailForm.prioridad : selectedTicket?.prioridad;
+  const selectedTipo = selectedTicketEditable ? detailForm.tipo : selectedTicket?.tipo;
+  const selectedCanal = selectedTicketEditable ? detailForm.canal_entrada : selectedTicket?.canal_entrada;
+  const selectedCuentaNombre = selectedTicketEditable
+    ? (cuentaById(detailForm.cuenta_id) ? cuentaNombre(cuentaById(detailForm.cuenta_id)) : 'Sin cliente')
+    : (selectedTicket?.cuenta_nombre || 'Sin cliente');
+  const selectedResponsableNombre = selectedTicketEditable
+    ? (usuarioById(detailForm.responsable_id) ? usuarioNombre(usuarioById(detailForm.responsable_id)) : 'Sin asignar')
+    : (selectedTicket?.responsable_nombre || 'Sin asignar');
   const selectedSlaEstado = selectedTicket?.sla_estado || 'ok';
-  const selectedTipoLabel = selectedTicket ? (TICKET_TYPE_LABELS[selectedTicket.tipo] || selectedTicket.tipo || 'Ticket') : '';
-  const selectedCanalLabel = selectedTicket ? (TICKET_CHANNEL_LABELS[selectedTicket.canal_entrada] || selectedTicket.canal_entrada || 'Canal') : '';
+  const selectedTipoLabel = selectedTicket ? (TICKET_TYPE_LABELS[selectedTipo] || selectedTipo || 'Ticket') : '';
+  const selectedCanalLabel = selectedTicket ? (TICKET_CHANNEL_LABELS[selectedCanal] || selectedCanal || 'Canal') : '';
   const selectedEstadoLabel = selectedTicket ? (TICKET_STATUS_LABELS[selectedTicket.estado] || selectedTicket.estado) : '';
-  const selectedCanalIcon = selectedTicket ? canalIcon(selectedTicket.canal_entrada) : null;
-  const detailActionButtons = selectedTicket ? TICKET_COLUMNS
+  const selectedCanalIcon = selectedTicket ? canalIcon(selectedCanal) : null;
+  const flowActionButtons = selectedTicket ? TICKET_COLUMNS
     .filter(column => column.k !== selectedTicket.estado)
     .map(column => (
       <button
@@ -7198,6 +7285,102 @@ function Tickets() {
         {column.title}
       </button>
     )) : [];
+  const detailStartEditButton = selectedTicketCanEdit && !detailEditing ? (
+    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDetailEditing(true)}>
+      Editar
+    </button>
+  ) : null;
+  const detailCancelEditButton = selectedTicketEditable ? (
+    <button
+      type="button"
+      className="btn btn-secondary btn-sm"
+      onClick={() => {
+        setDetailForm(ticketToForm(selectedTicket));
+        setDetailEditing(false);
+      }}
+      disabled={detailSaving}
+    >
+      Cancelar
+    </button>
+  ) : null;
+  const detailEditableFields = selectedTicketEditable ? (
+    <div className="grid-2" style={{gap:12}}>
+      <div className="input-group" style={{gridColumn:'1/-1'}}>
+        <label>Titulo *</label>
+        <input className="input" value={detailForm.titulo} onChange={event => updateDetailForm('titulo', event.target.value)} />
+      </div>
+      <div className="input-group" style={{gridColumn:'1/-1'}}>
+        <label>Descripcion</label>
+        <textarea className="input" rows="5" value={detailForm.descripcion} onChange={event => updateDetailForm('descripcion', event.target.value)} />
+      </div>
+      <div className="input-group">
+        <label>Prioridad</label>
+        <select className="select" value={detailForm.prioridad} onChange={event => updateDetailForm('prioridad', event.target.value)}>{prioridadOptions}</select>
+      </div>
+      <div className="input-group">
+        <label>Tipo</label>
+        <select className="select" value={detailForm.tipo} onChange={event => updateDetailForm('tipo', event.target.value)}>{tipoOptions}</select>
+      </div>
+      <div className="input-group">
+        <label>Canal de entrada</label>
+        <select className="select" value={detailForm.canal_entrada} onChange={event => updateDetailForm('canal_entrada', event.target.value)}>{canalOptions}</select>
+      </div>
+      <div className="input-group">
+        <label>Cliente</label>
+        <select className="select" value={detailForm.cuenta_id} onChange={event => updateDetailForm('cuenta_id', event.target.value)}>
+          <option value="">Sin cliente</option>
+          {cuentaOptions}
+        </select>
+      </div>
+      <div className="input-group" style={{gridColumn:'1/-1'}}>
+        <label>Responsable</label>
+        <select className="select" value={detailForm.responsable_id} onChange={event => updateDetailForm('responsable_id', event.target.value)}>
+          <option value="">Sin asignar</option>
+          {usuarioOptions}
+        </select>
+      </div>
+    </div>
+  ) : null;
+  const detailReadOnlyFields = selectedTicket && !selectedTicketEditable ? (
+    <div style={{fontSize:13, lineHeight:1.6}}>
+      <div><strong>Cliente:</strong> {selectedCuentaNombre}</div>
+      <div><strong>Responsable:</strong> {selectedResponsableNombre}</div>
+      <div><strong>Creado:</strong> {selectedTicket.creado_en ? new Date(selectedTicket.creado_en).toLocaleString() : '-'}</div>
+      <div><strong>Vence SLA:</strong> {selectedTicket.fecha_limite_sla ? new Date(selectedTicket.fecha_limite_sla).toLocaleString() : '-'}</div>
+      {selectedTicket.descripcion && (
+        <div style={{color:'var(--fg-muted)', lineHeight:1.6, marginTop:12}}>
+          {selectedTicket.descripcion}
+        </div>
+      )}
+    </div>
+  ) : null;
+  const detailSaveButton = selectedTicketEditable ? (
+    <button type="button" className="btn btn-primary btn-sm" onClick={guardarDetalleTicket} disabled={detailSaving}>
+      {detailSaving ? 'Guardando...' : 'Guardar cambios'}
+    </button>
+  ) : null;
+  const detailLockedBadge = selectedTicket && !selectedTicketEditable ? (
+    <span className="badge badge-gray">Solo lectura</span>
+  ) : null;
+  const detailHeaderActions = selectedTicketCanEdit ? (
+    <div className="row" style={{gap:8, flexWrap:'wrap', justifyContent:'flex-end'}}>
+      {detailStartEditButton}
+      {detailCancelEditButton}
+      {detailSaveButton}
+    </div>
+  ) : null;
+  const detailFlowPanel = selectedTicket ? (
+    <div className="card" style={{padding:16, marginBottom:16}}>
+      <div className="card-head" style={{padding:0, borderBottom:'none', marginBottom:10}}>
+        <h3>Flujo</h3>
+      </div>
+      <div className="row" style={{gap:8, flexWrap:'wrap', alignItems:'center'}}>
+        <span className={'badge ' + statusBadge(selectedTicket.estado)}>{selectedEstadoLabel}</span>
+        <span className="text-muted" style={{fontSize:12}}>Cambiar a</span>
+        {flowActionButtons}
+      </div>
+    </div>
+  ) : null;
   const detailPanel = selectedTicket ? (
     <>
       <div className="side-panel-backdrop" onClick={() => setDetailTicketId(null)}/>
@@ -7205,38 +7388,36 @@ function Tickets() {
         <div className="side-panel-head">
           <div>
             <div className="eyebrow">{selectedTicket.numero || 'Ticket'}</div>
-            <div className="font-display" style={{fontSize:22, fontWeight:700}}>{selectedTicket.titulo}</div>
+            <div className="font-display" style={{fontSize:22, fontWeight:700}}>{selectedTicketTitle}</div>
           </div>
           <button type="button" className="icon-btn" onClick={() => setDetailTicketId(null)}>{I.x}</button>
         </div>
         <div className="side-panel-body">
           <div className="row" style={{gap:8, flexWrap:'wrap', marginBottom:14}}>
             <span className={'badge ' + statusBadge(selectedTicket.estado)}>{selectedEstadoLabel}</span>
-            <span className={'badge ' + pBadge(selectedTicket.prioridad)}>{String(selectedTicket.prioridad || '').toUpperCase()}</span>
+            <span className={'badge ' + pBadge(selectedPriority)}>{String(selectedPriority || '').toUpperCase()}</span>
             <span className={'badge ' + slaBadge(selectedSlaEstado)}>SLA {String(selectedSlaEstado).toUpperCase()}</span>
             <span className="badge badge-gray">{selectedTipoLabel}</span>
             <span className="badge badge-gray">{selectedCanalIcon} {selectedCanalLabel}</span>
+            {detailLockedBadge}
           </div>
 
           <div className="card" style={{padding:16, marginBottom:16}}>
             <div className="card-head" style={{padding:0, borderBottom:'none', marginBottom:10}}>
               <h3>Detalle</h3>
+              {detailHeaderActions}
             </div>
-            <div style={{fontSize:13, lineHeight:1.6}}>
-              <div><strong>Cliente:</strong> {selectedTicket.cuenta_nombre || 'Sin cliente'}</div>
-              <div><strong>Responsable:</strong> {selectedTicket.responsable_nombre || 'Sin asignar'}</div>
-              <div><strong>Creado:</strong> {selectedTicket.creado_en ? new Date(selectedTicket.creado_en).toLocaleString() : '-'}</div>
-              <div><strong>Vence SLA:</strong> {selectedTicket.fecha_limite_sla ? new Date(selectedTicket.fecha_limite_sla).toLocaleString() : '-'}</div>
-            </div>
-            {selectedTicket.descripcion && (
-              <div style={{fontSize:13, color:'var(--fg-muted)', lineHeight:1.6, marginTop:12}}>
-                {selectedTicket.descripcion}
+            {detailEditableFields}
+            {detailReadOnlyFields}
+            {selectedTicketEditable && (
+              <div className="text-muted" style={{fontSize:12, lineHeight:1.6, marginTop:12}}>
+                <div>Creado: {selectedTicket.creado_en ? new Date(selectedTicket.creado_en).toLocaleString() : '-'}</div>
+                <div>Vence SLA: {selectedTicket.fecha_limite_sla ? new Date(selectedTicket.fecha_limite_sla).toLocaleString() : '-'}</div>
               </div>
             )}
-            <div className="row" style={{gap:8, flexWrap:'wrap', marginTop:14}}>
-              {detailActionButtons}
-            </div>
           </div>
+
+          {detailFlowPanel}
 
           <FileUpload
             entidadTipo="tickets"
@@ -7245,6 +7426,7 @@ function Tickets() {
             categoria="adjunto"
             multiple
             subidoPor={authUser?.id}
+            disabled={!selectedTicketEditable}
           />
         </div>
       </div>

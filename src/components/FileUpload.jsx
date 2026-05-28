@@ -165,7 +165,7 @@ export const FileUpload = forwardRef(function FileUpload({
         <div style={{fontSize:13, fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{file.name}</div>
         <div className="text-muted" style={{fontSize:11}}>{storageService.formatoTamano(file.size)}</div>
       </div>
-      <button type="button" className="icon-btn" title="Quitar" onClick={() => quitarPendiente(index)} disabled={uploading}>
+      <button type="button" className="icon-btn" title="Quitar" onClick={() => quitarPendiente(index)} disabled={uploading || disabled}>
         {I.x}
       </button>
     </div>
@@ -180,7 +180,7 @@ export const FileUpload = forwardRef(function FileUpload({
           <span className="text-muted" style={{display:'block', fontSize:11}}>{storageService.formatoTamano(adjunto.tamano_bytes)} - {adjunto.categoria || 'adjunto'}</span>
         </span>
       </button>
-      <button type="button" className="icon-btn" title="Eliminar" onClick={() => eliminarAdjunto(adjunto)} disabled={deletingId === adjunto.id}>
+      <button type="button" className="icon-btn" title="Eliminar" onClick={() => eliminarAdjunto(adjunto)} disabled={disabled || deletingId === adjunto.id}>
         {I.trash}
       </button>
     </div>
