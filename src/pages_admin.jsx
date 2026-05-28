@@ -2006,6 +2006,16 @@ function MaterialesMaestro({ onClose }) {
     } finally { setImportando(false); }
   };
 
+  const descargarPlantillaMateriales = () => {
+    const headers = ['Cod Grupo','Grupo','Cod Familia','Familia','Cod Sub-Familia','Sub-Familia','Codigo','Descripcion','Nro Parte','UM','Unidades Contenidas','Estado','Almacen','Ubicacion','Observacion','P.U. S/'];
+    const ejemplo = ['GRP01','Herramientas','FAM01','Herramientas Manuales','SUB01','Llaves','','Llave francesa 10"','MFR-1234','und','1','activo','Almacén Central','Estante A-3','','25.50'];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ejemplo]);
+    ws['!cols'] = headers.map((h,i) => ({ wch: i < 6 ? 12 : i === 7 ? 30 : 16 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Materiales');
+    XLSX.writeFile(wb, 'plantilla_materiales.xlsx');
+  };
+
   // ─── Jerarquía CRUD ───────────────────────────────────────────────────────
   const guardarGrupo = async (e) => {
     e.preventDefault(); setJerarErr('');
@@ -2068,6 +2078,7 @@ function MaterialesMaestro({ onClose }) {
                   {importando ? 'Importando...' : <>{I.download} Importar Excel</>}
                   <input type="file" accept=".xlsx,.xls" onChange={importarExcel} style={{ display: 'none' }} disabled={importando} />
                 </label>
+                <button className="btn btn-secondary" onClick={descargarPlantillaMateriales}>{I.download} Descargar plantilla</button>
                 {resultImport && (
                   <div style={{ fontSize: 12, background: resultImport.errores?.length ? 'var(--danger-lt)' : 'var(--success-lt)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 12px' }}>
                     <strong>Resultado importación:</strong> {resultImport.creados} creados · {resultImport.actualizados} actualizados
@@ -2390,6 +2401,9 @@ function Maestros() {
   const [nuevo, setNuevo] = useState(nuevoBase);
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [importModal, setImportModal] = useState(false);
+  const [importRows, setImportRows] = useState([]);
+  const [importStep, setImportStep] = useState(1);
   const getSelectedRows = () => {
     if (!sel) return [];
     if (sel.id === 'mst_areas') return areasEmpresa;
@@ -2418,6 +2432,100 @@ function Maestros() {
     setNuevo(nuevoBase);
     setEditandoId(null);
     setFormError('');
+  };
+
+  const parseMstCsvLine = line => {
+    const vals = []; let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { if (inQ && line[i+1]==='"') { cur+='"'; i++; } else inQ=!inQ; }
+      else if (ch === ',' && !inQ) { vals.push(cur.trim().replace(/\r/g,'')); cur=''; }
+      else cur+=ch;
+    }
+    vals.push(cur.trim().replace(/\r/g,'')); return vals;
+  };
+  const parseMstCsv = text => {
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) return [];
+    const headers = parseMstCsvLine(lines[0]).map(h=>h.replace(/\r/g,''));
+    return lines.slice(1).filter(l=>l.trim()).map(line => {
+      const vals = parseMstCsvLine(line); const row = {};
+      headers.forEach((h,i) => row[h]=vals[i]||''); return row;
+    });
+  };
+
+  const IMPORT_HINTS = {
+    mst_areas: { cols: 'nombre, tipo, responsable, detalle, estado', hint: 'tipo: Operativa / Administrativa / Ambos' },
+    mst_cargos: { cols: 'nombre, tipo, detalle, estado', hint: 'tipo: Operativo / Administrativo / Ambos' },
+    mst_especialidades: { cols: 'nombre, area, requiere_cert, estado', hint: 'requiere_cert: si / no' },
+    mst_tipos_servicio: { cols: 'nombre, clasificacion, facturable, estado', hint: 'facturable: si / no' },
+    mst_almacenes: { cols: 'nombre, tipo, responsable, direccion, estado', hint: 'tipo: Central / Sede / Móvil / Tránsito' },
+    mst_sedes: { cols: 'nombre, direccion, gps, estado', hint: '' },
+    mst_industrias: { cols: 'nombre, categoria, estado', hint: '' },
+    mst_impuestos: { cols: 'codigo, tipo, nombre, detalle, estado', hint: 'tipo: moneda / impuesto / unidad · codigo es obligatorio' },
+  };
+
+  const validarImportMaestro = rows => rows.map(r => {
+    const errores = [];
+    const estadoNorm = (r.estado||'').trim().toLowerCase();
+    if (!r.nombre) errores.push('Nombre vacío');
+    if (sel?.id === 'mst_impuestos' && !r.codigo) errores.push('Código vacío');
+    if (estadoNorm && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido');
+    if (r.nombre && selectedRows.some(x=>x.nombre===r.nombre)) errores.push('Nombre ya existe');
+    return { ...r, estado: estadoNorm || 'activo', _errores: errores };
+  });
+
+  const exportarMaestro = () => {
+    const cfgs = {
+      mst_areas: { h: ['codigo','nombre','tipo','responsable','detalle','estado'], f: 'areas.csv' },
+      mst_cargos: { h: ['codigo','nombre','tipo','detalle','estado'], f: 'cargos.csv' },
+      mst_especialidades: { h: ['codigo','nombre','area','requiere_cert','estado'], f: 'especialidades.csv' },
+      mst_tipos_servicio: { h: ['codigo','nombre','clasificacion','facturable','estado'], f: 'tipos_servicio.csv' },
+      mst_almacenes: { h: ['codigo','nombre','tipo','responsable','direccion','estado'], f: 'almacenes.csv' },
+      mst_sedes: { h: ['codigo','nombre','direccion','gps','estado'], f: 'sedes.csv' },
+      mst_industrias: { h: ['codigo','nombre','categoria','estado'], f: 'industrias.csv' },
+      mst_impuestos: { h: ['codigo','tipo','nombre','detalle','estado'], f: 'monedas_impuestos_unidades.csv' },
+    };
+    const cfg = cfgs[sel?.id]; if (!cfg) return;
+    const data = selectedRows.map(r => {
+      const row = {};
+      cfg.h.forEach(h => {
+        if (h === 'categoria') row[h] = r.categoria || r.detalle || '';
+        else if (h === 'requiere_cert') row[h] = r.requiere_cert ? 'si' : 'no';
+        else if (h === 'facturable') row[h] = r.facturable ? 'si' : 'no';
+        else row[h] = r[h] ?? '';
+      });
+      return row;
+    });
+    const csvRows = [cfg.h.join(','), ...data.map(r => cfg.h.map(h=>`"${r[h]??''}"`).join(','))];
+    const blob = new Blob([csvRows.join('\n')], { type:'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = cfg.f; a.click();
+  };
+
+  const doImportMaestro = async (btn) => {
+    btn.disabled = true; btn.textContent = 'Importando...';
+    const valid = importRows.filter(r=>r._errores.length===0).map(({_errores,...r})=>r);
+    let count = 0;
+    try {
+      for (let i = 0; i < valid.length; i++) {
+        const r = valid[i];
+        const base = { codigo: autoCode(sel.id, selectedRows.length + i), nombre: r.nombre, estado: r.estado || 'activo' };
+        if (sel.id === 'mst_areas') await crearArea({ ...base, tipo: r.tipo || 'Ambos', responsable: r.responsable || '', detalle: r.detalle || '' });
+        else if (sel.id === 'mst_cargos') await crearCargo({ ...base, tipo: r.tipo || 'Administrativo', detalle: r.detalle || '' });
+        else if (sel.id === 'mst_especialidades') await crearEspecialidad({ ...base, area: r.area || 'General', requiere_cert: (r.requiere_cert||'').toLowerCase()==='si' });
+        else if (sel.id === 'mst_tipos_servicio') await crearTipoServicio({ ...base, clasificacion: r.clasificacion || 'General', facturable: (r.facturable||'').toLowerCase()==='si' });
+        else if (sel.id === 'mst_almacenes') await crearAlmacen({ ...base, tipo: r.tipo || 'Central', responsable: r.responsable || '', direccion: r.direccion || '' });
+        else if (sel.id === 'mst_sedes') await crearSede({ ...base, direccion: r.direccion || '', gps: r.gps || '' });
+        else if (sel.id === 'mst_industrias') await crearIndustria({ ...base, categoria: r.categoria || r.detalle || 'General' });
+        else if (sel.id === 'mst_impuestos') await crearMonedaImpuestoUnidad({ codigo: (r.codigo||'').trim().toUpperCase(), tipo: r.tipo || 'moneda', nombre: r.nombre, detalle: r.detalle || '', estado: r.estado || 'activo' });
+        count++;
+      }
+      addNotificacion?.(`${count} registros importados correctamente.`);
+      setImportModal(false);
+    } catch(err) {
+      btn.disabled = false; btn.textContent = 'Reintentar';
+      addNotificacion?.(`Error al importar: ${err?.message || 'Error desconocido'}.`, 'error');
+    }
   };
 
   const autoCode = (id, len) => {
@@ -2912,6 +3020,67 @@ function Maestros() {
 
       {sel?.id === 'mst_materiales' && <MaterialesMaestro onClose={() => setSel(null)} />}
 
+      {importModal && sel && IMPORT_HINTS[sel.id] && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{maxWidth:700, width:'96vw'}}>
+            <div className="modal-head">
+              <h2>Importar {sel.tabla} — Paso {importStep} de 3</h2>
+              <button className="icon-btn" onClick={()=>setImportModal(false)}>{I.x}</button>
+            </div>
+            <div className="modal-body">
+              {importStep === 1 && (
+                <div>
+                  <p className="text-muted" style={{marginBottom:8, fontSize:13}}>
+                    Sube un CSV con columnas: <code>{IMPORT_HINTS[sel.id].cols}</code>
+                  </p>
+                  {IMPORT_HINTS[sel.id].hint && <p className="text-muted" style={{marginBottom:12, fontSize:12}}>{IMPORT_HINTS[sel.id].hint}</p>}
+                  <input type="file" accept=".csv" onChange={e => {
+                    const f = e.target.files[0]; if (!f) return;
+                    const r = new FileReader();
+                    r.onload = ev => { setImportRows(validarImportMaestro(parseMstCsv(ev.target.result))); setImportStep(2); };
+                    r.readAsText(f);
+                  }}/>
+                </div>
+              )}
+              {importStep === 2 && (
+                <div>
+                  <p style={{marginBottom:12, fontSize:13}}>
+                    <strong>{importRows.length} filas</strong> · {importRows.filter(r=>r._errores.length===0).length} válidas · {importRows.filter(r=>r._errores.length>0).length} con errores
+                  </p>
+                  <div style={{maxHeight:280, overflow:'auto'}}>
+                    <table className="tbl">
+                      <thead><tr><th>Fila</th><th>Nombre</th><th>Estado</th><th>Errores</th></tr></thead>
+                      <tbody>{importRows.map((r,i) => (
+                        <tr key={i} style={{background: r._errores.length>0 ? 'rgba(239,68,68,0.05)' : 'transparent'}}>
+                          <td className="mono text-muted">{i+2}</td>
+                          <td>{r.nombre}</td>
+                          <td>{r._errores.length===0 ? <span className="badge badge-green">OK</span> : <span className="badge badge-red">Error</span>}</td>
+                          <td style={{fontSize:11, color:'var(--danger)'}}>{r._errores.join(' · ')}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                  <div style={{display:'flex', gap:10, marginTop:16}}>
+                    <button className="btn btn-secondary" onClick={()=>setImportStep(1)}>← Volver</button>
+                    <button className="btn btn-primary" disabled={!importRows.some(r=>r._errores.length===0)} onClick={()=>setImportStep(3)}>Confirmar importación →</button>
+                  </div>
+                </div>
+              )}
+              {importStep === 3 && (
+                <div>
+                  <p style={{marginBottom:16, fontSize:13}}>
+                    Se importarán <strong>{importRows.filter(r=>r._errores.length===0).length} registros</strong> en <em>{sel.tabla}</em>. Los {importRows.filter(r=>r._errores.length>0).length} con errores serán ignorados.
+                  </p>
+                  <button className="btn btn-primary" onClick={e => doImportMaestro(e.currentTarget)}>
+                    Importar {importRows.filter(r=>r._errores.length===0).length} registros
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {sel && sel.id !== 'mst_materiales' && <>
         <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
         <div className="side-panel" style={{width:'min(800px, 96vw)'}}>
@@ -2927,8 +3096,8 @@ function Maestros() {
           <div className="side-panel-body">
             {sel.id !== 'mst_clientes' && sel.id !== 'mst_proveedores' && (
               <div className="row" style={{gap:10, marginBottom:18}}>
-                <button className="btn btn-secondary">{I.download} Importar Excel</button>
-                <button className="btn btn-secondary">{I.download} Exportar</button>
+                <button className="btn btn-secondary" onClick={() => { setImportRows([]); setImportStep(1); setImportModal(true); }}>{I.download} Importar Excel</button>
+                <button className="btn btn-secondary" onClick={exportarMaestro}>{I.download} Exportar</button>
                 <span className="badge badge-cyan">Validación de duplicados activa</span>
               </div>
             )}

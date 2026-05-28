@@ -3,6 +3,7 @@ import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { rrhhService } from './services/rrhhService.js';
+import * as ticketsService from './services/ticketsService.js';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 
@@ -6739,50 +6740,471 @@ function Planner() {
   );
 }
 
+const TICKET_COLUMNS = [
+  { k: 'abierto', title: 'Abiertos', color: '#64748b', icon: I.alert },
+  { k: 'en_proceso', title: 'En Proceso', color: '#06b6d4', icon: I.clock },
+  { k: 'resuelto', title: 'Resueltos', color: '#10b981', icon: I.check },
+];
+
+const TICKET_STATUS_LABELS = {
+  abierto: 'Abierto',
+  en_proceso: 'En proceso',
+  resuelto: 'Resuelto',
+  cerrado: 'Cerrado',
+};
+
+const TICKET_TYPE_LABELS = {
+  averia: 'Averia',
+  reclamo: 'Reclamo',
+  preventivo: 'Preventivo',
+  consulta: 'Consulta',
+  otro: 'Otro',
+};
+
+const TICKET_CHANNEL_LABELS = {
+  backoffice: 'Backoffice',
+  email: 'Email',
+  telefono: 'Telefono',
+  campo: 'Campo',
+};
+
+const TICKET_PRIORITY_OPTIONS = ['critica', 'alta', 'media', 'baja'];
+const TICKET_TYPE_OPTIONS = ['averia', 'reclamo', 'preventivo', 'consulta', 'otro'];
+const TICKET_CHANNEL_OPTIONS = ['backoffice', 'email', 'telefono', 'campo'];
+
+function emptyTicketForm() {
+  return {
+    titulo: '',
+    descripcion: '',
+    prioridad: 'media',
+    tipo: 'consulta',
+    canal_entrada: 'backoffice',
+    cuenta_id: '',
+    responsable_id: '',
+  };
+}
+
 function Tickets() {
-  const { tickets: contextTickets, setTickets: setContextTickets, addNotificacion, searchQuery } = useApp();
+  const { addNotificacion, searchQuery, dataMode, empresa, cuentas, usuarios, authUser } = useApp();
   const [view, setView] = useState('kanban');
-  const [tickets, setTickets] = useState([
-    { id:'TK-0105', cliente:'Minera Andes SAC',        asunto:'Motor de ventilación sin respuesta',     categoria:'Avería',       prioridad:'critica', estado:'abierto',    sla:'vencido', asignado:'Soporte N2',  fecha:'2026-04-25', canal:'email'  },
-    { id:'TK-0104', cliente:'Planta Industrial Norte',  asunto:'Calibración de sensores de presión',     categoria:'Mantenimiento',prioridad:'media',   estado:'en_proceso', sla:'ok',      asignado:'Luis Mendoza', fecha:'2026-04-26', canal:'portal' },
-    { id:'TK-0103', cliente:'Facilities Lima',          asunto:'Revisión tablero eléctrico Q1',          categoria:'Preventivo',   prioridad:'baja',    estado:'resuelto',   sla:'ok',      asignado:'Ana Torres',  fecha:'2026-04-20', canal:'llamada'},
-    { id:'TK-0102', cliente:'Minera Andes SAC',        asunto:'Falla en variador de frecuencia',        categoria:'Avería',       prioridad:'alta',    estado:'en_proceso', sla:'riesgo',  asignado:'Carlos Reyes', fecha:'2026-04-27', canal:'email'  },
-    { id:'TK-0101', cliente:'Planta Industrial Norte',  asunto:'Consulta garantía de repuestos',         categoria:'Consulta',     prioridad:'baja',    estado:'resuelto',   sla:'ok',      asignado:'Carla Meza',  fecha:'2026-04-22', canal:'email'  },
-    { id:'TK-0100', cliente:'Logística Altiplano',      asunto:'Reclamo por atraso en entrega',          categoria:'Reclamo',      prioridad:'alta',    estado:'abierto',    sla:'riesgo',  asignado:'Soporte N1',  fecha:'2026-04-26', canal:'portal' },
-    { id:'TK-0099', cliente:'Constructora del Pacífico',asunto:'Solicitud de cotización de servicio',    categoria:'Consulta',     prioridad:'baja',    estado:'resuelto',   sla:'ok',      asignado:'Carla Meza',  fecha:'2026-04-18', canal:'email'  },
-  ]);
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [form, setForm] = useState(emptyTicketForm);
 
-  const cols = [
-    { k: 'abierto', title: 'Abiertos', color: '#64748b' },
-    { k: 'en_proceso', title: 'En Proceso', color: '#06b6d4' },
-    { k: 'resuelto', title: 'Resueltos', color: '#10b981' },
-  ];
+  const useSupabaseTickets = dataMode === 'supabase';
 
-  const handleDrop = (e, targetStatus) => {
-    e.preventDefault();
-    const id = e.dataTransfer.getData('text/plain');
-    if (id) {
-      setTickets(prev => prev.map(t => t.id === id ? { ...t, estado: targetStatus, moved_at: Date.now() } : t));
-      addNotificacion(`Ticket movido a ${targetStatus.replace('_',' ')}`);
+  useEffect(() => {
+    let alive = true;
+    const empresaId = empresa?.id;
+
+    async function loadTickets() {
+      setLoading(true);
+      if (!useSupabaseTickets) {
+        const mockTickets = (MOCK.tickets || []).filter(t => !empresaId || t.empresa_id === empresaId);
+        if (alive) {
+          setTickets(mockTickets);
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const rows = await ticketsService.cargarTickets(empresaId);
+        if (alive) setTickets(rows);
+      } catch (error) {
+        console.error('Error cargando tickets:', error);
+        if (alive) addNotificacion(`No se pudieron cargar tickets: ${error.message}`);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    loadTickets();
+    return () => { alive = false; };
+  }, [empresa?.id, useSupabaseTickets]);
+
+  const cuentaNombre = cuenta => cuenta?.nombre_comercial || cuenta?.razon_social || cuenta?.nombre || cuenta?.id || '';
+  const usuarioNombre = usuario => usuario?.nombre || usuario?.email || usuario?.id || '';
+  const cuentaById = id => (cuentas || []).find(c => c.id === id);
+  const usuarioById = id => (usuarios || []).find(u => u.id === id);
+  const slaBadge = s => s === 'vencido' ? 'badge-red' : s === 'riesgo' ? 'badge-orange' : 'badge-green';
+  const pBadge = p => p === 'critica' ? 'badge-red' : p === 'alta' ? 'badge-orange' : p === 'media' ? 'badge-yellow' : 'badge-gray';
+  const statusBadge = s => s === 'resuelto' || s === 'cerrado' ? 'badge-green' : s === 'en_proceso' ? 'badge-cyan' : 'badge-gray';
+  const canalIcon = c => c === 'email' ? I.send : c === 'telefono' ? I.phone : c === 'campo' ? I.mobile : I.clipboard;
+
+  const updateForm = (key, value) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  };
+
+  const abrirNuevoTicket = () => {
+    setForm(emptyTicketForm());
+    setPanelOpen(true);
+  };
+
+  const crearTicketMock = payload => {
+    const nextNumber = tickets.reduce((max, t) => {
+      const numeric = Number(String(t.numero || '').replace(/[^0-9]/g, '')) || 0;
+      return Math.max(max, numeric);
+    }, 0) + 1;
+    const creadoEn = new Date();
+    const randomId = globalThis.crypto?.randomUUID?.() || `ticket_${Date.now()}`;
+    return {
+      ...payload,
+      id: randomId,
+      empresa_id: empresa?.id || 'emp_001',
+      numero: `TK-${String(nextNumber).padStart(4, '0')}`,
+      estado: 'abierto',
+      fecha_limite_sla: ticketsService.calcularFechaLimiteSla(payload.prioridad, creadoEn),
+      sla_estado: 'ok',
+      fecha_resolucion: null,
+      creado_por: authUser?.id || null,
+      creado_en: creadoEn.toISOString(),
+      actualizado_en: creadoEn.toISOString(),
+    };
+  };
+
+  const guardarTicket = async event => {
+    event.preventDefault();
+    const titulo = form.titulo.trim();
+    if (!titulo) {
+      addNotificacion('Ingresa el titulo del ticket.');
+      return;
+    }
+
+    const cuenta = cuentaById(form.cuenta_id);
+    const responsable = usuarioById(form.responsable_id);
+    const payload = {
+      titulo,
+      descripcion: form.descripcion.trim(),
+      prioridad: form.prioridad,
+      tipo: form.tipo,
+      canal_entrada: form.canal_entrada,
+      cuenta_id: form.cuenta_id || null,
+      cuenta_nombre: cuenta ? cuentaNombre(cuenta) : null,
+      responsable_id: form.responsable_id || null,
+      responsable_nombre: responsable ? usuarioNombre(responsable) : null,
+      creado_por: authUser?.id || null,
+    };
+
+    setSaving(true);
+    try {
+      const nuevo = useSupabaseTickets
+        ? await ticketsService.crearTicket(empresa?.id, payload)
+        : crearTicketMock(payload);
+      setTickets(prev => [nuevo, ...prev]);
+      setPanelOpen(false);
+      addNotificacion(`${nuevo.numero || 'Ticket'} creado.`);
+    } catch (error) {
+      console.error('Error creando ticket:', error);
+      addNotificacion(`No se pudo crear el ticket: ${error.message}`);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const query = searchQuery.toLowerCase();
-  const filteredTickets = (tickets || []).filter(t => 
-    (t.asunto || '').toLowerCase().includes(query) ||
-    (t.cliente || '').toLowerCase().includes(query) ||
-    (t.id || '').toLowerCase().includes(query)
+  const cambiarEstado = (ticketId, estado) => {
+    const original = tickets;
+    const current = tickets.find(t => t.id === ticketId);
+    if (!current || current.estado === estado) return;
+
+    setTickets(prev => prev.map(t => (
+      t.id === ticketId
+        ? { ...t, estado, moved_at: Date.now(), fecha_resolucion: ['resuelto', 'cerrado'].includes(estado) ? new Date().toISOString() : null }
+        : t
+    )));
+    addNotificacion(`Ticket movido a ${TICKET_STATUS_LABELS[estado] || estado}`);
+
+    if (!useSupabaseTickets) return;
+
+    ticketsService.cambiarEstadoTicket(ticketId, estado)
+      .then(updated => {
+        setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, ...updated, moved_at: Date.now() } : t));
+      })
+      .catch(error => {
+        console.error('Error actualizando ticket:', error);
+        setTickets(original);
+        addNotificacion(`No se pudo actualizar el ticket: ${error.message}`);
+      });
+  };
+
+  const handleDrop = (event, targetStatus) => {
+    event.preventDefault();
+    const ticketId = event.dataTransfer.getData('text/plain');
+    if (ticketId) cambiarEstado(ticketId, targetStatus);
+  };
+
+  const query = String(searchQuery || '').toLowerCase();
+  const filteredTickets = (tickets || []).filter(t => {
+    const haystack = [
+      t.titulo,
+      t.descripcion,
+      t.cuenta_nombre,
+      t.responsable_nombre,
+      t.numero,
+      t.id,
+    ].join(' ').toLowerCase();
+    return !query || haystack.includes(query);
+  });
+  const ticketsActivos = filteredTickets.filter(t => !['resuelto', 'cerrado'].includes(t.estado));
+  const criticos = ticketsActivos.filter(t => t.prioridad === 'critica').length;
+  const slaAlerta = ticketsActivos.filter(t => t.sla_estado !== 'ok').length;
+  const sortedTickets = [...filteredTickets].sort((a, b) => {
+    const movedDelta = (b.moved_at || 0) - (a.moved_at || 0);
+    if (movedDelta) return movedDelta;
+    return String(b.creado_en || '').localeCompare(String(a.creado_en || ''));
+  });
+  const ticketsByStatus = TICKET_COLUMNS.reduce((acc, column) => {
+    acc[column.k] = sortedTickets.filter(t => t.estado === column.k);
+    return acc;
+  }, {});
+
+  const cuentasActivas = (cuentas || []).filter(c => !empresa?.id || !c.empresa_id || c.empresa_id === empresa.id);
+  const usuariosActivos = (usuarios || []).filter(u => !empresa?.id || !u.empresa_id || u.empresa_id === empresa.id);
+  const cuentaOptions = cuentasActivas.map(cuenta => (
+    <option key={cuenta.id} value={cuenta.id}>{cuentaNombre(cuenta)}</option>
+  ));
+  const usuarioOptions = usuariosActivos.map(usuario => (
+    <option key={usuario.id} value={usuario.id}>{usuarioNombre(usuario)}</option>
+  ));
+  const prioridadOptions = TICKET_PRIORITY_OPTIONS.map(prioridad => (
+    <option key={prioridad} value={prioridad}>{prioridad}</option>
+  ));
+  const tipoOptions = TICKET_TYPE_OPTIONS.map(tipo => (
+    <option key={tipo} value={tipo}>{TICKET_TYPE_LABELS[tipo]}</option>
+  ));
+  const canalOptions = TICKET_CHANNEL_OPTIONS.map(canal => (
+    <option key={canal} value={canal}>{TICKET_CHANNEL_LABELS[canal]}</option>
+  ));
+
+  const kpiCards = TICKET_COLUMNS.map(column => {
+    const columnTickets = ticketsByStatus[column.k] || [];
+    return (
+      <div key={column.k} className="pipeline-kpi-card hover-raise" style={{'--accent': column.color}}>
+        <div className="pipeline-kpi-icon" style={{color: column.color}}>{column.icon}</div>
+        <div className="pipeline-kpi-label">{column.title}</div>
+        <div className="pipeline-kpi-value">{columnTickets.length}</div>
+        <div className="pipeline-kpi-count">Ver detalles</div>
+      </div>
+    );
+  });
+
+  const metricCards = [
+    <div key="criticos" className="kpi-card">
+      <div className="kpi-label">Criticos activos</div>
+      <div className="kpi-value" style={{color: criticos ? 'var(--danger)' : 'inherit'}}>{criticos}</div>
+    </div>,
+    <div key="sla" className="kpi-card">
+      <div className="kpi-label">SLA en alerta</div>
+      <div className="kpi-value" style={{color: slaAlerta ? 'var(--orange)' : 'inherit'}}>{slaAlerta}</div>
+    </div>,
+  ];
+
+  const buildTicketCard = ticket => {
+    const actionButtons = TICKET_COLUMNS
+      .filter(column => column.k !== ticket.estado)
+      .map(column => (
+        <button
+          key={column.k}
+          type="button"
+          className="btn btn-sm btn-secondary"
+          onClick={() => cambiarEstado(ticket.id, column.k)}
+        >
+          {column.title}
+        </button>
+      ));
+    const slaEstado = ticket.sla_estado || 'ok';
+    const tipoLabel = TICKET_TYPE_LABELS[ticket.tipo] || ticket.tipo || 'Ticket';
+    const canalLabel = TICKET_CHANNEL_LABELS[ticket.canal_entrada] || ticket.canal_entrada || 'Canal';
+    const responsable = ticket.responsable_nombre || 'Sin asignar';
+    const responsableInitial = responsable.charAt(0).toUpperCase();
+    return (
+      <div
+        key={ticket.id}
+        className="kanban-card-v2"
+        draggable
+        onDragStart={event => event.dataTransfer.setData('text/plain', ticket.id)}
+        style={{cursor: 'grab'}}
+      >
+        <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>
+          <span className={'badge ' + pBadge(ticket.prioridad)} style={{fontSize:9}}>
+            {String(ticket.prioridad || '').toUpperCase()}
+          </span>
+          <span className={'badge ' + slaBadge(slaEstado)} style={{fontSize:9}}>
+            SLA {String(slaEstado).toUpperCase()}
+          </span>
+        </div>
+
+        <div style={{fontSize:13, fontWeight:700, color:'var(--navy)', marginBottom:4, lineHeight:1.4}}>
+          {ticket.titulo}
+        </div>
+        <div style={{fontSize:11, color:'var(--cyan)', fontWeight:600, marginBottom:8}}>
+          {ticket.cuenta_nombre || 'Sin cliente'}
+        </div>
+
+        <div style={{display:'flex', gap:8, marginBottom:12, alignItems:'center'}}>
+          <span className="badge badge-gray" style={{fontSize:9}}>{tipoLabel}</span>
+          <span title={canalLabel} style={{width:16, height:16, display:'inline-flex', color:'var(--fg-muted)'}}>{canalIcon(ticket.canal_entrada)}</span>
+        </div>
+
+        <div className="row" style={{justifyContent:'space-between', borderTop:'1px solid var(--border-subtle)', paddingTop:12, marginTop:4}}>
+          <div className="row" style={{gap:6}}>
+            <div className="avatar" style={{width:20, height:20, fontSize:9, background:'var(--navy)', color:'#fff'}}>{responsableInitial}</div>
+            <span style={{fontSize:10, color:'var(--fg-muted)'}}>{responsable}</span>
+          </div>
+          <div style={{fontSize:10, color:'var(--fg-muted)', fontWeight:600}}>
+            {ticket.numero || ticket.id}
+          </div>
+        </div>
+
+        <div className="row" style={{gap:6, flexWrap:'wrap', marginTop:12}}>
+          {actionButtons}
+        </div>
+      </div>
+    );
+  };
+
+  const ticketCardsByStatus = {};
+  TICKET_COLUMNS.forEach(column => {
+    ticketCardsByStatus[column.k] = (ticketsByStatus[column.k] || []).map(buildTicketCard);
+  });
+
+  const kanbanColumns = TICKET_COLUMNS.map(column => {
+    const columnCards = ticketCardsByStatus[column.k] || [];
+    const emptyState = (
+      <div className="card-empty-state">
+        <div style={{opacity:0.3}}>{column.icon}</div>
+        <p>Sin tickets {column.title.toLowerCase()}<br/><span style={{fontSize:10}}>Arrastra aqui para asignar.</span></p>
+      </div>
+    );
+    const body = columnCards.length ? columnCards : emptyState;
+    return (
+      <div
+        key={column.k}
+        className="kanban-col-v2"
+        onDragOver={event => event.preventDefault()}
+        onDrop={event => handleDrop(event, column.k)}
+        style={{ '--accent': column.color }}
+      >
+        <div className="kanban-col-head-v2">
+          <div className="kanban-col-title-v2">{column.title}</div>
+          <div className="kanban-col-count-v2">{columnCards.length}</div>
+        </div>
+        <div style={{flex:1}}>{body}</div>
+        <button type="button" className="kanban-btn-add" onClick={abrirNuevoTicket}>
+          {I.plus} Nuevo Ticket
+        </button>
+      </div>
+    );
+  });
+
+  const tableRows = sortedTickets.map(ticket => {
+    const slaEstado = ticket.sla_estado || 'ok';
+    const tipoLabel = TICKET_TYPE_LABELS[ticket.tipo] || ticket.tipo || 'Ticket';
+    const estadoLabel = TICKET_STATUS_LABELS[ticket.estado] || ticket.estado;
+    return (
+      <tr key={ticket.id} className="hover-row">
+        <td><div style={{fontWeight:600}}>{ticket.titulo}</div><div className="text-muted" style={{fontSize:11}}>{ticket.numero || ticket.id}</div></td>
+        <td>{ticket.cuenta_nombre || 'Sin cliente'}</td>
+        <td><span className={'badge ' + pBadge(ticket.prioridad)}>{String(ticket.prioridad || '').toUpperCase()}</span></td>
+        <td><span className={'badge ' + slaBadge(slaEstado)}>SLA {String(slaEstado).toUpperCase()}</span></td>
+        <td>{ticket.responsable_nombre || 'Sin asignar'}</td>
+        <td>{tipoLabel}</td>
+        <td><span className={'badge ' + statusBadge(ticket.estado)}>{estadoLabel}</span></td>
+      </tr>
+    );
+  });
+
+  const emptyTableRow = (
+    <tr>
+      <td colSpan="7" className="text-muted" style={{textAlign:'center', padding:24}}>No hay tickets para mostrar.</td>
+    </tr>
   );
-
-  const abiertos   = filteredTickets.filter(t => t.estado === 'abierto').length;
-  const enProceso  = filteredTickets.filter(t => t.estado === 'en_proceso').length;
-  const resueltos  = filteredTickets.filter(t => t.estado === 'resuelto').length;
-  const criticos   = filteredTickets.filter(t => t.prioridad === 'critica' && t.estado !== 'resuelto').length;
-  const slaAlerta  = filteredTickets.filter(t => t.sla !== 'ok' && t.estado !== 'resuelto').length;
-
-  const slaBadge   = s => s === 'vencido' ? 'badge-red' : s === 'riesgo' ? 'badge-orange' : 'badge-green';
-  const pBadge     = p => p === 'critica' ? 'badge-red' : p === 'alta' ? 'badge-orange' : p === 'media' ? 'badge-yellow' : 'badge-gray';
-  const canalIcon  = c => c === 'email' ? '✉' : c === 'portal' ? '🌐' : '📞';
+  const tableBody = tableRows.length ? tableRows : emptyTableRow;
+  const loadingBlock = <div className="card" style={{padding:24, marginTop:24}}>Cargando tickets...</div>;
+  const kanbanContent = (
+    <div style={{overflowX:'auto', paddingBottom:20, marginTop:24}}>
+      <div className="kanban-v2">{kanbanColumns}</div>
+    </div>
+  );
+  const tableContent = (
+    <div className="card mt-6">
+      <div className="table-wrap">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Ticket</th>
+              <th>Cliente</th>
+              <th>Prioridad</th>
+              <th>SLA</th>
+              <th>Asignado</th>
+              <th>Tipo</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>{tableBody}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+  const ticketsView = loading ? loadingBlock : (view === 'kanban' ? kanbanContent : tableContent);
+  const ticketPanel = panelOpen ? (
+    <>
+      <div className="side-panel-backdrop" onClick={() => setPanelOpen(false)}/>
+      <div className="side-panel" style={{width:'min(560px, 96vw)'}}>
+        <div className="side-panel-head">
+          <div>
+            <div className="eyebrow">Soporte</div>
+            <div className="font-display" style={{fontSize:22, fontWeight:700}}>Nuevo Ticket</div>
+          </div>
+          <button type="button" className="icon-btn" onClick={() => setPanelOpen(false)}>{I.x}</button>
+        </div>
+        <form className="side-panel-body" onSubmit={guardarTicket}>
+          <div className="input-group">
+            <label>Titulo *</label>
+            <input className="input" value={form.titulo} onChange={event => updateForm('titulo', event.target.value)} required autoFocus />
+          </div>
+          <div className="input-group">
+            <label>Descripcion</label>
+            <textarea className="input" rows="4" value={form.descripcion} onChange={event => updateForm('descripcion', event.target.value)} />
+          </div>
+          <div className="grid-2" style={{gap:12}}>
+            <div className="input-group">
+              <label>Prioridad</label>
+              <select className="select" value={form.prioridad} onChange={event => updateForm('prioridad', event.target.value)}>{prioridadOptions}</select>
+            </div>
+            <div className="input-group">
+              <label>Tipo</label>
+              <select className="select" value={form.tipo} onChange={event => updateForm('tipo', event.target.value)}>{tipoOptions}</select>
+            </div>
+            <div className="input-group">
+              <label>Canal de entrada</label>
+              <select className="select" value={form.canal_entrada} onChange={event => updateForm('canal_entrada', event.target.value)}>{canalOptions}</select>
+            </div>
+            <div className="input-group">
+              <label>Cliente</label>
+              <select className="select" value={form.cuenta_id} onChange={event => updateForm('cuenta_id', event.target.value)}>
+                <option value="">Sin cliente</option>
+                {cuentaOptions}
+              </select>
+            </div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}>
+              <label>Responsable</label>
+              <select className="select" value={form.responsable_id} onChange={event => updateForm('responsable_id', event.target.value)}>
+                <option value="">Sin asignar</option>
+                {usuarioOptions}
+              </select>
+            </div>
+          </div>
+          <div className="row mt-6" style={{justifyContent:'flex-end'}}>
+            <button type="button" className="btn btn-secondary" onClick={() => setPanelOpen(false)}>Cancelar</button>
+            <button type="submit" className="btn btn-primary" data-local-form="true" disabled={saving}>{saving ? 'Guardando...' : 'Crear ticket'}</button>
+          </div>
+        </form>
+      </div>
+    </>
+  ) : null;
 
   return (
     <>
@@ -6790,143 +7212,27 @@ function Tickets() {
         <div>
           <h1 className="page-title" style={{fontSize:24, fontWeight:800}}>Soporte y Tickets</h1>
           <div className="page-sub" style={{marginTop:4}}>
-            Gestión de incidentes y atención al cliente post-venta
+            Gestion de incidentes y atencion al cliente post-venta
           </div>
         </div>
         <div className="row" style={{gap:12}}>
           <div className="segmented-control">
-            <button className={`seg-btn ${view==='kanban'?'active':''}`} onClick={()=>setView('kanban')}>{I.grid} Kanban</button>
-            <button className={`seg-btn ${view==='lista'?'active':''}`} onClick={()=>setView('lista')}>{I.list} Lista</button>
+            <button className={`seg-btn ${view==='kanban'?'active':''}`} onClick={() => setView('kanban')}>{I.dashboard} Kanban</button>
+            <button className={`seg-btn ${view==='lista'?'active':''}`} onClick={() => setView('lista')}>{I.list} Lista</button>
           </div>
-          <button className="btn btn-secondary">{I.filter} Filtros</button>
-          <button className="btn btn-primary">{I.plus} Nuevo Ticket</button>
+          <button type="button" className="btn btn-secondary">{I.filter} Filtros</button>
+          <button type="button" className="btn btn-primary" data-local-form="true" onClick={abrirNuevoTicket}>{I.plus} Nuevo Ticket</button>
         </div>
       </div>
 
       <div className="pipeline-kpi-grid" style={{gridTemplateColumns:'repeat(3, 1fr)'}}>
-        {cols.map((c, i) => {
-          const list = filteredTickets.filter(t => t.estado === c.k);
-          const icons = [I.alert, I.clock, I.check];
-          return (
-            <div key={c.k} className="pipeline-kpi-card hover-raise" style={{'--accent': c.color}}>
-              <div className="pipeline-kpi-icon" style={{color: c.color}}>{icons[i]}</div>
-              <div className="pipeline-kpi-label">{c.title}</div>
-              <div className="pipeline-kpi-value">{list.length}</div>
-              <div className="pipeline-kpi-count">Ver detalles</div>
-            </div>
-          );
-        })}
+        {kpiCards}
       </div>
-
-      {view === 'kanban' ? (
-        <div style={{overflowX:'auto', paddingBottom:20, marginTop:24}}>
-          <div className="kanban-v2">
-            {cols.map((c, i) => {
-              const list = filteredTickets
-                .filter(t => t.estado === c.k)
-                .sort((a, b) => (b.moved_at || 0) - (a.moved_at || 0) || (b.fecha_creacion || '').localeCompare(a.fecha_creacion || ''));
-              return (
-                <div
-                  key={c.k}
-                  className="kanban-col-v2"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => handleDrop(e, c.k)}
-                  style={{ '--accent': c.color }}
-                >
-                  <div className="kanban-col-head-v2">
-                    <div className="kanban-col-title-v2">{c.title}</div>
-                    <div className="kanban-col-count-v2">{list.length}</div>
-                  </div>
-                  
-                  <div style={{flex:1}}>
-                    {list.length > 0 ? (
-                      list.map(t => (
-                        <div 
-                          key={t.id} 
-                          className="kanban-card-v2"
-                          draggable
-                          onDragStart={(e) => e.dataTransfer.setData('text/plain', t.id)}
-                          style={{cursor: 'grab'}}
-                        >
-                          <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>
-                            <span className={'badge ' + pBadge(t.prioridad)} style={{fontSize:9}}>
-                              {t.prioridad.toUpperCase()}
-                            </span>
-                            <span className={'badge ' + slaBadge(t.sla)} style={{fontSize:9}}>
-                              SLA {t.sla.toUpperCase()}
-                            </span>
-                          </div>
-                          
-                          <div style={{fontSize:13, fontWeight:700, color:'var(--navy)', marginBottom:4, lineHeight:1.4}}>
-                            {t.asunto}
-                          </div>
-                          <div style={{fontSize:11, color:'var(--cyan)', fontWeight:600, marginBottom:8}}>
-                            {t.cliente}
-                          </div>
-                          
-                          <div style={{display:'flex', gap:8, marginBottom:12}}>
-                            <span className="badge badge-gray" style={{fontSize:9}}>{t.categoria}</span>
-                            <span style={{fontSize:14}} title={t.canal}>{canalIcon(t.canal)}</span>
-                          </div>
-                          
-                          <div className="row" style={{justifyContent:'space-between', borderTop:'1px solid var(--border-subtle)', paddingTop:12, marginTop:4}}>
-                            <div className="row" style={{gap:6}}>
-                              <div className="avatar" style={{width:20, height:20, fontSize:9, background:'var(--navy)', color:'#fff'}}>{t.asignado.charAt(0)}</div>
-                              <span style={{fontSize:10, color:'var(--fg-muted)'}}>{t.asignado}</span>
-                            </div>
-                            <div style={{fontSize:10, color:'var(--fg-muted)', fontWeight:600}}>
-                              {t.id}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="card-empty-state">
-                        <div style={{opacity:0.3}}>{[I.alert, I.clock, I.check][i]}</div>
-                        <p>Sin tickets {c.title.toLowerCase()}<br/><span style={{fontSize:10}}>Arrastra aquí para asignar.</span></p>
-                      </div>
-                    )}
-                  </div>
-                  <button className="kanban-btn-add">
-                    {I.plus} Nuevo Ticket
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <div className="card mt-6">
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Ticket</th>
-                  <th>Cliente</th>
-                  <th>Prioridad</th>
-                  <th>SLA</th>
-                  <th>Asignado</th>
-                  <th>Categoría</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tickets.map(t => (
-                  <tr key={t.id} className="hover-row">
-                    <td><div style={{fontWeight:600}}>{t.asunto}</div><div className="text-muted" style={{fontSize:11}}>{t.id}</div></td>
-                    <td>{t.cliente}</td>
-                    <td><span className={'badge ' + pBadge(t.prioridad)}>{t.prioridad.toUpperCase()}</span></td>
-                    <td><span className={'badge ' + slaBadge(t.sla)}>SLA {t.sla.toUpperCase()}</span></td>
-                    <td>{t.asignado}</td>
-                    <td>{t.categoria}</td>
-                    <td><span className="badge badge-cyan">{t.estado.toUpperCase()}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <div className="kpi-grid mt-6" style={{gridTemplateColumns:'repeat(2, minmax(0, 1fr))'}}>
+        {metricCards}
+      </div>
+      {ticketsView}
+      {ticketPanel}
     </>
   );
 }

@@ -106,6 +106,23 @@ export function AuthGate({ children }) {
       const rawSearch = window.location.search?.startsWith('?') ? window.location.search.slice(1) : '';
       const hashParams = new URLSearchParams(rawHash);
       const searchParams = new URLSearchParams(rawSearch);
+      const authErrorCode = hashParams.get('error_code') || searchParams.get('error_code');
+      const authErrorDescription = hashParams.get('error_description') || searchParams.get('error_description');
+      if (authErrorCode || authErrorDescription) {
+        setPasswordRecovery(false);
+        setRecoveryDone(false);
+        setMode(authErrorCode === 'otp_expired' ? 'forgot' : 'login');
+        setMessageType('error');
+        setMessage(
+          authErrorCode === 'otp_expired'
+            ? 'El enlace de recuperacion expiro o ya fue usado. Solicita uno nuevo y abre el ultimo correo recibido.'
+            : authErrorDescription || 'No se pudo validar el enlace de autenticacion.'
+        );
+        if (window.location.hash || window.location.search) {
+          window.history.replaceState({}, document.title, window.location.pathname || '/');
+        }
+        return;
+      }
       if (hashParams.get('type') === 'recovery' || searchParams.get('type') === 'recovery') {
         setPasswordRecovery(true);
         setMode('login');

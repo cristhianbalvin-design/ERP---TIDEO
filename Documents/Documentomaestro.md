@@ -1,29 +1,29 @@
-# ERP Modular Est├índar para Empresas de Servicios con CRM Potenciado
-## Documento Maestro Consolidado ÔÇö TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS · Última actualización: 22/05/2026
+# ERP Modular Estándar para Empresas de Servicios con CRM Potenciado
+## Documento Maestro Consolidado — TIDEO Tech & Strategy
+### Arquitectura Multitenant SaaS · Última actualización: 28/05/2026
 
 ---
 
 ## 1. Datos de la empresa proponente
 
 **Empresa:** TIDEO Tech & Strategy
-**Especialidad:** Transformaci├│n digital, automatizaci├│n de procesos, anal├¡tica, inteligencia artificial aplicada y desarrollo de plataformas empresariales a medida.
-**Enfoque:** Primero se dise├▒a el proceso comercial, operativo y financiero; luego se implementa la tecnolog├¡a que lo soporta.
+**Especialidad:** Transformación digital, automatización de procesos, analítica, inteligencia artificial aplicada y desarrollo de plataformas empresariales a medida.
+**Enfoque:** Primero se diseña el proceso comercial, operativo y financiero; luego se implementa la tecnología que lo soporta.
 **Contacto:** cristhianbalvin@gmail.com | **Web:** cristhianbalvin.com
-**Stack:** React 18 + Vite 5 ┬À Supabase ┬À Vercel ┬À Context API ┬À agentes de IA.
-**Modelo comercial:** SaaS multitenant ÔÇö usuarios ilimitados seg├║n plan contratado por empresa.
+**Stack:** React 18 + Vite 5 · Supabase · Vercel · Context API · agentes de IA.
+**Modelo comercial:** SaaS multitenant — usuarios ilimitados según plan contratado por empresa.
 
 ---
 
-## 2. Prop├│sito del documento
+## 2. Propósito del documento
 
-Este documento es el **├║nico maestro de referencia** del ERP. Consolida arquitectura, m├│dulos, flujos, reglas de negocio, modelo de datos multitenant, estado de desarrollo, indicadores, roles y fases de implementaci├│n. Se actualiza en cada sesi├│n de desarrollo relevante.
+Este documento es el **único maestro de referencia** del ERP. Consolida arquitectura, módulos, flujos, reglas de negocio, modelo de datos multitenant, estado de desarrollo, indicadores, roles y fases de implementación. Se actualiza en cada sesión de desarrollo relevante.
 
-El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sirve a m├║ltiples empresas clientes con datos completamente aislados. TIDEO administra la plataforma global; cada empresa administra su propio entorno.
+El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a múltiples empresas clientes con datos completamente aislados. TIDEO administra la plataforma global; cada empresa administra su propio entorno.
 
 ---
 
-## 3. Estado de desarrollo — 22/05/2026
+## 3. Estado de desarrollo — 28/05/2026
 
 ### 3.1 Resumen de progreso
 
@@ -33,60 +33,60 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | Módulos en prompt pendiente de implementar | 0 |
 | Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase |
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
-| Migraciones SQL aplicadas en Supabase | 136 (campos de 135/136 aplicados en Supabase, excepto columna `motivo_retencion`) |
-| Migraciones creadas pendientes de aplicar | 137 (retención IR), 138 (presupuestos), parte de 132 (tabla `cxp_pagos`) y columna `motivo_retencion` de 135 (creadas localmente pero pendientes en remoto) |
+| Migraciones SQL aplicadas en Supabase | 142 |
+| Migraciones creadas pendientes de aplicar | Ninguna |
 
-### 3.2 Inventario completo de m├│dulos
+### 3.2 Inventario completo de módulos
 
 #### Business Intelligence
-| M├│dulo | Estado |
+| Módulo | Estado |
 |--------|--------|
-| Dashboard General | Ô£à Implementado |
-| BI Comercial | Ô£à Implementado |
-| BI Operativo | Ô£à Implementado |
-| BI Financiero | Ô£à Implementado |
-| BI Customer Success | Ô£à Implementado |
+| Dashboard General | ✅ Implementado |
+| BI Comercial | ✅ Implementado |
+| BI Operativo | ✅ Implementado |
+| BI Financiero | ✅ Implementado |
+| BI Customer Success | ✅ Implementado |
 
 #### CRM y Comercial
-| M├│dulo | Estado | Notas |
+| Módulo | Estado | Notas |
 |--------|--------|-------|
 | Cuentas y Contactos | ✔ Implementado | Formulario comercial rápido, tab Condiciones Financieras visible con ver_finanzas, badge advertencia orientación de flujo leads. |
-| Leads y Scoring | Ô£à Implementado | Pendiente: agregar Raz├│n Social, RUC, Industria al formulario |
+| Leads y Scoring | ✅ Implementado | Pendiente: agregar Razón Social, RUC, Industria al formulario |
 | Pipeline y Oportunidades | ✔ Implementado | Timeline: movimientos entre etapas registrados en `opp_historial_etapas` (migr. 079 aplicada en Supabase) |
-| Agenda Comercial | Ô£à Implementado | Planificaci├│n de visitas y demos |
-| Actividades Comerciales | Ô£à Implementado | |
-| Hoja de Costeo | Ô£à Implementado | Documento interno entre Oportunidad y Cotizaci├│n. Secciones: MO, materiales, servicios terceros, log├¡stica. Flujo: borrador ÔåÆ en revisi├│n ÔåÆ aprobada ÔåÆ genera cotizaci├│n pre-rellenada |
-| Cotizaciones | Ô£à Implementado | |
-| OS Cliente | Ô£à Implementado | |
+| Agenda Comercial | ✅ Implementado | Planificación de visitas y demos |
+| Actividades Comerciales | ✅ Implementado | |
+| Hoja de Costeo | ✅ Implementado | Documento interno entre Oportunidad y Cotización. Secciones: MO, materiales, servicios terceros, logística. Flujo: borrador → en revisión → aprobada → genera cotización pre-rellenada |
+| Cotizaciones | ✅ Implementado | |
+| OS Cliente | ✅ Implementado | |
 | Marketing Automation — Campañas | ✔ Implementado | CRUD completo: crear/editar/pausar/reactivar campañas. Métricas: leads atribuidos, tasa conversión, ingreso atribuido, CPL, ROI. Ficha de campaña con leads detallados. `campana_id` viaja en leads → oportunidades. |
 
 #### Operaciones
-| M├│dulo | Estado |
+| Módulo | Estado |
 |--------|--------|
-| Planner y Recursos (+ Agenda CS) | Ô£à Implementado |
-| Backlog | Ô£à Implementado |
-| ├ôrdenes de Trabajo (OT) | Ô£à Implementado |
-| Partes Diarios | Ô£à Implementado |
-| Cierre T├®cnico y Calidad | Ô£à Implementado |
-| Soporte y Tickets | Ô£à Implementado |
+| Planner y Recursos (+ Agenda CS) | ✅ Implementado |
+| Backlog | ✅ Implementado |
+| Órdenes de Trabajo (OT) | ✅ Implementado |
+| Partes Diarios | ✅ Implementado |
+| Cierre Técnico y Calidad | ✅ Implementado |
+| Soporte y Tickets | ✅ Implementado |
 
 #### RRHH
-| M├│dulo | Estado | Notas |
+| Módulo | Estado | Notas |
 |--------|--------|-------|
-| Personal Operativo | Ô£à Implementado (en Configuraci├│n) | Mover a secci├│n RRHH |
-| Personal Administrativo | Ô£à Implementado (en Configuraci├│n) | Mover a secci├│n RRHH |
+| Personal Operativo | ✅ Implementado (en Configuración) | Mover a sección RRHH |
+| Personal Administrativo | ✅ Implementado (en Configuración) | Mover a sección RRHH |
 | Control de Asistencia | ✔ Implementado | 4 tabs: diaria, semanal, mensual, resumen. Tardanzas y horas extra automáticas. Registro masivo. |
 | Turnos y Horarios | ✔ Implementado | Módulo standalone `pages_turnos.jsx`. CRUD completo: crear/editar/eliminar con side-panel. Campos: nombre, entrada/salida, tolerancia, cruza medianoche, días laborables (o variables), refrigerio. Preview de horas efectivas en tiempo real. |
 | Nómina Básica | ✔ Implementado | Cálculo completo: bruto, AFP/ONP, IR 5ta, cargas empresa. Cierre de período → egresos en finanzas. |
 | Comisiones | ✔ Implementado | Liquidación, aprobaciones (acuerdos especiales, +48h sin respuesta), retenciones IR de 4ta categoría según suspensión y tipo de cambio, generación de RHE y CxP asociada. |
-| Pr├®stamos al Personal | Ô£à Implementado (como "Pr├®stamos y Pagos") | Mover a secci├│n RRHH |
+| Préstamos al Personal | ✅ Implementado (como "Préstamos y Pagos") | Mover a sección RRHH |
 
-#### Log├¡stica
-| M├│dulo | Estado |
+#### Logística
+| Módulo | Estado |
 |--------|--------|
-| Almacenes / Inventario (+ Kardex) | Ô£à Implementado |
-| SOLPE Interna | Ô£à Implementado |
-| Transporte y Gu├¡as | Ô£à Implementado |
+| Almacenes / Inventario (+ Kardex) | ✅ Implementado |
+| SOLPE Interna | ✅ Implementado |
+| Transporte y Guías | ✅ Implementado |
 
 #### Compras
 | Módulo | Estado | Notas |
@@ -98,47 +98,47 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | Recepciones | ✔ Implementado | Verificación ítem por ítem. Genera CxP + evaluación proveedor |
 | Compras en Campo / Gastos | ✔ Implementado | Registro manual de egresos/comprobantes con extracción IA. Validación obligatoria de Centro de Costo (CECO). |
 
-#### Administraci├│n y Finanzas
-| M├│dulo | Estado | Notas |
+#### Administración y Finanzas
+| Módulo | Estado | Notas |
 |--------|--------|-------|
-| Ventas | Ô£à Implementado | |
-| Caja Chica y Anticipos | Ô£à Implementado | |
-| Pr├®stamos al Personal | Ô£à Implementado | Renombrar y mover a secci├│n RRHH |
+| Ventas | ✅ Implementado | |
+| Caja Chica y Anticipos | ✅ Implementado | |
+| Préstamos al Personal | ✅ Implementado | Renombrar y mover a sección RRHH |
 | Financiamiento y Deuda | ✔ Implementado | `pages_fin_deuda.jsx`. Tabla de amortización automática. Intereses → ER. Reporte de deuda 12 meses. |
-| Cuentas por Cobrar | Ô£à Implementado | |
-| Cuentas por Pagar | Ô£à Implementado | |
-| Facturaci├│n | Ô£à Implementado | |
-| Tesorer├¡a / Match Bancario | Ô£à Implementado | |
-| Estado de Resultados | Ô£à Implementado | |
+| Cuentas por Cobrar | ✅ Implementado | |
+| Cuentas por Pagar | ✅ Implementado | |
+| Facturación | ✅ Implementado | |
+| Tesorería / Match Bancario | ✅ Implementado | |
+| Estado de Resultados | ✅ Implementado | |
 | Valorizaciones | ✔ Implementado | Persistencia nativa del detalle de valorizaciones (items, ot_ids, historial, modelo_calculo, notas, fecha_aprobacion, motivo_anulacion). |
 | Presupuesto vs Real | ✔ Implementado | Control presupuestal mensual y anual por CECO/CEBE, cadena de 4 aprobadores secuenciales, cálculo real automático (MO desde OTs y gastos desde compras) y drill-down interactivo. |
 
 #### Customer Success
-| M├│dulo | Estado |
+| Módulo | Estado |
 |--------|--------|
-| Onboarding | Ô£à Implementado |
-| Planes de ├ëxito | Ô£à Implementado |
-| Health Score | Ô£à Implementado |
-| Renovaciones | Ô£à Implementado |
-| Fidelizaci├│n y NPS | Ô£à Implementado |
-| BI Customer Success | Ô£à Implementado |
+| Onboarding | ✅ Implementado |
+| Planes de Éxito | ✅ Implementado |
+| Health Score | ✅ Implementado |
+| Renovaciones | ✅ Implementado |
+| Fidelización y NPS | ✅ Implementado |
+| BI Customer Success | ✅ Implementado |
 
 #### Inteligencia Artificial
-| M├│dulo | Estado |
+| Módulo | Estado |
 |--------|--------|
-| IA Comercial + Historial auditado | Ô£à Implementado |
-| IA Operativa + Historial auditado | Ô£à Implementado |
-| IA Financiera + Historial auditado | Ô£à Implementado |
+| IA Comercial + Historial auditado | ✅ Implementado |
+| IA Operativa + Historial auditado | ✅ Implementado |
+| IA Financiera + Historial auditado | ✅ Implementado |
 
-#### Configuraci├│n
-| M├│dulo | Estado | Notas |
+#### Configuración
+| Módulo | Estado | Notas |
 |--------|--------|-------|
-| Usuarios | Ô£à Implementado | |
-| Roles y Permisos | Ô£à Implementado | |
-| Maestros Base | Ô£à Implementado | Pendiente: corregir arquitectura (ver secci├│n 5) |
-| Cat├ílogo de Servicios | Ô£à Implementado | Pendiente: revisar si formulario es completo |
-| Tarifarios | Ô£à Implementado | |
-| Par├ímetros Generales | Ô£à Implementado | |
+| Usuarios | ✅ Implementado | |
+| Roles y Permisos | ✅ Implementado | |
+| Maestros Base | ✅ Implementado | Pendiente: corregir arquitectura (ver sección 5) |
+| Catálogo de Servicios | ✅ Implementado | Pendiente: revisar si formulario es completo |
+| Tarifarios | ✅ Implementado | |
+| Parámetros Generales | ✅ Implementado | |
 
 #### Integraciones
 | Módulo | Estado | Notas |
@@ -192,7 +192,8 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | `src/services/maestrosService.js` | Catálogos, materiales, especialidades | 9.9 KB |
 | `src/services/plannerService.js` | Planner, cuadrillas, asignaciones | 6.7 KB |
 | `src/services/finanzasService.js` | CxC, CxP, facturas, caja chica | 5.3 KB |
-| `src/services/operacionesService.js` | OTs, partes, tickets | 6.2 KB |
+| `src/services/operacionesService.js` | OTs, partes, cierres tecnicos | 6.2 KB |
+| `src/services/ticketsService.js` | CRUD Soporte y Tickets + SLA | 3 KB |
 | `src/services/estadoResultadosService.js` | Cálculo ER, agrupación por categoría | 4.2 KB |
 | `src/services/rolesService.js` | Roles, permisos por pantalla | 4.5 KB |
 | `src/services/campanasService.js` | CRUD campañas, métricas de atribución | 2.2 KB |
@@ -201,33 +202,32 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 | `src/services/tesoreriaService.js` | Movimientos de tesorería, match bancario | 1.5 KB |
 | `src/services/plataformaService.js` | Empresas/tenants, métricas SaaS | 1.7 KB |
 
-### 3.5 Convenciones t├®cnicas cr├¡ticas
+### 3.5 Convenciones técnicas críticas
 
-**CSS ÔÇö clases correctas:**
+**CSS — clases correctas:**
 ```jsx
 // CORRECTO
 <div className="tabs"><div className={'tab '+(activo?'active':'')}>Label</div></div>
-<div className="card-head"><h3>T├¡tulo</h3></div>
+<div className="card-head"><h3>Título</h3></div>
 
-// INCORRECTO ÔÇö estas clases NO existen en styles.css
+// INCORRECTO — estas clases NO existen en styles.css
 <div className="tab-bar"><button className="tab-btn">...</button></div>
 <div className="card-header"><span className="card-title">...</span></div>
 ```
 
 **JSX:** Variables derivadas (`reduce`, `filter`, `map`) se declaran antes del `return`, nunca como IIFEs dentro del JSX.
 
-**Mock data:** `export const MOCK = { ...datasets }` en `data.js`. Consumo v├¡a context (`useApp()`) o importaci├│n directa.
+**Mock data:** `export const MOCK = { ...datasets }` en `data.js`. Consumo vía context (`useApp()`) o importación directa.
 
 **Moneda:** `money(n)` y `moneyD(n)` desde `icons.jsx`. Local en `pages_bi_fin.jsx`: `const S = n => 'S/ ' + n.toLocaleString('es-PE')`.
 
-### 3.6 Deuda t├®cnica conocida
+### 3.6 Deuda técnica conocida
 
-| ├ìtem | Prioridad |
+| Ítem | Prioridad |
 |------|-----------|
-| `BarsChart` / `DonutChart` sin uso en `pages_core.jsx` (l├¡neas 219-278) | Baja |
-| OTs inline en BIOperativo ÔÇö deben migrar a `MOCK.ots` | Media |
-| Tickets sin MOCK en `Tickets` ÔÇö deben migrar a `data.js` si se cruzan con CS | Baja |
-| Costo hora en RRHH Operativo es hardcodeado ÔÇö debe calcularse desde n├│mina al cerrar per├¡odo | Media |
+| `BarsChart` / `DonutChart` sin uso en `pages_core.jsx` (líneas 219-278) | Baja |
+| OTs inline en BIOperativo — deben migrar a `MOCK.ots` | Media |
+| Costo hora en RRHH Operativo es hardcodeado — debe calcularse desde nómina al cerrar período | Media |
 
 ---
 
@@ -235,89 +235,89 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalaci├│n sir
 
 ### 4.1 Modelo de tenancy
 
-Multitenant con aislamiento por `empresa_id` (row-level isolation). Toda consulta lleva filtro impl├¡cito `WHERE empresa_id = :empresa_activa`. RLS (Row Level Security en Supabase) aplica en la capa de base de datos.
+Multitenant con aislamiento por `empresa_id` (row-level isolation). Toda consulta lleva filtro implícito `WHERE empresa_id = :empresa_activa`. RLS (Row Level Security en Supabase) aplica en la capa de base de datos.
 
 ```
 TIDEO (Superadmin)
-  Ôö£ÔöÇÔöÇ Empresa A ÔåÆ datos, usuarios, roles, config propios
-  Ôö£ÔöÇÔöÇ Empresa B ÔåÆ datos, usuarios, roles, config propios
-  ÔööÔöÇÔöÇ Empresa C ÔåÆ datos, usuarios, roles, config propios
+  ├── Empresa A → datos, usuarios, roles, config propios
+  ├── Empresa B → datos, usuarios, roles, config propios
+  └── Empresa C → datos, usuarios, roles, config propios
 ```
 
 ### 4.2 Niveles de acceso
 
-| Nivel | Qui├®n | Alcance |
+| Nivel | Quién | Alcance |
 |-------|-------|---------|
-| Superadmin TIDEO | Equipo TIDEO | Todas las empresas, config global, m├®tricas, soporte |
-| Admin Empresa | Due├▒o / Gerente | Todo su entorno: usuarios, roles, m├│dulos, datos |
+| Superadmin TIDEO | Equipo TIDEO | Todas las empresas, config global, métricas, soporte |
+| Admin Empresa | Dueño / Gerente | Todo su entorno: usuarios, roles, módulos, datos |
 | Usuario Empresa | Colaboradores | Solo lo que su rol permita |
-| Usuario Campo | T├®cnicos, vendedores, compradores en campo | Vistas m├│viles seg├║n perfil |
+| Usuario Campo | Técnicos, vendedores, compradores en campo | Vistas móviles según perfil |
 
 ### 4.3 Reglas de tenancy
 
 - Archivos en rutas aisladas: `/{empresa_id}/modulo/archivo`.
-- Suspensi├│n conserva datos, bloquea acceso. Cancelaci├│n retiene datos 90 d├¡as.
-- Superadmin TIDEO: cada acceso a un tenant queda en log de auditor├¡a. 2FA obligatorio.
-- Selector de empresa en login si el usuario pertenece a m├ís de una.
+- Suspensión conserva datos, bloquea acceso. Cancelación retiene datos 90 días.
+- Superadmin TIDEO: cada acceso a un tenant queda en log de auditoría. 2FA obligatorio.
+- Selector de empresa en login si el usuario pertenece a más de una.
 
 ---
 
-## 5. Arquitectura de entidades ÔÇö reglas de dise├▒o
+## 5. Arquitectura de entidades — reglas de diseño
 
 ### 5.1 Regla general
 
-**Los m├│dulos transaccionales son la fuente de verdad. Maestros Base es de referencia.**
+**Los módulos transaccionales son la fuente de verdad. Maestros Base es de referencia.**
 
 | Tipo de dato | Fuente de verdad | Maestros Base |
 |-------------|-----------------|---------------|
 | Clientes / Cuentas | Cuentas y Contactos (CRM) | Solo lectura + link |
-| Proveedores | Compras ÔåÆ Proveedores | Solo lectura + link |
-| Personal operativo | RRHH ÔåÆ Personal Operativo | No aplica |
-| Personal administrativo | RRHH ÔåÆ Personal Administrativo | No aplica |
-| Cargos | Maestros Base Ô£ô | Cat├ílogo de referencia |
-| Especialidades t├®cnicas | Maestros Base Ô£ô | Cat├ílogo de referencia |
-| Materiales e insumos | Maestros Base Ô£ô | Cat├ílogo de referencia |
-| Almacenes y dep├│sitos | Maestros Base Ô£ô | Cat├ílogo de referencia |
-| Tipos de servicio interno | Maestros Base Ô£ô | Cat├ílogo de referencia |
-| Monedas, impuestos, unidades | Maestros Base Ô£ô | Cat├ílogo de referencia |
+| Proveedores | Compras → Proveedores | Solo lectura + link |
+| Personal operativo | RRHH → Personal Operativo | No aplica |
+| Personal administrativo | RRHH → Personal Administrativo | No aplica |
+| Cargos | Maestros Base ✔ | Catálogo de referencia |
+| Especialidades técnicas | Maestros Base ✔ | Catálogo de referencia |
+| Materiales e insumos | Maestros Base ✔ | Catálogo de referencia |
+| Almacenes y depósitos | Maestros Base ✔ | Catálogo de referencia |
+| Tipos de servicio interno | Maestros Base ✔ | Catálogo de referencia |
+| Monedas, impuestos, unidades | Maestros Base ✔ | Catálogo de referencia |
 
-### 5.2 Flujo del cliente ÔÇö regla de origen
+### 5.2 Flujo del cliente — regla de origen
 
-**El flujo normal de prospecci├│n siempre empieza en Lead, nunca en Cuenta:**
+**El flujo normal de prospección siempre empieza en Lead, nunca en Cuenta:**
 
 ```
 Primer contacto con prospecto
-          Ôåô
+          ↓
        LEAD
   (nombre, empresa, RUC si se sabe,
-   tel├®fono, necesidad, fuente)
-          Ôåô
+   teléfono, necesidad, fuente)
+          ↓
      Calificar
-          Ôåô
-     CONVERTIR ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÉ
-          Ôåô                Ôåô                 Ôåô
+          ↓
+     CONVERTIR ──────────────────────────────┐
+          ↓                ↓                 ↓
       CUENTA           CONTACTO         OPORTUNIDAD
    (Prospecto)       (vinculado)       (para trabajar)
-          Ôåô
+          ↓
    Finanzas completa condiciones
    en tab "Condiciones comerciales"
-   (condici├│n de pago, l├¡mite cr├®dito,
+   (condición de pago, límite crédito,
     riesgo financiero, datos fiscales)
 ```
 
-**Crear Cuenta directamente** solo cuando el cliente ya te contact├│ para comprar (salta la etapa de prospecci├│n).
+**Crear Cuenta directamente** solo cuando el cliente ya te contactó para comprar (salta la etapa de prospección).
 
-### 5.3 Formulario de Lead ÔÇö campos requeridos
+### 5.3 Formulario de Lead — campos requeridos
 
 | Campo | Obligatorio | Notas |
 |-------|-------------|-------|
-| Nombre del contacto | Ô£ô | |
-| Nombre de empresa | Ô£ô | Nombre comercial |
-| Raz├│n social | ÔÇö | Si se conoce |
-| RUC / NIT | ÔÇö | Si se tiene. Validar 11 d├¡gitos si se ingresa |
-| Industria | ÔÇö | |
-| Tel├®fono | ÔÇö | |
-| Email | ÔÇö | |
+| Nombre del contacto | ✔ | |
+| Nombre de empresa | ✔ | Nombre comercial |
+| Razón social | — | Si se conoce |
+| RUC / NIT | — | Si se tiene. Validar 11 dígitos si se ingresa |
+| Industria | — | |
+| Teléfono | — | |
+| Email | — | |
 | Fuente | ✔ | Canal de marketing (Referido, LinkedIn, Formulario web, Evento/Feria, etc.) |
 | Campaña de origen | — | `campana_id` FK a campanas. Selector muestra solo campañas Activas. Nulo = orgánico/referido. |
 | Responsable comercial | ✔ | |
@@ -325,47 +325,47 @@ Primer contacto con prospecto
 | Presupuesto estimado | — | |
 | Registrado desde | — | backoffice / campo / api |
 
-### 5.4 Formulario de cuenta ÔÇö dos momentos
+### 5.4 Formulario de cuenta — dos momentos
 
-**Momento 1 ÔÇö Alta comercial** (lo que sabe el vendedor al crear):
-Nombre comercial*, Raz├│n social, RUC, Pa├¡s*, Tipo*, Industria*, Tama├▒o, Fuente, Responsable comercial*, Direcci├│n, Tel├®fono, Email, Notas.
+**Momento 1 — Alta comercial** (lo que sabe el vendedor al crear):
+Nombre comercial*, Razón social, RUC, País*, Tipo*, Industria*, Tamaño, Fuente, Responsable comercial*, Dirección, Teléfono, Email, Notas.
 
-**Momento 2 ÔÇö Condiciones financieras** (tab en la ficha, solo con permiso `ver_finanzas`):
-Condici├│n de pago, l├¡mite de cr├®dito, moneda, requiere OC, riesgo financiero, clasificaci├│n interna, cuenta bancaria del cliente, datos fiscales completos.
+**Momento 2 — Condiciones financieras** (tab en la ficha, solo con permiso `ver_finanzas`):
+Condición de pago, límite de crédito, moneda, requiere OC, riesgo financiero, clasificación interna, cuenta bancaria del cliente, datos fiscales completos.
 
 ### 5.5 Flujo del proveedor
 
-El proveedor no tiene etapa de prospecci├│n. Nace directamente en **Compras ÔåÆ Proveedores** con ciclo de vida propio:
+El proveedor no tiene etapa de prospección. Nace directamente en **Compras → Proveedores** con ciclo de vida propio:
 
 ```
-Potencial ÔåÆ En evaluaci├│n ÔåÆ Homologado ÔåÆ (Observado / Bloqueado) ÔåÆ Inactivo
+Potencial → En evaluación → Homologado → (Observado / Bloqueado) → Inactivo
 ```
 
 Solo proveedores **Homologados** pueden recibir OC. Los **Observados** aparecen con advertencia. Los **Bloqueados** no aparecen en selectores.
 
-### 5.6 Separaci├│n de pr├®stamos
+### 5.6 Separación de préstamos
 
-| Tipo | Naturaleza | M├│dulo | Secci├│n sidebar | Impacto ER |
+| Tipo | Naturaleza | Módulo | Sección sidebar | Impacto ER |
 |------|-----------|--------|----------------|-----------|
-| Pr├®stamos al personal | Activo (nos deben) | RRHH ÔåÆ Pr├®stamos al Personal | RRHH | No (recuperaci├│n de activo) |
-| Financiamiento recibido | Pasivo (debemos) | Admin ÔåÆ Financiamiento y Deuda | ADMINISTRACI├ôN | S├¡ (intereses = gasto financiero) |
+| Préstamos al personal | Activo (nos deben) | RRHH → Préstamos al Personal | RRHH | No (recuperación de activo) |
+| Financiamiento recibido | Pasivo (debemos) | Admin → Financiamiento y Deuda | ADMINISTRACIÓN | Sí (intereses = gasto financiero) |
 
-**Regla contable:** al pagar una cuota de financiamiento, el **capital** reduce el pasivo (no es gasto), el **inter├®s** se registra como gasto financiero en el ER, y el egreso total aparece en Tesorer├¡a.
+**Regla contable:** al pagar una cuota de financiamiento, el **capital** reduce el pasivo (no es gasto), el **interés** se registra como gasto financiero en el ER, y el egreso total aparece en Tesorería.
 
-### 5.7 Separaci├│n n├│mina vs costos de OT
+### 5.7 Separación nómina vs costos de OT
 
 Dos mediciones independientes del mismo trabajador:
 
-| Medici├│n | Pregunta que responde | Fuente | Per├¡odo |
+| Medición | Pregunta que responde | Fuente | Período |
 |---------|----------------------|--------|---------|
-| N├│mina | ┬┐Cu├ínto le pago este mes? | Control de asistencia | Mensual |
-| Costo OT | ┬┐Cu├ínto cost├│ esa OT? | Partes diarios | Por OT |
+| Nómina | ¿Cuánto le pago este mes? | Control de asistencia | Mensual |
+| Costo OT | ¿Cuánto costó esa OT? | Partes diarios | Por OT |
 
-El **costo hora real** se calcula en n├│mina: `(Sueldo bruto + cargas sociales) ├À horas laborables`. Ese valor actualiza el campo COSTO/HORA en la ficha del t├®cnico al cerrar el per├¡odo de n├│mina y es el que se imputa a las OTs.
+El **costo hora real** se calcula en nómina: `(Sueldo bruto + cargas sociales) ÷ horas laborables`. Ese valor actualiza el campo COSTO/HORA en la ficha del técnico al cerrar el período de nómina y es el que se imputa a las OTs.
 
 ---
 
-## 6. Estructura del sidebar ÔÇö arquitectura final
+## 6. Estructura del sidebar — arquitectura final
 
 ```
 BUSINESS INTELLIGENCE
@@ -393,50 +393,50 @@ COMERCIAL
 OPERACIONES
   Planner y Recursos
   Backlog
-  ├ôrdenes de Trabajo
+  Órdenes de Trabajo
   Partes Diarios
   Cierre y Calidad
   Soporte y Tickets
 
-RRHH                          ÔåÉ SECCI├ôN NUEVA
+RRHH                          ← SECCIÓN NUEVA
   Personal Operativo
   Personal Administrativo
   Control de Asistencia
   Turnos y Horarios
-  N├│mina
-  Comisiones                  ÔåÉ NUEVO
-  Pr├®stamos al Personal
+  Nómina
+  Comisiones                  ← NUEVO
+  Préstamos al Personal
 
-LOG├ìSTICA
+LOGÍSTICA
   Almacenes
   SOLPE Interna
-  Transporte y Gu├¡as
+  Transporte y Guías
 
-COMPRAS                       ÔåÉ SECCI├ôN NUEVA
+COMPRAS                       ← SECCIÓN NUEVA
   Proveedores
   Cotizaciones (compra)
-  ├ôrdenes de Compra
-  ├ôrdenes de Servicio
+  Órdenes de Compra
+  Órdenes de Servicio
   Recepciones
 
-ADMINISTRACI├ôN
+ADMINISTRACIÓN
   Ventas
   Caja Chica y Anticipos
-  Financiamiento y Deuda      ÔåÉ NUEVO (reemplaza Pr├®stamos y Pagos)
+  Financiamiento y Deuda      ← NUEVO (reemplaza Préstamos y Pagos)
   Cuentas por Cobrar
   Cuentas por Pagar
-  Facturaci├│n
-  Tesorer├¡a / Match
+  Facturación
+  Tesorería / Match
   Estado de Resultados
   Valorizaciones
   Presupuesto vs Real
 
 CUSTOMER SUCCESS
   Onboarding
-  Planes de ├ëxito
+  Planes de Éxito
   Health Score
   Renovaciones
-  Fidelizaci├│n y NPS
+  Fidelización y NPS
   BI Customer Success
 
 INTELIGENCIA ARTIFICIAL
@@ -444,181 +444,189 @@ INTELIGENCIA ARTIFICIAL
   IA Operativa
   IA Financiera
 
-CAMPO M├ôVIL
+CAMPO MÓVIL
   Vistas de Campo
 
-CONFIGURACI├ôN
+CONFIGURACIÓN
   Usuarios
   Roles y Permisos
   Maestros Base
-  Cat├ílogo de Servicios
+  Catálogo de Servicios
   Tarifarios
-  Par├ímetros
+  Parámetros
 
 PLATAFORMA (solo Superadmin TIDEO)
   Empresas / Tenants
   Planes y Licencias
-  M├®tricas SaaS
+  Métricas SaaS
 ```
 
 ---
 
-## 7. Visi├│n general y flujos
+## 7. Visión general y flujos
 
 ### 7.1 Flujo comercial completo
 
 ```
-Lead ÔåÆ [Convertir] ÔåÆ Cuenta (Prospecto) + Contacto + Oportunidad
-         Ôåô
-    Hoja de Costeo [OPCIONAL ÔÇö recomendado]
-    (estimaci├│n interna: MO + materiales + servicios terceros + log├¡stica)
+Lead → [Convertir] → Cuenta (Prospecto) + Contacto + Oportunidad
+         ↓
+    Hoja de Costeo [OPCIONAL — recomendado]
+    (estimación interna: MO + materiales + servicios terceros + logística)
     (calcula precio sugerido al cliente aplicando margen objetivo)
-    (flujo: borrador ÔåÆ en revisi├│n ÔåÆ aprobada ÔåÆ genera cotizaci├│n pre-rellenada)
-         Ôåô
-    Cotizaci├│n (pre-rellenada desde HC o creada manualmente)
-    (versionada, con aprobaci├│n de descuentos)
-         Ôåô
+    (flujo: borrador → en revisión → aprobada → genera cotización pre-rellenada)
+         ↓
+    Cotización (pre-rellenada desde HC o creada manualmente)
+    (versionada, con aprobación de descuentos)
+         ↓
     OS Cliente (control de saldos: ejecutado / valorizado / facturado)
-         Ôåô
-    OT ÔåÆ Parte Diario ÔåÆ Cierre T├®cnico ÔåÆ Remisi├│n/Conformidad
-    (OT muestra costo estimado de HC vs costo real de ejecuci├│n)
-         Ôåô
-    Valorizaci├│n ÔåÆ Factura ÔåÆ CxC ÔåÆ Cobranza ÔåÆ Match Bancario
-         Ôåô
-    Customer Success ÔåÆ Renovaci├│n / Upsell
+         ↓
+    OT → Parte Diario → Cierre Técnico → Remisión/Conformidad
+    (OT muestra costo estimado de HC vs costo real de ejecución)
+         ↓
+    Valorización → Factura → CxC → Cobranza → Match Bancario
+         ↓
+    Customer Success → Renovación / Upsell
 ```
 
 ### 7.2 Flujo de compras completo
 
 ```
-SOLPE Interna (desde OT o ├írea interna)
-         Ôåô
+SOLPE Interna (desde OT o área interna)
+         ↓
     Compras recibe SOLPE aprobada
-         Ôåô
+         ↓
     Selecciona proveedores homologados
-         Ôåô
-    Solicita cotizaci├│n ÔåÆ Registra respuestas
-         Ôåô
-    Cuadro comparativo ÔåÆ Selecciona ganador
-         Ôåô
+         ↓
+    Solicita cotización → Registra respuestas
+         ↓
+    Cuadro comparativo → Selecciona ganador
+         ↓
     OC (bienes) o OS Interna (servicios)
-         Ôåô
+         ↓
     Proveedor entrega / ejecuta
-         Ôåô
-    Recepci├│n (bienes) o Conformidad (servicios)
-         Ôåô
-    Ingreso a inventario (bienes) + CxP generada + Evaluaci├│n proveedor
+         ↓
+    Recepción (bienes) o Conformidad (servicios)
+         ↓
+    Ingreso a inventario (bienes) + CxP generada + Evaluación proveedor
 ```
 
-### 7.3 Flujo de RRHH y n├│mina
+### 7.3 Flujo de RRHH y nómina
 
 ```
 Configurar turnos y horarios
-         Ôåô
+         ↓
     Asignar turno a cada trabajador
-         Ôåô
+         ↓
     Registrar asistencia diaria (entrada / salida / tardanza / falta)
-         Ôåô
-    Al cierre del per├¡odo:
-    Calcular n├│mina:
-      Remuneraci├│n bruta = sueldo base - faltas - tardanzas + horas extra
-      Descuentos trabajador = AFP/ONP + pr├®stamo + anticipo
-      Retenci├│n IR 5ta (si aplica)
+         ↓
+    Al cierre del período:
+    Calcular nómina:
+      Remuneración bruta = sueldo base - faltas - tardanzas + horas extra
+      Descuentos trabajador = AFP/ONP + préstamo + anticipo
+      Retención IR 5ta (si aplica)
       Neto a pagar al trabajador
-    Cargas empresa = ESSALUD + CTS + gratificaci├│n + vacaciones (mensualizadas)
-    Costo hora real = (bruto + cargas) ├À horas laborables
-         Ôåô
-    Cerrar per├¡odo:
-      ÔåÆ Egreso planilla en Administraci├│n ÔåÆ Gastos
-      ÔåÆ Egreso cargas sociales en Administraci├│n ÔåÆ Gastos
-      ÔåÆ Actualizar costo hora en ficha del t├®cnico
-      ÔåÆ Boletas de pago disponibles
+    Cargas empresa = ESSALUD + CTS + gratificación + vacaciones (mensualizadas)
+    Costo hora real = (bruto + cargas) ÷ horas laborables
+         ↓
+    Cerrar período:
+      → Egreso planilla en Administración → Gastos
+      → Egreso cargas sociales en Administración → Gastos
+      → Actualizar costo hora en ficha del técnico
+      → Boletas de pago disponibles
 ```
 
 ### 7.4 Flujo de financiamiento
 
 ```
-Registrar pr├®stamo recibido (banco / tercero / leasing)
-  ÔåÆ Monto, tasa, plazo, d├¡a de pago, tipo de cuota
-  ÔåÆ Tabla de amortizaci├│n generada autom├íticamente
-         Ôåô
+Registrar préstamo recibido (banco / tercero / leasing)
+  → Monto, tasa, plazo, día de pago, tipo de cuota
+  → Tabla de amortización generada automáticamente
+         ↓
     Cada cuota:
-      Capital ÔåÆ reduce saldo del pr├®stamo (no es gasto)
-      Inter├®s ÔåÆ gasto financiero en Estado de Resultados
-      Total ÔåÆ egreso en Tesorer├¡a vinculado al pr├®stamo
-         Ôåô
+      Capital → reduce saldo del préstamo (no es gasto)
+      Interés → gasto financiero en Estado de Resultados
+      Total → egreso en Tesorería vinculado al préstamo
+         ↓
     Reporte de deuda: saldo total, cuotas del mes,
-    proyecci├│n 12 meses, distribuci├│n por tipo de acreedor
+    proyección 12 meses, distribución por tipo de acreedor
 ```
 
 ### 7.5 Flujo de campo (PWA)
 
-**T├®cnico:** OTs del d├¡a con direcci├│n ÔåÆ Iniciar OT (GPS autom├ítico) ÔåÆ Parte diario en 4 pasos ÔåÆ Fotos ÔåÆ Avance ÔåÆ Reportar restricci├│n.
+**Técnico:** OTs del día con dirección → Iniciar OT (GPS automático) → Parte diario en 4 pasos → Fotos → Avance → Reportar restricción.
 
-**Comprador:** Foto de factura ÔåÆ IA extrae datos ÔåÆ Confirmar ÔåÆ Vincular a OT ÔåÆ Queda "pendiente revisi├│n backoffice".
+**Comprador:** Foto de factura → IA extrae datos → Confirmar → Vincular a OT → Queda "pendiente revisión backoffice".
 
-**Vendedor:** Agenda y pr├│ximos eventos ÔåÆ Ficha cliente ÔåÆ Click-to-call ÔåÆ Actividad post-reuni├│n ÔåÆ Crear lead desde tarjeta.
+**Vendedor:** Agenda y próximos eventos → Ficha cliente → Click-to-call → Actividad post-reunión → Crear lead desde tarjeta.
 
-**Supervisor:** Aprobar partes con un tap ÔåÆ Estado de OTs en tiempo real.
+**Supervisor:** Aprobar partes con un tap → Estado de OTs en tiempo real.
 
-**Gerencia:** KPIs del d├¡a ÔåÆ Aprobar cotizaciones y descuentos ÔåÆ Ficha de cliente.
-
----
-
-## 8. Detalle funcional de m├│dulos
+**Gerencia:** KPIs del día → Aprobar cotizaciones y descuentos → Ficha de cliente.
 
 ---
 
-### 8.1 Plataforma ÔÇö Gesti├│n de Empresas / Tenants
-
-Registro operativo de empresa: raz├│n social, nombre comercial, RUC/NIT, pa├¡s, moneda base, zona horaria y estado. La creaci├│n de tenant la realiza **Superadmin TIDEO** desde Plataforma, sin depender del m├│dulo de pagos o planes comerciales. Al crear el tenant se genera autom├íticamente el rol **Admin Empresa** para ese entorno y se vincula el usuario admin si el email ya existe en Supabase Auth. Si el usuario Auth todav├¡a no existe, el tenant queda creado y el admin queda pendiente de vinculaci├│n. Acceso modo soporte con log obligatorio. M├®tricas por tenant.
+## 8. Detalle funcional de módulos
 
 ---
 
-### 8.2 Plataforma ÔÇö Planes y Licencias
+### 8.1 Plataforma — Gestión de Empresas / Tenants
 
-Definici├│n de planes con m├│dulos incluidos y l├¡mites. M├│dulo no incluido ÔåÆ no aparece en sidebar. Alertas de uso. Upgrade/downgrade con registro.
+Registro operativo de empresa: razón social, nombre comercial, RUC/NIT, país, moneda base, zona horaria y estado. La creación de tenant la realiza **Superadmin TIDEO** desde Plataforma, sin depender del módulo de pagos o planes comerciales. Al crear el tenant se genera automáticamente el rol **Admin Empresa** para ese entorno y se vincula el usuario admin si el email ya existe en Supabase Auth. Si el usuario Auth todavía no existe, el tenant queda creado y el admin queda pendiente de vinculación. Acceso modo soporte con log obligatorio. Métricas por tenant.
 
 ---
 
-### 8.3 Plataforma ÔÇö M├®tricas SaaS
+### 8.2 Plataforma — Planes y Licencias
 
-Tenants activos, MRR, ARR, uso por tenant, tenants en riesgo, distribuci├│n por plan, tasa de retenci├│n y churn de la plataforma.
+Definición de planes con módulos incluidos y límites. Módulo no incluido → no aparece en sidebar. Alertas de uso. Upgrade/downgrade con registro.
+
+---
+
+### 8.3 Plataforma — Métricas SaaS
+
+Tenants activos, MRR, ARR, uso por tenant, tenants en riesgo, distribución por plan, tasa de retención y churn de la plataforma.
 
 ---
 
 ### 8.4 Constructor de Roles
 
-Crear roles con nombre libre. Clonar. Matriz de permisos por pantalla: Ver | Crear | Editar | Anular | Aprobar | Exportar | Ver costos | Ver precios | Ver finanzas. Permisos especiales: `aprobar_descuentos`, `aprobar_compras_hasta`, `ver_salario_personal`, `anular_documentos`, `acceso_campo`, `perfil_campo`. Vista previa de c├│mo ve la app ese rol. Sin permiso "Ver" ÔåÆ pantalla no aparece en sidebar.
+Crear roles con nombre libre. Clonar. Matriz de permisos por pantalla: Ver | Crear | Editar | Anular | Aprobar | Exportar | Ver costos | Ver precios | Ver finanzas. Permisos especiales: `aprobar_descuentos`, `aprobar_compras_hasta`, `ver_salario_personal`, `anular_documentos`, `acceso_campo`, `perfil_campo`. Vista previa de cómo ve la app ese rol. Sin permiso "Ver" → pantalla no aparece en sidebar.
 
 ---
 
 ### 8.5 Maestros Base
 
-**Cat├ílogos de referencia correctos (con formulario de alta):**
-- Clientes y contactos ÔåÆ **solo lectura**, fuente de verdad en Cuentas y Contactos
-- Proveedores ÔåÆ **solo lectura**, fuente de verdad en Compras ÔåÆ Proveedores
+**Catálogos de referencia correctos (con formulario de alta):**
+- Clientes y contactos → **solo lectura**, fuente de verdad en Cuentas y Contactos
+- Proveedores → **solo lectura**, fuente de verdad en Compras → Proveedores
 - Sedes y ubicaciones GPS
 - Cargos de la empresa
-- Especialidades t├®cnicas (con ├írea y si requiere certificaci├│n)
-- Materiales e insumos con c├│digo de barras
-- Almacenes y dep├│sitos (con tipo: Central / Sede / M├│vil / Tr├ínsito)
-- Tipos de servicio interno (con clasificaci├│n y si es facturable)
+- Especialidades técnicas (con área y si requiere certificación)
+- Materiales e insumos organizados jerárquicamente por Grupos, Familias y Subfamilias con código auto-generado
+- Almacenes y depósitos (con tipo: Central / Sede / Móvil / Tránsito)
+- Tipos de servicio interno (con clasificación y si es facturable)
 - Monedas, impuestos y unidades
 
 **Campos especiales en maestros:**
 
-| Tabla | Campo | Prop├│sito |
+| Tabla | Campo | Propósito |
 |-------|-------|-----------|
 | Personal | `numero_celular` | Click-to-call desde campo |
-| Personal | `perfil_campo` | t├®cnico / compras / vendedor / supervisor / gerencia |
+| Personal | `perfil_campo` | técnico / compras / vendedor / supervisor / gerencia |
 | Personal | `acceso_app_campo` | Habilita PWA |
 | Materiales | `codigo_barras` | Escaneo en campo |
+| Materiales | `grupo_id` | FK a `material_grupos` (Grupo del material) |
+| Materiales | `familia_id` | FK a `material_familias` (Familia del material) |
+| Materiales | `subfamilia_id` | FK a `material_subfamilias` (Subfamilia del material) |
+| Materiales | `nro_parte` | Código o número de parte dado por el fabricante |
+| Materiales | `unidades_contenidas` | Factor de conversión o unidades contenidas por empaque |
+| Materiales | `almacen_id` | Almacén asignado predeterminado |
+| Materiales | `ubicacion` | Ubicación física detallada en almacén (estante, pasillo) |
+| Materiales | `precio_unitario` | Precio unitario base de compra/inventario |
 | OT | `ubicacion_gps` | GPS al iniciar parte |
-| OT | `direccion_ejecucion` | Direcci├│n del trabajo |
+| OT | `direccion_ejecucion` | Dirección del trabajo |
 | Compras/Gastos | `imagen_comprobante` | URL del comprobante |
 | Compras/Gastos | `origen_registro` | campo / backoffice |
-| Compras/Gastos | `datos_extraidos_ia` | JSON extracci├│n IA |
+| Compras/Gastos | `datos_extraidos_ia` | JSON extracción IA |
 | Leads | `registrado_desde` | campo / web / formulario |
 
 ---
@@ -634,9 +642,9 @@ Fuente de verdad del cliente. Clasificación, industria, segmento, responsable c
 
 ---
 
-### 8.7 CRM ÔÇö Leads
+### 8.7 CRM — Leads
 
-Kanban por estado: Nuevo ÔåÆ En contacto ÔåÆ Calificado ÔåÆ Convertido ÔåÆ Descartado. Card con badge de fuente, urgencia, d├¡as sin actividad y badge "Campo" si `registrado_desde = campo`. Bot├│n "Convertir" ÔåÆ modal que muestra datos que viajan y crea Cuenta + Contacto + Oportunidad en una operaci├│n. Nota: *"┬┐En prospecci├│n? Crea un Lead ÔÇö la cuenta se genera al convertirlo."*
+Kanban por estado: Nuevo → En contacto → Calificado → Convertido → Descartado. Card con badge de fuente, urgencia, días sin actividad y badge "Campo" si `registrado_desde = campo`. Botón "Convertir" → modal que muestra datos que viajan y crea Cuenta + Contacto + Oportunidad en una operación. Nota: *"¿En prospección? Crea un Lead — la cuenta se genera al convertirlo."*
 
 ---
 
@@ -653,146 +661,148 @@ Kanban: Prospección → Calificación → Propuesta → Negociación → Ganada
 
 ### 8.8b Hoja de Costeo
 
-Documento interno entre la Oportunidad y la Cotizaci├│n. No es un paso obligatorio, pero es el mecanismo formal para calcular si un trabajo es rentable antes de comprometerse con el cliente.
+Documento interno entre la Oportunidad y la Cotización. No es un paso obligatorio, pero es el mecanismo formal para calcular si un trabajo es rentable antes de comprometerse con el cliente.
 
-**Qui├®n la crea:** el vendedor experimentado, el ├írea t├®cnica, o ambos en colaboraci├│n. El campo "Responsable del costeo" registra qui├®n estim├│ sin bloquear el flujo.
+**Quién la crea:** el vendedor experimentado, el área técnica, o ambos en colaboración. El campo "Responsable del costeo" registra quién estimó sin bloquear el flujo.
 
 **Estructura de costos:**
 
-| Secci├│n | Qu├® incluye |
+| Sección | Qué incluye |
 |---------|-------------|
-| Mano de obra | T├®cnicos, supervisores, d├¡as de trabajo, costo d├¡a/persona |
+| Mano de obra | Técnicos, supervisores, días de trabajo, costo día/persona |
 | Materiales | Insumos, repuestos, equipos consumibles |
-| Servicios de terceros | Subcontratos, gr├║as, laboratorios, especialistas externos |
-| Log├¡stica y vi├íticos | Transporte, alojamiento, vi├íticos, fletes |
+| Servicios de terceros | Subcontratos, grúas, laboratorios, especialistas externos |
+| Logística y viáticos | Transporte, alojamiento, viáticos, fletes |
 
-**C├ílculo autom├ítico:**
+**Cálculo automático:**
 - `costo_total` = suma de las 4 secciones
 - `precio_sugerido_sin_igv` = `costo_total / (1 - margen_objetivo_pct / 100)`
-- `precio_sugerido_total` = `precio_sugerido_sin_igv ├ù 1.18`
+- `precio_sugerido_total` = `precio_sugerido_sin_igv × 1.18`
 - El resumen muestra el margen real calculado contra el margen objetivo
 
-**Estados:** Borrador ÔåÆ En revisi├│n ÔåÆ Aprobada
+**Estados:** Borrador → En revisión → Aprobada
 
-**Al aprobar:** genera autom├íticamente una Cotizaci├│n en estado Borrador con los ├¡tems pre-rellenados (precios calculados con el margen objetivo aplicado por ├¡tem). El vendedor puede ajustar antes de enviar al cliente.
+**Al aprobar:** genera automáticamente una Cotización en estado Borrador con los ítems pre-rellenados (precios calculados con el margen objetivo aplicado por ítem). El vendedor puede ajustar antes de enviar al cliente.
 
-**Trazabilidad:** la Cotizaci├│n generada guarda `hoja_costeo_id`. En la OT asociada, el campo `costoEst` toma el `costo_total` de la HC para el comparativo estimado vs real al cierre.
+**Trazabilidad:** la Cotización generada guarda `hoja_costeo_id`. En la OT asociada, el campo `costoEst` toma el `costo_total` de la HC para el comparativo estimado vs real al cierre.
 
-**Permisos requeridos:** `ver_costos` para ver montos. Aprobaci├│n puede requerir `aprobar` seg├║n configuraci├│n del rol.
+**Permisos requeridos:** `ver_costos` para ver montos. Aprobación puede requerir `aprobar` según configuración del rol.
 
 ---
 
 ### 8.9 Cotizaciones
 
-Desde oportunidad. Cat├ílogo + tarifarios con auto-relleno. C├ílculo en tiempo real. Versionado con historial. Aprobaci├│n de descuentos con alerta si supera l├¡mite del rol. PDF. Conversi├│n a OS Cliente. Estados: Borrador ÔåÆ Enviada ÔåÆ En negociaci├│n ÔåÆ Aprobada ÔåÆ Rechazada ÔåÆ Vencida ÔåÆ Convertida.
+Desde oportunidad. Catálogo + tarifarios con auto-relleno. Cálculo en tiempo real. Versionado con historial. Aprobación de descuentos con alerta si supera límite del rol. PDF. Conversión a OS Cliente. Estados: Borrador → Enviada → En negociación → Aprobada → Rechazada → Vencida → Convertida.
 
 ---
 
 ### 8.10 OS Cliente
 
-Vinculada a cotizaci├│n. Panel de saldos: total aprobado / ejecutado / valorizado / facturado / pendiente. Asociaci├│n a m├║ltiples OTs. Tabs: OTs, Valorizaciones, Facturas, Historial. Breadcrumb de flujo en pantallas de detalle.
+Vinculada a cotización. Panel de saldos: total aprobado / ejecutado / valorizado / facturado / pendiente. Asociación a múltiples OTs. Tabs: OTs, Valorizaciones, Facturas, Historial. Breadcrumb de flujo en pantallas de detalle.
 
 ---
 
-### 8.11 OT ÔÇö Orden de Trabajo
+### 8.11 OT — Orden de Trabajo
 
-Tipos: cliente, interna, tercerizada, garant├¡a, correctiva, preventiva, emergencia, proyecto. Facturable / no facturable. Asociaci├│n a OS Cliente, proyecto, centro de costo. `direccion_ejecucion` y `ubicacion_gps`. Tareas, materiales, servicios terceros, gastos, evidencias, conformidad. Cierre t├®cnico y econ├│mico. Costo real y margen. PDF. Estados con badges de color.
+Tipos: cliente, interna, tercerizada, garantía, correctiva, preventiva, emergencia, proyecto. Facturable / no facturable. Asociación a OS Cliente, proyecto, centro de costo. `direccion_ejecucion` y `ubicacion_gps`. Tareas, materiales, servicios terceros, gastos, evidencias, conformidad. Cierre técnico y económico. Costo real y margen. PDF. Estados con badges de color.
 
 ---
 
 ### 8.12 Partes Diarios
 
-Por OT: t├®cnico, fecha, actividades, horas, avance, materiales, evidencias. Aprobaci├│n del supervisor. Badge "Campo" si registrado desde m├│vil con GPS.
+Por OT: técnico, fecha, actividades, horas, avance, materiales, evidencias. Aprobación del supervisor. Badge "Campo" si registrado desde móvil con GPS.
+*   **Persistencia completa**: Almacena de manera nativa en la base de datos (Supabase) las líneas de logística (`logistica_lineas` en JSONB), líneas de terceros (`terceros_lineas` en JSONB) y el nombre del técnico (`tecnico_nombre`), previniendo la pérdida de datos al recargar la página.
+*   **Políticas RLS flexibilizadas**: Permite la actualización (`UPDATE`) de partes diarios si el usuario tiene el permiso de `partes:crear` O `partes:editar`, facilitando que los operarios editen sus borradores de partes sin requerir obligatoriamente el permiso administrativo de edición general.
 
 ---
 
 ### 8.13 Planner y Recursos
 
-Calendario visual. Vista por t├®cnico, cuadrilla, sede. Validaci├│n de disponibilidad. Alertas de conflicto. Reprogramaci├│n con motivo. **Tab Agenda CS:** renovaciones pendientes, onboardings en progreso, planes con alertas, NPS pendientes.
+Calendario visual. Vista por técnico, cuadrilla, sede. Validación de disponibilidad. Alertas de conflicto. Reprogramación con motivo. **Tab Agenda CS:** renovaciones pendientes, onboardings en progreso, planes con alertas, NPS pendientes.
 
 ---
 
-### 8.14 RRHH ÔÇö Personal Operativo
+### 8.14 RRHH — Personal Operativo
 
-Ficha completa: cargo, especialidad, turno asignado, costo hora (normal y extra). 3 tabs: Personal (tabla con avatar y datos), Disponibilidad (grilla semanal 5d ├ù 6 t├®cnicos), Documentos (SCTR/M├®dico/EPP/Licencia con sem├íforo). Secci├│n "Datos de n├│mina" visible solo con `ver_finanzas`: sueldo base, AFP/ONP, hijos, r├®gimen. Formulario alta: + Nuevo t├®cnico con todos los campos.
-
----
-
-### 8.15 RRHH ÔÇö Personal Administrativo
-
-2 tabs: Personal (ficha completa: contrato, vacaciones, licencias, permisos), Reportes (headcount por ├írea, contratos por vencer, ranking vacaciones, solicitudes pendientes). Formulario alta: + Nuevo colaborador.
+Ficha completa: cargo, especialidad, turno asignado, costo hora (normal y extra). 3 tabs: Personal (tabla con avatar y datos), Disponibilidad (grilla semanal 5d × 6 técnicos), Documentos (SCTR/Médico/EPP/Licencia con semáforo). Sección "Datos de nómina" visible solo con `ver_finanzas`: sueldo base, AFP/ONP, hijos, régimen. Formulario alta: + Nuevo técnico con todos los campos.
 
 ---
 
-### 8.16 RRHH ÔÇö Turnos y Horarios
+### 8.15 RRHH — Personal Administrativo
 
-Cat├ílogo de turnos de la empresa. Campos por turno: nombre, hora entrada, hora salida, tolerancia de tardanza (minutos), cruza medianoche (toggle), d├¡as laborables o variables, minutos de refrigerio. C├ílculo autom├ítico de horas efectivas. Los turnos se asignan en la ficha de cada trabajador.
-
-**Turnos base sugeridos:** Ma├▒ana (8-17), Tarde (14-23), Noche (22-6), Campo (6-18, variable), Administrativo (9-18).
+2 tabs: Personal (ficha completa: contrato, vacaciones, licencias, permisos), Reportes (headcount por área, contratos por vencer, ranking vacaciones, solicitudes pendientes). Formulario alta: + Nuevo colaborador.
 
 ---
 
-### 8.17 RRHH ÔÇö Control de Asistencia
+### 8.16 RRHH — Turnos y Horarios
 
-Registro manual: seleccionar trabajador, fecha, hora de entrada, hora de salida. El sistema calcula autom├íticamente tardanza (comparando contra turno + tolerancia) y horas extra (exceso sobre hora de salida).
+Catálogo de turnos de la empresa. Campos por turno: nombre, hora entrada, hora salida, tolerancia de tardanza (minutos), cruza medianoche (toggle), días laborables o variables, minutos de refrigerio. Cálculo automático de horas efectivas. Los turnos se asignan en la ficha de cada trabajador.
 
-**Estados autom├íticos:** Completo (verde), Tardanza (naranja), Horas extra (cyan), Falta (rojo), Falta justificada (rojo con borde). Justificaci├│n: checkbox simple sin flujo de aprobaci├│n.
-
-**4 tabs:** Vista diaria (tabla del d├¡a), Vista semanal (grilla), Vista mensual (resumen por trabajador con totales), Resumen por trabajador (detalle + impacto referencial en n├│mina + exportar Excel).
-
-**Registro masivo:** modal con todos los trabajadores del d├¡a en una sola grilla.
+**Turnos base sugeridos:** Mañana (8-17), Tarde (14-23), Noche (22-6), Campo (6-18, variable), Administrativo (9-18).
 
 ---
 
-### 8.18 RRHH ÔÇö N├│mina B├ísica
+### 8.17 RRHH — Control de Asistencia
 
-**M├│dulo para Per├║ ÔÇö configurable por pa├¡s en versiones futuras.**
+Registro manual: seleccionar trabajador, fecha, hora de entrada, hora de salida. El sistema calcula automáticamente tardanza (comparando contra turno + tolerancia) y horas extra (exceso sobre hora de salida).
 
-**ÔÜá Disclaimer permanente:** *"Los c├ílculos son referenciales. Valida con tu contador antes de procesar pagos."*
+**Estados automáticos:** Completo (verde), Tardanza (naranja), Horas extra (cyan), Falta (rojo), Falta justificada (rojo con borde). Justificación: checkbox simple sin flujo de aprobación.
 
-**Flujo de c├ílculo:**
-1. Remuneraci├│n bruta = sueldo base ÔêÆ descuento faltas ÔêÆ descuento tardanzas + horas extra (├ù1.25) + asignaci├│n familiar.
-2. Descuentos trabajador = AFP (13.24% aprox.) o ONP (13%) + cuota pr├®stamo + anticipo + judicial.
-3. Retenci├│n IR 5ta = aplica si ingreso anual > 7 UIT (S/36,050 en 2026). Escala progresiva.
-4. Neto a pagar = bruto ÔêÆ descuentos ÔêÆ IR.
-5. Cargas empresa = ESSALUD (9%) + CTS (1/12) + Gratificaci├│n (1/6) + Vacaciones (1/12).
+**4 tabs:** Vista diaria (tabla del día), Vista semanal (grilla), Vista mensual (resumen por trabajador con totales), Resumen por trabajador (detalle + impacto referencial en nómina + exportar Excel).
+
+**Registro masivo:** modal con todos los trabajadores del día en una sola grilla.
+
+---
+
+### 8.18 RRHH — Nómina Básica
+
+**Módulo para Perú — configurable por país en versiones futuras.**
+
+**⚠️ Disclaimer permanente:** *"Los cálculos son referenciales. Valida con tu contador antes de procesar pagos."*
+
+**Flujo de cálculo:**
+1. Remuneración bruta = sueldo base − descuento faltas − descuento tardanzas + horas extra (×1.25) + asignación familiar.
+2. Descuentos trabajador = AFP (13.24% aprox.) o ONP (13%) + cuota préstamo + anticipo + judicial.
+3. Retención IR 5ta = aplica si ingreso anual > 7 UIT (S/36,050 en 2026). Escala progresiva.
+4. Neto a pagar = bruto − descuentos − IR.
+5. Cargas empresa = ESSALUD (9%) + CTS (1/12) + Gratificación (1/6) + Vacaciones (1/12).
 6. Costo real empresa = bruto + cargas.
-7. Costo hora real = costo real ├À horas laborables del mes.
+7. Costo hora real = costo real ÷ horas laborables del mes.
 
-**Cierre de per├¡odo** ÔåÆ registra 2 egresos en Administraci├│n/Gastos: planilla (neto) + cargas sociales. Actualiza costo hora de cada t├®cnico. Genera boletas en PDF.
+**Cierre de período** → registra 2 egresos en Administración/Gastos: planilla (neto) + cargas sociales. Actualiza costo hora de cada técnico. Genera boletas en PDF.
 
-**4 tabs:** Resumen del per├¡odo (tabla consolidada), Detalle por trabajador (desglose completo), Cargas empresa (ESSALUD, CTS, gratificaci├│n, vacaciones), Historial de per├¡odos.
+**4 tabs:** Resumen del período (tabla consolidada), Detalle por trabajador (desglose completo), Cargas empresa (ESSALUD, CTS, gratificación, vacaciones), Historial de períodos.
 
 ---
 
-### 8.18b RRHH ÔÇö Liquidaci├│n y Aprobaci├│n de Comisiones
+### 8.18b RRHH — Liquidación y Aprobación de Comisiones
 
-M├│dulo central para la liquidaci├│n, aprobaci├│n de acuerdos especiales y pago de comisiones comerciales.
+Módulo central para la liquidación, aprobación de acuerdos especiales y pago de comisiones comerciales.
 
-**1. Origen y Atribuci├│n Autom├ítica:**
-*   Las comisiones se generan en tiempo real al registrarse un cobro de CxC en el m├│dulo de Administraci├│n.
-*   Si la oportunidad asociada a la venta posee un acuerdo de comisi├│n especial, se calcula en base a ese porcentaje (`acuerdo_pct`) y su bonificaci├│n. De lo contrario, se usa el porcentaje base del vendedor en su ficha de personal.
+**1. Origen y Atribución Automática:**
+*   Las comisiones se generan en tiempo real al registrarse un cobro de CxC en el módulo de Administración.
+*   Si la oportunidad asociada a la venta posee un acuerdo de comisión especial, se calcula en base a ese porcentaje (`acuerdo_pct`) y su bonificación. De lo contrario, se usa el porcentaje base del vendedor en su ficha de personal.
 *   Si el vendedor no existe en `personal_administrativo` o no tiene comisiones activas en su ficha, se lanza una alerta/toast en tiempo real en la pantalla.
 
-**2. Gesti├│n de Acuerdos Especiales:**
-*   **Aprobaci├│n de Acuerdos:** Los gerentes y administradores pueden aprobar o rechazar acuerdos comerciales de comisiones especiales desde la pestaña *Acuerdos pendientes*.
-*   **Alerta +48h:** Se incluye un indicador de urgencia de color rojo para aquellos acuerdos de comisiones especiales que lleven m├ís de 48 horas sin respuesta.
+**2. Gestión de Acuerdos Especiales:**
+*   **Aprobación de Acuerdos:** Los gerentes y administradores pueden aprobar o rechazar acuerdos comerciales de comisiones especiales desde la pestaña *Acuerdos pendientes*.
+*   **Alerta +48h:** Se incluye un indicador de urgencia de color rojo para aquellos acuerdos de comisiones especiales que lleven más de 48 horas sin respuesta.
 
-**3. Liquidaci├│n y Canales de Pago:**
-*   **Planilla:** Si la modalidad de comisi├i├│n es Planilla, al cerrar el per├¡odo de comisiones se integran en la remuneraci├│n bruta del trabajador para su c├ílculo mensual.
-*   **Honorarios (Recibos por Honorarios):** Si la modalidad es Honorarios, se genera una orden de RHE agrupando sus comisiones aprobadas. Al confirmarse el recibo en el m├│dulo de Comisiones, se crea autom├íticamente una Cuenta por Pagar (CxP) de tipo `personal` en el m├│dulo financiero.
+**3. Liquidación y Canales de Pago:**
+*   **Planilla:** Si la modalidad de comisión es Planilla, al cerrar el período de comisiones se integran en la remuneración bruta del trabajador para su cálculo mensual.
+*   **Honorarios (Recibos por Honorarios):** Si la modalidad es Honorarios, se genera una orden de RHE agrupando sus comisiones aprobadas. Al confirmarse el recibo en el módulo de Comisiones, se crea automáticamente una Cuenta por Pagar (CxP) de tipo `personal` en el módulo financiero.
 
-**4. Reglas de Retenci├│n del Impuesto a la Renta de 4ta Categor├¡a (RHE - Per├║):**
-*   **Agente de Retenci├│n:** Se eval├║a si la empresa es agente de retenci├│n (`agente_retencion = true` en `empresa_config`).
+**4. Reglas de Retención del Impuesto a la Renta de 4ta Categoría (RHE - Perú):**
+*   **Agente de Retención:** Se evalúa si la empresa es agente de retención (`agente_retencion = true` en `empresa_config`).
 *   **Monto Umbral:** Si el monto bruto convertido a soles (PEN) usando el tipo de cambio referencial (para transacciones en USD) supera S/ 1,500.
-*   **Exenci├│n por Suspensi├│n:** Se verifica si el colaborador tiene una constancia de suspensi├│n de retenciones activa para el per├¡odo actual (`suspension_retenciones = true` y fecha `vencimiento_suspension >= hoy`).
-*   **Retenci├│n:** Si aplica, se deduce el porcentaje configurado (8% por defecto) y se registra el sustento de retenci├│n/exoneraci├│n en el campo `motivo_retencion`.
+*   **Exención por Suspensión:** Se verifica si el colaborador tiene una constancia de suspensión de retenciones activa para el período actual (`suspension_retenciones = true` y fecha `vencimiento_suspension >= hoy`).
+*   **Retención:** Si aplica, se deduce el porcentaje configurado (8% por defecto) y se registra el sustento de retención/exoneración en el campo `motivo_retencion`.
 
 **5. Formulario y Ficha de Colaborador (RRHH > Personal Administrativo):**
-*   El formulario de edici├│n del colaborador se adapta din├ímicamente seg├║n su modalidad de contrato:
+*   El formulario de edición del colaborador se adapta dinámicamente según su modalidad de contrato:
     *   **Contrato de Planilla:** Muestra campos de turnos, AFP/ONP, sueldo base y beneficios sociales de ley.
-    *   **Contrato de Honorarios:** Oculta turnos asignados, AFP/ONP y beneficios laborales. Cambia la etiqueta de sueldo a *"Honorario pactado"* y las fechas del contrato pasan a llamarse *"Inicio del encargo"* y *"Fin del encargo"*. Requiere obligatoriamente un RUC v├ílido de 11 d├¡gitos.
-*   Secci├│n **Configuraci├│n de Comisiones**: Contiene toggle para activar comisiones, porcentaje base de comisi├│n, modalidad de pago, RUC de comisiones (vendedor), retención de IR de comisiones, suspensión de retenciones y fecha de vencimiento. Los campos de RUC y retención IR se muestran/ocultan dinámicamente en tiempo real según la modalidad de pago seleccionada.
+    *   **Contrato de Honorarios:** Oculta turnos asignados, AFP/ONP y beneficios laborales. Cambia la etiqueta de sueldo a *"Honorario pactado"* y las fechas del contrato pasan a llamarse *"Inicio del encargo"* y *"Fin del encargo"*. Requiere obligatoriamente un RUC válido de 11 dígitos.
+*   Sección **Configuración de Comisiones**: Contiene toggle para activar comisiones, porcentaje base de comisión, modalidad de pago, RUC de comisiones (vendedor), retención de IR de comisiones, suspensión de retenciones y fecha de vencimiento. Los campos de RUC y retención IR se muestran/ocultan dinámicamente en tiempo real según la modalidad de pago seleccionada.
 
 **Bugs de CxC y Comisiones corregidos (10 bugs):**
 1. **Tolerancia a Supabase real:** Remoción de fallbacks en RHE y CxP con inserciones reales directas a BD Supabase.
@@ -808,9 +818,9 @@ M├│dulo central para la liquidaci├│n, aprobaci├│n de acuerdos especi
 
 ---
 
-### 8.19 RRHH ÔÇö Pr├®stamos al Personal
+### 8.19 RRHH — Préstamos al Personal
 
-Pr├®stamos que la empresa otorga a sus trabajadores. Naturaleza: activo (nos deben). Se descuenta en n├│mina. Tabla con empleado, monto, cuotas, avance pagado, estado. Toggle "Descontar autom├íticamente en n├│mina". No confundir con financiamiento recibido.
+Préstamos que la empresa otorga a sus trabajadores. Naturaleza: activo (nos deben). Se descuenta en nómina. Tabla con empleado, monto, cuotas, avance pagado, estado. Toggle "Descontar automáticamente en nómina". No confundir con financiamiento recibido.
 
 ---
 
@@ -826,37 +836,37 @@ Origen de toda necesidad de compra. Desde OT o parte diario. Clasificación, urg
 
 ### 8.21 Inventario y Almacenes
 
-Stock disponible, reservado y m├¡nimo por almac├®n. Entradas, salidas, consumos por OT, transferencias, ajustes, devoluciones. Kardex en panel lateral. Alertas de stock cr├¡tico. Lote/serie/vencimiento. Inventario f├¡sico. C├│digo de barras (campo m├│vil F2).
+Stock disponible, reservado y mínimo por almacén. Entradas, salidas, consumos por OT, transferencias, ajustes, devoluciones. Kardex en panel lateral. Alertas de stock crítico. Lote/serie/vencimiento. Inventario físico. Código de barras (campo móvil F2).
 
 ---
 
-### 8.22 Compras ÔÇö Proveedores
+### 8.22 Compras — Proveedores
 
-Ciclo de vida: Potencial ÔåÆ En evaluaci├│n ÔåÆ Homologado ÔåÆ Observado/Bloqueado ÔåÆ Inactivo. Solo homologados aparecen en selectores de OC. Ficha con 6 tabs: Resumen, Condiciones financieras (visible con `ver_finanzas`: condici├│n de pago, banco, CCI, retenci├│n), Documentos (SCTR/p├│liza/certificaciones con sem├íforo de vencimiento), Evaluaciones (homologaci├│n + post-OC con score acumulado), Historial OC, Contactos.
+Ciclo de vida: Potencial → En evaluación → Homologado → Observado/Bloqueado → Inactivo. Solo homologados aparecen en selectores de OC. Ficha con 6 tabs: Resumen, Condiciones financieras (visible con `ver_finanzas`: condición de pago, banco, CCI, retención), Documentos (SCTR/póliza/certificaciones con semáforo de vencimiento), Evaluaciones (homologación + post-OC con score acumulado), Historial OC, Contactos.
 
-**Evaluaci├│n de homologaci├│n:** capacidad t├®cnica, documentaci├│n, solidez financiera, referencias, precio competitivo. Score ponderado ÔåÆ aprobado o rechazado.
+**Evaluación de homologación:** capacidad técnica, documentación, solidez financiera, referencias, precio competitivo. Score ponderado → aprobado o rechazado.
 
-**Evaluaci├│n post-OC:** cumpli├│ plazo, calidad, precio, comunicaci├│n ÔåÆ actualiza score acumulado del proveedor.
-
----
-
-### 8.23 Compras ÔÇö Cotizaciones
-
-Wizard 3 pasos: 1) Origen (SOLPE o libre) + descripci├│n + tipo (bien/servicio) + fecha l├¡mite. 2) Selecci├│n de proveedores homologados a consultar. 3) Confirmar y crear proceso.
-
-Detalle con tabs: Respuestas de proveedores (card por proveedor con estado), Comparativo (tabla lado a lado con Ôÿà al mejor precio + recomendaci├│n autom├ítica), Resultado (proveedor ganador + justificaci├│n + link a OC/OS).
+**Evaluación post-OC:** cumplió plazo, calidad, precio, comunicación → actualiza score acumulado del proveedor.
 
 ---
 
-### 8.24 Compras ÔÇö ├ôrdenes de Compra
+### 8.23 Compras — Cotizaciones
 
-Para bienes. Vinculada a SOLPE y proceso de cotizaci├│n. ├ìtems con cantidad, precio unitario, subtotal. IGV, total. Plazo de entrega. Seguimiento por timeline. Estados: Emitida ÔåÆ Confirmada ÔåÆ En tr├ínsito ÔåÆ Recibida parcial ÔåÆ Cerrada.
+Wizard 3 pasos: 1) Origen (SOLPE o libre) + descripción + tipo (bien/servicio) + fecha límite. 2) Selección de proveedores homologados a consultar. 3) Confirmar y crear proceso.
+
+Detalle con tabs: Respuestas de proveedores (card por proveedor con estado), Comparativo (tabla lado a lado con ★ al mejor precio + recomendación automática), Resultado (proveedor ganador + justificación + link a OC/OS).
 
 ---
 
-### 8.25 Compras ÔÇö ├ôrdenes de Servicio Interna
+### 8.24 Compras — Órdenes de Compra
 
-Para servicios tercerizados. Mismo patr├│n que OC pero con alcance, entregables y criterios de conformidad. Cierre = conformidad aprobada (no recepci├│n f├¡sica). Estados: Emitida ÔåÆ Confirmada ÔåÆ En ejecuci├│n ÔåÆ Pendiente conformidad ÔåÆ Cerrada.
+Para bienes. Vinculada a SOLPE y proceso de cotización. Ítems con cantidad, precio unitario, subtotal. IGV, total. Plazo de entrega. Seguimiento por timeline. Estados: Emitida → Confirmada → En tránsito → Recibida parcial → Cerrada.
+
+---
+
+### 8.25 Compras — Órdenes de Servicio Interna
+
+Para servicios tercerizados. Mismo patrón que OC pero con alcance, entregables y criterios de conformidad. Cierre = conformidad aprobada (no recepción física). Estados: Emitida → Confirmada → En ejecución → Pendiente conformidad → Cerrada.
 
 ---
 
@@ -877,27 +887,27 @@ Registro estructurado de egresos menores y adquisiciones directas fuera del fluj
 
 ### 8.27 Costos por OT
 
-Costo estimado vs real. Mano de obra (desde parte diario ├ù costo hora real), materiales (desde inventario), servicios terceros, log├¡stica, gastos. Margen bruto y porcentual. Visible solo con `ver_costos`.
+Costo estimado vs real. Mano de obra (desde parte diario × costo hora real), materiales (desde inventario), servicios terceros, logística, gastos. Margen bruto y porcentual. Visible solo con `ver_costos`.
 
 ---
 
-### 8.28 Valorizaci├│n
+### 8.28 Valorización
 
-Agrupar OTs cerradas por cliente/per├¡odo. Aplicar tarifas, descuentos, penalidades, impuestos. Flujo de aprobaci├│n. Control de OTs valorizadas y pendientes. PDF.
+Agrupar OTs cerradas por cliente/período. Aplicar tarifas, descuentos, penalidades, impuestos. Flujo de aprobación. Control de OTs valorizadas y pendientes. PDF.
 
 **Detalle de Valorizaciones y Persistencia:** La tabla `valorizaciones` incluye persistencia nativa del JSON de partidas (`items`), las OTs vinculadas (`ot_ids`), y el historial de acciones y aprobaciones (`historial`). También almacena el modelo de cálculo utilizado, notas explicativas, fecha de aprobación final y motivo de anulación en caso de cancelación.
 
 ---
 
-### 8.29 Facturaci├│n
+### 8.29 Facturación
 
-Desde valorizaci├│n aprobada o OS Cliente. Datos fiscales, impuestos, vencimiento. Notas de cr├®dito/d├®bito. Exportaci├│n para facturaci├│n electr├│nica externa.
+Desde valorización aprobada o OS Cliente. Datos fiscales, impuestos, vencimiento. Notas de crédito/débito. Exportación para facturación electrónica externa.
 
 ---
 
-### 8.30 Tesorer├¡a y Match Bancario
+### 8.30 Tesorería y Match Bancario
 
-Bancos y cuentas. Ingresos vinculados a CxC/anticipo. Egresos vinculados a CxP/gasto/pr├®stamo/cuota de financiamiento. Match bancario: conciliar movimiento bancario con CxC (cr├®ditos) o CxP/gasto (d├®bitos). Flujo de caja proyectado vs real.
+Bancos y cuentas. Ingresos vinculados a CxC/anticipo. Egresos vinculados a CxP/gasto/préstamo/cuota de financiamiento. Match bancario: conciliar movimiento bancario con CxC (créditos) o CxP/gasto (débitos). Flujo de caja proyectado vs real.
 
 ---
 
@@ -908,15 +918,15 @@ INGRESOS
   Ventas de servicios
 COSTO DE VENTAS
   Mano de obra | Materiales | Servicios terceros
-UTILIDAD BRUTA ÔåÆ margen %
+UTILIDAD BRUTA → margen %
 GASTOS OPERATIVOS
-  Administrativos | Comerciales | Log├¡sticos
-  Planilla per├¡odo (desde n├│mina cerrada)
-  Cargas sociales (desde n├│mina cerrada)
+  Administrativos | Comerciales | Logísticos
+  Planilla período (desde nómina cerrada)
+  Cargas sociales (desde nómina cerrada)
 RESULTADO OPERATIVO
 GASTOS FINANCIEROS
-  Intereses de pr├®stamos (desde cuotas de financiamiento pagadas)
-RESULTADO NETO ÔåÆ margen %
+  Intereses de préstamos (desde cuotas de financiamiento pagadas)
+RESULTADO NETO → margen %
 ```
 
 Filtros: período, cliente, proyecto, centro de costo (CECO) y centro de beneficio (CEBE) completamente funcionales mediante MultiSelect. Drill-down por categoría. Comparativo período anterior.
@@ -927,15 +937,15 @@ Filtros: período, cliente, proyecto, centro de costo (CECO) y centro de benefic
 
 **Naturaleza: pasivo de la empresa** (nos prestaron, debemos devolver).
 
-Tipos: bancario, tercero (persona natural/empresa), leasing, l├¡nea de cr├®dito revolvente.
+Tipos: bancario, tercero (persona natural/empresa), leasing, línea de crédito revolvente.
 
-**Tabla de amortizaci├│n generada autom├íticamente** al crear: cuota por cuota con capital, inter├®s, total y saldo. Sistema franc├®s (cuota fija), alem├ín (cuota decreciente) o bullet.
+**Tabla de amortización generada automáticamente** al crear: cuota por cuota con capital, interés, total y saldo. Sistema francés (cuota fija), alemán (cuota decreciente) o bullet.
 
-**Al pagar cuota:** capital ÔåÆ reduce saldo del pr├®stamo. Inter├®s ÔåÆ gasto financiero en ER. Total ÔåÆ egreso en Tesorer├¡a.
+**Al pagar cuota:** capital → reduce saldo del préstamo. Interés → gasto financiero en ER. Total → egreso en Tesorería.
 
-**Reporte de deuda:** saldo total vigente, cuotas del mes (capital + inter├®s), proyecci├│n 12 meses por mes, distribuci├│n por tipo de acreedor, detalle por pr├®stamo con barra de avance.
+**Reporte de deuda:** saldo total vigente, cuotas del mes (capital + interés), proyección 12 meses por mes, distribución por tipo de acreedor, detalle por préstamo con barra de avance.
 
-**Alertas:** cuota pr├│xima a vencer (7 d├¡as) en Dashboard y notificaciones.
+**Alertas:** cuota próxima a vencer (7 días) en Dashboard y notificaciones.
 
 ---
 
@@ -947,37 +957,37 @@ Módulo completo de control presupuestal que permite contrastar los gastos proye
 - Los filtros por **CECO** y **CEBE** son funcionales en la vista de **BI Financiero** y en el módulo **Presupuesto vs Real** (recalculando los costos reales y variaciones en tiempo real).
 
 **1. Presupuestos y Partidas:**
-*   Creaci├│n e ingreso de presupuestos con su respectivo t├¡tulo y per├¡odo.
-*   Gesti├│n de partidas agrupadas por categor├¡a (Materiales, Mano de obra, Servicios de Terceros, Log├¡stica, Gastos, etc.) con sus montos estimados en soles (PEN) y su descripci├│n.
+*   Creación e ingreso de presupuestos con su respectivo título y período.
+*   Gestión de partidas agrupadas por categoría (Materiales, Mano de obra, Servicios de Terceros, Logística, Gastos, etc.) con sus montos estimados en soles (PEN) y su descripción.
 
-**2. Cadena de Aprobaci├│n Secuencial:**
-*   Aprobaci├│n de presupuestos mediante una cadena de firmas secuencial de hasta 4 niveles de aprobadores seleccionables de la lista de usuarios.
-*   El estado del presupuesto cambia de `borrador` ÔåÆ `en_aprobacion` ÔåÆ `aprobado` (cuando firman todos) o `rechazado` (si alg├║n firmante rechaza, capturando obligatoriamente su comentario).
+**2. Cadena de Aprobación Secuencial:**
+*   Aprobación de presupuestos mediante una cadena de firmas secuencial de hasta 4 niveles de aprobadores seleccionables de la lista de usuarios.
+*   El estado del presupuesto cambia de `borrador` → `en_aprobacion` → `aprobado` (cuando firman todos) o `rechazado` (si algún firmante rechaza, capturando obligatoriamente su comentario).
 
-**3. C├ílculo Autom├ítico del Real Ejecutado:**
-*   **Mano de Obra:** Se obtiene del costo real acumulado de las ├ôrdenes de Trabajo (OT) que se cerraron o facturaron dentro del per├¡odo presupuestado (coincidiendo con el CECO de la partida).
-*   **Otras Categor├¡as:** Se obtiene autom├íticamente a partir del total de compras y egresos registrados en `compras_gastos` en el per├¡odo de an├ílisis que tengan asignada la misma categor├¡a y CECO.
+**3. Cálculo Automático del Real Ejecutado:**
+*   **Mano de Obra:** Se obtiene del costo real acumulado de las Órdenes de Trabajo (OT) que se cerraron o facturaron dentro del período presupuestado (coincidiendo con el CECO de la partida).
+*   **Otras Categorías:** Se obtiene automáticamente a partir del total de compras y egresos registrados en `compras_gastos` en el período de análisis que tengan asignada la misma categoría y CECO.
 
-**4. Variaciones y Sem├íforos de Alerta:**
-*   El sistema calcula en tiempo real la variaci├│n neta absoluta y el porcentaje de ejecuci├│n presupuestal.
-*   Las partidas se marcan visualmente con sem├íforos de estado: `OK` (ejecución menor a 80%), `En l├¡mite` (80%-100%, barra naranja) o `Excedido` (mayor a 100%, barra roja), desplegando una alerta general en la parte superior si existen partidas excedidas.
+**4. Variaciones y Semáforos de Alerta:**
+*   El sistema calcula en tiempo real la variación neta absoluta y el porcentaje de ejecución presupuestal.
+*   Las partidas se marcan visualmente con semáforos de estado: `OK` (ejecución menor a 80%), `En límite` (80%-100%, barra naranja) o `Excedido` (mayor a 100%, barra roja), desplegando una alerta general en la parte superior si existen partidas excedidas.
 
 **5. Desglose y Drill-down de Comprobantes:**
-*   Al hacer clic en cualquier partida presupuestal en el panel, se despliega un listado detallado (con fecha, descripci├│n, proveedor o t├®cnico, documento de origen y monto) con todas las transacciones individuales (gastos o OTs) que conforman el costo real total de esa partida para una auditor├¡a transparente.
+*   Al hacer clic en cualquier partida presupuestal en el panel, se despliega un listado detallado (con fecha, descripción, proveedor o técnico, documento de origen y monto) con todas las transacciones individuales (gastos o OTs) que conforman el costo real total de esa partida para una auditoría transparente.
 
 ---
 
-### 8.34 Customer Success ÔÇö m├│dulos completos
+### 8.34 Customer Success — módulos completos
 
-**Onboarding:** activaci├│n al ganar oportunidad. Checklist configurable, reuni├│n de arranque, hitos con alertas, satisfacci├│n inicial.
+**Onboarding:** activación al ganar oportunidad. Checklist configurable, reunión de arranque, hitos con alertas, satisfacción inicial.
 
-**Planes de ├ëxito:** objetivos del cliente, periodicidad de revisi├│n, seguimiento de adopci├│n, alertas de riesgo temprano.
+**Planes de Éxito:** objetivos del cliente, periodicidad de revisión, seguimiento de adopción, alertas de riesgo temprano.
 
-**Health Score:** 5 dimensiones ponderadas: uso de plataforma, soporte, NPS, finanzas, relaci├│n CS. Sem├íforo: saludable >70 / observaci├│n 50-70 / riesgo 30-50 / cr├¡tico <30. Alerta autom├ítica al caer bajo umbral.
+**Health Score:** 5 dimensiones ponderadas: uso de plataforma, soporte, NPS, finanzas, relación CS. Semáforo: saludable >70 / observación 50-70 / riesgo 30-50 / crítico <30. Alerta automática al caer bajo umbral.
 
-**Renovaciones:** alertas 90/60/30 d├¡as antes. Oportunidad en pipeline autom├ítica. Regla: cliente con deuda vencida se eval├║a antes de upsell.
+**Renovaciones:** alertas 90/60/30 días antes. Oportunidad en pipeline automática. Regla: cliente con deuda vencida se evalúa antes de upsell.
 
-**Fidelizaci├│n y NPS:** encuestas autom├íticas post-servicio, promotores/neutros/detractores, referidos vinculados al cliente fuente, casos de ├®xito con autorizaci├│n.
+**Fidelización y NPS:** encuestas automáticas post-servicio, promotores/neutros/detractores, referidos vinculados al cliente fuente, casos de éxito con autorización.
 
 ---
 
@@ -1040,33 +1050,33 @@ BI Comercial → tab "Por campaña" con métricas completas
 
 ### 8.35 IA — Módulos completos con historial auditado
 
-**IA Comercial:** resumen de cliente/oportunidad, siguiente mejor acci├│n, redacci├│n asistida, clasificaci├│n de leads, predicci├│n de cierre, recomendaci├│n de servicios.
+**IA Comercial:** resumen de cliente/oportunidad, siguiente mejor acción, redacción asistida, clasificación de leads, predicción de cierre, recomendación de servicios.
 
-**IA Operativa:** resumen de OT, borrador desde descripci├│n libre, clasificaci├│n de tickets, detecci├│n de demoras, alertas de SLA. **Campo (F1):** extracci├│n de datos de facturas con foto.
+**IA Operativa:** resumen de OT, borrador desde descripción libre, clasificación de tickets, detección de demoras, alertas de SLA. **Campo (F1):** extracción de datos de facturas con foto.
 
-**IA Financiera:** desviaciones de costo, alerta de margen bajo, priorizaci├│n de cobranza, explicaci├│n de variaciones.
+**IA Financiera:** desviaciones de costo, alerta de margen bajo, priorización de cobranza, explicación de variaciones.
 
-**Historial auditado en cada m├│dulo:** Fecha | Acci├│n (badge) | Entidad | Recomendaci├│n (90 chars) | Acci├│n tomada | Usuario.
+**Historial auditado en cada módulo:** Fecha | Acción (badge) | Entidad | Recomendación (90 chars) | Acción tomada | Usuario.
 
-**Regla:** La IA asiste, no aprueba. Toda acci├│n de IA queda en `ia_logs`.
+**Regla:** La IA asiste, no aprueba. Toda acción de IA queda en `ia_logs`.
 
 ---
 
-### 8.36 Vistas de Campo M├│viles ÔÇö PWA
+### 8.36 Vistas de Campo Móviles — PWA
 
-Instalable desde el browser. Rutas mobile-first. Acceso a c├ímara. Sincronizaci├│n offline b├ísica. Solo con `acceso_campo = true`.
+Instalable desde el browser. Rutas mobile-first. Acceso a cámara. Sincronización offline básica. Solo con `acceso_campo = true`.
 
-**T├®cnico:** OTs del d├¡a ÔåÆ GPS al iniciar ÔåÆ parte en 4 pasos (actividad / materiales / avance / fotos) ÔåÆ reportar restricci├│n.
+**Técnico:** OTs del día → GPS al iniciar → parte en 4 pasos (actividad / materiales / avance / fotos) → reportar restricción.
 
-**Comprador:** foto ÔåÆ IA extrae (proveedor, n├║mero, fecha, monto, IGV) ÔåÆ confirmar ÔåÆ vincular a OT ÔåÆ queda "pendiente revisi├│n backoffice".
+**Comprador:** foto → IA extrae (proveedor, número, fecha, monto, IGV) → confirmar → vincular a OT → queda "pendiente revisión backoffice".
 
-**Vendedor:** ficha cliente con click-to-call ÔåÆ actividad post-reuni├│n ÔåÆ lead desde tarjeta.
+**Vendedor:** ficha cliente con click-to-call → actividad post-reunión → lead desde tarjeta.
 
-**Supervisor:** aprobar partes ÔåÆ mapa de OTs con sem├íforo SLA.
+**Supervisor:** aprobar partes → mapa de OTs con semáforo SLA.
 
-**Gerencia:** KPIs del d├¡a ÔåÆ aprobar cotizaciones.
+**Gerencia:** KPIs del día → aprobar cotizaciones.
 
-**F2 pendiente:** checklist de seguridad, confirmaci├│n de traslado, aprobaci├│n SOLPE, escaneo c├│digo de barras.
+**F2 pendiente:** checklist de seguridad, confirmación de traslado, aprobación SOLPE, escaneo código de barras.
 
 ---
 
@@ -1104,17 +1114,17 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 **Comercial:** hojas_costeo (con secciones jsonb: mano_obra, materiales, servicios_terceros, logistica + totales calculados + margen_objetivo_pct + responsable_costeo + cotizacion_id), cotizaciones (+ hoja_costeo_id para trazabilidad), historial_versiones_cotizacion, os_cliente, condiciones_comerciales.
 
-**Operaciones:** backlog, ordenes_trabajo (+ubicacion_gps, direccion_ejecucion), partes_diarios, evidencias, conformidad_cliente, remisiones, valorizaciones.
+**Operaciones:** backlog, ordenes_trabajo (+ubicacion_gps, direccion_ejecucion), partes_diarios (+logistica_lineas, terceros_lineas, tecnico_nombre), tickets (id uuid, empresa_id, numero TK por tenant, titulo, descripcion, tipo, canal_entrada, estado, prioridad, cuenta_id/cuenta_nombre, responsable_id/responsable_nombre, fecha_limite_sla, sla_estado calculado, fecha_resolucion, creado_por, creado_en, actualizado_en), evidencias, conformidad_cliente, remisiones, valorizaciones.
 
 **Inventario y compras:** almacenes, stock, movimientos_inventario, kardex, solpe_interna, proveedores, documentos_proveedor, evaluaciones_proveedor, contactos_proveedor, procesos_compra, ordenes_compra, ordenes_servicio, recepciones, conformidad_proveedor, traslados_logisticos.
 
-**RRHH:** personal_operativo (+turno_id, sueldo_base, sistema_pensionario), personal_administrativo, turnos, registros_asistencia, periodos_nomina, detalle_nomina, prestamos_personal, recibos_honorarios (id, empresa_id, vendedor_id, vendedor_nombre, vendedor_ruc, periodo, comisiones_ids, monto_bruto, retencion_ir, monto_neto, estado, creado_en, moneda, personal_id).
+**RRHH:** personal_operativo (+turno_id, sueldo_base, sistema_pensionario), personal_administrativo (+suspension_retenciones, vencimiento_suspension), turnos, registros_asistencia, periodos_nomina, detalle_nomina, prestamos_personal, recibos_honorarios (id, empresa_id, vendedor_id, vendedor_nombre, vendedor_ruc, periodo, comisiones_ids, monto_bruto, retencion_ir, monto_neto, estado, creado_en, moneda, personal_id, motivo_retencion).
 
 **Financiamiento:** financiamientos, tabla_amortizacion, pagos_financiamiento.
 
 **Finanzas:** costos_ot, ventas, compras_gastos (+imagen_comprobante, origen_registro, datos_extraidos_ia), caja_chica, anticipos, facturas, cxc, cobranzas, cxp (id, empresa_id, proveedor_id, factura_numero, factura_imagen_url, fecha_emision, fecha_vencimiento, monto_total, monto_pagado, saldo, moneda, estado, created_at, updated_at, tipo_beneficiario, personal_id, recibo_honorarios_id, concepto), pagos, flujo_caja.
 
-**Presupuestos y Pagos (Verificado: Migraciones 137, 138 y cxp_pagos de 132 siguen PENDIENTES de aplicar en remoto / Local-only):**
+**Presupuestos y Pagos:**
 - `cxp_pagos` (id, empresa_id, cxp_id, fecha_pago, monto, cuenta_bancaria, referencia, registrado_por, creado_en)
 - `presupuestos` (id, empresa_id, nombre, periodo, centro_costo_id, cebe_id, estado, creado_por, creado_en, actualizado_en)
 - `presupuesto_partidas` (id, empresa_id, presupuesto_id, categoria, descripcion, monto_presupuestado, moneda, orden)
@@ -1124,17 +1134,17 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 **IA:** ia_logs.
 
-**Maestros:** servicios, familias_servicios, tarifarios, materiales (+codigo_barras), especialidades_tecnicas, tipos_servicio_interno, almacenes_depositos, centros_costo, sedes, proyectos.
+**Maestros:** servicios, familias_servicios, tarifarios, materiales (+codigo_barras, grupo_id, familia_id, subfamilia_id, nro_parte, unidades_contenidas, almacen_id, ubicacion, observacion, precio_unitario), material_grupos, material_familias, material_subfamilias, especialidades_tecnicas, tipos_servicio_interno, almacenes_depositos, centros_costo, sedes, proyectos, empresa_config (+agente_retencion).
 
 ---
 
 ## 10. Reglas transversales
 
 ### 10.1 Tenancy
-Todo `empresa_id` impl├¡cito. RLS en base de datos. Sin acceso cruzado entre tenants. Superadmin con log de auditor├¡a.
+Todo `empresa_id` implícito. RLS en base de datos. Sin acceso cruzado entre tenants. Superadmin con log de auditoría.
 
 ### 10.2 Roles y permisos
-Sin permiso "Ver" ÔåÆ pantalla no aparece en sidebar. Permisos de costos/precios/finanzas independientes. Sin `acceso_campo` ÔåÆ no accede a PWA. Rol Admin no eliminable si es el ├║nico activo.
+Sin permiso "Ver" → pantalla no aparece en sidebar. Permisos de costos/precios/finanzas independientes. Sin `acceso_campo` → no accede a PWA. Rol Admin no eliminable si es el único activo.
 
 **Jerarquia transversal:** cada rol tiene `categoria` (admin, comercial, operaciones, finanzas, RRHH, compras, logistica, customer_success u otro) y `nivel_jerarquico` (direccion, jefatura, supervisor, asesor, operativo o soporte). Cada usuario puede tener `jefe_user_id` como jefe directo dentro del tenant. Direccion/admin ve todo el tenant; jefatura y supervisores ven su equipo recursivo; asesores/operativos ven solo sus propios movimientos. Esta regla aplica a toda la plataforma, no solo al area comercial.
 
@@ -1155,44 +1165,44 @@ Sin permiso "Ver" ÔåÆ pantalla no aparece en sidebar. Permisos de costos/prec
 *   Lead requiere fuente y responsable. OT facturable requiere OS Cliente. Descuento sobre límite requiere aprobación. No duplicar facturación por el mismo alcance.
 
 ### 10.4 Compras
-Solo proveedores homologados en selectores de OC. Bloqueados no aparecen. Toda recepci├│n actualiza: OC + inventario (si bien) + CxP + evaluaci├│n proveedor.
+Solo proveedores homologados en selectores de OC. Bloqueados no aparecen. Toda recepción actualiza: OC + inventario (si bien) + CxP + evaluación proveedor.
 
-### 10.5 RRHH y n├│mina
-N├│mina Ôëá costo de OT. Son dos mediciones independientes. Solo los **intereses** de financiamiento son gasto financiero en ER. El capital reduce el pasivo. Pr├®stamos al personal Ôëá financiamiento recibido.
+### 10.5 RRHH y nómina
+Nómina ≠ costo de OT. Son dos mediciones independientes. Solo los **intereses** de financiamiento son gasto financiero en ER. El capital reduce el pasivo. Préstamos al personal ≠ financiamiento recibido.
 
-**Comisiones y RHE (Impuestos):** Las comisiones liquidadas por RHE se gravan con retenci├│n de IR de 4ta categor├¡a (8% por defecto) si la empresa es agente de retenci├│n (`agente_retencion = true`), el recibo supera el umbral de S/ 1,500 en PEN (calculado con `tipo_cambio_referencial` en cobros en USD) y el colaborador no tiene suspensi├│n de retenciones activa. Toda liquidaci├│n de RHE confirmada genera autom├íticamente una CxP de tipo `personal` para el colaborador.
+**Comisiones y RHE (Impuestos):** Las comisiones liquidadas por RHE se gravan con retención de IR de 4ta categoría (8% por defecto) si la empresa es agente de retención (`agente_retencion = true`), el recibo supera el umbral de S/ 1,500 en PEN (calculado con `tipo_cambio_referencial` en cobros en USD) y el colaborador no tiene suspensión de retenciones activa. Toda liquidación de RHE confirmada genera automáticamente una CxP de tipo `personal` para el colaborador.
 
-**Activos para PDF:** Para la emisi├│n de PDFs de cotizaciones, facturas, valorizaciones y boletas, la empresa puede cargar su `logo_url` y `firma_url` en `empresa_config`. Estos archivos se almacenan de manera p├║blica en el bucket `empresa-assets` para garantizar su renderizaci├│n correcta en los generadores de PDF del servidor y del cliente.
+**Activos para PDF:** Para la emisión de PDFs de cotizaciones, facturas, valorizaciones y boletas, la empresa puede cargar su `logo_url` y `firma_url` en `empresa_config`. Estos archivos se almacenan de manera pública en el bucket `empresa-assets` para garantizar su renderización correcta en los generadores de PDF del servidor y del cliente.
 
 ### 10.6 Campo
-`origen_registro = campo` en todo registro de campo. GPS autom├ítico al iniciar parte. Gasto de campo queda "pendiente revisi├│n backoffice". Datos IA en `datos_extraidos_ia` para auditor├¡a.
+`origen_registro = campo` en todo registro de campo. GPS automático al iniciar parte. Gasto de campo queda "pendiente revisión backoffice". Datos IA en `datos_extraidos_ia` para auditoría.
 
-### 10.7 Auditor├¡a
-No eliminar ÔåÆ anular con motivo y usuario. Modificaciones cr├¡ticas registran valor anterior, nuevo, fecha, IP. IA logs registran todas las acciones por recomendaci├│n de IA.
+### 10.7 Auditoría
+No eliminar → anular con motivo y usuario. Modificaciones críticas registran valor anterior, nuevo, fecha, IP. IA logs registran todas las acciones por recomendación de IA.
 
 ---
 
 ## 11. Indicadores clave
 
-**CRM:** leads por fuente (campo vs web), conversi├│n por etapa, ciclo de venta, motivos de p├®rdida.
+**CRM:** leads por fuente (campo vs web), conversión por etapa, ciclo de venta, motivos de pérdida.
 
 **Comercial:** pipeline, forecast ponderado, tasa de cierre, ventas por vendedor/servicio.
 
-**Operativo:** OTs por estado, SLA, productividad t├®cnica, partes campo vs backoffice.
+**Operativo:** OTs por estado, SLA, productividad técnica, partes campo vs backoffice.
 
-**Compras:** SOLPEs pendientes, lead time de proveedores, score de proveedores, stock cr├¡tico.
+**Compras:** SOLPEs pendientes, lead time de proveedores, score de proveedores, stock crítico.
 
-**RRHH:** asistencia promedio %, tardanzas por t├®cnico, horas extra por per├¡odo, costo hora real vs estimado.
+**RRHH:** asistencia promedio %, tardanzas por técnico, horas extra por período, costo hora real vs estimado.
 
-**Financiero:** margen por OT/cliente/servicio, facturaci├│n, CxC/CxP vencidas, flujo de caja, ER mensual, deuda total vigente, cuotas del mes.
+**Financiero:** margen por OT/cliente/servicio, facturación, CxC/CxP vencidas, flujo de caja, ER mensual, deuda total vigente, cuotas del mes.
 
-**Customer Success:** health score promedio, churn, retenci├│n, NPS, renovaciones pr├│ximas.
+**Customer Success:** health score promedio, churn, retención, NPS, renovaciones próximas.
 
-**Plataforma TIDEO:** MRR, ARR, tenants activos, churn de plataforma, distribuci├│n por plan.
+**Plataforma TIDEO:** MRR, ARR, tenants activos, churn de plataforma, distribución por plan.
 
 ---
 
-## 12. Sistema de dise├▒o
+## 12. Sistema de diseño
 
 ```css
 --color-navy: #1A2B4A;     /* dominante, sidebar, headers */
@@ -1201,32 +1211,32 @@ No eliminar ÔåÆ anular con motivo y usuario. Modificaciones cr├¡ticas regi
 --color-green: #4CAF50;    /* acciones primarias, estados OK */
 --color-orange: #FF9800;   /* alertas, pendientes */
 --color-purple: #9C27B0;   /* Customer Success */
---color-cyan: #00BCD4;     /* KPIs, gr├íficas, mes actual en BI */
+--color-cyan: #00BCD4;     /* KPIs, gráficas, mes actual en BI */
 --dark-bg: #0D1B2E;        /* fondo oscuro */
 --dark-surface: #162038;   /* tarjetas en modo oscuro */
 --dark-border: #243554;    /* bordes en modo oscuro */
 --dark-text: #E8EDF5;      /* texto en modo oscuro */
 ```
 
-**Tipograf├¡a:** Sora (headings) + DM Sans (body). No usar Inter, Roboto ni System UI.
+**Tipografía:** Sora (headings) + DM Sans (body). No usar Inter, Roboto ni System UI.
 
-**Componentes clave:** Dark mode toggle (sun/moon). Simulador de roles en header. Selector de empresa activa. Breadcrumb de flujo en pantallas de detalle. Badges sem├ínticos por estado. Badge "­ƒô▒ Campo". Badge "­ƒñû Extra├¡do por IA". Badge "ÔÜá Condiciones pendientes". Badge "ÔÜá Condiciones financieras pendientes".
+**Componentes clave:** Dark mode toggle (sun/moon). Simulador de roles en header. Selector de empresa activa. Breadcrumb de flujo en pantallas de detalle. Badges semánticos por estado. Badge "📱 Campo". Badge "🤖 Extraído por IA". Badge "⚠️ Condiciones pendientes". Badge "⚠️ Condiciones financieras pendientes".
 
 ---
 
 ## 13. Exclusiones
 
-- Integraci├│n con facturaci├│n electr├│nica externa por pa├¡s (se cotiza aparte).
-- Integraci├│n con sistema contable externo (se cotiza aparte).
-- Integraci├│n bancaria autom├ítica (se cotiza aparte).
-- Exportaci├│n PDT SUNAT, integraci├│n AFP/ESSALUD en l├¡nea (n├│mina avanzada, se cotiza aparte).
-- App m├│vil nativa iOS/Android ÔÇö campo se resuelve con PWA.
-- Balance general completo (requiere contabilidad de partida doble ÔÇö versi├│n futura).
-- Planilla/n├│mina con liquidaciones de cese complejas, r├®gimen MYPE diferenciado, utilidades (versi├│n futura).
+- Integración con facturación electrónica externa por país (se cotiza aparte).
+- Integración con sistema contable externo (se cotiza aparte).
+- Integración bancaria automática (se cotiza aparte).
+- Exportación PDT SUNAT, integración AFP/ESSALUD en línea (nómina avanzada, se cotiza aparte).
+- App móvil nativa iOS/Android — campo se resuelve con PWA.
+- Balance general completo (requiere contabilidad de partida doble — versión futura).
+- Planilla/nómina con liquidaciones de cese complejas, régimen MYPE diferenciado, utilidades (versión futura).
 - Hardware, tablets, impresoras.
-- Migraci├│n hist├│rica masiva no definida.
-- Asesor├¡a tributaria, contable o laboral.
-- ERP personalizado para rubros espec├¡ficos (producto separado de TIDEO).
+- Migración histórica masiva no definida.
+- Asesoría tributaria, contable o laboral.
+- ERP personalizado para rubros específicos (producto separado de TIDEO).
 
 ---
 
@@ -1234,6 +1244,8 @@ No eliminar ÔåÆ anular con motivo y usuario. Modificaciones cr├¡ticas regi
 
 | Fecha | Cambios principales |
 |-------|---------------------|
+| 28/05/2026 | **Soporte y Tickets conectado a Supabase:** migracion `143_tickets.sql` agrega tabla `tickets` con RLS por `usuario_tiene_empresa(empresa_id)`, trigger de numeracion `TK-XXXX` por tenant, calculo de fecha limite SLA y vista `tickets_con_sla` con `sla_estado` calculado en base. Nuevo `src/services/ticketsService.js` para cargar, crear, actualizar estado, editar y eliminar. Los 7 tickets demo salen de datos inline y pasan a `MOCK.tickets` en `src/data.js`. El componente `Tickets` queda desacoplado, carga modo mock/Supabase, muestra estado de carga, crea tickets desde formulario y mueve tarjetas con actualizacion optimista. |
+| 28/05/2026 | **Integración de Materiales, Presupuestos, Persistencia de Partes y Retenciones (Fase 4 - Hardening):**<br>- **Migraciones 137 a 142 integradas y aplicadas**: se consolida la retención IR en la configuración empresarial y personal (`agente_retencion` en `empresa_config`, `suspension_retenciones` y `vencimiento_suspension` en `personal_administrativo`).<br>- **Maestro de Materiales Jerárquico (Migración 139)**: estructuración de materiales mediante Grupos, Familias y Subfamilias, con generador automático de código de 10 dígitos y nuevos campos en ficha de materiales (`grupo_id`, `familia_id`, `subfamilia_id`, `nro_parte`, `unidades_contenidas`, `almacen_id`, `ubicacion`, `precio_unitario`).<br>- **Planner y Asignaciones Flexibles (Migración 140)**: remoción de restricciones FK para permitir asignación de personal administrativo a cuadrillas en el Planner.<br>- **Persistencia de Partes Diarios (Migración 141 y 142)**: persistencia nativa de líneas de logística (`logistica_lineas`), de terceros (`terceros_lineas`) y nombre del técnico en base de datos. Modificación de políticas RLS para habilitar la edición de partes a usuarios con permisos de creación. |
 | 22/05/2026 | **Alineación, Hardening de Comisiones e Integraciones (Fase 3):**<br>- **Migraciones 135 y 136 aplicadas y verificadas en Supabase:** campos `moneda` y `personal_id` en `recibos_honorarios`, campos `tipo_beneficiario`, `personal_id`, `recibo_honorarios_id` y `concepto` en `cxp`.<br>- **Flujo completo de comisiones verificado punta a punta en Supabase real:** cobro CxC → comisión automática → aprobación → RHE → CxP tipo personal → pago Tesorería.<br>- **10 bugs corregidos en módulos CxC y Comisiones.**<br>- **Pipeline automático por eventos implementado y verificado:** Propuesta al enviar cotización, Negociación al versionar, Ganada al aprobar.<br>- **Embudo BI Comercial completo desde Leads hasta Ganada con Perdida como dato lateral.**<br>- **Ficha colaborador dinámica planilla vs honorarios:** campos condicionales en tiempo real, caso mixto contrato Planilla + comisión Honorarios funcionando.<br>- **CxP extendida con filtro Colaboradores, creación manual e historial de pagos parciales via cxp_pagos.**<br>- **Mejoras Cuentas y Contactos:** formulario completo, cuenta bancaria del cliente, CS 360° con datos reales, filtros en galería.<br>- **CECO obligatorio en SOLPE y Compras/Gastos.**<br>- **Filtros CECO/CEBE en Estado de Resultados y BI Financiero.**<br>- **Badge Campo en Partes Diarios.**<br>- **Conformidad digital habilitada en Cierre Técnico.** |
 | 22/05/2026 | **Módulos de Presupuestos, Comisiones y Activos PDF:** Integración completa del módulo Presupuesto vs Real (tablas `presupuestos`, `presupuesto_partidas`, `presupuesto_aprobaciones`) con flujo secuencial de 4 aprobadores, cálculo del Real (OTs + Gastos) y drill-down interactivo. Implementación del módulo de Comisiones con aprobación de acuerdos comerciales especiales (+48h alert), generación de RHE y CxP tipo personal (colaborador). Reglas dinámicas de retención de IR (umbral S/1,500, agente de retención, suspensión de retenciones). Campos para logo y firma corporativa en `empresa_config` con bucket público `empresa-assets`. Persistencia de detalle de valorizaciones (items, ot_ids, historial). |
 | 15/05/2026 | **Persistencia de Timeline — Leads y Oportunidades (migraciones 077-079):** `lead_historial_estados` existía en Supabase (migr. 077) pero no se cargaba al iniciar — corregido en `loadCrmFromSupabase` de `crmService.js`. `opp_historial_etapas` creada como tabla append-only (migr. 079 **aplicada y verificada**). `actualizarEtapaOportunidad` en `context.jsx` registra el movimiento optimísticamente y persiste en Supabase en paralelo. El timeline del Pipeline y de Cuentas 360° ahora muestran cambios de etapa persistidos. |
@@ -1248,14 +1260,14 @@ No eliminar ÔåÆ anular con motivo y usuario. Modificaciones cr├¡ticas regi
 | 12/05/2026 | **CRUD directo en tarjetas de Leads:** cada tarjeta muestra acciones de editar y eliminar. Editar reutiliza el panel de lead y persiste en Supabase. Eliminar borra el lead; migración `073_leads_delete_set_null.sql` ajusta FKs para conservar oportunidades, agenda y actividades con `lead_id = null`. |
 | 12/05/2026 | **Estandarización fase 1 de formularios principales:** CRM & Marketing queda excluido del quick-create global basado en texto. Cada pantalla usa acción primaria explícita local. Pipeline y Agenda Comercial agregan side-panel oficial para "Nueva oportunidad" y "Nuevo evento". |
 | 12/05/2026 | **Migraciones auxiliares CRM (071-076):** `071_roles_categoria` añade campo `categoria` a roles. `074_leads_dias_sin_actividad_logic` activa lógica de días sin actividad en leads. `075_leads_delete_policy` agrega política de eliminación directa para leads. `076_rpc_eliminar_lead_crm` crea RPC que elimina lead y dependencias en una transacción. Las migraciones 072 y 073 están documentadas en entradas anteriores. |
-| 29/04/2026 | Backend mínimos para deploy beta: RLS por permisos funcionales para Operaciones, Compras, Finanzas, RRHH, Customer Success, IA y Maestros; permisos admin sembrados para pantallas cr├¡ticas; auditor├¡a DB transversal para inserts/updates de m├│dulos fuera de CRM/Comercial; aprobaci├│n de Hoja de Costeo y creaci├│n de Cotizaci├│n atomizada v├¡a RPC `aprobar_hoja_costeo_y_crear_cotizacion`. Migraci├│n `024_backend_minimos_deploy_beta.sql`. |
-| 29/04/2026 | Hoja de Costeo: persistencia robusta mediante RPC `crear_hoja_costeo` con `security definer`. La creaci├│n ya no depende del insert directo desde frontend; el backend valida acceso al tenant y permiso funcional `hoja_costeo/crear`, inserta la fila y retorna el registro persistido. El formulario mantiene los datos y muestra error visible si Supabase rechaza la operaci├│n. Migraci├│n `023_rpc_crear_hoja_costeo.sql`. |
-| 29/04/2026 | RLS permisos: `usuario_puede` ahora concede bypass global a Superadmin TIDEO activo, completando el acceso operativo de plataforma a cualquier pantalla de cualquier tenant. Esto corrige persistencia de Hoja de Costeo, Cotizaciones y OS Cliente cuando el registro lo crea soporte/plataforma en tenants donde TIDEO no tiene membres├¡a directa. Migraci├│n `022_superadmin_global_permissions.sql`. |
-| 29/04/2026 | RLS plataforma: Superadmin TIDEO ahora tiene acceso operativo a cualquier tenant sin depender de membres├¡a directa por empresa. Se actualiza `usuario_tiene_empresa` para considerar rol `es_superadmin` activo, corrigiendo persistencia de documentos creados por soporte/plataforma en tenants nuevos. Migraci├│n `021_superadmin_tenant_data_access.sql`. |
-| 29/04/2026 | Correcci├│n multitenant: al cambiar a un tenant nuevo en modo Supabase se limpian las colecciones de negocio si la base devuelve cero registros, evitando que aparezcan datos demo en tenants reci├®n creados. Hoja de Costeo ahora permite edici├│n mientras no est├® aprobada, incluyendo estado en revisi├│n, y cada guardado genera nueva versi├│n visible en la ficha. Backend agrega columnas `version` e `historial_versiones` en `hojas_costeo` mediante migraci├│n `020_hojas_costeo_versionado.sql`. |
-| 29/04/2026 | Plataforma SaaS: alta operativa de tenants desde Superadmin TIDEO sin dependencia de pagos. El formulario Nueva empresa / tenant ahora captura datos de empresa y admin inicial. Backend agrega RPC `crear_tenant_con_admin`, funci├│n `usuario_es_superadmin_plataforma`, policies RLS para creaci├│n/edici├│n de empresas, roles y membres├¡as por superadmin, auditor├¡a de alta de tenant y migraci├│n `019_platform_tenant_admin.sql`. La pantalla Empresas / Tenants muestra tenants reales de Supabase y m├®tricas operativas, no MRR ni plan obligatorio. |
-| 29/04/2026 | Agenda Comercial y Actividades Comerciales conectadas a Supabase. Nuevas tablas `agenda_comercial` y `actividades_comerciales` con RLS por tenant y permisos funcionales. Agenda soporta vistas Mes/Semana/D├¡a/Lista, registra `registrado_por` y filtra por rol: vendedor ve su agenda, jefe/admin ve equipo. Al marcar un evento como realizado, se captura resultado/proxima accion y se crea automaticamente una Actividad Comercial completada vinculada al cliente, lead u oportunidad. Actividades persiste creaci├│n y cambios de estado del Kanban. Pipeline agrega timeline comercial por oportunidad: agenda, actividades, hoja de costeo, cotizaciones y OS Cliente con navegaci├│n directa. Desde una oportunidad se puede agendar seguimiento y el evento nace con `oportunidad_id`, apareciendo en Agenda y Timeline. Migraciones `016_agenda_comercial.sql` y `017_actividades_comerciales.sql`. |
-| 29/04/2026 | Hoja de Costeo: nuevo documento interno entre Oportunidad y Cotizaci├│n. Secciones: mano de obra, materiales, servicios terceros, log├¡stica. C├ílculo autom├ítico de precio sugerido por margen objetivo. Flujo: borrador ÔåÆ en revisi├│n ÔåÆ aprobada ÔåÆ genera cotizaci├│n pre-rellenada. Nuevo ├¡tem en sidebar COMERCIAL. Bot├│n "Crear Hoja de Costeo" en panel de Pipeline. Migraci├│n 015_hojas_costeo.sql. Actualizaci├│n modelo de datos (tabla hojas_costeo + columna hoja_costeo_id en cotizaciones). Cierre backend beta CRM + Comercial: RLS por permisos para cuentas, contactos, leads, oportunidades, agenda, actividades, hojas de costeo, cotizaciones y OS Cliente; auditor├¡a b├ísica DB por trigger; migraci├│n 018_backend_crm_comercial_hardening.sql; setup combinado regenerado. |
-| 28/04/2026 | Arquitectura de entidades: separaci├│n Maestros Base vs m├│dulos transaccionales. Flujo Lead ÔåÆ Cuenta corregido (Lead primero, siempre). Formulario nueva cuenta en dos momentos (comercial + financiero). Formulario lead con RUC/Raz├│n social/Industria. Proveedores con ciclo de vida, homologaci├│n y evaluaci├│n. Secci├│n COMPRAS nueva en sidebar con 5 m├│dulos. Flujo completo de compras: cotizaci├│n ÔåÆ comparativo ÔåÆ OC/OS ÔåÆ recepci├│n ÔåÆ CxP + evaluaci├│n proveedor. Secci├│n RRHH nueva en sidebar. Control de Asistencia con turnos por trabajador y c├ílculo autom├ítico de tardanzas. N├│mina B├ísica con c├ílculo completo (bruto, AFP/ONP, IR 5ta, cargas empresa), boleta PDF y cierre de per├¡odo con egreso en finanzas. Separaci├│n Pr├®stamos al Personal vs Financiamiento y Deuda. M├│dulo Financiamiento y Deuda con tabla de amortizaci├│n autom├ítica, conexi├│n de intereses al ER y reporte de deuda a 12 meses. |
-| 27/04/2026 | Wiring F3 completo (13 rutas). BI Financiero nuevo. Dashboard F3 + CS 360┬░ en cuentas. RRHH Admin reportes. Planner Agenda CS. IA historial auditado. Presupuesto vs Real. Tickets mejorado. RRHH Operativo 3 tabs. BI Comercial y BI Operativo completos. Bug fix CSS (tab-barÔåÆtabs, card-headerÔåÆcard-head). |
-| Anterior | N├║cleo multitenant, CRM, OT, administraci├│n financiera, operaciones extendidas, compras b├ísico, inventario, Customer Success, IA. |
+| 29/04/2026 | Backend mínimos para deploy beta: RLS por permisos funcionales para Operaciones, Compras, Finanzas, RRHH, Customer Success, IA y Maestros; permisos admin sembrados para pantallas críticas; auditoría DB transversal para inserts/updates de módulos fuera de CRM/Comercial; aprobación de Hoja de Costeo y creación de Cotización atomizada vía RPC `aprobar_hoja_costeo_y_crear_cotizacion`. Migración `024_backend_minimos_deploy_beta.sql`. |
+| 29/04/2026 | Hoja de Costeo: persistencia robusta mediante RPC `crear_hoja_costeo` con `security definer`. La creación ya no depende del insert directo desde frontend; el backend valida acceso al tenant y permiso funcional `hoja_costeo/crear`, inserta la fila y retorna el registro persistido. El formulario mantiene los datos y muestra error visible si Supabase rechaza la operación. Migración `023_rpc_crear_hoja_costeo.sql`. |
+| 29/04/2026 | RLS permisos: `usuario_puede` ahora concede bypass global a Superadmin TIDEO activo, completando el acceso operativo de plataforma a cualquier pantalla de cualquier tenant. Esto corrige persistencia de Hoja de Costeo, Cotizaciones y OS Cliente cuando el registro lo crea soporte/plataforma en tenants donde TIDEO no tiene membresía directa. Migración `022_superadmin_global_permissions.sql`. |
+| 29/04/2026 | RLS plataforma: Superadmin TIDEO ahora tiene acceso operativo a cualquier tenant sin depender de membresía directa por empresa. Se actualiza `usuario_tiene_empresa` para considerar rol `es_superadmin` activo, corrigiendo persistencia de documentos creados por soporte/plataforma en tenants nuevos. Migración `021_superadmin_tenant_data_access.sql`. |
+| 29/04/2026 | Corrección multitenant: al cambiar a un tenant nuevo en modo Supabase se limpian las colecciones de negocio si la base devuelve cero registros, evitando que aparezcan datos demo en tenants recién creados. Hoja de Costeo ahora permite edición mientras no esté aprobada, incluyendo estado en revisión, y cada guardado genera nueva versión visible en la ficha. Backend agrega columnas `version` e `historial_versiones` en `hojas_costeo` mediante migración `020_hojas_costeo_versionado.sql`. |
+| 29/04/2026 | Plataforma SaaS: alta operativa de tenants desde Superadmin TIDEO sin dependencia de pagos. El formulario Nueva empresa / tenant ahora captura datos de empresa y admin inicial. Backend agrega RPC `crear_tenant_con_admin`, función `usuario_es_superadmin_plataforma`, policies RLS para creación/edición de empresas, roles y membresías por superadmin, auditoría de alta de tenant y migración `019_platform_tenant_admin.sql`. La pantalla Empresas / Tenants muestra tenants reales de Supabase y métricas operativas, no MRR ni plan obligatorio. |
+| 29/04/2026 | Agenda Comercial y Actividades Comerciales conectadas a Supabase. Nuevas tablas `agenda_comercial` y `actividades_comerciales` con RLS por tenant y permisos funcionales. Agenda soporta vistas Mes/Semana/Día/Lista, registra `registrado_por` y filtra por rol: vendedor ve su agenda, jefe/admin ve equipo. Al marcar un evento como realizado, se captura resultado/proxima accion y se crea automaticamente una Actividad Comercial completada vinculada al cliente, lead u oportunidad. Actividades persiste creación y cambios de estado del Kanban. Pipeline agrega timeline comercial por oportunidad: agenda, actividades, hoja de costeo, cotizaciones y OS Cliente con navegación directa. Desde una oportunidad se puede agendar seguimiento y el evento nace con `oportunidad_id`, apareciendo en Agenda y Timeline. Migraciones `016_agenda_comercial.sql` y `017_actividades_comerciales.sql`. |
+| 29/04/2026 | Hoja de Costeo: nuevo documento interno entre Oportunidad y Cotización. Secciones: mano de obra, materiales, servicios terceros, logística. Cálculo automático de precio sugerido por margen objetivo. Flujo: borrador → en revisión → aprobada → genera cotización pre-rellenada. Nuevo ítem en sidebar COMERCIAL. Botón "Crear Hoja de Costeo" en panel de Pipeline. Migración 015_hojas_costeo.sql. Actualización modelo de datos (tabla hojas_costeo + columna hoja_costeo_id en cotizaciones). Cierre backend beta CRM + Comercial: RLS por permisos para cuentas, contactos, leads, oportunidades, agenda, actividades, hojas de costeo, cotizaciones y OS Cliente; auditoría básica DB por trigger; migración 018_backend_crm_comercial_hardening.sql; setup combinado regenerado. |
+| 28/04/2026 | Arquitectura de entidades: separación Maestros Base vs módulos transaccionales. Flujo Lead → Cuenta corregido (Lead primero, siempre). Formulario nueva cuenta en dos momentos (comercial + financiero). Formulario lead con RUC/Razón social/Industria. Proveedores con ciclo de vida, homologación y evaluación. Sección COMPRAS nueva en sidebar con 5 módulos. Flujo completo de compras: cotización → comparativo → OC/OS → recepción → CxP + evaluación proveedor. Sección RRHH nueva en sidebar. Control de Asistencia con turnos por trabajador y cálculo automático de tardanzas. Nómina Básica con cálculo completo (bruto, AFP/ONP, IR 5ta, cargas empresa), boleta PDF y cierre de período con egreso en finanzas. Separación Préstamos al Personal vs Financiamiento y Deuda. Módulo Financiamiento y Deuda con tabla de amortización automática, conexión de intereses al ER y reporte de deuda a 12 meses. |
+| 27/04/2026 | Wiring F3 completo (13 rutas). BI Financiero nuevo. Dashboard F3 + CS 360° en cuentas. RRHH Admin reportes. Planner Agenda CS. IA historial auditado. Presupuesto vs Real. Tickets mejorado. RRHH Operativo 3 tabs. BI Comercial y BI Operativo completos. Bug fix CSS (tab-bar→tabs, card-header→card-head). |
+| Anterior | Núcleo multitenant, CRM, OT, administración financiera, operaciones extendidas, compras básico, inventario, Customer Success, IA. |
