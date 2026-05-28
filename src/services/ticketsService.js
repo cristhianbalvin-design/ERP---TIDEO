@@ -12,8 +12,8 @@ export function calcularFechaLimiteSla(prioridad, baseDate = new Date()) {
   return new Date(baseDate.getTime() + hours * 60 * 60 * 1000).toISOString();
 }
 
-function cleanTicketPayload(ticket = {}) {
-  return {
+function cleanTicketPayload(ticket = {}, { includeId = false } = {}) {
+  const payload = {
     titulo: String(ticket.titulo || '').trim(),
     descripcion: ticket.descripcion?.trim?.() || null,
     tipo: ticket.tipo || 'consulta',
@@ -26,6 +26,9 @@ function cleanTicketPayload(ticket = {}) {
     responsable_nombre: ticket.responsable_nombre || null,
     creado_por: ticket.creado_por || null,
   };
+
+  if (includeId && ticket.id) payload.id = ticket.id;
+  return payload;
 }
 
 async function getTicketById(id) {
@@ -55,7 +58,7 @@ export async function cargarTickets(empresaId) {
 
 export async function crearTicket(empresaId, ticket) {
   const supabase = await getSupabaseClient();
-  const payload = cleanTicketPayload(ticket);
+  const payload = cleanTicketPayload(ticket, { includeId: true });
   const creadoEn = new Date();
   const { data, error } = await supabase
     .from('tickets')

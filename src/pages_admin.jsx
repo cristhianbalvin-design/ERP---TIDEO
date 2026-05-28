@@ -2434,35 +2434,78 @@ function Maestros() {
     setFormError('');
   };
 
-  const parseMstCsvLine = line => {
-    const vals = []; let cur = '', inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') { if (inQ && line[i+1]==='"') { cur+='"'; i++; } else inQ=!inQ; }
-      else if (ch === ',' && !inQ) { vals.push(cur.trim().replace(/\r/g,'')); cur=''; }
-      else cur+=ch;
-    }
-    vals.push(cur.trim().replace(/\r/g,'')); return vals;
-  };
-  const parseMstCsv = text => {
-    const lines = text.trim().split(/\r?\n/);
-    if (lines.length < 2) return [];
-    const headers = parseMstCsvLine(lines[0]).map(h=>h.replace(/\r/g,''));
-    return lines.slice(1).filter(l=>l.trim()).map(line => {
-      const vals = parseMstCsvLine(line); const row = {};
-      headers.forEach((h,i) => row[h]=vals[i]||''); return row;
-    });
+  const MAESTRO_XLSX_CFG = {
+    mst_areas: {
+      sheetName: 'Areas', filename: 'areas.xlsx',
+      headers: ['Codigo','Nombre','Tipo','Responsable','Descripcion','Estado'],
+      fields:  ['codigo','nombre','tipo','responsable','detalle','estado'],
+      ejemplo: ['ARE-001','Operaciones Lima','Operativa','','Área principal de operaciones','activo'],
+      hint: 'Tipo: Operativa / Administrativa / Ambos',
+    },
+    mst_cargos: {
+      sheetName: 'Cargos', filename: 'cargos.xlsx',
+      headers: ['Codigo','Nombre','Tipo de personal','Descripcion','Estado'],
+      fields:  ['codigo','nombre','tipo','detalle','estado'],
+      ejemplo: ['CAR-001','Técnico de campo','Operativo','Ejecuta trabajos de mantenimiento','activo'],
+      hint: 'Tipo de personal: Operativo / Administrativo / Ambos',
+    },
+    mst_especialidades: {
+      sheetName: 'Especialidades', filename: 'especialidades.xlsx',
+      headers: ['Codigo','Nombre','Area','Requiere certificacion','Estado'],
+      fields:  ['codigo','nombre','area','requiere_cert','estado'],
+      ejemplo: ['ESP-001','Electricidad industrial','Operaciones','si','activo'],
+      hint: 'Requiere certificacion: si / no',
+    },
+    mst_tipos_servicio: {
+      sheetName: 'Tipos de Servicio', filename: 'tipos_servicio.xlsx',
+      headers: ['Codigo','Nombre','Clasificacion','Facturable','Estado'],
+      fields:  ['codigo','nombre','clasificacion','facturable','estado'],
+      ejemplo: ['TSI-001','Mantenimiento preventivo','Mantenimiento','si','activo'],
+      hint: 'Facturable: si / no',
+    },
+    mst_almacenes: {
+      sheetName: 'Almacenes', filename: 'almacenes.xlsx',
+      headers: ['Codigo','Nombre','Tipo','Responsable','Direccion','Estado'],
+      fields:  ['codigo','nombre','tipo','responsable','direccion','estado'],
+      ejemplo: ['ALM-001','Almacén Central Lima','Central','','Av. Industrial 123','activo'],
+      hint: 'Tipo: Central / Sede / Móvil / Tránsito',
+    },
+    mst_sedes: {
+      sheetName: 'Sedes', filename: 'sedes.xlsx',
+      headers: ['Codigo','Nombre','Direccion','GPS','Estado'],
+      fields:  ['codigo','nombre','direccion','gps','estado'],
+      ejemplo: ['SED-001','Sede Lima Norte','Av. Naranjal 456, Lima','-12.0464,-77.0428','activo'],
+      hint: '',
+    },
+    mst_industrias: {
+      sheetName: 'Industrias', filename: 'industrias.xlsx',
+      headers: ['Codigo','Nombre','Categoria','Estado'],
+      fields:  ['codigo','nombre','categoria','estado'],
+      ejemplo: ['IND-001','Manufactura','Industrial','activo'],
+      hint: '',
+    },
+    mst_impuestos: {
+      sheetName: 'Monedas, Impuestos y Unidades', filename: 'monedas_impuestos_unidades.xlsx',
+      headers: ['Codigo','Tipo','Nombre','Detalle','Estado'],
+      fields:  ['codigo','tipo','nombre','detalle','estado'],
+      ejemplo: ['USD','moneda','Dólar americano','Dólar estadounidense','activo'],
+      hint: 'Tipo: moneda / impuesto / unidad — Codigo es obligatorio',
+    },
   };
 
-  const IMPORT_HINTS = {
-    mst_areas: { cols: 'nombre, tipo, responsable, detalle, estado', hint: 'tipo: Operativa / Administrativa / Ambos' },
-    mst_cargos: { cols: 'nombre, tipo, detalle, estado', hint: 'tipo: Operativo / Administrativo / Ambos' },
-    mst_especialidades: { cols: 'nombre, area, requiere_cert, estado', hint: 'requiere_cert: si / no' },
-    mst_tipos_servicio: { cols: 'nombre, clasificacion, facturable, estado', hint: 'facturable: si / no' },
-    mst_almacenes: { cols: 'nombre, tipo, responsable, direccion, estado', hint: 'tipo: Central / Sede / Móvil / Tránsito' },
-    mst_sedes: { cols: 'nombre, direccion, gps, estado', hint: '' },
-    mst_industrias: { cols: 'nombre, categoria, estado', hint: '' },
-    mst_impuestos: { cols: 'codigo, tipo, nombre, detalle, estado', hint: 'tipo: moneda / impuesto / unidad · codigo es obligatorio' },
+  const parseMstXlsx = async (file) => {
+    const cfg = MAESTRO_XLSX_CFG[sel?.id]; if (!cfg) return [];
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rawRows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    return rawRows.map(r => {
+      const row = {};
+      cfg.headers.forEach((h, i) => {
+        row[cfg.fields[i]] = String(r[h] ?? r[cfg.fields[i]] ?? '').trim();
+      });
+      return row;
+    });
   };
 
   const validarImportMaestro = rows => rows.map(r => {
@@ -2476,30 +2519,32 @@ function Maestros() {
   });
 
   const exportarMaestro = () => {
-    const cfgs = {
-      mst_areas: { h: ['codigo','nombre','tipo','responsable','detalle','estado'], f: 'areas.csv' },
-      mst_cargos: { h: ['codigo','nombre','tipo','detalle','estado'], f: 'cargos.csv' },
-      mst_especialidades: { h: ['codigo','nombre','area','requiere_cert','estado'], f: 'especialidades.csv' },
-      mst_tipos_servicio: { h: ['codigo','nombre','clasificacion','facturable','estado'], f: 'tipos_servicio.csv' },
-      mst_almacenes: { h: ['codigo','nombre','tipo','responsable','direccion','estado'], f: 'almacenes.csv' },
-      mst_sedes: { h: ['codigo','nombre','direccion','gps','estado'], f: 'sedes.csv' },
-      mst_industrias: { h: ['codigo','nombre','categoria','estado'], f: 'industrias.csv' },
-      mst_impuestos: { h: ['codigo','tipo','nombre','detalle','estado'], f: 'monedas_impuestos_unidades.csv' },
-    };
-    const cfg = cfgs[sel?.id]; if (!cfg) return;
+    const cfg = MAESTRO_XLSX_CFG[sel?.id]; if (!cfg) return;
     const data = selectedRows.map(r => {
       const row = {};
-      cfg.h.forEach(h => {
-        if (h === 'categoria') row[h] = r.categoria || r.detalle || '';
-        else if (h === 'requiere_cert') row[h] = r.requiere_cert ? 'si' : 'no';
-        else if (h === 'facturable') row[h] = r.facturable ? 'si' : 'no';
-        else row[h] = r[h] ?? '';
+      cfg.headers.forEach((h, i) => {
+        const f = cfg.fields[i];
+        if (f === 'categoria') row[h] = r.categoria || r.detalle || '';
+        else if (f === 'requiere_cert') row[h] = r.requiere_cert ? 'si' : 'no';
+        else if (f === 'facturable') row[h] = r.facturable ? 'si' : 'no';
+        else row[h] = r[f] ?? '';
       });
       return row;
     });
-    const csvRows = [cfg.h.join(','), ...data.map(r => cfg.h.map(h=>`"${r[h]??''}"`).join(','))];
-    const blob = new Blob([csvRows.join('\n')], { type:'text/csv' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = cfg.f; a.click();
+    const ws = XLSX.utils.json_to_sheet(data, { header: cfg.headers });
+    ws['!cols'] = cfg.headers.map(() => ({ wch: 22 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, cfg.sheetName);
+    XLSX.writeFile(wb, cfg.filename);
+  };
+
+  const descargarPlantillaMaestro = () => {
+    const cfg = MAESTRO_XLSX_CFG[sel?.id]; if (!cfg) return;
+    const ws = XLSX.utils.aoa_to_sheet([cfg.headers, cfg.ejemplo]);
+    ws['!cols'] = cfg.headers.map((_, i) => ({ wch: i <= 1 ? 14 : i === 2 ? 28 : 22 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, cfg.sheetName);
+    XLSX.writeFile(wb, `plantilla_${cfg.filename}`);
   };
 
   const doImportMaestro = async (btn) => {
@@ -3020,7 +3065,7 @@ function Maestros() {
 
       {sel?.id === 'mst_materiales' && <MaterialesMaestro onClose={() => setSel(null)} />}
 
-      {importModal && sel && IMPORT_HINTS[sel.id] && (
+      {importModal && sel && MAESTRO_XLSX_CFG[sel.id] && (
         <div className="modal-backdrop">
           <div className="modal" style={{maxWidth:700, width:'96vw'}}>
             <div className="modal-head">
@@ -3030,15 +3075,27 @@ function Maestros() {
             <div className="modal-body">
               {importStep === 1 && (
                 <div>
-                  <p className="text-muted" style={{marginBottom:8, fontSize:13}}>
-                    Sube un CSV con columnas: <code>{IMPORT_HINTS[sel.id].cols}</code>
+                  <p className="text-muted" style={{marginBottom:10, fontSize:13}}>
+                    Sube un archivo Excel (.xlsx) con las siguientes columnas:
                   </p>
-                  {IMPORT_HINTS[sel.id].hint && <p className="text-muted" style={{marginBottom:12, fontSize:12}}>{IMPORT_HINTS[sel.id].hint}</p>}
-                  <input type="file" accept=".csv" onChange={e => {
+                  <div style={{display:'flex', flexWrap:'wrap', gap:6, marginBottom:10}}>
+                    {MAESTRO_XLSX_CFG[sel.id].headers.map((h,i) => (
+                      <span key={i} className="badge badge-cyan" style={{fontSize:11}}>{h}</span>
+                    ))}
+                  </div>
+                  {MAESTRO_XLSX_CFG[sel.id].hint && (
+                    <p className="text-muted" style={{marginBottom:10, fontSize:12}}>{MAESTRO_XLSX_CFG[sel.id].hint}</p>
+                  )}
+                  <div style={{display:'flex', gap:10, alignItems:'center', marginBottom:14}}>
+                    <button className="btn btn-secondary btn-sm" onClick={descargarPlantillaMaestro}>{I.download} Descargar plantilla</button>
+                    <span className="text-muted" style={{fontSize:12}}>Descarga la plantilla con las columnas correctas y un ejemplo</span>
+                  </div>
+                  <input type="file" accept=".xlsx,.xls" onChange={async e => {
                     const f = e.target.files[0]; if (!f) return;
-                    const r = new FileReader();
-                    r.onload = ev => { setImportRows(validarImportMaestro(parseMstCsv(ev.target.result))); setImportStep(2); };
-                    r.readAsText(f);
+                    e.target.value = '';
+                    const parsed = await parseMstXlsx(f);
+                    setImportRows(validarImportMaestro(parsed));
+                    setImportStep(2);
                   }}/>
                 </div>
               )}

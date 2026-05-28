@@ -194,6 +194,8 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | `src/services/finanzasService.js` | CxC, CxP, facturas, caja chica | 5.3 KB |
 | `src/services/operacionesService.js` | OTs, partes, cierres tecnicos | 6.2 KB |
 | `src/services/ticketsService.js` | CRUD Soporte y Tickets + SLA | 3 KB |
+| `src/services/storageService.js` | Acceso centralizado a Supabase Storage y tabla `adjuntos` | 5 KB |
+| `src/components/FileUpload.jsx` | Componente reutilizable de carga, listado y eliminación de adjuntos | 8 KB |
 | `src/services/estadoResultadosService.js` | Cálculo ER, agrupación por categoría | 4.2 KB |
 | `src/services/rolesService.js` | Roles, permisos por pantalla | 4.5 KB |
 | `src/services/campanasService.js` | CRUD campañas, métricas de atribución | 2.2 KB |
@@ -228,6 +230,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | `BarsChart` / `DonutChart` sin uso en `pages_core.jsx` (líneas 219-278) | Baja |
 | OTs inline en BIOperativo — deben migrar a `MOCK.ots` | Media |
 | Costo hora en RRHH Operativo es hardcodeado — debe calcularse desde nómina al cerrar período | Media |
+| Compras en Campo: el comprobante físico no se persiste en `compras_gastos`; el número de comprobante y la imagen quedan pendientes para la infraestructura de Storage | Alta |
 
 ---
 
@@ -624,7 +627,6 @@ Crear roles con nombre libre. Clonar. Matriz de permisos por pantalla: Ver | Cre
 | Materiales | `precio_unitario` | Precio unitario base de compra/inventario |
 | OT | `ubicacion_gps` | GPS al iniciar parte |
 | OT | `direccion_ejecucion` | Dirección del trabajo |
-| Compras/Gastos | `imagen_comprobante` | URL del comprobante |
 | Compras/Gastos | `origen_registro` | campo / backoffice |
 | Compras/Gastos | `datos_extraidos_ia` | JSON extracción IA |
 | Leads | `registrado_desde` | campo / web / formulario |
@@ -879,7 +881,7 @@ Confirmar que lo pedido llegó y en qué condición. Verificación ítem por ít
 ### 8.26b Compras en Campo y Registro de Gastos
 
 Registro estructurado de egresos menores y adquisiciones directas fuera del flujo ordinario de Órdenes de Compra.
-*   **Origen:** Puede ser registrado desde campo vía PWA móvil (con foto del comprobante y extracción automática de datos mediante IA) o cargado manualmente desde el backoffice (Administración / Finanzas).
+*   **Origen:** Puede ser registrado desde campo vía PWA móvil con OCR de comprobante o cargado manualmente desde el backoffice (Administración / Finanzas). La persistencia del comprobante físico queda registrada como deuda técnica.
 *   **Validación obligatoria de CECO:** El campo de **Centro de Costo (CECO)** es **estrictamente obligatorio** para guardar cualquier gasto. Si no se selecciona un CECO activo, el sistema bloquea el registro con una alerta visual de error.
 *   **Impacto Financiero:** Todos los registros en `compras_gastos` se integran automáticamente en la visualización del Estado de Resultados y en el BI Financiero bajo el período y CECO correspondientes.
 
@@ -1112,7 +1114,7 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 **Integraciones:** api_keys (empresa_id, key_hash, descripcion, permisos text[], activo, creado_por, ultimo_uso_en).
 
-**Comercial:** hojas_costeo (con secciones jsonb: mano_obra, materiales, servicios_terceros, logistica + totales calculados + margen_objetivo_pct + responsable_costeo + cotizacion_id), cotizaciones (+ hoja_costeo_id para trazabilidad), historial_versiones_cotizacion, os_cliente, condiciones_comerciales.
+**Comercial:** hojas_costeo (con secciones jsonb: mano_obra, materiales, servicios_terceros, logistica + totales calculados + margen_objetivo_pct + responsable_costeo + cotizacion_id), cotizaciones (+ hoja_costeo_id para trazabilidad), historial_versiones_cotizacion, os_clientes, condiciones_comerciales.
 
 **Operaciones:** backlog, ordenes_trabajo (+ubicacion_gps, direccion_ejecucion), partes_diarios (+logistica_lineas, terceros_lineas, tecnico_nombre), tickets (id uuid, empresa_id, numero TK por tenant, titulo, descripcion, tipo, canal_entrada, estado, prioridad, cuenta_id/cuenta_nombre, responsable_id/responsable_nombre, fecha_limite_sla, sla_estado calculado, fecha_resolucion, creado_por, creado_en, actualizado_en), evidencias, conformidad_cliente, remisiones, valorizaciones.
 
@@ -1122,7 +1124,7 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 **Financiamiento:** financiamientos, tabla_amortizacion, pagos_financiamiento.
 
-**Finanzas:** costos_ot, ventas, compras_gastos (+imagen_comprobante, origen_registro, datos_extraidos_ia), caja_chica, anticipos, facturas, cxc, cobranzas, cxp (id, empresa_id, proveedor_id, factura_numero, factura_imagen_url, fecha_emision, fecha_vencimiento, monto_total, monto_pagado, saldo, moneda, estado, created_at, updated_at, tipo_beneficiario, personal_id, recibo_honorarios_id, concepto), pagos, flujo_caja.
+**Finanzas:** costos_ot, ventas, compras_gastos (+origen_registro, centro_costo_id; comprobante físico pendiente de Storage), caja_chica, anticipos, facturas, cxc, cobranzas, cxp (id, empresa_id, proveedor_id, factura_numero, factura_imagen_url, fecha_emision, fecha_vencimiento, monto_total, monto_pagado, saldo, moneda, estado, created_at, updated_at, tipo_beneficiario, personal_id, recibo_honorarios_id, concepto), pagos, flujo_caja.
 
 **Presupuestos y Pagos:**
 - `cxp_pagos` (id, empresa_id, cxp_id, fecha_pago, monto, cuenta_bancaria, referencia, registrado_por, creado_en)
@@ -1135,6 +1137,29 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 **IA:** ia_logs.
 
 **Maestros:** servicios, familias_servicios, tarifarios, materiales (+codigo_barras, grupo_id, familia_id, subfamilia_id, nro_parte, unidades_contenidas, almacen_id, ubicacion, observacion, precio_unitario), material_grupos, material_familias, material_subfamilias, especialidades_tecnicas, tipos_servicio_interno, almacenes_depositos, centros_costo, sedes, proyectos, empresa_config (+agente_retencion).
+
+### 9.4 Infraestructura de Storage
+
+**Buckets activos:**
+
+| Bucket | Propósito | Visibilidad | Límite |
+|--------|-----------|-------------|--------|
+| `empresa-assets` | Logo y firma corporativa por tenant | Público | Sin límite configurado |
+| `logos-cuentas` | Logos de cuentas/clientes | Público | 2 MB |
+| `cotizaciones-sustento` | Sustentos de aprobación de cotizaciones | Público | 10 MB |
+| `conformidades-ot` | Conformidades y evidencias de OT | Público | 10 MB |
+| `documentos-privados` | Documentos sensibles internos: personal, nómina, contratos, recibos | Privado, vía signed URL | 20 MB |
+| `documentos-generales` | Adjuntos operativos: tickets, gastos, recepciones, documentos de proveedor | Público | 20 MB |
+
+**Tabla central:** `adjuntos` registra `id`, `empresa_id`, `entidad_tipo`, `entidad_id`, `categoria`, `nombre_original`, `bucket`, `storage_path`, `url`, `mime_type`, `tamano_bytes`, `descripcion`, `subido_por`, `subido_en`, `actualizado_en`. RLS usa `usuario_tiene_empresa(empresa_id)`.
+
+**Ruta estándar:** `{empresa_id}/{entidad_tipo}/{entidad_id}/{uuid}`. El nombre legible del archivo se guarda en `adjuntos.nombre_original`, no en la ruta.
+
+**Regla de acceso:** todo acceso nuevo a Supabase Storage pasa por `src/services/storageService.js`; los módulos no llaman `supabase.storage` directamente.
+
+**Mapeo inicial de entidad_tipo:** `tickets`, `documentos_proveedor`, `compras_gastos`, `recepciones`, `movimientos_tesoreria`, `pagos_financiamiento` y `tabla_amortizacion` usan `documentos-generales`; `personal_administrativo`, `personal_operativo`, `recibos_honorarios`, `periodos_nomina`, `detalle_nomina` y `cxp` usan `documentos-privados`; `cuentas`, `empresa_config`, `cotizaciones`, `cierres_tecnicos`, `partes_diarios` y `ordenes_trabajo` conservan sus buckets especializados existentes.
+
+**Modo mock:** `storageService.js` simula subidas exitosas con datos coherentes, no llama Supabase, y las lecturas devuelven arrays vacíos.
 
 ---
 
@@ -1244,6 +1269,8 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 
 | Fecha | Cambios principales |
 |-------|---------------------|
+| 28/05/2026 | **Storage transversal:** migración `145_storage_transversal.sql` crea tabla `adjuntos` con RLS por tenant y dos buckets nuevos (`documentos-privados` privado con signed URLs y `documentos-generales` público, ambos 20 MB). Nuevo `src/services/storageService.js` como único acceso a Storage, componente reusable `src/components/FileUpload.jsx` y primera integración real en Tickets: adjuntos en nuevo ticket y panel de detalle sin agregar columnas a `tickets`. |
+| 28/05/2026 | **Limpieza de tablas fantasma y brecha de comprobantes:** migración `144_limpieza_tablas_fantasma.sql` elimina `tickets_soporte` (residuo de migración 065, nunca usada por frontend) y `os_cliente` (tabla huérfana sin migraciones locales; la tabla activa es `os_clientes`). Documento maestro corregido: `imagen_comprobante` se remueve de `compras_gastos` porque nunca existió en Supabase y se registra deuda técnica para persistir número e imagen del comprobante cuando se implemente Storage. |
 | 28/05/2026 | **Soporte y Tickets conectado a Supabase:** migracion `143_tickets.sql` agrega tabla `tickets` con RLS por `usuario_tiene_empresa(empresa_id)`, trigger de numeracion `TK-XXXX` por tenant, calculo de fecha limite SLA y vista `tickets_con_sla` con `sla_estado` calculado en base. Nuevo `src/services/ticketsService.js` para cargar, crear, actualizar estado, editar y eliminar. Los 7 tickets demo salen de datos inline y pasan a `MOCK.tickets` en `src/data.js`. El componente `Tickets` queda desacoplado, carga modo mock/Supabase, muestra estado de carga, crea tickets desde formulario y mueve tarjetas con actualizacion optimista. |
 | 28/05/2026 | **Integración de Materiales, Presupuestos, Persistencia de Partes y Retenciones (Fase 4 - Hardening):**<br>- **Migraciones 137 a 142 integradas y aplicadas**: se consolida la retención IR en la configuración empresarial y personal (`agente_retencion` en `empresa_config`, `suspension_retenciones` y `vencimiento_suspension` en `personal_administrativo`).<br>- **Maestro de Materiales Jerárquico (Migración 139)**: estructuración de materiales mediante Grupos, Familias y Subfamilias, con generador automático de código de 10 dígitos y nuevos campos en ficha de materiales (`grupo_id`, `familia_id`, `subfamilia_id`, `nro_parte`, `unidades_contenidas`, `almacen_id`, `ubicacion`, `precio_unitario`).<br>- **Planner y Asignaciones Flexibles (Migración 140)**: remoción de restricciones FK para permitir asignación de personal administrativo a cuadrillas en el Planner.<br>- **Persistencia de Partes Diarios (Migración 141 y 142)**: persistencia nativa de líneas de logística (`logistica_lineas`), de terceros (`terceros_lineas`) y nombre del técnico en base de datos. Modificación de políticas RLS para habilitar la edición de partes a usuarios con permisos de creación. |
 | 22/05/2026 | **Alineación, Hardening de Comisiones e Integraciones (Fase 3):**<br>- **Migraciones 135 y 136 aplicadas y verificadas en Supabase:** campos `moneda` y `personal_id` en `recibos_honorarios`, campos `tipo_beneficiario`, `personal_id`, `recibo_honorarios_id` y `concepto` en `cxp`.<br>- **Flujo completo de comisiones verificado punta a punta en Supabase real:** cobro CxC → comisión automática → aprobación → RHE → CxP tipo personal → pago Tesorería.<br>- **10 bugs corregidos en módulos CxC y Comisiones.**<br>- **Pipeline automático por eventos implementado y verificado:** Propuesta al enviar cotización, Negociación al versionar, Ganada al aprobar.<br>- **Embudo BI Comercial completo desde Leads hasta Ganada con Perdida como dato lateral.**<br>- **Ficha colaborador dinámica planilla vs honorarios:** campos condicionales en tiempo real, caso mixto contrato Planilla + comisión Honorarios funcionando.<br>- **CxP extendida con filtro Colaboradores, creación manual e historial de pagos parciales via cxp_pagos.**<br>- **Mejoras Cuentas y Contactos:** formulario completo, cuenta bancaria del cliente, CS 360° con datos reales, filtros en galería.<br>- **CECO obligatorio en SOLPE y Compras/Gastos.**<br>- **Filtros CECO/CEBE en Estado de Resultados y BI Financiero.**<br>- **Badge Campo en Partes Diarios.**<br>- **Conformidad digital habilitada en Cierre Técnico.** |

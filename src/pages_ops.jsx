@@ -4,6 +4,8 @@ import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { rrhhService } from './services/rrhhService.js';
 import * as ticketsService from './services/ticketsService.js';
+import * as storageService from './services/storageService.js';
+import { FileUpload } from './components/FileUpload.jsx';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 
@@ -6784,14 +6786,21 @@ function emptyTicketForm() {
   };
 }
 
+function createTicketDraftId() {
+  return globalThis.crypto?.randomUUID?.() || `ticket_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
 function Tickets() {
   const { addNotificacion, searchQuery, dataMode, empresa, cuentas, usuarios, authUser } = useApp();
+  const ticketUploadRef = useRef(null);
   const [view, setView] = useState('kanban');
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [form, setForm] = useState(emptyTicketForm);
+  const [draftTicketId, setDraftTicketId] = useState(createTicketDraftId);
+  const [detailTicketId, setDetailTicketId] = useState(null);
 
   const useSupabaseTickets = dataMode === 'supabase';
 
@@ -6840,7 +6849,17 @@ function Tickets() {
 
   const abrirNuevoTicket = () => {
     setForm(emptyTicketForm());
+    setDraftTicketId(createTicketDraftId());
     setPanelOpen(true);
+  };
+
+  const cerrarNuevoTicket = () => {
+    ticketUploadRef.current?.clearPendingFiles?.();
+    setPanelOpen(false);
+  };
+
+  const abrirDetalleTicket = ticketId => {
+    setDetailTicketId(ticketId);
   };
 
   const crearTicketMock = payload => {
@@ -6849,7 +6868,7 @@ function Tickets() {
       return Math.max(max, numeric);
     }, 0) + 1;
     const creadoEn = new Date();
-    const randomId = globalThis.crypto?.randomUUID?.() || `ticket_${Date.now()}`;
+    const randomId = payload.id || createTicketDraftId();
     return {
       ...payload,
       id: randomId,
@@ -6875,7 +6894,9 @@ function Tickets() {
 
     const cuenta = cuentaById(form.cuenta_id);
     const responsable = usuarioById(form.responsable_id);
+    const ticketId = draftTicketId || createTicketDraftId();
     const payload = {
+      id: ticketId,
       titulo,
       descripcion: form.descripcion.trim(),
       prioridad: form.prioridad,
@@ -6889,14 +6910,20 @@ function Tickets() {
     };
 
     setSaving(true);
+    let uploadedAdjuntos = [];
     try {
+      uploadedAdjuntos = await (ticketUploadRef.current?.uploadPendingFiles?.() || []);
       const nuevo = useSupabaseTickets
         ? await ticketsService.crearTicket(empresa?.id, payload)
         : crearTicketMock(payload);
       setTickets(prev => [nuevo, ...prev]);
       setPanelOpen(false);
+      setDraftTicketId(createTicketDraftId());
       addNotificacion(`${nuevo.numero || 'Ticket'} creado.`);
     } catch (error) {
+      if (uploadedAdjuntos.length && useSupabaseTickets) {
+        await Promise.allSettled(uploadedAdjuntos.map(adjunto => storageService.eliminarAdjunto(adjunto)));
+      }
       console.error('Error creando ticket:', error);
       addNotificacion(`No se pudo crear el ticket: ${error.message}`);
     } finally {
@@ -7009,7 +7036,10 @@ function Tickets() {
           key={column.k}
           type="button"
           className="btn btn-sm btn-secondary"
-          onClick={() => cambiarEstado(ticket.id, column.k)}
+          onClick={event => {
+            event.stopPropagation();
+            cambiarEstado(ticket.id, column.k);
+          }}
         >
           {column.title}
         </button>
@@ -7024,6 +7054,7 @@ function Tickets() {
         key={ticket.id}
         className="kanban-card-v2"
         draggable
+        onClick={() => abrirDetalleTicket(ticket.id)}
         onDragStart={event => event.dataTransfer.setData('text/plain', ticket.id)}
         style={{cursor: 'grab'}}
       >
@@ -7104,7 +7135,7 @@ function Tickets() {
     const tipoLabel = TICKET_TYPE_LABELS[ticket.tipo] || ticket.tipo || 'Ticket';
     const estadoLabel = TICKET_STATUS_LABELS[ticket.estado] || ticket.estado;
     return (
-      <tr key={ticket.id} className="hover-row">
+      <tr key={ticket.id} className="hover-row" onClick={() => abrirDetalleTicket(ticket.id)} style={{cursor:'pointer'}}>
         <td><div style={{fontWeight:600}}>{ticket.titulo}</div><div className="text-muted" style={{fontSize:11}}>{ticket.numero || ticket.id}</div></td>
         <td>{ticket.cuenta_nombre || 'Sin cliente'}</td>
         <td><span className={'badge ' + pBadge(ticket.prioridad)}>{String(ticket.prioridad || '').toUpperCase()}</span></td>
@@ -7149,16 +7180,86 @@ function Tickets() {
     </div>
   );
   const ticketsView = loading ? loadingBlock : (view === 'kanban' ? kanbanContent : tableContent);
+  const selectedTicket = detailTicketId ? tickets.find(ticket => ticket.id === detailTicketId) : null;
+  const selectedSlaEstado = selectedTicket?.sla_estado || 'ok';
+  const selectedTipoLabel = selectedTicket ? (TICKET_TYPE_LABELS[selectedTicket.tipo] || selectedTicket.tipo || 'Ticket') : '';
+  const selectedCanalLabel = selectedTicket ? (TICKET_CHANNEL_LABELS[selectedTicket.canal_entrada] || selectedTicket.canal_entrada || 'Canal') : '';
+  const selectedEstadoLabel = selectedTicket ? (TICKET_STATUS_LABELS[selectedTicket.estado] || selectedTicket.estado) : '';
+  const selectedCanalIcon = selectedTicket ? canalIcon(selectedTicket.canal_entrada) : null;
+  const detailActionButtons = selectedTicket ? TICKET_COLUMNS
+    .filter(column => column.k !== selectedTicket.estado)
+    .map(column => (
+      <button
+        key={column.k}
+        type="button"
+        className="btn btn-secondary btn-sm"
+        onClick={() => cambiarEstado(selectedTicket.id, column.k)}
+      >
+        {column.title}
+      </button>
+    )) : [];
+  const detailPanel = selectedTicket ? (
+    <>
+      <div className="side-panel-backdrop" onClick={() => setDetailTicketId(null)}/>
+      <div className="side-panel ficha-detail-panel" style={{width:'min(620px, 96vw)'}}>
+        <div className="side-panel-head">
+          <div>
+            <div className="eyebrow">{selectedTicket.numero || 'Ticket'}</div>
+            <div className="font-display" style={{fontSize:22, fontWeight:700}}>{selectedTicket.titulo}</div>
+          </div>
+          <button type="button" className="icon-btn" onClick={() => setDetailTicketId(null)}>{I.x}</button>
+        </div>
+        <div className="side-panel-body">
+          <div className="row" style={{gap:8, flexWrap:'wrap', marginBottom:14}}>
+            <span className={'badge ' + statusBadge(selectedTicket.estado)}>{selectedEstadoLabel}</span>
+            <span className={'badge ' + pBadge(selectedTicket.prioridad)}>{String(selectedTicket.prioridad || '').toUpperCase()}</span>
+            <span className={'badge ' + slaBadge(selectedSlaEstado)}>SLA {String(selectedSlaEstado).toUpperCase()}</span>
+            <span className="badge badge-gray">{selectedTipoLabel}</span>
+            <span className="badge badge-gray">{selectedCanalIcon} {selectedCanalLabel}</span>
+          </div>
+
+          <div className="card" style={{padding:16, marginBottom:16}}>
+            <div className="card-head" style={{padding:0, borderBottom:'none', marginBottom:10}}>
+              <h3>Detalle</h3>
+            </div>
+            <div style={{fontSize:13, lineHeight:1.6}}>
+              <div><strong>Cliente:</strong> {selectedTicket.cuenta_nombre || 'Sin cliente'}</div>
+              <div><strong>Responsable:</strong> {selectedTicket.responsable_nombre || 'Sin asignar'}</div>
+              <div><strong>Creado:</strong> {selectedTicket.creado_en ? new Date(selectedTicket.creado_en).toLocaleString() : '-'}</div>
+              <div><strong>Vence SLA:</strong> {selectedTicket.fecha_limite_sla ? new Date(selectedTicket.fecha_limite_sla).toLocaleString() : '-'}</div>
+            </div>
+            {selectedTicket.descripcion && (
+              <div style={{fontSize:13, color:'var(--fg-muted)', lineHeight:1.6, marginTop:12}}>
+                {selectedTicket.descripcion}
+              </div>
+            )}
+            <div className="row" style={{gap:8, flexWrap:'wrap', marginTop:14}}>
+              {detailActionButtons}
+            </div>
+          </div>
+
+          <FileUpload
+            entidadTipo="tickets"
+            entidadId={selectedTicket.id}
+            empresaId={selectedTicket.empresa_id || empresa?.id}
+            categoria="adjunto"
+            multiple
+            subidoPor={authUser?.id}
+          />
+        </div>
+      </div>
+    </>
+  ) : null;
   const ticketPanel = panelOpen ? (
     <>
-      <div className="side-panel-backdrop" onClick={() => setPanelOpen(false)}/>
+      <div className="side-panel-backdrop" onClick={cerrarNuevoTicket}/>
       <div className="side-panel" style={{width:'min(560px, 96vw)'}}>
         <div className="side-panel-head">
           <div>
             <div className="eyebrow">Soporte</div>
             <div className="font-display" style={{fontSize:22, fontWeight:700}}>Nuevo Ticket</div>
           </div>
-          <button type="button" className="icon-btn" onClick={() => setPanelOpen(false)}>{I.x}</button>
+          <button type="button" className="icon-btn" onClick={cerrarNuevoTicket}>{I.x}</button>
         </div>
         <form className="side-panel-body" onSubmit={guardarTicket}>
           <div className="input-group">
@@ -7197,8 +7298,19 @@ function Tickets() {
               </select>
             </div>
           </div>
+          <FileUpload
+            ref={ticketUploadRef}
+            entidadTipo="tickets"
+            entidadId={draftTicketId}
+            empresaId={empresa?.id}
+            categoria="adjunto"
+            multiple
+            deferUpload
+            disabled={saving}
+            subidoPor={authUser?.id}
+          />
           <div className="row mt-6" style={{justifyContent:'flex-end'}}>
-            <button type="button" className="btn btn-secondary" onClick={() => setPanelOpen(false)}>Cancelar</button>
+            <button type="button" className="btn btn-secondary" onClick={cerrarNuevoTicket}>Cancelar</button>
             <button type="submit" className="btn btn-primary" data-local-form="true" disabled={saving}>{saving ? 'Guardando...' : 'Crear ticket'}</button>
           </div>
         </form>
@@ -7233,6 +7345,7 @@ function Tickets() {
       </div>
       {ticketsView}
       {ticketPanel}
+      {detailPanel}
     </>
   );
 }
