@@ -51,6 +51,7 @@ const SIDEBAR = [
     { key: 'comisiones', label: 'Comisiones', icon: I.percent },
     { key: 'solicitudes_rrhh', label: 'Solicitudes', icon: I.clipboard },
     { key: 'prestamos_personal', label: 'Prestamos al Personal', icon: I.userCheck },
+    { key: 'tareo_admin', label: 'Tareo Administrativo', icon: I.clock },
   ]},
   { section: 'Logistica', items: [
     { key: 'inventario', label: 'Almacenes', icon: I.warehouse },

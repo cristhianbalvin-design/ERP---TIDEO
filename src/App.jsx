@@ -52,6 +52,7 @@ const MetricasSaaS = lazy(() => import('./pages_admin.jsx').then(m => ({ default
 const Organigrama  = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Organigrama })));
 const Comisiones         = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Comisiones })));
 const SolicitudesRrhh    = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.SolicitudesRrhh })));
+const TareoAdmin         = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.TareoAdmin })));
 
 // Finanzas
 const CxC               = lazy(() => import('./pages_fin.jsx').then(m => ({ default: m.CxC })));
@@ -302,6 +303,7 @@ function MainLayout() {
       case 'nomina':           return <Nomina />;
       case 'comisiones':          return <Comisiones />;
       case 'solicitudes_rrhh':    return <SolicitudesRrhh />;
+      case 'tareo_admin':         return <TareoAdmin />;
       case 'tickets':          return <Tickets />;
       case 'presupuestos':     return <Presupuestos />;
       case 'cuentas':          return <Cuentas/>;

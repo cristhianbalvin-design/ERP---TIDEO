@@ -925,6 +925,7 @@ export const pantallasPermisos = [
   { key: 'turnos', modulo: 'RRHH', pantalla: 'Turnos y Horarios', acciones: ['ver','crear','editar','exportar'] },
   { key: 'nomina', modulo: 'RRHH', pantalla: 'Nomina', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
   { key: 'prestamos_personal', modulo: 'RRHH', pantalla: 'Prestamos al Personal', acciones: ['ver','crear','editar','exportar','finanzas'] },
+  { key: 'tareo_admin', modulo: 'RRHH', pantalla: 'Tareo Administrativo', acciones: ['ver','crear','editar'] },
   { key: 'financiamiento', modulo: 'Administracion', pantalla: 'Financiamiento y Deuda', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
   { key: 'ventas', modulo: 'Administracion', pantalla: 'Ventas', acciones: ['ver','crear','editar','exportar','finanzas'] },
   { key: 'cxc', modulo: 'Administracion', pantalla: 'Cuentas por Cobrar', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },

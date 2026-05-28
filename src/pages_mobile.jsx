@@ -4,6 +4,7 @@ import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { rrhhService } from './services/rrhhService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
+import * as tareosAdminService from './services/tareosAdminService.js';
 import { PHONE_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { getSupabaseClient } from './lib/supabaseClient.js';
 
@@ -29,6 +30,7 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
     { k: 'gerencia', l: 'Gerencia', icon: I.trend },
     { k: 'asistencia', l: 'Asistencia', icon: I.clock, requiereAsistencia: true },
     { k: 'solicitudes', l: 'Solicitudes', icon: I.userCheck },
+    { k: 'administrativo', l: 'Tareo', icon: I.users },
   ].filter(p => modulosUsuario.includes(p.k) && (!p.requiereAsistencia || puedeVerAsistencia)), [modulosUsuarioKey, puedeVerAsistencia]);
 
   useEffect(() => {
@@ -80,6 +82,7 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
               {profile === 'gerencia' && <GerenciaView screen={screen} setScreen={setScreen}/>}
               {profile === 'asistencia' && <AsistenciaMobileView screen={screen} setScreen={setScreen}/>}
               {profile === 'solicitudes' && <SolicitudesMovilView screen={screen} setScreen={setScreen}/>}
+              {profile === 'administrativo' && <AdministrativoView screen={screen} setScreen={setScreen}/>}
             </div>
           </div>
         </div>
@@ -174,6 +177,7 @@ function getUsuarioCampoModulos(authUser, usuarios = []) {
   if (perfil.includes('compra')) return ['compras'];
   if (perfil.includes('supervisor')) return ['supervisor'];
   if (perfil.includes('gerencia')) return ['gerencia'];
+  if (perfil.includes('admin')) return ['administrativo', 'solicitudes'];
   return ['tecnico'];
 }
 
@@ -3019,6 +3023,292 @@ function SolicitudesMovilView({ screen, setScreen }) {
   }
 
   return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vista mobile — Perfil Administrativo: "Mi registro del día"
+// ─────────────────────────────────────────────────────────────────────────────
+function AdministrativoView({ screen, setScreen }) {
+  const { empresa, personalAdmin, authUser, centrosCosto, ots, addNotificacion } = useApp();
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  // Colaborador actual
+  const personalActual = useMemo(() => {
+    const uid = authUser?.id || authUser?.user_id;
+    return (personalAdmin || []).find(p => p.user_id === uid || p.id === uid) || (personalAdmin || [])[0] || null;
+  }, [authUser, personalAdmin]);
+
+  // Estado principal
+  const [otsAsignadas, setOtsAsignadas] = useState([]);
+  const [tareosDia, setTareosDia] = useState([]);
+  const [cecos, setCecos] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Tareo libre — líneas
+  const [lineasLibres, setLineasLibres] = useState([]);
+
+  // Formulario OT seleccionada
+  const [otSelId, setOtSelId] = useState(null);
+  const [formOT, setFormOT] = useState({ horas: '', descripcion: '' });
+  const [savingOT, setSavingOT] = useState(false);
+  const [savingEnvio, setSavingEnvio] = useState(false);
+  const [confirmEnvio, setConfirmEnvio] = useState(false);
+
+  useEffect(() => {
+    if (!empresa?.id || !personalActual?.id) { setLoading(false); return; }
+    setLoading(true);
+    Promise.all([
+      tareosAdminService.cargarOTsAdminDelDia(empresa.id, personalActual.id),
+      tareosAdminService.cargarTareos(empresa.id, { personalId: personalActual.id, fecha: hoy }),
+      tareosAdminService.cargarCecosActivos(empresa.id),
+    ]).then(([otsRes, tareosRes, cecosRes]) => {
+      setOtsAsignadas(otsRes);
+      setTareosDia(tareosRes);
+      setCecos(cecosRes);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [empresa?.id, personalActual?.id]);
+
+  const tareoDeOT = (otId) => tareosDia.find(t => t.ot_id === otId && t.tipo === 'ot');
+
+  const registrarHorasOT = async () => {
+    if (!formOT.horas || !formOT.descripcion.trim()) {
+      addNotificacion('Completa horas y descripción.');
+      return;
+    }
+    setSavingOT(true);
+    try {
+      const ot = otsAsignadas.find(o => o.id === otSelId);
+      const nuevo = await tareosAdminService.crearTareo(empresa.id, {
+        personal_id:    personalActual.id,
+        personal_nombre: personalActual.nombre,
+        fecha:          hoy,
+        horas:          Number(formOT.horas),
+        descripcion:    formOT.descripcion.trim(),
+        tipo:           'ot',
+        ot_id:          otSelId,
+        estado:         'borrador',
+        origen:         'mobile',
+      });
+      setTareosDia(prev => [...prev, nuevo]);
+      addNotificacion(`Horas registradas para ${ot?.numero || 'la OT'}.`);
+      setOtSelId(null);
+      setFormOT({ horas: '', descripcion: '' });
+      setScreen('home');
+    } catch (err) {
+      addNotificacion('Error: ' + err.message);
+    } finally {
+      setSavingOT(false);
+    }
+  };
+
+  const registrarLineaLibre = async (linea) => {
+    if (!linea.ceco_id || !linea.horas || !linea.descripcion.trim()) return;
+    try {
+      const ceco = cecos.find(c => c.id === linea.ceco_id);
+      const nuevo = await tareosAdminService.crearTareo(empresa.id, {
+        personal_id:    personalActual.id,
+        personal_nombre: personalActual.nombre,
+        fecha:          hoy,
+        horas:          Number(linea.horas),
+        descripcion:    linea.descripcion.trim(),
+        tipo:           'libre',
+        ceco_id:        linea.ceco_id,
+        ceco_nombre:    ceco?.nombre || '',
+        estado:         'borrador',
+        origen:         'mobile',
+      });
+      setTareosDia(prev => [...prev, nuevo]);
+    } catch (_err) { /* falla silenciosa, se reintenta al enviar */ }
+  };
+
+  const enviarRegistroDia = async () => {
+    // Guardar líneas libres pendientes
+    for (const l of lineasLibres) {
+      if (l.ceco_id && l.horas && l.descripcion.trim()) {
+        await registrarLineaLibre(l).catch(() => {});
+      }
+    }
+    setSavingEnvio(true);
+    try {
+      await tareosAdminService.enviarTareosDia(empresa.id, personalActual.id, hoy);
+      const actualizados = tareosDia.map(t => ({ ...t, estado: 'enviado' }));
+      setTareosDia(actualizados);
+      setLineasLibres([]);
+      addNotificacion('Registro del día enviado.');
+      setConfirmEnvio(false);
+    } catch (err) {
+      addNotificacion('Error: ' + err.message);
+    } finally {
+      setSavingEnvio(false);
+    }
+  };
+
+  const otsSinRegistro = otsAsignadas.filter(o => !tareoDeOT(o.id));
+  const yaTodoEnviado = tareosDia.length > 0 && tareosDia.every(t => t.estado === 'enviado');
+
+  // ── Pantalla: registrar horas de OT ────────────────────────────────────────
+  if (screen === 'reg_ot' && otSelId) {
+    const ot = otsAsignadas.find(o => o.id === otSelId);
+    const pa = (ot?.participantes_admin || []).find(a => a.personal_id === personalActual?.id);
+    return (
+      <div style={{padding:'16px 14px', overflowY:'auto', height:'100%', display:'flex', flexDirection:'column'}}>
+        <div className="row" style={{alignItems:'center', marginBottom:16, gap:8}}>
+          <button className="btn btn-secondary btn-sm" onClick={() => { setOtSelId(null); setScreen('home'); }}>{I.chevLeft}</button>
+          <div style={{fontWeight:700, fontSize:15}}>Registrar horas en OT</div>
+        </div>
+        <div className="card" style={{padding:14, marginBottom:14}}>
+          <div style={{fontWeight:700, fontSize:14}}>{ot?.numero || '—'}</div>
+          <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>{ot?.descripcion || '—'}</div>
+          {pa?.horas_estimadas && (
+            <div style={{fontSize:11, color:'var(--cyan)', marginTop:4}}>Horas estimadas: {pa.horas_estimadas}h</div>
+          )}
+        </div>
+        <div className="col" style={{gap:12, flex:1}}>
+          <div className="input-group">
+            <label>Horas trabajadas hoy <span style={{color:'var(--danger)'}}>*</span></label>
+            <input className="input" type="number" min="0.5" max="24" step="0.5"
+              value={formOT.horas} onChange={e => setFormOT(f => ({...f, horas: e.target.value}))}
+              placeholder="Ej. 4" />
+          </div>
+          <div className="input-group">
+            <label>Descripción de la actividad <span style={{color:'var(--danger)'}}>*</span></label>
+            <textarea className="input" rows={4}
+              value={formOT.descripcion} onChange={e => setFormOT(f => ({...f, descripcion: e.target.value}))}
+              placeholder="¿Qué hiciste hoy en esta OT?" />
+          </div>
+        </div>
+        <button className="btn btn-primary" style={{width:'100%', marginTop:16}}
+          onClick={registrarHorasOT} disabled={savingOT}>
+          {savingOT ? 'Guardando...' : `${I.check} Guardar`}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Pantalla home ───────────────────────────────────────────────────────────
+  if (loading) return <div style={{padding:24, textAlign:'center', color:'var(--fg-muted)'}}>Cargando...</div>;
+
+  return (
+    <div style={{padding:'16px 14px', overflowY:'auto', height:'100%'}}>
+      <div style={{fontWeight:700, fontSize:17, marginBottom:2}}>Mi registro del día</div>
+      <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:16}}>{hoy}</div>
+
+      {/* OTs asignadas */}
+      {otsAsignadas.length > 0 && (
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:12, fontWeight:700, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8}}>
+            OTs asignadas
+            {otsSinRegistro.length > 0 && (
+              <span className="badge badge-orange" style={{marginLeft:8, fontSize:10}}>{otsSinRegistro.length} sin registrar</span>
+            )}
+          </div>
+          {otsAsignadas.map(ot => {
+            const tareo = tareoDeOT(ot.id);
+            return (
+              <div key={ot.id} className="card" style={{padding:12, marginBottom:8, border: tareo ? '1px solid var(--border)' : '1px solid var(--orange)'}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                  <div>
+                    <div style={{fontWeight:700, fontSize:13}}>{ot.numero}</div>
+                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>{ot.descripcion || '—'}</div>
+                  </div>
+                  {tareo
+                    ? <span className="badge badge-green" style={{fontSize:11}}>✓ {tareo.horas}h</span>
+                    : (
+                      <button className="btn btn-primary btn-sm"
+                        onClick={() => { setOtSelId(ot.id); setFormOT({ horas: '', descripcion: '' }); setScreen('reg_ot'); }}>
+                        Registrar
+                      </button>
+                    )
+                  }
+                </div>
+                {tareo && (
+                  <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:6, borderTop:'1px solid var(--border)', paddingTop:6}}>
+                    {tareo.descripcion}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Otras actividades del día */}
+      <div style={{marginBottom:16}}>
+        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+          <div style={{fontSize:12, fontWeight:700, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em'}}>
+            Otras actividades
+          </div>
+          <button className="btn btn-ghost" style={{fontSize:11}}
+            onClick={() => setLineasLibres(prev => [...prev, { ceco_id: '', horas: '', descripcion: '' }])}>
+            {I.plus} Agregar
+          </button>
+        </div>
+        {/* tareos libres ya enviados hoy */}
+        {tareosDia.filter(t => t.tipo === 'libre').map(t => (
+          <div key={t.id} className="card" style={{padding:10, marginBottom:8, opacity:0.8}}>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+              <div>
+                <div style={{fontSize:12, fontWeight:600}}>{t.ceco_nombre || '—'}</div>
+                <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>{t.descripcion}</div>
+              </div>
+              <span className="badge badge-gray" style={{fontSize:11}}>{t.horas}h</span>
+            </div>
+          </div>
+        ))}
+        {/* líneas pendientes de guardar */}
+        {lineasLibres.map((l, idx) => (
+          <div key={idx} className="card" style={{padding:12, marginBottom:8, border:'1px solid var(--cyan)'}}>
+            <div className="col" style={{gap:8}}>
+              <select className="select" value={l.ceco_id}
+                onChange={e => setLineasLibres(prev => prev.map((x, i) => i === idx ? {...x, ceco_id: e.target.value} : x))}>
+                <option value="">Seleccionar CECO...</option>
+                {cecos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ` : ''}{c.nombre}</option>)}
+              </select>
+              <div style={{display:'flex', gap:8, alignItems:'center'}}>
+                <input className="input" type="number" min="0.5" max="24" step="0.5" placeholder="Horas"
+                  value={l.horas} style={{width:90}}
+                  onChange={e => setLineasLibres(prev => prev.map((x, i) => i === idx ? {...x, horas: e.target.value} : x))} />
+                <input className="input" placeholder="Descripción de la actividad" style={{flex:1}}
+                  value={l.descripcion}
+                  onChange={e => setLineasLibres(prev => prev.map((x, i) => i === idx ? {...x, descripcion: e.target.value} : x))} />
+                <button className="icon-btn"
+                  onClick={() => setLineasLibres(prev => prev.filter((_, i) => i !== idx))}>{I.x}</button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {lineasLibres.length === 0 && tareosDia.filter(t => t.tipo === 'libre').length === 0 && (
+          <div className="text-muted" style={{fontSize:12, textAlign:'center', padding:8}}>Sin actividades libres registradas.</div>
+        )}
+      </div>
+
+      {/* Enviar registro */}
+      {yaTodoEnviado ? (
+        <div className="card" style={{padding:14, textAlign:'center', borderColor:'var(--green)'}}>
+          <div style={{color:'var(--green)', fontWeight:700, fontSize:14}}>✓ Registro del día enviado</div>
+          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>El equipo puede ver tu registro de hoy.</div>
+        </div>
+      ) : confirmEnvio ? (
+        <div className="card" style={{padding:14, border:'1px solid var(--orange)'}}>
+          {otsSinRegistro.length > 0 && (
+            <div style={{fontSize:12, color:'var(--orange)', marginBottom:10}}>
+              Tienes {otsSinRegistro.length} OT(s) sin registrar horas. ¿Enviar igual?
+            </div>
+          )}
+          <div className="row" style={{gap:8}}>
+            <button className="btn btn-secondary" style={{flex:1}} onClick={() => setConfirmEnvio(false)}>Cancelar</button>
+            <button className="btn btn-primary" style={{flex:2}} onClick={enviarRegistroDia} disabled={savingEnvio}>
+              {savingEnvio ? 'Enviando...' : 'Sí, enviar registro'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn btn-primary" style={{width:'100%'}} onClick={() => setConfirmEnvio(true)}>
+          {I.check} Enviar registro del día
+        </button>
+      )}
+    </div>
+  );
 }
 
 export { MobileFieldView };

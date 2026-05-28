@@ -303,11 +303,12 @@ function Roles() {
                   value={role.permisos.perfil_campo || 'ninguno'}
                   onChange={e => { actualizarPermisosRol(sel, null, 'perfil_campo', e.target.value === 'ninguno' ? null : e.target.value); setPermisosDirty(true); }}>
                   <option value="ninguno">Ninguno</option>
-                  <option value="Técnico">Técnico</option>
-                  <option value="Vendedor">Vendedor</option>
-                  <option value="Compras">Compras</option>
-                  <option value="Supervisor">Supervisor</option>
-                  <option value="Gerencia">Gerencia</option>
+                  <option value="Técnico">Técnico — Partes diarios, tareas en campo</option>
+                  <option value="Vendedor">Vendedor — Pipeline, cotizaciones, comisiones</option>
+                  <option value="Compras">Compras — SOLPE, órdenes, recepciones</option>
+                  <option value="Supervisor">Supervisor — Aprobaciones y monitoreo</option>
+                  <option value="Gerencia">Gerencia — Dashboard ejecutivo</option>
+                  <option value="administrativo">Administrativo — Registro diario de horas por OT o actividad</option>
                 </select>
               </div>
             </div>

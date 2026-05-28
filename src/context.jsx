@@ -3568,11 +3568,12 @@ export function AppProvider({ children }) {
       if (value.includes('compra')) return ['compras'];
       if (value.includes('supervisor')) return ['supervisor'];
       if (value.includes('gerencia')) return ['gerencia'];
+      if (value.includes('admin')) return ['administrativo', 'solicitudes'];
       return ['tecnico'];
     };
     const campoModulos = datos.campo ? normalizarCampoModulos(datos.campoModulos || datos.campo_modulos, datos.campoPerfil || datos.perfil_campo) : [];
     const campoPerfilLegacy = campoModulos[0]
-      ? ({ tecnico: 'Tecnico', vendedor: 'Vendedor', compras: 'Compras', supervisor: 'Supervisor', gerencia: 'Gerencia', asistencia: 'Asistencia', logistica: 'Logistica' }[campoModulos[0]] || 'Tecnico')
+      ? ({ tecnico: 'Tecnico', vendedor: 'Vendedor', compras: 'Compras', supervisor: 'Supervisor', gerencia: 'Gerencia', asistencia: 'Asistencia', logistica: 'Logistica', administrativo: 'Administrativo' }[campoModulos[0]] || 'Tecnico')
       : null;
     const nextUser = {
       ...current,

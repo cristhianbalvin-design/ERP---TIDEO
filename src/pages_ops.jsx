@@ -6,6 +6,7 @@ import { rrhhService } from './services/rrhhService.js';
 import * as ticketsService from './services/ticketsService.js';
 import * as storageService from './services/storageService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
+import * as tareosAdminService from './services/tareosAdminService.js';
 import { FileUpload } from './components/FileUpload.jsx';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
@@ -1344,7 +1345,7 @@ function OT({ role }) {
   const prioridadMeta = { normal: ['badge-gray','Normal'], urgente: ['badge-orange','Urgente'], critica: ['badge-red','Crítica'] };
   const asignacionesOT = sel ? plannerAsignaciones.filter(a => a.ot_id === sel.id && a.estado !== 'cancelado') : [];
   const tecnicosAsignadosOT = new Set(asignacionesOT.map(a => a.tecnico_id)).size;
-  const tecnicosDeOT = [...new Set(asignacionesOT.map(a => a.tecnico_id))].map(id => [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === id)).filter(Boolean);
+  const tecnicosDeOT = [...new Set(asignacionesOT.map(a => a.tecnico_id))].map(id => [...(usuarios || []), ...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === id)).filter(Boolean);
   const adminsDeOT = (sel?.participantes_admin || []).map(pa => {
     const persona = (personalAdmin || []).find(p => p.id === pa.personal_id);
     return persona ? { ...persona, horas_estimadas: pa.horas_estimadas } : null;
@@ -1570,6 +1571,23 @@ function OT({ role }) {
       actualizarBorradorParteDiario(parteEditandoId, payload);
     } else {
       await registrarParteDiario(payload);
+      // Si el colaborador es admin, registrar también en tareos_admin
+      const esAdmin = (personalAdmin || []).some(p => p.id === parteFormOT.tecnico_id);
+      if (esAdmin && empresa?.id) {
+        const adminObj = (personalAdmin || []).find(p => p.id === parteFormOT.tecnico_id);
+        const actDesc = payload.actividades || payload.actividad || payload.observaciones || 'Horas en OT';
+        tareosAdminService.crearTareo(empresa.id, {
+          personal_id:    parteFormOT.tecnico_id,
+          personal_nombre: adminObj?.nombre || parteFormOT.tecnico_id,
+          fecha:          parteFormOT.fecha,
+          horas:          Number(parteFormOT.horas || 0),
+          descripcion:    String(actDesc).slice(0, 500) || 'Horas en OT',
+          tipo:           'ot',
+          ot_id:          sel.id,
+          estado:         'borrador',
+          origen:         'backoffice',
+        }).catch(() => {});
+      }
     }
     setShowNuevoParte(false);
     setParteEditandoId(null);
@@ -2242,7 +2260,7 @@ function OT({ role }) {
                         <label>Colaborador *</label>
                         <select className="select" value={asignarTecForm.tecnico_id} onChange={e => setAsignarTecForm(s => ({...s, tecnico_id: e.target.value}))} required>
                           <option value="">Seleccionar...</option>
-                          {[...(personalOperativo || []), ...(personalAdmin || [])].filter(p => p.estado === 'activo').map(p => <option key={p.id} value={p.id}>{p.nombre} — {p.cargo || 'Colaborador'}</option>)}
+                          {([...new Map([...(usuarios || []), ...(personalOperativo || []), ...(personalAdmin || [])].map(x => [x.id, x])).values()]).filter(p => ['activo','activa'].includes(String(p.estado||'').toLowerCase())).map(p => <option key={p.id} value={p.id}>{p.nombre} — {p.rol || p.cargo || 'Colaborador'}</option>)}
                         </select>
                       </div>
                       <div className="input-group">
@@ -2281,7 +2299,7 @@ function OT({ role }) {
                   return (
                     <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:16}}>
                       {Object.entries(porTecnico).map(([tecId, items]) => {
-                        const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === tecId) || {};
+                        const tec = [...(usuarios || []), ...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === tecId) || {};
                         const totalHoras = items.reduce((s, a) => {
                           if (!a.hora_inicio_estimada || !a.hora_fin_estimada) return s;
                           const [h1, m1] = a.hora_inicio_estimada.split(':').map(Number);
@@ -5124,7 +5142,7 @@ function Backlog() {
 
 // ============ CIERRE TÉCNICO ============
 function Cierre() {
-  const { ots, partes, cierresTecnicos, valorizaciones, osClientes, cuentas, personalOperativo, searchQuery, role, navigate, activeParams, actualizarCierreTecnico, addNotificacion } = useApp();
+  const { ots, partes, cierresTecnicos, valorizaciones, osClientes, cuentas, personalOperativo, personalAdmin, searchQuery, role, navigate, activeParams, actualizarCierreTecnico, addNotificacion } = useApp();
   const canCost = role?.permisos?.ver_costos || role?.permisos?.todo;
   const [sel, setSel] = useState(null);
   const [tabCierre, setTabCierre] = useState('resumen');
@@ -9402,3 +9420,181 @@ export function SolicitudesRrhh() {
 }
 
 export { Cuentas, OT, Partes, Compras, Proveedores, CotizacionesCompras, OrdenesCompra, OrdenesServicio, Recepciones, ControlAsistencia, Nomina, Backlog, Cierre, Remision, SOLPE, Planner, Tickets, RRHH_Operativo };
+
+// ============================================================
+// TAREO ADMINISTRATIVO — vista desktop (consulta y reporte)
+// Registro lo hacen colaboradores desde PWA o el Parte Diario.
+// ============================================================
+export function TareoAdmin() {
+  const { empresa, role, personalAdmin, ots, centrosCosto } = useApp();
+  const [tab, setTab] = useState('dia');
+  const [tareos, setTareos] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [filtroDia, setFiltroDia] = useState(new Date().toISOString().slice(0, 10));
+  const [filtroPersonal, setFiltroPersonal] = useState('');
+  const [periodoDesde, setPeriodoDesde] = useState((() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0,10); })());
+  const [periodoHasta, setPeriodoHasta] = useState(new Date().toISOString().slice(0, 10));
+
+  const canVer = role?.permisos?.todo || role?.permisos?.tareo_admin?.ver || role?.permisos?.tareo_admin === true;
+
+  useEffect(() => {
+    if (!empresa?.id || !canVer) return;
+    setLoading(true);
+    const params = tab === 'dia'
+      ? { fecha: filtroDia }
+      : { desde: periodoDesde, hasta: periodoHasta };
+    tareosAdminService.cargarTareos(empresa.id, params)
+      .then(setTareos).catch(() => {}).finally(() => setLoading(false));
+  }, [empresa?.id, tab, filtroDia, periodoDesde, periodoHasta, canVer]);
+
+  const getPersonal = id => (personalAdmin || []).find(p => p.id === id);
+  const getOT = id => (ots || []).find(o => o.id === id);
+  const getCeco = id => (centrosCosto || []).find(c => c.id === id);
+
+  const tareosFiltrados = tareos.filter(t =>
+    !filtroPersonal || t.personal_id === filtroPersonal
+  );
+
+  const badgeEstado = est => est === 'enviado' ? 'badge-green' : 'badge-gray';
+  const badgeOrigen = orig => orig === 'mobile' ? 'badge-cyan' : 'badge-gray';
+
+  const resumenPorPeriodo = (() => {
+    const mapa = {};
+    tareosFiltrados.forEach(t => {
+      if (!mapa[t.personal_id]) mapa[t.personal_id] = { nombre: t.personal_nombre, horasOT: 0, horasLibre: 0 };
+      if (t.tipo === 'ot') mapa[t.personal_id].horasOT += Number(t.horas) || 0;
+      else mapa[t.personal_id].horasLibre += Number(t.horas) || 0;
+    });
+    return Object.values(mapa);
+  })();
+
+  if (!canVer) return (
+    <div className="page-header"><h1 className="page-title">Tareo Administrativo</h1>
+      <p className="text-muted" style={{marginTop:8}}>Sin permiso para ver este módulo.</p>
+    </div>
+  );
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Tareo Administrativo</h1>
+          <div className="page-sub">Registro diario de horas del personal administrativo</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div style={{display:'flex', gap:4, borderBottom:'1px solid var(--border)', paddingBottom:0, marginBottom:16}}>
+          {[['dia', 'Por día'], ['periodo', 'Por período']].map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)}
+              style={{padding:'8px 16px', fontSize:13, fontWeight:tab===k?700:400, borderBottom:tab===k?'2px solid var(--cyan)':'2px solid transparent', background:'none', border:'none', cursor:'pointer', color:tab===k?'var(--cyan)':'var(--fg-muted)'}}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'dia' && (
+          <div>
+            <div style={{display:'flex', gap:12, marginBottom:16, flexWrap:'wrap', alignItems:'flex-end'}}>
+              <div className="input-group" style={{minWidth:180}}>
+                <label>Fecha</label>
+                <input className="input" type="date" value={filtroDia} onChange={e => setFiltroDia(e.target.value)} />
+              </div>
+              <div className="input-group" style={{minWidth:220}}>
+                <label>Colaborador</label>
+                <select className="select" value={filtroPersonal} onChange={e => setFiltroPersonal(e.target.value)}>
+                  <option value="">Todos</option>
+                  {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
+                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {loading
+              ? <div className="text-muted" style={{padding:24, textAlign:'center'}}>Cargando...</div>
+              : tareosFiltrados.length === 0
+                ? <div className="text-muted" style={{padding:24, textAlign:'center'}}>Sin registros para la fecha seleccionada.</div>
+                : (
+                  <div className="table-wrap">
+                    <table className="tbl">
+                      <thead><tr>
+                        <th>Colaborador</th><th>Tipo</th><th>OT / CECO</th>
+                        <th>Horas</th><th>Descripción</th><th>Estado</th><th>Origen</th>
+                      </tr></thead>
+                      <tbody>{tareosFiltrados.map(t => (
+                        <tr key={t.id}>
+                          <td><strong>{t.personal_nombre}</strong></td>
+                          <td><span className={'badge ' + (t.tipo === 'ot' ? 'badge-cyan' : 'badge-navy')}>{t.tipo === 'ot' ? 'OT' : 'Libre'}</span></td>
+                          <td className="text-muted">
+                            {t.tipo === 'ot'
+                              ? (getOT(t.ot_id)?.numero || t.ot_id || '—')
+                              : (t.ceco_nombre || getCeco(t.ceco_id)?.nombre || '—')}
+                          </td>
+                          <td className="num">{t.horas}h</td>
+                          <td style={{maxWidth:260, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{t.descripcion}</td>
+                          <td><span className={'badge ' + badgeEstado(t.estado)}>{t.estado}</span></td>
+                          <td><span className={'badge ' + badgeOrigen(t.origen)}>{t.origen}</span></td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                )
+            }
+          </div>
+        )}
+
+        {tab === 'periodo' && (
+          <div>
+            <div style={{display:'flex', gap:12, marginBottom:16, flexWrap:'wrap', alignItems:'flex-end'}}>
+              <div className="input-group">
+                <label>Desde</label>
+                <input className="input" type="date" value={periodoDesde} onChange={e => setPeriodoDesde(e.target.value)} />
+              </div>
+              <div className="input-group">
+                <label>Hasta</label>
+                <input className="input" type="date" value={periodoHasta} onChange={e => setPeriodoHasta(e.target.value)} />
+              </div>
+              <div className="input-group" style={{minWidth:220}}>
+                <label>Colaborador</label>
+                <select className="select" value={filtroPersonal} onChange={e => setFiltroPersonal(e.target.value)}>
+                  <option value="">Todos</option>
+                  {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
+                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {loading
+              ? <div className="text-muted" style={{padding:24, textAlign:'center'}}>Cargando...</div>
+              : resumenPorPeriodo.length === 0
+                ? <div className="text-muted" style={{padding:24, textAlign:'center'}}>Sin registros en el período seleccionado.</div>
+                : (
+                  <>
+                    <div className="table-wrap">
+                      <table className="tbl">
+                        <thead><tr>
+                          <th>Colaborador</th><th className="num">Horas en OTs</th>
+                          <th className="num">Horas libres</th><th className="num">Total</th>
+                        </tr></thead>
+                        <tbody>{resumenPorPeriodo.map((r, i) => (
+                          <tr key={i}>
+                            <td><strong>{r.nombre}</strong></td>
+                            <td className="num">{r.horasOT.toFixed(1)}h</td>
+                            <td className="num">{r.horasLibre.toFixed(1)}h</td>
+                            <td className="num" style={{fontWeight:700}}>{(r.horasOT + r.horasLibre).toFixed(1)}h</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:12, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6}}>
+                      Cruce con Presupuesto vs Real: conexión futura planificada. Los tareos son la fuente de verdad de horas admin por período.
+                    </div>
+                  </>
+                )
+            }
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
