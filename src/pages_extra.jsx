@@ -104,12 +104,12 @@ const construirPartidasDesdeHC = (hc) => {
     ...(hc.logistica || []),
   ].map((i, idx) => {
     const cantidad = Number(i.cantidad || 0);
-    const costoUnitario = Number(i.costo_unitario ?? i.precio_unitario ?? 0);
+    const costoUnitario = Number(i.costo_unitario || i.precio_unitario || 0);
     const precioUnitario = divisor > 0 ? Math.round(costoUnitario / divisor) : costoUnitario;
     return {
       id: i.id || idx + 1,
       descripcion: i.descripcion || 'Partida de costeo',
-      tipo: 'servicio',
+      tipo: i.tipo === 'material' ? 'material' : 'servicio',
       cantidad,
       unidad: i.unidad || 'und',
       precio_unitario: precioUnitario,
@@ -997,6 +997,8 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
     if (cotizacionBase?.items?.length) {
       return cotizacionBase.items.map(p => ({
         ...p,
+        cantidad: Number(p.cantidad) || 0,
+        precio_unitario: Number(p.precio_unitario) || 0,
         detalle_items_txt: Array.isArray(p.detalle_items) ? p.detalle_items.join('\n') : (p.detalle || '')
       }));
     }

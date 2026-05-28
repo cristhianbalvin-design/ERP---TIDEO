@@ -348,7 +348,6 @@ serve(async (req) => {
     .maybeSingle();
 
   if (currentMembershipError) return jsonResponse({ success: false, error: currentMembershipError.message }, 500);
-  if (!currentMembership) return jsonResponse({ success: false, error: "El usuario no pertenece a este tenant." }, 404);
 
   const { data: roleRow, error: roleError } = await adminClient
     .from("roles")
@@ -400,7 +399,9 @@ serve(async (req) => {
 
   const { error: membershipUpdateError } = await adminClient
     .from("usuarios_empresas")
-    .update({
+    .upsert([{
+      user_id: userId,
+      empresa_id: empresaId,
       rol_id: rolId,
       jefe_user_id: jefeUserId,
       acceso_campo: accesoCampo,
@@ -408,9 +409,7 @@ serve(async (req) => {
       campo_modulos: campoModulos,
       estado: estadoMembership,
       updated_at: new Date().toISOString(),
-    })
-    .eq("user_id", userId)
-    .eq("empresa_id", empresaId);
+    }], { onConflict: "user_id,empresa_id" });
 
   if (membershipUpdateError) return jsonResponse({ success: false, error: membershipUpdateError.message }, 500);
 

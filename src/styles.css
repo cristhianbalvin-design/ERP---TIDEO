@@ -366,6 +366,10 @@ body {
   position: sticky;
   top: 0;
   z-index: 20;
+  /* prevent horizontal overflow on narrow screens */
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .header-title { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 16px; color: #fff; }
 .header-breadcrumb { color: var(--fg-muted); font-size: 13px; }
@@ -3189,6 +3193,16 @@ body {
   overflow: hidden;
   padding: 0;
 }
+.ticket-detail-panel {
+  height: 100dvh;
+  max-height: 100dvh;
+}
+.ticket-detail-panel .side-panel-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 22px 22px 56px;
+  scrollbar-gutter: stable;
+}
 .ficha-detail-panel .eyebrow {
   color: var(--fg-muted);
   font-size: 10px;
@@ -3679,7 +3693,11 @@ body {
     width: min(250px, calc(100vw - 78px));
     max-height: min(420px, calc(100vh - 24px));
   }
-  .main-col { min-width: 0; width: calc(100vw - 66px); }
+  .main-col { min-width: 0; width: calc(100vw - 66px); overflow-x: hidden; }
+  .header { height: 52px; }
+  .header-title { font-size: 14px; }
+  /* dropdown en móvil: anclar a la derecha dentro del viewport */
+  .header .dropdown { position: fixed; top: 56px; right: 8px; max-width: calc(100vw - 16px); }
 }
 @keyframes logo-breathe {
   0% { transform: scale(1); opacity: 0.8; filter: drop-shadow(0 0 0px #fff); }

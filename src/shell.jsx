@@ -49,6 +49,7 @@ const SIDEBAR = [
     { key: 'turnos', label: 'Turnos y Horarios', icon: I.calendar },
     { key: 'nomina', label: 'Nomina', icon: I.receipt },
     { key: 'comisiones', label: 'Comisiones', icon: I.percent },
+    { key: 'solicitudes_rrhh', label: 'Solicitudes', icon: I.clipboard },
     { key: 'prestamos_personal', label: 'Prestamos al Personal', icon: I.userCheck },
   ]},
   { section: 'Logistica', items: [
@@ -196,6 +197,7 @@ function buildSidebarBadges(app) {
     facturacion: valorizaciones.filter(v => ['aprobada', 'por_facturar'].includes(norm(v.estado)) && !facturaValorizaciones.has(v.id)).length,
     tesoreria: movimientosBanco.filter(m => m.conciliado === false || m.vinculado === null).length,
     financiamiento: financiamientos.reduce((total, f) => total + (f.tabla_amortizacion || []).filter(c => !['pagada', 'pagado'].includes(norm(c.estado)) && dueIn(c.fecha, 7)).length, 0),
+    solicitudes_rrhh: 0,
   };
 }
 
@@ -384,6 +386,14 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
   useEffect(() => { if (openSelectorSignal > 0) setCompOpen(true); }, [openSelectorSignal]);
   const [roleOpen, setRoleOpen] = useState(false);
   const [notiOpen, setNotiOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 640px)');
+    const onChange = () => setIsMobile(media.matches);
+    media.addEventListener?.('change', onChange);
+    return () => media.removeEventListener?.('change', onChange);
+  }, []);
+
   const title = SIDEBAR.flatMap(g => g.items).find(i => i.key === active)?.label || 'Dashboard';
 
   const isSupabase = dataMode === 'supabase';
@@ -413,13 +423,13 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
       }));
 
   return (
-    <header className="header" style={{padding:'0 20px', gap:20}}>
-      <div className="header-title font-display" style={{minWidth:120}}>{title}</div>
-      
+    <header className="header" style={{padding: isMobile ? '0 12px' : '0 20px', gap: isMobile ? 10 : 20}}>
+      <div className="header-title font-display" style={{minWidth:0, flex:'0 1 auto', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth: isMobile ? 140 : 'none'}}>{title}</div>
 
       <div className="header-spacer"/>
 
-      {tipoCambioHoy?.usd && !tipoCambioHoy.cargando && (() => {
+      {/* TC tipo de cambio — oculto en móvil */}
+      {!isMobile && tipoCambioHoy?.usd && !tipoCambioHoy.cargando && (() => {
         const tcUSD = Math.round(1 / tipoCambioHoy.usd * 100) / 100;
         const tcEUR = tipoCambioHoy.eur ? Math.round(1 / tipoCambioHoy.eur * 100) / 100 : null;
         const esHoy = tipoCambioHoy.fecha === new Date().toISOString().split('T')[0];
@@ -440,8 +450,9 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
         );
       })()}
 
-      <div className="row" style={{gap:8}}>
-        <button className="icon-btn" onClick={() => setMobileMode(true)} title="Modo campo">{I.mobile}</button>
+      {/* Botones de acción — en móvil solo notificaciones */}
+      <div className="row" style={{gap:6}}>
+        {!isMobile && <button className="icon-btn" onClick={() => setMobileMode(true)} title="Modo campo">{I.mobile}</button>}
 
         <div style={{position:'relative'}}>
           <button className="icon-btn" onClick={() => { setNotiOpen(v => !v); if(!notiOpen) markNotificacionesRead(); }} title="Notificaciones">
@@ -449,8 +460,11 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
             {unreadCount > 0 && <span className="dot-badge" style={{background:'var(--danger)', width:16, height:16, display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, color:'white', right:0, top:0}}>{unreadCount}</span>}
           </button>
           {notiOpen && (
-            <div className="dropdown" style={{top: 42, right: 0, minWidth: 320, padding:0, zIndex:100}} onMouseLeave={() => setNotiOpen(false)}>
-              <div style={{padding:'12px 16px', borderBottom:'1px solid var(--border-subtle)', fontWeight:600}}>Notificaciones</div>
+            <div className="dropdown" style={{top: 42, right: 0, minWidth: isMobile ? 'calc(100vw - 24px)' : 320, maxWidth: isMobile ? 'calc(100vw - 24px)' : 360, padding:0, zIndex:100}} onMouseLeave={() => !isMobile && setNotiOpen(false)}>
+              <div style={{padding:'12px 16px', borderBottom:'1px solid var(--border-subtle)', fontWeight:600, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                Notificaciones
+                {isMobile && <button className="icon-btn" style={{width:28, height:28}} onClick={() => setNotiOpen(false)}>{I.x}</button>}
+              </div>
               <div style={{maxHeight: 400, overflowY:'auto'}}>
                 {notificaciones.length === 0 && <div style={{padding:20, textAlign:'center', color:'var(--fg-muted)'}}>No hay notificaciones</div>}
                 {notificaciones.map(n => (
@@ -467,54 +481,80 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
         <button className="icon-btn" onClick={() => setDark(!dark)} title="Dark mode">{dark ? I.sun : I.moon}</button>
       </div>
 
-      <div style={{width:1, height:24, background:'rgba(255,255,255,0.15)', margin:'0 8px'}}/>
+      {/* Separador — oculto en móvil */}
+      {!isMobile && <div style={{width:1, height:24, background:'rgba(255,255,255,0.15)', margin:'0 4px'}}/>}
 
+      {/* Zona de usuario */}
       <div style={{position:'relative'}}>
-        <div 
-          className="user-zone" 
-          onClick={() => canSwitchCompany && setCompOpen(v => !v)}
+        <div
+          className="user-zone"
+          onClick={() => setCompOpen(v => !v)}
           style={{
-            display:'flex', 
-            alignItems:'center', 
-            gap:12, 
-            padding:'4px 4px 4px 12px', 
-            borderRadius:99, 
-            background:'rgba(255,255,255,0.08)', 
+            display:'flex',
+            alignItems:'center',
+            gap: isMobile ? 0 : 12,
+            padding: isMobile ? 2 : '4px 4px 4px 12px',
+            borderRadius:99,
+            background:'rgba(255,255,255,0.08)',
             border:'1px solid rgba(255,255,255,0.15)',
-            cursor: canSwitchCompany ? 'pointer' : 'default',
+            cursor: 'pointer',
             transition: 'all 0.2s'
           }}
         >
-          <div style={{textAlign:'right'}}>
-            <div style={{fontSize:11, fontWeight:800, color:'#fff', textTransform:'uppercase', letterSpacing:'0.02em', maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
-              {empresa.nombre}
+          {/* Texto empresa/email — oculto en móvil */}
+          {!isMobile && (
+            <div style={{textAlign:'right'}}>
+              <div style={{fontSize:11, fontWeight:800, color:'#fff', textTransform:'uppercase', letterSpacing:'0.02em', maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                {empresa.nombre}
+              </div>
+              <div style={{fontSize:10, color:'rgba(255,255,255,0.6)', fontWeight:600}}>
+                {isSupabase ? authUser?.email : role.nombre}
+              </div>
             </div>
-            <div style={{fontSize:10, color:'rgba(255,255,255,0.6)', fontWeight:600}}>
-              {isSupabase ? authUser?.email : role.nombre}
-            </div>
-          </div>
+          )}
           <div className="avatar" style={{margin:0, width:32, height:32, fontSize:12}}>{avatarText}</div>
         </div>
 
         {compOpen && (
-          <div className="dropdown" style={{top: 48, right: 0, minWidth: 280}} onMouseLeave={() => setCompOpen(false)}>
-            <div style={{padding:'8px 12px', fontSize:11, color:'var(--fg-subtle)', letterSpacing:'0.1em', textTransform:'uppercase', fontWeight:700, borderBottom:'1px solid var(--border-subtle)'}}>
-              {isSupabase ? 'Mis empresas' : 'Tenants disponibles'}
-            </div>
-            <div style={{maxHeight:300, overflowY:'auto'}}>
-              {empresaItems.map(e => (
-                <div key={e.id} className={'dropdown-item ' + (e.active ? 'active' : '')} onClick={e.onClick}>
-                  <span className="company-dot" style={{background: e.color, width:8, height:8, borderRadius:999}}/>
-                  <div style={{flex:1}}>
-                    <div style={{fontWeight:600}}>{e.nombre}</div>
-                    <div style={{fontSize:11, color:'var(--fg-subtle)'}}>{e.sub}</div>
-                  </div>
+          <div className="dropdown" style={{top: 48, right: 0, minWidth: isMobile ? 'min(280px, calc(100vw - 24px))' : 280}} onMouseLeave={() => !isMobile && setCompOpen(false)}>
+            {/* En móvil mostramos empresa activa en el header del dropdown */}
+            {isMobile && (
+              <div style={{padding:'10px 14px', borderBottom:'1px solid var(--border-subtle)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                <div>
+                  <div style={{fontSize:12, fontWeight:700, color:'var(--fg)', maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{empresa.nombre}</div>
+                  <div style={{fontSize:11, color:'var(--fg-subtle)'}}>{isSupabase ? authUser?.email : role.nombre}</div>
                 </div>
-              ))}
-            </div>
-            <div style={{padding:8, borderTop:'1px solid var(--border-subtle)', background:'var(--bg-subtle)'}}>
-              <button 
-                className="btn btn-ghost btn-sm" 
+                <button className="icon-btn" style={{width:28, height:28}} onClick={() => setCompOpen(false)}>{I.x}</button>
+              </div>
+            )}
+            {/* Lista de empresas — solo si hay más de una o es mock */}
+            {(empresaItems.length > 1 || !isSupabase) && (
+              <>
+                <div style={{padding:'8px 12px', fontSize:11, color:'var(--fg-subtle)', letterSpacing:'0.1em', textTransform:'uppercase', fontWeight:700, borderBottom:'1px solid var(--border-subtle)'}}>
+                  {isSupabase ? 'Mis empresas' : 'Tenants disponibles'}
+                </div>
+                <div style={{maxHeight:260, overflowY:'auto'}}>
+                  {empresaItems.map(e => (
+                    <div key={e.id} className={'dropdown-item ' + (e.active ? 'active' : '')} onClick={e.onClick}>
+                      <span className="company-dot" style={{background: e.color, width:8, height:8, borderRadius:999}}/>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:600}}>{e.nombre}</div>
+                        <div style={{fontSize:11, color:'var(--fg-subtle)'}}>{e.sub}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            <div style={{padding:8, borderTop:'1px solid var(--border-subtle)', background:'var(--bg-subtle)', display:'flex', flexDirection:'column', gap:4}}>
+              {/* En móvil añadimos dark mode y modo campo aquí */}
+              {isMobile && (
+                <button className="btn btn-ghost btn-sm" style={{width:'100%', justifyContent:'center', gap:6, marginBottom:4}} onClick={() => { setMobileMode(true); setCompOpen(false); }}>
+                  {I.mobile} Vista campo
+                </button>
+              )}
+              <button
+                className="btn btn-ghost btn-sm"
                 style={{width:'100%', justifyContent:'center', color:'var(--danger)', fontWeight:700, gap:8}}
                 onClick={signOut}
               >
@@ -525,19 +565,22 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
         )}
       </div>
 
-      <button
-        className="icon-btn"
-        onClick={signOut}
-        title="Cerrar sesion"
-        aria-label="Cerrar sesion"
-        style={{
-          color:'rgba(255,255,255,0.82)',
-          border:'1px solid rgba(255,255,255,0.14)',
-          background:'rgba(255,255,255,0.06)'
-        }}
-      >
-        {I.power}
-      </button>
+      {/* Botón logout standalone — solo en escritorio */}
+      {!isMobile && (
+        <button
+          className="icon-btn"
+          onClick={signOut}
+          title="Cerrar sesion"
+          aria-label="Cerrar sesion"
+          style={{
+            color:'rgba(255,255,255,0.82)',
+            border:'1px solid rgba(255,255,255,0.14)',
+            background:'rgba(255,255,255,0.06)'
+          }}
+        >
+          {I.power}
+        </button>
+      )}
     </header>
   );
 }

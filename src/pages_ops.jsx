@@ -5,6 +5,7 @@ import { useApp } from './context.jsx';
 import { rrhhService } from './services/rrhhService.js';
 import * as ticketsService from './services/ticketsService.js';
 import * as storageService from './services/storageService.js';
+import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import { FileUpload } from './components/FileUpload.jsx';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
@@ -1188,7 +1189,7 @@ function OT({ role }) {
   const [panel] = useState(false);
   const [confirmAnular, setConfirmAnular] = useState(false);
 
-  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: '', est_mo: '', est_materiales: '', est_terceros: '', est_logistica: '' };
+  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: '', est_mo: '', est_materiales: '', est_terceros: '', est_logistica: '', participantes_admin: [] };
   const [panelNuevaOT, setPanelNuevaOT] = useState(false);
   const [formNuevaOT, setFormNuevaOT] = useState(formNuevaOTBase);
   const [errorNuevaOT, setErrorNuevaOT] = useState('');
@@ -1256,6 +1257,7 @@ function OT({ role }) {
         prioridad: formNuevaOT.prioridad,
         fecha_programada: formNuevaOT.fecha_programada || null,
         estado: 'programada',
+        participantes_admin: formNuevaOT.participantes_admin || [],
       };
       if (formNuevaOT.os_cliente_id) {
         await crearOTDesdeOS(formNuevaOT.os_cliente_id, {
@@ -1312,6 +1314,7 @@ function OT({ role }) {
       est_materiales: sel?.est_materiales ?? '',
       est_terceros: sel?.est_terceros ?? '',
       est_logistica: sel?.est_logistica ?? '',
+      participantes_admin: sel?.participantes_admin || [],
     });
     setEditandoDatos(true);
   };
@@ -1342,6 +1345,10 @@ function OT({ role }) {
   const asignacionesOT = sel ? plannerAsignaciones.filter(a => a.ot_id === sel.id && a.estado !== 'cancelado') : [];
   const tecnicosAsignadosOT = new Set(asignacionesOT.map(a => a.tecnico_id)).size;
   const tecnicosDeOT = [...new Set(asignacionesOT.map(a => a.tecnico_id))].map(id => [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === id)).filter(Boolean);
+  const adminsDeOT = (sel?.participantes_admin || []).map(pa => {
+    const persona = (personalAdmin || []).find(p => p.id === pa.personal_id);
+    return persona ? { ...persona, horas_estimadas: pa.horas_estimadas } : null;
+  }).filter(Boolean);
   const tareasOT = sel?.tareas || [];
   const tareasCompletadasOT = tareasOT.filter(t => t.completado || t.estado === 'completada').length;
   const avanceOperativo = sel ? (
@@ -2002,6 +2009,55 @@ function OT({ role }) {
                         <label>Descripción / Alcance</label>
                         <textarea className="input" rows={3} value={formDatos.descripcion} onChange={e => setFormDatos(p => ({...p, descripcion: e.target.value}))} placeholder="Describe el alcance de la OT..." style={{resize:'vertical'}} />
                       </div>
+                      <div style={{borderTop:'1px solid var(--border)', paddingTop:14}}>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10}}>
+                          <div>
+                            <div style={{fontWeight:600, fontSize:12}}>Participantes administrativos</div>
+                            <div style={{fontSize:11, color:'var(--fg-muted)'}}>Opcional — colaboradores admin que participan en esta OT</div>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{fontSize:11}}
+                            onClick={() => setFormDatos(p => ({ ...p, participantes_admin: [...(p.participantes_admin || []), { personal_id: '', personal_nombre: '', horas_estimadas: '' }] }))}
+                          >{I.plus} Agregar</button>
+                        </div>
+                        {(formDatos.participantes_admin || []).map((pa, idx) => (
+                          <div key={idx} style={{display:'grid', gridTemplateColumns:'1fr 90px auto', gap:8, alignItems:'center', marginBottom:8}}>
+                            <select
+                              className="select"
+                              value={pa.personal_id}
+                              onChange={e => {
+                                const p = (personalAdmin || []).find(x => x.id === e.target.value);
+                                setFormDatos(fd => ({ ...fd, participantes_admin: (fd.participantes_admin || []).map((x, i) => i === idx ? { ...x, personal_id: e.target.value, personal_nombre: p?.nombre || '' } : x) }));
+                              }}
+                            >
+                              <option value="">Seleccionar colaborador...</option>
+                              {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
+                                <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` — ${p.cargo}` : ''}</option>
+                              ))}
+                            </select>
+                            <div style={{display:'flex', alignItems:'center', gap:4}}>
+                              <input
+                                className="input"
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                placeholder="Horas"
+                                value={pa.horas_estimadas}
+                                style={{textAlign:'center'}}
+                                onChange={e => setFormDatos(fd => ({ ...fd, participantes_admin: (fd.participantes_admin || []).map((x, i) => i === idx ? { ...x, horas_estimadas: e.target.value } : x) }))}
+                              />
+                              <span style={{fontSize:11, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>h est.</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              onClick={() => setFormDatos(fd => ({ ...fd, participantes_admin: (fd.participantes_admin || []).filter((_, i) => i !== idx) }))}
+                            >{I.x}</button>
+                          </div>
+                        ))}
+                      </div>
                       <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
                         <button className="btn btn-secondary btn-sm" onClick={() => setEditandoDatos(false)}>Cancelar</button>
                         <button className="btn btn-primary btn-sm" onClick={guardarDatos}>Guardar cambios</button>
@@ -2305,13 +2361,22 @@ function OT({ role }) {
                         </div>
                         <div className="input-group">
                           <label>Colaborador *</label>
-                          {tecnicosDeOT.length > 0 ? (
+                          {(tecnicosDeOT.length > 0 || adminsDeOT.length > 0) ? (
                             <select className="select" value={parteFormOT.tecnico_id} onChange={e => updParteHorasTecnico(e.target.value)} required>
                               <option value="">Seleccionar...</option>
-                              {tecnicosDeOT.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.cargo ? ` — ${t.cargo}` : ''}</option>)}
+                              {tecnicosDeOT.length > 0 && (
+                                <optgroup label="— Operativo —">
+                                  {tecnicosDeOT.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.cargo ? ` — ${t.cargo}` : ''}</option>)}
+                                </optgroup>
+                              )}
+                              {adminsDeOT.length > 0 && (
+                                <optgroup label="— Administrativo —">
+                                  {adminsDeOT.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.cargo ? ` — ${t.cargo}` : ''}</option>)}
+                                </optgroup>
+                              )}
                             </select>
                           ) : (
-                            <div style={{fontSize:12, color:'var(--fg-muted)', padding:'6px 0'}}>No hay colaboradores asignados a esta OT en el Planner. Asigna uno desde la pestaña Personal y Recursos.</div>
+                            <div style={{fontSize:12, color:'var(--fg-muted)', padding:'6px 0'}}>No hay colaboradores asignados. Asigna operativos desde el Planner o agrega participantes administrativos en la ficha de la OT.</div>
                           )}
                         </div>
                       </div>
@@ -3392,6 +3457,64 @@ function OT({ role }) {
                 </div>
               )}
               {totalEstimadoNuevaOT === 0 && <div style={{marginBottom:20}}/>}
+
+              <div style={{borderTop:'1px solid var(--border)', paddingTop:20, marginBottom:20}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
+                  <div>
+                    <div className="eyebrow">Participantes administrativos</div>
+                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Opcional — colaboradores admin que participan en la OT</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{fontSize:12}}
+                    onClick={() => updNuevaOT('participantes_admin', [...(formNuevaOT.participantes_admin || []), { personal_id: '', personal_nombre: '', horas_estimadas: '' }])}
+                  >{I.plus} Agregar</button>
+                </div>
+                {(formNuevaOT.participantes_admin || []).length > 0 && (
+                  <div className="col" style={{gap:8}}>
+                    {(formNuevaOT.participantes_admin || []).map((pa, idx) => (
+                      <div key={idx} style={{display:'grid', gridTemplateColumns:'1fr 90px auto', gap:8, alignItems:'center'}}>
+                        <select
+                          className="select"
+                          value={pa.personal_id}
+                          onChange={e => {
+                            const p = (personalAdmin || []).find(x => x.id === e.target.value);
+                            const next = (formNuevaOT.participantes_admin || []).map((x, i) => i === idx ? { ...x, personal_id: e.target.value, personal_nombre: p?.nombre || '' } : x);
+                            updNuevaOT('participantes_admin', next);
+                          }}
+                        >
+                          <option value="">Seleccionar colaborador...</option>
+                          {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
+                            <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` — ${p.cargo}` : ''}</option>
+                          ))}
+                        </select>
+                        <div style={{display:'flex', alignItems:'center', gap:4}}>
+                          <input
+                            className="input"
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            placeholder="Horas"
+                            value={pa.horas_estimadas}
+                            style={{textAlign:'center'}}
+                            onChange={e => {
+                              const next = (formNuevaOT.participantes_admin || []).map((x, i) => i === idx ? { ...x, horas_estimadas: e.target.value } : x);
+                              updNuevaOT('participantes_admin', next);
+                            }}
+                          />
+                          <span style={{fontSize:11, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>h est.</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => updNuevaOT('participantes_admin', (formNuevaOT.participantes_admin || []).filter((_, i) => i !== idx))}
+                        >{I.x}</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="row" style={{justifyContent:'flex-end', gap:8}}>
                 <button className="btn btn-secondary" onClick={cerrarPanelNuevaOT}>Cancelar</button>
@@ -6745,12 +6868,14 @@ function Planner() {
 const TICKET_COLUMNS = [
   { k: 'abierto', title: 'Abiertos', color: '#64748b', icon: I.alert },
   { k: 'en_proceso', title: 'En Proceso', color: '#06b6d4', icon: I.clock },
+  { k: 'qc', title: 'QC', color: '#a855f7', icon: I.shield },
   { k: 'resuelto', title: 'Resueltos', color: '#10b981', icon: I.check },
 ];
 
 const TICKET_STATUS_LABELS = {
   abierto: 'Abierto',
   en_proceso: 'En proceso',
+  qc: 'QC',
   resuelto: 'Resuelto',
   cerrado: 'Cerrado',
 };
@@ -6862,7 +6987,7 @@ function Tickets() {
   const usuarioById = id => (usuarios || []).find(u => u.id === id);
   const slaBadge = s => s === 'vencido' ? 'badge-red' : s === 'riesgo' ? 'badge-orange' : 'badge-green';
   const pBadge = p => p === 'critica' ? 'badge-red' : p === 'alta' ? 'badge-orange' : p === 'media' ? 'badge-yellow' : 'badge-gray';
-  const statusBadge = s => s === 'resuelto' || s === 'cerrado' ? 'badge-green' : s === 'en_proceso' ? 'badge-cyan' : 'badge-gray';
+  const statusBadge = s => s === 'resuelto' || s === 'cerrado' ? 'badge-green' : s === 'qc' ? 'badge-purple' : s === 'en_proceso' ? 'badge-cyan' : 'badge-gray';
   const canalIcon = c => c === 'email' ? I.send : c === 'telefono' ? I.phone : c === 'campo' ? I.mobile : I.clipboard;
 
   const updateForm = (key, value) => {
@@ -7128,7 +7253,6 @@ function Tickets() {
         draggable
         onClick={() => abrirDetalleTicket(ticket.id)}
         onDragStart={event => event.dataTransfer.setData('text/plain', ticket.id)}
-        style={{cursor: 'grab'}}
       >
         <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>
           <span className={'badge ' + pBadge(ticket.prioridad)} style={{fontSize:9}}>
@@ -7519,7 +7643,7 @@ function Tickets() {
         </div>
       </div>
 
-      <div className="pipeline-kpi-grid" style={{gridTemplateColumns:'repeat(3, 1fr)'}}>
+      <div className="pipeline-kpi-grid" style={{gridTemplateColumns:`repeat(${TICKET_COLUMNS.length}, 1fr)`}}>
         {kpiCards}
       </div>
       <div className="kpi-grid mt-6" style={{gridTemplateColumns:'repeat(2, minmax(0, 1fr))'}}>
@@ -8590,6 +8714,689 @@ function RRHH_Operativo() {
           </form>
         </div>
       </>}
+    </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// SOLICITUDES DE RRHH
+// ────────────────────────────────────────────────────────────────────────────
+
+const SOL_TIPO_LABELS = {
+  vacaciones: 'Vacaciones',
+  permiso_con_goce: 'Permiso con goce',
+  permiso_sin_goce: 'Permiso sin goce',
+  licencia_medica: 'Licencia médica',
+  licencia_maternidad: 'Licencia maternidad',
+  licencia_paternidad: 'Licencia paternidad',
+  compensacion_horas: 'Compensación horas',
+};
+
+const SOL_ESTADO_LABELS = {
+  borrador: 'Borrador',
+  enviada: 'Enviada',
+  aprobada_jefe: 'Aprobada por jefe',
+  rechazada_jefe: 'Rechazada por jefe',
+  confirmada_rrhh: 'Confirmada RRHH',
+  rechazada_rrhh: 'Rechazada RRHH',
+  activa: 'Activa',
+  anulada: 'Anulada',
+};
+
+const SOL_TIPO_ICONS = {
+  vacaciones: I.calendar,
+  permiso_con_goce: I.clock,
+  permiso_sin_goce: I.clock,
+  licencia_medica: I.userCheck,
+  licencia_maternidad: I.userCheck,
+  licencia_paternidad: I.userCheck,
+  compensacion_horas: I.arrowUp,
+};
+
+function solEstadoBadge(estado) {
+  if (['aprobada_jefe', 'confirmada_rrhh', 'activa'].includes(estado)) return 'badge-green';
+  if (['rechazada_jefe', 'rechazada_rrhh', 'anulada'].includes(estado)) return 'badge-red';
+  if (estado === 'enviada') return 'badge-orange';
+  return 'badge-gray';
+}
+
+function emptySolForm() {
+  const today = new Date().toISOString().slice(0, 10);
+  return { tipo: 'vacaciones', fecha_inicio: today, fecha_fin: today, motivo: '', documento_url: '' };
+}
+
+export function SolicitudesRrhh() {
+  const { empresa, role, personalOperativo, personalAdmin, authUser, addNotificacion } = useApp();
+  const [tab, setTab] = useState('mis');
+  const [solicitudes, setSolicitudes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [config, setConfig] = useState({ dias_vacaciones_anio: 30, max_dias_permiso_goce: 3, dias_licencia_empresa: 20, pct_max_equipo_ausente: 30 });
+  const [saldoVac, setSaldoVac] = useState({ disponibles: 30, usados: 0, saldo: 30 });
+
+  // Filtros (tab Todas)
+  const [filtroTipo, setFiltroTipo] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('');
+  const [filtroPersonal, setFiltroPersonal] = useState('');
+
+  // Panel nueva solicitud
+  const [panelNueva, setPanelNueva] = useState(false);
+  const [form, setForm] = useState(emptySolForm);
+  const [saving, setSaving] = useState(false);
+
+  // Panel historial
+  const [historialSolId, setHistorialSolId] = useState(null);
+  const [historial, setHistorial] = useState([]);
+  const [histLoading, setHistLoading] = useState(false);
+
+  // Panel acción (aprobar/rechazar)
+  const [accionSolId, setAccionSolId] = useState(null);
+  const [accionTipo, setAccionTipo] = useState('');
+  const [accionComentario, setAccionComentario] = useState('');
+  const [accionSaving, setAccionSaving] = useState(false);
+
+  const canAdmin = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo || role?.es_admin_empresa);
+  const todosPersonal = useMemo(() => [
+    ...personalOperativo.map(p => ({ ...p, _tipo: 'operativo' })),
+    ...personalAdmin.map(p => ({ ...p, _tipo: 'administrativo' })),
+  ], [personalOperativo, personalAdmin]);
+
+  const personalActual = useMemo(() => {
+    const uid = authUser?.id || authUser?.user_id;
+    return todosPersonal.find(p => p.user_id === uid || p.id === uid) || todosPersonal[0];
+  }, [authUser, todosPersonal]);
+
+  const diasHabiles = useMemo(() => {
+    if (!form.fecha_inicio || !form.fecha_fin) return 0;
+    if (form.fecha_fin < form.fecha_inicio) return 0;
+    return solicitudesRrhhService.diasHabilesLocal(form.fecha_inicio, form.fecha_fin);
+  }, [form.fecha_inicio, form.fecha_fin]);
+
+  // Supervisores del personal actual (jefes posibles)
+  const supervisor = useMemo(() => {
+    if (!personalActual) return null;
+    const jefe = personalActual.supervisor_id || personalActual.jefe_user_id;
+    return todosPersonal.find(p => p.id === jefe || p.user_id === jefe) || null;
+  }, [personalActual, todosPersonal]);
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+    setLoading(true);
+    Promise.all([
+      solicitudesRrhhService.cargarSolicitudes(empresa.id),
+      solicitudesRrhhService.cargarConfigAusencias(empresa.id),
+    ]).then(([sols, cfg]) => {
+      setSolicitudes(sols);
+      setConfig(cfg);
+    }).catch(err => addNotificacion('Error cargando solicitudes: ' + err.message))
+      .finally(() => setLoading(false));
+  }, [empresa?.id]);
+
+  useEffect(() => {
+    if (!empresa?.id || !personalActual?.id) return;
+    solicitudesRrhhService.calcularSaldoVacaciones(empresa.id, personalActual.id)
+      .then(setSaldoVac).catch(() => {});
+  }, [empresa?.id, personalActual?.id, solicitudes]);
+
+  const abrirHistorial = async (solId) => {
+    setHistorialSolId(solId);
+    setHistLoading(true);
+    try {
+      const data = await solicitudesRrhhService.cargarHistorial(solId);
+      setHistorial(data);
+    } catch (err) {
+      addNotificacion('Error cargando historial: ' + err.message);
+    } finally {
+      setHistLoading(false);
+    }
+  };
+
+  const cerrarPaneles = () => {
+    setPanelNueva(false);
+    setHistorialSolId(null);
+    setAccionSolId(null);
+    setAccionComentario('');
+  };
+
+  const enviarSolicitud = async (e) => {
+    e.preventDefault();
+    if (!form.motivo.trim()) { addNotificacion('El motivo es obligatorio.'); return; }
+    if (diasHabiles <= 0) { addNotificacion('El rango de fechas no contiene días hábiles.'); return; }
+    if (form.tipo === 'vacaciones' && diasHabiles > saldoVac.saldo) {
+      addNotificacion(`No tienes suficientes días de vacaciones. Saldo: ${saldoVac.saldo} día(s).`);
+      return;
+    }
+    if (!empresa?.id || !personalActual) { addNotificacion('No se identificó el colaborador.'); return; }
+    setSaving(true);
+    try {
+      const nueva = await solicitudesRrhhService.crearSolicitud(empresa.id, {
+        personal_id: personalActual.id,
+        personal_nombre: personalActual.nombre,
+        personal_tipo: personalActual._tipo || 'operativo',
+        aprobador_id: supervisor?.id || null,
+        aprobador_nombre: supervisor?.nombre || null,
+        tipo: form.tipo,
+        fecha_inicio: form.fecha_inicio,
+        fecha_fin: form.fecha_fin,
+        motivo: form.motivo.trim(),
+        documento_url: form.documento_url.trim() || null,
+        registrado_desde: 'backoffice',
+      });
+      setSolicitudes(prev => [nueva, ...prev]);
+      addNotificacion('Solicitud enviada correctamente.');
+      setForm(emptySolForm());
+      cerrarPaneles();
+    } catch (err) {
+      addNotificacion('Error al enviar: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const ejecutarAccion = async () => {
+    if (!accionSolId || !accionTipo) return;
+    if (['rechazar_jefe', 'rechazar_rrhh', 'anular'].includes(accionTipo) && !accionComentario.trim()) {
+      addNotificacion('El comentario/motivo es obligatorio.');
+      return;
+    }
+    setAccionSaving(true);
+    const usuario = role?.nombre || authUser?.email || '';
+    try {
+      let updated;
+      const sol = solicitudes.find(s => s.id === accionSolId);
+      if (accionTipo === 'aprobar_jefe') {
+        updated = await solicitudesRrhhService.aprobarJefe(accionSolId, empresa.id, { comentario: accionComentario, usuario });
+      } else if (accionTipo === 'rechazar_jefe') {
+        updated = await solicitudesRrhhService.rechazarJefe(accionSolId, empresa.id, accionComentario, usuario);
+      } else if (accionTipo === 'confirmar_rrhh') {
+        updated = await solicitudesRrhhService.confirmarRrhh(accionSolId, empresa.id, {
+          tipo: sol?.tipo, diasHabiles: sol?.dias_habiles,
+          diasLicenciaEmpresa: config.dias_licencia_empresa,
+          confirmadoPor: usuario, comentario: accionComentario, usuario,
+        });
+      } else if (accionTipo === 'rechazar_rrhh') {
+        updated = await solicitudesRrhhService.rechazarRrhh(accionSolId, empresa.id, accionComentario, usuario);
+      } else if (accionTipo === 'anular') {
+        updated = await solicitudesRrhhService.anularSolicitud(accionSolId, empresa.id, accionComentario, usuario);
+      }
+      if (updated) {
+        setSolicitudes(prev => prev.map(s => s.id === updated.id ? updated : s));
+        addNotificacion('Acción aplicada correctamente.');
+      }
+      cerrarPaneles();
+    } catch (err) {
+      addNotificacion('Error: ' + err.message);
+    } finally {
+      setAccionSaving(false);
+    }
+  };
+
+  // Datos derivados
+  const misSolicitudes = useMemo(() =>
+    solicitudes.filter(s => s.personal_id === personalActual?.id)
+  , [solicitudes, personalActual]);
+
+  const pendientesAprobacion = useMemo(() => {
+    const misSubordinados = todosPersonal
+      .filter(p => p.supervisor_id === personalActual?.id || p.jefe_user_id === personalActual?.user_id)
+      .map(p => p.id);
+    return solicitudes.filter(s => s.estado === 'enviada' && misSubordinados.includes(s.personal_id));
+  }, [solicitudes, personalActual, todosPersonal]);
+
+  const todasFiltradas = useMemo(() => solicitudes.filter(s => {
+    if (filtroTipo && s.tipo !== filtroTipo) return false;
+    if (filtroEstado && s.estado !== filtroEstado) return false;
+    if (filtroPersonal && !s.personal_nombre.toLowerCase().includes(filtroPersonal.toLowerCase())) return false;
+    return true;
+  }), [solicitudes, filtroTipo, filtroEstado, filtroPersonal]);
+
+  // Calendario de ausencias: agrupar días por colaborador
+  const hoy = new Date();
+  const mesActual = hoy.getMonth();
+  const anioActual = hoy.getFullYear();
+  const diasDelMes = new Date(anioActual, mesActual + 1, 0).getDate();
+  const ausenciasActivas = useMemo(() =>
+    solicitudes.filter(s => ['aprobada_jefe', 'confirmada_rrhh', 'activa'].includes(s.estado))
+  , [solicitudes]);
+
+  function tieneDiaAusente(sol, dia) {
+    const d = new Date(anioActual, mesActual, dia);
+    const ini = new Date(sol.fecha_inicio + 'T00:00:00');
+    const fin = new Date(sol.fecha_fin + 'T00:00:00');
+    return d >= ini && d <= fin;
+  }
+
+  const colaboradoresConAusencia = useMemo(() => {
+    const ids = [...new Set(ausenciasActivas.map(s => s.personal_id))];
+    return ids.map(id => ({ id, nombre: ausenciasActivas.find(s => s.personal_id === id)?.personal_nombre || id }));
+  }, [ausenciasActivas]);
+
+  const accionSol = solicitudes.find(s => s.id === accionSolId);
+  const historialSol = solicitudes.find(s => s.id === historialSolId);
+
+  // ── Filas de tabla compartida ────────────────────────────────────────────────
+  function SolFila({ sol, accionesExtra }) {
+    return (
+      <tr>
+        <td>
+          <div style={{fontWeight:600, fontSize:13}}>{sol.personal_nombre}</div>
+          <div className="text-muted" style={{fontSize:11}}>{sol.personal_tipo}</div>
+        </td>
+        <td>
+          <div style={{display:'flex', alignItems:'center', gap:6}}>
+            <span style={{width:14, height:14, color:'var(--fg-muted)', flexShrink:0}}>{SOL_TIPO_ICONS[sol.tipo]}</span>
+            {SOL_TIPO_LABELS[sol.tipo] || sol.tipo}
+          </div>
+        </td>
+        <td style={{whiteSpace:'nowrap', fontSize:12}}>{sol.fecha_inicio} — {sol.fecha_fin}</td>
+        <td style={{textAlign:'center'}}>{sol.dias_habiles}</td>
+        <td><span className={'badge ' + solEstadoBadge(sol.estado)}>{SOL_ESTADO_LABELS[sol.estado] || sol.estado}</span></td>
+        <td>
+          <div className="row" style={{gap:6, justifyContent:'flex-end'}}>
+            <button type="button" className="btn btn-sm btn-secondary" onClick={() => abrirHistorial(sol.id)}>Historial</button>
+            {accionesExtra}
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  // ── Tabla genérica ───────────────────────────────────────────────────────────
+  function TablaBase({ filas }) {
+    return (
+      <table className="table" style={{width:'100%'}}>
+        <thead>
+          <tr>
+            <th>Colaborador</th><th>Tipo</th><th>Fechas</th>
+            <th style={{textAlign:'center'}}>Días</th><th>Estado</th><th></th>
+          </tr>
+        </thead>
+        <tbody>{filas}</tbody>
+      </table>
+    );
+  }
+
+  const loadingBlock = <div className="text-muted" style={{padding:40, textAlign:'center'}}>Cargando...</div>;
+
+  // ── Tab Mis solicitudes ──────────────────────────────────────────────────────
+  const tabMis = (
+    <div>
+      <div className="row" style={{gap:12, marginBottom:16, flexWrap:'wrap', alignItems:'center'}}>
+        <div className="card" style={{padding:'10px 16px', flex:0}}>
+          <div className="text-muted" style={{fontSize:11}}>Días de vacaciones</div>
+          <div style={{fontSize:20, fontWeight:700, color:'var(--green)'}}>{saldoVac.saldo}</div>
+          <div className="text-muted" style={{fontSize:11}}>disponibles ({saldoVac.usados} usados de {saldoVac.disponibles})</div>
+        </div>
+        <div style={{flex:1}}/>
+        <button type="button" className="btn btn-primary" onClick={() => { setForm(emptySolForm()); setPanelNueva(true); }}>
+          {I.plus} Nueva solicitud
+        </button>
+      </div>
+      {misSolicitudes.length === 0
+        ? <div className="text-muted" style={{padding:'32px 0', textAlign:'center'}}>No tienes solicitudes registradas.</div>
+        : <TablaBase filas={misSolicitudes.map(sol => <SolFila key={sol.id} sol={sol} accionesExtra={
+            sol.estado === 'enviada' ? (
+              <button type="button" className="btn btn-sm btn-secondary" style={{color:'var(--red)'}}
+                onClick={() => { setAccionSolId(sol.id); setAccionTipo('anular'); setAccionComentario(''); }}>
+                Anular
+              </button>
+            ) : null
+          }/>)}/>
+      }
+    </div>
+  );
+
+  // ── Tab Pendientes de aprobar ────────────────────────────────────────────────
+  const tabPendientes = (
+    <div>
+      {pendientesAprobacion.length === 0
+        ? <div className="text-muted" style={{padding:'32px 0', textAlign:'center'}}>No hay solicitudes pendientes de tu aprobación.</div>
+        : <TablaBase filas={pendientesAprobacion.map(sol => {
+            const solapamiento = ausenciasActivas.some(s =>
+              s.personal_id === sol.personal_id && s.id !== sol.id &&
+              s.fecha_inicio <= sol.fecha_fin && s.fecha_fin >= sol.fecha_inicio
+            );
+            const mismoRangoCount = ausenciasActivas.filter(s =>
+              s.fecha_inicio <= sol.fecha_fin && s.fecha_fin >= sol.fecha_inicio
+            ).length;
+            const pctAusente = todosPersonal.length > 0 ? Math.round(mismoRangoCount / todosPersonal.length * 100) : 0;
+            return (
+              <React.Fragment key={sol.id}>
+                {solapamiento && (
+                  <tr><td colSpan={6}><div className="alert" style={{margin:'4px 0', padding:'6px 12px', fontSize:12, background:'rgba(251,191,36,0.12)', borderLeft:'3px solid var(--amber)', color:'var(--amber)'}}>Advertencia: {sol.personal_nombre} ya tiene otra ausencia aprobada en este período.</div></td></tr>
+                )}
+                {pctAusente >= config.pct_max_equipo_ausente && (
+                  <tr><td colSpan={6}><div className="alert" style={{margin:'4px 0', padding:'6px 12px', fontSize:12, background:'rgba(239,68,68,0.10)', borderLeft:'3px solid var(--red)', color:'var(--red)'}}>Alerta: {pctAusente}% del equipo estará ausente en ese rango (límite: {config.pct_max_equipo_ausente}%).</div></td></tr>
+                )}
+                <SolFila sol={sol} accionesExtra={
+                  <div className="row" style={{gap:6}}>
+                    <button type="button" className="btn btn-sm btn-primary"
+                      onClick={() => { setAccionSolId(sol.id); setAccionTipo('aprobar_jefe'); setAccionComentario(''); }}>
+                      Aprobar
+                    </button>
+                    <button type="button" className="btn btn-sm btn-secondary" style={{color:'var(--red)'}}
+                      onClick={() => { setAccionSolId(sol.id); setAccionTipo('rechazar_jefe'); setAccionComentario(''); }}>
+                      Rechazar
+                    </button>
+                  </div>
+                }/>
+              </React.Fragment>
+            );
+          })}
+        />
+      }
+    </div>
+  );
+
+  // ── Tab Todas las solicitudes ────────────────────────────────────────────────
+  const tabTodas = (
+    <div>
+      <div className="row" style={{gap:10, marginBottom:14, flexWrap:'wrap'}}>
+        <select className="select" style={{width:180}} value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
+          <option value="">Todos los tipos</option>
+          {Object.entries(SOL_TIPO_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <select className="select" style={{width:180}} value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
+          <option value="">Todos los estados</option>
+          {Object.entries(SOL_ESTADO_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <input className="input" style={{width:200}} placeholder="Buscar colaborador..." value={filtroPersonal} onChange={e => setFiltroPersonal(e.target.value)}/>
+      </div>
+      {todasFiltradas.length === 0
+        ? <div className="text-muted" style={{padding:'32px 0', textAlign:'center'}}>No hay solicitudes con esos filtros.</div>
+        : <TablaBase filas={todasFiltradas.map(sol => (
+            <SolFila key={sol.id} sol={sol} accionesExtra={
+              sol.estado === 'aprobada_jefe' ? (
+                <div className="row" style={{gap:6}}>
+                  <button type="button" className="btn btn-sm btn-primary"
+                    onClick={() => { setAccionSolId(sol.id); setAccionTipo('confirmar_rrhh'); setAccionComentario(''); }}>
+                    Confirmar
+                  </button>
+                  <button type="button" className="btn btn-sm btn-secondary" style={{color:'var(--red)'}}
+                    onClick={() => { setAccionSolId(sol.id); setAccionTipo('rechazar_rrhh'); setAccionComentario(''); }}>
+                    Rechazar
+                  </button>
+                </div>
+              ) : sol.estado !== 'anulada' ? (
+                <button type="button" className="btn btn-sm btn-secondary" style={{color:'var(--red)'}}
+                  onClick={() => { setAccionSolId(sol.id); setAccionTipo('anular'); setAccionComentario(''); }}>
+                  Anular
+                </button>
+              ) : null
+            }/>
+          ))}
+        />
+      }
+    </div>
+  );
+
+  // ── Tab Calendario ───────────────────────────────────────────────────────────
+  const TIPO_COLORES = {
+    vacaciones: 'var(--cyan)', permiso_con_goce: 'var(--green)',
+    permiso_sin_goce: 'var(--amber)', licencia_medica: 'var(--red)',
+    licencia_maternidad: '#c084fc', licencia_paternidad: '#818cf8',
+    compensacion_horas: 'var(--fg-muted)',
+  };
+  const tabCalendario = (
+    <div style={{overflowX:'auto'}}>
+      <div className="row" style={{gap:12, flexWrap:'wrap', marginBottom:12}}>
+        {Object.entries(SOL_TIPO_LABELS).map(([k, v]) => (
+          <div key={k} className="row" style={{gap:6, alignItems:'center', fontSize:12}}>
+            <div style={{width:12, height:12, borderRadius:3, background: TIPO_COLORES[k] || 'var(--fg-muted)'}}/>
+            {v}
+          </div>
+        ))}
+      </div>
+      {colaboradoresConAusencia.length === 0
+        ? <div className="text-muted" style={{padding:'32px 0', textAlign:'center'}}>No hay ausencias aprobadas este mes.</div>
+        : (
+          <table style={{borderCollapse:'collapse', fontSize:12, minWidth:700}}>
+            <thead>
+              <tr>
+                <th style={{padding:'6px 10px', textAlign:'left', background:'var(--bg-subtle)', borderBottom:'1px solid var(--border)'}}>Colaborador</th>
+                {Array.from({length: diasDelMes}, (_, i) => (
+                  <th key={i+1} style={{padding:'4px', textAlign:'center', background:'var(--bg-subtle)', borderBottom:'1px solid var(--border)', minWidth:24, fontSize:10, color:'var(--fg-muted)'}}>
+                    {i+1}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {colaboradoresConAusencia.map(col => (
+                <tr key={col.id}>
+                  <td style={{padding:'4px 10px', whiteSpace:'nowrap', borderBottom:'1px solid var(--border-subtle)'}}>{col.nombre}</td>
+                  {Array.from({length: diasDelMes}, (_, i) => {
+                    const dia = i + 1;
+                    const sol = ausenciasActivas.find(s => s.personal_id === col.id && tieneDiaAusente(s, dia));
+                    return (
+                      <td key={dia} style={{padding:2, borderBottom:'1px solid var(--border-subtle)'}}>
+                        {sol && (
+                          <div style={{
+                            background: TIPO_COLORES[sol.tipo] || 'var(--fg-muted)',
+                            borderRadius:3, width:20, height:20, opacity:0.7,
+                            title: SOL_TIPO_LABELS[sol.tipo],
+                          }}/>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      }
+    </div>
+  );
+
+  // ── Panel nueva solicitud ────────────────────────────────────────────────────
+  const tiposOrdenados = Object.entries(SOL_TIPO_LABELS);
+  const reqDoc = solicitudesRrhhService.requiereDocumento(form.tipo);
+  const excedeSaldo = form.tipo === 'vacaciones' && diasHabiles > saldoVac.saldo && diasHabiles > 0;
+
+  const panelNuevaContent = panelNueva ? (
+    <>
+      <div className="side-panel-backdrop" onClick={cerrarPaneles}/>
+      <div className="side-panel">
+        <div className="side-panel-head">
+          <div><div className="eyebrow">RRHH</div><div className="font-display" style={{fontSize:20, fontWeight:700}}>Nueva solicitud</div></div>
+          <button type="button" className="icon-btn" onClick={cerrarPaneles}>{I.x}</button>
+        </div>
+        <div className="side-panel-body">
+          <form onSubmit={enviarSolicitud}>
+            <div style={{marginBottom:20}}>
+              <div className="text-muted" style={{fontSize:11, fontWeight:700, marginBottom:10, textTransform:'uppercase', letterSpacing:'0.06em'}}>Tipo de solicitud</div>
+              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px,1fr))', gap:8}}>
+                {tiposOrdenados.map(([k, v]) => (
+                  <button
+                    key={k} type="button"
+                    className={'btn ' + (form.tipo === k ? 'btn-primary' : 'btn-secondary')}
+                    style={{display:'flex', flexDirection:'column', alignItems:'center', gap:6, padding:'12px 8px', height:'auto'}}
+                    onClick={() => setForm(f => ({...f, tipo: k}))}
+                  >
+                    <span style={{width:20, height:20}}>{SOL_TIPO_ICONS[k]}</span>
+                    <span style={{fontSize:12, textAlign:'center', lineHeight:1.3}}>{v}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {form.tipo === 'vacaciones' && (
+              <div className="card" style={{padding:'8px 12px', marginBottom:14, background:'rgba(6,182,212,0.08)', border:'1px solid rgba(6,182,212,0.2)'}}>
+                <div style={{fontSize:12}}>Saldo de vacaciones: <strong style={{color:'var(--cyan)'}}>{saldoVac.saldo} días</strong> disponibles ({saldoVac.usados} usados)</div>
+              </div>
+            )}
+
+            <div className="grid-2" style={{gap:12, marginBottom:14}}>
+              <div className="input-group">
+                <label>Fecha inicio *</label>
+                <input className="input" type="date" value={form.fecha_inicio}
+                  onChange={e => setForm(f => ({...f, fecha_inicio: e.target.value}))} required/>
+              </div>
+              <div className="input-group">
+                <label>Fecha fin *</label>
+                <input className="input" type="date" value={form.fecha_fin} min={form.fecha_inicio}
+                  onChange={e => setForm(f => ({...f, fecha_fin: e.target.value}))} required/>
+              </div>
+            </div>
+            <div style={{marginBottom:14, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:8, fontSize:13}}>
+              Días hábiles: <strong>{diasHabiles}</strong>
+              {excedeSaldo && <span style={{color:'var(--red)', marginLeft:8}}>— Supera tu saldo ({saldoVac.saldo} días disponibles)</span>}
+            </div>
+
+            <div className="input-group" style={{marginBottom:14}}>
+              <label>Motivo *</label>
+              <textarea className="input" rows={3} value={form.motivo}
+                onChange={e => setForm(f => ({...f, motivo: e.target.value}))} required/>
+            </div>
+
+            {reqDoc && (
+              <div className="input-group" style={{marginBottom:14}}>
+                <label>URL del documento adjunto {reqDoc && <span style={{color:'var(--red)'}}>*</span>}</label>
+                <input className="input" type="url" placeholder="https://..." value={form.documento_url}
+                  onChange={e => setForm(f => ({...f, documento_url: e.target.value}))}/>
+                <div className="text-muted" style={{fontSize:11, marginTop:4}}>Requerido para este tipo de solicitud.</div>
+              </div>
+            )}
+
+            <div className="row" style={{justifyContent:'flex-end', gap:10, marginTop:20}}>
+              <button type="button" className="btn btn-secondary" onClick={cerrarPaneles}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={saving || excedeSaldo}>
+                {saving ? 'Enviando...' : 'Enviar solicitud'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </>
+  ) : null;
+
+  // ── Panel historial ──────────────────────────────────────────────────────────
+  const panelHistorial = historialSolId ? (
+    <>
+      <div className="side-panel-backdrop" onClick={cerrarPaneles}/>
+      <div className="side-panel">
+        <div className="side-panel-head">
+          <div>
+            <div className="eyebrow">{historialSol?.personal_nombre}</div>
+            <div className="font-display" style={{fontSize:20, fontWeight:700}}>Historial</div>
+          </div>
+          <button type="button" className="icon-btn" onClick={cerrarPaneles}>{I.x}</button>
+        </div>
+        <div className="side-panel-body">
+          {histLoading
+            ? <div className="text-muted" style={{padding:32, textAlign:'center'}}>Cargando...</div>
+            : historial.length === 0
+              ? <div className="text-muted" style={{padding:32, textAlign:'center'}}>Sin historial.</div>
+              : (
+                <div style={{position:'relative', paddingLeft:24}}>
+                  <div style={{position:'absolute', left:8, top:8, bottom:8, width:2, background:'var(--border)'}}/>
+                  {historial.map((h, idx) => (
+                    <div key={h.id} style={{position:'relative', marginBottom:20}}>
+                      <div style={{position:'absolute', left:-20, top:4, width:10, height:10, borderRadius:'50%', background: solEstadoBadge(h.estado_hasta) === 'badge-green' ? 'var(--green)' : solEstadoBadge(h.estado_hasta) === 'badge-red' ? 'var(--red)' : 'var(--amber)', border:'2px solid var(--bg)'}}/>
+                      <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:2}}>{new Date(h.creado_en).toLocaleString('es-PE')}</div>
+                      <div style={{fontSize:13, fontWeight:600}}>
+                        {h.estado_desde ? `${SOL_ESTADO_LABELS[h.estado_desde] || h.estado_desde} → ` : ''}
+                        <span className={'badge ' + solEstadoBadge(h.estado_hasta)} style={{fontSize:11}}>{SOL_ESTADO_LABELS[h.estado_hasta] || h.estado_hasta}</span>
+                      </div>
+                      {h.usuario && <div className="text-muted" style={{fontSize:12}}>por {h.usuario}</div>}
+                      {h.comentario && <div style={{fontSize:12, marginTop:4, color:'var(--fg-subtle)', fontStyle:'italic'}}>"{h.comentario}"</div>}
+                    </div>
+                  ))}
+                </div>
+              )
+          }
+        </div>
+      </div>
+    </>
+  ) : null;
+
+  // ── Panel acción ─────────────────────────────────────────────────────────────
+  const accionTitulos = {
+    aprobar_jefe: 'Aprobar solicitud', rechazar_jefe: 'Rechazar solicitud',
+    confirmar_rrhh: 'Confirmar en RRHH', rechazar_rrhh: 'Rechazar en RRHH', anular: 'Anular solicitud',
+  };
+  const esRechazo = ['rechazar_jefe', 'rechazar_rrhh', 'anular'].includes(accionTipo);
+  const panelAccion = accionSolId ? (
+    <>
+      <div className="side-panel-backdrop" onClick={cerrarPaneles}/>
+      <div className="side-panel" style={{maxWidth:420}}>
+        <div className="side-panel-head">
+          <div>
+            <div className="eyebrow">{accionSol?.personal_nombre}</div>
+            <div className="font-display" style={{fontSize:18, fontWeight:700}}>{accionTitulos[accionTipo]}</div>
+          </div>
+          <button type="button" className="icon-btn" onClick={cerrarPaneles}>{I.x}</button>
+        </div>
+        <div className="side-panel-body">
+          <div className="card" style={{padding:12, marginBottom:14, fontSize:13}}>
+            <div>{SOL_TIPO_LABELS[accionSol?.tipo]} · {accionSol?.dias_habiles} días hábiles</div>
+            <div className="text-muted">{accionSol?.fecha_inicio} — {accionSol?.fecha_fin}</div>
+            <div style={{marginTop:6}}>{accionSol?.motivo}</div>
+          </div>
+          <div className="input-group" style={{marginBottom:14}}>
+            <label>{esRechazo ? 'Motivo / comentario *' : 'Comentario (opcional)'}</label>
+            <textarea className="input" rows={3} value={accionComentario}
+              onChange={e => setAccionComentario(e.target.value)}
+              placeholder={esRechazo ? 'Obligatorio' : 'Opcional'}/>
+          </div>
+          {accionTipo === 'confirmar_rrhh' && accionSol && (() => {
+            const imp = solicitudesRrhhService.calcularImpactoNomina
+              ? null
+              : null;
+            return (
+              <div className="card" style={{padding:'8px 12px', marginBottom:14, fontSize:12, background:'rgba(6,182,212,0.08)'}}>
+                <div>Tipo de solicitud: <strong>{SOL_TIPO_LABELS[accionSol.tipo]}</strong></div>
+                <div>Impacto en nómina: al confirmar se calculará automáticamente.</div>
+              </div>
+            );
+          })()}
+          <div className="row" style={{justifyContent:'flex-end', gap:10}}>
+            <button type="button" className="btn btn-secondary" onClick={cerrarPaneles}>Cancelar</button>
+            <button
+              type="button"
+              className={'btn ' + (esRechazo ? 'btn-secondary' : 'btn-primary')}
+              style={esRechazo ? {color:'var(--red)', borderColor:'var(--red)'} : {}}
+              onClick={ejecutarAccion} disabled={accionSaving}
+            >
+              {accionSaving ? 'Procesando...' : accionTitulos[accionTipo]}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  ) : null;
+
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <h1 className="font-display">Solicitudes de RRHH</h1>
+          <div className="text-muted" style={{fontSize:13}}>Gestión de vacaciones, permisos, licencias y compensaciones</div>
+        </div>
+      </div>
+
+      <div className="tabs" style={{marginBottom:20}}>
+        <div className={'tab ' + (tab === 'mis' ? 'active' : '')} onClick={() => setTab('mis')}>Mis solicitudes</div>
+        {pendientesAprobacion.length > 0 && (
+          <div className={'tab ' + (tab === 'pendientes' ? 'active' : '')} onClick={() => setTab('pendientes')}>
+            Pendientes de aprobar
+            <span className="badge badge-orange" style={{marginLeft:6, fontSize:11}}>{pendientesAprobacion.length}</span>
+          </div>
+        )}
+        {canAdmin && <div className={'tab ' + (tab === 'todas' ? 'active' : '')} onClick={() => setTab('todas')}>Todas las solicitudes</div>}
+        <div className={'tab ' + (tab === 'calendario' ? 'active' : '')} onClick={() => setTab('calendario')}>Calendario de ausencias</div>
+      </div>
+
+      {loading ? loadingBlock : (
+        tab === 'mis' ? tabMis :
+        tab === 'pendientes' ? tabPendientes :
+        tab === 'todas' ? tabTodas :
+        tabCalendario
+      )}
+
+      {panelNuevaContent}
+      {panelHistorial}
+      {panelAccion}
     </>
   );
 }

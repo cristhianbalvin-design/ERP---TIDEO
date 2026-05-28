@@ -3,6 +3,7 @@ import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { rrhhService } from './services/rrhhService.js';
+import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import { PHONE_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { getSupabaseClient } from './lib/supabaseClient.js';
 
@@ -27,6 +28,7 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
     { k: 'supervisor', l: 'Supervisor', icon: I.shield },
     { k: 'gerencia', l: 'Gerencia', icon: I.trend },
     { k: 'asistencia', l: 'Asistencia', icon: I.clock, requiereAsistencia: true },
+    { k: 'solicitudes', l: 'Solicitudes', icon: I.userCheck },
   ].filter(p => modulosUsuario.includes(p.k) && (!p.requiereAsistencia || puedeVerAsistencia)), [modulosUsuarioKey, puedeVerAsistencia]);
 
   useEffect(() => {
@@ -77,6 +79,7 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
               {profile === 'supervisor' && <SupervisorView screen={screen} setScreen={setScreen}/>}
               {profile === 'gerencia' && <GerenciaView screen={screen} setScreen={setScreen}/>}
               {profile === 'asistencia' && <AsistenciaMobileView screen={screen} setScreen={setScreen}/>}
+              {profile === 'solicitudes' && <SolicitudesMovilView screen={screen} setScreen={setScreen}/>}
             </div>
           </div>
         </div>
@@ -2628,6 +2631,394 @@ function GerenciaView({ screen, setScreen }) {
       <div className="mobile-nav-item">{I.settings}Ajustes</div>
     </div>
   </>;
+}
+
+// ── Solicitudes de RRHH — Vista mobile ─────────────────────────────────────
+
+const SOL_TIPO_LABELS_M = {
+  vacaciones: 'Vacaciones',
+  permiso_con_goce: 'Permiso con goce',
+  permiso_sin_goce: 'Permiso sin goce',
+  licencia_medica: 'Licencia médica',
+  licencia_maternidad: 'Licencia maternidad',
+  licencia_paternidad: 'Licencia paternidad',
+  compensacion_horas: 'Compensación horas',
+};
+
+const SOL_ESTADO_LABELS_M = {
+  borrador: 'Borrador', enviada: 'Enviada', aprobada_jefe: 'Aprobada',
+  rechazada_jefe: 'Rechazada', confirmada_rrhh: 'Confirmada', rechazada_rrhh: 'Rechazada',
+  activa: 'Activa', anulada: 'Anulada',
+};
+
+const SOL_TIPO_ICONS_M = {
+  vacaciones: I.calendar, permiso_con_goce: I.clock, permiso_sin_goce: I.clock,
+  licencia_medica: I.userCheck, licencia_maternidad: I.userCheck, licencia_paternidad: I.userCheck,
+  compensacion_horas: I.arrowUp,
+};
+
+function solEstadoBadgeM(estado) {
+  if (['aprobada_jefe', 'confirmada_rrhh', 'activa'].includes(estado)) return 'badge-green';
+  if (['rechazada_jefe', 'rechazada_rrhh', 'anulada'].includes(estado)) return 'badge-red';
+  if (estado === 'enviada') return 'badge-orange';
+  return 'badge-gray';
+}
+
+function SolicitudesMovilView({ screen, setScreen }) {
+  const { empresa, role, personalOperativo, personalAdmin, authUser, addNotificacion } = useApp();
+  const [solicitudes, setSolicitudes] = useState([]);
+  const [saldoVac, setSaldoVac] = useState({ disponibles: 30, usados: 0, saldo: 30 });
+  const [paso, setPaso] = useState(1); // 1 tipo, 2 fechas, 3 motivo, 4 confirmación
+  const [form, setForm] = useState({ tipo: 'vacaciones', fecha_inicio: new Date().toISOString().slice(0,10), fecha_fin: new Date().toISOString().slice(0,10), motivo: '', documento_url: '' });
+  const [saving, setSaving] = useState(false);
+  const [accionSolId, setAccionSolId] = useState(null);
+  const [accionTipo, setAccionTipo] = useState('');
+  const [accionComentario, setAccionComentario] = useState('');
+  const [accionSaving, setAccionSaving] = useState(false);
+
+  const todosPersonal = useMemo(() => [
+    ...personalOperativo.map(p => ({ ...p, _tipo: 'operativo' })),
+    ...personalAdmin.map(p => ({ ...p, _tipo: 'administrativo' })),
+  ], [personalOperativo, personalAdmin]);
+
+  const personalActual = useMemo(() => {
+    const uid = authUser?.id || authUser?.user_id;
+    return todosPersonal.find(p => p.user_id === uid || p.id === uid) || todosPersonal[0];
+  }, [authUser, todosPersonal]);
+
+  const supervisor = useMemo(() => {
+    if (!personalActual) return null;
+    const jefe = personalActual.supervisor_id || personalActual.jefe_user_id;
+    return todosPersonal.find(p => p.id === jefe || p.user_id === jefe) || null;
+  }, [personalActual, todosPersonal]);
+
+  const diasHabiles = useMemo(() => {
+    if (!form.fecha_inicio || !form.fecha_fin || form.fecha_fin < form.fecha_inicio) return 0;
+    return solicitudesRrhhService.diasHabilesLocal(form.fecha_inicio, form.fecha_fin);
+  }, [form.fecha_inicio, form.fecha_fin]);
+
+  const esJefe = useMemo(() =>
+    todosPersonal.some(p => p.supervisor_id === personalActual?.id || p.jefe_user_id === personalActual?.user_id)
+  , [todosPersonal, personalActual]);
+
+  const pendientesEquipo = useMemo(() => {
+    const misIds = todosPersonal
+      .filter(p => p.supervisor_id === personalActual?.id || p.jefe_user_id === personalActual?.user_id)
+      .map(p => p.id);
+    return solicitudes.filter(s => s.estado === 'enviada' && misIds.includes(s.personal_id));
+  }, [solicitudes, personalActual, todosPersonal]);
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+    solicitudesRrhhService.cargarSolicitudes(empresa.id)
+      .then(setSolicitudes).catch(() => {});
+  }, [empresa?.id]);
+
+  useEffect(() => {
+    if (!empresa?.id || !personalActual?.id) return;
+    solicitudesRrhhService.calcularSaldoVacaciones(empresa.id, personalActual.id)
+      .then(setSaldoVac).catch(() => {});
+  }, [empresa?.id, personalActual?.id, solicitudes]);
+
+  const misSolicitudes = useMemo(() =>
+    solicitudes.filter(s => s.personal_id === personalActual?.id)
+      .sort((a, b) => b.creado_en.localeCompare(a.creado_en))
+  , [solicitudes, personalActual]);
+
+  const enviarSolicitud = async () => {
+    if (!form.motivo.trim() || diasHabiles <= 0 || !empresa?.id || !personalActual) {
+      addNotificacion('Completa todos los campos obligatorios.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const nueva = await solicitudesRrhhService.crearSolicitud(empresa.id, {
+        personal_id: personalActual.id,
+        personal_nombre: personalActual.nombre,
+        personal_tipo: personalActual._tipo || 'operativo',
+        aprobador_id: supervisor?.id || null,
+        aprobador_nombre: supervisor?.nombre || null,
+        tipo: form.tipo,
+        fecha_inicio: form.fecha_inicio,
+        fecha_fin: form.fecha_fin,
+        motivo: form.motivo.trim(),
+        documento_url: form.documento_url.trim() || null,
+        registrado_desde: 'mobile',
+      });
+      setSolicitudes(prev => [nueva, ...prev]);
+      addNotificacion('Solicitud enviada.');
+      setPaso(1);
+      setForm({ tipo: 'vacaciones', fecha_inicio: new Date().toISOString().slice(0,10), fecha_fin: new Date().toISOString().slice(0,10), motivo: '', documento_url: '' });
+      setScreen('home');
+    } catch (err) {
+      addNotificacion('Error: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const ejecutarAccion = async () => {
+    if (!accionSolId) return;
+    if (accionTipo === 'rechazar_jefe' && !accionComentario.trim()) {
+      addNotificacion('El comentario es obligatorio.');
+      return;
+    }
+    setAccionSaving(true);
+    const usuario = role?.nombre || authUser?.email || '';
+    try {
+      let updated;
+      if (accionTipo === 'aprobar_jefe') {
+        updated = await solicitudesRrhhService.aprobarJefe(accionSolId, empresa.id, { comentario: accionComentario, usuario });
+      } else if (accionTipo === 'rechazar_jefe') {
+        updated = await solicitudesRrhhService.rechazarJefe(accionSolId, empresa.id, accionComentario, usuario);
+      }
+      if (updated) setSolicitudes(prev => prev.map(s => s.id === updated.id ? updated : s));
+      addNotificacion('Acción aplicada.');
+      setAccionSolId(null);
+      setAccionTipo('');
+      setAccionComentario('');
+      setScreen('home');
+    } catch (err) {
+      addNotificacion('Error: ' + err.message);
+    } finally {
+      setAccionSaving(false);
+    }
+  };
+
+  const reqDoc = solicitudesRrhhService.requiereDocumento(form.tipo);
+  const excedeSaldo = form.tipo === 'vacaciones' && diasHabiles > saldoVac.saldo && diasHabiles > 0;
+
+  // ── Pantalla home ────────────────────────────────────────────────────────────
+  if (screen === 'home') return (
+    <div style={{padding:'16px 14px', overflowY:'auto', height:'100%'}}>
+      <div style={{fontWeight:700, fontSize:17, marginBottom:4}}>Mis Solicitudes</div>
+
+      <div className="card row" style={{padding:'10px 14px', marginBottom:14, gap:12, alignItems:'center'}}>
+        <div style={{width:32, height:32, color:'var(--cyan)'}}>{I.calendar}</div>
+        <div>
+          <div style={{fontSize:11, color:'var(--fg-muted)'}}>Vacaciones disponibles</div>
+          <div style={{fontSize:20, fontWeight:700, color:'var(--cyan)'}}>{saldoVac.saldo} días</div>
+          <div style={{fontSize:10, color:'var(--fg-muted)'}}>{saldoVac.usados} usados de {saldoVac.disponibles}</div>
+        </div>
+        {esJefe && pendientesEquipo.length > 0 && (
+          <div style={{marginLeft:'auto', textAlign:'right'}}>
+            <div style={{fontSize:10, color:'var(--fg-muted)'}}>Pendientes de aprobar</div>
+            <span className="badge badge-orange" style={{fontSize:13, padding:'2px 10px'}}>{pendientesEquipo.length}</span>
+          </div>
+        )}
+      </div>
+
+      <button className="btn btn-primary" style={{width:'100%', marginBottom:14}} onClick={() => { setPaso(1); setScreen('nueva'); }}>
+        {I.plus} Nueva solicitud
+      </button>
+
+      {esJefe && pendientesEquipo.length > 0 && (
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12, fontWeight:700, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8}}>Pendientes de tu aprobación</div>
+          {pendientesEquipo.map(sol => (
+            <div key={sol.id} className="card" style={{padding:12, marginBottom:8}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6}}>
+                <div>
+                  <div style={{fontWeight:600, fontSize:13}}>{sol.personal_nombre}</div>
+                  <div style={{fontSize:12, color:'var(--fg-muted)'}}>{SOL_TIPO_LABELS_M[sol.tipo] || sol.tipo}</div>
+                </div>
+                <span className={'badge ' + solEstadoBadgeM(sol.estado)}>{SOL_ESTADO_LABELS_M[sol.estado]}</span>
+              </div>
+              <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:8}}>{sol.fecha_inicio} — {sol.fecha_fin} · {sol.dias_habiles} días hábiles</div>
+              <div className="row" style={{gap:8}}>
+                <button className="btn btn-primary btn-sm" style={{flex:1}}
+                  onClick={() => { setAccionSolId(sol.id); setAccionTipo('aprobar_jefe'); setAccionComentario(''); setScreen('accion'); }}>
+                  Aprobar
+                </button>
+                <button className="btn btn-secondary btn-sm" style={{flex:1, color:'var(--red)'}}
+                  onClick={() => { setAccionSolId(sol.id); setAccionTipo('rechazar_jefe'); setAccionComentario(''); setScreen('accion'); }}>
+                  Rechazar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{fontSize:12, fontWeight:700, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8}}>Mis solicitudes recientes</div>
+      {misSolicitudes.length === 0
+        ? <div className="text-muted" style={{textAlign:'center', padding:24, fontSize:13}}>No tienes solicitudes.</div>
+        : misSolicitudes.slice(0, 8).map(sol => (
+          <div key={sol.id} className="card" style={{padding:12, marginBottom:8}}>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+              <div style={{display:'flex', alignItems:'center', gap:8}}>
+                <span style={{width:18, height:18, color:'var(--fg-muted)'}}>{SOL_TIPO_ICONS_M[sol.tipo]}</span>
+                <div>
+                  <div style={{fontWeight:600, fontSize:13}}>{SOL_TIPO_LABELS_M[sol.tipo] || sol.tipo}</div>
+                  <div style={{fontSize:11, color:'var(--fg-muted)'}}>{sol.fecha_inicio} — {sol.fecha_fin} · {sol.dias_habiles} días</div>
+                </div>
+              </div>
+              <span className={'badge ' + solEstadoBadgeM(sol.estado)} style={{fontSize:11}}>{SOL_ESTADO_LABELS_M[sol.estado]}</span>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  );
+
+  // ── Pantalla nueva solicitud — paso a paso ───────────────────────────────────
+  if (screen === 'nueva') {
+    const tiposOrdenados = Object.entries(SOL_TIPO_LABELS_M);
+    return (
+      <div style={{padding:'16px 14px', overflowY:'auto', height:'100%', display:'flex', flexDirection:'column'}}>
+        <div className="row" style={{alignItems:'center', marginBottom:16, gap:8}}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setScreen('home')}>{I.chevLeft}</button>
+          <div style={{fontWeight:700, fontSize:15}}>Nueva solicitud · Paso {paso} de {reqDoc ? 4 : 3}</div>
+        </div>
+
+        {paso === 1 && (
+          <div style={{flex:1}}>
+            <div className="text-muted" style={{fontSize:12, marginBottom:12}}>Selecciona el tipo de solicitud</div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+              {tiposOrdenados.map(([k, v]) => (
+                <button
+                  key={k} type="button"
+                  className={'btn ' + (form.tipo === k ? 'btn-primary' : 'btn-secondary')}
+                  style={{display:'flex', flexDirection:'column', alignItems:'center', gap:8, padding:'16px 8px', height:'auto', fontSize:12}}
+                  onClick={() => setForm(f => ({...f, tipo: k}))}
+                >
+                  <span style={{width:22, height:22}}>{SOL_TIPO_ICONS_M[k]}</span>
+                  {v}
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-primary" style={{width:'100%', marginTop:16}}
+              onClick={() => setPaso(2)}>
+              Continuar
+            </button>
+          </div>
+        )}
+
+        {paso === 2 && (
+          <div style={{flex:1}}>
+            <div className="text-muted" style={{fontSize:12, marginBottom:12}}>Selecciona las fechas</div>
+            {form.tipo === 'vacaciones' && (
+              <div className="card" style={{padding:'8px 12px', marginBottom:12, background:'rgba(6,182,212,0.08)'}}>
+                <div style={{fontSize:12}}>Saldo vacaciones: <strong style={{color:'var(--cyan)'}}>{saldoVac.saldo} días</strong> disponibles</div>
+              </div>
+            )}
+            <div className="input-group" style={{marginBottom:12}}>
+              <label>Fecha inicio</label>
+              <input className="input" type="date" value={form.fecha_inicio}
+                onChange={e => setForm(f => ({...f, fecha_inicio: e.target.value}))}/>
+            </div>
+            <div className="input-group" style={{marginBottom:12}}>
+              <label>Fecha fin</label>
+              <input className="input" type="date" value={form.fecha_fin} min={form.fecha_inicio}
+                onChange={e => setForm(f => ({...f, fecha_fin: e.target.value}))}/>
+            </div>
+            <div style={{padding:'10px 12px', background:'var(--bg-subtle)', borderRadius:8, fontSize:14, fontWeight:600, marginBottom:12}}>
+              Días hábiles: {diasHabiles}
+              {excedeSaldo && <span style={{color:'var(--red)', fontWeight:400, fontSize:12, display:'block', marginTop:2}}>Supera tu saldo disponible ({saldoVac.saldo} días)</span>}
+            </div>
+            <div className="row" style={{gap:10, marginTop:8}}>
+              <button className="btn btn-secondary" style={{flex:1}} onClick={() => setPaso(1)}>{I.chevLeft} Atrás</button>
+              <button className="btn btn-primary" style={{flex:2}} disabled={diasHabiles <= 0 || excedeSaldo}
+                onClick={() => setPaso(3)}>
+                Continuar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {paso === 3 && (
+          <div style={{flex:1}}>
+            <div className="text-muted" style={{fontSize:12, marginBottom:12}}>Motivo{reqDoc && ' y documento'}</div>
+            <div className="input-group" style={{marginBottom:12}}>
+              <label>Motivo *</label>
+              <textarea className="input" rows={4} value={form.motivo}
+                onChange={e => setForm(f => ({...f, motivo: e.target.value}))}
+                placeholder="Describe el motivo de tu solicitud..."/>
+            </div>
+            {reqDoc && (
+              <div className="input-group" style={{marginBottom:12}}>
+                <label>URL del documento adjunto *</label>
+                <input className="input" type="url" placeholder="https://..." value={form.documento_url}
+                  onChange={e => setForm(f => ({...f, documento_url: e.target.value}))}/>
+                <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Requerido para este tipo de licencia.</div>
+              </div>
+            )}
+            <div className="row" style={{gap:10, marginTop:8}}>
+              <button className="btn btn-secondary" style={{flex:1}} onClick={() => setPaso(2)}>{I.chevLeft} Atrás</button>
+              <button className="btn btn-primary" style={{flex:2}} disabled={!form.motivo.trim()}
+                onClick={() => setPaso(4)}>
+                Revisar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {paso === 4 && (
+          <div style={{flex:1}}>
+            <div className="text-muted" style={{fontSize:12, marginBottom:12}}>Confirma tu solicitud</div>
+            <div className="card" style={{padding:14, marginBottom:14}}>
+              <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10}}>
+                <span style={{width:20, height:20, color:'var(--fg-muted)'}}>{SOL_TIPO_ICONS_M[form.tipo]}</span>
+                <div style={{fontWeight:700, fontSize:15}}>{SOL_TIPO_LABELS_M[form.tipo]}</div>
+              </div>
+              <div style={{fontSize:13, lineHeight:1.7}}>
+                <div><strong>Desde:</strong> {form.fecha_inicio}</div>
+                <div><strong>Hasta:</strong> {form.fecha_fin}</div>
+                <div><strong>Días hábiles:</strong> {diasHabiles}</div>
+                <div style={{marginTop:8, color:'var(--fg-muted)'}}>{form.motivo}</div>
+              </div>
+            </div>
+            <div className="row" style={{gap:10}}>
+              <button className="btn btn-secondary" style={{flex:1}} onClick={() => setPaso(3)}>{I.chevLeft} Atrás</button>
+              <button className="btn btn-primary" style={{flex:2}} onClick={enviarSolicitud} disabled={saving}>
+                {saving ? 'Enviando...' : 'Confirmar y enviar'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Pantalla acción (aprobar/rechazar) ───────────────────────────────────────
+  if (screen === 'accion') {
+    const accionSol = solicitudes.find(s => s.id === accionSolId);
+    const esRechazo = accionTipo === 'rechazar_jefe';
+    return (
+      <div style={{padding:'16px 14px', overflowY:'auto', height:'100%', display:'flex', flexDirection:'column'}}>
+        <div className="row" style={{alignItems:'center', marginBottom:16, gap:8}}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setScreen('home')}>{I.chevLeft}</button>
+          <div style={{fontWeight:700, fontSize:15}}>{esRechazo ? 'Rechazar' : 'Aprobar'} solicitud</div>
+        </div>
+        {accionSol && (
+          <div className="card" style={{padding:14, marginBottom:14}}>
+            <div style={{fontWeight:600, fontSize:14}}>{accionSol.personal_nombre}</div>
+            <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>{SOL_TIPO_LABELS_M[accionSol.tipo]} · {accionSol.dias_habiles} días</div>
+            <div style={{fontSize:12, color:'var(--fg-muted)'}}>{accionSol.fecha_inicio} — {accionSol.fecha_fin}</div>
+            <div style={{fontSize:12, marginTop:8}}>{accionSol.motivo}</div>
+          </div>
+        )}
+        <div className="input-group" style={{marginBottom:14}}>
+          <label>{esRechazo ? 'Motivo del rechazo *' : 'Comentario (opcional)'}</label>
+          <textarea className="input" rows={3} value={accionComentario}
+            onChange={e => setAccionComentario(e.target.value)}
+            placeholder={esRechazo ? 'Obligatorio' : 'Opcional'}/>
+        </div>
+        <div className="row" style={{gap:10, marginTop:'auto'}}>
+          <button className="btn btn-secondary" style={{flex:1}} onClick={() => setScreen('home')}>Cancelar</button>
+          <button
+            className={'btn ' + (esRechazo ? 'btn-secondary' : 'btn-primary')}
+            style={{flex:2, ...(esRechazo ? {color:'var(--red)', borderColor:'var(--red)'} : {})}}
+            onClick={ejecutarAccion} disabled={accionSaving}
+          >
+            {accionSaving ? 'Procesando...' : (esRechazo ? 'Confirmar rechazo' : 'Confirmar aprobación')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 export { MobileFieldView };

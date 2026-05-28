@@ -45,6 +45,7 @@ export async function persistirOT(supabase, empresaId, ot) {
     centro_costo_id: ot.centro_costo_id || null,
     centro_beneficio_id: ot.centro_beneficio_id || null,
     es_adicional: ot.es_adicional || false,
+    participantes_admin: ot.participantes_admin || [],
   };
 
   const insert = async (payload) => supabase.from('ordenes_trabajo').insert(payload);
@@ -109,6 +110,7 @@ export async function actualizarOT(supabase, otId, datos) {
   if (datos.est_terceros !== undefined) row.est_terceros = datos.est_terceros !== '' ? (Number(datos.est_terceros) || null) : null;
   if (datos.est_logistica !== undefined) row.est_logistica = datos.est_logistica !== '' ? (Number(datos.est_logistica) || null) : null;
   if (datos.est_detalle !== undefined) row.est_detalle = datos.est_detalle;
+  if (datos.participantes_admin !== undefined) row.participantes_admin = datos.participantes_admin;
   row.updated_at = new Date().toISOString();
   if (!Object.keys(row).length) return;
 

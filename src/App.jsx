@@ -50,7 +50,8 @@ const Parametros   = lazy(() => import('./pages_admin.jsx').then(m => ({ default
 const RRHHAdmin    = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.RRHHAdmin })));
 const MetricasSaaS = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.MetricasSaaS })));
 const Organigrama  = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Organigrama })));
-const Comisiones   = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Comisiones })));
+const Comisiones         = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Comisiones })));
+const SolicitudesRrhh    = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.SolicitudesRrhh })));
 
 // Finanzas
 const CxC               = lazy(() => import('./pages_fin.jsx').then(m => ({ default: m.CxC })));
@@ -299,7 +300,8 @@ function MainLayout() {
       case 'asistencia':       return <ControlAsistencia />;
       case 'turnos':           return <TurnosHorarios />;
       case 'nomina':           return <Nomina />;
-      case 'comisiones':       return <Comisiones />;
+      case 'comisiones':          return <Comisiones />;
+      case 'solicitudes_rrhh':    return <SolicitudesRrhh />;
       case 'tickets':          return <Tickets />;
       case 'presupuestos':     return <Presupuestos />;
       case 'cuentas':          return <Cuentas/>;

@@ -81,7 +81,7 @@ export async function cambiarEstadoTicket(ticketId, estado) {
   if (['resuelto', 'cerrado'].includes(estado)) {
     patch.fecha_resolucion = new Date().toISOString();
   }
-  if (['abierto', 'en_proceso'].includes(estado)) {
+  if (['abierto', 'en_proceso', 'qc'].includes(estado)) {
     patch.fecha_resolucion = null;
   }
 

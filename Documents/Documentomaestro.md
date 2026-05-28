@@ -79,6 +79,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Turnos y Horarios | ✔ Implementado | Módulo standalone `pages_turnos.jsx`. CRUD completo: crear/editar/eliminar con side-panel. Campos: nombre, entrada/salida, tolerancia, cruza medianoche, días laborables (o variables), refrigerio. Preview de horas efectivas en tiempo real. |
 | Nómina Básica | ✔ Implementado | Cálculo completo: bruto, AFP/ONP, IR 5ta, cargas empresa. Cierre de período → egresos en finanzas. |
 | Comisiones | ✔ Implementado | Liquidación, aprobaciones (acuerdos especiales, +48h sin respuesta), retenciones IR de 4ta categoría según suspensión y tipo de cambio, generación de RHE y CxP asociada. |
+| Solicitudes de RRHH | ✔ Implementado | Flujo multietapa: enviada → aprobada_jefe → confirmada_rrhh → activa. Tipos: vacaciones, permiso con/sin goce, licencia médica/maternidad/paternidad, compensación horas. Saldo de vacaciones automático. Calendario de ausencias mensual. Vista mobile con formulario paso a paso. |
 | Préstamos al Personal | ✅ Implementado (como "Préstamos y Pagos") | Mover a sección RRHH |
 
 #### Logística
@@ -194,6 +195,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | `src/services/finanzasService.js` | CxC, CxP, facturas, caja chica | 5.3 KB |
 | `src/services/operacionesService.js` | OTs, partes, cierres tecnicos | 6.2 KB |
 | `src/services/ticketsService.js` | CRUD Soporte y Tickets + SLA | 3 KB |
+| `src/services/solicitudesRrhhService.js` | CRUD solicitudes RRHH, aprobaciones, saldo vacaciones, historial | 5 KB |
 | `src/services/storageService.js` | Acceso centralizado a Supabase Storage y tabla `adjuntos` | 5 KB |
 | `src/components/FileUpload.jsx` | Componente reutilizable de carga, listado y eliminación de adjuntos | 8 KB |
 | `src/services/estadoResultadosService.js` | Cálculo ER, agrupación por categoría | 4.2 KB |
@@ -708,11 +710,15 @@ Vinculada a cotización. Panel de saldos: total aprobado / ejecutado / valorizad
 
 Tipos: cliente, interna, tercerizada, garantía, correctiva, preventiva, emergencia, proyecto. Facturable / no facturable. Asociación a OS Cliente, proyecto, centro de costo. `direccion_ejecucion` y `ubicacion_gps`. Tareas, materiales, servicios terceros, gastos, evidencias, conformidad. Cierre técnico y económico. Costo real y margen. PDF. Estados con badges de color.
 
+**Participantes administrativos (opcional):** el formulario de creación y la ficha de edición incluyen una sección "Participantes administrativos" separada visualmente del personal operativo/técnico. Permite seleccionar uno o más colaboradores de `personal_administrativo` que participarán en la OT, registrando snapshot de nombre y horas estimadas de participación. Se persiste en el campo JSONB `participantes_admin` de `ordenes_trabajo` (array de `{personal_id, personal_nombre, horas_estimadas}`). Su gestión no toca el Planner.
+
 ---
 
 ### 8.12 Partes Diarios
 
 Por OT: técnico, fecha, actividades, horas, avance, materiales, evidencias. Aprobación del supervisor. Badge "Campo" si registrado desde móvil con GPS.
+
+**Lista de colaboradores en el parte:** incluye (1) personal operativo asignado en el Planner a la OT y (2) participantes administrativos registrados en `participantes_admin` de la OT. Ambos grupos aparecen diferenciados en el selector mediante `<optgroup>` con etiquetas "Operativo" y "Administrativo". Los campos del parte son idénticos para ambos tipos: horas trabajadas y actividades. El costo se calcula con `calcCostoHora` (que ya busca en ambas listas) y se acumula en `costoMO` y `costoReal` de la OT al aprobar el parte.
 *   **Persistencia completa**: Almacena de manera nativa en la base de datos (Supabase) las líneas de logística (`logistica_lineas` en JSONB), líneas de terceros (`terceros_lineas` en JSONB) y el nombre del técnico (`tecnico_nombre`), previniendo la pérdida de datos al recargar la página.
 *   **Políticas RLS flexibilizadas**: Permite la actualización (`UPDATE`) de partes diarios si el usuario tiene el permiso de `partes:crear` O `partes:editar`, facilitando que los operarios editen sus borradores de partes sin requerir obligatoriamente el permiso administrativo de edición general.
 
@@ -753,6 +759,45 @@ Registro manual: seleccionar trabajador, fecha, hora de entrada, hora de salida.
 **4 tabs:** Vista diaria (tabla del día), Vista semanal (grilla), Vista mensual (resumen por trabajador con totales), Resumen por trabajador (detalle + impacto referencial en nómina + exportar Excel).
 
 **Registro masivo:** modal con todos los trabajadores del día en una sola grilla.
+
+---
+
+### 8.17b RRHH — Solicitudes de RRHH
+
+**Tipos de solicitud:** vacaciones, permiso_con_goce, permiso_sin_goce, licencia_medica, licencia_maternidad, licencia_paternidad, compensacion_horas.
+
+**Estados del flujo:** `borrador` → `enviada` → `aprobada_jefe` → `confirmada_rrhh` → `activa`. Ramas de rechazo: `rechazada_jefe`, `rechazada_rrhh`. Terminación: `anulada`.
+
+**Flujo completo:**
+1. Colaborador crea solicitud (desktop o mobile) → estado `enviada`.
+2. Jefe directo aprueba o rechaza (con comentario obligatorio en rechazo) → `aprobada_jefe` / `rechazada_jefe`.
+3. RRHH confirma → `confirmada_rrhh`. Al confirmar se calcula automáticamente el impacto en nómina.
+4. Estado `activa` aplicable al iniciar el período de ausencia.
+
+**Impacto en nómina al confirmar:**
+- Vacaciones / permiso_con_goce → `sin_descuento`, días_a_descontar = 0.
+- Permiso_sin_goce → `descuento_total`, días_a_descontar = días hábiles.
+- Licencia_médica → `descuento_parcial`, días_a_descontar = max(0, días hábiles − días que cubre empresa según config).
+- Maternidad / paternidad / compensación → `sin_impacto`, días_a_descontar = 0.
+
+**Reglas de negocio críticas:**
+- Vacaciones: bloquear envío si días hábiles solicitados superan saldo disponible del colaborador.
+- Documento obligatorio (URL): licencia_médica, maternidad y paternidad no pasan a `confirmada_rrhh` sin documento adjunto.
+- Rechazo siempre con comentario obligatorio.
+- Solapamiento: alerta si existe otra solicitud aprobada del mismo colaborador en el rango (no bloquea).
+- Alerta de equipo: advertencia si % de equipo ausente el mismo rango supera `pct_max_equipo_ausente` de config.
+- Sin borrado: solo `anulada` con motivo obligatorio.
+
+**Conexión con Asistencia:** al confirmar se registra automáticamente `falta_justificada` en `registros_asistencia` con referencia a `solicitud_rrhh_id` para todos los días del rango.
+**Conexión con Nómina:** `dias_a_descontar` es consumido por el cierre de nómina para descontar días de permiso_sin_goce.
+
+**4 tabs desktop:** Mis solicitudes (con saldo vacaciones), Pendientes de aprobar (con alertas de solapamiento), Todas las solicitudes (filtros: tipo, estado, colaborador), Calendario de ausencias (grilla mensual por colaborador).
+
+**Side-panel de nueva solicitud:** botones grandes por tipo, fechas con días hábiles en tiempo real, saldo vacaciones visible, campo de documento según tipo.
+
+**Vista mobile:** formulario 3 pasos (tipo → fechas → motivo/documento → confirmación), acciones de aprobación para supervisores.
+
+**Migración:** `146_solicitudes_rrhh.sql` — tablas `solicitudes_rrhh`, `solicitudes_rrhh_historial`, `rrhh_config_ausencias`. Función `calcular_dias_habiles`. RPC `crear_solicitud_rrhh` (security definer). Trigger historial append-only. Columna `solicitud_rrhh_id` en `registros_asistencia`.
 
 ---
 
@@ -1116,11 +1161,11 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 **Comercial:** hojas_costeo (con secciones jsonb: mano_obra, materiales, servicios_terceros, logistica + totales calculados + margen_objetivo_pct + responsable_costeo + cotizacion_id), cotizaciones (+ hoja_costeo_id para trazabilidad), historial_versiones_cotizacion, os_clientes, condiciones_comerciales.
 
-**Operaciones:** backlog, ordenes_trabajo (+ubicacion_gps, direccion_ejecucion), partes_diarios (+logistica_lineas, terceros_lineas, tecnico_nombre), tickets (id uuid, empresa_id, numero TK por tenant, titulo, descripcion, tipo, canal_entrada, estado, prioridad, cuenta_id/cuenta_nombre, responsable_id/responsable_nombre, fecha_limite_sla, sla_estado calculado, fecha_resolucion, creado_por, creado_en, actualizado_en), evidencias, conformidad_cliente, remisiones, valorizaciones.
+**Operaciones:** backlog, ordenes_trabajo (+ubicacion_gps, direccion_ejecucion, +participantes_admin jsonb — array de participantes administrativos con personal_id, personal_nombre, horas_estimadas), partes_diarios (+logistica_lineas, terceros_lineas, tecnico_nombre), tickets (id uuid, empresa_id, numero TK por tenant, titulo, descripcion, tipo, canal_entrada, estado, prioridad, cuenta_id/cuenta_nombre, responsable_id/responsable_nombre, fecha_limite_sla, sla_estado calculado, fecha_resolucion, creado_por, creado_en, actualizado_en), evidencias, conformidad_cliente, remisiones, valorizaciones.
 
 **Inventario y compras:** almacenes, stock, movimientos_inventario, kardex, solpe_interna, proveedores, documentos_proveedor, evaluaciones_proveedor, contactos_proveedor, procesos_compra, ordenes_compra, ordenes_servicio, recepciones, conformidad_proveedor, traslados_logisticos.
 
-**RRHH:** personal_operativo (+turno_id, sueldo_base, sistema_pensionario), personal_administrativo (+suspension_retenciones, vencimiento_suspension), turnos, registros_asistencia, periodos_nomina, detalle_nomina, prestamos_personal, recibos_honorarios (id, empresa_id, vendedor_id, vendedor_nombre, vendedor_ruc, periodo, comisiones_ids, monto_bruto, retencion_ir, monto_neto, estado, creado_en, moneda, personal_id, motivo_retencion).
+**RRHH:** personal_operativo (+turno_id, sueldo_base, sistema_pensionario), personal_administrativo (+suspension_retenciones, vencimiento_suspension), turnos, registros_asistencia (+solicitud_rrhh_id), periodos_nomina, detalle_nomina, prestamos_personal, recibos_honorarios (id, empresa_id, vendedor_id, vendedor_nombre, vendedor_ruc, periodo, comisiones_ids, monto_bruto, retencion_ir, monto_neto, estado, creado_en, moneda, personal_id, motivo_retencion), solicitudes_rrhh (id, empresa_id, personal_id, personal_nombre, personal_tipo, aprobador_id, aprobador_nombre, tipo, fecha_inicio, fecha_fin, dias_habiles, motivo, documento_url, requiere_documento, estado, comentario_jefe, comentario_rrhh, motivo_anulacion, fecha_aprobacion_jefe, fecha_confirmacion, confirmado_por, impacto_nomina, dias_a_descontar, registrado_desde, creado_por, creado_en, actualizado_en), solicitudes_rrhh_historial (id, solicitud_id, empresa_id, estado_desde, estado_hasta, comentario, usuario, creado_en), rrhh_config_ausencias (empresa_id, dias_vacaciones_anio, max_dias_permiso_goce, dias_licencia_empresa, pct_max_equipo_ausente).
 
 **Financiamiento:** financiamientos, tabla_amortizacion, pagos_financiamiento.
 
@@ -1269,6 +1314,9 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 
 | Fecha | Cambios principales |
 |-------|---------------------|
+| 28/05/2026 | **Participantes administrativos en OT y Parte Diario (migración 147):** brecha cerrada: personal administrativo puede participar en una OT y registrar horas en el Parte Diario sin pasar por el Planner. Columna `participantes_admin jsonb` agregada a `ordenes_trabajo` mediante `ALTER TABLE … ADD COLUMN IF NOT EXISTS`. El formulario de creación y la ficha de edición de OT incluyen una sección opcional "Participantes administrativos" con selector de colaborador activo + horas estimadas. En el Parte Diario, el selector de colaborador muestra operativos (del Planner) y admins (de `participantes_admin`) diferenciados con `<optgroup>`. El costo de admins se acumula en `costoMO`/`costoReal` igual que el de operativos. Sin cambios en Planner, `calcCostoHora`, flujo de aprobación ni estructura de `partes_diarios`. |
+| 28/05/2026 | **Módulo Solicitudes de RRHH (migración 146):** flujo multietapa enviada → aprobada_jefe → confirmada_rrhh con historial append-only automático. Tres tablas nuevas: `solicitudes_rrhh`, `solicitudes_rrhh_historial`, `rrhh_config_ausencias`. Función `calcular_dias_habiles`. RPC `crear_solicitud_rrhh` (security definer). Trigger historial + trigger `actualizado_en`. Columna `solicitud_rrhh_id` en `registros_asistencia`. Servicio `solicitudesRrhhService.js` con operaciones CRUD, aprobaciones, cálculo de impacto nómina y saldo de vacaciones. Componente `SolicitudesRrhh` con 4 tabs (mis solicitudes, pendientes, todas, calendario de ausencias), side-panels de nueva solicitud e historial, side-panel de acción con validaciones. Vista mobile `SolicitudesMovilView` con formulario de 4 pasos y acciones de aprobación para supervisores. Sidebar entrada en sección RRHH entre Comisiones y Préstamos. |
+| 28/05/2026 | **Panel de detalle de Tickets editable:** el side-panel de un ticket en estado `abierto` ahora tiene modo edición inline. Botón "Editar" habilita formulario con campos título, descripción, prioridad, tipo, canal de entrada, cliente y responsable. Botón "Guardar cambios" llama `ticketsService.actualizarTicket` y actualiza estado local optimista. Botón "Cancelar" revierte al valor original. Tickets en estado cerrado o resuelto muestran badge "Solo lectura". Los botones de transición de estado se reorganizaron en una tarjeta "Flujo" separada. Corrección en `ticketsService.cleanTicketPayload`: `creado_por` solo se incluye en el payload si el campo estaba explícitamente presente, evitando sobrescribir el valor en Supabase al editar. |
 | 28/05/2026 | **Storage transversal:** migración `145_storage_transversal.sql` crea tabla `adjuntos` con RLS por tenant y dos buckets nuevos (`documentos-privados` privado con signed URLs y `documentos-generales` público, ambos 20 MB). Nuevo `src/services/storageService.js` como único acceso a Storage, componente reusable `src/components/FileUpload.jsx` y primera integración real en Tickets: adjuntos en nuevo ticket y panel de detalle sin agregar columnas a `tickets`. |
 | 28/05/2026 | **Limpieza de tablas fantasma y brecha de comprobantes:** migración `144_limpieza_tablas_fantasma.sql` elimina `tickets_soporte` (residuo de migración 065, nunca usada por frontend) y `os_cliente` (tabla huérfana sin migraciones locales; la tabla activa es `os_clientes`). Documento maestro corregido: `imagen_comprobante` se remueve de `compras_gastos` porque nunca existió en Supabase y se registra deuda técnica para persistir número e imagen del comprobante cuando se implemente Storage. |
 | 28/05/2026 | **Soporte y Tickets conectado a Supabase:** migracion `143_tickets.sql` agrega tabla `tickets` con RLS por `usuario_tiene_empresa(empresa_id)`, trigger de numeracion `TK-XXXX` por tenant, calculo de fecha limite SLA y vista `tickets_con_sla` con `sla_estado` calculado en base. Nuevo `src/services/ticketsService.js` para cargar, crear, actualizar estado, editar y eliminar. Los 7 tickets demo salen de datos inline y pasan a `MOCK.tickets` en `src/data.js`. El componente `Tickets` queda desacoplado, carga modo mock/Supabase, muestra estado de carga, crea tickets desde formulario y mueve tarjetas con actualizacion optimista. |
