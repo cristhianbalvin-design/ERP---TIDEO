@@ -7384,7 +7384,7 @@ function Tickets() {
   const detailPanel = selectedTicket ? (
     <>
       <div className="side-panel-backdrop" onClick={() => setDetailTicketId(null)}/>
-      <div className="side-panel ficha-detail-panel" style={{width:'min(620px, 96vw)'}}>
+      <div className="side-panel ficha-detail-panel ticket-detail-panel" style={{width:'min(620px, 96vw)'}}>
         <div className="side-panel-head">
           <div>
             <div className="eyebrow">{selectedTicket.numero || 'Ticket'}</div>
