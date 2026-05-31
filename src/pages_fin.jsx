@@ -4,9 +4,12 @@ import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { buildEstadoResultados } from './services/estadoResultadosService.js';
 import { buildTesoreriaSummary } from './services/tesoreriaService.js';
+import { rrhhService } from './services/rrhhService.js';
 
 // Finanzas: CxC, Tesorería/Match, Estado de Resultados, Facturación
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
+const moneyCurrency = (value, moneda = 'PEN') => money(value, symOf(moneda));
+const moneyDCurrency = (value, moneda = 'PEN') => moneyD(value, symOf(moneda));
 
 function CxCLegacy() {
   const { cxc } = useApp();
@@ -136,9 +139,12 @@ function CxC() {
 
   // ── KPIs ──────────────────────────────────────────────────────────────
   const cxcActivas = useMemo(() => (cxc||[]).filter(c => c.estado !== 'anulada'), [cxc]);
-  const totalPorCobrar = useMemo(() => cxcActivas.reduce((s,c) => s + saldoDe(c), 0), [cxcActivas]);
-  const totalVencido   = useMemo(() => cxcActivas.filter(c => diasMoraDe(c) > 0).reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, today]);
-  const totalEnGestion = useMemo(() => cxcActivas.filter(c => estadoDe(c) === 'en_gestion').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, gestionesCobranza, today]);
+  const totalPorCobrarPEN = useMemo(() => cxcActivas.filter(c => (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas]);
+  const totalPorCobrarUSD = useMemo(() => cxcActivas.filter(c => (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas]);
+  const totalVencidoPEN   = useMemo(() => cxcActivas.filter(c => diasMoraDe(c) > 0 && (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, today]);
+  const totalVencidoUSD   = useMemo(() => cxcActivas.filter(c => diasMoraDe(c) > 0 && (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, today]);
+  const totalEnGestionPEN = useMemo(() => cxcActivas.filter(c => estadoDe(c) === 'en_gestion' && (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, gestionesCobranza, today]);
+  const totalEnGestionUSD = useMemo(() => cxcActivas.filter(c => estadoDe(c) === 'en_gestion' && (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, gestionesCobranza, today]);
 
   // ── Aging ─────────────────────────────────────────────────────────────
   const aging = useMemo(() => [
@@ -151,7 +157,12 @@ function CxC() {
       const d = diasMoraDe(c);
       return saldoDe(c) > 0 && d >= b.min && (b.max == null || d <= b.max);
     });
-    return { ...b, monto: items.reduce((s,c) => s + saldoDe(c), 0), count: items.length };
+    return { 
+      ...b, 
+      montoPEN: items.filter(c => (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0),
+      montoUSD: items.filter(c => (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0), 
+      count: items.length 
+    };
   }), [cxcActivas, today]);
 
   // ── Filtered rows ─────────────────────────────────────────────────────
@@ -327,14 +338,14 @@ function CxC() {
               </div>
               <div className="card" style={{padding:20}}>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,textAlign:'center'}}>
-                  <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Total facturado</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora'}}>{money(totalDe(c))}</div></div>
-                  <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Total pagado</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora',color:'var(--green)'}}>{money(pagadoDe(c))}</div></div>
-                  <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Saldo pendiente</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora',color:saldo>0?'var(--orange)':'var(--fg)'}}>{money(saldo)}</div></div>
+                  <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Total facturado</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora'}}>{moneyCurrency(totalDe(c), c.moneda)}</div></div>
+                  <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Total pagado</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora',color:'var(--green)'}}>{moneyCurrency(pagadoDe(c), c.moneda)}</div></div>
+                  <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Saldo pendiente</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora',color:saldo>0?'var(--orange)':'var(--fg)'}}>{moneyCurrency(saldo, c.moneda)}</div></div>
                 </div>
                 {dias > 0 && (
                   <div style={{marginTop:16,paddingTop:16,borderTop:'1px solid var(--border)',display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,textAlign:'center'}}>
                     <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Días de mora</div><div style={{fontSize:22,fontWeight:700,fontFamily:'Sora',color:'var(--danger)'}}>{dias}d</div></div>
-                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Interés de mora</div><div style={{fontSize:22,fontWeight:700,fontFamily:'Sora',color:'var(--danger)'}}>{money(interes)}</div></div>
+                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Interés de mora</div><div style={{fontSize:22,fontWeight:700,fontFamily:'Sora',color:'var(--danger)'}}>{moneyDCurrency(interes, c.moneda)}</div></div>
                   </div>
                 )}
               </div>
@@ -445,9 +456,9 @@ function CxC() {
         <div>
           <h1 className="page-title">Cuentas por Cobrar</h1>
           <div className="page-sub" style={{display:'flex',gap:16,flexWrap:'wrap',alignItems:'center'}}>
-            <span>Total por cobrar: <strong>{money(totalPorCobrar)}</strong></span>
-            <span style={{color:'var(--danger)',fontWeight:600}}>· Vencido: {money(totalVencido)}</span>
-            <span style={{color:'var(--orange)',fontWeight:600}}>· En gestión: {money(totalEnGestion)}</span>
+            <span>Total por cobrar: <strong>{money(totalPorCobrarPEN)}</strong>{totalPorCobrarUSD > 0 && <> · <strong>{money(totalPorCobrarUSD, 'US$')}</strong></>}</span>
+            <span style={{color:'var(--danger)',fontWeight:600}}>· Vencido: {money(totalVencidoPEN)}{totalVencidoUSD > 0 && <> · {money(totalVencidoUSD, 'US$')}</>}</span>
+            <span style={{color:'var(--orange)',fontWeight:600}}>· En gestión: {money(totalEnGestionPEN)}{totalEnGestionUSD > 0 && <> · {money(totalEnGestionUSD, 'US$')}</>}</span>
           </div>
         </div>
         <div className="row" style={{gap:8}}>
@@ -464,7 +475,10 @@ function CxC() {
           <div key={b.key} className="kpi-card" style={{cursor:'pointer',outline:agingFilter===b.key?'2px solid var(--cyan)':'none',transition:'outline 0.15s'}}
             onClick={()=>setAgingFilter(agingFilter===b.key?null:b.key)}>
             <div className="kpi-label">{b.label}</div>
-            <div className="kpi-value" style={{fontSize:22}}>{money(b.monto)}</div>
+            <div className="kpi-value" style={{fontSize:22}}>
+              {money(b.montoPEN)}
+              {b.montoUSD > 0 && <span style={{fontSize:16, marginLeft:6, color:'var(--fg-muted)'}}>{money(b.montoUSD, 'US$')}</span>}
+            </div>
             <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>{b.count} {b.count===1?'factura':'facturas'}</div>
             <div className={'kpi-icon '+b.color}>{I.clock}</div>
           </div>
@@ -531,10 +545,10 @@ function CxC() {
                     <td className="mono">{facturaNumeroDe(c)}</td>
                     <td className="text-muted">{osNumeroDe(c)}</td>
                     <td style={{color:dias>0?'var(--danger)':dias===0?'var(--orange)':'inherit',fontWeight:dias>0?600:400}}>{vence}</td>
-                    <td className="num">{money(totalDe(c))}</td>
-                    <td className="num"><strong>{money(saldoDe(c))}</strong></td>
+                    <td className="num">{moneyCurrency(totalDe(c), c.moneda)}</td>
+                    <td className="num"><strong>{moneyCurrency(saldoDe(c), c.moneda)}</strong></td>
                     <td className="num">{dias>0?<span style={{color:'var(--danger)',fontWeight:600}}>{dias}d</span>:<span className="text-subtle">—</span>}</td>
-                    <td className="num">{inter>0?<span style={{color:'var(--danger)'}}>{money(inter)}</span>:<span className="text-subtle">—</span>}</td>
+                    <td className="num">{inter>0?<span style={{color:'var(--danger)'}}>{moneyCurrency(inter, c.moneda)}</span>:<span className="text-subtle">—</span>}</td>
                     <td style={{color:'var(--fg-muted)',fontSize:12}}>{c.medio_pago_esperado||<span className="text-subtle">—</span>}</td>
                     <td><span className={'badge '+meta.cls}>{meta.label}</span></td>
                     <td onClick={e=>e.stopPropagation()}>
@@ -570,9 +584,9 @@ function CxC() {
                 {[
                   ['Cliente', clienteDe(cobroSel), null],
                   ['Factura vinculada', facturaNumeroDe(cobroSel), null],
-                  ['Total facturado', money(totalDe(cobroSel)), null],
-                  ['Total pagado', money(pagadoDe(cobroSel)), 'var(--green)'],
-                  ['Saldo pendiente', money(saldoDe(cobroSel)), 'var(--orange)'],
+                  ['Total facturado', moneyCurrency(totalDe(cobroSel), cobroSel.moneda), null],
+                  ['Total pagado', moneyCurrency(pagadoDe(cobroSel), cobroSel.moneda), 'var(--green)'],
+                  ['Saldo pendiente', moneyCurrency(saldoDe(cobroSel), cobroSel.moneda), 'var(--orange)'],
                 ].map(([label, val, color]) => (
                   <div key={label} style={{display:'flex',justifyContent:'space-between'}}>
                     <span style={{fontSize:13,color:'var(--fg-muted)'}}>{label}</span>
@@ -582,7 +596,7 @@ function CxC() {
                 {diasMoraDe(cobroSel) > 0 && (
                   <div style={{display:'flex',justifyContent:'space-between'}}>
                     <span style={{fontSize:13,color:'var(--fg-muted)'}}>Interés de mora</span>
-                    <span style={{fontSize:13,fontWeight:600,color:'var(--danger)'}}>{moneyD(interesMoraDe(cobroSel))}</span>
+                    <span style={{fontSize:13,fontWeight:600,color:'var(--danger)'}}>{moneyDCurrency(interesMoraDe(cobroSel), cobroSel.moneda)}</span>
                   </div>
                 )}
               </div>
@@ -1762,7 +1776,7 @@ function Facturacion() {
   const {
     facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, seriesDocumentarias,
     emitirFacturaConCxC, anularFactura, emitirNotaCredito, emitirNotaDebito,
-    registrarCobroCxC, navigate, searchQuery,
+    registrarCobroCxC, generarCxP, navigate, searchQuery,
   } = useApp();
 
   const today = new Date().toISOString().split('T')[0];
@@ -1796,6 +1810,7 @@ function Facturacion() {
   const [ncMotivo, setNcMotivo] = useState('');
   const [ncPartidasSel, setNcPartidasSel] = useState([]);
   const [ncNotas, setNcNotas] = useState('');
+  const [ncDevolucion, setNcDevolucion] = useState(false);
   const [ndMotivo, setNdMotivo] = useState('');
   const [ndConcepto, setNdConcepto] = useState('');
   const [ndMonto, setNdMonto] = useState('');
@@ -1970,8 +1985,27 @@ function Facturacion() {
         const p = ncPartidasSel.find(x => x.id === pId);
         return p?.sel ? { descripcion: it.descripcion, cantidad: it.cantidad, precio_unitario: Number(p.monto_acreditar||0) } : null;
       }).filter(Boolean);
-      await emitirNotaCredito(ncndFacId, { motivo: ncMotivo, items, subtotal: ncSubtotal, igv: ncIgvAmt, total: totalNC, notas: ncNotas });
-      setNcndForm(null); setNcndFacId(null); setSelFac(null);
+      const nc = await emitirNotaCredito(ncndFacId, { motivo: ncMotivo, items, subtotal: ncSubtotal, igv: ncIgvAmt, total: totalNC, notas: ncNotas });
+      if (ncDevolucion && totalNC > 0) {
+        const ncId = nc?.id || ncndFacId;
+        const today = new Date().toISOString().split('T')[0];
+        const addDias30 = d => { const dt = new Date(`${d}T00:00:00`); dt.setDate(dt.getDate() + 15); return dt.toISOString().split('T')[0]; };
+        await generarCxP({
+          tipo_beneficiario: 'cliente',
+          cuenta_id: facOrigen.cuenta_id,
+          concepto: `Devolución NC — ${facOrigen.numero} — ${cuentaNombre(facOrigen.cuenta_id)}`,
+          factura_numero: `NC/${facOrigen.numero}`,
+          fecha_emision: today,
+          fecha_vencimiento: addDias30(today),
+          monto_total: totalNC,
+          moneda: facOrigen.moneda || 'PEN',
+          estado: 'por_pagar',
+          origen: 'nc_devolucion',
+          motivo_cxp: 'devolucion_nc',
+          nc_id: ncId,
+        });
+      }
+      setNcndForm(null); setNcndFacId(null); setSelFac(null); setNcDevolucion(false);
     };
 
     return (
@@ -2060,6 +2094,18 @@ function Facturacion() {
             <div className="input-group">
               <label>Notas <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
               <textarea className="input" rows={2} value={ncNotas} onChange={e => setNcNotas(e.target.value)} placeholder="Observaciones adicionales..." />
+            </div>
+
+            <div style={{padding:'12px 14px', borderRadius:8, border:'1px solid var(--border)', background:'var(--bg-subtle)'}}>
+              <label style={{display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontSize:13, fontWeight:600}}>
+                <input type="checkbox" checked={ncDevolucion} onChange={e => setNcDevolucion(e.target.checked)}/>
+                Esta NC implica una devolución de dinero al cliente
+              </label>
+              {ncDevolucion && (
+                <div style={{marginTop:8, fontSize:12, color:'var(--orange)', padding:'6px 8px', background:'color-mix(in srgb, var(--orange) 8%, transparent)', borderRadius:6}}>
+                  Se creará una obligación de pago pendiente en Tesorería por <strong>{money(totalNC)}</strong>, vinculada a esta NC. El tesorero podrá ejecutar la transferencia desde CxP.
+                </div>
+              )}
             </div>
           </div>
 
@@ -2242,7 +2288,7 @@ function Facturacion() {
       const tipoForm = tipo === 'nota_credito' ? 'nc' : 'nd';
       setNcndFacId(f.id);
       setNcndForm(tipoForm);
-      setNcMotivo(''); setNcNotas('');
+      setNcMotivo(''); setNcNotas(''); setNcDevolucion(false);
       setNcPartidasSel((f.items||[]).map((it,i) => ({
         id: it.id || `p_${i}`,
         sel: true,
@@ -2363,15 +2409,15 @@ function Facturacion() {
           </div>
           <div className="card" style={{padding:'14px 18px'}}>
             <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>CxC</div>
-            <div style={{fontWeight:600}}>{cxcVinc ? money(cxcVinc.saldo||0) : '—'}</div>
+            <div style={{fontWeight:600}}>{cxcVinc ? moneyCurrency(cxcVinc.saldo||0, f.moneda) : '—'}</div>
             <div style={{fontSize:12,color:'var(--fg-muted)'}}>
               {cxcVinc ? (FAC_BADGE_LABEL[cxcVinc.estado]||cxcVinc.estado) : 'Sin CxC'}
             </div>
           </div>
           <div className="card" style={{padding:'14px 18px'}}>
             <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Total</div>
-            <div style={{fontWeight:700,fontSize:18,fontFamily:'Sora',color:'var(--cyan)'}}>{money(f.total||0)}</div>
-            <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:2}}>IGV: {money(f.igv||0)}</div>
+            <div style={{fontWeight:700,fontSize:18,fontFamily:'Sora',color:'var(--cyan)'}}>{moneyCurrency(f.total||0, f.moneda)}</div>
+            <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:2}}>IGV: {moneyCurrency(f.igv||0, f.moneda)}</div>
           </div>
         </div>
 
@@ -2414,8 +2460,8 @@ function Facturacion() {
                       <tr key={i}>
                         <td>{item.descripcion||'—'}</td>
                         <td className="num">{item.cantidad}</td>
-                        <td className="num">{money(item.precio_unitario)}</td>
-                        <td className="num" style={{fontWeight:600}}>{money(Number(item.cantidad)*Number(item.precio_unitario))}</td>
+                        <td className="num">{moneyCurrency(item.precio_unitario, f.moneda)}</td>
+                        <td className="num" style={{fontWeight:600}}>{moneyCurrency(Number(item.cantidad)*Number(item.precio_unitario), f.moneda)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -2428,15 +2474,15 @@ function Facturacion() {
               <div style={{width:280,marginLeft:'auto'}}>
                 <div className="row" style={{justifyContent:'space-between',marginBottom:6}}>
                   <span className="text-muted" style={{fontSize:13}}>Subtotal</span>
-                  <span className="num">{money(f.subtotal)}</span>
+                  <span className="num">{moneyCurrency(f.subtotal, f.moneda)}</span>
                 </div>
                 <div className="row" style={{justifyContent:'space-between',marginBottom:6}}>
                   <span className="text-muted" style={{fontSize:13}}>IGV</span>
-                  <span className="num">{money(f.igv)}</span>
+                  <span className="num">{moneyCurrency(f.igv, f.moneda)}</span>
                 </div>
                 <div className="row" style={{justifyContent:'space-between',paddingTop:6,borderTop:'1px solid var(--border)',fontWeight:700,fontSize:15,fontFamily:'Sora'}}>
                   <span>Total</span>
-                  <span className="num">{money(f.total)}</span>
+                  <span className="num">{moneyCurrency(f.total, f.moneda)}</span>
                 </div>
               </div>
             </div>
@@ -2859,9 +2905,9 @@ function Facturacion() {
                     <td style={{fontSize:12}}>{TIPO_DOC_LABELS[f.tipo_documento] || f.tipo_documento || 'Factura'}</td>
                     <td className="mono text-muted" style={{fontSize:12}}>{val?.numero || f.valorizaciones?.numero || '—'}</td>
                     <td className="mono text-muted" style={{fontSize:12}}>{os?.numero || '—'}</td>
-                    <td className="num">{money(f.subtotal)}</td>
-                    <td className="num">{money(f.igv)}</td>
-                    <td className="num" style={{fontWeight:600}}>{money(f.total || f.monto)}</td>
+                    <td className="num">{moneyCurrency(f.subtotal, f.moneda)}</td>
+                    <td className="num">{moneyCurrency(f.igv, f.moneda)}</td>
+                    <td className="num" style={{fontWeight:600}}>{moneyCurrency(f.total || f.monto, f.moneda)}</td>
                     <td className="text-muted">{f.fecha_emision || '—'}</td>
                     <td className="text-muted">{f.fecha_vencimiento || '—'}</td>
                     <td>
@@ -2938,70 +2984,249 @@ function Ventas() {
 }
 
 // ============ CAJA CHICA ============
+const CATS_CC = ['Administrativos','Materiales','Servicios terceros','Logística','Comerciales','Gastos financieros'];
+const CC_FORM_INIT = { fecha: new Date().toISOString().split('T')[0], concepto: '', monto: '', moneda: 'PEN', categoria: 'Administrativos', num_comprobante: '', ceco_id: '' };
+
 function CajaChica() {
+  const { cajaChica, registrarEgresoCajaChica, centrosCosto, authUser } = useApp();
+  const [panel, setPanel] = useState(false);
+  const [form, setForm] = useState(CC_FORM_INIT);
+  const [guardando, setGuardando] = useState(false);
+  const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const totalMes = cajaChica.filter(c => c.estado !== 'anulado' && String(c.fecha || '').slice(0, 7) === new Date().toISOString().slice(0, 7)).reduce((s, c) => s + Number(c.monto || 0), 0);
+
+  const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const guardar = async e => {
+    e.preventDefault();
+    if (!form.concepto || !Number(form.monto)) return;
+    setGuardando(true);
+    try {
+      await registrarEgresoCajaChica({
+        ...form,
+        monto: Number(form.monto),
+        responsable_nombre: authUser?.email || 'usuario',
+        ceco_id: form.ceco_id || null,
+      });
+      setPanel(false);
+      setForm(CC_FORM_INIT);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   return (
     <>
       <div className="page-header">
         <div>
           <h1 className="page-title">Caja Chica</h1>
-          <div className="page-sub">Fondos fijos y rendición de gastos menores</div>
+          <div className="page-sub">Fondos fijos y gastos menores · Mes actual: {money(totalMes)}</div>
         </div>
-        <button className="btn btn-primary">{I.plus} Registrar Gasto</button>
+        <button className="btn btn-primary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Registrar Gasto</button>
+      </div>
+      <div className="kpi-grid">
+        <div className="kpi-card"><div className="kpi-label">Movimientos</div><div className="kpi-value">{cajaChica.filter(c => c.estado !== 'anulado').length}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Mes actual</div><div className="kpi-value">{money(totalMes)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Anulados</div><div className="kpi-value">{cajaChica.filter(c => c.estado === 'anulado').length}</div></div>
       </div>
       <div className="card mt-6">
         <div className="table-wrap">
           <table className="tbl">
             <thead>
               <tr>
-                <th>ID</th>
                 <th>Fecha</th>
-                <th>Responsable</th>
                 <th>Concepto</th>
+                <th>Categoría</th>
                 <th>Comprobante</th>
                 <th>Monto</th>
                 <th>Estado</th>
               </tr>
             </thead>
             <tbody>
-              {MOCK.cajaChica.map(c => (
-                <tr key={c.id} className="hover-row">
-                  <td className="mono" style={{fontWeight:600}}>{c.id}</td>
+              {cajaChica.length ? cajaChica.map(c => (
+                <tr key={c.id} className="hover-row" style={{opacity: c.estado === 'anulado' ? 0.5 : 1}}>
                   <td className="text-muted">{c.fecha}</td>
-                  <td>{c.responsable}</td>
                   <td>{c.concepto}</td>
-                  <td className="mono text-muted">{c.comprobante}</td>
+                  <td><span className="badge badge-gray">{c.categoria}</span></td>
+                  <td className="mono text-muted">{c.num_comprobante || '—'}</td>
                   <td className="num"><strong>{money(c.monto)}</strong></td>
-                  <td>
-                    <span className={'badge ' + (c.estado==='aprobado'?'badge-green':c.estado==='rendido'?'badge-cyan':'badge-orange')}>
-                      {c.estado.toUpperCase()}
-                    </span>
-                  </td>
+                  <td><span className={'badge ' + (c.estado === 'anulado' ? 'badge-red' : 'badge-green')}>{c.estado}</span></td>
                 </tr>
-              ))}
+              )) : (
+                <tr><td colSpan="6" className="text-center text-muted" style={{padding:32}}>No hay movimientos de caja chica.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {panel && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setPanel(false)}/>
+          <div className="side-panel" style={{width:'min(520px,96vw)'}}>
+            <div className="side-panel-head">
+              <div><div className="eyebrow">Caja chica</div><div className="font-display" style={{fontSize:20,fontWeight:700}}>Registrar egreso</div></div>
+              <button className="icon-btn" onClick={() => setPanel(false)}>{I.x}</button>
+            </div>
+            <form className="side-panel-body" onSubmit={guardar} style={{display:'flex',flexDirection:'column',gap:14}}>
+              <div className="grid-2" style={{gap:12}}>
+                <div className="input-group"><label>Fecha <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="date" value={form.fecha} onChange={e => setF('fecha',e.target.value)} required/></div>
+                <div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e => setF('moneda',e.target.value)}><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
+              </div>
+              <div className="input-group"><label>Concepto <span style={{color:'var(--danger)'}}>*</span></label><input className="input" value={form.concepto} onChange={e => setF('concepto',e.target.value)} placeholder="Taxi, materiales de oficina..." required/></div>
+              <div className="grid-2" style={{gap:12}}>
+                <div className="input-group"><label>Monto <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="number" min="0.01" step="0.01" value={form.monto} onChange={e => setF('monto',e.target.value)} placeholder="0.00" required/></div>
+                <div className="input-group"><label>Categoría</label><select className="select" value={form.categoria} onChange={e => setF('categoria',e.target.value)}>{CATS_CC.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+              </div>
+              <div className="input-group"><label>N° comprobante</label><input className="input" value={form.num_comprobante} onChange={e => setF('num_comprobante',e.target.value)} placeholder="F001-000123"/></div>
+              <div className="input-group"><label>CECO</label><select className="select" value={form.ceco_id} onChange={e => setF('ceco_id',e.target.value)}><option value="">— Sin CECO —</option>{cecos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ` : ''}{c.nombre}</option>)}</select></div>
+              <div className="row mt-4" style={{justifyContent:'flex-end',gap:8}}>
+                <button type="button" className="btn btn-secondary" onClick={() => setPanel(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : 'Registrar egreso'}</button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
     </>
   );
 }
 
 // ============ PRÉSTAMOS Y PAGOS ============
 function PrestamosPersonal() {
-  const { navigate, setTrabajadoresDatosNomina } = useApp();
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ empleado:'', trabajador_id:'TEC-001', monto:'', cuotas:1, descuento_nomina:true });
-  const cuota = Number(form.cuotas || 0) ? Number(form.monto || 0) / Number(form.cuotas || 1) : 0;
-  const guardar = (e) => {
-    e.preventDefault();
-    if (form.descuento_nomina) {
-      setTrabajadoresDatosNomina(prev => ({
-        ...prev,
-        [form.trabajador_id]: { ...(prev[form.trabajador_id] || {}), cuota_prestamo_mes: Number(cuota.toFixed(2)) }
-      }));
+  const { navigate, empresa, dataMode, personalOperativo, personalAdmin, setPersonalOperativo, setPersonalAdmin } = useApp();
+  const [prestamos, setPrestamos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [openForm, setOpenForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [detalle, setDetalle] = useState(null);
+  const [pagos, setPagos] = useState([]);
+  const [pagandoId, setPagandoId] = useState(null);
+  const [cancelandoId, setCancelandoId] = useState(null);
+  const formBase = { trabajador_id: '', monto: '', cuotas: 12, descontar_nomina: true };
+  const [form, setForm] = useState(formBase);
+
+  const todoElPersonal = useMemo(() => [
+    ...(personalOperativo || []).map(p => ({ ...p, tipo: 'operativo' })),
+    ...(personalAdmin || []).map(p => ({ ...p, tipo: 'admin' })),
+  ].filter(p => p.estado !== 'inactivo' && p.estado_laboral !== 'cesado'), [personalOperativo, personalAdmin]);
+
+  const cuota = Number(form.cuotas) > 0 ? Number(form.monto || 0) / Number(form.cuotas) : 0;
+
+  useEffect(() => {
+    if (!empresa?.id && dataMode !== 'mock') return;
+    setLoading(true);
+    if (dataMode === 'mock') {
+      setPrestamos(MOCK.prestamos.map(p => ({
+        ...p,
+        cuotas_pagadas: p.cuota_mensual ? Math.round((p.pagado || 0) / p.cuota_mensual) : 0,
+        saldo: p.monto - (p.pagado || 0),
+        descontar_nomina: p.descuento_nomina,
+        fecha_otorgamiento: p.fecha,
+      })));
+      setLoading(false);
+      return;
     }
-    setOpen(false);
+    rrhhService.getPrestamosPersonal(empresa.id).then(data => {
+      setPrestamos(data || []);
+      setLoading(false);
+    });
+  }, [empresa?.id, dataMode]);
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    if (!form.trabajador_id || !form.monto || Number(form.cuotas) < 1) return;
+    setSaving(true);
+    try {
+      const trabajador = todoElPersonal.find(p => p.id === form.trabajador_id);
+      const cuotaMensual = Number((Number(form.monto) / Number(form.cuotas)).toFixed(2));
+      const nuevo = await rrhhService.crearPrestamoPersonal(empresa.id, {
+        trabajador_id: form.trabajador_id,
+        trabajador_tipo: trabajador?.tipo || 'operativo',
+        empleado: trabajador?.nombre || '',
+        monto: Number(form.monto),
+        cuotas: Number(form.cuotas),
+        cuota_mensual: cuotaMensual,
+        cuotas_pagadas: 0,
+        saldo: Number(form.monto),
+        descontar_nomina: form.descontar_nomina,
+        estado: 'vigente',
+        fecha_otorgamiento: new Date().toISOString().split('T')[0],
+      });
+      if (form.descontar_nomina && trabajador) {
+        if (trabajador.tipo === 'operativo') {
+          const upd = await rrhhService.actualizarPersonalOperativo(trabajador.id, { cuota_prestamo_mes: cuotaMensual });
+          setPersonalOperativo(prev => prev.map(p => p.id === trabajador.id ? upd : p));
+        } else {
+          const upd = await rrhhService.actualizarPersonalAdmin(trabajador.id, { cuota_prestamo_mes: cuotaMensual });
+          setPersonalAdmin(prev => prev.map(p => p.id === trabajador.id ? upd : p));
+        }
+      }
+      setPrestamos(prev => [nuevo, ...prev]);
+      setOpenForm(false);
+      setForm(formBase);
+    } catch (err) {
+      alert('Error al guardar préstamo: ' + (err.message || 'Error desconocido'));
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const abrirDetalle = async (p) => {
+    setDetalle(p);
+    setPagos([]);
+    if (dataMode !== 'mock') {
+      const data = await rrhhService.getPrestamoPagos(empresa?.id, p.id);
+      setPagos(data || []);
+    }
+  };
+
+  const registrarPago = async (prestamo) => {
+    const cuotaMonto = Number(prestamo.cuota_mensual || (prestamo.monto / prestamo.cuotas));
+    if (!window.confirm(`¿Registrar pago manual de cuota por ${moneyD(cuotaMonto)}?`)) return;
+    setPagandoId(prestamo.id);
+    try {
+      const { prestamo: actualizado, pago } = await rrhhService.pagarCuotaPrestamo(empresa.id, prestamo.id, { monto: cuotaMonto });
+      setPrestamos(prev => prev.map(p => p.id === actualizado.id ? actualizado : p));
+      if (detalle?.id === actualizado.id) {
+        setDetalle(actualizado);
+        setPagos(prev => [pago, ...prev]);
+      }
+      if (actualizado.estado === 'cancelado') {
+        const trabajador = todoElPersonal.find(p => p.id === actualizado.trabajador_id);
+        if (trabajador) {
+          if (trabajador.tipo === 'operativo') setPersonalOperativo(prev => prev.map(p => p.id === trabajador.id ? { ...p, cuota_prestamo_mes: 0 } : p));
+          else setPersonalAdmin(prev => prev.map(p => p.id === trabajador.id ? { ...p, cuota_prestamo_mes: 0 } : p));
+        }
+      }
+    } catch (err) {
+      alert('Error al registrar pago: ' + (err.message || 'Error desconocido'));
+    } finally {
+      setPagandoId(null);
+    }
+  };
+
+  const cancelar = async (prestamo) => {
+    if (!window.confirm(`¿Cancelar el préstamo de ${prestamo.empleado}? Esta acción no se puede deshacer.`)) return;
+    setCancelandoId(prestamo.id);
+    try {
+      const actualizado = await rrhhService.cancelarPrestamo(empresa.id, prestamo.id);
+      setPrestamos(prev => prev.map(p => p.id === actualizado.id ? actualizado : p));
+      if (detalle?.id === actualizado.id) setDetalle(actualizado);
+      if (actualizado.descontar_nomina) {
+        const trabajador = todoElPersonal.find(p => p.id === actualizado.trabajador_id);
+        if (trabajador) {
+          if (trabajador.tipo === 'operativo') setPersonalOperativo(prev => prev.map(p => p.id === trabajador.id ? { ...p, cuota_prestamo_mes: 0 } : p));
+          else setPersonalAdmin(prev => prev.map(p => p.id === trabajador.id ? { ...p, cuota_prestamo_mes: 0 } : p));
+        }
+      }
+    } catch (err) {
+      alert('Error al cancelar préstamo: ' + (err.message || 'Error desconocido'));
+    } finally {
+      setCancelandoId(null);
+    }
+  };
+
   return (
     <>
       <div className="page-header">
@@ -3009,7 +3234,7 @@ function PrestamosPersonal() {
           <h1 className="page-title">Préstamos al Personal</h1>
           <div className="page-sub">Adelantos y préstamos internos descontados en nómina</div>
         </div>
-        <button className="btn btn-primary" data-local-form="true" onClick={() => setOpen(true)}>{I.plus} Nuevo Préstamo</button>
+        <button className="btn btn-primary" onClick={() => setOpenForm(true)}>{I.plus} Nuevo Préstamo</button>
       </div>
       <div style={{ background:'rgba(0,188,212,0.08)', borderLeft:'3px solid var(--cyan)', borderRadius:'6px', padding:'10px 16px', marginBottom:'20px', fontSize:'13px' }}>
         Estos son préstamos que la empresa otorga a sus trabajadores. Si buscas préstamos bancarios o financiamiento recibido por la empresa, ve a{' '}
@@ -3017,68 +3242,158 @@ function PrestamosPersonal() {
       </div>
       <div className="card mt-6">
         <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Empleado</th>
-                <th>Fecha Otorgado</th>
-                <th>Monto Total</th>
-                <th>Cuotas</th>
-                <th>Descuento en nomina</th>
-                <th>Avance Pagado</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {MOCK.prestamos.map(p => (
-                <tr key={p.id} className="hover-row">
-                  <td className="mono" style={{fontWeight:600}}>{p.id}</td>
-                  <td style={{fontWeight:600}}>{p.empleado}</td>
-                  <td className="text-muted">{p.fecha}</td>
-                  <td className="num">{money(p.monto)}</td>
-                  <td>{p.cuotas}</td>
-                  <td><strong>{moneyD(p.cuota_mensual || (p.monto / p.cuotas))}</strong></td>
-                  <td style={{width:120}}>
-                    <div className="bar">
-                      <div style={{width:(p.pagado/p.monto*100)+'%', background:p.pagado===p.monto?'var(--green)':'var(--cyan)'}}/>
-                    </div>
-                    <div style={{fontSize:11,marginTop:2}}>{money(p.pagado)} / {money(p.monto)}</div>
-                  </td>
-                  <td>
-                    <span className={'badge ' + (p.estado==='cancelado'?'badge-purple':'badge-green')}>
-                      {p.estado.toUpperCase()}
-                    </span>
-                    {p.estado === 'vigente' && p.descuento_nomina && <span className="badge badge-cyan" style={{marginLeft:6}}>Vinculado a nomina</span>}
-                  </td>
+          {loading ? (
+            <div style={{padding:'40px', textAlign:'center', color:'var(--muted)'}}>Cargando préstamos...</div>
+          ) : prestamos.length === 0 ? (
+            <div style={{padding:'40px', textAlign:'center', color:'var(--muted)'}}>No hay préstamos registrados</div>
+          ) : (
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Empleado</th>
+                  <th>Fecha Otorgado</th>
+                  <th>Monto Total</th>
+                  <th>Cuota Mensual</th>
+                  <th>Avance Cuotas</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {prestamos.map(p => {
+                  const pagado = p.monto - (p.saldo ?? p.monto);
+                  const pct = p.monto > 0 ? Math.min(100, (pagado / p.monto) * 100) : 0;
+                  const cuotaMensual = p.cuota_mensual || (p.monto / (p.cuotas || 1));
+                  return (
+                    <tr key={p.id} className="hover-row">
+                      <td style={{fontWeight:600}}>{p.empleado}</td>
+                      <td className="text-muted">{p.fecha_otorgamiento || p.fecha || '—'}</td>
+                      <td className="num">{money(p.monto)}</td>
+                      <td><strong>{moneyD(cuotaMensual)}</strong></td>
+                      <td style={{width:150}}>
+                        <div className="bar">
+                          <div style={{width:pct+'%', background:p.estado==='cancelado'?'var(--green)':'var(--cyan)'}}/>
+                        </div>
+                        <div style={{fontSize:11,marginTop:2}}>{p.cuotas_pagadas ?? 0}/{p.cuotas} cuotas · saldo {money(p.saldo ?? p.monto)}</div>
+                      </td>
+                      <td>
+                        <span className={'badge ' + (p.estado==='cancelado'?'badge-purple':'badge-green')}>{(p.estado||'vigente').toUpperCase()}</span>
+                        {p.estado !== 'cancelado' && (p.descontar_nomina || p.descuento_nomina) && <span className="badge badge-cyan" style={{marginLeft:6}}>Vinculado a nómina</span>}
+                      </td>
+                      <td>
+                        <div className="row" style={{gap:6}}>
+                          <button className="btn btn-secondary" style={{padding:'4px 10px',fontSize:12}} onClick={() => abrirDetalle(p)}>Ver</button>
+                          {p.estado !== 'cancelado' && (
+                            <>
+                              <button className="btn btn-primary" style={{padding:'4px 10px',fontSize:12}} disabled={pagandoId===p.id} onClick={() => registrarPago(p)}>
+                                {pagandoId===p.id ? '...' : 'Pagar cuota'}
+                              </button>
+                              <button className="btn btn-secondary" style={{padding:'4px 10px',fontSize:12,color:'var(--red)'}} disabled={cancelandoId===p.id} onClick={() => cancelar(p)}>
+                                {cancelandoId===p.id ? '...' : 'Cancelar'}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
-      {open && (
+
+      {/* Panel de detalle e historial de pagos */}
+      {detalle && (
         <>
-          <div className="side-panel-backdrop" onClick={() => setOpen(false)}/>
+          <div className="side-panel-backdrop" onClick={() => setDetalle(null)}/>
+          <div className="side-panel" style={{width:'min(560px, 96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Préstamo · {detalle.empleado}</div>
+                <div className="font-display" style={{fontSize:20,fontWeight:700}}>{money(detalle.monto)} en {detalle.cuotas} cuotas</div>
+              </div>
+              <button className="icon-btn" onClick={() => setDetalle(null)}>{I.x}</button>
+            </div>
+            <div className="side-panel-body">
+              <div className="grid-2" style={{gap:12, marginBottom:20}}>
+                <div><div className="eyebrow" style={{fontSize:10}}>Cuota mensual</div><div style={{fontWeight:600}}>{moneyD(detalle.cuota_mensual || detalle.monto/detalle.cuotas)}</div></div>
+                <div><div className="eyebrow" style={{fontSize:10}}>Saldo pendiente</div><div style={{fontWeight:600}}>{money(detalle.saldo ?? detalle.monto)}</div></div>
+                <div><div className="eyebrow" style={{fontSize:10}}>Cuotas pagadas</div><div style={{fontWeight:600}}>{detalle.cuotas_pagadas ?? 0} / {detalle.cuotas}</div></div>
+                <div><div className="eyebrow" style={{fontSize:10}}>Estado</div><div><span className={'badge '+(detalle.estado==='cancelado'?'badge-purple':'badge-green')}>{(detalle.estado||'vigente').toUpperCase()}</span></div></div>
+                <div><div className="eyebrow" style={{fontSize:10}}>Descuento en nómina</div><div style={{fontWeight:600}}>{(detalle.descontar_nomina||detalle.descuento_nomina) ? 'Sí' : 'No'}</div></div>
+                <div><div className="eyebrow" style={{fontSize:10}}>Tipo trabajador</div><div style={{fontWeight:600,textTransform:'capitalize'}}>{detalle.trabajador_tipo || 'Operativo'}</div></div>
+              </div>
+              {detalle.estado !== 'cancelado' && (
+                <div className="row mb-4" style={{justifyContent:'flex-end', gap:8}}>
+                  <button className="btn btn-primary" disabled={pagandoId===detalle.id} onClick={() => registrarPago(detalle)}>
+                    {pagandoId===detalle.id ? 'Registrando...' : `Pagar cuota (${moneyD(detalle.cuota_mensual || detalle.monto/detalle.cuotas)})`}
+                  </button>
+                </div>
+              )}
+              <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Historial de pagos</div>
+              {pagos.length === 0 ? (
+                <div style={{color:'var(--muted)', fontSize:13}}>Sin pagos registrados aún.</div>
+              ) : (
+                <table className="tbl" style={{fontSize:13}}>
+                  <thead><tr><th>Fecha</th><th>Monto</th><th>Origen</th></tr></thead>
+                  <tbody>
+                    {pagos.map(pg => (
+                      <tr key={pg.id}>
+                        <td>{pg.fecha}</td>
+                        <td className="num">{money(pg.monto)}</td>
+                        <td><span className={'badge '+(pg.concepto==='nomina'?'badge-cyan':'badge-green')}>{pg.concepto==='nomina'?'NÓMINA':'MANUAL'}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Formulario nuevo préstamo */}
+      {openForm && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setOpenForm(false)}/>
           <div className="side-panel" style={{width:'min(580px, 96vw)'}}>
             <div className="side-panel-head">
-              <div><div className="eyebrow">Prestamo interno</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nuevo prestamo al personal</div></div>
-              <button className="icon-btn" onClick={() => setOpen(false)}>{I.x}</button>
+              <div><div className="eyebrow">Préstamo interno</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nuevo préstamo al personal</div></div>
+              <button className="icon-btn" onClick={() => setOpenForm(false)}>{I.x}</button>
             </div>
             <form className="side-panel-body" onSubmit={guardar}>
               <div className="grid-2" style={{gap:16}}>
-                <div className="input-group"><label>Empleado</label><input className="input" value={form.empleado} onChange={e=>setForm(v=>({...v, empleado:e.target.value}))}/></div>
-                <div className="input-group"><label>Trabajador nomina</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v, trabajador_id:e.target.value}))}><option value="TEC-001">TEC-001</option><option value="per_001">per_001</option><option value="per_002">per_002</option></select></div>
-                <div className="input-group"><label>Monto</label><input className="input" type="number" value={form.monto} onChange={e=>setForm(v=>({...v, monto:e.target.value}))}/></div>
-                <div className="input-group"><label>Cuotas</label><input className="input" type="number" min="1" value={form.cuotas} onChange={e=>setForm(v=>({...v, cuotas:e.target.value}))}/></div>
                 <div className="input-group" style={{gridColumn:'1 / -1'}}>
-                  <label><input type="checkbox" checked={form.descuento_nomina} onChange={e=>setForm(v=>({...v, descuento_nomina:e.target.checked}))}/> Descontar automaticamente en nomina</label>
-                  <div className="text-muted" style={{fontSize:12}}>Cuota mensual estimada: {moneyD(cuota)}</div>
+                  <label>Trabajador</label>
+                  <select className="select" required value={form.trabajador_id} onChange={e => setForm(v => ({ ...v, trabajador_id: e.target.value }))}>
+                    <option value="">— Seleccionar trabajador —</option>
+                    {todoElPersonal.map(p => (
+                      <option key={p.id} value={p.id}>[{p.tipo === 'admin' ? 'Admin' : 'Op.'}] {p.nombre} — {p.cargo || ''}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Monto total (S/)</label>
+                  <input className="input" type="number" min="1" required value={form.monto} onChange={e => setForm(v => ({ ...v, monto: e.target.value }))}/>
+                </div>
+                <div className="input-group">
+                  <label>Número de cuotas</label>
+                  <input className="input" type="number" min="1" required value={form.cuotas} onChange={e => setForm(v => ({ ...v, cuotas: e.target.value }))}/>
+                </div>
+                <div className="input-group" style={{gridColumn:'1 / -1'}}>
+                  <label style={{display:'flex', alignItems:'center', gap:8, cursor:'pointer'}}>
+                    <input type="checkbox" checked={form.descontar_nomina} onChange={e => setForm(v => ({ ...v, descontar_nomina: e.target.checked }))}/>
+                    Descontar automáticamente en nómina
+                  </label>
+                  <div className="text-muted" style={{fontSize:12, marginTop:4}}>Cuota mensual estimada: <strong>{moneyD(cuota)}</strong></div>
+                  {form.descontar_nomina && <div style={{fontSize:12, color:'var(--cyan)', marginTop:4}}>Al guardar se actualizará el campo "Cuota préstamo mes" del trabajador seleccionado en la BD.</div>}
                 </div>
               </div>
-              <div className="row mt-6" style={{justifyContent:'flex-end'}}>
-                <button type="button" className="btn btn-secondary" onClick={()=>setOpen(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary">Guardar prestamo</button>
+              <div className="row mt-6" style={{justifyContent:'flex-end', gap:8}}>
+                <button type="button" className="btn btn-secondary" onClick={() => setOpenForm(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar préstamo'}</button>
               </div>
             </form>
           </div>
@@ -3144,7 +3459,7 @@ function CxPLegacy() {
 }
 
 function CxP() {
-  const { cxp, cxpPagos, proveedores, personalAdmin, registrarPagoCxP, generarCxP, addNotificacion } = useApp();
+  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, ots, registrarPagoCxP, generarCxP, crearGasto, addNotificacion } = useApp();
   const today = new Date().toISOString().split('T')[0];
 
   // Panel states
@@ -3157,12 +3472,23 @@ function CxP() {
   const [formPago, setFormPago] = useState({ monto: '', fecha: today, cuenta_bancaria: 'Cuenta principal', referencia: '' });
 
   // Form: nueva CxP
-  const FORM_VACIO = { proveedor_id: '', factura_numero: '', fecha_emision: today, fecha_vencimiento: '', monto_total: '', moneda: 'PEN', concepto: '' };
+  const FORM_VACIO = { proveedor_id: '', tipo_comprobante: 'Factura', factura_numero: '', fecha_emision: today, fecha_vencimiento: '', monto_total: '', moneda: 'PEN', concepto: '' };
   const [formCrear, setFormCrear] = useState(FORM_VACIO);
   const [archivoCrearUrl, setArchivoCrearUrl] = useState('');
+  // Campos viáticos reembolso
+  const [motivoCxP, setMotivoCxP] = useState('');
+  const [viaticosPersonalId, setViaticosPersonalId] = useState('');
+  const [viaticosOtId, setViaticosOtId] = useState('');
+  // Campos RHE externo
+  const [rheRuc, setRheRuc] = useState('');
+  const [rheNombre, setRheNombre] = useState('');
+  const [rheMontoBruto, setRheMontoBruto] = useState('');
+  const rheRetencion = Math.round(Number(rheMontoBruto || 0) * 0.08 * 100) / 100;
+  const rheMontoNeto = Math.round((Number(rheMontoBruto || 0) - rheRetencion) * 100) / 100;
 
-  // Filtro tipo
+  // Filtros
   const [filtTipo, setFiltTipo] = useState('todos');
+  const [filtOrigen, setFiltOrigen] = useState('todos');
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   const saldoDe  = c => Number(c?.saldo ?? c?.monto_total ?? c?.monto ?? 0);
@@ -3193,9 +3519,11 @@ function CxP() {
   };
 
   const beneficiarioNombre = c => {
+    if (c?.tipo_beneficiario === 'colectivo') return c?.concepto || 'Obligación institucional';
     if (c?.tipo_beneficiario === 'personal') {
-      return c?.personal_administrativo?.nombre
-        || (personalAdmin || []).find(p => p.id === c?.personal_id)?.nombre
+      const persona = [...(personalAdmin||[]), ...(personalOperativo||[])].find(p => p.id === c?.personal_id);
+      return persona?.nombre
+        || c?.personal_administrativo?.nombre
         || c?.personal_id || '-';
     }
     return c?.proveedor || c?.proveedores?.razon_social
@@ -3206,9 +3534,11 @@ function CxP() {
   const pagosDe = cxpId => (cxpPagos || []).filter(p => p.cxp_id === cxpId);
 
   // ── Datos filtrados y KPIs ────────────────────────────────────────────────
-  const cxpFiltrada = (cxp || []).filter(
-    c => filtTipo === 'todos' || (c.tipo_beneficiario || 'proveedor') === filtTipo
-  );
+  const cxpFiltrada = (cxp || []).filter(c => {
+    if (filtTipo !== 'todos' && (c.tipo_beneficiario || 'proveedor') !== filtTipo) return false;
+    if (filtOrigen !== 'todos' && (c.origen || 'manual') !== filtOrigen) return false;
+    return true;
+  });
 
   const totalPorPagar = cxpFiltrada.reduce((s, c) => s + saldoDe(c), 0);
   const totalVencido  = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red').reduce((s, c) => s + saldoDe(c), 0);
@@ -3241,29 +3571,80 @@ function CxP() {
 
   const guardarNuevaCxP = async e => {
     e.preventDefault();
-    if (!formCrear.fecha_emision || !formCrear.fecha_vencimiento || !Number(formCrear.monto_total)) {
+    const esRhe = formCrear.tipo_comprobante === 'RHE';
+    const esViaticos = motivoCxP === 'viaticos_reembolso';
+    const montoTotal = esRhe ? rheMontoNeto : Number(formCrear.monto_total);
+    if (!formCrear.fecha_emision || !formCrear.fecha_vencimiento || montoTotal <= 0) {
       addNotificacion('Completa fecha de emisión, vencimiento y monto.');
+      return;
+    }
+    if (esRhe && (!rheRuc || rheRuc.length !== 11 || !rheNombre || !Number(rheMontoBruto))) {
+      addNotificacion('Para RHE: ingresa RUC (11 dígitos), nombre del emisor y monto bruto.');
+      return;
+    }
+    if (esViaticos && !viaticosPersonalId) {
+      addNotificacion('Para reembolso de viáticos: selecciona al colaborador.');
       return;
     }
     setGuardando(true);
     try {
-      await generarCxP({
-        proveedor_id:      formCrear.proveedor_id || null,
-        tipo_beneficiario: 'proveedor',
+      const personal = esViaticos
+        ? ([...(personalAdmin||[]), ...(personalOperativo||[])]).find(p => p.id === viaticosPersonalId)
+        : null;
+      const cxpPayload = {
+        proveedor_id:      esViaticos ? null : (formCrear.proveedor_id || null),
+        tipo_beneficiario: esViaticos ? 'personal' : 'proveedor',
+        personal_id:       esViaticos ? viaticosPersonalId : null,
+        ot_vinc_id:        esViaticos && viaticosOtId ? viaticosOtId : null,
+        tipo_comprobante:  formCrear.tipo_comprobante,
         factura_numero:    formCrear.factura_numero || null,
-        concepto:          formCrear.concepto || null,
+        concepto:          formCrear.concepto || (esRhe ? `RHE - ${rheNombre}` : esViaticos ? `Viáticos — ${personal?.nombre || viaticosPersonalId}` : null),
         fecha_emision:     formCrear.fecha_emision,
         fecha_vencimiento: formCrear.fecha_vencimiento,
-        monto_total:       Number(formCrear.monto_total),
+        monto_total:       montoTotal,
         monto_pagado:      0,
-        saldo:             Number(formCrear.monto_total),
+        saldo:             montoTotal,
         moneda:            formCrear.moneda || 'PEN',
         estado:            'por_pagar',
+        origen:            esViaticos ? 'viaticos' : 'manual',
+        motivo_cxp:        motivoCxP || null,
+        ...(esRhe ? { ruc_emisor: rheRuc, nombre_emisor: rheNombre, monto_bruto: Number(rheMontoBruto), retencion_ir: rheRetencion } : {}),
         ...(archivoCrearUrl ? { archivo_factura_url: archivoCrearUrl } : {})
-      });
+      };
+      await generarCxP(cxpPayload);
+      // RHE impacta el ER como Servicios terceros (monto bruto)
+      if (esRhe) {
+        crearGasto({
+          tipo: 'gasto',
+          descripcion: `RHE - ${rheNombre}`,
+          categoria: 'Servicios terceros',
+          monto: Number(rheMontoBruto),
+          moneda: formCrear.moneda || 'PEN',
+          fecha: formCrear.fecha_emision,
+          origen_registro: 'backoffice',
+          estado_pago: 'pendiente',
+        });
+      }
+      // Viáticos impactan el ER como Administrativos o categoría elegida
+      if (esViaticos) {
+        crearGasto({
+          tipo: 'gasto',
+          descripcion: `Viáticos — ${personal?.nombre || viaticosPersonalId}${viaticosOtId ? ` — OT ${viaticosOtId}` : ''}`,
+          categoria: 'Administrativos',
+          monto: montoTotal,
+          moneda: formCrear.moneda || 'PEN',
+          fecha: formCrear.fecha_emision,
+          origen_registro: 'backoffice',
+          estado_pago: 'pendiente',
+          personal_id: viaticosPersonalId,
+          ot_vinc_id: viaticosOtId || null,
+        });
+      }
       setPanelCrear(false);
       setFormCrear(FORM_VACIO);
       setArchivoCrearUrl('');
+      setMotivoCxP(''); setViaticosPersonalId(''); setViaticosOtId('');
+      setRheRuc(''); setRheNombre(''); setRheMontoBruto('');
     } finally {
       setGuardando(false);
     }
@@ -3321,9 +3702,13 @@ function CxP() {
         <div className="kpi-card"><div className="kpi-label">Pagadas</div><div className="kpi-value">{(cxp||[]).filter(c => c.estado === 'pagada').length}</div></div>
       </div>
 
-      <div className="row" style={{gap:8, marginTop:16, marginBottom:12, flexWrap:'wrap'}}>
+      <div className="row" style={{gap:8, marginTop:16, marginBottom:4, flexWrap:'wrap'}}>
         {[{v:'todos',l:'Todos'},{v:'proveedor',l:'Proveedores'},{v:'personal',l:'Colaboradores'}].map(f => (
           <button key={f.v} className={'btn btn-sm '+(filtTipo===f.v?'btn-primary':'btn-secondary')} onClick={() => setFiltTipo(f.v)}>{f.l}</button>
+        ))}
+        <div style={{width:1,background:'var(--border)',margin:'0 4px'}}/>
+        {[{v:'todos',l:'Origen: Todos'},{v:'recepcion',l:'OC'},{v:'gasto',l:'Gasto directo'},{v:'rhe_externo',l:'RHE'},{v:'honorarios',l:'Honorarios'},{v:'viaticos',l:'Viáticos'},{v:'nomina',l:'Nómina'},{v:'manual',l:'Manual'}].map(f => (
+          <button key={f.v} className={'btn btn-sm '+(filtOrigen===f.v?'btn-primary':'btn-secondary')} onClick={() => setFiltOrigen(f.v)}>{f.l}</button>
         ))}
       </div>
 
@@ -3487,37 +3872,122 @@ function CxP() {
       {/* ── Panel crear CxP manual ─────────────────────────────────────── */}
       {panelCrear && (
         <>
-          <div className="side-panel-backdrop" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); }}/>
+          <div className="side-panel-backdrop" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); setMotivoCxP(''); setViaticosPersonalId(''); setViaticosOtId(''); }}/>
           <div className="side-panel" style={{width:'min(560px, 96vw)'}}>
             <div className="side-panel-head">
               <div>
                 <div className="eyebrow">Nueva cuenta por pagar</div>
-                <div style={{fontWeight:700,fontSize:20}}>Registrar factura</div>
+                <div style={{fontWeight:700,fontSize:20}}>{motivoCxP === 'viaticos_reembolso' ? 'Reembolso de viáticos' : 'Registrar factura'}</div>
               </div>
               <button className="icon-btn" onClick={() => setPanelCrear(false)}>{I.x}</button>
             </div>
             <form className="side-panel-body" onSubmit={guardarNuevaCxP}>
               <div className="input-group">
-                <label>Proveedor</label>
-                <select className="select" value={formCrear.proveedor_id} onChange={e => onProveedorChange(e.target.value)}>
-                  <option value="">— Seleccionar proveedor —</option>
-                  {(proveedores || []).filter(p => p.estado !== 'inactivo').map(p => (
-                    <option key={p.id} value={p.id}>{p.razon_social}</option>
-                  ))}
+                <label>Motivo</label>
+                <select className="select" value={motivoCxP} onChange={e => setMotivoCxP(e.target.value)}>
+                  <option value="">Factura / gasto de proveedor (estándar)</option>
+                  <option value="viaticos_reembolso">Reembolso de viáticos o gastos de campo a colaborador</option>
                 </select>
               </div>
-              <div className="grid-2" style={{gap:12}}>
-                <div className="input-group">
-                  <label>N° factura / documento</label>
-                  <input className="input" value={formCrear.factura_numero} onChange={e => setFormCrear(v => ({...v,factura_numero:e.target.value}))} placeholder="E001-001234"/>
+              {motivoCxP === 'viaticos_reembolso' && (
+                <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 14px', display:'flex', flexDirection:'column', gap:12}}>
+                  <div style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>Datos del reembolso</div>
+                  <div className="input-group">
+                    <label>Colaborador <span style={{color:'var(--danger)'}}>*</span></label>
+                    <select className="select" value={viaticosPersonalId} onChange={e => setViaticosPersonalId(e.target.value)}>
+                      <option value="">— Seleccionar colaborador —</option>
+                      {[...(personalAdmin||[]), ...(personalOperativo||[])].filter(p => p.estado !== 'inactivo').map(p => (
+                        <option key={p.id} value={p.id}>{p.nombre} — {p.cargo || 'Sin cargo'}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>OT vinculada (opcional)</label>
+                    <select className="select" value={viaticosOtId} onChange={e => setViaticosOtId(e.target.value)}>
+                      <option value="">Sin OT</option>
+                      {(ots||[]).filter(o => o.estado !== 'anulada').map(o => (
+                        <option key={o.id} value={o.id}>{o.numero || o.id} — {o.nombre || o.descripcion || ''}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div className="input-group">
-                  <label>Moneda</label>
-                  <select className="select" value={formCrear.moneda} onChange={e => setFormCrear(v => ({...v,moneda:e.target.value}))}>
-                    <option value="PEN">PEN — Soles</option>
-                    <option value="USD">USD — Dólares</option>
-                  </select>
+              )}
+              <div className="input-group">
+                <label>Tipo de comprobante</label>
+                <select className="select" value={formCrear.tipo_comprobante} onChange={e => setFormCrear(v => ({...v,tipo_comprobante:e.target.value}))}>
+                  <option value="Factura">Factura</option>
+                  <option value="Boleta">Boleta</option>
+                  <option value="RHE">RHE — Recibo por Honorarios (externo)</option>
+                </select>
+              </div>
+              {formCrear.tipo_comprobante === 'RHE' ? (
+                <div style={{background:'var(--bg-subtle)',borderRadius:8,padding:'14px',display:'flex',flexDirection:'column',gap:12}}>
+                  <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:2}}>Datos del emisor del RHE</div>
+                  <div className="grid-2" style={{gap:12}}>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}>
+                      <label>RUC del emisor <span style={{color:'var(--danger)'}}>*</span></label>
+                      <input className="input" value={rheRuc} onChange={e => setRheRuc(e.target.value.replace(/\D/g,'').slice(0,11))} placeholder="20512345678" maxLength={11}/>
+                      {rheRuc && rheRuc.length !== 11 && <div style={{fontSize:11,color:'var(--danger)',marginTop:2}}>El RUC debe tener 11 dígitos</div>}
+                    </div>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}>
+                      <label>Nombre / Razón Social <span style={{color:'var(--danger)'}}>*</span></label>
+                      <input className="input" value={rheNombre} onChange={e => setRheNombre(e.target.value)} placeholder="Consultor Externo SAC"/>
+                    </div>
+                    <div className="input-group">
+                      <label>Monto bruto <span style={{color:'var(--danger)'}}>*</span></label>
+                      <input className="input" type="number" min="0" step="0.01" value={rheMontoBruto} onChange={e => setRheMontoBruto(e.target.value)} placeholder="0.00"/>
+                    </div>
+                    <div className="input-group">
+                      <label>Moneda</label>
+                      <select className="select" value={formCrear.moneda} onChange={e => setFormCrear(v => ({...v,moneda:e.target.value}))}>
+                        <option value="PEN">PEN</option>
+                        <option value="USD">USD</option>
+                      </select>
+                    </div>
+                  </div>
+                  {Number(rheMontoBruto) > 0 && (
+                    <div style={{background:'var(--bg)',borderRadius:6,padding:'10px 12px',fontSize:13}}>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:'var(--fg-muted)'}}>Monto bruto</span><strong>{Number(rheMontoBruto).toFixed(2)}</strong></div>
+                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:'var(--danger)'}}>Retención IR 8%</span><span style={{color:'var(--danger)'}}>- {rheRetencion.toFixed(2)}</span></div>
+                      <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,borderTop:'1px solid var(--border)',paddingTop:6}}><span>Monto a pagar (neto)</span><span>{rheMontoNeto.toFixed(2)}</span></div>
+                    </div>
+                  )}
                 </div>
+              ) : (
+                <>
+                  <div className="input-group">
+                    <label>Proveedor</label>
+                    <select className="select" value={formCrear.proveedor_id} onChange={e => onProveedorChange(e.target.value)}>
+                      <option value="">— Seleccionar proveedor —</option>
+                      {(proveedores || []).filter(p => p.estado !== 'inactivo').map(p => (
+                        <option key={p.id} value={p.id}>{p.razon_social}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid-2" style={{gap:12}}>
+                    <div className="input-group">
+                      <label>N° factura / documento</label>
+                      <input className="input" value={formCrear.factura_numero} onChange={e => setFormCrear(v => ({...v,factura_numero:e.target.value}))} placeholder="E001-001234"/>
+                    </div>
+                    <div className="input-group">
+                      <label>Moneda</label>
+                      <select className="select" value={formCrear.moneda} onChange={e => setFormCrear(v => ({...v,moneda:e.target.value}))}>
+                        <option value="PEN">PEN — Soles</option>
+                        <option value="USD">USD — Dólares</option>
+                      </select>
+                    </div>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}>
+                      <label>Monto total <span style={{color:'var(--danger)'}}>*</span></label>
+                      <input className="input" type="number" min="0" step="0.01" value={formCrear.monto_total} onChange={e => setFormCrear(v => ({...v,monto_total:e.target.value}))} placeholder="0.00" required/>
+                    </div>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}>
+                      <label>Concepto (opcional)</label>
+                      <input className="input" value={formCrear.concepto} onChange={e => setFormCrear(v => ({...v,concepto:e.target.value}))} placeholder="Descripción del gasto o servicio"/>
+                    </div>
+                  </div>
+                </>
+              )}
+              <div className="grid-2" style={{gap:12, marginTop:4}}>
                 <div className="input-group">
                   <label>Fecha de emisión</label>
                   <input className="input" type="date" value={formCrear.fecha_emision} onChange={e => onEmisionChange(e.target.value)}/>
@@ -3525,30 +3995,18 @@ function CxP() {
                 <div className="input-group">
                   <label>Fecha de vencimiento</label>
                   <input className="input" type="date" value={formCrear.fecha_vencimiento} onChange={e => setFormCrear(v => ({...v,fecha_vencimiento:e.target.value}))}/>
-                  {formCrear.proveedor_id && (() => {
-                    const prov = (proveedores||[]).find(p => p.id === formCrear.proveedor_id);
-                    return prov?.condicion_pago ? <div style={{fontSize:10,color:'var(--fg-muted)',marginTop:3}}>Cond. pago: {prov.condicion_pago}</div> : null;
-                  })()}
-                </div>
-                <div className="input-group" style={{gridColumn:'1/-1'}}>
-                  <label>Monto total <span style={{color:'var(--danger)'}}>*</span></label>
-                  <input className="input" type="number" min="0" step="0.01" value={formCrear.monto_total} onChange={e => setFormCrear(v => ({...v,monto_total:e.target.value}))} placeholder="0.00" required/>
-                </div>
-                <div className="input-group" style={{gridColumn:'1/-1'}}>
-                  <label>Concepto (opcional)</label>
-                  <input className="input" value={formCrear.concepto} onChange={e => setFormCrear(v => ({...v,concepto:e.target.value}))} placeholder="Descripción del gasto o servicio"/>
-                </div>
-                <div className="input-group" style={{gridColumn:'1/-1'}}>
-                  <label>Adjuntar comprobante (foto o PDF)</label>
-                  <input className="input" type="file" accept="image/*,.pdf" onChange={e => {
-                    const file = e.target.files[0];
-                    setArchivoCrearUrl(file ? URL.createObjectURL(file) : '');
-                  }}/>
-                  {archivoCrearUrl && <div style={{fontSize:12,color:'var(--green)',marginTop:4}}>Archivo adjunto listo.</div>}
                 </div>
               </div>
+              <div className="input-group">
+                <label>Adjuntar comprobante (foto o PDF)</label>
+                <input className="input" type="file" accept="image/*,.pdf" onChange={e => {
+                  const file = e.target.files[0];
+                  setArchivoCrearUrl(file ? URL.createObjectURL(file) : '');
+                }}/>
+                {archivoCrearUrl && <div style={{fontSize:12,color:'var(--green)',marginTop:4}}>Archivo adjunto listo.</div>}
+              </div>
               <div className="row mt-6" style={{justifyContent:'flex-end'}}>
-                <button type="button" className="btn btn-secondary" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); }}>Cancelar</button>
+                <button type="button" className="btn btn-secondary" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); setRheRuc(''); setRheNombre(''); setRheMontoBruto(''); }}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : 'Registrar CxP'}</button>
               </div>
             </form>

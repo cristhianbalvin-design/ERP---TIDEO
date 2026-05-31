@@ -29,12 +29,12 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 
 | Área | Estado |
 |------|--------|
-| Módulos implementados (construidos) | ~63 |
+| Módulos implementados (construidos) | ~64 |
 | Módulos en prompt pendiente de implementar | 0 |
 | Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase |
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
 | Migraciones SQL aplicadas en Supabase | 142 |
-| Migraciones creadas pendientes de aplicar | Ninguna |
+| Migraciones creadas pendientes de aplicar | 149, 150, 151, 152 (aplicar en Supabase) |
 
 ### 3.2 Inventario completo de módulos
 
@@ -77,9 +77,11 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Personal Administrativo | ✅ Implementado (en Configuración) | Mover a sección RRHH |
 | Control de Asistencia | ✔ Implementado | 4 tabs: diaria, semanal, mensual, resumen. Tardanzas y horas extra automáticas. Registro masivo. |
 | Turnos y Horarios | ✔ Implementado | Módulo standalone `pages_turnos.jsx`. CRUD completo: crear/editar/eliminar con side-panel. Campos: nombre, entrada/salida, tolerancia, cruza medianoche, días laborables (o variables), refrigerio. Preview de horas efectivas en tiempo real. |
-| Nómina Básica | ✔ Implementado | Cálculo completo: bruto, AFP/ONP, IR 5ta, cargas empresa. Cierre de período → egresos en finanzas. |
+| Nómina Básica | ✔ Implementado | Cálculo completo corregido: AFP 3 componentes, IR 5ta con UIT dinámica, horas extra 25%/35%, CTS computable, bonif. extraordinaria. Régimen MYPE (microempresa/pequeña empresa). Régimen minero 14×7/20×10/28×14 con días computables. Pago quincenal configurable. Config. nómina en Parámetros Generales. Reporte PLAME para períodos cerrados. Cierre de período → egresos en finanzas. |
 | Comisiones | ✔ Implementado | Liquidación, aprobaciones (acuerdos especiales, +48h sin respuesta), retenciones IR de 4ta categoría según suspensión y tipo de cambio, generación de RHE y CxP asociada. |
 | Solicitudes de RRHH | ✔ Implementado | Flujo multietapa: enviada → aprobada_jefe → confirmada_rrhh → activa. Tipos: vacaciones, permiso con/sin goce, licencia médica/maternidad/paternidad, compensación horas. Saldo de vacaciones automático. Calendario de ausencias mensual. Vista mobile con formulario paso a paso. |
+| Evaluación de Desempeño | ✔ Implementado | 360° básico (autoevaluación + jefe), competencias + objetivos, score ponderado configurable, solo informativo. |
+| Liquidación por Cese | ✔ Implementado | Todos los tipos de cese (renuncia, despido, mutuo acuerdo, vencimiento contrato, fallecimiento). Motor de cálculo: vacaciones truncas, CTS proporcional, gratificación proporcional + bonif. 9%, indemnización según régimen (general/MYPE/microempresa). Genera CxP automática al confirmar. Colaborador queda marcado como cesado. |
 | Préstamos al Personal | ✅ Implementado (como "Préstamos y Pagos") | Mover a sección RRHH |
 
 #### Logística
@@ -410,6 +412,10 @@ RRHH                          ← SECCIÓN NUEVA
   Turnos y Horarios
   Nómina
   Comisiones                  ← NUEVO
+  Solicitudes de RRHH
+  Tareo Administrativo
+  Evaluación de Desempeño
+  Liquidación por Cese
   Préstamos al Personal
 
 LOGÍSTICA
@@ -805,20 +811,64 @@ Registro manual: seleccionar trabajador, fecha, hora de entrada, hora de salida.
 
 **Módulo para Perú — configurable por país en versiones futuras.**
 
-**⚠️ Disclaimer permanente:** *"Los cálculos son referenciales. Valida con tu contador antes de procesar pagos."*
+**⚠️ Disclaimer permanente en todas las pantallas:** *"Los cálculos son referenciales. Valida con tu contador antes de procesar pagos."*
 
-**Flujo de cálculo:**
-1. Remuneración bruta = sueldo base − descuento faltas − descuento tardanzas + horas extra (×1.25) + asignación familiar.
-2. Descuentos trabajador = AFP (13.24% aprox.) o ONP (13%) + cuota préstamo + anticipo + judicial.
-3. Retención IR 5ta = aplica si ingreso anual > 7 UIT (S/36,050 en 2026). Escala progresiva.
-4. Neto a pagar = bruto − descuentos − IR.
-5. Cargas empresa = ESSALUD (9%) + CTS (1/12) + Gratificación (1/6) + Vacaciones (1/12).
-6. Costo real empresa = bruto + cargas.
-7. Costo hora real = costo real ÷ horas laborables del mes.
+#### Pantallas
 
-**Cierre de período** → registra 2 egresos en Administración/Gastos: planilla (neto) + cargas sociales. Actualiza costo hora de cada técnico. Genera boletas en PDF.
+- **Configuración de Nómina** (sección nueva en Parámetros Generales): régimen laboral de empresa (General / Pequeña empresa MYPE / Microempresa MYPE), frecuencia de pago (mensual / quincenal), días de corte y pago, porcentaje de 1ra quincena, valores fiscales vigentes (UIT, RMV, RAM tope AFP, prima seguro AFP). Tabla comparativa de beneficios por régimen. Modal de confirmación al cambiar régimen.
+- **Ficha del trabajador** (operativo y administrativo): sección nueva "Régimen de Jornada y Sistema Previsional" — régimen de jornada (General / Minero 14×7 / 20×10 / 28×14), horas diarias pactadas, fecha inicio ciclo, bonificación por altitud. Sistema previsional: AFP (con selector AFP, tipo comisión flujo/mixta, % comisión) o ONP.
+- **Vista de períodos**: cards por período con fechas corte/pago, estado semántico, badge quincena con %. KPIs rápidos: período activo, próxima fecha de corte, próxima fecha de pago. Auto-generación del período del mes actual si no existe.
+- **Tab Detalle por trabajador**: badge de régimen del trabajador, columna días computables (visible solo si hay mineros), panel lateral con desglose completo (ingresos, descuentos 3 líneas AFP, cargas empresa con provisiones).
+- **Tab Reporte PLAME**: visible solo para períodos cerrados. Preview tabla PLAME con datos del período. Botón Descargar Excel (nombre `PLAME_{empresa}_{periodo}.xlsx`). Vista de todos los trabajadores. Nota de última generación.
 
-**4 tabs:** Resumen del período (tabla consolidada), Detalle por trabajador (desglose completo), Cargas empresa (ESSALUD, CTS, gratificación, vacaciones), Historial de períodos.
+#### Flujo de cálculo corregido
+
+**1. Régimen de jornada y días computables**
+- **General:** sueldo base íntegro. Valor hora = sueldo ÷ 30 ÷ 8.
+- **Minero (14×7, 20×10, 28×14):** días computables del mes = días de trabajo dentro del ciclo calculados desde `fecha_inicio_ciclo`. Remuneración proporcional = básico × (días_computables ÷ 30). Valor hora = básico ÷ (días_computables × horas_pactadas). Bonificación por altitud proporcional a días computables.
+
+**2. Remuneración bruta**
+= sueldo (proporcional si minero) − descuento faltas − descuento tardanzas + horas extra + asignación familiar (S/ 102.50 si tiene hijos) + bonificación por altitud.
+
+**3. Horas extra (corregido)**
+- Primeras 2h por día (en minutos ≤ 120): valor hora × 1.25.
+- Desde la 3ra hora por día: valor hora × 1.35.
+- Ambos tramos mostrados por separado en detalle y boleta.
+
+**4. AFP — tres componentes independientes (corregido)**
+- Aporte obligatorio: 10% sobre remuneración asegurable.
+- Comisión por flujo: % de ficha sobre asegurable. Solo si tipo = flujo. Si tipo = mixta: S/ 0 (se descuenta del fondo).
+- Prima de seguro: % configurado en empresa_config sobre min(asegurable, RAM). Siempre distinto de cero.
+- ONP: 13% (un solo componente).
+
+**5. IR 5ta categoría (corregido)**
+Proyección anual con UIT vigente de empresa_config. Escala progresiva acumulativa: hasta 5 UIT → 8%, de 5 a 20 UIT → 14%, de 20 a 35 UIT → 17%, de 35 a 45 UIT → 20%, > 45 UIT → 30%. Dedución: 7 UIT. En pago quincenal: IR completo del mes retenido en la 2da quincena únicamente.
+
+**6. Neto a pagar**
+= bruto − (aporte AFP + comisión AFP flujo + prima seguro [o ONP]) − IR 5ta − préstamo − anticipo − judicial.
+
+**7. Cargas empresa por régimen**
+| Concepto | Microempresa | Otros regímenes |
+|---|---|---|
+| ESSALUD | 9% bruto | 9% bruto |
+| CTS mensualizada | S/ 0 | rem. computable ÷ 12 |
+| Gratificación mensualizada | S/ 0 | rem. computable ÷ 6 |
+| Bonif. extraordinaria (9% gratif.) | S/ 0 | gratificación × 9% |
+| Vacaciones | bruto ÷ 12 × (15÷30) | bruto ÷ 12 × (30÷30) |
+
+Remuneración computable = sueldo + asignación familiar + 1/6 de gratificación anual estimada.
+
+**8. Pago quincenal**
+- 1ra quincena: % configurado del sueldo mensual. AFP y ONP proporcionales. Sin IR 5ta. Sin provisiones de CTS/gratif/vacaciones.
+- 2da quincena: complemento + variables del mes. IR 5ta completo del mes. Todas las provisiones.
+
+**Reglas críticas**
+- Cambiar régimen de empresa no recalcula períodos cerrados.
+- Las gratificaciones de julio y diciembre no están afectas a AFP ni ONP.
+- La prima de seguro AFP nunca es cero.
+- El reporte PLAME solo se genera para períodos cerrados.
+
+**Cierre de período** → registra 2 egresos en Compras y Gastos: planilla (neto) + cargas sociales. Comisiones modo planilla del período se marcan como pagadas. Tab PLAME queda habilitado.
 
 ---
 
@@ -865,9 +915,60 @@ Módulo central para la liquidación, aprobación de acuerdos especiales y pago 
 
 ---
 
+### 8.18c RRHH — Evaluación de Desempeño
+
+Módulo informativo de evaluación 360° básica para colaboradores administrativos y operativos. No alimenta automáticamente nómina, comisiones ni otros módulos; RRHH y gerencia usan los resultados como insumo manual.
+
+**Configuración:** Parámetros Generales incluye "Configuración de Evaluaciones de Desempeño" con ponderación autoevaluación/jefe, ponderación competencias/objetivos, escala mínima/máxima y labels por puntaje. Las ponderaciones se validan en tiempo real y deben sumar 100 por bloque.
+
+**Plantillas:** RRHH/admin crea plantillas por empresa con nombre, descripción, período, fechas del proceso, pesos configurables, competencias y objetivos. Las competencias son cualitativas con escala numérica; los objetivos son cuantitativos con unidad, meta esperada y resultado real. Al activar una plantilla se generan evaluaciones para los colaboradores seleccionados y se toma snapshot del jefe directo (`jefe_user_id`), con advertencia si falta jefe asignado.
+
+**Flujo del colaborador:** el colaborador ve sus autoevaluaciones pendientes con badge en sidebar. Completa competencias con escala visual y comentarios opcionales, registra resultados reales de objetivos y ve el porcentaje de cumplimiento en tiempo real. Al enviar, la autoevaluación queda bloqueada y pasa a `autoevaluacion_completa`.
+
+**Flujo del jefe:** el jefe ve solo evaluaciones de subordinados directos. Puede consultar la autoevaluación como referencia en un panel lateral de solo lectura, completa su propia evaluación, comenta objetivos y registra un comentario final obligatorio. Al enviar, se calculan scores y la evaluación pasa a `completada`.
+
+**Cálculo:** competencias = promedio simple normalizado a 0-100. Objetivos = promedio de cumplimiento con tope 100%. Score por evaluador = competencias × peso competencias + objetivos × peso objetivos. Score final = autoevaluación × peso autoevaluación + jefe × peso jefe. Clasificación automática: Sobresaliente (90-100), Destacado (75-89), Satisfactorio (60-74), Por mejorar (45-59), Insatisfactorio (<45).
+
+**Resultados:** RRHH/admin accede al consolidado con KPIs, filtros, distribución de scores, exportación Excel y panel lateral con detalle completo por colaborador. El colaborador solo ve sus resultados cuando RRHH/admin cierra explícitamente la plantilla.
+
+**Reglas críticas:** una autoevaluación enviada no se edita; el colaborador no ve la evaluación del jefe antes del cierre; una plantilla cerrada no permite nuevas evaluaciones ni edición; RRHH puede reasignar jefe evaluador si el jefe cambia; si no hay jefe asignado, la autoevaluación puede completarse pero la evaluación del jefe queda bloqueada.
+
+---
+
 ### 8.19 RRHH — Préstamos al Personal
 
 Préstamos que la empresa otorga a sus trabajadores. Naturaleza: activo (nos deben). Se descuenta en nómina. Tabla con empleado, monto, cuotas, avance pagado, estado. Toggle "Descontar automáticamente en nómina". No confundir con financiamiento recibido.
+
+---
+
+### 8.18d RRHH — Liquidación por Cese
+
+Módulo exclusivo de RRHH/Admin para liquidar a colaboradores en cualquiera de los 5 tipos de cese habilitados por D.Leg. 728 y normas complementarias.
+
+**Tipos de cese:** Renuncia voluntaria · Despido arbitrario · Mutuo acuerdo · Vencimiento de contrato · Fallecimiento (con campos de beneficiario obligatorios).
+
+**Wizard de 3 pasos:**
+1. Datos del cese: selección de colaborador activo, tipo de cese, fecha de cese (no puede ser anterior a fecha de ingreso). Para fallecimiento: nombre y DNI del beneficiario.
+2. Revisión del cálculo: motor de cálculo automático con parámetros ajustables (asignación familiar, última gratificación mensual, días de vacaciones gozados, fecha del último depósito CTS). Cada concepto muestra la fórmula utilizada en texto legible.
+3. Confirmación: resumen, observaciones obligatorias, checkbox de confirmación con asesoría legal/contable.
+
+**Motor de cálculo — conceptos:**
+- **Remuneración pendiente:** sueldo ÷ 30 × días trabajados en el mes del cese. Aplica siempre.
+- **Vacaciones truncas:** días acumulados en el año laboral − días gozados, multiplicados por remuneración diaria. 30 días/año para régimen general/pequeña empresa; 15 para microempresa. Aplica siempre.
+- **CTS proporcional:** remuneración computable × (días desde último depósito ÷ 360). No aplica para microempresa.
+- **Gratificación proporcional:** remuneración computable × (meses completos en semestre ÷ 6) + bonificación extraordinaria 9%. No aplica para microempresa. Para renuncia voluntaria, requiere al menos 1 mes completo en el semestre.
+- **Indemnización:** solo para despido arbitrario. Régimen general: 1.5 rem./año (tope 12 rem.). Pequeña empresa: 20 rem.diarias/año (tope 120). Microempresa: 10 rem.diarias/año (tope 90).
+- Remuneración computable = sueldo base + asignación familiar + 1/6 de última gratificación semestral.
+
+**Al confirmar:**
+1. Estado de la liquidación → `confirmada`.
+2. Colaborador marcado como `cesado` (estado_laboral) en su ficha — desaparece de selectores activos en toda la app.
+3. CxP generada automáticamente en estado `pendiente`, con vencimiento a ~10 días calendario desde el cese.
+4. Toast con link directo a la CxP.
+
+**Anulación:** disponible en cualquier estado. Si la liquidación estaba confirmada: revierte el colaborador a activo y anula la CxP asociada con nota automática de motivo.
+
+**Disclaimer permanente:** "Los montos son referenciales. Valida con tu asesor legal o contador antes de procesar el pago."
 
 ---
 
@@ -940,9 +1041,11 @@ Costo estimado vs real. Mano de obra (desde parte diario × costo hora real), ma
 
 ### 8.28 Valorización
 
-Agrupar OTs cerradas por cliente/período. Aplicar tarifas, descuentos, penalidades, impuestos. Flujo de aprobación. Control de OTs valorizadas y pendientes. PDF.
+Agrupar OTs en ejecución o cerradas por cliente/período. Aplicar tarifas, descuentos, penalidades, impuestos. Flujo de aprobación. Control de OTs valorizadas y pendientes. PDF.
 
 **Detalle de Valorizaciones y Persistencia:** La tabla `valorizaciones` incluye persistencia nativa del JSON de partidas (`items`), las OTs vinculadas (`ot_ids`), y el historial de acciones y aprobaciones (`historial`). También almacena el modelo de cálculo utilizado, notas explicativas, fecha de aprobación final y motivo de anulación en caso de cancelación.
+
+**Cierre operativo por valorización final:** Las OTs en estado `ejecucion` pueden valorizarse por avance sin cerrarse. Al aprobar una valorización, el sistema suma el monto acumulado de las valorizaciones aprobadas que contienen cada OT incluida. Si ese acumulado alcanza o supera el monto total de la OS Cliente, la OT pasa automáticamente a `pendiente_cierre`. La aprobación no se bloquea ni condiciona; el cambio solo informa al área técnica que debe formalizar el cierre.
 
 ---
 
@@ -1109,6 +1212,18 @@ BI Comercial → tab "Por campaña" con métricas completas
 
 ---
 
+### 8.37 Soporte y Tickets
+
+Kanban de cuatro columnas: **Abiertos → En Proceso → QC → Resueltos**. Creación con título, descripción, prioridad (crítica/alta/media/baja), tipo, canal de entrada, cliente y responsable. SLA calculado en base con semáforo ok/riesgo/vencido. Numeración correlativa por tenant (`TK-XXXX`). Adjuntos mediante `FileUpload` y tabla `adjuntos`. Panel de detalle editable en estado `abierto`.
+
+**Sub-estados de QC:** cuando un ticket llega a la columna QC, el campo `qc_estado` expresa `en_revision` (sin badge), `observado` (badge naranja) o `aprobado` (badge verde). El botón "Mover a Resueltos" solo se habilita si `qc_estado = 'aprobado'`. Los tres sub-estados se controlan desde el panel de detalle del ticket.
+
+**Hilo de resolución (append-only):** tabla `ticket_comentarios` registra cada entrada con `tipo ∈ {observacion, evidencia, aprobacion, reapertura}`, contenido, URLs de evidencia opcionales, snapshot del autor y timestamp. Se muestra como línea de tiempo vertical con ícono y color por tipo. Cualquier usuario con acceso al ticket puede agregar entradas; nadie puede editar ni borrar entradas pasadas.
+
+**Reapertura formal:** botón "Reabrir ticket" visible solo en tickets `resueltos`. Exige motivo de reapertura obligatorio, registra una entrada `reapertura` en el hilo y devuelve el ticket a QC con `qc_estado = en_revision`. `fecha_resolucion` se limpia. `veces_reabierto` se incrementa y se muestra como indicador en la ficha. Vista Lista disponible sin cambios en esta iteración.
+
+---
+
 ### 8.36 Vistas de Campo Móviles — PWA
 
 Instalable desde el browser. Rutas mobile-first. Acceso a cámara. Sincronización offline básica. Solo con `acceso_campo = true`.
@@ -1163,11 +1278,11 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 **Comercial:** hojas_costeo (con secciones jsonb: mano_obra, materiales, servicios_terceros, logistica + totales calculados + margen_objetivo_pct + responsable_costeo + cotizacion_id), cotizaciones (+ hoja_costeo_id para trazabilidad), historial_versiones_cotizacion, os_clientes, condiciones_comerciales.
 
-**Operaciones:** backlog, ordenes_trabajo (+ubicacion_gps, direccion_ejecucion, +participantes_admin jsonb — array de participantes administrativos con personal_id, personal_nombre, horas_estimadas), partes_diarios (+logistica_lineas, terceros_lineas, tecnico_nombre), tickets (id uuid, empresa_id, numero TK por tenant, titulo, descripcion, tipo, canal_entrada, estado, prioridad, cuenta_id/cuenta_nombre, responsable_id/responsable_nombre, fecha_limite_sla, sla_estado calculado, fecha_resolucion, creado_por, creado_en, actualizado_en), evidencias, conformidad_cliente, remisiones, valorizaciones.
+**Operaciones:** backlog, ordenes_trabajo (+ubicacion_gps, direccion_ejecucion, +participantes_admin jsonb — array de participantes administrativos con personal_id, personal_nombre, horas_estimadas), partes_diarios (+logistica_lineas, terceros_lineas, tecnico_nombre), tickets (id uuid, empresa_id, numero TK por tenant, titulo, descripcion, tipo, canal_entrada, estado, prioridad, cuenta_id/cuenta_nombre, responsable_id/responsable_nombre, fecha_limite_sla, sla_estado calculado, fecha_resolucion, **qc_estado** ∈ {en_revision, observado, aprobado} nullable, **veces_reabierto** integer default 0, **reabierto_en** timestamptz nullable, creado_por, creado_en, actualizado_en), ticket_comentarios (id uuid, empresa_id, **ticket_id** FK→tickets, **tipo** ∈ {observacion, evidencia, aprobacion, reapertura}, **contenido** text, **imagen_url** text nullable — URL pública en bucket `ticket-evidencias`, **usuario_id** uuid nullable, **usuario_nombre** text, creado_en — append-only: INSERT permitido, UPDATE/DELETE prohibidos por RLS), evidencias, conformidad_cliente, remisiones, valorizaciones.
 
 **Inventario y compras:** almacenes, stock, movimientos_inventario, kardex, solpe_interna, proveedores, documentos_proveedor, evaluaciones_proveedor, contactos_proveedor, procesos_compra, ordenes_compra, ordenes_servicio, recepciones, conformidad_proveedor, traslados_logisticos.
 
-**RRHH:** personal_operativo (+turno_id, sueldo_base, sistema_pensionario), personal_administrativo (+suspension_retenciones, vencimiento_suspension), turnos, registros_asistencia (+solicitud_rrhh_id), tareos_admin (id, empresa_id, personal_id FK→personal_administrativo, personal_nombre, fecha, horas decimal, descripcion, tipo ∈ {ot,libre}, ot_id nullable FK→ordenes_trabajo, ceco_id nullable FK→centros_costo, ceco_nombre, estado ∈ {borrador,enviado}, origen ∈ {mobile,backoffice}, creado_por, creado_en, actualizado_en), periodos_nomina, detalle_nomina, prestamos_personal, recibos_honorarios (id, empresa_id, vendedor_id, vendedor_nombre, vendedor_ruc, periodo, comisiones_ids, monto_bruto, retencion_ir, monto_neto, estado, creado_en, moneda, personal_id, motivo_retencion), solicitudes_rrhh (id, empresa_id, personal_id, personal_nombre, personal_tipo, aprobador_id, aprobador_nombre, tipo, fecha_inicio, fecha_fin, dias_habiles, motivo, documento_url, requiere_documento, estado, comentario_jefe, comentario_rrhh, motivo_anulacion, fecha_aprobacion_jefe, fecha_confirmacion, confirmado_por, impacto_nomina, dias_a_descontar, registrado_desde, creado_por, creado_en, actualizado_en), solicitudes_rrhh_historial (id, solicitud_id, empresa_id, estado_desde, estado_hasta, comentario, usuario, creado_en), rrhh_config_ausencias (empresa_id, dias_vacaciones_anio, max_dias_permiso_goce, dias_licencia_empresa, pct_max_equipo_ausente).
+**RRHH:** personal_operativo (+turno_id, sueldo_base, sistema_pensionario, afp_nombre, tiene_hijos, regimen_laboral, cuota_prestamo_mes, descuento_judicial, **regimen_jornada** ∈ {general,minero_14x7,minero_20x10,minero_28x14}, **horas_diarias_pactadas**, **fecha_inicio_ciclo**, **bonif_altitud**, **tipo_comision_afp** ∈ {flujo,mixta}, **pct_comision_afp_flujo**), personal_administrativo (+turno_id, remuneracion, sistema_pensionario, afp_nombre, tiene_hijos, regimen_laboral, cuota_prestamo_mes, descuento_judicial, suspension_retenciones, vencimiento_suspension, **regimen_jornada**, **horas_diarias_pactadas**, **fecha_inicio_ciclo**, **bonif_altitud**, **tipo_comision_afp**, **pct_comision_afp_flujo**), empresa_config (+**regimen_laboral_empresa** ∈ {general,pequena_empresa,microempresa}, **frecuencia_pago** ∈ {mensual,quincenal}, **dia_corte_mensual**, **dia_pago_mensual**, **dia_corte_q1**, **dia_pago_q1**, **dia_corte_q2**, **dia_pago_q2**, **pct_quincena_1**, **uit_vigente**, **rmv_vigente**, **ram_tope_afp**, **pct_prima_seguro**, **eval_peso_autoevaluacion**, **eval_peso_jefe**, **eval_peso_competencias**, **eval_peso_objetivos**, **eval_escala_min**, **eval_escala_max**, **eval_escala_labels**), turnos, registros_asistencia (+solicitud_rrhh_id), tareos_admin (id, empresa_id, personal_id FK→personal_administrativo, personal_nombre, fecha, horas decimal, descripcion, tipo ∈ {ot,libre}, ot_id nullable FK→ordenes_trabajo, ceco_id nullable FK→centros_costo, ceco_nombre, estado ∈ {borrador,enviado}, origen ∈ {mobile,backoffice}, creado_por, creado_en, actualizado_en), **periodos_nomina** (id, empresa_id, anio, mes, quincena nullable ∈ {1,2}, periodo text, fecha_corte, fecha_pago, estado ∈ {abierto,en_proceso,cerrado,anulado}, total_trabajadores, masa_salarial_bruta, total_neto, total_cargas_empresa, cerrado_por, cerrado_en; índice único empresa+anio+mes+quincena), **nomina_detalle** (id, empresa_id, periodo_id FK, trabajador_id, trabajador_tipo, regimen_jornada_snap, regimen_empresa_snap, dias_laborables, dias_laborados, dias_computables, horas_extra_tramo1_min, horas_extra_tramo2_min, sueldo_base, remuneracion_bruta, asignacion_familiar, add_horas_extra, bonif_altitud, otros_ingresos, desc_faltas, desc_tardanzas, aporte_afp, comision_afp_flujo, prima_seguro_afp, desc_onp, retencion_ir, desc_prestamo, desc_anticipo, desc_judicial, total_descuentos, neto, essalud, cts_mensualizado, tiene_cts, gratificacion_mensualizada, bonif_extraordinaria, tiene_gratificacion, vacaciones_mensualizadas, total_cargas, costo_real_empresa, es_quincena, quincena, pct_quincena_aplicado), prestamos_personal, recibos_honorarios (id, empresa_id, vendedor_id, vendedor_nombre, vendedor_ruc, periodo, comisiones_ids, monto_bruto, retencion_ir, monto_neto, estado, creado_en, moneda, personal_id, motivo_retencion), solicitudes_rrhh (id, empresa_id, personal_id, personal_nombre, personal_tipo, aprobador_id, aprobador_nombre, tipo, fecha_inicio, fecha_fin, dias_habiles, motivo, documento_url, requiere_documento, estado, comentario_jefe, comentario_rrhh, motivo_anulacion, fecha_aprobacion_jefe, fecha_confirmacion, confirmado_por, impacto_nomina, dias_a_descontar, registrado_desde, creado_por, creado_en, actualizado_en), solicitudes_rrhh_historial (id, solicitud_id, empresa_id, estado_desde, estado_hasta, comentario, usuario, creado_en), rrhh_config_ausencias (empresa_id, dias_vacaciones_anio, max_dias_permiso_goce, dias_licencia_empresa, pct_max_equipo_ausente), desempeno_plantillas (empresa_id, nombre, descripcion, periodo, estado, pesos auto/jefe y competencias/objetivos, fechas, creado_por), desempeno_competencias (empresa_id, plantilla_id, nombre, descripcion, escala_min, escala_max, orden), desempeno_objetivos (empresa_id, plantilla_id, nombre, descripcion, unidad_medida, meta_numerica, orden), desempeno_evaluaciones (empresa_id, plantilla_id, evaluado snapshot, jefe snapshot, estado, score_autoevaluacion, score_jefe, score_final, comentario_final_jefe), desempeno_respuestas_competencias (empresa_id, evaluacion_id, competencia_id, tipo_evaluador, puntaje, comentario, respondido_por), desempeno_respuestas_objetivos (empresa_id, evaluacion_id, objetivo_id, tipo_evaluador, resultado_real, porcentaje_cumplimiento, comentario, respondido_por). **Campos agregados en personal_operativo y personal_administrativo (migr. 152):** fecha_ingreso date, estado_laboral ∈ {activo,cesado} default activo, fecha_cese date nullable, tipo_cese ∈ {renuncia_voluntaria,despido_arbitrario,mutuo_acuerdo,vencimiento_contrato,fallecimiento} nullable. **liquidaciones_cese** (id uuid, empresa_id, personal_id text, personal_nombre, personal_tipo ∈ {operativo,administrativo}, tipo_cese, fecha_cese date, fecha_ingreso date, anios/meses/dias_servicio, remuneracion_computable, monto_total, estado ∈ {borrador,calculada,confirmada,anulada}, observaciones, motivo_anulacion, beneficiario_nombre, beneficiario_dni, cxp_id uuid FK→cxp, parametros_calculo jsonb, creado/confirmado/anulado_por, *_en timestamps; índice único (empresa_id, personal_id) where estado <> 'anulada'). **liquidaciones_cese_conceptos** (id uuid, empresa_id, liquidacion_id FK, concepto ∈ {remuneracion_pendiente,vacaciones_truncas,cts_proporcional,gratificacion_proporcional,indemnizacion,otros}, descripcion, descripcion_calculo text —fórmula legible—, monto, aplica boolean, motivo_no_aplica, es_descuento boolean, orden).
 
 **Financiamiento:** financiamientos, tabla_amortizacion, pagos_financiamiento.
 
@@ -1197,6 +1312,9 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 | `conformidades-ot` | Conformidades y evidencias de OT | Público | 10 MB |
 | `documentos-privados` | Documentos sensibles internos: personal, nómina, contratos, recibos | Privado, vía signed URL | 20 MB |
 | `documentos-generales` | Adjuntos operativos: tickets, gastos, recepciones, documentos de proveedor | Público | 20 MB |
+| `ticket-evidencias` | Imágenes de evidencia adjuntas al hilo de resolución de tickets | Público | 10 MB |
+
+**Ruta de `ticket-evidencias`:** `{empresa_id}/{ticket_id}/{timestamp}_{nombre_archivo}`. El upload lo ejecuta directamente `ticketsService.subirImagenEvidencia`, no pasa por `storageService.js` ya que la URL resultante se guarda en `ticket_comentarios.imagen_url` y no en la tabla `adjuntos`.
 
 **Tabla central:** `adjuntos` registra `id`, `empresa_id`, `entidad_tipo`, `entidad_id`, `categoria`, `nombre_original`, `bucket`, `storage_path`, `url`, `mime_type`, `tamano_bytes`, `descripcion`, `subido_por`, `subido_en`, `actualizado_en`. RLS usa `usuario_tiene_empresa(empresa_id)`.
 
@@ -1243,6 +1361,8 @@ Solo proveedores homologados en selectores de OC. Bloqueados no aparecen. Toda r
 
 ### 10.5 RRHH y nómina
 Nómina ≠ costo de OT. Son dos mediciones independientes. Solo los **intereses** de financiamiento son gasto financiero en ER. El capital reduce el pasivo. Préstamos al personal ≠ financiamiento recibido.
+
+**Cese de colaboradores:** Al confirmar una liquidación por cese, el campo `estado_laboral` del colaborador (en `personal_operativo` o `personal_administrativo`) cambia a `cesado` y se registran `fecha_cese` y `tipo_cese` en su ficha. El colaborador desaparece de todos los selectores de personal activo del sistema (Planner, Partes Diarios, Nómina, Solicitudes RRHH, etc.). La CxP generada queda en estado `pendiente` para que Finanzas la gestione. Anular una liquidación confirmada revierte el estado del colaborador a `activo` y anula la CxP con nota de motivo.
 
 **Comisiones y RHE (Impuestos):** Las comisiones liquidadas por RHE se gravan con retención de IR de 4ta categoría (8% por defecto) si la empresa es agente de retención (`agente_retencion = true`), el recibo supera el umbral de S/ 1,500 en PEN (calculado con `tipo_cambio_referencial` en cobros en USD) y el colaborador no tiene suspensión de retenciones activa. Toda liquidación de RHE confirmada genera automáticamente una CxP de tipo `personal` para el colaborador.
 
@@ -1306,7 +1426,7 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 - Exportación PDT SUNAT, integración AFP/ESSALUD en línea (nómina avanzada, se cotiza aparte).
 - App móvil nativa iOS/Android — campo se resuelve con PWA.
 - Balance general completo (requiere contabilidad de partida doble — versión futura).
-- Planilla/nómina con liquidaciones de cese complejas, régimen MYPE diferenciado, utilidades (versión futura).
+- Cálculo de utilidades (participación en utilidades) y liquidaciones de cese con múltiples contratos simultáneos o regímenes especiales no estándar (versión futura). El módulo de Liquidación por Cese estándar (D.Leg. 728) está implementado.
 - Hardware, tablets, impresoras.
 - Migración histórica masiva no definida.
 - Asesoría tributaria, contable o laboral.
@@ -1318,6 +1438,11 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 
 | Fecha | Cambios principales |
 |-------|---------------------|
+| 30/05/2026 | **Liquidación por Cese — módulo completo (migración 152):** módulo exclusivo RRHH/Admin para todos los tipos de cese (D.Leg. 728). (1) **Migración `152_liquidaciones_cese.sql`:** campos `fecha_ingreso`, `estado_laboral`, `fecha_cese`, `tipo_cese` añadidos a `personal_operativo` y `personal_administrativo`; tablas `liquidaciones_cese` y `liquidaciones_cese_conceptos` con RLS por `liquidaciones_puede_gestionar`; índice único parcial para máximo una liquidación activa por persona. (2) **`liquidacionesCeseService.js`:** función pura `calcularConceptos(params)` con motor completo (remuneración pendiente, vacaciones truncas, CTS proporcional, gratificación proporcional + bonif. 9%, indemnización por régimen general/MYPE/microempresa); CRUD: `cargarLiquidaciones`, `crearLiquidacion`, `confirmarLiquidacion` (crea CxP + marca cesado), `anularLiquidacion` (revierte colaborador + anula CxP). (3) **`pages_liquidaciones.jsx`:** KPIs (liquidaciones año, monto, pendientes), tabla con filtros, wizard 3 pasos (datos cese → revisión cálculo con parámetros ajustables → confirmación con checkbox), ficha detalle con trazabilidad y acciones según estado. Disclaimer permanente. (4) **Context/router/sidebar/data.js:** estado `liquidacionesCese` y `liquidacionesConceptos`, acciones `crearLiquidacionCtx`, `confirmarLiquidacionCtx`, `anularLiquidacionCtx`, ruta `liquidaciones_cese`, entrada sidebar bajo Evaluación de Desempeño. (5) **Reglas transversales:** al confirmar, colaborador desaparece de selectores activos en toda la app; anular revierte. |
+| 30/05/2026 | **Valorizaciones — pase automático a Pendiente cierre:** al aprobar una valorización, el sistema calcula el acumulado aprobado por OT contra el monto total de la OS Cliente. Si una OT incluida sigue en `ejecucion` y alcanzó 100%, pasa automáticamente a `pendiente_cierre` sin bloquear la aprobación ni el flujo posterior hacia factura/CxC. La notificación informa cuántas OTs fueron movidas. |
+| 30/05/2026 | **Evaluación de Desempeño — módulo completo (migración 151):** 360° básico informativo con autoevaluación + evaluación de jefe, competencias cualitativas, objetivos cuantitativos, score ponderado configurable y resultados visibles al colaborador solo tras cierre de plantilla. (1) **Migración `151_evaluaciones_desempeno.sql`:** columnas de configuración en `empresa_config`; tablas `desempeno_plantillas`, `desempeno_competencias`, `desempeno_objetivos`, `desempeno_evaluaciones`, `desempeno_respuestas_competencias` y `desempeno_respuestas_objetivos`; RLS por tenant, evaluado, jefe directo y RRHH/admin; permisos funcionales `evaluaciones_desempeno`. (2) **Servicio/contexto:** CRUD de plantillas, generación de evaluaciones, guardado de autoevaluación, guardado de evaluación de jefe, reasignación de jefe y cálculo de scores/clasificación. (3) **UI:** pantalla RRHH con tabs Plantillas, Evaluaciones en curso y Resultados; wizard de creación; flujos de colaborador y jefe; resultados individuales y consolidados con exportación Excel. (4) **Parámetros Generales:** nueva configuración de ponderaciones, escala y labels con validación en tiempo real. (5) **Sidebar/router/documentación:** ruta `evaluaciones_desempeno`, badge de pendientes y documento maestro actualizado. |
+| 28/05/2026 | **Hardening Nómina Perú (migración 150):** correcciones de cálculo + régimen MYPE + régimen minero 14×7/20×10/28×14 + períodos quincenales + reporte PLAME. (1) **Migración `150_nomina_hardening.sql`:** 13 columnas nuevas en `empresa_config` (regimen_laboral_empresa, frecuencia_pago, días corte/pago mensual y por quincena, pct_quincena_1, uit_vigente, rmv_vigente, ram_tope_afp, pct_prima_seguro); 6 columnas nuevas en `personal_operativo` y `personal_administrativo` (regimen_jornada, horas_diarias_pactadas, fecha_inicio_ciclo, bonif_altitud, tipo_comision_afp, pct_comision_afp_flujo); tabla `periodos_nomina` creada con índice único empresa+anio+mes+quincena; tabla `nomina_detalle` con los tres componentes AFP por separado, tramos de horas extra, días computables, flags CTS/gratificación, bonificación extraordinaria. (2) **`nominaService.js`** (nuevo): CRUD periodos_nomina, guardar/leer nomina_detalle, leer/escribir config nómina en empresa_config. (3) **Motor de cálculo corregido:** AFP split en tres componentes (aporte 10%, comisión flujo %, prima seguro sobre tope RAM); IR 5ta con UIT dinámica de empresa_config y proyección anual real; horas extra split 25% primeras 2h/día + 35% desde 3ra h/día; CTS sobre remuneración computable (básico + AF + 1/6 gratif); bonificación extraordinaria 9% sobre gratificación. (4) **Régimen MYPE:** microempresa → CTS = 0, gratificación = 0, bonif. extraordinaria = 0, vacaciones 15 días; pequeña empresa → CTS y gratificación sí. (5) **Régimen minero:** días computables calculados desde `fecha_inicio_ciclo` según ciclo 14+7/20+10/28+14; remuneración proporcional; valor hora sobre horas pactadas; bonificación por altitud proporcional. (6) **Pago quincenal:** 1ra quincena = % configurado del sueldo (sin IR, sin provisiones); 2da quincena = resto + IR completo del mes + provisiones. (7) **`pages_admin.jsx`:** tab "Nómina" nuevo en Parámetros Generales con 3 bloques (régimen laboral con tabla comparativa y modal de confirmación, frecuencia de pago con preview, valores fiscales); formulario RRHHAdmin ampliado con sección "Régimen de Jornada y Sistema Previsional". (8) **`pages_ops.jsx`:** formulario RRHH_Operativo ampliado igual; componente Nomina rediseñado con tab Períodos (cards con estado semántico, auto-generación), tab Resumen (badge régimen y días computables), tab Detalle expandido (desglose AFP 3 líneas, cargas por régimen), tab PLAME (preview tabla + descarga Excel, solo para cerrados). (9) **Documento maestro:** 8.18 reescrito, 9.3 actualizado, exclusión "régimen MYPE diferenciado" eliminada de sección 13. |
+| 28/05/2026 | **Soporte y Tickets — QC con sub-estados, hilo de resolución y reapertura formal (migración 149):** tres capacidades nuevas sin alterar el Kanban de cuatro columnas. (1) **Migración `149_tickets_qc_hilo.sql`:** columnas `qc_estado` (nullable, check en_revision/observado/aprobado), `veces_reabierto` (integer default 0) y `reabierto_en` (timestamptz) añadidas a `tickets`. Trigger `set_ticket_defaults` actualizado para inicializar `qc_estado = en_revision` al entrar a QC y limpiarlo al salir. Nueva tabla `ticket_comentarios` append-only con campo `imagen_url text` nullable (no array) y RLS: SELECT e INSERT permitidos, UPDATE/DELETE prohibidos; índice por `(ticket_id, creado_en asc)`. (2) **`ticketsService.js`:** funciones nuevas `subirImagenEvidencia` (sube imagen al bucket público `ticket-evidencias`, ruta `{empresa_id}/{ticket_id}/{timestamp}_{archivo}`, retorna URL pública), `cargarComentariosTicket`, `agregarComentarioTicket` (con campo `imagen_url`), `actualizarQcEstado` y `reabrirTicket`. (3) **UI en `pages_ops.jsx`:** badge naranja OBSERVADO / verde APROBADO en tarjeta Kanban cuando `estado = qc`. Botón "Mover a Resueltos" deshabilitado si `qc_estado ≠ aprobado`. Panel de detalle incluye controles de sub-estado QC, hilo de resolución como línea de tiempo vertical (íconos y colores por tipo) con formulario append-only: tipo, texto y file picker real para imagen (PNG/JPG/WEBP, preview antes de enviar, upload primero→insert después). Las imágenes guardadas se muestran como miniaturas clicables en las entradas del hilo. Botón "Reabrir ticket" en tickets resueltos exige motivo obligatorio vía modal. (4) **Bucket nuevo:** `ticket-evidencias` público, 10 MB, ruta `{empresa_id}/{ticket_id}/{ts}_{archivo}`. |
 | 28/05/2026 | **Tareo Administrativo — módulo completo (migración 148):** brecha completa cerrada entre personal administrativo, OTs y registro diario de horas. (1) **Migración 148:** tabla `tareos_admin` con campos `personal_id`, `fecha`, `horas`, `descripcion`, `tipo` ∈ {ot,libre}, `ot_id` nullable, `ceco_id` nullable, `estado` ∈ {borrador,enviado}, `origen` ∈ {mobile,backoffice}; RLS por tenant; trigger `actualizado_en`. Constraint `perfil_campo` ampliado con valor `administrativo`. (2) **`src/services/tareosAdminService.js`:** CRUD completo con switch supabase/mock. Funciones: `cargarTareos`, `cargarOTsAdminDelDia`, `cargarCecosActivos`, `crearTareo`, `actualizarTareo`, `enviarTareosDia`, `corregirTareo`. (3) **`TareoAdmin` desktop** en `pages_ops.jsx`: dos tabs "Por día" y "Por período", filtros por fecha/colaborador, tabla filtrable, resumen de horas OT vs libre; visible solo con permiso `tareo_admin:ver`. (4) **PWA `AdministrativoView`** en `pages_mobile.jsx`: "Mi registro del día" — OTs asignadas (desde `participantes_admin`) con estado badge/botón, formulario 1-paso por OT, sección de actividades libres por CECO, envío del registro del día con advertencia si quedan OTs sin registrar. (5) **Integración Parte Diario:** al registrar un parte donde el colaborador es del `personalAdmin`, se crea automáticamente un `tareos_admin` de tipo `ot` con `origen: backoffice`. (6) **Constructor de Roles:** pantalla `tareo_admin` agregada a `pantallasPermisos` en `data.js`. (7) **Sidebar:** ítem "Tareo Administrativo" en sección RRHH de `shell.jsx`. (8) **Routing:** `App.jsx` con lazy import y case `tareo_admin`. (9) **`context.jsx`:** `normalizarCampoModulos` incluye `administrativo` → `['administrativo', 'solicitudes']`. (10) **Selector perfil_campo:** opción `Administrativo` con descripción agregada en Constructor de Roles. |
 | 28/05/2026 | **Participantes administrativos en OT y Parte Diario (migración 147):** brecha cerrada: personal administrativo puede participar en una OT y registrar horas en el Parte Diario sin pasar por el Planner. Columna `participantes_admin jsonb` agregada a `ordenes_trabajo` mediante `ALTER TABLE … ADD COLUMN IF NOT EXISTS`. El formulario de creación y la ficha de edición de OT incluyen una sección opcional "Participantes administrativos" con selector de colaborador activo + horas estimadas. En el Parte Diario, el selector de colaborador muestra operativos (del Planner) y admins (de `participantes_admin`) diferenciados con `<optgroup>`. El costo de admins se acumula en `costoMO`/`costoReal` igual que el de operativos. Sin cambios en Planner, `calcCostoHora`, flujo de aprobación ni estructura de `partes_diarios`. |
 | 28/05/2026 | **Módulo Solicitudes de RRHH (migración 146):** flujo multietapa enviada → aprobada_jefe → confirmada_rrhh con historial append-only automático. Tres tablas nuevas: `solicitudes_rrhh`, `solicitudes_rrhh_historial`, `rrhh_config_ausencias`. Función `calcular_dias_habiles`. RPC `crear_solicitud_rrhh` (security definer). Trigger historial + trigger `actualizado_en`. Columna `solicitud_rrhh_id` en `registros_asistencia`. Servicio `solicitudesRrhhService.js` con operaciones CRUD, aprobaciones, cálculo de impacto nómina y saldo de vacaciones. Componente `SolicitudesRrhh` con 4 tabs (mis solicitudes, pendientes, todas, calendario de ausencias), side-panels de nueva solicitud e historial, side-panel de acción con validaciones. Vista mobile `SolicitudesMovilView` con formulario de 4 pasos y acciones de aprobación para supervisores. Sidebar entrada en sección RRHH entre Comisiones y Préstamos. |
@@ -1351,3 +1476,9 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 | 28/04/2026 | Arquitectura de entidades: separación Maestros Base vs módulos transaccionales. Flujo Lead → Cuenta corregido (Lead primero, siempre). Formulario nueva cuenta en dos momentos (comercial + financiero). Formulario lead con RUC/Razón social/Industria. Proveedores con ciclo de vida, homologación y evaluación. Sección COMPRAS nueva en sidebar con 5 módulos. Flujo completo de compras: cotización → comparativo → OC/OS → recepción → CxP + evaluación proveedor. Sección RRHH nueva en sidebar. Control de Asistencia con turnos por trabajador y cálculo automático de tardanzas. Nómina Básica con cálculo completo (bruto, AFP/ONP, IR 5ta, cargas empresa), boleta PDF y cierre de período con egreso en finanzas. Separación Préstamos al Personal vs Financiamiento y Deuda. Módulo Financiamiento y Deuda con tabla de amortización automática, conexión de intereses al ER y reporte de deuda a 12 meses. |
 | 27/04/2026 | Wiring F3 completo (13 rutas). BI Financiero nuevo. Dashboard F3 + CS 360° en cuentas. RRHH Admin reportes. Planner Agenda CS. IA historial auditado. Presupuesto vs Real. Tickets mejorado. RRHH Operativo 3 tabs. BI Comercial y BI Operativo completos. Bug fix CSS (tab-bar→tabs, card-header→card-head). |
 | Anterior | Núcleo multitenant, CRM, OT, administración financiera, operaciones extendidas, compras básico, inventario, Customer Success, IA. |
+
+
+# Actualizaciones - Control de Asistencia Régimen Minero
+- **8.17 Control de Asistencia**: Soporte para régimen minero añadido.
+- **9.3 Tablas RRHH**: Tabla `asistencia_ciclos_mineros` creada.
+- **14 Historial de Cambios**: Actualización aplicada.

@@ -120,3 +120,111 @@ export async function eliminarTicket(ticketId) {
   if (error) throw error;
   return true;
 }
+
+const BUCKET_TICKET_EVIDENCIAS = 'ticket-evidencias';
+
+export async function subirImagenEvidencia(empresaId, ticketId, file) {
+  if (!file) return null;
+  const supabase = await getSupabaseClient();
+  const timestamp = Date.now();
+  const nombreSeguro = String(file.name || 'imagen').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const path = `${empresaId}/${ticketId}/${timestamp}_${nombreSeguro}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(BUCKET_TICKET_EVIDENCIAS)
+    .upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false });
+
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from(BUCKET_TICKET_EVIDENCIAS).getPublicUrl(path);
+  return data?.publicUrl || null;
+}
+
+export async function cargarComentariosTicket(ticketId) {
+  if (!ticketId) return [];
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('ticket_comentarios')
+    .select('*')
+    .eq('ticket_id', ticketId)
+    .order('creado_en', { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function agregarComentarioTicket(empresaId, ticketId, { tipo, contenido, imagen_url = null, usuario_id = null, usuario_nombre }) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('ticket_comentarios')
+    .insert({
+      empresa_id: empresaId,
+      ticket_id: ticketId,
+      tipo,
+      contenido: String(contenido || '').trim(),
+      imagen_url: imagen_url || null,
+      usuario_id: usuario_id || null,
+      usuario_nombre: usuario_nombre || 'Usuario',
+    })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function actualizarQcEstado(ticketId, qcEstado) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('tickets')
+    .update({ qc_estado: qcEstado, actualizado_en: new Date().toISOString() })
+    .eq('id', ticketId)
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return getTicketById(data.id);
+}
+
+export async function reabrirTicket(ticketId, empresaId, motivo, usuarioId, usuarioNombre) {
+  const supabase = await getSupabaseClient();
+  const ahora = new Date().toISOString();
+
+  const { data: currentData, error: fetchError } = await supabase
+    .from('tickets')
+    .select('veces_reabierto')
+    .eq('id', ticketId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const { error: updateError } = await supabase
+    .from('tickets')
+    .update({
+      estado: 'qc',
+      qc_estado: 'en_revision',
+      fecha_resolucion: null,
+      reabierto_en: ahora,
+      veces_reabierto: (currentData?.veces_reabierto || 0) + 1,
+      actualizado_en: ahora,
+    })
+    .eq('id', ticketId);
+
+  if (updateError) throw updateError;
+
+  const { error: commentError } = await supabase
+    .from('ticket_comentarios')
+    .insert({
+      empresa_id: empresaId,
+      ticket_id: ticketId,
+      tipo: 'reapertura',
+      contenido: String(motivo || '').trim(),
+      imagen_url: null,
+      usuario_id: usuarioId || null,
+      usuario_nombre: usuarioNombre || 'Usuario',
+    });
+
+  if (commentError) throw commentError;
+
+  return getTicketById(ticketId);
+}

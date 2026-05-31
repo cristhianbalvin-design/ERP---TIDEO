@@ -18,6 +18,26 @@ const currencySymbol = (m = 'PEN') => {
 const moneyCurrency = (value, moneda = 'PEN') => money(value, currencySymbol(moneda));
 const EMPRESA_ASSETS_BUCKET = 'empresa-assets';
 
+const toCotNumber = (value, fallback = 0) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
+  if (value == null || value === '') return fallback;
+  let clean = String(value).trim().replace(/[^\d,.-]/g, '');
+  if (!clean) return fallback;
+  const lastComma = clean.lastIndexOf(',');
+  const lastDot = clean.lastIndexOf('.');
+  if (lastComma > -1 && lastDot > -1) {
+    clean = lastComma > lastDot ? clean.replace(/\./g, '').replace(',', '.') : clean.replace(/,/g, '');
+  } else if (lastComma > -1) {
+    const parts = clean.split(',');
+    clean = parts[parts.length - 1]?.length === 3 ? clean.replace(/,/g, '') : clean.replace(',', '.');
+  } else if (lastDot > -1) {
+    const parts = clean.split('.');
+    clean = parts[parts.length - 1]?.length === 3 ? clean.replace(/\./g, '') : clean;
+  }
+  const num = Number(clean);
+  return Number.isFinite(num) ? num : fallback;
+};
+
 const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = () => resolve(reader.result);
@@ -95,7 +115,7 @@ const pdfAssetSource = async ({ url, path }) => {
 };
 
 const construirPartidasDesdeHC = (hc) => {
-  const margen = Math.min(Math.max(Number(hc.margen_objetivo_pct || 35), 0), 95) / 100;
+  const margen = Math.min(Math.max(toCotNumber(hc.margen_objetivo_pct, 35), 0), 95) / 100;
   const divisor = 1 - margen;
   return [
     ...(hc.mano_obra || []),
@@ -103,8 +123,8 @@ const construirPartidasDesdeHC = (hc) => {
     ...(hc.servicios_terceros || []),
     ...(hc.logistica || []),
   ].map((i, idx) => {
-    const cantidad = Number(i.cantidad || 0);
-    const costoUnitario = Number(i.costo_unitario || i.precio_unitario || 0);
+    const cantidad = toCotNumber(i.cantidad);
+    const costoUnitario = toCotNumber(i.costo_unitario ?? i.precio_unitario);
     const precioUnitario = divisor > 0 ? Math.round(costoUnitario / divisor) : costoUnitario;
     return {
       id: i.id || idx + 1,
@@ -156,13 +176,23 @@ function CotizacionesInner() {
     const opp = getOpp(activeParams.opp);
     if (!opp) return <div className="p-4">Oportunidad no encontrada</div>;
     const hcBase = activeParams.hc_id ? (hojasCosteo || []).find(h => h.id === activeParams.hc_id) : null;
+    const itemsHC = hcBase ? construirPartidasDesdeHC(hcBase) : [];
+    const subtotalHC = itemsHC.reduce((s, p) => s + toCotNumber(p.subtotal ?? (toCotNumber(p.cantidad) * toCotNumber(p.precio_unitario))), 0);
+    const igvHC = Math.round(subtotalHC * 18 / 100);
     const cotBaseDeHC = hcBase ? {
       moneda: opp.moneda || hcBase.moneda,
       igv_pct: 18,
       oportunidad_id: opp.id,
       cuenta_id: opp.cuenta_id,
       hoja_costeo_id: hcBase.id,
-      items: construirPartidasDesdeHC(hcBase),
+      subtotal: subtotalHC,
+      base_imponible: subtotalHC,
+      igv: igvHC,
+      total: subtotalHC + igvHC,
+      subtotal_impl: subtotalHC,
+      igv_impl: igvHC,
+      total_impl: subtotalHC + igvHC,
+      items: itemsHC,
     } : null;
     return (
       <EditorCotizacion
@@ -530,6 +560,25 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
   const [confirmEnviar, setConfirmEnviar] = useState(false);
   const [showAprobModal, setShowAprobModal] = useState(false);
   const sym = currencySymbol(cot.moneda);
+  const calcDetalleTotal = p => toCotNumber(p.total) || (toCotNumber(p.cantidad) * toCotNumber(p.precio_unitario));
+  const subtotalDetalleImpl = partidas
+    .filter(p => !p.incluido && p.tipo !== 'recurrente')
+    .reduce((s, p) => s + calcDetalleTotal(p), 0);
+  const subtotalDetalleRec = partidas
+    .filter(p => !p.incluido && p.tipo === 'recurrente')
+    .reduce((s, p) => s + calcDetalleTotal(p), 0);
+  const usarTotalesPartidasHC = !!cot.hoja_costeo_id && subtotalDetalleImpl > 0 && (
+    toCotNumber(cot.subtotal_impl ?? cot.subtotal) <= 0 || toCotNumber(cot.total_impl ?? cot.total) <= 0
+  );
+  const usarTotalesRecPartidasHC = !!cot.hoja_costeo_id && subtotalDetalleRec > 0 && (
+    toCotNumber(cot.subtotal_rec) <= 0 || toCotNumber(cot.total_rec) <= 0
+  );
+  const subtotalImplDetalle = usarTotalesPartidasHC ? subtotalDetalleImpl : (cot.subtotal_impl ?? cot.subtotal);
+  const igvImplDetalle = usarTotalesPartidasHC ? Math.round(subtotalDetalleImpl * toCotNumber(cot.igv_pct || 18) / 100) : (cot.igv_impl ?? cot.igv);
+  const totalImplDetalle = usarTotalesPartidasHC ? subtotalImplDetalle + igvImplDetalle : (cot.total_impl ?? cot.total);
+  const subtotalRecDetalle = usarTotalesRecPartidasHC ? subtotalDetalleRec : cot.subtotal_rec;
+  const igvRecDetalle = usarTotalesRecPartidasHC ? Math.round(subtotalDetalleRec * toCotNumber(cot.igv_pct || 18) / 100) : cot.igv_rec;
+  const totalRecDetalle = usarTotalesRecPartidasHC ? subtotalRecDetalle + igvRecDetalle : cot.total_rec;
 
   const { authUser, role } = useApp();
   const cfg = empresaConfig || {};
@@ -721,12 +770,12 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
           <div className={hayRecurrente ? 'grid-2' : ''} style={{gap:24, maxWidth: hayRecurrente ? '100%' : 380, marginLeft:'auto'}}>
             <div>
               {hayRecurrente && <div className="eyebrow" style={{marginBottom:12}}>Implementación</div>}
-              <TotalesBox subtotal={cot.subtotal_impl ?? cot.subtotal} igvPct={cot.igv_pct || 18} igv={cot.igv_impl ?? cot.igv} total={cot.total_impl ?? cot.total} sym={sym} />
+              <TotalesBox subtotal={subtotalImplDetalle} igvPct={cot.igv_pct || 18} igv={igvImplDetalle} total={totalImplDetalle} sym={sym} />
             </div>
             {hayRecurrente && (
               <div>
                 <div className="eyebrow" style={{marginBottom:12}}>Recurrente mensual</div>
-                <TotalesBox subtotal={cot.subtotal_rec} igvPct={cot.igv_pct || 18} igv={cot.igv_rec} total={cot.total_rec} suffix="/mes" sym={sym} />
+                <TotalesBox subtotal={subtotalRecDetalle} igvPct={cot.igv_pct || 18} igv={igvRecDetalle} total={totalRecDetalle} suffix="/mes" sym={sym} />
               </div>
             )}
           </div>
@@ -997,8 +1046,8 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
     if (cotizacionBase?.items?.length) {
       return cotizacionBase.items.map(p => ({
         ...p,
-        cantidad: Number(p.cantidad) || 0,
-        precio_unitario: Number(p.precio_unitario) || 0,
+        cantidad: toCotNumber(p.cantidad),
+        precio_unitario: toCotNumber(p.precio_unitario),
         detalle_items_txt: Array.isArray(p.detalle_items) ? p.detalle_items.join('\n') : (p.detalle || '')
       }));
     }
@@ -1022,11 +1071,12 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
   // ── Bloque 3: cálculos ───────────────────────────────────────────────
   const pImpl = partidas.filter(p => !p.incluido && p.tipo !== 'recurrente');
   const pRec  = partidas.filter(p => !p.incluido && p.tipo === 'recurrente');
-  const subtImpl  = pImpl.reduce((s, p) => s + Number(p.cantidad || 0) * Number(p.precio_unitario || 0), 0);
-  const igvImpl   = Math.round(subtImpl * Number(igvPct) / 100);
+  const calcPartidaTotal = p => toCotNumber(p.cantidad) * toCotNumber(p.precio_unitario);
+  const subtImpl  = pImpl.reduce((s, p) => s + calcPartidaTotal(p), 0);
+  const igvImpl   = Math.round(subtImpl * toCotNumber(igvPct) / 100);
   const totalImpl = subtImpl + igvImpl;
-  const subtRec   = pRec.reduce((s, p) => s + Number(p.cantidad || 0) * Number(p.precio_unitario || 0), 0);
-  const igvRec    = Math.round(subtRec * Number(igvPct) / 100);
+  const subtRec   = pRec.reduce((s, p) => s + calcPartidaTotal(p), 0);
+  const igvRec    = Math.round(subtRec * toCotNumber(igvPct) / 100);
   const totalRec  = subtRec + igvRec;
 
   // ── Bloque 4: hitos ─────────────────────────────────────────────────
@@ -1078,9 +1128,9 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
       detalle_items: (p.detalle_items_txt || '').split('\n').map(s => s.trim()).filter(Boolean),
       tipo: p.tipo,
       detalle_cantidad: p.detalle_cantidad || '',
-      cantidad: Number(p.cantidad),
-      precio_unitario: p.incluido ? 0 : Number(p.precio_unitario),
-      total: p.incluido ? 0 : Number(p.cantidad) * Number(p.precio_unitario),
+      cantidad: toCotNumber(p.cantidad),
+      precio_unitario: p.incluido ? 0 : toCotNumber(p.precio_unitario),
+      total: p.incluido ? 0 : calcPartidaTotal(p),
       incluido: p.incluido || false,
     }));
     try {
@@ -1090,7 +1140,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
         contacto_id:    contactoId || null,
         centro_beneficio_id: cebeId || null,
         ...(isEdit && numeroCot ? { numero: numeroCot.trim() } : {}),
-        moneda: monedaActual, igv_pct: Number(igvPct),
+        moneda: monedaActual, igv_pct: toCotNumber(igvPct),
         validez_tipo: validezTipo,
         validez_dias: Number(validezDias),
         validez_fecha: validezTipo === 'fecha_exacta' ? validezFecha : null,
@@ -1295,7 +1345,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                 <div style={{textAlign:'right', minWidth:120, paddingBottom:2}}>
                   <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total partida</div>
                   <div style={{fontWeight:700, fontSize:16, fontFamily:'Sora', color:'var(--cyan)'}}>
-                    {p.incluido ? <span className="text-muted">Incluido</span> : moneyCurrency(Number(p.cantidad || 0) * Number(p.precio_unitario || 0), monedaActual)}
+                    {p.incluido ? <span className="text-muted">Incluido</span> : moneyCurrency(calcPartidaTotal(p), monedaActual)}
                   </div>
                 </div>
               </div>
@@ -1804,7 +1854,10 @@ function Valorizacion({ role }) {
 
     if (modelo === 'costo_real') {
       const allPersonal = [...(personalOperativo || []), ...(personalAdmin || [])];
-      const calcCostoHora = (personaId) => {
+      const calcCostoHora = (personaId, ot) => {
+        const moItem = ((ot?.realDetalle?.mano_obra?.length ? ot.realDetalle : ot?.est_detalle)?.mano_obra || [])
+          .find(m => m.tecnico_id === personaId);
+        if (moItem?.costo_hora > 0) return moItem.costo_hora;
         const p = allPersonal.find(x => x.id === personaId);
         const explicit = Number(p?.costo_hora_real ?? p?.costo ?? p?.costo_hora ?? 0);
         if (explicit > 0) return explicit;
@@ -1819,7 +1872,7 @@ function Valorizacion({ role }) {
         const ot = ots.find(o => o.id === otId);
         const ct = cierresTecnicos.find(c => c.ot_id === otId);
         const partesOt = (partes || []).filter(p => p.ot_id === otId && p.estado === 'aprobado');
-        const costoMO = partesOt.reduce((s, p) => s + Number(p.horas || 0) * calcCostoHora(p.tecnico_id), 0);
+        const costoMO = partesOt.reduce((s, p) => s + Number(p.horas || 0) * calcCostoHora(p.tecnico_id, ot), 0);
         const costoMateriales = partesOt.reduce((s, p) =>
           s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
         const costoTerceros = partesOt.reduce((s, p) =>
@@ -1846,13 +1899,16 @@ function Valorizacion({ role }) {
     }
 
     if (modelo === 'hitos_pago') {
-      const hitos = getCot(selOs)?.hitos_pago || [];
+      const cot = getCot(selOs);
+      const hitos = cot?.hitos_pago || [];
+      // h.monto viene de totalImpl (subtotal + IGV) en la cotización; extraer el neto
+      const cotIgvPct = Number(cot?.igv_pct || 18);
       if (hitos.length === 0) {
         return [{ id: `h_${Date.now()}`, descripcion: 'Hito — ingrese descripción', cantidad: 1, precio_unitario: 0 }];
       }
       return hitos.map((h, i) => ({
         id: `h_${h.id || i}`, descripcion: h.concepto || `Hito ${i + 1}`,
-        cantidad: 1, precio_unitario: Number(h.monto || 0),
+        cantidad: 1, precio_unitario: Math.round(Number(h.monto || 0) / (1 + cotIgvPct / 100) * 100) / 100,
         _hito_numero: i + 1, _hito_estado: h.estado || 'pendiente',
       }));
     }
@@ -2289,7 +2345,7 @@ function Valorizacion({ role }) {
               <div style={{marginBottom:16}}>
                 <h3 style={{margin:0}}>OTs disponibles para valorizar</h3>
                 <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
-                  OTs en ejecución o cerradas con conformidad del cliente. Las de avance parcial no cambian de estado al valorizar.
+                  OTs en ejecución o cerradas con conformidad del cliente. Las valorizaciones parciales mantienen la ejecución; al llegar al 100% de la OS, la OT pasa a Pendiente cierre.
                 </div>
               </div>
               {otsDisponibles.length === 0 ? (
@@ -2422,8 +2478,8 @@ function Valorizacion({ role }) {
                         <tr key={p.id}>
                           <td style={{fontSize:12}}>{p.descripcion}</td>
                           <td className="num" style={{fontWeight:700, color:'var(--cyan)'}}>{p._avance_pct}%</td>
-                          <td className="num text-muted">{money(p._monto_base || 0)}</td>
-                          <td className="num text-muted">{money(p._ya_valorizado || 0)}</td>
+                          <td className="num text-muted">{moneyCurrency(p._monto_base || 0, monedaOs)}</td>
+                          <td className="num text-muted">{moneyCurrency(p._ya_valorizado || 0, monedaOs)}</td>
                           <td>
                             <input type="number" className="input num" min="0" value={p.precio_unitario}
                               onChange={e => updatePartida(p.id, 'precio_unitario', Number(e.target.value))} />

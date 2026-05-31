@@ -4565,7 +4565,35 @@ function OSCliente() {
     activeParams, navigate, searchQuery, usuarios,
     cambiarEstadoOS, actualizarHitosFacturacion, vincularCotizacionOS, actualizarOT, eliminarOT,
     actualizarOSCliente, centrosBeneficio,
+    partes, personalOperativo, personalAdmin, inventario,
   } = useApp();
+
+  const calcCostoRealLiveOS = (ot) => {
+    const aprobados = (partes || []).filter(p => p.ot_id === ot.id && p.estado === 'aprobado');
+    if (!aprobados.length) return ot.costoReal || ot.costo_real || 0;
+    const allPersonal = [...(personalOperativo || []), ...(personalAdmin || [])];
+    const costoHora = (tecnicoId) => {
+      const moItem = ((ot.realDetalle?.mano_obra?.length ? ot.realDetalle : ot.est_detalle)?.mano_obra || [])
+        .find(m => m.tecnico_id === tecnicoId);
+      if (moItem?.costo_hora > 0) return moItem.costo_hora;
+      const tec = allPersonal.find(p => p.id === tecnicoId);
+      const explicit = Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+      if (explicit > 0) return explicit;
+      const rem = Number(tec?.remuneracion ?? 0);
+      return rem > 0 ? Math.round(rem / 240 * 100) / 100 : 0;
+    };
+    const mo  = aprobados.reduce((s, p) => s + (p.horas || 0) * costoHora(p.tecnico_id), 0);
+    const mat = aprobados.reduce((s, p) =>
+      s + (p.materiales_usados || []).reduce((sm, m) => {
+        const inv = (inventario || []).find(i => i.sku === m.sku);
+        return sm + (m.cantidad || 0) * (inv?.costo_promedio || m.costo_unitario || 0);
+      }, 0), 0);
+    const ter = aprobados.reduce((s, p) =>
+      s + (p.terceros_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0);
+    const log = aprobados.reduce((s, p) =>
+      s + (p.logistica_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0);
+    return mo + mat + ter + log;
+  };
 
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroCliente, setFiltroCliente] = useState('');
@@ -4618,7 +4646,7 @@ function OSCliente() {
 
     const osOts  = ots.filter(ot => ot.os_cliente_id === os.id || (os.ots_asociadas || []).includes(ot.id));
     const totalEstimadoOTs = osOts.reduce((s, o) => s + Number(o.costoEst || o.costo_estimado || 0), 0);
-    const totalRealOTs = osOts.reduce((s, o) => s + Number(o.costo_real || o.costoReal || 0), 0);
+    const totalRealOTs = osOts.reduce((s, o) => s + calcCostoRealLiveOS(o), 0);
     const osCotz = cotizaciones.filter(c => c.os_cliente_id === os.id || c.id === os.cotizacion_id);
     const osVals = valorizaciones.filter(v => v.os_cliente_id === os.id);
     const valIds = new Set(osVals.map(v => v.id));
@@ -4943,7 +4971,7 @@ function OSCliente() {
                         <td>{ot.tipo || ot.servicio}</td>
                         <td>{ot.fecha_inicio || ot.fecha_programada || '-'}</td>
                         <td className="num">{moneyCurrency(ot.costoEst || ot.costo_estimado || 0, os.moneda)}</td>
-                        <td className="num">{moneyCurrency(ot.costo_real || ot.costoReal || 0, os.moneda)}</td>
+                        <td className="num">{moneyCurrency(calcCostoRealLiveOS(ot), os.moneda)}</td>
                         <td>{ot.avance || ot.avance_pct || 0}%</td>
                         <td>
                           <span className="badge badge-cyan">{(ot.estado || 'programada').replace('_', ' ')}</span>

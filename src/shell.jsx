@@ -52,6 +52,8 @@ const SIDEBAR = [
     { key: 'solicitudes_rrhh', label: 'Solicitudes', icon: I.clipboard },
     { key: 'prestamos_personal', label: 'Prestamos al Personal', icon: I.userCheck },
     { key: 'tareo_admin', label: 'Tareo Administrativo', icon: I.clock },
+    { key: 'evaluaciones_desempeno', label: 'Evaluación de Desempeño', icon: I.target },
+    { key: 'liquidaciones_cese', label: 'Liquidación por Cese', icon: I.receipt },
   ]},
   { section: 'Logistica', items: [
     { key: 'inventario', label: 'Almacenes', icon: I.warehouse },
@@ -169,6 +171,15 @@ function buildSidebarBadges(app) {
   const valorizaciones = app.valorizaciones || [];
   const financiamientos = app.financiamientos || [];
   const movimientosBanco = app.movimientosBanco || [];
+  const evaluacionesDesempeno = app.evaluacionEvaluaciones || [];
+  const plantillasEvaluacion = app.evaluacionPlantillas || [];
+  const personalEvaluable = [...(app.personalOperativo || []), ...(app.personalAdmin || [])];
+  const currentUserId = app.authUser?.id || null;
+  const ownPersonalIds = new Set(personalEvaluable
+    .filter(p => currentUserId && String(p.auth_user_id || '') === String(currentUserId))
+    .map(p => String(p.id)));
+  const plantillaById = new Map(plantillasEvaluacion.map(p => [String(p.id), p]));
+  const isEvalTemplateOpen = ev => plantillaById.get(String(ev.plantilla_id))?.estado !== 'cerrada';
 
   const todayIso = today.toISOString().slice(0, 10);
   const facturaValorizaciones = new Set(facturas.map(f => f.valorizacion_id || f.valorizacionId).filter(Boolean));
@@ -199,6 +210,12 @@ function buildSidebarBadges(app) {
     tesoreria: movimientosBanco.filter(m => m.conciliado === false || m.vinculado === null).length,
     financiamiento: financiamientos.reduce((total, f) => total + (f.tabla_amortizacion || []).filter(c => !['pagada', 'pagado'].includes(norm(c.estado)) && dueIn(c.fecha, 7)).length, 0),
     solicitudes_rrhh: 0,
+    evaluaciones_desempeno: evaluacionesDesempeno.filter(e =>
+      isEvalTemplateOpen(e) && (
+        (ownPersonalIds.has(String(e.evaluado_id)) && e.estado === 'pendiente') ||
+        (currentUserId && String(e.jefe_id || '') === String(currentUserId) && e.estado === 'autoevaluacion_completa')
+      )
+    ).length,
   };
 }
 
@@ -214,7 +231,8 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
     app.leads, app.oportunidades, app.actividades, app.agendaEventos, app.hojasCosteo,
     app.cotizaciones, app.osClientes, app.backlog, app.ots, app.partes, app.solpes,
     app.procesosCompra, app.ordenesCompra, app.ordenesServicio, app.recepciones,
-    app.cxc, app.cxp, app.facturas, app.valorizaciones, app.financiamientos, app.movimientosBanco
+    app.cxc, app.cxp, app.facturas, app.valorizaciones, app.financiamientos, app.movimientosBanco,
+    app.evaluacionEvaluaciones, app.evaluacionPlantillas, app.personalOperativo, app.personalAdmin, app.authUser?.id
   ]);
   const visibleGroups = useMemo(() => SIDEBAR.map(group => {
     if (group.plataforma && !isSuperadmin) return null;

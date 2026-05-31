@@ -14,6 +14,10 @@ import { usuariosService } from './services/usuariosService.js';
 import { rolesService } from './services/rolesService.js';
 import { campanasService } from './services/campanasService.js';
 import { presupuestosService } from './services/presupuestosService.js';
+import * as evaluacionesDesempenoService from './services/evaluacionesDesempenoService.js';
+import * as liquidacionesCeseService from './services/liquidacionesCeseService.js';
+import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
+import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { getTipoCambioHoy, convertirMonto as convertirMontoFn } from './services/tipoCambioService.js';
 import {
   getMateriales, crearMaterial as svcCrearMaterial, actualizarMaterial as svcActualizarMaterial, eliminarMaterial as svcEliminarMaterial,
@@ -259,6 +263,7 @@ export function AppProvider({ children }) {
   const [osClientes, setOsClientes] = useState(MOCK.osClientes);
   const [cxp, setCxp] = useState(MOCK.cxp || []);
   const [cxpPagos, setCxpPagos] = useState([]);
+  const [cajaChica, setCajaChica] = useState([]);
   const [cxc, setCxc] = useState(MOCK.cxc || []);
   const [cobrosHistorial, setCobrosHistorial] = useState([]);
   const [gestionesCobranza, setGestionesCobranza] = useState([]);
@@ -321,6 +326,15 @@ export function AppProvider({ children }) {
   const [vacacionesSolicitudes, setVacacionesSolicitudes] = useState([]);
   const [licencias, setLicencias] = useState([]);
   const [solicitudesRRHH, setSolicitudesRRHH] = useState([]);
+  const [personalDocumentos, setPersonalDocumentos] = useState([]);
+  const [evaluacionPlantillas, setEvaluacionPlantillas] = useState([]);
+  const [evaluacionCompetencias, setEvaluacionCompetencias] = useState([]);
+  const [evaluacionObjetivos, setEvaluacionObjetivos] = useState([]);
+  const [evaluacionEvaluaciones, setEvaluacionEvaluaciones] = useState([]);
+  const [evaluacionRespCompetencias, setEvaluacionRespCompetencias] = useState([]);
+  const [evaluacionRespObjetivos, setEvaluacionRespObjetivos] = useState([]);
+  const [liquidacionesCese,       setLiquidacionesCese]       = useState([]);
+  const [liquidacionesConceptos,  setLiquidacionesConceptos]  = useState([]);
   const [onboardings, setOnboardings] = useState(MOCK.onboardings || []);
   const [planesExito, setPlanesExito] = useState(MOCK.planesExito || []);
   const [healthScoresDetalle, setHealthScoresDetalle] = useState(MOCK.healthScoresDetalle || []);
@@ -339,6 +353,7 @@ export function AppProvider({ children }) {
   const [registrosAsistencia, setRegistrosAsistencia] = useState(MOCK.registrosAsistencia || []);
   const [periodosNomina, setPeriodosNomina] = useState(MOCK.periodosNomina || []);
   const [trabajadoresDatosNomina, setTrabajadoresDatosNomina] = useState(MOCK.trabajadoresDatosNomina || {});
+  const [ocAnticipos, setOcAnticipos] = useState([]);
   const [tipoCambioHoy, setTipoCambioHoy] = useState({ cargando: true, usd: null, eur: null, fecha: null, desactualizado: false });
 
   const [rolesCtx, setRolesCtx] = useState(() => {
@@ -579,6 +594,7 @@ export function AppProvider({ children }) {
         cxpData,
         cxpPagosData,
         mbData,
+        ccData,
       ] = await Promise.all([
         safeFinanceLoad('valorizaciones', () => finanzasService.getValorizaciones(empresaId)),
         safeFinanceLoad('facturas', () => finanzasService.getFacturas(empresaId)),
@@ -586,6 +602,7 @@ export function AppProvider({ children }) {
         safeFinanceLoad('cxp', () => finanzasService.getCxP(empresaId)),
         safeFinanceLoad('cxp_pagos', () => finanzasService.getCxpPagos(empresaId)),
         safeFinanceLoad('movimientos_banco', () => finanzasService.getMovimientosBanco(empresaId)),
+        safeFinanceLoad('caja_chica', () => finanzasService.getCajaChica(empresaId)),
       ]);
 
       const financiamientosConDetalle = (financiamientosData || []).map(financiamiento => ({
@@ -597,13 +614,14 @@ export function AppProvider({ children }) {
       setFinanciamientos(financiamientosConDetalle);
       setComprasGastos(gastosData || []);
       setMovimientosTesoreria(tesoreriaData || []);
-      
+
       setValorizaciones(valData || []);
       setFacturas(facData || []);
       setCxc(cxcData || []);
       setCxp(cxpData || []);
       setCxpPagos(cxpPagosData || []);
       setMovimientosBanco(mbData || []);
+      setCajaChica(ccData || []);
 
       // presupuestos
       const [preData, ppaData, papData] = await Promise.all([
@@ -769,6 +787,12 @@ export function AppProvider({ children }) {
         setTurnos([]);
         setRegistrosAsistencia([]);
         setPeriodosNomina([]);
+        setEvaluacionPlantillas([]);
+        setEvaluacionCompetencias([]);
+        setEvaluacionObjetivos([]);
+        setEvaluacionEvaluaciones([]);
+        setEvaluacionRespCompetencias([]);
+        setEvaluacionRespObjetivos([]);
 
         const data = await loadCrmFromSupabase(supabase, empresa.id);
         if (!data || !mounted) return;
@@ -872,9 +896,9 @@ export function AppProvider({ children }) {
           if (mounted) {
             setCobrosHistorial(cobrosData || []);
             setGestionesCobranza(gestionesData || []);
-            if ((cuentasBanData || []).length > 0) setCuentasBancarias(cuentasBanData);
-            if ((comisionesData || []).length > 0) setComisiones(comisionesData);
-            if ((recibosData || []).length > 0) setRecibosHonorarios(recibosData);
+            if (cuentasBanData) setCuentasBancarias(cuentasBanData);
+            if (comisionesData) setComisiones(comisionesData);
+            if (recibosData) setRecibosHonorarios(recibosData);
           }
         } catch (_err) { /* tabla aún no existe, ignorar */ }
 
@@ -922,6 +946,37 @@ export function AppProvider({ children }) {
             setPersonalAdmin([]);
           }
         }
+
+        try {
+          const [solData, pdocsData] = await Promise.all([
+            solicitudesRrhhService.cargarSolicitudes(empresa.id),
+            personalDocumentosService.getDocumentosActivos(empresa.id),
+          ]);
+          if (mounted) {
+            setSolicitudesRRHH(solData || []);
+            setPersonalDocumentos(pdocsData || []);
+          }
+        } catch (_err) { /* módulo documental puede no estar migrado aún */ }
+
+        try {
+          const evalData = await evaluacionesDesempenoService.cargarEvaluacionesDesempeno(empresa.id);
+          if (mounted) {
+            setEvaluacionPlantillas(evalData.plantillas || []);
+            setEvaluacionCompetencias(evalData.competencias || []);
+            setEvaluacionObjetivos(evalData.objetivos || []);
+            setEvaluacionEvaluaciones(evalData.evaluaciones || []);
+            setEvaluacionRespCompetencias(evalData.respuestasCompetencias || []);
+            setEvaluacionRespObjetivos(evalData.respuestasObjetivos || []);
+          }
+        } catch (_err) { /* modulo aun no migrado */ }
+
+        try {
+          const liqData = await liquidacionesCeseService.cargarLiquidaciones(empresa.id);
+          if (mounted) {
+            setLiquidacionesCese(liqData.liquidaciones || []);
+            setLiquidacionesConceptos(liqData.conceptos || []);
+          }
+        } catch (_err) { /* modulo aun no migrado */ }
 
         try {
           const csData = await loadCsFromSupabase(supabase, empresa.id);
@@ -3058,9 +3113,18 @@ export function AppProvider({ children }) {
       monto: gasto.monto,
       moneda: gasto.moneda || 'PEN',
       fecha: gasto.fecha,
-      origen_registro: 'backoffice',
-      estado: 'registrado',
+      origen_registro: gasto.origen_registro || 'backoffice',
+      estado: gasto.estado || 'registrado',
+      estado_pago: gasto.estado_pago || 'pagado',
+      referencia_pago: gasto.referencia_pago || null,
+      cxp_id: gasto.cxp_id || null,
       centro_costo_id: gasto.centro_costo_id || null,
+      periodo_nomina_id: gasto.periodo_nomina_id || null,
+      es_activo_fijo: gasto.es_activo_fijo || false,
+      activo_tipo: gasto.activo_tipo || null,
+      vida_util_anos: gasto.vida_util_anos || null,
+      personal_id: gasto.personal_id || null,
+      ot_vinc_id: gasto.ot_vinc_id || null,
     }]));
     return gasto;
   };
@@ -3194,6 +3258,79 @@ export function AppProvider({ children }) {
     }
   };
 
+  const getMontoTotalOSCliente = (os) => Number(
+    os?.monto_aprobado ??
+    os?.total ??
+    os?.total_aprobado ??
+    os?.importe_total ??
+    0
+  );
+
+  const getValorizacionesAprobadasConActual = (valAprobada) => {
+    const existe = valorizaciones.some(v => v.id === valAprobada.id);
+    const base = existe
+      ? valorizaciones.map(v => v.id === valAprobada.id ? valAprobada : v)
+      : [...valorizaciones, valAprobada];
+    return base.filter(v => v.estado === 'aprobada');
+  };
+
+  const calcularOtsPendienteCierrePorValorizacion = (valAprobada) => {
+    const otIds = Array.from(new Set(valAprobada?.ot_ids || []));
+    if (!otIds.length) return [];
+
+    const valsAprobadas = getValorizacionesAprobadasConActual(valAprobada);
+    return otIds.filter(otId => {
+      const ot = ots.find(o => o.id === otId);
+      if (!ot || ot.estado !== 'ejecucion') return false;
+
+      const os = osClientes.find(o => o.id === (ot.os_cliente_id || valAprobada.os_cliente_id));
+      const montoTotalOS = getMontoTotalOSCliente(os);
+      if (montoTotalOS <= 0) return false;
+
+      const montoAcumuladoOT = valsAprobadas
+        .filter(v => (v.ot_ids || []).includes(otId))
+        .reduce((sum, v) => sum + Number(v.total || 0), 0);
+
+      return montoAcumuladoOT + 0.01 >= montoTotalOS;
+    });
+  };
+
+  const moverOtsPendienteCierrePorValorizacion = (valAprobada) => {
+    const otsPendienteCierre = calcularOtsPendienteCierrePorValorizacion(valAprobada);
+    if (!otsPendienteCierre.length) return 0;
+
+    setOts(prev => prev.map(ot =>
+      otsPendienteCierre.includes(ot.id) && ot.estado === 'ejecucion'
+        ? { ...ot, estado: 'pendiente_cierre' }
+        : ot
+    ));
+    opsSync(sb => sb
+      .from('ordenes_trabajo')
+      .update({ estado: 'pendiente_cierre', updated_at: new Date().toISOString() })
+      .eq('empresa_id', empresa.id)
+      .eq('estado', 'ejecucion')
+      .in('id', otsPendienteCierre)
+    );
+    otsPendienteCierre.forEach(otId => {
+      auditSync({
+        modulo: 'operaciones',
+        entidad: 'ordenes_trabajo',
+        entidad_id: otId,
+        accion: 'pendiente_cierre_por_valorizacion',
+        valor_nuevo: { estado: 'pendiente_cierre', valorizacion_id: valAprobada.id },
+      });
+    });
+
+    return otsPendienteCierre.length;
+  };
+
+  const mensajeValorizacionAprobada = (numero, otsMovidas = 0) => {
+    if (otsMovidas > 0) {
+      return `Valorización ${numero} aprobada. ${otsMovidas} OT${otsMovidas === 1 ? '' : 's'} movida${otsMovidas === 1 ? '' : 's'} a Pendiente cierre.`;
+    }
+    return `Valorización ${numero} aprobada.`;
+  };
+
   const generarValorizacion = (osClienteId, subtotal, igv, total, periodo, meta = {}) => {
     const estadoFinal = meta.estadoFinal || 'aprobada';
     const now = new Date().toISOString().split('T')[0];
@@ -3240,6 +3377,10 @@ export function AppProvider({ children }) {
       }
     }
 
+    const otsMovidasPendienteCierre = estadoFinal === 'aprobada'
+      ? moverOtsPendienteCierrePorValorizacion(val)
+      : 0;
+
     if (isSupabaseConfigured()) {
       finSync(async () => {
         await finanzasService.crearValorizacion({
@@ -3265,7 +3406,9 @@ export function AppProvider({ children }) {
       });
     }
 
-    addNotificacion(`Valorización ${val.numero} ${estadoFinal === 'borrador' ? 'guardada como borrador' : 'aprobada'}.`);
+    addNotificacion(estadoFinal === 'borrador'
+      ? `Valorización ${val.numero} guardada como borrador.`
+      : mensajeValorizacionAprobada(val.numero, otsMovidasPendienteCierre));
   };
 
   const aprobarValorizacion = (valId) => {
@@ -3302,6 +3445,8 @@ export function AppProvider({ children }) {
         otsCerradas.forEach(otId => opsSync(sb => svcActualizarOT(sb, otId, { estado: 'valorizada' })));
       }
     }
+    const valAprobada = { ...val, estado: 'aprobada', fecha_aprobacion: now, historial: [...(val.historial || []), entrada] };
+    const otsMovidasPendienteCierre = moverOtsPendienteCierrePorValorizacion(valAprobada);
 
     if (isSupabaseConfigured()) {
       finSync(() => finanzasService.actualizarValorizacion(valId, {
@@ -3311,7 +3456,7 @@ export function AppProvider({ children }) {
       }));
     }
 
-    addNotificacion(`Valorización ${val.numero} aprobada.`);
+    addNotificacion(mensajeValorizacionAprobada(val.numero, otsMovidasPendienteCierre));
   };
 
   const anularValorizacion = (valId, motivo) => {
@@ -3404,6 +3549,9 @@ export function AppProvider({ children }) {
         }
       }
     }
+    const otsMovidasPendienteCierre = estadoFinal === 'aprobada'
+      ? moverOtsPendienteCierrePorValorizacion(updated)
+      : 0;
 
     if (isSupabaseConfigured()) {
       finSync(() => finanzasService.actualizarValorizacion(valId, {
@@ -3416,7 +3564,9 @@ export function AppProvider({ children }) {
       }));
     }
 
-    addNotificacion(`Valorización ${val.numero} ${estadoFinal === 'aprobada' ? 'aprobada' : 'actualizada'}.`);
+    addNotificacion(estadoFinal === 'aprobada'
+      ? mensajeValorizacionAprobada(val.numero, otsMovidasPendienteCierre)
+      : `Valorización ${val.numero} actualizada.`);
   };
 
   const registrarUsuario = async (u) => {
@@ -3897,9 +4047,8 @@ export function AppProvider({ children }) {
     // Caso 1: CxC sin OS Cliente vinculada
     if (!cuentaCobrar?.os_cliente_id) {
       addToast(
-        'El cobro se registró correctamente, pero no se pudo generar la comisión porque esta CxC no tiene una OS Cliente vinculada. Si corresponde una comisión, vincula la OS manualmente desde la ficha de la CxC.',
-        'warning',
-        { label: 'Ir a CxC', modulo: 'cxc' }
+        'Cobro registrado. No se generó comisión porque esta CxC no tiene OS Cliente vinculada.',
+        'warning'
       );
     } else {
       const oportunidad = oportunidades.find(op =>
@@ -4426,6 +4575,126 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'finanzas', entidad: 'cxp', entidad_id: cuentaPagar.id, accion: 'crear', valor_nuevo: cuentaPagar });
     addNotificacion('Cuenta por Pagar registrada.');
     return cuentaPagar.id;
+  };
+
+  const registrarEgresoCajaChica = async (datos) => {
+    const fecha = datos.fecha || new Date().toISOString().split('T')[0];
+    const gastoId = generateId('gasto');
+    const ccId = generateId('cc');
+
+    const gasto = {
+      id: gastoId,
+      empresa_id: empresa.id,
+      tipo: 'gasto',
+      descripcion: datos.concepto,
+      categoria: datos.categoria || 'Administrativos',
+      monto: Number(datos.monto),
+      moneda: datos.moneda || 'PEN',
+      fecha,
+      origen_registro: 'caja_chica',
+      estado_pago: 'pagado',
+      estado: 'registrado',
+      centro_costo_id: datos.ceco_id || null,
+    };
+
+    const movimiento = {
+      id: generateId('tes'),
+      empresa_id: empresa.id,
+      tipo: 'egreso',
+      descripcion: `Caja chica: ${datos.concepto}`,
+      monto: Number(datos.monto),
+      moneda: datos.moneda || 'PEN',
+      fecha,
+      cuenta_bancaria: 'Caja chica',
+      referencia: datos.num_comprobante || '',
+      vinculo_tipo: 'caja_chica',
+      vinculo_id: ccId,
+      estado: 'registrado',
+    };
+
+    const cc = {
+      id: ccId,
+      empresa_id: empresa.id,
+      fecha,
+      concepto: datos.concepto,
+      monto: Number(datos.monto),
+      moneda: datos.moneda || 'PEN',
+      responsable_nombre: datos.responsable_nombre || authUser?.email || null,
+      ceco_id: datos.ceco_id || null,
+      categoria: datos.categoria || 'Administrativos',
+      num_comprobante: datos.num_comprobante || null,
+      estado: 'registrado',
+      gasto_id: gastoId,
+    };
+
+    setComprasGastos(prev => [gasto, ...prev]);
+    setMovimientosTesoreria(prev => [movimiento, ...prev]);
+    setCajaChica(prev => [cc, ...prev]);
+
+    if (isSupabaseConfigured()) {
+      finSync(async () => {
+        const gastoGuardado = await finanzasService.registrarMovimientoTesoreria(movimiento).catch(() => null);
+        await finanzasService.insertarCajaChica({ ...cc, gasto_id: gastoId }).catch(() => null);
+      });
+      opsSync(sb => sb.from('compras_gastos').insert([{
+        id: gasto.id,
+        empresa_id: empresa.id,
+        tipo: gasto.tipo,
+        descripcion: gasto.descripcion,
+        categoria: gasto.categoria,
+        monto: gasto.monto,
+        moneda: gasto.moneda,
+        fecha: gasto.fecha,
+        origen_registro: 'caja_chica',
+        estado: 'registrado',
+        estado_pago: 'pagado',
+        centro_costo_id: gasto.centro_costo_id || null,
+      }]));
+    }
+    addNotificacion(`Egreso de caja chica registrado: S/ ${Number(datos.monto).toFixed(2)}`);
+    return cc;
+  };
+
+  const registrarAnticipoOC = async ({ ordenCompraId, fecha, monto, moneda = 'PEN', referencia = '', notas = '' }) => {
+    const id = generateId('ocanp');
+    const anticipo = {
+      id,
+      empresa_id: empresa.id,
+      orden_compra_id: ordenCompraId,
+      fecha,
+      monto: Number(monto),
+      moneda,
+      referencia: referencia || null,
+      notas: notas || null,
+      creado_por: authUser?.id || null,
+      creado_en: new Date().toISOString(),
+    };
+    setOcAnticipos(prev => [anticipo, ...prev]);
+
+    const movimiento = {
+      id: generateId('tes'),
+      empresa_id: empresa.id,
+      tipo: 'egreso',
+      descripcion: `Anticipo OC ${ordenCompraId}${referencia ? ' — ' + referencia : ''}`,
+      monto: Number(monto),
+      moneda,
+      fecha,
+      referencia: referencia || '',
+      vinculo_tipo: 'oc_anticipo',
+      vinculo_id: id,
+      estado: 'registrado',
+    };
+    setMovimientosTesoreria(prev => [movimiento, ...prev]);
+
+    if (isSupabaseConfigured() && empresa?.id) {
+      finSync(async () => {
+        const sb = await getSupabaseClient();
+        await sb.from('oc_anticipos').insert([anticipo]).catch(() => null);
+        await finanzasService.registrarMovimientoTesoreria(movimiento).catch(() => null);
+      });
+    }
+    addNotificacion(`Anticipo de ${moneda} ${Number(monto).toFixed(2)} registrado en la OC.`);
+    return anticipo;
   };
 
   const registrarPagoCxP = async (cxpId, monto, datos = {}) => {
@@ -5454,16 +5723,24 @@ export function AppProvider({ children }) {
     });
 
     if (!observaciones) {
+      const anticiposOC = isOC ? ocAnticipos.filter(a => a.orden_compra_id === base.id) : [];
+      const totalAnticipado = anticiposOC.reduce((s, a) => s + Number(a.monto || 0), 0);
+      const totalOC = Number(base.total || 0);
+      const saldoCxP = Math.max(0, Math.round((totalOC - totalAnticipado) * 100) / 100);
       await generarCxP({
+        tipo_beneficiario: 'proveedor',
         proveedor_id: base.proveedor_id,
         factura_numero: facturaNumero || `PROV-${base.codigo || base.id}`,
+        concepto: `Recepción ${base.codigo || base.id}${totalAnticipado > 0 ? ` (anticipo descontado: S/ ${totalAnticipado.toFixed(2)})` : ''}`,
         fecha_emision: fechaEmisionParam || fecha,
         fecha_vencimiento: fechaVencimientoParam || fechaVencimientoAuto,
-        monto_total: Number(base.total || 0),
+        monto_total: saldoCxP,
         monto_pagado: 0,
-        saldo: Number(base.total || 0),
+        saldo: saldoCxP,
         moneda: base.moneda || 'PEN',
-        estado: 'por_pagar',
+        estado: saldoCxP <= 0 ? 'pagada' : 'por_pagar',
+        origen: 'recepcion',
+        recepcion_id: recepcionLocal.id,
         ...(archivoFacturaUrl ? { archivo_factura_url: archivoFacturaUrl } : {})
       });
     }
@@ -5575,6 +5852,343 @@ export function AppProvider({ children }) {
       setPeriodosNomina(prev => [nuevo, ...prev]);
       return nuevo;
     }
+  };
+
+  // ── Documentos del personal ──────────────────────────────────────────────────
+  const subirDocumentoPersonalCtx = async (params) => {
+    const data = await personalDocumentosService.subirDocumento({ ...params, empresaId: empresa?.id });
+    setPersonalDocumentos(prev => {
+      const sinVersionAnterior = prev.filter(
+        d => !(d.personal_id === params.personalId && d.tipo_doc === params.tipoDoc && d.activo)
+      );
+      return [...sinVersionAnterior, data];
+    });
+    return data;
+  };
+  const validarDocumentoPersonalCtx = async (documentoId, decision, motivoRechazo = null) => {
+    const data = await personalDocumentosService.validarDocumento(documentoId, decision, motivoRechazo);
+    setPersonalDocumentos(prev => prev.map(d => d.id === documentoId ? data : d));
+    return data;
+  };
+
+  const upsertListBy = (prev, rows, keyFn) => {
+    const incoming = rows || [];
+    if (!incoming.length) return prev;
+    return [
+      ...prev.filter(item => !incoming.some(row => keyFn(row) === keyFn(item))),
+      ...incoming,
+    ];
+  };
+
+  const getEvaluacionCtx = (evaluacionId) => {
+    const evaluacion = evaluacionEvaluaciones.find(e => e.id === evaluacionId);
+    const plantilla = evaluacion ? evaluacionPlantillas.find(p => p.id === evaluacion.plantilla_id) : null;
+    const competencias = plantilla ? evaluacionCompetencias.filter(c => c.plantilla_id === plantilla.id).sort((a, b) => (a.orden || 0) - (b.orden || 0)) : [];
+    const objetivos = plantilla ? evaluacionObjetivos.filter(o => o.plantilla_id === plantilla.id).sort((a, b) => (a.orden || 0) - (b.orden || 0)) : [];
+    return { evaluacion, plantilla, competencias, objetivos };
+  };
+
+  const crearPlantillaEvaluacionCtx = async (payload) => {
+    if (!empresa?.id) return null;
+    const creadoPor = authUser?.id || null;
+    if (isSupabaseConfigured()) {
+      const data = await evaluacionesDesempenoService.crearPlantillaCompleta(empresa.id, payload, creadoPor);
+      setEvaluacionPlantillas(prev => [data.plantilla, ...prev]);
+      setEvaluacionCompetencias(prev => [...prev, ...(data.competencias || [])]);
+      setEvaluacionObjetivos(prev => [...prev, ...(data.objetivos || [])]);
+      setEvaluacionEvaluaciones(prev => [...(data.evaluaciones || []), ...prev]);
+      addNotificacion(payload.estado === 'borrador' ? 'Plantilla de evaluacion guardada como borrador.' : 'Plantilla de evaluacion creada y activada.');
+      return data;
+    }
+
+    const plantilla = {
+      id: generateId('edp'),
+      empresa_id: empresa.id,
+      nombre: payload.nombre,
+      descripcion: payload.descripcion || '',
+      periodo: payload.periodo,
+      estado: payload.estado || 'activa',
+      peso_autoevaluacion: Number(payload.peso_autoevaluacion ?? 30),
+      peso_jefe: Number(payload.peso_jefe ?? 70),
+      peso_competencias: Number(payload.peso_competencias ?? 50),
+      peso_objetivos: Number(payload.peso_objetivos ?? 50),
+      fecha_inicio: payload.fecha_inicio || '',
+      fecha_limite_autoevaluacion: payload.fecha_limite_autoevaluacion || '',
+      fecha_limite_jefe: payload.fecha_limite_jefe || '',
+      creado_por: creadoPor,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const competencias = (payload.competencias || []).map((c, idx) => ({
+      id: generateId('edc'),
+      empresa_id: empresa.id,
+      plantilla_id: plantilla.id,
+      nombre: c.nombre,
+      descripcion: c.descripcion || '',
+      escala_min: Number(c.escala_min ?? payload.escala_min ?? 1),
+      escala_max: Number(c.escala_max ?? payload.escala_max ?? 5),
+      orden: idx + 1,
+    }));
+    const objetivos = (payload.objetivos || []).map((o, idx) => ({
+      id: generateId('edo'),
+      empresa_id: empresa.id,
+      plantilla_id: plantilla.id,
+      nombre: o.nombre,
+      descripcion: o.descripcion || '',
+      unidad_medida: o.unidad_medida || 'numero',
+      meta_numerica: Number(o.meta_numerica || 0),
+      orden: idx + 1,
+    }));
+    const evaluaciones = plantilla.estado === 'borrador' ? [] : (payload.colaboradores || []).map(c => ({
+      id: generateId('ede'),
+      empresa_id: empresa.id,
+      plantilla_id: plantilla.id,
+      evaluado_id: c.evaluado_id,
+      evaluado_nombre: c.evaluado_nombre,
+      evaluado_tipo: c.evaluado_tipo,
+      jefe_id: c.jefe_id || null,
+      jefe_nombre: c.jefe_nombre || '',
+      estado: 'pendiente',
+      score_autoevaluacion: null,
+      score_jefe: null,
+      score_final: null,
+      comentario_final_jefe: null,
+      creado_por: creadoPor,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+    setEvaluacionPlantillas(prev => [plantilla, ...prev]);
+    setEvaluacionCompetencias(prev => [...prev, ...competencias]);
+    setEvaluacionObjetivos(prev => [...prev, ...objetivos]);
+    setEvaluacionEvaluaciones(prev => [...evaluaciones, ...prev]);
+    addNotificacion(plantilla.estado === 'borrador' ? 'Plantilla de evaluacion guardada como borrador.' : 'Plantilla de evaluacion creada y activada.');
+    return { plantilla, competencias, objetivos, evaluaciones };
+  };
+
+  const actualizarPlantillaEvaluacionCtx = async (plantillaId, patch) => {
+    const data = isSupabaseConfigured()
+      ? await evaluacionesDesempenoService.actualizarPlantilla(plantillaId, patch)
+      : { ...(evaluacionPlantillas.find(p => p.id === plantillaId) || {}), ...patch, updated_at: new Date().toISOString() };
+    setEvaluacionPlantillas(prev => prev.map(p => p.id === plantillaId ? data : p));
+    return data;
+  };
+
+  const cerrarPlantillaEvaluacionCtx = async (plantillaId) => {
+    const data = await actualizarPlantillaEvaluacionCtx(plantillaId, { estado: 'cerrada' });
+    addNotificacion('Plantilla cerrada. Los resultados ya son visibles para los colaboradores evaluados.');
+    return data;
+  };
+
+  const reasignarJefeEvaluacionCtx = async (evaluacionId, jefeId, jefeNombre) => {
+    const patch = { jefe_id: jefeId || null, jefe_nombre: jefeNombre || null };
+    const data = isSupabaseConfigured()
+      ? await evaluacionesDesempenoService.actualizarEvaluacion(evaluacionId, patch)
+      : { ...(evaluacionEvaluaciones.find(e => e.id === evaluacionId) || {}), ...patch, updated_at: new Date().toISOString() };
+    setEvaluacionEvaluaciones(prev => prev.map(e => e.id === evaluacionId ? data : e));
+    addNotificacion('Jefe evaluador reasignado.');
+    return data;
+  };
+
+  const guardarAutoevaluacionCtx = async (evaluacionId, { competencias: respuestasComp = [], objetivos: respuestasObj = [] }) => {
+    const ctx = getEvaluacionCtx(evaluacionId);
+    if (!ctx.evaluacion || !ctx.plantilla) throw new Error('Evaluacion no encontrada.');
+    const now = new Date().toISOString();
+    const compRowsBase = respuestasComp.map(r => ({
+      id: r.id || generateId('erc'),
+      empresa_id: empresa.id,
+      evaluacion_id: evaluacionId,
+      competencia_id: r.competencia_id,
+      tipo_evaluador: 'autoevaluacion',
+      puntaje: Number(r.puntaje || 0),
+      comentario: r.comentario || '',
+      respondido_por: authUser?.id || null,
+      respondido_en: now,
+    }));
+    const objRowsBase = respuestasObj.map(r => {
+      const objetivo = ctx.objetivos.find(o => o.id === r.objetivo_id);
+      const pct = evaluacionesDesempenoService.calcularPorcentajeObjetivo(r.resultado_real, objetivo?.meta_numerica);
+      return {
+        id: r.id || generateId('ero'),
+        empresa_id: empresa.id,
+        evaluacion_id: evaluacionId,
+        objetivo_id: r.objetivo_id,
+        tipo_evaluador: 'autoevaluacion',
+        resultado_real: Number(r.resultado_real || 0),
+        porcentaje_cumplimiento: pct,
+        comentario: r.comentario || '',
+        respondido_por: authUser?.id || null,
+        respondido_en: now,
+      };
+    });
+
+    const compRows = isSupabaseConfigured()
+      ? await evaluacionesDesempenoService.upsertRespuestasCompetencias(empresa.id, evaluacionId, 'autoevaluacion', compRowsBase, authUser?.id || null)
+      : compRowsBase;
+    const objRows = isSupabaseConfigured()
+      ? await evaluacionesDesempenoService.upsertRespuestasObjetivos(empresa.id, evaluacionId, 'autoevaluacion', objRowsBase, authUser?.id || null)
+      : objRowsBase;
+
+    const scoreAuto = evaluacionesDesempenoService.calcularScoreEvaluador(ctx.plantilla, ctx.competencias, ctx.objetivos, compRows, objRows);
+    const patch = {
+      score_autoevaluacion: scoreAuto,
+      estado: ctx.evaluacion.score_jefe != null ? 'completada' : 'autoevaluacion_completa',
+    };
+    if (ctx.evaluacion.score_jefe != null) {
+      patch.score_final = evaluacionesDesempenoService.calcularScoreFinal(ctx.plantilla, scoreAuto, ctx.evaluacion.score_jefe);
+    }
+
+    const evalData = isSupabaseConfigured()
+      ? await evaluacionesDesempenoService.actualizarEvaluacion(evaluacionId, patch)
+      : { ...ctx.evaluacion, ...patch, updated_at: now };
+    setEvaluacionRespCompetencias(prev => upsertListBy(prev, compRows, r => `${r.evaluacion_id}:${r.competencia_id}:${r.tipo_evaluador}`));
+    setEvaluacionRespObjetivos(prev => upsertListBy(prev, objRows, r => `${r.evaluacion_id}:${r.objetivo_id}:${r.tipo_evaluador}`));
+    setEvaluacionEvaluaciones(prev => prev.map(e => e.id === evaluacionId ? evalData : e));
+    addNotificacion('Autoevaluacion enviada. Tu jefe ya puede revisarla.');
+    return evalData;
+  };
+
+  const guardarEvaluacionJefeCtx = async (evaluacionId, { competencias: respuestasComp = [], objetivos: respuestasObj = [], comentarioFinal = '' }) => {
+    const ctx = getEvaluacionCtx(evaluacionId);
+    if (!ctx.evaluacion || !ctx.plantilla) throw new Error('Evaluacion no encontrada.');
+    const now = new Date().toISOString();
+    const compRowsBase = respuestasComp.map(r => ({
+      id: r.id || generateId('erc'),
+      empresa_id: empresa.id,
+      evaluacion_id: evaluacionId,
+      competencia_id: r.competencia_id,
+      tipo_evaluador: 'jefe',
+      puntaje: Number(r.puntaje || 0),
+      comentario: r.comentario || '',
+      respondido_por: authUser?.id || null,
+      respondido_en: now,
+    }));
+    const objRowsBase = respuestasObj.map(r => {
+      const objetivo = ctx.objetivos.find(o => o.id === r.objetivo_id);
+      const pct = evaluacionesDesempenoService.calcularPorcentajeObjetivo(r.resultado_real, objetivo?.meta_numerica);
+      return {
+        id: r.id || generateId('ero'),
+        empresa_id: empresa.id,
+        evaluacion_id: evaluacionId,
+        objetivo_id: r.objetivo_id,
+        tipo_evaluador: 'jefe',
+        resultado_real: Number(r.resultado_real || 0),
+        porcentaje_cumplimiento: pct,
+        comentario: r.comentario || '',
+        respondido_por: authUser?.id || null,
+        respondido_en: now,
+      };
+    });
+
+    const compRows = isSupabaseConfigured()
+      ? await evaluacionesDesempenoService.upsertRespuestasCompetencias(empresa.id, evaluacionId, 'jefe', compRowsBase, authUser?.id || null)
+      : compRowsBase;
+    const objRows = isSupabaseConfigured()
+      ? await evaluacionesDesempenoService.upsertRespuestasObjetivos(empresa.id, evaluacionId, 'jefe', objRowsBase, authUser?.id || null)
+      : objRowsBase;
+
+    const autoComp = evaluacionRespCompetencias.filter(r => r.evaluacion_id === evaluacionId && r.tipo_evaluador === 'autoevaluacion');
+    const autoObj = evaluacionRespObjetivos.filter(r => r.evaluacion_id === evaluacionId && r.tipo_evaluador === 'autoevaluacion');
+    const scoreAuto = ctx.evaluacion.score_autoevaluacion ?? evaluacionesDesempenoService.calcularScoreEvaluador(ctx.plantilla, ctx.competencias, ctx.objetivos, autoComp, autoObj);
+    const scoreJefe = evaluacionesDesempenoService.calcularScoreEvaluador(ctx.plantilla, ctx.competencias, ctx.objetivos, compRows, objRows);
+    const scoreFinal = evaluacionesDesempenoService.calcularScoreFinal(ctx.plantilla, scoreAuto, scoreJefe);
+    const patch = {
+      estado: 'completada',
+      score_autoevaluacion: scoreAuto,
+      score_jefe: scoreJefe,
+      score_final: scoreFinal,
+      comentario_final_jefe: comentarioFinal,
+    };
+    const evalData = isSupabaseConfigured()
+      ? await evaluacionesDesempenoService.actualizarEvaluacion(evaluacionId, patch)
+      : { ...ctx.evaluacion, ...patch, updated_at: now };
+    setEvaluacionRespCompetencias(prev => upsertListBy(prev, compRows, r => `${r.evaluacion_id}:${r.competencia_id}:${r.tipo_evaluador}`));
+    setEvaluacionRespObjetivos(prev => upsertListBy(prev, objRows, r => `${r.evaluacion_id}:${r.objetivo_id}:${r.tipo_evaluador}`));
+    setEvaluacionEvaluaciones(prev => prev.map(e => e.id === evaluacionId ? evalData : e));
+    addNotificacion('Evaluacion del jefe enviada. El resultado queda disponible para RRHH.');
+    return evalData;
+  };
+
+  // ── Liquidaciones por cese ────────────────────────────────────────────────
+
+  const crearLiquidacionCtx = async (payload) => {
+    if (!empresa?.id) throw new Error('No hay empresa activa.');
+    const creadoPor = authUser?.id || null;
+    if (isSupabaseConfigured()) {
+      const data = await liquidacionesCeseService.crearLiquidacion(empresa.id, payload, creadoPor);
+      setLiquidacionesCese(prev => [data.liquidacion, ...prev]);
+      setLiquidacionesConceptos(prev => [...prev, ...(data.conceptos || [])]);
+      return data;
+    }
+    const liq = {
+      ...payload,
+      id: generateId('liq'),
+      empresa_id: empresa.id,
+      estado: 'calculada',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setLiquidacionesCese(prev => [liq, ...prev]);
+    return { liquidacion: liq, conceptos: [] };
+  };
+
+  const confirmarLiquidacionCtx = async (liquidacionId, params = {}) => {
+    if (!empresa?.id) throw new Error('No hay empresa activa.');
+    const confirmedBy = authUser?.id || null;
+    if (isSupabaseConfigured()) {
+      const data = await liquidacionesCeseService.confirmarLiquidacion(liquidacionId, params, confirmedBy);
+      setLiquidacionesCese(prev => prev.map(l => l.id === liquidacionId ? data.liquidacion : l));
+      setLiquidacionesConceptos(prev => [
+        ...prev.filter(c => c.liquidacion_id !== liquidacionId),
+        ...(data.conceptos || []),
+      ]);
+      if (data.cxp) setCxp(prev => [data.cxp, ...prev]);
+      // Marcar personal como cesado en estado local
+      const liq = data.liquidacion;
+      if (liq.personal_tipo === 'operativo') {
+        setPersonalOperativo(prev => prev.map(p => p.id === liq.personal_id
+          ? { ...p, estado_laboral: 'cesado', estado: 'inactivo', fecha_cese: liq.fecha_cese, tipo_cese: liq.tipo_cese }
+          : p));
+      } else {
+        setPersonalAdmin(prev => prev.map(p => p.id === liq.personal_id
+          ? { ...p, estado_laboral: 'cesado', estado: 'inactivo', fecha_cese: liq.fecha_cese, tipo_cese: liq.tipo_cese }
+          : p));
+      }
+      return data;
+    }
+    const now = new Date().toISOString();
+    setLiquidacionesCese(prev => prev.map(l => l.id === liquidacionId
+      ? { ...l, estado: 'confirmada', confirmado_en: now, observaciones: params.observaciones || null }
+      : l));
+    return { liquidacion: { id: liquidacionId, estado: 'confirmada' }, cxp: null, conceptos: [] };
+  };
+
+  const anularLiquidacionCtx = async (liquidacionId, motivo) => {
+    if (!empresa?.id) throw new Error('No hay empresa activa.');
+    const anuladoPor = authUser?.id || null;
+    if (isSupabaseConfigured()) {
+      const data = await liquidacionesCeseService.anularLiquidacion(liquidacionId, motivo, anuladoPor);
+      setLiquidacionesCese(prev => prev.map(l => l.id === liquidacionId ? data.liquidacion : l));
+      if (data.cxp) setCxp(prev => prev.map(c => c.id === data.cxp.id ? data.cxp : c));
+      // Revertir personal a activo si aplica
+      const liq = data.liquidacion;
+      if (liq.estado === 'anulada' && liq.confirmado_en) {
+        if (liq.personal_tipo === 'operativo') {
+          setPersonalOperativo(prev => prev.map(p => p.id === liq.personal_id
+            ? { ...p, estado_laboral: 'activo', estado: 'activo', fecha_cese: null, tipo_cese: null }
+            : p));
+        } else {
+          setPersonalAdmin(prev => prev.map(p => p.id === liq.personal_id
+            ? { ...p, estado_laboral: 'activo', estado: 'activo', fecha_cese: null, tipo_cese: null }
+            : p));
+        }
+      }
+      return data;
+    }
+    const now = new Date().toISOString();
+    setLiquidacionesCese(prev => prev.map(l => l.id === liquidacionId
+      ? { ...l, estado: 'anulada', motivo_anulacion: motivo, anulado_en: now }
+      : l));
+    return { liquidacion: { id: liquidacionId, estado: 'anulada' }, cxp: null };
   };
 
   const crearAgendaEvento = (evento) => {
@@ -6071,6 +6685,7 @@ export function AppProvider({ children }) {
     osClientes, setOsClientes, actualizarOSCliente,
     cxp, setCxp,
     cxpPagos, setCxpPagos,
+    cajaChica, setCajaChica, registrarEgresoCajaChica,
     cxc, setCxc,
     cobrosHistorial, setCobrosHistorial,
     gestionesCobranza, setGestionesCobranza,
@@ -6099,6 +6714,7 @@ export function AppProvider({ children }) {
     ordenesCompra, setOrdenesCompra,
     ordenesServicio, setOrdenesServicio,
     recepciones, setRecepciones,
+    ocAnticipos, setOcAnticipos, registrarAnticipoOC,
     
     // Maestros Base Data
     areasEmpresa, setAreasEmpresa, crearArea, actualizarArea, eliminarArea,
@@ -6152,6 +6768,16 @@ export function AppProvider({ children }) {
     vacacionesSolicitudes, setVacacionesSolicitudes,
     licencias, setLicencias,
     solicitudesRRHH, setSolicitudesRRHH,
+    personalDocumentos, setPersonalDocumentos,
+    evaluacionPlantillas, setEvaluacionPlantillas,
+    evaluacionCompetencias, setEvaluacionCompetencias,
+    evaluacionObjetivos, setEvaluacionObjetivos,
+    evaluacionEvaluaciones, setEvaluacionEvaluaciones,
+    evaluacionRespCompetencias, setEvaluacionRespCompetencias,
+    evaluacionRespObjetivos, setEvaluacionRespObjetivos,
+    liquidacionesCese, setLiquidacionesCese,
+    liquidacionesConceptos, setLiquidacionesConceptos,
+    crearLiquidacionCtx, confirmarLiquidacionCtx, anularLiquidacionCtx,
     onboardings, setOnboardings,
     planesExito, setPlanesExito,
     healthScoresDetalle, setHealthScoresDetalle,
@@ -6171,7 +6797,10 @@ export function AppProvider({ children }) {
     crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx,
     crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx,
     crearTurnoCtx, actualizarTurnoCtx, eliminarTurnoCtx, registrarAsistenciaCtx, crearPeriodoNominaCtx,
+    crearPlantillaEvaluacionCtx, actualizarPlantillaEvaluacionCtx, cerrarPlantillaEvaluacionCtx,
+    reasignarJefeEvaluacionCtx, guardarAutoevaluacionCtx, guardarEvaluacionJefeCtx,
     aprobarVacacion, rechazarVacacion,
+    subirDocumentoPersonalCtx, validarDocumentoPersonalCtx,
     crearOnboarding, registrarNPS,
     generarRenovacion, crearPlanRetencion,
     registrarIaLog,

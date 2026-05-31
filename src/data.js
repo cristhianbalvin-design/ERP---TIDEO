@@ -15,7 +15,7 @@ const tenantAdminScreens = [
   'ventas','caja','financiamiento','prestamos_personal','cxc','cxp','facturacion','tesoreria','resultados','valorizacion','presupuestos',
   'cs_onboarding','cs_planes','cs_health','cs_renovaciones','cs_fidelizacion','bi_cs',
   'ia_comercial','ia_operativa','ia_financiera',
-  'campo','usuarios','rrhh_operativo','rrhh_admin','asistencia','turnos','nomina','roles','maestros','parametros','servicios','tarifarios'
+  'campo','usuarios','rrhh_operativo','rrhh_admin','asistencia','turnos','nomina','evaluaciones_desempeno','liquidaciones_cese','roles','maestros','parametros','servicios','tarifarios'
 ];
 
 const platformScreens = ['dashboard','tenants','planes','metricas_saas','usuarios','roles'];
@@ -23,10 +23,10 @@ const platformScreens = ['dashboard','tenants','planes','metricas_saas','usuario
 export const roles = {
   plataforma: { nombre: 'Superadmin TIDEO', color: 'navy', categoria: 'admin', nivel_jerarquico: 'direccion', descripcion: 'Administra la plataforma SaaS, tenants, planes, metricas y soporte TIDEO', permisos: { ver: platformScreens, plataforma: true, soporte_tenant: true, ver_costos: true, ver_finanzas: true } },
   admin: { nombre: 'Super Administrador', color: 'purple', categoria: 'admin', nivel_jerarquico: 'direccion', descripcion: 'Administra todos los modulos del ERP dentro de su empresa', permisos: { ver: tenantAdminScreens, tenant_admin: true, ver_costos: true, ver_precios: true, ver_finanzas: true, aprobar_descuentos: true, anular_documentos: true, acceso_campo: true, perfil_campo: 'Gerencia', ver_agenda_equipo: true } },
-  comercial: { nombre: 'Jefe Comercial', color: 'cyan', categoria: 'comercial', nivel_jerarquico: 'jefatura', descripcion: 'Gestión de ventas y cotizaciones', permisos: { ver: ['dashboard','cuentas','leads','pipeline','actividades','agenda_comercial','hoja_costeo','cotizaciones','os_cliente'], crear: true, aprobar_descuentos: true, ver_costos: true, ver_agenda_equipo: true } },
-  vendedor: { nombre: 'Vendedor', color: 'blue', categoria: 'comercial', nivel_jerarquico: 'asesor', descripcion: 'Gestión de sus propias ventas y agenda', permisos: { ver: ['dashboard','cuentas','leads','pipeline','actividades','agenda_comercial','cotizaciones'], crear: true, acceso_campo: true, perfil_campo: 'Vendedor' } },
-  tecnico: { nombre: 'Técnico de Campo', color: 'orange', categoria: 'operaciones', nivel_jerarquico: 'operativo', descripcion: 'Ejecución de OTs', permisos: { ver: ['ot','partes'], acceso_campo: true } },
-  finanzas: { nombre: 'Finanzas', color: 'green', categoria: 'finanzas', nivel_jerarquico: 'jefatura', descripcion: 'Control de cajas y facturación', permisos: { ver: ['dashboard','bi_financiero','presupuestos','cxc','cxp','tesoreria','resultados','facturacion','caja','financiamiento','prestamos_personal','ventas','valorizacion','nomina'], ver_finanzas: true } },
+  comercial: { nombre: 'Jefe Comercial', color: 'cyan', categoria: 'comercial', nivel_jerarquico: 'jefatura', descripcion: 'Gestión de ventas y cotizaciones', permisos: { ver: ['dashboard','cuentas','leads','pipeline','actividades','agenda_comercial','hoja_costeo','cotizaciones','os_cliente','evaluaciones_desempeno'], crear: true, aprobar_descuentos: true, ver_costos: true, ver_agenda_equipo: true } },
+  vendedor: { nombre: 'Vendedor', color: 'blue', categoria: 'comercial', nivel_jerarquico: 'asesor', descripcion: 'Gestión de sus propias ventas y agenda', permisos: { ver: ['dashboard','cuentas','leads','pipeline','actividades','agenda_comercial','cotizaciones','evaluaciones_desempeno'], crear: true, acceso_campo: true, perfil_campo: 'Vendedor' } },
+  tecnico: { nombre: 'Técnico de Campo', color: 'orange', categoria: 'operaciones', nivel_jerarquico: 'operativo', descripcion: 'Ejecución de OTs', permisos: { ver: ['ot','partes','evaluaciones_desempeno'], acceso_campo: true } },
+  finanzas: { nombre: 'Finanzas', color: 'green', categoria: 'finanzas', nivel_jerarquico: 'jefatura', descripcion: 'Control de cajas y facturación', permisos: { ver: ['dashboard','bi_financiero','presupuestos','cxc','cxp','tesoreria','resultados','facturacion','caja','financiamiento','prestamos_personal','ventas','valorizacion','nomina','evaluaciones_desempeno'], ver_finanzas: true } },
 };
 
 export const usuarios = [
@@ -926,6 +926,7 @@ export const pantallasPermisos = [
   { key: 'nomina', modulo: 'RRHH', pantalla: 'Nomina', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
   { key: 'prestamos_personal', modulo: 'RRHH', pantalla: 'Prestamos al Personal', acciones: ['ver','crear','editar','exportar','finanzas'] },
   { key: 'tareo_admin', modulo: 'RRHH', pantalla: 'Tareo Administrativo', acciones: ['ver','crear','editar'] },
+  { key: 'evaluaciones_desempeno', modulo: 'RRHH', pantalla: 'Evaluación de Desempeño', acciones: ['ver','crear','editar','aprobar','exportar'] },
   { key: 'financiamiento', modulo: 'Administracion', pantalla: 'Financiamiento y Deuda', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
   { key: 'ventas', modulo: 'Administracion', pantalla: 'Ventas', acciones: ['ver','crear','editar','exportar','finanzas'] },
   { key: 'cxc', modulo: 'Administracion', pantalla: 'Cuentas por Cobrar', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },

@@ -22,23 +22,32 @@ export const finanzasService = {
 
   async crearValorizacion(payload) {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('valorizaciones')
-      .insert(payload)
-      .select()
-      .single();
+    const insert = async (p) => supabase.from('valorizaciones').insert(p).select().single();
+    let p = { ...payload };
+    for (let i = 0; i < 8; i++) {
+      const { data, error } = await insert(p);
+      if (!error) return data;
+      const col = error.message?.match(/column "([^"]+)" of relation/)?.[1] || error.message?.match(/'([^']+)' column/)?.[1];
+      if (!col || !(col in p)) throw error;
+      delete p[col];
+    }
+    const { data, error } = await insert(p);
     if (error) throw error;
     return data;
   },
 
   async actualizarValorizacion(id, updates) {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('valorizaciones')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
+    const updateFn = async (p) => supabase.from('valorizaciones').update(p).eq('id', id).select().single();
+    let p = { ...updates };
+    for (let i = 0; i < 8; i++) {
+      const { data, error } = await updateFn(p);
+      if (!error) return data;
+      const col = error.message?.match(/column "([^"]+)" of relation/)?.[1] || error.message?.match(/'([^']+)' column/)?.[1];
+      if (!col || !(col in p)) throw error;
+      delete p[col];
+    }
+    const { data, error } = await updateFn(p);
     if (error) throw error;
     return data;
   },
@@ -56,19 +65,30 @@ export const finanzasService = {
 
   async emitirFactura(payload) {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('facturas')
-      .insert(payload)
-      .select()
-      .single();
-    if (error) throw error;
+    const insert = async (p) => supabase.from('facturas').insert(p).select().single();
+    let p = { ...payload };
+    let finalData = null;
+    
+    for (let i = 0; i < 8; i++) {
+      const { data, error } = await insert(p);
+      if (!error) { finalData = data; break; }
+      const col = error.message?.match(/column "([^"]+)" of relation/)?.[1] || error.message?.match(/'([^']+)' column/)?.[1];
+      if (!col || !(col in p)) throw error;
+      delete p[col];
+    }
+    if (!finalData) {
+      const { data, error } = await insert(p);
+      if (error) throw error;
+      finalData = data;
+    }
+
     if (payload.valorizacion_id) {
       await supabase
         .from('valorizaciones')
         .update({ estado: 'facturada' })
         .eq('id', payload.valorizacion_id);
     }
-    return data;
+    return finalData;
   },
 
   async getCxC(empresaId) {
@@ -84,11 +104,16 @@ export const finanzasService = {
 
   async generarCxC(payload) {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('cxc')
-      .insert(payload)
-      .select()
-      .single();
+    const insert = async (p) => supabase.from('cxc').insert(p).select().single();
+    let p = { ...payload };
+    for (let i = 0; i < 8; i++) {
+      const { data, error } = await insert(p);
+      if (!error) return data;
+      const col = error.message?.match(/column "([^"]+)" of relation/)?.[1] || error.message?.match(/'([^']+)' column/)?.[1];
+      if (!col || !(col in p)) throw error;
+      delete p[col];
+    }
+    const { data, error } = await insert(p);
     if (error) throw error;
     return data;
   },
@@ -367,6 +392,40 @@ export const finanzasService = {
       .from('movimientos_banco')
       .update({ conciliado: true, vinculado_tipo: vinculadoTipo, vinculado_id: vinculadoId })
       .eq('id', movimientoId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async getCajaChica(empresaId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('caja_chica')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('fecha', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
+  async insertarCajaChica(payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('caja_chica')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async anularCajaChica(id, anuladoPor) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('caja_chica')
+      .update({ estado: 'anulado', responsable_nombre: anuladoPor })
+      .eq('id', id)
       .select()
       .single();
     if (error) throw error;

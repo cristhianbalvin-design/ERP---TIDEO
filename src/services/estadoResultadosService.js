@@ -22,10 +22,11 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], empr
   const ingresosTotal = base.ingresos.total; // En el futuro: sumar facturas cobradas
 
   // 2. Costo de Ventas Dinámico
-  // Filtrar gastos que son 'Costo Directo'
-  const gastosCostoVentas = comprasGastos.filter(g => 
-    (!empresaId || g.empresa_id === empresaId) && 
-    isInP(g.fecha) && 
+  // Filtrar gastos que son 'Costo Directo' — excluir activos fijos
+  const gastosCostoVentas = comprasGastos.filter(g =>
+    (!empresaId || g.empresa_id === empresaId) &&
+    isInP(g.fecha) &&
+    !g.es_activo_fijo &&
     ['Materiales', 'Servicios terceros', 'Logistica'].includes(g.categoria)
   );
 
@@ -39,15 +40,19 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], empr
 
   const costoVentasTotal = moTotal + matCost + stCost + logCost;
 
-  // 3. Gastos Operativos
-  const gastosOpItems = comprasGastos.filter(g => 
-    (!empresaId || g.empresa_id === empresaId) && 
-    isInP(g.fecha) && 
-    ['Administrativos', 'Comerciales'].includes(g.categoria)
+  // 3. Gastos Operativos — excluir activos fijos
+  const gastosOpItems = comprasGastos.filter(g =>
+    (!empresaId || g.empresa_id === empresaId) &&
+    isInP(g.fecha) &&
+    !g.es_activo_fijo &&
+    ['Administrativos', 'Comerciales', 'planilla', 'cargas_sociales',
+     'Gasto de personal', 'Cargas laborales empresa'].includes(g.categoria)
   );
   const admCost = gastosOpItems.filter(g => g.categoria === 'Administrativos').reduce((s, g) => s + Number(g.monto), 0);
   const comCost = gastosOpItems.filter(g => g.categoria === 'Comerciales').reduce((s, g) => s + Number(g.monto), 0);
-  const gastosOpTotal = admCost + comCost;
+  const planillaCost = gastosOpItems.filter(g => ['planilla', 'Gasto de personal'].includes(g.categoria)).reduce((s, g) => s + Number(g.monto), 0);
+  const cargasCost = gastosOpItems.filter(g => ['cargas_sociales', 'Cargas laborales empresa'].includes(g.categoria)).reduce((s, g) => s + Number(g.monto), 0);
+  const gastosOpTotal = admCost + comCost + planillaCost + cargasCost;
 
   // 4. Gastos Financieros
   const interesesPorMoneda = gastosFinancierosPorMoneda(comprasGastos, {
@@ -79,6 +84,8 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], empr
       items: [
         { label: 'Administrativos', valor: admCost || base.gastosOp.items[0].valor },
         { label: 'Comerciales', valor: comCost || base.gastosOp.items[1].valor },
+        ...(planillaCost > 0 ? [{ label: 'Planilla', valor: planillaCost }] : []),
+        ...(cargasCost > 0 ? [{ label: 'Cargas sociales', valor: cargasCost }] : []),
       ]
     },
     gastosFin: {

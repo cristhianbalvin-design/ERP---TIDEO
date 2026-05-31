@@ -9,6 +9,7 @@ import { PHONE_PATTERN, RUC_PATTERN, sanitizePhone, sanitizeRuc } from './lib/fo
 import { VARIABLES_COMERCIALES } from './lib/textoComercial.js';
 import { maestrosService } from './services/maestrosService.js';
 import { importarMaterialesMasivo } from './services/materialService.js';
+import * as personalDocumentosService from './services/personalDocumentosService.js';
 import * as XLSX from 'xlsx';
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
 import { SmartTextField } from './components/SmartTextField.jsx';
@@ -1292,7 +1293,7 @@ function CecoCebePanel({ onClose }) {
 
   const usuariosActivos = (usuarios || []).filter(u => u.estado !== 'inactivo');
   const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
-  const estadosOtCerrados = new Set(['cerrada', 'cerrado', 'cerrada_tecnica', 'cerrado_tecnico', 'valorizada', 'valorizado', 'facturada', 'facturado', 'anulada', 'anulado', 'cancelada', 'cancelado']);
+  const estadosOtCerrados = new Set(['pendiente_cierre', 'pendiente cierre', 'cerrada', 'cerrado', 'cerrada_tecnica', 'cerrado_tecnico', 'valorizada', 'valorizado', 'facturada', 'facturado', 'anulada', 'anulado', 'cancelada', 'cancelado']);
   const otsActivasPorCeco = cecoId => (ots || []).filter(o => o.centro_costo_id === cecoId && !estadosOtCerrados.has(String(o.estado || '').toLowerCase()));
   const confirmarInactivacionCeco = ceco => {
     const otsActivas = otsActivasPorCeco(ceco.id);
@@ -3825,7 +3826,7 @@ function Parametros() {
   const [conds, setConds] = useState({ cond_forma_pago:'', cond_validez:'', cond_penalidad:'', cond_inicio_proyecto:'', cond_alcance:'', cond_integraciones:'', cond_confidencialidad:'', cond_glosa_factura:'' });
   const [colores, setColores] = useState({ color_primario:'#1A2B4A', color_secundario:'#607D8B' });
   const defaultFlujos = [
-    { modulo: 'OT', flujo: 'borrador -> programada -> ejecucion -> cerrada -> valorizada -> facturada', alerta: 'SLA por contrato' },
+    { modulo: 'OT', flujo: 'borrador -> programada -> ejecucion -> pendiente cierre -> cerrada -> valorizada -> facturada', alerta: 'SLA por contrato' },
     { modulo: 'Cotizacion', flujo: 'borrador -> enviada -> aprobada -> ganada / perdida', alerta: 'Descuento requiere aprobacion' },
     { modulo: 'SOLPE', flujo: 'borrador -> solicitada -> aprobada -> atendida', alerta: 'Urgencia alta notifica supervisor' },
     { modulo: 'Compras campo', flujo: 'capturada -> pendiente revision -> validada -> CxP', alerta: 'IA con baja confianza' },
@@ -3847,6 +3848,37 @@ function Parametros() {
   const [firmaPreview, setFirmaPreview] = useState(null);
   const [paramSection, setParamSection] = useState('identidad');
 
+  // ── Estado configuración de nómina ──
+  const nominaBase = {
+    regimen_laboral_empresa: 'general', frecuencia_pago: 'mensual',
+    dia_corte_mensual: 25, dia_pago_mensual: 30,
+    dia_corte_q1: 10, dia_pago_q1: 15,
+    dia_corte_q2: 25, dia_pago_q2: 30,
+    pct_quincena_1: 50,
+    uit_vigente: 5500, rmv_vigente: 1130, ram_tope_afp: 12598.91, pct_prima_seguro: 1.37,
+  };
+  const [nominaCfg, setNominaCfg] = useState(nominaBase);
+  const [savingNomina, setSavingNomina] = useState(false);
+  const [showRegimenModal, setShowRegimenModal] = useState(false);
+  const [pendingRegimen, setPendingRegimen] = useState(null);
+  const evaluacionBase = {
+    eval_peso_autoevaluacion: 30,
+    eval_peso_jefe: 70,
+    eval_peso_competencias: 50,
+    eval_peso_objetivos: 50,
+    eval_escala_min: 1,
+    eval_escala_max: 5,
+    eval_escala_labels: {
+      1: 'Insatisfactorio',
+      2: 'Por mejorar',
+      3: 'Satisfactorio',
+      4: 'Destacado',
+      5: 'Sobresaliente',
+    },
+  };
+  const [evalCfg, setEvalCfg] = useState(evaluacionBase);
+  const [savingEvalCfg, setSavingEvalCfg] = useState(false);
+
   useEffect(() => {
     setDatos({ razon_social: empresaConfig.razon_social||'', ruc: empresaConfig.ruc||'', email_comercial: empresaConfig.email_comercial||'', sitio_web: empresaConfig.sitio_web||'', direccion: empresaConfig.direccion||'', firmante: empresaConfig.firmante||'', cargo_firmante: empresaConfig.cargo_firmante||'' });
     setConds({ cond_forma_pago: empresaConfig.cond_forma_pago||'', cond_validez: empresaConfig.cond_validez||'', cond_penalidad: empresaConfig.cond_penalidad||'', cond_inicio_proyecto: empresaConfig.cond_inicio_proyecto||'', cond_alcance: empresaConfig.cond_alcance||'', cond_integraciones: empresaConfig.cond_integraciones||'', cond_confidencialidad: empresaConfig.cond_confidencialidad||'', cond_glosa_factura: empresaConfig.cond_glosa_factura||'' });
@@ -3864,6 +3896,30 @@ function Parametros() {
     setFlujosAlertas(cfgFlujos.length ? cfgFlujos : defaultFlujos);
     if (empresaConfig.logo_url) setLogoPreview(empresaConfig.logo_url);
     if (empresaConfig.firma_url) setFirmaPreview(empresaConfig.firma_url);
+    setNominaCfg({
+      regimen_laboral_empresa: empresaConfig.regimen_laboral_empresa || 'general',
+      frecuencia_pago: empresaConfig.frecuencia_pago || 'mensual',
+      dia_corte_mensual: empresaConfig.dia_corte_mensual ?? 25,
+      dia_pago_mensual: empresaConfig.dia_pago_mensual ?? 30,
+      dia_corte_q1: empresaConfig.dia_corte_q1 ?? 10,
+      dia_pago_q1: empresaConfig.dia_pago_q1 ?? 15,
+      dia_corte_q2: empresaConfig.dia_corte_q2 ?? 25,
+      dia_pago_q2: empresaConfig.dia_pago_q2 ?? 30,
+      pct_quincena_1: empresaConfig.pct_quincena_1 ?? 50,
+      uit_vigente: empresaConfig.uit_vigente ?? 5500,
+      rmv_vigente: empresaConfig.rmv_vigente ?? 1130,
+      ram_tope_afp: empresaConfig.ram_tope_afp ?? 12598.91,
+      pct_prima_seguro: empresaConfig.pct_prima_seguro ?? 1.37,
+    });
+    setEvalCfg({
+      eval_peso_autoevaluacion: empresaConfig.eval_peso_autoevaluacion ?? 30,
+      eval_peso_jefe: empresaConfig.eval_peso_jefe ?? 70,
+      eval_peso_competencias: empresaConfig.eval_peso_competencias ?? 50,
+      eval_peso_objetivos: empresaConfig.eval_peso_objetivos ?? 50,
+      eval_escala_min: empresaConfig.eval_escala_min ?? 1,
+      eval_escala_max: empresaConfig.eval_escala_max ?? 5,
+      eval_escala_labels: empresaConfig.eval_escala_labels || evaluacionBase.eval_escala_labels,
+    });
   }, [empresaConfig]);
 
   useEffect(() => {
@@ -3933,6 +3989,50 @@ function Parametros() {
     if (!file) return;
     setFile(file);
     setPreview(URL.createObjectURL(file));
+  };
+
+  const guardarNominaCfg = async () => {
+    setSavingNomina(true);
+    try {
+      await guardarEmpresaConfig({ ...nominaCfg });
+      addNotificacion('Configuracion de nomina guardada.');
+    } catch (err) {
+      addNotificacion(`Error al guardar: ${err?.message || 'error'}`);
+    } finally {
+      setSavingNomina(false);
+    }
+  };
+
+  const guardarEvalCfg = async () => {
+    const sumaEvaluadores = Number(evalCfg.eval_peso_autoevaluacion) + Number(evalCfg.eval_peso_jefe);
+    const sumaDimensiones = Number(evalCfg.eval_peso_competencias) + Number(evalCfg.eval_peso_objetivos);
+    if (sumaEvaluadores !== 100 || sumaDimensiones !== 100) {
+      addNotificacion('Las ponderaciones de evaluacion deben sumar 100.');
+      return;
+    }
+    setSavingEvalCfg(true);
+    try {
+      await guardarEmpresaConfig({
+        ...evalCfg,
+        eval_peso_autoevaluacion: Number(evalCfg.eval_peso_autoevaluacion),
+        eval_peso_jefe: Number(evalCfg.eval_peso_jefe),
+        eval_peso_competencias: Number(evalCfg.eval_peso_competencias),
+        eval_peso_objetivos: Number(evalCfg.eval_peso_objetivos),
+        eval_escala_min: Number(evalCfg.eval_escala_min),
+        eval_escala_max: Number(evalCfg.eval_escala_max),
+      });
+      addNotificacion('Configuracion de evaluaciones guardada.');
+    } catch (err) {
+      addNotificacion(`Error al guardar evaluaciones: ${err?.message || 'error'}`);
+    } finally {
+      setSavingEvalCfg(false);
+    }
+  };
+
+  const confirmarCambioRegimen = (nuevoRegimen) => {
+    if (nuevoRegimen === nominaCfg.regimen_laboral_empresa) return;
+    setPendingRegimen(nuevoRegimen);
+    setShowRegimenModal(true);
   };
 
   const handleSave = async () => {
@@ -4065,6 +4165,8 @@ function Parametros() {
     { key: 'sla', title: 'SLA', description: 'Plantillas de respuesta y resolucion para contratos de servicio.' },
     { key: 'cuentas', title: 'Cuentas', description: 'Cuentas bancarias, bancos y saldos base para tesoreria y pagos.' },
     { key: 'tipo_cambio', title: 'Tipos de Cambio', description: 'Historial diario de tipos de cambio. Fuente: open.er-api.com con ingreso manual como respaldo.' },
+    { key: 'nomina', title: 'Nomina', description: 'Regimen laboral, frecuencia de pago, quincenas y valores fiscales vigentes.' },
+    { key: 'evaluaciones', title: 'Evaluaciones', description: 'Ponderaciones, escala y labels para evaluaciones de desempeno.' },
   ];
   const activeParamSection = paramsSections.find(s => s.key === paramSection) || paramsSections[0];
 
@@ -4499,7 +4601,181 @@ function Parametros() {
         })()}
       </div>
 
-          {paramSection !== 'tipo_cambio' && (
+          {/* ── Configuración de Nómina ── */}
+          {paramSection === 'nomina' && (() => {
+            const regimenes = [
+              { key: 'general', label: 'Régimen General', desc: 'Legislación laboral estándar — Ley 728.' },
+              { key: 'pequena_empresa', label: 'Pequeña Empresa (MYPE)', desc: '10 a 100 trabajadores — Ley 28015.' },
+              { key: 'microempresa', label: 'Microempresa (MYPE)', desc: 'Hasta 10 trabajadores — Ley 28015.' },
+            ];
+            const pct2 = 100 - Number(nominaCfg.pct_quincena_1);
+            const mesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+            const mesActual = mesNombres[new Date().getMonth()];
+            return (<>
+              {/* Bloque 1 — Régimen laboral */}
+              <div className="card params-card mb-6">
+                <div className="card-head"><h3>Régimen laboral de la empresa</h3></div>
+                <div className="card-body">
+                  <div style={{display:'flex', gap:12, flexWrap:'wrap', marginBottom:20}}>
+                    {regimenes.map(r => (
+                      <button key={r.key} type="button" data-local-form="true"
+                        className={`btn ${nominaCfg.regimen_laboral_empresa === r.key ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{flex:1, minWidth:180, flexDirection:'column', alignItems:'flex-start', padding:'14px 18px', height:'auto', textAlign:'left'}}
+                        onClick={() => confirmarCambioRegimen(r.key)}>
+                        <span style={{fontWeight:700, fontSize:14}}>{r.label}</span>
+                        <span style={{fontSize:11, fontWeight:400, marginTop:4, opacity:0.75}}>{r.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{overflowX:'auto', marginTop:8}}>
+                    <table className="tbl" style={{fontSize:12}}>
+                      <thead><tr><th>Beneficio</th><th>Microempresa</th><th>Pequeña empresa</th><th>Régimen general</th></tr></thead>
+                      <tbody>
+                        <tr><td>Vacaciones</td><td>15 días</td><td>15 días</td><td>30 días</td></tr>
+                        <tr><td>CTS</td><td><span className="badge badge-red">No corresponde</span></td><td><span className="badge badge-green">Sí</span></td><td><span className="badge badge-green">Sí</span></td></tr>
+                        <tr><td>Gratificación</td><td><span className="badge badge-red">No corresponde</span></td><td><span className="badge badge-green">Sí</span></td><td><span className="badge badge-green">Sí</span></td></tr>
+                        <tr><td>ESSALUD empleador</td><td>9%</td><td>9%</td><td>9%</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bloque 2 — Frecuencia de pago */}
+              <div className="card params-card mb-6">
+                <div className="card-head"><h3>Frecuencia de pago</h3></div>
+                <div className="card-body">
+                  <div style={{display:'flex', gap:8, marginBottom:20}}>
+                    {['mensual','quincenal'].map(f => (
+                      <button key={f} type="button" data-local-form="true"
+                        className={`btn ${nominaCfg.frecuencia_pago === f ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{width:140}}
+                        onClick={() => setNominaCfg(p=>({...p, frecuencia_pago:f}))}>
+                        {f.charAt(0).toUpperCase() + f.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  {nominaCfg.frecuencia_pago === 'mensual' ? (
+                    <div>
+                      <div className="grid-2" style={{gap:14, maxWidth:400}}>
+                        <div className="input-group"><label>Día de corte</label><input className="input" type="number" min="1" max="31" value={nominaCfg.dia_corte_mensual} onChange={e=>setNominaCfg(p=>({...p,dia_corte_mensual:Number(e.target.value)}))}/></div>
+                        <div className="input-group"><label>Día de pago</label><input className="input" type="number" min="1" max="31" value={nominaCfg.dia_pago_mensual} onChange={e=>setNominaCfg(p=>({...p,dia_pago_mensual:Number(e.target.value)}))}/></div>
+                      </div>
+                      <div className="card" style={{padding:'10px 14px', marginTop:12, background:'var(--bg-subtle)', fontSize:13}}>
+                        El período de <strong>{mesActual} {new Date().getFullYear()}</strong> se cortará el día <strong>{nominaCfg.dia_corte_mensual}</strong> y se pagará el día <strong>{nominaCfg.dia_pago_mensual}</strong>.
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, maxWidth:500, marginBottom:12}}>
+                        <div className="input-group"><label>1ra quincena — día de corte</label><input className="input" type="number" min="1" max="20" value={nominaCfg.dia_corte_q1} onChange={e=>setNominaCfg(p=>({...p,dia_corte_q1:Number(e.target.value)}))}/></div>
+                        <div className="input-group"><label>1ra quincena — día de pago</label><input className="input" type="number" min="1" max="20" value={nominaCfg.dia_pago_q1} onChange={e=>setNominaCfg(p=>({...p,dia_pago_q1:Number(e.target.value)}))}/></div>
+                        <div className="input-group"><label>2da quincena — día de corte</label><input className="input" type="number" min="15" max="31" value={nominaCfg.dia_corte_q2} onChange={e=>setNominaCfg(p=>({...p,dia_corte_q2:Number(e.target.value)}))}/></div>
+                        <div className="input-group"><label>2da quincena — día de pago</label><input className="input" type="number" min="15" max="31" value={nominaCfg.dia_pago_q2} onChange={e=>setNominaCfg(p=>({...p,dia_pago_q2:Number(e.target.value)}))}/></div>
+                      </div>
+                      <div className="input-group" style={{maxWidth:300}}>
+                        <label>% del sueldo mensual en la 1ra quincena</label>
+                        <input className="input" type="number" min="1" max="99" value={nominaCfg.pct_quincena_1} onChange={e=>setNominaCfg(p=>({...p,pct_quincena_1:Number(e.target.value)}))}/>
+                        <div style={{marginTop:8, fontSize:13}}>
+                          <span className="badge badge-cyan" style={{marginRight:6}}>1ra quincena: {nominaCfg.pct_quincena_1}%</span>
+                          <span className="badge badge-purple">2da quincena: {pct2}%</span>
+                        </div>
+                      </div>
+                      <div className="card" style={{padding:'10px 14px', marginTop:12, background:'var(--bg-subtle)', fontSize:13}}>
+                        <strong>{mesActual} {new Date().getFullYear()}</strong> — 1ra quincena: corte día {nominaCfg.dia_corte_q1}, pago día {nominaCfg.dia_pago_q1} ({nominaCfg.pct_quincena_1}% del sueldo). 2da quincena: corte día {nominaCfg.dia_corte_q2}, pago día {nominaCfg.dia_pago_q2} ({pct2}% + horas extra y variables del mes).
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Bloque 3 — Valores fiscales */}
+              <div className="card params-card mb-6">
+                <div className="card-head"><h3>Valores fiscales vigentes</h3><span className="badge badge-orange">Actualizar al inicio de cada año fiscal</span></div>
+                <div className="card-body">
+                  <div className="grid-2" style={{gap:14, maxWidth:520}}>
+                    <div className="input-group"><label>UIT vigente (S/)</label><input className="input" type="number" min="0" step="50" value={nominaCfg.uit_vigente} onChange={e=>setNominaCfg(p=>({...p,uit_vigente:Number(e.target.value)}))}/></div>
+                    <div className="input-group"><label>RMV vigente (S/)</label><input className="input" type="number" min="0" step="10" value={nominaCfg.rmv_vigente} onChange={e=>setNominaCfg(p=>({...p,rmv_vigente:Number(e.target.value)}))}/></div>
+                    <div className="input-group"><label>RAM tope AFP (S/)</label><input className="input" type="number" min="0" step="0.01" value={nominaCfg.ram_tope_afp} onChange={e=>setNominaCfg(p=>({...p,ram_tope_afp:Number(e.target.value)}))}/></div>
+                    <div className="input-group"><label>Prima seguro AFP (%)</label><input className="input" type="number" min="0" step="0.01" value={nominaCfg.pct_prima_seguro} onChange={e=>setNominaCfg(p=>({...p,pct_prima_seguro:Number(e.target.value)}))}/></div>
+                  </div>
+                  <p className="text-muted" style={{fontSize:12, marginTop:8}}>Actualizar según publicación oficial del MEF y SBS al inicio de cada año fiscal.</p>
+                </div>
+              </div>
+
+              <div className="params-footer-actions">
+                <button className="btn btn-primary" onClick={guardarNominaCfg} disabled={savingNomina} data-local-form="true">
+                  {I.save} {savingNomina ? 'Guardando...' : 'Guardar configuración de nómina'}
+                </button>
+              </div>
+
+              {/* Modal confirmación cambio régimen */}
+              {showRegimenModal && <><div className="side-panel-backdrop" onClick={()=>setShowRegimenModal(false)}/><div className="modal"><div className="modal-head"><h3>Confirmar cambio de régimen laboral</h3><button className="icon-btn" onClick={()=>setShowRegimenModal(false)}>{I.x}</button></div><div className="modal-body"><div className="alert alert-warning" style={{marginBottom:16}}>Cambiar el régimen laboral afecta el cálculo de todos los períodos futuros. Los períodos ya cerrados no se recalculan.</div><p>¿Confirmar el cambio a <strong>{regimenes.find(r=>r.key===pendingRegimen)?.label}</strong>?</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setShowRegimenModal(false)}>Cancelar</button><button className="btn btn-primary" onClick={()=>{setNominaCfg(p=>({...p,regimen_laboral_empresa:pendingRegimen}));setShowRegimenModal(false);setPendingRegimen(null);}}>Confirmar cambio</button></div></div></div></>}
+            </>);
+          })()}
+
+          {paramSection === 'evaluaciones' && (() => {
+            const sumaEvaluadores = Number(evalCfg.eval_peso_autoevaluacion) + Number(evalCfg.eval_peso_jefe);
+            const sumaDimensiones = Number(evalCfg.eval_peso_competencias) + Number(evalCfg.eval_peso_objetivos);
+            const invalid = sumaEvaluadores !== 100 || sumaDimensiones !== 100 || Number(evalCfg.eval_escala_min) >= Number(evalCfg.eval_escala_max);
+            const labels = evalCfg.eval_escala_labels || {};
+            const scaleValues = [];
+            for (let n = Number(evalCfg.eval_escala_min || 1); n <= Number(evalCfg.eval_escala_max || 5); n += 1) scaleValues.push(n);
+            const setEvalField = (field, value) => setEvalCfg(p => ({ ...p, [field]: value }));
+            const setEvalLabel = (n, value) => setEvalCfg(p => ({ ...p, eval_escala_labels: { ...(p.eval_escala_labels || {}), [n]: value } }));
+            return (
+              <>
+                <div className="card params-card mb-6">
+                  <div className="card-head"><h3>Configuracion de Evaluaciones de Desempeno</h3><span className="badge badge-cyan">360 basico</span></div>
+                  <div className="card-body">
+                    <div className="grid-2" style={{gap:16}}>
+                      <div className="card" style={{padding:16}}>
+                        <div className="eyebrow">Autoevaluacion vs jefe</div>
+                        <div className="grid-2" style={{gap:12, marginTop:12}}>
+                          <div className="input-group"><label>Autoevaluacion (%)</label><input className="input" type="number" min="0" max="100" value={evalCfg.eval_peso_autoevaluacion} onChange={e=>setEvalField('eval_peso_autoevaluacion', Number(e.target.value))}/></div>
+                          <div className="input-group"><label>Jefe (%)</label><input className="input" type="number" min="0" max="100" value={evalCfg.eval_peso_jefe} onChange={e=>setEvalField('eval_peso_jefe', Number(e.target.value))}/></div>
+                        </div>
+                        {sumaEvaluadores !== 100 && <div className="alert alert-danger" style={{marginTop:10}}>La ponderacion autoevaluacion + jefe debe sumar 100. Suma actual: {sumaEvaluadores}%.</div>}
+                      </div>
+                      <div className="card" style={{padding:16}}>
+                        <div className="eyebrow">Competencias vs objetivos</div>
+                        <div className="grid-2" style={{gap:12, marginTop:12}}>
+                          <div className="input-group"><label>Competencias (%)</label><input className="input" type="number" min="0" max="100" value={evalCfg.eval_peso_competencias} onChange={e=>setEvalField('eval_peso_competencias', Number(e.target.value))}/></div>
+                          <div className="input-group"><label>Objetivos (%)</label><input className="input" type="number" min="0" max="100" value={evalCfg.eval_peso_objetivos} onChange={e=>setEvalField('eval_peso_objetivos', Number(e.target.value))}/></div>
+                        </div>
+                        {sumaDimensiones !== 100 && <div className="alert alert-danger" style={{marginTop:10}}>La ponderacion competencias + objetivos debe sumar 100. Suma actual: {sumaDimensiones}%.</div>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="card params-card mb-6">
+                  <div className="card-head"><h3>Escala de competencias</h3><span className="badge badge-gray">{evalCfg.eval_escala_min} a {evalCfg.eval_escala_max}</span></div>
+                  <div className="card-body">
+                    <div className="grid-2" style={{gap:16, maxWidth:520}}>
+                      <div className="input-group"><label>Minimo</label><input className="input" type="number" min="0" value={evalCfg.eval_escala_min} onChange={e=>setEvalField('eval_escala_min', Number(e.target.value))}/></div>
+                      <div className="input-group"><label>Maximo</label><input className="input" type="number" min="1" value={evalCfg.eval_escala_max} onChange={e=>setEvalField('eval_escala_max', Number(e.target.value))}/></div>
+                    </div>
+                    {Number(evalCfg.eval_escala_min) >= Number(evalCfg.eval_escala_max) && <div className="alert alert-danger" style={{marginTop:10}}>El minimo de la escala debe ser menor que el maximo.</div>}
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:12, marginTop:16}}>
+                      {scaleValues.map(n => (
+                        <div className="input-group" key={n}>
+                          <label>{n}</label>
+                          <input className="input" value={labels[n] || labels[String(n)] || ''} onChange={e=>setEvalLabel(n, e.target.value)} placeholder={`Label ${n}`}/>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="params-footer-actions">
+                  <button className="btn btn-primary" onClick={guardarEvalCfg} disabled={savingEvalCfg || invalid} data-local-form="true">
+                    {I.save} {savingEvalCfg ? 'Guardando...' : 'Guardar configuracion de evaluaciones'}
+                  </button>
+                </div>
+              </>
+            );
+          })()}
+
+          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && (
           <div className="params-footer-actions">
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
               {I.save} {saving ? 'Guardando...' : 'Guardar cambios'}
@@ -4517,7 +4793,7 @@ function Parametros() {
 // RRHH ADMINISTRATIVO — Fase 3
 // ============================================================
 function RRHHAdmin() {
-  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH, aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [] } = useApp();
+  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -4525,10 +4801,18 @@ function RRHHAdmin() {
   const [editandoId, setEditandoId] = useState(null);
   const [altaSaving, setAltaSaving] = useState(false);
   const [altaError, setAltaError] = useState('');
+  // Estados para subida de documentos en tab Documentos
+  const [docUploadForm, setDocUploadForm] = useState({ tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '' });
+  const [docUploadFile, setDocUploadFile] = useState(null);
+  const [docUploading, setDocUploading] = useState(false);
+  const [docUploadError, setDocUploadError] = useState('');
+  const [docValidandoId, setDocValidandoId] = useState(null);
+  const [showRechazoInput, setShowRechazoInput] = useState(null);
+  const [motivoRechazo, setMotivoRechazo] = useState('');
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'' };
+  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0' };
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const cargosAdminOptions = cargos
@@ -4593,6 +4877,17 @@ function RRHHAdmin() {
       retencion_ir: String(p.retencion_ir ?? '8'),
       suspension_retenciones: Boolean(p.suspension_retenciones),
       vencimiento_suspension: p.vencimiento_suspension || '',
+      afp_nombre: p.afp_nombre || 'Integra',
+      tiene_hijos: Boolean(p.tiene_hijos),
+      cuota_prestamo_mes: String(p.cuota_prestamo_mes ?? '0'),
+      descuento_judicial: String(p.descuento_judicial ?? '0'),
+      regimen_laboral: p.regimen_laboral || 'general',
+      regimen_jornada: p.regimen_jornada || 'general',
+      horas_diarias_pactadas: String(p.horas_diarias_pactadas ?? '8'),
+      fecha_inicio_ciclo: p.fecha_inicio_ciclo || '',
+      bonif_altitud: String(p.bonif_altitud ?? '0'),
+      tipo_comision_afp: p.tipo_comision_afp || 'mixta',
+      pct_comision_afp_flujo: String(p.pct_comision_afp_flujo ?? '0'),
     });
     setPanelAlta(true);
   };
@@ -4663,6 +4958,17 @@ function RRHHAdmin() {
       retencion_ir: formAlta.modalidad === 'Honorarios' ? Number(formAlta.retencion_ir || 8) : null,
       suspension_retenciones: formAlta.modalidad_comision === 'Honorarios' ? Boolean(formAlta.suspension_retenciones) : false,
       vencimiento_suspension: formAlta.modalidad_comision === 'Honorarios' && formAlta.suspension_retenciones ? (formAlta.vencimiento_suspension || null) : null,
+      afp_nombre: formAlta.modalidad === 'Planilla' && formAlta.sistema_pensionario === 'AFP' ? (formAlta.afp_nombre || 'Integra') : null,
+      tiene_hijos: formAlta.modalidad === 'Planilla' ? Boolean(formAlta.tiene_hijos) : false,
+      cuota_prestamo_mes: formAlta.modalidad === 'Planilla' ? Number(formAlta.cuota_prestamo_mes || 0) : 0,
+      descuento_judicial: formAlta.modalidad === 'Planilla' ? Number(formAlta.descuento_judicial || 0) : 0,
+      regimen_laboral: formAlta.modalidad === 'Planilla' ? (formAlta.regimen_laboral || 'general') : 'honorarios',
+      regimen_jornada: formAlta.modalidad === 'Planilla' ? (formAlta.regimen_jornada || 'general') : 'general',
+      horas_diarias_pactadas: Number(formAlta.horas_diarias_pactadas || 8),
+      fecha_inicio_ciclo: formAlta.regimen_jornada !== 'general' ? (formAlta.fecha_inicio_ciclo || null) : null,
+      bonif_altitud: Number(formAlta.bonif_altitud || 0),
+      tipo_comision_afp: formAlta.tipo_comision_afp || 'mixta',
+      pct_comision_afp_flujo: Number(formAlta.pct_comision_afp_flujo || 0),
     };
     try {
       if (editandoId) {
@@ -4685,9 +4991,10 @@ function RRHHAdmin() {
   const docColor = (estado) => estado === 'vigente' ? 'green' : estado === 'por_vencer' ? 'orange' : 'red';
 
   if (persona) {
-    const vacPersona = vacacionesSolicitudes.filter(v => v.personal_id === sel);
-    const licPersona = licencias.filter(l => l.personal_id === sel);
-    const solPersona = solicitudesRRHH.filter(s => s.personal_id === sel);
+    const todasSolPersona = solicitudesRRHH.filter(s => s.personal_id === sel);
+    const vacPersona = todasSolPersona.filter(s => s.tipo === 'vacaciones');
+    const licPersona = todasSolPersona.filter(s => ['licencia_medica','licencia_maternidad','licencia_paternidad'].includes(s.tipo));
+    const solPersona = todasSolPersona.filter(s => ['permiso_con_goce','permiso_sin_goce','compensacion_horas'].includes(s.tipo));
     return (
       <>
         <div className="page-header">
@@ -4709,7 +5016,7 @@ function RRHHAdmin() {
         <div className="card">
           <div style={{padding:'0 20px'}}>
             <div className="tabs">
-              {[...['ficha','contrato','vacaciones','licencias','solicitudes','documentos'], ...(persona.tiene_comisiones ? ['comisiones'] : [])].map(t => (
+              {[...['ficha','contrato','vacaciones','licencias','solicitudes','documentos','reembolsos'], ...(persona.tiene_comisiones ? ['comisiones'] : [])].map(t => (
                 <div key={t} className={'tab '+(tab===t?'active':'')} onClick={() => setTab(t)} style={{textTransform:'capitalize'}}>{t}</div>
               ))}
             </div>
@@ -4791,12 +5098,12 @@ function RRHHAdmin() {
                     {vacPersona.length === 0 && <tr><td colSpan={7} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes registradas</td></tr>}
                     {vacPersona.map(v => (
                       <tr key={v.id}>
-                        <td style={{textTransform:'capitalize'}}>{v.tipo}</td>
+                        <td style={{textTransform:'capitalize'}}>{(v.tipo||'').replace(/_/g,' ')}</td>
                         <td>{v.fecha_inicio}</td><td>{v.fecha_fin}</td>
-                        <td className="num">{v.dias}</td>
+                        <td className="num">{v.dias_habiles ?? v.dias}</td>
                         <td className="text-muted">{v.motivo}</td>
-                        <td><span className={'badge badge-'+(v.estado==='aprobado'?'green':v.estado==='pendiente'?'orange':'red')}>{v.estado}</span></td>
-                        <td>{v.estado === 'pendiente' && <button className="btn btn-sm btn-primary" onClick={() => aprobarVacacion(v.id)}>Aprobar</button>}</td>
+                        <td><span className={'badge badge-'+(v.estado==='confirmada_rrhh'||v.estado==='activa'?'green':v.estado==='enviada'||v.estado==='aprobada_jefe'?'orange':'red')}>{(v.estado||'').replace(/_/g,' ')}</span></td>
+                        <td>{v.estado === 'enviada' && <button className="btn btn-sm btn-primary" onClick={() => aprobarVacacion(v.id)}>Aprobar</button>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -4813,12 +5120,12 @@ function RRHHAdmin() {
                   {licPersona.length === 0 && <tr><td colSpan={7} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin licencias registradas</td></tr>}
                   {licPersona.map(l => (
                     <tr key={l.id}>
-                      <td style={{textTransform:'capitalize'}}>{l.tipo.replace('_', ' ')}</td>
+                      <td style={{textTransform:'capitalize'}}>{(l.tipo||'').replace(/_/g,' ')}</td>
                       <td>{l.fecha_inicio}</td><td>{l.fecha_fin}</td>
-                      <td className="num">{l.dias}</td>
+                      <td className="num">{l.dias_habiles ?? l.dias}</td>
                       <td className="text-muted">{l.motivo}</td>
-                      <td>{l.documento ? <span className="badge badge-cyan">{I.file} {l.documento}</span> : <span className="text-subtle">—</span>}</td>
-                      <td><span className={'badge badge-'+(l.estado==='aprobado'?'green':'orange')}>{l.estado}</span></td>
+                      <td>{l.documento_url ? <a href={l.documento_url} target="_blank" rel="noreferrer" className="badge badge-cyan">{I.file} Ver</a> : <span className="text-subtle">—</span>}</td>
+                      <td><span className={'badge badge-'+(l.estado==='confirmada_rrhh'||l.estado==='activa'?'green':l.estado==='enviada'?'orange':'red')}>{(l.estado||'').replace(/_/g,' ')}</span></td>
                     </tr>
                   ))}
                 </tbody>
@@ -4834,11 +5141,11 @@ function RRHHAdmin() {
                   {solPersona.length === 0 && <tr><td colSpan={5} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes registradas</td></tr>}
                   {solPersona.map(s => (
                     <tr key={s.id}>
-                      <td style={{textTransform:'capitalize'}}>{s.tipo}</td>
-                      <td>{s.descripcion}{s.monto ? <span className="badge badge-orange" style={{marginLeft:8}}>S/ {s.monto}</span> : null}</td>
-                      <td>{s.fecha}</td>
-                      <td><span className={'badge badge-'+(s.estado==='atendido'?'green':s.estado==='aprobado'?'cyan':'orange')}>{s.estado}</span></td>
-                      <td className="text-muted">{s.fecha_entrega || '—'}</td>
+                      <td style={{textTransform:'capitalize'}}>{(s.tipo||'').replace(/_/g,' ')}</td>
+                      <td>{s.motivo}</td>
+                      <td>{s.fecha_inicio}{s.fecha_fin && s.fecha_fin !== s.fecha_inicio ? ` – ${s.fecha_fin}` : ''}</td>
+                      <td><span className={'badge badge-'+(s.estado==='confirmada_rrhh'||s.estado==='activa'?'green':s.estado==='enviada'||s.estado==='aprobada_jefe'?'orange':'red')}>{(s.estado||'').replace(/_/g,' ')}</span></td>
+                      <td className="text-muted">{s.dias_habiles ? `${s.dias_habiles} días` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -4846,24 +5153,184 @@ function RRHHAdmin() {
             </div>
           )}
 
-          {tab === 'documentos' && (
-            <div className="card-body">
-              <div className="col" style={{gap:10}}>
-                {(persona.documentos || []).map((doc, i) => (
-                  <div key={i} className="row" style={{justifyContent:'space-between', padding:'12px 16px', border:'1px solid var(--border)', borderRadius:8}}>
-                    <div className="row" style={{gap:10}}>
-                      {I.file}
-                      <div>
-                        <div style={{fontWeight:600, fontSize:13}}>{doc.nombre}</div>
-                        {doc.vencimiento && <div className="text-muted" style={{fontSize:11}}>Vence: {doc.vencimiento}</div>}
+          {tab === 'documentos' && (() => {
+            const docsPersona = personalDocumentos.filter(d => d.personal_id === persona.id && d.activo);
+            const handleSubirDocAdmin = async (e) => {
+              e.preventDefault();
+              if (!docUploadFile || !docUploadForm.tipoDoc) { setDocUploadError('Selecciona el tipo y el archivo.'); return; }
+              setDocUploading(true); setDocUploadError('');
+              try {
+                await subirDocumentoPersonalCtx({
+                  personalId: persona.id, personalTipo: 'administrativo',
+                  tipoDoc: docUploadForm.tipoDoc, file: docUploadFile,
+                  fechaEmision: docUploadForm.fechaEmision || null,
+                  fechaVencimiento: docUploadForm.fechaVencimiento || null,
+                  notas: docUploadForm.notas || null, subidoDesde: 'backoffice',
+                });
+                setDocUploadFile(null);
+                setDocUploadForm({ tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '' });
+                addNotificacion('Documento subido. Pendiente de aprobación.');
+              } catch (err) { setDocUploadError(err?.message || 'Error al subir.'); }
+              finally { setDocUploading(false); }
+            };
+            const handleValidarAdmin = async (docId, decision) => {
+              if (decision === 'rechazado' && !motivoRechazo.trim()) { setShowRechazoInput(docId); return; }
+              setDocValidandoId(docId);
+              try {
+                await validarDocumentoPersonalCtx(docId, decision, decision === 'rechazado' ? motivoRechazo : null);
+                setShowRechazoInput(null); setMotivoRechazo('');
+                addNotificacion(`Documento ${decision === 'aprobado' ? 'aprobado' : 'rechazado'}.`);
+              } catch { addNotificacion('Error al validar.'); }
+              finally { setDocValidandoId(null); }
+            };
+            return (
+              <div className="card-body">
+                <details style={{marginBottom:20}}>
+                  <summary style={{cursor:'pointer', fontWeight:600, fontSize:13, padding:'10px 0'}}>+ Subir nuevo documento</summary>
+                  <form onSubmit={handleSubirDocAdmin} style={{display:'grid', gap:12, marginTop:12}}>
+                    <div className="grid-2" style={{gap:12}}>
+                      <div className="input-group">
+                        <label>Tipo *</label>
+                        <select className="select" value={docUploadForm.tipoDoc} onChange={e => setDocUploadForm(f=>({...f,tipoDoc:e.target.value}))} required>
+                          <option value="">Seleccionar...</option>
+                          {personalDocumentosService.TIPOS_DOC_ADMIN.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        <label>Archivo *</label>
+                        <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>setDocUploadFile(e.target.files?.[0]||null)} required />
+                      </div>
+                      <div className="input-group">
+                        <label>Fecha emisión</label>
+                        <input className="input" type="date" value={docUploadForm.fechaEmision} onChange={e=>setDocUploadForm(f=>({...f,fechaEmision:e.target.value}))} />
+                      </div>
+                      <div className="input-group">
+                        <label>Fecha vencimiento</label>
+                        <input className="input" type="date" value={docUploadForm.fechaVencimiento} onChange={e=>setDocUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} />
                       </div>
                     </div>
-                    <span className={'badge badge-' + docColor(doc.estado)}>{doc.estado.replace('_', ' ')}</span>
+                    {docUploadError && <div style={{fontSize:12, color:'var(--danger)'}}>{docUploadError}</div>}
+                    <button className="btn btn-primary" type="submit" disabled={docUploading}>{docUploading?'Subiendo...':'Subir'}</button>
+                  </form>
+                </details>
+                {docsPersona.length === 0 ? (
+                  <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'32px 0', fontSize:13}}>No hay documentos registrados. Sube el primero arriba.</div>
+                ) : (
+                  <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                    {docsPersona.map(doc => {
+                      const tipoInfo = personalDocumentosService.TIPOS_DOC_ADMIN.find(t => t.key === doc.tipo_doc);
+                      return (
+                        <div key={doc.id} style={{padding:'14px 16px', border:'1px solid var(--border)', borderRadius:8, display:'flex', flexDirection:'column', gap:8}}>
+                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8}}>
+                            <div>
+                              <div style={{fontWeight:600, fontSize:13}}>{tipoInfo?.label || doc.tipo_doc}</div>
+                              <div className="text-muted" style={{fontSize:11}}>
+                                {doc.nombre_archivo || '—'} · v{doc.version}
+                                {doc.fecha_emision && ` · Emitido: ${doc.fecha_emision}`}
+                                {doc.fecha_vencimiento && ` · Vence: ${doc.fecha_vencimiento}`}
+                              </div>
+                            </div>
+                            <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
+                              <span className={'badge '+(personalDocumentosService.BADGE_VENCIMIENTO[doc.estado_vencimiento]||'badge-gray')}>
+                                {personalDocumentosService.LABEL_VENCIMIENTO[doc.estado_vencimiento]||doc.estado_vencimiento}
+                              </span>
+                              <span className={'badge '+(personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion]||'badge-gray')}>
+                                {doc.estado_validacion}
+                              </span>
+                              {doc.archivo_url && <a href={doc.archivo_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">{I.file} Ver</a>}
+                            </div>
+                          </div>
+                          {doc.motivo_rechazo && (
+                            <div style={{fontSize:12, color:'var(--danger)', padding:'6px 10px', background:'rgba(229,62,62,0.08)', borderRadius:4}}>
+                              Motivo de rechazo: {doc.motivo_rechazo}
+                            </div>
+                          )}
+                          {doc.notas && <div className="text-muted" style={{fontSize:12}}>Nota: {doc.notas}</div>}
+                          {doc.estado_validacion === 'pendiente' && (
+                            <div style={{display:'flex', gap:8, alignItems:'flex-start', flexWrap:'wrap'}}>
+                              <button className="btn btn-sm btn-primary" disabled={docValidandoId===doc.id} onClick={()=>handleValidarAdmin(doc.id,'aprobado')}>
+                                {docValidandoId===doc.id?'...':'Aprobar'}
+                              </button>
+                              {showRechazoInput===doc.id?(
+                                <div style={{display:'flex', gap:6, flex:1, minWidth:200}}>
+                                  <input className="input" style={{flex:1,fontSize:12,padding:'4px 8px'}} placeholder="Motivo de rechazo..." value={motivoRechazo} onChange={e=>setMotivoRechazo(e.target.value)}/>
+                                  <button className="btn btn-sm btn-danger" onClick={()=>handleValidarAdmin(doc.id,'rechazado')}>Confirmar</button>
+                                  <button className="btn btn-sm btn-ghost" onClick={()=>{setShowRechazoInput(null);setMotivoRechazo('');}}>Cancelar</button>
+                                </div>
+                              ):(
+                                <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} onClick={()=>setShowRechazoInput(doc.id)}>Rechazar</button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
+
+          {tab === 'reembolsos' && (() => {
+            const reembolsosPersona = (cxp || []).filter(c => c.personal_id === persona.id && c.motivo_cxp === 'viaticos_reembolso');
+            const pendientes = reembolsosPersona.filter(c => c.estado !== 'pagada' && c.estado !== 'anulada');
+            const totalPendiente = pendientes.reduce((s, c) => s + Number(c.saldo ?? c.monto_total ?? 0), 0);
+            const totalHistorico = reembolsosPersona.reduce((s, c) => s + Number(c.monto_total ?? 0), 0);
+            return (
+              <div className="card-body">
+                <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20}}>
+                  <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 16px'}}>
+                    <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total reembolsos</div>
+                    <div style={{fontWeight:700, fontSize:18}}>{reembolsosPersona.length}</div>
+                  </div>
+                  <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 16px'}}>
+                    <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Pendientes de pago</div>
+                    <div style={{fontWeight:700, fontSize:18, color:totalPendiente > 0 ? 'var(--orange)' : 'var(--fg)'}}>{money(totalPendiente)}</div>
+                  </div>
+                  <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 16px'}}>
+                    <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Histórico total</div>
+                    <div style={{fontWeight:700, fontSize:18}}>{money(totalHistorico)}</div>
+                  </div>
+                </div>
+                {reembolsosPersona.length === 0 ? (
+                  <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'32px 0'}}>
+                    No hay reembolsos de viáticos registrados para este colaborador.
+                  </div>
+                ) : (
+                  <div className="table-wrap">
+                    <table className="tbl">
+                      <thead>
+                        <tr>
+                          <th>Fecha</th><th>Concepto</th><th>OT</th><th>Monto</th><th>Estado</th>
+                          <th>Pagado en</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reembolsosPersona.map(r => {
+                          const pagos = (cxpPagos || []).filter(p => p.cxp_id === r.id);
+                          const ultimoPago = pagos.sort((a,b) => (b.fecha_pago||'').localeCompare(a.fecha_pago||''))[0];
+                          return (
+                            <tr key={r.id}>
+                              <td>{r.fecha_emision}</td>
+                              <td style={{fontSize:12}}>{r.concepto}</td>
+                              <td className="mono text-muted" style={{fontSize:11}}>{r.ot_vinc_id || '—'}</td>
+                              <td className="num"><strong>{money(r.monto_total)}</strong></td>
+                              <td>
+                                <span className={'badge ' + (r.estado === 'pagada' ? 'badge-green' : r.estado === 'anulada' ? 'badge-gray' : 'badge-orange')}>
+                                  {r.estado === 'pagada' ? 'Pagado' : r.estado === 'anulada' ? 'Anulado' : 'Pendiente'}
+                                </span>
+                              </td>
+                              <td style={{fontSize:12, color:'var(--fg-muted)'}}>{ultimoPago?.fecha_pago || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {tab === 'comisiones' && (() => {
             const isIntRef = v => /^(osc|fac|cxc|com|rec|cob|opp)_/i.test(String(v||'').trim()) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v||'').trim());
@@ -5106,10 +5573,10 @@ function RRHHAdmin() {
                     <td>{p.cargo}</td>
                     <td>{p.area}</td>
                     <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
-                    <td><span className="text-muted" style={{fontSize:12}}>{turnosOptions.find(t => t.id === p.turno_id)?.nombre || 'Sin turno'}</span></td>
+                    <td>{p.tipo_contrato === 'Honorarios' ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnosOptions.find(t => t.id === p.turno_id)?.nombre || 'Sin turno'}</span>}</td>
                     <td><span className={'badge badge-' + contratoColor(p.tipo_contrato)}>{p.tipo_contrato}</span></td>
-                    <td>{p.modalidad}</td>
-                    <td className="num">{p.dias_vacaciones_disponibles} días</td>
+                    <td>{p.tipo_contrato === 'Honorarios' ? <span className="text-subtle">—</span> : p.modalidad}</td>
+                    <td className="num">{p.tipo_contrato === 'Honorarios' ? <span className="text-subtle">—</span> : `${p.dias_vacaciones_disponibles} días`}</td>
                     <td><span className="badge badge-green">{p.estado}</span></td>
                     <td>
                       <div style={{display:'flex', gap:4, justifyContent:'flex-end'}}>
@@ -5273,7 +5740,57 @@ function RRHHAdmin() {
                 <input className="input" type="number" min="0" value={formAlta.remuneracion} onChange={e=>setFormAlta(v=>({...v,remuneracion:e.target.value}))} placeholder="0"/>
               </div>
               <div className="input-group"><label>Estado</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option><option value="suspendido">Suspendido</option></select></div>
-              {['Planilla','CAS','Practicante'].includes(formAlta.modalidad) && (
+              {formAlta.modalidad === 'Honorarios' && <>
+                <div className="input-group">
+                  <label>Retención IR (%)</label>
+                  <input className="input" type="number" min="0" max="30" step="0.5" value={formAlta.retencion_ir} onChange={e=>setFormAlta(v=>({...v,retencion_ir:e.target.value}))} placeholder="8"/>
+                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>Por defecto 8%. Solo aplica si la empresa es Agente de Retención, el monto supera S/ 1,500 y no hay suspensión vigente.</div>
+                </div>
+                <label className="params-toggle-row" style={{cursor:'pointer'}}>
+                  <input type="checkbox" className="checkbox" checked={formAlta.suspension_retenciones} onChange={e=>setFormAlta(v=>({...v,suspension_retenciones:e.target.checked, vencimiento_suspension:''}))}/>
+                  <span>Tiene constancia de suspensión de retenciones</span>
+                </label>
+                {formAlta.suspension_retenciones && (
+                  <div className="input-group" style={{gridColumn:'1/-1'}}>
+                    <label>Vencimiento de la constancia <span className="text-muted">(opcional)</span></label>
+                    <input className="input" type="date" value={formAlta.vencimiento_suspension} onChange={e=>setFormAlta(v=>({...v,vencimiento_suspension:e.target.value}))}/>
+                    <div className="text-muted" style={{fontSize:11, marginTop:4}}>Sin fecha = suspensión indefinida. Con fecha = vence el día indicado.</div>
+                  </div>
+                )}
+              </>}
+            </div>
+
+            {['Planilla','CAS'].includes(formAlta.modalidad) && <>
+              <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Régimen de jornada</div>
+              <div className="grid-2" style={{gap:14, marginBottom:12}}>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Régimen de jornada</label>
+                  <select className="select" value={formAlta.regimen_jornada} onChange={e=>setFormAlta(v=>({...v,regimen_jornada:e.target.value, horas_diarias_pactadas:e.target.value==='general'?'8':'12'}))}>
+                    <option value="general">General (8h/día estándar)</option>
+                    <option value="minero_14x7">Minero 14×7</option>
+                    <option value="minero_20x10">Minero 20×10</option>
+                    <option value="minero_28x14">Minero 28×14</option>
+                  </select>
+                </div>
+                {formAlta.regimen_jornada !== 'general' && <>
+                  <div className="input-group"><label>Horas diarias pactadas <span className="text-muted">(D. Leg. 857)</span></label><input className="input" type="number" min="1" max="12" value={formAlta.horas_diarias_pactadas} onChange={e=>setFormAlta(v=>({...v,horas_diarias_pactadas:e.target.value}))}/></div>
+                  <div className="input-group"><label>Fecha inicio del ciclo actual</label><input className="input" type="date" value={formAlta.fecha_inicio_ciclo} onChange={e=>setFormAlta(v=>({...v,fecha_inicio_ciclo:e.target.value}))}/></div>
+                  <div className="input-group" style={{gridColumn:'1/-1'}}><label>Bonificación por altitud (S/)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.bonif_altitud} onChange={e=>setFormAlta(v=>({...v,bonif_altitud:e.target.value}))} placeholder="0 si no aplica"/></div>
+                  <div className="card" style={{gridColumn:'1/-1', padding:'8px 12px', background:'rgba(6,182,212,0.08)', fontSize:12, color:'var(--cyan)'}}>⛏ Este trabajador usa cálculo proporcional por días computables en cada período.</div>
+                </>}
+              </div>
+
+              <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Descuentos de nómina</div>
+              <div className="grid-2" style={{gap:14, marginBottom:20}}>
+                <div className="input-group"><label>Cuota préstamo mes</label><input className="input" type="number" min="0" value={formAlta.cuota_prestamo_mes} onChange={e=>setFormAlta(v=>({...v,cuota_prestamo_mes:e.target.value}))}/></div>
+                <div className="input-group"><label>Descuento judicial</label><input className="input" type="number" min="0" value={formAlta.descuento_judicial} onChange={e=>setFormAlta(v=>({...v,descuento_judicial:e.target.value}))}/></div>
+                <label className="row" style={{gap:8, gridColumn:'1/-1', alignItems:'center'}}><input type="checkbox" checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos (asignación familiar S/ 102.50)</label>
+              </div>
+            </>}
+
+            {['Planilla','CAS','Practicante'].includes(formAlta.modalidad) && <>
+              <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Sistema previsional</div>
+              <div className="grid-2" style={{gap:14, marginBottom:20}}>
                 <div className="input-group">
                   <label>Sistema pensionario</label>
                   <select className="select" value={formAlta.sistema_pensionario} onChange={e=>setFormAlta(v=>({...v,sistema_pensionario:e.target.value}))}>
@@ -5281,14 +5798,37 @@ function RRHHAdmin() {
                     <option value="ONP">ONP</option>
                   </select>
                 </div>
-              )}
-            </div>
+                {formAlta.sistema_pensionario === 'AFP' ? <>
+                  <div className="input-group">
+                    <label>AFP</label>
+                    <select className="select" value={formAlta.afp_nombre} onChange={e=>{
+                      const tasas = {Habitat:1.47,Integra:1.55,Prima:1.60,Profuturo:1.69};
+                      setFormAlta(v=>({...v,afp_nombre:e.target.value,pct_comision_afp_flujo:String(tasas[e.target.value]??v.pct_comision_afp_flujo)}));
+                    }}>
+                      <option>Habitat</option><option>Integra</option><option>Prima</option><option>Profuturo</option>
+                    </select>
+                  </div>
+                  {['Planilla','CAS'].includes(formAlta.modalidad) && <>
+                    <div className="input-group">
+                      <label>Tipo de comisión</label>
+                      <select className="select" value={formAlta.tipo_comision_afp} onChange={e=>setFormAlta(v=>({...v,tipo_comision_afp:e.target.value}))}>
+                        <option value="mixta">Mixta</option><option value="flujo">Por flujo</option>
+                      </select>
+                    </div>
+                    {formAlta.tipo_comision_afp === 'flujo'
+                      ? <div className="input-group"><label>Comisión por flujo (%)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.pct_comision_afp_flujo} onChange={e=>setFormAlta(v=>({...v,pct_comision_afp_flujo:e.target.value}))}/></div>
+                      : <div className="card" style={{padding:'8px 12px', fontSize:12, color:'var(--fg-muted)'}}>Comisión mixta: se descuenta del fondo, no del sueldo mensual.</div>
+                    }
+                    <div className="card" style={{padding:'8px 12px', fontSize:12, color:'var(--fg-muted)'}}>Prima de seguro: configurable en Parámetros de Nómina (actualmente {empresaConfig?.pct_prima_seguro ?? '1.37'}%).</div>
+                  </>}
+                </> : <div className="card" style={{gridColumn:'1/-1', padding:'10px 14px', fontSize:13}}>ONP — Tasa: 13% sobre remuneración asegurable.</div>}
+              </div>
+            </>}
 
             {formAlta.modalidad !== 'Honorarios' && <>
               <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Beneficios laborales</div>
               <div className="grid-2" style={{gap:14, marginBottom:20}}>
                 <div className="input-group"><label>Días de vacaciones/año</label><input className="input" type="number" min="0" value={formAlta.dias_vacaciones} onChange={e=>setFormAlta(v=>({...v,dias_vacaciones:e.target.value}))}/></div>
-                <div className="input-group"><label>Días disponibles</label><input className="input" readOnly value={formAlta.dias_vacaciones || 0} style={{color:'var(--fg-muted)'}}/></div>
               </div>
             </>}
 
@@ -5885,13 +6425,13 @@ function Comisiones() {
   };
   const getOportunidadNombre = (comision) => {
     const { oppRef } = getComisionRefs(comision);
-    return firstReadable(comision.oportunidad_nombre, oppRef?.nombre, oppRef?.titulo) || '-';
+    return firstReadable(comision.oportunidad_nombre, oppRef?.nombre, oppRef?.titulo) || null;
   };
   const renderOsFactura = (comision) => {
     const { cxcRef, facturaRef, osRef, facturaId, osId } = getComisionRefs(comision);
     const osNumero = firstReadable(comision.os_cliente_numero, osRef?.numero, cxcRef?.os_clientes?.numero, osId);
     const facturaNumero = firstReadable(comision.factura_numero, facturaRef?.numero, cxcRef?.facturas?.numero, cxcRef?.factura_numero, cxcRef?.factura, facturaId);
-    if (!osNumero && !facturaNumero) return <span style={{ color: 'var(--fg-muted)' }}>-</span>;
+    if (!osNumero && !facturaNumero) return <span style={{ color: 'var(--fg-muted)' }}>Sin vincular</span>;
     return (
       <>
         {osNumero && <div>OS: {osNumero}</div>}
@@ -5911,7 +6451,7 @@ function Comisiones() {
   };
   const sumByCurrency = (list, field = 'monto_total') => monedasResumen.reduce((acc, moneda) => {
     acc[moneda] = list
-      .filter(c => monedaComision(c) === moneda)
+      .filter(c => normalizeMoneda(c.moneda) === moneda)
       .reduce((s, c) => s + Number(c[field] || 0), 0);
     return acc;
   }, {});
@@ -5932,7 +6472,7 @@ function Comisiones() {
     const result = {};
     monedasResumen.forEach(moneda => {
       const por = {};
-      comisiones.filter(c => c.estado !== 'rechazada' && monedaComision(c) === moneda).forEach(c => {
+      comisiones.filter(c => c.estado !== 'rechazada' && normalizeMoneda(c.moneda) === moneda).forEach(c => {
         const key = c.vendedor_nombre || c.vendedor_id;
         if (!por[key]) por[key] = { nombre: key, total: 0 };
         por[key].total += Number(c.monto_total || 0);
@@ -5946,8 +6486,10 @@ function Comisiones() {
   const vendedoresHonorariosPendientes = useMemo(() => {
     const por = {};
     comisiones.filter(c => c.estado === 'aprobada' && c.modalidad_pago === 'Honorarios').forEach(c => {
-      if (!por[c.vendedor_id]) por[c.vendedor_id] = { id: c.vendedor_id, nombre: c.vendedor_nombre, items: [] };
-      por[c.vendedor_id].items.push(c);
+      const moneda = normalizeMoneda(c.moneda);
+      const key = `${c.vendedor_id}_${moneda}`;
+      if (!por[key]) por[key] = { id: key, vendedor_id: c.vendedor_id, moneda, nombre: c.vendedor_nombre, items: [] };
+      por[key].items.push(c);
     });
     return Object.values(por);
   }, [comisiones]);
@@ -6244,21 +6786,18 @@ function Comisiones() {
           </div>
           <div className="commission-receipt-list">
             {vendedoresHonorariosPendientes.map(v => {
-              const totales = sumByCurrency(v.items);
-              const monedasConSaldo = monedasResumen.filter(moneda => v.items.some(c => monedaComision(c) === moneda));
+              const total = v.items.reduce((s, c) => s + Number(c.monto_total || 0), 0);
               return (
                 <div key={v.id} className="commission-receipt-card">
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{v.nombre}</div>
                     <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{v.items.length} comisiones aprobadas</div>
                   </div>
-                  <div className="commission-receipt-amount">{renderMoneyStack(totales)}</div>
+                  <div className="commission-receipt-amount">{moneyComision(total, v.moneda)}</div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    {monedasConSaldo.map(moneda => (
-                      <button key={moneda} className="btn btn-sm btn-primary" onClick={() => handleGenerarRecibo(v.id, moneda)}>
-                        Generar {moneda}
-                      </button>
-                    ))}
+                    <button className="btn btn-sm btn-primary" onClick={() => handleGenerarRecibo(v.vendedor_id, v.moneda)}>
+                      Generar {v.moneda}
+                    </button>
                   </div>
                 </div>
               );
@@ -6345,9 +6884,9 @@ function Comisiones() {
                   >
                     <div
                       style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: c.oportunidad_id ? 'pointer' : 'default', color: c.oportunidad_id ? 'var(--cyan)' : undefined }}
-                      title={getOportunidadNombre(c)}
+                      title={getOportunidadNombre(c) || 'Sin vincular'}
                     >
-                      {getOportunidadNombre(c)}
+                      {getOportunidadNombre(c) || <span style={{ color: 'var(--fg-muted)' }}>Sin vincular</span>}
                     </div>
                   </td>
                   <td style={{ fontSize: 12 }}>

@@ -90,6 +90,8 @@ const toAsistenciaRow = (empresaId, registro = {}, { includeId = true } = {}) =>
     latitud_salida: registro.latitud_salida ?? null,
     longitud_salida: registro.longitud_salida ?? null,
     refrigerio_tomado_minutos: Number(registro.refrigerio_tomado_minutos || 0),
+    regimen_jornada: registro.regimen_jornada || 'general',
+    ciclo_minero_id: registro.ciclo_minero_id || null,
   };
   if (includeId) row.id = registro.id || generateTextId('asis');
   return row;
@@ -114,6 +116,9 @@ const normalizarPersonalOperativo = (p = {}) => ({
   descuento_judicial: Number(p.descuento_judicial || 0),
   docs: p.docs || { sctr: 'pendiente', medico: 'pendiente', epp: 'pendiente', licencia: 'pendiente' },
   centro_costo_id: p.centro_costo_id || null,
+  dias_vacaciones_disponibles: Number(p.dias_vacaciones_disponibles ?? 0),
+  fecha_inicio_contrato: p.fecha_inicio_contrato || p.fecha_ingreso || null,
+  fecha_fin_contrato: p.fecha_fin_contrato || null,
 });
 
 const toPersonalOperativoRow = (empresaId, persona = {}) => ({
@@ -144,6 +149,10 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   descuento_judicial: Number(persona.descuento_judicial || 0),
   costo_hora_real: Number(persona.costo_hora_real ?? persona.costo ?? 0),
   costo_hora_extra: Number(persona.costo_hora_extra ?? persona.costo_extra ?? 0),
+  ruc_colaborador: persona.ruc_colaborador || null,
+  retencion_ir: Number(persona.retencion_ir ?? 8),
+  suspension_retenciones: persona.suspension_retenciones ?? false,
+  vencimiento_suspension: persona.vencimiento_suspension || null,
   acceso_campo: persona.acceso_campo ?? true,
   perfil_campo: persona.perfil_campo || 'Tecnico',
   docs: persona.docs || { sctr: 'pendiente', medico: 'pendiente', epp: 'pendiente', licencia: 'pendiente' },
@@ -163,7 +172,9 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
     'fecha_ingreso', 'sueldo_base', 'moneda', 'sistema_pensionario',
     'tipo_contrato', 'afp_nombre', 'tiene_hijos', 'regimen_laboral',
     'cuota_prestamo_mes', 'descuento_judicial',
-    'costo_hora_real', 'costo_hora_extra', 'acceso_campo', 'perfil_campo',
+    'costo_hora_real', 'costo_hora_extra',
+    'ruc_colaborador', 'retencion_ir', 'suspension_retenciones', 'vencimiento_suspension',
+    'acceso_campo', 'perfil_campo',
     'docs', 'estado', 'centro_costo_id'
   ]);
 
@@ -246,6 +257,7 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   porcentaje_comision: persona.porcentaje_comision != null ? Number(persona.porcentaje_comision) : null,
   modalidad_comision: persona.modalidad_comision || null,
   ruc_vendedor: persona.ruc_vendedor || null,
+  ruc_colaborador: persona.ruc_colaborador || null,
   retencion_ir_comision: persona.retencion_ir_comision != null ? Number(persona.retencion_ir_comision) : 8,
   suspension_retenciones: Boolean(persona.suspension_retenciones),
   vencimiento_suspension: persona.vencimiento_suspension || null,
@@ -266,7 +278,7 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     'telefono_emergencia', 'nivel_estudios', 'especialidad', 'institucion',
     'documentos', 'estado', 'centro_costo_id',
     'auth_user_id', 'tiene_comisiones', 'porcentaje_comision',
-    'modalidad_comision', 'ruc_vendedor', 'retencion_ir_comision',
+    'modalidad_comision', 'ruc_vendedor', 'ruc_colaborador', 'retencion_ir_comision',
     'suspension_retenciones', 'vencimiento_suspension'
   ]);
 
@@ -414,6 +426,49 @@ export const rrhhService = {
     return normalizarAsistencia(data);
   },
 
+  // ─── Ciclos Mineros ───────────────────────────────────────────
+  getCiclosMineros: async (empresaId, personalId = null) => {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    let query = supabase.from('asistencia_ciclos_mineros').select('*').eq('empresa_id', empresaId);
+    if (personalId) query = query.eq('personal_id', personalId);
+    const { data, error } = await query.order('fecha_inicio_ciclo', { ascending: false });
+    if (error) { console.error('Error fetching ciclos mineros:', error); return []; }
+    return data || [];
+  },
+  crearCicloMinero: async (empresaId, ciclo, registrosDiarios = []) => {
+    const supabase = await getSupabaseClient();
+    const id = generateTextId('ciclo');
+    const row = { ...ciclo, id, empresa_id: empresaId };
+    const { data, error } = await supabase.from('asistencia_ciclos_mineros').insert([row]).select().single();
+    if (error) throw error;
+
+    if (registrosDiarios && registrosDiarios.length > 0) {
+      const inserts = registrosDiarios.map(r => toAsistenciaRow(empresaId, { ...r, ciclo_minero_id: id, regimen_jornada: row.regimen_jornada }));
+      const { error: errAsis } = await supabase.from('registros_asistencia').insert(inserts);
+      if (errAsis) console.error('Error insertando registros diarios del ciclo:', errAsis);
+    }
+    return data;
+  },
+  actualizarCicloMinero: async (id, cambios, registrosDiarios = []) => {
+    const supabase = await getSupabaseClient();
+    const { empresa_id, ...row } = cambios;
+    const { data, error } = await supabase.from('asistencia_ciclos_mineros')
+      .update({ ...row, updated_at: new Date().toISOString() })
+      .eq('id', id).select().single();
+    if (error) throw error;
+
+    if (registrosDiarios && registrosDiarios.length > 0) {
+      // Borrar registros existentes del ciclo
+      await supabase.from('registros_asistencia').delete().eq('ciclo_minero_id', id);
+      // Insertar nuevos
+      const inserts = registrosDiarios.map(r => toAsistenciaRow(data.empresa_id, { ...r, ciclo_minero_id: id, regimen_jornada: data.regimen_jornada }));
+      const { error: errAsis } = await supabase.from('registros_asistencia').insert(inserts);
+      if (errAsis) console.error('Error insertando registros diarios del ciclo actualizados:', errAsis);
+    }
+    return data;
+  },
+
   // ─── Períodos de Nómina ───────────────────────────────────────
   getPeriodosNomina: async (empresaId) => {
     if (!empresaId) return [];
@@ -454,6 +509,77 @@ export const rrhhService = {
     const { data, error } = await supabase
       .from('prestamos_personal').insert([{ ...prestamo, empresa_id: empresaId }]).select().single();
     if (error) throw error;
+    return data;
+  },
+
+  getPrestamoPagos: async (empresaId, prestamoId) => {
+    if (!empresaId || !prestamoId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('prestamo_pagos').select('*')
+      .eq('empresa_id', empresaId).eq('prestamo_id', prestamoId)
+      .order('created_at', { ascending: false });
+    if (error) { console.error('Error fetching prestamo_pagos:', error); return []; }
+    return data;
+  },
+
+  // Registra un pago de cuota. Actualiza saldo/cuotas_pagadas en el préstamo.
+  // Si se completan todas las cuotas, marca el préstamo 'cancelado' y pone
+  // cuota_prestamo_mes = 0 en el registro del trabajador.
+  pagarCuotaPrestamo: async (empresaId, prestamoId, { monto, concepto = 'manual', periodo_id = null }) => {
+    const supabase = await getSupabaseClient();
+
+    const { data: prestamo, error: fetchErr } = await supabase
+      .from('prestamos_personal').select('*').eq('id', prestamoId).eq('empresa_id', empresaId).single();
+    if (fetchErr) throw fetchErr;
+    if (prestamo.estado === 'cancelado') throw new Error('El préstamo ya está cancelado');
+
+    const nuevasCuotas = prestamo.cuotas_pagadas + 1;
+    const nuevoSaldo = Math.max(0, Number(prestamo.saldo || 0) - Number(monto));
+    const cancelado = nuevasCuotas >= prestamo.cuotas;
+
+    const { data: prestamoActualizado, error: updErr } = await supabase
+      .from('prestamos_personal')
+      .update({ cuotas_pagadas: nuevasCuotas, saldo: nuevoSaldo, estado: cancelado ? 'cancelado' : 'vigente', updated_at: new Date().toISOString() })
+      .eq('id', prestamoId).select().single();
+    if (updErr) throw updErr;
+
+    const { data: pago, error: pagoErr } = await supabase
+      .from('prestamo_pagos')
+      .insert([{ empresa_id: empresaId, prestamo_id: prestamoId, fecha: new Date().toISOString().split('T')[0], monto: Number(monto), concepto, periodo_id }])
+      .select().single();
+    if (pagoErr) throw pagoErr;
+
+    if (cancelado && prestamo.trabajador_id) {
+      const tabla = prestamo.trabajador_tipo === 'admin' ? 'personal_administrativo' : 'personal_operativo';
+      await supabase.from(tabla)
+        .update({ cuota_prestamo_mes: 0, updated_at: new Date().toISOString() })
+        .eq('id', prestamo.trabajador_id);
+    }
+
+    return { prestamo: prestamoActualizado, pago };
+  },
+
+  cancelarPrestamo: async (empresaId, prestamoId) => {
+    const supabase = await getSupabaseClient();
+
+    const { data: prestamo, error: fetchErr } = await supabase
+      .from('prestamos_personal').select('*').eq('id', prestamoId).eq('empresa_id', empresaId).single();
+    if (fetchErr) throw fetchErr;
+
+    const { data, error } = await supabase
+      .from('prestamos_personal')
+      .update({ estado: 'cancelado', updated_at: new Date().toISOString() })
+      .eq('id', prestamoId).select().single();
+    if (error) throw error;
+
+    if (prestamo.descontar_nomina && prestamo.trabajador_id) {
+      const tabla = prestamo.trabajador_tipo === 'admin' ? 'personal_administrativo' : 'personal_operativo';
+      await supabase.from(tabla)
+        .update({ cuota_prestamo_mes: 0, updated_at: new Date().toISOString() })
+        .eq('id', prestamo.trabajador_id);
+    }
+
     return data;
   },
 };

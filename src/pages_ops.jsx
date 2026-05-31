@@ -7,6 +7,7 @@ import * as ticketsService from './services/ticketsService.js';
 import * as storageService from './services/storageService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
+import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { FileUpload } from './components/FileUpload.jsx';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
@@ -1184,7 +1185,7 @@ function Cuentas() {
 }
 
 function OT({ role }) {
-  const { ots, cuentas, partes, osClientes, usuarios, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, recalcularCostoRealOT, enviarParteARevision } = useApp();
+  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, recalcularCostoRealOT, enviarParteARevision } = useApp();
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Resumen');
   const [panel] = useState(false);
@@ -1209,6 +1210,32 @@ function OT({ role }) {
   const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
   const tiposActivos = (tiposServicio || []).filter(t => t.estado !== 'inactivo');
   const personal = [...(personalOperativo || []), ...(personalAdmin || [])].filter(p => p.estado === 'activo');
+  const normalizarEstadoOT = value => String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const rolDeColaboradorOT = p => roles?.[p?.rol_id] || roles?.[p?.rol] || null;
+  const colaboradoresAsignablesOT = useMemo(() => {
+    const estadosNoAsignables = new Set(['inactivo', 'inactiva', 'baja', 'cesado', 'cesada', 'eliminado', 'eliminada', 'suspendido', 'suspendida']);
+    const perteneceTenant = p => !empresa?.id || !p?.empresa_id || p.empresa_id === empresa.id || p.empresa?.id === empresa.id;
+    const estaActivoEnTenant = p => {
+      const estado = normalizarEstadoOT(p?.estado_usuario_empresa ?? p?.estado_membresia ?? p?.estado);
+      const activo = p?.activo ?? p?.activo_empresa ?? p?.usuario_empresa_activo ?? p?.membresia_activa;
+      return activo !== false && !estadosNoAsignables.has(estado);
+    };
+    const esRolPlataforma = p => {
+      const rol = rolDeColaboradorOT(p);
+      const rolId = normalizarEstadoOT(p?.rol_id || p?.rol);
+      return Boolean(p?.es_superadmin || p?.superadmin_plataforma || rol?.es_superadmin || rol?.permisos?.plataforma || rolId === 'plataforma');
+    };
+    return [...new Map([...(usuarios || []), ...(personalOperativo || []), ...(personalAdmin || [])]
+      .filter(p => p?.id && perteneceTenant(p) && estaActivoEnTenant(p) && !esRolPlataforma(p))
+      .map(p => [p.id, p])
+    ).values()].sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
+  }, [usuarios, personalOperativo, personalAdmin, roles, empresa?.id]);
+  const etiquetaColaboradorOT = p => {
+    const rol = rolDeColaboradorOT(p);
+    const rolPlano = String(p?.rol || '');
+    const detalle = p.cargo || p.puesto || p.perfil_campo || p.campoPerfil || p.area || rol?.nombre || (!rolPlano.startsWith('rol_') ? rolPlano : '') || 'Colaborador';
+    return `${p.nombre || p.email || p.id} - ${detalle}`;
+  };
 
   const debeTenerOSCliente = tiposConOSObligatoria.includes(formNuevaOT.tipo);
   const puedeTenerOSCliente = permiteOSCliente(formNuevaOT.tipo);
@@ -1291,12 +1318,12 @@ function OT({ role }) {
   const [parteFormOT, setParteFormOT] = useState({ tecnico_id: '', fecha: new Date().toISOString().split('T')[0], horas: 8, tareas_trabajadas: [], actividades_adicionales: [] });
   const [editandoDatos, setEditandoDatos] = useState(false);
   const [formDatos, setFormDatos] = useState({});
-  const [estDetalle, setEstDetalle] = useState({ mano_obra: [], materiales: [], terceros: [], logistica: [] });
+  const [realDetalle, setRealDetalle] = useState({ mano_obra: [], materiales: [], terceros: [], logistica: [] });
   const [expandedCostSections, setExpandedCostSections] = useState({ mano_obra: false, materiales: false, terceros: false, logistica: false });
   const [showHCRefCostos, setShowHCRefCostos] = useState(false);
   useEffect(() => {
     if (sel?.id) {
-      setEstDetalle(sel.est_detalle || { mano_obra: [], materiales: [], terceros: [], logistica: [] });
+      setRealDetalle(sel.realDetalle || { mano_obra: [], materiales: [], terceros: [], logistica: [] });
       setExpandedCostSections({ mano_obra: false, materiales: false, terceros: false, logistica: false });
     }
   }, [sel?.id]);
@@ -1320,8 +1347,14 @@ function OT({ role }) {
     setEditandoDatos(true);
   };
   const guardarDatos = async () => {
-    await actualizarOT(sel.id, formDatos);
-    setSel(s => ({ ...s, ...formDatos }));
+    const costo_estimado =
+      (parseFloat(formDatos.est_mo) || 0) +
+      (parseFloat(formDatos.est_materiales) || 0) +
+      (parseFloat(formDatos.est_terceros) || 0) +
+      (parseFloat(formDatos.est_logistica) || 0);
+    const updates = { ...formDatos, costoEst: costo_estimado };
+    await actualizarOT(sel.id, updates);
+    setSel(s => ({ ...s, ...updates, costoEst: costo_estimado }));
     setEditandoDatos(false);
   };
 
@@ -1332,6 +1365,7 @@ function OT({ role }) {
   const badges = {
     borrador: ['badge-gray','Borrador'], programada: ['badge-cyan','Programada'],
     ejecucion: ['badge-orange','En ejecución'], cerrada: ['badge-purple','Cerrada técnica'],
+    pendiente_cierre: ['badge-cyan','Pendiente cierre'],
     valorizada: ['badge-green','Valorizada'], facturada: ['badge-navy','Facturada'], anulada: ['badge-red','Anulada']
   };
 
@@ -1356,6 +1390,7 @@ function OT({ role }) {
     sel.estado === 'anulada' ? 0 :
     ['facturada','valorizada'].includes(sel.estado) ? 100 :
     ['cerrada','cerrada_tecnica'].includes(sel.estado) ? 85 :
+    sel.estado === 'pendiente_cierre' ? 82 :
     sel.estado === 'ejecucion' ? Math.max(45, Math.min(80, 45 + Math.round((sel.avance || 0) * 0.35))) :
     sel.estado === 'programada' ? (tecnicosAsignadosOT > 0 ? 35 : 25) :
     15
@@ -1626,7 +1661,7 @@ function OT({ role }) {
     if (!aprobados.length) return ot.costoReal || 0;
     const costoHoraTec = (id) => {
       const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === id);
-      const moItem = (ot.est_detalle?.mano_obra || []).find(m => m.tecnico_id === id);
+      const moItem = ((ot.realDetalle?.mano_obra?.length ? ot.realDetalle : ot.est_detalle)?.mano_obra || []).find(m => m.tecnico_id === id);
       if (moItem?.costo_hora > 0) return moItem.costo_hora;
       const explicit = Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
       if (explicit > 0) return explicit;
@@ -1713,7 +1748,7 @@ function OT({ role }) {
                   </td>
                   <td><span className={'badge '+(o.sla==='vencido'?'badge-red':o.sla==='riesgo'?'badge-orange':'badge-green')}>{o.sla==='vencido'?'Vencido':o.sla==='riesgo'?'Riesgo':'OK'}</span></td>
                   <td className="text-muted">{o.responsable}</td>
-                  {canCost && <td className="num">{money(calcCostoRealLive(o), otSym(o))}<span className="text-subtle"> / {money(o.costoEst||0, otSym(o))}</span></td>}
+                  {canCost && <td className="num">{money(o.costoEst||0, otSym(o))}<span className="text-subtle"> / {money(calcCostoRealLive(o), otSym(o))}</span></td>}
                   <td style={{width:120}}>
                     <div className="bar"><div style={{width:(o.avance||0)+'%', background: o.avance===100?'var(--green)':'var(--cyan)'}}/></div>
                     <div style={{fontSize:11,marginTop:2}}>{o.avance||0}%</div>
@@ -1862,10 +1897,17 @@ function OT({ role }) {
                     {I.play} Iniciar OT
                   </button>
                 )}
-                {sel.estado === 'ejecucion' && <>
-                  <button className="btn btn-secondary" style={{fontSize:13}} onClick={abrirNuevoParte}>
-                    {I.plus} Registrar Parte Diario
-                  </button>
+                {['ejecucion', 'pendiente_cierre'].includes(sel.estado) && <>
+                  {sel.estado === 'ejecucion' && (
+                    <button className="btn btn-secondary" style={{fontSize:13}} onClick={abrirNuevoParte}>
+                      {I.plus} Registrar Parte Diario
+                    </button>
+                  )}
+                  {sel.estado === 'pendiente_cierre' && (
+                    <span className="badge badge-cyan" title="La OS ya alcanzó el 100% valorizado; corresponde formalizar el cierre técnico.">
+                      Lista para cierre técnico
+                    </span>
+                  )}
                   {(() => {
                     const aprobados = partesOT.filter(p => p.estado === 'aprobado');
                     const pendientes = partesOT.filter(p => !['aprobado', 'rechazado'].includes(p.estado));
@@ -2026,6 +2068,30 @@ function OT({ role }) {
                       <div className="input-group">
                         <label>Descripción / Alcance</label>
                         <textarea className="input" rows={3} value={formDatos.descripcion} onChange={e => setFormDatos(p => ({...p, descripcion: e.target.value}))} placeholder="Describe el alcance de la OT..." style={{resize:'vertical'}} />
+                      </div>
+                      <div style={{borderTop:'1px solid var(--border)', paddingTop:14}}>
+                        <div style={{fontWeight:600, fontSize:12, marginBottom:10}}>Costo estimado</div>
+                        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10}}>
+                          {[
+                            { key: 'est_mo',         label: 'Mano de obra' },
+                            { key: 'est_materiales', label: 'Materiales' },
+                            { key: 'est_terceros',   label: 'Terceros' },
+                            { key: 'est_logistica',  label: 'Logística' },
+                          ].map(({ key, label }) => (
+                            <div className="input-group" key={key}>
+                              <label style={{fontSize:11}}>{label}</label>
+                              <input
+                                className="input"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="0"
+                                value={formDatos[key] ?? ''}
+                                onChange={e => setFormDatos(p => ({ ...p, [key]: e.target.value }))}
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                       <div style={{borderTop:'1px solid var(--border)', paddingTop:14}}>
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10}}>
@@ -2260,7 +2326,7 @@ function OT({ role }) {
                         <label>Colaborador *</label>
                         <select className="select" value={asignarTecForm.tecnico_id} onChange={e => setAsignarTecForm(s => ({...s, tecnico_id: e.target.value}))} required>
                           <option value="">Seleccionar...</option>
-                          {([...new Map([...(usuarios || []), ...(personalOperativo || []), ...(personalAdmin || [])].map(x => [x.id, x])).values()]).filter(p => ['activo','activa'].includes(String(p.estado||'').toLowerCase())).map(p => <option key={p.id} value={p.id}>{p.nombre} — {p.rol || p.cargo || 'Colaborador'}</option>)}
+                          {colaboradoresAsignablesOT.map(p => <option key={p.id} value={p.id}>{etiquetaColaboradorOT(p)}</option>)}
                         </select>
                       </div>
                       <div className="input-group">
@@ -2716,7 +2782,8 @@ function OT({ role }) {
                 return rem > 0 ? Math.round(rem / 240 * 100) / 100 : 0;
               };
               const costoHoraOT = (tecnicoId) => {
-                const moItem = (sel.est_detalle?.mano_obra || []).find(m => m.tecnico_id === tecnicoId);
+                const src = (realDetalle.mano_obra?.length ? realDetalle : sel.est_detalle) || {};
+                const moItem = (src.mano_obra || []).find(m => m.tecnico_id === tecnicoId);
                 if (moItem?.costo_hora > 0) return moItem.costo_hora;
                 return costoHoraTec(tecnicoId);
               };
@@ -2728,7 +2795,6 @@ function OT({ role }) {
                 s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
               const terceroReal = partesAprobados.reduce((s, p) => s + (p.terceros_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0) + (cierreOT?.costo_terceros || 0);
               const logisticaReal = partesAprobados.reduce((s, p) => s + (p.logistica_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0) + (cierreOT?.costo_logistica || 0);
-              const costoRealTotal = moReal + matReal + terceroReal + logisticaReal;
 
               // MEJORA 2: HC vinculada a través de OS Cliente
               const hcVinculadaCostos = (() => {
@@ -2738,17 +2804,24 @@ function OT({ role }) {
                 return (hojasCosteo || []).find(h => h.id === cot.hoja_costeo_id && h.estado === 'aprobada') ?? null;
               })();
 
-              // MEJORA 1 & 3: totales desde desglose o desde campos agregados
-              const sumSection = (key) => (estDetalle[key] || []).reduce((s, i) => s + (Number(i.subtotal) || 0), 0);
-              const estMoFinal   = (estDetalle.mano_obra  || []).length > 0 ? sumSection('mano_obra')  : (sel.est_mo         ?? null);
-              const estMatFinal  = (estDetalle.materiales || []).length > 0 ? sumSection('materiales') : (sel.est_materiales  ?? null);
-              const estTerFinal  = (estDetalle.terceros   || []).length > 0 ? sumSection('terceros')   : (sel.est_terceros    ?? null);
-              const estLogFinal  = (estDetalle.logistica  || []).length > 0 ? sumSection('logistica')  : (sel.est_logistica   ?? null);
+              // Estimado: siempre desde los campos escalares (origen HC, read-only en este tab)
+              const estMoFinal  = sel.est_mo         ?? null;
+              const estMatFinal = sel.est_materiales  ?? null;
+              const estTerFinal = sel.est_terceros    ?? null;
+              const estLogFinal = sel.est_logistica   ?? null;
               const costoEstTotal = (estMoFinal || 0) + (estMatFinal || 0) + (estTerFinal || 0) + (estLogFinal || 0);
 
-              // Item helpers
+              // Real: desde realDetalle (manual) con fallback a partes aprobados por sección
+              const sumReal = (key) => (realDetalle[key] || []).reduce((s, i) => s + (Number(i.subtotal) || 0), 0);
+              const realMoFinal  = (realDetalle.mano_obra  || []).length > 0 ? sumReal('mano_obra')  : (moReal  > 0 ? moReal  : null);
+              const realMatFinal = (realDetalle.materiales || []).length > 0 ? sumReal('materiales') : (matReal > 0 ? matReal : null);
+              const realTerFinal = (realDetalle.terceros   || []).length > 0 ? sumReal('terceros')   : (terceroReal  > 0 ? terceroReal  : null);
+              const realLogFinal = (realDetalle.logistica  || []).length > 0 ? sumReal('logistica')  : (logisticaReal > 0 ? logisticaReal : null);
+              const costoRealTotal = (realMoFinal || 0) + (realMatFinal || 0) + (realTerFinal || 0) + (realLogFinal || 0);
+
+              // Item helpers (operan sobre realDetalle)
               const updItem = (section, idx, field, value) =>
-                setEstDetalle(prev => ({
+                setRealDetalle(prev => ({
                   ...prev,
                   [section]: (prev[section] || []).map((it, i) => {
                     if (i !== idx) return it;
@@ -2761,7 +2834,7 @@ function OT({ role }) {
                 }));
 
               const addItem = (section) =>
-                setEstDetalle(prev => ({
+                setRealDetalle(prev => ({
                   ...prev,
                   [section]: [...(prev[section] || []),
                     section === 'mano_obra'  ? { tecnico_id: '', nombre: '', dias: 1, horas_dia: 8, costo_hora: 0, subtotal: 0 }
@@ -2771,17 +2844,17 @@ function OT({ role }) {
                 }));
 
               const removeItem = (section, idx) =>
-                setEstDetalle(prev => ({ ...prev, [section]: (prev[section] || []).filter((_, i) => i !== idx) }));
+                setRealDetalle(prev => ({ ...prev, [section]: (prev[section] || []).filter((_, i) => i !== idx) }));
 
-              const guardarEstimado = () => {
+              const guardarReal = () => {
+                const nuevosCostoReal = (realMoFinal || 0) + (realMatFinal || 0) + (realTerFinal || 0) + (realLogFinal || 0);
                 const updates = {
-                  est_mo: estMoFinal, est_materiales: estMatFinal,
-                  est_terceros: estTerFinal, est_logistica: estLogFinal,
-                  costoEst: costoEstTotal, est_detalle: estDetalle,
+                  real_detalle: realDetalle,
+                  costoReal: nuevosCostoReal,
                 };
                 actualizarOT(sel.id, updates);
-                setSel(s => ({ ...s, ...updates }));
-                addNotificacion('Estimado actualizado.');
+                setSel(s => ({ ...s, ...updates, realDetalle }));
+                addNotificacion('Costos reales actualizados.');
               };
 
               const varPct = (est, real) => {
@@ -2793,10 +2866,10 @@ function OT({ role }) {
                 ? Math.round(((costoEstTotal - costoRealTotal) / costoEstTotal) * 100) : 0;
 
               const sections = [
-                { key: 'mano_obra',  label: 'Mano de obra',         est: estMoFinal,  real: moReal > 0      ? moReal      : null },
-                { key: 'materiales', label: 'Materiales',            est: estMatFinal, real: matReal > 0     ? matReal     : null },
-                { key: 'terceros',   label: 'Servicios terceros',    est: estTerFinal, real: terceroReal > 0  ? terceroReal  : null },
-                { key: 'logistica',  label: 'Logística y viáticos',  est: estLogFinal, real: logisticaReal > 0 ? logisticaReal : null },
+                { key: 'mano_obra',  label: 'Mano de obra',         est: estMoFinal,  real: realMoFinal  },
+                { key: 'materiales', label: 'Materiales',            est: estMatFinal, real: realMatFinal },
+                { key: 'terceros',   label: 'Servicios terceros',    est: estTerFinal, real: realTerFinal },
+                { key: 'logistica',  label: 'Logística y viáticos',  est: estLogFinal, real: realLogFinal },
               ];
               const inputSt = { fontSize: 12, padding: '3px 6px' };
               const monedaOT = osVinculada?.moneda || 'PEN';
@@ -2856,7 +2929,7 @@ function OT({ role }) {
                       <tbody>
                         {sections.map(({ key, label, est, real }) => {
                           const expanded = expandedCostSections[key];
-                          const items = estDetalle[key] || [];
+                          const items = realDetalle[key] || [];
                           const pct = varPct(est, real);
                           const toggleExpand = () => setExpandedCostSections(p => ({ ...p, [key]: !p[key] }));
                           return (
@@ -2877,6 +2950,93 @@ function OT({ role }) {
                                 <tr>
                                   <td colSpan={5} style={{ padding: 0, background: 'var(--bg-subtle)' }}>
                                     <div style={{ padding: '10px 12px 12px 28px' }}>
+                                      {/* Desglose read-only desde partes cuando no hay ítems manuales */}
+                                      {items.length === 0 && (() => {
+                                        const td = (content, opts = {}) => (
+                                          <td style={{ padding: '3px 4px', textAlign: opts.right ? 'right' : 'left', color: opts.muted ? 'var(--fg-muted)' : 'var(--fg)', fontWeight: opts.bold ? 600 : 400, width: opts.w }}>{content}</td>
+                                        );
+                                        let rows = [];
+                                        if (key === 'mano_obra') {
+                                          rows = partesAprobados.map(p => {
+                                            const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === p.tecnico_id);
+                                            const ch = costoHoraOT(p.tecnico_id);
+                                            const sub = (p.horas || 0) * ch;
+                                            if (!sub) return null;
+                                            return <tr key={p.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                              {td(tec?.nombre || p.tecnico_id)}
+                                              {td(`${p.horas || 0} h`, { right: true, muted: true, w: 60 })}
+                                              {td(money(ch, monSym) + '/h', { right: true, muted: true, w: 90 })}
+                                              {td(money(sub, monSym), { right: true, bold: true, w: 82 })}
+                                              <td style={{ width: 28 }} />
+                                            </tr>;
+                                          }).filter(Boolean);
+                                        } else if (key === 'materiales') {
+                                          rows = partesAprobados.flatMap(p =>
+                                            (p.materiales_usados || []).map((m, i) => {
+                                              const sub = (m.cantidad || 0) * (m.costo_unitario || 0);
+                                              if (!sub) return null;
+                                              return <tr key={`${p.id}-${i}`} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                                {td(m.nombre || m.sku || '—')}
+                                                {td(m.cantidad, { right: true, muted: true, w: 60 })}
+                                                {td(m.unidad || '—', { muted: true, w: 52 })}
+                                                {td(money(m.costo_unitario || 0, monSym), { right: true, muted: true, w: 90 })}
+                                                {td(money(sub, monSym), { right: true, bold: true, w: 82 })}
+                                                <td style={{ width: 28 }} />
+                                              </tr>;
+                                            })
+                                          ).filter(Boolean);
+                                        } else if (key === 'terceros') {
+                                          rows = [
+                                            ...partesAprobados.flatMap(p =>
+                                              (p.terceros_lineas || []).map((l, i) => {
+                                                const sub = Number(l.monto || 0);
+                                                if (!sub) return null;
+                                                return <tr key={`${p.id}-${i}`} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                                  {td(l.descripcion || 'Servicio tercero')}
+                                                  {td('', { w: 60 })}{td('', { w: 52 })}{td('', { w: 90 })}
+                                                  {td(money(sub, monSym), { right: true, bold: true, w: 82 })}
+                                                  <td style={{ width: 28 }} />
+                                                </tr>;
+                                              })
+                                            ).filter(Boolean),
+                                            ...(cierreOT?.costo_terceros ? [<tr key="cierre" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                              {td('Cierre técnico')}{td('', { w: 60 })}{td('', { w: 52 })}{td('', { w: 90 })}
+                                              {td(money(cierreOT.costo_terceros, monSym), { right: true, bold: true, w: 82 })}
+                                              <td style={{ width: 28 }} />
+                                            </tr>] : []),
+                                          ];
+                                        } else if (key === 'logistica') {
+                                          rows = [
+                                            ...partesAprobados.flatMap(p =>
+                                              (p.logistica_lineas || []).map((l, i) => {
+                                                const sub = Number(l.monto || 0);
+                                                if (!sub) return null;
+                                                return <tr key={`${p.id}-${i}`} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                                  {td(l.descripcion || 'Logística')}
+                                                  {td('', { w: 60 })}{td('', { w: 52 })}{td('', { w: 90 })}
+                                                  {td(money(sub, monSym), { right: true, bold: true, w: 82 })}
+                                                  <td style={{ width: 28 }} />
+                                                </tr>;
+                                              })
+                                            ).filter(Boolean),
+                                            ...(cierreOT?.costo_logistica ? [<tr key="cierre" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                              {td('Cierre técnico')}{td('', { w: 60 })}{td('', { w: 52 })}{td('', { w: 90 })}
+                                              {td(money(cierreOT.costo_logistica, monSym), { right: true, bold: true, w: 82 })}
+                                              <td style={{ width: 28 }} />
+                                            </tr>] : []),
+                                          ];
+                                        }
+                                        if (!rows.length) return null;
+                                        return (
+                                          <div style={{ marginBottom: 8 }}>
+                                            <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Desde partes aprobados</div>
+                                            <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginBottom: 4 }}>
+                                              <tbody>{rows}</tbody>
+                                            </table>
+                                            <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Para ingresar costos reales manualmente, usa "Agregar ítem".</div>
+                                          </div>
+                                        );
+                                      })()}
                                       {items.length > 0 && (
                                         <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginBottom: 8 }}>
                                           <thead>
@@ -2917,7 +3077,7 @@ function OT({ role }) {
                                                         onChange={e => {
                                                           const ch = costoHoraTec(e.target.value);
                                                           const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === e.target.value);
-                                                          setEstDetalle(prev => ({
+                                                          setRealDetalle(prev => ({
                                                             ...prev,
                                                             mano_obra: (prev.mano_obra || []).map((it, i) => {
                                                               if (i !== idx) return it;
@@ -2952,7 +3112,7 @@ function OT({ role }) {
                                                         onChange={e => {
                                                           const inv = (inventario || []).find(i => i.id === e.target.value);
                                                           const cu = Number(inv?.costo_promedio || 0);
-                                                          setEstDetalle(prev => ({
+                                                          setRealDetalle(prev => ({
                                                             ...prev,
                                                             materiales: (prev.materiales || []).map((it, i) => {
                                                               if (i !== idx) return it;
@@ -3051,8 +3211,8 @@ function OT({ role }) {
                         <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>Recalcula MO con la tarifa actual de cada técnico</div>
                       </div>
                     )}
-                    <button className="btn btn-primary" style={{ fontSize: 13, marginLeft: 'auto' }} onClick={guardarEstimado}>
-                      Guardar estimado
+                    <button className="btn btn-primary" style={{ fontSize: 13, marginLeft: 'auto' }} onClick={guardarReal}>
+                      Guardar costos reales
                     </button>
                   </div>
                 </div>
@@ -4461,8 +4621,195 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
 }
 
 function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
+  const { ocAnticipos, registrarAnticipoOC } = useApp();
+  const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('detalle');
-  return <><div className="page-header"><div><button className="btn btn-ghost btn-sm" onClick={onBack}>Volver</button><h1 className="page-title">{orden.codigo}</h1><div className="page-sub">{proveedor.razon_social} - {money(orden.total||0)}</div></div><div className="row">{orden.estado==='emitida' && <button className="btn btn-secondary" onClick={onConfirmar}>Marcar confirmada</button>}<button className="btn btn-primary" data-local-form="true" onClick={onRecepcion}>Registrar recepcion</button></div></div><div className="tabs">{['detalle','items','seguimiento','recepciones','documentos'].map(t=><div key={t} className={'tab '+(tab===t?'active':'')} onClick={()=>setTab(t)}>{t}</div>)}</div>{tab==='detalle' && <div className="card" style={{padding:20}}><p><strong>Descripcion:</strong> {orden.descripcion}</p><p><strong>Condicion pago:</strong> {orden.condicion_pago}</p><p><strong>Entrega esperada:</strong> {orden.fecha_entrega_esperada}</p><p><strong>Notas:</strong> {orden.notas_internas || '-'}</p></div>}{tab==='items' && <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>Item</th><th>Cantidad</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th></tr></thead><tbody>{orden.items?.map((i,idx)=><tr key={idx}><td>{i.descripcion}</td><td>{i.cantidad}</td><td>{i.unidad}</td><td>{money(i.precio_unitario)}</td><td>{money(i.subtotal)}</td></tr>)}</tbody></table></div></div>}{tab==='seguimiento' && <div className="card" style={{padding:20}}>{['Emitida','Confirmada','En transito','Recibida'].map((s,i)=><div key={s} style={{padding:'10px 0',borderBottom:'1px solid var(--border-subtle)'}}><strong>{i===0 || orden.estado!=='emitida' ? '●' : '○'} {s}</strong><span className="text-muted" style={{marginLeft:12}}>{i===0 ? orden.fecha_emision : '-'}</span></div>)}</div>}{['recepciones','documentos'].includes(tab) && <div className="card" style={{padding:20}}><p className="text-muted">Informacion vinculada disponible desde el modulo Recepciones.</p></div>}</>;
+  const [panelAnticipo, setPanelAnticipo] = useState(false);
+  const [formAnticipo, setFormAnticipo] = useState({ fecha: today, monto: '', referencia: '', notas: '' });
+  const [savingAnticipo, setSavingAnticipo] = useState(false);
+
+  const anticiposOC = (ocAnticipos || []).filter(a => a.orden_compra_id === orden.id);
+  const totalAnticipado = anticiposOC.reduce((s, a) => s + Number(a.monto || 0), 0);
+  const totalOC = Number(orden.total || 0);
+  const saldoPendiente = Math.max(0, totalOC - totalAnticipado);
+  const pctAnticipado = totalOC > 0 ? Math.round(totalAnticipado / totalOC * 100) : 0;
+
+  const guardarAnticipo = async e => {
+    e.preventDefault();
+    const monto = Number(formAnticipo.monto || 0);
+    if (monto <= 0 || monto > saldoPendiente) return;
+    setSavingAnticipo(true);
+    try {
+      await registrarAnticipoOC({ ordenCompraId: orden.id, ...formAnticipo, monto });
+      setPanelAnticipo(false);
+      setFormAnticipo({ fecha: today, monto: '', referencia: '', notas: '' });
+    } finally {
+      setSavingAnticipo(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <button className="btn btn-ghost btn-sm" onClick={onBack}>Volver</button>
+          <h1 className="page-title">{orden.codigo}</h1>
+          <div className="page-sub">{proveedor.razon_social} — {money(totalOC)}</div>
+        </div>
+        <div className="row">
+          {orden.estado === 'emitida' && <button className="btn btn-secondary" onClick={onConfirmar}>Marcar confirmada</button>}
+          <button className="btn btn-secondary" data-local-form="true" onClick={() => setPanelAnticipo(true)}>{I.plus} Registrar anticipo</button>
+          <button className="btn btn-primary" data-local-form="true" onClick={onRecepcion}>Registrar recepcion</button>
+        </div>
+      </div>
+
+      {totalAnticipado > 0 && (
+        <div className="row" style={{gap:12, marginBottom:12, padding:'10px 16px', background:'color-mix(in srgb, var(--orange) 8%, transparent)', border:'1px solid color-mix(in srgb, var(--orange) 30%, transparent)', borderRadius:8, flexWrap:'wrap'}}>
+          <span style={{fontSize:13}}>Anticipado: <strong style={{color:'var(--orange)'}}>{money(totalAnticipado)}</strong> ({pctAnticipado}%)</span>
+          <span style={{fontSize:13}}>·</span>
+          <span style={{fontSize:13}}>Saldo pendiente: <strong style={{color: saldoPendiente > 0 ? 'var(--fg)' : 'var(--green)'}}>{money(saldoPendiente)}</strong></span>
+        </div>
+      )}
+
+      <div className="tabs">
+        {['detalle','items','anticipos','seguimiento','documentos'].map(t => (
+          <div key={t} className={'tab '+(tab===t?'active':'')} onClick={() => setTab(t)}>
+            {t === 'anticipos' ? `Anticipos (${anticiposOC.length})` : t}
+          </div>
+        ))}
+      </div>
+
+      {tab === 'detalle' && (
+        <div className="card" style={{padding:20}}>
+          <p><strong>Descripcion:</strong> {orden.descripcion}</p>
+          <p><strong>Condicion pago:</strong> {orden.condicion_pago}</p>
+          <p><strong>Entrega esperada:</strong> {orden.fecha_entrega_esperada}</p>
+          <p><strong>Notas:</strong> {orden.notas_internas || '-'}</p>
+        </div>
+      )}
+
+      {tab === 'items' && (
+        <div className="card">
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Item</th><th>Cantidad</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th></tr></thead>
+              <tbody>{orden.items?.map((i, idx) => (
+                <tr key={idx}>
+                  <td>{i.descripcion}</td><td>{i.cantidad}</td><td>{i.unidad}</td>
+                  <td>{money(i.precio_unitario)}</td><td>{money(i.subtotal)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === 'anticipos' && (
+        <div style={{display:'flex', flexDirection:'column', gap:12, marginTop:4}}>
+          {anticiposOC.length === 0 ? (
+            <div className="card" style={{padding:32, textAlign:'center', color:'var(--fg-muted)'}}>
+              No hay anticipos registrados para esta OC.
+              <div style={{marginTop:12}}>
+                <button className="btn btn-primary" data-local-form="true" onClick={() => setPanelAnticipo(true)}>{I.plus} Registrar primer anticipo</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="card">
+                <div className="card-head"><h3>Historial de anticipos</h3><span className="badge badge-orange">{pctAnticipado}% anticipado</span></div>
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead><tr><th>Fecha</th><th>Monto</th><th>Referencia</th><th>Notas</th></tr></thead>
+                    <tbody>
+                      {anticiposOC.map(a => (
+                        <tr key={a.id}>
+                          <td>{a.fecha}</td>
+                          <td className="num"><strong>{money(a.monto)}</strong></td>
+                          <td className="mono text-muted">{a.referencia || '—'}</td>
+                          <td style={{fontSize:12, color:'var(--fg-muted)'}}>{a.notas || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{background:'var(--bg-subtle)'}}>
+                        <td><strong>Total anticipado</strong></td>
+                        <td className="num"><strong style={{color:'var(--orange)'}}>{money(totalAnticipado)}</strong></td>
+                        <td colSpan={2}><span style={{fontSize:12, color:'var(--fg-muted)'}}>Saldo al recibir: {money(saldoPendiente)}</span></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+              <div style={{display:'flex', justifyContent:'flex-end'}}>
+                <button className="btn btn-secondary" data-local-form="true" onClick={() => setPanelAnticipo(true)}>{I.plus} Nuevo anticipo</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'seguimiento' && (
+        <div className="card" style={{padding:20}}>
+          {['Emitida','Confirmada','En transito','Recibida'].map((s, i) => (
+            <div key={s} style={{padding:'10px 0', borderBottom:'1px solid var(--border-subtle)'}}>
+              <strong>{i===0 || orden.estado!=='emitida' ? '●' : '○'} {s}</strong>
+              <span className="text-muted" style={{marginLeft:12}}>{i===0 ? orden.fecha_emision : '-'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'documentos' && (
+        <div className="card" style={{padding:20}}>
+          <p className="text-muted">Informacion vinculada disponible desde el modulo Recepciones.</p>
+        </div>
+      )}
+
+      {panelAnticipo && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setPanelAnticipo(false)}/>
+          <div className="side-panel" style={{width:'min(480px, 96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Orden de Compra {orden.codigo}</div>
+                <div style={{fontWeight:700, fontSize:20}}>Registrar anticipo</div>
+                <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
+                  Total OC: {money(totalOC)} · Ya anticipado: {money(totalAnticipado)} · Saldo: {money(saldoPendiente)}
+                </div>
+              </div>
+              <button className="icon-btn" onClick={() => setPanelAnticipo(false)}>{I.x}</button>
+            </div>
+            <form className="side-panel-body" onSubmit={guardarAnticipo} data-local-form="true">
+              <div className="grid-2" style={{gap:12}}>
+                <div className="input-group">
+                  <label>Fecha <span style={{color:'var(--danger)'}}>*</span></label>
+                  <input className="input" type="date" required value={formAnticipo.fecha} onChange={e => setFormAnticipo(v => ({...v, fecha: e.target.value}))}/>
+                </div>
+                <div className="input-group">
+                  <label>Monto <span style={{color:'var(--danger)'}}>*</span></label>
+                  <input className="input" type="number" min="0.01" step="0.01" max={saldoPendiente} required
+                    value={formAnticipo.monto} onChange={e => setFormAnticipo(v => ({...v, monto: e.target.value}))}
+                    placeholder={`Máx. ${saldoPendiente.toFixed(2)}`}/>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Referencia de pago <span style={{color:'var(--danger)'}}>*</span></label>
+                  <input className="input" required value={formAnticipo.referencia} onChange={e => setFormAnticipo(v => ({...v, referencia: e.target.value}))} placeholder="N° transferencia, cheque..."/>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Notas</label>
+                  <textarea className="input" rows={2} value={formAnticipo.notas} onChange={e => setFormAnticipo(v => ({...v, notas: e.target.value}))} placeholder="Observaciones del anticipo..."/>
+                </div>
+              </div>
+              <div className="row mt-6" style={{justifyContent:'flex-end', gap:10}}>
+                <button type="button" className="btn btn-secondary" onClick={() => setPanelAnticipo(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={savingAnticipo}>{savingAnticipo ? 'Registrando...' : `${I.check} Registrar anticipo`}</button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
+    </>
+  );
 }
 
 function OrdenesServicio() {
@@ -4633,21 +4980,39 @@ function Compras() {
   const [showGastoForm, setShowGastoForm] = useState(false);
   const [gastoForm, setGastoForm] = useState(GASTO_FORM_INIT);
   const [errCecoGasto, setErrCecoGasto] = useState(false);
-  const [gastoGeneraCxP, setGastoGeneraCxP] = useState(false);
+  const [estadoPago, setEstadoPago] = useState('pagado');
+  const [referenciaPago, setReferenciaPago] = useState('');
   const [gastoCxpProvId, setGastoCxpProvId] = useState('');
   const [gastoCxpVence, setGastoCxpVence] = useState('');
+  const [esActivoFijo, setEsActivoFijo] = useState(false);
+  const [activoTipo, setActivoTipo] = useState('');
+  const [activoVidaUtil, setActivoVidaUtil] = useState('');
   const comprasRows = comprasGastos.length ? comprasGastos : MOCK.compras;
+  const activosFijos = comprasGastos.filter(g => g.es_activo_fijo);
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
 
   const setG = (k, v) => { setGastoForm(p => ({ ...p, [k]: v })); if (k === 'centro_costo_id') setErrCecoGasto(false); };
 
-  const resetGastoForm = () => { setGastoForm(GASTO_FORM_INIT); setErrCecoGasto(false); setGastoGeneraCxP(false); setGastoCxpProvId(''); setGastoCxpVence(''); setShowGastoForm(false); };
+  const resetGastoForm = () => {
+    setGastoForm(GASTO_FORM_INIT); setErrCecoGasto(false); setEstadoPago('pagado');
+    setReferenciaPago(''); setGastoCxpProvId(''); setGastoCxpVence('');
+    setEsActivoFijo(false); setActivoTipo(''); setActivoVidaUtil('');
+    setShowGastoForm(false);
+  };
 
   const handleGastoSubmit = async () => {
     if (!gastoForm.centro_costo_id) { setErrCecoGasto(true); return; }
-    if (gastoGeneraCxP && !gastoCxpVence) return;
-    const gastoData = { ...gastoForm, monto: parseFloat(gastoForm.monto) || 0, tipo: 'gasto' };
-    if (gastoGeneraCxP) {
+    if (!esActivoFijo && estadoPago === 'pendiente' && !gastoCxpVence) return;
+    const monto = parseFloat(gastoForm.monto) || 0;
+    const gastoData = {
+      ...gastoForm, monto, tipo: 'gasto',
+      estado_pago: esActivoFijo ? 'pagado' : estadoPago,
+      referencia_pago: referenciaPago || null,
+      es_activo_fijo: esActivoFijo,
+      activo_tipo: esActivoFijo ? (activoTipo || null) : null,
+      vida_util_anos: esActivoFijo && activoVidaUtil ? Number(activoVidaUtil) : null,
+    };
+    if (!esActivoFijo && estadoPago === 'pendiente') {
       const cxpPrefixId = `cxp_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
       const gasto = crearGasto({ ...gastoData, cxp_id: cxpPrefixId });
       await generarCxP({
@@ -4658,9 +5023,10 @@ function Compras() {
         concepto: gastoForm.descripcion,
         fecha_emision: gastoForm.fecha,
         fecha_vencimiento: gastoCxpVence,
-        monto_total: parseFloat(gastoForm.monto) || 0,
+        monto_total: monto,
         moneda: gastoForm.moneda || 'PEN',
         estado: 'por_pagar',
+        origen: 'gasto',
         gasto_id: gasto.id,
       });
     } else {
@@ -4676,8 +5042,10 @@ function Compras() {
         <button className="btn btn-primary" onClick={() => setShowGastoForm(true)}>{I.plus} Nuevo Registro</button>
       </div>
       <div className="tabs">
-        {['Compras en Campo', 'Proveedores', 'Órdenes de Compra (OC)', 'Órdenes de Servicio (OSI)', 'Recepción y Conformidad'].map(t => (
-          <div key={t} className={`tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>{t}</div>
+        {['Compras en Campo', 'Activos fijos', 'Proveedores', 'Órdenes de Compra (OC)', 'Órdenes de Servicio (OSI)', 'Recepción y Conformidad'].map(t => (
+          <div key={t} className={`tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
+            {t === 'Activos fijos' ? `Activos fijos (${activosFijos.length})` : t}
+          </div>
         ))}
       </div>
       <div className="card">
@@ -4696,9 +5064,27 @@ function Compras() {
                     <td className="text-muted">{c.fecha}</td>
                     <td><span className={'badge '+(c.estado==='pagado'||c.estado==='registrado'?'badge-green':c.estado==='pendiente_revision'?'badge-cyan':'badge-gray')}>{String(c.estado || 'registrado').replace('_',' ')}</span></td>
                     <td>{c.campo ? <span className="badge badge-cyan">{I.camera}Campo</span> : c.origen === 'nomina' ? <span className="badge badge-purple">Nomina</span> : null}</td>
-                    <td>{c.cxp_id ? <span className="badge badge-green" title={c.cxp_id}>{I.receipt} CxP</span> : <span className="text-muted" style={{fontSize:12}}>—</span>}</td>
+                    <td>{c.cxp_id ? <span className="badge badge-orange" title={c.cxp_id}>{I.receipt} Pendiente</span> : <span className="badge badge-green">Pagado</span>}</td>
                   </tr>
                 ))}</tbody>
+              </>
+            )}
+            {activeTab === 'Activos fijos' && (
+              <>
+                <thead><tr><th>Descripción</th><th>Tipo</th><th>Vida útil</th><th>Monto</th><th>Fecha</th><th>CECO</th><th>N° Comprobante</th></tr></thead>
+                <tbody>{activosFijos.length ? activosFijos.map(g => (
+                  <tr key={g.id}>
+                    <td><strong>{g.descripcion}</strong></td>
+                    <td>{g.activo_tipo || <span className="text-muted">—</span>}</td>
+                    <td className="num">{g.vida_util_anos ? `${g.vida_util_anos} años` : <span className="text-muted">—</span>}</td>
+                    <td className="num"><strong>{money(g.monto)}</strong></td>
+                    <td className="text-muted">{g.fecha}</td>
+                    <td className="text-muted" style={{fontSize:11}}>{g.centro_costo_id || '—'}</td>
+                    <td className="mono text-muted">{g.num_comprobante || '—'}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan="7" style={{textAlign:'center', padding:32, color:'var(--fg-muted)'}}>No hay activos fijos registrados. Usa "Nuevo Registro" y marca "Es activo fijo".</td></tr>
+                )}</tbody>
               </>
             )}
             {activeTab === 'Proveedores' && (
@@ -4826,21 +5212,57 @@ function Compras() {
             <button className="icon-btn" onClick={resetGastoForm}>{I.x}</button>
           </div>
           <div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:16}}>
-            <div className="form-group">
-              <label className="form-label">Proveedor / Descripción del gasto *</label>
-              <input className="input" placeholder="Ej: Ferretería Industrial SAC, Viáticos Lima..." value={gastoForm.descripcion} onChange={e => setG('descripcion', e.target.value)} />
+            <div style={{padding:'10px 14px', borderRadius:8, border:'1px solid var(--border)', background:'var(--bg-subtle)'}}>
+              <label style={{display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontSize:13, fontWeight:600}}>
+                <input type="checkbox" checked={esActivoFijo} onChange={e => setEsActivoFijo(e.target.checked)}/>
+                Es activo fijo (no impacta el Estado de Resultados)
+              </label>
+              {esActivoFijo && (
+                <div style={{marginTop:8, fontSize:12, color:'var(--cyan)', padding:'4px 8px', background:'color-mix(in srgb, var(--cyan) 8%, transparent)', borderRadius:4}}>
+                  Este egreso se registrará como activo del balance. No aparecerá como gasto del período.
+                </div>
+              )}
             </div>
             <div className="form-group">
-              <label className="form-label">Categoría *</label>
-              <select className="select" value={gastoForm.categoria} onChange={e => setG('categoria', e.target.value)}>
-                <option value="Materiales">Materiales</option>
-                <option value="Servicios terceros">Servicios terceros</option>
-                <option value="Logística">Logística</option>
-                <option value="Administrativos">Administrativos</option>
-                <option value="Comerciales">Comerciales</option>
-                <option value="Gastos financieros">Gastos financieros</option>
-              </select>
+              <label className="form-label">Descripción {esActivoFijo ? 'del activo' : 'del gasto'} *</label>
+              <input className="input" placeholder={esActivoFijo ? 'Ej: Laptop Dell XPS 13, Camión Volvo FH...' : 'Ej: Ferretería Industrial SAC, Viáticos Lima...'} value={gastoForm.descripcion} onChange={e => setG('descripcion', e.target.value)} />
             </div>
+            {!esActivoFijo && (
+              <div className="form-group">
+                <label className="form-label">Categoría *</label>
+                <select className="select" value={gastoForm.categoria} onChange={e => setG('categoria', e.target.value)}>
+                  <option value="Materiales">Materiales</option>
+                  <option value="Servicios terceros">Servicios terceros</option>
+                  <option value="Logística">Logística</option>
+                  <option value="Administrativos">Administrativos</option>
+                  <option value="Comerciales">Comerciales</option>
+                  <option value="Gastos financieros">Gastos financieros</option>
+                </select>
+              </div>
+            )}
+            {esActivoFijo && (
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                <div className="form-group">
+                  <label className="form-label">Tipo de activo</label>
+                  <select className="select" value={activoTipo} onChange={e => setActivoTipo(e.target.value)}>
+                    <option value="">Seleccionar...</option>
+                    <option value="Equipo de computo">Equipo de cómputo</option>
+                    <option value="Vehiculo">Vehículo</option>
+                    <option value="Maquinaria">Maquinaria</option>
+                    <option value="Mobiliario">Mobiliario y equipos de oficina</option>
+                    <option value="Herramienta">Herramientas</option>
+                    <option value="Infraestructura">Infraestructura</option>
+                    <option value="Otro">Otro</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Vida útil estimada (años)</label>
+                  <input className="input" type="number" min="1" max="50" step="1"
+                    value={activoVidaUtil} onChange={e => setActivoVidaUtil(e.target.value)}
+                    placeholder="Ej: 3, 5, 10"/>
+                </div>
+              </div>
+            )}
             <div style={{display:'grid', gridTemplateColumns:'2fr 1fr', gap:12}}>
               <div className="form-group">
                 <label className="form-label">Monto *</label>
@@ -4881,32 +5303,51 @@ function Compras() {
               </select>
               {errCecoGasto && <div style={{color:'var(--danger, #ef4444)', fontSize:12, marginTop:4}}>El CECO es obligatorio para registrar un gasto.</div>}
             </div>
-            <div style={{background:'var(--bg-subtle)',borderRadius:8,padding:'12px 14px'}}>
-              <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',margin:0}}>
-                <input type="checkbox" checked={gastoGeneraCxP} onChange={e => setGastoGeneraCxP(e.target.checked)}/>
-                <span style={{fontWeight:600,fontSize:13}}>Generar Cuenta por Pagar</span>
-              </label>
-              <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:4,paddingLeft:24}}>Esta factura quedará pendiente de pago en Administración.</div>
-              {gastoGeneraCxP && (
-                <div style={{marginTop:12,display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                  <div className="form-group" style={{margin:0}}>
-                    <label className="form-label">Proveedor (opcional)</label>
-                    <select className="select" value={gastoCxpProvId} onChange={e => setGastoCxpProvId(e.target.value)}>
-                      <option value="">— De la lista —</option>
-                      {(proveedores || []).filter(p => p.estado !== 'inactivo').map(p => (
-                        <option key={p.id} value={p.id}>{p.razon_social}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group" style={{margin:0}}>
-                    <label className="form-label">Fecha vencimiento <span style={{color:'var(--danger)'}}>*</span></label>
-                    <input className="input" type="date" value={gastoCxpVence} onChange={e => setGastoCxpVence(e.target.value)}/>
-                  </div>
+            {!esActivoFijo && (
+              <div style={{background:'var(--bg-subtle)',borderRadius:8,padding:'12px 14px'}}>
+                <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>Estado del pago</div>
+                <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                  <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',margin:0}}>
+                    <input type="radio" name="estadoPago" value="pagado" checked={estadoPago==='pagado'} onChange={() => setEstadoPago('pagado')}/>
+                    <span style={{fontSize:13}}>Ya fue pagado al momento del registro</span>
+                  </label>
+                  <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',margin:0}}>
+                    <input type="radio" name="estadoPago" value="pendiente" checked={estadoPago==='pendiente'} onChange={() => setEstadoPago('pendiente')}/>
+                    <span style={{fontSize:13}}>Está pendiente de pago <span style={{color:'var(--fg-muted)',fontSize:12}}>(genera CxP)</span></span>
+                  </label>
                 </div>
-              )}
-            </div>
+                {estadoPago === 'pagado' && (
+                  <div style={{marginTop:10}}>
+                    <div className="form-group" style={{margin:0}}>
+                      <label className="form-label">Referencia de pago (opcional)</label>
+                      <input className="input" placeholder="N° operación, transferencia..." value={referenciaPago} onChange={e => setReferenciaPago(e.target.value)}/>
+                    </div>
+                  </div>
+                )}
+                {estadoPago === 'pendiente' && (
+                  <div style={{marginTop:10,display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                    <div className="form-group" style={{margin:0}}>
+                      <label className="form-label">Proveedor (opcional)</label>
+                      <select className="select" value={gastoCxpProvId} onChange={e => setGastoCxpProvId(e.target.value)}>
+                        <option value="">— De la lista —</option>
+                        {(proveedores || []).filter(p => p.estado !== 'inactivo').map(p => (
+                          <option key={p.id} value={p.id}>{p.razon_social}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{margin:0}}>
+                      <label className="form-label">Fecha vencimiento <span style={{color:'var(--danger)'}}>*</span></label>
+                      <input className="input" type="date" value={gastoCxpVence} onChange={e => setGastoCxpVence(e.target.value)}/>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="row" style={{gap:8, marginTop:8}}>
-              <button className="btn btn-primary flex-1" onClick={handleGastoSubmit} disabled={gastoGeneraCxP && !gastoCxpVence}>{I.check} Registrar Gasto</button>
+              <button className="btn btn-primary flex-1" onClick={handleGastoSubmit}
+                disabled={!esActivoFijo && estadoPago==='pendiente' && !gastoCxpVence}>
+                {I.check} {esActivoFijo ? 'Registrar activo fijo' : 'Registrar Gasto'}
+              </button>
               <button className="btn btn-ghost" onClick={resetGastoForm}>Cancelar</button>
             </div>
           </div>
@@ -5166,13 +5607,14 @@ function Cierre() {
   const getTecnico = (id) => { const p = (personalOperativo || []).find(x => x.id === id); return p?.nombre || id || '—'; };
   const getOS = (id) => osClientes.find(o => o.id === id);
 
-  const otsCerradas = ots.filter(o => ['cerrada', 'valorizada', 'facturada'].includes(o.estado));
+  const otsCerradas = ots.filter(o => ['pendiente_cierre', 'cerrada', 'valorizada', 'facturada'].includes(o.estado));
 
   const conformidadTipo = (ot) => {
     const c = cierresTecnicos.find(ct => ct.ot_id === ot.id);
     return c?.conformidad_cliente?.tipo || 'pendiente';
   };
   const estadoValorizacion = (ot) => {
+    if (ot.estado === 'pendiente_cierre') return 'pendiente_cierre';
     if (['valorizada', 'facturada'].includes(ot.estado)) return 'valorizada';
     return 'lista';
   };
@@ -5211,6 +5653,7 @@ function Cierre() {
   };
   const valorizBadge = (ot) => {
     const est = estadoValorizacion(ot);
+    if (est === 'pendiente_cierre') return <span className="badge badge-cyan">Pendiente cierre</span>;
     if (est === 'valorizada') return <span className="badge badge-gray">Valorizada</span>;
     return <span className="badge badge-cyan">Lista para valorizar</span>;
   };
@@ -5270,6 +5713,7 @@ function Cierre() {
             <label style={{fontSize:11}}>Estado valorización</label>
             <select className="select" value={filtros.valoriz} onChange={e => setFiltros(v => ({...v, valoriz: e.target.value}))}>
               <option value="">Todos</option>
+              <option value="pendiente_cierre">Pendiente cierre</option>
               <option value="lista">Lista para valorizar</option>
               <option value="valorizada">Valorizada</option>
             </select>
@@ -6946,6 +7390,13 @@ function createTicketDraftId() {
   return globalThis.crypto?.randomUUID?.() || `ticket_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
+const HILO_TIPO_META = {
+  observacion: { label: 'Observación', icon: I.eye, bg: 'var(--orange-lt)', color: 'var(--orange-dk)' },
+  evidencia: { label: 'Evidencia', icon: I.shield, bg: 'var(--cyan-lt)', color: 'var(--cyan-dk)' },
+  aprobacion: { label: 'Aprobación', icon: I.check, bg: 'var(--green-lt)', color: 'var(--green-dk)' },
+  reapertura: { label: 'Reapertura', icon: I.refresh, bg: 'var(--purple-lt)', color: 'var(--purple)' },
+};
+
 function Tickets() {
   const { addNotificacion, searchQuery, dataMode, empresa, cuentas, usuarios, authUser } = useApp();
   const ticketUploadRef = useRef(null);
@@ -6960,6 +7411,14 @@ function Tickets() {
   const [detailForm, setDetailForm] = useState(emptyTicketForm);
   const [detailSaving, setDetailSaving] = useState(false);
   const [detailEditing, setDetailEditing] = useState(false);
+  const [comentarios, setComentarios] = useState([]);
+  const [hiloLoading, setHiloLoading] = useState(false);
+  const [comentarioForm, setComentarioForm] = useState({ tipo: 'observacion', contenido: '', imagenFile: null, imagenPreview: '' });
+  const imagenEvidenciaRef = useRef(null);
+  const [savingComentario, setSavingComentario] = useState(false);
+  const [reabrirModal, setReobrirModal] = useState(false);
+  const [reabrirMotivo, setReobrirMotivo] = useState('');
+  const [reabriendo, setReabriendo] = useState(false);
 
   const useSupabaseTickets = dataMode === 'supabase';
 
@@ -6998,6 +7457,21 @@ function Tickets() {
     setDetailForm(ticketToForm(current));
     setDetailEditing(false);
   }, [detailTicketId, tickets]);
+
+  useEffect(() => {
+    setComentarioForm({ tipo: 'observacion', contenido: '', imagenFile: null, imagenPreview: '' });
+    if (!detailTicketId || !useSupabaseTickets) {
+      setComentarios([]);
+      return;
+    }
+    let alive = true;
+    setHiloLoading(true);
+    ticketsService.cargarComentariosTicket(detailTicketId)
+      .then(rows => { if (alive) setComentarios(rows); })
+      .catch(() => {})
+      .finally(() => { if (alive) setHiloLoading(false); });
+    return () => { alive = false; };
+  }, [detailTicketId, useSupabaseTickets]);
 
   const cuentaNombre = cuenta => cuenta?.nombre_comercial || cuenta?.razon_social || cuenta?.nombre || cuenta?.id || '';
   const usuarioNombre = usuario => usuario?.nombre || usuario?.email || usuario?.id || '';
@@ -7177,6 +7651,108 @@ function Tickets() {
     if (ticketId) cambiarEstado(ticketId, targetStatus);
   };
 
+  const actualizarSubestadoQc = (ticketId, qcEstado) => {
+    const original = tickets;
+    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, qc_estado: qcEstado } : t));
+    if (!useSupabaseTickets) return;
+    ticketsService.actualizarQcEstado(ticketId, qcEstado)
+      .then(updated => {
+        setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, ...updated } : t));
+      })
+      .catch(error => {
+        console.error('Error actualizando QC:', error);
+        setTickets(original);
+        addNotificacion(`No se pudo actualizar el estado QC: ${error.message}`);
+      });
+  };
+
+  const agregarComentario = async () => {
+    const current = tickets.find(t => t.id === detailTicketId);
+    if (!comentarioForm.contenido.trim()) {
+      addNotificacion('Escribe el contenido del comentario.');
+      return;
+    }
+    if (!current) return;
+    const usuarioNombreActual = authUser?.nombre || authUser?.email || 'Usuario';
+    setSavingComentario(true);
+    try {
+      let imagenUrl = null;
+      if (comentarioForm.imagenFile) {
+        imagenUrl = useSupabaseTickets
+          ? await ticketsService.subirImagenEvidencia(current.empresa_id || empresa?.id, current.id, comentarioForm.imagenFile)
+          : comentarioForm.imagenPreview;
+      }
+      const payload = {
+        tipo: comentarioForm.tipo,
+        contenido: comentarioForm.contenido.trim(),
+        imagen_url: imagenUrl,
+        usuario_id: authUser?.id || null,
+        usuario_nombre: usuarioNombreActual,
+      };
+      const entry = useSupabaseTickets
+        ? await ticketsService.agregarComentarioTicket(current.empresa_id || empresa?.id, current.id, payload)
+        : { id: globalThis.crypto?.randomUUID?.() || Date.now().toString(), ...payload, creado_en: new Date().toISOString() };
+      setComentarios(prev => [...prev, entry]);
+      setComentarioForm({ tipo: 'observacion', contenido: '', imagenFile: null, imagenPreview: '' });
+      if (imagenEvidenciaRef.current) imagenEvidenciaRef.current.value = '';
+    } catch (error) {
+      console.error('Error agregando comentario:', error);
+      addNotificacion(`No se pudo agregar el comentario: ${error.message}`);
+    } finally {
+      setSavingComentario(false);
+    }
+  };
+
+  const handleReobrirTicket = async () => {
+    if (!reabrirMotivo.trim()) {
+      addNotificacion('Escribe el motivo de reapertura.');
+      return;
+    }
+    const current = tickets.find(t => t.id === detailTicketId);
+    if (!current) return;
+    const usuarioNombreActual = authUser?.nombre || authUser?.email || 'Usuario';
+    const ahora = new Date().toISOString();
+    const reaperturaEntry = {
+      id: globalThis.crypto?.randomUUID?.() || Date.now().toString(),
+      tipo: 'reapertura',
+      contenido: reabrirMotivo.trim(),
+      imagen_url: null,
+      usuario_nombre: usuarioNombreActual,
+      creado_en: ahora,
+    };
+    if (!useSupabaseTickets) {
+      setTickets(prev => prev.map(t => t.id === current.id
+        ? { ...t, estado: 'qc', qc_estado: 'en_revision', fecha_resolucion: null, reabierto_en: ahora, veces_reabierto: (t.veces_reabierto || 0) + 1 }
+        : t
+      ));
+      setComentarios(prev => [...prev, reaperturaEntry]);
+      setReobrirModal(false);
+      setReobrirMotivo('');
+      addNotificacion('Ticket reabierto.');
+      return;
+    }
+    setReabriendo(true);
+    try {
+      const updated = await ticketsService.reabrirTicket(
+        current.id,
+        current.empresa_id || empresa?.id,
+        reabrirMotivo.trim(),
+        authUser?.id || null,
+        usuarioNombreActual
+      );
+      setTickets(prev => prev.map(t => t.id === current.id ? { ...t, ...updated } : t));
+      setComentarios(prev => [...prev, reaperturaEntry]);
+      setReobrirModal(false);
+      setReobrirMotivo('');
+      addNotificacion('Ticket reabierto.');
+    } catch (error) {
+      console.error('Error reabriendo ticket:', error);
+      addNotificacion(`No se pudo reabrir el ticket: ${error.message}`);
+    } finally {
+      setReabriendo(false);
+    }
+  };
+
   const query = String(searchQuery || '').toLowerCase();
   const filteredTickets = (tickets || []).filter(t => {
     const haystack = [
@@ -7246,19 +7822,24 @@ function Tickets() {
   const buildTicketCard = ticket => {
     const actionButtons = TICKET_COLUMNS
       .filter(column => column.k !== ticket.estado)
-      .map(column => (
-        <button
-          key={column.k}
-          type="button"
-          className="btn btn-sm btn-secondary"
-          onClick={event => {
-            event.stopPropagation();
-            cambiarEstado(ticket.id, column.k);
-          }}
-        >
-          {column.title}
-        </button>
-      ));
+      .map(column => {
+        const bloqueado = column.k === 'resuelto' && ticket.estado === 'qc' && ticket.qc_estado !== 'aprobado';
+        return (
+          <button
+            key={column.k}
+            type="button"
+            className="btn btn-sm btn-secondary"
+            disabled={bloqueado}
+            title={bloqueado ? 'Aprueba el QC antes de resolver' : undefined}
+            onClick={event => {
+              event.stopPropagation();
+              if (!bloqueado) cambiarEstado(ticket.id, column.k);
+            }}
+          >
+            {column.title}
+          </button>
+        );
+      });
     const slaEstado = ticket.sla_estado || 'ok';
     const tipoLabel = TICKET_TYPE_LABELS[ticket.tipo] || ticket.tipo || 'Ticket';
     const canalLabel = TICKET_CHANNEL_LABELS[ticket.canal_entrada] || ticket.canal_entrada || 'Canal';
@@ -7280,6 +7861,14 @@ function Tickets() {
             SLA {String(slaEstado).toUpperCase()}
           </span>
         </div>
+
+        {ticket.estado === 'qc' && (ticket.qc_estado === 'observado' || ticket.qc_estado === 'aprobado') && (
+          <div style={{marginBottom:6}}>
+            <span className="badge" style={{fontSize:9, background: ticket.qc_estado === 'aprobado' ? 'var(--green)' : 'var(--orange)', color:'#fff'}}>
+              {ticket.qc_estado === 'aprobado' ? 'APROBADO' : 'OBSERVADO'}
+            </span>
+          </div>
+        )}
 
         <div style={{fontSize:13, fontWeight:700, color:'var(--navy)', marginBottom:4, lineHeight:1.4}}>
           {ticket.titulo}
@@ -7417,16 +8006,39 @@ function Tickets() {
   const selectedCanalIcon = selectedTicket ? canalIcon(selectedCanal) : null;
   const flowActionButtons = selectedTicket ? TICKET_COLUMNS
     .filter(column => column.k !== selectedTicket.estado)
-    .map(column => (
-      <button
-        key={column.k}
-        type="button"
-        className="btn btn-secondary btn-sm"
-        onClick={() => cambiarEstado(selectedTicket.id, column.k)}
-      >
-        {column.title}
-      </button>
-    )) : [];
+    .map(column => {
+      const bloqueado = column.k === 'resuelto' && selectedTicket.estado === 'qc' && selectedTicket.qc_estado !== 'aprobado';
+      return (
+        <button
+          key={column.k}
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={bloqueado}
+          title={bloqueado ? 'Aprueba el QC antes de resolver' : undefined}
+          onClick={() => { if (!bloqueado) cambiarEstado(selectedTicket.id, column.k); }}
+        >
+          {column.title}
+        </button>
+      );
+    }) : [];
+
+  const qcSubEstadoPanel = selectedTicket?.estado === 'qc' ? (
+    <div style={{borderTop:'1px solid var(--border-subtle)', paddingTop:10, marginTop:10}}>
+      <div className="text-muted" style={{fontSize:11, fontWeight:700, marginBottom:6}}>Sub-estado QC</div>
+      <div className="row" style={{gap:6, flexWrap:'wrap'}}>
+        {[['en_revision','En revisión'],['observado','Observado'],['aprobado','Aprobado']].map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            className={`btn btn-sm ${selectedTicket.qc_estado === k ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => actualizarSubestadoQc(selectedTicket.id, k)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  ) : null;
   const detailStartEditButton = selectedTicketCanEdit && !detailEditing ? (
     <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDetailEditing(true)}>
       Editar
@@ -7518,11 +8130,199 @@ function Tickets() {
       </div>
       <div className="row" style={{gap:8, flexWrap:'wrap', alignItems:'center'}}>
         <span className={'badge ' + statusBadge(selectedTicket.estado)}>{selectedEstadoLabel}</span>
+        {selectedTicket.estado === 'qc' && selectedTicket.qc_estado && selectedTicket.qc_estado !== 'en_revision' && (
+          <span className="badge" style={{background: selectedTicket.qc_estado === 'aprobado' ? 'var(--green)' : 'var(--orange)', color:'#fff', fontSize:10}}>
+            {selectedTicket.qc_estado === 'aprobado' ? 'APROBADO' : 'OBSERVADO'}
+          </span>
+        )}
         <span className="text-muted" style={{fontSize:12}}>Cambiar a</span>
         {flowActionButtons}
       </div>
+      {qcSubEstadoPanel}
     </div>
   ) : null;
+  const reabrirButton = selectedTicket?.estado === 'resuelto' ? (
+    <button
+      type="button"
+      className="btn btn-secondary btn-sm"
+      onClick={() => setReobrirModal(true)}
+    >
+      {I.refresh} Reabrir ticket
+    </button>
+  ) : null;
+
+  const hiloPanel = selectedTicket ? (
+    <div className="card" style={{padding:16, marginBottom:16}}>
+      <div className="card-head" style={{padding:0, borderBottom:'none', marginBottom:10}}>
+        <h3>Hilo de resolución</h3>
+        {selectedTicket.veces_reabierto > 0 && (
+          <span className="badge" style={{background:'var(--orange)', color:'#fff', fontSize:10}}>
+            Reabierto {selectedTicket.veces_reabierto}x
+          </span>
+        )}
+      </div>
+      {hiloLoading ? (
+        <div className="text-muted" style={{fontSize:12}}>Cargando...</div>
+      ) : comentarios.length === 0 ? (
+        <div className="text-muted" style={{fontSize:12, padding:'4px 0 8px'}}>Sin entradas en el hilo.</div>
+      ) : (
+        <div style={{display:'flex', flexDirection:'column', gap:10, marginBottom:12}}>
+          {comentarios.map(c => {
+            const meta = HILO_TIPO_META[c.tipo] || HILO_TIPO_META.observacion;
+            return (
+              <div key={c.id} style={{display:'grid', gridTemplateColumns:'32px minmax(0,1fr)', gap:10, alignItems:'flex-start'}}>
+                <div style={{width:28, height:28, borderRadius:'50%', background:meta.bg, color:meta.color, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+                  <span style={{width:14, height:14, display:'flex'}}>{meta.icon}</span>
+                </div>
+                <div>
+                  <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:2}}>
+                    <span style={{fontSize:11, fontWeight:700, color:meta.color}}>{meta.label}</span>
+                    <span style={{fontSize:10, color:'var(--fg-muted)'}}>{c.usuario_nombre}</span>
+                    <span style={{fontSize:10, color:'var(--fg-muted)'}}>·</span>
+                    <span style={{fontSize:10, color:'var(--fg-muted)'}}>{c.creado_en ? new Date(c.creado_en).toLocaleString() : ''}</span>
+                  </div>
+                  <div style={{fontSize:12, color:'var(--fg)', lineHeight:1.5}}>{c.contenido}</div>
+                  {c.imagen_url && (
+                    <div style={{marginTop:6}}>
+                      <a href={c.imagen_url} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={c.imagen_url}
+                          alt="Evidencia"
+                          style={{maxWidth:120, maxHeight:80, borderRadius:4, cursor:'pointer', border:'1px solid var(--border-subtle)', objectFit:'cover', display:'block'}}
+                        />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div style={{borderTop:'1px solid var(--border-subtle)', paddingTop:12, marginTop:4}}>
+        <div style={{fontSize:11, fontWeight:700, color:'var(--fg-muted)', marginBottom:8}}>Agregar entrada</div>
+        <div style={{marginBottom:8}}>
+          <select
+            className="select"
+            style={{fontSize:12}}
+            value={comentarioForm.tipo}
+            onChange={e => setComentarioForm(prev => ({...prev, tipo: e.target.value}))}
+          >
+            <option value="observacion">Observación</option>
+            <option value="evidencia">Evidencia</option>
+            <option value="aprobacion">Aprobación</option>
+            <option value="reapertura">Reapertura</option>
+          </select>
+        </div>
+        <div className="input-group" style={{marginBottom:8}}>
+          <textarea
+            className="input"
+            rows="3"
+            placeholder="Descripción..."
+            value={comentarioForm.contenido}
+            onChange={e => setComentarioForm(prev => ({...prev, contenido: e.target.value}))}
+          />
+        </div>
+        <div style={{marginBottom:10}}>
+          <input
+            ref={imagenEvidenciaRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            style={{display:'none'}}
+            onChange={e => {
+              const file = e.target.files?.[0] || null;
+              if (!file) return;
+              const preview = URL.createObjectURL(file);
+              setComentarioForm(prev => ({...prev, imagenFile: file, imagenPreview: preview}));
+            }}
+          />
+          {comentarioForm.imagenPreview ? (
+            <div style={{display:'flex', alignItems:'flex-start', gap:8}}>
+              <img
+                src={comentarioForm.imagenPreview}
+                alt="Preview"
+                style={{width:64, height:48, objectFit:'cover', borderRadius:4, border:'1px solid var(--border-subtle)'}}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setComentarioForm(prev => ({...prev, imagenFile: null, imagenPreview: ''}));
+                  if (imagenEvidenciaRef.current) imagenEvidenciaRef.current.value = '';
+                }}
+              >
+                {I.x} Quitar imagen
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => imagenEvidenciaRef.current?.click()}
+            >
+              {I.camera} Adjuntar imagen
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          disabled={savingComentario || !comentarioForm.contenido.trim()}
+          onClick={agregarComentario}
+        >
+          {savingComentario ? 'Guardando...' : 'Agregar'}
+        </button>
+      </div>
+    </div>
+  ) : null;
+
+  const reabrirModalJsx = reabrirModal && selectedTicket ? (
+    <>
+      <div
+        className="side-panel-backdrop"
+        style={{zIndex:1200}}
+        onClick={() => { setReobrirModal(false); setReobrirMotivo(''); }}
+      />
+      <div style={{
+        position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)',
+        background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12,
+        padding:24, width:'min(440px, 92vw)', zIndex:1300, boxShadow:'0 8px 32px rgba(0,0,0,0.15)',
+      }}>
+        <div className="card-head" style={{padding:0, borderBottom:'none', marginBottom:12}}>
+          <h3>Reabrir ticket</h3>
+          <button type="button" className="icon-btn" onClick={() => { setReobrirModal(false); setReobrirMotivo(''); }}>{I.x}</button>
+        </div>
+        <div className="text-muted" style={{fontSize:13, marginBottom:12}}>
+          El ticket volverá a QC en sub-estado "En revisión". El motivo quedará registrado en el hilo.
+        </div>
+        <div className="input-group" style={{marginBottom:16}}>
+          <label>Motivo de reapertura *</label>
+          <textarea
+            className="input"
+            rows="3"
+            autoFocus
+            placeholder="Explica por qué se reabre este ticket..."
+            value={reabrirMotivo}
+            onChange={e => setReobrirMotivo(e.target.value)}
+          />
+        </div>
+        <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
+          <button type="button" className="btn btn-secondary" onClick={() => { setReobrirModal(false); setReobrirMotivo(''); }}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={reabriendo || !reabrirMotivo.trim()}
+            onClick={handleReobrirTicket}
+          >
+            {reabriendo ? 'Reabriendo...' : 'Confirmar reapertura'}
+          </button>
+        </div>
+      </div>
+    </>
+  ) : null;
+
   const detailPanel = selectedTicket ? (
     <>
       <div className="side-panel-backdrop" onClick={() => setDetailTicketId(null)}/>
@@ -7560,6 +8360,8 @@ function Tickets() {
           </div>
 
           {detailFlowPanel}
+          {reabrirButton}
+          {hiloPanel}
 
           <FileUpload
             entidadTipo="tickets"
@@ -7670,6 +8472,7 @@ function Tickets() {
       {ticketsView}
       {ticketPanel}
       {detailPanel}
+      {reabrirModalJsx}
     </>
   );
 }
@@ -7731,64 +8534,164 @@ function workerTurno(turnos, worker = {}) {
   return (turnos || []).find(t => t.id === worker.turno_id) || {};
 }
 
-function calcularIR5ta(remuneracionBrutaMensual) {
-  const UIT = 5150;
-  const base = (remuneracionBrutaMensual * 12) - (7 * UIT);
+function calcularIR5ta(remuneracionBrutaMensual, UIT = 5500, mesesRestantes = 12, retencionesAcumuladas = 0) {
+  const rentaBrutaAnual = (remuneracionBrutaMensual * 12);
+  const base = rentaBrutaAnual - (7 * UIT);
   if (base <= 0) return 0;
-  if (base <= 5 * UIT) return (base * 0.08) / 12;
-  if (base <= 20 * UIT) return ((5 * UIT * 0.08) + ((base - 5 * UIT) * 0.14)) / 12;
-  if (base <= 35 * UIT) return ((5 * UIT * 0.08) + (15 * UIT * 0.14) + ((base - 20 * UIT) * 0.17)) / 12;
-  if (base <= 45 * UIT) return ((5 * UIT * 0.08) + (15 * UIT * 0.14) + (15 * UIT * 0.17) + ((base - 35 * UIT) * 0.20)) / 12;
-  return ((5 * UIT * 0.08) + (15 * UIT * 0.14) + (15 * UIT * 0.17) + (10 * UIT * 0.20) + ((base - 45 * UIT) * 0.30)) / 12;
+  let impuesto = 0;
+  if (base <= 5 * UIT)       impuesto = base * 0.08;
+  else if (base <= 20 * UIT) impuesto = 5*UIT*0.08 + (base - 5*UIT)*0.14;
+  else if (base <= 35 * UIT) impuesto = 5*UIT*0.08 + 15*UIT*0.14 + (base - 20*UIT)*0.17;
+  else if (base <= 45 * UIT) impuesto = 5*UIT*0.08 + 15*UIT*0.14 + 15*UIT*0.17 + (base - 35*UIT)*0.20;
+  else                       impuesto = 5*UIT*0.08 + 15*UIT*0.14 + 15*UIT*0.17 + 10*UIT*0.20 + (base - 45*UIT)*0.30;
+  const pendiente = Math.max(0, impuesto - retencionesAcumuladas);
+  return pendiente / Math.max(1, mesesRestantes);
 }
 
-function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo) {
-  const diasLaborables = turno.dias_variables ? 22 : 22;
-  const horasEfectivas = Number(turno.horas_efectivas) || 8;
-  const sueldoBase = Number(datosNomina?.sueldo_base || trabajador.remuneracion || 3000);
-  const valorDia = sueldoBase / diasLaborables;
-  const valorHora = sueldoBase / (diasLaborables * horasEfectivas);
+// Calcular horas extra split: primeras 2h/día al 25%, desde 3ra h/día al 35%
+function calcularHorasExtra(registros, valorHora) {
+  let tramo1Min = 0;
+  let tramo2Min = 0;
+  registros.forEach(r => {
+    const extraMin = Number(r.horas_extra_min) || 0;
+    if (extraMin <= 0) return;
+    const limite1 = 2 * 60; // 2h en minutos
+    if (extraMin <= limite1) {
+      tramo1Min += extraMin;
+    } else {
+      tramo1Min += limite1;
+      tramo2Min += extraMin - limite1;
+    }
+  });
+  const addTramo1 = tramo1Min * (valorHora * 1.25 / 60);
+  const addTramo2 = tramo2Min * (valorHora * 1.35 / 60);
+  return { tramo1Min, tramo2Min, addHorasExtra: addTramo1 + addTramo2, addTramo1, addTramo2 };
+}
+
+// Calcular días computables para régimen minero en un mes
+function calcularDiasComputables(anio, mes, regimen_jornada, fecha_inicio_ciclo) {
+  if (!fecha_inicio_ciclo || regimen_jornada === 'general') return null;
+  const cicloMap = { minero_14x7: { trabajo: 14, descanso: 7 }, minero_20x10: { trabajo: 20, descanso: 10 }, minero_28x14: { trabajo: 28, descanso: 14 } };
+  const ciclo = cicloMap[regimen_jornada];
+  if (!ciclo) return null;
+  const duracionCiclo = ciclo.trabajo + ciclo.descanso;
+  const inicioMes = new Date(anio, mes - 1, 1);
+  const finMes = new Date(anio, mes, 0);
+  const inicio = new Date(fecha_inicio_ciclo);
+  let diasTrabajo = 0;
+  for (let d = new Date(inicioMes); d <= finMes; d.setDate(d.getDate() + 1)) {
+    const diffDias = Math.floor((d - inicio) / 86400000);
+    const posEnCiclo = ((diffDias % duracionCiclo) + duracionCiclo) % duracionCiclo;
+    if (posEnCiclo < ciclo.trabajo) diasTrabajo++;
+  }
+  return diasTrabajo;
+}
+
+function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg = {}) {
+  const {
+    regimen_laboral_empresa = 'general',
+    uit_vigente = 5500,
+    ram_tope_afp = 12598.91,
+    pct_prima_seguro = 1.37,
+  } = empresaCfg;
+
+  const regimenJornada = datosNomina?.regimen_jornada || trabajador.regimen_jornada || 'general';
+  const esMinero = regimenJornada !== 'general';
+  const horasEfectivas = esMinero ? (Number(datosNomina?.horas_diarias_pactadas || trabajador.horas_diarias_pactadas) || 12) : (Number(turno.horas_efectivas) || 8);
+  const sueldoBase = Number(datosNomina?.sueldo_base || trabajador.remuneracion || trabajador.sueldo_base || 3000);
+
+  // Días computables (régimen minero)
+  const fechaInicioCiclo = datosNomina?.fecha_inicio_ciclo || trabajador.fecha_inicio_ciclo;
+  const diasComputables = esMinero
+    ? (calcularDiasComputables(periodo?.anio || new Date().getFullYear(), periodo?.mes || new Date().getMonth() + 1, regimenJornada, fechaInicioCiclo) || 22)
+    : null;
+  const diasLaborables = 22;
+  const diasBase = esMinero ? (diasComputables || 22) : diasLaborables;
+
+  const valorDia = sueldoBase / 30;
+  const valorHora = esMinero ? sueldoBase / (diasBase * horasEfectivas) : sueldoBase / (30 * horasEfectivas);
   const valorMinuto = valorHora / 60;
+
   const asistencias = registros.filter(r => !r.es_falta).length;
   const faltasInjustificadas = registros.filter(r => r.estado === 'falta').length;
   const faltasJustificadas = registros.filter(r => r.estado === 'falta_justificada').length;
   const tardanzas = registros.filter(r => r.estado === 'tardanza').length;
-  const minutosTardanza = registros.reduce((sum, r) => sum + (Number(r.tardanza_min) || 0), 0);
-  const horasExtraMin = registros.reduce((sum, r) => sum + (Number(r.horas_extra_min) || 0), 0);
+  const minutosTardanza = registros.reduce((s, r) => s + (Number(r.tardanza_min) || 0), 0);
+
   const descFaltas = faltasInjustificadas * valorDia;
   const descTardanzas = minutosTardanza * valorMinuto;
-  const addHorasExtra = horasExtraMin * ((valorHora * 1.25) / 60);
-  const asignacionFamiliar = datosNomina?.tiene_hijos ? 102.5 : 0;
-  const remuneracionBruta = sueldoBase - descFaltas - descTardanzas + addHorasExtra + asignacionFamiliar;
-  const sistema = datosNomina?.sistema_pensionario || 'AFP';
-  const descPensiones = remuneracionBruta * (sistema === 'AFP' ? 0.1324 : 0.13);
-  const descPrestamo = Number(datosNomina?.cuota_prestamo_mes || 0);
+  const { tramo1Min, tramo2Min, addHorasExtra, addTramo1, addTramo2 } = calcularHorasExtra(registros, valorHora);
+  const horasExtraMin = tramo1Min + tramo2Min;
+
+  const asignacionFamiliar = datosNomina?.tiene_hijos || trabajador.tiene_hijos ? 102.5 : 0;
+  const bonifAltitud = esMinero ? (Number(datosNomina?.bonif_altitud || trabajador.bonif_altitud) || 0) * (diasBase / 30) : 0;
+
+  // Remuneración proporcional para minero si no completó ciclo
+  const sueldoProporcional = esMinero ? sueldoBase * (diasBase / 30) : sueldoBase;
+  const remuneracionBruta = sueldoProporcional - descFaltas - descTardanzas + addHorasExtra + asignacionFamiliar + bonifAltitud;
+
+  // ── Sistema previsional ──
+  const sistema = datosNomina?.sistema_pensionario || trabajador.sistema_pensionario || 'AFP';
+  const afpNombre = datosNomina?.afp_nombre || trabajador.afp_nombre || 'Integra';
+  const tipoComisionAfp = datosNomina?.tipo_comision_afp || trabajador.tipo_comision_afp || 'mixta';
+  const pctComisionFlujo = Number(datosNomina?.pct_comision_afp_flujo || trabajador.pct_comision_afp_flujo || 0);
+
+  // AFP: tres componentes independientes
+  const baseAfp = remuneracionBruta;
+  const baseRam = Math.min(baseAfp, Number(ram_tope_afp));
+  const aporteAfp = sistema === 'AFP' ? baseAfp * 0.10 : 0;
+  const comisionFlujoCal = (sistema === 'AFP' && tipoComisionAfp === 'flujo') ? baseAfp * (pctComisionFlujo / 100) : 0;
+  const primaSeguro = sistema === 'AFP' ? baseRam * (Number(pct_prima_seguro) / 100) : 0;
+  const descOnp = sistema === 'ONP' ? remuneracionBruta * 0.13 : 0;
+  const descPensiones = aporteAfp + comisionFlujoCal + primaSeguro + descOnp;
+
+  const descPrestamo = Number(datosNomina?.cuota_prestamo_mes || trabajador.cuota_prestamo_mes || 0);
   const descAnticipo = Number(datosNomina?.anticipo_periodo || 0);
-  const descJudicial = Number(datosNomina?.descuento_judicial || 0);
-  const totalDescuentos = descPensiones + descPrestamo + descAnticipo + descJudicial;
-  const retencionIR = calcularIR5ta(remuneracionBruta);
-  const neto = remuneracionBruta - totalDescuentos - retencionIR;
+  const descJudicial = Number(datosNomina?.descuento_judicial || trabajador.descuento_judicial || 0);
+  const retencionIR = calcularIR5ta(remuneracionBruta, Number(uit_vigente));
+  const totalDescuentos = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR;
+  const neto = remuneracionBruta - totalDescuentos;
+
+  // ── Cargas empresa ──
   const essalud = remuneracionBruta * 0.09;
-  const cts = remuneracionBruta / 12;
-  const gratificacion = remuneracionBruta / 6;
-  const vacaciones = remuneracionBruta / 12;
-  const totalCargas = essalud + cts + gratificacion + vacaciones;
-  const costoReal = remuneracionBruta + totalCargas;
-  const horasPeriodo = diasLaborables * horasEfectivas;
+  const esMicro = regimen_laboral_empresa === 'microempresa';
+  const tieneCts = !esMicro && trabajador.tipo_contrato !== 'Recibos por honorarios';
+  const tieneGratif = !esMicro && trabajador.tipo_contrato !== 'Recibos por honorarios';
+  // Remuneración computable = básico + AF + 1/6 gratif estimada
+  const gratAnual = tieneGratif ? sueldoProporcional + asignacionFamiliar : 0;
+  const remComputable = sueldoProporcional + asignacionFamiliar + (tieneGratif ? gratAnual / 6 : 0);
+  const cts = tieneCts ? remComputable / 12 : 0;
+  const gratificacion = tieneGratif ? remComputable / 6 : 0;
+  const bonifExtraordinaria = tieneGratif ? gratificacion * 0.09 : 0;
+  const diasVacaciones = regimen_laboral_empresa === 'general' ? 30 : 15;
+  const vacaciones = (sueldoProporcional + asignacionFamiliar) / 12 * (diasVacaciones / 30);
+  const totalCargas = essalud + cts + gratificacion + bonifExtraordinaria + vacaciones;
+  const costoReal = remuneracionBruta + essalud + cts + gratificacion + bonifExtraordinaria + vacaciones;
+  const horasPeriodo = diasBase * horasEfectivas;
+
   return {
     trabajador_id: trabajador.id, trabajador, datosNomina, turno, periodo,
-    dias_laborables: diasLaborables, dias_asistidos: asistencias,
+    regimen_jornada: regimenJornada, regimen_empresa: regimen_laboral_empresa,
+    dias_laborables: diasLaborables, dias_asistidos: asistencias, dias_computables: diasComputables,
     faltas_injustificadas: faltasInjustificadas, faltas_justificadas: faltasJustificadas,
-    tardanzas, minutos_tardanza_total: minutosTardanza, horas_extra_total_min: horasExtraMin,
-    sueldo_base: sueldoBase, valor_dia: valorDia, valor_hora: valorHora,
+    tardanzas, minutos_tardanza_total: minutosTardanza,
+    horas_extra_total_min: horasExtraMin, horas_extra_tramo1_min: tramo1Min, horas_extra_tramo2_min: tramo2Min,
+    add_tramo1: addTramo1, add_tramo2: addTramo2,
+    sueldo_base: sueldoBase, sueldo_proporcional: sueldoProporcional,
+    valor_dia: valorDia, valor_hora: valorHora,
     desc_faltas: descFaltas, desc_tardanzas: descTardanzas, add_horas_extra: addHorasExtra,
-    asignacion_familiar: asignacionFamiliar, remuneracion_bruta: remuneracionBruta,
-    desc_pensiones: descPensiones, sistema_pensionario: sistema,
+    asignacion_familiar: asignacionFamiliar, bonif_altitud: bonifAltitud,
+    remuneracion_bruta: remuneracionBruta,
+    sistema_pensionario: sistema, afp_nombre: afpNombre, tipo_comision_afp: tipoComisionAfp,
+    aporte_afp: aporteAfp, comision_flujo: comisionFlujoCal, prima_seguro: primaSeguro, desc_onp: descOnp,
+    desc_pensiones: descPensiones,
     desc_prestamo: descPrestamo, desc_anticipo: descAnticipo, desc_judicial: descJudicial,
-    total_descuentos: totalDescuentos, retencion_ir: retencionIR, neto,
-    essalud, cts_mensualizado: cts, gratificacion_mensualizada: gratificacion,
-    vacaciones_mensualizadas: vacaciones, total_cargas: totalCargas,
-    costo_real_empresa: costoReal, costo_hora_real: costoReal / horasPeriodo
+    retencion_ir: retencionIR, total_descuentos: totalDescuentos, neto,
+    essalud, cts_mensualizado: cts, tiene_cts: tieneCts,
+    gratificacion_mensualizada: gratificacion, bonif_extraordinaria: bonifExtraordinaria, tiene_gratificacion: tieneGratif,
+    vacaciones_mensualizadas: vacaciones,
+    total_cargas: totalCargas, costo_real_empresa: costoReal,
+    costo_hora_real: horasPeriodo > 0 ? costoReal / horasPeriodo : 0,
   };
 }
 
@@ -7913,34 +8816,56 @@ function ControlAsistencia() {
   const [panel, setPanel] = useState(false);
   const [masivo, setMasivo] = useState(false);
   const [kiosk, setKiosk] = useState(false);
+
+  // Estados Mineros
+  const [ciclosMineros, setCiclosMineros] = useState([]);
+  const [panelMinero, setPanelMinero] = useState(false);
+  const formMineroBase = { id:'', personal_id:'', regimen_jornada:'', fecha_inicio_ciclo:'', horas_extra_ciclo:0, estado_ciclo:'completo', incidencias:[] };
+  const [formMinero, setFormMinero] = useState(formMineroBase);
+
+  // Trabajadores
   const trabajadores = [
-    ...personalOperativo.map(p => ({ ...p, trabajador_tipo:'operativo', area:p.area || 'Operativo', remuneracion:p.remuneracion || p.sueldo_base || 3000 })),
-    ...personalAdmin.map(p => ({ ...p, trabajador_tipo:'administrativo', id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:p.turno_id || 'tur_005', remuneracion:p.remuneracion || 3000 }))
+    ...personalOperativo.map(p => ({ ...p, trabajador_tipo:'operativo', area:p.area || 'Operativo', remuneracion:p.remuneracion || p.sueldo_base || 3000, regimen_jornada: p.regimen_laboral || p.regimen_jornada || 'general', horas_diarias_pactadas: p.horas_diarias_pactadas || 12 })),
+    ...personalAdmin.filter(p => p.tipo_contrato !== 'Honorarios').map(p => ({ ...p, trabajador_tipo:'administrativo', id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:p.turno_id || 'tur_005', remuneracion:p.remuneracion || 3000, regimen_jornada: p.regimen_laboral || p.regimen_jornada || 'general', horas_diarias_pactadas: p.horas_diarias_pactadas || 12 }))
   ];
-  const [form, setForm] = useState({ trabajador_id:trabajadores[0]?.id || '', fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'', latitud:'', longitud:'', refrigerio_tomado_minutos:0, ubicacion_estado:'' });
+
+  const trabajadoresGenerales = trabajadores.filter(t => !t.regimen_jornada.startsWith('minero'));
+  const trabajadoresMineros = trabajadores.filter(t => t.regimen_jornada.startsWith('minero'));
+
   useEffect(() => {
-    if (!form.trabajador_id && trabajadores[0]?.id) {
-      setForm(prev => ({ ...prev, trabajador_id: trabajadores[0].id }));
+    if (trabajadoresMineros.length > 0) {
+      rrhhService.getCiclosMineros(empresa.id).then(setCiclosMineros).catch(console.error);
     }
-  }, [form.trabajador_id, trabajadores[0]?.id]);
-  const trabajador = trabajadores.find(t => t.id === form.trabajador_id) || trabajadores[0];
+  }, [empresa.id, trabajadoresMineros.length]);
+
+  const [form, setForm] = useState({ trabajador_id:trabajadoresGenerales[0]?.id || '', fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'', latitud:'', longitud:'', refrigerio_tomado_minutos:0, ubicacion_estado:'' });
+  useEffect(() => {
+    if (!form.trabajador_id && trabajadoresGenerales[0]?.id) {
+      setForm(prev => ({ ...prev, trabajador_id: trabajadoresGenerales[0].id }));
+    }
+  }, [form.trabajador_id, trabajadoresGenerales[0]?.id]);
+
+  const trabajador = trabajadoresGenerales.find(t => t.id === form.trabajador_id) || trabajadoresGenerales[0];
   const turno = workerTurno(turnos, trabajador || {});
   const turnoPersistibleId = turnos.some(t => t.id === turno.id) ? turno.id : null;
   const resultado = calcularResultadoAsistencia(form.hora_entrada, form.hora_salida, turno, form.asistio === 'no', form.justificada, form.refrigerio_tomado_minutos);
   const currentMonth = fecha.substring(0, 7);
   const registrosPeriodo = registrosAsistencia.filter(r => r.fecha.startsWith(currentMonth));
-  const diaRows = trabajadores.map(t => {
+
+  const diaRows = trabajadoresGenerales.map(t => {
     const reg = registrosAsistencia.find(r => r.trabajador_id === t.id && r.fecha === fecha);
     const trn = workerTurno(turnos, t);
     const calc = reg ? calcularResultadoAsistencia(reg.hora_entrada, reg.hora_salida, trn, reg.es_falta, reg.justificada) : { estado:'falta', label:'Falta', horas_trabajadas_min:0, tardanza_min:0, horas_extra_min:0 };
     return { trabajador:t, turno:trn, registro:reg, calc };
   });
+
   const kpis = {
-    total: trabajadores.length,
-    completos: registrosPeriodo.filter(r => r.estado === 'completo' || r.estado === 'horas_extra').length,
-    tardanzas: registrosPeriodo.filter(r => r.estado === 'tardanza').length,
-    faltas: registrosPeriodo.filter(r => r.estado === 'falta' || r.estado === 'falta_justificada').length
+    total: trabajadoresGenerales.length,
+    completos: registrosPeriodo.filter(r => (r.estado === 'completo' || r.estado === 'horas_extra') && !r.regimen_jornada?.startsWith('minero')).length,
+    tardanzas: registrosPeriodo.filter(r => r.estado === 'tardanza' && !r.regimen_jornada?.startsWith('minero')).length,
+    faltas: registrosPeriodo.filter(r => (r.estado === 'falta' || r.estado === 'falta_justificada') && !r.regimen_jornada?.startsWith('minero')).length
   };
+
   const guardarRegistro = async (e) => {
     e?.preventDefault?.();
     if (!turnoPersistibleId) {
@@ -7955,7 +8880,8 @@ function ControlAsistencia() {
       horas_trabajadas_min:resultado.horas_trabajadas_min, tardanza_min:resultado.tardanza_min,
       horas_extra_min:resultado.horas_extra_min, estado:resultado.estado, es_falta:form.asistio === 'no',
       justificada:form.justificada, motivo_falta:form.justificada ? form.motivo_falta : null, notas:form.notas,
-      latitud:form.latitud, longitud:form.longitud, refrigerio_tomado_minutos:form.refrigerio_tomado_minutos ? Number(form.refrigerio_tomado_minutos) : 0
+      latitud:form.latitud, longitud:form.longitud, refrigerio_tomado_minutos:form.refrigerio_tomado_minutos ? Number(form.refrigerio_tomado_minutos) : 0,
+      regimen_jornada: 'general'
     };
     
     const existente = registrosAsistencia.find(r => r.trabajador_id === form.trabajador_id && r.fecha === form.fecha);
@@ -8000,7 +8926,8 @@ function ControlAsistencia() {
     const nuevoRegistro = {
       empresa_id:empresa.id, trabajador_id:form.trabajador_id, trabajador_tipo: trabajador?.trabajador_tipo || 'operativo', fecha:form.fecha, turno_id:turnoPersistibleId,
       es_falta:false, justificada:false, motivo_falta:null, notas:'Marcación móvil', latitud:form.latitud, longitud:form.longitud,
-      refrigerio_tomado_minutos: form.refrigerio_tomado_minutos ? Number(form.refrigerio_tomado_minutos) : 0
+      refrigerio_tomado_minutos: form.refrigerio_tomado_minutos ? Number(form.refrigerio_tomado_minutos) : 0,
+      regimen_jornada: 'general'
     };
 
     let calc = { horas_trabajadas_min:0, tardanza_min:0, horas_extra_min:0, estado:'incompleto', label:'Incompleto' };
@@ -8055,17 +8982,120 @@ function ControlAsistencia() {
     });
     setPanel(true);
   };
+
   const guardarMasivo = () => {
-    const nuevos = trabajadores.map(t => {
+    const nuevos = trabajadoresGenerales.map(t => {
       const trn = workerTurno(turnos, t);
       const calc = calcularResultadoAsistencia(trn.hora_entrada, trn.hora_salida, trn, false, false);
-      return { id:`asis_${Date.now()}_${t.id}`, empresa_id:empresa.id, trabajador_id:t.id, fecha, turno_id:trn.id, hora_entrada:trn.hora_entrada, hora_salida:trn.hora_salida, horas_trabajadas_min:calc.horas_trabajadas_min, tardanza_min:0, horas_extra_min:calc.horas_extra_min, estado:calc.estado, es_falta:false, justificada:false, motivo_falta:null, notas:'Registro masivo' };
+      return { id:`asis_${Date.now()}_${t.id}`, empresa_id:empresa.id, trabajador_id:t.id, fecha, turno_id:trn.id, hora_entrada:trn.hora_entrada, hora_salida:trn.hora_salida, horas_trabajadas_min:calc.horas_trabajadas_min, tardanza_min:0, horas_extra_min:calc.horas_extra_min, estado:calc.estado, es_falta:false, justificada:false, motivo_falta:null, notas:'Registro masivo', regimen_jornada: 'general' };
     });
-    setRegistrosAsistencia(prev => [...nuevos, ...prev.filter(r => r.fecha !== fecha)]);
-    addNotificacion('Registro masivo del dia guardado.');
+    setRegistrosAsistencia(prev => [...nuevos, ...prev.filter(r => r.fecha !== fecha && r.regimen_jornada !== 'minero')]);
+    addNotificacion('Registro masivo del dia guardado para el Régimen General.');
     setMasivo(false);
   };
-  const resumenTrabajador = trabajadores.find(t => t.id === form.trabajador_id) || trabajadores[0];
+
+  // ── Funciones Minero ──
+  const getCicloDias = (regimen) => {
+    if (regimen === 'minero_14x7') return { t: 14, d: 7 };
+    if (regimen === 'minero_20x10') return { t: 20, d: 10 };
+    if (regimen === 'minero_28x14') return { t: 28, d: 14 };
+    return { t: 14, d: 7 };
+  };
+
+  const calcularFechaFinCiclo = (inicio, diasT, diasD) => {
+    if (!inicio) return '';
+    const d = new Date(inicio);
+    d.setDate(d.getDate() + diasT + diasD - 1);
+    return d.toISOString().split('T')[0];
+  };
+
+  const abrirRegistroMinero = (trabajador, ciclo = null) => {
+    if (ciclo) {
+      setFormMinero({ ...ciclo, incidencias: ciclo.incidencias || [] });
+    } else {
+      const { t, d } = getCicloDias(trabajador.regimen_jornada);
+      const hoy = new Date().toISOString().split('T')[0];
+      setFormMinero({ ...formMineroBase, personal_id: trabajador.id, regimen_jornada: trabajador.regimen_jornada, fecha_inicio_ciclo: hoy });
+    }
+    setPanelMinero(true);
+  };
+
+  const guardarCicloMinero = async (e) => {
+    e.preventDefault();
+    const t = trabajadoresMineros.find(x => x.id === formMinero.personal_id);
+    if (!t) return;
+    const { t: diasT, d: diasD } = getCicloDias(t.regimen_jornada);
+    const fecha_fin = calcularFechaFinCiclo(formMinero.fecha_inicio_ciclo, diasT, diasD);
+    const cicloParams = {
+      personal_id: t.id, personal_nombre: t.nombre, personal_tipo: t.trabajador_tipo,
+      regimen_jornada: t.regimen_jornada, fecha_inicio_ciclo: formMinero.fecha_inicio_ciclo,
+      fecha_fin_ciclo: fecha_fin, dias_ciclo_trabajo: diasT, dias_ciclo_descanso: diasD,
+      estado_ciclo: formMinero.estado_ciclo, incidencias: formMinero.incidencias,
+      horas_extra_ciclo: Number(formMinero.horas_extra_ciclo || 0)
+    };
+
+    // Generar registros diarios
+    const diarios = [];
+    const duracion = diasT + diasD;
+    const inicio = new Date(formMinero.fecha_inicio_ciclo);
+    for (let i = 0; i < duracion; i++) {
+      const d = new Date(inicio); d.setDate(d.getDate() + i);
+      const fechaStr = d.toISOString().split('T')[0];
+      const esTrabajo = i < diasT;
+      const incidencia = formMinero.incidencias.find(inc => inc.fecha === fechaStr);
+      let estado = esTrabajo ? 'completo' : 'descanso';
+      let esFalta = false;
+      let justificada = false;
+      let extra = 0;
+
+      if (incidencia) {
+        if (incidencia.tipo === 'ausencia_injustificada') { estado = 'falta'; esFalta = true; }
+        else if (incidencia.tipo === 'ausencia_justificada' || incidencia.tipo === 'descanso_medico' || incidencia.tipo === 'accidente_trabajo') { estado = 'falta_justificada'; esFalta = true; justificada = true; }
+        else if (incidencia.tipo === 'feriado_laborado') { estado = 'completo'; extra = Number(incidencia.horas_extra || 0) * 60; }
+      }
+
+      diarios.push({
+        trabajador_id: t.id, trabajador_tipo: t.trabajador_tipo, fecha: fechaStr,
+        turno_id: t.turno_id || null, hora_entrada: esTrabajo && !esFalta ? '08:00' : null, hora_salida: esTrabajo && !esFalta ? '20:00' : null,
+        horas_trabajadas_min: esTrabajo && !esFalta ? t.horas_diarias_pactadas * 60 : 0, tardanza_min: 0,
+        horas_extra_min: extra, estado, es_falta: esFalta, justificada, motivo_falta: incidencia?.tipo || null,
+        notas: incidencia?.descripcion || null, origen_registro: 'ciclo_minero'
+      });
+    }
+
+    try {
+      if (formMinero.id) {
+        const data = await rrhhService.actualizarCicloMinero(formMinero.id, cicloParams, diarios);
+        setCiclosMineros(prev => prev.map(c => c.id === formMinero.id ? data : c));
+        // actualizar UI cache
+        setRegistrosAsistencia(prev => [...diarios, ...prev.filter(r => r.ciclo_minero_id !== formMinero.id)]);
+      } else {
+        const data = await rrhhService.crearCicloMinero(empresa.id, cicloParams, diarios);
+        setCiclosMineros(prev => [data, ...prev]);
+        setRegistrosAsistencia(prev => [...diarios.map(r=>({...r, ciclo_minero_id: data.id, regimen_jornada: data.regimen_jornada})), ...prev]);
+      }
+      addNotificacion('Ciclo minero guardado y registros diarios generados.');
+    } catch(err) {
+      addNotificacion('Error guardando ciclo minero: ' + (err.message || ''));
+    }
+    setPanelMinero(false);
+  };
+
+  const agregarIncidenciaMinero = () => {
+    setFormMinero(prev => ({...prev, incidencias: [...prev.incidencias, { tipo: 'ausencia_injustificada', fecha: formMinero.fecha_inicio_ciclo, descripcion: '', horas_extra: 0, dias_subsidio: 0 }]}));
+  };
+  const actualizarIncidencia = (idx, campo, valor) => {
+    const incs = [...formMinero.incidencias];
+    incs[idx][campo] = valor;
+    setFormMinero(prev => ({...prev, incidencias: incs}));
+  };
+  const eliminarIncidencia = (idx) => {
+    const incs = formMinero.incidencias.filter((_, i) => i !== idx);
+    setFormMinero(prev => ({...prev, incidencias: incs}));
+  };
+
+
+  const resumenTrabajador = (trabajadoresGenerales.find(t => t.id === form.trabajador_id) || trabajadoresMineros.find(t => t.id === form.trabajador_id)) || trabajadores[0];
   const resumenRegs = registrosPeriodo.filter(r => r.trabajador_id === resumenTrabajador?.id);
   const resumenTurno = workerTurno(turnos, resumenTrabajador);
   
@@ -8083,21 +9113,165 @@ function ControlAsistencia() {
   const endOfWeek = new Date(startOfWeek.getTime() + 6*86400000);
   const semanaTexto = `Semana del ${startOfWeek.getDate()} al ${endOfWeek.getDate()} de ${mesNombreCap}`;
 
+  // Tabs
+  const allTabs = [['diaria','Vista diaria'],['semanal','Vista semanal'],['mensual','Vista mensual'],['resumen','Resumen por trabajador']];
+  if (trabajadoresMineros.length > 0) allTabs.push(['minero','Régimen Minero']);
+
   return (
     <>
       <div className="page-header">
         <div><h1 className="page-title">Control de Asistencia</h1><div className="page-sub">Registro manual, tardanzas y horas trabajadas</div></div>
         <div className="row" style={{gap:10}}><button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}} onClick={() => setKiosk(true)}>{I.clock} Reloj Control (Móvil)</button><button className="btn btn-secondary" onClick={() => setMasivo(true)}>Registro masivo</button><button className="btn btn-secondary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Manual</button></div>
       </div>
-      <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Total trabajadores</div><div className="kpi-value">{kpis.total}</div></div><div className="kpi-card"><div className="kpi-label">Dias completos</div><div className="kpi-value">{kpis.completos}</div></div><div className="kpi-card"><div className="kpi-label">Tardanzas</div><div className="kpi-value" style={{color:'var(--orange)'}}>{kpis.tardanzas}</div></div><div className="kpi-card"><div className="kpi-label">Faltas</div><div className="kpi-value" style={{color:'var(--danger)'}}>{kpis.faltas}</div></div></div>
-      <div className="tabs">{[['diaria','Vista diaria'],['semanal','Vista semanal'],['mensual','Vista mensual'],['resumen','Resumen por trabajador']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
-      {tab === 'diaria' && <div className="card"><div className="card-head"><h3>Asistencia del dia</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.map(row=><tr key={row.trabajador.id}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{minutesToLabel(row.calc.horas_trabajadas_min)}</td><td><span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span></td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>abrirEdicion(row)}>Editar</button></td></tr>)}</tbody></table></div></div>}
-      {tab === 'semanal' && <div className="card"><div className="card-head"><h3>Vista semanal</h3><span className="text-muted">{semanaTexto}</span></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadores.slice(0,8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
-      {tab === 'mensual' && <div className="card"><div className="card-head"><h3>Resumen mensual - {mesNombreCap}</h3></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Min. tardanza</th><th>Faltas</th><th>Faltas justif.</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>{trabajadores.slice(0,8).map(t=>{ const regs=registrosPeriodo.filter(r=>r.trabajador_id===t.id); return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{workerTurno(turnos,t).nombre}</td><td>22</td><td>{regs.filter(r=>!r.es_falta).length}</td><td>{regs.filter(r=>r.estado==='tardanza').length}</td><td>{regs.reduce((s,r)=>s+(r.tardanza_min||0),0)} min</td><td>{regs.filter(r=>r.estado==='falta').length}</td><td>{regs.filter(r=>r.estado==='falta_justificada').length}</td><td>{minutesToLabel(regs.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</td><td>{minutesToLabel(regs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</td></tr>})}</tbody></table></div><div style={{padding:16}}><strong>Promedio de asistencia:</strong> 94.7% · <strong>Total tardanzas:</strong> {kpis.tardanzas} · <strong>Total horas extra:</strong> {minutesToLabel(registrosPeriodo.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</div></div>}
-      {tab === 'resumen' && <div className="card" style={{padding:20}}><div className="card-head"><h3>Resumen por trabajador</h3><button className="btn btn-secondary btn-sm">{I.download} Exportar Excel</button></div>{!resumenTrabajador ? <div style={{padding:24, textAlign:'center', color:'var(--fg-muted)'}}>Sin trabajadores registrados.</div> : <div className="grid-2" style={{gap:20}}><div><p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p><p><strong>Turno asignado:</strong> {resumenTurno.nombre} ({resumenTurno.hora_entrada} - {resumenTurno.hora_salida})</p><p><strong>Dias laborables:</strong> 22 dias</p><p><strong>Dias asistidos:</strong> {resumenRegs.filter(r=>!r.es_falta).length}</p><p><strong>Dias con tardanza:</strong> {resumenRegs.filter(r=>r.estado==='tardanza').length}</p><p><strong>Minutos tardanza:</strong> {resumenRegs.reduce((s,r)=>s+(r.tardanza_min||0),0)} minutos</p></div><div><p><strong>Horas esperadas:</strong> 176h</p><p><strong>Horas efectivas:</strong> {minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</p><p><strong>Horas extra:</strong> {minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</p><p><strong>Impacto nomina:</strong> descuento referencial por faltas y tardanzas.</p><p className="text-muted">Calculo referencial. Validar con el area de RRHH antes de procesar nomina.</p></div></div>}</div>}
-      {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registrar asistencia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{form.fecha}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarRegistro}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={form.fecha} onChange={e=>setForm(v=>({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:12, margin:'12px 0'}}>Turno asignado: <strong>{turno.nombre}</strong> · {turno.hora_entrada} - {turno.hora_salida} · Tolerancia {turno.tolerancia_minutos} min</div><div className="input-group"><label>Asistio</label><select className="select" value={form.asistio} onChange={e=>setForm(v=>({...v,asistio:e.target.value}))}><option value="si">Si</option><option value="no">No - falta</option></select></div>{form.asistio==='si' ? <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Hora entrada</label><input className="input" type="time" value={form.hora_entrada} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div><div className="input-group"><label>Hora salida</label><input className="input" type="time" value={form.hora_salida} onChange={e=>setForm(v=>({...v,hora_salida:e.target.value}))}/></div></div> : <><label className="row" style={{gap:8}}><input type="checkbox" checked={form.justificada} onChange={e=>setForm(v=>({...v,justificada:e.target.checked}))}/> Falta justificada</label>{form.justificada && <div className="input-group"><label>Motivo</label><select className="select" value={form.motivo_falta} onChange={e=>setForm(v=>({...v,motivo_falta:e.target.value}))}><option>Enfermedad con certificado</option><option>Permiso autorizado</option><option>Licencia</option><option>Otro</option></select></div>}</>}<div className="input-group"><label>Minutos de refrigerio tomados</label><input className="input" type="number" min="0" value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación (Opcional)</label><button type="button" className="btn btn-secondary" style={{width:'100%'}} onClick={obtenerUbicacion}>{form.ubicacion_estado || 'Capturar lat/lng'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:12, marginBottom:10}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}<div className="card" style={{padding:12, margin:'14px 0'}}><p><strong>Horas trabajadas:</strong> {minutesToLabel(resultado.horas_trabajadas_min)}</p><p><strong>Tardanza:</strong> {resultado.tardanza_min} min</p><p><strong>Horas extra:</strong> {minutesToLabel(resultado.horas_extra_min)}</p><p><strong>Estado:</strong> <span className={'badge '+asistenciaBadge(resultado.estado)}>{resultado.label}</span></p></div><div className="input-group"><label>Notas adicionales</label><textarea className="input" rows="3" value={form.notas} onChange={e=>setForm(v=>({...v,notas:e.target.value}))}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Guardar registro</button></div></form></div></>}
-      {kiosk && <><div className="side-panel-backdrop" onClick={()=>setKiosk(false)}/><div className="side-panel" style={{width:'min(520px,100vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Reloj Control Móvil</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{new Date().toLocaleDateString()}</div></div><button className="icon-btn" onClick={()=>setKiosk(false)}>{I.x}</button></div><div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:24}}><div className="input-group"><label>Trabajador</label><select className="select" style={{fontSize:16, padding:12}} value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:20, textAlign:'center', background:'var(--bg-subtle)'}}><button className="btn btn-primary" style={{width:'100%', padding:'24px 20px', fontSize:20, marginBottom:20, justifyContent:'center'}} onClick={() => marcarKiosk('entrada')}>Entrada</button><button className="btn btn-secondary" style={{width:'100%', padding:'24px 20px', fontSize:20, justifyContent:'center'}} onClick={() => marcarKiosk('salida')}>Salida</button></div><div className="input-group"><label>Minutos de refrigerio tomados (especificar al marcar salida)</label><input className="input" type="number" min="0" style={{fontSize:16, padding:12}} value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación requerida</label><button className="btn btn-secondary" style={{width:'100%', padding:12, justifyContent:'center'}} onClick={obtenerUbicacion}>{I.mapPin} {form.ubicacion_estado || 'Obtener mi ubicación actual'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:14, textAlign:'center'}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}</div></div></>}
-      {masivo && <><div className="side-panel-backdrop" onClick={()=>setMasivo(false)}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registro masivo</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{fecha}</div></div><button className="icon-btn" onClick={()=>setMasivo(false)}>{I.x}</button></div><div className="side-panel-body"><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Falta</th><th>Justif.</th></tr></thead><tbody>{trabajadores.slice(0,8).map(t=>{const trn=workerTurno(turnos,t);return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{trn.nombre}</td><td><input className="input" type="time" defaultValue={trn.hora_entrada}/></td><td><input className="input" type="time" defaultValue={trn.hora_salida}/></td><td><input type="checkbox"/></td><td><input type="checkbox"/></td></tr>})}</tbody></table></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setMasivo(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={guardarMasivo}>Guardar todos los registros</button></div></div></div></>}
+      
+      {tab !== 'minero' && <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Total Gral.</div><div className="kpi-value">{kpis.total}</div></div><div className="kpi-card"><div className="kpi-label">Dias completos</div><div className="kpi-value">{kpis.completos}</div></div><div className="kpi-card"><div className="kpi-label">Tardanzas</div><div className="kpi-value" style={{color:'var(--orange)'}}>{kpis.tardanzas}</div></div><div className="kpi-card"><div className="kpi-label">Faltas</div><div className="kpi-value" style={{color:'var(--danger)'}}>{kpis.faltas}</div></div></div>}
+      
+      <div className="tabs">{allTabs.map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
+      
+      {tab === 'diaria' && <div className="card"><div className="card-head"><h3>Asistencia del dia (Régimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.map(row=><tr key={row.trabajador.id}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{minutesToLabel(row.calc.horas_trabajadas_min)}</td><td><span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span></td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>abrirEdicion(row)}>Editar</button></td></tr>)}</tbody></table></div></div>}
+      
+      {tab === 'semanal' && <div className="card"><div className="card-head"><h3>Vista semanal (Régimen General)</h3><span className="text-muted">{semanaTexto}</span></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.slice(0,8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
+      
+      {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head"><h3>Resumen mensual - {mesNombreCap}</h3></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Régimen/Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>{trabajadores.slice(0,8).map(t=>{ 
+        if (t.regimen_jornada.startsWith('minero')) {
+           const ciclos = ciclosMineros.filter(c => c.personal_id === t.id && c.fecha_inicio_ciclo.startsWith(currentMonth));
+           return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td><span className="badge badge-blue">{t.regimen_jornada}</span></td><td>-</td><td>{ciclos.length} ciclos</td><td>-</td><td>-</td><td>{ciclos.reduce((s,c)=>s+Number(c.horas_extra_ciclo||0),0)} h</td><td>-</td></tr>;
+        } else {
+           const regs=registrosPeriodo.filter(r=>r.trabajador_id===t.id); return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{workerTurno(turnos,t).nombre}</td><td>22</td><td>{regs.filter(r=>!r.es_falta).length}</td><td>{regs.filter(r=>r.estado==='tardanza').length}</td><td>{regs.filter(r=>r.estado==='falta'||r.estado==='falta_justificada').length}</td><td>{minutesToLabel(regs.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</td><td>{minutesToLabel(regs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</td></tr>
+        }
+      })}</tbody></table></div>
+      
+      {/* Grilla Mensual para Régimen Minero */}
+      {trabajadoresMineros.length > 0 && <div style={{padding: '0 16px 16px 16px'}}>
+        <h4 style={{marginBottom:10}}>Vista Mensual - Régimen Minero</h4>
+        <div style={{overflowX:'auto'}}>
+          <table className="tbl" style={{minWidth:1000}}>
+            <thead>
+              <tr><th>Trabajador</th>
+              {Array.from({length: 31}).map((_, i) => <th key={i} style={{width:28, padding:4, textAlign:'center', fontSize:10}}>{i+1}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {trabajadoresMineros.map(t => {
+                const regsM = registrosPeriodo.filter(r => r.trabajador_id === t.id);
+                return <tr key={t.id}>
+                  <td><strong>{t.nombre}</strong></td>
+                  {Array.from({length: 31}).map((_, i) => {
+                    const diaStr = String(i+1).padStart(2,'0');
+                    const fechaBuscada = `${currentMonth}-${diaStr}`;
+                    const r = regsM.find(x => x.fecha === fechaBuscada);
+                    let col = 'var(--bg-subtle)', bg = 'transparent';
+                    if (r) {
+                      if (r.estado === 'descanso') { col = 'var(--slate)'; bg = 'var(--bg-muted)'; }
+                      else if (r.estado === 'completo') { col = 'var(--green)'; bg = '#e6f4ea'; }
+                      else if (r.estado === 'falta') { col = 'var(--red)'; bg = '#fce8e6'; }
+                      else if (r.estado === 'falta_justificada') { col = 'var(--orange)'; bg = '#fef7e0'; }
+                    }
+                    return <td key={i} style={{padding:2}}>
+                      <div style={{width:20, height:20, borderRadius:4, background:bg, border:`1px solid ${col}`, margin:'auto'}} title={r ? r.estado : ''}></div>
+                    </td>;
+                  })}
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div style={{display:'flex', gap:10, fontSize:12, marginTop:8}}>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#e6f4ea', border:'1px solid var(--green)'}}></div> Trabajo</div>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'var(--bg-muted)', border:'1px solid var(--slate)'}}></div> Descanso</div>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#fef7e0', border:'1px solid var(--orange)'}}></div> Incidencia (Justificada)</div>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#fce8e6', border:'1px solid var(--red)'}}></div> Falta (Injustificada)</div>
+        </div>
+      </div>}
+      
+      </div>}
+      
+      {tab === 'resumen' && <div className="card" style={{padding:20}}><div className="card-head"><h3>Resumen por trabajador</h3><button className="btn btn-secondary btn-sm">{I.download} Exportar Excel</button></div>
+        <div className="input-group" style={{maxWidth:300, marginBottom:20}}><label>Seleccionar Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div>
+        {!resumenTrabajador ? <div style={{padding:24, textAlign:'center', color:'var(--fg-muted)'}}>Sin trabajadores registrados.</div> : 
+        resumenTrabajador.regimen_jornada.startsWith('minero') ? 
+        <div className="grid-2" style={{gap:20}}>
+          <div><p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p><p><strong>Régimen:</strong> <span className="badge badge-blue">{resumenTrabajador.regimen_jornada}</span></p><p><strong>Ciclos registrados:</strong> {ciclosMineros.filter(c => c.personal_id === resumenTrabajador.id).length}</p></div>
+          <div><p><strong>Días de descanso remunerado:</strong> Según ciclos completos</p><p><strong>Total Horas Extra:</strong> {ciclosMineros.filter(c => c.personal_id === resumenTrabajador.id).reduce((s,c)=>s+Number(c.horas_extra_ciclo||0),0)}h</p><p><strong>Impacto nomina:</strong> Días laborables proporcionales por ciclo minero.</p></div>
+        </div> :
+        <div className="grid-2" style={{gap:20}}><div><p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p><p><strong>Turno asignado:</strong> {resumenTurno.nombre} ({resumenTurno.hora_entrada} - {resumenTurno.hora_salida})</p><p><strong>Dias laborables:</strong> 22 dias</p><p><strong>Dias asistidos:</strong> {resumenRegs.filter(r=>!r.es_falta).length}</p><p><strong>Dias con tardanza:</strong> {resumenRegs.filter(r=>r.estado==='tardanza').length}</p><p><strong>Minutos tardanza:</strong> {resumenRegs.reduce((s,r)=>s+(r.tardanza_min||0),0)} minutos</p></div><div><p><strong>Horas esperadas:</strong> 176h</p><p><strong>Horas efectivas:</strong> {minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</p><p><strong>Horas extra:</strong> {minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</p><p><strong>Impacto nomina:</strong> descuento referencial por faltas y tardanzas.</p><p className="text-muted">Calculo referencial. Validar con el area de RRHH antes de procesar nomina.</p></div></div>
+        }</div>}
+      
+      {tab === 'minero' && <div className="card">
+        <div className="card-head"><h3>Régimen Minero</h3><p className="text-muted" style={{margin:0}}>Gestión de ciclos y registro de incidencias</p></div>
+        <div className="table-wrap">
+          <table className="tbl">
+            <thead><tr><th>Trabajador</th><th>Régimen</th><th>Ciclo Actual</th><th>Estado Ciclo</th><th>Días (T/D)</th><th>Hs Extra</th><th>Acciones</th></tr></thead>
+            <tbody>
+              {trabajadoresMineros.map(t => {
+                const c = ciclosMineros.find(x => x.personal_id === t.id);
+                return <tr key={t.id}>
+                  <td><strong>{t.nombre}</strong></td>
+                  <td><span className="badge badge-blue">{t.regimen_jornada}</span></td>
+                  <td>{c ? `${c.fecha_inicio_ciclo} → ${c.fecha_fin_ciclo}` : '-'}</td>
+                  <td>{c ? <span className={'badge '+(c.estado_ciclo==='completo'?'badge-green':c.estado_ciclo==='incompleto'?'badge-red':'badge-orange')}>{c.estado_ciclo}</span> : '-'}</td>
+                  <td>{c ? `${c.dias_ciclo_trabajo}/${c.dias_ciclo_descanso}` : '-'}</td>
+                  <td>{c ? `${c.horas_extra_ciclo}h` : '-'}</td>
+                  <td>
+                    <button className="btn btn-sm btn-secondary" onClick={()=>abrirRegistroMinero(t, c)}>{c ? 'Editar ciclo' : 'Registrar ciclo'}</button>
+                  </td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>}
+
+      {/* Modal Minero */}
+      {panelMinero && <><div className="side-panel-backdrop" onClick={()=>setPanelMinero(false)}/><div className="side-panel" style={{width:'min(600px,96vw)'}}>
+        <div className="side-panel-head"><div><div className="eyebrow">Registro Ciclo Minero</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{trabajadoresMineros.find(t=>t.id===formMinero.personal_id)?.nombre}</div></div><button className="icon-btn" onClick={()=>setPanelMinero(false)}>{I.x}</button></div>
+        <form className="side-panel-body" onSubmit={guardarCicloMinero}>
+          <div className="grid-2" style={{gap:12}}>
+            <div className="input-group"><label>Fecha Inicio Ciclo</label><input type="date" className="input" required value={formMinero.fecha_inicio_ciclo} onChange={e=>setFormMinero(v=>({...v, fecha_inicio_ciclo: e.target.value}))}/></div>
+            <div className="input-group"><label>Fecha Fin (Calc)</label><input type="text" className="input" disabled value={calcularFechaFinCiclo(formMinero.fecha_inicio_ciclo, getCicloDias(formMinero.regimen_jornada).t, getCicloDias(formMinero.regimen_jornada).d)}/></div>
+          </div>
+          <div className="input-group" style={{marginTop:12}}><label>Estado del Ciclo</label><select className="select" value={formMinero.estado_ciclo} onChange={e=>setFormMinero(v=>({...v, estado_ciclo:e.target.value}))}>
+            <option value="completo">Completo</option><option value="incompleto">Incompleto</option><option value="con_incidencias">Con incidencias</option>
+          </select></div>
+          <div className="input-group" style={{marginTop:12}}><label>Horas Extra del Ciclo Totales</label><input type="number" step="0.5" className="input" value={formMinero.horas_extra_ciclo} onChange={e=>setFormMinero(v=>({...v, horas_extra_ciclo:e.target.value}))}/></div>
+          
+          <div style={{marginTop:24, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            <label style={{fontWeight:600}}>Incidencias del Ciclo</label>
+            <button type="button" className="btn btn-sm btn-secondary" onClick={agregarIncidenciaMinero}>{I.plus} Añadir</button>
+          </div>
+          
+          {formMinero.incidencias.length === 0 ? <div className="text-muted" style={{fontSize:13, padding:12, background:'var(--bg-subtle)', borderRadius:6}}>No hay incidencias registradas en este ciclo.</div> : 
+            <div style={{display:'flex', flexDirection:'column', gap:10}}>
+              {formMinero.incidencias.map((inc, i) => (
+                <div key={i} className="card" style={{padding:12}}>
+                  <div style={{display:'flex', gap:10, marginBottom:8}}>
+                    <select className="select" style={{flex:1}} value={inc.tipo} onChange={e=>actualizarIncidencia(i, 'tipo', e.target.value)}>
+                      <option value="ausencia_injustificada">Ausencia injustificada</option>
+                      <option value="ausencia_justificada">Ausencia justificada</option>
+                      <option value="feriado_laborado">Feriado laborado</option>
+                      <option value="descanso_medico">Descanso Médico</option>
+                      <option value="accidente_trabajo">Accidente de Trabajo</option>
+                    </select>
+                    <input type="date" className="input" style={{width:140}} value={inc.fecha} onChange={e=>actualizarIncidencia(i, 'fecha', e.target.value)}/>
+                    <button type="button" className="icon-btn text-danger" onClick={()=>eliminarIncidencia(i)}>{I.x}</button>
+                  </div>
+                  <input type="text" className="input" placeholder="Descripción opcional" value={inc.descripcion} onChange={e=>actualizarIncidencia(i, 'descripcion', e.target.value)}/>
+                  {inc.tipo === 'feriado_laborado' && <div className="row mt-2" style={{gap:10}}><label style={{fontSize:12}}>Horas Extra Adic:</label><input type="number" className="input" style={{width:80}} value={inc.horas_extra} onChange={e=>actualizarIncidencia(i, 'horas_extra', e.target.value)}/></div>}
+                  {(inc.tipo === 'descanso_medico' || inc.tipo === 'accidente_trabajo') && <div className="row mt-2" style={{gap:10}}><label style={{fontSize:12}}>Días subsidio empresa:</label><input type="number" className="input" style={{width:80}} value={inc.dias_subsidio} onChange={e=>actualizarIncidencia(i, 'dias_subsidio', e.target.value)}/></div>}
+                </div>
+              ))}
+            </div>
+          }
+          <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanelMinero(false)}>Cancelar</button><button className="btn btn-primary" type="submit">Guardar Ciclo</button></div>
+        </form>
+      </div></>}
+
+      {/* Modal General */}
+      {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registrar asistencia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{form.fecha}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarRegistro}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={form.fecha} onChange={e=>setForm(v=>({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:12, margin:'12px 0'}}>Turno asignado: <strong>{turno.nombre}</strong> · {turno.hora_entrada} - {turno.hora_salida} · Tolerancia {turno.tolerancia_minutos} min</div><div className="input-group"><label>Asistio</label><select className="select" value={form.asistio} onChange={e=>setForm(v=>({...v,asistio:e.target.value}))}><option value="si">Si</option><option value="no">No - falta</option></select></div>{form.asistio==='si' ? <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Hora entrada</label><input className="input" type="time" value={form.hora_entrada} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div><div className="input-group"><label>Hora salida</label><input className="input" type="time" value={form.hora_salida} onChange={e=>setForm(v=>({...v,hora_salida:e.target.value}))}/></div></div> : <><label className="row" style={{gap:8}}><input type="checkbox" checked={form.justificada} onChange={e=>setForm(v=>({...v,justificada:e.target.checked}))}/> Falta justificada</label>{form.justificada && <div className="input-group"><label>Motivo</label><select className="select" value={form.motivo_falta} onChange={e=>setForm(v=>({...v,motivo_falta:e.target.value}))}><option>Enfermedad con certificado</option><option>Permiso autorizado</option><option>Licencia</option><option>Otro</option></select></div>}</>}<div className="input-group"><label>Minutos de refrigerio tomados</label><input className="input" type="number" min="0" value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación (Opcional)</label><button type="button" className="btn btn-secondary" style={{width:'100%'}} onClick={obtenerUbicacion}>{form.ubicacion_estado || 'Capturar lat/lng'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:12, marginBottom:10}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}<div className="card" style={{padding:12, margin:'14px 0'}}><p><strong>Horas trabajadas:</strong> {minutesToLabel(resultado.horas_trabajadas_min)}</p><p><strong>Tardanza:</strong> {resultado.tardanza_min} min</p><p><strong>Horas extra:</strong> {minutesToLabel(resultado.horas_extra_min)}</p><p><strong>Estado:</strong> <span className={'badge '+asistenciaBadge(resultado.estado)}>{resultado.label}</span></p></div><div className="input-group"><label>Notas adicionales</label><textarea className="input" rows="3" value={form.notas} onChange={e=>setForm(v=>({...v,notas:e.target.value}))}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Guardar registro</button></div></form></div></>}
+      {kiosk && <><div className="side-panel-backdrop" onClick={()=>setKiosk(false)}/><div className="side-panel" style={{width:'min(520px,100vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Reloj Control Móvil</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{new Date().toLocaleDateString()}</div></div><button className="icon-btn" onClick={()=>setKiosk(false)}>{I.x}</button></div><div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:24}}><div className="input-group"><label>Trabajador</label><select className="select" style={{fontSize:16, padding:12}} value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:20, textAlign:'center', background:'var(--bg-subtle)'}}><button className="btn btn-primary" style={{width:'100%', padding:'24px 20px', fontSize:20, marginBottom:20, justifyContent:'center'}} onClick={() => marcarKiosk('entrada')}>Entrada</button><button className="btn btn-secondary" style={{width:'100%', padding:'24px 20px', fontSize:20, justifyContent:'center'}} onClick={() => marcarKiosk('salida')}>Salida</button></div><div className="input-group"><label>Minutos de refrigerio tomados (especificar al marcar salida)</label><input className="input" type="number" min="0" style={{fontSize:16, padding:12}} value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación requerida</label><button className="btn btn-secondary" style={{width:'100%', padding:12, justifyContent:'center'}} onClick={obtenerUbicacion}>{I.mapPin} {form.ubicacion_estado || 'Obtener mi ubicación actual'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:14, textAlign:'center'}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}</div></div></>}
+      {masivo && <><div className="side-panel-backdrop" onClick={()=>setMasivo(false)}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registro masivo</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{fecha}</div></div><button className="icon-btn" onClick={()=>setMasivo(false)}>{I.x}</button></div><div className="side-panel-body"><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Falta</th><th>Justif.</th></tr></thead><tbody>{trabajadoresGenerales.slice(0,8).map(t=>{const trn=workerTurno(turnos,t);return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{trn.nombre}</td><td><input className="input" type="time" defaultValue={trn.hora_entrada}/></td><td><input className="input" type="time" defaultValue={trn.hora_salida}/></td><td><input type="checkbox"/></td><td><input type="checkbox"/></td></tr>})}</tbody></table></div>
+      {trabajadoresMineros.length > 0 && <div style={{marginTop:16, padding:16, background:'var(--bg-subtle)', borderRadius:8}}><p style={{margin:0, fontSize:13}}>Los trabajadores del régimen minero han sido excluidos. <a href="#" onClick={(e) => { e.preventDefault(); setMasivo(false); setTab('minero'); }} style={{color:'var(--cyan)', fontWeight:600}}>Ir a registro de ciclos mineros</a></p></div>}
+      <div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setMasivo(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={guardarMasivo}>Guardar todos los registros</button></div></div></div></>}
     </>
   );
 }
@@ -8105,41 +9279,84 @@ function ControlAsistencia() {
 function Nomina() {
   const {
     turnos, registrosAsistencia, personalOperativo, personalAdmin, trabajadoresDatosNomina,
-    periodosNomina, setPeriodosNomina, setComprasGastos, role, empresa, addNotificacion,
+    periodosNomina, setPeriodosNomina, crearGasto, generarCxP, role, empresa, addNotificacion, empresaConfig,
     comisiones = [], setComisiones,
   } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
-  const [tab, setTab] = useState('resumen');
-  const [periodoId, setPeriodoId] = useState('nom_2026_04');
+  const [tab, setTab] = useState('periodos');
+  const [periodoId, setPeriodoId] = useState(null);
   const [trabajadorSel, setTrabajadorSel] = useState('');
+  const [detallePanel, setDetallePanel] = useState(null);
   const [boleta, setBoleta] = useState(null);
   const [cierre, setCierre] = useState(false);
-  const periodo = periodosNomina.find(p => p.id === periodoId) || periodosNomina[0];
-  const periodoKey = `${periodo?.anio || 2026}-${String(periodo?.mes || 4).padStart(2, '0')}`;
+  const [plameVerTodos, setPlameVerTodos] = useState(false);
+
+  const empresaCfg = {
+    regimen_laboral_empresa: empresaConfig?.regimen_laboral_empresa || 'general',
+    uit_vigente: Number(empresaConfig?.uit_vigente) || 5500,
+    ram_tope_afp: Number(empresaConfig?.ram_tope_afp) || 12598.91,
+    pct_prima_seguro: Number(empresaConfig?.pct_prima_seguro) || 1.37,
+    frecuencia_pago: empresaConfig?.frecuencia_pago || 'mensual',
+    pct_quincena_1: Number(empresaConfig?.pct_quincena_1) || 50,
+  };
+
+  const regimenLabel = { general: 'General', pequena_empresa: 'Pequeña Empresa', microempresa: 'Microempresa' };
+  const mesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const hoy = new Date();
+
+  // Auto-generar período del mes actual si no existe
+  useEffect(() => {
+    if (!periodosNomina || periodosNomina.length === 0) {
+      const anio = hoy.getFullYear();
+      const mes = hoy.getMonth() + 1;
+      const mesN = mesNombres[mes - 1];
+      if (empresaCfg.frecuencia_pago === 'quincenal') {
+        const p1 = { id: `nom_${anio}_${mes}_1`, empresa_id: empresa?.id, anio, mes, quincena: 1, periodo: `${mesN} ${anio} — 1ra quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q1 || 10).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q1 || 15).padStart(2,'0')}` };
+        const p2 = { id: `nom_${anio}_${mes}_2`, empresa_id: empresa?.id, anio, mes, quincena: 2, periodo: `${mesN} ${anio} — 2da quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q2 || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q2 || 30).padStart(2,'0')}` };
+        setPeriodosNomina([p1, p2]);
+        addNotificacion(`Períodos de ${mesN} ${anio} generados automáticamente.`);
+      } else {
+        const p = { id: `nom_${anio}_${mes}`, empresa_id: empresa?.id, anio, mes, quincena: null, periodo: `${mesN} ${anio}`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_mensual || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_mensual || 30).padStart(2,'0')}` };
+        setPeriodosNomina([p]);
+        addNotificacion(`Período de ${mesN} ${anio} generado automáticamente.`);
+      }
+    }
+  }, []);
+
+  const periodoActivo = periodoId ? periodosNomina.find(p => p.id === periodoId) : null;
+  const periodo = periodoActivo || periodosNomina[0];
+  const periodoKey = periodo ? `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}` : '';
+
   const comisionesPlanilla = useMemo(() =>
     comisiones.filter(c => c.estado === 'aprobada' && c.modalidad_pago === 'Planilla' && c.periodo === periodoKey)
   , [comisiones, periodoKey]);
   const comisionPorTrabajador = useMemo(() => {
     const map = {};
-    comisionesPlanilla.forEach(c => {
-      map[c.vendedor_id] = (map[c.vendedor_id] || 0) + Number(c.monto_total || 0);
-    });
+    comisionesPlanilla.forEach(c => { map[c.vendedor_id] = (map[c.vendedor_id] || 0) + Number(c.monto_total || 0); });
     return map;
   }, [comisionesPlanilla]);
+
   const trabajadores = [
-    ...personalOperativo.map(p => ({ ...p, area:p.area || 'Operativo', tipo:'operativo', remuneracion:p.remuneracion || trabajadoresDatosNomina[p.id]?.sueldo_base || p.sueldo_base || 3000 })),
-    ...personalAdmin.map(p => ({ id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:p.turno_id || 'tur_005', tipo:'admin', remuneracion:p.remuneracion || trabajadoresDatosNomina[p.id]?.sueldo_base || 3000 }))
+    ...personalOperativo.map(p => ({ ...p, area: p.area || 'Operativo', tipo: 'operativo' })),
+    ...personalAdmin.filter(p => p.tipo_contrato !== 'Honorarios').map(p => ({ ...p, area: p.area || 'Administrativo', tipo: 'admin' })),
   ];
+
   useEffect(() => {
     if (!trabajadorSel && trabajadores[0]?.id) setTrabajadorSel(trabajadores[0].id);
-    if (trabajadorSel && trabajadores.length && !trabajadores.some(t => t.id === trabajadorSel)) setTrabajadorSel(trabajadores[0].id);
-  }, [trabajadorSel, trabajadores]);
-  const calculos = trabajadores.map(t => {
-    const turno = workerTurno(turnos, t);
-    const datos = trabajadoresDatosNomina[t.id] || {};
-    const regs = registrosAsistencia.filter(r => r.trabajador_id === t.id && r.fecha.startsWith(periodoKey));
-    return calcularNominaTrabajador(t, datos, turno, regs, periodo);
-  });
+  }, [trabajadorSel, trabajadores.length]);
+
+  const calculos = useMemo(() => {
+    if (!periodo) return [];
+    return trabajadores.map(t => {
+      const turno = workerTurno(turnos, t);
+      const datos = trabajadoresDatosNomina[t.id] || {};
+      const regs = registrosAsistencia.filter(r => r.trabajador_id === t.id && r.fecha.startsWith(periodoKey));
+      return calcularNominaTrabajador(t, datos, turno, regs, periodo, empresaCfg);
+    });
+  }, [periodo?.id, trabajadores.length, registrosAsistencia.length, empresaCfg.regimen_laboral_empresa]);
+
+  const hayMineros = calculos.some(c => c.regimen_jornada !== 'general');
+
   const resumen = calculos.reduce((acc, c) => ({
     total_trabajadores: acc.total_trabajadores + 1,
     masa_salarial_bruta: acc.masa_salarial_bruta + c.remuneracion_bruta,
@@ -8147,207 +9364,432 @@ function Nomina() {
     total_cargas_empresa: acc.total_cargas_empresa + c.total_cargas,
     total_descuentos: acc.total_descuentos + c.total_descuentos,
     total_ir: acc.total_ir + c.retencion_ir,
-    costo_laboral_total: acc.costo_laboral_total + c.costo_real_empresa
+    costo_laboral_total: acc.costo_laboral_total + c.costo_real_empresa,
   }), { total_trabajadores:0, masa_salarial_bruta:0, total_neto:0, total_cargas_empresa:0, total_descuentos:0, total_ir:0, costo_laboral_total:0 });
+
   const detalle = calculos.find(c => c.trabajador_id === trabajadorSel) || calculos[0];
-  const estadoClase = periodo?.estado === 'cerrado' ? 'badge-green' : periodo?.estado === 'calculado' ? 'badge-orange' : 'badge-cyan';
-  const descargarBoletas = () => addNotificacion(`Generando ${calculos.length} boletas en PDF.`);
+
+  const estadoBadge = (est) => est === 'cerrado' ? 'badge-green' : est === 'en_proceso' ? 'badge-cyan' : est === 'anulado' ? 'badge-red' : 'badge-orange';
+
   const calcularNomina = () => {
-    setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? {
-      ...p, estado:'calculado', fecha_calculo:'2026-04-28',
-      total_trabajadores:resumen.total_trabajadores,
-      masa_salarial_bruta:resumen.masa_salarial_bruta,
-      total_neto:resumen.total_neto,
-      total_cargas_empresa:resumen.total_cargas_empresa
-    } : p));
+    if (!periodo) return;
+    setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, estado:'en_proceso', total_trabajadores:resumen.total_trabajadores, masa_salarial_bruta:resumen.masa_salarial_bruta, total_neto:resumen.total_neto, total_cargas_empresa:resumen.total_cargas_empresa } : p));
     addNotificacion(`Nomina ${periodo.periodo} calculada y lista para revision.`);
   };
-  const cerrarPeriodo = () => {
-    const fecha = `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}-${new Date(periodo.anio, periodo.mes, 0).getDate()}`;
-    const egresoNomina = {
-      id:`gasto_nom_${periodo.id}`, empresa_id:empresa.id, tipo:'gasto',
-      descripcion:`Planilla ${periodo.periodo}`, categoria:'Gasto de personal',
-      monto:resumen.total_neto, fecha, origen:'nomina', periodo_nomina:periodo.periodo, estado:'registrado'
-    };
-    const egresoCargas = {
-      id:`gasto_cargas_${periodo.id}`, empresa_id:empresa.id, tipo:'gasto',
-      descripcion:`Cargas sociales ${periodo.periodo}`, categoria:'Cargas laborales empresa',
-      monto:resumen.total_cargas_empresa, fecha, origen:'nomina', periodo_nomina:periodo.periodo, estado:'registrado'
-    };
-    setComprasGastos(prev => [...prev.filter(g => g.id !== egresoNomina.id && g.id !== egresoCargas.id), egresoNomina, egresoCargas]);
-    setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, estado:'cerrado', fecha_cierre:'2026-04-30', usuario_cierre:role.nombre, total_trabajadores:resumen.total_trabajadores, masa_salarial_bruta:resumen.masa_salarial_bruta, total_neto:resumen.total_neto, total_cargas_empresa:resumen.total_cargas_empresa } : p));
+
+  const cerrarPeriodo = async () => {
+    if (!periodo) return;
+    const fechaCierre = `${periodo.anio}-${String(periodo.mes).padStart(2,'0')}-${new Date(periodo.anio, periodo.mes, 0).getDate()}`;
+    const addDias30 = d => { const dt = new Date(`${d}T00:00:00`); dt.setDate(dt.getDate() + 30); return dt.toISOString().split('T')[0]; };
+    const vence = addDias30(fechaCierre);
+
+    // ── Gastos ER (devengado) ──
+    if (resumen.total_neto > 0) {
+      crearGasto({ tipo:'gasto', descripcion:`Planilla ${periodo.periodo}`, categoria:'planilla', monto:resumen.total_neto, fecha:fechaCierre, origen_registro:'nomina', periodo_nomina_id:periodo.id, estado_pago:'pendiente', estado:'registrado' });
+    }
+    if (resumen.total_cargas_empresa > 0) {
+      crearGasto({ tipo:'gasto', descripcion:`Cargas sociales ${periodo.periodo}`, categoria:'cargas_sociales', monto:resumen.total_cargas_empresa, fecha:fechaCierre, origen_registro:'nomina', periodo_nomina_id:periodo.id, estado_pago:'pendiente', estado:'registrado' });
+    }
+
+    // ── CxPs separadas por institución ──
+    // 1. Neto planilla → trabajadores
+    if (resumen.total_neto > 0) {
+      await generarCxP({
+        tipo_beneficiario: 'colectivo',
+        concepto: `Planilla de trabajadores — ${periodo.periodo}`,
+        fecha_emision: fechaCierre, fecha_vencimiento: vence,
+        monto_total: resumen.total_neto, moneda: 'PEN',
+        estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'planilla',
+        periodo_nomina_id: periodo.id,
+      });
+    }
+    // 2. EsSalud → SUNAT/EsSalud
+    const totalEssalud = calculos.reduce((s, c) => s + (c.essalud || 0), 0);
+    if (totalEssalud > 0) {
+      await generarCxP({
+        tipo_beneficiario: 'colectivo',
+        concepto: `EsSalud — ${periodo.periodo}`,
+        fecha_emision: fechaCierre, fecha_vencimiento: vence,
+        monto_total: Math.round(totalEssalud * 100) / 100, moneda: 'PEN',
+        estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'essalud',
+        periodo_nomina_id: periodo.id,
+      });
+    }
+    // 3. Aportes previsionales (AFP + ONP)
+    const totalPensiones = calculos.reduce((s, c) => s + (c.desc_pensiones || 0), 0);
+    const tieneAfp = calculos.some(c => c.sistema_pensionario === 'AFP');
+    const tieneOnp = calculos.some(c => c.sistema_pensionario === 'ONP');
+    const labelPensiones = tieneAfp && tieneOnp ? 'AFP / ONP' : tieneAfp ? 'AFP' : 'ONP';
+    if (totalPensiones > 0) {
+      await generarCxP({
+        tipo_beneficiario: 'colectivo',
+        concepto: `Aportes previsionales ${labelPensiones} — ${periodo.periodo}`,
+        fecha_emision: fechaCierre, fecha_vencimiento: vence,
+        monto_total: Math.round(totalPensiones * 100) / 100, moneda: 'PEN',
+        estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'pensiones',
+        periodo_nomina_id: periodo.id,
+      });
+    }
+    // 4. Retenciones IR 5ta → SUNAT
+    if (resumen.total_ir > 0) {
+      await generarCxP({
+        tipo_beneficiario: 'colectivo',
+        concepto: `Retención IR 5ta categoría — ${periodo.periodo}`,
+        fecha_emision: fechaCierre, fecha_vencimiento: vence,
+        monto_total: Math.round(resumen.total_ir * 100) / 100, moneda: 'PEN',
+        estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'ir_5ta',
+        periodo_nomina_id: periodo.id,
+      });
+    }
+
+    setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, estado:'cerrado', cerrado_por:role?.nombre, cerrado_en:new Date().toISOString(), total_trabajadores:resumen.total_trabajadores, masa_salarial_bruta:resumen.masa_salarial_bruta, total_neto:resumen.total_neto, total_cargas_empresa:resumen.total_cargas_empresa } : p));
     if (comisionesPlanilla.length > 0) {
       const ids = new Set(comisionesPlanilla.map(c => c.id));
-      setComisiones(prev => prev.map(c => ids.has(c.id) ? { ...c, estado: 'pagada', pagado_en: new Date().toISOString() } : c));
+      setComisiones(prev => prev.map(c => ids.has(c.id) ? { ...c, estado:'pagada', pagado_en:new Date().toISOString() } : c));
     }
-    addNotificacion(`Nomina ${periodo.periodo} cerrada. Egresos registrados y boletas disponibles.`);
+
+    // ── Pagos automáticos de préstamos vinculados a nómina ──
+    const trabajadoresConPrestamo = calculos.filter(c => c.desc_prestamo > 0);
+    if (trabajadoresConPrestamo.length > 0 && empresa?.id) {
+      const prestamosActivos = await rrhhService.getPrestamosPersonal(empresa.id);
+      for (const c of trabajadoresConPrestamo) {
+        const prestamo = prestamosActivos.find(p => p.trabajador_id === c.trabajador_id && p.estado === 'vigente' && p.descontar_nomina);
+        if (prestamo) {
+          try {
+            await rrhhService.pagarCuotaPrestamo(empresa.id, prestamo.id, { monto: c.desc_prestamo, concepto: 'nomina', periodo_id: periodo.id });
+          } catch {}
+        }
+      }
+    }
+
+    addNotificacion(`Nomina ${periodo.periodo} cerrada. CxPs separadas generadas por institución.`);
     setCierre(false);
   };
 
-  if (!canFinanzas) {
-    return (
-      <div className="card" style={{padding:24}}>
-        <div className="card-head"><h3>Nomina</h3></div>
-        <p className="text-muted">Este modulo requiere permiso de finanzas para ver remuneraciones, descuentos y boletas.</p>
-      </div>
-    );
-  }
+  if (!canFinanzas) return (
+    <div className="card" style={{padding:24}}>
+      <div className="card-head"><h3>Nomina</h3></div>
+      <p className="text-muted">Este modulo requiere permiso de finanzas para ver remuneraciones, descuentos y boletas.</p>
+    </div>
+  );
+
+  const tabsDisponibles = [
+    ['periodos','Períodos'],
+    ['resumen','Resumen'],
+    ['detalle','Detalle'],
+    ['cargas','Cargas empresa'],
+    ['plame', periodo?.estado === 'cerrado' ? 'Reporte PLAME' : 'PLAME'],
+  ];
+
+  const proximoCorte = periodosNomina.find(p => p.estado === 'abierto' || p.estado === 'en_proceso');
+  const regimenBadge = { general: 'badge-gray', pequena_empresa: 'badge-cyan', microempresa: 'badge-purple' };
 
   return (
     <>
       <div className="page-header">
         <div>
           <h1 className="page-title">Nomina</h1>
-          <div className="page-sub">Calculo de remuneraciones, boletas y cierre de periodo</div>
+          <div className="page-sub" style={{display:'flex', gap:12, flexWrap:'wrap', alignItems:'center'}}>
+            <span>Regimen: <strong>{regimenLabel[empresaCfg.regimen_laboral_empresa] || 'General'}</strong></span>
+            <span>·</span>
+            <span>Pago: <strong>{empresaCfg.frecuencia_pago === 'quincenal' ? `Quincenal (${empresaCfg.pct_quincena_1}% / ${100-empresaCfg.pct_quincena_1}%)` : 'Mensual'}</strong></span>
+            {proximoCorte?.fecha_pago && <><span>·</span><span>Próximo pago: <strong>{proximoCorte.fecha_pago}</strong></span></>}
+          </div>
         </div>
-        <div className="row" style={{gap:10}}>
-          <select className="select" value={periodoId} onChange={e=>setPeriodoId(e.target.value)} style={{width:170}}>
-            {periodosNomina.map(p => <option key={p.id} value={p.id}>{p.periodo}</option>)}
-          </select>
-          <button className="btn btn-secondary" onClick={descargarBoletas}>{I.download} Boletas</button>
-          <button className="btn btn-primary" data-local-form="true" onClick={calcularNomina}>Calcular nomina</button>
-          <button className="btn btn-secondary" disabled={periodo?.estado !== 'calculado'} onClick={() => setCierre(true)}>Cerrar periodo</button>
-        </div>
-      </div>
-      <div className="card" style={{padding:'12px 16px', marginBottom:16, borderLeft:'3px solid var(--orange)'}}>
-        <strong>Los calculos son referenciales.</strong> TIDEO no reemplaza la asesoria de un especialista en legislacion laboral. Valida siempre con tu contador antes de procesar pagos.
-      </div>
-      <div className="row" style={{justifyContent:'space-between', marginBottom:16}}>
-        <div className="row" style={{gap:8}}>
-          <span>Estado del periodo:</span>
-          <span className={'badge '+estadoClase}>{periodo?.estado || 'abierto'}</span>
-        </div>
-        <div className="text-muted">Periodo: {periodo?.periodo}</div>
-      </div>
-      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(5,1fr)'}}>
-        <div className="kpi-card"><div className="kpi-label">Total trabajadores</div><div className="kpi-value">{resumen.total_trabajadores}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Masa salarial bruta</div><div className="kpi-value" style={{fontSize:22}}>{money(resumen.masa_salarial_bruta)}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Total neto a pagar</div><div className="kpi-value" style={{fontSize:22,color:'var(--green)'}}>{money(resumen.total_neto)}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Cargas empresa</div><div className="kpi-value" style={{fontSize:22}}>{money(resumen.total_cargas_empresa)}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Costo laboral total</div><div className="kpi-value" style={{fontSize:22}}>{money(resumen.costo_laboral_total)}</div></div>
-      </div>
-      <div className="tabs">
-        {[
-          ['resumen','Resumen del periodo'],
-          ['detalle','Detalle por trabajador'],
-          ['cargas','Cargas empresa'],
-          ['historial','Historial']
-        ].map(([k,l]) => <div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}
+        {periodo && tab !== 'periodos' && (
+          <div className="row" style={{gap:8}}>
+            <button className="btn btn-secondary" onClick={() => setBoleta(calculos[0])} disabled={!calculos.length}>{I.download} Boletas</button>
+            <button className="btn btn-primary" data-local-form="true" onClick={calcularNomina} disabled={periodo?.estado === 'cerrado'}>Procesar</button>
+            <button className="btn btn-secondary" disabled={periodo?.estado !== 'en_proceso'} onClick={() => setCierre(true)}>Cerrar</button>
+          </div>
+        )}
       </div>
 
-      {tab === 'resumen' && (
-        <div className="card">
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead><tr><th>Trabajador</th><th>Turno</th><th>Dias asist.</th><th>Faltas</th><th>Tard.</th><th>H. Extra</th><th>Sueldo base</th><th>Comisión</th><th>Bruto</th><th>Descuentos</th><th>IR</th><th>Neto</th><th>Estado</th><th></th></tr></thead>
-              <tbody>{calculos.length === 0 && <tr><td colSpan={13} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin trabajadores registrados.</td></tr>}{calculos.map(c => (
-                <tr key={c.trabajador_id}>
-                  <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}</div></td>
-                  <td>{c.turno.nombre}</td>
-                  <td>{c.dias_asistidos}/{c.dias_laborables}</td>
-                  <td>{c.faltas_injustificadas}</td>
-                  <td>{c.tardanzas} ({c.minutos_tardanza_total}m)</td>
-                  <td>{minutesToLabel(c.horas_extra_total_min)}</td>
-                  <td className="num">{money(c.sueldo_base)}</td>
-                  <td className="num">{money(comisionPorTrabajador[c.trabajador_id] || 0)}</td>
-                  <td className="num">{money(c.remuneracion_bruta)}</td>
-                  <td className="num">{money(c.total_descuentos)}</td>
-                  <td className="num">{money(c.retencion_ir)}</td>
-                  <td className="num"><strong>{money(c.neto)}</strong></td>
-                  <td><span className="badge badge-green">OK</span></td>
-                  <td><button className="btn btn-sm btn-secondary" onClick={() => setBoleta(c)}>Ver boleta</button></td>
-                </tr>
-              ))}</tbody>
-            </table>
+      <div className="card" style={{padding:'10px 16px', marginBottom:12, borderLeft:'3px solid var(--orange)', fontSize:13}}>
+        <strong>Los calculos son referenciales.</strong> Valida con tu contador antes de procesar pagos.
+      </div>
+
+      <div className="tabs">
+        {tabsDisponibles.map(([k,l]) => (
+          <div key={k} className={`tab ${tab===k?'active':''}${k==='plame'&&periodo?.estado!=='cerrado'?' text-muted':''}`}
+            title={k==='plame'&&periodo?.estado!=='cerrado'?'Disponible solo para períodos cerrados':''}
+            onClick={()=>{ if(k==='plame'&&periodo?.estado!=='cerrado') return; setTab(k); }}>
+            {l}
           </div>
-          <div style={{padding:16, borderTop:'1px solid var(--border-subtle)'}}>
-            <strong>Total neto a transferir:</strong> {money(resumen.total_neto)} · Descuentos: {money(resumen.total_descuentos)} · IR: {money(resumen.total_ir)}
+        ))}
+      </div>
+
+      {/* ── TAB: PERÍODOS ── */}
+      {tab === 'periodos' && (
+        <div>
+          <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:20}}>
+            <div className="kpi-card"><div className="kpi-label">Período activo</div><div className="kpi-value" style={{fontSize:18}}>{periodo?.periodo || '—'}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Próxima fecha de corte</div><div className="kpi-value" style={{fontSize:18}}>{proximoCorte?.fecha_corte || '—'}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Próxima fecha de pago</div><div className="kpi-value" style={{fontSize:18, color:'var(--green)'}}>{proximoCorte?.fecha_pago || '—'}</div></div>
+          </div>
+          <div style={{display:'flex', flexDirection:'column', gap:12}}>
+            {periodosNomina.map(p => (
+              <div key={p.id} className="card" style={{padding:20, cursor:'pointer', border: periodoId === p.id ? '2px solid var(--cyan)' : '1px solid var(--border)'}}
+                onClick={()=>{ setPeriodoId(p.id); setTab('resumen'); }}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12}}>
+                  <div>
+                    <div style={{fontWeight:700, fontSize:16}}>{p.periodo}</div>
+                    <div className="text-muted" style={{fontSize:12, marginTop:4}}>
+                      {p.fecha_corte && `Corte: ${p.fecha_corte}`}{p.fecha_pago && ` · Pago: ${p.fecha_pago}`}
+                    </div>
+                  </div>
+                  <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
+                    {p.quincena && <span className={`badge ${p.quincena===1?'badge-cyan':'badge-purple'}`}>{p.quincena === 1 ? `1ra quincena (${empresaCfg.pct_quincena_1}%)` : `2da quincena (${100-empresaCfg.pct_quincena_1}%)`}</span>}
+                    <span className={`badge ${estadoBadge(p.estado)}`}>{p.estado}</span>
+                    {p.total_trabajadores > 0 && <span className="badge badge-gray">{p.total_trabajadores} trabajadores</span>}
+                    {(p.estado === 'en_proceso' || p.estado === 'cerrado') && p.total_neto > 0 && <span style={{fontWeight:700, color:'var(--green)', fontSize:14}}>Neto: {money(p.total_neto)}</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {tab === 'detalle' && detalle && (
+      {/* ── TAB: RESUMEN ── */}
+      {tab === 'resumen' && periodo && (
+        <div className="card">
+          <div className="card-head">
+            <h3>{periodo.periodo}</h3>
+            <span className={`badge ${estadoBadge(periodo.estado)}`}>{periodo.estado}</span>
+          </div>
+          <div className="kpi-grid" style={{gridTemplateColumns:'repeat(5,1fr)', marginBottom:16}}>
+            <div className="kpi-card"><div className="kpi-label">Trabajadores</div><div className="kpi-value">{resumen.total_trabajadores}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Masa bruta</div><div className="kpi-value" style={{fontSize:20}}>{money(resumen.masa_salarial_bruta)}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Neto a pagar</div><div className="kpi-value" style={{fontSize:20, color:'var(--green)'}}>{money(resumen.total_neto)}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Cargas empresa</div><div className="kpi-value" style={{fontSize:20}}>{money(resumen.total_cargas_empresa)}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Costo laboral</div><div className="kpi-value" style={{fontSize:20}}>{money(resumen.costo_laboral_total)}</div></div>
+          </div>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr>
+                <th>Trabajador</th><th>Régimen</th>{hayMineros && <th>Días comp.</th>}<th>Turno</th><th>Asist.</th><th>Faltas</th><th>H. Extra</th><th>Sueldo base</th><th>Comisión</th><th>Bruto</th><th>Desc.</th><th>Neto</th><th></th>
+              </tr></thead>
+              <tbody>
+                {calculos.length === 0 && <tr><td colSpan={12} style={{textAlign:'center',color:'var(--fg-muted)',padding:28}}>Sin trabajadores registrados.</td></tr>}
+                {calculos.map(c => (
+                  <tr key={c.trabajador_id} style={{cursor:'pointer'}} onClick={()=>setDetallePanel(c)}>
+                    <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}</div></td>
+                    <td>{c.regimen_jornada !== 'general' ? <span className="badge badge-orange">⛏ {c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
+                    {hayMineros && <td>{c.dias_computables ?? '—'}</td>}
+                    <td style={{fontSize:11}}>{c.turno?.nombre || '—'}</td>
+                    <td>{c.dias_asistidos}/{c.dias_laborables}</td>
+                    <td>{c.faltas_injustificadas > 0 ? <span style={{color:'var(--danger)'}}>{c.faltas_injustificadas}</span> : '0'}</td>
+                    <td>{minutesToLabel(c.horas_extra_total_min)}</td>
+                    <td className="num">{money(c.sueldo_base)}</td>
+                    <td className="num">{money(comisionPorTrabajador[c.trabajador_id] || 0)}</td>
+                    <td className="num">{money(c.remuneracion_bruta)}</td>
+                    <td className="num">{money(c.total_descuentos)}</td>
+                    <td className="num"><strong>{money(c.neto)}</strong></td>
+                    <td><button className="btn btn-sm btn-secondary" onClick={e=>{e.stopPropagation();setBoleta(c);}}>Boleta</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{padding:'12px 16px', borderTop:'1px solid var(--border-subtle)', fontSize:13}}>
+            <strong>Total neto:</strong> {money(resumen.total_neto)} · <strong>Descuentos:</strong> {money(resumen.total_descuentos)} · <strong>IR:</strong> {money(resumen.total_ir)}
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB: DETALLE ── */}
+      {tab === 'detalle' && periodo && detalle && (
         <div className="card" style={{padding:20}}>
           <div className="card-head">
-            <h3>Detalle de nomina</h3>
+            <h3>Detalle por trabajador — {periodo.periodo}</h3>
             <select className="select" value={trabajadorSel} onChange={e=>setTrabajadorSel(e.target.value)} style={{width:260}}>
               {calculos.map(c => <option key={c.trabajador_id} value={c.trabajador_id}>{c.trabajador.nombre}</option>)}
             </select>
           </div>
           <div className="grid-2" style={{gap:24}}>
             <div>
-              <p><strong>{detalle.trabajador.nombre}</strong> - {detalle.trabajador.id} - {periodo.periodo}</p>
-              <p>Turno: {detalle.turno.nombre} · {detalle.turno.hora_entrada} - {detalle.turno.hora_salida} · {detalle.dias_laborables} dias laborables</p>
-              <hr/>
-              <p><strong>Asistencia</strong></p>
-              <p>Dias asistidos: {detalle.dias_asistidos} de {detalle.dias_laborables}</p>
-              <p>Faltas injustificadas: {detalle.faltas_injustificadas}</p>
-              <p>Tardanzas: {detalle.tardanzas} veces · {detalle.minutos_tardanza_total} minutos</p>
-              <p>Horas extra: {minutesToLabel(detalle.horas_extra_total_min)}</p>
-              <hr/>
-              <p><strong>Remuneracion bruta</strong></p>
-              <p>(+) Sueldo base: {money(detalle.sueldo_base)}</p>
-              <p>(-) Faltas: {money(detalle.desc_faltas)}</p>
-              <p>(-) Tardanzas: {money(detalle.desc_tardanzas)}</p>
-              <p>(+) Horas extra: {money(detalle.add_horas_extra)}</p>
-              <p>(+) Asignacion familiar: {money(detalle.asignacion_familiar)}</p>
-              <p><strong>Bruto: {money(detalle.remuneracion_bruta)}</strong></p>
+              <div style={{fontWeight:700, marginBottom:8}}>{detalle.trabajador.nombre} · {periodo.periodo}</div>
+              <div className="text-muted" style={{fontSize:12, marginBottom:16}}>{detalle.turno?.nombre} · {detalle.dias_laborables} días lab.</div>
+              <div style={{fontWeight:600, marginBottom:6}}>Ingresos</div>
+              <p>(+) Sueldo base: {money(detalle.sueldo_base)}{detalle.regimen_jornada !== 'general' && ` → prop. ${money(detalle.sueldo_proporcional)}`}</p>
+              {detalle.asignacion_familiar > 0 && <p>(+) Asignacion familiar: {money(detalle.asignacion_familiar)}</p>}
+              {detalle.horas_extra_tramo1_min > 0 && <p>(+) Horas extra tramo 1 (25%) · {minutesToLabel(detalle.horas_extra_tramo1_min)}: {money(detalle.add_tramo1)}</p>}
+              {detalle.horas_extra_tramo2_min > 0 && <p>(+) Horas extra tramo 2 (35%) · {minutesToLabel(detalle.horas_extra_tramo2_min)}: {money(detalle.add_tramo2)}</p>}
+              {detalle.bonif_altitud > 0 && <p>(+) Bonif. altitud: {money(detalle.bonif_altitud)}</p>}
+              {(comisionPorTrabajador[detalle.trabajador_id] || 0) > 0 && <p>(+) Comision planilla: {money(comisionPorTrabajador[detalle.trabajador_id])}</p>}
+              {detalle.desc_faltas > 0 && <p style={{color:'var(--danger)'}}>(-) Faltas: {money(detalle.desc_faltas)}</p>}
+              {detalle.desc_tardanzas > 0 && <p style={{color:'var(--danger)'}}>(-) Tardanzas: {money(detalle.desc_tardanzas)}</p>}
+              <p style={{fontWeight:700, borderTop:'1px solid var(--border-subtle)', paddingTop:8, marginTop:8}}>Total bruto: {money(detalle.remuneracion_bruta)}</p>
+              {detalle.regimen_jornada !== 'general' && <div className="card" style={{padding:'8px 12px', marginTop:12, fontSize:12, background:'rgba(251,191,36,0.08)'}}>
+                <p>⛏ Días laborados en ciclo: {detalle.dias_computables ?? '—'} · Horas diarias: {detalle.datosNomina?.horas_diarias_pactadas || 12}h</p>
+                {detalle.datosNomina?.fecha_inicio_ciclo && <p>Inicio ciclo: {detalle.datosNomina.fecha_inicio_ciclo}</p>}
+              </div>}
             </div>
             <div>
-              <p><strong>Descuentos del trabajador</strong></p>
-              <p>{detalle.sistema_pensionario} ({detalle.sistema_pensionario === 'AFP' ? '13.24%' : '13%'}): {money(detalle.desc_pensiones)}</p>
-              <p>Prestamo interno: {money(detalle.desc_prestamo)}</p>
-              <p>Anticipo: {money(detalle.desc_anticipo)}</p>
-              <p>Judicial: {money(detalle.desc_judicial)}</p>
-              <p>IR 5ta categoria: {money(detalle.retencion_ir)}</p>
-              <p><strong>Neto a pagar: {money(detalle.neto)}</strong></p>
-              <hr/>
-              <p><strong>Cargas empresa</strong></p>
-              <p>ESSALUD: {money(detalle.essalud)}</p>
-              <p>CTS mensualizada: {money(detalle.cts_mensualizado)}</p>
-              <p>Gratificacion mensualizada: {money(detalle.gratificacion_mensualizada)}</p>
-              <p>Vacaciones mensualizadas: {money(detalle.vacaciones_mensualizadas)}</p>
-              <p><strong>Costo real empresa: {money(detalle.costo_real_empresa)}</strong></p>
-              <p>Costo hora real: {money(detalle.costo_hora_real)}</p>
-              <button className="btn btn-secondary" onClick={() => addNotificacion('Novedades aplicadas en el prototipo.')}>{I.edit} Editar novedades</button>
+              <div style={{fontWeight:600, marginBottom:6}}>Descuentos del trabajador</div>
+              {detalle.sistema_pensionario === 'AFP' ? <>
+                <p>Aporte AFP (10%): {money(detalle.aporte_afp)}</p>
+                {detalle.tipo_comision_afp === 'flujo' ? <p>Comision flujo AFP: {money(detalle.comision_flujo)}</p> : <p className="text-muted" style={{fontSize:12}}>Comision mixta: S/ 0.00 (se descuenta del fondo)</p>}
+                <p>Prima seguro AFP: {money(detalle.prima_seguro)}</p>
+              </> : <p>ONP (13%): {money(detalle.desc_onp)}</p>}
+              {detalle.retencion_ir > 0 && <p>Retención IR 5ta: {money(detalle.retencion_ir)}</p>}
+              {detalle.desc_prestamo > 0 && <p>Préstamo interno: {money(detalle.desc_prestamo)}</p>}
+              {detalle.desc_anticipo > 0 && <p>Anticipo: {money(detalle.desc_anticipo)}</p>}
+              {detalle.desc_judicial > 0 && <p>Judicial: {money(detalle.desc_judicial)}</p>}
+              <p style={{fontWeight:700, borderTop:'1px solid var(--border-subtle)', paddingTop:8, marginTop:8}}>Total descuentos: {money(detalle.total_descuentos)}</p>
+              <p style={{fontWeight:700, color:'var(--green)', fontSize:16, marginTop:4}}>Neto a pagar: {money(detalle.neto)}</p>
+
+              <div style={{marginTop:20, padding:16, background:'var(--bg-subtle)', borderRadius:8}}>
+                <div style={{fontWeight:600, marginBottom:8}}>Cargas del empleador</div>
+                <p>ESSALUD (9%): {money(detalle.essalud)}</p>
+                <p>CTS mensualizada: {detalle.tiene_cts ? money(detalle.cts_mensualizado) : <span className="text-muted">No aplica (Microempresa)</span>}</p>
+                <p>Gratificacion: {detalle.tiene_gratificacion ? money(detalle.gratificacion_mensualizada) : <span className="text-muted">No aplica (Microempresa)</span>}</p>
+                {detalle.tiene_gratificacion && <p>Bonif. extraordinaria (9% gratif.): {money(detalle.bonif_extraordinaria)}</p>}
+                <p>Vacaciones: {money(detalle.vacaciones_mensualizadas)}</p>
+                <p style={{fontWeight:700, marginTop:8}}>Costo empresa: {money(detalle.costo_real_empresa)}</p>
+                <p className="text-muted" style={{fontSize:12}}>Costo hora real: {money(detalle.costo_hora_real)}</p>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {tab === 'cargas' && (
+      {/* ── TAB: CARGAS ── */}
+      {tab === 'cargas' && periodo && (
         <div className="card" style={{padding:20}}>
-          <div className="card-head"><h3>Cargas a cargo de la empresa - {periodo.periodo}</h3></div>
+          <div className="card-head"><h3>Cargas empresa — {periodo.periodo}</h3></div>
           <div className="grid-2" style={{gap:16}}>
-            <div className="card" style={{padding:16}}><strong>ESSALUD (9%)</strong><p className="text-muted">Pagar a SUNAT · Vencimiento 20/05/2026</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.essalud,0))}</div></div>
+            <div className="card" style={{padding:16}}><strong>ESSALUD (9%)</strong><p className="text-muted">Pagar a SUNAT</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.essalud,0))}</div></div>
             <div className="card" style={{padding:16}}><strong>CTS mensualizada</strong><p className="text-muted">Deposito semestral: mayo y noviembre</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.cts_mensualizado,0))}</div></div>
             <div className="card" style={{padding:16}}><strong>Gratificaciones</strong><p className="text-muted">Provision julio y diciembre</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.gratificacion_mensualizada,0))}</div></div>
-            <div className="card" style={{padding:16}}><strong>Vacaciones</strong><p className="text-muted">Provision mensual referencial</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.vacaciones_mensualizadas,0))}</div></div>
+            <div className="card" style={{padding:16}}><strong>Bonif. extraordinaria (9%)</strong><p className="text-muted">Sobre gratificacion</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.bonif_extraordinaria,0))}</div></div>
+            <div className="card" style={{padding:16}}><strong>Vacaciones</strong><p className="text-muted">Provision mensual</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.vacaciones_mensualizadas,0))}</div></div>
+            <div className="card" style={{padding:16, background:'var(--bg-subtle)'}}><strong>Total cargas</strong><div className="kpi-value" style={{fontSize:22}}>{money(resumen.total_cargas_empresa)}</div><p className="text-muted" style={{fontSize:12}}>Costo laboral total: {money(resumen.costo_laboral_total)}</p></div>
           </div>
-          <div style={{marginTop:20}}><strong>Total cargas empresa:</strong> {money(resumen.total_cargas_empresa)} · <strong>Costo laboral total:</strong> {money(resumen.costo_laboral_total)}</div>
         </div>
       )}
 
-      {tab === 'historial' && (
-        <div className="card">
-          <div className="table-wrap"><table className="tbl"><thead><tr><th>Periodo</th><th>Trabajadores</th><th>Masa salarial</th><th>Neto pagado</th><th>Cargas empresa</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{periodosNomina.map(p => <tr key={p.id}><td>{p.periodo}</td><td>{p.total_trabajadores}</td><td>{money(p.masa_salarial_bruta || 0)}</td><td>{money(p.total_neto || 0)}</td><td>{money(p.total_cargas_empresa || 0)}</td><td><span className={'badge '+(p.estado==='cerrado'?'badge-green':p.estado==='calculado'?'badge-orange':'badge-cyan')}>{p.estado}</span></td><td><button className="btn btn-sm btn-secondary" onClick={()=>setPeriodoId(p.id)}>Ver</button></td></tr>)}</tbody></table></div>
+      {/* ── TAB: PLAME ── */}
+      {tab === 'plame' && periodo && (
+        <div className="card" style={{padding:20}}>
+          <div className="card-head">
+            <div>
+              <h3>Reporte para PLAME — {periodo.periodo}</h3>
+              <div className="text-muted" style={{fontSize:12}}>Uso interno. El contador debe cargarlo manualmente en el portal SUNAT/T-Registro.</div>
+            </div>
+            <span className="badge badge-orange">⚠ No reemplaza la declaración oficial ante SUNAT</span>
+          </div>
+          {periodo.estado !== 'cerrado' ? (
+            <div className="card" style={{padding:20, textAlign:'center', color:'var(--fg-muted)'}}>El reporte PLAME solo está disponible para períodos cerrados.</div>
+          ) : (<>
+            <div className="table-wrap">
+              <table className="tbl" style={{fontSize:12}}>
+                <thead><tr><th>Tipo doc</th><th>N° doc</th><th>Apellidos y nombres</th><th>Tipo</th><th>Rem. básica</th><th>Total ingresos</th><th>Sistema prev.</th><th>Aporte AFP/ONP</th><th>Prima seguro</th><th>IR 5ta</th><th>ESSALUD</th><th>Neto</th><th>Período</th></tr></thead>
+                <tbody>
+                  {(plameVerTodos ? calculos : calculos.slice(0, 5)).map(c => (
+                    <tr key={c.trabajador_id}>
+                      <td>DNI</td>
+                      <td>{c.trabajador.documento || c.trabajador.dni || '—'}</td>
+                      <td>{c.trabajador.nombre}</td>
+                      <td>{c.trabajador.tipo === 'admin' ? 'Empleado' : 'Obrero'}</td>
+                      <td className="num">{money(c.sueldo_base)}</td>
+                      <td className="num">{money(c.remuneracion_bruta)}</td>
+                      <td>{c.sistema_pensionario === 'AFP' ? `AFP ${c.afp_nombre}` : 'ONP'}</td>
+                      <td className="num">{money(c.aporte_afp + c.desc_onp)}</td>
+                      <td className="num">{money(c.prima_seguro)}</td>
+                      <td className="num">{money(c.retencion_ir)}</td>
+                      <td className="num">{money(c.essalud)}</td>
+                      <td className="num"><strong>{money(c.neto)}</strong></td>
+                      <td>{periodo.periodo}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!plameVerTodos && calculos.length > 5 && (
+              <div style={{padding:'8px 16px', fontSize:12, color:'var(--fg-muted)'}}>
+                ... y {calculos.length - 5} trabajadores más.
+                <button className="btn btn-sm btn-secondary" style={{marginLeft:12}} onClick={()=>setPlameVerTodos(true)}>Ver todos</button>
+              </div>
+            )}
+            <div style={{padding:'16px 0', display:'flex', gap:12, alignItems:'center'}}>
+              <button className="btn btn-primary" data-local-form="true" onClick={()=>addNotificacion(`PLAME_${empresa?.nombre || 'empresa'}_${periodo.periodo.replace(/\s/g,'_')}.xlsx generado.`)}>
+                {I.download} Descargar Excel PLAME
+              </button>
+              <span className="text-muted" style={{fontSize:12}}>Última generación: {new Date().toLocaleString('es-PE')}</span>
+            </div>
+          </>)}
         </div>
       )}
 
-      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20, border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{empresa.nombre}</strong><br/>RUC: 20100023491</p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong> · Cod: {boleta.trabajador.id}</p><p>Cargo: {boleta.trabajador.cargo} · Area: {boleta.trabajador.area}</p><p>Periodo: {periodo.periodo} · Dias laborados: {boleta.dias_asistidos} de {boleta.dias_laborables}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo basico: {money(boleta.sueldo_base)}</p><p>Asignacion familiar: {money(boleta.asignacion_familiar)}</p><p>Horas extra: {money(boleta.add_horas_extra)}</p>{(comisionPorTrabajador[boleta.trabajador_id] || 0) > 0 && <p>Comision por ventas: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}<p><strong>Total ingresos: {money(boleta.sueldo_base + boleta.asignacion_familiar + boleta.add_horas_extra + (comisionPorTrabajador[boleta.trabajador_id] || 0))}</strong></p><hr/><p><strong>Descuentos</strong></p><p>Faltas: -{money(boleta.desc_faltas)}</p><p>Tardanzas: -{money(boleta.desc_tardanzas)}</p><p>{boleta.sistema_pensionario} {boleta.datosNomina?.afp_nombre || ''}: -{money(boleta.desc_pensiones)}</p><p>Prestamo interno: -{money(boleta.desc_prestamo)}</p><p><strong>Total descuentos: -{money(boleta.total_descuentos + boleta.desc_faltas + boleta.desc_tardanzas)}</strong></p><hr/><p>Retencion IR 5ta categoria: {money(boleta.retencion_ir)}</p><h3>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted">Este documento es referencial. Generado por TIDEO ERP.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={()=>addNotificacion('Boleta PDF lista.')}>{I.download} Descargar boleta PDF</button></div></div></>}
+      {/* ── Panel detalle trabajador (resumen) ── */}
+      {detallePanel && <>
+        <div className="side-panel-backdrop" onClick={()=>setDetallePanel(null)}/>
+        <div className="side-panel" style={{width:'min(560px,96vw)'}}>
+          <div className="side-panel-head">
+            <div><div className="eyebrow">Desglose de nómina</div><div className="font-display" style={{fontSize:20,fontWeight:700}}>{detallePanel.trabajador.nombre}</div></div>
+            <button className="icon-btn" onClick={()=>setDetallePanel(null)}>{I.x}</button>
+          </div>
+          <div className="side-panel-body">
+            <div style={{fontWeight:600, marginBottom:8}}>Ingresos</div>
+            <p>Sueldo base: {money(detallePanel.sueldo_base)}{detallePanel.regimen_jornada!=='general'&&` → prop. ${money(detallePanel.sueldo_proporcional)}`}</p>
+            {detallePanel.asignacion_familiar>0&&<p>Asignacion familiar: {money(detallePanel.asignacion_familiar)}</p>}
+            {detallePanel.horas_extra_tramo1_min>0&&<p>H. extra tramo 1 (25%): {money(detallePanel.add_tramo1)}</p>}
+            {detallePanel.horas_extra_tramo2_min>0&&<p>H. extra tramo 2 (35%): {money(detallePanel.add_tramo2)}</p>}
+            {detallePanel.bonif_altitud>0&&<p>Bonif. altitud: {money(detallePanel.bonif_altitud)}</p>}
+            {detallePanel.desc_faltas>0&&<p style={{color:'var(--danger)'}}>(-) Faltas: {money(detallePanel.desc_faltas)}</p>}
+            {detallePanel.desc_tardanzas>0&&<p style={{color:'var(--danger)'}}>(-) Tardanzas: {money(detallePanel.desc_tardanzas)}</p>}
+            <p style={{fontWeight:700}}>Total bruto: {money(detallePanel.remuneracion_bruta)}</p>
+            <hr style={{margin:'12px 0'}}/>
+            <div style={{fontWeight:600, marginBottom:8}}>Descuentos</div>
+            {detallePanel.sistema_pensionario==='AFP'?<>
+              <p>Aporte AFP (10%): {money(detallePanel.aporte_afp)}</p>
+              <p>{detallePanel.tipo_comision_afp==='flujo'?`Comision flujo: ${money(detallePanel.comision_flujo)}`:'Comision mixta: S/ 0.00 (fondo)'}</p>
+              <p>Prima seguro: {money(detallePanel.prima_seguro)}</p>
+            </>:<p>ONP (13%): {money(detallePanel.desc_onp)}</p>}
+            {detallePanel.retencion_ir>0&&<p>IR 5ta: {money(detallePanel.retencion_ir)}</p>}
+            {detallePanel.desc_prestamo>0&&<p>Prestamo: {money(detallePanel.desc_prestamo)}</p>}
+            <p style={{fontWeight:700, color:'var(--green)', fontSize:16, margin:'12px 0'}}>Neto a pagar: {money(detallePanel.neto)}</p>
+            <hr style={{margin:'12px 0'}}/>
+            <div style={{fontWeight:600, marginBottom:8, color:'var(--fg-muted)'}}>Cargas empleador</div>
+            <p>ESSALUD: {money(detallePanel.essalud)}</p>
+            <p>CTS: {detallePanel.tiene_cts?money(detallePanel.cts_mensualizado):'No aplica'}</p>
+            <p>Gratificacion: {detallePanel.tiene_gratificacion?money(detallePanel.gratificacion_mensualizada):'No aplica'}</p>
+            {detallePanel.tiene_gratificacion&&<p>Bonif. extra (9%): {money(detallePanel.bonif_extraordinaria)}</p>}
+            <p>Vacaciones: {money(detallePanel.vacaciones_mensualizadas)}</p>
+            <p style={{fontWeight:700}}>Costo empresa: {money(detallePanel.costo_real_empresa)}</p>
+            <p className="text-muted" style={{fontSize:12}}>Costo hora real: {money(detallePanel.costo_hora_real)}</p>
+          </div>
+        </div>
+      </>}
 
-      {cierre && <><div className="side-panel-backdrop" onClick={()=>setCierre(false)}/><div className="modal"><div className="modal-head"><h3>Cerrar nomina - {periodo.periodo}</h3><button className="icon-btn" onClick={()=>setCierre(false)}>{I.x}</button></div><div className="modal-body"><p>Al cerrar este periodo se registrara un egreso de planilla por {money(resumen.total_neto)} y otro de cargas sociales por {money(resumen.total_cargas_empresa)} en Compras y Gastos.</p><p>El periodo quedara cerrado y las boletas disponibles para descarga.</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setCierre(false)}>Cancelar</button><button className="btn btn-primary" onClick={cerrarPeriodo}>Confirmar cierre de nomina</button></div></div></div></>}
+      {/* Boleta */}
+      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{empresa?.nombre}</strong></p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} · Período: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p><hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={()=>addNotificacion('Boleta PDF lista.')}>{I.download} Descargar boleta PDF</button></div></div></>}
+
+      {/* Modal cierre */}
+      {cierre && <><div className="side-panel-backdrop" onClick={()=>setCierre(false)}/><div className="modal"><div className="modal-head"><h3>Cerrar período — {periodo?.periodo}</h3><button className="icon-btn" onClick={()=>setCierre(false)}>{I.x}</button></div><div className="modal-body"><p>Al cerrar se registrará un egreso de planilla por <strong>{money(resumen.total_neto)}</strong> y otro de cargas sociales por <strong>{money(resumen.total_cargas_empresa)}</strong> en Compras y Gastos.</p><p>El reporte PLAME quedará disponible.</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setCierre(false)}>Cancelar</button><button className="btn btn-primary" onClick={cerrarPeriodo}>Confirmar cierre</button></div></div></div></>}
     </>
   );
 }
 
 function RRHH_Operativo() {
-  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, addNotificacion, centrosCosto } = useApp();
+  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [] } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('personal');
   const personal = personalOperativo;
   const [panelAlta, setPanelAlta] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
+  const [selTecnico, setSelTecnico] = useState(null);
+  const [fichaTab, setFichaTab] = useState('ficha');
+  // Estado para subir documentos en ficha
+  const [docUploadForm, setDocUploadForm] = useState({ tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '' });
+  const [docUploadFile, setDocUploadFile] = useState(null);
+  const [docUploading, setDocUploading] = useState(false);
+  const [docUploadError, setDocUploadError] = useState('');
+  const [docValidandoId, setDocValidandoId] = useState(null);
+  const [motivoRechazo, setMotivoRechazo] = useState('');
+  const [showRechazoInput, setShowRechazoInput] = useState(null);
   /*
   const turnosBaseOperativo = [
     { id: 'turno_manana', nombre: 'Ma\u00f1ana', hora_entrada: '08:00', hora_salida: '17:00' },
@@ -8365,7 +9807,7 @@ function RRHH_Operativo() {
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', fecha_ingreso:'', tipo_contrato:'Planilla', costo:'', costo_extra:'', acceso_campo:true, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0' };
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', fecha_ingreso:'', tipo_contrato:'Planilla', costo:'', costo_extra:'', acceso_campo:true, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [altaError, setAltaError] = useState('');
   const [altaSaving, setAltaSaving] = useState(false);
@@ -8437,6 +9879,16 @@ function RRHH_Operativo() {
       regimen_laboral: p.regimen_laboral || (p.tipo_contrato === 'Recibos por honorarios' ? 'honorarios' : 'general'),
       cuota_prestamo_mes: String(p.cuota_prestamo_mes ?? '0'),
       descuento_judicial: String(p.descuento_judicial ?? '0'),
+      regimen_jornada: p.regimen_jornada || 'general',
+      horas_diarias_pactadas: String(p.horas_diarias_pactadas ?? '8'),
+      fecha_inicio_ciclo: p.fecha_inicio_ciclo || '',
+      bonif_altitud: String(p.bonif_altitud ?? '0'),
+      tipo_comision_afp: p.tipo_comision_afp || 'mixta',
+      pct_comision_afp_flujo: String(p.pct_comision_afp_flujo ?? '0'),
+      ruc_colaborador: p.ruc_colaborador || '',
+      retencion_ir: String(p.retencion_ir ?? '8'),
+      suspension_retenciones: Boolean(p.suspension_retenciones),
+      vencimiento_suspension: p.vencimiento_suspension || '',
     });
     setPanelAlta(true);
   };
@@ -8459,6 +9911,10 @@ function RRHH_Operativo() {
     }
     if (!formAlta.centro_costo_id) {
       setAltaError('Este campo es obligatorio. Selecciona un CECO antes de continuar.');
+      return;
+    }
+    if (esHonorarios && !/^\d{11}$/.test(formAlta.ruc_colaborador)) {
+      setAltaError('El RUC es obligatorio para Recibos por Honorarios (11 dígitos).');
       return;
     }
     setAltaSaving(true);
@@ -8494,6 +9950,16 @@ function RRHH_Operativo() {
       regimen_laboral: esHonorarios ? 'honorarios' : formAlta.regimen_laboral,
       cuota_prestamo_mes: esHonorarios ? 0 : Number(formAlta.cuota_prestamo_mes) || 0,
       descuento_judicial: esHonorarios ? 0 : Number(formAlta.descuento_judicial) || 0,
+      regimen_jornada: esHonorarios ? 'general' : (formAlta.regimen_jornada || 'general'),
+      horas_diarias_pactadas: Number(formAlta.horas_diarias_pactadas || 8),
+      fecha_inicio_ciclo: formAlta.regimen_jornada !== 'general' ? (formAlta.fecha_inicio_ciclo || null) : null,
+      bonif_altitud: Number(formAlta.bonif_altitud || 0),
+      tipo_comision_afp: formAlta.tipo_comision_afp || 'mixta',
+      pct_comision_afp_flujo: Number(formAlta.pct_comision_afp_flujo || 0),
+      ruc_colaborador: esHonorarios ? (formAlta.ruc_colaborador || null) : null,
+      retencion_ir: esHonorarios ? Number(formAlta.retencion_ir || 8) : null,
+      suspension_retenciones: esHonorarios ? formAlta.suspension_retenciones : false,
+      vencimiento_suspension: esHonorarios && formAlta.suspension_retenciones ? (formAlta.vencimiento_suspension || null) : null,
       estado: formAlta.estado || 'disponible',
       turno_id: formAlta.turno_id,
       centro_costo_id: formAlta.centro_costo_id,
@@ -8518,8 +9984,43 @@ function RRHH_Operativo() {
   };
 
   const disponibles = personal.filter(p => p.estado === 'disponible').length;
-  const docsAlerta  = personal.filter(p => Object.values(p.docs || {}).some(d => d !== 'vigente' && d !== 'ok')).length;
-  const costoTotal  = personal.filter(p => p.estado !== 'vacaciones').reduce((s,p) => s + Number(p.costo ?? p.costo_hora_real ?? 0), 0);
+  const countPlanilla = personal.filter(p => p.tipo_contrato !== 'Recibos por honorarios').length;
+  const countHonorarios = personal.filter(p => p.tipo_contrato === 'Recibos por honorarios').length;
+
+  // Columnas de compliance derivadas de personal_documentos (no del JSON legacy p.docs)
+  const COMPLIANCE_TIPOS = [
+    { key: 'sctr',              label: 'SCTR' },
+    { key: 'medico',            label: 'Médico' },
+    { key: 'epp',               label: 'EPP' },
+    { key: 'licencia_conducir', label: 'Licencia' },
+  ];
+
+  const docsCompliancePorPersona = useMemo(() => {
+    const orden = { vigente: 0, sin_vencimiento: 1, por_vencer: 2, vencido: 3 };
+    const byPersona = {};
+    for (const d of personalDocumentos) {
+      if (!d.activo || d.estado_validacion === 'rechazado') continue;
+      if (!byPersona[d.personal_id]) byPersona[d.personal_id] = {};
+      const actual = byPersona[d.personal_id][d.tipo_doc];
+      if (!actual || (orden[d.estado_vencimiento] ?? 99) < (orden[actual] ?? 99)) {
+        byPersona[d.personal_id][d.tipo_doc] = d.estado_vencimiento;
+      }
+    }
+    return byPersona;
+  }, [personalDocumentos]);
+
+  const docsAlerta = personal.filter(p => {
+    const s = docsCompliancePorPersona[p.id] || {};
+    return COMPLIANCE_TIPOS.some(t => { const v = s[t.key] || 'pendiente'; return v !== 'vigente' && v !== 'sin_vencimiento'; });
+  }).length;
+
+  const porEspecialidad = personal.reduce((acc, p) => { const esp = p.especialidad || 'Sin especialidad'; acc[esp] = (acc[esp] || 0) + 1; return acc; }, {});
+  const maxEsp = Math.max(...Object.values(porEspecialidad), 1);
+  const sinTurno = personal.filter(p => !p.turno_id);
+  const docsPorVencer = personal.flatMap(p => {
+    const s = docsCompliancePorPersona[p.id] || {};
+    return COMPLIANCE_TIPOS.filter(t => s[t.key] === 'por_vencer').map(t => ({ tecnico: p.nombre, doc: t.label }));
+  });
 
   const docBadge = d => d==='vigente'||d==='ok' ? 'badge-green' : d==='por_vencer'||d==='incompleto' ? 'badge-orange' : 'badge-red';
   const docLabel = d => d==='vigente'?'Vigente':d==='ok'?'OK':d==='por_vencer'?'Por vencer':d==='incompleto'?'Incompleto':'Vencido';
@@ -8536,6 +10037,430 @@ function RRHH_Operativo() {
   };
   const asigColor = a => !a?null:a.startsWith('OT')?'var(--cyan)':a==='Vacaciones'?'var(--fg-subtle)':'var(--purple)';
 
+  // ── Ficha de detalle de técnico ───────────────────────────────────────────────
+  if (selTecnico) {
+    const p = selTecnico;
+    const esHon = p.tipo_contrato === 'Recibos por honorarios';
+    const docsPersona = personalDocumentos.filter(d => d.personal_id === p.id && d.activo);
+    const solPersona = solicitudesRRHH.filter(s => s.personal_id === p.id);
+    const vacPersona = solPersona.filter(s => s.tipo === 'vacaciones');
+    const licPersona = solPersona.filter(s => ['licencia_medica','licencia_maternidad','licencia_paternidad'].includes(s.tipo));
+    const permPersona = solPersona.filter(s => ['permiso_con_goce','permiso_sin_goce','compensacion_horas'].includes(s.tipo));
+    const turnoP = turnosOptions.find(t => t.id === p.turno_id);
+
+    // Reembolsos: CxP vinculados a este técnico
+    const reembolsosPersona = (cxp || []).filter(c => c.personal_id === p.id && c.motivo_cxp === 'viaticos_reembolso');
+    const reembolsosPendientes = reembolsosPersona.filter(c => c.estado !== 'pagada' && c.estado !== 'anulada');
+    const totalReembolsoPend = reembolsosPendientes.reduce((s, c) => s + Number(c.saldo ?? c.monto_total ?? 0), 0);
+
+    // Asignaciones del planner (semana actual aprox)
+    const asigTecnico = (plannerAsignaciones || []).filter(a => a.tecnico_id === p.id).sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+    const asigRecientes = asigTecnico.slice(-14);
+
+    const handleSubirDoc = async (e) => {
+      e.preventDefault();
+      if (!docUploadFile || !docUploadForm.tipoDoc) {
+        setDocUploadError('Selecciona el tipo de documento y el archivo.');
+        return;
+      }
+      setDocUploading(true);
+      setDocUploadError('');
+      try {
+        await subirDocumentoPersonalCtx({
+          personalId: p.id,
+          personalTipo: 'operativo',
+          tipoDoc: docUploadForm.tipoDoc,
+          file: docUploadFile,
+          fechaEmision: docUploadForm.fechaEmision || null,
+          fechaVencimiento: docUploadForm.fechaVencimiento || null,
+          notas: docUploadForm.notas || null,
+          subidoDesde: 'backoffice',
+        });
+        setDocUploadFile(null);
+        setDocUploadForm({ tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '' });
+        addNotificacion('Documento subido. Pendiente de aprobación por RRHH.');
+      } catch (err) {
+        setDocUploadError(err?.message || 'Error al subir el documento.');
+      } finally {
+        setDocUploading(false);
+      }
+    };
+
+    const handleValidar = async (docId, decision) => {
+      if (decision === 'rechazado' && !motivoRechazo.trim()) {
+        setShowRechazoInput(docId);
+        return;
+      }
+      setDocValidandoId(docId);
+      try {
+        await validarDocumentoPersonalCtx(docId, decision, decision === 'rechazado' ? motivoRechazo : null);
+        setShowRechazoInput(null);
+        setMotivoRechazo('');
+        addNotificacion(`Documento ${decision === 'aprobado' ? 'aprobado' : 'rechazado'}.`);
+      } catch (err) {
+        addNotificacion('Error al validar el documento.');
+      } finally {
+        setDocValidandoId(null);
+      }
+    };
+
+    const contratoColor = tipo => tipo === 'Indefinido' ? 'green' : tipo === 'Plazo fijo' ? 'orange' : 'cyan';
+    const tabs = ['ficha', 'contrato', 'vacaciones', 'licencias', 'solicitudes', 'documentos', 'reembolsos', 'disponibilidad'];
+
+    return (
+      <>
+        <div className="page-header">
+          <div className="row" style={{gap:12}}>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setSelTecnico(null); setFichaTab('ficha'); }}>{I.chev} Volver</button>
+            <div>
+              <h1 className="page-title">{p.nombre}</h1>
+              <div className="page-sub">{p.cargo} · {p.especialidad} · Ingreso: {p.fecha_ingreso || '—'}</div>
+            </div>
+          </div>
+          <div className="row">
+            <span className={'badge badge-' + contratoColor(p.tipo_contrato)}>{p.tipo_contrato}</span>
+            <span className={'badge ' + (p.estado === 'disponible' ? 'badge-green' : 'badge-gray')}>{p.estado?.toUpperCase()}</span>
+            <button className="btn btn-ghost btn-sm" title="Editar técnico" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>{I.edit}</button>
+            <button className="btn btn-ghost btn-sm" title="Eliminar técnico" style={{color:'var(--danger)'}} onClick={() => eliminarTecnico(p)}>{I.trash}</button>
+          </div>
+        </div>
+
+        <div className="card">
+          <div style={{padding:'0 20px'}}>
+            <div className="tabs">
+              {tabs.map(t => (
+                <div key={t} className={'tab '+(fichaTab===t?'active':'')} onClick={() => setFichaTab(t)} style={{textTransform:'capitalize'}}>{t}</div>
+              ))}
+            </div>
+          </div>
+
+          {fichaTab === 'ficha' && (
+            <div className="card-body">
+              <div className="grid-2" style={{gap:16}}>
+                {[
+                  ['DNI', p.documento || p.dni],
+                  ['Teléfono', p.telefono],
+                  ['Email', p.email],
+                  ['Cargo', p.cargo],
+                  ['Especialidad', p.especialidad],
+                  ['Especialidad 2', p.especialidad2],
+                  ['Área', p.area],
+                  ['Sede base', p.sede],
+                  ['Supervisor', p.supervisor],
+                  ['Perfil de campo', p.perfil_campo],
+                  ['Centro de costo', centrosCosto?.find(c => c.id === p.centro_costo_id)?.nombre || p.centro_costo_id || '—'],
+                  ['Turno asignado', turnoP ? `${turnoP.nombre} (${turnoP.hora_entrada} – ${turnoP.hora_salida})` : 'Sin turno'],
+                ].map(([label, val]) => (
+                  <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
+                    <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
+                    <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {fichaTab === 'contrato' && (
+            <div className="card-body">
+              <div className="grid-2" style={{gap:16}}>
+                {[
+                  ['Tipo de contrato', p.tipo_contrato],
+                  ['Fecha inicio', p.fecha_inicio_contrato || p.fecha_ingreso],
+                  ['Fecha fin', p.fecha_fin_contrato || (p.tipo_contrato === 'Indefinido' ? 'Sin fecha de fin' : '—')],
+                  ['Régimen laboral', p.regimen_laboral],
+                  ['Régimen de jornada', p.regimen_jornada],
+                  ['Sueldo base', canFinanzas ? `S/ ${Number(p.sueldo_base||0).toLocaleString()}` : '***'],
+                  ['Costo/hora', canFinanzas ? money(p.costo ?? p.costo_hora_real ?? 0) + '/hr' : '***'],
+                  ['Costo hora extra', canFinanzas ? money(p.costo_hora_extra ?? 0) + '/hr' : '***'],
+                  ['Sistema pensionario', esHon ? '—' : p.sistema_pensionario],
+                  ['AFP', esHon ? '—' : (p.afp_nombre || '—')],
+                  ['Vacaciones disponibles', esHon ? '—' : `${p.dias_vacaciones_disponibles ?? 0} días`],
+                ].map(([label, val]) => (
+                  <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
+                    <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
+                    <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {fichaTab === 'vacaciones' && (
+            <>
+              {esHon ? (
+                <div className="card-body">
+                  <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, color:'var(--fg-muted)', fontSize:13}}>
+                    Los trabajadores bajo modalidad de honorarios no tienen derecho a vacaciones remuneradas.
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="card-body" style={{paddingBottom:0}}>
+                    <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:16}}>
+                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">Días disponibles</div><div className="kpi-value" style={{color:'var(--green)'}}>{p.dias_vacaciones_disponibles ?? 0}</div></div>
+                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">Días usados</div><div className="kpi-value">{vacPersona.filter(s => s.estado === 'confirmada_rrhh' || s.estado === 'activa').reduce((acc,s) => acc + (s.dias_habiles||0), 0)}</div></div>
+                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">Solicitudes</div><div className="kpi-value">{vacPersona.length}</div></div>
+                    </div>
+                  </div>
+                  <div className="table-wrap">
+                    <table className="tbl">
+                      <thead><tr><th>Desde</th><th>Hasta</th><th>Días hábiles</th><th>Motivo</th><th>Estado</th></tr></thead>
+                      <tbody>
+                        {vacPersona.length === 0 && <tr><td colSpan={5} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes de vacaciones.</td></tr>}
+                        {vacPersona.map(v => (
+                          <tr key={v.id}>
+                            <td>{v.fecha_inicio}</td>
+                            <td>{v.fecha_fin}</td>
+                            <td className="num">{v.dias_habiles}</td>
+                            <td className="text-muted">{v.motivo}</td>
+                            <td><span className={'badge badge-'+(v.estado==='confirmada_rrhh'||v.estado==='activa'?'green':v.estado==='enviada'||v.estado==='aprobada_jefe'?'orange':'red')}>{v.estado?.replace(/_/g,' ')}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {fichaTab === 'licencias' && (
+            <>
+              {esHon ? (
+                <div className="card-body">
+                  <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, color:'var(--fg-muted)', fontSize:13}}>
+                    Los trabajadores bajo modalidad de honorarios no tienen derecho a licencias laborales remuneradas.
+                  </div>
+                </div>
+              ) : (
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Motivo</th><th>Estado</th></tr></thead>
+                    <tbody>
+                      {licPersona.length === 0 && <tr><td colSpan={6} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin licencias registradas.</td></tr>}
+                      {licPersona.map(l => (
+                        <tr key={l.id}>
+                          <td style={{textTransform:'capitalize'}}>{l.tipo?.replace(/_/g,' ')}</td>
+                          <td>{l.fecha_inicio}</td>
+                          <td>{l.fecha_fin}</td>
+                          <td className="num">{l.dias_habiles}</td>
+                          <td className="text-muted">{l.motivo}</td>
+                          <td><span className={'badge badge-'+(l.estado==='confirmada_rrhh'||l.estado==='activa'?'green':l.estado==='enviada'?'orange':'red')}>{l.estado?.replace(/_/g,' ')}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          {fichaTab === 'solicitudes' && (
+            <>
+              {esHon ? (
+                <div className="card-body">
+                  <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, color:'var(--fg-muted)', fontSize:13}}>
+                    Los trabajadores bajo modalidad de honorarios no tienen acceso a permisos laborales remunerados.
+                  </div>
+                </div>
+              ) : (
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Motivo</th><th>Impacto nómina</th><th>Estado</th></tr></thead>
+                    <tbody>
+                      {permPersona.length === 0 && <tr><td colSpan={7} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes registradas.</td></tr>}
+                      {permPersona.map(s => (
+                        <tr key={s.id}>
+                          <td style={{textTransform:'capitalize'}}>{s.tipo?.replace(/_/g,' ')}</td>
+                          <td>{s.fecha_inicio}</td>
+                          <td>{s.fecha_fin}</td>
+                          <td className="num">{s.dias_habiles}</td>
+                          <td className="text-muted">{s.motivo}</td>
+                          <td><span className={'badge '+(s.impacto_nomina==='sin_descuento'?'badge-green':s.impacto_nomina==='descuento_total'?'badge-red':'badge-orange')}>{s.impacto_nomina?.replace(/_/g,' ')}</span></td>
+                          <td><span className={'badge badge-'+(s.estado==='confirmada_rrhh'||s.estado==='activa'?'green':s.estado==='enviada'||s.estado==='aprobada_jefe'?'orange':'red')}>{s.estado?.replace(/_/g,' ')}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          {fichaTab === 'documentos' && (
+            <div className="card-body">
+              {/* Formulario de subida */}
+              <details style={{marginBottom:20}}>
+                <summary style={{cursor:'pointer', fontWeight:600, fontSize:13, padding:'10px 0'}}>+ Subir nuevo documento</summary>
+                <form onSubmit={handleSubirDoc} style={{display:'grid', gap:12, marginTop:12}}>
+                  <div className="grid-2" style={{gap:12}}>
+                    <div className="input-group">
+                      <label>Tipo de documento *</label>
+                      <select className="select" value={docUploadForm.tipoDoc} onChange={e => setDocUploadForm(f => ({...f, tipoDoc: e.target.value}))} required>
+                        <option value="">Seleccionar...</option>
+                        {personalDocumentosService.TIPOS_DOC_OPERATIVO.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="input-group">
+                      <label>Archivo (PDF / JPG / PNG) *</label>
+                      <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e => setDocUploadFile(e.target.files?.[0] || null)} required />
+                    </div>
+                    <div className="input-group">
+                      <label>Fecha de emisión</label>
+                      <input className="input" type="date" value={docUploadForm.fechaEmision} onChange={e => setDocUploadForm(f => ({...f, fechaEmision: e.target.value}))} />
+                    </div>
+                    <div className="input-group">
+                      <label>Fecha de vencimiento</label>
+                      <input className="input" type="date" value={docUploadForm.fechaVencimiento} onChange={e => setDocUploadForm(f => ({...f, fechaVencimiento: e.target.value}))} />
+                    </div>
+                  </div>
+                  <div className="input-group">
+                    <label>Notas</label>
+                    <input className="input" type="text" placeholder="Observaciones opcionales" value={docUploadForm.notas} onChange={e => setDocUploadForm(f => ({...f, notas: e.target.value}))} />
+                  </div>
+                  {docUploadError && <div className="text-danger" style={{fontSize:12}}>{docUploadError}</div>}
+                  <button className="btn btn-primary" type="submit" disabled={docUploading}>{docUploading ? 'Subiendo...' : 'Subir documento'}</button>
+                </form>
+              </details>
+
+              {/* Lista de documentos activos */}
+              {docsPersona.length === 0 ? (
+                <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'32px 0', fontSize:13}}>
+                  No hay documentos registrados para este técnico. Sube el primer documento arriba.
+                </div>
+              ) : (
+                <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                  {docsPersona.map(doc => {
+                    const tipoInfo = personalDocumentosService.TIPOS_DOC_OPERATIVO.find(t => t.key === doc.tipo_doc);
+                    return (
+                      <div key={doc.id} style={{padding:'14px 16px', border:'1px solid var(--border)', borderRadius:8, display:'flex', flexDirection:'column', gap:8}}>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8}}>
+                          <div>
+                            <div style={{fontWeight:600, fontSize:13}}>{tipoInfo?.label || doc.tipo_doc}</div>
+                            <div className="text-muted" style={{fontSize:11}}>
+                              {doc.nombre_archivo || '—'} · v{doc.version}
+                              {doc.fecha_emision && ` · Emitido: ${doc.fecha_emision}`}
+                              {doc.fecha_vencimiento && ` · Vence: ${doc.fecha_vencimiento}`}
+                            </div>
+                          </div>
+                          <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
+                            <span className={'badge ' + (personalDocumentosService.BADGE_VENCIMIENTO[doc.estado_vencimiento] || 'badge-gray')}>
+                              {personalDocumentosService.LABEL_VENCIMIENTO[doc.estado_vencimiento] || doc.estado_vencimiento}
+                            </span>
+                            <span className={'badge ' + (personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion] || 'badge-gray')}>
+                              {doc.estado_validacion}
+                            </span>
+                            {doc.archivo_url && (
+                              <a href={doc.archivo_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">{I.file} Ver</a>
+                            )}
+                          </div>
+                        </div>
+                        {doc.motivo_rechazo && (
+                          <div style={{fontSize:12, color:'var(--danger)', padding:'6px 10px', background:'rgba(229,62,62,0.08)', borderRadius:4}}>
+                            Motivo de rechazo: {doc.motivo_rechazo}
+                          </div>
+                        )}
+                        {doc.notas && <div className="text-muted" style={{fontSize:12}}>Nota: {doc.notas}</div>}
+                        {/* Acciones de validación para RRHH */}
+                        {doc.estado_validacion === 'pendiente' && (
+                          <div style={{display:'flex', gap:8, alignItems:'flex-start', flexWrap:'wrap'}}>
+                            <button className="btn btn-sm btn-primary" disabled={docValidandoId === doc.id} onClick={() => handleValidar(doc.id, 'aprobado')}>
+                              {docValidandoId === doc.id ? '...' : 'Aprobar'}
+                            </button>
+                            {showRechazoInput === doc.id ? (
+                              <div style={{display:'flex', gap:6, flex:1, minWidth:200}}>
+                                <input className="input" style={{flex:1, fontSize:12, padding:'4px 8px'}} placeholder="Motivo de rechazo..." value={motivoRechazo} onChange={e => setMotivoRechazo(e.target.value)} />
+                                <button className="btn btn-sm btn-danger" onClick={() => handleValidar(doc.id, 'rechazado')}>Confirmar rechazo</button>
+                                <button className="btn btn-sm btn-ghost" onClick={() => { setShowRechazoInput(null); setMotivoRechazo(''); }}>Cancelar</button>
+                              </div>
+                            ) : (
+                              <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} onClick={() => setShowRechazoInput(doc.id)}>Rechazar</button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {fichaTab === 'reembolsos' && (
+            <div className="card-body">
+              <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, marginBottom:20}}>
+                <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 16px'}}>
+                  <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total reembolsos</div>
+                  <div style={{fontWeight:700, fontSize:18}}>{reembolsosPersona.length}</div>
+                </div>
+                <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 16px'}}>
+                  <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Pendiente de pago</div>
+                  <div style={{fontWeight:700, fontSize:18, color:totalReembolsoPend > 0 ? 'var(--orange)' : 'var(--fg)'}}>{money(totalReembolsoPend)}</div>
+                </div>
+              </div>
+              {reembolsosPersona.length === 0 ? (
+                <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'32px 0'}}>No hay reembolsos de viáticos registrados para este técnico.</div>
+              ) : (
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead><tr><th>Fecha</th><th>Concepto</th><th>OT</th><th>Monto</th><th>Estado</th></tr></thead>
+                    <tbody>
+                      {reembolsosPersona.map(r => {
+                        const pagos = (cxpPagos || []).filter(pg => pg.cxp_id === r.id);
+                        const ultimoPago = pagos.sort((a,b) => (b.fecha_pago||'').localeCompare(a.fecha_pago||''))[0];
+                        return (
+                          <tr key={r.id}>
+                            <td>{r.fecha_emision}</td>
+                            <td style={{fontSize:12}}>{r.concepto}</td>
+                            <td className="mono text-muted" style={{fontSize:11}}>{r.ot_vinc_id || '—'}</td>
+                            <td className="num"><strong>{money(r.monto_total)}</strong></td>
+                            <td>
+                              <span className={'badge ' + (r.estado === 'pagada' ? 'badge-green' : r.estado === 'anulada' ? 'badge-gray' : 'badge-orange')}>
+                                {r.estado === 'pagada' ? 'Pagado' : r.estado === 'anulada' ? 'Anulado' : 'Pendiente'}
+                              </span>
+                              {ultimoPago && <span className="text-muted" style={{fontSize:11, marginLeft:6}}>{ultimoPago.fecha_pago}</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {fichaTab === 'disponibilidad' && (
+            <div className="card-body">
+              <div style={{fontWeight:600, fontSize:13, marginBottom:12}}>Asignaciones recientes en el Planner</div>
+              {asigRecientes.length === 0 ? (
+                <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'24px 0', fontSize:13}}>
+                  Sin asignaciones registradas en el Planner para este técnico.
+                </div>
+              ) : (
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead><tr><th>Fecha</th><th>OT</th><th>Horas</th><th>Estado</th></tr></thead>
+                    <tbody>
+                      {asigRecientes.map(a => (
+                        <tr key={a.id}>
+                          <td>{a.fecha}</td>
+                          <td className="mono text-muted" style={{fontSize:12}}>{a.ot_id || '—'}</td>
+                          <td className="num">{a.horas_programadas != null ? `${a.horas_programadas}h` : '—'}</td>
+                          <td><span className={'badge badge-' + (a.estado === 'completado' ? 'green' : a.estado === 'cancelado' ? 'red' : 'cyan')}>{a.estado || 'asignado'}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="page-header">
@@ -8546,49 +10471,62 @@ function RRHH_Operativo() {
         </div>
       </div>
 
-      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
+      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(5,1fr)'}}>
         <div className="kpi-card"><div className="kpi-label">Total personal</div><div className="kpi-value">{personal.length}</div><div className="kpi-icon cyan">{I.users}</div></div>
         <div className="kpi-card"><div className="kpi-label">Disponibles hoy</div><div className="kpi-value" style={{color:'var(--green)'}}>{disponibles}</div><div className="kpi-icon green">{I.check}</div></div>
         <div className="kpi-card"><div className="kpi-label">Docs con alerta</div><div className="kpi-value" style={{color:docsAlerta>0?'var(--orange)':'inherit'}}>{docsAlerta}</div><div className={'kpi-icon '+(docsAlerta>0?'orange':'green')}>{I.shield}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Costo/hora campo</div><div className="kpi-value" style={{fontSize:20}}>{money(costoTotal)}</div><div className="kpi-icon purple">{I.dollar}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Técnicos Planilla</div><div className="kpi-value" style={{color:'var(--green)'}}>{countPlanilla}</div><div className="kpi-icon green">{I.check}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Técnicos Honorarios</div><div className="kpi-value" style={{color:'var(--fg-muted)'}}>{countHonorarios}</div><div className="kpi-icon purple">{I.dollar}</div></div>
       </div>
 
       <div className="tabs">
         <div className={'tab '+(tab==='personal'?'active':'')} onClick={()=>setTab('personal')}>Personal</div>
         <div className={'tab '+(tab==='disponibilidad'?'active':'')} onClick={()=>setTab('disponibilidad')}>Disponibilidad</div>
         <div className={'tab '+(tab==='documentos'?'active':'')} onClick={()=>setTab('documentos')}>Documentos</div>
+        <div className={'tab '+(tab==='reportes'?'active':'')} onClick={()=>setTab('reportes')}>Reportes</div>
       </div>
 
       {tab === 'personal' && (
         <div className="card">
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>ID</th><th>Nombre</th><th>Cargo</th><th>Especialidad</th><th>Sede base</th><th>Costo/Hora</th><th>Turno</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <thead><tr><th>Nombre</th><th>Cargo</th><th>Especialidad</th><th>Área</th><th>Sede base</th><th>Costo/Hora</th><th>Turno</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones disp.</th><th>Estado</th><th>Acciones</th></tr></thead>
               <tbody>
-                {personal.length === 0 && <tr><td colSpan={9} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
-                {personal.map(p => (
-                  <tr key={p.id} className="hover-row">
-                    <td className="mono text-muted">{p.codigo || p.id}</td>
-                    <td>
-                      <div className="row">
-                        <div className="avatar" style={{width:28,height:28,fontSize:10}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
-                        <strong>{p.nombre}</strong>
-                      </div>
-                    </td>
-                    <td>{p.cargo}</td>
-                    <td className="text-muted">{p.especialidad}</td>
-                    <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
-                    <td className="num">{money(p.costo ?? p.costo_hora_real ?? 0)}/hr</td>
-                    <td><span className="mono" style={{fontSize:12}}>{workerTurno(turnosOptions, p).nombre}</span></td>
-                    <td><span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span></td>
-                    <td>
-                      <div className="row" style={{gap:6}}>
-                        <button className="btn btn-ghost btn-sm" title="Editar tecnico" onClick={() => abrirEditarTecnico(p)}>{I.edit}</button>
-                        <button className="btn btn-ghost btn-sm" title="Eliminar tecnico" style={{color:'var(--danger)'}} onClick={() => eliminarTecnico(p)}>{I.trash}</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {personal.length === 0 && <tr><td colSpan={12} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
+                {personal.map(p => {
+                  const esHon = p.tipo_contrato === 'Recibos por honorarios';
+                  const turnoNombre = workerTurno(turnosOptions, p).nombre;
+                  const contratoTexto = p.fecha_inicio_contrato
+                    ? (p.fecha_fin_contrato ? `${p.fecha_inicio_contrato} – ${p.fecha_fin_contrato}` : `Desde ${p.fecha_inicio_contrato}`)
+                    : null;
+                  return (
+                    <tr key={p.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => { setSelTecnico(p); setFichaTab('ficha'); }}>
+                      <td>
+                        <div className="row">
+                          <div className="avatar" style={{width:28,height:28,fontSize:10}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
+                          <strong>{p.nombre}</strong>
+                        </div>
+                      </td>
+                      <td>{p.cargo}</td>
+                      <td className="text-muted">{p.especialidad}</td>
+                      <td>{p.area || <span className="text-subtle">—</span>}</td>
+                      <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
+                      <td className="num">{money(p.costo ?? p.costo_hora_real ?? 0)}/hr</td>
+                      <td>{esHon ? <span className="text-subtle">—</span> : <span className="mono" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>
+                      <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{contratoTexto || '—'}</span>}</td>
+                      <td><span className={'badge '+(esHon ? 'badge-gray' : 'badge-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></td>
+                      <td className="num">{esHon ? <span className="text-subtle">—</span> : `${p.dias_vacaciones_disponibles} días`}</td>
+                      <td><span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span></td>
+                      <td>
+                        <div className="row" style={{gap:6}} onClick={e => e.stopPropagation()}>
+                          <button className="btn btn-ghost btn-sm" title="Ver ficha" onClick={() => { setSelTecnico(p); setFichaTab('ficha'); }}>{I.userCheck}</button>
+                          <button className="btn btn-ghost btn-sm" title="Editar tecnico" onClick={() => abrirEditarTecnico(p)}>{I.edit}</button>
+                          <button className="btn btn-ghost btn-sm" title="Eliminar tecnico" style={{color:'var(--danger)'}} onClick={() => eliminarTecnico(p)}>{I.trash}</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -8639,26 +10577,134 @@ function RRHH_Operativo() {
 
       {tab === 'documentos' && (
         <div className="card">
-          <div className="card-head"><h3>Estado documentario — Habilitaciones técnicas</h3>{docsAlerta>0&&<span className="badge badge-orange">{docsAlerta} con alertas</span>}</div>
+          <div className="card-head">
+            <h3>Estado documentario — Habilitaciones técnicas</h3>
+            {docsAlerta > 0 && <span className="badge badge-orange">{docsAlerta} con alertas</span>}
+          </div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Técnico</th><th style={{textAlign:'center'}}>SCTR</th><th style={{textAlign:'center'}}>Médico</th><th style={{textAlign:'center'}}>EPP</th><th style={{textAlign:'center'}}>Licencia</th><th>Estado global</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Técnico</th>
+                  {COMPLIANCE_TIPOS.map(t => <th key={t.key} style={{textAlign:'center'}}>{t.label}</th>)}
+                  <th>Estado global</th>
+                </tr>
+              </thead>
               <tbody>
                 {personal.map(p => {
-                  const vals = Object.values(p.docs || {});
-                  const global = vals.some(d=>d==='vencido')?'Vencido':vals.some(d=>d==='por_vencer'||d==='incompleto')?'Revisión':'OK';
+                  const s = docsCompliancePorPersona[p.id] || {};
+                  const estados = COMPLIANCE_TIPOS.map(t => s[t.key] || 'pendiente');
+                  const global = estados.some(v => v === 'vencido') ? 'Vencido'
+                    : estados.some(v => v === 'por_vencer') ? 'Por vencer'
+                    : estados.some(v => v === 'pendiente') ? 'Pendiente'
+                    : 'OK';
+                  const globalBadge = global === 'OK' ? 'badge-green' : global === 'Por vencer' ? 'badge-orange' : global === 'Pendiente' ? 'badge-gray' : 'badge-red';
+                  const labelOf = v => ({ vigente:'Vigente', por_vencer:'Por vencer', vencido:'Vencido', sin_vencimiento:'Sin venc.', pendiente:'Pendiente' })[v] || v;
+                  const badgeOf = v => ({ vigente:'badge-green', por_vencer:'badge-orange', vencido:'badge-red', sin_vencimiento:'badge-gray', pendiente:'badge-gray' })[v] || 'badge-gray';
                   return (
                     <tr key={p.id} className="hover-row">
                       <td style={{fontWeight:600}}>{p.nombre}<div className="text-muted" style={{fontSize:11}}>{p.cargo}</div></td>
-                      {Object.values(p.docs || {}).map((d,i) => (
-                        <td key={i} style={{textAlign:'center'}}><span className={'badge '+docBadge(d)} style={{fontSize:11}}>{docLabel(d)}</span></td>
+                      {estados.map((v, i) => (
+                        <td key={i} style={{textAlign:'center'}}>
+                          <span className={'badge ' + badgeOf(v)} style={{fontSize:11}}>{labelOf(v)}</span>
+                        </td>
                       ))}
-                      <td><span className={'badge '+(global==='OK'?'badge-green':global==='Revisión'?'badge-orange':'badge-red')}>{global}</span></td>
+                      <td><span className={'badge ' + globalBadge}>{global}</span></td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {tab === 'reportes' && (
+        <div style={{display:'grid', gap:24}}>
+          <div className="card">
+            <div className="card-head"><h3>Headcount por Especialidad</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Total: {personal.length} técnicos</span></div>
+            {Object.keys(porEspecialidad).length === 0 ? (
+              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin datos.</div>
+            ) : (
+              <div style={{padding:'16px 20px', display:'flex', flexDirection:'column', gap:12}}>
+                {Object.entries(porEspecialidad).sort((a,b)=>b[1]-a[1]).map(([esp, cnt]) => (
+                  <div key={esp} style={{display:'grid', gridTemplateColumns:'160px 1fr 40px', gap:12, alignItems:'center'}}>
+                    <span style={{fontSize:13, fontWeight:500}}>{esp}</span>
+                    <div style={{background:'var(--bg-subtle)', borderRadius:4, height:10}}>
+                      <div style={{width:Math.round(cnt/maxEsp*100)+'%', height:'100%', background:'var(--cyan)', borderRadius:4}}/>
+                    </div>
+                    <span style={{fontSize:13, fontWeight:700, textAlign:'right'}}>{cnt}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{padding:'0 20px 16px', display:'flex', gap:24, fontSize:12, color:'var(--fg-subtle)'}}>
+              <span>Planilla: <strong>{countPlanilla}</strong></span>
+              <span>Honorarios: <strong>{countHonorarios}</strong></span>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-head"><h3>Técnicos sin Turno Asignado</h3>{sinTurno.length > 0 && <span className="badge badge-orange">{sinTurno.length}</span>}</div>
+            {sinTurno.length === 0 ? (
+              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Todos los técnicos tienen turno asignado.</div>
+            ) : (
+              <table className="tbl">
+                <thead><tr><th>Técnico</th><th>Cargo</th><th>Especialidad</th><th>Modalidad</th></tr></thead>
+                <tbody>
+                  {sinTurno.map(p => (
+                    <tr key={p.id}>
+                      <td style={{fontWeight:600}}>{p.nombre}</td>
+                      <td>{p.cargo}</td>
+                      <td>{p.especialidad}</td>
+                      <td><span className={'badge '+(p.tipo_contrato==='Recibos por honorarios'?'badge-gray':'badge-green')}>{p.tipo_contrato==='Recibos por honorarios'?'Honorarios':'Planilla'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-head"><h3>Documentos por Vencer (≤30 días)</h3>{docsPorVencer.length > 0 && <span className="badge badge-orange">{docsPorVencer.length} docs</span>}</div>
+            {docsPorVencer.length === 0 ? (
+              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin documentos por vencer próximamente.</div>
+            ) : (
+              <table className="tbl">
+                <thead><tr><th>Técnico</th><th>Documento</th><th>Estado</th></tr></thead>
+                <tbody>
+                  {docsPorVencer.map((d, i) => (
+                    <tr key={i}>
+                      <td style={{fontWeight:600}}>{d.tecnico}</td>
+                      <td style={{textTransform:'capitalize'}}>{d.doc}</td>
+                      <td><span className="badge badge-orange">Por vencer</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-head"><h3>Ranking por Costo/Hora — Top técnicos activos</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Partes diarios disponibles en módulo Partes</span></div>
+            {personal.filter(p=>p.estado!=='inactivo').length === 0 ? (
+              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin datos de personal activo.</div>
+            ) : (
+              <table className="tbl">
+                <thead><tr><th>Técnico</th><th>Especialidad</th><th>Costo/Hora</th><th>Modalidad</th><th>Estado</th></tr></thead>
+                <tbody>
+                  {[...personal].filter(p=>p.estado!=='inactivo').sort((a,b)=>Number(b.costo??b.costo_hora_real??0)-Number(a.costo??a.costo_hora_real??0)).slice(0,10).map(p => (
+                    <tr key={p.id}>
+                      <td style={{fontWeight:600}}>{p.nombre}</td>
+                      <td>{p.especialidad}</td>
+                      <td className="num" style={{fontWeight:700}}>{money(p.costo??p.costo_hora_real??0)}/hr</td>
+                      <td><span className={'badge '+(p.tipo_contrato==='Recibos por honorarios'?'badge-gray':'badge-green')}>{p.tipo_contrato==='Recibos por honorarios'?'Honorarios':'Planilla'}</span></td>
+                      <td><span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
@@ -8681,6 +10727,13 @@ function RRHH_Operativo() {
               <div className="input-group"><label>DNI / Documento *</label><input className="input" required value={formAlta.dni} onChange={e=>setFormAlta(v=>({...v,dni:e.target.value}))} placeholder="12345678"/></div>
               <div className="input-group"><label>Teléfono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email</label><input className="input" type="email" value={formAlta.email} onChange={e=>setFormAlta(v=>({...v,email:e.target.value}))} placeholder="tecnico@empresa.pe"/></div>
+              {esHonorarios && (
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>RUC <span style={{color:'var(--red)'}}>*</span></label>
+                  <input className="input" type="text" inputMode="numeric" maxLength={11} pattern="[0-9]{11}" value={formAlta.ruc_colaborador} onChange={e=>setFormAlta(v=>({...v,ruc_colaborador:e.target.value.replace(/\D/g,'')}))} placeholder="20XXXXXXXXX"/>
+                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>11 dígitos. Requerido para emitir recibos por honorarios (4ta categoría).</div>
+                </div>
+              )}
             </div>
 
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos laborales</div>
@@ -8706,16 +10759,80 @@ function RRHH_Operativo() {
 
             {canFinanzas && <>
               <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos de nomina</div>
-              {esHonorarios && <div className="alert" style={{marginBottom:12}}>Recibos por honorarios no genera beneficios sociales ni aportes de planilla en este formulario.</div>}
-              <div className="grid-2" style={{gap:14, marginBottom:20}}>
-                <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" disabled={esHonorarios} value={formAlta.sueldo_base} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value}))} placeholder="3000"/></div>
-                <div className="input-group"><label>Sistema pensionario</label><select className="select" disabled={esHonorarios} value={formAlta.sistema_pensionario} onChange={e=>setFormAlta(v=>({...v,sistema_pensionario:e.target.value, afp_nombre:e.target.value === 'ONP' ? 'ONP' : v.afp_nombre}))}><option value="">No aplica</option><option value="AFP">AFP</option><option value="ONP">ONP</option></select></div>
-                <div className="input-group"><label>AFP / Entidad</label><select className="select" disabled={esHonorarios} value={formAlta.afp_nombre} onChange={e=>setFormAlta(v=>({...v,afp_nombre:e.target.value}))}><option value="">No aplica</option><option>Integra</option><option>Prima</option><option>Habitat</option><option>Profuturo</option><option>ONP</option></select></div>
-                <div className="input-group"><label>Regimen laboral</label><select className="select" disabled={esHonorarios} value={formAlta.regimen_laboral} onChange={e=>setFormAlta(v=>({...v,regimen_laboral:e.target.value}))}><option value="honorarios">Honorarios</option><option value="general">General</option><option value="mype">MYPE</option><option value="cas">CAS</option><option value="otro">Otro</option></select></div>
-                <label className="row" style={{gap:8, alignItems:'center', opacity: esHonorarios ? 0.5 : 1}}><input type="checkbox" disabled={esHonorarios} checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos para asignacion familiar</label>
-                <div className="input-group"><label>Cuota prestamo mes</label><input className="input" type="number" min="0" disabled={esHonorarios} value={formAlta.cuota_prestamo_mes} onChange={e=>setFormAlta(v=>({...v,cuota_prestamo_mes:e.target.value}))}/></div>
-                <div className="input-group"><label>Descuento judicial</label><input className="input" type="number" min="0" disabled={esHonorarios} value={formAlta.descuento_judicial} onChange={e=>setFormAlta(v=>({...v,descuento_judicial:e.target.value}))}/></div>
-              </div>
+              {esHonorarios ? (
+                <div className="grid-2" style={{gap:14, marginBottom:20}}>
+                  <div className="input-group">
+                    <label>Retención IR (%)</label>
+                    <input className="input" type="number" min="0" max="30" step="0.5" value={formAlta.retencion_ir} onChange={e=>setFormAlta(v=>({...v,retencion_ir:e.target.value}))} placeholder="8"/>
+                    <div className="text-muted" style={{fontSize:11, marginTop:4}}>Por defecto 8%. Solo aplica si la empresa es Agente de Retención y el honorario supera S/ 1,500.</div>
+                  </div>
+                  <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                    <label className="row" style={{gap:8, alignItems:'center', cursor:'pointer'}}>
+                      <input type="checkbox" checked={formAlta.suspension_retenciones} onChange={e=>setFormAlta(v=>({...v,suspension_retenciones:e.target.checked, vencimiento_suspension:''}))}/>
+                      Tiene constancia de suspensión de retenciones
+                    </label>
+                    {formAlta.suspension_retenciones && (
+                      <div className="input-group">
+                        <label>Vencimiento de la constancia <span className="text-muted">(opcional)</span></label>
+                        <input className="input" type="date" value={formAlta.vencimiento_suspension} onChange={e=>setFormAlta(v=>({...v,vencimiento_suspension:e.target.value}))}/>
+                        <div className="text-muted" style={{fontSize:11, marginTop:4}}>Sin fecha = suspensión indefinida.</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid-2" style={{gap:14, marginBottom:20}}>
+                    <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" value={formAlta.sueldo_base} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value}))} placeholder="3000"/></div>
+                    <div className="input-group"><label>Sistema pensionario</label><select className="select" value={formAlta.sistema_pensionario} onChange={e=>setFormAlta(v=>({...v,sistema_pensionario:e.target.value, afp_nombre:e.target.value === 'ONP' ? 'ONP' : v.afp_nombre}))}><option value="AFP">AFP</option><option value="ONP">ONP</option></select></div>
+                    <div className="input-group"><label>Regimen laboral</label><select className="select" value={formAlta.regimen_laboral} onChange={e=>setFormAlta(v=>({...v,regimen_laboral:e.target.value}))}><option value="general">General</option><option value="mype">MYPE</option><option value="cas">CAS</option><option value="otro">Otro</option></select></div>
+                    <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos para asignacion familiar</label>
+                    <div className="input-group"><label>Cuota prestamo mes</label><input className="input" type="number" min="0" value={formAlta.cuota_prestamo_mes} onChange={e=>setFormAlta(v=>({...v,cuota_prestamo_mes:e.target.value}))}/></div>
+                    <div className="input-group"><label>Descuento judicial</label><input className="input" type="number" min="0" value={formAlta.descuento_judicial} onChange={e=>setFormAlta(v=>({...v,descuento_judicial:e.target.value}))}/></div>
+                  </div>
+
+                  <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10}}>Régimen de jornada</div>
+                  <div className="grid-2" style={{gap:14, marginBottom:12}}>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}>
+                      <label>Régimen de jornada</label>
+                      <select className="select" value={formAlta.regimen_jornada} onChange={e=>setFormAlta(v=>({...v,regimen_jornada:e.target.value,horas_diarias_pactadas:e.target.value==='general'?'8':'12'}))}>
+                        <option value="general">General (8h/día estándar)</option>
+                        <option value="minero_14x7">Minero 14×7</option>
+                        <option value="minero_20x10">Minero 20×10</option>
+                        <option value="minero_28x14">Minero 28×14</option>
+                      </select>
+                    </div>
+                    {formAlta.regimen_jornada !== 'general' && <>
+                      <div className="input-group"><label>Horas diarias pactadas <span className="text-muted">(D. Leg. 857)</span></label><input className="input" type="number" min="1" max="12" value={formAlta.horas_diarias_pactadas} onChange={e=>setFormAlta(v=>({...v,horas_diarias_pactadas:e.target.value}))}/></div>
+                      <div className="input-group"><label>Fecha inicio del ciclo actual</label><input className="input" type="date" value={formAlta.fecha_inicio_ciclo} onChange={e=>setFormAlta(v=>({...v,fecha_inicio_ciclo:e.target.value}))}/></div>
+                      <div className="input-group" style={{gridColumn:'1/-1'}}><label>Bonificación por altitud (S/)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.bonif_altitud} onChange={e=>setFormAlta(v=>({...v,bonif_altitud:e.target.value}))} placeholder="0 si no aplica"/></div>
+                      <div className="card" style={{gridColumn:'1/-1',padding:'8px 12px',background:'rgba(6,182,212,0.08)',fontSize:12,color:'var(--cyan)'}}>⛏ Cálculo proporcional por días computables en cada período.</div>
+                    </>}
+                  </div>
+
+                  <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10}}>Sistema previsional</div>
+                  <div className="grid-2" style={{gap:14, marginBottom:12}}>
+                    {formAlta.sistema_pensionario === 'AFP' ? <>
+                      <div className="input-group">
+                        <label>AFP</label>
+                        <select className="select" value={formAlta.afp_nombre} onChange={e=>{const tasas={Habitat:1.47,Integra:1.55,Prima:1.60,Profuturo:1.69};setFormAlta(v=>({...v,afp_nombre:e.target.value,pct_comision_afp_flujo:String(tasas[e.target.value]??v.pct_comision_afp_flujo)}));}}>
+                          <option>Habitat</option><option>Integra</option><option>Prima</option><option>Profuturo</option>
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        <label>Tipo de comisión AFP</label>
+                        <select className="select" value={formAlta.tipo_comision_afp} onChange={e=>setFormAlta(v=>({...v,tipo_comision_afp:e.target.value}))}>
+                          <option value="mixta">Mixta</option><option value="flujo">Por flujo</option>
+                        </select>
+                      </div>
+                      {formAlta.tipo_comision_afp === 'flujo'
+                        ? <div className="input-group"><label>Comisión por flujo (%)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.pct_comision_afp_flujo} onChange={e=>setFormAlta(v=>({...v,pct_comision_afp_flujo:e.target.value}))}/></div>
+                        : <div className="card" style={{padding:'8px 12px',fontSize:12,color:'var(--fg-muted)'}}>Comisión mixta: se descuenta del fondo, no del sueldo mensual.</div>
+                      }
+                    </> : <div className="card" style={{gridColumn:'1/-1',padding:'10px 14px',fontSize:13}}>ONP — Tasa: 13% sobre remuneración asegurable.</div>}
+                  </div>
+                </>
+              )}
             </>}
 
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Acceso a campo móvil</div>
@@ -8815,7 +10932,7 @@ export function SolicitudesRrhh() {
   const canAdmin = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo || role?.es_admin_empresa);
   const todosPersonal = useMemo(() => [
     ...personalOperativo.map(p => ({ ...p, _tipo: 'operativo' })),
-    ...personalAdmin.map(p => ({ ...p, _tipo: 'administrativo' })),
+    ...personalAdmin.filter(p => p.tipo_contrato !== 'Honorarios').map(p => ({ ...p, _tipo: 'administrativo' })),
   ], [personalOperativo, personalAdmin]);
 
   const personalActual = useMemo(() => {

@@ -4,6 +4,7 @@ import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { rrhhService } from './services/rrhhService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
+import * as personalDocumentosService from './services/personalDocumentosService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { PHONE_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { getSupabaseClient } from './lib/supabaseClient.js';
@@ -420,7 +421,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
 }
 
 function TecnicoView({ screen, setScreen }) {
-  const { ots, cuentas, partes, personalOperativo, registrarParteDiario, authUser, usuarios } = useApp();
+  const { ots, cuentas, partes, personalOperativo, registrarParteDiario, authUser, usuarios, personalDocumentos = [], subirDocumentoPersonalCtx, empresa } = useApp();
   const [selectedOt, setSelectedOt] = useState(null);
   const today = new Date().toISOString().split('T')[0];
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
@@ -435,6 +436,36 @@ function TecnicoView({ screen, setScreen }) {
     .sort((a, b) => String(a.fecha_programada || a.fecha_inicio || '').localeCompare(String(b.fecha_programada || b.fecha_inicio || '')))
     .slice(0, 4);
   const partesTecnico = partes.filter(p => p.tecnico_id === tecnico.id || p.tecnico === tecnico.id || p.tecnico === tecnico.nombre);
+  const docsActivos = personalDocumentos.filter(d => d.personal_id === tecnico.id && d.activo);
+  const [docFile, setDocFile] = useState(null);
+  const [docTipo, setDocTipo] = useState('');
+  const [docFechaVenc, setDocFechaVenc] = useState('');
+  const [docSubiendo, setDocSubiendo] = useState(false);
+  const [docError, setDocError] = useState('');
+  const [docExito, setDocExito] = useState('');
+
+  const handleSubirDocMovil = async (e) => {
+    e.preventDefault();
+    if (!docFile || !docTipo) { setDocError('Elige el tipo y el archivo.'); return; }
+    setDocSubiendo(true); setDocError(''); setDocExito('');
+    try {
+      await subirDocumentoPersonalCtx({
+        personalId: tecnico.id,
+        personalTipo: 'operativo',
+        tipoDoc: docTipo,
+        file: docFile,
+        fechaVencimiento: docFechaVenc || null,
+        subidoDesde: 'mobile',
+      });
+      setDocFile(null); setDocTipo(''); setDocFechaVenc('');
+      setDocExito('Documento enviado. RRHH lo revisará a la brevedad.');
+    } catch (err) {
+      setDocError(err?.message || 'Error al subir.');
+    } finally {
+      setDocSubiendo(false);
+    }
+  };
+
   const enviarParte = () => {
     const ot = selectedOt || otsTecnico[0];
     if (!ot) return;
@@ -504,6 +535,65 @@ function TecnicoView({ screen, setScreen }) {
         </div>
         <p className="text-muted" style={{fontSize:12, textAlign:'center'}}>Apunta la cámara al código del repuesto para registrarlo en tu consumo diario automáticamente.</p>
       </>}
+      {screen === 'documentos' && <>
+        <div onClick={()=>setScreen('home')} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← Volver</div>
+        <div className="eyebrow">Mis Documentos</div>
+        <div className="font-display" style={{fontWeight:700,fontSize:18,margin:'4px 0 16px'}}>Habilitaciones</div>
+
+        {/* Documentos actuales */}
+        {docsActivos.length === 0 ? (
+          <div style={{color:'var(--fg-muted)', fontSize:13, marginBottom:20, padding:'12px', background:'var(--bg)', borderRadius:8}}>
+            No tienes documentos registrados aún.
+          </div>
+        ) : (
+          <div style={{display:'flex', flexDirection:'column', gap:8, marginBottom:20}}>
+            {docsActivos.map(doc => {
+              const tipoInfo = personalDocumentosService.TIPOS_DOC_OPERATIVO.find(t => t.key === doc.tipo_doc);
+              const badgeVenc = personalDocumentosService.BADGE_VENCIMIENTO[doc.estado_vencimiento] || 'badge-gray';
+              const labelVenc = personalDocumentosService.LABEL_VENCIMIENTO[doc.estado_vencimiento] || doc.estado_vencimiento;
+              return (
+                <div key={doc.id} style={{background:'var(--bg)', borderRadius:8, padding:'12px 14px', display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13}}>{tipoInfo?.label || doc.tipo_doc}</div>
+                    {doc.fecha_vencimiento && <div style={{fontSize:11, color:'var(--fg-muted)'}}>Vence: {doc.fecha_vencimiento}</div>}
+                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>
+                      {doc.estado_validacion === 'aprobado' ? '✓ Aprobado por RRHH' : doc.estado_validacion === 'rechazado' ? '✗ Rechazado — revisa el motivo' : '⏳ Pendiente de revisión'}
+                    </div>
+                    {doc.motivo_rechazo && <div style={{fontSize:11, color:'var(--danger)', marginTop:2}}>{doc.motivo_rechazo}</div>}
+                  </div>
+                  <span className={'badge ' + badgeVenc} style={{fontSize:10, whiteSpace:'nowrap'}}>{labelVenc}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Subir nuevo documento */}
+        <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Subir documento</div>
+        <form onSubmit={handleSubirDocMovil} style={{display:'flex', flexDirection:'column', gap:10}}>
+          <div>
+            <label style={{fontSize:12, color:'var(--fg-muted)', display:'block', marginBottom:4}}>Tipo de documento *</label>
+            <select className="select" value={docTipo} onChange={e=>setDocTipo(e.target.value)} required style={{width:'100%'}}>
+              <option value="">Seleccionar...</option>
+              {personalDocumentosService.TIPOS_DOC_OPERATIVO.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:12, color:'var(--fg-muted)', display:'block', marginBottom:4}}>Fecha de vencimiento</label>
+            <input className="input" type="date" value={docFechaVenc} onChange={e=>setDocFechaVenc(e.target.value)} style={{width:'100%'}}/>
+          </div>
+          <div>
+            <label style={{fontSize:12, color:'var(--fg-muted)', display:'block', marginBottom:4}}>Archivo (foto o PDF) *</label>
+            <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>setDocFile(e.target.files?.[0]||null)} required style={{width:'100%'}}/>
+          </div>
+          {docError && <div style={{fontSize:12, color:'var(--danger)'}}>{docError}</div>}
+          {docExito && <div style={{fontSize:12, color:'var(--green)'}}>{docExito}</div>}
+          <button className="btn btn-primary btn-lg" style={{width:'100%'}} type="submit" disabled={docSubiendo}>
+            {docSubiendo ? 'Subiendo...' : '↑ Enviar a RRHH'}
+          </button>
+        </form>
+      </>}
+
       {screen === 'parte' && <>
         <div onClick={()=>setScreen('home')} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← OTs de hoy</div>
         <div className="eyebrow">Parte diario · Paso 4 de 5</div>
@@ -520,8 +610,8 @@ function TecnicoView({ screen, setScreen }) {
     <div className="mobile-nav">
       <div className={'mobile-nav-item '+(screen==='home'?'active':'')} onClick={()=>setScreen('home')}>{I.home}OTs</div>
       <div className="mobile-nav-item">{I.clipboard}{partesTecnico.length} Partes</div>
-      <div className="mobile-nav-item">{I.alert}Incidencias</div>
-      <div className="mobile-nav-item">{I.settings}Ajustes</div>
+      <div className={'mobile-nav-item '+(screen==='documentos'?'active':'')} onClick={()=>setScreen('documentos')}>{I.shield}Docs{docsActivos.filter(d=>d.estado_vencimiento==='vencido'||d.estado_validacion==='rechazado').length > 0 ? <span style={{background:'var(--danger)',color:'#fff',borderRadius:'50%',width:14,height:14,fontSize:9,display:'flex',alignItems:'center',justifyContent:'center'}}>!</span> : null}</div>
+      <div className="mobile-nav-item">{I.alert}SOS</div>
     </div>
   </>;
 }

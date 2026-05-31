@@ -42,6 +42,7 @@ export async function persistirOT(supabase, empresaId, ot) {
     est_terceros: ot.est_terceros ?? null,
     est_logistica: ot.est_logistica ?? null,
     est_detalle: ot.est_detalle || null,
+    real_detalle: ot.real_detalle || null,
     centro_costo_id: ot.centro_costo_id || null,
     centro_beneficio_id: ot.centro_beneficio_id || null,
     es_adicional: ot.es_adicional || false,
@@ -110,6 +111,7 @@ export async function actualizarOT(supabase, otId, datos) {
   if (datos.est_terceros !== undefined) row.est_terceros = datos.est_terceros !== '' ? (Number(datos.est_terceros) || null) : null;
   if (datos.est_logistica !== undefined) row.est_logistica = datos.est_logistica !== '' ? (Number(datos.est_logistica) || null) : null;
   if (datos.est_detalle !== undefined) row.est_detalle = datos.est_detalle;
+  if (datos.real_detalle !== undefined) row.real_detalle = datos.real_detalle;
   if (datos.participantes_admin !== undefined) row.participantes_admin = datos.participantes_admin;
   row.updated_at = new Date().toISOString();
   if (!Object.keys(row).length) return;
@@ -300,6 +302,7 @@ export async function loadOpsFromSupabase(supabase, empresaId) {
     avance: ot.avance_pct,
     costoEst: ot.costo_estimado,
     costoReal: ot.costo_real,
+    realDetalle: ot.real_detalle,
     tipo: ot.servicio,
     sede: ot.direccion_ejecucion,
     fecha_inicio: ot.fecha_programada,

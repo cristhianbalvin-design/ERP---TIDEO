@@ -359,7 +359,7 @@ body {
   background: var(--header-bg);
   border-bottom: 1px solid var(--border);
   padding: 0 24px;
-  height: 60px;
+  height: 76px;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -1707,7 +1707,8 @@ body {
 .params-page[data-section="flujos"] .params-section-flujos,
 .params-page[data-section="sla"] .params-section-sla,
 .params-page[data-section="cuentas"] .params-section-cuentas,
-.params-page[data-section="tipo_cambio"] .params-section-tipo_cambio {
+.params-page[data-section="tipo_cambio"] .params-section-tipo_cambio,
+.params-page[data-section="evaluaciones"] .params-section-evaluaciones {
   display: block;
 }
 .params-page[data-section="biblioteca"] .params-section-biblioteca.params-split-grid,
@@ -1960,7 +1961,8 @@ body {
 .params-page[data-section="comercial"] .params-section-comercial,
 .params-page[data-section="flujos"] .params-section-flujos,
 .params-page[data-section="sla"] .params-section-sla,
-.params-page[data-section="cuentas"] .params-section-cuentas {
+.params-page[data-section="cuentas"] .params-section-cuentas,
+.params-page[data-section="evaluaciones"] .params-section-evaluaciones {
   display: flex;
   flex-direction: column;
 }
