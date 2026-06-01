@@ -11,14 +11,15 @@ async function sb() { return getSupabaseClient(); }
 
 // ── Lectura ───────────────────────────────────────────────────────────────────
 
-export async function cargarTareos(empresaId, { personalId, fecha, desde, hasta } = {}) {
+export async function cargarTareos(empresaId, { personalId, fecha, desde, hasta, otId } = {}) {
   if (!isSupabaseMode()) {
     return _mockTareos.filter(t =>
       t.empresa_id === empresaId &&
       (!personalId || t.personal_id === personalId) &&
       (!fecha    || t.fecha === fecha) &&
       (!desde    || t.fecha >= desde) &&
-      (!hasta    || t.fecha <= hasta)
+      (!hasta    || t.fecha <= hasta) &&
+      (!otId     || t.ot_id === otId)
     );
   }
   const client = await sb();
@@ -27,6 +28,7 @@ export async function cargarTareos(empresaId, { personalId, fecha, desde, hasta 
   if (fecha)      q = q.eq('fecha', fecha);
   if (desde)      q = q.gte('fecha', desde);
   if (hasta)      q = q.lte('fecha', hasta);
+  if (otId)       q = q.eq('ot_id', otId);
   q = q.order('fecha', { ascending: false }).order('creado_en', { ascending: false });
   const { data, error } = await q;
   if (error) throw error;

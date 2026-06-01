@@ -18,6 +18,7 @@ import * as evaluacionesDesempenoService from './services/evaluacionesDesempenoS
 import * as liquidacionesCeseService from './services/liquidacionesCeseService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
+import * as tareosAdminService from './services/tareosAdminService.js';
 import { getTipoCambioHoy, convertirMonto as convertirMontoFn } from './services/tipoCambioService.js';
 import {
   getMateriales, crearMaterial as svcCrearMaterial, actualizarMaterial as svcActualizarMaterial, eliminarMaterial as svcEliminarMaterial,
@@ -2968,7 +2969,7 @@ export function AppProvider({ children }) {
     addNotificacion('Parte reabierto como borrador. Ya puede ser editado por el técnico.');
   };
 
-  const recalcularCostoRealOT = (otId) => {
+  const recalcularCostoRealOT = async (otId) => {
     const partesAprobados = partes.filter(p => p.ot_id === otId && p.estado === 'aprobado');
 
     const ot = ots.find(o => o.id === otId);
@@ -2988,10 +2989,23 @@ export function AppProvider({ children }) {
     const costoLogistica = partesAprobados.reduce((s, p) =>
       s + (p.logistica_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0);
 
-    const nuevosCostoReal = costoMO + costoMat + costoTerceros + costoLogistica;
+    let costoAdmin = 0;
+    try {
+      if (empresa?.id) {
+        const tareosAdmin = await tareosAdminService.cargarTareos(empresa.id, { otId });
+        costoAdmin = (tareosAdmin || [])
+          .filter(t => t.estado === 'enviado')
+          .reduce((s, t) => s + Number(t.horas || 0) * calcCostoHora(t.personal_id), 0);
+      }
+    } catch (error) {
+      console.error('[Tareos admin cost]', error?.message || error, error);
+      addNotificacion('No se pudieron incluir las horas administrativas en el recalculo.', 'error');
+    }
+
+    const nuevosCostoReal = costoMO + costoAdmin + costoMat + costoTerceros + costoLogistica;
     setOts(prev => prev.map(o => o.id === otId ? { ...o, costoReal: nuevosCostoReal } : o));
     opsSync(sb => svcActualizarOT(sb, otId, { costoReal: nuevosCostoReal }));
-    addNotificacion(`OT recalculada: MO=${costoMO.toFixed(2)}, mat=${costoMat.toFixed(2)}, terceros=${costoTerceros.toFixed(2)}, logística=${costoLogistica.toFixed(2)}.`);
+    addNotificacion(`OT recalculada: MO operativa=${costoMO.toFixed(2)}, MO admin=${costoAdmin.toFixed(2)}, mat=${costoMat.toFixed(2)}, terceros=${costoTerceros.toFixed(2)}, logistica=${costoLogistica.toFixed(2)}.`);
     return nuevosCostoReal;
   };
 

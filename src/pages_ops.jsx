@@ -1185,11 +1185,17 @@ function Cuentas() {
 }
 
 function OT({ role }) {
-  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, recalcularCostoRealOT, enviarParteARevision } = useApp();
+  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Resumen');
+  const prevDetailRef = useRef(null);
+  const prevTabParamRef = useRef(null);
   const [panel] = useState(false);
   const [confirmAnular, setConfirmAnular] = useState(false);
+  const [parteSelOT, setParteSelOT] = useState(null);
+  const [modoAccionParteOT, setModoAccionParteOT] = useState(null);
+  const [motivoAccionParteOT, setMotivoAccionParteOT] = useState('');
+  const [avanceAprobacionParteOT, setAvanceAprobacionParteOT] = useState(0);
 
   const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: '', est_mo: '', est_materiales: '', est_terceros: '', est_logistica: '', participantes_admin: [] };
   const [panelNuevaOT, setPanelNuevaOT] = useState(false);
@@ -1208,34 +1214,41 @@ function OT({ role }) {
   });
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
-  const tiposActivos = (tiposServicio || []).filter(t => t.estado !== 'inactivo');
-  const personal = [...(personalOperativo || []), ...(personalAdmin || [])].filter(p => p.estado === 'activo');
   const normalizarEstadoOT = value => String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const rolDeColaboradorOT = p => roles?.[p?.rol_id] || roles?.[p?.rol] || null;
-  const colaboradoresAsignablesOT = useMemo(() => {
+  const tiposActivos = (tiposServicio || []).filter(t => t.estado !== 'inactivo');
+  const esPersonaActivaOT = p => {
     const estadosNoAsignables = new Set(['inactivo', 'inactiva', 'baja', 'cesado', 'cesada', 'eliminado', 'eliminada', 'suspendido', 'suspendida']);
-    const perteneceTenant = p => !empresa?.id || !p?.empresa_id || p.empresa_id === empresa.id || p.empresa?.id === empresa.id;
-    const estaActivoEnTenant = p => {
-      const estado = normalizarEstadoOT(p?.estado_usuario_empresa ?? p?.estado_membresia ?? p?.estado);
-      const activo = p?.activo ?? p?.activo_empresa ?? p?.usuario_empresa_activo ?? p?.membresia_activa;
-      return activo !== false && !estadosNoAsignables.has(estado);
-    };
-    const esRolPlataforma = p => {
-      const rol = rolDeColaboradorOT(p);
-      const rolId = normalizarEstadoOT(p?.rol_id || p?.rol);
-      return Boolean(p?.es_superadmin || p?.superadmin_plataforma || rol?.es_superadmin || rol?.permisos?.plataforma || rolId === 'plataforma');
-    };
-    return [...new Map([...(usuarios || []), ...(personalOperativo || []), ...(personalAdmin || [])]
-      .filter(p => p?.id && perteneceTenant(p) && estaActivoEnTenant(p) && !esRolPlataforma(p))
+    const estado = normalizarEstadoOT(p?.estado_usuario_empresa ?? p?.estado_membresia ?? p?.estado);
+    const activo = p?.activo ?? p?.activo_empresa ?? p?.usuario_empresa_activo ?? p?.membresia_activa;
+    const perteneceTenant = !empresa?.id || !p?.empresa_id || p.empresa_id === empresa.id || p.empresa?.id === empresa.id;
+    return p?.id && perteneceTenant && activo !== false && !estadosNoAsignables.has(estado);
+  };
+  const personalOperativoActivo = useMemo(() =>
+    [...new Map((personalOperativo || [])
+      .filter(esPersonaActivaOT)
       .map(p => [p.id, p])
-    ).values()].sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
-  }, [usuarios, personalOperativo, personalAdmin, roles, empresa?.id]);
-  const etiquetaColaboradorOT = p => {
-    const rol = rolDeColaboradorOT(p);
-    const rolPlano = String(p?.rol || '');
-    const detalle = p.cargo || p.puesto || p.perfil_campo || p.campoPerfil || p.area || rol?.nombre || (!rolPlano.startsWith('rol_') ? rolPlano : '') || 'Colaborador';
+    ).values()].sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es')),
+  [personalOperativo, empresa?.id]);
+  const tecnicosAsignablesOT = personalOperativoActivo;
+  const esResponsableTecnicoOT = p => {
+    const perfil = normalizarEstadoOT(p?.perfil_campo || p?.perfilCampo || p?.nivel_jerarquico || '');
+    const cargo = normalizarEstadoOT([p?.cargo, p?.puesto, p?.rol_cargo].filter(Boolean).join(' '));
+    const texto = `${perfil} ${cargo}`;
+    return [
+      'supervisor', 'supervisora', 'jefe', 'jefa', 'gerente', 'gerencia',
+      'director', 'directora', 'coordinador', 'coordinadora', 'residente',
+      'superintendente', 'lider', 'encargado', 'responsable'
+    ].some(term => texto.includes(term));
+  };
+  const responsablesTecnicosOT = useMemo(() =>
+    personalOperativoActivo.filter(esResponsableTecnicoOT),
+  [personalOperativoActivo]);
+  const etiquetaTecnicoOT = p => {
+    const detalle = p.cargo || p.puesto || p.especialidad || p.area || 'Tecnico';
     return `${p.nombre || p.email || p.id} - ${detalle}`;
   };
+  const totalHorasEstimadasAdmin = items =>
+    (items || []).reduce((s, pa) => s + Number(pa.horas_estimadas || 0), 0);
 
   const debeTenerOSCliente = tiposConOSObligatoria.includes(formNuevaOT.tipo);
   const puedeTenerOSCliente = permiteOSCliente(formNuevaOT.tipo);
@@ -1310,6 +1323,10 @@ function OT({ role }) {
   const [nuevaTareaForm, setNuevaTareaForm] = useState({ descripcion: '', responsable_id: '', fecha_limite: '' });
   const [showAsignarTec, setShowAsignarTec] = useState(false);
   const [asignarTecForm, setAsignarTecForm] = useState({ tecnico_id: '', fecha_inicio: new Date().toISOString().split('T')[0], fecha_fin: '', hora_inicio: '', hora_fin: '' });
+  const [tareosAdminOT, setTareosAdminOT] = useState([]);
+  const [loadingTareosAdminOT, setLoadingTareosAdminOT] = useState(false);
+  const [savingTareoAdminOT, setSavingTareoAdminOT] = useState(false);
+  const [tareoAdminForm, setTareoAdminForm] = useState({ personal_id: '', fecha: new Date().toISOString().split('T')[0], horas: 1, descripcion: '' });
   const [showNuevoParte, setShowNuevoParte] = useState(false);
   const [parteEditandoId, setParteEditandoId] = useState(null);
   const [showCierreForm, setShowCierreForm] = useState(false);
@@ -1328,13 +1345,19 @@ function OT({ role }) {
     }
   }, [sel?.id]);
   const abrirEditDatos = () => {
+    const responsableActual = responsablesTecnicosOT.some(p => p.id === sel?.tecnico_responsable_id)
+      ? sel?.tecnico_responsable_id
+      : '';
+    const supervisorActual = responsablesTecnicosOT.some(p => p.nombre === sel?.supervisor)
+      ? sel?.supervisor
+      : '';
     setFormDatos({
       centro_costo_id: sel?.centro_costo_id || '',
       tipo: sel?.tipo || '',
       prioridad: sel?.prioridad || 'normal',
       facturable: sel?.facturable !== false,
-      tecnico_responsable_id: sel?.tecnico_responsable_id || '',
-      supervisor: sel?.supervisor || '',
+      tecnico_responsable_id: responsableActual,
+      supervisor: supervisorActual,
       sede: sel?.sede || osVinculada?.sede || '',
       fecha_programada: sel?.fecha_programada || '',
       descripcion: sel?.descripcion || '',
@@ -1347,12 +1370,20 @@ function OT({ role }) {
     setEditandoDatos(true);
   };
   const guardarDatos = async () => {
-    const costo_estimado =
-      (parseFloat(formDatos.est_mo) || 0) +
-      (parseFloat(formDatos.est_materiales) || 0) +
-      (parseFloat(formDatos.est_terceros) || 0) +
-      (parseFloat(formDatos.est_logistica) || 0);
-    const updates = { ...formDatos, costoEst: costo_estimado };
+    const parseEst = v => (v !== '' && v !== null && v !== undefined) ? (parseFloat(v) || null) : null;
+    const estMo  = parseEst(formDatos.est_mo);
+    const estMat = parseEst(formDatos.est_materiales);
+    const estTer = parseEst(formDatos.est_terceros);
+    const estLog = parseEst(formDatos.est_logistica);
+    const costo_estimado = (estMo || 0) + (estMat || 0) + (estTer || 0) + (estLog || 0);
+    const updates = {
+      ...formDatos,
+      est_mo: estMo,
+      est_materiales: estMat,
+      est_terceros: estTer,
+      est_logistica: estLog,
+      costoEst: costo_estimado,
+    };
     await actualizarOT(sel.id, updates);
     setSel(s => ({ ...s, ...updates, costoEst: costo_estimado }));
     setEditandoDatos(false);
@@ -1373,17 +1404,78 @@ function OT({ role }) {
 
   const osVinculada = sel?.os_cliente_id ? osClientes.find(o => o.id === sel.os_cliente_id) : null;
   const responsableNombre = sel
-    ? (usuarios.find(u => u.id === sel.tecnico_responsable_id)?.nombre || sel.responsable || '—')
+    ? (personalOperativo.find(p => p.id === sel.tecnico_responsable_id)?.nombre || usuarios.find(u => u.id === sel.tecnico_responsable_id)?.nombre || sel.responsable || '—')
     : '—';
   const supervisorNombre = sel?.supervisor || '—';
   const prioridadMeta = { normal: ['badge-gray','Normal'], urgente: ['badge-orange','Urgente'], critica: ['badge-red','Crítica'] };
   const asignacionesOT = sel ? plannerAsignaciones.filter(a => a.ot_id === sel.id && a.estado !== 'cancelado') : [];
-  const tecnicosAsignadosOT = new Set(asignacionesOT.map(a => a.tecnico_id)).size;
-  const tecnicosDeOT = [...new Set(asignacionesOT.map(a => a.tecnico_id))].map(id => [...(usuarios || []), ...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === id)).filter(Boolean);
+  const tecnicosDeOT = [...new Set(asignacionesOT.map(a => a.tecnico_id))]
+    .map(id => (personalOperativo || []).find(p => p.id === id))
+    .filter(Boolean);
+  const tecnicosAsignadosOT = tecnicosDeOT.length;
   const adminsDeOT = (sel?.participantes_admin || []).map(pa => {
     const persona = (personalAdmin || []).find(p => p.id === pa.personal_id);
     return persona ? { ...persona, horas_estimadas: pa.horas_estimadas } : null;
   }).filter(Boolean);
+  const tareosAdminEnviadosOT = (tareosAdminOT || []).filter(t => t.estado === 'enviado');
+  const cargarTareosAdminOT = async () => {
+    if (!empresa?.id || !sel?.id) {
+      setTareosAdminOT([]);
+      return;
+    }
+    setLoadingTareosAdminOT(true);
+    try {
+      const rows = await tareosAdminService.cargarTareos(empresa.id, { otId: sel.id });
+      setTareosAdminOT(rows || []);
+    } catch (err) {
+      console.error('[Tareos admin OT]', err?.message || err, err);
+      setTareosAdminOT([]);
+      addNotificacion('No se pudieron cargar las horas administrativas de la OT.', 'error');
+    } finally {
+      setLoadingTareosAdminOT(false);
+    }
+  };
+  useEffect(() => {
+    cargarTareosAdminOT();
+  }, [empresa?.id, sel?.id]);
+
+  const registrarTareoAdminOT = async (e) => {
+    e.preventDefault();
+    if (!empresa?.id || !sel?.id || !tareoAdminForm.personal_id || savingTareoAdminOT) return;
+    const persona = (personalAdmin || []).find(p => p.id === tareoAdminForm.personal_id);
+    if (!persona) {
+      addNotificacion('Selecciona un participante administrativo valido.', 'error');
+      return;
+    }
+    if (Number(tareoAdminForm.horas || 0) <= 0) {
+      addNotificacion('Ingresa horas administrativas mayores a cero.', 'error');
+      return;
+    }
+    setSavingTareoAdminOT(true);
+    try {
+      const nuevo = await tareosAdminService.crearTareo(empresa.id, {
+        personal_id: persona.id,
+        personal_nombre: persona.nombre,
+        fecha: tareoAdminForm.fecha || new Date().toISOString().split('T')[0],
+        horas: Number(tareoAdminForm.horas || 0),
+        descripcion: tareoAdminForm.descripcion?.trim() || `Horas administrativas en ${sel.numero}`,
+        tipo: 'ot',
+        ot_id: sel.id,
+        estado: 'enviado',
+        origen: 'backoffice',
+        creado_por: authUser?.id || null,
+      });
+      setTareosAdminOT(prev => [nuevo, ...prev]);
+      setTareoAdminForm({ personal_id: '', fecha: new Date().toISOString().split('T')[0], horas: 1, descripcion: '' });
+      await recalcularCostoRealOT(sel.id);
+      addNotificacion('Horas administrativas imputadas a la OT.');
+    } catch (err) {
+      console.error('[Crear tareo admin OT]', err?.message || err, err);
+      addNotificacion(`No se pudo registrar el tareo administrativo: ${err?.message || err}`, 'error');
+    } finally {
+      setSavingTareoAdminOT(false);
+    }
+  };
   const tareasOT = sel?.tareas || [];
   const tareasCompletadasOT = tareasOT.filter(t => t.completado || t.estado === 'completada').length;
   const avanceOperativo = sel ? (
@@ -1450,6 +1542,8 @@ function OT({ role }) {
     if (pendientes.length) { addNotificacion(`No puedes cerrar esta OT. Tienes ${pendientes.length} parte(s) pendiente(s) de aprobación.`, 'error'); return; }
     const horasTotal = aprobados.reduce((s, p) => s + (p.horas || 0), 0);
     const descripcion = [...new Set(aprobados.map(p => p.actividades).filter(Boolean))].join('\n');
+    const costo_terceros_pre = aprobados.reduce((s, p) => s + (p.terceros_lineas || []).reduce((sm, l) => sm + Number(l.monto || 0), 0), 0);
+    const costo_logistica_pre = aprobados.reduce((s, p) => s + (p.logistica_lineas || []).reduce((sm, l) => sm + Number(l.monto || 0), 0), 0);
     setCierreForm({
       descripcion_trabajo: descripcion,
       fecha_inicio_real: aprobados[0]?.fecha || sel?.fecha_inicio || '',
@@ -1458,6 +1552,8 @@ function OT({ role }) {
       avance_final: 100,
       conformidad: 'pendiente',
       observaciones_finales: '',
+      costo_terceros: costo_terceros_pre > 0 ? String(costo_terceros_pre) : '',
+      costo_logistica: costo_logistica_pre > 0 ? String(costo_logistica_pre) : '',
     });
     setShowCierreForm(true);
   };
@@ -1488,7 +1584,9 @@ function OT({ role }) {
 
   const abrirNuevoParte = () => {
     const hoyStr = new Date().toISOString().split('T')[0];
-    const tecAutoId = authUser ? ([...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === authUser.id)?.id || '') : '';
+    const tecAutoId = authUser
+      ? ((personalOperativo || []).find(p => p.id === authUser.id || p.auth_user_id === authUser.id)?.id || '')
+      : '';
     setParteFormOT({
       tecnico_id: tecAutoId,
       fecha: hoyStr,
@@ -1561,7 +1659,9 @@ function OT({ role }) {
   };
 
   const buildPartePayload = (modo) => {
-    const tecnicoObj = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === parteFormOT.tecnico_id);
+    const tecnicoObj = (personalOperativo || []).find(p => p.id === parteFormOT.tecnico_id)
+      || (personalAdmin || []).find(p => p.id === parteFormOT.tecnico_id)
+      || (usuarios || []).find(u => u.id === parteFormOT.tecnico_id);
     const tareasActivas = parteFormOT.tareas_trabajadas.filter(t => t.trabajado);
     const actividadesTexto = [
       ...tareasActivas.map(t => `${t.nombre}${t.avance_hoy ? ` (+${t.avance_hoy}%)` : ''}`),
@@ -1606,23 +1706,6 @@ function OT({ role }) {
       actualizarBorradorParteDiario(parteEditandoId, payload);
     } else {
       await registrarParteDiario(payload);
-      // Si el colaborador es admin, registrar también en tareos_admin
-      const esAdmin = (personalAdmin || []).some(p => p.id === parteFormOT.tecnico_id);
-      if (esAdmin && empresa?.id) {
-        const adminObj = (personalAdmin || []).find(p => p.id === parteFormOT.tecnico_id);
-        const actDesc = payload.actividades || payload.actividad || payload.observaciones || 'Horas en OT';
-        tareosAdminService.crearTareo(empresa.id, {
-          personal_id:    parteFormOT.tecnico_id,
-          personal_nombre: adminObj?.nombre || parteFormOT.tecnico_id,
-          fecha:          parteFormOT.fecha,
-          horas:          Number(parteFormOT.horas || 0),
-          descripcion:    String(actDesc).slice(0, 500) || 'Horas en OT',
-          tipo:           'ot',
-          ot_id:          sel.id,
-          estado:         'borrador',
-          origen:         'backoffice',
-        }).catch(() => {});
-      }
     }
     setShowNuevoParte(false);
     setParteEditandoId(null);
@@ -1652,7 +1735,13 @@ function OT({ role }) {
     const ot = ots.find(o => o.id === activeParams.detail);
     if (ot) {
       setSel(ot);
-      setActiveTab(activeParams.tab || 'Resumen');
+      const detailChanged = prevDetailRef.current !== activeParams.detail;
+      const tabParamChanged = prevTabParamRef.current !== (activeParams.tab ?? null);
+      if (detailChanged || tabParamChanged) {
+        prevDetailRef.current = activeParams.detail;
+        prevTabParamRef.current = activeParams.tab ?? null;
+        setActiveTab(activeParams.tab || 'Resumen');
+      }
     }
   }, [activeParams?.detail, activeParams?.tab, ots]);
 
@@ -2046,14 +2135,15 @@ function OT({ role }) {
                           <label>Responsable</label>
                           <select className="select" value={formDatos.tecnico_responsable_id} onChange={e => setFormDatos(p => ({...p, tecnico_responsable_id: e.target.value}))}>
                             <option value="">Sin asignar</option>
-                            {personal.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                            {responsablesTecnicosOT.map(p => <option key={p.id} value={p.id}>{etiquetaTecnicoOT(p)}</option>)}
                           </select>
+                          {!responsablesTecnicosOT.length && <div className="text-muted" style={{fontSize:11, marginTop:4}}>No hay operativos con perfil supervisor o superior.</div>}
                         </div>
                         <div className="input-group">
                           <label>Supervisor</label>
                           <select className="select" value={formDatos.supervisor} onChange={e => setFormDatos(p => ({...p, supervisor: e.target.value}))}>
                             <option value="">Sin asignar</option>
-                            {personal.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                            {responsablesTecnicosOT.map(p => <option key={p.id} value={p.nombre}>{etiquetaTecnicoOT(p)}</option>)}
                           </select>
                         </div>
                         <div className="input-group">
@@ -2094,21 +2184,28 @@ function OT({ role }) {
                         </div>
                       </div>
                       <div style={{borderTop:'1px solid var(--border)', paddingTop:14}}>
-                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10}}>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, marginBottom:10}}>
                           <div>
                             <div style={{fontWeight:600, fontSize:12}}>Participantes administrativos</div>
-                            <div style={{fontSize:11, color:'var(--fg-muted)'}}>Opcional — colaboradores admin que participan en esta OT</div>
+                            <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Planifica aqui quienes participan y sus horas estimadas. Las horas reales se imputan en Partes &gt; Horas administrativas.</div>
                           </div>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            style={{fontSize:11}}
-                            onClick={() => setFormDatos(p => ({ ...p, participantes_admin: [...(p.participantes_admin || []), { personal_id: '', personal_nombre: '', horas_estimadas: '' }] }))}
-                          >{I.plus} Agregar</button>
+                          <div className="row" style={{gap:8, flexShrink:0}}>
+                            {(formDatos.participantes_admin || []).length > 0 && (
+                              <span className="badge badge-cyan">{totalHorasEstimadasAdmin(formDatos.participantes_admin).toFixed(1)}h est.</span>
+                            )}
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{fontSize:11}}
+                              onClick={() => setFormDatos(p => ({ ...p, participantes_admin: [...(p.participantes_admin || []), { personal_id: '', personal_nombre: '', horas_estimadas: '' }] }))}
+                            >{I.plus} Agregar</button>
+                          </div>
                         </div>
                         {(formDatos.participantes_admin || []).map((pa, idx) => (
-                          <div key={idx} style={{display:'grid', gridTemplateColumns:'1fr 90px auto', gap:8, alignItems:'center', marginBottom:8}}>
-                            <select
+                          <div key={idx} style={{display:'grid', gridTemplateColumns:'minmax(220px, 1fr) minmax(140px, 180px) 36px', gap:10, alignItems:'end', padding:10, border:'1px solid var(--border-subtle)', borderRadius:8, background:'var(--bg-subtle)', marginBottom:8}}>
+                            <div className="input-group">
+                              <label>Colaborador administrativo</label>
+                              <select
                               className="select"
                               value={pa.personal_id}
                               onChange={e => {
@@ -2120,27 +2217,38 @@ function OT({ role }) {
                               {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
                                 <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` — ${p.cargo}` : ''}</option>
                               ))}
-                            </select>
-                            <div style={{display:'flex', alignItems:'center', gap:4}}>
+                              </select>
+                            </div>
+                            <div className="input-group">
+                              <label>Horas estimadas</label>
+                              <div style={{position:'relative'}}>
                               <input
                                 className="input"
                                 type="number"
                                 min="0"
                                 step="0.5"
-                                placeholder="Horas"
+                                placeholder="0.0"
                                 value={pa.horas_estimadas}
-                                style={{textAlign:'center'}}
+                                style={{textAlign:'right', paddingRight:38, fontWeight:700}}
                                 onChange={e => setFormDatos(fd => ({ ...fd, participantes_admin: (fd.participantes_admin || []).map((x, i) => i === idx ? { ...x, horas_estimadas: e.target.value } : x) }))}
                               />
-                              <span style={{fontSize:11, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>h est.</span>
+                                <span style={{position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', fontSize:12, color:'var(--fg-muted)'}}>h</span>
+                              </div>
                             </div>
                             <button
                               type="button"
                               className="icon-btn"
+                              style={{height:36, width:36, color:'var(--danger)'}}
+                              title="Quitar participante administrativo"
                               onClick={() => setFormDatos(fd => ({ ...fd, participantes_admin: (fd.participantes_admin || []).filter((_, i) => i !== idx) }))}
                             >{I.x}</button>
                           </div>
                         ))}
+                        {(formDatos.participantes_admin || []).length === 0 && (
+                          <div style={{border:'1px dashed var(--border)', borderRadius:8, padding:12, fontSize:12, color:'var(--fg-muted)', background:'var(--bg-subtle)'}}>
+                            Sin participantes administrativos planificados.
+                          </div>
+                        )}
                       </div>
                       <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
                         <button className="btn btn-secondary btn-sm" onClick={() => setEditandoDatos(false)}>Cancelar</button>
@@ -2313,7 +2421,7 @@ function OT({ role }) {
                   <h3 style={{margin:0}}>Personal Asignado</h3>
                   <div className="row" style={{gap:8}}>
                     {!['cerrada','facturada','anulada'].includes(sel.estado) && (
-                      <button className="btn btn-secondary btn-sm" onClick={() => setShowAsignarTec(s => !s)}>{I.plus} Asignar colaborador</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setShowAsignarTec(s => !s)}>{I.plus} Asignar tecnico</button>
                     )}
                     <button className="btn btn-secondary btn-sm" onClick={() => navigate('planner')}>Gestionar en Planner</button>
                   </div>
@@ -2323,10 +2431,10 @@ function OT({ role }) {
                   <form className="card" style={{padding:16, marginBottom:16, border:'1px solid var(--cyan)'}} onSubmit={submitAsignarTec}>
                     <div className="grid-3" style={{gap:12}}>
                       <div className="input-group" style={{gridColumn:'1/-1'}}>
-                        <label>Colaborador *</label>
+                        <label>Tecnico operativo *</label>
                         <select className="select" value={asignarTecForm.tecnico_id} onChange={e => setAsignarTecForm(s => ({...s, tecnico_id: e.target.value}))} required>
                           <option value="">Seleccionar...</option>
-                          {colaboradoresAsignablesOT.map(p => <option key={p.id} value={p.id}>{etiquetaColaboradorOT(p)}</option>)}
+                          {tecnicosAsignablesOT.map(p => <option key={p.id} value={p.id}>{etiquetaTecnicoOT(p)}</option>)}
                         </select>
                       </div>
                       <div className="input-group">
@@ -2355,8 +2463,12 @@ function OT({ role }) {
                 )}
 
                 {(() => {
-                  const asigs = plannerAsignaciones.filter(a => a.ot_id === sel.id && a.estado !== 'cancelado');
-                  if (asigs.length === 0) return <div className="card" style={{padding:32, textAlign:'center', color:'var(--fg-muted)'}}>No hay personal asignado a esta OT todavía.</div>;
+                  const asigs = plannerAsignaciones.filter(a =>
+                    a.ot_id === sel.id &&
+                    a.estado !== 'cancelado' &&
+                    (personalOperativo || []).some(p => p.id === a.tecnico_id)
+                  );
+                  if (asigs.length === 0) return <div className="card" style={{padding:32, textAlign:'center', color:'var(--fg-muted)'}}>No hay tecnicos operativos asignados a esta OT todavía.</div>;
                   const porTecnico = {};
                   asigs.forEach(a => {
                     if (!porTecnico[a.tecnico_id]) porTecnico[a.tecnico_id] = [];
@@ -2365,7 +2477,7 @@ function OT({ role }) {
                   return (
                     <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:16}}>
                       {Object.entries(porTecnico).map(([tecId, items]) => {
-                        const tec = [...(usuarios || []), ...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === tecId) || {};
+                        const tec = (personalOperativo || []).find(t => t.id === tecId) || {};
                         const totalHoras = items.reduce((s, a) => {
                           if (!a.hora_inicio_estimada || !a.hora_fin_estimada) return s;
                           const [h1, m1] = a.hora_inicio_estimada.split(':').map(Number);
@@ -2406,6 +2518,61 @@ function OT({ role }) {
                   )}
                 </div>
 
+                <div className="card" style={{padding:16, marginBottom:16, border:'1px solid var(--border)'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', gap:12, alignItems:'flex-start', marginBottom:12}}>
+                    <div>
+                      <div style={{fontWeight:700, fontSize:13}}>Horas administrativas de la OT</div>
+                      <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Se imputan como tareo administrativo y suman a mano de obra real, sin crear parte diario operativo.</div>
+                    </div>
+                    {tareosAdminEnviadosOT.length > 0 && <span className="badge badge-cyan">{tareosAdminEnviadosOT.reduce((s, t) => s + Number(t.horas || 0), 0).toFixed(1)}h enviadas</span>}
+                  </div>
+
+                  {adminsDeOT.length > 0 ? (
+                    <form onSubmit={registrarTareoAdminOT} style={{display:'grid', gridTemplateColumns:'minmax(220px, 1.4fr) minmax(130px, 150px) minmax(110px, 130px)', gap:10, alignItems:'end', padding:10, border:'1px solid var(--border-subtle)', borderRadius:8, background:'var(--bg-subtle)', marginBottom:12}}>
+                      <div className="input-group">
+                        <label>Administrativo</label>
+                        <select className="select" value={tareoAdminForm.personal_id} onChange={e => setTareoAdminForm(s => ({...s, personal_id: e.target.value}))} required>
+                          <option value="">Seleccionar...</option>
+                          {adminsDeOT.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` - ${p.cargo}` : ''}</option>)}
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        <label>Fecha</label>
+                        <input className="input" type="date" max={new Date().toISOString().split('T')[0]} value={tareoAdminForm.fecha} onChange={e => setTareoAdminForm(s => ({...s, fecha: e.target.value}))} required />
+                      </div>
+                      <div className="input-group">
+                        <label>Horas</label>
+                        <input className="input" type="number" min="0.5" max="24" step="0.5" value={tareoAdminForm.horas} onChange={e => setTareoAdminForm(s => ({...s, horas: e.target.value}))} required />
+                      </div>
+                      <div className="input-group" style={{gridColumn:'1 / 3'}}>
+                        <label>Descripcion</label>
+                        <input className="input" value={tareoAdminForm.descripcion} onChange={e => setTareoAdminForm(s => ({...s, descripcion: e.target.value}))} placeholder="Coordinacion, supervision, gestion..." />
+                      </div>
+                      <button className="btn btn-primary btn-sm" style={{height:36, justifySelf:'stretch'}} type="submit" disabled={savingTareoAdminOT}>{savingTareoAdminOT ? 'Guardando...' : 'Imputar horas'}</button>
+                    </form>
+                  ) : (
+                    <div style={{fontSize:12, color:'var(--fg-muted)', padding:'8px 0'}}>Agrega participantes administrativos en la ficha de la OT para imputar sus horas aqui.</div>
+                  )}
+
+                  {loadingTareosAdminOT ? (
+                    <div className="text-muted" style={{fontSize:12}}>Cargando horas administrativas...</div>
+                  ) : tareosAdminOT.length > 0 ? (
+                    <div style={{display:'grid', gap:6}}>
+                      {tareosAdminOT.map(t => (
+                        <div key={t.id} style={{display:'grid', gridTemplateColumns:'1.4fr 110px 80px 1fr 90px', gap:8, alignItems:'center', fontSize:12, padding:'7px 8px', border:'1px solid var(--border-subtle)', borderRadius:6, background:'var(--bg-subtle)'}}>
+                          <strong>{t.personal_nombre}</strong>
+                          <span className="text-muted">{t.fecha}</span>
+                          <span>{Number(t.horas || 0).toFixed(1)}h</span>
+                          <span className="text-muted" style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{t.descripcion}</span>
+                          <span className={'badge ' + (t.estado === 'enviado' ? 'badge-green' : 'badge-gray')}>{t.estado}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-muted" style={{fontSize:12}}>Sin horas administrativas imputadas a esta OT.</div>
+                  )}
+                </div>
+
                 {showNuevoParte && (() => {
                   const hoyStr = new Date().toISOString().split('T')[0];
                   const tareasActivas = parteFormOT.tareas_trabajadas.filter(t => t.trabajado);
@@ -2440,27 +2607,18 @@ function OT({ role }) {
                           </div>
                           <div className="input-group">
                             <label>Horas trabajadas</label>
-                            <input className="input" type="number" min="0.5" step="0.5" max="24" value={parteFormOT.horas} onChange={e => setParteFormOT(s => ({...s, horas: Number(e.target.value)}))} />
+                            <input className="input" type="number" min="0.5" step="0.5" max="24" value={parteFormOT.horas} onChange={e => setParteFormOT(s => ({...s, horas: Number(e.target.value)}))} onFocus={e => e.target.select()} />
                           </div>
                         </div>
                         <div className="input-group">
-                          <label>Colaborador *</label>
-                          {(tecnicosDeOT.length > 0 || adminsDeOT.length > 0) ? (
+                          <label>Tecnico operativo *</label>
+                          {tecnicosDeOT.length > 0 ? (
                             <select className="select" value={parteFormOT.tecnico_id} onChange={e => updParteHorasTecnico(e.target.value)} required>
                               <option value="">Seleccionar...</option>
-                              {tecnicosDeOT.length > 0 && (
-                                <optgroup label="— Operativo —">
-                                  {tecnicosDeOT.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.cargo ? ` — ${t.cargo}` : ''}</option>)}
-                                </optgroup>
-                              )}
-                              {adminsDeOT.length > 0 && (
-                                <optgroup label="— Administrativo —">
-                                  {adminsDeOT.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.cargo ? ` — ${t.cargo}` : ''}</option>)}
-                                </optgroup>
-                              )}
+                              {tecnicosDeOT.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.cargo ? ` — ${t.cargo}` : ''}</option>)}
                             </select>
                           ) : (
-                            <div style={{fontSize:12, color:'var(--fg-muted)', padding:'6px 0'}}>No hay colaboradores asignados. Asigna operativos desde el Planner o agrega participantes administrativos en la ficha de la OT.</div>
+                            <div style={{fontSize:12, color:'var(--fg-muted)', padding:'6px 0'}}>No hay tecnicos operativos asignados. Asigna tecnicos desde el Planner antes de registrar partes diarios.</div>
                           )}
                         </div>
                       </div>
@@ -2483,7 +2641,7 @@ function OT({ role }) {
                                 {t.trabajado && (
                                   <div style={{display:'flex', alignItems:'center', gap:6, flexShrink:0}}>
                                     <label style={{fontSize:11, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>Avance hoy</label>
-                                    <input className="input" type="number" min="0" max="100" style={{width:72, padding:'3px 8px', fontSize:12}} value={t.avance_hoy} onChange={e => setParteFormOT(s => ({ ...s, tareas_trabajadas: s.tareas_trabajadas.map((x, i) => i === idx ? {...x, avance_hoy: Number(e.target.value)} : x) }))} />
+                                    <input className="input" type="number" min="0" max="100" style={{width:72, padding:'3px 8px', fontSize:12}} value={t.avance_hoy} onChange={e => setParteFormOT(s => ({ ...s, tareas_trabajadas: s.tareas_trabajadas.map((x, i) => i === idx ? {...x, avance_hoy: Number(e.target.value)} : x) }))} onFocus={e => e.target.select()} />
                                     <span style={{fontSize:11}}>%</span>
                                   </div>
                                 )}
@@ -2733,16 +2891,22 @@ function OT({ role }) {
                       );
                     })()}
                     <div style={{display:'flex', flexDirection:'column', gap:10}}>
-                      {partesOT.map(p => (
-                        <div key={p.id} style={{padding:14, border:'1px solid var(--border)', borderRadius:6, background:'var(--bg)'}}>
+                      {partesOT.map((p, idx) => {
+                        const yearParte = (p.created_at || p.fecha || new Date().toISOString()).substring(2, 4);
+                        const codigoParte = p.numero || `PD-${yearParte}-${String(idx + 1).padStart(4, '0')}`;
+                        return (
+                        <div key={p.id} style={{padding:14, border:'1px solid var(--border)', borderRadius:6, background:'var(--bg)', cursor:'pointer'}} onClick={() => { setParteSelOT(p); setModoAccionParteOT(null); setMotivoAccionParteOT(''); setAvanceAprobacionParteOT(p.avance_reportado || 0); }}>
                           <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>
-                            <div style={{fontWeight:600, fontSize:13}}>{p.tecnico}</div>
+                            <div>
+                              <div style={{fontWeight:700, fontSize:12, color:'var(--cyan)', fontFamily:'monospace', letterSpacing:'0.5px'}}>{codigoParte}</div>
+                              <div style={{fontWeight:600, fontSize:13, marginTop:2}}>{p.tecnico}</div>
+                            </div>
                             <div style={{display:'flex', alignItems:'center', gap:8}}>
                               {(['borrador','rechazado','observado'].includes(p.estado)) && !showNuevoParte && (<>
-                                <button type="button" className="btn btn-ghost btn-sm" style={{padding:'2px 10px', fontSize:12}} onClick={() => abrirEditarBorrador(p)}>
+                                <button type="button" className="btn btn-ghost btn-sm" style={{padding:'2px 10px', fontSize:12}} onClick={e => { e.stopPropagation(); abrirEditarBorrador(p); }}>
                                   {I.edit} Editar
                                 </button>
-                                <button type="button" className="btn btn-primary btn-sm" style={{padding:'2px 10px', fontSize:12}} onClick={() => enviarParteARevision(p.id)}>
+                                <button type="button" className="btn btn-primary btn-sm" style={{padding:'2px 10px', fontSize:12}} onClick={e => { e.stopPropagation(); enviarParteARevision(p.id); }}>
                                   Enviar a revisión
                                 </button>
                               </>)}
@@ -2758,7 +2922,8 @@ function OT({ role }) {
                           </div>
                           <div style={{fontSize:12, color:'var(--fg-muted)', lineHeight:1.4}}>{p.actividades}</div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </>
                 ) : (
@@ -2787,10 +2952,12 @@ function OT({ role }) {
                 if (moItem?.costo_hora > 0) return moItem.costo_hora;
                 return costoHoraTec(tecnicoId);
               };
-              const moReal = (() => {
+              const moOperativoReal = (() => {
                 if (cierreOT?.horas_total) return cierreOT.horas_total * costoHoraOT(sel.tecnico_responsable_id);
                 return partesAprobados.reduce((s, p) => s + (p.horas || 0) * costoHoraOT(p.tecnico_id), 0);
               })();
+              const moAdminReal = tareosAdminEnviadosOT.reduce((s, t) => s + Number(t.horas || 0) * costoHoraTec(t.personal_id), 0);
+              const moReal = moOperativoReal + moAdminReal;
               const matReal = partesAprobados.reduce((s, p) =>
                 s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
               const terceroReal = partesAprobados.reduce((s, p) => s + (p.terceros_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0) + (cierreOT?.costo_terceros || 0);
@@ -2813,7 +2980,7 @@ function OT({ role }) {
 
               // Real: desde realDetalle (manual) con fallback a partes aprobados por sección
               const sumReal = (key) => (realDetalle[key] || []).reduce((s, i) => s + (Number(i.subtotal) || 0), 0);
-              const realMoFinal  = (realDetalle.mano_obra  || []).length > 0 ? sumReal('mano_obra')  : (moReal  > 0 ? moReal  : null);
+              const realMoFinal  = (realDetalle.mano_obra  || []).length > 0 ? sumReal('mano_obra') + moAdminReal : (moReal  > 0 ? moReal  : null);
               const realMatFinal = (realDetalle.materiales || []).length > 0 ? sumReal('materiales') : (matReal > 0 ? matReal : null);
               const realTerFinal = (realDetalle.terceros   || []).length > 0 ? sumReal('terceros')   : (terceroReal  > 0 ? terceroReal  : null);
               const realLogFinal = (realDetalle.logistica  || []).length > 0 ? sumReal('logistica')  : (logisticaReal > 0 ? logisticaReal : null);
@@ -2970,6 +3137,22 @@ function OT({ role }) {
                                               <td style={{ width: 28 }} />
                                             </tr>;
                                           }).filter(Boolean);
+                                          rows = [
+                                            ...rows,
+                                            ...tareosAdminEnviadosOT.map(t => {
+                                              const persona = (personalAdmin || []).find(p => p.id === t.personal_id);
+                                              const ch = costoHoraTec(t.personal_id);
+                                              const sub = Number(t.horas || 0) * ch;
+                                              if (!sub) return null;
+                                              return <tr key={`admin-${t.id}`} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                                {td(`${persona?.nombre || t.personal_nombre || t.personal_id} (admin)`)}
+                                                {td(`${Number(t.horas || 0).toFixed(1)} h`, { right: true, muted: true, w: 60 })}
+                                                {td(money(ch, monSym) + '/h', { right: true, muted: true, w: 90 })}
+                                                {td(money(sub, monSym), { right: true, bold: true, w: 82 })}
+                                                <td style={{ width: 28 }} />
+                                              </tr>;
+                                            }).filter(Boolean),
+                                          ];
                                         } else if (key === 'materiales') {
                                           rows = partesAprobados.flatMap(p =>
                                             (p.materiales_usados || []).map((m, i) => {
@@ -3029,7 +3212,7 @@ function OT({ role }) {
                                         if (!rows.length) return null;
                                         return (
                                           <div style={{ marginBottom: 8 }}>
-                                            <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Desde partes aprobados</div>
+                                            <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Desde partes aprobados y tareos admin</div>
                                             <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginBottom: 4 }}>
                                               <tbody>{rows}</tbody>
                                             </table>
@@ -3076,7 +3259,7 @@ function OT({ role }) {
                                                       <select className="select" style={inputSt} value={item.tecnico_id}
                                                         onChange={e => {
                                                           const ch = costoHoraTec(e.target.value);
-                                                          const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === e.target.value);
+                                                          const tec = (personalOperativo || []).find(t => t.id === e.target.value);
                                                           setRealDetalle(prev => ({
                                                             ...prev,
                                                             mano_obra: (prev.mano_obra || []).map((it, i) => {
@@ -3088,7 +3271,7 @@ function OT({ role }) {
                                                           }));
                                                         }}>
                                                         <option value="">Técnico...</option>
-                                                        {[...(personalOperativo || []), ...(personalAdmin || [])].filter(t => t.estado !== 'inactivo').map(t => (
+                                                        {(personalOperativo || []).filter(t => t.estado !== 'inactivo').map(t => (
                                                           <option key={t.id} value={t.id}>{t.nombre}</option>
                                                         ))}
                                                       </select>
@@ -3197,7 +3380,7 @@ function OT({ role }) {
                     <div className="eyebrow" style={{ marginBottom: 6 }}>Margen actual</div>
                     <div style={{ fontSize: 32, fontWeight: 700, color: margen >= 0 ? 'var(--green)' : 'var(--danger)' }}>{margen}%</div>
                     <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
-                      {cierreOT ? 'Basado en datos del cierre técnico' : 'Basado en partes aprobados — pendiente de cierre'}
+                      {cierreOT ? 'Basado en datos del cierre tecnico y tareos admin' : 'Basado en partes aprobados y tareos admin - pendiente de cierre'}
                     </div>
                   </div>
 
@@ -3208,7 +3391,7 @@ function OT({ role }) {
                         <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => recalcularCostoRealOT(sel.id)}>
                           Recalcular costo real
                         </button>
-                        <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>Recalcula MO con la tarifa actual de cada técnico</div>
+                        <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>Recalcula MO operativa y tareos admin con la tarifa actual.</div>
                       </div>
                     )}
                     <button className="btn btn-primary" style={{ fontSize: 13, marginLeft: 'auto' }} onClick={guardarReal}>
@@ -3301,9 +3484,8 @@ function OT({ role }) {
       {showCierreForm && sel && (() => {
         const partesAprobados = partes.filter(p => p.ot_id === sel.id && p.estado === 'aprobado');
         const costoHoraTecObj = (tec) => { const e = Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0); if (e > 0) return e; return Math.round(Number(tec?.remuneracion ?? 0) / 240 * 100) / 100; };
-        const tecResp = [...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === sel.tecnico_responsable_id);
-        const moReal = Number(cierreForm.horas_total || 0) * costoHoraTecObj(tecResp);
-        const matReal = partesAprobados.reduce((s, p) => s + (p.materiales_usados || []).reduce((sm, m) => sm + (m.costo_unitario || 0) * (m.cantidad || 0), 0), 0);
+        const moReal = partesAprobados.reduce((s, p) => { const tech = [...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === p.tecnico_id); return s + (p.horas || 0) * costoHoraTecObj(tech); }, 0);
+        const matReal = partesAprobados.reduce((s, p) => s + (p.materiales_usados || []).reduce((sm, m) => { const inv = (inventario || []).find(i => i.sku === m.sku); return sm + (m.cantidad || 0) * (inv?.costo_promedio || m.costo_unitario || 0); }, 0), 0);
         const costoEst = sel.costoEst || 0;
         const costoReal = moReal + matReal + Number(cierreForm.costo_terceros || 0) + Number(cierreForm.costo_logistica || 0);
         const margen = costoEst > 0 ? Math.round(((costoEst - costoReal) / costoEst) * 100) : null;
@@ -3490,6 +3672,228 @@ function OT({ role }) {
         </>
       )}
 
+      {parteSelOT && (() => {
+        const p = parteSelOT;
+        const estadoBadge = p.estado === 'aprobado' ? 'badge-green' : p.estado === 'rechazado' ? 'badge-red' : p.estado === 'observado' ? 'badge-orange' : p.estado === 'con_restriccion' ? 'badge-red' : p.estado === 'borrador' ? 'badge-gray' : 'badge-orange';
+        const estadoLabel = { aprobado: 'Aprobado', rechazado: 'Rechazado', observado: 'Observado', con_restriccion: 'Con restricción', borrador: 'Borrador', en_revision: 'Pendiente revisión' }[p.estado] || p.estado;
+        const revisableP = ['en_revision', 'con_restriccion'].includes(p.estado);
+        const canAprobarPartes = role.permisos.todo || role.permisos.aprobar_descuentos;
+        const avanceParte = p.avance_validado !== undefined ? p.avance_validado : p.avance_reportado || 0;
+        const parteHealthColor = p.estado === 'aprobado' ? 'var(--green)' : p.estado === 'rechazado' ? 'var(--danger)' : p.estado === 'observado' ? 'var(--orange)' : 'var(--cyan)';
+        const parteHealthBg = p.estado === 'aprobado' ? 'rgba(16,185,129,0.08)' : p.estado === 'rechazado' ? 'rgba(239,68,68,0.08)' : p.estado === 'observado' ? 'rgba(249,115,22,0.08)' : 'rgba(0,188,212,0.08)';
+        const cerrarPartePanel = () => { setParteSelOT(null); setModoAccionParteOT(null); setMotivoAccionParteOT(''); setAvanceAprobacionParteOT(0); };
+        return (<>
+          <div className="side-panel-backdrop" onClick={cerrarPartePanel}/>
+          <div className="side-panel ficha-detail-panel parte-review-panel" style={{width:'min(560px, 96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Parte diario · {sel?.numero}</div>
+                <div className="font-display ficha-detail-title mono" style={{marginTop:4}}>{p.tecnico}</div>
+              </div>
+              <button className="icon-btn" onClick={cerrarPartePanel}>{I.x}</button>
+            </div>
+            <div className="side-panel-body">
+              <div className="parte-review-chips">
+                <span className={`badge ${estadoBadge}`}>{estadoLabel}</span>
+                {p.es_restriccion && <span className="badge badge-red">Restriccion reportada</span>}
+              </div>
+              <div className="parte-review-health" style={{background:parteHealthBg}}>
+                <div className="parte-review-score" style={{color:parteHealthColor}}>{avanceParte}%</div>
+                <div className="parte-review-health-copy">
+                  <div><span style={{borderColor:parteHealthColor, color:parteHealthColor}}>{p.es_restriccion ? 'Requiere atencion' : estadoLabel}</span></div>
+                  <div className="text-muted">{p.horas}h registradas - {p.fecha}</div>
+                </div>
+                <div className="parte-review-progress">
+                  <div style={{width:`${Math.min(100, Math.max(0, avanceParte))}%`, background:parteHealthColor}}/>
+                </div>
+              </div>
+              <div className="parte-review-metrics">
+                <div><span>Tecnico</span><strong>{p.tecnico}</strong></div>
+                <div><span>Fecha</span><strong>{p.fecha}</strong></div>
+                <div><span>Horas</span><strong>{p.horas}h</strong></div>
+                <div><span>Avance global</span><strong style={{color:'var(--cyan)'}}>{avanceParte}%</strong></div>
+              </div>
+              <div className="ficha-detail-content parte-review-content">
+                {(p.tareas_trabajadas?.length || 0) > 0 && (
+                  <div className="parte-review-section">
+                    <div className="parte-review-section-title">Tareas trabajadas</div>
+                    <div className="col" style={{gap:6}}>
+                      {p.tareas_trabajadas.map((t, i) => (
+                        <div key={i} className="parte-review-item">
+                          <div style={{fontSize:13}}>{t.nombre}</div>
+                          <div style={{display:'flex', alignItems:'center', gap:8, flexShrink:0}}>
+                            <span className={`badge ${t.estado_actual==='completada'?'badge-green':t.estado_actual==='en_progreso'?'badge-orange':'badge-gray'}`} style={{fontSize:10}}>{t.estado_actual}</span>
+                            {t.avance_hoy > 0 && <span style={{fontSize:12, fontWeight:600, color:'var(--cyan)'}}>+{t.avance_hoy}%</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(p.actividades_adicionales?.length || 0) > 0 && (
+                  <div className="parte-review-section">
+                    <div className="parte-review-section-title">Actividades adicionales</div>
+                    <div className="col" style={{gap:6}}>
+                      {p.actividades_adicionales.filter(a => a.descripcion).map((a, i) => (
+                        <div key={i} className="parte-review-item">
+                          <div style={{fontSize:13}}>{a.descripcion}</div>
+                          {a.avance_estimado > 0 && <span style={{fontSize:12, fontWeight:600, color:'var(--cyan)', flexShrink:0}}>+{a.avance_estimado}%</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {!(p.tareas_trabajadas?.length) && !(p.actividades_adicionales?.length) && p.actividades && (
+                  <div className="parte-review-section">
+                    <div className="parte-review-section-title">Actividades realizadas</div>
+                    <div className="parte-review-note">{p.actividades}</div>
+                  </div>
+                )}
+                {(p.materiales_usados?.length || 0) > 0 && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Materiales usados</div>
+                    <table className="tbl" style={{fontSize:12}}>
+                      <thead><tr><th>SKU</th><th>Descripción</th><th className="num">Cant.</th></tr></thead>
+                      <tbody>
+                        {p.materiales_usados.map((m, i) => <tr key={i}><td className="mono text-muted">{m.sku}</td><td>{m.nombre}</td><td className="num">{m.cantidad}</td></tr>)}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {(p.terceros_lineas?.length || 0) > 0 && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Servicios de terceros</div>
+                    <table className="tbl" style={{fontSize:12}}>
+                      <thead><tr><th>Descripción</th><th className="num">Monto</th></tr></thead>
+                      <tbody>
+                        {p.terceros_lineas.map((l, i) => (
+                          <tr key={i}><td>{l.descripcion}</td><td className="num" style={{fontWeight:600}}>{Number(l.monto || 0).toFixed(2)}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {(p.logistica_lineas?.length || 0) > 0 && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Logística y viáticos</div>
+                    <table className="tbl" style={{fontSize:12}}>
+                      <thead><tr><th>Descripción</th><th className="num">Monto</th></tr></thead>
+                      <tbody>
+                        {p.logistica_lineas.map((l, i) => (
+                          <tr key={i}><td>{l.descripcion}</td><td className="num" style={{fontWeight:600}}>{Number(l.monto || 0).toFixed(2)}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {(p.evidencias?.length || 0) > 0 && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Evidencias ({p.evidencias.length})</div>
+                    <div style={{display:'flex', flexWrap:'wrap', gap:8}}>
+                      {p.evidencias.map((ev, i) => (
+                        <div key={i} style={{width:72, height:72, borderRadius:6, overflow:'hidden', border:'1px solid var(--border)', background:'var(--bg-subtle)', display:'flex', alignItems:'center', justifyContent:'center'}} title={ev.nombre}>
+                          {ev.tipo?.startsWith('image/') && ev.url ? <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <span style={{fontSize:24}}>📄</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {p.observaciones && (
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8, display:'flex', alignItems:'center', gap:8}}>
+                      Observaciones
+                      {p.es_restriccion && <span className="badge badge-red" style={{fontSize:10}}>⚠ Con restricción</span>}
+                    </div>
+                    <div style={{background: p.es_restriccion ? 'color-mix(in srgb, var(--danger) 6%, transparent)' : 'var(--bg-subtle)', padding:12, borderRadius:6, fontSize:13, lineHeight:1.6, border: p.es_restriccion ? '1px solid var(--danger)' : 'none'}}>{p.observaciones}</div>
+                  </div>
+                )}
+                {p.motivo_observacion && (
+                  <div style={{background:'color-mix(in srgb, var(--orange) 8%, transparent)', border:'1px solid var(--orange)', borderRadius:6, padding:12}}>
+                    <div style={{fontWeight:600, fontSize:12, color:'var(--orange)', marginBottom:4}}>Observación del supervisor</div>
+                    <div style={{fontSize:13}}>{p.motivo_observacion}</div>
+                  </div>
+                )}
+                {p.motivo_rechazo && (
+                  <div style={{background:'color-mix(in srgb, var(--danger) 8%, transparent)', border:'1px solid var(--danger)', borderRadius:6, padding:12}}>
+                    <div style={{fontWeight:600, fontSize:12, color:'var(--danger)', marginBottom:4}}>Motivo de rechazo</div>
+                    <div style={{fontSize:13}}>{p.motivo_rechazo}</div>
+                  </div>
+                )}
+                {p.estado === 'aprobado' && canAprobarPartes && (
+                  <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
+                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>Corrección</div>
+                    {modoAccionParteOT !== 'reabrir' ? (
+                      <div style={{padding:16}}>
+                        <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:10}}>Reabrir el parte lo devuelve a borrador. Los costos y avance de la OT se recalculan sin este parte hasta que sea re-aprobado.</div>
+                        <button className="btn btn-secondary" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => setModoAccionParteOT('reabrir')}>Reabrir para editar</button>
+                      </div>
+                    ) : (
+                      <div style={{padding:16, gap:12}} className="col">
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverá a borrador y el técnico podrá editarlo.</div>
+                        <div className="input-group">
+                          <label style={{fontSize:12}}>Motivo de reapertura <span style={{color:'var(--fg-muted)'}}>(opcional)</span></label>
+                          <textarea className="input" rows={2} placeholder="Ej: Error en horas registradas..." value={motivoAccionParteOT} onChange={e => setMotivoAccionParteOT(e.target.value)} style={{resize:'vertical'}} autoFocus />
+                        </div>
+                        <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => { setModoAccionParteOT(null); setMotivoAccionParteOT(''); }}>Cancelar</button>
+                          <button className="btn btn-sm" style={{background:'var(--orange)', color:'#fff'}} onClick={() => { reabrirParteDiario(p.id, motivoAccionParteOT); cerrarPartePanel(); }}>Confirmar reapertura</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {revisableP && canAprobarPartes && (
+                  <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
+                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>Decisión del supervisor</div>
+                    {!modoAccionParteOT && (
+                      <div style={{padding:16, display:'flex', gap:8}}>
+                        <button className="btn btn-primary" style={{flex:1}} onClick={() => { setModoAccionParteOT('aprobar'); setAvanceAprobacionParteOT(p.avance_reportado || 0); }}>{I.check} Aprobar</button>
+                        <button className="btn btn-secondary" style={{flex:1}} onClick={() => setModoAccionParteOT('observar')}>Observar</button>
+                        <button className="btn btn-secondary" style={{flex:1, color:'var(--danger)'}} onClick={() => setModoAccionParteOT('rechazar')}>Rechazar</button>
+                      </div>
+                    )}
+                    {modoAccionParteOT === 'aprobar' && (
+                      <div style={{padding:16, gap:12}} className="col">
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>Confirma el avance final que se sumará a la OT.</div>
+                        <div style={{display:'flex', alignItems:'center', gap:10}}>
+                          <label style={{fontSize:13, fontWeight:600, whiteSpace:'nowrap'}}>Avance validado:</label>
+                          <input className="input" type="number" min="0" max="100" style={{width:80, textAlign:'center', fontWeight:700, fontSize:16}} value={avanceAprobacionParteOT} onChange={e => setAvanceAprobacionParteOT(Math.min(100, Math.max(0, Number(e.target.value))))} />
+                          <span style={{fontSize:14, fontWeight:600}}>%</span>
+                        </div>
+                        <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => setModoAccionParteOT(null)}>Cancelar</button>
+                          <button className="btn btn-primary btn-sm" onClick={() => { aprobarParteDiario(p.id, avanceAprobacionParteOT); cerrarPartePanel(); }}>{I.check} Confirmar aprobación</button>
+                        </div>
+                      </div>
+                    )}
+                    {modoAccionParteOT === 'observar' && (
+                      <div style={{padding:16, gap:12}} className="col">
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverá al técnico para corrección.</div>
+                        <textarea className="input" rows={3} placeholder="Motivo de la observación (obligatorio)..." value={motivoAccionParteOT} onChange={e => setMotivoAccionParteOT(e.target.value)} autoFocus style={{resize:'vertical'}} />
+                        <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => { setModoAccionParteOT(null); setMotivoAccionParteOT(''); }}>Cancelar</button>
+                          <button className="btn btn-secondary btn-sm" style={{color:'var(--orange)'}} disabled={!motivoAccionParteOT.trim()} onClick={() => { observarParteDiario(p.id, motivoAccionParteOT); cerrarPartePanel(); }}>Enviar observación</button>
+                        </div>
+                      </div>
+                    )}
+                    {modoAccionParteOT === 'rechazar' && (
+                      <div style={{padding:16, gap:12}} className="col">
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte quedará rechazado. El técnico deberá registrar uno nuevo.</div>
+                        <textarea className="input" rows={3} placeholder="Motivo del rechazo (obligatorio)..." value={motivoAccionParteOT} onChange={e => setMotivoAccionParteOT(e.target.value)} autoFocus style={{resize:'vertical'}} />
+                        <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => { setModoAccionParteOT(null); setMotivoAccionParteOT(''); }}>Cancelar</button>
+                          <button className="btn btn-sm" style={{background:'var(--danger)', color:'#fff'}} disabled={!motivoAccionParteOT.trim()} onClick={() => { rechazarParteDiario(p.id, motivoAccionParteOT); cerrarPartePanel(); }}>Confirmar rechazo</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>);
+      })()}
+
       {panelNuevaOT && (
         <>
           <div className="side-panel-backdrop" onClick={cerrarPanelNuevaOT}/>
@@ -3593,8 +3997,9 @@ function OT({ role }) {
                   <label>Responsable técnico</label>
                   <select className="select" value={formNuevaOT.tecnico_responsable_id} onChange={e => updNuevaOT('tecnico_responsable_id', e.target.value)}>
                     <option value="">Sin asignar</option>
-                    {personal.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    {responsablesTecnicosOT.map(p => <option key={p.id} value={p.id}>{etiquetaTecnicoOT(p)}</option>)}
                   </select>
+                  {!responsablesTecnicosOT.length && <div className="text-muted" style={{fontSize:11, marginTop:4}}>No hay operativos con perfil supervisor o superior.</div>}
                 </div>
                 <div className="input-group">
                   <label>Fecha fin comprometida</label>
@@ -3637,23 +4042,30 @@ function OT({ role }) {
               {totalEstimadoNuevaOT === 0 && <div style={{marginBottom:20}}/>}
 
               <div style={{borderTop:'1px solid var(--border)', paddingTop:20, marginBottom:20}}>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, marginBottom:12}}>
                   <div>
                     <div className="eyebrow">Participantes administrativos</div>
-                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Opcional — colaboradores admin que participan en la OT</div>
+                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Planifica aqui quienes participan y sus horas estimadas. Las horas reales se imputan en Partes &gt; Horas administrativas.</div>
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    style={{fontSize:12}}
-                    onClick={() => updNuevaOT('participantes_admin', [...(formNuevaOT.participantes_admin || []), { personal_id: '', personal_nombre: '', horas_estimadas: '' }])}
-                  >{I.plus} Agregar</button>
+                  <div className="row" style={{gap:8, flexShrink:0}}>
+                    {(formNuevaOT.participantes_admin || []).length > 0 && (
+                      <span className="badge badge-cyan">{totalHorasEstimadasAdmin(formNuevaOT.participantes_admin).toFixed(1)}h est.</span>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      style={{fontSize:12}}
+                      onClick={() => updNuevaOT('participantes_admin', [...(formNuevaOT.participantes_admin || []), { personal_id: '', personal_nombre: '', horas_estimadas: '' }])}
+                    >{I.plus} Agregar</button>
+                  </div>
                 </div>
                 {(formNuevaOT.participantes_admin || []).length > 0 && (
                   <div className="col" style={{gap:8}}>
                     {(formNuevaOT.participantes_admin || []).map((pa, idx) => (
-                      <div key={idx} style={{display:'grid', gridTemplateColumns:'1fr 90px auto', gap:8, alignItems:'center'}}>
-                        <select
+                      <div key={idx} style={{display:'grid', gridTemplateColumns:'minmax(220px, 1fr) minmax(140px, 180px) 36px', gap:10, alignItems:'end', padding:10, border:'1px solid var(--border-subtle)', borderRadius:8, background:'var(--bg-subtle)'}}>
+                        <div className="input-group">
+                          <label>Colaborador administrativo</label>
+                          <select
                           className="select"
                           value={pa.personal_id}
                           onChange={e => {
@@ -3666,30 +4078,41 @@ function OT({ role }) {
                           {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
                             <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` — ${p.cargo}` : ''}</option>
                           ))}
-                        </select>
-                        <div style={{display:'flex', alignItems:'center', gap:4}}>
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          <label>Horas estimadas</label>
+                          <div style={{position:'relative'}}>
                           <input
                             className="input"
                             type="number"
                             min="0"
                             step="0.5"
-                            placeholder="Horas"
+                            placeholder="0.0"
                             value={pa.horas_estimadas}
-                            style={{textAlign:'center'}}
+                            style={{textAlign:'right', paddingRight:38, fontWeight:700}}
                             onChange={e => {
                               const next = (formNuevaOT.participantes_admin || []).map((x, i) => i === idx ? { ...x, horas_estimadas: e.target.value } : x);
                               updNuevaOT('participantes_admin', next);
                             }}
                           />
-                          <span style={{fontSize:11, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>h est.</span>
+                            <span style={{position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', fontSize:12, color:'var(--fg-muted)'}}>h</span>
+                          </div>
                         </div>
                         <button
                           type="button"
                           className="icon-btn"
+                          style={{height:36, width:36, color:'var(--danger)'}}
+                          title="Quitar participante administrativo"
                           onClick={() => updNuevaOT('participantes_admin', (formNuevaOT.participantes_admin || []).filter((_, i) => i !== idx))}
                         >{I.x}</button>
                       </div>
                     ))}
+                  </div>
+                )}
+                {(formNuevaOT.participantes_admin || []).length === 0 && (
+                  <div style={{border:'1px dashed var(--border)', borderRadius:8, padding:12, fontSize:12, color:'var(--fg-muted)', background:'var(--bg-subtle)'}}>
+                    Sin participantes administrativos planificados.
                   </div>
                 )}
               </div>
@@ -11540,7 +11963,7 @@ export { Cuentas, OT, Partes, Compras, Proveedores, CotizacionesCompras, Ordenes
 
 // ============================================================
 // TAREO ADMINISTRATIVO — vista desktop (consulta y reporte)
-// Registro lo hacen colaboradores desde PWA o el Parte Diario.
+// Registro lo hacen colaboradores desde PWA o desde la OT.
 // ============================================================
 export function TareoAdmin() {
   const { empresa, role, personalAdmin, ots, centrosCosto } = useApp();
