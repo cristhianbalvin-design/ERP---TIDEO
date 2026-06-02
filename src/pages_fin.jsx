@@ -2002,7 +2002,7 @@ const FAC_BADGE_LABEL = { emitida:'Emitida', cobro_parcial:'Cobro parcial', cobr
 function Facturacion() {
   const {
     facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, seriesDocumentarias,
-    emitirFacturaConCxC, actualizarFechaEmisionFactura, actualizarDatosFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
+    emitirFacturaConCxC, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
     registrarCobroCxC, generarCxP, navigate, searchQuery,
     empresaConfig, role,
   } = useApp();
@@ -2044,31 +2044,16 @@ function Facturacion() {
   const [panelEditFac, setPanelEditFac] = useState(null);   // { id, items, igvPct, form }
   const [savingEditFac, setSavingEditFac] = useState(false);
 
-  // ── Adjuntos factura (PDF / ZIP) ──────────────────────────────────────
-  const [adjuntosFac, setAdjuntosFac] = useState([]);
+  // ── Archivos factura (PDF / ZIP) — almacenados como URLs en la factura ──
   const [uploadingFac, setUploadingFac] = useState(null); // 'pdf' | 'zip' | null
   const pdfInputRef = useRef(null);
   const zipInputRef = useRef(null);
 
-  useEffect(() => {
-    if (!selFac || !empresaConfig?.id) { setAdjuntosFac([]); return; }
-    storageService.cargarAdjuntos({ empresaId: empresaConfig.id, entidadTipo: 'facturas', entidadId: String(selFac) })
-      .then(rows => setAdjuntosFac(rows.filter(r => r.categoria === 'factura_pdf' || r.categoria === 'factura_zip')))
-      .catch(() => {});
-  }, [selFac, empresaConfig?.id]);
-
-  const handleSubirFac = async (file, categoria) => {
-    if (!file || !empresaConfig?.id || !selFac) return;
-    setUploadingFac(categoria === 'factura_pdf' ? 'pdf' : 'zip');
+  const handleSubirFac = async (file, tipo) => {
+    if (!file || !selFac) return;
+    setUploadingFac(tipo);
     try {
-      const adjunto = await storageService.subirAdjunto({
-        empresaId: empresaConfig.id,
-        entidadTipo: 'facturas',
-        entidadId: String(selFac),
-        file,
-        categoria,
-      });
-      setAdjuntosFac(prev => [adjunto, ...prev.filter(a => a.categoria !== categoria)]);
+      await subirArchivoFactura(selFac, tipo, file);
     } catch(e) {
       alert('Error al subir: ' + (e?.message || 'intenta de nuevo'));
     } finally {
@@ -2076,22 +2061,12 @@ function Facturacion() {
     }
   };
 
-  const handleEliminarAdjuntoFac = async (adjunto) => {
-    if (!window.confirm(`¿Eliminar ${adjunto.nombre_original}?`)) return;
+  const handleEliminarArchivoFac = async (tipo) => {
+    if (!window.confirm(`¿Eliminar el archivo ${tipo.toUpperCase()}?`)) return;
     try {
-      await storageService.eliminarAdjunto(adjunto);
-      setAdjuntosFac(prev => prev.filter(a => a.id !== adjunto.id));
+      await eliminarArchivoFactura(selFac, tipo);
     } catch(e) {
       alert('Error al eliminar: ' + (e?.message || 'intenta de nuevo'));
-    }
-  };
-
-  const abrirAdjuntoFac = async (adjunto) => {
-    try {
-      const url = await storageService.obtenerUrlAdjunto(adjunto);
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-    } catch(e) {
-      alert('Error al abrir: ' + (e?.message || 'intenta de nuevo'));
     }
   };
 
@@ -2881,42 +2856,33 @@ function Facturacion() {
             </div>
           </div>
           <div className="row" style={{gap:10,flexWrap:'wrap'}}>
-            {/* Upload PDF */}
-            <input ref={pdfInputRef} type="file" accept=".pdf,application/pdf" style={{display:'none'}} onChange={e => { handleSubirFac(e.target.files[0], 'factura_pdf'); e.target.value=''; }} />
-            {/* Upload ZIP */}
-            <input ref={zipInputRef} type="file" accept=".zip,application/zip,application/x-zip-compressed" style={{display:'none'}} onChange={e => { handleSubirFac(e.target.files[0], 'factura_zip'); e.target.value=''; }} />
-            {(() => {
-              const pdfAdj = adjuntosFac.find(a => a.categoria === 'factura_pdf');
-              const zipAdj = adjuntosFac.find(a => a.categoria === 'factura_zip');
-              return (
-                <>
-                  {pdfAdj ? (
-                    <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,background:'var(--surface-2)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 8px',maxWidth:200}}>
-                      <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:600,gap:4,minWidth:0,overflow:'hidden'}} title={pdfAdj.nombre_original} onClick={() => abrirAdjuntoFac(pdfAdj)}>
-                        {I.file}<span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:120}}>PDF</span>
-                      </button>
-                      <button type="button" className="icon-btn" style={{width:16,height:16,color:'var(--danger)',flexShrink:0}} title="Eliminar PDF" onClick={() => handleEliminarAdjuntoFac(pdfAdj)}>{I.x}</button>
-                    </span>
-                  ) : (
-                    <button type="button" className="btn btn-secondary" style={{fontSize:12}} disabled={uploadingFac==='pdf'} title="Subir PDF de la factura" onClick={() => pdfInputRef.current?.click()}>
-                      {uploadingFac==='pdf' ? 'Subiendo...' : <>{I.upload} PDF</>}
-                    </button>
-                  )}
-                  {zipAdj ? (
-                    <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,background:'var(--surface-2)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 8px',maxWidth:200}}>
-                      <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:600,gap:4,minWidth:0,overflow:'hidden'}} title={zipAdj.nombre_original} onClick={() => abrirAdjuntoFac(zipAdj)}>
-                        {I.file}<span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:120}}>ZIP</span>
-                      </button>
-                      <button type="button" className="icon-btn" style={{width:16,height:16,color:'var(--danger)',flexShrink:0}} title="Eliminar ZIP" onClick={() => handleEliminarAdjuntoFac(zipAdj)}>{I.x}</button>
-                    </span>
-                  ) : (
-                    <button type="button" className="btn btn-secondary" style={{fontSize:12}} disabled={uploadingFac==='zip'} title="Subir ZIP de la factura" onClick={() => zipInputRef.current?.click()}>
-                      {uploadingFac==='zip' ? 'Subiendo...' : <>{I.upload} ZIP</>}
-                    </button>
-                  )}
-                </>
-              );
-            })()}
+            {/* Archivos adjuntos PDF / ZIP — URLs guardadas en la factura */}
+            <input ref={pdfInputRef} type="file" accept=".pdf,application/pdf" style={{display:'none'}} onChange={e => { handleSubirFac(e.target.files[0], 'pdf'); e.target.value=''; }} />
+            <input ref={zipInputRef} type="file" accept=".zip,application/zip,application/x-zip-compressed" style={{display:'none'}} onChange={e => { handleSubirFac(e.target.files[0], 'zip'); e.target.value=''; }} />
+            {f.archivo_pdf_url ? (
+              <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,background:'color-mix(in srgb,var(--green) 10%,transparent)',border:'1px solid var(--green)',borderRadius:6,padding:'4px 10px',color:'var(--green)'}}>
+                <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:700,gap:5,color:'var(--green)'}} title="Ver/descargar PDF" onClick={() => window.open(f.archivo_pdf_url,'_blank','noopener,noreferrer')}>
+                  {I.download} PDF
+                </button>
+                <button type="button" className="icon-btn" style={{width:15,height:15,color:'var(--green)',opacity:0.6,flexShrink:0}} title="Eliminar PDF" onClick={() => handleEliminarArchivoFac('pdf')}>{I.x}</button>
+              </span>
+            ) : (
+              <button type="button" className="btn btn-secondary" style={{fontSize:12}} disabled={uploadingFac==='pdf'} title="Subir PDF de la factura" onClick={() => pdfInputRef.current?.click()}>
+                {uploadingFac==='pdf' ? 'Subiendo...' : <>{I.upload} PDF</>}
+              </button>
+            )}
+            {f.archivo_zip_url ? (
+              <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,background:'color-mix(in srgb,var(--green) 10%,transparent)',border:'1px solid var(--green)',borderRadius:6,padding:'4px 10px',color:'var(--green)'}}>
+                <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:700,gap:5,color:'var(--green)'}} title="Ver/descargar ZIP" onClick={() => window.open(f.archivo_zip_url,'_blank','noopener,noreferrer')}>
+                  {I.download} ZIP
+                </button>
+                <button type="button" className="icon-btn" style={{width:15,height:15,color:'var(--green)',opacity:0.6,flexShrink:0}} title="Eliminar ZIP" onClick={() => handleEliminarArchivoFac('zip')}>{I.x}</button>
+              </span>
+            ) : (
+              <button type="button" className="btn btn-secondary" style={{fontSize:12}} disabled={uploadingFac==='zip'} title="Subir ZIP de la factura" onClick={() => zipInputRef.current?.click()}>
+                {uploadingFac==='zip' ? 'Subiendo...' : <>{I.upload} ZIP</>}
+              </button>
+            )}
             {f.estado !== 'anulada' && (
               <button className="btn btn-secondary" onClick={() => alert('PDF — funcionalidad próximamente')}>{I.download} PDF</button>
             )}

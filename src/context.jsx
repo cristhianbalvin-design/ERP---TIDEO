@@ -4108,6 +4108,42 @@ export function AppProvider({ children }) {
     }
   };
 
+  const subirArchivoFactura = async (facturaId, tipo, file) => {
+    if (!file || !facturaId || !empresa?.id) throw new Error('Datos incompletos para subir archivo.');
+    if (!isSupabaseConfigured()) throw new Error('Supabase no est\xe1 configurado.');
+    const sb = await getSupabaseClient();
+    const ext = (file.name.split('.').pop() || tipo).toLowerCase();
+    const bucket = 'facturas-docs';
+    const path = `${empresa.id}/${facturaId}/${tipo}.${ext}`;
+    // Eliminar anterior si existe
+    await sb.storage.from(bucket).remove([path]).catch(() => {});
+    const { error: upErr } = await sb.storage.from(bucket).upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: true });
+    if (upErr) throw upErr;
+    // URL firmada con 10 años de vigencia (365*10 días)
+    const { data: signed, error: signErr } = await sb.storage.from(bucket).createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
+    if (signErr) throw signErr;
+    const url = signed.signedUrl;
+    const campo = tipo === 'pdf' ? 'archivo_pdf_url' : 'archivo_zip_url';
+    setFacturas(prev => prev.map(f => f.id === facturaId ? { ...f, [campo]: url } : f));
+    await sb.from('facturas').update({ [campo]: url, updated_at: new Date().toISOString() }).eq('id', facturaId);
+    return url;
+  };
+
+  const eliminarArchivoFactura = async (facturaId, tipo) => {
+    if (!facturaId || !empresa?.id) return;
+    if (!isSupabaseConfigured()) return;
+    const sb = await getSupabaseClient();
+    const bucket = 'facturas-docs';
+    // Busca el archivo con cualquier extensi\xf3n
+    const prefix = `${empresa.id}/${facturaId}/${tipo}`;
+    const { data: listedFiles } = await sb.storage.from(bucket).list(`${empresa.id}/${facturaId}`);
+    const match = (listedFiles || []).find(f => f.name.startsWith(tipo + '.'));
+    if (match) await sb.storage.from(bucket).remove([`${empresa.id}/${facturaId}/${match.name}`]).catch(() => {});
+    const campo = tipo === 'pdf' ? 'archivo_pdf_url' : 'archivo_zip_url';
+    setFacturas(prev => prev.map(f => f.id === facturaId ? { ...f, [campo]: null } : f));
+    await sb.from('facturas').update({ [campo]: null, updated_at: new Date().toISOString() }).eq('id', facturaId);
+  };
+
   const actualizarDatosFactura = async (facturaId, { numero, fecha_emision, items, subtotal, igv, total, condicion_pago, fecha_vencimiento, moneda, glosa, notas }) => {
     const factura = facturas.find(f => f.id === facturaId);
     if (!factura || factura.estado === 'anulada') return;
@@ -7262,7 +7298,7 @@ export function AppProvider({ children }) {
     // Fase 2 Actions
     convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     // Finanzas Actions
-    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, registrarMovimientoManual,
+    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, registrarMovimientoManual,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,
     recibosHonorarios, setRecibosHonorarios,
     aprobarComision, rechazarComision, generarReciboHonorarios, confirmarReciboHonorarios,
