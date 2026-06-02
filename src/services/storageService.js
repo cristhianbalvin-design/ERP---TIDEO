@@ -34,6 +34,7 @@ const ENTITY_BUCKET_MAP = {
   movimientos_tesoreria: STORAGE_BUCKETS.DOCUMENTOS_GENERALES,
   pagos_financiamiento: STORAGE_BUCKETS.DOCUMENTOS_GENERALES,
   tabla_amortizacion: STORAGE_BUCKETS.DOCUMENTOS_GENERALES,
+  facturas: STORAGE_BUCKETS.DOCUMENTOS_GENERALES,
   cxp: STORAGE_BUCKETS.DOCUMENTOS_PRIVADOS,
   personal_administrativo: STORAGE_BUCKETS.DOCUMENTOS_PRIVADOS,
   personal_operativo: STORAGE_BUCKETS.DOCUMENTOS_PRIVADOS,
@@ -51,6 +52,9 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/octet-stream',
 ]);
 
 const ALLOWED_EXTENSIONS = new Set([
@@ -63,6 +67,7 @@ const ALLOWED_EXTENSIONS = new Set([
   '.docx',
   '.xls',
   '.xlsx',
+  '.zip',
 ]);
 
 const storageUri = (bucket, path) => `storage://${bucket}/${path}`;

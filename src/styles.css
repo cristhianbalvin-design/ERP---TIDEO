@@ -2968,7 +2968,7 @@ body {
 .side-panel-backdrop {
   position: fixed; inset: 0;
   background: rgba(15,27,48,0.55);
-  z-index: 60;
+  z-index: 79;
   opacity: 0;
   animation: fadeIn 0.18s forwards;
 }
@@ -2978,7 +2978,7 @@ body {
   width: min(640px, 92vw);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
-  z-index: 61;
+  z-index: 80;
   display: flex; flex-direction: column;
   transform: translateX(100%);
   animation: slideIn 0.24s cubic-bezier(0.16,1,0.3,1) forwards;

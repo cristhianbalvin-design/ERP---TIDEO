@@ -49,6 +49,7 @@ const I = {
   list: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>,
   filter: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="22,3 2,3 10,12.5 10,19 14,21 14,12.5"/></svg>,
   download: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>,
+  upload: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>,
   save: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>,
   warehouse: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 8.3V21a1 1 0 0 1-1 1h-4v-7H7v7H3a1 1 0 0 1-1-1V8.3a2 2 0 0 1 1.3-1.9l8-3a2 2 0 0 1 1.4 0l8 3A2 2 0 0 1 22 8.3z"/></svg>,
   send: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/></svg>,

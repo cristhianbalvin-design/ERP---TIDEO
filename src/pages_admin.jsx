@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { I, money } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
@@ -3834,7 +3834,7 @@ function Parametros() {
   const emptySerie = { documento:'', serie:'', siguiente_correlativo:'1', regla:'', estado:'activo' };
   const emptySla = { nombre:'', tiempo_respuesta_horas:'4', tiempo_resolucion_horas:'24', semaforo_regla:'Rojo a 80%', estado:'activo' };
   const emptyDicc = { categoria:'Comercial', clave:'', texto:'', estado:'activo' };
-  const [parametros, setParametros] = useState({ moneda_base:'PEN', igv_defecto:'18', zona_horaria:'America/Lima', plantilla_cotizacion:'TIDEO propuesta tecnica v3', plantilla_factura:'Exportacion fiscal externa', requiere_2fa_financiero:false, agente_retencion:false });
+  const [parametros, setParametros] = useState({ moneda_base:'PEN', igv_defecto:'18', zona_horaria:'America/Lima', plantilla_cotizacion:'TIDEO propuesta tecnica v3', plantilla_factura:'Exportacion fiscal externa', condicion_pago_defecto:'30 días', requiere_2fa_financiero:false, agente_retencion:false });
   const [flujosAlertas, setFlujosAlertas] = useState(defaultFlujos);
   const [serieForm, setSerieForm] = useState(emptySerie);
   const [serieEditId, setSerieEditId] = useState(null);
@@ -3889,6 +3889,7 @@ function Parametros() {
       zona_horaria: empresaConfig.zona_horaria || 'America/Lima',
       plantilla_cotizacion: empresaConfig.plantilla_cotizacion || 'TIDEO propuesta tecnica v3',
       plantilla_factura: empresaConfig.plantilla_factura || 'Exportacion fiscal externa',
+      condicion_pago_defecto: empresaConfig.condicion_pago_defecto || '30 días',
       requiere_2fa_financiero: Boolean(empresaConfig.requiere_2fa_financiero),
       agente_retencion: Boolean(empresaConfig.agente_retencion),
     });
@@ -4153,6 +4154,7 @@ function Parametros() {
 
   const inp = (field) => ({ className:'input', value: datos[field], onChange: e => setDatos(p=>({...p,[field]:e.target.value})) });
   const pinp = (field) => ({ className:'input', value: parametros[field], onChange: e => setParametros(p=>({...p,[field]:e.target.value})) });
+  const condicionesPagoDefectoOptions = ['contado', 'anticipado', '15 días', '30 días', '45 días', '60 días', '90 días'];
   const monedasActivas = monedasImpuestosUnidades
     .filter(m => m.tipo === 'moneda' && m.estado === 'activo' && m.codigo)
     .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)));
@@ -4395,6 +4397,12 @@ function Parametros() {
               {!monedasActivas.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Crea al menos una moneda activa en Maestros Base &gt; Monedas, impuestos y unidades.</div>}
             </div>
             <div className="input-group"><label>IGV por defecto (%)</label><input {...pinp('igv_defecto')} type="number" step="0.01" min="0"/></div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}>
+              <label>Condición de pago por defecto para CxC</label>
+              <select className="input" value={parametros.condicion_pago_defecto} onChange={e => setParametros(p=>({...p, condicion_pago_defecto:e.target.value}))}>
+                {condicionesPagoDefectoOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
             <div className="input-group" style={{gridColumn:'1/-1'}}><label>Zona horaria</label><input {...pinp('zona_horaria')} placeholder="America/Lima"/></div>
             <div className="input-group" style={{gridColumn:'1/-1'}}><label>Plantilla cotizacion</label><input {...pinp('plantilla_cotizacion')} placeholder="TIDEO propuesta tecnica v3"/></div>
             <div className="input-group" style={{gridColumn:'1/-1'}}><label>Plantilla factura</label><input {...pinp('plantilla_factura')} placeholder="Exportacion fiscal externa"/></div>
@@ -6318,14 +6326,39 @@ function Organigrama() {
 function Comisiones() {
   const {
     comisiones = [], personalAdmin = [], role, roleKey,
-    oportunidades = [], cuentas = [], cxc = [], facturas = [], osClientes = [],
+    oportunidades = [], cuentas = [], cxc = [], facturas = [], osClientes = [], cobrosHistorial = [],
     aprobarComision, rechazarComision, generarReciboHonorarios, confirmarReciboHonorarios,
     aprobarAcuerdoComision, rechazarAcuerdoComision,
+    reconciliarComisionesPendientes,
     recibosHonorarios = [], addNotificacion, empresa, navigate,
   } = useApp();
 
   const puedeAprobar = role?.permisos?.aprobar_descuentos || role?.permisos?.tenant_admin || role?.permisos?.todo;
   const puedeVerComisiones = role?.permisos?.ver_costos || role?.permisos?.todo || puedeAprobar;
+
+  // Auto-rechazar comisiones huérfanas (CxC anulada) y excluirlas del display
+  const comisionesEfectivas = useMemo(() => {
+    return comisiones.filter(cm => {
+      if (cm.estado === 'rechazada') return true; // siempre mostrar rechazadas
+      if (cm.cxc_id) {
+        const cxcRef = cxc.find(x => x.id === cm.cxc_id);
+        if (cxcRef && cxcRef.estado === 'anulada') return false;
+      }
+      return true;
+    });
+  }, [comisiones, cxc]);
+
+  // Rechazar en Supabase las comisiones huérfanas detectadas
+  useEffect(() => {
+    const huerfanas = comisiones.filter(cm => {
+      if (cm.estado === 'rechazada' || cm.estado === 'pagada') return false;
+      if (!cm.cxc_id) return false;
+      const cxcRef = cxc.find(x => x.id === cm.cxc_id);
+      return cxcRef && cxcRef.estado === 'anulada';
+    });
+    if (huerfanas.length === 0) return;
+    huerfanas.forEach(cm => rechazarComision(cm.id, 'CxC anulada — comisión rechazada automáticamente'));
+  }, []);  // solo al montar
 
   const periodoActual = new Date().toISOString().slice(0, 7);
   const ahora = Date.now();
@@ -6367,7 +6400,9 @@ function Comisiones() {
   const [modoRechazo, setModoRechazo] = useState(false);
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [reconciliando, setReconciliando] = useState(false);
   const [panelRecibo, setPanelRecibo] = useState(null);
+  const autoReconciliacionKey = useRef('');
 
   const vendedoresUniq = useMemo(() => {
     const ids = [...new Set(comisiones.map(c => c.vendedor_id).filter(Boolean))];
@@ -6378,19 +6413,19 @@ function Comisiones() {
   }, [comisiones]);
 
   const periodosUniq = useMemo(() => {
-    return [...new Set(comisiones.map(c => c.periodo).filter(Boolean))].sort().reverse();
-  }, [comisiones]);
+    return [...new Set(comisionesEfectivas.map(c => c.periodo).filter(Boolean))].sort().reverse();
+  }, [comisionesEfectivas]);
 
-  const filtradas = useMemo(() => comisiones.filter(c =>
+  const filtradas = useMemo(() => comisionesEfectivas.filter(c =>
     (!filtVendedor || c.vendedor_id === filtVendedor) &&
     (!filtPeriodo || c.periodo === filtPeriodo) &&
     (!filtEstado || c.estado === filtEstado) &&
     (!filtModalidad || c.modalidad_pago === filtModalidad)
-  ), [comisiones, filtVendedor, filtPeriodo, filtEstado, filtModalidad]);
+  ), [comisionesEfectivas, filtVendedor, filtPeriodo, filtEstado, filtModalidad]);
 
-  const pendientes = comisiones.filter(c => c.estado === 'pendiente_aprobacion');
-  const aprobadas = comisiones.filter(c => c.estado === 'aprobada');
-  const pagadasPeriodo = comisiones.filter(c => c.estado === 'pagada' && c.periodo === periodoActual);
+  const pendientes = comisionesEfectivas.filter(c => c.estado === 'pendiente_aprobacion');
+  const aprobadas = comisionesEfectivas.filter(c => c.estado === 'aprobada');
+  const pagadasPeriodo = comisionesEfectivas.filter(c => c.estado === 'pagada' && c.periodo === periodoActual);
   const monedasResumen = ['PEN', 'USD'];
   const normalizeMoneda = (moneda) => {
     const raw = String(moneda || '').trim().toUpperCase();
@@ -6451,7 +6486,7 @@ function Comisiones() {
   };
   const sumByCurrency = (list, field = 'monto_total') => monedasResumen.reduce((acc, moneda) => {
     acc[moneda] = list
-      .filter(c => normalizeMoneda(c.moneda) === moneda)
+      .filter(c => monedaComision(c) === moneda)
       .reduce((s, c) => s + Number(c[field] || 0), 0);
     return acc;
   }, {});
@@ -6472,7 +6507,7 @@ function Comisiones() {
     const result = {};
     monedasResumen.forEach(moneda => {
       const por = {};
-      comisiones.filter(c => c.estado !== 'rechazada' && normalizeMoneda(c.moneda) === moneda).forEach(c => {
+      comisionesEfectivas.filter(c => c.estado !== 'rechazada' && monedaComision(c) === moneda).forEach(c => {
         const key = c.vendedor_nombre || c.vendedor_id;
         if (!por[key]) por[key] = { nombre: key, total: 0 };
         por[key].total += Number(c.monto_total || 0);
@@ -6481,18 +6516,18 @@ function Comisiones() {
       if (sorted.length > 0) result[moneda] = sorted[0];
     });
     return result;
-  }, [comisiones]);
+  }, [comisionesEfectivas]);
 
   const vendedoresHonorariosPendientes = useMemo(() => {
     const por = {};
-    comisiones.filter(c => c.estado === 'aprobada' && c.modalidad_pago === 'Honorarios').forEach(c => {
-      const moneda = normalizeMoneda(c.moneda);
+    comisionesEfectivas.filter(c => c.estado === 'aprobada' && c.modalidad_pago === 'Honorarios').forEach(c => {
+      const moneda = monedaComision(c);
       const key = `${c.vendedor_id}_${moneda}`;
       if (!por[key]) por[key] = { id: key, vendedor_id: c.vendedor_id, moneda, nombre: c.vendedor_nombre, items: [] };
       por[key].items.push(c);
     });
     return Object.values(por);
-  }, [comisiones]);
+  }, [comisionesEfectivas]);
 
   function abrirPanel(c) {
     setPanelComision(c);
@@ -6559,6 +6594,34 @@ function Comisiones() {
     : 0;
   const panelReciboMoneda = panelRecibo ? normalizeMoneda(panelRecibo.moneda || empresa?.moneda || empresa?.moneda_base) : 'PEN';
 
+  useEffect(() => {
+    if (!reconciliarComisionesPendientes || !empresa?.id) return;
+    if (!cobrosHistorial.length || !cxc.length || !personalAdmin.length) return;
+    const key = `${empresa.id}:${cobrosHistorial.length}:${cxc.length}:${personalAdmin.length}:${comisiones.length}`;
+    if (autoReconciliacionKey.current === key) return;
+    autoReconciliacionKey.current = key;
+    let alive = true;
+    setReconciliando(true);
+    reconciliarComisionesPendientes({ silencioso: true })
+      .then(count => {
+        if (alive && count > 0) addNotificacion(`Se recuperaron ${count} comision(es) cobradas sin registrar.`);
+      })
+      .finally(() => {
+        if (alive) setReconciliando(false);
+      });
+    return () => { alive = false; };
+  }, [empresa?.id, cobrosHistorial.length, cxc.length, personalAdmin.length, comisiones.length, reconciliarComisionesPendientes]);
+
+  async function handleReconciliarComisiones() {
+    if (!reconciliarComisionesPendientes) return;
+    setReconciliando(true);
+    try {
+      await reconciliarComisionesPendientes({ silencioso: false });
+    } finally {
+      setReconciliando(false);
+    }
+  }
+
   return (
     <div className="page-content comisiones-page">
       <div className="page-header">
@@ -6566,6 +6629,11 @@ function Comisiones() {
           <div className="eyebrow">RRHH</div>
           <h1 className="page-title">Comisiones</h1>
           <div className="page-sub">Liquidacion, aprobacion y pago de comisiones comerciales</div>
+        </div>
+        <div className="row">
+          <button className="btn btn-secondary" onClick={handleReconciliarComisiones} disabled={reconciliando}>
+            {reconciliando ? 'Revisando...' : 'Recalcular cobradas'}
+          </button>
         </div>
       </div>
 

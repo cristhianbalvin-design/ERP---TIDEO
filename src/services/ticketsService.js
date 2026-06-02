@@ -121,14 +121,14 @@ export async function eliminarTicket(ticketId) {
   return true;
 }
 
-const BUCKET_TICKET_EVIDENCIAS = 'ticket-evidencias';
+const BUCKET_TICKET_EVIDENCIAS = 'documentos-generales';
 
 export async function subirImagenEvidencia(empresaId, ticketId, file) {
   if (!file) return null;
   const supabase = await getSupabaseClient();
   const timestamp = Date.now();
   const nombreSeguro = String(file.name || 'imagen').replace(/[^a-zA-Z0-9._-]/g, '_');
-  const path = `${empresaId}/${ticketId}/${timestamp}_${nombreSeguro}`;
+  const path = `${empresaId}/tickets/${ticketId}/${timestamp}_${nombreSeguro}`;
 
   const { error: uploadError } = await supabase.storage
     .from(BUCKET_TICKET_EVIDENCIAS)

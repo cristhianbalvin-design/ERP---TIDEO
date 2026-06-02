@@ -2,9 +2,17 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
-import { buildEstadoResultados } from './services/estadoResultadosService.js';
+import { isSupabaseMode } from './lib/dataMode.js';
+import { ER_CURRENCIES, buildEstadoResultados, getEstadoResultados } from './services/estadoResultadosService.js';
 import { buildTesoreriaSummary } from './services/tesoreriaService.js';
+import {
+  CONDICION_PAGO_DEFECTO_CXC,
+  calcularFechaVencimientoCxC,
+  finanzasService,
+  resolverCondicionPagoCxC,
+} from './services/finanzasService.js';
 import { rrhhService } from './services/rrhhService.js';
+import * as storageService from './services/storageService.js';
 
 // Finanzas: CxC, Tesorería/Match, Estado de Resultados, Facturación
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
@@ -57,8 +65,8 @@ function CxC() {
   const {
     cxc, cuentas, osClientes, facturas, usuarios,
     cobrosHistorial, gestionesCobranza, cuentasBancarias,
-    registrarCobroCxC, registrarGestionCobranza,
-    navigate,
+    registrarCobroCxC, registrarGestionCobranza, actualizarVencimientoCxC, revertirCobroCxC, comisiones,
+    navigate, role,
   } = useApp();
 
   const today = new Date().toISOString().split('T')[0];
@@ -136,6 +144,9 @@ function CxC() {
   const [panelGestion, setPanelGestion] = useState(false);
   const [gestionSel, setGestionSel] = useState(null);
   const [formGestion, setFormGestion] = useState({ tipo_gestion:'', resultado:'', fecha_proxima_accion:'', fecha_acordada_pago:'', notas:'' });
+  const [editVencimiento, setEditVencimiento] = useState(null);
+  const [savingVencimiento, setSavingVencimiento] = useState(false);
+  const [confirmAnular, setConfirmAnular] = useState(null); // CxC a anular
 
   // ── KPIs ──────────────────────────────────────────────────────────────
   const cxcActivas = useMemo(() => (cxc||[]).filter(c => c.estado !== 'anulada'), [cxc]);
@@ -224,6 +235,30 @@ function CxC() {
     setPanelGestion(true);
   };
 
+  const permisosEditarCxC = role?.permisos?.editar;
+  const puedeEditarCxC = Boolean(role?.permisos?.todo || permisosEditarCxC === true || permisosEditarCxC?.includes?.('cxc'));
+
+  const abrirEdicionVencimiento = (c, e) => {
+    if (e) e.stopPropagation();
+    if (!puedeEditarCxC) return;
+    setEditVencimiento({ id: c.id, fecha: c.fecha_vencimiento || c.vence || today });
+  };
+
+  const cancelarEdicionVencimiento = () => {
+    setEditVencimiento(null);
+  };
+
+  const confirmarEdicionVencimiento = async () => {
+    if (!editVencimiento?.id || !editVencimiento?.fecha) return;
+    setSavingVencimiento(true);
+    try {
+      await actualizarVencimientoCxC(editVencimiento.id, editVencimiento.fecha);
+      setEditVencimiento(null);
+    } finally {
+      setSavingVencimiento(false);
+    }
+  };
+
   const guardarGestion = async e => {
     e.preventDefault();
     const necesitaFecha = ['promesa_pago','pagara_en_fecha_acordada'].includes(formGestion.resultado);
@@ -272,6 +307,12 @@ function CxC() {
     const gestiones= (gestionesCobranza||[]).filter(g=>g.cxc_id===c.id).sort((a,b)=>b.fecha_gestion.localeCompare(a.fecha_gestion));
     const proyMora = d => Math.round(saldo * Number(c?.tasa_mora_diaria||TASA_MORA_DIARIA) * (dias+d) * 100) / 100;
     const metaEst  = ESTADO_META[estado] || ESTADO_META.por_cobrar;
+    const fechaVencimientoActual = c?.fecha_vencimiento || c?.vence || '';
+    const vencimientoLabel = fechaVencimientoActual || '—';
+    const editandoVencimiento = editVencimiento?.id === c.id;
+    const fechaVencimientoEditada = editandoVencimiento ? editVencimiento.fecha : fechaVencimientoActual;
+    const vencimientoColor = dias > 0 ? 'var(--danger)' : dias === 0 ? 'var(--orange)' : 'var(--fg)';
+    const tituloEditarVencimiento = puedeEditarCxC ? 'Editar vencimiento' : 'Requiere permiso cxc:editar';
     const TABS_FICHA = [
       { id:'resumen',  label:'Resumen'                       },
       { id:'pagos',    label:`Historial pagos (${cobros.length})` },
@@ -289,7 +330,7 @@ function CxC() {
               <span className={'badge '+metaEst.cls}>{metaEst.label}</span>
               {dias > 0 && <span style={{fontSize:12,fontWeight:600,color:'var(--danger)'}}>· {dias} días de mora</span>}
             </div>
-            <div className="page-sub">{clienteDe(c)} · Vence: {c?.fecha_vencimiento||c?.vence||'—'}</div>
+            <div className="page-sub">{clienteDe(c)} · Vence: {vencimientoLabel}</div>
           </div>
           <div className="row" style={{gap:10,flexWrap:'wrap'}}>
             {saldo > 0 && <button className="btn btn-secondary" data-local-form="true" onClick={e=>abrirGestion(c,e)}>{I.send} Registrar gestión</button>}
@@ -328,7 +369,20 @@ function CxC() {
                   </div>
                   <div>
                     <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Vencimiento</div>
-                    <div style={{fontSize:13,fontWeight:600,color:dias>0?'var(--danger)':dias===0?'var(--orange)':'var(--fg)'}}>{c?.fecha_vencimiento||c?.vence||'—'}</div>
+                    {editandoVencimiento ? (
+                      <div className="row" style={{gap:6,alignItems:'center',flexWrap:'wrap'}}>
+                        <input className="input" type="date" value={fechaVencimientoEditada} disabled={savingVencimiento} onChange={e=>setEditVencimiento(v=>({...v,fecha:e.target.value}))} style={{width:150}} autoFocus />
+                        <button className="icon-btn" title="Confirmar" disabled={savingVencimiento || !fechaVencimientoEditada} onClick={confirmarEdicionVencimiento}>{I.check}</button>
+                        <button className="icon-btn" title="Cancelar" disabled={savingVencimiento} onClick={cancelarEdicionVencimiento}>{I.x}</button>
+                      </div>
+                    ) : puedeEditarCxC ? (
+                      <button type="button" className="btn btn-ghost" title={tituloEditarVencimiento} onClick={e=>abrirEdicionVencimiento(c,e)} style={{padding:0,fontSize:13,fontWeight:600,color:vencimientoColor,display:'inline-flex',alignItems:'center',gap:6}}>
+                        <span>{vencimientoLabel}</span>
+                        <span style={{fontSize:11,color:'var(--cyan)'}}>{I.edit}</span>
+                      </button>
+                    ) : (
+                      <div title={tituloEditarVencimiento} style={{fontSize:13,fontWeight:600,color:vencimientoColor}}>{vencimientoLabel}</div>
+                    )}
                   </div>
                   <div>
                     <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Gestor asignado</div>
@@ -420,7 +474,7 @@ function CxC() {
           <div style={{display:'grid',gridTemplateColumns:'1fr 280px',gap:20,marginTop:20}}>
             <div className="card" style={{padding:20}}>
               <div className="grid-2" style={{gap:16}}>
-                <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Fecha de vencimiento</div><div style={{fontSize:14,fontWeight:600}}>{c?.fecha_vencimiento||'—'}</div></div>
+                <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Fecha de vencimiento</div><div style={{fontSize:14,fontWeight:600}}>{vencimientoLabel}</div></div>
                 <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Días de mora</div><div style={{fontSize:22,fontWeight:700,color:'var(--danger)'}}>{dias} días</div></div>
                 <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Tasa de mora diaria</div><div style={{fontSize:14}}>{tasa.toFixed(4)}%</div></div>
                 <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Interés acumulado</div><div style={{fontSize:14,fontWeight:700,color:'var(--danger)'}}>{moneyD(interes)}</div></div>
@@ -551,8 +605,11 @@ function CxC() {
                     <td className="num">{inter>0?<span style={{color:'var(--danger)'}}>{moneyCurrency(inter, c.moneda)}</span>:<span className="text-subtle">—</span>}</td>
                     <td style={{color:'var(--fg-muted)',fontSize:12}}>{c.medio_pago_esperado||<span className="text-subtle">—</span>}</td>
                     <td><span className={'badge '+meta.cls}>{meta.label}</span></td>
-                    <td onClick={e=>e.stopPropagation()}>
-                      {saldoDe(c)>0 && <button className="btn btn-sm btn-primary" data-local-form="true" onClick={e=>abrirCobro(c,e)}>Cobrar</button>}
+                    <td onClick={e=>e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
+                      {saldoDe(c)>0 && <button className="btn btn-sm btn-primary" data-local-form="true" onClick={e=>abrirCobro(c,e)} style={{marginRight:6}}>Cobrar</button>}
+                      {puedeEditarCxC && est !== 'anulada' && (
+                        <button className="icon-btn" title="Anular CxC" style={{color:'var(--danger)'}} onClick={e=>{e.stopPropagation();setConfirmAnular(c);}}>{I.trash}</button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -566,6 +623,72 @@ function CxC() {
         </div>
       </div>
       </>)}
+
+      {/* Modal: Revertir cobros de CxC */}
+      {confirmAnular && (
+        <>
+          <div className="side-panel-backdrop" onClick={()=>setConfirmAnular(null)}/>
+          <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:1001,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:'min(460px,92vw)',boxShadow:'0 8px 32px rgba(0,0,0,0.24)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
+              <span style={{color:'var(--danger)',fontSize:22}}>{I.trash}</span>
+              <div style={{fontSize:17,fontWeight:700}}>Revertir cobros por error</div>
+            </div>
+            <div className="card" style={{padding:14,marginBottom:16,background:'var(--bg-subtle)',display:'flex',flexDirection:'column',gap:8}}>
+              {[
+                ['Factura', facturaNumeroDe(confirmAnular)],
+                ['Cliente', clienteDe(confirmAnular)],
+                ['Total',   moneyCurrency(totalDe(confirmAnular), confirmAnular.moneda)],
+                ['Pagado',  moneyCurrency(pagadoDe(confirmAnular), confirmAnular.moneda)],
+              ].map(([k,v])=>(
+                <div key={k} style={{display:'flex',justifyContent:'space-between',fontSize:13}}>
+                  <span style={{color:'var(--fg-muted)'}}>{k}</span><strong>{v}</strong>
+                </div>
+              ))}
+            </div>
+            {(() => {
+              const cobrosDeEsta = (cobrosHistorial||[]).filter(cb => cb.cxc_id === confirmAnular.id);
+              const cobrosIds = cobrosDeEsta.map(cb => cb.id);
+              const comisionesDeEsta = (comisiones||[]).filter(cm =>
+                cm.cxc_id === confirmAnular.id || cobrosIds.includes(cm.cobro_cxc_id)
+              );
+              const hayComisionPagada = comisionesDeEsta.some(cm => cm.estado === 'pagada');
+              const hayComisionPendiente = comisionesDeEsta.some(cm => cm.estado === 'pendiente_aprobacion' || cm.estado === 'aprobada');
+              return (
+                <>
+                  {hayComisionPagada ? (
+                    <div style={{fontSize:13,padding:'10px 12px',borderRadius:6,background:'rgba(239,68,68,0.08)',border:'1px solid var(--danger)',marginBottom:12}}>
+                      <strong style={{color:'var(--danger)'}}>Bloqueado: comisión ya pagada</strong>
+                      <div style={{marginTop:4,color:'var(--fg-muted)'}}>Existe una comisión pagada vinculada a este cobro. Realiza un ajuste manual en Comisiones antes de revertir.</div>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{fontSize:13,marginBottom:12}}>
+                        <div style={{marginBottom:6,fontWeight:600}}>Qué se va a revertir:</div>
+                        <ul style={{margin:0,paddingLeft:18,color:'var(--fg-muted)',display:'flex',flexDirection:'column',gap:4}}>
+                          <li>Los cobros registrados serán eliminados</li>
+                          <li>La CxC vuelve a <strong>Por cobrar</strong> con saldo completo</li>
+                          <li>Las conciliaciones bancarias serán desvinculadas</li>
+                          {hayComisionPendiente && <li>Las comisiones pendientes/aprobadas serán <strong>rechazadas</strong></li>}
+                        </ul>
+                      </div>
+                      <div style={{fontSize:13,marginBottom:16,padding:'8px 12px',borderRadius:6,background:'rgba(16,185,129,0.08)',border:'1px solid var(--green)'}}>
+                        La factura y la valorización <strong>no se modifican</strong>. Podrás registrar el cobro nuevamente.
+                      </div>
+                    </>
+                  )}
+                  <div style={{fontSize:12,fontWeight:600,color:'var(--danger)',marginBottom:16}}>Esta acción no se puede deshacer.</div>
+                  <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+                    <button className="btn btn-secondary" onClick={()=>setConfirmAnular(null)}>Cancelar</button>
+                    {!hayComisionPagada && (
+                      <button className="btn btn-danger" onClick={()=>{revertirCobroCxC(confirmAnular.id);setConfirmAnular(null);}}>Revertir cobros</button>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </>
+      )}
 
       {/* Panel: Registrar cobro */}
       {panelCobro && cobroSel && (
@@ -1630,28 +1753,27 @@ function MultiSelect({ opts, sel, onSel, placeholder }) {
   );
 }
 
+const erAmount = (totals, currency) => Number(totals?.[currency] || 0);
+const erMoney = (totals, currency) => moneyCurrency(erAmount(totals, currency), currency);
+
 function Resultados({ role }) {
-  const [expanded, setExpanded] = useState({ingresos:true, costo:false, gastos:false, gastosFin:false});
+  const [expanded, setExpanded] = useState({ ingresos: true, costo: false, gastos: false, gastosFin: false });
   const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio } = useApp();
   const [cecosSel, setCecosSel] = useState([]);
   const [cebesSel, setCebesSel] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [erData, setErData] = useState(null);
+  const supabaseMode = isSupabaseMode();
   const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const now = new Date();
   const [periodo, setPeriodo] = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
-  const periodoOpts = Array.from({length:12}, (_,i) => {
-    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
-    return { v:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, l:`${MESES[d.getMonth()]} ${d.getFullYear()}` };
+  const periodoOpts = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    return { v: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, l: `${MESES[d.getMonth()]} ${d.getFullYear()}` };
   });
 
   const canFin = role.permisos.ver_finanzas || role.permisos.todo;
-  if (!canFin) return (
-    <div className="card" style={{padding:40, textAlign:'center'}}>
-      {I.lock}
-      <h2 className="font-display" style={{marginTop:12}}>Sin acceso</h2>
-      <div className="text-muted">Tu rol no tiene permiso <code>ver_finanzas</code>. Consulta con el administrador.</div>
-    </div>
-  );
-
   const cecosDeEmpresa = (centrosCosto || []).filter(c => c.empresa_id === empresa?.id && c.estado === 'activo');
   const cebesDeEmpresa = (centrosBeneficio || []).filter(c => c.empresa_id === empresa?.id && c.estado === 'activo');
 
@@ -1667,14 +1789,65 @@ function Resultados({ role }) {
 
   const cgFiltrado = efectivoCecos ? comprasGastos.filter(g => efectivoCecos.includes(g.centro_costo_id)) : comprasGastos;
   const otsFiltradas = efectivoCecos ? ots.filter(o => efectivoCecos.includes(o.centro_costo_id)) : ots;
-
-  const { er, utilidadBruta, resultadoOp, resultadoNeto } = buildEstadoResultados({
+  const mockErData = useMemo(() => buildEstadoResultados({
     base: MOCK.estadoResultados,
     comprasGastos: cgFiltrado,
     ots: otsFiltradas,
     empresa,
     periodo,
-  });
+  }), [cgFiltrado, otsFiltradas, empresa, periodo]);
+
+  useEffect(() => {
+    if (!supabaseMode || !canFin) {
+      setErData(null);
+      setLoading(false);
+      setError('');
+      return;
+    }
+    if (!empresa?.id) {
+      setErData(null);
+      return;
+    }
+    let mounted = true;
+    setLoading(true);
+    setError('');
+    getEstadoResultados({
+      empresaId: empresa.id,
+      periodo,
+      cecoIds: cecosSel,
+      cebeIds: cebesSel,
+    })
+      .then(data => {
+        if (mounted) setErData(data);
+      })
+      .catch(err => {
+        if (mounted) {
+          setError(err?.message || 'No se pudo calcular el Estado de Resultados.');
+          setErData(null);
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => { mounted = false; };
+  }, [supabaseMode, canFin, empresa?.id, periodo, cecosSel, cebesSel]);
+
+  if (!canFin) return (
+    <div className="card" style={{ padding:40, textAlign:'center' }}>
+      {I.lock}
+      <h2 className="font-display" style={{ marginTop:12 }}>Sin acceso</h2>
+      <div className="text-muted">Tu rol no tiene permiso <code>ver_finanzas</code>. Consulta con el administrador.</div>
+    </div>
+  );
+
+  const data = supabaseMode ? erData : mockErData;
+  const er = data?.er || mockErData.er;
+  const utilidadBruta = data?.utilidadBruta || mockErData.utilidadBruta;
+  const resultadoOp = data?.resultadoOp || mockErData.resultadoOp;
+  const resultadoNeto = data?.resultadoNeto || mockErData.resultadoNeto;
+  const margenes = data?.margenes || mockErData.margenes;
+  const waitingForData = supabaseMode && !data && !error;
+  const showEmpty = supabaseMode && !loading && !error && data && !data.hasMovements;
 
   const [yy, mm] = periodo.split('-');
   const periodoLabel = `${MESES[parseInt(mm)-1]} ${yy}`;
@@ -1683,34 +1856,45 @@ function Resultados({ role }) {
     cebesSel.length ? `CEBE: ${cebesDeEmpresa.filter(c=>cebesSel.includes(c.id)).map(c=>c.nombre).join(', ')}` : '',
   ].filter(Boolean).join(' / ');
 
-  const toggle = k => setExpanded(e => ({...e, [k]: !e[k]}));
-  const Row = ({label, value, valueDisplay, bold, neg, margen, expandKey, items}) => (
+  const toggle = k => setExpanded(e => ({ ...e, [k]: !e[k] }));
+  const MoneyCols = ({ totals, neg, marginTotals }) => (
     <>
-      <div onClick={() => expandKey && toggle(expandKey)} style={{display:'flex', alignItems:'center', padding:'14px 20px', borderBottom:'1px solid var(--border-subtle)', cursor:expandKey?'pointer':'default', background:bold?'var(--bg-subtle)':'transparent'}}>
-        {expandKey && <span style={{marginRight:8, display:'inline-flex', transform: expanded[expandKey]?'rotate(0)':'rotate(-90deg)', transition:'transform 0.2s', color:'var(--fg-muted)'}}>{I.chev}</span>}
-        <div style={{flex:1, fontWeight:bold?700:500, fontFamily: bold?'Sora':'inherit', fontSize: bold?15:13}}>{label}</div>
-        {margen != null && <div style={{marginRight:20, color:'var(--fg-muted)', fontSize:12}}>[{margen}% margen]</div>}
-        <div className="num" style={{fontFamily:'Sora', fontWeight:bold?700:500, fontSize:bold?16:14, color: neg?'var(--fg-muted)':'var(--fg)', minWidth:140, textAlign:'right'}}>
-          {neg && '('}{valueDisplay || money(value)}{neg && ')'}
-        </div>
+      {ER_CURRENCIES.map(currency => {
+        const value = erAmount(totals, currency);
+        return (
+          <div key={currency} className="num" style={{ minWidth:130, textAlign:'right' }}>
+            <div>{neg && value !== 0 ? '(' : ''}{erMoney(totals, currency)}{neg && value !== 0 ? ')' : ''}</div>
+            {marginTotals && <div style={{ color:'var(--fg-muted)', fontSize:11 }}>[{erAmount(marginTotals, currency)}% margen]</div>}
+          </div>
+        );
+      })}
+    </>
+  );
+  const Row = ({ label, totals, bold, neg, marginTotals, expandKey, items }) => (
+    <>
+      <div onClick={() => expandKey && toggle(expandKey)} style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 20px', borderBottom:'1px solid var(--border-subtle)', cursor:expandKey?'pointer':'default', background:bold?'var(--bg-subtle)':'transparent' }}>
+        {expandKey && <span style={{ marginRight:2, display:'inline-flex', transform: expanded[expandKey]?'rotate(0)':'rotate(-90deg)', transition:'transform 0.2s', color:'var(--fg-muted)' }}>{I.chev}</span>}
+        <div style={{ flex:1, fontWeight:bold?700:500, fontFamily:bold?'Sora':'inherit', fontSize:bold?15:13 }}>{label}</div>
+        <MoneyCols totals={totals} neg={neg} marginTotals={marginTotals} />
       </div>
-      {expandKey && expanded[expandKey] && items && items.map((it,i)=>(
-        <div key={i} style={{display:'flex', padding:'8px 20px 8px 52px', borderBottom:'1px solid var(--border-subtle)', fontSize:12, color:'var(--fg-muted)'}}>
-          <div style={{flex:1}}>{it.label}</div>
-          <div className="num" style={{minWidth:140, textAlign:'right'}}>{it.valorDisplay || money(it.valor)}</div>
+      {expandKey && expanded[expandKey] && items && items.map((it, i) => (
+        <div key={`${it.label}-${i}`} style={{ display:'flex', gap:12, padding:'8px 20px 8px 52px', borderBottom:'1px solid var(--border-subtle)', fontSize:12, color:'var(--fg-muted)' }}>
+          <div style={{ flex:1 }}>{it.label}</div>
+          <MoneyCols totals={it.totals} neg={neg} />
         </div>
       ))}
     </>
   );
+
   return (
     <>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Estado de Resultados{filtroStr ? ` — ${filtroStr}` : ''}</h1>
-          <div className="page-sub">{periodoLabel} · {empresa?.nombre || 'Empresa'}</div>
+          <h1 className="page-title">Estado de Resultados{filtroStr ? ` - ${filtroStr}` : ''}</h1>
+          <div className="page-sub">{periodoLabel} - {empresa?.nombre || 'Empresa'}</div>
         </div>
-        <div className="row" style={{gap:8, flexWrap:'wrap'}}>
-          <select className="select" style={{width:160}} value={periodo} onChange={e=>setPeriodo(e.target.value)}>
+        <div className="row" style={{ gap:8, flexWrap:'wrap' }}>
+          <select className="select" style={{ width:160 }} value={periodo} onChange={e=>setPeriodo(e.target.value)}>
             {periodoOpts.map(p=><option key={p.v} value={p.v}>{p.l}</option>)}
           </select>
           <MultiSelect opts={cecosDeEmpresa} sel={cecosSel} onSel={setCecosSel} placeholder="CECO: Todos" />
@@ -1718,20 +1902,41 @@ function Resultados({ role }) {
           <button className="btn btn-secondary">{I.download} PDF</button>
         </div>
       </div>
+      {error && <div className="alert alert-danger mt-4">{error}</div>}
       <div className="card">
-        <Row label="INGRESOS" value={er.ingresos.total} bold expandKey="ingresos" items={er.ingresos.items}/>
-        <Row label="COSTO DE VENTAS" value={er.costoVentas.total} bold neg expandKey="costo" items={er.costoVentas.items}/>
-        <Row label="UTILIDAD BRUTA" value={utilidadBruta} bold margen={er.ingresos.total ? Math.round(utilidadBruta/er.ingresos.total*100) : 0}/>
-        <Row label="GASTOS OPERATIVOS" value={er.gastosOp.total} bold neg expandKey="gastos" items={er.gastosOp.items}/>
-        <Row label="RESULTADO OPERATIVO" value={resultadoOp} bold margen={er.ingresos.total ? Math.round(resultadoOp/er.ingresos.total*100) : 0}/>
-        <Row label="GASTOS FINANCIEROS" value={er.gastosFin.total} valueDisplay={er.gastosFin.display} bold neg expandKey="gastosFin" items={er.gastosFin.items}/>
-        <div style={{display:'flex', alignItems:'center', padding:'18px 20px', background:'var(--navy)', color:'#fff'}}>
-          <div style={{flex:1, fontFamily:'Sora', fontWeight:700, fontSize:16, letterSpacing:'0.02em'}}>RESULTADO NETO (PEN)</div>
-          <div style={{marginRight:20, color:'rgba(255,255,255,0.7)', fontSize:12}}>[{er.ingresos.total ? Math.round(resultadoNeto/er.ingresos.total*100) : 0}% margen]</div>
-          <div className="num" style={{fontFamily:'Sora', fontWeight:700, fontSize:22, minWidth:140, textAlign:'right', color:'var(--cyan)'}}>{money(resultadoNeto)}</div>
+        <div style={{ display:'flex', gap:12, padding:'10px 20px', borderBottom:'1px solid var(--border-subtle)', color:'var(--fg-muted)', fontSize:12, fontWeight:700 }}>
+          <div style={{ flex:1 }}>Concepto</div>
+          {ER_CURRENCIES.map(currency => <div key={currency} className="num" style={{ minWidth:130, textAlign:'right' }}>{currency}</div>)}
         </div>
+        {loading || waitingForData ? (
+          <div className="text-center text-muted" style={{ padding:40 }}>Calculando Estado de Resultados...</div>
+        ) : error ? (
+          <div className="text-center text-muted" style={{ padding:40 }}>No se pudo cargar el Estado de Resultados real.</div>
+        ) : showEmpty ? (
+          <div className="text-center text-muted" style={{ padding:40 }}>
+            No hay movimientos reales registrados para {periodoLabel} con los filtros seleccionados.
+          </div>
+        ) : (
+          <>
+            <Row label="INGRESOS" totals={er.ingresos.total} bold expandKey="ingresos" items={er.ingresos.items}/>
+            <Row label="COSTO DE VENTAS" totals={er.costoVentas.total} bold neg expandKey="costo" items={er.costoVentas.items}/>
+            <Row label="UTILIDAD BRUTA" totals={utilidadBruta} bold marginTotals={margenes.utilidadBruta}/>
+            <Row label="GASTOS OPERATIVOS" totals={er.gastosOp.total} bold neg expandKey="gastos" items={er.gastosOp.items}/>
+            <Row label="RESULTADO OPERATIVO" totals={resultadoOp} bold marginTotals={margenes.resultadoOp}/>
+            <Row label="GASTOS FINANCIEROS" totals={er.gastosFin.total} bold neg expandKey="gastosFin" items={er.gastosFin.items}/>
+            <div style={{ display:'flex', alignItems:'center', gap:12, padding:'18px 20px', background:'var(--navy)', color:'#fff' }}>
+              <div style={{ flex:1, fontFamily:'Sora', fontWeight:700, fontSize:16, letterSpacing:'0.02em' }}>RESULTADO NETO</div>
+              {ER_CURRENCIES.map(currency => (
+                <div key={currency} className="num" style={{ fontFamily:'Sora', fontWeight:700, fontSize:20, minWidth:130, textAlign:'right', color:'var(--cyan)' }}>
+                  <div>{erMoney(resultadoNeto, currency)}</div>
+                  <div style={{ color:'rgba(255,255,255,0.7)', fontSize:11, fontFamily:'DM Sans' }}>[{erAmount(margenes.resultadoNeto, currency)}% margen]</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
-      <div className="text-muted mt-4" style={{fontSize:12, textAlign:'center'}}>Haz clic en las filas principales para expandir el detalle por concepto</div>
+      <div className="text-muted mt-4" style={{ fontSize:12, textAlign:'center' }}>Haz clic en las filas principales para expandir el detalle por concepto. El ER no convierte entre PEN y USD.</div>
     </>
   );
 }
@@ -1767,20 +1972,50 @@ function FacturacionLegacy() {
 }
 
 const TIPO_DOC_LABELS = { factura: 'Factura', nota_credito: 'Nota de Crédito', nota_debito: 'Nota de Débito' };
-const CONDICION_LABELS = { '0':'Contado', '15':'15 días', '30':'30 días', '45':'45 días', '60':'60 días', '90':'90 días' };
-const CONDICION_DIAS = { '0':0, '15':15, '30':30, '45':45, '60':60, '90':90 };
+const CONDICION_PAGO_OPTIONS = [
+  { value:'contado', label:'Contado' },
+  { value:'anticipado', label:'Anticipado' },
+  { value:'15 días', label:'15 días' },
+  { value:'30 días', label:'30 días' },
+  { value:'45 días', label:'45 días' },
+  { value:'60 días', label:'60 días' },
+  { value:'90 días', label:'90 días' },
+];
+const CONDICION_LABELS = {
+  contado:'Contado',
+  anticipado:'Anticipado',
+  '15 días':'15 días',
+  '30 días':'30 días',
+  '45 días':'45 días',
+  '60 días':'60 días',
+  '90 días':'90 días',
+  '0':'Contado',
+  '15':'15 días',
+  '30':'30 días',
+  '45':'45 días',
+  '60':'60 días',
+  '90':'90 días',
+};
 const FAC_BADGE_CLASS = { emitida:'badge-cyan', cobro_parcial:'badge-orange', cobrada:'badge-green', vencida:'badge-red', anulada:'badge-gray' };
 const FAC_BADGE_LABEL = { emitida:'Emitida', cobro_parcial:'Cobro parcial', cobrada:'Cobrada', vencida:'Vencida', anulada:'Anulada' };
 
 function Facturacion() {
   const {
     facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, seriesDocumentarias,
-    emitirFacturaConCxC, anularFactura, emitirNotaCredito, emitirNotaDebito,
+    emitirFacturaConCxC, actualizarFechaEmisionFactura, actualizarDatosFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
     registrarCobroCxC, generarCxP, navigate, searchQuery,
+    empresaConfig, role,
   } = useApp();
 
   const today = new Date().toISOString().split('T')[0];
-  const addDias = (d, n) => { const dt = new Date(`${d}T00:00:00`); dt.setDate(dt.getDate() + n); return dt.toISOString().split('T')[0]; };
+  const condicionPagoDefecto = empresaConfig?.condicion_pago_defecto || CONDICION_PAGO_DEFECTO_CXC;
+  const condicionPagoInicial = resolverCondicionPagoCxC({ condicionFallback: condicionPagoDefecto }).condicion_pago;
+  const fechaVencimientoInicial = calcularFechaVencimientoCxC(today, condicionPagoInicial, condicionPagoDefecto);
+  const calcularVencimientoForm = (fechaEmision, condicionPago) => calcularFechaVencimientoCxC(fechaEmision, condicionPago, condicionPagoDefecto);
+  const resolverCondicionCliente = cuenta => resolverCondicionPagoCxC({
+    condicionCliente: cuenta?.condicion_pago,
+    condicionFallback: condicionPagoDefecto,
+  });
 
   // ── mode: null=lista, 'val'=desde val, 'directa' ──────────────────────
   const [mode, setMode] = useState(null);
@@ -1789,10 +2024,11 @@ function Facturacion() {
   const [valSel, setValSel] = useState('');
   const [cuentaSel, setCuentaSel] = useState('');
   const [osSel, setOsSel] = useState('');
-  const [form, setForm] = useState({ tipo_documento:'factura', numero:'', fecha_emision:today, condicion_pago:'30', fecha_vencimiento: addDias(today,30), glosa:'', notas:'', moneda:'PEN' });
+  const [form, setForm] = useState({ tipo_documento:'factura', numero:'', fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: fechaVencimientoInicial, glosa:'', notas:'', moneda:'PEN' });
   const [partidas, setPartidas] = useState([{ id:1, descripcion:'', cantidad:1, precio_unitario:'' }]);
   const [igvPct, setIgvPct] = useState(18);
   const [saving, setSaving] = useState(false);
+  const [vencimientoManual, setVencimientoManual] = useState(false);
 
   // ── Ficha state ───────────────────────────────────────────────────────
   const [selFac, setSelFac] = useState(null);
@@ -1803,6 +2039,61 @@ function Facturacion() {
   const [montoPago, setMontoPago] = useState('');
   const [fechaPago, setFechaPago] = useState(today);
   const [refPago, setRefPago] = useState('');
+  const [editEmisionFac, setEditEmisionFac] = useState(null);
+  const [savingEmisionFac, setSavingEmisionFac] = useState(false);
+  const [panelEditFac, setPanelEditFac] = useState(null);   // { id, items, igvPct, form }
+  const [savingEditFac, setSavingEditFac] = useState(false);
+
+  // ── Adjuntos factura (PDF / ZIP) ──────────────────────────────────────
+  const [adjuntosFac, setAdjuntosFac] = useState([]);
+  const [uploadingFac, setUploadingFac] = useState(null); // 'pdf' | 'zip' | null
+  const pdfInputRef = useRef(null);
+  const zipInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!selFac || !empresaConfig?.id) { setAdjuntosFac([]); return; }
+    storageService.cargarAdjuntos({ empresaId: empresaConfig.id, entidadTipo: 'facturas', entidadId: String(selFac) })
+      .then(rows => setAdjuntosFac(rows.filter(r => r.categoria === 'factura_pdf' || r.categoria === 'factura_zip')))
+      .catch(() => {});
+  }, [selFac, empresaConfig?.id]);
+
+  const handleSubirFac = async (file, categoria) => {
+    if (!file || !empresaConfig?.id || !selFac) return;
+    setUploadingFac(categoria === 'factura_pdf' ? 'pdf' : 'zip');
+    try {
+      const adjunto = await storageService.subirAdjunto({
+        empresaId: empresaConfig.id,
+        entidadTipo: 'facturas',
+        entidadId: String(selFac),
+        file,
+        categoria,
+      });
+      setAdjuntosFac(prev => [adjunto, ...prev.filter(a => a.categoria !== categoria)]);
+    } catch(e) {
+      alert('Error al subir: ' + (e?.message || 'intenta de nuevo'));
+    } finally {
+      setUploadingFac(null);
+    }
+  };
+
+  const handleEliminarAdjuntoFac = async (adjunto) => {
+    if (!window.confirm(`¿Eliminar ${adjunto.nombre_original}?`)) return;
+    try {
+      await storageService.eliminarAdjunto(adjunto);
+      setAdjuntosFac(prev => prev.filter(a => a.id !== adjunto.id));
+    } catch(e) {
+      alert('Error al eliminar: ' + (e?.message || 'intenta de nuevo'));
+    }
+  };
+
+  const abrirAdjuntoFac = async (adjunto) => {
+    try {
+      const url = await storageService.obtenerUrlAdjunto(adjunto);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    } catch(e) {
+      alert('Error al abrir: ' + (e?.message || 'intenta de nuevo'));
+    }
+  };
 
   // ── NC / ND form state ────────────────────────────────────────────────
   const [ncndForm, setNcndForm] = useState(null); // null | 'nc' | 'nd'
@@ -1854,15 +2145,46 @@ function Facturacion() {
   const addPartida = () => setPartidas(prev => [...prev, { id: Date.now(), descripcion:'', cantidad:1, precio_unitario:'' }]);
   const removePartida = id => setPartidas(prev => prev.filter(p => p.id !== id));
   const updatePartida = (id, field, val) => setPartidas(prev => prev.map(p => p.id === id ? {...p, [field]: val} : p));
+  const permisosEditarFacturacion = role?.permisos?.editar;
+  const puedeEditarFacturacion = Boolean(role?.permisos?.todo || permisosEditarFacturacion === true || permisosEditarFacturacion?.includes?.('facturacion'));
+
+  // Detecta si una factura anulada lo fue directamente (sin NC) — permite restaurarla
+  const tieneNC = (fac) =>
+    facturas.some(nc => nc.tipo_documento === 'nota_credito' && nc.factura_origen_id === fac.id) ||
+    String(fac.motivo_anulacion || '').startsWith('NC emitida');
+  const esAnuladaSinNC = (fac) => fac.estado === 'anulada' && !tieneNC(fac);
+
+  const abrirEdicionEmisionFactura = (factura, e) => {
+    if (e) e.stopPropagation();
+    if (!puedeEditarFacturacion) return;
+    setEditEmisionFac({ id: factura.id, fecha: factura.fecha_emision || today });
+  };
+
+  const cancelarEdicionEmisionFactura = () => {
+    setEditEmisionFac(null);
+  };
+
+  const confirmarEdicionEmisionFactura = async () => {
+    if (!editEmisionFac?.id || !editEmisionFac?.fecha) return;
+    setSavingEmisionFac(true);
+    try {
+      await actualizarFechaEmisionFactura(editEmisionFac.id, editEmisionFac.fecha);
+      setEditEmisionFac(null);
+    } finally {
+      setSavingEmisionFac(false);
+    }
+  };
 
   // ── Form change helper (auto-update fecha_vencimiento) ────────────────
   const handleFormChange = (field, value) => {
+    if (field === 'fecha_emision' || field === 'condicion_pago') setVencimientoManual(false);
+    if (field === 'fecha_vencimiento') setVencimientoManual(true);
     setForm(f => {
       const updated = { ...f, [field]: value };
       if (field === 'fecha_emision' || field === 'condicion_pago') {
-        const dias = CONDICION_DIAS[field === 'condicion_pago' ? value : f.condicion_pago] ?? 30;
         const fe = field === 'fecha_emision' ? value : f.fecha_emision;
-        updated.fecha_vencimiento = addDias(fe, dias);
+        const condicion = field === 'condicion_pago' ? value : f.condicion_pago;
+        updated.fecha_vencimiento = calcularVencimientoForm(fe, condicion);
       }
       return updated;
     });
@@ -1874,7 +2196,8 @@ function Facturacion() {
     setValSel(''); setCuentaSel(''); setOsSel('');
     setPartidas([{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:0 }]);
     setIgvPct(18);
-    setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:'30', fecha_vencimiento: addDias(today,30), glosa:'', notas:'', moneda:'PEN' });
+    setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: calcularVencimientoForm(today, condicionPagoInicial), glosa:'', notas:'', moneda:'PEN' });
+    setVencimientoManual(false);
     setConfirmarExcesoFac(false);
   };
 
@@ -1892,12 +2215,13 @@ function Facturacion() {
       ? (v.items).map((it,i) => ({...it, id: it.id || `vp_${i}`}))
       : [{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:0 }]);
     const cuenta = getCuenta(cuentaId);
-    const condicion = cuenta?.condicion_pago_dias ? String(cuenta.condicion_pago_dias) : '30';
+    const condicion = resolverCondicionCliente(cuenta).condicion_pago;
+    setVencimientoManual(false);
     setForm(f => ({
       ...f,
       moneda: v?.moneda || os?.moneda || 'PEN',
       condicion_pago: condicion,
-      fecha_vencimiento: addDias(f.fecha_emision, CONDICION_DIAS[condicion] ?? 30),
+      fecha_vencimiento: calcularVencimientoForm(f.fecha_emision, condicion),
     }));
   };
 
@@ -1906,11 +2230,12 @@ function Facturacion() {
     setCuentaSel(cId);
     setOsSel('');
     const cuenta = getCuenta(cId);
-    const condicion = cuenta?.condicion_pago_dias ? String(cuenta.condicion_pago_dias) : '30';
+    const condicion = resolverCondicionCliente(cuenta).condicion_pago;
+    setVencimientoManual(false);
     setForm(f => ({
       ...f,
       condicion_pago: condicion,
-      fecha_vencimiento: addDias(f.fecha_emision, CONDICION_DIAS[condicion] ?? 30),
+      fecha_vencimiento: calcularVencimientoForm(f.fecha_emision, condicion),
       moneda: cuenta?.moneda || 'PEN',
     }));
   };
@@ -1957,6 +2282,7 @@ function Facturacion() {
         fecha_emision: form.fecha_emision,
         condicion_pago: form.condicion_pago,
         fecha_vencimiento: form.fecha_vencimiento,
+        fecha_vencimiento_manual: vencimientoManual,
         glosa: form.glosa || null,
         notas: form.notas || null,
       });
@@ -1964,6 +2290,159 @@ function Facturacion() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // ── Panel editar factura (compartido entre ficha y lista) ────────────
+  const renderPanelEditFac = () => {
+    if (!panelEditFac) return null;
+    const ef = panelEditFac;
+    const esDirecta = ef.esDirecta;
+    const subtotalEd = (ef.items||[]).reduce((s,p) => s + Number(p.cantidad||0)*Number(p.precio_unitario||0), 0);
+    const igvEd = Math.round(subtotalEd * (ef.igvPct/100) * 100) / 100;
+    const totalEd = subtotalEd + igvEd;
+    const setEfForm = upd => setPanelEditFac(prev => ({...prev, form: {...prev.form, ...upd}}));
+    const setEfItems = upd => setPanelEditFac(prev => ({...prev, items: typeof upd === 'function' ? upd(prev.items) : upd}));
+
+    const handleSaveEdit = async () => {
+      if (esDirecta && (ef.items||[]).every(p => !p.descripcion && !p.precio_unitario)) {
+        alert('Agrega al menos una partida.'); return;
+      }
+      if (!ef.form.numero?.trim()) { alert('El número de factura es obligatorio.'); return; }
+      setSavingEditFac(true);
+      try {
+        await actualizarDatosFactura(ef.id, {
+          numero: ef.form.numero,
+          fecha_emision: ef.form.fecha_emision,
+          condicion_pago: ef.form.condicion_pago,
+          fecha_vencimiento: ef.form.fecha_vencimiento,
+          moneda: ef.form.moneda,
+          glosa: ef.form.glosa,
+          notas: ef.form.notas,
+          ...(esDirecta && { items: ef.items, subtotal: subtotalEd, igv: igvEd, total: totalEd }),
+        });
+        setPanelEditFac(null);
+      } finally {
+        setSavingEditFac(false);
+      }
+    };
+
+    return (
+      <>
+        <div className="side-panel-backdrop" onClick={() => setPanelEditFac(null)}/>
+        <div className="side-panel" style={{width:'min(580px,96vw)'}}>
+          <div className="side-panel-head">
+            <div>
+              <div className="eyebrow">Editar factura · {esDirecta ? 'Directa' : 'Desde valorización'}</div>
+              <div className="font-display" style={{fontSize:18,fontWeight:700}}>{ef.form.numero}</div>
+            </div>
+            <button className="icon-btn" onClick={() => setPanelEditFac(null)}>{I.x}</button>
+          </div>
+          <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:16}}>
+
+            {!esDirecta && (
+              <div style={{fontSize:13,padding:'8px 12px',borderRadius:6,background:'rgba(234,179,8,0.08)',border:'1px solid var(--orange)'}}>
+                Esta factura fue generada desde una <strong>Valorización</strong>. Los montos solo se pueden corregir mediante <strong>Nota de Crédito</strong> o <strong>Nota de Débito</strong>.
+              </div>
+            )}
+
+            <div className="grid-2" style={{gap:12}}>
+              <div className="input-group">
+                <label>N° Factura <span style={{color:'var(--danger)'}}>*</span></label>
+                <input className="input" value={ef.form.numero} onChange={e => setEfForm({numero: e.target.value})} placeholder="F001-0001" />
+              </div>
+              <div className="input-group">
+                <label>Fecha de emisión</label>
+                <input className="input" type="date" value={ef.form.fecha_emision} onChange={e => {
+                  const fe = e.target.value;
+                  setEfForm({ fecha_emision: fe, fecha_vencimiento: calcularVencimientoForm(fe, ef.form.condicion_pago) });
+                }} />
+              </div>
+            </div>
+
+            <div className="grid-2" style={{gap:12}}>
+              <div className="input-group">
+                <label>Condición de pago</label>
+                <select className="select" value={ef.form.condicion_pago} onChange={e => {
+                  const condicion = e.target.value;
+                  setEfForm({ condicion_pago: condicion, fecha_vencimiento: calcularVencimientoForm(ef.form.fecha_emision, condicion) });
+                }}>
+                  {['contado','anticipado','15 días','30 días','45 días','60 días','90 días'].map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Fecha vencimiento</label>
+                <input className="input" type="date" value={ef.form.fecha_vencimiento} onChange={e => setEfForm({fecha_vencimiento: e.target.value})} />
+              </div>
+              <div className="input-group">
+                <label>Moneda</label>
+                <select className="select" value={ef.form.moneda} onChange={e => setEfForm({moneda: e.target.value})}>
+                  <option value="PEN">S/ Soles</option>
+                  <option value="USD">US$ Dólares</option>
+                </select>
+              </div>
+              {esDirecta && (
+                <div className="input-group">
+                  <label>IGV %</label>
+                  <input className="input num" type="number" min="0" max="30" step="1" value={ef.igvPct} onChange={e => setPanelEditFac(prev => ({...prev, igvPct: Number(e.target.value)}))} />
+                </div>
+              )}
+            </div>
+
+            {esDirecta && (
+              <div>
+                <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>Partidas</div>
+                {(ef.items||[]).map((p,i) => (
+                  <div key={p.id} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,marginBottom:8,alignItems:'end'}}>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}>
+                      {i === 0 && <label>Descripción</label>}
+                      <input className="input" value={p.descripcion||''} onChange={e => setEfItems(prev => prev.map(x => x.id===p.id ? {...x,descripcion:e.target.value} : x))} placeholder="Descripción del servicio..." />
+                    </div>
+                    <div className="input-group">
+                      {i === 0 && <label>Cant.</label>}
+                      <input className="input num" type="number" min="0" step="any" value={p.cantidad} onChange={e => setEfItems(prev => prev.map(x => x.id===p.id ? {...x,cantidad:e.target.value} : x))} style={{width:70}} />
+                    </div>
+                    <div className="input-group">
+                      {i === 0 && <label>Precio unit.</label>}
+                      <input className="input num" type="number" min="0" step="any" value={p.precio_unitario} onChange={e => setEfItems(prev => prev.map(x => x.id===p.id ? {...x,precio_unitario:e.target.value} : x))} style={{width:110}} />
+                    </div>
+                    {(ef.items||[]).length > 1 && (
+                      <button className="icon-btn" style={{color:'var(--danger)',alignSelf:'flex-end',marginBottom:2}} onClick={() => setEfItems(prev => prev.filter(x => x.id!==p.id))}>{I.x}</button>
+                    )}
+                  </div>
+                ))}
+                <button className="btn btn-ghost" style={{fontSize:12}} onClick={() => setEfItems(prev => [...prev, {id:Date.now(),descripcion:'',cantidad:1,precio_unitario:''}])}>{I.plus} Agregar partida</button>
+                <div className="card" style={{padding:12,marginTop:12}}>
+                  {[['Subtotal', subtotalEd],['IGV', igvEd],['Total', totalEd]].map(([k,v]) => (
+                    <div key={k} style={{display:'flex',justifyContent:'space-between',fontSize:13,fontWeight:k==='Total'?700:400,marginTop:k==='Total'?6:0,paddingTop:k==='Total'?6:0,borderTop:k==='Total'?'1px solid var(--border)':'none'}}>
+                      <span style={{color:'var(--fg-muted)'}}>{k}</span>
+                      <span>{moneyCurrency(v, ef.form.moneda)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid-2" style={{gap:12}}>
+              <div className="input-group">
+                <label>Glosa</label>
+                <input className="input" value={ef.form.glosa} onChange={e => setEfForm({glosa:e.target.value})} placeholder="Referencia interna..." />
+              </div>
+              <div className="input-group">
+                <label>Notas</label>
+                <input className="input" value={ef.form.notas} onChange={e => setEfForm({notas:e.target.value})} placeholder="Observaciones..." />
+              </div>
+            </div>
+
+            <div style={{display:'flex',gap:10,justifyContent:'flex-end',paddingTop:8}}>
+              <button className="btn btn-secondary" onClick={() => setPanelEditFac(null)} disabled={savingEditFac}>Cancelar</button>
+              <button className="btn btn-primary" onClick={handleSaveEdit} disabled={savingEditFac}>
+                {savingEditFac ? 'Guardando...' : <>{I.check} Guardar cambios</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
   };
 
   // ── Nota de Crédito form ──────────────────────────────────────────────
@@ -2251,6 +2730,10 @@ function Facturacion() {
     const valVinc = getVal(f.valorizacion_id);
     const cxcVinc = (cxc||[]).find(c => c.factura_id === f.id);
     const items = f.items || [];
+    const fechaEmisionLabel = f.fecha_emision || '—';
+    const editandoEmisionFac = editEmisionFac?.id === f.id;
+    const fechaEmisionEditada = editandoEmisionFac ? editEmisionFac.fecha : (f.fecha_emision || today);
+    const tituloEditarEmision = puedeEditarFacturacion ? 'Editar emisión' : 'Requiere permiso facturacion:editar';
 
     // Días para vencer / días vencida
     const diasVencer = (() => {
@@ -2262,7 +2745,7 @@ function Facturacion() {
     const movsCxC = cxcVinc ? (movimientosTesoreria||[]).filter(m => m.vinculo_id === cxcVinc.id || m.vinculo_tipo === 'cxc' && m.vinculo_id === cxcVinc.id).sort((a,b) => (a.fecha||'').localeCompare(b.fecha||'')) : [];
     const historialFac = [
       { tipo: 'emision', fecha: f.fecha_emision || '—', texto: `Factura emitida — ${TIPO_DOC_LABELS[f.tipo_documento]||'Factura'}` },
-      ...movsCxC.map(m => ({ tipo: 'cobro', fecha: m.fecha||'—', texto: `Cobro registrado: ${money(m.monto)} — Ref: ${m.referencia||'—'}` })),
+      ...movsCxC.map(m => ({ tipo: 'cobro', fecha: m.fecha||'—', texto: `Cobro registrado: ${moneyCurrency(m.monto, m.moneda || cxcVinc?.moneda || f.moneda)} — Ref: ${m.referencia||'—'}` })),
       ...(f.estado === 'anulada' ? [{ tipo: 'anulacion', fecha: '—', texto: `Anulada${f.motivo_anulacion ? ': '+f.motivo_anulacion : ''}` }] : []),
     ];
 
@@ -2361,12 +2844,34 @@ function Facturacion() {
               <h1 className="page-title" style={{margin:0}}>{f.numero}</h1>
               <span style={{fontSize:12,color:'var(--fg-muted)',fontWeight:400}}>{TIPO_DOC_LABELS[f.tipo_documento]||'Factura'}</span>
               <span className={'badge '+(FAC_BADGE_CLASS[f.estado]||'badge-cyan')}>{FAC_BADGE_LABEL[f.estado]||f.estado}</span>
+              {esAnuladaSinNC(f) && (
+                <span style={{fontSize:12,color:'var(--orange)',fontWeight:600}}>· Anulada directamente — sin Nota de Crédito</span>
+              )}
             </div>
+            {esAnuladaSinNC(f) && (
+              <div style={{fontSize:13,padding:'8px 14px',borderRadius:6,background:'rgba(234,179,8,0.08)',border:'1px solid var(--orange)',marginTop:8,marginBottom:4}}>
+                Esta factura fue anulada directamente (no por Nota de Crédito). Si fue un error, puedes restaurarla y volver a registrar el cobro.
+              </div>
+            )}
             <div className="page-sub" style={{display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
               <button className="btn btn-ghost" style={{padding:0,fontSize:13,color:'var(--cyan)'}} onClick={() => navigate('cuentas',{detail:f.cuenta_id})}>
                 {clienteNombreFac}
               </button>
-              <span>· Emisión: {f.fecha_emision||'—'}</span>
+              {editandoEmisionFac ? (
+                <span className="row" style={{gap:6,alignItems:'center',flexWrap:'wrap'}}>
+                  <span>· Emisión:</span>
+                  <input className="input" type="date" value={fechaEmisionEditada} disabled={savingEmisionFac} onChange={e=>setEditEmisionFac(v=>({...v,fecha:e.target.value}))} style={{width:150}} autoFocus />
+                  <button className="icon-btn" title="Confirmar" disabled={savingEmisionFac || !fechaEmisionEditada} onClick={confirmarEdicionEmisionFactura}>{I.check}</button>
+                  <button className="icon-btn" title="Cancelar" disabled={savingEmisionFac} onClick={cancelarEdicionEmisionFactura}>{I.x}</button>
+                </span>
+              ) : puedeEditarFacturacion ? (
+                <button type="button" className="btn btn-ghost" title={tituloEditarEmision} onClick={e=>abrirEdicionEmisionFactura(f,e)} style={{padding:0,fontSize:13,color:'var(--fg-muted)',display:'inline-flex',alignItems:'center',gap:6}}>
+                  <span>· Emisión: {fechaEmisionLabel}</span>
+                  <span style={{fontSize:11,color:'var(--cyan)'}}>{I.edit}</span>
+                </button>
+              ) : (
+                <span title={tituloEditarEmision}>· Emisión: {fechaEmisionLabel}</span>
+              )}
               <span>· Vence: {f.fecha_vencimiento||'—'}</span>
               {diasVencer !== null && (
                 <span style={{fontWeight:600, color: diasVencer < 0 ? 'var(--danger)' : diasVencer <= 7 ? 'var(--orange)' : 'var(--fg-muted)', fontSize:12}}>
@@ -2376,6 +2881,42 @@ function Facturacion() {
             </div>
           </div>
           <div className="row" style={{gap:10,flexWrap:'wrap'}}>
+            {/* Upload PDF */}
+            <input ref={pdfInputRef} type="file" accept=".pdf,application/pdf" style={{display:'none'}} onChange={e => { handleSubirFac(e.target.files[0], 'factura_pdf'); e.target.value=''; }} />
+            {/* Upload ZIP */}
+            <input ref={zipInputRef} type="file" accept=".zip,application/zip,application/x-zip-compressed" style={{display:'none'}} onChange={e => { handleSubirFac(e.target.files[0], 'factura_zip'); e.target.value=''; }} />
+            {(() => {
+              const pdfAdj = adjuntosFac.find(a => a.categoria === 'factura_pdf');
+              const zipAdj = adjuntosFac.find(a => a.categoria === 'factura_zip');
+              return (
+                <>
+                  {pdfAdj ? (
+                    <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,background:'var(--surface-2)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 8px',maxWidth:200}}>
+                      <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:600,gap:4,minWidth:0,overflow:'hidden'}} title={pdfAdj.nombre_original} onClick={() => abrirAdjuntoFac(pdfAdj)}>
+                        {I.file}<span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:120}}>PDF</span>
+                      </button>
+                      <button type="button" className="icon-btn" style={{width:16,height:16,color:'var(--danger)',flexShrink:0}} title="Eliminar PDF" onClick={() => handleEliminarAdjuntoFac(pdfAdj)}>{I.x}</button>
+                    </span>
+                  ) : (
+                    <button type="button" className="btn btn-secondary" style={{fontSize:12}} disabled={uploadingFac==='pdf'} title="Subir PDF de la factura" onClick={() => pdfInputRef.current?.click()}>
+                      {uploadingFac==='pdf' ? 'Subiendo...' : <>{I.upload} PDF</>}
+                    </button>
+                  )}
+                  {zipAdj ? (
+                    <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,background:'var(--surface-2)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 8px',maxWidth:200}}>
+                      <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:600,gap:4,minWidth:0,overflow:'hidden'}} title={zipAdj.nombre_original} onClick={() => abrirAdjuntoFac(zipAdj)}>
+                        {I.file}<span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:120}}>ZIP</span>
+                      </button>
+                      <button type="button" className="icon-btn" style={{width:16,height:16,color:'var(--danger)',flexShrink:0}} title="Eliminar ZIP" onClick={() => handleEliminarAdjuntoFac(zipAdj)}>{I.x}</button>
+                    </span>
+                  ) : (
+                    <button type="button" className="btn btn-secondary" style={{fontSize:12}} disabled={uploadingFac==='zip'} title="Subir ZIP de la factura" onClick={() => zipInputRef.current?.click()}>
+                      {uploadingFac==='zip' ? 'Subiendo...' : <>{I.upload} ZIP</>}
+                    </button>
+                  )}
+                </>
+              );
+            })()}
             {f.estado !== 'anulada' && (
               <button className="btn btn-secondary" onClick={() => alert('PDF — funcionalidad próximamente')}>{I.download} PDF</button>
             )}
@@ -2384,6 +2925,26 @@ function Facturacion() {
             )}
             {f.estado === 'emitida' && (
               <>
+                {puedeEditarFacturacion && (
+                  <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => {
+                    const igvDerived = f.subtotal > 0 ? Math.round(((f.igv||0)/f.subtotal)*100) : 18;
+                    setPanelEditFac({
+                      id: f.id,
+                      esDirecta: !f.valorizacion_id,
+                      form: {
+                        numero: f.numero||'',
+                        fecha_emision: f.fecha_emision||today,
+                        condicion_pago: f.condicion_pago||'30 días',
+                        fecha_vencimiento: f.fecha_vencimiento||'',
+                        moneda: f.moneda||'PEN',
+                        glosa: f.glosa||'',
+                        notas: f.notas||'',
+                      },
+                      items: (f.items||[]).length > 0 ? f.items.map((it,i) => ({...it, id: it.id||`ep_${i}`})) : [{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:'' }],
+                      igvPct: igvDerived,
+                    });
+                  }}>{I.edit} Editar</button>
+                )}
                 <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => handleNcNd('nota_credito')}>Nota de Crédito</button>
                 <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => handleNcNd('nota_debito')}>Nota de Débito</button>
                 <button className="btn btn-secondary" style={{color:'var(--danger)',borderColor:'var(--danger)'}} onClick={() => setModalAnularFac(true)}>Anular</button>
@@ -2391,6 +2952,16 @@ function Facturacion() {
             )}
             {f.estado === 'cobro_parcial' && (
               <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => handleNcNd('nota_credito')}>Nota de Crédito</button>
+            )}
+            {esAnuladaSinNC(f) && puedeEditarFacturacion && (
+              <button
+                className="btn btn-secondary"
+                style={{fontSize:12,color:'var(--green)',borderColor:'var(--green)'}}
+                title="Restaurar factura anulada por error — la CxC vuelve a pendiente de cobro"
+                onClick={() => { if (window.confirm(`¿Restaurar ${f.numero} a emitida? La CxC volverá a pendiente de cobro.`)) restaurarFacturaPorError(f.id); }}
+              >
+                {I.check} Restaurar por error
+              </button>
             )}
           </div>
         </div>
@@ -2502,7 +3073,7 @@ function Facturacion() {
               <div>
                 <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Valorización vinculada</div>
                 <div style={{fontWeight:600}}>{valVinc?.numero||'—'}</div>
-                {valVinc && <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>Estado: {valVinc.estado} · Total: {money(valVinc.total)}</div>}
+                {valVinc && <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>Estado: {valVinc.estado} · Total: {moneyCurrency(valVinc.total, valVinc.moneda || f.moneda)}</div>}
               </div>
               {valVinc && <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('valorizaciones',{detail:valVinc.id})}>Ver valorización</button>}
               {!valVinc && <span style={{fontSize:12,color:'var(--fg-muted)'}}>Sin valorización</span>}
@@ -2511,7 +3082,7 @@ function Facturacion() {
               <div>
                 <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>OS Cliente</div>
                 <div style={{fontWeight:600}}>{osVinc?.numero||'—'}</div>
-                {osVinc && <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>Monto aprobado: {money(osVinc.monto_aprobado)}</div>}
+                {osVinc && <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>Monto aprobado: {moneyCurrency(osVinc.monto_aprobado, osVinc.moneda || f.moneda)}</div>}
               </div>
               {osVinc && <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('os_clientes',{detail:osVinc.id})}>Ver OS</button>}
               {!osVinc && <span style={{fontSize:12,color:'var(--fg-muted)'}}>Sin OS vinculada</span>}
@@ -2521,10 +3092,10 @@ function Facturacion() {
                 <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Cuenta por Cobrar</div>
                 {cxcVinc ? (
                   <>
-                    <div style={{fontWeight:600}}>{money(cxcVinc.monto_total||0)}</div>
+                    <div style={{fontWeight:600}}>{moneyCurrency(cxcVinc.monto_total||0, cxcVinc.moneda || f.moneda)}</div>
                     <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2,display:'flex',gap:12}}>
-                      <span>Pagado: {money(cxcVinc.monto_pagado||0)}</span>
-                      <span>Saldo: <strong style={{color:'var(--orange)'}}>{money(cxcVinc.saldo||0)}</strong></span>
+                      <span>Pagado: {moneyCurrency(cxcVinc.monto_pagado||0, cxcVinc.moneda || f.moneda)}</span>
+                      <span>Saldo: <strong style={{color:'var(--orange)'}}>{moneyCurrency(cxcVinc.saldo||0, cxcVinc.moneda || f.moneda)}</strong></span>
                       <span className={'badge '+(FAC_BADGE_CLASS[cxcVinc.estado]||'badge-cyan')} style={{fontSize:10}}>{FAC_BADGE_LABEL[cxcVinc.estado]||cxcVinc.estado}</span>
                     </div>
                     <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>Vence: {cxcVinc.fecha_vencimiento||'—'}</div>
@@ -2555,6 +3126,7 @@ function Facturacion() {
             ))}
           </div>
         )}
+        {renderPanelEditFac()}
       </>
     );
   }
@@ -2731,7 +3303,7 @@ function Facturacion() {
               <div className="input-group" style={{marginBottom:12}}>
                 <label>Condición de pago</label>
                 <select className="select" value={form.condicion_pago} onChange={e => handleFormChange('condicion_pago', e.target.value)}>
-                  {Object.entries(CONDICION_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                  {CONDICION_PAGO_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
               </div>
               <div className="input-group" style={{marginBottom:12}}>
@@ -2910,10 +3482,19 @@ function Facturacion() {
                     <td className="num" style={{fontWeight:600}}>{moneyCurrency(f.total || f.monto, f.moneda)}</td>
                     <td className="text-muted">{f.fecha_emision || '—'}</td>
                     <td className="text-muted">{f.fecha_vencimiento || '—'}</td>
-                    <td>
+                    <td style={{whiteSpace:'nowrap'}}>
                       <span className={'badge ' + (FAC_BADGE_CLASS[f.estado] || 'badge-cyan')}>
                         {FAC_BADGE_LABEL[f.estado] || f.estado || '—'}
                       </span>
+                      {esAnuladaSinNC(f) && puedeEditarFacturacion && (
+                        <span
+                          title="Anulada por error — haz clic para restaurarla"
+                          style={{marginLeft:8,fontSize:11,color:'var(--orange)',fontWeight:600,cursor:'pointer',textDecoration:'underline'}}
+                          onClick={e => { e.stopPropagation(); setSelFac(f.id); setFichaTab('detalle'); }}
+                        >
+                          ↩ Restaurar
+                        </span>
+                      )}
                     </td>
                     <td onClick={e => e.stopPropagation()}>
                       <button className="icon-btn" title="Ver detalle" onClick={() => { setSelFac(f.id); setFichaTab('detalle'); }}>{I.eye}</button>
@@ -2930,21 +3511,180 @@ function Facturacion() {
           </table>
         </div>
       </div>
+
+      {/* Panel lateral: Editar factura */}
+      {renderPanelEditFac()}
     </>
   );
 }
 
 // ============ VENTAS ============
+const VENTA_ESTADOS = [
+  ['emitida', 'Emitida'],
+  ['pendiente', 'Pendiente'],
+  ['cobrada', 'Cobrada'],
+  ['vencida', 'Vencida'],
+  ['anulada', 'Anulada'],
+];
+const VENTA_FORM_INIT = {
+  fecha: new Date().toISOString().split('T')[0],
+  cuenta_id: '',
+  concepto: '',
+  monto_total: '',
+  moneda: 'PEN',
+  estado: 'emitida',
+};
+const ventaEstadoLabel = estado => VENTA_ESTADOS.find(([k]) => k === estado)?.[1] || estado || 'Emitida';
+const ventaBadgeClass = estado => estado === 'cobrada' ? 'badge-green' : 'badge-orange';
+const cuentaVentaNombre = cuenta => cuenta?.razon_social || cuenta?.nombre_comercial || cuenta?.cliente || cuenta?.nombre || '';
+const ventaClienteNombre = venta => venta?.cliente_nombre_snapshot || venta?.cliente || venta?.cuentas?.razon_social || '-';
+const ventaMonto = venta => Number(venta?.monto_total ?? venta?.monto ?? 0);
+
 function Ventas() {
+  const { empresa, authUser, addNotificacion } = useApp();
+  const supabaseMode = isSupabaseMode();
+  const [ventas, setVentas] = useState(() => supabaseMode ? [] : (MOCK.ventas || []));
+  const [clientes, setClientes] = useState(() => supabaseMode ? [] : (MOCK.cuentas || []));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [panel, setPanel] = useState(false);
+  const [form, setForm] = useState(VENTA_FORM_INIT);
+  const [guardando, setGuardando] = useState(false);
+  const [actualizandoId, setActualizandoId] = useState(null);
+
+  useEffect(() => {
+    if (!supabaseMode) {
+      setVentas(MOCK.ventas || []);
+      setClientes(MOCK.cuentas || []);
+      setLoading(false);
+      setError('');
+      return;
+    }
+
+    if (!empresa?.id) {
+      setVentas([]);
+      setClientes([]);
+      return;
+    }
+
+    let mounted = true;
+    setLoading(true);
+    setError('');
+    Promise.all([
+      finanzasService.getVentas(empresa.id),
+      finanzasService.getCuentasVentas(empresa.id),
+    ])
+      .then(([ventasData, cuentasData]) => {
+        if (!mounted) return;
+        setVentas(ventasData || []);
+        setClientes((cuentasData || []).filter(c => c.estado !== 'inactivo' && c.estado !== 'eliminado'));
+      })
+      .catch(err => {
+        if (!mounted) return;
+        setError(err?.message || 'No se pudieron cargar las ventas.');
+        setVentas([]);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => { mounted = false; };
+  }, [supabaseMode, empresa?.id]);
+
+  const setF = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+  const resetForm = () => setForm({ ...VENTA_FORM_INIT, fecha: new Date().toISOString().split('T')[0] });
+
+  const guardarVenta = async e => {
+    e.preventDefault();
+    setError('');
+    const cuenta = clientes.find(c => c.id === form.cuenta_id);
+    const monto = Number(form.monto_total);
+    if (!form.cuenta_id || !cuenta) {
+      setError('Selecciona un cliente.');
+      return;
+    }
+    if (!form.concepto.trim() || !(monto > 0)) {
+      setError('Completa concepto y monto.');
+      return;
+    }
+
+    const base = {
+      empresa_id: empresa?.id,
+      fecha: form.fecha,
+      cuenta_id: form.cuenta_id,
+      cliente_nombre_snapshot: cuentaVentaNombre(cuenta),
+      concepto: form.concepto.trim(),
+      monto_total: monto,
+      moneda: form.moneda,
+      estado: form.estado || 'emitida',
+      creado_por: authUser?.id || null,
+    };
+
+    if (!supabaseMode) {
+      const anio = new Date(`${base.fecha}T00:00:00`).getFullYear();
+      const correlativo = (ventas || []).length + 1;
+      const mockVenta = {
+        id: `VEN-${anio}-${String(correlativo).padStart(4, '0')}`,
+        fecha: base.fecha,
+        cliente: base.cliente_nombre_snapshot,
+        concepto: base.concepto,
+        monto: base.monto_total,
+        moneda: base.moneda,
+        estado: base.estado,
+      };
+      setVentas(prev => [mockVenta, ...prev]);
+      setPanel(false);
+      resetForm();
+      return;
+    }
+
+    setGuardando(true);
+    try {
+      const venta = await finanzasService.crearVenta(base);
+      setVentas(prev => [venta, ...prev]);
+      setPanel(false);
+      resetForm();
+      addNotificacion?.(`Venta ${venta.numero || ''} registrada.`);
+    } catch (err) {
+      setError(err?.message || 'No se pudo registrar la venta.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const cambiarEstado = async (venta, estado) => {
+    const prevEstado = venta.estado || 'emitida';
+    if (prevEstado === estado) {
+      return;
+    }
+    setError('');
+    setVentas(prev => prev.map(v => v.id === venta.id ? { ...v, estado } : v));
+
+    if (!supabaseMode) return;
+
+    setActualizandoId(venta.id);
+    try {
+      const actualizada = await finanzasService.actualizarEstadoVenta(venta.id, estado);
+      setVentas(prev => prev.map(v => v.id === venta.id ? actualizada : v));
+      addNotificacion?.(`Venta ${actualizada.numero || ''} actualizada a ${ventaEstadoLabel(estado)}.`);
+    } catch (err) {
+      setVentas(prev => prev.map(v => v.id === venta.id ? { ...v, estado: prevEstado } : v));
+      setError(err?.message || 'No se pudo actualizar el estado de la venta.');
+    } finally {
+      setActualizandoId(null);
+    }
+  };
+
   return (
     <>
       <div className="page-header">
         <div>
           <h1 className="page-title">Ventas</h1>
-          <div className="page-sub">Registro y seguimiento de ventas y facturación directa</div>
+          <div className="page-sub">Registro y seguimiento de ventas y facturacion directa</div>
         </div>
-        <button className="btn btn-primary">{I.plus} Registrar Venta</button>
+        <button className="btn btn-primary" data-local-form="true" onClick={() => { setError(''); setPanel(true); }}>{I.plus} Registrar Venta</button>
       </div>
+      {error && <div className="alert alert-danger mt-4">{error}</div>}
       <div className="card mt-6">
         <div className="table-wrap">
           <table className="tbl">
@@ -2960,25 +3700,71 @@ function Ventas() {
               </tr>
             </thead>
             <tbody>
-              {MOCK.ventas.map(v => (
+              {loading && (
+                <tr><td colSpan="7" className="text-center text-muted" style={{padding:32}}>Cargando ventas...</td></tr>
+              )}
+              {!loading && ventas.length === 0 && (
+                <tr><td colSpan="7" className="text-center text-muted" style={{padding:32}}>No hay ventas registradas.</td></tr>
+              )}
+              {!loading && ventas.map(v => (
                 <tr key={v.id} className="hover-row">
-                  <td className="mono" style={{fontWeight:600}}>{v.id}</td>
+                  <td className="mono" style={{fontWeight:600}}>{v.numero || v.id}</td>
                   <td className="text-muted">{v.fecha}</td>
-                  <td style={{fontWeight:600}}>{v.cliente}</td>
+                  <td style={{fontWeight:600}}>{ventaClienteNombre(v)}</td>
                   <td>{v.concepto}</td>
-                  <td className="num"><strong>{money(v.monto)} {v.moneda}</strong></td>
+                  <td className="num"><strong>{money(ventaMonto(v))} {v.moneda || 'PEN'}</strong></td>
                   <td>
-                    <span className={'badge ' + (v.estado==='cobrada'?'badge-green':'badge-orange')}>
-                      {v.estado.toUpperCase()}
-                    </span>
+                    <select
+                      className={'badge ' + ventaBadgeClass(v.estado)}
+                      style={{border:0,cursor:'pointer',fontFamily:'inherit'}}
+                      value={v.estado || 'emitida'}
+                      disabled={actualizandoId === v.id}
+                      onChange={e => cambiarEstado(v, e.target.value)}
+                    >
+                      {VENTA_ESTADOS.map(([estado, label]) => <option key={estado} value={estado}>{label.toUpperCase()}</option>)}
+                    </select>
                   </td>
-                  <td><button className="icon-btn">{I.chev}</button></td>
+                  <td></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {panel && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => { setPanel(false); resetForm(); }}/>
+          <div className="side-panel" style={{width:'min(560px,96vw)'}}>
+            <div className="side-panel-head">
+              <div><div className="eyebrow">Ventas</div><div className="font-display" style={{fontSize:20,fontWeight:700}}>Registrar venta</div></div>
+              <button className="icon-btn" onClick={() => { setPanel(false); resetForm(); }}>{I.x}</button>
+            </div>
+            <form className="side-panel-body" onSubmit={guardarVenta} style={{display:'flex',flexDirection:'column',gap:14}}>
+              <div className="grid-2" style={{gap:12}}>
+                <div className="input-group"><label>Fecha <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="date" value={form.fecha} onChange={e => setF('fecha', e.target.value)} required/></div>
+                <div className="input-group"><label>Estado inicial</label><select className="select" value={form.estado} onChange={e => setF('estado', e.target.value)}>{VENTA_ESTADOS.filter(([e]) => e !== 'anulada').map(([e,l]) => <option key={e} value={e}>{l}</option>)}</select></div>
+              </div>
+              <div className="input-group">
+                <label>Cliente <span style={{color:'var(--danger)'}}>*</span></label>
+                <select className="select" value={form.cuenta_id} onChange={e => setF('cuenta_id', e.target.value)} required>
+                  <option value="">Seleccionar cliente...</option>
+                  {clientes.map(c => <option key={c.id} value={c.id}>{cuentaVentaNombre(c)}</option>)}
+                </select>
+              </div>
+              <div className="input-group"><label>Concepto <span style={{color:'var(--danger)'}}>*</span></label><input className="input" value={form.concepto} onChange={e => setF('concepto', e.target.value)} placeholder="Servicio vendido" required/></div>
+              <div className="grid-2" style={{gap:12}}>
+                <div className="input-group"><label>Monto total <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="number" min="0.01" step="0.01" value={form.monto_total} onChange={e => setF('monto_total', e.target.value)} placeholder="0.00" required/></div>
+                <div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e => setF('moneda', e.target.value)}><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
+              </div>
+              <div className="row mt-4" style={{justifyContent:'flex-end',gap:8}}>
+                <button type="button" className="btn btn-secondary" onClick={() => { setPanel(false); resetForm(); }}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={guardando || (supabaseMode && !empresa?.id)}>{guardando ? 'Guardando...' : 'Guardar venta'}</button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
     </>
   );
 }
