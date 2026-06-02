@@ -158,6 +158,8 @@ function CotizacionesInner() {
   } = useApp();
   const [osModal, setOsModal] = useState(null);
   const [generandoPDF, setGenerandoPDF] = useState(false);
+  const [showFilter, setShowFilter] = useState(false);
+  const [filtros, setFiltros] = useState({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' });
 
   useEffect(() => {
     if (activeParams?.crear_os && activeParams?.detail) {
@@ -327,11 +329,15 @@ function CotizacionesInner() {
     const ownerName = opp?.responsable || null;
     if (!canUserSeeOwner({ viewer: authUser, ownerUserId, ownerName, users: usuarios, roles })) return false;
     const cliente = getCuentaNombre(c.cuenta_id || opp?.cuenta_id);
-    return !query ||
-      c.numero.toLowerCase().includes(query) ||
-      cliente.toLowerCase().includes(query) ||
-      (opp?.nombre || '').toLowerCase().includes(query);
+    if (query && !c.numero.toLowerCase().includes(query) && !cliente.toLowerCase().includes(query) && !(opp?.nombre || '').toLowerCase().includes(query)) return false;
+    if (filtros.cliente && !cliente.toLowerCase().includes(filtros.cliente.toLowerCase())) return false;
+    if (filtros.oportunidad && !(opp?.nombre || '').toLowerCase().includes(filtros.oportunidad.toLowerCase())) return false;
+    if (filtros.estado && c.estado !== filtros.estado) return false;
+    if (filtros.fechaDesde && (c.fecha || '') < filtros.fechaDesde) return false;
+    if (filtros.fechaHasta && (c.fecha || '') > filtros.fechaHasta) return false;
+    return true;
   });
+  const filtrosActivos = Object.values(filtros).some(v => v !== '');
 
   return (
     <>
@@ -340,7 +346,9 @@ function CotizacionesInner() {
           <h1 className="page-title">Cotizaciones</h1>
           <div className="page-sub">{latestPorNumero.length} cotizaciones registradas</div>
         </div>
-        <div className="row"><button className="btn btn-secondary">{I.filter} Filtrar</button></div>
+        <div className="row">
+          <button className="btn btn-secondary" style={filtrosActivos ? {borderColor:'var(--green)',color:'var(--green)'} : {}} onClick={() => setShowFilter(true)}>{I.filter} Filtrar{filtrosActivos ? ' •' : ''}</button>
+        </div>
       </div>
       <div className="card mt-6">
         <div className="table-wrap">
@@ -378,6 +386,56 @@ function CotizacionesInner() {
           </table>
         </div>
       </div>
+
+      {showFilter && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setShowFilter(false)} />
+          <div className="side-panel" style={{width: 360}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Filtros</div>
+                <div className="font-display" style={{fontSize:20, fontWeight:700}}>Filtrar cotizaciones</div>
+              </div>
+              <button className="icon-btn" onClick={() => setShowFilter(false)}>{I.x}</button>
+            </div>
+            <div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:20}}>
+              <div>
+                <label className="form-label">Cliente</label>
+                <input className="form-input" placeholder="Buscar por cliente…" value={filtros.cliente} onChange={e => setFiltros(f => ({...f, cliente: e.target.value}))} />
+              </div>
+              <div>
+                <label className="form-label">Oportunidad</label>
+                <input className="form-input" placeholder="Buscar por oportunidad…" value={filtros.oportunidad} onChange={e => setFiltros(f => ({...f, oportunidad: e.target.value}))} />
+              </div>
+              <div>
+                <label className="form-label">Estado</label>
+                <select className="form-input" value={filtros.estado} onChange={e => setFiltros(f => ({...f, estado: e.target.value}))}>
+                  <option value="">Todos</option>
+                  <option value="borrador">Borrador</option>
+                  <option value="enviada">Enviada</option>
+                  <option value="pendiente_aprobacion">Pendiente aprobación</option>
+                  <option value="aprobada">Aprobada</option>
+                  <option value="aceptada">Aceptada</option>
+                  <option value="convertida">Convertida</option>
+                  <option value="perdida">Perdida</option>
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Fecha desde</label>
+                <input type="date" className="form-input" value={filtros.fechaDesde} onChange={e => setFiltros(f => ({...f, fechaDesde: e.target.value}))} />
+              </div>
+              <div>
+                <label className="form-label">Fecha hasta</label>
+                <input type="date" className="form-input" value={filtros.fechaHasta} onChange={e => setFiltros(f => ({...f, fechaHasta: e.target.value}))} />
+              </div>
+            </div>
+            <div className="side-panel-footer" style={{display:'flex', gap:8}}>
+              <button className="btn btn-secondary" style={{flex:1}} onClick={() => { setFiltros({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' }); }}>Limpiar filtros</button>
+              <button className="btn btn-primary" style={{flex:1}} onClick={() => setShowFilter(false)}>Aplicar</button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -3205,7 +3263,7 @@ function ResumenCostos({ hc, moneda = 'PEN' }) {
 }
 
 function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo, aprobarHojaCosteo, navigate }) {
-  const { usuarios, roles, empresa, authUser, role } = useApp();
+  const { usuarios, roles, empresa, authUser, role, cuentas, empresaConfig, addNotificacion } = useApp();
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const opp = getOpp(hc.oportunidad_id);
   const hcMoneda = opp?.moneda || hc.moneda || 'PEN';
@@ -3239,6 +3297,7 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
     roles,
   });
   const [editMode, setEditMode] = useState(false);
+  const [generandoPDF, setGenerandoPDF] = useState(false);
   const [form, setForm] = useState({
     mano_obra: Array.isArray(hc.mano_obra) ? hc.mano_obra : [],
     materiales: Array.isArray(hc.materiales) ? hc.materiales : [],
@@ -3272,6 +3331,34 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
     await aprobarHojaCosteo(hc.id);
   };
 
+  const handleDescargarPDF = async () => {
+    setGenerandoPDF(true);
+    try {
+      const cfg = empresaConfig || {};
+      const logoDataUrl = await pdfAssetSource({ url: cfg.logo_url, path: cfg.logo_path });
+      const { pdf } = await import('@react-pdf/renderer');
+      const { HojaCostooPDF } = await import('./pages_pdf.jsx');
+      const cuenta = (cuentas || []).find(c => c.id === hc.cuenta_id) || null;
+      const cfgPDF = { ...cfg, logo_url: logoDataUrl || cfg.logo_url || undefined };
+      const blob = await pdf(
+        <HojaCostooPDF hc={{ ...hc, ...form }} opp={opp} cuenta={cuenta} cfg={cfgPDF} />
+      ).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${hc.numero}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('[PDF HC]', err);
+      addNotificacion('Error al generar el PDF: ' + (err?.message || err));
+    } finally {
+      setGenerandoPDF(false);
+    }
+  };
+
   return (
     <>
       <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
@@ -3298,7 +3385,7 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
           {estado === 'aprobada' && (
             <button className="btn btn-primary" onClick={() => navigate('cotizaciones', { active_tab: 'nueva', opp: hc.oportunidad_id, hc_id: hc.id })}>{I.plus} Generar Cotización</button>
           )}
-          <button className="btn btn-secondary">{I.download} PDF</button>
+          <button className="btn btn-secondary" onClick={handleDescargarPDF} disabled={generandoPDF}>{I.download} {generandoPDF ? 'Generando…' : 'PDF'}</button>
         </div>
       </div>
 

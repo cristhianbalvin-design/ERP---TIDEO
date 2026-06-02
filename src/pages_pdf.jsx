@@ -78,6 +78,126 @@ function Footer({ S, cfg }) {
   );
 }
 
+export function HojaCostooPDF({ hc, opp, cuenta, cfg }) {
+  const primary = cfg?.color_primario || '#1A2B4A';
+  const secondary = cfg?.color_secundario || '#607D8B';
+  const S = makeStyles(primary, secondary);
+  const moneda = normalizeCurrency(hc.moneda || opp?.moneda || 'PEN');
+  const s = currencySymbol(moneda);
+
+  const calcSub = list => (list || []).reduce((acc, i) => acc + (Number(i.cantidad || 0) * Number(i.costo_unitario || 0)), 0);
+  const totalMO = calcSub(hc.mano_obra);
+  const totalMat = calcSub(hc.materiales);
+  const totalST = calcSub(hc.servicios_terceros);
+  const totalLog = calcSub(hc.logistica);
+  const totalCosto = totalMO + totalMat + totalST + totalLog;
+  const margen = Math.min(Math.max(Number(hc.margen_objetivo_pct || 35), 0), 95);
+  const precioSinIgv = margen < 100 ? totalCosto / (1 - margen / 100) : totalCosto;
+  const precioConIgv = precioSinIgv * 1.18;
+  const estadoLabel = String(hc.estado || 'borrador').replace('_', ' ').toUpperCase();
+
+  const renderSeccion = (titulo, items) => {
+    if (!items || items.length === 0) return null;
+    return (
+      <View style={{ marginBottom: 10 }}>
+        <Text style={[S.secLabel, { marginBottom: 4 }]}>{titulo.toUpperCase()}</Text>
+        <View style={S.tableWrap}>
+          <View style={S.tHead}>
+            <Text style={[S.tHeadCell, { flex: 1 }]}>Descripción</Text>
+            <Text style={[S.tHeadCell, { width: 38, textAlign: 'right' }]}>Cant.</Text>
+            <Text style={[S.tHeadCell, { width: 42, textAlign: 'center' }]}>Unidad</Text>
+            <Text style={[S.tHeadCell, { width: 70, textAlign: 'right' }]}>C. Unit.</Text>
+            <Text style={[S.tHeadCell, { width: 70, textAlign: 'right' }]}>Subtotal</Text>
+          </View>
+          {items.map((item, i) => (
+            <View key={item.id || i} style={[S.tRow, i % 2 !== 0 ? S.tRowAlt : {}]}>
+              <Text style={[S.tCell, { flex: 1 }]}>{item.descripcion || '—'}</Text>
+              <Text style={[S.tCell, { width: 38, textAlign: 'right' }]}>{item.cantidad}</Text>
+              <Text style={[S.tCell, { width: 42, textAlign: 'center' }]}>{item.unidad || '—'}</Text>
+              <Text style={[S.tCell, { width: 70, textAlign: 'right' }]}>{fmt(item.costo_unitario, s)}</Text>
+              <Text style={[S.tCell, S.tCellBold, { width: 70, textAlign: 'right' }]}>{fmt(Number(item.cantidad || 0) * Number(item.costo_unitario || 0), s)}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <Document>
+      <Page size="A4" style={S.page}>
+        <View style={S.header}>
+          {cfg?.logo_url
+            ? <Image src={cfg.logo_url} style={S.logo} />
+            : <Text style={{ fontFamily: 'Helvetica-Bold', fontSize: 13, color: primary }}>{cfg?.razon_social || 'EMPRESA'}</Text>
+          }
+          <View style={S.companyMeta}>
+            {cfg?.email_comercial && <Text style={S.companyMetaLine}>{cfg.email_comercial}</Text>}
+            {cfg?.sitio_web       && <Text style={S.companyMetaLine}>{cfg.sitio_web}</Text>}
+            {cfg?.ruc             && <Text style={S.companyMetaLine}>RUC: {cfg.ruc}</Text>}
+            {cfg?.direccion       && <Text style={S.companyMetaLine}>{cfg.direccion}</Text>}
+          </View>
+        </View>
+        <View style={S.titleWrap}>
+          <Text style={S.titleMain}>HOJA DE COSTEO</Text>
+          <Text style={S.titleSub}>{hc.numero}  ·  {estadoLabel}</Text>
+        </View>
+        <View style={S.sep} />
+        <View style={[S.twoCol, { marginBottom: 14 }]}>
+          <View style={S.infoBox}>
+            <Text style={S.boxLabel}>CLIENTE</Text>
+            <Text style={S.boxPrimary}>{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</Text>
+            {cuenta?.ruc   && <Text style={S.boxSmall}>RUC: {cuenta.ruc}</Text>}
+            {opp?.nombre   && <Text style={S.boxSmall}>Oportunidad: {opp.nombre}</Text>}
+          </View>
+          <View style={S.infoBox}>
+            <Text style={S.boxLabel}>DETALLES DEL COSTEO</Text>
+            <View style={S.detRow}><Text style={S.detLabel}>N° hoja</Text><Text style={S.detVal}>{hc.numero}</Text></View>
+            <View style={S.detRow}><Text style={S.detLabel}>Estado</Text><Text style={S.detVal}>{estadoLabel}</Text></View>
+            <View style={S.detRow}><Text style={S.detLabel}>Moneda</Text><Text style={S.detVal}>{moneda}</Text></View>
+            <View style={S.detRow}><Text style={S.detLabel}>Responsable</Text><Text style={S.detVal}>{hc.responsable_costeo || '—'}</Text></View>
+            <View style={S.detRow}><Text style={S.detLabel}>Margen objetivo</Text><Text style={S.detVal}>{margen}%</Text></View>
+          </View>
+        </View>
+        {renderSeccion('Mano de Obra', hc.mano_obra)}
+        {renderSeccion('Materiales e Insumos', hc.materiales)}
+        {renderSeccion('Servicios Terceros / Alquileres', hc.servicios_terceros)}
+        {renderSeccion('Logística y Viáticos', hc.logistica)}
+        <View style={S.sep} />
+        <Text style={[S.secLabel, { marginBottom: 6 }]}>RESUMEN ECONÓMICO</Text>
+        <View style={[S.twoCol, { gap: 16 }]}>
+          <View style={[S.totBox, { flex: 1 }]}>
+            {totalMO  > 0 && <View style={S.totRow}><Text style={S.totLabel}>Mano de obra</Text><Text style={S.totVal}>{fmt(totalMO, s)}</Text></View>}
+            {totalMat > 0 && <View style={S.totRow}><Text style={S.totLabel}>Materiales</Text><Text style={S.totVal}>{fmt(totalMat, s)}</Text></View>}
+            {totalST  > 0 && <View style={S.totRow}><Text style={S.totLabel}>Servicios terceros</Text><Text style={S.totVal}>{fmt(totalST, s)}</Text></View>}
+            {totalLog > 0 && <View style={S.totRow}><Text style={S.totLabel}>Logística</Text><Text style={S.totVal}>{fmt(totalLog, s)}</Text></View>}
+            <View style={S.totFinal}>
+              <Text style={S.totFinalLabel}>Costo total estimado</Text>
+              <Text style={S.totFinalVal}>{fmt(totalCosto, s)}</Text>
+            </View>
+          </View>
+          <View style={[S.totBox, { flex: 1 }]}>
+            <View style={S.totRow}><Text style={S.totLabel}>Margen objetivo</Text><Text style={S.totVal}>{margen}%</Text></View>
+            <View style={S.totRow}><Text style={S.totLabel}>Precio sugerido s/ IGV</Text><Text style={S.totVal}>{fmt(precioSinIgv, s)}</Text></View>
+            <View style={S.totFinal}>
+              <Text style={S.totFinalLabel}>Precio sugerido c/ IGV</Text>
+              <Text style={S.totFinalVal}>{fmt(precioConIgv, s)}</Text>
+            </View>
+          </View>
+        </View>
+        {hc.notas && (
+          <>
+            <View style={[S.sep, { marginTop: 10 }]} />
+            <Text style={[S.secLabel, { marginBottom: 4 }]}>NOTAS INTERNAS</Text>
+            <Text style={{ fontSize: 8.5, color: '#444', lineHeight: 1.6 }}>{hc.notas}</Text>
+          </>
+        )}
+        <Footer S={S} cfg={cfg} />
+      </Page>
+    </Document>
+  );
+}
+
 export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
   const primary   = cfg?.color_primario   || '#1A2B4A';
   const secondary = cfg?.color_secundario || '#607D8B';

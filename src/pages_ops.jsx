@@ -1209,7 +1209,28 @@ function OT({ role }) {
   const updNuevaOT = (k, v) => setFormNuevaOT(p => {
     const next = { ...p, [k]: v };
     if (k === 'tipo' && !permiteOSCliente(v)) next.os_cliente_id = '';
-    if (k === 'os_cliente_id' && v) next.centro_beneficio_id = '';
+    if (k === 'os_cliente_id' && v) {
+      next.centro_beneficio_id = '';
+      const os = (osClientes || []).find(o => o.id === v);
+      if (os) {
+        const cot = os.cotizacion_id ? (cotizaciones || []).find(c => c.id === os.cotizacion_id) : null;
+        const hc = cot?.hoja_costeo_id ? (hojasCosteo || []).find(h => h.id === cot.hoja_costeo_id && h.estado === 'aprobada') : null;
+        if (hc) {
+          next.est_mo = hc.total_mano_obra ?? '';
+          next.est_materiales = hc.total_materiales ?? '';
+          next.est_terceros = hc.total_servicios_terceros ?? '';
+          next.est_logistica = hc.total_logistica ?? '';
+        } else {
+          const saldo = os.saldo_por_ejecutar ?? os.presupuesto_os ?? 0;
+          if (saldo > 0) {
+            next.est_mo = saldo;
+            next.est_materiales = '';
+            next.est_terceros = '';
+            next.est_logistica = '';
+          }
+        }
+      }
+    }
     return next;
   });
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
@@ -3677,14 +3698,14 @@ function OT({ role }) {
         const estadoBadge = p.estado === 'aprobado' ? 'badge-green' : p.estado === 'rechazado' ? 'badge-red' : p.estado === 'observado' ? 'badge-orange' : p.estado === 'con_restriccion' ? 'badge-red' : p.estado === 'borrador' ? 'badge-gray' : 'badge-orange';
         const estadoLabel = { aprobado: 'Aprobado', rechazado: 'Rechazado', observado: 'Observado', con_restriccion: 'Con restricción', borrador: 'Borrador', en_revision: 'Pendiente revisión' }[p.estado] || p.estado;
         const revisableP = ['en_revision', 'con_restriccion'].includes(p.estado);
-        const canAprobarPartes = role.permisos.todo || role.permisos.aprobar_descuentos;
         const avanceParte = p.avance_validado !== undefined ? p.avance_validado : p.avance_reportado || 0;
         const parteHealthColor = p.estado === 'aprobado' ? 'var(--green)' : p.estado === 'rechazado' ? 'var(--danger)' : p.estado === 'observado' ? 'var(--orange)' : 'var(--cyan)';
         const parteHealthBg = p.estado === 'aprobado' ? 'rgba(16,185,129,0.08)' : p.estado === 'rechazado' ? 'rgba(239,68,68,0.08)' : p.estado === 'observado' ? 'rgba(249,115,22,0.08)' : 'rgba(0,188,212,0.08)';
+        const canAprobarPartes = role.permisos.todo || (Array.isArray(role.permisos.aprobar) && role.permisos.aprobar.includes('partes'));
         const cerrarPartePanel = () => { setParteSelOT(null); setModoAccionParteOT(null); setMotivoAccionParteOT(''); setAvanceAprobacionParteOT(0); };
         return (<>
-          <div className="side-panel-backdrop" onClick={cerrarPartePanel}/>
-          <div className="side-panel ficha-detail-panel parte-review-panel" style={{width:'min(560px, 96vw)'}}>
+          <div className="side-panel-backdrop" onClick={cerrarPartePanel} style={{zIndex: 62}}/>
+          <div className="side-panel ficha-detail-panel parte-review-panel" style={{width:'min(560px, 96vw)', zIndex: 63}}>
             <div className="side-panel-head">
               <div>
                 <div className="eyebrow">Parte diario · {sel?.numero}</div>
@@ -7821,7 +7842,7 @@ const HILO_TIPO_META = {
 };
 
 function Tickets() {
-  const { addNotificacion, searchQuery, dataMode, empresa, cuentas, usuarios, authUser } = useApp();
+  const { addNotificacion, addToast, searchQuery, dataMode, empresa, cuentas, usuarios, authUser } = useApp();
   const ticketUploadRef = useRef(null);
   const [view, setView] = useState('kanban');
   const [tickets, setTickets] = useState([]);
@@ -8095,7 +8116,10 @@ function Tickets() {
       addNotificacion('Escribe el contenido del comentario.');
       return;
     }
-    if (!current) return;
+    if (!current) {
+      addNotificacion('Ticket no encontrado.');
+      return;
+    }
     const usuarioNombreActual = authUser?.nombre || authUser?.email || 'Usuario';
     setSavingComentario(true);
     try {
@@ -8118,9 +8142,10 @@ function Tickets() {
       setComentarios(prev => [...prev, entry]);
       setComentarioForm({ tipo: 'observacion', contenido: '', imagenFile: null, imagenPreview: '' });
       if (imagenEvidenciaRef.current) imagenEvidenciaRef.current.value = '';
+      addNotificacion('Entrada agregada al hilo.');
     } catch (error) {
-      console.error('Error agregando comentario:', error);
-      addNotificacion(`No se pudo agregar el comentario: ${error.message}`);
+      console.error('Error agregando comentario al hilo:', error);
+      addToast(`No se pudo agregar la entrada: ${error.message || 'Error desconocido'}`, 'warning');
     } finally {
       setSavingComentario(false);
     }
@@ -11966,7 +11991,7 @@ export { Cuentas, OT, Partes, Compras, Proveedores, CotizacionesCompras, Ordenes
 // Registro lo hacen colaboradores desde PWA o desde la OT.
 // ============================================================
 export function TareoAdmin() {
-  const { empresa, role, personalAdmin, ots, centrosCosto } = useApp();
+  const { empresa, role, personalAdmin, ots, cuentas, centrosCosto } = useApp();
   const [tab, setTab] = useState('dia');
   const [tareos, setTareos] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -11974,8 +11999,12 @@ export function TareoAdmin() {
   const [filtroPersonal, setFiltroPersonal] = useState('');
   const [periodoDesde, setPeriodoDesde] = useState((() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0,10); })());
   const [periodoHasta, setPeriodoHasta] = useState(new Date().toISOString().slice(0, 10));
+  const [showFormManual, setShowFormManual] = useState(false);
+  const [formManual, setFormManual] = useState({ personal_id: '', fecha: new Date().toISOString().slice(0,10), horas: 1, descripcion: '' });
+  const [savingManual, setSavingManual] = useState(false);
 
   const canVer = role?.permisos?.todo || role?.permisos?.tareo_admin?.ver || role?.permisos?.tareo_admin === true;
+  const canCrear = role?.permisos?.todo || role?.permisos?.tareo_admin?.crear || role?.permisos?.tareo_admin === true;
 
   useEffect(() => {
     if (!empresa?.id || !canVer) return;
@@ -11998,14 +12027,70 @@ export function TareoAdmin() {
   const badgeEstado = est => est === 'enviado' ? 'badge-green' : 'badge-gray';
   const badgeOrigen = orig => orig === 'mobile' ? 'badge-cyan' : 'badge-gray';
 
+  // OTs donde el colaborador aparece como participante admin (excluye anuladas)
+  const otVinculadasDePersonal = (personalId) => {
+    if (!personalId) return [];
+    return (ots || [])
+      .filter(ot => ot.estado !== 'anulada')
+      .flatMap(ot => {
+        const part = (ot.participantes_admin || []).find(a => a.personal_id === personalId);
+        if (!part) return [];
+        return [{ ot, horas_estimadas: Number(part.horas_estimadas) || 0 }];
+      });
+  };
+
+  const estadoOTEnTareo = est =>
+    est === 'cerrada' ? { label: 'Ejecutada', cls: 'badge-green' } :
+    est === 'ejecucion' ? { label: 'En ejecución', cls: 'badge-cyan' } :
+    { label: 'Programada', cls: 'badge-gray' };
+
+  const guardarManual = async (e) => {
+    e.preventDefault();
+    const persona = (personalAdmin || []).find(p => p.id === formManual.personal_id);
+    if (!persona) return;
+    setSavingManual(true);
+    try {
+      await tareosAdminService.crearTareo(empresa.id, {
+        personal_id: persona.id,
+        personal_nombre: persona.nombre,
+        fecha: formManual.fecha,
+        horas: Number(formManual.horas),
+        descripcion: formManual.descripcion,
+        tipo: 'libre',
+        estado: 'enviado',
+        origen: 'backoffice',
+      });
+      const params = tab === 'dia' ? { fecha: filtroDia } : { desde: periodoDesde, hasta: periodoHasta };
+      const rows = await tareosAdminService.cargarTareos(empresa.id, params);
+      setTareos(rows);
+      setShowFormManual(false);
+      setFormManual({ personal_id: '', fecha: new Date().toISOString().slice(0,10), horas: 1, descripcion: '' });
+    } catch (err) {
+      console.error('[Tareo manual]', err);
+    } finally {
+      setSavingManual(false);
+    }
+  };
+
   const resumenPorPeriodo = (() => {
     const mapa = {};
     tareosFiltrados.forEach(t => {
-      if (!mapa[t.personal_id]) mapa[t.personal_id] = { nombre: t.personal_nombre, horasOT: 0, horasLibre: 0 };
+      if (!mapa[t.personal_id]) mapa[t.personal_id] = { nombre: t.personal_nombre, horasProgramadas: 0, horasOT: 0, horasLibre: 0 };
       if (t.tipo === 'ot') mapa[t.personal_id].horasOT += Number(t.horas) || 0;
       else mapa[t.personal_id].horasLibre += Number(t.horas) || 0;
     });
-    return Object.values(mapa);
+    // Agrega horas programadas desde participantes_admin de OTs
+    const adminsFiltrados = filtroPersonal
+      ? (personalAdmin || []).filter(p => p.id === filtroPersonal)
+      : (personalAdmin || []);
+    adminsFiltrados.forEach(p => {
+      const vins = otVinculadasDePersonal(p.id);
+      if (vins.length > 0) {
+        if (!mapa[p.id]) mapa[p.id] = { nombre: p.nombre, horasProgramadas: 0, horasOT: 0, horasLibre: 0 };
+        mapa[p.id].horasProgramadas += vins.reduce((s, v) => s + v.horas_estimadas, 0);
+      }
+    });
+    return Object.values(mapa).filter(r => r.horasProgramadas > 0 || r.horasOT > 0 || r.horasLibre > 0);
   })();
 
   if (!canVer) return (
@@ -12013,6 +12098,8 @@ export function TareoAdmin() {
       <p className="text-muted" style={{marginTop:8}}>Sin permiso para ver este módulo.</p>
     </div>
   );
+
+  const otVinsActual = filtroPersonal ? otVinculadasDePersonal(filtroPersonal) : [];
 
   return (
     <>
@@ -12050,6 +12137,77 @@ export function TareoAdmin() {
                 </select>
               </div>
             </div>
+
+            {/* OTs vinculadas — solo lectura, derivadas de participantes_admin en OTs */}
+            {otVinsActual.length > 0 && (
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:11, fontWeight:700, color:'var(--fg-muted)', letterSpacing:'0.05em', marginBottom:6, display:'flex', alignItems:'center', gap:8}}>
+                  OTS VINCULADAS
+                  <span style={{fontWeight:400, fontSize:11}}>Solo lectura — gestionar desde la OT</span>
+                </div>
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead><tr>
+                      <th>OT</th><th>Cliente</th><th className="num">Horas estimadas</th><th>Estado</th>
+                    </tr></thead>
+                    <tbody>{otVinsActual.map(({ ot, horas_estimadas }) => {
+                      const est = estadoOTEnTareo(ot.estado);
+                      const cuenta = (cuentas || []).find(c => c.id === ot.cuenta_id);
+                      return (
+                        <tr key={ot.id} style={{background:'var(--bg-subtle)'}}>
+                          <td><strong>{ot.numero}</strong></td>
+                          <td className="text-muted">{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</td>
+                          <td className="num">{horas_estimadas}h</td>
+                          <td><span className={'badge ' + est.cls}>{est.label}</span></td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Registro manual de horas libres */}
+            {canCrear && (
+              <div style={{marginBottom:16}}>
+                {!showFormManual ? (
+                  <button className="btn btn-sm" onClick={() => setShowFormManual(true)}>+ Registrar horas manuales</button>
+                ) : (
+                  <form onSubmit={guardarManual} style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 16px'}}>
+                    <div style={{fontSize:12, fontWeight:600, marginBottom:10, color:'var(--fg)'}}>Nueva entrada manual</div>
+                    <div style={{display:'grid', gridTemplateColumns:'1fr 160px 100px 1fr', gap:8, alignItems:'flex-end'}}>
+                      <div className="input-group">
+                        <label>Colaborador</label>
+                        <select className="select" required value={formManual.personal_id} onChange={e => setFormManual(f => ({...f, personal_id: e.target.value}))}>
+                          <option value="">Seleccionar...</option>
+                          {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
+                            <option key={p.id} value={p.id}>{p.nombre}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        <label>Fecha</label>
+                        <input className="input" type="date" required value={formManual.fecha} onChange={e => setFormManual(f => ({...f, fecha: e.target.value}))} />
+                      </div>
+                      <div className="input-group">
+                        <label>Horas</label>
+                        <input className="input" type="number" required min="0.5" max="24" step="0.5" value={formManual.horas} onChange={e => setFormManual(f => ({...f, horas: e.target.value}))} />
+                      </div>
+                      <div className="input-group">
+                        <label>Descripción</label>
+                        <input className="input" type="text" required placeholder="Reunión, gestión interna..." value={formManual.descripcion} onChange={e => setFormManual(f => ({...f, descripcion: e.target.value}))} />
+                      </div>
+                    </div>
+                    <div style={{display:'flex', gap:8, marginTop:10}}>
+                      <button className="btn btn-primary btn-sm" type="submit" disabled={savingManual}>{savingManual ? 'Guardando...' : 'Guardar'}</button>
+                      <button className="btn btn-sm" type="button" onClick={() => setShowFormManual(false)}>Cancelar</button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {/* Tareos registrados del día */}
             {loading
               ? <div className="text-muted" style={{padding:24, textAlign:'center'}}>Cargando...</div>
               : tareosFiltrados.length === 0
@@ -12104,6 +12262,36 @@ export function TareoAdmin() {
                 </select>
               </div>
             </div>
+
+            {/* OTs vinculadas del colaborador filtrado — solo en vista individual */}
+            {filtroPersonal && otVinsActual.length > 0 && (
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:11, fontWeight:700, color:'var(--fg-muted)', letterSpacing:'0.05em', marginBottom:6, display:'flex', alignItems:'center', gap:8}}>
+                  OTS VINCULADAS
+                  <span style={{fontWeight:400, fontSize:11}}>Solo lectura — gestionar desde la OT</span>
+                </div>
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead><tr>
+                      <th>OT</th><th>Cliente</th><th className="num">Horas estimadas</th><th>Estado</th>
+                    </tr></thead>
+                    <tbody>{otVinsActual.map(({ ot, horas_estimadas }) => {
+                      const est = estadoOTEnTareo(ot.estado);
+                      const cuenta = (cuentas || []).find(c => c.id === ot.cuenta_id);
+                      return (
+                        <tr key={ot.id} style={{background:'var(--bg-subtle)'}}>
+                          <td><strong>{ot.numero}</strong></td>
+                          <td className="text-muted">{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</td>
+                          <td className="num">{horas_estimadas}h</td>
+                          <td><span className={'badge ' + est.cls}>{est.label}</span></td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {loading
               ? <div className="text-muted" style={{padding:24, textAlign:'center'}}>Cargando...</div>
               : resumenPorPeriodo.length === 0
@@ -12113,12 +12301,16 @@ export function TareoAdmin() {
                     <div className="table-wrap">
                       <table className="tbl">
                         <thead><tr>
-                          <th>Colaborador</th><th className="num">Horas en OTs</th>
-                          <th className="num">Horas libres</th><th className="num">Total</th>
+                          <th>Colaborador</th>
+                          <th className="num">Prog. (OT)</th>
+                          <th className="num">Ejec. en OTs</th>
+                          <th className="num">Horas libres</th>
+                          <th className="num">Total ejecutado</th>
                         </tr></thead>
                         <tbody>{resumenPorPeriodo.map((r, i) => (
                           <tr key={i}>
                             <td><strong>{r.nombre}</strong></td>
+                            <td className="num" style={{color:'var(--fg-muted)'}}>{r.horasProgramadas.toFixed(1)}h</td>
                             <td className="num">{r.horasOT.toFixed(1)}h</td>
                             <td className="num">{r.horasLibre.toFixed(1)}h</td>
                             <td className="num" style={{fontWeight:700}}>{(r.horasOT + r.horasLibre).toFixed(1)}h</td>
@@ -12127,7 +12319,7 @@ export function TareoAdmin() {
                       </table>
                     </div>
                     <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:12, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6}}>
-                      Cruce con Presupuesto vs Real: conexión futura planificada. Los tareos son la fuente de verdad de horas admin por período.
+                      Prog. (OT) = horas estimadas asignadas desde la OT (solo lectura). Total ejecutado = horas realmente registradas en OTs + libres.
                     </div>
                   </>
                 )

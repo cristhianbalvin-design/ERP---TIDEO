@@ -748,15 +748,27 @@ function DonutChart() {
 function Leads() {
   const { leads, setLeads, crearLead, actualizarLeadDatos, eliminarLead, updateLeadState, convertirLead, descartarLead, reactivarLead, navigate, usuarios, empresa, monedasActivas, searchQuery, campanas, roles, industrias, actividades, historialEstados, oportunidades, cotizaciones, addNotificacion, authUser } = useApp();
   const [view, setView] = useState('kanban');
+  const [showFiltrosLeads, setShowFiltrosLeads] = useState(false);
+  const [filterLeadFuente, setFilterLeadFuente] = useState('');
+  const [filterLeadResponsable, setFilterLeadResponsable] = useState('');
+  const [filterLeadEtapa, setFilterLeadEtapa] = useState('');
+  const [filterLeadScoring, setFilterLeadScoring] = useState('');
+  const [filterLeadDesde, setFilterLeadDesde] = useState('');
+  const [filterLeadHasta, setFilterLeadHasta] = useState('');
 
   const query = searchQuery.toLowerCase();
-  const filteredLeads = leads
+  const _leadsBase = leads
     .filter(l => canUserSeeOwner({ viewer: authUser, ownerUserId: l.responsable_id, ownerName: l.responsable, users: usuarios, roles }))
     .filter(l =>
       l.nombre.toLowerCase().includes(query) ||
       l.empresa_contacto.toLowerCase().includes(query) ||
       (l.necesidad || '').toLowerCase().includes(query)
-    );
+    )
+    .filter(l => !filterLeadFuente || l.fuente === filterLeadFuente)
+    .filter(l => !filterLeadResponsable || l.responsable_id === filterLeadResponsable)
+    .filter(l => !filterLeadEtapa || l.estado === filterLeadEtapa)
+    .filter(l => !filterLeadDesde || (l.fecha_creacion || '') >= filterLeadDesde)
+    .filter(l => !filterLeadHasta || (l.fecha_creacion || '') <= filterLeadHasta);
   const [sel, setSel] = useState(null);
   const [modalConvertir, setModalConvertir] = useState(null);
   const [convForm, setConvForm] = useState(null);
@@ -1081,6 +1093,13 @@ function Leads() {
     return { score, label, color, bgLight, criterios };
   };
 
+  const filteredLeads = !filterLeadScoring ? _leadsBase : _leadsBase.filter(l => {
+    const sc = calcularScoreLead(l).score;
+    if (filterLeadScoring === 'alto') return sc >= 70;
+    if (filterLeadScoring === 'medio') return sc >= 40 && sc < 70;
+    return sc < 40;
+  });
+
   const leadsActivos = leads.filter(l => !['convertido','descartado'].includes(l.estado));
   const potencialTotal = formatPotencialPorMoneda(leadsActivos);
   const editState = editandoLead ? getLeadEditState(editandoLead) : { montoBloqueado: false, potencial: null };
@@ -1109,10 +1128,44 @@ function Leads() {
             <button className={`seg-btn ${view==='kanban'?'active':''}`} onClick={()=>setView('kanban')}>{I.grid} Kanban</button>
             <button className={`seg-btn ${view==='lista'?'active':''}`} onClick={()=>setView('lista')}>{I.list} Lista</button>
           </div>
-          <button className="btn btn-secondary" style={{padding:'8px 16px', borderRadius:8}}>{I.filter} Filtros</button>
+          <button className={`btn ${showFiltrosLeads ? 'btn-primary' : 'btn-secondary'}`} style={{padding:'8px 16px', borderRadius:8}} onClick={() => setShowFiltrosLeads(f => !f)}>{I.filter} Filtros{(filterLeadFuente||filterLeadResponsable||filterLeadEtapa||filterLeadScoring||filterLeadDesde||filterLeadHasta) ? ' •' : ''}</button>
           <button className="btn btn-primary" data-local-form="true" style={{padding:'8px 20px', borderRadius:8}} onClick={() => setPanelNuevo(true)}>{I.plus} Nuevo lead</button>
         </div>
       </div>
+
+      {showFiltrosLeads && (
+        <div className="card" style={{marginBottom:16}}>
+          <div style={{padding:'12px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center'}}>
+            <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterLeadFuente} onChange={e => setFilterLeadFuente(e.target.value)}>
+              <option value="">Todas las fuentes</option>
+              {['Referido','Formulario web','LinkedIn','Evento / Feria','Cold outreach','Manual'].map(f => <option key={f} value={f}>{f}</option>)}
+            </select>
+            <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterLeadResponsable} onChange={e => setFilterLeadResponsable(e.target.value)}>
+              <option value="">Todos los responsables</option>
+              {comercialesAsignables.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            </select>
+            <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterLeadEtapa} onChange={e => setFilterLeadEtapa(e.target.value)}>
+              <option value="">Todas las etapas</option>
+              <option value="nuevo">Nuevo</option>
+              <option value="en_contacto">En contacto</option>
+              <option value="calificado">Calificado</option>
+              <option value="convertido">Convertido</option>
+              <option value="descartado">Descartado</option>
+            </select>
+            <select className="select" style={{flex:'1 1 140px', minWidth:120}} value={filterLeadScoring} onChange={e => setFilterLeadScoring(e.target.value)}>
+              <option value="">Cualquier scoring</option>
+              <option value="alto">Alto (&ge;70)</option>
+              <option value="medio">Medio (40–69)</option>
+              <option value="bajo">Bajo (&lt;40)</option>
+            </select>
+            <input type="date" className="input" style={{flex:'1 1 140px', minWidth:120}} value={filterLeadDesde} onChange={e => setFilterLeadDesde(e.target.value)} title="Registrado desde"/>
+            <input type="date" className="input" style={{flex:'1 1 140px', minWidth:120}} value={filterLeadHasta} onChange={e => setFilterLeadHasta(e.target.value)} title="Registrado hasta"/>
+            {(filterLeadFuente||filterLeadResponsable||filterLeadEtapa||filterLeadScoring||filterLeadDesde||filterLeadHasta) && (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setFilterLeadFuente(''); setFilterLeadResponsable(''); setFilterLeadEtapa(''); setFilterLeadScoring(''); setFilterLeadDesde(''); setFilterLeadHasta(''); }}>{I.x} Limpiar</button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="pipeline-kpi-grid" style={{gridTemplateColumns:'repeat(5, 1fr)'}}>
         {cols.map((c, i) => {
@@ -2101,6 +2154,14 @@ function Pipeline() {
     probabilidadPorEtapaOpp, forecastPorEtapaOpp
   } = useApp();
   const [view, setView] = useState('kanban');
+  const [showFiltrosPipeline, setShowFiltrosPipeline] = useState(false);
+  const [filterPipeEtapa, setFilterPipeEtapa] = useState('');
+  const [filterPipeResponsable, setFilterPipeResponsable] = useState('');
+  const [filterPipeCuenta, setFilterPipeCuenta] = useState('');
+  const [filterPipeMontoMin, setFilterPipeMontoMin] = useState('');
+  const [filterPipeMontoMax, setFilterPipeMontoMax] = useState('');
+  const [filterPipeCierreDesde, setFilterPipeCierreDesde] = useState('');
+  const [filterPipeCierreHasta, setFilterPipeCierreHasta] = useState('');
   const [sel, setSel] = useState(null);
   const [oppDetailTab, setOppDetailTab] = useState('Resumen');
   const [agendaOpp, setAgendaOpp] = useState(null);
@@ -2243,7 +2304,14 @@ function Pipeline() {
     .filter(o =>
       o.nombre.toLowerCase().includes(query) ||
       getOppCuentaNombre(o.cuenta_id).toLowerCase().includes(query)
-    );
+    )
+    .filter(o => !filterPipeEtapa || o.etapa === filterPipeEtapa || (filterPipeEtapa === 'negociacion' && o.etapa === 'cierre'))
+    .filter(o => !filterPipeResponsable || o.responsable_id === filterPipeResponsable)
+    .filter(o => !filterPipeCuenta || o.cuenta_id === filterPipeCuenta)
+    .filter(o => !filterPipeMontoMin || Number(o.monto_estimado || 0) >= Number(filterPipeMontoMin))
+    .filter(o => !filterPipeMontoMax || Number(o.monto_estimado || 0) <= Number(filterPipeMontoMax))
+    .filter(o => !filterPipeCierreDesde || (o.fecha_cierre_estimada || '') >= filterPipeCierreDesde)
+    .filter(o => !filterPipeCierreHasta || (o.fecha_cierre_estimada || '') <= filterPipeCierreHasta);
   const etapaPipeline = (opp) => opp.etapa === 'cierre' ? 'negociacion' : opp.etapa;
 
   const getOppMontoCotizado = (oppId) => {
@@ -2428,13 +2496,43 @@ function Pipeline() {
             <button className={`seg-btn ${view==='kanban'?'active':''}`} onClick={()=>setView('kanban')}>{I.grid} Kanban</button>
             <button className={`seg-btn ${view==='lista'?'active':''}`} onClick={()=>setView('lista')}>{I.list} Lista</button>
           </div>
-          <button className="btn btn-secondary" style={{padding:'8px 16px', borderRadius:8}}>{I.filter} Filtros</button>
+          <button className={`btn ${showFiltrosPipeline ? 'btn-primary' : 'btn-secondary'}`} style={{padding:'8px 16px', borderRadius:8}} onClick={() => setShowFiltrosPipeline(f => !f)}>{I.filter} Filtros{(filterPipeEtapa||filterPipeResponsable||filterPipeCuenta||filterPipeMontoMin||filterPipeMontoMax||filterPipeCierreDesde||filterPipeCierreHasta) ? ' •' : ''}</button>
           <div className="row" style={{background:'var(--green)', borderRadius:8, overflow:'hidden'}}>
             <button className="btn btn-primary" data-local-form="true" onClick={() => setPanelNuevaOpp(true)} style={{background:'transparent', border:'none', padding:'8px 16px', borderRight:'1px solid rgba(255,255,255,0.1)'}}>{I.plus} Nueva oportunidad</button>
             <button className="btn btn-primary" data-local-form="true" style={{background:'transparent', border:'none', padding:'8px 10px'}}>{I.chev}</button>
           </div>
         </div>
       </div>
+
+      {showFiltrosPipeline && (
+        <div className="card" style={{marginBottom:16}}>
+          <div style={{padding:'12px 16px', display:'flex', gap:10, flexWrap:'wrap', alignItems:'center'}}>
+            <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterPipeEtapa} onChange={e => setFilterPipeEtapa(e.target.value)}>
+              <option value="">Todas las etapas</option>
+              <option value="calificacion">Calificación</option>
+              <option value="propuesta">Propuesta</option>
+              <option value="negociacion">Negociación</option>
+              <option value="ganada">Ganada</option>
+              <option value="perdida">Perdida</option>
+            </select>
+            <select className="select" style={{flex:'1 1 160px', minWidth:140}} value={filterPipeResponsable} onChange={e => setFilterPipeResponsable(e.target.value)}>
+              <option value="">Todos los responsables</option>
+              {comercialesAsignables.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            </select>
+            <select className="select" style={{flex:'1 1 180px', minWidth:160}} value={filterPipeCuenta} onChange={e => setFilterPipeCuenta(e.target.value)}>
+              <option value="">Todas las cuentas</option>
+              {cuentasVisibles.map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial}</option>)}
+            </select>
+            <input type="number" className="input" style={{flex:'1 1 120px', minWidth:100}} placeholder="Monto mín." value={filterPipeMontoMin} onChange={e => setFilterPipeMontoMin(e.target.value)}/>
+            <input type="number" className="input" style={{flex:'1 1 120px', minWidth:100}} placeholder="Monto máx." value={filterPipeMontoMax} onChange={e => setFilterPipeMontoMax(e.target.value)}/>
+            <input type="date" className="input" style={{flex:'1 1 140px', minWidth:120}} value={filterPipeCierreDesde} onChange={e => setFilterPipeCierreDesde(e.target.value)} title="Cierre estimado desde"/>
+            <input type="date" className="input" style={{flex:'1 1 140px', minWidth:120}} value={filterPipeCierreHasta} onChange={e => setFilterPipeCierreHasta(e.target.value)} title="Cierre estimado hasta"/>
+            {(filterPipeEtapa||filterPipeResponsable||filterPipeCuenta||filterPipeMontoMin||filterPipeMontoMax||filterPipeCierreDesde||filterPipeCierreHasta) && (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setFilterPipeEtapa(''); setFilterPipeResponsable(''); setFilterPipeCuenta(''); setFilterPipeMontoMin(''); setFilterPipeMontoMax(''); setFilterPipeCierreDesde(''); setFilterPipeCierreHasta(''); }}>{I.x} Limpiar</button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="pipeline-kpi-grid" style={{gridTemplateColumns:'repeat(5, 1fr)'}}>
         {cols.map((c, i) => {
