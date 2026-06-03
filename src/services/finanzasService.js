@@ -529,9 +529,38 @@ export const finanzasService = {
 
   async generarCxP(payload) {
     const supabase = await getSupabaseClient();
+    const insert = async (p) => supabase.from('cxp').insert(p).select().single();
+    let p = { ...payload };
+    for (let i = 0; i < 8; i++) {
+      const { data, error } = await insert(p);
+      if (!error) return data;
+      const col = error.message?.match(/column "([^"]+)" of relation/)?.[1] || error.message?.match(/'([^']+)' column/)?.[1];
+      if (!col || !(col in p)) throw error;
+      delete p[col];
+    }
+    const { data, error } = await insert(p);
+    if (error) throw error;
+    return data;
+  },
+
+  async actualizarGasto(gastoId, campos) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('compras_gastos')
+      .update(campos)
+      .eq('id', gastoId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async actualizarCxP(cxpId, campos) {
+    const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('cxp')
-      .insert(payload)
+      .update(campos)
+      .eq('id', cxpId)
       .select()
       .single();
     if (error) throw error;
@@ -616,5 +645,47 @@ export const finanzasService = {
       .single();
     if (error) throw error;
     return data;
+  },
+
+  // ── Retención SUNAT ───────────────────────────────────────────────────
+
+  calcularRetencionFactura(totalConIgv, tasa) {
+    const base = Number(totalConIgv || 0);
+    const pct = Number(tasa || 3);
+    return Math.round(base * (pct / 100) * 100) / 100;
+  },
+
+  async getCondicionRetencionCliente(cuentaId, empresaId) {
+    if (!cuentaId) return { aplica: false, tasa: 3.00 };
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cuentas')
+      .select('agente_retencion_sunat, tasa_retencion_sunat')
+      .eq('id', cuentaId)
+      .eq('empresa_id', empresaId)
+      .maybeSingle();
+    if (error || !data) return { aplica: false, tasa: 3.00 };
+    return {
+      aplica: Boolean(data.agente_retencion_sunat),
+      tasa: Number(data.tasa_retencion_sunat || 3),
+    };
+  },
+
+  async getResumenRetencionesPeriodo(empresaId, anio, mes) {
+    const supabase = await getSupabaseClient();
+    const periodoStr = `${anio}-${String(mes).padStart(2, '0')}`;
+    const { data, error } = await supabase
+      .from('facturas')
+      .select('monto_retencion, cuenta_id')
+      .eq('empresa_id', empresaId)
+      .eq('aplica_retencion', true)
+      .neq('estado', 'anulada')
+      .gte('fecha_emision', `${periodoStr}-01`)
+      .lte('fecha_emision', `${periodoStr}-31`);
+    if (error) throw error;
+    const rows = data || [];
+    const totalRetenciones = rows.reduce((s, f) => s + Number(f.monto_retencion || 0), 0);
+    const clientesDistintos = new Set(rows.map(f => f.cuenta_id)).size;
+    return { totalRetenciones, clientesDistintos, facturas: rows.length };
   },
 };

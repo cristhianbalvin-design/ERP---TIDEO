@@ -808,7 +808,7 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
 
 export function BIFinanciero() {
   const [tab, setTab] = useState('rentabilidad');
-  const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio, cxc, cxp, cxpPagos, cuentas, movimientosTesoreria } = useApp();
+  const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio, cxc, cxp, cxpPagos, cuentas, movimientosTesoreria, facturas } = useApp();
 
   const now = new Date();
   const [periodo, setPeriodo] = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
@@ -1001,6 +1001,16 @@ export function BIFinanciero() {
     cebesSel.length ? `CEBE: ${cebesDeEmpresa.filter(c=>cebesSel.includes(c.id)).map(c=>c.nombre).join(', ')}` : '',
   ].filter(Boolean).join(' / ');
 
+  // ── Retenciones SUNAT del período ────────────────────────────────────────────
+  const facturasRetencionPeriodo = (facturas || []).filter(f =>
+    f.empresa_id === empresa?.id &&
+    f.aplica_retencion &&
+    f.estado !== 'anulada' &&
+    (f.fecha_emision || '').startsWith(periodo)
+  );
+  const totalRetencionesPeriodo = facturasRetencionPeriodo.reduce((s, f) => s + Number(f.monto_retencion || 0), 0);
+  const clientesRetencionPeriodo = new Set(facturasRetencionPeriodo.map(f => f.cuenta_id)).size;
+
   // ── Build data objects para tabs ─────────────────────────────────────────────
   const data = {
     periodo: `${MESES[parseInt(mm)-1]} ${yy}`,
@@ -1042,6 +1052,7 @@ export function BIFinanciero() {
         <KPI label="CxC Total" value={S(cxcTotal)} sub={S(cxcVencida) + ' vencida'} subColor="var(--danger)" />
         <KPI label="CxP Total" value={S(cxpTotal)} sub={S(cxpProximos30d) + ' próx. 30d'} subColor="var(--warning)" />
         <KPI label="Δ Margen Bruto" value={`${margenBrutoPct >= margenBrutoAntPct ? '+' : ''}${P(margenBrutoPct - margenBrutoAntPct)}`} sub="vs mes anterior" subColor={margenBrutoPct >= margenBrutoAntPct ? 'var(--green)' : 'var(--danger)'} />
+        <KPI label="Retenciones SUNAT" value={S(totalRetencionesPeriodo)} sub={clientesRetencionPeriodo > 0 ? `${clientesRetencionPeriodo} cliente${clientesRetencionPeriodo > 1 ? 's' : ''} · crédito fiscal` : 'Sin retenciones en el período'} subColor={totalRetencionesPeriodo > 0 ? 'var(--cyan)' : 'var(--fg-muted)'} />
       </div>
 
       <div className="tab-bar" style={{ marginBottom: 24 }}>

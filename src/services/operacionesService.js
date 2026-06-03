@@ -133,6 +133,31 @@ export async function actualizarOT(supabase, otId, datos) {
   return update(payload);
 }
 
+export async function upsertCostoOT(supabase, empresaId, otId, costos = {}) {
+  const manoObra = Number(costos.mano_obra || 0);
+  const materiales = Number(costos.materiales || 0);
+  const terceros = Number(costos.servicios_terceros || 0);
+  const logistica = Number(costos.logistica || 0);
+  const otros = Number(costos.otros || 0);
+  const row = {
+    id: costos.id || `cot_${otId}`,
+    empresa_id: empresaId,
+    orden_trabajo_id: otId,
+    mano_obra: manoObra,
+    materiales,
+    servicios_terceros: terceros,
+    logistica,
+    otros,
+    total: manoObra + materiales + terceros + logistica + otros,
+    moneda: costos.moneda || 'PEN',
+    calculado_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  return supabase
+    .from('costos_ot')
+    .upsert(row, { onConflict: 'orden_trabajo_id' });
+}
+
 export async function eliminarOT(supabase, otId) {
   return supabase.from('ordenes_trabajo').delete().eq('id', otId);
 }

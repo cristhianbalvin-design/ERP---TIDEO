@@ -10,9 +10,43 @@ import { VARIABLES_COMERCIALES } from './lib/textoComercial.js';
 import { maestrosService } from './services/maestrosService.js';
 import { importarMaterialesMasivo } from './services/materialService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
+import * as tareosAdminService from './services/tareosAdminService.js';
 import * as XLSX from 'xlsx';
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
 import { SmartTextField } from './components/SmartTextField.jsx';
+
+const rrhhPeriodoMesActual = () => new Date().toISOString().slice(0, 7);
+const rrhhDesplazarPeriodoMes = (periodo, delta) => {
+  const [year, month] = String(periodo || rrhhPeriodoMesActual()).split('-').map(Number);
+  const d = new Date(year || new Date().getFullYear(), (month || 1) - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+const rrhhRangoPeriodoMes = (periodo) => {
+  const [year, month] = String(periodo || rrhhPeriodoMesActual()).split('-').map(Number);
+  const inicio = new Date(year || new Date().getFullYear(), (month || 1) - 1, 1);
+  const fin = new Date(inicio.getFullYear(), inicio.getMonth() + 1, 0);
+  return { desde: inicio.toISOString().slice(0, 10), hasta: fin.toISOString().slice(0, 10) };
+};
+const rrhhHorasParteAprobado = p => Number(p?.horas ?? p?.horas_normales ?? p?.horas_total ?? 0) || 0;
+const rrhhBajaProductividad = (persona, partes = [], tareos = [], periodo = rrhhDesplazarPeriodoMes(rrhhPeriodoMesActual(), -1)) => {
+  if (!persona) return false;
+  const { desde, hasta } = rrhhRangoPeriodoMes(periodo);
+  const horasPartes = (partes || [])
+    .filter(p => String(p.estado || '').toLowerCase() === 'aprobado')
+    .filter(p => {
+      const fecha = p.fecha || p.fecha_parte || p.created_at?.slice?.(0, 10);
+      return fecha >= desde && fecha <= hasta && (p.tecnico_id || p.personal_id || p.tecnico) === persona.id;
+    })
+    .reduce((s, p) => s + rrhhHorasParteAprobado(p), 0);
+  const horasTareo = (tareos || [])
+    .filter(t => {
+      const fecha = t.fecha || t.created_at?.slice?.(0, 10);
+      return fecha >= desde && fecha <= hasta && t.personal_id === persona.id && String(t.estado || '').toLowerCase() !== 'anulado';
+    })
+    .reduce((s, t) => s + Number(t.horas || 0), 0);
+  const base = Number(persona.horas_base_mes || 160) || 160;
+  return base > 0 && ((horasPartes + horasTareo) / base) * 100 < 50;
+};
 
 // Roles builder, Usuarios, Tenants/Planes, and simple stub pages
 
@@ -4801,7 +4835,7 @@ function Parametros() {
 // RRHH ADMINISTRATIVO — Fase 3
 // ============================================================
 function RRHHAdmin() {
-  const { personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx } = useApp();
+  const { personalAdmin, partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, cxc = [], facturas = [] } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -4817,12 +4851,16 @@ function RRHHAdmin() {
   const [docValidandoId, setDocValidandoId] = useState(null);
   const [showRechazoInput, setShowRechazoInput] = useState(null);
   const [motivoRechazo, setMotivoRechazo] = useState('');
+  const periodoAlertaHoras = useMemo(() => rrhhDesplazarPeriodoMes(rrhhPeriodoMesActual(), -1), []);
+  const [tareosAlertaHoras, setTareosAlertaHoras] = useState([]);
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', dias_vacaciones:'30', estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0' };
+  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'160', tarifa_hora:'0', dias_vacaciones:'30', estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0' };
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const [formAlta, setFormAlta] = useState(formAltaBase);
+  const tarifaHoraForm = Math.round((Number(formAlta.monto_mensual || 0) / (Number(formAlta.horas_base_mes || 160) || 160)) * 100) / 100;
+  const tarifaSym = symOf(formAlta.moneda || 'PEN');
   const cargosAdminOptions = cargos
     .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Operativo')
     .map(c => c.nombre)
@@ -4836,6 +4874,14 @@ function RRHHAdmin() {
     : [];
   const todosPersonal = personalAdmin;
   const persona = sel ? todosPersonal.find(p => p.id === sel) : null;
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+    const { desde, hasta } = rrhhRangoPeriodoMes(periodoAlertaHoras);
+    tareosAdminService.cargarTareos(empresa.id, { desde, hasta })
+      .then(setTareosAlertaHoras)
+      .catch(() => setTareosAlertaHoras([]));
+  }, [empresa?.id, periodoAlertaHoras]);
 
   const cerrarPanelColaborador = () => {
     setPanelAlta(false);
@@ -4872,6 +4918,11 @@ function RRHHAdmin() {
       fecha_inicio: p.fecha_inicio_contrato || p.fecha_ingreso || '',
       fecha_fin: p.fecha_fin_contrato || '',
       remuneracion: String(p.remuneracion ?? p.sueldo_base ?? ''),
+      moneda: p.moneda || 'PEN',
+      metodo_pago: p.metodo_pago || 'mensual',
+      monto_mensual: String(p.monto_mensual ?? p.remuneracion ?? p.sueldo_base ?? ''),
+      horas_base_mes: String(p.horas_base_mes ?? 160),
+      tarifa_hora: String(p.tarifa_hora ?? 0),
       dias_vacaciones: String(p.dias_vacaciones_total ?? p.dias_vacaciones_disponibles ?? 30),
       estado: p.estado || 'activo',
       auth_user_id: p.auth_user_id || '',
@@ -4945,6 +4996,11 @@ function RRHHAdmin() {
       fecha_inicio_contrato: formAlta.fecha_inicio || '',
       fecha_fin_contrato: formAlta.fecha_fin || null,
       remuneracion: Number(formAlta.remuneracion) || 0,
+      moneda: formAlta.moneda || 'PEN',
+      metodo_pago: formAlta.metodo_pago || 'mensual',
+      monto_mensual: Number(formAlta.monto_mensual || formAlta.remuneracion || 0),
+      horas_base_mes: Number(formAlta.horas_base_mes || 160),
+      tarifa_hora: tarifaHoraForm,
       modalidad: 'Presencial',
       dias_vacaciones_total: Number(formAlta.dias_vacaciones) || 30,
       dias_vacaciones_usados: 0,
@@ -5003,6 +5059,7 @@ function RRHHAdmin() {
     const vacPersona = todasSolPersona.filter(s => s.tipo === 'vacaciones');
     const licPersona = todasSolPersona.filter(s => ['licencia_medica','licencia_maternidad','licencia_paternidad'].includes(s.tipo));
     const solPersona = todasSolPersona.filter(s => ['permiso_con_goce','permiso_sin_goce','compensacion_horas'].includes(s.tipo));
+    const bajaProductividadFicha = rrhhBajaProductividad(persona, partes, tareosAlertaHoras, periodoAlertaHoras);
     return (
       <>
         <div className="page-header">
@@ -5016,6 +5073,7 @@ function RRHHAdmin() {
           <div className="row">
             <span className={'badge badge-' + contratoColor(persona.tipo_contrato)}>{persona.tipo_contrato}</span>
             <span className="badge badge-green">{persona.estado}</span>
+            {bajaProductividadFicha && <span className="badge badge-red">Baja productividad</span>}
             <button className="btn btn-ghost btn-sm" title="Editar colaborador" onClick={() => { abrirEditarColaborador(persona); setSel(null); }}>{I.edit}</button>
             <button className="btn btn-ghost btn-sm" title="Eliminar colaborador" style={{color:'var(--danger)'}} onClick={() => eliminarColaborador(persona)}>{I.trash}</button>
           </div>
@@ -5344,10 +5402,17 @@ function RRHHAdmin() {
             const isIntRef = v => /^(osc|fac|cxc|com|rec|cob|opp)_/i.test(String(v||'').trim()) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v||'').trim());
             const getOsLabel = id => { const r = osClientes.find(o => o.id === id); return r?.numero && !isIntRef(r.numero) ? r.numero : null; };
             const getOppLabel = id => { const r = oportunidades.find(o => o.id === id); return r?.nombre && !isIntRef(r.nombre) ? r.nombre : null; };
+            const resolveMoneda = (c) => {
+              const raw = c.moneda ||
+                (() => { const cx = cxc.find(x => x.id === c.cxc_id || x.id === c.cobro_cxc_id); const fId = c.factura_id || cx?.factura_id || cx?.facturas?.id; const fRef = facturas.find(f => f.id === fId) || cx?.facturas; const osRef = osClientes.find(o => o.id === (c.os_cliente_id || cx?.os_cliente_id || fRef?.os_cliente_id)); return cx?.moneda || cx?.facturas?.moneda || cx?.os_clientes?.moneda || fRef?.moneda || fRef?.os_clientes?.moneda || osRef?.moneda; })() ||
+                empresa?.moneda || empresa?.moneda_base || 'PEN';
+              const r = String(raw || '').trim().toUpperCase();
+              return (r.includes('USD') || r.includes('US$') || r.includes('DOLAR')) ? 'USD' : 'PEN';
+            };
             const misComisiones = comisiones.filter(c => c.vendedor_id === sel);
             const aprobadas = misComisiones.filter(c => c.estado === 'aprobada');
-            const pendientePEN = aprobadas.filter(c => (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + Number(c.monto_total||0), 0);
-            const pendienteUSD = aprobadas.filter(c => (c.moneda||'PEN') === 'USD').reduce((s,c) => s + Number(c.monto_total||0), 0);
+            const pendientePEN = aprobadas.filter(c => resolveMoneda(c) !== 'USD').reduce((s,c) => s + Number(c.monto_total||0), 0);
+            const pendienteUSD = aprobadas.filter(c => resolveMoneda(c) === 'USD').reduce((s,c) => s + Number(c.monto_total||0), 0);
             const now = new Date();
             const periodos6 = Array.from({ length: 6 }, (_, i) => {
               const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
@@ -5359,11 +5424,11 @@ function RRHHAdmin() {
                 .reduce((s, c) => s + Number(c.monto_total || 0), 0)
             );
             const montoPorPeriodoPEN = periodos6.map(p =>
-              misComisiones.filter(c => c.periodo === p && (c.estado === 'pagada' || c.estado === 'aprobada') && (c.moneda||'PEN') !== 'USD')
+              misComisiones.filter(c => c.periodo === p && (c.estado === 'pagada' || c.estado === 'aprobada') && resolveMoneda(c) !== 'USD')
                 .reduce((s,c) => s + Number(c.monto_total||0), 0)
             );
             const montoPorPeriodoUSD = periodos6.map(p =>
-              misComisiones.filter(c => c.periodo === p && (c.estado === 'pagada' || c.estado === 'aprobada') && (c.moneda||'PEN') === 'USD')
+              misComisiones.filter(c => c.periodo === p && (c.estado === 'pagada' || c.estado === 'aprobada') && resolveMoneda(c) === 'USD')
                 .reduce((s,c) => s + Number(c.monto_total||0), 0)
             );
             const maxMonto = Math.max(...montoPorPeriodo, 1);
@@ -5447,10 +5512,10 @@ function RRHHAdmin() {
                               </>);
                             })()}
                           </td>
-                          <td>{money(c.monto_cobrado, symOf(c.moneda))}</td>
-                          <td>{money(c.monto_comision, symOf(c.moneda))} <span style={{ fontSize:11, color:'var(--fg-muted)' }}>({c.porcentaje_comision}%)</span></td>
-                          <td>{c.bonificacion > 0 ? money(c.bonificacion, symOf(c.moneda)) : '—'}</td>
-                          <td style={{ fontWeight:600 }}>{money(c.monto_total, symOf(c.moneda))}</td>
+                          <td>{money(c.monto_cobrado, symOf(resolveMoneda(c)))}</td>
+                          <td>{money(c.monto_comision, symOf(resolveMoneda(c)))} <span style={{ fontSize:11, color:'var(--fg-muted)' }}>({c.porcentaje_comision}%)</span></td>
+                          <td>{c.bonificacion > 0 ? money(c.bonificacion, symOf(resolveMoneda(c))) : '—'}</td>
+                          <td style={{ fontWeight:600 }}>{money(c.monto_total, symOf(resolveMoneda(c)))}</td>
                           <td>
                             <span className={`badge badge-${c.estado === 'pagada' ? 'green' : c.estado === 'aprobada' ? 'cyan' : c.estado === 'rechazada' ? 'red' : 'orange'}`}>
                               {c.estado === 'pendiente_aprobacion' ? 'Pendiente' : c.estado}
@@ -5744,8 +5809,8 @@ function RRHHAdmin() {
                 <input className="input" type="date" value={formAlta.fecha_fin} onChange={e=>setFormAlta(v=>({...v,fecha_fin:e.target.value}))}/>
               </div>
               <div className="input-group">
-                <label>{formAlta.modalidad === 'Honorarios' ? 'Honorario pactado (S/)' : 'Sueldo base (S/)'}</label>
-                <input className="input" type="number" min="0" value={formAlta.remuneracion} onChange={e=>setFormAlta(v=>({...v,remuneracion:e.target.value}))} placeholder="0"/>
+                <label>{formAlta.modalidad === 'Honorarios' ? `Honorario pactado (${tarifaSym})` : `Sueldo base (${tarifaSym})`}</label>
+                <input className="input" type="number" min="0" value={formAlta.remuneracion} onChange={e=>setFormAlta(v=>({...v,remuneracion:e.target.value,monto_mensual:e.target.value}))} placeholder="0"/>
               </div>
               <div className="input-group"><label>Estado</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option><option value="suspendido">Suspendido</option></select></div>
               {formAlta.modalidad === 'Honorarios' && <>
@@ -5766,6 +5831,29 @@ function RRHHAdmin() {
                   </div>
                 )}
               </>}
+            </div>
+
+            <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Tarifa y Costeo</div>
+            <div className="grid-2" style={{gap:14, marginBottom:20}}>
+              <div className="input-group">
+                <label>Metodo de pago *</label>
+                <select className="select" required value={formAlta.metodo_pago} onChange={e=>setFormAlta(v=>({...v,metodo_pago:e.target.value}))}>
+                  <option value="mensual">Mensual</option>
+                  <option value="por_horas">Por horas</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Monto mensual ({tarifaSym})</label>
+                <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} onChange={e=>setFormAlta(v=>({...v,monto_mensual:e.target.value,remuneracion:e.target.value}))} placeholder="0"/>
+              </div>
+              <div className="input-group">
+                <label>Horas base del mes</label>
+                <input className="input" type="number" min="1" step="0.5" value={formAlta.horas_base_mes} onChange={e=>setFormAlta(v=>({...v,horas_base_mes:e.target.value}))} placeholder="160"/>
+              </div>
+              <div className="input-group">
+                <label>Tarifa por hora ({tarifaSym})</label>
+                <input className="input" type="text" readOnly value={tarifaHoraForm.toFixed(2)} style={{background:'var(--bg-subtle)', fontWeight:700}}/>
+              </div>
             </div>
 
             {['Planilla','CAS'].includes(formAlta.modalidad) && <>
@@ -6327,10 +6415,10 @@ function Comisiones() {
   const {
     comisiones = [], personalAdmin = [], role, roleKey,
     oportunidades = [], cuentas = [], cxc = [], facturas = [], osClientes = [], cobrosHistorial = [],
-    aprobarComision, rechazarComision, generarReciboHonorarios, confirmarReciboHonorarios,
+    aprobarComision, rechazarComision, corregirMontoComision, corregirBonificacionComision, generarReciboHonorarios, confirmarReciboHonorarios,
     aprobarAcuerdoComision, rechazarAcuerdoComision,
     reconciliarComisionesPendientes,
-    recibosHonorarios = [], addNotificacion, empresa, navigate,
+    recibosHonorarios = [], addNotificacion, empresa, navigate, tcUSDaPEN,
   } = useApp();
 
   const puedeAprobar = role?.permisos?.aprobar_descuentos || role?.permisos?.tenant_admin || role?.permisos?.todo;
@@ -6399,10 +6487,23 @@ function Comisiones() {
   const [notaApro, setNotaApro] = useState('');
   const [modoRechazo, setModoRechazo] = useState(false);
   const [motivoRechazo, setMotivoRechazo] = useState('');
+  const [editMonto, setEditMonto] = useState('');
+  const [editandoMonto, setEditandoMonto] = useState(false);
+  const [editBono, setEditBono] = useState('');
+  const [editandoBono, setEditandoBono] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [reconciliando, setReconciliando] = useState(false);
   const [panelRecibo, setPanelRecibo] = useState(null);
+  const [rheNumero, setRheNumero] = useState('');
+  const [rheFechaEmision, setRheFechaEmision] = useState('');
+  const [rheFechaVenc, setRheFechaVenc] = useState('');
+  const [rheArchivoFile, setRheArchivoFile] = useState(null);
+  const [rheConstanciaFile, setRheConstanciaFile] = useState(null);
+  const [rheMoneda, setRheMoneda] = useState('');
+  const [rheTc, setRheTc] = useState('');
   const autoReconciliacionKey = useRef('');
+  const reconciliarRef = useRef(reconciliarComisionesPendientes);
+  reconciliarRef.current = reconciliarComisionesPendientes;
 
   const vendedoresUniq = useMemo(() => {
     const ids = [...new Set(comisiones.map(c => c.vendedor_id).filter(Boolean))];
@@ -6526,8 +6627,15 @@ function Comisiones() {
       if (!por[key]) por[key] = { id: key, vendedor_id: c.vendedor_id, moneda, nombre: c.vendedor_nombre, items: [] };
       por[key].items.push(c);
     });
-    return Object.values(por);
-  }, [comisionesEfectivas]);
+    return Object.values(por).map(v => {
+      const recibo = recibosHonorarios.find(r =>
+        r.vendedor_id === v.vendedor_id &&
+        (r.estado === 'borrador' || r.estado === 'pendiente_pago') &&
+        (r.comisiones_ids || []).some(id => v.items.find(c => c.id === id))
+      ) || null;
+      return { ...v, recibo };
+    });
+  }, [comisionesEfectivas, recibosHonorarios]);
 
   function abrirPanel(c) {
     setPanelComision(c);
@@ -6535,6 +6643,10 @@ function Comisiones() {
     setNotaApro('');
     setModoRechazo(false);
     setMotivoRechazo('');
+    setEditandoMonto(false);
+    setEditMonto('');
+    setEditandoBono(false);
+    setEditBono('');
   }
 
   async function handleAprobar() {
@@ -6565,17 +6677,42 @@ function Comisiones() {
   }
 
   async function handleGenerarRecibo(vendedorId, moneda) {
-    const recibo = await generarReciboHonorarios(vendedorId, moneda);
-    if (recibo) setPanelRecibo(recibo);
+    try {
+      const recibo = await generarReciboHonorarios(vendedorId, moneda);
+      if (recibo) setPanelRecibo(recibo);
+    } catch (err) {
+      addNotificacion(`Error al generar recibo: ${err?.message || 'Error desconocido'}`);
+      console.error('[handleGenerarRecibo]', err);
+    }
   }
+
+  const cerrarPanelRecibo = () => {
+    setPanelRecibo(null);
+    setRheNumero(''); setRheFechaEmision(''); setRheFechaVenc(''); setRheArchivoFile(null); setRheConstanciaFile(null);
+    setRheMoneda(''); setRheTc('');
+  };
 
   async function handleConfirmarRecibo() {
     if (!panelRecibo) return;
+    if (!rheNumero.trim()) { addNotificacion('Ingresa el N° de RHE antes de confirmar.'); return; }
+    if (!rheArchivoFile) { addNotificacion('Adjunta el documento RHE antes de confirmar.'); return; }
     setGuardando(true);
     try {
-      await confirmarReciboHonorarios(panelRecibo.id);
-      addNotificacion('Recibo de honorarios confirmado y egreso registrado.');
-      setPanelRecibo(null);
+      const monedaEfectiva = rheMoneda || panelReciboMoneda;
+      const tcEfectivo = Number(rheTc) || tcUSDaPEN || 1;
+      await confirmarReciboHonorarios(panelRecibo.id, {
+        numero_rhe: rheNumero.trim(),
+        fecha_emision: rheFechaEmision || undefined,
+        fecha_vencimiento: rheFechaVenc || undefined,
+        archivo_rhe_file: rheArchivoFile,
+        archivo_constancia_file: rheConstanciaFile || undefined,
+        moneda_rhe: monedaEfectiva,
+        tipo_cambio: panelReciboMoneda === 'USD' && monedaEfectiva === 'PEN' ? tcEfectivo : undefined,
+      });
+      cerrarPanelRecibo();
+    } catch (err) {
+      addNotificacion(`Error al confirmar recibo: ${err?.message || 'Error desconocido'}`);
+      console.error('[confirmarRecibo]', err);
     } finally {
       setGuardando(false);
     }
@@ -6595,14 +6732,14 @@ function Comisiones() {
   const panelReciboMoneda = panelRecibo ? normalizeMoneda(panelRecibo.moneda || empresa?.moneda || empresa?.moneda_base) : 'PEN';
 
   useEffect(() => {
-    if (!reconciliarComisionesPendientes || !empresa?.id) return;
+    if (!empresa?.id) return;
     if (!cobrosHistorial.length || !cxc.length || !personalAdmin.length) return;
     const key = `${empresa.id}:${cobrosHistorial.length}:${cxc.length}:${personalAdmin.length}:${comisiones.length}`;
     if (autoReconciliacionKey.current === key) return;
     autoReconciliacionKey.current = key;
     let alive = true;
     setReconciliando(true);
-    reconciliarComisionesPendientes({ silencioso: true })
+    reconciliarRef.current({ silencioso: true })
       .then(count => {
         if (alive && count > 0) addNotificacion(`Se recuperaron ${count} comision(es) cobradas sin registrar.`);
       })
@@ -6610,7 +6747,7 @@ function Comisiones() {
         if (alive) setReconciliando(false);
       });
     return () => { alive = false; };
-  }, [empresa?.id, cobrosHistorial.length, cxc.length, personalAdmin.length, comisiones.length, reconciliarComisionesPendientes]);
+  }, [empresa?.id, cobrosHistorial.length, cxc.length, personalAdmin.length, comisiones.length]);
 
   async function handleReconciliarComisiones() {
     if (!reconciliarComisionesPendientes) return;
@@ -6855,6 +6992,9 @@ function Comisiones() {
           <div className="commission-receipt-list">
             {vendedoresHonorariosPendientes.map(v => {
               const total = v.items.reduce((s, c) => s + Number(c.monto_total || 0), 0);
+              const { recibo } = v;
+              const esPendientePago = recibo?.estado === 'pendiente_pago';
+              const esBorrador = recibo?.estado === 'borrador';
               return (
                 <div key={v.id} className="commission-receipt-card">
                   <div>
@@ -6862,10 +7002,24 @@ function Comisiones() {
                     <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{v.items.length} comisiones aprobadas</div>
                   </div>
                   <div className="commission-receipt-amount">{moneyComision(total, v.moneda)}</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    <button className="btn btn-sm btn-primary" onClick={() => handleGenerarRecibo(v.vendedor_id, v.moneda)}>
-                      Generar {v.moneda}
-                    </button>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
+                    {esPendientePago && (
+                      <>
+                        <span className="badge badge-orange" style={{ fontSize: 11 }}>RHE emitido · pendiente pago</span>
+                        <button className="btn btn-sm btn-secondary" onClick={() => setPanelRecibo(recibo)}>Ver recibo</button>
+                      </>
+                    )}
+                    {esBorrador && (
+                      <button className="btn btn-sm btn-secondary" style={{ borderColor: 'var(--orange)', color: 'var(--orange)' }}
+                        onClick={() => setPanelRecibo(recibo)}>
+                        Completar RHE
+                      </button>
+                    )}
+                    {!recibo && (
+                      <button className="btn btn-sm btn-primary" onClick={() => handleGenerarRecibo(v.vendedor_id, v.moneda)}>
+                        Generar {v.moneda}
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -6992,16 +7146,18 @@ function Comisiones() {
       {/* Panel detalle / aprobación */}
       {panelComision && (
         <div className="side-panel-backdrop" onClick={() => setPanelComision(null)}>
-          <div className="side-panel" onClick={e => e.stopPropagation()} style={{ width: 420 }}>
+          <div className="side-panel" onClick={e => e.stopPropagation()} style={{ width: 'min(580px, 96vw)' }}>
             <div className="side-panel-head">
               <div>
                 <div className="eyebrow">Comisión</div>
-                <div style={{ fontWeight: 700, fontSize: 17 }}>{panelComision.vendedor_nombre}</div>
+                <div className="font-display" style={{ fontWeight: 700, fontSize: 22, marginTop: 2 }}>{panelComision.vendedor_nombre}</div>
               </div>
-              <button className="btn btn-sm btn-secondary" onClick={() => setPanelComision(null)}>Cerrar</button>
+              <button className="icon-btn" onClick={() => setPanelComision(null)}>{I.x}</button>
             </div>
             <div className="side-panel-body">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
+              <div className="eyebrow" style={{marginBottom:12}}>Detalle de Comisión</div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
                 {[
                   ['Período', panelComision.periodo],
                   ['Estado', ESTADO_BADGE[panelComision.estado]],
@@ -7012,63 +7168,157 @@ function Comisiones() {
                   ['Bonificación', moneyComision(panelBonificacionPreview, panelMoneda)],
                   ['Total', moneyComision(panelTotalPreview, panelMoneda)],
                 ].map(([label, val]) => (
-                  <div key={label} style={{ background: 'var(--bg-subtle)', borderRadius: 6, padding: '8px 10px' }}>
-                    <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginBottom: 2 }}>{label}</div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{val}</div>
+                  <div className="input-group" key={label} style={{ marginBottom: 0 }}>
+                    <label>{label}</label>
+                    <div className="input" style={{ background: 'var(--bg-subtle)', pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                      {val}
+                    </div>
                   </div>
                 ))}
               </div>
 
               {tieneAcuerdoEspecial(panelComision) && (
-                <div style={{ marginBottom: 12 }}>
+                <div style={{ marginBottom: 16 }}>
                   <span className="badge badge-green" style={{ fontSize: 11, padding: '2px 8px' }}>Acuerdo especial</span>
                 </div>
               )}
 
               {panelComision.motivo_rechazo && (
-                <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 12px', marginBottom: 16, fontSize: 12 }}>
-                  <strong>Motivo de rechazo:</strong> {panelComision.motivo_rechazo}
+                <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 14px', marginBottom: 20, fontSize: 13 }}>
+                  <strong style={{display: 'block', marginBottom: 4, color: 'var(--red)'}}>Motivo de rechazo:</strong> {panelComision.motivo_rechazo}
                 </div>
               )}
               {panelComision.nota_aprobacion && (
-                <div style={{ background: '#dcfce7', border: '1px solid #86efac', borderRadius: 6, padding: '10px 12px', marginBottom: 16, fontSize: 12 }}>
-                  <strong>Nota:</strong> {panelComision.nota_aprobacion}
+                <div style={{ background: '#dcfce7', border: '1px solid #86efac', borderRadius: 8, padding: '12px 14px', marginBottom: 20, fontSize: 13 }}>
+                  <strong style={{display: 'block', marginBottom: 4, color: 'var(--green-dk)'}}>Nota de aprobación:</strong> {panelComision.nota_aprobacion}
                 </div>
               )}
 
+              {puedeAprobar && panelComision.estado === 'aprobada' && (() => {
+                const reciboVinculado = recibosHonorarios.find(r =>
+                  (r.comisiones_ids || []).includes(panelComision.id) && r.estado !== 'borrador'
+                );
+                if (reciboVinculado) return null;
+                return (
+                  <div style={{ marginTop: 8 }}>
+                    <div className="eyebrow" style={{ marginBottom: 12 }}>Corrección</div>
+                    {!editandoBono ? (
+                      <button className="btn btn-sm btn-secondary" onClick={() => { setEditBono(String(panelComision.bonificacion || '0')); setEditandoBono(true); }}>
+                        Corregir bonificación
+                      </button>
+                    ) : (
+                      <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div className="input-group" style={{ marginBottom: 0 }}>
+                          <label>Nueva bonificación ({panelMoneda === 'USD' ? 'US$' : 'S/'})</label>
+                          <input className="input" type="number" min="0" step="0.01" value={editBono} onChange={e => setEditBono(e.target.value)} autoFocus />
+                          {editBono !== '' && (
+                            <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 6 }}>
+                              Nuevo total: <strong style={{ color: 'var(--fg)' }}>
+                                {moneyComision(Math.round((Number(panelComision.monto_comision || 0) + Number(editBono || 0)) * 100) / 100, panelMoneda)}
+                              </strong>
+                              {' '}(antes: {moneyComision(panelComision.monto_total, panelMoneda)})
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button className="btn btn-sm btn-secondary" onClick={() => setEditandoBono(false)}>Cancelar</button>
+                          <button className="btn btn-sm btn-primary" disabled={editBono === '' || guardando}
+                            onClick={async () => {
+                              setGuardando(true);
+                              const nuevaBonif = Number(editBono || 0);
+                              await corregirBonificacionComision(panelComision.id, nuevaBonif);
+                              setPanelComision(prev => ({
+                                ...prev,
+                                bonificacion: nuevaBonif,
+                                monto_total: Math.round((Number(prev.monto_comision || 0) + nuevaBonif) * 100) / 100,
+                              }));
+                              setEditandoBono(false);
+                              setGuardando(false);
+                            }}>
+                            Guardar corrección
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {puedeAprobar && panelComision.estado === 'pendiente_aprobacion' && (
+                <>
+                  <div className="eyebrow" style={{ marginBottom: 12, marginTop: 24 }}>Ajustes y Aprobación</div>
+                  
+                  {!editandoMonto ? (
+                    <button className="btn btn-sm btn-secondary" style={{ marginBottom: 20 }}
+                      onClick={() => { setEditMonto(String(panelComision.monto_cobrado || '')); setEditandoMonto(true); }}>
+                      Corregir monto cobrado
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20, background: 'var(--bg-subtle)', padding: 16, borderRadius: 8 }}>
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <label>Monto cobrado (subtotal sin IGV)</label>
+                        <input className="input" type="number" min="0" step="0.01" value={editMonto} onChange={e => setEditMonto(e.target.value)} autoFocus />
+                        {editMonto && <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 6 }}>
+                          Comisión: <strong>{moneyComision(Math.round(Number(editMonto) * Number(panelComision.porcentaje_comision || 0) / 100 * 100) / 100, panelMoneda)}</strong>
+                        </div>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-sm btn-secondary" onClick={() => setEditandoMonto(false)}>Cancelar</button>
+                        <button className="btn btn-sm btn-primary" disabled={!editMonto || guardando}
+                          onClick={async () => {
+                            setGuardando(true);
+                            await corregirMontoComision(panelComision.id, Number(editMonto));
+                            setPanelComision(prev => {
+                              const base = Number(editMonto);
+                              const monto_comision = Math.round(base * Number(prev.porcentaje_comision || 0) / 100 * 100) / 100;
+                              return { ...prev, monto_cobrado: base, monto_comision, monto_total: Math.round((monto_comision + Number(prev.bonificacion || 0)) * 100) / 100 };
+                            });
+                            setEditandoMonto(false);
+                            setGuardando(false);
+                          }}>
+                          Guardar corrección
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
               {puedeAprobar && panelComision.estado === 'pendiente_aprobacion' && !modoRechazo && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-                  <div className="input-group" style={{ marginBottom: 0 }}>
-                    <label>Bonificación adicional (opcional)</label>
-                    <input type="number" min="0" step="0.01" placeholder="0.00" value={bonif} onChange={e => setBonif(e.target.value)} />
-                    <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 4 }}>
-                      Total actualizado: <strong style={{ color: 'var(--fg)' }}>{moneyComision(panelTotalPreview, panelMoneda)}</strong>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <label>Bonificación adicional (opcional)</label>
+                      <input className="input" type="number" min="0" step="0.01" placeholder="0.00" value={bonif} onChange={e => setBonif(e.target.value)} />
+                      <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 6 }}>
+                        Total actualizado: <strong style={{ color: 'var(--fg)' }}>{moneyComision(panelTotalPreview, panelMoneda)}</strong>
+                      </div>
+                    </div>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <label>Nota de aprobación (opcional)</label>
+                      <input className="input" type="text" placeholder="Notas..." value={notaApro} onChange={e => setNotaApro(e.target.value)} />
                     </div>
                   </div>
-                  <div className="input-group" style={{ marginBottom: 0 }}>
-                    <label>Nota de aprobación (opcional)</label>
-                    <input type="text" placeholder="Notas..." value={notaApro} onChange={e => setNotaApro(e.target.value)} />
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleAprobar} disabled={guardando}>
-                      {guardando ? 'Guardando...' : 'Aprobar'}
-                    </button>
-                    <button className="btn btn-secondary" style={{ color: 'var(--red)' }} onClick={() => setModoRechazo(true)}>
+                  <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12, gap: 8 }}>
+                    <button className="btn btn-secondary" style={{ color: 'var(--danger)' }} onClick={() => setModoRechazo(true)}>
                       Rechazar
+                    </button>
+                    <button className="btn btn-primary" style={{ background: 'var(--green-dk)', borderColor: 'var(--green-dk)' }} onClick={handleAprobar} disabled={guardando}>
+                      {guardando ? 'Guardando...' : 'Aprobar'}
                     </button>
                   </div>
                 </div>
               )}
 
               {puedeAprobar && panelComision.estado === 'pendiente_aprobacion' && modoRechazo && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div className="input-group" style={{ marginBottom: 0 }}>
-                    <label>Motivo de rechazo <span style={{ color: 'var(--red)' }}>*</span></label>
-                    <input type="text" placeholder="Describe el motivo..." value={motivoRechazo} onChange={e => setMotivoRechazo(e.target.value)} />
+                    <label>Motivo de rechazo <span style={{ color: 'var(--danger)' }}>*</span></label>
+                    <input className="input" type="text" placeholder="Describe el motivo por el cual rechazas esta comisión..." value={motivoRechazo} onChange={e => setMotivoRechazo(e.target.value)} autoFocus />
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12, gap: 8 }}>
                     <button className="btn btn-secondary" onClick={() => setModoRechazo(false)}>Cancelar</button>
-                    <button className="btn btn-primary" style={{ flex: 1, background: 'var(--red)', borderColor: 'var(--red)' }} onClick={handleRechazar} disabled={guardando || !motivoRechazo.trim()}>
+                    <button className="btn btn-primary" style={{ background: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={handleRechazar} disabled={guardando || !motivoRechazo.trim()}>
                       {guardando ? 'Guardando...' : 'Confirmar rechazo'}
                     </button>
                   </div>
@@ -7080,47 +7330,160 @@ function Comisiones() {
       )}
 
       {/* Panel recibo honorarios */}
-      {panelRecibo && (
-        <div className="side-panel-backdrop" onClick={() => setPanelRecibo(null)}>
-          <div className="side-panel" onClick={e => e.stopPropagation()} style={{ width: 380 }}>
-            <div className="side-panel-head">
-              <div>
-                <div className="eyebrow">Recibo por honorarios</div>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>{panelRecibo.vendedor_nombre}</div>
-              </div>
-              <button className="btn btn-sm btn-secondary" onClick={() => setPanelRecibo(null)}>Cerrar</button>
-            </div>
-            <div className="side-panel-body">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                {[
-                  ['Período', panelRecibo.periodo],
-                  ['N° comisiones', panelRecibo.comisiones_ids?.length || 0],
-                  ['Monto bruto', moneyComision(panelRecibo.monto_bruto, panelReciboMoneda)],
-                  [`Retención IR${panelRecibo.retencion_ir > 0 ? '' : ' (S/ 0)'}`, `-${moneyComision(panelRecibo.retencion_ir, panelReciboMoneda)}`],
-                  ['Monto neto', moneyComision(panelRecibo.monto_neto, panelReciboMoneda)],
-                ].map(([label, val]) => (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <span style={{ color: 'var(--fg-muted)', fontSize: 13 }}>{label}</span>
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{val}</span>
-                  </div>
-                ))}
-              </div>
-              {panelRecibo.motivo_retencion && (
-                <div style={{ fontSize: 12, padding: '8px 12px', background: panelRecibo.retencion_ir > 0 ? 'var(--bg-warning, #fff8e1)' : 'var(--bg-subtle)', borderRadius: 6, marginBottom: 14, color: 'var(--fg-muted)', borderLeft: `3px solid ${panelRecibo.retencion_ir > 0 ? 'var(--orange, #f59e0b)' : 'var(--border)'}` }}>
-                  <strong style={{ display: 'block', marginBottom: 2 }}>Regla de retención</strong>
-                  {panelRecibo.motivo_retencion}
+      {panelRecibo && (() => {
+        const vendedorRec = personalAdmin.find(p => p.id === panelRecibo.vendedor_id);
+        const tieneSuspension = Boolean(vendedorRec?.suspension_retenciones);
+        const fechaVencDefault = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().split('T')[0]; })();
+        return (
+          <div className="side-panel-backdrop" onClick={cerrarPanelRecibo}>
+            <div className="side-panel" onClick={e => e.stopPropagation()} style={{ width: 'min(480px, 96vw)' }}>
+              <div className="side-panel-head">
+                <div>
+                  <div className="eyebrow">Recibo por honorarios</div>
+                  <div className="font-display" style={{ fontWeight: 700, fontSize: 22, marginTop: 2 }}>{panelRecibo.vendedor_nombre}</div>
                 </div>
-              )}
-              <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 16 }}>
-                Al confirmar se generará una CxP en el módulo financiero. El egreso a Tesorería y el cierre de comisiones ocurren al registrar el pago de esa CxP.
+                <button className="icon-btn" onClick={cerrarPanelRecibo}>{I.x}</button>
               </div>
-              <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleConfirmarRecibo} disabled={guardando}>
-                {guardando ? 'Procesando...' : 'Confirmar y generar CxP'}
-              </button>
+              <div className="side-panel-body">
+
+                {panelRecibo.estado === 'pendiente_pago' && (
+                  <div style={{ background: '#dcfce7', border: '1px solid #86efac', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: 'var(--green-dk)', fontWeight: 600 }}>RHE emitido y CxP generada.</span>
+                    <span style={{ color: 'var(--fg-muted)' }}>Pendiente de pago en Finanzas.</span>
+                  </div>
+                )}
+
+                {/* Resumen calculado */}
+                <div className="eyebrow" style={{ marginBottom: 12 }}>Resumen del recibo</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                  {[
+                    ['Período', panelRecibo.periodo],
+                    ['N° comisiones', panelRecibo.comisiones_ids?.length || 0],
+                    ['Monto bruto', moneyComision(panelRecibo.monto_bruto, panelReciboMoneda)],
+                    ['Retención IR', panelRecibo.retencion_ir > 0 ? `-${moneyComision(panelRecibo.retencion_ir, panelReciboMoneda)}` : moneyComision(0, panelReciboMoneda)],
+                    ['Monto neto', moneyComision(panelRecibo.monto_neto, panelReciboMoneda)],
+                  ].map(([label, val]) => (
+                    <div className="input-group" key={label} style={{ marginBottom: 0 }}>
+                      <label>{label}</label>
+                      <div className="input" style={{ background: 'var(--bg-subtle)', pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {panelRecibo.motivo_retencion && (
+                  <div style={{ background: panelRecibo.retencion_ir > 0 ? '#fff8e1' : 'var(--bg-subtle)', border: `1px solid ${panelRecibo.retencion_ir > 0 ? '#f59e0b' : 'var(--border)'}`, borderRadius: 8, padding: '12px 14px', marginBottom: 20, fontSize: 13 }}>
+                    <strong style={{ display: 'block', marginBottom: 4, color: panelRecibo.retencion_ir > 0 ? '#b45309' : 'var(--fg)' }}>Regla de retención</strong>
+                    <span style={{ color: 'var(--fg-muted)' }}>{panelRecibo.motivo_retencion}</span>
+                  </div>
+                )}
+
+                {/* Datos del RHE — editable solo en borrador */}
+                <div className="eyebrow" style={{ marginBottom: 12, marginTop: 4 }}>Datos del documento</div>
+
+                {panelRecibo.estado === 'pendiente_pago' && panelRecibo.numero_rhe && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                    {[
+                      ['N° RHE', panelRecibo.numero_rhe],
+                      ['Moneda del RHE', panelRecibo.moneda_cxp || panelRecibo.moneda || '—'],
+                    ].map(([label, val]) => (
+                      <div className="input-group" key={label} style={{ marginBottom: 0 }}>
+                        <label>{label}</label>
+                        <div className="input" style={{ background: 'var(--bg-subtle)', pointerEvents: 'none' }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Moneda del RHE — solo aparece si la comisión es USD y está en borrador */}
+                {panelReciboMoneda === 'USD' && panelRecibo.estado !== 'pendiente_pago' && (() => {
+                  const monedaSel = rheMoneda || 'USD';
+                  const tcValor = rheTc !== '' ? rheTc : (tcUSDaPEN ? String(tcUSDaPEN) : '');
+                  const tcNum = Number(tcValor) || 0;
+                  return (
+                    <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div className="input-group" style={{ marginBottom: 0 }}>
+                          <label>Moneda del RHE</label>
+                          <select className="select" value={monedaSel} onChange={e => { setRheMoneda(e.target.value); if (!rheTc && tcUSDaPEN) setRheTc(String(tcUSDaPEN)); }}>
+                            <option value="USD">USD — Dólares</option>
+                            <option value="PEN">PEN — Soles</option>
+                          </select>
+                        </div>
+                        {monedaSel === 'PEN' && (
+                          <div className="input-group" style={{ marginBottom: 0 }}>
+                            <label>Tipo de cambio (S/ por US$)</label>
+                            <input className="input" type="number" min="0" step="0.01" placeholder="3.80" value={tcValor} onChange={e => setRheTc(e.target.value)} />
+                          </div>
+                        )}
+                      </div>
+                      {monedaSel === 'PEN' && tcNum > 0 && (
+                        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+                          {[
+                            ['Monto bruto', panelRecibo.monto_bruto],
+                            ['Retención IR', panelRecibo.retencion_ir],
+                            ['Monto neto', panelRecibo.monto_neto],
+                          ].map(([label, usd]) => (
+                            <div key={label} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: 'var(--fg-muted)' }}>{label} en soles</span>
+                              <strong>S/ {(Math.round(Number(usd) * tcNum * 100) / 100).toFixed(2)}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {panelRecibo.estado !== 'pendiente_pago' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                    <div className="input-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
+                      <label>N° RHE <span style={{ color: 'var(--danger)' }}>*</span></label>
+                      <input className="input" placeholder="RHE-00001" value={rheNumero} onChange={e => setRheNumero(e.target.value)} />
+                    </div>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <label>Fecha de emisión <span style={{ color: 'var(--danger)' }}>*</span></label>
+                      <input className="input" type="date" value={rheFechaEmision || new Date().toISOString().split('T')[0]} onChange={e => setRheFechaEmision(e.target.value)} />
+                    </div>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <label>Fecha de vencimiento</label>
+                      <input className="input" type="date" value={rheFechaVenc || fechaVencDefault} onChange={e => setRheFechaVenc(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+
+                {panelRecibo.estado !== 'pendiente_pago' ? (
+                  <>
+                    <div className="input-group" style={{ marginBottom: 16 }}>
+                      <label>Adjuntar RHE (PDF o foto) <span style={{ color: 'var(--danger)' }}>*</span></label>
+                      <input className="input" type="file" accept="image/*,.pdf" onChange={e => setRheArchivoFile(e.target.files[0] || null)} />
+                      {rheArchivoFile && <div style={{ fontSize: 12, color: 'var(--green)', marginTop: 4 }}>{rheArchivoFile.name} — listo para subir.</div>}
+                    </div>
+
+                    {tieneSuspension && (
+                      <div className="input-group" style={{ marginBottom: 16 }}>
+                        <label>Constancia de suspensión de retenciones <span style={{ color: 'var(--danger)' }}>*</span></label>
+                        <input className="input" type="file" accept="image/*,.pdf" onChange={e => setRheConstanciaFile(e.target.files[0] || null)} />
+                        {rheConstanciaFile && <div style={{ fontSize: 12, color: 'var(--green)', marginTop: 4 }}>{rheConstanciaFile.name} — lista para subir.</div>}
+                      </div>
+                    )}
+
+                    <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 20, lineHeight: 1.5 }}>
+                      Al confirmar se subirán los archivos y se generará una CxP en el módulo financiero.
+                    </div>
+                    <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleConfirmarRecibo} disabled={guardando}>
+                      {guardando ? 'Subiendo archivos y generando CxP...' : 'Confirmar y generar CxP'}
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 8 }}>
+                    Para modificar este recibo, gestiona la CxP directamente en el módulo de Finanzas.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

@@ -15,7 +15,7 @@ const tenantAdminScreens = [
   'ventas','caja','financiamiento','prestamos_personal','cxc','cxp','facturacion','tesoreria','resultados','valorizacion','presupuestos',
   'cs_onboarding','cs_planes','cs_health','cs_renovaciones','cs_fidelizacion','bi_cs',
   'ia_comercial','ia_operativa','ia_financiera',
-  'campo','usuarios','rrhh_operativo','rrhh_admin','asistencia','turnos','nomina','evaluaciones_desempeno','liquidaciones_cese','roles','maestros','parametros','servicios','tarifarios'
+  'campo','usuarios','rrhh_operativo','rrhh_admin','asistencia','turnos','nomina','tareo_admin','control_horas','evaluaciones_desempeno','liquidaciones_cese','roles','maestros','parametros','servicios','tarifarios'
 ];
 
 const platformScreens = ['dashboard','tenants','planes','metricas_saas','usuarios','roles'];
@@ -926,6 +926,7 @@ export const pantallasPermisos = [
   { key: 'nomina', modulo: 'RRHH', pantalla: 'Nomina', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
   { key: 'prestamos_personal', modulo: 'RRHH', pantalla: 'Prestamos al Personal', acciones: ['ver','crear','editar','exportar','finanzas'] },
   { key: 'tareo_admin', modulo: 'RRHH', pantalla: 'Tareo Administrativo', acciones: ['ver','crear','editar'] },
+  { key: 'control_horas', modulo: 'RRHH', pantalla: 'Control de Horas', acciones: ['ver','exportar','costos'] },
   { key: 'evaluaciones_desempeno', modulo: 'RRHH', pantalla: 'Evaluación de Desempeño', acciones: ['ver','crear','editar','aprobar','exportar'] },
   { key: 'financiamiento', modulo: 'Administracion', pantalla: 'Financiamiento y Deuda', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
   { key: 'ventas', modulo: 'Administracion', pantalla: 'Ventas', acciones: ['ver','crear','editar','exportar','finanzas'] },

@@ -272,10 +272,9 @@ function ColaboradorAutocomplete({ value, onChange, personalOperativo = [], pers
     : [];
 
   const costoHoraPEN = (p) => {
-    const explicit = Number(p?.costo_hora_real ?? p?.costo ?? p?.costo_hora ?? 0);
+    const explicit = Number(p?.tarifa_hora ?? p?.costo_hora_real ?? p?.costo ?? p?.costo_hora ?? 0);
     if (explicit > 0) return explicit;
-    const rem = Number(p?.remuneracion ?? 0);
-    return rem > 0 ? Math.round(rem / 240 * 100) / 100 : 0;
+    return 0;
   };
 
   const seleccionar = (p) => {
@@ -3893,7 +3892,7 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const cebeHeredado = (centrosBeneficio || []).find(c => c.id === os.centro_beneficio_id);
   const itemsSugeridos = cotizacion ? (cotizacion.items || []).map(i => i.servicio || i.descripcion).filter(Boolean) : [];
-  const costoHoraTec = (tec) => Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+  const costoHoraTec = (tec) => Number(tec?.tarifa_hora ?? tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
 
   const crearFila = (defaults = {}) => ({
     _id: Date.now() + Math.random(),
@@ -4675,10 +4674,9 @@ function OSCliente() {
         .find(m => m.tecnico_id === tecnicoId);
       if (moItem?.costo_hora > 0) return moItem.costo_hora;
       const tec = allPersonal.find(p => p.id === tecnicoId);
-      const explicit = Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+      const explicit = Number(tec?.tarifa_hora ?? tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
       if (explicit > 0) return explicit;
-      const rem = Number(tec?.remuneracion ?? 0);
-      return rem > 0 ? Math.round(rem / 240 * 100) / 100 : 0;
+      return 0;
     };
     const mo  = aprobados.reduce((s, p) => s + (p.horas || 0) * costoHora(p.tecnico_id), 0);
     const mat = aprobados.reduce((s, p) =>

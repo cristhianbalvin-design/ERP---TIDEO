@@ -2,7 +2,7 @@
 import { MOCK } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
-import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT } from './services/operacionesService.js';
+import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
   calcularFechaVencimientoCxC,
@@ -1221,7 +1221,9 @@ export function AppProvider({ children }) {
   const resolverVencimientoCxC = (datos = {}) => {
     const fechaEmision = datos.fecha_emision || new Date().toISOString().split('T')[0];
     const cuenta = (cuentas || []).find(c => c.id === datos.cuenta_id);
-    const condicionCliente = cuenta ? cuenta.condicion_pago : datos.condicion_pago;
+    const osRef = datos.os_cliente_id ? (osClientes || []).find(o => o.id === datos.os_cliente_id) : null;
+    // Prioridad: condici\xf3n explícita del form > condici\xf3n de la OS > condici\xf3n del cliente
+    const condicionCliente = datos.condicion_pago || osRef?.condicion_pago || cuenta?.condicion_pago;
     const resuelta = resolverCondicionPagoCxC({
       condicionCliente,
       condicionFallback: condicionPagoFallbackCxC,
@@ -1528,6 +1530,9 @@ export function AppProvider({ children }) {
     const payload = { ...datos };
     if (payload.limite_credito !== undefined) {
       payload.limite_credito = Number(payload.limite_credito || 0);
+    }
+    if (payload.tasa_retencion_sunat !== undefined) {
+      payload.tasa_retencion_sunat = Number(payload.tasa_retencion_sunat || 3);
     }
 
     setCuentas(prev => prev.map(c => c.id === cuentaId ? { ...c, ...payload } : c));
@@ -2856,13 +2861,12 @@ export function AppProvider({ children }) {
     }));
   };
 
-  // Costo hora unificado: busca en personal operativo y admin; fallback remuneracion/240
+  // Costo hora unificado: tarifa_hora de la ficha, con fallback legacy.
   const calcCostoHora = (personaId) => {
     const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === personaId);
-    const explicit = Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+    const explicit = Number(tec?.tarifa_hora ?? tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
     if (explicit > 0) return explicit;
-    const rem = Number(tec?.remuneracion ?? 0);
-    return rem > 0 ? Math.round(rem / 240 * 100) / 100 : 0;
+    return 0;
   };
 
   const aprobarParteDiario = (parteId, avanceValidado = null, motivoAprobacion = '') => {
@@ -3018,9 +3022,17 @@ export function AppProvider({ children }) {
     const partesAprobados = partes.filter(p => p.ot_id === otId && p.estado === 'aprobado');
 
     const ot = ots.find(o => o.id === otId);
+    const personasSinTarifa = new Map();
+    const registrarSinTarifa = (personaId) => {
+      const persona = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === personaId);
+      const tarifa = Number(persona?.tarifa_hora ?? persona?.costo_hora_real ?? persona?.costo ?? persona?.costo_hora ?? 0);
+      if (!persona || tarifa > 0) return;
+      personasSinTarifa.set(persona.id, persona.nombre || persona.id);
+    };
     const costoMO = partesAprobados.reduce((s, p) => {
       const moItem = (ot?.est_detalle?.mano_obra || []).find(m => m.tecnico_id === p.tecnico_id);
       const ch = (moItem?.costo_hora > 0) ? moItem.costo_hora : calcCostoHora(p.tecnico_id);
+      if (!(ch > 0)) registrarSinTarifa(p.tecnico_id);
       return s + Number(p.horas || 0) * ch;
     }, 0);
 
@@ -3040,7 +3052,11 @@ export function AppProvider({ children }) {
         const tareosAdmin = await tareosAdminService.cargarTareos(empresa.id, { otId });
         costoAdmin = (tareosAdmin || [])
           .filter(t => t.estado === 'enviado')
-          .reduce((s, t) => s + Number(t.horas || 0) * calcCostoHora(t.personal_id), 0);
+          .reduce((s, t) => {
+            const ch = calcCostoHora(t.personal_id);
+            if (!(ch > 0)) registrarSinTarifa(t.personal_id);
+            return s + Number(t.horas || 0) * ch;
+          }, 0);
       }
     } catch (error) {
       console.error('[Tareos admin cost]', error?.message || error, error);
@@ -3050,6 +3066,18 @@ export function AppProvider({ children }) {
     const nuevosCostoReal = costoMO + costoAdmin + costoMat + costoTerceros + costoLogistica;
     setOts(prev => prev.map(o => o.id === otId ? { ...o, costoReal: nuevosCostoReal } : o));
     opsSync(sb => svcActualizarOT(sb, otId, { costoReal: nuevosCostoReal }));
+    if (empresa?.id) {
+      opsSync(sb => svcUpsertCostoOT(sb, empresa.id, otId, {
+        mano_obra: costoMO + costoAdmin,
+        materiales: costoMat,
+        servicios_terceros: costoTerceros,
+        logistica: costoLogistica,
+        moneda: ot?.moneda || 'PEN',
+      }));
+    }
+    if (personasSinTarifa.size > 0) {
+      addNotificacion(`Tarifa no configurada: ${Array.from(personasSinTarifa.values()).join(', ')}.`, 'error');
+    }
     addNotificacion(`OT recalculada: MO operativa=${costoMO.toFixed(2)}, MO admin=${costoAdmin.toFixed(2)}, mat=${costoMat.toFixed(2)}, terceros=${costoTerceros.toFixed(2)}, logistica=${costoLogistica.toFixed(2)}.`);
     return nuevosCostoReal;
   };
@@ -3151,7 +3179,51 @@ export function AppProvider({ children }) {
     }]));
   };
 
-  const crearGasto = (datos) => {
+  const compraGastoPayload = (gasto) => ({
+    id: gasto.id,
+    empresa_id: empresa.id,
+    tipo: gasto.tipo || 'gasto',
+    descripcion: gasto.descripcion,
+    categoria: gasto.categoria,
+    monto: gasto.monto,
+    moneda: gasto.moneda || 'PEN',
+    fecha: gasto.fecha,
+    origen_registro: gasto.origen_registro || 'backoffice',
+    estado: gasto.estado || 'registrado',
+    estado_pago: gasto.estado_pago || 'pagado',
+    referencia_pago: gasto.referencia_pago || null,
+    cxp_id: gasto.cxp_id || null,
+    centro_costo_id: gasto.centro_costo_id || null,
+    periodo_nomina_id: gasto.periodo_nomina_id || null,
+    es_activo_fijo: gasto.es_activo_fijo || false,
+    activo_tipo: gasto.activo_tipo || null,
+    vida_util_anos: gasto.vida_util_anos || null,
+    ...(gasto.personal_id ? { personal_id: gasto.personal_id } : {}),
+    ...(gasto.ot_vinc_id ? { ot_vinc_id: gasto.ot_vinc_id } : {}),
+  });
+
+  const removeMissingColumnFromPayload = (payload, error) => {
+    const col = error?.message?.match(/column "([^"]+)" of relation/)?.[1]
+      || error?.message?.match(/'([^']+)' column/)?.[1];
+    if (!col || !(col in payload)) return false;
+    delete payload[col];
+    return true;
+  };
+
+  const insertarCompraGastoSeguro = async (sb, gasto) => {
+    const payload = compraGastoPayload(gasto);
+    for (let i = 0; i < 8; i++) {
+      const { data, error } = await sb.from('compras_gastos').insert([payload]).select().single();
+      if (!error) return data;
+      if (!removeMissingColumnFromPayload(payload, error)) throw error;
+    }
+    const { data, error } = await sb.from('compras_gastos').insert([payload]).select().single();
+    if (error) throw error;
+    return data;
+  };
+
+  const crearGasto = (datos, options = {}) => {
+    const { notificar = true, persistir = true } = options;
     const gasto = {
       id: generateId('gasto'),
       empresa_id: empresa.id,
@@ -3162,29 +3234,8 @@ export function AppProvider({ children }) {
     };
     setComprasGastos(prev => [...prev, gasto]);
     auditSync({ modulo: 'compras', entidad: 'compras_gastos', entidad_id: gasto.id, accion: 'crear', valor_nuevo: gasto });
-    addNotificacion('Gasto registrado.');
-    opsSync(sb => sb.from('compras_gastos').insert([{
-      id: gasto.id,
-      empresa_id: empresa.id,
-      tipo: gasto.tipo || 'gasto',
-      descripcion: gasto.descripcion,
-      categoria: gasto.categoria,
-      monto: gasto.monto,
-      moneda: gasto.moneda || 'PEN',
-      fecha: gasto.fecha,
-      origen_registro: gasto.origen_registro || 'backoffice',
-      estado: gasto.estado || 'registrado',
-      estado_pago: gasto.estado_pago || 'pagado',
-      referencia_pago: gasto.referencia_pago || null,
-      cxp_id: gasto.cxp_id || null,
-      centro_costo_id: gasto.centro_costo_id || null,
-      periodo_nomina_id: gasto.periodo_nomina_id || null,
-      es_activo_fijo: gasto.es_activo_fijo || false,
-      activo_tipo: gasto.activo_tipo || null,
-      vida_util_anos: gasto.vida_util_anos || null,
-      personal_id: gasto.personal_id || null,
-      ot_vinc_id: gasto.ot_vinc_id || null,
-    }]));
+    if (notificar) addNotificacion('Gasto registrado.');
+    if (persistir) opsSync(sb => insertarCompraGastoSeguro(sb, gasto));
     return gasto;
   };
 
@@ -3961,6 +4012,9 @@ export function AppProvider({ children }) {
       moneda: datos.moneda || 'PEN',
       glosa: datos.glosa || null,
       notas: datos.notas || null,
+      aplica_retencion: datos.aplica_retencion || false,
+      monto_retencion: datos.monto_retencion || 0,
+      monto_neto_cobrable: datos.aplica_retencion ? (datos.monto_neto_cobrable || datos.total) : null,
     });
 
     if (serieDoc && facturaId) {
@@ -3974,6 +4028,9 @@ export function AppProvider({ children }) {
       }
     }
 
+    const saldoInicial = datos.aplica_retencion
+      ? (datos.monto_neto_cobrable || datos.total)
+      : datos.total;
     await generarCxC({
       cuenta_id: datos.cuenta_id,
       factura_id: facturaId,
@@ -3985,7 +4042,8 @@ export function AppProvider({ children }) {
       condicion_pago: condicionPago,
       monto_total: datos.total,
       monto_pagado: 0,
-      saldo: datos.total,
+      saldo: saldoInicial,
+      monto_retencion: datos.monto_retencion || 0,
       moneda: datos.moneda || 'PEN',
       estado: 'por_cobrar',
     });
@@ -4055,6 +4113,26 @@ export function AppProvider({ children }) {
       addNotificacion(`No se pudo actualizar el vencimiento: ${error?.message || 'error desconocido'}`, 'error');
       throw error;
     }
+  };
+
+  const condonarMoraCxC = async (cxcId) => {
+    const anterior = cxc.find(c => c.id === cxcId);
+    setCxc(prev => prev.map(c => c.id === cxcId ? { ...c, tasa_mora_diaria: 0 } : c));
+    if (isSupabaseConfigured()) {
+      await finanzasService.actualizarCxC(cxcId, { tasa_mora_diaria: 0 });
+    }
+    auditSync({ modulo: 'finanzas', entidad: 'cxc', entidad_id: cxcId, accion: 'condonar_mora', valor_anterior: { tasa_mora_diaria: anterior?.tasa_mora_diaria }, valor_nuevo: { tasa_mora_diaria: 0 } });
+    addNotificacion('Mora condonada. El interés ya no aplica para esta CxC.');
+  };
+
+  const restaurarMoraCxC = async (cxcId) => {
+    const tasaDefault = 0.000833;
+    setCxc(prev => prev.map(c => c.id === cxcId ? { ...c, tasa_mora_diaria: tasaDefault } : c));
+    if (isSupabaseConfigured()) {
+      await finanzasService.actualizarCxC(cxcId, { tasa_mora_diaria: tasaDefault });
+    }
+    auditSync({ modulo: 'finanzas', entidad: 'cxc', entidad_id: cxcId, accion: 'restaurar_mora', valor_nuevo: { tasa_mora_diaria: tasaDefault } });
+    addNotificacion('Tasa de mora restaurada al valor estándar (0.0833% diario).');
   };
 
   const actualizarFechaEmisionFactura = async (facturaId, fechaEmision) => {
@@ -4340,15 +4418,24 @@ export function AppProvider({ children }) {
       return null;
     }
 
-    const montoComision = Math.round(Number(montoCobrado || 0) * pct / 100 * 100) / 100;
+    // Base de la comisión: subtotal de la factura (sin IGV).
+    const facturaTotal = Number(factura?.subtotal || 0);
+    const cxcTotal = Number(cuentaCobrar?.monto_total || cuentaCobrar?.total || 0);
+    const montoPago = Number(montoCobrado || 0);
+    const cxcBase = cxcTotal || montoPago;
+    const fraccionPagada = cxcBase > 0 ? Math.min(1, montoPago / cxcBase) : 1;
+    const baseComision = facturaTotal > 0
+      ? Math.round(facturaTotal * fraccionPagada * 100) / 100
+      : montoPago;
+    const montoComision = Math.round(baseComision * pct / 100 * 100) / 100;
     const periodoComision = String(fecha || new Date().toISOString()).slice(0, 7);
     const monedaComision = normalizarMonedaComision(
       cuentaCobrar?.moneda || factura?.moneda || osCliente?.moneda || oportunidad?.moneda || cuenta?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN'
     );
     const tcUSDaPENHoy = tipoCambioHoy.usd ? Math.round(100 / tipoCambioHoy.usd) / 100 : null;
     const montoCobradoPEN = monedaComision === 'USD' && tipoCambioHoy.usd
-      ? Math.round(Number(montoCobrado || 0) / tipoCambioHoy.usd * 100) / 100
-      : Number(montoCobrado || 0);
+      ? Math.round(baseComision / tipoCambioHoy.usd * 100) / 100
+      : baseComision;
     const totalComision = Math.round((montoComision + bonificacionAcuerdo) * 100) / 100;
 
     return {
@@ -4365,7 +4452,7 @@ export function AppProvider({ children }) {
       factura_numero: factura?.numero || cuentaCobrar?.facturas?.numero || null,
       oportunidad_nombre: oportunidad?.nombre || null,
       moneda: monedaComision,
-      monto_cobrado: Number(montoCobrado || 0),
+      monto_cobrado: baseComision,
       porcentaje_base: pctBase,
       porcentaje_comision: pct,
       monto_comision: montoComision,
@@ -4600,6 +4687,56 @@ export function AppProvider({ children }) {
     addNotificacion('ComisiÃ³n rechazada.');
   };
 
+  const corregirMontoComision = async (comisionId, nuevaBase) => {
+    const c = comisiones.find(x => x.id === comisionId);
+    if (!c) return;
+    const base = Number(nuevaBase);
+    const monto_comision = Math.round(base * Number(c.porcentaje_comision || 0) / 100 * 100) / 100;
+    const monto_total = Math.round((monto_comision + Number(c.bonificacion || 0)) * 100) / 100;
+    const updates = { monto_cobrado: base, monto_comision, monto_total };
+    setComisiones(prev => prev.map(x => x.id === comisionId ? { ...x, ...updates } : x));
+    if (isSupabaseConfigured()) {
+      finSync(() => finanzasService.actualizarComision(comisionId, updates));
+    }
+    addNotificacion('Monto de comisión corregido.');
+  };
+
+  const corregirBonificacionComision = async (comisionId, nuevaBonificacion) => {
+    const c = comisiones.find(x => x.id === comisionId);
+    if (!c || c.estado !== 'aprobada') return;
+    const bonificacion = Math.round(Number(nuevaBonificacion || 0) * 100) / 100;
+    const monto_total = Math.round((Number(c.monto_comision || 0) + bonificacion) * 100) / 100;
+    const deltaTotal = monto_total - Number(c.monto_total || 0);
+    const updates = { bonificacion, monto_total };
+    setComisiones(prev => prev.map(x => x.id === comisionId ? { ...x, ...updates } : x));
+    if (isSupabaseConfigured()) {
+      finSync(() => finanzasService.actualizarComision(comisionId, updates));
+    }
+
+    // Si hay un recibo borrador que incluye esta comisión, recalcula sus montos
+    const reciboBorrador = recibosHonorarios.find(r =>
+      r.estado === 'borrador' && (r.comisiones_ids || []).includes(comisionId)
+    );
+    if (reciboBorrador && deltaTotal !== 0) {
+      const nuevoMontoBruto = Math.round((Number(reciboBorrador.monto_bruto || 0) + deltaTotal) * 100) / 100;
+      const tasaIR = Number(reciboBorrador.monto_bruto || 0) > 0
+        ? Number(reciboBorrador.retencion_ir || 0) / Number(reciboBorrador.monto_bruto)
+        : 0;
+      const nuevaRetencion = Math.round(nuevoMontoBruto * tasaIR * 100) / 100;
+      const nuevoNeto = Math.round((nuevoMontoBruto - nuevaRetencion) * 100) / 100;
+      const reciboUpdates = { monto_bruto: nuevoMontoBruto, retencion_ir: nuevaRetencion, monto_neto: nuevoNeto };
+      setRecibosHonorarios(prev => prev.map(r => r.id === reciboBorrador.id ? { ...r, ...reciboUpdates } : r));
+      if (isSupabaseConfigured()) {
+        finSync(async () => {
+          const sb = await getSupabaseClient();
+          await sb.from('recibos_honorarios').update(reciboUpdates).eq('id', reciboBorrador.id);
+        });
+      }
+    }
+
+    addNotificacion('Bonificación corregida.');
+  };
+
   const normalizarMonedaComision = (moneda) => {
     const raw = String(moneda || '').trim().toUpperCase();
     if (raw.includes('USD') || raw.includes('US$') || raw.includes('DOLAR')) return 'USD';
@@ -4625,7 +4762,7 @@ export function AppProvider({ children }) {
     const vendedor = personalAdmin.find(p => p.id === vendedorId);
     const montoBruto = pendientes.reduce((s, c) => s + Number(c.monto_total || 0), 0);
 
-    // Reglas de exoneraciÃ³n IR (PerÃº: RH)
+    // Reglas de exoneración IR (Perú: RH)
     const today = new Date().toISOString().split('T')[0];
     const vencSusp = vendedor?.vencimiento_suspension || null;
     const suspensionVigente = Boolean(vendedor?.suspension_retenciones) && (!vencSusp || vencSusp >= today);
@@ -4638,12 +4775,12 @@ export function AppProvider({ children }) {
     const tasaIR = aplicaRetencion ? Number(vendedor?.retencion_ir_comision ?? 8) / 100 : 0;
     const retencionIR = Math.round(montoBruto * tasaIR * 100) / 100;
     const motivo_retencion = aplicaRetencion
-      ? `Se aplica ${tasaIR * 100}% de retenciÃ³n IR (empresa agente de retenciÃ³n, monto supera S/ 1,500, sin constancia de suspensiÃ³n vigente).`
+      ? `Se aplica ${tasaIR * 100}% de retención IR (empresa agente de retención, monto supera S/ 1,500, sin constancia de suspensión vigente).`
       : suspensionVigente
-        ? 'Sin retenciÃ³n: el colaborador tiene constancia de suspensiÃ³n de retenciones vigente.'
+        ? 'Sin retención: el colaborador tiene constancia de suspensión de retenciones vigente.'
         : !esAgente
-          ? 'Sin retenciÃ³n: la empresa no es Agente de RetenciÃ³n ante SUNAT.'
-          : 'Sin retenciÃ³n: el monto bruto no supera el umbral de S/ 1,500.';
+          ? 'Sin retención: la empresa no es Agente de Retención ante SUNAT.'
+          : 'Sin retención: el monto bruto no supera el umbral de S/ 1,500.';
     const recibo = {
       id: generateId('rec'),
       empresa_id: empresa.id,
@@ -4660,50 +4797,119 @@ export function AppProvider({ children }) {
       estado: 'borrador',
       creado_en: new Date().toISOString(),
     };
-    setRecibosHonorarios(prev => [recibo, ...prev]);
+    // INSERT directo con await — el recibo debe existir en Supabase antes de que la CxP lo referencie
     if (isSupabaseConfigured()) {
-      finSync(() => finanzasService.crearReciboHonorarios(recibo));
+      const sb = await getSupabaseClient();
+      const { error: recErr } = await sb.from('recibos_honorarios').insert(recibo);
+      if (recErr) throw new Error(`No se pudo guardar el recibo: ${recErr.message}`);
     }
+    setRecibosHonorarios(prev => [recibo, ...prev]);
     const simbolo = monedaRecibo === 'USD' ? 'US$' : 'S/';
     addNotificacion(`Recibo borrador generado. Monto neto: ${simbolo} ${(montoBruto - retencionIR).toFixed(2)}.`);
     return recibo;
   };
 
-  const confirmarReciboHonorarios = async (reciboId) => {
+  const subirArchivoRhe = async (reciboId, file, tipo) => {
+    if (!file || !reciboId || !empresa?.id) return null;
+    const sb = await getSupabaseClient();
+    const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
+    const path = `${empresa.id}/rhe/${reciboId}/${tipo}.${ext}`;
+    const { error: upErr } = await sb.storage.from('documentos-privados').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: true });
+    if (upErr) throw new Error(`Error subiendo ${tipo}: ${upErr.message}`);
+    const { data: signed, error: signErr } = await sb.storage.from('documentos-privados').createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
+    if (signErr) throw new Error(`Error obteniendo URL de ${tipo}: ${signErr.message}`);
+    return signed.signedUrl;
+  };
+
+  const confirmarReciboHonorarios = async (reciboId, { numero_rhe, fecha_emision, fecha_vencimiento, archivo_rhe_file, archivo_constancia_file, moneda_rhe, tipo_cambio } = {}) => {
     const recibo = recibosHonorarios.find(r => r.id === reciboId);
     if (!recibo || recibo.estado !== 'borrador') return;
     const now = new Date().toISOString().split('T')[0];
-    const fechaVencimiento = (() => {
+    const fechaEmision = fecha_emision || now;
+    const fechaVenc = fecha_vencimiento || (() => {
       const d = new Date(`${now}T00:00:00`);
       d.setDate(d.getDate() + 30);
       return d.toISOString().split('T')[0];
     })();
 
-    // Genera CxP en lugar de ir directo a TesorerÃ­a â€” trazabilidad completa
-    await generarCxP({
-      tipo_beneficiario: 'personal',
-      personal_id: recibo.vendedor_id || null,
-      concepto: `Honorarios comisiones â€” ${recibo.vendedor_nombre} ${recibo.periodo}`,
-      recibo_honorarios_id: reciboId,
-      factura_numero: recibo.id,
-      fecha_emision: now,
-      fecha_vencimiento: fechaVencimiento,
-      monto_total: recibo.monto_neto,
-      monto_pagado: 0,
-      saldo: recibo.monto_neto,
-      moneda: normalizarMonedaComision(recibo.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN'),
-      estado: 'por_pagar',
-    });
+    const monedaOriginal = normalizarMonedaComision(recibo.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN');
+    const monedaCxP = moneda_rhe || monedaOriginal;
+    const tc = Number(tipo_cambio || 1);
+    const convierte = monedaOriginal === 'USD' && monedaCxP === 'PEN' && tc > 0;
 
-    setRecibosHonorarios(prev => prev.map(r => r.id === reciboId ? { ...r, estado: 'pendiente_pago' } : r));
+    const montoBrutoCxP = convierte ? Math.round(recibo.monto_bruto * tc * 100) / 100 : recibo.monto_bruto;
+    const retencionCxP  = convierte ? Math.round(recibo.retencion_ir * tc * 100) / 100 : recibo.retencion_ir;
+    const montoNetoCxP  = convierte ? Math.round(recibo.monto_neto * tc * 100) / 100 : recibo.monto_neto;
+
+    // Subir archivos a Storage (no bloquea la creación de CxP si falla)
+    let archivoRheUrl = null;
+    let archivoConstanciaUrl = null;
+    if (isSupabaseConfigured()) {
+      if (archivo_rhe_file) {
+        try { archivoRheUrl = await subirArchivoRhe(reciboId, archivo_rhe_file, 'rhe'); }
+        catch (e) { console.error('[RHE upload]', e); addNotificacion(`Advertencia: no se pudo subir el RHE (${e.message}). La CxP se crea sin adjunto.`); }
+      }
+      if (archivo_constancia_file) {
+        try { archivoConstanciaUrl = await subirArchivoRhe(reciboId, archivo_constancia_file, 'constancia'); }
+        catch (e) { console.error('[Constancia upload]', e); addNotificacion(`Advertencia: no se pudo subir la constancia (${e.message}).`); }
+      }
+    }
+
+    // Construir payload CxP
+    const cxpId = generateId('cxp');
+    let cuentaPagar = {
+      id: cxpId,
+      empresa_id: empresa.id,
+      tipo_beneficiario: 'personal',
+      tipo_comprobante: 'RHE',
+      personal_id: recibo.vendedor_id || null,
+      concepto: `Honorarios comisiones — ${recibo.vendedor_nombre} ${recibo.periodo}`,
+      recibo_honorarios_id: reciboId,
+      factura_numero: numero_rhe || null,
+      fecha_emision: fechaEmision,
+      fecha_vencimiento: fechaVenc,
+      monto_total: montoNetoCxP,
+      monto_bruto: montoBrutoCxP,
+      retencion_ir: retencionCxP,
+      monto_pagado: 0,
+      saldo: montoNetoCxP,
+      moneda: monedaCxP,
+      estado: 'por_pagar',
+      origen: 'honorarios',
+      motivo_cxp: 'comisiones_honorarios',
+      ...(convierte ? { tipo_cambio: tc, moneda_original: 'USD', monto_original: recibo.monto_neto } : {}),
+      ...(archivoRheUrl ? { archivo_factura_url: archivoRheUrl } : {}),
+      ...(archivoConstanciaUrl ? { archivo_constancia_url: archivoConstanciaUrl } : {}),
+    };
+    const gastoDevengo = buildDevengoCxP({
+      ...cuentaPagar,
+      categoria_er: 'Comisiones por honorarios',
+    });
+    cuentaPagar = { ...cuentaPagar, gasto_id: gastoDevengo.id };
+
+    // INSERT directo con await — error visible inmediatamente si falla
+    if (isSupabaseConfigured()) {
+      await finanzasService.generarCxP(cuentaPagar);
+      const sb = await getSupabaseClient();
+      await insertarCompraGastoSeguro(sb, gastoDevengo);
+    }
+
+    // Actualizar estado local solo si el DB tuvo éxito
+    setCxp(prev => [cuentaPagar, ...prev]);
+    setComprasGastos(prev => [gastoDevengo, ...prev]);
+    auditSync({ modulo: 'compras', entidad: 'compras_gastos', entidad_id: gastoDevengo.id, accion: 'devengar_cxp', valor_nuevo: gastoDevengo });
+
+    const updates = { estado: 'pendiente_pago', ...(numero_rhe ? { numero_rhe } : {}), moneda_cxp: monedaCxP };
+    setRecibosHonorarios(prev => prev.map(r => r.id === reciboId ? { ...r, ...updates } : r));
     if (isSupabaseConfigured()) {
       finSync(async () => {
         const sb = await getSupabaseClient();
-        await sb.from('recibos_honorarios').update({ estado: 'pendiente_pago' }).eq('id', reciboId);
+        await sb.from('recibos_honorarios').update(updates).eq('id', reciboId);
       });
     }
-    const simbolo = normalizarMonedaComision(recibo.moneda || empresa?.moneda || empresa?.moneda_base) === 'USD' ? 'US$' : 'S/';
-    addNotificacion(`Recibo confirmado. CxP de ${simbolo} ${recibo.monto_neto.toFixed(2)} generada. Pendiente de pago.`);
+
+    const simbolo = monedaCxP === 'USD' ? 'US$' : 'S/';
+    addNotificacion(`Recibo confirmado. CxP de ${simbolo} ${montoNetoCxP.toFixed(2)} generada. Pendiente de pago.`);
   };
 
   const registrarMovimientoManual = async (datos) => {
@@ -4887,6 +5093,16 @@ export function AppProvider({ children }) {
         await sb.from('facturas').update({ estado: 'anulada', motivo_anulacion: motivo }).eq('id', facturaId);
       });
     }
+    // Revertir monto_facturado en OS
+    if (fac.os_cliente_id) {
+      const osRef = osClientes.find(os => os.id === fac.os_cliente_id);
+      if (osRef) {
+        const nuevoMF = Math.max(0, Number(osRef.monto_facturado || 0) - Number(fac.total || 0));
+        const nuevoSPF = Math.min(Number(osRef.monto_aprobado || 0), Number(osRef.saldo_por_facturar || 0) + Number(fac.total || 0));
+        setOsClientes(prev => prev.map(os => os.id === osRef.id ? { ...os, monto_facturado: nuevoMF, saldo_por_facturar: nuevoSPF } : os));
+        crmSync(sb => svcActualizarOSCliente(sb, osRef.id, { monto_facturado: nuevoMF, saldo_por_facturar: nuevoSPF }));
+      }
+    }
     auditSync({ modulo: 'finanzas', entidad: 'facturas', entidad_id: facturaId, accion: 'anular', valor_nuevo: { motivo } });
     addNotificacion(`Factura ${fac.numero} anulada.`);
   };
@@ -5048,6 +5264,17 @@ export function AppProvider({ children }) {
       }
     }
 
+    // Revertir monto_facturado en OS por el importe acreditado
+    if (facOrigen.os_cliente_id) {
+      const osRef = osClientes.find(os => os.id === facOrigen.os_cliente_id);
+      if (osRef) {
+        const nuevoMF = Math.max(0, Number(osRef.monto_facturado || 0) - totalAcreditar);
+        const nuevoSPF = Math.min(Number(osRef.monto_aprobado || 0), Number(osRef.saldo_por_facturar || 0) + totalAcreditar);
+        setOsClientes(prev => prev.map(os => os.id === osRef.id ? { ...os, monto_facturado: nuevoMF, saldo_por_facturar: nuevoSPF } : os));
+        crmSync(sb => svcActualizarOSCliente(sb, osRef.id, { monto_facturado: nuevoMF, saldo_por_facturar: nuevoSPF }));
+      }
+    }
+
     if (isSupabaseConfigured()) finSync(async () => { await finanzasService.emitirFactura(ncFac); });
     auditSync({ modulo: 'finanzas', entidad: 'facturas', entidad_id: ncFac.id, accion: 'emitir_nc', valor_nuevo: ncFac });
     addNotificacion(`Nota de CrÃ©dito ${numero} emitida.`);
@@ -5102,24 +5329,105 @@ export function AppProvider({ children }) {
     return ndFac.id;
   };
 
-  const generarCxP = async (datos) => {
-    const cuentaPagar = {
+  const textoFin = value => String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+  const cxpExcluidaEr = cxp => {
+    const origen = textoFin(cxp?.origen || 'manual');
+    const motivo = textoFin(cxp?.motivo_cxp || '');
+    if (cxp?.no_devengar_er || cxp?.gasto_id || cxp?.recepcion_id) return true;
+    if (['nomina', 'nc_devolucion', 'recepcion'].includes(origen)) return true;
+    if (['devolucion_nc', 'planilla', 'essalud', 'pensiones', 'ir_5ta'].includes(motivo)) return true;
+    if (textoFin(cxp?.estado).includes('anulad')) return true;
+    return false;
+  };
+
+  const cxpEsRhe = cxp => textoFin(cxp?.tipo_comprobante) === 'rhe'
+    || Boolean(cxp?.recibo_honorarios_id)
+    || Number(cxp?.monto_bruto || 0) > 0;
+
+  const montoDevengoCxP = cxp => {
+    if (cxpEsRhe(cxp)) return Number(cxp?.monto_bruto || cxp?.monto_total || 0);
+    return Number(cxp?.monto_total || 0);
+  };
+
+  const categoriaDevengoCxP = cxp => {
+    const origen = textoFin(cxp?.origen || 'manual');
+    const motivo = textoFin(cxp?.motivo_cxp || '');
+    if (cxp?.categoria_er) return cxp.categoria_er;
+    if (cxpEsRhe(cxp) && cxp?.recibo_honorarios_id) return 'Comisiones por honorarios';
+    if (cxpEsRhe(cxp)) return 'Servicios terceros';
+    if (origen === 'viaticos' || motivo === 'viaticos_reembolso') return 'Administrativos';
+    if (cxp?.tipo_beneficiario === 'personal') return 'Honorarios y reembolsos';
+    return 'Gastos operativos';
+  };
+
+  const centroCostoDevengoCxP = cxp => {
+    if (cxp?.centro_costo_id) return cxp.centro_costo_id;
+    const ot = cxp?.ot_vinc_id ? (ots || []).find(o => o.id === cxp.ot_vinc_id) : null;
+    if (ot?.centro_costo_id) return ot.centro_costo_id;
+    const persona = cxp?.personal_id
+      ? ([...(personalAdmin || []), ...(personalOperativo || [])]).find(p => p.id === cxp.personal_id)
+      : null;
+    return persona?.centro_costo_id || null;
+  };
+
+  const buildDevengoCxP = cxp => ({
+    id: generateId('gasto'),
+    empresa_id: empresa.id,
+    tipo: 'gasto',
+    descripcion: cxp.concepto || cxp.factura_numero || 'Devengo de CxP',
+    categoria: categoriaDevengoCxP(cxp),
+    monto: montoDevengoCxP(cxp),
+    moneda: cxp.moneda || 'PEN',
+    fecha: cxp.fecha_emision || new Date().toISOString().split('T')[0],
+    origen_registro: `cxp_${cxp.origen || 'manual'}`,
+    estado_pago: 'pendiente',
+    estado: 'registrado',
+    cxp_id: cxp.id,
+    centro_costo_id: centroCostoDevengoCxP(cxp),
+    periodo_nomina_id: null,
+    personal_id: cxp.personal_id || null,
+    ot_vinc_id: cxp.ot_vinc_id || null,
+  });
+
+  const generarCxP = async (datos = {}) => {
+    const { no_devengar_er, ...datosDb } = datos || {};
+    let cuentaPagar = {
       id: generateId('cxp'),
       empresa_id: empresa.id,
       estado: 'por_pagar',
       monto_pagado: 0,
-      saldo: datos.monto_total,
-      ...datos
+      saldo: datosDb.monto_total,
+      ...datosDb
     };
+    const cxpParaDevengo = { ...cuentaPagar, no_devengar_er };
+    const gastoDevengo = !cxpExcluidaEr(cxpParaDevengo) && montoDevengoCxP(cxpParaDevengo) > 0
+      ? buildDevengoCxP(cxpParaDevengo)
+      : null;
+    if (gastoDevengo) {
+      cuentaPagar = { ...cuentaPagar, gasto_id: gastoDevengo.id };
+    }
     setCxp(prev => [cuentaPagar, ...prev]);
+    if (gastoDevengo) {
+      setComprasGastos(prev => [gastoDevengo, ...prev]);
+      auditSync({ modulo: 'compras', entidad: 'compras_gastos', entidad_id: gastoDevengo.id, accion: 'devengar_cxp', valor_nuevo: gastoDevengo });
+    }
 
     if (isSupabaseConfigured()) {
       finSync(async () => {
         await finanzasService.generarCxP(cuentaPagar);
+        if (gastoDevengo) {
+          const sb = await getSupabaseClient();
+          await insertarCompraGastoSeguro(sb, gastoDevengo);
+        }
       });
     }
     auditSync({ modulo: 'finanzas', entidad: 'cxp', entidad_id: cuentaPagar.id, accion: 'crear', valor_nuevo: cuentaPagar });
-    addNotificacion('Cuenta por Pagar registrada.');
+    addNotificacion(gastoDevengo ? 'Cuenta por Pagar registrada y devengo ER creado.' : 'Cuenta por Pagar registrada.');
     return cuentaPagar.id;
   };
 
@@ -7298,10 +7606,10 @@ export function AppProvider({ children }) {
     // Fase 2 Actions
     convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     // Finanzas Actions
-    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, registrarMovimientoManual,
+    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, registrarMovimientoManual,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,
     recibosHonorarios, setRecibosHonorarios,
-    aprobarComision, rechazarComision, generarReciboHonorarios, confirmarReciboHonorarios,
+    aprobarComision, rechazarComision, corregirMontoComision, corregirBonificacionComision, generarReciboHonorarios, confirmarReciboHonorarios,
     // Maestros Base Actions
     crearCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria,
     // Compras Actions

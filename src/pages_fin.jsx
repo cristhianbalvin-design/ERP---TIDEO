@@ -66,6 +66,7 @@ function CxC() {
     cxc, cuentas, osClientes, facturas, usuarios,
     cobrosHistorial, gestionesCobranza, cuentasBancarias,
     registrarCobroCxC, registrarGestionCobranza, actualizarVencimientoCxC, revertirCobroCxC, comisiones,
+    condonarMoraCxC, restaurarMoraCxC,
     navigate, role,
   } = useApp();
 
@@ -90,7 +91,7 @@ function CxC() {
   const interesMoraDe = c => {
     const dias = diasMoraDe(c);
     if (dias <= 0) return 0;
-    const tasa = Number(c?.tasa_mora_diaria || TASA_MORA_DIARIA);
+    const tasa = c?.tasa_mora_diaria != null ? Number(c.tasa_mora_diaria) : TASA_MORA_DIARIA;
     return Math.round(saldoDe(c) * tasa * dias * 100) / 100;
   };
 
@@ -147,6 +148,7 @@ function CxC() {
   const [editVencimiento, setEditVencimiento] = useState(null);
   const [savingVencimiento, setSavingVencimiento] = useState(false);
   const [confirmAnular, setConfirmAnular] = useState(null); // CxC a anular
+  const [savingCondonar, setSavingCondonar] = useState(false);
 
   // ── KPIs ──────────────────────────────────────────────────────────────
   const cxcActivas = useMemo(() => (cxc||[]).filter(c => c.estado !== 'anulada'), [cxc]);
@@ -302,10 +304,12 @@ function CxC() {
     const interes  = interesMoraDe(c);
     const saldo    = saldoDe(c);
     const estado   = estadoDe(c);
-    const tasa     = Number(c?.tasa_mora_diaria || TASA_MORA_DIARIA) * 100;
+    const tasaEfectiva = c?.tasa_mora_diaria != null ? Number(c.tasa_mora_diaria) : TASA_MORA_DIARIA;
+    const moraCondonada = c?.tasa_mora_diaria != null && Number(c.tasa_mora_diaria) === 0;
+    const tasa     = tasaEfectiva * 100;
     const cobros   = (cobrosHistorial||[]).filter(cb=>cb.cxc_id===c.id).sort((a,b)=>a.fecha_cobro.localeCompare(b.fecha_cobro));
     const gestiones= (gestionesCobranza||[]).filter(g=>g.cxc_id===c.id).sort((a,b)=>b.fecha_gestion.localeCompare(a.fecha_gestion));
-    const proyMora = d => Math.round(saldo * Number(c?.tasa_mora_diaria||TASA_MORA_DIARIA) * (dias+d) * 100) / 100;
+    const proyMora = d => Math.round(saldo * tasaEfectiva * (dias+d) * 100) / 100;
     const metaEst  = ESTADO_META[estado] || ESTADO_META.por_cobrar;
     const fechaVencimientoActual = c?.fecha_vencimiento || c?.vence || '';
     const vencimientoLabel = fechaVencimientoActual || '—';
@@ -317,7 +321,7 @@ function CxC() {
       { id:'resumen',  label:'Resumen'                       },
       { id:'pagos',    label:`Historial pagos (${cobros.length})` },
       { id:'gestion',  label:`Gestión (${gestiones.length})` },
-      ...(dias > 0 ? [{ id:'mora', label:'Mora' }] : []),
+      ...(dias > 0 || moraCondonada ? [{ id:'mora', label: moraCondonada ? 'Mora · Condonada' : 'Mora' }] : []),
     ];
 
     fichaJSX = (
@@ -328,7 +332,8 @@ function CxC() {
             <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
               <h1 className="page-title" style={{margin:0}}>{facturaNumeroDe(c)}</h1>
               <span className={'badge '+metaEst.cls}>{metaEst.label}</span>
-              {dias > 0 && <span style={{fontSize:12,fontWeight:600,color:'var(--danger)'}}>· {dias} días de mora</span>}
+              {dias > 0 && !moraCondonada && <span style={{fontSize:12,fontWeight:600,color:'var(--danger)'}}>· {dias} días de mora</span>}
+              {moraCondonada && <span className="badge badge-green">✓ Mora condonada</span>}
             </div>
             <div className="page-sub">{clienteDe(c)} · Vence: {vencimientoLabel}</div>
           </div>
@@ -391,11 +396,29 @@ function CxC() {
                 </div>
               </div>
               <div className="card" style={{padding:20}}>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,textAlign:'center'}}>
-                  <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Total facturado</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora'}}>{moneyCurrency(totalDe(c), c.moneda)}</div></div>
-                  <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Total pagado</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora',color:'var(--green)'}}>{moneyCurrency(pagadoDe(c), c.moneda)}</div></div>
-                  <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Saldo pendiente</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora',color:saldo>0?'var(--orange)':'var(--fg)'}}>{moneyCurrency(saldo, c.moneda)}</div></div>
-                </div>
+                {Number(c.monto_retencion||0) > 0 ? (
+                  <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:12,padding:'10px 14px',borderRadius:8,background:'rgba(251,191,36,0.05)',border:'1px solid rgba(251,191,36,0.25)'}}>
+                    <div style={{fontWeight:700,fontSize:12,color:'var(--warning)',marginBottom:4}}>⚠ Agente de Retención SUNAT</div>
+                    {[
+                      ['Total facturado', moneyCurrency(totalDe(c), c.moneda), null],
+                      ['Retención SUNAT', `- ${moneyCurrency(Number(c.monto_retencion), c.moneda)}`, 'var(--warning)'],
+                      ['Neto a cobrar', moneyCurrency(totalDe(c) - Number(c.monto_retencion||0), c.moneda), 'var(--cyan)'],
+                      ['Cobrado a la fecha', moneyCurrency(pagadoDe(c), c.moneda), 'var(--green)'],
+                      ['Saldo pendiente', moneyCurrency(saldo, c.moneda), saldo>0?'var(--orange)':'var(--fg)'],
+                    ].map(([label,val,color])=>(
+                      <div key={label} style={{display:'flex',justifyContent:'space-between',fontSize:13}}>
+                        <span style={{color:'var(--fg-muted)'}}>{label}</span>
+                        <span style={{fontWeight:600,color:color||'var(--fg)'}}>{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,textAlign:'center',marginBottom:12}}>
+                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Total facturado</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora'}}>{moneyCurrency(totalDe(c), c.moneda)}</div></div>
+                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Total pagado</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora',color:'var(--green)'}}>{moneyCurrency(pagadoDe(c), c.moneda)}</div></div>
+                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Saldo pendiente</div><div style={{fontSize:20,fontWeight:700,fontFamily:'Sora',color:saldo>0?'var(--orange)':'var(--fg)'}}>{moneyCurrency(saldo, c.moneda)}</div></div>
+                  </div>
+                )}
                 {dias > 0 && (
                   <div style={{marginTop:16,paddingTop:16,borderTop:'1px solid var(--border)',display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,textAlign:'center'}}>
                     <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Días de mora</div><div style={{fontSize:22,fontWeight:700,fontFamily:'Sora',color:'var(--danger)'}}>{dias}d</div></div>
@@ -427,8 +450,8 @@ function CxC() {
                   <tbody>{cobros.map(cb=>(
                     <tr key={cb.id}>
                       <td>{cb.fecha_cobro}</td>
-                      <td className="num"><strong>{money(cb.monto_capital)}</strong></td>
-                      <td className="num text-muted">{cb.monto_mora>0?money(cb.monto_mora):'—'}</td>
+                      <td className="num"><strong>{moneyCurrency(cb.monto_capital, c.moneda)}</strong></td>
+                      <td className="num text-muted">{cb.monto_mora>0?moneyCurrency(cb.monto_mora, c.moneda):'—'}</td>
                       <td>{cb.medio_pago||'—'}</td>
                       <td className="mono">{cb.numero_operacion||cb.referencia||'—'}</td>
                       <td>{cb.cuenta_bancaria||'—'}</td>
@@ -470,31 +493,78 @@ function CxC() {
         )}
 
         {/* Tab Mora */}
-        {fichaTab === 'mora' && dias > 0 && (
-          <div style={{display:'grid',gridTemplateColumns:'1fr 280px',gap:20,marginTop:20}}>
-            <div className="card" style={{padding:20}}>
-              <div className="grid-2" style={{gap:16}}>
-                <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Fecha de vencimiento</div><div style={{fontSize:14,fontWeight:600}}>{vencimientoLabel}</div></div>
-                <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Días de mora</div><div style={{fontSize:22,fontWeight:700,color:'var(--danger)'}}>{dias} días</div></div>
-                <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Tasa de mora diaria</div><div style={{fontSize:14}}>{tasa.toFixed(4)}%</div></div>
-                <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Interés acumulado</div><div style={{fontSize:14,fontWeight:700,color:'var(--danger)'}}>{moneyD(interes)}</div></div>
-                <div style={{gridColumn:'1/-1'}}>
-                  <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Fórmula aplicada</div>
-                  <div style={{fontSize:12,fontFamily:'monospace',background:'var(--bg-subtle)',padding:'8px 12px',borderRadius:6}}>
-                    {money(saldo)} × {tasa.toFixed(4)}% × {dias} días = {moneyD(interes)}
+        {fichaTab === 'mora' && (dias > 0 || moraCondonada) && (
+          <div style={{display:'flex',flexDirection:'column',gap:16,marginTop:20}}>
+
+            {/* Banner condonada */}
+            {moraCondonada && (
+              <div style={{padding:'14px 18px',borderRadius:8,border:'1px solid var(--green)',background:'rgba(76,175,80,0.06)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14,color:'var(--green)',marginBottom:4}}>✓ Mora condonada</div>
+                  <div style={{fontSize:13,color:'var(--fg-muted)'}}>El interés por mora no aplica para esta CxC por acuerdo con el cliente.</div>
+                </div>
+                {puedeEditarCxC && (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    disabled={savingCondonar}
+                    onClick={async () => {
+                      if (!window.confirm('¿Restaurar la tasa de mora al valor estándar (0.0833% diario)?')) return;
+                      setSavingCondonar(true);
+                      try { await restaurarMoraCxC(c.id); } finally { setSavingCondonar(false); }
+                    }}
+                  >
+                    {savingCondonar ? 'Restaurando...' : 'Restaurar tasa'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Cálculo (solo si hay días de mora y no está condonada) */}
+            {dias > 0 && !moraCondonada && (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 280px',gap:16}}>
+                <div className="card" style={{padding:20}}>
+                  <div className="grid-2" style={{gap:16}}>
+                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Fecha de vencimiento</div><div style={{fontSize:14,fontWeight:600}}>{vencimientoLabel}</div></div>
+                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Días de mora</div><div style={{fontSize:22,fontWeight:700,color:'var(--danger)'}}>{dias} días</div></div>
+                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Tasa de mora diaria</div><div style={{fontSize:14}}>{tasa.toFixed(4)}%</div></div>
+                    <div><div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Interés acumulado</div><div style={{fontSize:14,fontWeight:700,color:'var(--danger)'}}>{moneyD(interes)}</div></div>
+                    <div style={{gridColumn:'1/-1'}}>
+                      <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Fórmula aplicada</div>
+                      <div style={{fontSize:12,fontFamily:'monospace',background:'var(--bg-subtle)',padding:'8px 12px',borderRadius:6}}>
+                        {money(saldo)} × {tasa.toFixed(4)}% × {dias} días = {moneyD(interes)}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-            <div className="card" style={{padding:20}}>
-              <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:12,fontWeight:600}}>Proyección de interés</div>
-              {[30,60,90].map(d=>(
-                <div key={d} className="row" style={{justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid var(--border-subtle)'}}>
-                  <span style={{fontSize:13}}>+{d} días adicionales</span>
-                  <span style={{fontWeight:700,color:'var(--danger)'}}>{moneyD(proyMora(d))}</span>
+                <div className="card" style={{padding:20}}>
+                  <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:12,fontWeight:600}}>Proyección de interés</div>
+                  {[30,60,90].map(d=>(
+                    <div key={d} className="row" style={{justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid var(--border-subtle)'}}>
+                      <span style={{fontSize:13}}>+{d} días adicionales</span>
+                      <span style={{fontWeight:700,color:'var(--danger)'}}>{moneyD(proyMora(d))}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+
+            {/* Botón condonar (solo si hay mora y no está condonada) */}
+            {dias > 0 && !moraCondonada && puedeEditarCxC && (
+              <div style={{display:'flex',justifyContent:'flex-end'}}>
+                <button
+                  className="btn btn-secondary"
+                  disabled={savingCondonar}
+                  onClick={async () => {
+                    if (!window.confirm(`¿Condonar la mora de ${moneyD(interes)} para esta CxC? El interés dejará de calcularse. Esta acción queda registrada en el historial.`)) return;
+                    setSavingCondonar(true);
+                    try { await condonarMoraCxC(c.id); } finally { setSavingCondonar(false); }
+                  }}
+                >
+                  {savingCondonar ? 'Guardando...' : '✕ Condonar mora'}
+                </button>
+              </div>
+            )}
+
           </div>
         )}
 
@@ -528,12 +598,12 @@ function CxC() {
         {aging.map(b=>(
           <div key={b.key} className="kpi-card" style={{cursor:'pointer',outline:agingFilter===b.key?'2px solid var(--cyan)':'none',transition:'outline 0.15s'}}
             onClick={()=>setAgingFilter(agingFilter===b.key?null:b.key)}>
-            <div className="kpi-label">{b.label}</div>
-            <div className="kpi-value" style={{fontSize:22}}>
-              {money(b.montoPEN)}
-              {b.montoUSD > 0 && <span style={{fontSize:16, marginLeft:6, color:'var(--fg-muted)'}}>{money(b.montoUSD, 'US$')}</span>}
+            <div className="kpi-label" style={{ paddingRight: 40 }}>{b.label}</div>
+            <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
+              <span>{money(b.montoPEN)}</span>
+              {b.montoUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{money(b.montoUSD, 'US$')}</span>}
             </div>
-            <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>{b.count} {b.count===1?'factura':'facturas'}</div>
+            <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:8}}>{b.count} {b.count===1?'factura':'facturas'}</div>
             <div className={'kpi-icon '+b.color}>{I.clock}</div>
           </div>
         ))}
@@ -595,7 +665,10 @@ function CxC() {
                 const vence = c.fecha_vencimiento||c.vence||'—';
                 return (
                   <tr key={c.id} style={{cursor:'pointer'}} onClick={()=>abrirFicha(c)}>
-                    <td><strong>{clienteDe(c)}</strong></td>
+                    <td>
+                      <strong>{clienteDe(c)}</strong>
+                      {Number(c.monto_retencion||0)>0 && <span className="badge badge-orange" style={{marginLeft:6,fontSize:10}}>Retención SUNAT</span>}
+                    </td>
                     <td className="mono">{facturaNumeroDe(c)}</td>
                     <td className="text-muted">{osNumeroDe(c)}</td>
                     <td style={{color:dias>0?'var(--danger)':dias===0?'var(--orange)':'inherit',fontWeight:dias>0?600:400}}>{vence}</td>
@@ -703,26 +776,69 @@ function CxC() {
               <button className="icon-btn" onClick={()=>setPanelCobro(false)}>{I.x}</button>
             </div>
             <form className="side-panel-body" onSubmit={guardarCobro}>
-              <div className="card" style={{padding:14,display:'flex',flexDirection:'column',gap:7}}>
-                {[
-                  ['Cliente', clienteDe(cobroSel), null],
-                  ['Factura vinculada', facturaNumeroDe(cobroSel), null],
-                  ['Total facturado', moneyCurrency(totalDe(cobroSel), cobroSel.moneda), null],
-                  ['Total pagado', moneyCurrency(pagadoDe(cobroSel), cobroSel.moneda), 'var(--green)'],
-                  ['Saldo pendiente', moneyCurrency(saldoDe(cobroSel), cobroSel.moneda), 'var(--orange)'],
-                ].map(([label, val, color]) => (
-                  <div key={label} style={{display:'flex',justifyContent:'space-between'}}>
-                    <span style={{fontSize:13,color:'var(--fg-muted)'}}>{label}</span>
-                    <span style={{fontSize:13,fontWeight:600,color:color||'var(--fg)'}}>{val}</span>
+              {(() => {
+                const montoForm        = Number(formCobro.monto || 0);
+                const pagadoPrev       = pagadoDe(cobroSel);
+                const saldoActual      = saldoDe(cobroSel);
+                const saldoTras        = Math.max(0, saldoActual - montoForm);
+                const hayMonto         = montoForm > 0;
+                const retencionCxC     = Number(cobroSel.monto_retencion || 0);
+                const hayRetencion     = retencionCxC > 0;
+                const montoExcedeNeto  = hayRetencion && montoForm > saldoActual && montoForm > 0;
+                return (
+                  <div className="card" style={{padding:14,display:'flex',flexDirection:'column',gap:7}}>
+                    {[
+                      ['Cliente',          clienteDe(cobroSel),                                    null],
+                      ['Factura vinculada', facturaNumeroDe(cobroSel),                             null],
+                      ['Total facturado',  moneyCurrency(totalDe(cobroSel), cobroSel.moneda),      null],
+                    ].map(([label, val, color]) => (
+                      <div key={label} style={{display:'flex',justifyContent:'space-between'}}>
+                        <span style={{fontSize:13,color:'var(--fg-muted)'}}>{label}</span>
+                        <span style={{fontSize:13,fontWeight:600,color:color||'var(--fg)'}}>{val}</span>
+                      </div>
+                    ))}
+                    {hayRetencion && (
+                      <>
+                        <div style={{display:'flex',justifyContent:'space-between'}}>
+                          <span style={{fontSize:13,color:'var(--warning)'}}>Retención SUNAT</span>
+                          <span style={{fontSize:13,fontWeight:600,color:'var(--warning)'}}>- {moneyCurrency(retencionCxC, cobroSel.moneda)}</span>
+                        </div>
+                        <div style={{display:'flex',justifyContent:'space-between',paddingBottom:4,borderBottom:'1px dashed rgba(251,191,36,0.3)'}}>
+                          <span style={{fontSize:13,color:'var(--cyan)',fontWeight:600}}>Neto a cobrar</span>
+                          <span style={{fontSize:13,fontWeight:700,color:'var(--cyan)'}}>{moneyCurrency(saldoActual, cobroSel.moneda)}</span>
+                        </div>
+                      </>
+                    )}
+                    {montoExcedeNeto && (
+                      <div style={{fontSize:12,padding:'8px 10px',borderRadius:6,background:'rgba(251,191,36,0.1)',border:'1px solid rgba(251,191,36,0.35)',color:'var(--warning)'}}>
+                        ⚠ El monto ingresado supera el neto esperado. El cliente retiene {moneyCurrency(retencionCxC, cobroSel.moneda)} como Agente de Retención SUNAT — no transfiere el total facturado.
+                      </div>
+                    )}
+                    {pagadoPrev > 0 && (
+                      <div style={{display:'flex',justifyContent:'space-between'}}>
+                        <span style={{fontSize:13,color:'var(--fg-muted)'}}>Ya pagado</span>
+                        <span style={{fontSize:13,fontWeight:600,color:'var(--green)'}}>{moneyCurrency(pagadoPrev, cobroSel.moneda)}</span>
+                      </div>
+                    )}
+                    <div style={{display:'flex',justifyContent:'space-between'}}>
+                      <span style={{fontSize:13,color:'var(--fg-muted)'}}>Este cobro</span>
+                      <span style={{fontSize:13,fontWeight:600,color:hayMonto?'var(--cyan)':'var(--fg-muted)'}}>{hayMonto ? moneyCurrency(montoForm, cobroSel.moneda) : '—'}</span>
+                    </div>
+                    <div style={{display:'flex',justifyContent:'space-between',borderTop:'1px solid var(--border-subtle)',paddingTop:7,marginTop:2}}>
+                      <span style={{fontSize:13,fontWeight:600}}>Saldo pendiente tras cobro</span>
+                      <span style={{fontSize:14,fontWeight:700,color:saldoTras>0?'var(--orange)':'var(--green)'}}>
+                        {hayMonto ? moneyCurrency(saldoTras, cobroSel.moneda) : moneyCurrency(saldoActual, cobroSel.moneda)}
+                      </span>
+                    </div>
+                    {diasMoraDe(cobroSel) > 0 && (
+                      <div style={{display:'flex',justifyContent:'space-between'}}>
+                        <span style={{fontSize:13,color:'var(--fg-muted)'}}>Interés de mora</span>
+                        <span style={{fontSize:13,fontWeight:600,color:'var(--danger)'}}>{moneyDCurrency(interesMoraDe(cobroSel), cobroSel.moneda)}</span>
+                      </div>
+                    )}
                   </div>
-                ))}
-                {diasMoraDe(cobroSel) > 0 && (
-                  <div style={{display:'flex',justifyContent:'space-between'}}>
-                    <span style={{fontSize:13,color:'var(--fg-muted)'}}>Interés de mora</span>
-                    <span style={{fontSize:13,fontWeight:600,color:'var(--danger)'}}>{moneyDCurrency(interesMoraDe(cobroSel), cobroSel.moneda)}</span>
-                  </div>
-                )}
-              </div>
+                );
+              })()}
 
               <div className="grid-2 mt-6" style={{gap:12}}>
                 <div className="input-group">
@@ -1290,13 +1406,19 @@ function Tesoreria() {
     const moneda = movSel.moneda || 'PEN';
     const pct2 = monto * 0.02;
     if (movSel.tipo === 'credito') {
-      return (cxc || []).filter(c => saldoCxc(c) > 0 && (c.moneda || 'PEN') === moneda).map(c => ({
-        tipo: 'cxc', id: c.id,
-        label: `${c.facturas?.numero || c.factura || c.id} — ${clienteNombre(c.cuenta_id)}`,
-        monto: saldoCxc(c),
-        diff: Math.abs(saldoCxc(c) - monto),
-        sugerido: Math.abs(saldoCxc(c) - monto) <= pct2,
-      })).sort((a, b) => a.diff - b.diff);
+      return (cxc || []).filter(c => saldoCxc(c) > 0 && (c.moneda || 'PEN') === moneda).map(c => {
+        const retencionCxCMatch = Number(c.monto_retencion || 0);
+        const montoEsperado = retencionCxCMatch > 0
+          ? Math.max(0, saldoCxc(c))
+          : saldoCxc(c);
+        return {
+          tipo: 'cxc', id: c.id,
+          label: `${c.facturas?.numero || c.factura || c.id} — ${clienteNombre(c.cuenta_id)}${retencionCxCMatch > 0 ? ' (neto)' : ''}`,
+          monto: saldoCxc(c),
+          diff: Math.abs(montoEsperado - monto),
+          sugerido: Math.abs(montoEsperado - monto) <= pct2,
+        };
+      }).sort((a, b) => a.diff - b.diff);
     }
     return (cxp || []).filter(p => saldoCxp(p) > 0 && (p.moneda || 'PEN') === moneda).map(p => ({
       tipo: 'cxp', id: p.id,
@@ -2003,7 +2125,7 @@ function Facturacion() {
   const {
     facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, seriesDocumentarias,
     emitirFacturaConCxC, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
-    registrarCobroCxC, generarCxP, navigate, searchQuery,
+    registrarCobroCxC, generarCxC, generarCxP, navigate, activeParams, searchQuery,
     empresaConfig, role,
   } = useApp();
 
@@ -2028,7 +2150,10 @@ function Facturacion() {
   const [partidas, setPartidas] = useState([{ id:1, descripcion:'', cantidad:1, precio_unitario:'' }]);
   const [igvPct, setIgvPct] = useState(18);
   const [saving, setSaving] = useState(false);
+  const emitiendoRef = useRef(false);
   const [vencimientoManual, setVencimientoManual] = useState(false);
+  const [condicionManual, setCondicionManual] = useState(false);
+  const [clienteRetencion, setClienteRetencion] = useState({ aplica: false, tasa: 3 });
 
   // ── Ficha state ───────────────────────────────────────────────────────
   const [selFac, setSelFac] = useState(null);
@@ -2043,6 +2168,33 @@ function Facturacion() {
   const [savingEmisionFac, setSavingEmisionFac] = useState(false);
   const [panelEditFac, setPanelEditFac] = useState(null);   // { id, items, igvPct, form }
   const [savingEditFac, setSavingEditFac] = useState(false);
+  const [generandoCxC, setGenerandoCxC] = useState(false);
+
+  const generarCxCDesdeFac = async (f) => {
+    if (!f?.id || !f?.cuenta_id) return;
+    setGenerandoCxC(true);
+    try {
+      const saldoInicial = f.aplica_retencion ? (f.monto_neto_cobrable || f.total) : f.total;
+      await generarCxC({
+        cuenta_id: f.cuenta_id,
+        factura_id: f.id,
+        os_cliente_id: f.os_cliente_id || null,
+        fecha_emision: f.fecha_emision,
+        fecha_vencimiento: f.fecha_vencimiento,
+        fecha_vencimiento_resuelta: true,
+        omitir_aviso_condicion_pago: true,
+        condicion_pago: f.condicion_pago,
+        monto_total: f.total,
+        monto_pagado: 0,
+        saldo: saldoInicial,
+        monto_retencion: f.monto_retencion || 0,
+        moneda: f.moneda || 'PEN',
+        estado: 'por_cobrar',
+      });
+    } finally {
+      setGenerandoCxC(false);
+    }
+  };
 
   // ── Archivos factura (PDF / ZIP) — almacenados como URLs en la factura ──
   const [uploadingFac, setUploadingFac] = useState(null); // 'pdf' | 'zip' | null
@@ -2105,13 +2257,22 @@ function Facturacion() {
     ? `${serieFactura.serie}-${String(Number(serieFactura.siguiente_correlativo)).padStart(4,'0')}`
     : `F001-${String((facturas||[]).length + 1).padStart(4,'0')}`;
 
-  const valFacturadas = useMemo(() => new Set((facturas||[]).map(f => f.valorizacion_id).filter(Boolean)), [facturas]);
+  const valFacturadas = useMemo(() => new Set(
+    (facturas||[])
+      .filter(f => f.estado !== 'anulada' && f.tipo_documento !== 'nota_credito' && f.tipo_documento !== 'nota_debito')
+      .map(f => f.valorizacion_id)
+      .filter(Boolean)
+  ), [facturas]);
   const valsParaFacturar = (valorizaciones||[]).filter(v => v.estado === 'aprobada' && !valFacturadas.has(v.id));
 
   // ── Partidas calc ─────────────────────────────────────────────────────
   const subtotalCalc = partidas.reduce((s, p) => s + Number(p.cantidad||0) * Number(p.precio_unitario||0), 0);
   const igvCalc = Math.round(subtotalCalc * (igvPct/100) * 100) / 100;
   const totalCalc = subtotalCalc + igvCalc;
+  const retencionCalc = clienteRetencion.aplica
+    ? Math.round(totalCalc * (clienteRetencion.tasa / 100) * 100) / 100
+    : 0;
+  const netoCobrableCalc = clienteRetencion.aplica ? totalCalc - retencionCalc : totalCalc;
 
   // P7.3 — exceso saldo OS (solo modo 'val')
   const osParaValidar = mode === 'val' ? getOs(getVal(valSel)?.os_cliente_id) : getOs(osSel);
@@ -2152,6 +2313,7 @@ function Facturacion() {
 
   // ── Form change helper (auto-update fecha_vencimiento) ────────────────
   const handleFormChange = (field, value) => {
+    if (field === 'condicion_pago') setCondicionManual(true);
     if (field === 'fecha_emision' || field === 'condicion_pago') setVencimientoManual(false);
     if (field === 'fecha_vencimiento') setVencimientoManual(true);
     setForm(f => {
@@ -2173,7 +2335,9 @@ function Facturacion() {
     setIgvPct(18);
     setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: calcularVencimientoForm(today, condicionPagoInicial), glosa:'', notas:'', moneda:'PEN' });
     setVencimientoManual(false);
+    setCondicionManual(false);
     setConfirmarExcesoFac(false);
+    setClienteRetencion({ aplica: false, tasa: 3 });
   };
 
   // ── Pre-fill from val ─────────────────────────────────────────────────
@@ -2190,15 +2354,34 @@ function Facturacion() {
       ? (v.items).map((it,i) => ({...it, id: it.id || `vp_${i}`}))
       : [{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:0 }]);
     const cuenta = getCuenta(cuentaId);
-    const condicion = resolverCondicionCliente(cuenta).condicion_pago;
+    const condicion = resolverCondicionPagoCxC({
+      condicionCliente: os?.condicion_pago || cuenta?.condicion_pago,
+      condicionFallback: condicionPagoDefecto,
+    }).condicion_pago;
     setVencimientoManual(false);
-    setForm(f => ({
-      ...f,
-      moneda: v?.moneda || os?.moneda || 'PEN',
-      condicion_pago: condicion,
-      fecha_vencimiento: calcularVencimientoForm(f.fecha_emision, condicion),
-    }));
+    setForm(f => {
+      const nuevaCondicion = condicionManual ? f.condicion_pago : condicion;
+      return {
+        ...f,
+        moneda: v?.moneda || os?.moneda || 'PEN',
+        condicion_pago: nuevaCondicion,
+        fecha_vencimiento: calcularVencimientoForm(f.fecha_emision, nuevaCondicion),
+      };
+    });
+    setClienteRetencion({
+      aplica: Boolean(cuenta?.agente_retencion_sunat),
+      tasa: Number(cuenta?.tasa_retencion_sunat || 3),
+    });
   };
+
+  // Abre el formulario si se navegó desde Valorizaciones con params
+  useEffect(() => {
+    if (activeParams?.mode === 'val' && activeParams?.valSel && !mode) {
+      openMode('val');
+      handleSelectVal(activeParams.valSel);
+      navigate('facturacion', {});
+    }
+  }, [activeParams]);
 
   // ── Pre-fill from cliente (directa) ──────────────────────────────────
   const handleSelectCuenta = cId => {
@@ -2213,6 +2396,10 @@ function Facturacion() {
       fecha_vencimiento: calcularVencimientoForm(f.fecha_emision, condicion),
       moneda: cuenta?.moneda || 'PEN',
     }));
+    setClienteRetencion({
+      aplica: Boolean(cuenta?.agente_retencion_sunat),
+      tasa: Number(cuenta?.tasa_retencion_sunat || 3),
+    });
   };
 
   // ── Submit ────────────────────────────────────────────────────────────
@@ -2224,9 +2411,14 @@ function Facturacion() {
     if (mode === 'val' && !valSel) { alert('Debe seleccionar una valorización.'); return; }
     if (partidas.every(p => !p.descripcion && !p.precio_unitario)) { alert('Debe completar al menos una partida.'); return; }
 
-    // P7.1 — una valorización solo puede tener una factura activa
+    // P7.1 — una valorización solo puede tener una factura activa (excluye NC/ND)
     if (mode === 'val' && valSel) {
-      const facActiva = (facturas || []).find(f => f.valorizacion_id === valSel && f.estado !== 'anulada');
+      const facActiva = (facturas || []).find(f =>
+        f.valorizacion_id === valSel &&
+        f.estado !== 'anulada' &&
+        f.tipo_documento !== 'nota_credito' &&
+        f.tipo_documento !== 'nota_debito'
+      );
       if (facActiva) {
         alert('Esta valorización ya tiene una factura emitida. Si necesitas corregirla usa una nota de crédito o nota de débito.');
         return;
@@ -2241,6 +2433,8 @@ function Facturacion() {
     // P7.3 — total supera saldo OS (requiere confirmación explícita)
     if (excedeOsSaldo && !confirmarExcesoFac) return;
 
+    if (emitiendoRef.current) return;
+    emitiendoRef.current = true;
     setSaving(true);
     try {
       await emitirFacturaConCxC({
@@ -2260,9 +2454,13 @@ function Facturacion() {
         fecha_vencimiento_manual: vencimientoManual,
         glosa: form.glosa || null,
         notas: form.notas || null,
+        aplica_retencion: clienteRetencion.aplica,
+        monto_retencion: retencionCalc,
+        monto_neto_cobrable: netoCobrableCalc,
       });
       setMode(null);
     } finally {
+      emitiendoRef.current = false;
       setSaving(false);
     }
   };
@@ -2426,9 +2624,9 @@ function Facturacion() {
     if (!facOrigen) { setNcndForm(null); return null; }
     const itemsOrigen = facOrigen.items || [];
     const igvPctOrig = facOrigen.subtotal > 0 ? (facOrigen.igv||0) / facOrigen.subtotal : 0.18;
-    const totalNC = ncPartidasSel.filter(p => p.sel).reduce((s,p) => s + Number(p.monto_acreditar||0), 0);
-    const ncSubtotal = Math.round(totalNC / (1 + igvPctOrig) * 100) / 100;
-    const ncIgvAmt = Math.round((totalNC - ncSubtotal) * 100) / 100;
+    const ncSubtotal = Math.round(ncPartidasSel.filter(p => p.sel).reduce((s,p) => s + Number(p.monto_acreditar||0), 0) * 100) / 100;
+    const ncIgvAmt = Math.round(ncSubtotal * igvPctOrig * 100) / 100;
+    const totalNC = ncSubtotal + ncIgvAmt;
     const cubreTotal = totalNC >= Number(facOrigen.total||0);
 
     const handleEmitirNC = async () => {
@@ -2459,7 +2657,7 @@ function Facturacion() {
           nc_id: ncId,
         });
       }
-      setNcndForm(null); setNcndFacId(null); setSelFac(null); setNcDevolucion(false);
+      setNcndForm(null); setNcndFacId(null); setSelFac(nc?.id || null); setFichaTab('detalle'); setNcDevolucion(false);
     };
 
     return (
@@ -2484,7 +2682,7 @@ function Facturacion() {
               <div className="grid-2" style={{gap:16}}>
                 <div className="input-group">
                   <label>Factura de origen</label>
-                  <input className="input mono" readOnly value={`${facOrigen.numero} — ${money(facOrigen.total)}`} style={{color:'var(--fg-muted)',cursor:'default'}} />
+                  <input className="input mono" readOnly value={`${facOrigen.numero} — ${moneyCurrency(facOrigen.total, facOrigen.moneda)}`} style={{color:'var(--fg-muted)',cursor:'default'}} />
                 </div>
                 <div className="input-group">
                   <label>Motivo <span style={{color:'var(--danger)'}}>*</span></label>
@@ -2530,7 +2728,7 @@ function Facturacion() {
                                 onChange={e => setNcPartidasSel(prev => prev.map(p => p.id===pId ? {...p, sel:e.target.checked} : p))} />
                             </td>
                             <td style={{fontSize:12}}>{it.descripcion||'—'}</td>
-                            <td className="num text-muted">{money(totalOrig)}</td>
+                            <td className="num text-muted">{moneyCurrency(totalOrig, facOrigen.moneda)}</td>
                             <td>
                               <input type="number" className="input num" min="0" max={totalOrig} step="0.01"
                                 value={pSel.monto_acreditar} disabled={!pSel.sel}
@@ -2557,7 +2755,7 @@ function Facturacion() {
               </label>
               {ncDevolucion && (
                 <div style={{marginTop:8, fontSize:12, color:'var(--orange)', padding:'6px 8px', background:'color-mix(in srgb, var(--orange) 8%, transparent)', borderRadius:6}}>
-                  Se creará una obligación de pago pendiente en Tesorería por <strong>{money(totalNC)}</strong>, vinculada a esta NC. El tesorero podrá ejecutar la transferencia desde CxP.
+                  Se creará una obligación de pago pendiente en Tesorería por <strong>{moneyCurrency(totalNC, facOrigen.moneda)}</strong>, vinculada a esta NC. El tesorero podrá ejecutar la transferencia desde CxP.
                 </div>
               )}
             </div>
@@ -2568,15 +2766,15 @@ function Facturacion() {
               <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:8}}>Resumen NC</div>
               <div className="row" style={{justifyContent:'space-between',marginBottom:6}}>
                 <span className="text-muted" style={{fontSize:13}}>Subtotal</span>
-                <span className="num">{money(ncSubtotal)}</span>
+                <span className="num">{moneyCurrency(ncSubtotal, facOrigen.moneda)}</span>
               </div>
               <div className="row" style={{justifyContent:'space-between',marginBottom:8}}>
-                <span className="text-muted" style={{fontSize:13}}>IGV</span>
-                <span className="num">{money(ncIgvAmt)}</span>
+                <span className="text-muted" style={{fontSize:13}}>IGV ({Math.round(igvPctOrig*100)}%)</span>
+                <span className="num">{moneyCurrency(ncIgvAmt, facOrigen.moneda)}</span>
               </div>
               <div className="row" style={{justifyContent:'space-between',paddingTop:8,borderTop:'1px solid var(--border)',fontWeight:700,fontFamily:'Sora',fontSize:16}}>
                 <span>Total NC</span>
-                <span className="num">{money(totalNC)}</span>
+                <span className="num">{moneyCurrency(totalNC, facOrigen.moneda)}</span>
               </div>
             </div>
 
@@ -2704,6 +2902,7 @@ function Facturacion() {
     const osVinc = getOs(f.os_cliente_id);
     const valVinc = getVal(f.valorizacion_id);
     const cxcVinc = (cxc||[]).find(c => c.factura_id === f.id);
+    const facOrigen = f.factura_origen_id ? (facturas||[]).find(x => x.id === f.factura_origen_id) : null;
     const items = f.items || [];
     const fechaEmisionLabel = f.fecha_emision || '—';
     const editandoEmisionFac = editEmisionFac?.id === f.id;
@@ -2819,10 +3018,21 @@ function Facturacion() {
               <h1 className="page-title" style={{margin:0}}>{f.numero}</h1>
               <span style={{fontSize:12,color:'var(--fg-muted)',fontWeight:400}}>{TIPO_DOC_LABELS[f.tipo_documento]||'Factura'}</span>
               <span className={'badge '+(FAC_BADGE_CLASS[f.estado]||'badge-cyan')}>{FAC_BADGE_LABEL[f.estado]||f.estado}</span>
+              {f.aplica_retencion && <span className="badge badge-orange">⚠ Agente de Retención SUNAT</span>}
               {esAnuladaSinNC(f) && (
                 <span style={{fontSize:12,color:'var(--orange)',fontWeight:600}}>· Anulada directamente — sin Nota de Crédito</span>
               )}
             </div>
+            {facOrigen && (
+              <div style={{display:'inline-flex',alignItems:'center',gap:8,fontSize:13,padding:'6px 12px',borderRadius:6,background:'color-mix(in srgb,var(--cyan) 8%,transparent)',border:'1px solid color-mix(in srgb,var(--cyan) 25%,transparent)',marginTop:6,marginBottom:2}}>
+                <span style={{color:'var(--fg-muted)'}}>Documento vinculado a factura:</span>
+                <button type="button" className="btn btn-ghost" style={{padding:0,fontWeight:700,color:'var(--cyan)',fontSize:13}} onClick={() => setSelFac(facOrigen.id)}>
+                  {facOrigen.numero}
+                </button>
+                <span className={'badge '+(FAC_BADGE_CLASS[facOrigen.estado]||'badge-cyan')} style={{fontSize:10}}>{FAC_BADGE_LABEL[facOrigen.estado]||facOrigen.estado}</span>
+                <span style={{color:'var(--fg-muted)',fontSize:12}}>· {moneyCurrency(facOrigen.total, facOrigen.moneda)}</span>
+              </div>
+            )}
             {esAnuladaSinNC(f) && (
               <div style={{fontSize:13,padding:'8px 14px',borderRadius:6,background:'rgba(234,179,8,0.08)',border:'1px solid var(--orange)',marginTop:8,marginBottom:4}}>
                 Esta factura fue anulada directamente (no por Nota de Crédito). Si fue un error, puedes restaurarla y volver a registrar el cobro.
@@ -2851,6 +3061,16 @@ function Facturacion() {
               {diasVencer !== null && (
                 <span style={{fontWeight:600, color: diasVencer < 0 ? 'var(--danger)' : diasVencer <= 7 ? 'var(--orange)' : 'var(--fg-muted)', fontSize:12}}>
                   {diasVencer < 0 ? `${Math.abs(diasVencer)} días vencida` : diasVencer === 0 ? 'Vence hoy' : `${diasVencer} días para vencer`}
+                </span>
+              )}
+              {osVinc && (
+                <span style={{fontSize:12,color:'var(--fg-muted)'}}>
+                  · OS: <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:600,color:'var(--cyan)'}} onClick={() => navigate('os_clientes',{detail:osVinc.id})}>{osVinc.numero}</button>
+                </span>
+              )}
+              {valVinc && (
+                <span style={{fontSize:12,color:'var(--fg-muted)'}}>
+                  · Val: <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:600,color:'var(--cyan)'}} onClick={() => navigate('valorizaciones',{detail:valVinc.id})}>{valVinc.numero}</button>
                 </span>
               )}
             </div>
@@ -3018,9 +3238,21 @@ function Facturacion() {
                   <span className="num">{moneyCurrency(f.igv, f.moneda)}</span>
                 </div>
                 <div className="row" style={{justifyContent:'space-between',paddingTop:6,borderTop:'1px solid var(--border)',fontWeight:700,fontSize:15,fontFamily:'Sora'}}>
-                  <span>Total</span>
+                  <span>Total facturado</span>
                   <span className="num">{moneyCurrency(f.total, f.moneda)}</span>
                 </div>
+                {f.aplica_retencion && (
+                  <>
+                    <div className="row" style={{justifyContent:'space-between',marginTop:8,paddingTop:6,borderTop:'1px dashed rgba(251,191,36,0.4)'}}>
+                      <span style={{fontSize:13,color:'var(--warning)',fontWeight:600}}>Retención SUNAT</span>
+                      <span style={{fontSize:13,fontWeight:700,color:'var(--warning)'}}>- {moneyCurrency(f.monto_retencion||0, f.moneda)}</span>
+                    </div>
+                    <div className="row" style={{justifyContent:'space-between',paddingTop:6,borderTop:'1px solid var(--border)',fontWeight:700,fontSize:15,fontFamily:'Sora',color:'var(--cyan)'}}>
+                      <span>Neto a cobrar</span>
+                      <span className="num">{moneyCurrency(f.monto_neto_cobrable ?? (f.total-(f.monto_retencion||0)), f.moneda)}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
             {(f.glosa||f.notas) && (
@@ -3035,6 +3267,20 @@ function Facturacion() {
         {/* Tab: Vinculaciones */}
         {fichaTab === 'vinculaciones' && (
           <div className="card card-body" style={{display:'flex',flexDirection:'column',gap:12}}>
+            {facOrigen && (
+              <div style={{padding:'12px 14px',borderRadius:6,border:'1px solid color-mix(in srgb,var(--cyan) 30%,transparent)',background:'color-mix(in srgb,var(--cyan) 5%,transparent)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div>
+                  <div style={{fontSize:11,color:'var(--cyan)',fontWeight:600,marginBottom:4,textTransform:'uppercase',letterSpacing:0.5}}>Factura origen</div>
+                  <div style={{fontWeight:700,fontSize:15}}>{facOrigen.numero}</div>
+                  <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:3,display:'flex',gap:12,alignItems:'center'}}>
+                    <span>Total: <strong>{moneyCurrency(facOrigen.total, facOrigen.moneda)}</strong></span>
+                    <span>Emitida: {facOrigen.fecha_emision||'—'}</span>
+                    <span className={'badge '+(FAC_BADGE_CLASS[facOrigen.estado]||'badge-cyan')} style={{fontSize:10}}>{FAC_BADGE_LABEL[facOrigen.estado]||facOrigen.estado}</span>
+                  </div>
+                </div>
+                <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => setSelFac(facOrigen.id)}>Ver factura</button>
+              </div>
+            )}
             <div style={{padding:'12px 14px',borderRadius:6,border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
               <div>
                 <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Valorización vinculada</div>
@@ -3066,7 +3312,20 @@ function Facturacion() {
                     </div>
                     <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>Vence: {cxcVinc.fecha_vencimiento||'—'}</div>
                   </>
-                ) : <div style={{fontWeight:400,color:'var(--fg-muted)'}}>Sin CxC generada</div>}
+                ) : (
+                  <div>
+                    <div style={{fontWeight:400,color:'var(--fg-muted)',marginBottom:8}}>Sin CxC generada</div>
+                    {f.estado !== 'anulada' && (
+                      <button
+                        className="btn btn-primary btn-sm"
+                        disabled={generandoCxC}
+                        onClick={() => generarCxCDesdeFac(f)}
+                      >
+                        {generandoCxC ? 'Generando...' : '+ Generar CxC'}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               {cxcVinc && <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('cxc')}>Ver CxC</button>}
             </div>
@@ -3139,8 +3398,9 @@ function Facturacion() {
                   </select>
                 </div>
                 <div className="input-group">
-                  <label>Número</label>
+                  <label>Número <span style={{fontWeight:400,color:'var(--fg-muted)',fontSize:11}}>(editable)</span></label>
                   <input className="input mono" value={form.numero} onChange={e => handleFormChange('numero', e.target.value)} placeholder={nextNumero} />
+                  {form.numero === nextNumero && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:3}}>Número auto-generado — cámbialo si usas otra serie (ej. E001-16)</div>}
                 </div>
               </div>
             </div>
@@ -3155,7 +3415,7 @@ function Facturacion() {
                     <option value="">Seleccione valorización...</option>
                     {valsParaFacturar.map(v => {
                       const os = getOs(v.os_cliente_id);
-                      return <option key={v.id} value={v.id}>{v.numero} — {cuentaNombre(os?.cuenta_id)} — {money(v.total||0)}</option>;
+                      return <option key={v.id} value={v.id}>{v.numero} — {cuentaNombre(os?.cuenta_id)} — {moneyCurrency(v.total||0, v.moneda)}</option>;
                     })}
                   </select>
                   {valsParaFacturar.length === 0 && (
@@ -3215,7 +3475,7 @@ function Facturacion() {
                         <td><input type="text" className="input" value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} /></td>
                         <td><input type="number" className="input num" min="1" value={p.cantidad} onChange={e => updatePartida(p.id, 'cantidad', e.target.value)} /></td>
                         <td><input type="number" className="input num" min="0" step="0.01" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', e.target.value)} /></td>
-                        <td className="num" style={{fontWeight:600}}>{money(Number(p.cantidad||0) * Number(p.precio_unitario||0))}</td>
+                        <td className="num" style={{fontWeight:600}}>{moneyCurrency(Number(p.cantidad||0) * Number(p.precio_unitario||0), form.moneda)}</td>
                         <td><button className="icon-btn text-danger" onClick={() => removePartida(p.id)}>{I.x}</button></td>
                       </tr>
                     ))}
@@ -3226,7 +3486,7 @@ function Facturacion() {
                 <div style={{width:280, marginLeft:'auto'}}>
                   <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
                     <span className="text-muted" style={{fontSize:13}}>Subtotal</span>
-                    <span className="num">{money(subtotalCalc)}</span>
+                    <span className="num">{moneyCurrency(subtotalCalc, form.moneda)}</span>
                   </div>
                   <div className="row" style={{justifyContent:'space-between', marginBottom:6, alignItems:'center'}}>
                     <div style={{display:'flex', alignItems:'center', gap:6}}>
@@ -3235,11 +3495,11 @@ function Facturacion() {
                         value={igvPct} onChange={e => setIgvPct(Number(e.target.value))} />
                       <span style={{fontSize:12, color:'var(--fg-muted)'}}>%</span>
                     </div>
-                    <span className="num">{money(igvCalc)}</span>
+                    <span className="num">{moneyCurrency(igvCalc, form.moneda)}</span>
                   </div>
                   <div className="row" style={{justifyContent:'space-between', paddingTop:8, borderTop:'1px solid var(--border)', fontWeight:700, fontSize:16, fontFamily:'Sora'}}>
                     <span>Total</span>
-                    <span className="num">{money(totalCalc)}</span>
+                    <span className="num">{moneyCurrency(totalCalc, form.moneda)}</span>
                   </div>
                 </div>
               </div>
@@ -3294,12 +3554,33 @@ function Facturacion() {
               </div>
             )}
 
+            {/* Bloque retención SUNAT */}
+            {clienteRetencion.aplica && totalCalc > 0 && (
+              <div style={{padding:'12px 14px', borderRadius:8, border:'2px solid rgba(251,191,36,0.4)', background:'rgba(251,191,36,0.06)'}}>
+                <div style={{fontWeight:700, fontSize:13, color:'var(--warning)', marginBottom:10}}>⚠ Agente de Retención SUNAT ({clienteRetencion.tasa}%)</div>
+                {[
+                  ['Total facturado', moneyCurrency(totalCalc, form.moneda), null],
+                  [`Retención SUNAT (${clienteRetencion.tasa}%)`, `- ${moneyCurrency(retencionCalc, form.moneda)}`, 'var(--warning)'],
+                ].map(([label, val, color]) => (
+                  <div key={label} style={{display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4}}>
+                    <span style={{color:'var(--fg-muted)'}}>{label}</span>
+                    <span style={{fontWeight:600, color: color || 'var(--fg)'}}>{val}</span>
+                  </div>
+                ))}
+                <div style={{display:'flex', justifyContent:'space-between', fontSize:14, fontWeight:700, borderTop:'1px solid rgba(251,191,36,0.3)', paddingTop:8, marginTop:4}}>
+                  <span>Neto a cobrar</span>
+                  <span style={{color:'var(--cyan)', fontFamily:'Sora'}}>{moneyCurrency(netoCobrableCalc, form.moneda)}</span>
+                </div>
+                <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:8}}>El cliente retendrá este monto al momento del pago. No afecta el Estado de Resultados — es crédito fiscal ante SUNAT.</div>
+              </div>
+            )}
+
             {/* P7.3 — aviso exceso saldo OS */}
             {excedeOsSaldo && (
               <div className="card card-body" style={{border:'1px solid var(--warning)', background:'color-mix(in srgb, var(--warning) 8%, transparent)'}}>
                 <div style={{fontWeight:600, fontSize:13, color:'var(--warning)', marginBottom:6}}>Total supera saldo OS</div>
                 <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:10}}>
-                  El total ({money(totalCalc)}) supera el saldo por facturar ({money(Number(osParaValidar?.saldo_por_facturar || 0))}). ¿Deseas continuar igualmente?
+                  El total ({moneyCurrency(totalCalc, form.moneda)}) supera el saldo por facturar ({moneyCurrency(Number(osParaValidar?.saldo_por_facturar || 0), form.moneda)}). ¿Deseas continuar igualmente?
                 </div>
                 <label style={{display:'flex', gap:8, alignItems:'center', fontSize:13, cursor:'pointer'}}>
                   <input type="checkbox" checked={confirmarExcesoFac} onChange={e => setConfirmarExcesoFac(e.target.checked)} />
@@ -3311,7 +3592,7 @@ function Facturacion() {
             {/* Total resumen */}
             <div className="card" style={{padding:'16px 20px', background:'color-mix(in srgb, var(--cyan) 6%, transparent)', border:'1px solid color-mix(in srgb, var(--cyan) 20%, transparent)'}}>
               <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total a facturar</div>
-              <div style={{fontSize:28, fontWeight:700, fontFamily:'Sora', color:'var(--cyan)'}}>{money(totalCalc)}</div>
+              <div style={{fontSize:28, fontWeight:700, fontFamily:'Sora', color:'var(--cyan)'}}>{moneyCurrency(totalCalc, form.moneda)}</div>
               <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Vence: {form.fecha_vencimiento || '—'}</div>
             </div>
           </div>
@@ -3429,6 +3710,7 @@ function Facturacion() {
                 <th>F. Emisión</th>
                 <th>F. Vencimiento</th>
                 <th>Estado</th>
+                <th style={{textAlign:'center',width:64}}>Docs</th>
                 <th></th>
               </tr>
             </thead>
@@ -3461,6 +3743,30 @@ function Facturacion() {
                           ↩ Restaurar
                         </span>
                       )}
+                    </td>
+                    <td style={{textAlign:'center'}} onClick={e => e.stopPropagation()}>
+                      <span style={{display:'inline-flex',gap:4,alignItems:'center'}}>
+                        <span
+                          title={f.archivo_pdf_url ? 'PDF adjunto' : 'Sin PDF'}
+                          style={{fontSize:10,fontWeight:700,padding:'2px 5px',borderRadius:4,
+                            background: f.archivo_pdf_url ? 'color-mix(in srgb,var(--green) 15%,transparent)' : 'var(--surface-2)',
+                            color: f.archivo_pdf_url ? 'var(--green)' : 'var(--fg-muted)',
+                            border: `1px solid ${f.archivo_pdf_url ? 'var(--green)' : 'var(--border)'}`,
+                            cursor: f.archivo_pdf_url ? 'pointer' : 'default',
+                          }}
+                          onClick={() => f.archivo_pdf_url && window.open(f.archivo_pdf_url,'_blank','noopener,noreferrer')}
+                        >PDF</span>
+                        <span
+                          title={f.archivo_zip_url ? 'ZIP adjunto' : 'Sin ZIP'}
+                          style={{fontSize:10,fontWeight:700,padding:'2px 5px',borderRadius:4,
+                            background: f.archivo_zip_url ? 'color-mix(in srgb,var(--green) 15%,transparent)' : 'var(--surface-2)',
+                            color: f.archivo_zip_url ? 'var(--green)' : 'var(--fg-muted)',
+                            border: `1px solid ${f.archivo_zip_url ? 'var(--green)' : 'var(--border)'}`,
+                            cursor: f.archivo_zip_url ? 'pointer' : 'default',
+                          }}
+                          onClick={() => f.archivo_zip_url && window.open(f.archivo_zip_url,'_blank','noopener,noreferrer')}
+                        >ZIP</span>
+                      </span>
                     </td>
                     <td onClick={e => e.stopPropagation()}>
                       <button className="icon-btn" title="Ver detalle" onClick={() => { setSelFac(f.id); setFichaTab('detalle'); }}>{I.eye}</button>
@@ -4211,7 +4517,8 @@ function CxPLegacy() {
 }
 
 function CxP() {
-  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, ots, registrarPagoCxP, generarCxP, crearGasto, addNotificacion } = useApp();
+  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, ots, registrarPagoCxP, generarCxP, crearGasto, addNotificacion, centrosCosto, setCxp } = useApp();
+  const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const today = new Date().toISOString().split('T')[0];
 
   // Panel states
@@ -4235,6 +4542,13 @@ function CxP() {
   const [rheRuc, setRheRuc] = useState('');
   const [rheNombre, setRheNombre] = useState('');
   const [rheMontoBruto, setRheMontoBruto] = useState('');
+  const [rheNumeroDoc, setRheNumeroDoc] = useState('');
+  const [cxpCategoriaEr, setCxpCategoriaEr] = useState('');
+  const [cxpCentroCostoId, setCxpCentroCostoId] = useState('');
+  // Edición de clasificación ER en ficha existente
+  const [fichaClasifCategoria, setFichaClasifCategoria] = useState('');
+  const [fichaClasifCeco, setFichaClasifCeco] = useState('');
+  const [guardandoClasif, setGuardandoClasif] = useState(false);
   const rheRetencion = Math.round(Number(rheMontoBruto || 0) * 0.08 * 100) / 100;
   const rheMontoNeto = Math.round((Number(rheMontoBruto || 0) - rheRetencion) * 100) / 100;
 
@@ -4306,6 +4620,8 @@ function CxP() {
     setSel(c);
     setFichaTab('pago');
     setFormPago({ monto: String(saldoDe(c)), fecha: today, cuenta_bancaria: 'Cuenta principal', referencia: '' });
+    setFichaClasifCategoria(c.categoria_er || '');
+    setFichaClasifCeco(c.centro_costo_id || '');
   };
 
   const guardarPago = async e => {
@@ -4349,7 +4665,7 @@ function CxP() {
         personal_id:       esViaticos ? viaticosPersonalId : null,
         ot_vinc_id:        esViaticos && viaticosOtId ? viaticosOtId : null,
         tipo_comprobante:  formCrear.tipo_comprobante,
-        factura_numero:    formCrear.factura_numero || null,
+        factura_numero:    esRhe ? (rheNumeroDoc || null) : (formCrear.factura_numero || null),
         concepto:          formCrear.concepto || (esRhe ? `RHE - ${rheNombre}` : esViaticos ? `Viáticos — ${personal?.nombre || viaticosPersonalId}` : null),
         fecha_emision:     formCrear.fecha_emision,
         fecha_vencimiento: formCrear.fecha_vencimiento,
@@ -4358,47 +4674,48 @@ function CxP() {
         saldo:             montoTotal,
         moneda:            formCrear.moneda || 'PEN',
         estado:            'por_pagar',
-        origen:            esViaticos ? 'viaticos' : 'manual',
+        origen:            esRhe ? 'rhe_externo' : esViaticos ? 'viaticos' : 'manual',
         motivo_cxp:        motivoCxP || null,
         ...(esRhe ? { ruc_emisor: rheRuc, nombre_emisor: rheNombre, monto_bruto: Number(rheMontoBruto), retencion_ir: rheRetencion } : {}),
-        ...(archivoCrearUrl ? { archivo_factura_url: archivoCrearUrl } : {})
+        ...(archivoCrearUrl ? { archivo_factura_url: archivoCrearUrl } : {}),
+        ...(cxpCategoriaEr   ? { categoria_er:    cxpCategoriaEr   } : {}),
+        ...(cxpCentroCostoId ? { centro_costo_id: cxpCentroCostoId } : {})
       };
       await generarCxP(cxpPayload);
-      // RHE impacta el ER como Servicios terceros (monto bruto)
-      if (esRhe) {
-        crearGasto({
-          tipo: 'gasto',
-          descripcion: `RHE - ${rheNombre}`,
-          categoria: 'Servicios terceros',
-          monto: Number(rheMontoBruto),
-          moneda: formCrear.moneda || 'PEN',
-          fecha: formCrear.fecha_emision,
-          origen_registro: 'backoffice',
-          estado_pago: 'pendiente',
-        });
-      }
-      // Viáticos impactan el ER como Administrativos o categoría elegida
-      if (esViaticos) {
-        crearGasto({
-          tipo: 'gasto',
-          descripcion: `Viáticos — ${personal?.nombre || viaticosPersonalId}${viaticosOtId ? ` — OT ${viaticosOtId}` : ''}`,
-          categoria: 'Administrativos',
-          monto: montoTotal,
-          moneda: formCrear.moneda || 'PEN',
-          fecha: formCrear.fecha_emision,
-          origen_registro: 'backoffice',
-          estado_pago: 'pendiente',
-          personal_id: viaticosPersonalId,
-          ot_vinc_id: viaticosOtId || null,
-        });
-      }
       setPanelCrear(false);
       setFormCrear(FORM_VACIO);
       setArchivoCrearUrl('');
       setMotivoCxP(''); setViaticosPersonalId(''); setViaticosOtId('');
-      setRheRuc(''); setRheNombre(''); setRheMontoBruto('');
+      setRheRuc(''); setRheNombre(''); setRheMontoBruto(''); setRheNumeroDoc('');
+      setCxpCategoriaEr(''); setCxpCentroCostoId('');
     } finally {
       setGuardando(false);
+    }
+  };
+
+  const guardarClasificacion = async () => {
+    if (!sel) return;
+    setGuardandoClasif(true);
+    try {
+      const camposCxP = {
+        categoria_er:    fichaClasifCategoria || null,
+        centro_costo_id: fichaClasifCeco || null,
+      };
+      await finanzasService.actualizarCxP(sel.id, camposCxP);
+      // Propagar al compras_gastos vinculado para que el ER lo refleje
+      if (sel.gasto_id) {
+        const camposGasto = { categoria: fichaClasifCategoria || sel.categoria_er || 'Gastos operativos' };
+        if (fichaClasifCeco) camposGasto.centro_costo_id = fichaClasifCeco;
+        await finanzasService.actualizarGasto(sel.gasto_id, camposGasto);
+      }
+      const updated = { ...sel, ...camposCxP };
+      setSel(updated);
+      setCxp(prev => prev.map(c => c.id === sel.id ? updated : c));
+      addNotificacion('Clasificación guardada.');
+    } catch (e) {
+      addNotificacion('Error al guardar: ' + e.message);
+    } finally {
+      setGuardandoClasif(false);
     }
   };
 
@@ -4438,19 +4755,19 @@ function CxP() {
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
         <div className="kpi-card">
           <div className="kpi-label">Pendiente</div>
-          <div className="kpi-value" style={saldosUSD > 0 ? {fontSize:18} : {}}>
-            {money(saldosPEN)}
-            {saldosUSD > 0 && <div style={{fontSize:13,fontWeight:600,marginTop:2}}>{money(saldosUSD,'US$')}</div>}
+          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
+            <span>{money(saldosPEN)}</span>
+            {saldosUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{money(saldosUSD,'US$')}</span>}
           </div>
         </div>
         <div className="kpi-card">
           <div className="kpi-label">Vencido</div>
-          <div className="kpi-value" style={{color:'var(--danger)',...(vencidoUSD > 0 ? {fontSize:18} : {})}}>
-            {money(vencidoPEN)}
-            {vencidoUSD > 0 && <div style={{fontSize:13,fontWeight:600,marginTop:2}}>{money(vencidoUSD,'US$')}</div>}
+          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12, color:'var(--danger)'}}>
+            <span>{money(vencidoPEN)}</span>
+            {vencidoUSD > 0 && <span style={{fontSize:16}}>{money(vencidoUSD,'US$')}</span>}
           </div>
         </div>
-        <div className="kpi-card"><div className="kpi-label">Por vencer (7 d)</div><div className="kpi-value" style={{color:'var(--orange)'}}>{porVencer7}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Por vencer (7 d)</div><div className="kpi-value" style={{fontSize:28, marginTop:12, color:'var(--orange)'}}>{porVencer7}</div></div>
         <div className="kpi-card"><div className="kpi-label">Pagadas</div><div className="kpi-value">{(cxp||[]).filter(c => c.estado === 'pagada').length}</div></div>
       </div>
 
@@ -4502,7 +4819,8 @@ function CxP() {
                     <td className="num text-muted">{money(pagadoDe(c), symOf(c.moneda))}</td>
                     <td className="num"><strong>{money(saldoDe(c), symOf(c.moneda))}</strong></td>
                     <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
-                      {c.archivo_factura_url && <a href={c.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:6}} title="Ver comprobante adjunto">{I.file}</a>}
+                      {c.archivo_factura_url && <a href={c.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:4}} title="Ver RHE adjunto">{I.file}</a>}
+                      {c.archivo_constancia_url && <a href={c.archivo_constancia_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:6}} title="Ver constancia de suspensión">{I.doc}</a>}
                       {saldoDe(c) > 0 && <button className="btn btn-sm btn-primary" onClick={() => abrirFicha(c)}>Pagar</button>}
                     </td>
                   </tr>
@@ -4530,7 +4848,12 @@ function CxP() {
             </div>
 
             <div className="tabs" style={{padding:'0 20px'}}>
-              {[{id:'pago',label:'Registrar pago'},{id:'historial',label:`Historial (${pagosDe(sel.id).length})`},...(sel.archivo_factura_url?[{id:'comprobante',label:'Comprobante'}]:[])].map(t => (
+              {[
+                {id:'pago',label:'Registrar pago'},
+                {id:'historial',label:`Historial (${pagosDe(sel.id).length})`},
+                ...(sel.archivo_factura_url ? [{id:'comprobante',label:'RHE'}] : []),
+                ...(sel.archivo_constancia_url ? [{id:'constancia',label:'Constancia'}] : []),
+              ].map(t => (
                 <div key={t.id} className={'tab '+(fichaTab===t.id?'active':'')} onClick={() => setFichaTab(t.id)}>{t.label}</div>
               ))}
             </div>
@@ -4548,6 +4871,32 @@ function CxP() {
                       {I.receipt} Originada desde gasto: <span className="mono" style={{fontWeight:600,color:'var(--fg)'}}>{sel.gasto_id}</span>
                     </div>
                   )}
+                  <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid var(--border-subtle)',display:'flex',flexDirection:'column',gap:8}}>
+                    <div style={{fontSize:11,color:'var(--fg-muted)',fontWeight:600}}>Clasificación en Estado de Resultados</div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                      <div className="input-group" style={{marginBottom:0}}>
+                        <label style={{fontSize:11}}>Categoría ER</label>
+                        <select className="select" style={{fontSize:12}} value={fichaClasifCategoria} onChange={e => setFichaClasifCategoria(e.target.value)}>
+                          <option value="">Automático</option>
+                          <option value="Materiales">Materiales</option>
+                          <option value="Servicios terceros">Servicios terceros</option>
+                          <option value="Logística">Logística</option>
+                          <option value="Administrativos">Administrativos</option>
+                          <option value="Comerciales">Comerciales</option>
+                        </select>
+                      </div>
+                      <div className="input-group" style={{marginBottom:0}}>
+                        <label style={{fontSize:11}}>Centro de costo</label>
+                        <select className="select" style={{fontSize:12}} value={fichaClasifCeco} onChange={e => setFichaClasifCeco(e.target.value)}>
+                          <option value="">Sin CECO</option>
+                          {cecos.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <button type="button" className="btn btn-sm btn-secondary" style={{alignSelf:'flex-end'}} onClick={guardarClasificacion} disabled={guardandoClasif}>
+                      {guardandoClasif ? 'Guardando...' : 'Guardar clasificación'}
+                    </button>
+                  </div>
                 </div>
                 {saldoDe(sel) > 0 ? (
                   <>
@@ -4609,11 +4958,22 @@ function CxP() {
 
             {fichaTab === 'comprobante' && sel.archivo_factura_url && (
               <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:12,alignItems:'center'}}>
-                {/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(sel.archivo_factura_url) || sel.archivo_factura_url.startsWith('blob:') ? (
-                  <img src={sel.archivo_factura_url} alt="Comprobante" style={{maxWidth:'100%',borderRadius:8,border:'1px solid var(--border)'}}/>
+                {/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(sel.archivo_factura_url) ? (
+                  <img src={sel.archivo_factura_url} alt="RHE" style={{maxWidth:'100%',borderRadius:8,border:'1px solid var(--border)'}}/>
                 ) : null}
                 <a href={sel.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{width:'100%',justifyContent:'center'}}>
-                  {I.file} Abrir comprobante en nueva pestaña
+                  {I.file} Abrir RHE en nueva pestaña
+                </a>
+              </div>
+            )}
+
+            {fichaTab === 'constancia' && sel.archivo_constancia_url && (
+              <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:12,alignItems:'center'}}>
+                {/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(sel.archivo_constancia_url) ? (
+                  <img src={sel.archivo_constancia_url} alt="Constancia" style={{maxWidth:'100%',borderRadius:8,border:'1px solid var(--border)'}}/>
+                ) : null}
+                <a href={sel.archivo_constancia_url} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{width:'100%',justifyContent:'center'}}>
+                  {I.file} Abrir constancia en nueva pestaña
                 </a>
               </div>
             )}
@@ -4624,7 +4984,7 @@ function CxP() {
       {/* ── Panel crear CxP manual ─────────────────────────────────────── */}
       {panelCrear && (
         <>
-          <div className="side-panel-backdrop" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); setMotivoCxP(''); setViaticosPersonalId(''); setViaticosOtId(''); }}/>
+          <div className="side-panel-backdrop" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); setMotivoCxP(''); setViaticosPersonalId(''); setViaticosOtId(''); setCxpCategoriaEr(''); setCxpCentroCostoId(''); }}/>
           <div className="side-panel" style={{width:'min(560px, 96vw)'}}>
             <div className="side-panel-head">
               <div>
@@ -4685,6 +5045,10 @@ function CxP() {
                       <label>Nombre / Razón Social <span style={{color:'var(--danger)'}}>*</span></label>
                       <input className="input" value={rheNombre} onChange={e => setRheNombre(e.target.value)} placeholder="Consultor Externo SAC"/>
                     </div>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}>
+                      <label>N° RHE</label>
+                      <input className="input" value={rheNumeroDoc} onChange={e => setRheNumeroDoc(e.target.value)} placeholder="RHE-00001"/>
+                    </div>
                     <div className="input-group">
                       <label>Monto bruto <span style={{color:'var(--danger)'}}>*</span></label>
                       <input className="input" type="number" min="0" step="0.01" value={rheMontoBruto} onChange={e => setRheMontoBruto(e.target.value)} placeholder="0.00"/>
@@ -4739,6 +5103,29 @@ function CxP() {
                   </div>
                 </>
               )}
+              <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 14px', display:'flex', flexDirection:'column', gap:12}}>
+                <div style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>Clasificación en Estado de Resultados</div>
+                <div className="input-group">
+                  <label>Categoría ER</label>
+                  <select className="select" value={cxpCategoriaEr} onChange={e => setCxpCategoriaEr(e.target.value)}>
+                    <option value="">Automático (según tipo de comprobante)</option>
+                    <option value="Materiales">Materiales</option>
+                    <option value="Servicios terceros">Servicios terceros</option>
+                    <option value="Logística">Logística</option>
+                    <option value="Administrativos">Administrativos</option>
+                    <option value="Comerciales">Comerciales</option>
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Centro de costo (opcional)</label>
+                  <select className="select" value={cxpCentroCostoId} onChange={e => setCxpCentroCostoId(e.target.value)}>
+                    <option value="">Sin CECO asignado</option>
+                    {cecos.map(c => (
+                      <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <div className="grid-2" style={{gap:12, marginTop:4}}>
                 <div className="input-group">
                   <label>Fecha de emisión</label>
@@ -4758,7 +5145,7 @@ function CxP() {
                 {archivoCrearUrl && <div style={{fontSize:12,color:'var(--green)',marginTop:4}}>Archivo adjunto listo.</div>}
               </div>
               <div className="row mt-6" style={{justifyContent:'flex-end'}}>
-                <button type="button" className="btn btn-secondary" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); setRheRuc(''); setRheNombre(''); setRheMontoBruto(''); }}>Cancelar</button>
+                <button type="button" className="btn btn-secondary" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); setRheRuc(''); setRheNombre(''); setRheMontoBruto(''); setRheNumeroDoc(''); setCxpCategoriaEr(''); setCxpCentroCostoId(''); }}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : 'Registrar CxP'}</button>
               </div>
             </form>

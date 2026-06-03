@@ -8,9 +8,12 @@ import * as storageService from './services/storageService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
+import { insertarNotificacionesSistema } from './services/crmService.js';
 import { FileUpload } from './components/FileUpload.jsx';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
+import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
+import * as XLSX from 'xlsx';
 
 // Operations: OT, Partes, Valorization & Cuentas
 
@@ -610,6 +613,7 @@ function Cuentas() {
                 <span className={'badge ' + getTipoBadge(sel.tipo)}>{(sel.tipo || 'cliente').replace('_', ' ')}</span>
                 <span className="badge badge-gray">{sel.industria || 'Industria pendiente'}</span>
                 {sel.condicion_pago === 'Por definir' && <span className="badge badge-orange">Condiciones pendientes</span>}
+                {sel.agente_retencion_sunat && <span className="badge badge-orange" title={`Retiene ${sel.tasa_retencion_sunat ?? 3}% del precio de venta al momento de pagar`}>⚠ Agente de Retención SUNAT</span>}
               </div>
             </div>
             <div className="account-profile-contact">
@@ -640,7 +644,7 @@ function Cuentas() {
           </div>
           <div className="side-panel-body">
             <div className="tabs account-profile-tabs ficha-detail-tabs">
-              {['Timeline', 'Resumen', 'Oportunidades', 'Cotizaciones', 'OS Cliente', 'Contactos', 'Customer Success', ...(canFinanzas ? ['Condiciones comerciales'] : [])].map(t => (
+              {['Timeline', 'Resumen', 'Oportunidades', 'Cotizaciones', 'OS Cliente', 'Facturas', 'Contactos', 'Customer Success', ...(canFinanzas ? ['Condiciones comerciales'] : [])].map(t => (
                 <div key={t} className={`tab ficha-detail-tab ${activeTab===t?'active':''}`} onClick={() => setActiveTab(t)}>{t}</div>
               ))}
             </div>
@@ -818,6 +822,46 @@ function Cuentas() {
                 ))}
               </div>
             )}
+
+            {activeTab === 'Facturas' && (() => {
+              const facturasCliente = facturas.filter(f => f.cuenta_id === sel.id && f.tipo_documento !== 'nota_credito' && f.tipo_documento !== 'nota_debito');
+              const tieneRetencion = sel.agente_retencion_sunat;
+              return (
+                <div className="card">
+                  <div className="card-head"><h3>Facturas emitidas</h3><span className="badge badge-gray">{facturasCliente.length}</span></div>
+                  {facturasCliente.length === 0 ? (
+                    <div style={{padding:32, textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>No hay facturas emitidas para este cliente.</div>
+                  ) : (
+                    <div className="table-wrap">
+                      <table className="tbl">
+                        <thead>
+                          <tr>
+                            <th>Número</th><th>Fecha</th><th>Total</th>
+                            {tieneRetencion && <th className="num">Neto a cobrar</th>}
+                            <th>Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {facturasCliente.map(f => (
+                            <tr key={f.id}>
+                              <td className="mono">{f.numero || '—'}</td>
+                              <td style={{fontSize:12, color:'var(--fg-muted)'}}>{f.fecha_emision || '—'}</td>
+                              <td className="num">{money(f.total || 0)}</td>
+                              {tieneRetencion && (
+                                <td className="num" style={{color: f.aplica_retencion ? 'var(--cyan)' : 'var(--fg-muted)'}}>
+                                  {f.aplica_retencion ? money(f.monto_neto_cobrable ?? (f.total - (f.monto_retencion || 0))) : '—'}
+                                </td>
+                              )}
+                              <td><span className={'badge ' + (f.estado === 'pagada' ? 'badge-green' : f.estado === 'anulada' ? 'badge-gray' : 'badge-cyan')}>{f.estado}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {activeTab === 'Contactos' && (
               <div className="account-contacts-layout">
@@ -1074,6 +1118,38 @@ function Cuentas() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                </div>
+                <div className="card">
+                  <div className="card-head"><h3>Retención SUNAT</h3><span className="text-muted" style={{fontSize:12}}>Aplica cuando el cliente está designado como Agente de Retención del IGV</span></div>
+                  <div className="card-body">
+                    <div style={{display:'flex', alignItems:'center', gap:12, marginBottom: (condEdit.agente_retencion_sunat ?? sel.agente_retencion_sunat) ? 16 : 0}}>
+                      <label style={{display:'flex', alignItems:'center', gap:8, cursor: condEditing && !condSaving ? 'pointer' : 'default', fontSize:13}}>
+                        <input
+                          type="checkbox"
+                          disabled={!condEditing || condSaving}
+                          checked={Boolean(condEdit.agente_retencion_sunat ?? sel.agente_retencion_sunat)}
+                          onChange={e => setCondEdit(p => ({...p, agente_retencion_sunat: e.target.checked}))}
+                        />
+                        <strong>Este cliente es Agente de Retención SUNAT</strong>
+                      </label>
+                    </div>
+                    {(condEdit.agente_retencion_sunat ?? sel.agente_retencion_sunat) && (
+                      <div className="input-group" style={{maxWidth:220}}>
+                        <label style={{fontSize:11}}>Tasa de retención (%)</label>
+                        <input
+                          className="input num"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          disabled={!condEditing || condSaving}
+                          value={condEdit.tasa_retencion_sunat ?? sel.tasa_retencion_sunat ?? 3}
+                          onChange={e => setCondEdit(p => ({...p, tasa_retencion_sunat: e.target.value}))}
+                        />
+                        <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Tasa estándar SUNAT: 3.00%. Modificar solo si SUNAT estableció una tasa diferente para este agente.</div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 {condEditing && (
@@ -1366,12 +1442,17 @@ function OT({ role }) {
     }
   }, [sel?.id]);
   const abrirEditDatos = () => {
-    const responsableActual = responsablesTecnicosOT.some(p => p.id === sel?.tecnico_responsable_id)
-      ? sel?.tecnico_responsable_id
-      : '';
-    const supervisorActual = responsablesTecnicosOT.some(p => p.nombre === sel?.supervisor)
-      ? sel?.supervisor
-      : '';
+    const buscarOperativoPorRef = ref => (personalOperativo || []).find(p =>
+      p.id === ref || p.auth_user_id === ref || p.nombre === ref || p.email === ref
+    );
+    const responsableActual = sel?.tecnico_responsable_id
+      || sel?.responsable_id
+      || buscarOperativoPorRef(sel?.responsable)?.id
+      || '';
+    const supervisorActual = buscarOperativoPorRef(sel?.supervisor_id)?.nombre
+      || buscarOperativoPorRef(sel?.supervisor)?.nombre
+      || sel?.supervisor
+      || '';
     setFormDatos({
       centro_costo_id: sel?.centro_costo_id || '',
       tipo: sel?.tipo || '',
@@ -1773,10 +1854,9 @@ function OT({ role }) {
       const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === id);
       const moItem = ((ot.realDetalle?.mano_obra?.length ? ot.realDetalle : ot.est_detalle)?.mano_obra || []).find(m => m.tecnico_id === id);
       if (moItem?.costo_hora > 0) return moItem.costo_hora;
-      const explicit = Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+      const explicit = Number(tec?.tarifa_hora ?? tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
       if (explicit > 0) return explicit;
-      const rem = Number(tec?.remuneracion ?? 0);
-      return rem > 0 ? Math.round(rem / 240 * 100) / 100 : 0;
+      return 0;
     };
     const mo = aprobados.reduce((s, p) => s + (p.horas || 0) * costoHoraTec(p.tecnico_id), 0);
     const mat = aprobados.reduce((s, p) =>
@@ -2131,10 +2211,13 @@ function OT({ role }) {
                           <label>Tipo</label>
                           <select className="select" value={formDatos.tipo} onChange={e => setFormDatos(p => ({...p, tipo: e.target.value}))}>
                             <option value="">—</option>
-                            {(tiposActivos.length > 0
-                              ? tiposActivos.map(t => t.nombre)
-                              : ['interna','cliente','garantia','correctiva']
-                            ).map(t => <option key={t} value={t}>{t}</option>)}
+                            {(() => {
+                              const opts = tiposActivos.length > 0
+                                ? tiposActivos.map(t => t.nombre)
+                                : ['interna','cliente','garantia','correctiva'];
+                              const actual = formDatos.tipo && !opts.includes(formDatos.tipo) ? [formDatos.tipo] : [];
+                              return [...actual, ...opts].map(t => <option key={t} value={t}>{t}</option>);
+                            })()}
                           </select>
                         </div>
                         <div className="input-group">
@@ -2156,6 +2239,10 @@ function OT({ role }) {
                           <label>Responsable</label>
                           <select className="select" value={formDatos.tecnico_responsable_id} onChange={e => setFormDatos(p => ({...p, tecnico_responsable_id: e.target.value}))}>
                             <option value="">Sin asignar</option>
+                            {formDatos.tecnico_responsable_id && !responsablesTecnicosOT.some(p => p.id === formDatos.tecnico_responsable_id) && (() => {
+                              const p = (personalOperativo || []).find(x => x.id === formDatos.tecnico_responsable_id || x.auth_user_id === formDatos.tecnico_responsable_id);
+                              return <option value={formDatos.tecnico_responsable_id}>{p ? etiquetaTecnicoOT(p) : (sel?.responsable || formDatos.tecnico_responsable_id)}</option>;
+                            })()}
                             {responsablesTecnicosOT.map(p => <option key={p.id} value={p.id}>{etiquetaTecnicoOT(p)}</option>)}
                           </select>
                           {!responsablesTecnicosOT.length && <div className="text-muted" style={{fontSize:11, marginTop:4}}>No hay operativos con perfil supervisor o superior.</div>}
@@ -2164,6 +2251,9 @@ function OT({ role }) {
                           <label>Supervisor</label>
                           <select className="select" value={formDatos.supervisor} onChange={e => setFormDatos(p => ({...p, supervisor: e.target.value}))}>
                             <option value="">Sin asignar</option>
+                            {formDatos.supervisor && !responsablesTecnicosOT.some(p => p.nombre === formDatos.supervisor) && (
+                              <option value={formDatos.supervisor}>{formDatos.supervisor}</option>
+                            )}
                             {responsablesTecnicosOT.map(p => <option key={p.id} value={p.nombre}>{etiquetaTecnicoOT(p)}</option>)}
                           </select>
                         </div>
@@ -2539,61 +2629,6 @@ function OT({ role }) {
                   )}
                 </div>
 
-                <div className="card" style={{padding:16, marginBottom:16, border:'1px solid var(--border)'}}>
-                  <div style={{display:'flex', justifyContent:'space-between', gap:12, alignItems:'flex-start', marginBottom:12}}>
-                    <div>
-                      <div style={{fontWeight:700, fontSize:13}}>Horas administrativas de la OT</div>
-                      <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Se imputan como tareo administrativo y suman a mano de obra real, sin crear parte diario operativo.</div>
-                    </div>
-                    {tareosAdminEnviadosOT.length > 0 && <span className="badge badge-cyan">{tareosAdminEnviadosOT.reduce((s, t) => s + Number(t.horas || 0), 0).toFixed(1)}h enviadas</span>}
-                  </div>
-
-                  {adminsDeOT.length > 0 ? (
-                    <form onSubmit={registrarTareoAdminOT} style={{display:'grid', gridTemplateColumns:'minmax(220px, 1.4fr) minmax(130px, 150px) minmax(110px, 130px)', gap:10, alignItems:'end', padding:10, border:'1px solid var(--border-subtle)', borderRadius:8, background:'var(--bg-subtle)', marginBottom:12}}>
-                      <div className="input-group">
-                        <label>Administrativo</label>
-                        <select className="select" value={tareoAdminForm.personal_id} onChange={e => setTareoAdminForm(s => ({...s, personal_id: e.target.value}))} required>
-                          <option value="">Seleccionar...</option>
-                          {adminsDeOT.map(p => <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` - ${p.cargo}` : ''}</option>)}
-                        </select>
-                      </div>
-                      <div className="input-group">
-                        <label>Fecha</label>
-                        <input className="input" type="date" max={new Date().toISOString().split('T')[0]} value={tareoAdminForm.fecha} onChange={e => setTareoAdminForm(s => ({...s, fecha: e.target.value}))} required />
-                      </div>
-                      <div className="input-group">
-                        <label>Horas</label>
-                        <input className="input" type="number" min="0.5" max="24" step="0.5" value={tareoAdminForm.horas} onChange={e => setTareoAdminForm(s => ({...s, horas: e.target.value}))} required />
-                      </div>
-                      <div className="input-group" style={{gridColumn:'1 / 3'}}>
-                        <label>Descripcion</label>
-                        <input className="input" value={tareoAdminForm.descripcion} onChange={e => setTareoAdminForm(s => ({...s, descripcion: e.target.value}))} placeholder="Coordinacion, supervision, gestion..." />
-                      </div>
-                      <button className="btn btn-primary btn-sm" style={{height:36, justifySelf:'stretch'}} type="submit" disabled={savingTareoAdminOT}>{savingTareoAdminOT ? 'Guardando...' : 'Imputar horas'}</button>
-                    </form>
-                  ) : (
-                    <div style={{fontSize:12, color:'var(--fg-muted)', padding:'8px 0'}}>Agrega participantes administrativos en la ficha de la OT para imputar sus horas aqui.</div>
-                  )}
-
-                  {loadingTareosAdminOT ? (
-                    <div className="text-muted" style={{fontSize:12}}>Cargando horas administrativas...</div>
-                  ) : tareosAdminOT.length > 0 ? (
-                    <div style={{display:'grid', gap:6}}>
-                      {tareosAdminOT.map(t => (
-                        <div key={t.id} style={{display:'grid', gridTemplateColumns:'1.4fr 110px 80px 1fr 90px', gap:8, alignItems:'center', fontSize:12, padding:'7px 8px', border:'1px solid var(--border-subtle)', borderRadius:6, background:'var(--bg-subtle)'}}>
-                          <strong>{t.personal_nombre}</strong>
-                          <span className="text-muted">{t.fecha}</span>
-                          <span>{Number(t.horas || 0).toFixed(1)}h</span>
-                          <span className="text-muted" style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{t.descripcion}</span>
-                          <span className={'badge ' + (t.estado === 'enviado' ? 'badge-green' : 'badge-gray')}>{t.estado}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-muted" style={{fontSize:12}}>Sin horas administrativas imputadas a esta OT.</div>
-                  )}
-                </div>
-
                 {showNuevoParte && (() => {
                   const hoyStr = new Date().toISOString().split('T')[0];
                   const tareasActivas = parteFormOT.tareas_trabajadas.filter(t => t.trabajado);
@@ -2962,10 +2997,9 @@ function OT({ role }) {
               const partesAprobados = partesOT.filter(p => p.estado === 'aprobado');
               const costoHoraTec = (personaId) => {
                 const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === personaId);
-                const explicit = Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
+                const explicit = Number(tec?.tarifa_hora ?? tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
                 if (explicit > 0) return explicit;
-                const rem = Number(tec?.remuneracion ?? 0);
-                return rem > 0 ? Math.round(rem / 240 * 100) / 100 : 0;
+                return 0;
               };
               const costoHoraOT = (tecnicoId) => {
                 const src = (realDetalle.mano_obra?.length ? realDetalle : sel.est_detalle) || {};
@@ -3504,7 +3538,7 @@ function OT({ role }) {
 
       {showCierreForm && sel && (() => {
         const partesAprobados = partes.filter(p => p.ot_id === sel.id && p.estado === 'aprobado');
-        const costoHoraTecObj = (tec) => { const e = Number(tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0); if (e > 0) return e; return Math.round(Number(tec?.remuneracion ?? 0) / 240 * 100) / 100; };
+        const costoHoraTecObj = (tec) => Number(tec?.tarifa_hora ?? tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
         const moReal = partesAprobados.reduce((s, p) => { const tech = [...(personalOperativo || []), ...(personalAdmin || [])].find(t => t.id === p.tecnico_id); return s + (p.horas || 0) * costoHoraTecObj(tech); }, 0);
         const matReal = partesAprobados.reduce((s, p) => s + (p.materiales_usados || []).reduce((sm, m) => { const inv = (inventario || []).find(i => i.sku === m.sku); return sm + (m.cantidad || 0) * (inv?.costo_promedio || m.costo_unitario || 0); }, 0), 0);
         const costoEst = sel.costoEst || 0;
@@ -5458,7 +5492,6 @@ function Compras() {
     };
     if (!esActivoFijo && estadoPago === 'pendiente') {
       const cxpPrefixId = `cxp_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
-      const gasto = crearGasto({ ...gastoData, cxp_id: cxpPrefixId });
       await generarCxP({
         id: cxpPrefixId,
         proveedor_id: gastoCxpProvId || null,
@@ -5471,7 +5504,8 @@ function Compras() {
         moneda: gastoForm.moneda || 'PEN',
         estado: 'por_pagar',
         origen: 'gasto',
-        gasto_id: gasto.id,
+        categoria_er: gastoData.categoria,
+        centro_costo_id: gastoData.centro_costo_id,
       });
     } else {
       crearGasto(gastoData);
@@ -6199,7 +6233,7 @@ function Cierre() {
                 const os = getOS(o.os_cliente_id);
                 const partesAp = partes.filter(p => p.ot_id === o.id && p.estado === 'aprobado');
                 const horasReal = c?.horas_total ?? partesAp.reduce((s, p) => s + (p.horas || 0), 0);
-                const _ch = (id) => { const t = [...(personalOperativo||[]),...(personalAdmin||[])].find(x=>x.id===id); const e=Number(t?.costo_hora_real??t?.costo??t?.costo_hora??0); return e>0?e:Math.round(Number(t?.remuneracion??0)/240*100)/100; };
+                const _ch = (id) => { const t = [...(personalOperativo||[]),...(personalAdmin||[])].find(x=>x.id===id); return Number(t?.tarifa_hora??t?.costo_hora_real??t?.costo??t?.costo_hora??0); };
                 const moReal = (() => {
                   if (c?.horas_total) return c.horas_total * _ch(o.tecnico_responsable_id);
                   return partesAp.reduce((s, p) => s + (p.horas || 0) * _ch(p.tecnico_id), 0);
@@ -6246,7 +6280,7 @@ function Cierre() {
         const os = getOS(sel.os_cliente_id);
         const partesAp = partes.filter(p => p.ot_id === sel.id && p.estado === 'aprobado').sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
         const horasReal = c?.horas_total ?? partesAp.reduce((s, p) => s + (p.horas || 0), 0);
-        const _ch2 = (id) => { const t = [...(personalOperativo||[]),...(personalAdmin||[])].find(x=>x.id===id); const e=Number(t?.costo_hora_real??t?.costo??t?.costo_hora??0); return e>0?e:Math.round(Number(t?.remuneracion??0)/240*100)/100; };
+        const _ch2 = (id) => { const t = [...(personalOperativo||[]),...(personalAdmin||[])].find(x=>x.id===id); return Number(t?.tarifa_hora??t?.costo_hora_real??t?.costo??t?.costo_hora??0); };
         const moReal = (() => {
           if (c?.horas_total) return c.horas_total * _ch2(sel.tecnico_responsable_id);
           return partesAp.reduce((s, p) => s + (p.horas || 0) * _ch2(p.tecnico_id), 0);
@@ -6860,7 +6894,7 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
                           {conflicto && sel && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'var(--danger)',color:'#fff'}}>Conflicto</span>}
                         </div>
                         <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:1}}>
-                          {t.cargo}{(t.costo_hora_real??t.costo??t.costo_hora)?` · S/${t.costo_hora_real??t.costo??t.costo_hora}/h`:''}{turno?` · Turno: ${turno.nombre}`:''}
+                          {t.cargo}{(t.tarifa_hora??t.costo_hora_real??t.costo??t.costo_hora)?` · S/${t.tarifa_hora??t.costo_hora_real??t.costo??t.costo_hora}/h`:''}{turno?` · Turno: ${turno.nombre}`:''}
                         </div>
                         {conflicto && sel && (
                           <div style={{fontSize:11,color:'var(--danger)',marginTop:3}}>
@@ -7312,9 +7346,280 @@ function OTBandejaCard({ ot, cuentas, dragOtId, setDragOtId, setModalAsig, enCur
   );
 }
 
+const periodoMesActual = () => new Date().toISOString().slice(0, 7);
+const periodoMesAnterior = () => desplazarPeriodoMes(periodoMesActual(), -1);
+
+function desplazarPeriodoMes(periodo, delta) {
+  const [year, month] = String(periodo || periodoMesActual()).split('-').map(Number);
+  const d = new Date(year || new Date().getFullYear(), (month || 1) - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function rangoPeriodoMes(periodo) {
+  const [year, month] = String(periodo || periodoMesActual()).split('-').map(Number);
+  const inicio = new Date(year || new Date().getFullYear(), (month || 1) - 1, 1);
+  const fin = new Date(inicio.getFullYear(), inicio.getMonth() + 1, 0);
+  return {
+    desde: inicio.toISOString().slice(0, 10),
+    hasta: fin.toISOString().slice(0, 10),
+    label: inicio.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' }),
+  };
+}
+
+const estadoCoberturaHoras = (pct) => {
+  if (pct >= 95) return { key: 'completa', label: 'Completa', badge: 'badge-green', dot: 'var(--green)' };
+  if (pct >= 50) return { key: 'parcial', label: 'Parcial', badge: 'badge-orange', dot: 'var(--orange)' };
+  return { key: 'critica', label: 'Critica', badge: 'badge-red', dot: 'var(--danger)' };
+};
+
+const estadoPersonaActivo = (p, tipo = 'operativo') => {
+  const estado = String(p?.estado || '').toLowerCase();
+  if (tipo === 'admin') return !['inactivo', 'baja'].includes(estado) && (!estado || estado === 'activo');
+  return !['inactivo', 'baja'].includes(estado);
+};
+
+const horasParteAprobado = (parte) => Number(parte?.horas ?? parte?.horas_normales ?? parte?.horas_total ?? 0) || 0;
+const tarifaColaborador = (p) => Number(p?.tarifa_hora ?? p?.costo_hora_real ?? p?.costo ?? p?.costo_hora ?? 0) || 0;
+const simboloColaborador = (p) => p?.moneda === 'USD' ? 'US$' : p?.moneda === 'EUR' ? 'EUR' : 'S/';
+
+function construirFilasControlHoras({ personal = [], partes = [], tareos = [], ots = [], periodo = periodoMesActual(), tipo = 'operativo', especialidad = '' }) {
+  const { desde, hasta } = rangoPeriodoMes(periodo);
+  const aprobados = (partes || []).filter(p => {
+    const fecha = p.fecha || p.fecha_parte || p.created_at?.slice?.(0, 10);
+    const estado = String(p.estado || '').toLowerCase();
+    return estado === 'aprobado' && fecha >= desde && fecha <= hasta;
+  });
+  const tareosPeriodo = (tareos || []).filter(t => {
+    const fecha = t.fecha || t.created_at?.slice?.(0, 10);
+    return fecha >= desde && fecha <= hasta && String(t.estado || '').toLowerCase() !== 'anulado';
+  });
+
+  return (personal || [])
+    .filter(p => estadoPersonaActivo(p, tipo))
+    .filter(p => !especialidad || (p.especialidad || 'Sin especialidad') === especialidad)
+    .map(p => {
+      const partesPersona = aprobados.filter(pa => (pa.tecnico_id || pa.personal_id || pa.tecnico) === p.id);
+      const tareosPersona = tareosPeriodo.filter(t => t.personal_id === p.id);
+      const tareosOT = tareosPersona.filter(t => t.tipo === 'ot');
+      const tareosLibres = tareosPersona.filter(t => t.tipo !== 'ot');
+      const horasPartes = partesPersona.reduce((s, pa) => s + horasParteAprobado(pa), 0);
+      const horasTareoOT = tareosOT.reduce((s, t) => s + Number(t.horas || 0), 0);
+      const horasTareo = tareosLibres.reduce((s, t) => s + Number(t.horas || 0), 0);
+      const horasOT = horasPartes + horasTareoOT;
+      const total = horasOT + horasTareo;
+      const horasBase = Number(p.horas_base_mes || 160) || 160;
+      const cobertura = horasBase > 0 ? (total / horasBase) * 100 : 0;
+      const tarifa = tarifaColaborador(p);
+      const estado = estadoCoberturaHoras(cobertura);
+      const moneda = simboloColaborador(p);
+      const detalleMap = {};
+
+      partesPersona.forEach(pa => {
+        const otId = pa.ot_id || pa.orden_trabajo_id || 'sin_ot';
+        if (!detalleMap[otId]) detalleMap[otId] = { ot_id: otId, horas: 0, costo: 0 };
+        const horas = horasParteAprobado(pa);
+        detalleMap[otId].horas += horas;
+        detalleMap[otId].costo += horas * tarifa;
+      });
+      tareosOT.forEach(t => {
+        const otId = t.ot_id || 'sin_ot';
+        if (!detalleMap[otId]) detalleMap[otId] = { ot_id: otId, horas: 0, costo: 0 };
+        const horas = Number(t.horas || 0);
+        detalleMap[otId].horas += horas;
+        detalleMap[otId].costo += horas * tarifa;
+      });
+
+      const detalleOTs = Object.values(detalleMap).map(d => {
+        const ot = (ots || []).find(o => o.id === d.ot_id);
+        return {
+          ...d,
+          numero: ot?.numero || (d.ot_id === 'sin_ot' ? 'Sin OT' : d.ot_id),
+          descripcion: ot?.servicio || ot?.descripcion || '',
+        };
+      }).sort((a, b) => String(a.numero).localeCompare(String(b.numero)));
+
+      return {
+        persona: p,
+        id: p.id,
+        nombre: p.nombre,
+        especialidad: p.especialidad || p.area || 'Sin especialidad',
+        horasBase,
+        horasOT,
+        horasTareo,
+        total,
+        cobertura,
+        estado,
+        tarifa,
+        moneda,
+        costoImputado: total * tarifa,
+        bajaProductividad: estado.key === 'critica',
+        metodoPago: p.metodo_pago || 'mensual',
+        detalleOTs,
+      };
+    });
+}
+
+function ControlHorasResumen({
+  modo = 'planner',
+  tipo = 'operativo',
+  personal = [],
+  partes = [],
+  tareos = [],
+  ots = [],
+  especialidades = [],
+  periodo,
+  setPeriodo,
+  showTareo = false,
+  showCosto = false,
+  showNavegacion = false,
+  loading = false,
+  onExport,
+  onEvaluarMes,
+}) {
+  const [filtroEspecialidad, setFiltroEspecialidad] = useState('');
+  const [selRow, setSelRow] = useState(null);
+  const periodoActivo = periodo || periodoMesActual();
+  const { label } = rangoPeriodoMes(periodoActivo);
+  const especialidadesFiltro = useMemo(() => {
+    const desdeMaestros = (especialidades || []).map(e => e.nombre || e).filter(Boolean);
+    const desdePersonal = (personal || []).map(p => p.especialidad).filter(Boolean);
+    return [...new Set([...desdeMaestros, ...desdePersonal])].sort();
+  }, [especialidades, personal]);
+  const rows = useMemo(() => construirFilasControlHoras({
+    personal, partes, tareos, ots, periodo: periodoActivo, tipo, especialidad: filtroEspecialidad,
+  }), [personal, partes, tareos, ots, periodoActivo, tipo, filtroEspecialidad]);
+  const kpis = useMemo(() => ({
+    total: rows.length,
+    completa: rows.filter(r => r.estado.key === 'completa').length,
+    parcial: rows.filter(r => r.estado.key === 'parcial').length,
+    critica: rows.filter(r => r.estado.key === 'critica').length,
+  }), [rows]);
+  const cols = 7 + (showTareo ? 1 : 0) + (showCosto ? 1 : 0);
+
+  return (
+    <>
+      <div className="kpi-grid">
+        <div className="kpi-card"><div className="kpi-label">Total {tipo === 'admin' ? 'colaboradores' : 'tecnicos'} activos</div><div className="kpi-value">{kpis.total}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Con cobertura completa</div><div className="kpi-value">{kpis.completa}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Con cobertura parcial</div><div className="kpi-value">{kpis.parcial}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Criticos</div><div className="kpi-value">{kpis.critica}</div></div>
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <div>
+            <h3>{modo === 'planner' ? 'Disponibilidad mensual' : 'Resumen de cobertura'}</h3>
+            <div className="text-muted" style={{fontSize:12, marginTop:2}}>{label}</div>
+          </div>
+          <div className="row" style={{gap:8, flexWrap:'wrap'}}>
+            {showNavegacion && <button className="icon-btn" onClick={() => setPeriodo(desplazarPeriodoMes(periodoActivo, -1))} title="Mes anterior">{I.chevronLeft}</button>}
+            <div className="input-group" style={{minWidth:150, margin:0}}>
+              <input className="input" type="month" value={periodoActivo} onChange={e => setPeriodo(e.target.value || periodoMesActual())} />
+            </div>
+            {showNavegacion && <button className="icon-btn" onClick={() => setPeriodo(desplazarPeriodoMes(periodoActivo, 1))} title="Mes siguiente">{I.chevronRight}</button>}
+            {tipo === 'operativo' && (
+              <select className="select" style={{minWidth:180}} value={filtroEspecialidad} onChange={e => setFiltroEspecialidad(e.target.value)}>
+                <option value="">Todas las especialidades</option>
+                {especialidadesFiltro.map(e => <option key={e} value={e}>{e}</option>)}
+              </select>
+            )}
+            {onEvaluarMes && <button className="btn btn-secondary btn-sm" onClick={() => onEvaluarMes(rows, periodoActivo)}>Evaluar mes</button>}
+            {onExport && <button className="btn btn-primary btn-sm" onClick={() => onExport(rows, periodoActivo)}>{I.download} Exportar Excel</button>}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="text-muted" style={{padding:28, textAlign:'center'}}>Cargando cobertura...</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr>
+                <th>Colaborador</th>
+                <th>{tipo === 'admin' ? 'Area' : 'Especialidad'}</th>
+                <th className="num">Horas base</th>
+                <th className="num">Horas en OTs</th>
+                {showTareo && <th className="num">Horas tareo</th>}
+                <th className="num">Total</th>
+                <th className="num">Cobertura %</th>
+                {showCosto && <th className="num">Costo imputado</th>}
+                <th>Estado</th>
+              </tr></thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={cols} style={{padding:28, textAlign:'center', color:'var(--fg-muted)'}}>Sin colaboradores para el periodo seleccionado.</td></tr>}
+                {rows.map(r => (
+                  <tr key={r.id} onClick={() => setSelRow(r)} style={{cursor:'pointer', background:r.bajaProductividad && showCosto ? 'rgba(239,68,68,0.08)' : undefined}}>
+                    <td>
+                      <strong>{r.nombre}</strong>
+                      <div className="text-muted" style={{fontSize:11}}>{r.metodoPago === 'por_horas' ? 'Por horas' : 'Mensual'}</div>
+                    </td>
+                    <td>{r.especialidad}</td>
+                    <td className="num">{r.horasBase.toFixed(1)}h</td>
+                    <td className="num">{r.horasOT.toFixed(1)}h</td>
+                    {showTareo && <td className="num">{r.horasTareo.toFixed(1)}h</td>}
+                    <td className="num" style={{fontWeight:700}}>{r.total.toFixed(1)}h</td>
+                    <td className="num">{r.cobertura.toFixed(1)}%</td>
+                    {showCosto && <td className="num">{moneyD(r.costoImputado, r.moneda)}</td>}
+                    <td>
+                      <span className={'badge ' + r.estado.badge}>
+                        <span style={{display:'inline-block', width:8, height:8, borderRadius:999, background:r.estado.dot, marginRight:6}} />
+                        {r.estado.label}
+                      </span>
+                      {r.bajaProductividad && showCosto && <span className="badge badge-red" style={{marginLeft:6}}>Baja productividad</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {selRow && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setSelRow(null)} />
+          <div className="side-panel" style={{width:'min(560px,96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Detalle de horas</div>
+                <div className="font-display" style={{fontSize:22,fontWeight:700}}>{selRow.nombre}</div>
+                <div className="text-muted" style={{fontSize:12}}>{label}</div>
+              </div>
+              <button className="icon-btn" onClick={() => setSelRow(null)}>{I.x}</button>
+            </div>
+            <div className="side-panel-body">
+              <div className="grid-2" style={{gap:10, marginBottom:16}}>
+                <div className="card" style={{padding:12}}><div className="kpi-label">Total horas</div><div className="kpi-value" style={{fontSize:24}}>{selRow.total.toFixed(1)}h</div></div>
+                <div className="card" style={{padding:12}}><div className="kpi-label">Costo imputado</div><div className="kpi-value" style={{fontSize:24}}>{moneyD(selRow.costoImputado, selRow.moneda)}</div></div>
+              </div>
+              <div className="card" style={{padding:0}}>
+                <div className="card-head"><h3>OTs del mes</h3><span className="badge badge-cyan">{selRow.detalleOTs.length}</span></div>
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead><tr><th>OT</th><th className="num">Horas</th><th className="num">Costo</th></tr></thead>
+                    <tbody>
+                      {selRow.detalleOTs.length === 0 && <tr><td colSpan={3} style={{padding:20, textAlign:'center', color:'var(--fg-muted)'}}>Sin OTs registradas en el periodo.</td></tr>}
+                      {selRow.detalleOTs.map(d => (
+                        <tr key={d.ot_id}>
+                          <td><strong>{d.numero}</strong><div className="text-muted" style={{fontSize:11}}>{d.descripcion || 'Sin descripcion'}</div></td>
+                          <td className="num">{d.horas.toFixed(1)}h</td>
+                          <td className="num">{moneyD(d.costo, selRow.moneda)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 function Planner() {
   const {
-    searchQuery, personalOperativo, ots, cuentas, navigate,
+    searchQuery, personalOperativo, ots, cuentas, partes, navigate,
     plannerAsignaciones, loadPlannerSemana, crearAsignacionesRango,
     agregarTecnicoADia, quitarTecnicoDeDia, actualizarAsignacionCtx, cuadrillas, crearCuadrillaCtx,
     actualizarCuadrillaCtx, eliminarCuadrillaCtx, especialidades,
@@ -7323,6 +7628,7 @@ function Planner() {
   } = useApp();
 
   const [plannerTab, setPlannerTab] = useState('tecnicos');
+  const [periodoDisponibilidad, setPeriodoDisponibilidad] = useState(periodoMesActual());
   const [offsetSemanas, setOffsetSemanas] = useState(0);
   const [dragOtId, setDragOtId] = useState(null);
   const [modalAsig, setModalAsig] = useState(null); // { otId }
@@ -7466,7 +7772,22 @@ function Planner() {
           Agenda CS
           {urgentes > 0 && <span className="sidebar-item-badge" style={{marginLeft:6}}>{urgentes}</span>}
         </div>
+        <div className={'tab '+(plannerTab==='disponibilidad'?'active':'')} onClick={()=>setPlannerTab('disponibilidad')}>Disponibilidad</div>
       </div>
+
+      {plannerTab === 'disponibilidad' && (
+        <ControlHorasResumen
+          modo="planner"
+          tipo="operativo"
+          personal={tecnicos}
+          partes={partes || []}
+          tareos={[]}
+          ots={ots || []}
+          especialidades={especialidades || []}
+          periodo={periodoDisponibilidad}
+          setPeriodo={setPeriodoDisponibilidad}
+        />
+      )}
 
       {plannerTab === 'tecnicos' && (
         <div style={{display:'flex', flexDirection:'column', gap:20}}>
@@ -10222,7 +10543,7 @@ function Nomina() {
 }
 
 function RRHH_Operativo() {
-  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [] } = useApp();
+  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [] } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('personal');
   const personal = personalOperativo;
@@ -10255,11 +10576,13 @@ function RRHH_Operativo() {
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', fecha_ingreso:'', tipo_contrato:'Planilla', costo:'', costo_extra:'', acceso_campo:true, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'' };
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', fecha_ingreso:'', tipo_contrato:'Planilla', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'160', tarifa_hora:'0', costo:'', costo_extra:'', acceso_campo:true, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [altaError, setAltaError] = useState('');
   const [altaSaving, setAltaSaving] = useState(false);
   const esHonorarios = formAlta.tipo_contrato === 'Recibos por honorarios';
+  const tarifaHoraForm = Math.round((Number(formAlta.monto_mensual || 0) / (Number(formAlta.horas_base_mes || 160) || 160)) * 100) / 100;
+  const tarifaSym = formAlta.moneda === 'USD' ? 'US$' : formAlta.moneda === 'EUR' ? 'EUR' : 'S/';
 
   const cargosOperativosOptions = cargos
     .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Administrativa' && c.tipo !== 'Administrativo')
@@ -10315,7 +10638,12 @@ function RRHH_Operativo() {
       centro_costo_id: p.centro_costo_id || '',
       fecha_ingreso: p.fecha_ingreso || '',
       tipo_contrato: p.tipo_contrato || 'Planilla',
-      costo: String(p.costo ?? p.costo_hora_real ?? ''),
+      moneda: p.moneda || 'PEN',
+      metodo_pago: p.metodo_pago || 'mensual',
+      monto_mensual: String(p.monto_mensual ?? p.sueldo_base ?? ''),
+      horas_base_mes: String(p.horas_base_mes ?? 160),
+      tarifa_hora: String(p.tarifa_hora ?? 0),
+      costo: String(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? ''),
       costo_extra: String(p.costo_hora_extra ?? p.costo_extra ?? ''),
       acceso_campo: p.acceso_campo ?? true,
       perfil_campo: p.perfil_campo || 'Tecnico',
@@ -10384,8 +10712,13 @@ function RRHH_Operativo() {
       supervisor_id: formAlta.supervisor_id || null,
       supervisor: supervisorSeleccionado?.nombre || '',
       sede: formAlta.sede || '',
-      costo: Number(formAlta.costo) || 0,
-      costo_hora_real: Number(formAlta.costo) || 0,
+      moneda: formAlta.moneda || 'PEN',
+      metodo_pago: formAlta.metodo_pago || 'mensual',
+      monto_mensual: Number(formAlta.monto_mensual || formAlta.sueldo_base || 0),
+      horas_base_mes: Number(formAlta.horas_base_mes || 160),
+      tarifa_hora: tarifaHoraForm,
+      costo: tarifaHoraForm,
+      costo_hora_real: tarifaHoraForm,
       costo_hora_extra: Number(formAlta.costo_extra) || 0,
       acceso_campo: formAlta.acceso_campo,
       perfil_campo: formAlta.perfil_campo,
@@ -10554,6 +10887,14 @@ function RRHH_Operativo() {
 
     const contratoColor = tipo => tipo === 'Indefinido' ? 'green' : tipo === 'Plazo fijo' ? 'orange' : 'cyan';
     const tabs = ['ficha', 'contrato', 'vacaciones', 'licencias', 'solicitudes', 'documentos', 'reembolsos', 'disponibilidad'];
+    const bajaProductividadFicha = construirFilasControlHoras({
+      personal: [p],
+      partes,
+      tareos: [],
+      ots: [],
+      periodo: periodoMesAnterior(),
+      tipo: 'operativo',
+    })[0]?.bajaProductividad;
 
     return (
       <>
@@ -10568,6 +10909,7 @@ function RRHH_Operativo() {
           <div className="row">
             <span className={'badge badge-' + contratoColor(p.tipo_contrato)}>{p.tipo_contrato}</span>
             <span className={'badge ' + (p.estado === 'disponible' ? 'badge-green' : 'badge-gray')}>{p.estado?.toUpperCase()}</span>
+            {bajaProductividadFicha && <span className="badge badge-red">Baja productividad</span>}
             <button className="btn btn-ghost btn-sm" title="Editar técnico" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>{I.edit}</button>
             <button className="btn btn-ghost btn-sm" title="Eliminar técnico" style={{color:'var(--danger)'}} onClick={() => eliminarTecnico(p)}>{I.trash}</button>
           </div>
@@ -10618,8 +10960,8 @@ function RRHH_Operativo() {
                   ['Régimen laboral', p.regimen_laboral],
                   ['Régimen de jornada', p.regimen_jornada],
                   ['Sueldo base', canFinanzas ? `S/ ${Number(p.sueldo_base||0).toLocaleString()}` : '***'],
-                  ['Costo/hora', canFinanzas ? money(p.costo ?? p.costo_hora_real ?? 0) + '/hr' : '***'],
-                  ['Costo hora extra', canFinanzas ? money(p.costo_hora_extra ?? 0) + '/hr' : '***'],
+                  ['Costo/hora', canFinanzas ? money(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0, p.moneda === 'USD' ? 'US$' : 'S/') + '/hr' : '***'],
+                  ['Costo hora extra', canFinanzas ? money(p.costo_hora_extra ?? 0, p.moneda === 'USD' ? 'US$' : 'S/') + '/hr' : '***'],
                   ['Sistema pensionario', esHon ? '—' : p.sistema_pensionario],
                   ['AFP', esHon ? '—' : (p.afp_nombre || '—')],
                   ['Vacaciones disponibles', esHon ? '—' : `${p.dias_vacaciones_disponibles ?? 0} días`],
@@ -10959,7 +11301,7 @@ function RRHH_Operativo() {
                       <td className="text-muted">{p.especialidad}</td>
                       <td>{p.area || <span className="text-subtle">—</span>}</td>
                       <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
-                      <td className="num">{money(p.costo ?? p.costo_hora_real ?? 0)}/hr</td>
+                      <td className="num">{money(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0, p.moneda === 'USD' ? 'US$' : 'S/')}/hr</td>
                       <td>{esHon ? <span className="text-subtle">—</span> : <span className="mono" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>
                       <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{contratoTexto || '—'}</span>}</td>
                       <td><span className={'badge '+(esHon ? 'badge-gray' : 'badge-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></td>
@@ -11141,11 +11483,11 @@ function RRHH_Operativo() {
               <table className="tbl">
                 <thead><tr><th>Técnico</th><th>Especialidad</th><th>Costo/Hora</th><th>Modalidad</th><th>Estado</th></tr></thead>
                 <tbody>
-                  {[...personal].filter(p=>p.estado!=='inactivo').sort((a,b)=>Number(b.costo??b.costo_hora_real??0)-Number(a.costo??a.costo_hora_real??0)).slice(0,10).map(p => (
+                  {[...personal].filter(p=>p.estado!=='inactivo').sort((a,b)=>Number(b.tarifa_hora??b.costo??b.costo_hora_real??0)-Number(a.tarifa_hora??a.costo??a.costo_hora_real??0)).slice(0,10).map(p => (
                     <tr key={p.id}>
                       <td style={{fontWeight:600}}>{p.nombre}</td>
                       <td>{p.especialidad}</td>
-                      <td className="num" style={{fontWeight:700}}>{money(p.costo??p.costo_hora_real??0)}/hr</td>
+                      <td className="num" style={{fontWeight:700}}>{money(p.tarifa_hora??p.costo??p.costo_hora_real??0, p.moneda === 'USD' ? 'US$' : 'S/')}/hr</td>
                       <td><span className={'badge '+(p.tipo_contrato==='Recibos por honorarios'?'badge-gray':'badge-green')}>{p.tipo_contrato==='Recibos por honorarios'?'Honorarios':'Planilla'}</span></td>
                       <td><span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span></td>
                     </tr>
@@ -11199,10 +11541,28 @@ function RRHH_Operativo() {
               <div className="input-group"><label>Estado inicial</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="disponible">Disponible</option><option value="inactivo">Inactivo</option></select></div>
             </div>
 
-            <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Costos</div>
+            <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Tarifa y Costeo</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group"><label>Costo hora normal (S/)</label><input className="input" type="number" min="0" value={formAlta.costo} onChange={e=>setFormAlta(v=>({...v,costo:e.target.value, costo_extra:String(Math.round(Number(e.target.value)*1.5))}))} placeholder="0"/></div>
-              <div className="input-group"><label>Costo hora extra (S/)</label><input className="input" type="number" min="0" value={formAlta.costo_extra} onChange={e=>setFormAlta(v=>({...v,costo_extra:e.target.value}))} placeholder="0"/></div>
+              <div className="input-group">
+                <label>Metodo de pago *</label>
+                <select className="select" required value={formAlta.metodo_pago} onChange={e=>setFormAlta(v=>({...v,metodo_pago:e.target.value}))}>
+                  <option value="mensual">Mensual</option>
+                  <option value="por_horas">Por horas</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Monto mensual ({tarifaSym})</label>
+                <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} onChange={e=>setFormAlta(v=>({...v,monto_mensual:e.target.value,sueldo_base:esHonorarios?v.sueldo_base:e.target.value}))} placeholder="0"/>
+              </div>
+              <div className="input-group">
+                <label>Horas base del mes</label>
+                <input className="input" type="number" min="1" step="0.5" value={formAlta.horas_base_mes} onChange={e=>setFormAlta(v=>({...v,horas_base_mes:e.target.value}))} placeholder="160"/>
+              </div>
+              <div className="input-group">
+                <label>Tarifa por hora ({tarifaSym})</label>
+                <input className="input" type="text" readOnly value={tarifaHoraForm.toFixed(2)} style={{background:'var(--bg-subtle)', fontWeight:700}}/>
+              </div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Costo hora extra ({tarifaSym})</label><input className="input" type="number" min="0" step="0.01" value={formAlta.costo_extra} onChange={e=>setFormAlta(v=>({...v,costo_extra:e.target.value}))} placeholder="0"/></div>
             </div>
 
             {canFinanzas && <>
@@ -11231,7 +11591,7 @@ function RRHH_Operativo() {
               ) : (
                 <>
                   <div className="grid-2" style={{gap:14, marginBottom:20}}>
-                    <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" value={formAlta.sueldo_base} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value}))} placeholder="3000"/></div>
+                    <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" value={formAlta.sueldo_base} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value,monto_mensual:e.target.value}))} placeholder="3000"/></div>
                     <div className="input-group"><label>Sistema pensionario</label><select className="select" value={formAlta.sistema_pensionario} onChange={e=>setFormAlta(v=>({...v,sistema_pensionario:e.target.value, afp_nombre:e.target.value === 'ONP' ? 'ONP' : v.afp_nombre}))}><option value="AFP">AFP</option><option value="ONP">ONP</option></select></div>
                     <div className="input-group"><label>Regimen laboral</label><select className="select" value={formAlta.regimen_laboral} onChange={e=>setFormAlta(v=>({...v,regimen_laboral:e.target.value}))}><option value="general">General</option><option value="mype">MYPE</option><option value="cas">CAS</option><option value="otro">Otro</option></select></div>
                     <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos para asignacion familiar</label>
@@ -12019,6 +12379,14 @@ export function TareoAdmin() {
   const getPersonal = id => (personalAdmin || []).find(p => p.id === id);
   const getOT = id => (ots || []).find(o => o.id === id);
   const getCeco = id => (centrosCosto || []).find(c => c.id === id);
+  const tarifaPersonal = id => {
+    const p = getPersonal(id);
+    return Number(p?.tarifa_hora ?? p?.costo_hora_real ?? p?.costo ?? p?.costo_hora ?? 0);
+  };
+  const symPersonal = id => {
+    const moneda = getPersonal(id)?.moneda || 'PEN';
+    return moneda === 'USD' ? 'US$' : moneda === 'EUR' ? 'EUR' : 'S/';
+  };
 
   const tareosFiltrados = tareos.filter(t =>
     !filtroPersonal || t.personal_id === filtroPersonal
@@ -12075,7 +12443,7 @@ export function TareoAdmin() {
   const resumenPorPeriodo = (() => {
     const mapa = {};
     tareosFiltrados.forEach(t => {
-      if (!mapa[t.personal_id]) mapa[t.personal_id] = { nombre: t.personal_nombre, horasProgramadas: 0, horasOT: 0, horasLibre: 0 };
+      if (!mapa[t.personal_id]) mapa[t.personal_id] = { personal_id: t.personal_id, nombre: t.personal_nombre, horasProgramadas: 0, horasOT: 0, horasLibre: 0 };
       if (t.tipo === 'ot') mapa[t.personal_id].horasOT += Number(t.horas) || 0;
       else mapa[t.personal_id].horasLibre += Number(t.horas) || 0;
     });
@@ -12086,7 +12454,7 @@ export function TareoAdmin() {
     adminsFiltrados.forEach(p => {
       const vins = otVinculadasDePersonal(p.id);
       if (vins.length > 0) {
-        if (!mapa[p.id]) mapa[p.id] = { nombre: p.nombre, horasProgramadas: 0, horasOT: 0, horasLibre: 0 };
+        if (!mapa[p.id]) mapa[p.id] = { personal_id: p.id, nombre: p.nombre, horasProgramadas: 0, horasOT: 0, horasLibre: 0 };
         mapa[p.id].horasProgramadas += vins.reduce((s, v) => s + v.horas_estimadas, 0);
       }
     });
@@ -12217,7 +12585,7 @@ export function TareoAdmin() {
                     <table className="tbl">
                       <thead><tr>
                         <th>Colaborador</th><th>Tipo</th><th>OT / CECO</th>
-                        <th>Horas</th><th>Descripción</th><th>Estado</th><th>Origen</th>
+                        <th>Horas</th><th className="num">Costo calc.</th><th>Descripción</th><th>Estado</th><th>Origen</th>
                       </tr></thead>
                       <tbody>{tareosFiltrados.map(t => (
                         <tr key={t.id}>
@@ -12229,6 +12597,7 @@ export function TareoAdmin() {
                               : (t.ceco_nombre || getCeco(t.ceco_id)?.nombre || '—')}
                           </td>
                           <td className="num">{t.horas}h</td>
+                          <td className="num">{moneyD(Number(t.horas || 0) * tarifaPersonal(t.personal_id), symPersonal(t.personal_id))}</td>
                           <td style={{maxWidth:260, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{t.descripcion}</td>
                           <td><span className={'badge ' + badgeEstado(t.estado)}>{t.estado}</span></td>
                           <td><span className={'badge ' + badgeOrigen(t.origen)}>{t.origen}</span></td>
@@ -12306,6 +12675,7 @@ export function TareoAdmin() {
                           <th className="num">Ejec. en OTs</th>
                           <th className="num">Horas libres</th>
                           <th className="num">Total ejecutado</th>
+                          <th className="num">Costo calculado</th>
                         </tr></thead>
                         <tbody>{resumenPorPeriodo.map((r, i) => (
                           <tr key={i}>
@@ -12314,6 +12684,7 @@ export function TareoAdmin() {
                             <td className="num">{r.horasOT.toFixed(1)}h</td>
                             <td className="num">{r.horasLibre.toFixed(1)}h</td>
                             <td className="num" style={{fontWeight:700}}>{(r.horasOT + r.horasLibre).toFixed(1)}h</td>
+                            <td className="num" style={{fontWeight:700}}>{moneyD((r.horasOT + r.horasLibre) * tarifaPersonal(r.personal_id), symPersonal(r.personal_id))}</td>
                           </tr>
                         ))}</tbody>
                       </table>
@@ -12327,6 +12698,180 @@ export function TareoAdmin() {
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+export function ControlHoras() {
+  const { empresa, role, personalOperativo = [], personalAdmin = [], partes = [], ots = [], usuarios = [], addNotificacion } = useApp();
+  const [tab, setTab] = useState('operativo');
+  const [periodo, setPeriodo] = useState(periodoMesActual());
+  const [tareos, setTareos] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [evaluando, setEvaluando] = useState(false);
+
+  const canVer = role?.permisos?.todo
+    || role?.permisos?.control_horas?.ver
+    || role?.permisos?.control_horas === true
+    || role?.permisos?.ver?.includes?.('control_horas')
+    || role?.permisos?.ver?.includes?.('tareo_admin');
+
+  useEffect(() => {
+    if (!empresa?.id || !canVer) return;
+    const { desde, hasta } = rangoPeriodoMes(periodo);
+    setLoading(true);
+    tareosAdminService.cargarTareos(empresa.id, { desde, hasta })
+      .then(setTareos)
+      .catch(err => {
+        console.error('[ControlHoras] cargar tareos', err);
+        setTareos([]);
+      })
+      .finally(() => setLoading(false));
+  }, [empresa?.id, periodo, canVer]);
+
+  const rowsOperativo = useMemo(() => construirFilasControlHoras({
+    personal: personalOperativo,
+    partes,
+    tareos,
+    ots,
+    periodo,
+    tipo: 'operativo',
+  }), [personalOperativo, partes, tareos, ots, periodo]);
+  const rowsAdmin = useMemo(() => construirFilasControlHoras({
+    personal: personalAdmin,
+    partes,
+    tareos,
+    ots,
+    periodo,
+    tipo: 'admin',
+  }), [personalAdmin, partes, tareos, ots, periodo]);
+  const rowsActuales = tab === 'operativo' ? rowsOperativo : rowsAdmin;
+
+  const obtenerSupervisorAuthId = (persona, tipo) => {
+    if (!persona) return null;
+    if (tipo === 'operativo' && persona.supervisor_id) {
+      const supervisor = (personalOperativo || []).find(p => p.id === persona.supervisor_id);
+      if (supervisor?.auth_user_id) return supervisor.auth_user_id;
+    }
+    const user = (usuarios || []).find(u =>
+      u.id === persona.auth_user_id ||
+      u.auth_user_id === persona.auth_user_id ||
+      u.email === persona.email ||
+      u.id === persona.user_id
+    );
+    const jefe = user?.jefe_user_id ? (usuarios || []).find(u => u.id === user.jefe_user_id) : null;
+    return jefe?.auth_user_id || null;
+  };
+
+  const evaluarMes = async (rows = rowsActuales, periodoEval = periodo, { silencioso = false, tipoEval = tab } = {}) => {
+    if (evaluando) return;
+    const criticos = (rows || []).filter(r => r.bajaProductividad);
+    if (!criticos.length) {
+      if (!silencioso) addNotificacion('No hay alertas de baja productividad para este periodo.');
+      return;
+    }
+    setEvaluando(true);
+    const { label } = rangoPeriodoMes(periodoEval);
+    try {
+      const notifRows = criticos
+        .map(r => {
+          const userId = obtenerSupervisorAuthId(r.persona, tipoEval === 'operativo' ? 'operativo' : 'admin');
+          if (!userId) return null;
+          return {
+            empresa_id: empresa?.id,
+            user_id: userId,
+            texto: `${r.nombre} registro solo ${r.total.toFixed(1)}h en ${label} — por debajo del 50% de su base de ${r.horasBase.toFixed(1)}h`,
+          };
+        })
+        .filter(Boolean);
+      if (notifRows.length && isSupabaseConfigured()) {
+        const sb = await getSupabaseClient();
+        await insertarNotificacionesSistema(sb, notifRows);
+      }
+      addNotificacion(`Evaluacion completada: ${criticos.length} alerta(s) de baja productividad.`);
+    } catch (err) {
+      console.error('[ControlHoras] evaluar mes', err);
+      addNotificacion('No se pudieron enviar todas las notificaciones de baja productividad.');
+    } finally {
+      setEvaluando(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!canVer || loading) return;
+    const hoy = new Date();
+    const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+    if (hoy.getDate() !== ultimoDia || periodo !== periodoMesActual()) return;
+    const grupos = [['operativo', rowsOperativo], ['admin', rowsAdmin]];
+    (async () => {
+      for (const [tipoEval, rows] of grupos) {
+        const key = `control_horas_eval_${empresa?.id || 'local'}_${tipoEval}_${periodo}`;
+        if (localStorage.getItem(key) === '1') continue;
+        localStorage.setItem(key, '1');
+        await evaluarMes(rows, periodo, { silencioso: true, tipoEval });
+      }
+    })();
+  }, [canVer, loading, rowsOperativo, rowsAdmin, periodo, empresa?.id]);
+
+  const exportarExcel = (rows, periodoExport) => {
+    const data = (rows || []).map(r => ({
+      Colaborador: r.nombre,
+      Tipo: tab === 'operativo' ? 'Tecnico' : 'Administrativo',
+      Especialidad_Area: r.especialidad,
+      Horas_base: Number(r.horasBase.toFixed(2)),
+      Horas_OTs: Number(r.horasOT.toFixed(2)),
+      Horas_tareo: Number(r.horasTareo.toFixed(2)),
+      Total_horas: Number(r.total.toFixed(2)),
+      Cobertura_pct: Number(r.cobertura.toFixed(2)),
+      Metodo_pago: r.metodoPago,
+      Tarifa_hora: Number(r.tarifa.toFixed(2)),
+      Moneda: r.moneda,
+      Costo_imputado: Number(r.costoImputado.toFixed(2)),
+      Estado: r.estado.label,
+      Alerta: r.bajaProductividad ? 'Baja productividad' : '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Control Horas');
+    XLSX.writeFile(wb, `control_horas_${tab}_${periodoExport}.xlsx`);
+  };
+
+  if (!canVer) return (
+    <div className="page-header">
+      <div><h1 className="page-title">Control de Horas</h1><div className="page-sub">Sin permiso para ver este modulo.</div></div>
+    </div>
+  );
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Control de Horas</h1>
+          <div className="page-sub">Disponibilidad, cobertura y costo imputado por colaborador</div>
+        </div>
+      </div>
+
+      <div className="tabs">
+        <div className={'tab ' + (tab === 'operativo' ? 'active' : '')} onClick={() => setTab('operativo')}>Tecnicos</div>
+        <div className={'tab ' + (tab === 'admin' ? 'active' : '')} onClick={() => setTab('admin')}>Administrativos</div>
+      </div>
+
+      <ControlHorasResumen
+        modo="rrhh"
+        tipo={tab === 'operativo' ? 'operativo' : 'admin'}
+        personal={tab === 'operativo' ? personalOperativo : personalAdmin}
+        partes={partes}
+        tareos={tareos}
+        ots={ots}
+        periodo={periodo}
+        setPeriodo={setPeriodo}
+        showTareo={tab === 'admin'}
+        showCosto
+        showNavegacion
+        loading={loading || evaluando}
+        onExport={exportarExcel}
+        onEvaluarMes={(rows, periodoEval) => evaluarMes(rows, periodoEval, { tipoEval: tab })}
+      />
     </>
   );
 }

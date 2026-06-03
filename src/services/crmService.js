@@ -193,6 +193,8 @@ export async function actualizarCuenta(supabase, empresaId, cuentaId, datos) {
     'riesgo_financiero', 'riesgo_churn', 'health_score', 'saldo_cxc',
     'margen_acumulado', 'fecha_ultima_compra', 'requiere_oc',
     'clasificacion_interna', 'condicion_tributaria', 'estado',
+    'banco_cliente', 'tipo_cuenta_bancaria', 'nro_cuenta_cliente', 'cci_cliente',
+    'agente_retencion_sunat', 'tasa_retencion_sunat',
   ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])

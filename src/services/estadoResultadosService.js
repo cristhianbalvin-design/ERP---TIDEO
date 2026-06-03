@@ -90,6 +90,70 @@ const finalizeResult = (result, sourceCounts = {}) => {
 
 const matchesIds = (id, ids) => ids == null || ids.includes(id);
 const intersectsIds = (id, ids) => ids == null || ids.includes(id);
+const norm = value => String(value || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+const sameMoney = (a, b) => Math.abs(amount(a) - amount(b)) < 0.01;
+const cxpOrigin = cxp => norm(cxp?.origen || 'manual');
+const cxpMotive = cxp => norm(cxp?.motivo_cxp || '');
+const cxpDocType = cxp => norm(cxp?.tipo_comprobante || '');
+const cxpIsCancelled = cxp => norm(cxp?.estado).includes('anulad');
+const cxpIsRhe = cxp => cxpDocType(cxp) === 'rhe'
+  || Boolean(cxp?.recibo_honorarios_id)
+  || amount(cxp?.monto_bruto) > 0;
+
+const excludedCxpOrigins = new Set(['nomina', 'nc_devolucion', 'recepcion']);
+const excludedCxpMotives = new Set(['devolucion_nc', 'planilla', 'essalud', 'pensiones', 'ir_5ta']);
+
+const cxpDevengoAmount = cxp => {
+  if (cxpIsRhe(cxp)) return amount(cxp?.monto_bruto) || amount(cxp?.monto_total);
+  return amount(cxp?.monto_total);
+};
+
+const cxpDevengoLabel = cxp => {
+  if (cxp?.categoria_er) return cxp.categoria_er;
+  const origin = cxpOrigin(cxp);
+  const motive = cxpMotive(cxp);
+  if (cxpIsRhe(cxp) && cxp?.recibo_honorarios_id) return 'Comisiones por honorarios';
+  if (cxpIsRhe(cxp)) return 'Servicios terceros';
+  if (origin === 'viaticos' || motive === 'viaticos_reembolso') return 'Administrativos';
+  if (cxp?.tipo_beneficiario === 'personal') return 'Honorarios y reembolsos';
+  return 'Gastos operativos';
+};
+
+const cxpCanDevengarEr = cxp => {
+  if (!cxp || cxpIsCancelled(cxp)) return false;
+  if (excludedCxpOrigins.has(cxpOrigin(cxp))) return false;
+  if (excludedCxpMotives.has(cxpMotive(cxp))) return false;
+  return cxpDevengoAmount(cxp) > 0;
+};
+
+const compraCoversCxp = (cxp, comprasGastos = []) => {
+  const cxpId = cxp?.id;
+  const gastoId = cxp?.gasto_id;
+  // FK exacto primero (migration 168 agrega cxp_id a compras_gastos)
+  if (cxpId && comprasGastos.some(g => g.cxp_id === cxpId)) return true;
+  const fecha = String(cxp?.fecha_emision || '').slice(0, 10);
+  const moneda = currencyOf(cxp?.moneda);
+  const monto = cxpDevengoAmount(cxp);
+  const cxpText = norm([cxp?.concepto, cxp?.factura_numero, cxp?.nombre_emisor].filter(Boolean).join(' '));
+
+  return comprasGastos.some(g => {
+    if (cxpId && g.cxp_id === cxpId) return true;
+    if (gastoId && g.id === gastoId) return true;
+    const gastoText = norm([g.descripcion, g.subcategoria].filter(Boolean).join(' '));
+    const sameFingerprint = String(g.fecha || '').slice(0, 10) === fecha
+      && currencyOf(g.moneda) === moneda
+      && sameMoney(g.monto, monto);
+    if (!sameFingerprint || !cxpText || !gastoText) return false;
+    return cxpText.includes(gastoText)
+      || gastoText.includes(cxpText)
+      || (cxp?.factura_numero && gastoText.includes(norm(cxp.factura_numero)));
+  });
+};
 
 async function resolveCecoFilter(supabase, empresaId, cecoIds = [], cebeIds = []) {
   const selectedCecos = Array.isArray(cecoIds) ? cecoIds.filter(Boolean) : [];
@@ -165,6 +229,20 @@ async function loadVentas(supabase, empresaId, periodo) {
   return data || [];
 }
 
+async function loadFacturas(supabase, empresaId, periodo) {
+  const { start, next } = periodBounds(periodo);
+  const { data, error } = await supabase
+    .from('facturas')
+    .select('id, numero, subtotal, igv, total, moneda, fecha_emision, estado, tipo_documento')
+    .eq('empresa_id', empresaId)
+    .gte('fecha_emision', start)
+    .lt('fecha_emision', next)
+    .neq('estado', 'anulada')
+    .not('tipo_documento', 'in', '("nota_credito","nota_debito")');
+  if (error) throw error;
+  return data || [];
+}
+
 async function loadCostosOt(supabase, empresaId) {
   const [costosR, cierresR] = await Promise.all([
     supabase
@@ -194,7 +272,7 @@ async function loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds)
   const { start, next } = periodBounds(periodo);
   let query = supabase
     .from('compras_gastos')
-    .select('id, fecha, descripcion, categoria, subcategoria, monto, moneda, centro_costo_id, es_activo_fijo, estado')
+    .select('id, fecha, descripcion, categoria, subcategoria, monto, moneda, centro_costo_id, es_activo_fijo, estado, cxp_id, periodo_nomina_id, origen_registro')
     .eq('empresa_id', empresaId)
     .gte('fecha', start)
     .lt('fecha', next);
@@ -202,6 +280,18 @@ async function loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds)
   const { data, error } = await query;
   if (error) throw error;
   return (data || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado' && g.categoria !== 'Gastos financieros');
+}
+
+async function loadCxPDevengos(supabase, empresaId, periodo) {
+  const { start, next } = periodBounds(periodo);
+  const { data, error } = await supabase
+    .from('cxp')
+    .select('id, tipo_beneficiario, tipo_comprobante, factura_numero, concepto, fecha_emision, monto_total, monto_bruto, retencion_ir, moneda, estado, origen, motivo_cxp, gasto_id, recepcion_id, recibo_honorarios_id, personal_id, nombre_emisor, nc_id, categoria_er, centro_costo_id')
+    .eq('empresa_id', empresaId)
+    .gte('fecha_emision', start)
+    .lt('fecha_emision', next);
+  if (error) throw error;
+  return data || [];
 }
 
 async function loadNomina(supabase, empresaId, periodo, effectiveCecoIds) {
@@ -266,16 +356,23 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
   const effectiveCecoIds = await resolveCecoFilter(supabase, empresaId, cecoIds, cebeIds);
   const result = emptyResult(periodo);
 
-  const [ventas, costosOt, comprasGastos, detalleNomina, pagosFinancieros] = await Promise.all([
+  const [ventas, facturas, costosOt, comprasGastos, detalleNomina, pagosFinancieros, cxpDevengos] = await Promise.all([
     loadVentas(supabase, empresaId, periodo),
+    loadFacturas(supabase, empresaId, periodo),
     loadCostosOt(supabase, empresaId),
     loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds),
     loadNomina(supabase, empresaId, periodo, effectiveCecoIds),
     loadPagosFinancieros(supabase, empresaId, periodo),
+    loadCxPDevengos(supabase, empresaId, periodo),
   ]);
 
   ventas.forEach(v => {
     addToBlock(result.er.ingresos, v.concepto || 'Ventas de servicios', v.monto_total, v.moneda);
+  });
+
+  // Facturas como fuente de ingresos (subtotal = neto sin IGV, estándar para P&G)
+  facturas.forEach(f => {
+    addToBlock(result.er.ingresos, 'Ventas de servicios', f.subtotal, f.moneda);
   });
 
   costosOt
@@ -290,8 +387,25 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
       addToBlock(result.er.costoVentas, 'Otros costos directos', c.otros, c.moneda);
     });
 
-  comprasGastos.forEach(g => {
+  const comprasGastosParaEr = detalleNomina.length
+    ? comprasGastos.filter(g => !g.periodo_nomina_id && norm(g.origen_registro) !== 'nomina')
+    : comprasGastos;
+
+  comprasGastosParaEr.forEach(g => {
     addToBlock(result.er.gastosOp, g.categoria || g.subcategoria || 'Gasto operativo', g.monto, g.moneda);
+  });
+
+  const hasScopedFilters = Boolean(effectiveCecoIds) || Boolean(cebeIds?.length);
+  const cxpDevengosEr = cxpDevengos.filter(cxp => {
+    if (!cxpCanDevengarEr(cxp)) return false;
+    if (compraCoversCxp(cxp, comprasGastos)) return false;
+    if (!hasScopedFilters) return true;
+    if (!cxp.centro_costo_id) return false;
+    if (effectiveCecoIds && !effectiveCecoIds.includes(cxp.centro_costo_id)) return false;
+    return true;
+  });
+  cxpDevengosEr.forEach(cxp => {
+    addToBlock(result.er.gastosOp, cxpDevengoLabel(cxp), cxpDevengoAmount(cxp), cxp.moneda);
   });
 
   detalleNomina.forEach(n => {
@@ -310,8 +424,10 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
 
   return finalizeResult(result, {
     ventas: ventas.length,
+    facturas: facturas.length,
     costos_ot: costosOt.filter(c => isInPeriod(c.fecha_er, periodo)).length,
-    compras_gastos: comprasGastos.length,
+    compras_gastos: comprasGastosParaEr.length,
+    cxp_devengos: cxpDevengosEr.length,
     detalle_nomina: detalleNomina.length,
     pagos_financiamiento: pagosFinancieros.length,
   });

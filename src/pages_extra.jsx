@@ -117,18 +117,25 @@ const pdfAssetSource = async ({ url, path }) => {
 const construirPartidasDesdeHC = (hc) => {
   const margen = Math.min(Math.max(toCotNumber(hc.margen_objetivo_pct, 35), 0), 95) / 100;
   const divisor = 1 - margen;
+  const descripcionItemHC = i => String(i?.descripcion || i?.nombre || i?.concepto || i?.item || '').trim();
+  const esItemRealHC = i => {
+    const desc = descripcionItemHC(i);
+    if (!desc) return false;
+    const meta = String(i?.tipo || i?.categoria || i?.seccion || i?.key || '').toLowerCase();
+    return !['resumen', 'resumen_costeo', 'metadata', 'costo_total', 'subtotal', 'total'].includes(meta);
+  };
   return [
     ...(hc.mano_obra || []),
     ...(hc.materiales || []),
     ...(hc.servicios_terceros || []),
     ...(hc.logistica || []),
-  ].map((i, idx) => {
+  ].filter(esItemRealHC).map((i, idx) => {
     const cantidad = toCotNumber(i.cantidad);
     const costoUnitario = toCotNumber(i.costo_unitario ?? i.precio_unitario);
     const precioUnitario = divisor > 0 ? Math.round(costoUnitario / divisor) : costoUnitario;
     return {
       id: i.id || idx + 1,
-      descripcion: i.descripcion || 'Partida de costeo',
+      descripcion: descripcionItemHC(i),
       tipo: i.tipo === 'material' ? 'material' : 'servicio',
       cantidad,
       unidad: i.unidad || 'und',
@@ -158,7 +165,6 @@ function CotizacionesInner() {
   } = useApp();
   const [osModal, setOsModal] = useState(null);
   const [generandoPDF, setGenerandoPDF] = useState(false);
-  const [showFilter, setShowFilter] = useState(false);
   const [filtros, setFiltros] = useState({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' });
 
   useEffect(() => {
@@ -346,11 +352,29 @@ function CotizacionesInner() {
           <h1 className="page-title">Cotizaciones</h1>
           <div className="page-sub">{latestPorNumero.length} cotizaciones registradas</div>
         </div>
-        <div className="row">
-          <button className="btn btn-secondary" style={filtrosActivos ? {borderColor:'var(--green)',color:'var(--green)'} : {}} onClick={() => setShowFilter(true)}>{I.filter} Filtrar{filtrosActivos ? ' •' : ''}</button>
-        </div>
       </div>
-      <div className="card mt-6">
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto auto', gap: 8, marginBottom: 16 }}>
+        <input className="input" placeholder="Buscar por cliente…" value={filtros.cliente} onChange={e => setFiltros(f => ({...f, cliente: e.target.value}))} />
+        <input className="input" placeholder="Buscar por oportunidad…" value={filtros.oportunidad} onChange={e => setFiltros(f => ({...f, oportunidad: e.target.value}))} />
+        <select className="select" value={filtros.estado} onChange={e => setFiltros(f => ({...f, estado: e.target.value}))}>
+          <option value="">Todos los estados</option>
+          <option value="borrador">Borrador</option>
+          <option value="enviada">Enviada</option>
+          <option value="pendiente_aprobacion">Pendiente aprobación</option>
+          <option value="aprobada">Aprobada</option>
+          <option value="aceptada">Aceptada</option>
+          <option value="convertida">Convertida</option>
+          <option value="perdida">Perdida</option>
+        </select>
+        <input type="date" className="input" value={filtros.fechaDesde} onChange={e => setFiltros(f => ({...f, fechaDesde: e.target.value}))} />
+        <input type="date" className="input" value={filtros.fechaHasta} onChange={e => setFiltros(f => ({...f, fechaHasta: e.target.value}))} />
+        {filtrosActivos && (
+          <button className="btn btn-secondary" onClick={() => setFiltros({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' })}>Limpiar</button>
+        )}
+      </div>
+
+      <div className="card">
         <div className="table-wrap">
           <table className="tbl">
             <thead>
@@ -386,56 +410,6 @@ function CotizacionesInner() {
           </table>
         </div>
       </div>
-
-      {showFilter && (
-        <>
-          <div className="side-panel-backdrop" onClick={() => setShowFilter(false)} />
-          <div className="side-panel" style={{width: 360}}>
-            <div className="side-panel-head">
-              <div>
-                <div className="eyebrow">Filtros</div>
-                <div className="font-display" style={{fontSize:20, fontWeight:700}}>Filtrar cotizaciones</div>
-              </div>
-              <button className="icon-btn" onClick={() => setShowFilter(false)}>{I.x}</button>
-            </div>
-            <div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:20}}>
-              <div>
-                <label className="form-label">Cliente</label>
-                <input className="form-input" placeholder="Buscar por cliente…" value={filtros.cliente} onChange={e => setFiltros(f => ({...f, cliente: e.target.value}))} />
-              </div>
-              <div>
-                <label className="form-label">Oportunidad</label>
-                <input className="form-input" placeholder="Buscar por oportunidad…" value={filtros.oportunidad} onChange={e => setFiltros(f => ({...f, oportunidad: e.target.value}))} />
-              </div>
-              <div>
-                <label className="form-label">Estado</label>
-                <select className="form-input" value={filtros.estado} onChange={e => setFiltros(f => ({...f, estado: e.target.value}))}>
-                  <option value="">Todos</option>
-                  <option value="borrador">Borrador</option>
-                  <option value="enviada">Enviada</option>
-                  <option value="pendiente_aprobacion">Pendiente aprobación</option>
-                  <option value="aprobada">Aprobada</option>
-                  <option value="aceptada">Aceptada</option>
-                  <option value="convertida">Convertida</option>
-                  <option value="perdida">Perdida</option>
-                </select>
-              </div>
-              <div>
-                <label className="form-label">Fecha desde</label>
-                <input type="date" className="form-input" value={filtros.fechaDesde} onChange={e => setFiltros(f => ({...f, fechaDesde: e.target.value}))} />
-              </div>
-              <div>
-                <label className="form-label">Fecha hasta</label>
-                <input type="date" className="form-input" value={filtros.fechaHasta} onChange={e => setFiltros(f => ({...f, fechaHasta: e.target.value}))} />
-              </div>
-            </div>
-            <div className="side-panel-footer" style={{display:'flex', gap:8}}>
-              <button className="btn btn-secondary" style={{flex:1}} onClick={() => { setFiltros({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' }); }}>Limpiar filtros</button>
-              <button className="btn btn-primary" style={{flex:1}} onClick={() => setShowFilter(false)}>Aplicar</button>
-            </div>
-          </div>
-        </>
-      )}
     </>
   );
 }
@@ -1098,12 +1072,16 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
   }, [isEdit, contactoId, contactoPrincipalCuenta?.id]);
 
   // ── Bloque 2: partidas ───────────────────────────────────────────────
+  const normalizeTipoPartida = p => ['material', 'servicio', 'bien', 'recurrente'].includes(String(p?.tipo || p?.tipo_partida || '').toLowerCase())
+    ? String(p?.tipo || p?.tipo_partida || '').toLowerCase()
+    : 'servicio';
   const emptyPartida = () => ({ id: Date.now() + Math.random(), descripcion: '', detalle_items_txt: '', tipo: 'servicio', detalle_cantidad: '', cantidad: 1, precio_unitario: '', incluido: false });
 
   const [partidas, setPartidas] = useState(() => {
     if (cotizacionBase?.items?.length) {
       return cotizacionBase.items.map(p => ({
         ...p,
+        tipo: normalizeTipoPartida(p),
         cantidad: toCotNumber(p.cantidad),
         precio_unitario: toCotNumber(p.precio_unitario),
         detalle_items_txt: Array.isArray(p.detalle_items) ? p.detalle_items.join('\n') : (p.detalle || '')
@@ -1360,6 +1338,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                 <div className="input-group" style={{margin:0, flex:1, minWidth:140}}>
                   <label style={{fontSize:11}}>Tipo</label>
                   <select className="select" value={p.tipo} onChange={e => updatePartida(p.id, 'tipo', e.target.value)}>
+                    <option value="material">Material</option>
                     <option value="servicio">Servicio</option>
                     <option value="bien">Bien</option>
                     <option value="recurrente">Recurrente (mensual)</option>
@@ -2106,7 +2085,7 @@ function Valorizacion({ role }) {
             </>}
             {v.estado === 'aprobada' && <>
               <button className="btn btn-secondary" style={{color:'var(--danger)', borderColor:'var(--danger)'}} onClick={() => setModalAnular(true)}>Anular</button>
-              <button className="btn btn-primary" style={{background:'var(--green)'}} onClick={() => emitirFacturaDesdeValorizacion(v.id)}>
+              <button className="btn btn-primary" style={{background:'var(--green)'}} onClick={() => navigate('facturacion', { valSel: v.id, mode: 'val' })}>
                 {I.plus} Generar Factura
               </button>
             </>}
@@ -2754,6 +2733,29 @@ function Valorizacion({ role }) {
                 </div>
               </div>
 
+              {/* Banner retención SUNAT */}
+              {(() => {
+                const cuentaOs = (cuentas || []).find(x => x.id === getOs(selOs)?.cuenta_id);
+                if (!cuentaOs?.agente_retencion_sunat) return null;
+                const tasaRet = Number(cuentaOs.tasa_retencion_sunat || 3);
+                const montoRet = Math.round(totalVal * (tasaRet / 100) * 100) / 100;
+                const netoEst = totalVal - montoRet;
+                return (
+                  <div style={{marginTop:20, padding:'12px 16px', borderRadius:8, border:'1px solid rgba(251,191,36,0.4)', background:'rgba(251,191,36,0.06)', display:'flex', flexDirection:'column', gap:6}}>
+                    <div style={{fontWeight:700, fontSize:13, color:'var(--warning)'}}>
+                      ⚠ {cuentaOs.razon_social || cuentaOs.nombre_comercial} es Agente de Retención SUNAT ({tasaRet}%)
+                    </div>
+                    <div style={{fontSize:12, color:'var(--fg-muted)'}}>
+                      Al facturar esta valorización se calculará automáticamente la retención. Estimado sobre el subtotal:
+                    </div>
+                    <div style={{display:'flex', gap:24, fontSize:12, flexWrap:'wrap'}}>
+                      <span>Retención estimada: <strong style={{color:'var(--warning)'}}>- {moneyCurrency(montoRet, monedaOs)}</strong></span>
+                      <span>Neto a cobrar estimado: <strong style={{color:'var(--cyan)'}}>{moneyCurrency(netoEst, monedaOs)}</strong></span>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Saldo warning */}
               {(() => {
                 const os = getOs(selOs);
@@ -2942,7 +2944,7 @@ function Valorizacion({ role }) {
                   </td>
                   <td onClick={e => e.stopPropagation()}>
                     {v.estado === 'aprobada' && (
-                      <button className="btn btn-secondary btn-sm" style={{fontSize:11, whiteSpace:'nowrap'}} onClick={() => emitirFacturaDesdeValorizacion(v.id)}>
+                      <button className="btn btn-secondary btn-sm" style={{fontSize:11, whiteSpace:'nowrap'}} onClick={() => navigate('facturacion', { valSel: v.id, mode: 'val' })}>
                         Facturar
                       </button>
                     )}

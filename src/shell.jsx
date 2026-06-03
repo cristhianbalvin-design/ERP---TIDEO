@@ -52,6 +52,7 @@ const SIDEBAR = [
     { key: 'solicitudes_rrhh', label: 'Solicitudes', icon: I.clipboard },
     { key: 'prestamos_personal', label: 'Prestamos al Personal', icon: I.userCheck },
     { key: 'tareo_admin', label: 'Tareo Administrativo', icon: I.clock },
+    { key: 'control_horas', label: 'Control de Horas', icon: I.clock },
     { key: 'evaluaciones_desempeno', label: 'Evaluación de Desempeño', icon: I.target },
     { key: 'liquidaciones_cese', label: 'Liquidación por Cese', icon: I.receipt },
   ]},

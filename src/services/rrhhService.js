@@ -103,8 +103,12 @@ const normalizarPersonalOperativo = (p = {}) => ({
   sede: p.sede || '',
   supervisor_id: p.supervisor_id || null,
   supervisor: p.supervisor || '',
-  costo: Number(p.costo ?? p.costo_hora_real ?? 0),
-  costo_hora_real: Number(p.costo_hora_real ?? p.costo ?? 0),
+  metodo_pago: p.metodo_pago || 'mensual',
+  monto_mensual: Number(p.monto_mensual ?? p.sueldo_base ?? 0),
+  horas_base_mes: Number(p.horas_base_mes ?? 160) || 160,
+  tarifa_hora: Number(p.tarifa_hora ?? p.costo_hora_real ?? p.costo ?? 0),
+  costo: Number(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0),
+  costo_hora_real: Number(p.tarifa_hora ?? p.costo_hora_real ?? p.costo ?? 0),
   costo_hora_extra: Number(p.costo_hora_extra ?? p.costo_extra ?? 0),
   acceso_campo: p.acceso_campo ?? true,
   perfil_campo: p.perfil_campo || 'Tecnico',
@@ -120,6 +124,12 @@ const normalizarPersonalOperativo = (p = {}) => ({
   fecha_inicio_contrato: p.fecha_inicio_contrato || p.fecha_ingreso || null,
   fecha_fin_contrato: p.fecha_fin_contrato || null,
 });
+
+const calcularTarifaHora = (montoMensual, horasBaseMes) => {
+  const monto = Number(montoMensual || 0);
+  const horas = Number(horasBaseMes || 160) || 160;
+  return Math.round((horas > 0 ? monto / horas : 0) * 100) / 100;
+};
 
 const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   id: persona.id,
@@ -141,13 +151,17 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   sueldo_base: Number(persona.sueldo_base || 0),
   moneda: persona.moneda || 'PEN',
   sistema_pensionario: persona.sistema_pensionario || null,
+  metodo_pago: persona.metodo_pago || 'mensual',
+  monto_mensual: Number(persona.monto_mensual ?? persona.sueldo_base ?? 0),
+  horas_base_mes: Number(persona.horas_base_mes || 160),
+  tarifa_hora: calcularTarifaHora(persona.monto_mensual ?? persona.sueldo_base, persona.horas_base_mes),
   tipo_contrato: persona.tipo_contrato || 'Planilla',
   afp_nombre: persona.afp_nombre || null,
   tiene_hijos: persona.tiene_hijos ?? false,
   regimen_laboral: persona.regimen_laboral || null,
   cuota_prestamo_mes: Number(persona.cuota_prestamo_mes || 0),
   descuento_judicial: Number(persona.descuento_judicial || 0),
-  costo_hora_real: Number(persona.costo_hora_real ?? persona.costo ?? 0),
+  costo_hora_real: Number(persona.tarifa_hora ?? calcularTarifaHora(persona.monto_mensual ?? persona.sueldo_base, persona.horas_base_mes) ?? persona.costo_hora_real ?? persona.costo ?? 0),
   costo_hora_extra: Number(persona.costo_hora_extra ?? persona.costo_extra ?? 0),
   ruc_colaborador: persona.ruc_colaborador || null,
   retencion_ir: Number(persona.retencion_ir ?? 8),
@@ -170,6 +184,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
     'codigo', 'nombre', 'documento', 'cargo', 'especialidad', 'especialidad2',
     'area', 'turno_id', 'telefono', 'email', 'sede', 'supervisor_id', 'supervisor',
     'fecha_ingreso', 'sueldo_base', 'moneda', 'sistema_pensionario',
+    'metodo_pago', 'monto_mensual', 'horas_base_mes', 'tarifa_hora',
     'tipo_contrato', 'afp_nombre', 'tiene_hijos', 'regimen_laboral',
     'cuota_prestamo_mes', 'descuento_judicial',
     'costo_hora_real', 'costo_hora_extra',
@@ -181,7 +196,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
   return Object.entries(cambios).reduce((row, [key, value]) => {
     const target = map[key] || key;
     if (!allowed.has(target)) return row;
-    row[target] = ['sueldo_base', 'costo_hora_real', 'costo_hora_extra', 'cuota_prestamo_mes', 'descuento_judicial'].includes(target)
+    row[target] = ['sueldo_base', 'monto_mensual', 'horas_base_mes', 'tarifa_hora', 'costo_hora_real', 'costo_hora_extra', 'cuota_prestamo_mes', 'descuento_judicial'].includes(target)
       ? Number(value || 0)
       : value;
     return row;
@@ -195,6 +210,10 @@ const normalizarPersonalAdmin = (p = {}) => ({
   fecha_inicio_contrato: p.fecha_inicio_contrato || p.fecha_ingreso || '',
   remuneracion: Number(p.remuneracion ?? p.sueldo_base ?? 0),
   sueldo_base: Number(p.sueldo_base ?? p.remuneracion ?? 0),
+  metodo_pago: p.metodo_pago || 'mensual',
+  monto_mensual: Number(p.monto_mensual ?? p.remuneracion ?? p.sueldo_base ?? 0),
+  horas_base_mes: Number(p.horas_base_mes ?? 160) || 160,
+  tarifa_hora: Number(p.tarifa_hora ?? p.costo_hora_real ?? p.costo ?? 0),
   tipo_contrato: p.tipo_contrato || 'Planilla',
   modalidad: p.modalidad || 'Presencial',
   sede: p.sede || '',
@@ -237,6 +256,10 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   sueldo_base: Number(persona.sueldo_base ?? persona.remuneracion ?? 0),
   remuneracion: Number(persona.remuneracion ?? persona.sueldo_base ?? 0),
   moneda: persona.moneda || 'PEN',
+  metodo_pago: persona.metodo_pago || 'mensual',
+  monto_mensual: Number(persona.monto_mensual ?? persona.remuneracion ?? persona.sueldo_base ?? 0),
+  horas_base_mes: Number(persona.horas_base_mes || 160),
+  tarifa_hora: calcularTarifaHora(persona.monto_mensual ?? persona.remuneracion ?? persona.sueldo_base, persona.horas_base_mes),
   sistema_pensionario: persona.sistema_pensionario || null,
   modalidad: persona.modalidad_visual || persona.modalidad_trabajo || 'Presencial',
   vacaciones_pendientes: Number(persona.vacaciones_pendientes ?? persona.dias_vacaciones_disponibles ?? persona.dias_vacaciones ?? 0),
@@ -272,7 +295,8 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     'codigo', 'nombre', 'documento', 'dni', 'fecha_nacimiento', 'direccion',
     'cargo', 'area', 'telefono', 'email', 'supervisor', 'sede', 'turno_id',
     'tipo_contrato', 'fecha_ingreso', 'fecha_inicio_contrato', 'fecha_fin_contrato',
-    'sueldo_base', 'remuneracion', 'moneda', 'sistema_pensionario', 'modalidad',
+    'sueldo_base', 'remuneracion', 'moneda', 'metodo_pago', 'monto_mensual',
+    'horas_base_mes', 'tarifa_hora', 'sistema_pensionario', 'modalidad',
     'vacaciones_pendientes', 'dias_vacaciones_total', 'dias_vacaciones_usados',
     'dias_vacaciones_disponibles', 'contacto_emergencia', 'relacion_emergencia',
     'telefono_emergencia', 'nivel_estudios', 'especialidad', 'institucion',
@@ -292,7 +316,8 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     row[target] = [
       'sueldo_base', 'remuneracion', 'vacaciones_pendientes',
       'dias_vacaciones_total', 'dias_vacaciones_usados', 'dias_vacaciones_disponibles',
-      'porcentaje_comision', 'retencion_ir_comision'
+      'porcentaje_comision', 'retencion_ir_comision', 'monto_mensual', 'horas_base_mes',
+      'tarifa_hora'
     ].includes(target) ? Number(value || 0) : value;
     return row;
   }, {});
