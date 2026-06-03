@@ -13,11 +13,14 @@ import {
 } from './services/finanzasService.js';
 import { rrhhService } from './services/rrhhService.js';
 import * as storageService from './services/storageService.js';
+import { NuevoEgreso } from './components/NuevoEgreso.jsx';
+import * as XLSX from 'xlsx';
 
 // Finanzas: CxC, Tesorería/Match, Estado de Resultados, Facturación
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
 const moneyCurrency = (value, moneda = 'PEN') => money(value, symOf(moneda));
 const moneyDCurrency = (value, moneda = 'PEN') => moneyD(value, symOf(moneda));
+const normText = value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 function CxCLegacy() {
   const { cxc } = useApp();
@@ -130,6 +133,7 @@ function CxC() {
   const [showFiltros, setShowFiltros] = useState(false);
   const [fCliente, setFCliente] = useState('');
   const [fEstado, setFEstado] = useState('');
+  const [fMoneda, setFMoneda] = useState('');
   const [fVenceDesde, setFVenceDesde] = useState('');
   const [fVenceHasta, setFVenceHasta] = useState('');
   const [fMoraDesde, setFMoraDesde] = useState('');
@@ -187,15 +191,16 @@ function CxC() {
     }
     if (fCliente)    rows = rows.filter(c => clienteDe(c).toLowerCase().includes(fCliente.toLowerCase()));
     if (fEstado)     rows = rows.filter(c => estadoDe(c) === fEstado);
+    if (fMoneda)     rows = rows.filter(c => (c.moneda||'PEN') === fMoneda);
     if (fVenceDesde) rows = rows.filter(c => (c.fecha_vencimiento||c.vence||'') >= fVenceDesde);
     if (fVenceHasta) rows = rows.filter(c => (c.fecha_vencimiento||c.vence||'') <= fVenceHasta);
     if (fMoraDesde)  rows = rows.filter(c => diasMoraDe(c) >= Number(fMoraDesde));
     if (fMoraHasta)  rows = rows.filter(c => diasMoraDe(c) <= Number(fMoraHasta));
     if (fGestor)     rows = rows.filter(c => (c.gestor_cobranza_id || '') === fGestor);
     return rows;
-  }, [cxcActivas, agingFilter, fCliente, fEstado, fVenceDesde, fVenceHasta, fMoraDesde, fMoraHasta, fGestor, today, gestionesCobranza]);
+  }, [cxcActivas, agingFilter, fCliente, fEstado, fMoneda, fVenceDesde, fVenceHasta, fMoraDesde, fMoraHasta, fGestor, today, gestionesCobranza]);
 
-  const hayFiltros = !!(agingFilter||fCliente||fEstado||fVenceDesde||fVenceHasta||fMoraDesde||fMoraHasta||fGestor);
+  const hayFiltros = !!(agingFilter||fCliente||fEstado||fMoneda||fVenceDesde||fVenceHasta||fMoraDesde||fMoraHasta||fGestor);
 
   // ── Handlers ─────────────────────────────────────────────────────────
   const abrirFicha = c => { setSelCxC(c.id); setFichaTab('resumen'); };
@@ -326,32 +331,33 @@ function CxC() {
 
     fichaJSX = (
       <>
-        <div className="page-header" style={{borderBottom:'none',paddingBottom:0}}>
-          <div>
-            <button className="btn btn-ghost" onClick={()=>setSelCxC(null)} style={{marginBottom:10,padding:0,color:'var(--cyan)'}}>← Volver a Cuentas por Cobrar</button>
-            <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-              <h1 className="page-title" style={{margin:0}}>{facturaNumeroDe(c)}</h1>
-              <span className={'badge '+metaEst.cls}>{metaEst.label}</span>
-              {dias > 0 && !moraCondonada && <span style={{fontSize:12,fontWeight:600,color:'var(--danger)'}}>· {dias} días de mora</span>}
-              {moraCondonada && <span className="badge badge-green">✓ Mora condonada</span>}
+        <div className="side-panel-backdrop" onClick={()=>setSelCxC(null)} />
+        <div className="side-panel">
+          <div className="side-panel-head">
+            <div>
+              <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>{clienteDe(c)} · Vence: {vencimientoLabel}</div>
+              <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                <strong style={{fontSize:16}}>{facturaNumeroDe(c)}</strong>
+                <span className={'badge '+metaEst.cls}>{metaEst.label}</span>
+                {dias > 0 && !moraCondonada && <span style={{fontSize:11,fontWeight:600,color:'var(--danger)'}}>{dias}d mora</span>}
+                {moraCondonada && <span className="badge badge-green">✓ Condonada</span>}
+              </div>
             </div>
-            <div className="page-sub">{clienteDe(c)} · Vence: {vencimientoLabel}</div>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              {saldo > 0 && <button className="btn btn-secondary btn-sm" data-local-form="true" onClick={e=>abrirGestion(c,e)} title="Registrar gestión">{I.send}</button>}
+              {saldo > 0 && <button className="btn btn-primary btn-sm" data-local-form="true" onClick={e=>abrirCobro(c,e)}>Cobrar</button>}
+              <button className="icon-btn" onClick={()=>setSelCxC(null)}>{I.x}</button>
+            </div>
           </div>
-          <div className="row" style={{gap:10,flexWrap:'wrap'}}>
-            {saldo > 0 && <button className="btn btn-secondary" data-local-form="true" onClick={e=>abrirGestion(c,e)}>{I.send} Registrar gestión</button>}
-            {saldo > 0 && <button className="btn btn-primary" data-local-form="true" onClick={e=>abrirCobro(c,e)}>{I.plus} Registrar cobro</button>}
+          <div className="tabs" style={{margin:'0 22px'}}>
+            {TABS_FICHA.map(t=><div key={t.id} className={'tab '+(fichaTab===t.id?'active':'')} onClick={()=>setFichaTab(t.id)}>{t.label}</div>)}
           </div>
-        </div>
-
-        <div className="tabs mt-6">
-          {TABS_FICHA.map(t=><div key={t.id} className={'tab '+(fichaTab===t.id?'active':'')} onClick={()=>setFichaTab(t.id)}>{t.label}</div>)}
-        </div>
+          <div className="side-panel-body">
 
         {/* Tab Resumen */}
         {fichaTab === 'resumen' && (
-          <div style={{display:'grid',gridTemplateColumns:'1fr 280px',gap:20,marginTop:20}}>
-            <div style={{display:'flex',flexDirection:'column',gap:16}}>
-              <div className="card" style={{padding:20}}>
+          <div style={{display:'flex',flexDirection:'column',gap:16}}>
+            <div className="card" style={{padding:20}}>
                 <div className="grid-2" style={{gap:16}}>
                   <div>
                     <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>Cliente</div>
@@ -426,15 +432,6 @@ function CxC() {
                   </div>
                 )}
               </div>
-            </div>
-            <div style={{display:'flex',flexDirection:'column',gap:12}}>
-              {saldo > 0 && (
-                <button className="btn btn-secondary" style={{width:'100%'}} data-local-form="true" onClick={e=>abrirGestion(c,e)}>{I.send} Registrar gestión</button>
-              )}
-              {dias > 0 && (
-                <button className="btn btn-secondary" style={{width:'100%'}} onClick={()=>setFichaTab('mora')}>{I.alert} Ver cálculo de mora</button>
-              )}
-            </div>
           </div>
         )}
 
@@ -567,7 +564,8 @@ function CxC() {
 
           </div>
         )}
-
+          </div>{/* end side-panel-body */}
+        </div>{/* end side-panel */}
       </>
     );
   }
@@ -575,7 +573,6 @@ function CxC() {
   // ── Lista principal ───────────────────────────────────────────────────
   return (
     <>
-      {fichaJSX ?? (<>
       <div className="page-header">
         <div>
           <h1 className="page-title">Cuentas por Cobrar</h1>
@@ -633,6 +630,14 @@ function CxC() {
               <input className="input" type="date" value={fVenceHasta} onChange={e=>setFVenceHasta(e.target.value)} />
             </div>
             <div className="input-group">
+              <label>Moneda</label>
+              <select className="select" value={fMoneda} onChange={e=>setFMoneda(e.target.value)}>
+                <option value="">Todas</option>
+                <option value="PEN">S/ Soles (PEN)</option>
+                <option value="USD">US$ Dólares (USD)</option>
+              </select>
+            </div>
+            <div className="input-group">
               <label>Mora mín. (días)</label>
               <input className="input" type="number" min="0" value={fMoraDesde} onChange={e=>setFMoraDesde(e.target.value)} />
             </div>
@@ -640,7 +645,7 @@ function CxC() {
               <label>Mora máx. (días)</label>
               <input className="input" type="number" min="0" value={fMoraHasta} onChange={e=>setFMoraHasta(e.target.value)} />
             </div>
-            <button className="btn btn-secondary" onClick={()=>{setFCliente('');setFEstado('');setFVenceDesde('');setFVenceHasta('');setFMoraDesde('');setFMoraHasta('');setFGestor('');setAgingFilter(null);}}>Limpiar</button>
+            <button className="btn btn-secondary" onClick={()=>{setFCliente('');setFEstado('');setFMoneda('');setFVenceDesde('');setFVenceHasta('');setFMoraDesde('');setFMoraHasta('');setFGestor('');setAgingFilter(null);}}>Limpiar</button>
           </div>
         </div>
       )}
@@ -695,7 +700,8 @@ function CxC() {
           </table>
         </div>
       </div>
-      </>)}
+
+      {fichaJSX}
 
       {/* Modal: Revertir cobros de CxC */}
       {confirmAnular && (
@@ -2025,6 +2031,11 @@ function Resultados({ role }) {
         </div>
       </div>
       {error && <div className="alert alert-danger mt-4">{error}</div>}
+      {data?.otherCurrenciesWarning && (
+        <div style={{ background:'var(--orange)', color:'#fff', padding:'10px 16px', borderRadius:8, marginTop:16, fontSize:13 }}>
+          Existen registros en moneda no reconocida (distinta de PEN y USD) que no se incluyen en los totales. Revise y convierta manualmente antes de cerrar el período.
+        </div>
+      )}
       <div className="card">
         <div style={{ display:'flex', gap:12, padding:'10px 20px', borderBottom:'1px solid var(--border-subtle)', color:'var(--fg-muted)', fontSize:12, fontWeight:700 }}>
           <div style={{ flex:1 }}>Concepto</div>
@@ -2154,6 +2165,8 @@ function Facturacion() {
   const [vencimientoManual, setVencimientoManual] = useState(false);
   const [condicionManual, setCondicionManual] = useState(false);
   const [clienteRetencion, setClienteRetencion] = useState({ aplica: false, tasa: 3 });
+  const [ventaContextId, setVentaContextId] = useState(null);
+  const [ventaCtxLabel, setVentaCtxLabel] = useState('');
 
   // ── Ficha state ───────────────────────────────────────────────────────
   const [selFac, setSelFac] = useState(null);
@@ -2240,6 +2253,7 @@ function Facturacion() {
   const [fCliente, setFCliente] = useState('');
   const [fTipo, setFTipo] = useState('');
   const [fEstado, setFEstado] = useState('');
+  const [fMoneda, setFMoneda] = useState('');
   const [fEmitDesde, setFEmitDesde] = useState('');
   const [fEmitHasta, setFEmitHasta] = useState('');
   const [fVenceDesde, setFVenceDesde] = useState('');
@@ -2256,6 +2270,10 @@ function Facturacion() {
   const nextNumero = serieFactura
     ? `${serieFactura.serie}-${String(Number(serieFactura.siguiente_correlativo)).padStart(4,'0')}`
     : `F001-${String((facturas||[]).length + 1).padStart(4,'0')}`;
+  const serieBoleta = (seriesDocumentarias || []).find(s => s.documento === 'Boletas' && s.estado === 'activo');
+  const nextNumeroBoleta = serieBoleta
+    ? `${serieBoleta.serie}-${String(Number(serieBoleta.siguiente_correlativo)).padStart(4,'0')}`
+    : `B001-${String((facturas||[]).filter(f => f.tipo_documento === 'boleta').length + 1).padStart(4,'0')}`;
 
   const valFacturadas = useMemo(() => new Set(
     (facturas||[])
@@ -2266,9 +2284,12 @@ function Facturacion() {
   const valsParaFacturar = (valorizaciones||[]).filter(v => v.estado === 'aprobada' && !valFacturadas.has(v.id));
 
   // ── Partidas calc ─────────────────────────────────────────────────────
+  const esBoleta = form.tipo_documento === 'boleta';
   const subtotalCalc = partidas.reduce((s, p) => s + Number(p.cantidad||0) * Number(p.precio_unitario||0), 0);
-  const igvCalc = Math.round(subtotalCalc * (igvPct/100) * 100) / 100;
-  const totalCalc = subtotalCalc + igvCalc;
+  // Boleta: precio con IGV incluido; factura: precio sin IGV.
+  const totalCalc = esBoleta ? subtotalCalc : subtotalCalc + Math.round(subtotalCalc * (igvPct/100) * 100) / 100;
+  const subtotalNeto = esBoleta ? Math.round(subtotalCalc / (1 + igvPct/100) * 100) / 100 : subtotalCalc;
+  const igvCalc = esBoleta ? totalCalc - subtotalNeto : Math.round(subtotalCalc * (igvPct/100) * 100) / 100;
   const retencionCalc = clienteRetencion.aplica
     ? Math.round(totalCalc * (clienteRetencion.tasa / 100) * 100) / 100
     : 0;
@@ -2311,7 +2332,7 @@ function Facturacion() {
     }
   };
 
-  // ── Form change helper (auto-update fecha_vencimiento) ────────────────
+  // ── Form change helper (auto-update fecha_vencimiento y numero al cambiar tipo) ────
   const handleFormChange = (field, value) => {
     if (field === 'condicion_pago') setCondicionManual(true);
     if (field === 'fecha_emision' || field === 'condicion_pago') setVencimientoManual(false);
@@ -2322,6 +2343,9 @@ function Facturacion() {
         const fe = field === 'fecha_emision' ? value : f.fecha_emision;
         const condicion = field === 'condicion_pago' ? value : f.condicion_pago;
         updated.fecha_vencimiento = calcularVencimientoForm(fe, condicion);
+      }
+      if (field === 'tipo_documento') {
+        updated.numero = value === 'boleta' ? nextNumeroBoleta : nextNumero;
       }
       return updated;
     });
@@ -2338,6 +2362,8 @@ function Facturacion() {
     setCondicionManual(false);
     setConfirmarExcesoFac(false);
     setClienteRetencion({ aplica: false, tasa: 3 });
+    setVentaContextId(null);
+    setVentaCtxLabel('');
   };
 
   // ── Pre-fill from val ─────────────────────────────────────────────────
@@ -2374,11 +2400,54 @@ function Facturacion() {
     });
   };
 
+  // ── Pre-fill desde Venta ──────────────────────────────────────────────
+  const handleVentaPrefill = (params) => {
+    const cuentaId = params.cuenta_id;
+    setCuentaSel(cuentaId || '');
+    setOsSel('');
+    const cuenta = getCuenta(cuentaId);
+    const condicionVenta = params.condicion_pago === 'credito'
+      ? `${params.dias_credito || 30} días`
+      : 'contado';
+    const condicion = resolverCondicionPagoCxC({ condicionCliente: condicionVenta, condicionFallback: condicionPagoDefecto }).condicion_pago;
+    setVencimientoManual(false);
+    setForm(f => ({
+      ...f,
+      moneda: params.moneda || 'PEN',
+      condicion_pago: condicion,
+      fecha_vencimiento: calcularVencimientoForm(f.fecha_emision, condicion),
+    }));
+    setPartidas([{ id: Date.now(), descripcion: params.concepto || '', cantidad: 1, precio_unitario: params.monto_total || 0 }]);
+    setClienteRetencion({
+      aplica: Boolean(cuenta?.agente_retencion_sunat),
+      tasa: Number(cuenta?.tasa_retencion_sunat || 3),
+    });
+  };
+
   // Abre el formulario si se navegó desde Valorizaciones con params
   useEffect(() => {
     if (activeParams?.mode === 'val' && activeParams?.valSel && !mode) {
       openMode('val');
       handleSelectVal(activeParams.valSel);
+      navigate('facturacion', {});
+    }
+  }, [activeParams]);
+
+  // Abre el formulario si se navegó desde Ventas con params
+  useEffect(() => {
+    if (activeParams?.mode === 'venta' && activeParams?.ventaSel && !mode) {
+      openMode('directa');
+      setVentaContextId(activeParams.ventaSel);
+      setVentaCtxLabel(activeParams.cliente_nombre || '');
+      handleVentaPrefill(activeParams);
+      navigate('facturacion', {});
+    }
+  }, [activeParams]);
+
+  // Abre ficha de factura si se navegó con selFac en params
+  useEffect(() => {
+    if (activeParams?.selFac && !mode && !selFac) {
+      setSelFac(activeParams.selFac);
       navigate('facturacion', {});
     }
   }, [activeParams]);
@@ -2437,14 +2506,14 @@ function Facturacion() {
     emitiendoRef.current = true;
     setSaving(true);
     try {
-      await emitirFacturaConCxC({
+      const facturaEmitidaId = await emitirFacturaConCxC({
         tipo_documento: form.tipo_documento,
-        numero: form.numero || nextNumero,
+        numero: form.numero || (esBoleta ? nextNumeroBoleta : nextNumero),
         cuenta_id: cuentaId,
         os_cliente_id: mode === 'val' ? getVal(valSel)?.os_cliente_id : (osSel || null),
         valorizacion_id: mode === 'val' ? valSel : null,
         items: partidas.map(p => ({ descripcion: p.descripcion, cantidad: Number(p.cantidad||0), precio_unitario: Number(p.precio_unitario||0) })),
-        subtotal: subtotalCalc,
+        subtotal: subtotalNeto,
         igv: igvCalc,
         total: totalCalc,
         moneda: form.moneda,
@@ -2458,6 +2527,13 @@ function Facturacion() {
         monto_retencion: retencionCalc,
         monto_neto_cobrable: netoCobrableCalc,
       });
+      if (ventaContextId && facturaEmitidaId) {
+        try {
+          await finanzasService.confirmarVenta(ventaContextId, facturaEmitidaId, null);
+        } catch (e) {
+          console.warn('[ventas] confirmarVenta falló (no crítico):', e?.message);
+        }
+      }
       setMode(null);
     } finally {
       emitiendoRef.current = false;
@@ -2893,9 +2969,10 @@ function Facturacion() {
   }
 
   // ── Ficha detail view ─────────────────────────────────────────────────
+  let fichaFac = null;
   if (selFac) {
     const f = (facturas||[]).find(x => x.id === selFac);
-    if (!f) { setSelFac(null); return null; }
+    if (f) {
 
     const cuenta = getCuenta(f.cuenta_id);
     const clienteNombreFac = cuenta?.razon_social || cuenta?.nombre_comercial || '—';
@@ -2954,7 +3031,7 @@ function Facturacion() {
       setNdMotivo(''); setNdConcepto(''); setNdMonto(''); setNdConIgv(true); setNdNotas('');
     };
 
-    return (
+    fichaFac = (
       <>
         {/* Modal anular */}
         {modalAnularFac && (
@@ -3008,152 +3085,77 @@ function Facturacion() {
           </div>
         )}
 
+        <div className="side-panel-backdrop" onClick={() => setSelFac(null)} />
+        <div className="side-panel">
         {/* Header */}
-        <div className="page-header" style={{borderBottom:'none',paddingBottom:0}}>
-          <div>
-            <button className="btn btn-ghost" onClick={() => setSelFac(null)} style={{marginBottom:10,padding:0,color:'var(--cyan)'}}>
-              ← Volver a Facturación
-            </button>
-            <div style={{display:'flex',alignItems:'center',gap:12}}>
-              <h1 className="page-title" style={{margin:0}}>{f.numero}</h1>
+        <div className="side-panel-head">
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+              {clienteNombreFac}{osVinc && <> · OS: {osVinc.numero}</>}{diasVencer !== null && <span style={{color:diasVencer<0?'var(--danger)':diasVencer<=7?'var(--orange)':'inherit'}}> · {diasVencer<0?`${Math.abs(diasVencer)}d vencida`:diasVencer===0?'Vence hoy':`${diasVencer}d para vencer`}</span>}
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+              <strong style={{fontSize:16}}>{f.numero}</strong>
               <span style={{fontSize:12,color:'var(--fg-muted)',fontWeight:400}}>{TIPO_DOC_LABELS[f.tipo_documento]||'Factura'}</span>
               <span className={'badge '+(FAC_BADGE_CLASS[f.estado]||'badge-cyan')}>{FAC_BADGE_LABEL[f.estado]||f.estado}</span>
-              {f.aplica_retencion && <span className="badge badge-orange">⚠ Agente de Retención SUNAT</span>}
-              {esAnuladaSinNC(f) && (
-                <span style={{fontSize:12,color:'var(--orange)',fontWeight:600}}>· Anulada directamente — sin Nota de Crédito</span>
-              )}
-            </div>
-            {facOrigen && (
-              <div style={{display:'inline-flex',alignItems:'center',gap:8,fontSize:13,padding:'6px 12px',borderRadius:6,background:'color-mix(in srgb,var(--cyan) 8%,transparent)',border:'1px solid color-mix(in srgb,var(--cyan) 25%,transparent)',marginTop:6,marginBottom:2}}>
-                <span style={{color:'var(--fg-muted)'}}>Documento vinculado a factura:</span>
-                <button type="button" className="btn btn-ghost" style={{padding:0,fontWeight:700,color:'var(--cyan)',fontSize:13}} onClick={() => setSelFac(facOrigen.id)}>
-                  {facOrigen.numero}
-                </button>
-                <span className={'badge '+(FAC_BADGE_CLASS[facOrigen.estado]||'badge-cyan')} style={{fontSize:10}}>{FAC_BADGE_LABEL[facOrigen.estado]||facOrigen.estado}</span>
-                <span style={{color:'var(--fg-muted)',fontSize:12}}>· {moneyCurrency(facOrigen.total, facOrigen.moneda)}</span>
-              </div>
-            )}
-            {esAnuladaSinNC(f) && (
-              <div style={{fontSize:13,padding:'8px 14px',borderRadius:6,background:'rgba(234,179,8,0.08)',border:'1px solid var(--orange)',marginTop:8,marginBottom:4}}>
-                Esta factura fue anulada directamente (no por Nota de Crédito). Si fue un error, puedes restaurarla y volver a registrar el cobro.
-              </div>
-            )}
-            <div className="page-sub" style={{display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
-              <button className="btn btn-ghost" style={{padding:0,fontSize:13,color:'var(--cyan)'}} onClick={() => navigate('cuentas',{detail:f.cuenta_id})}>
-                {clienteNombreFac}
-              </button>
-              {editandoEmisionFac ? (
-                <span className="row" style={{gap:6,alignItems:'center',flexWrap:'wrap'}}>
-                  <span>· Emisión:</span>
-                  <input className="input" type="date" value={fechaEmisionEditada} disabled={savingEmisionFac} onChange={e=>setEditEmisionFac(v=>({...v,fecha:e.target.value}))} style={{width:150}} autoFocus />
-                  <button className="icon-btn" title="Confirmar" disabled={savingEmisionFac || !fechaEmisionEditada} onClick={confirmarEdicionEmisionFactura}>{I.check}</button>
-                  <button className="icon-btn" title="Cancelar" disabled={savingEmisionFac} onClick={cancelarEdicionEmisionFactura}>{I.x}</button>
-                </span>
-              ) : puedeEditarFacturacion ? (
-                <button type="button" className="btn btn-ghost" title={tituloEditarEmision} onClick={e=>abrirEdicionEmisionFactura(f,e)} style={{padding:0,fontSize:13,color:'var(--fg-muted)',display:'inline-flex',alignItems:'center',gap:6}}>
-                  <span>· Emisión: {fechaEmisionLabel}</span>
-                  <span style={{fontSize:11,color:'var(--cyan)'}}>{I.edit}</span>
-                </button>
-              ) : (
-                <span title={tituloEditarEmision}>· Emisión: {fechaEmisionLabel}</span>
-              )}
-              <span>· Vence: {f.fecha_vencimiento||'—'}</span>
-              {diasVencer !== null && (
-                <span style={{fontWeight:600, color: diasVencer < 0 ? 'var(--danger)' : diasVencer <= 7 ? 'var(--orange)' : 'var(--fg-muted)', fontSize:12}}>
-                  {diasVencer < 0 ? `${Math.abs(diasVencer)} días vencida` : diasVencer === 0 ? 'Vence hoy' : `${diasVencer} días para vencer`}
-                </span>
-              )}
-              {osVinc && (
-                <span style={{fontSize:12,color:'var(--fg-muted)'}}>
-                  · OS: <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:600,color:'var(--cyan)'}} onClick={() => navigate('os_clientes',{detail:osVinc.id})}>{osVinc.numero}</button>
-                </span>
-              )}
-              {valVinc && (
-                <span style={{fontSize:12,color:'var(--fg-muted)'}}>
-                  · Val: <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:600,color:'var(--cyan)'}} onClick={() => navigate('valorizaciones',{detail:valVinc.id})}>{valVinc.numero}</button>
-                </span>
-              )}
+              {f.aplica_retencion && <span className="badge badge-orange" style={{fontSize:10}}>Retención SUNAT</span>}
             </div>
           </div>
-          <div className="row" style={{gap:10,flexWrap:'wrap'}}>
-            {/* Archivos adjuntos PDF / ZIP — URLs guardadas en la factura */}
-            <input ref={pdfInputRef} type="file" accept=".pdf,application/pdf" style={{display:'none'}} onChange={e => { handleSubirFac(e.target.files[0], 'pdf'); e.target.value=''; }} />
-            <input ref={zipInputRef} type="file" accept=".zip,application/zip,application/x-zip-compressed" style={{display:'none'}} onChange={e => { handleSubirFac(e.target.files[0], 'zip'); e.target.value=''; }} />
+          <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+            {['emitida','cobro_parcial'].includes(f.estado) && (
+              <button className="btn btn-primary btn-sm" onClick={() => setModalPago(true)}>Registrar pago</button>
+            )}
+            <button className="icon-btn" onClick={() => setSelFac(null)}>{I.x}</button>
+          </div>
+        </div>
+        <div className="side-panel-body">
+          <input ref={pdfInputRef} type="file" accept=".pdf,application/pdf" style={{display:'none'}} onChange={e => { handleSubirFac(e.target.files[0], 'pdf'); e.target.value=''; }} />
+          <input ref={zipInputRef} type="file" accept=".zip,application/zip,application/x-zip-compressed" style={{display:'none'}} onChange={e => { handleSubirFac(e.target.files[0], 'zip'); e.target.value=''; }} />
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
             {f.archivo_pdf_url ? (
-              <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,background:'color-mix(in srgb,var(--green) 10%,transparent)',border:'1px solid var(--green)',borderRadius:6,padding:'4px 10px',color:'var(--green)'}}>
-                <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:700,gap:5,color:'var(--green)'}} title="Ver/descargar PDF" onClick={() => window.open(f.archivo_pdf_url,'_blank','noopener,noreferrer')}>
-                  {I.download} PDF
-                </button>
-                <button type="button" className="icon-btn" style={{width:15,height:15,color:'var(--green)',opacity:0.6,flexShrink:0}} title="Eliminar PDF" onClick={() => handleEliminarArchivoFac('pdf')}>{I.x}</button>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,background:'color-mix(in srgb,var(--green) 10%,transparent)',border:'1px solid var(--green)',borderRadius:6,padding:'4px 8px',color:'var(--green)'}}>
+                <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:700,gap:5,color:'var(--green)'}} onClick={() => window.open(f.archivo_pdf_url,'_blank','noopener,noreferrer')}>{I.download} PDF</button>
+                <button type="button" className="icon-btn" style={{width:14,height:14,color:'var(--green)',opacity:0.6,flexShrink:0}} onClick={() => handleEliminarArchivoFac('pdf')}>{I.x}</button>
               </span>
             ) : (
-              <button type="button" className="btn btn-secondary" style={{fontSize:12}} disabled={uploadingFac==='pdf'} title="Subir PDF de la factura" onClick={() => pdfInputRef.current?.click()}>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={uploadingFac==='pdf'} onClick={() => pdfInputRef.current?.click()}>
                 {uploadingFac==='pdf' ? 'Subiendo...' : <>{I.upload} PDF</>}
               </button>
             )}
             {f.archivo_zip_url ? (
-              <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,background:'color-mix(in srgb,var(--green) 10%,transparent)',border:'1px solid var(--green)',borderRadius:6,padding:'4px 10px',color:'var(--green)'}}>
-                <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:700,gap:5,color:'var(--green)'}} title="Ver/descargar ZIP" onClick={() => window.open(f.archivo_zip_url,'_blank','noopener,noreferrer')}>
-                  {I.download} ZIP
-                </button>
-                <button type="button" className="icon-btn" style={{width:15,height:15,color:'var(--green)',opacity:0.6,flexShrink:0}} title="Eliminar ZIP" onClick={() => handleEliminarArchivoFac('zip')}>{I.x}</button>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,background:'color-mix(in srgb,var(--green) 10%,transparent)',border:'1px solid var(--green)',borderRadius:6,padding:'4px 8px',color:'var(--green)'}}>
+                <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:700,gap:5,color:'var(--green)'}} onClick={() => window.open(f.archivo_zip_url,'_blank','noopener,noreferrer')}>{I.download} ZIP</button>
+                <button type="button" className="icon-btn" style={{width:14,height:14,color:'var(--green)',opacity:0.6,flexShrink:0}} onClick={() => handleEliminarArchivoFac('zip')}>{I.x}</button>
               </span>
             ) : (
-              <button type="button" className="btn btn-secondary" style={{fontSize:12}} disabled={uploadingFac==='zip'} title="Subir ZIP de la factura" onClick={() => zipInputRef.current?.click()}>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={uploadingFac==='zip'} onClick={() => zipInputRef.current?.click()}>
                 {uploadingFac==='zip' ? 'Subiendo...' : <>{I.upload} ZIP</>}
               </button>
             )}
-            {f.estado !== 'anulada' && (
-              <button className="btn btn-secondary" onClick={() => alert('PDF — funcionalidad próximamente')}>{I.download} PDF</button>
+            {f.estado === 'emitida' && puedeEditarFacturacion && (
+              <button className="btn btn-secondary btn-sm" onClick={() => { const igvDerived = f.subtotal > 0 ? Math.round(((f.igv||0)/f.subtotal)*100) : 18; setPanelEditFac({ id: f.id, esDirecta: !f.valorizacion_id, form: { numero: f.numero||'', fecha_emision: f.fecha_emision||today, condicion_pago: f.condicion_pago||'30 días', fecha_vencimiento: f.fecha_vencimiento||'', moneda: f.moneda||'PEN', glosa: f.glosa||'', notas: f.notas||'' }, items: (f.items||[]).length > 0 ? f.items.map((it,i) => ({...it, id: it.id||`ep_${i}`})) : [{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:'' }], igvPct: igvDerived }); }}>{I.edit} Editar</button>
             )}
-            {['emitida','cobro_parcial'].includes(f.estado) && (
-              <button className="btn btn-secondary" onClick={() => setModalPago(true)}>{I.plus} Registrar pago</button>
-            )}
-            {f.estado === 'emitida' && (
-              <>
-                {puedeEditarFacturacion && (
-                  <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => {
-                    const igvDerived = f.subtotal > 0 ? Math.round(((f.igv||0)/f.subtotal)*100) : 18;
-                    setPanelEditFac({
-                      id: f.id,
-                      esDirecta: !f.valorizacion_id,
-                      form: {
-                        numero: f.numero||'',
-                        fecha_emision: f.fecha_emision||today,
-                        condicion_pago: f.condicion_pago||'30 días',
-                        fecha_vencimiento: f.fecha_vencimiento||'',
-                        moneda: f.moneda||'PEN',
-                        glosa: f.glosa||'',
-                        notas: f.notas||'',
-                      },
-                      items: (f.items||[]).length > 0 ? f.items.map((it,i) => ({...it, id: it.id||`ep_${i}`})) : [{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:'' }],
-                      igvPct: igvDerived,
-                    });
-                  }}>{I.edit} Editar</button>
-                )}
-                <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => handleNcNd('nota_credito')}>Nota de Crédito</button>
-                <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => handleNcNd('nota_debito')}>Nota de Débito</button>
-                <button className="btn btn-secondary" style={{color:'var(--danger)',borderColor:'var(--danger)'}} onClick={() => setModalAnularFac(true)}>Anular</button>
-              </>
-            )}
-            {f.estado === 'cobro_parcial' && (
-              <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => handleNcNd('nota_credito')}>Nota de Crédito</button>
-            )}
+            {f.estado === 'emitida' && <button className="btn btn-secondary btn-sm" onClick={() => handleNcNd('nota_credito')}>Nota de Crédito</button>}
+            {f.estado === 'emitida' && <button className="btn btn-secondary btn-sm" onClick={() => handleNcNd('nota_debito')}>Nota de Débito</button>}
+            {f.estado === 'cobro_parcial' && <button className="btn btn-secondary btn-sm" onClick={() => handleNcNd('nota_credito')}>Nota de Crédito</button>}
+            {f.estado === 'emitida' && <button className="btn btn-secondary btn-sm" style={{color:'var(--danger)',borderColor:'var(--danger)'}} onClick={() => setModalAnularFac(true)}>Anular</button>}
             {esAnuladaSinNC(f) && puedeEditarFacturacion && (
-              <button
-                className="btn btn-secondary"
-                style={{fontSize:12,color:'var(--green)',borderColor:'var(--green)'}}
-                title="Restaurar factura anulada por error — la CxC vuelve a pendiente de cobro"
-                onClick={() => { if (window.confirm(`¿Restaurar ${f.numero} a emitida? La CxC volverá a pendiente de cobro.`)) restaurarFacturaPorError(f.id); }}
-              >
-                {I.check} Restaurar por error
-              </button>
+              <button className="btn btn-secondary btn-sm" style={{color:'var(--green)',borderColor:'var(--green)'}} onClick={() => { if (window.confirm(`¿Restaurar ${f.numero} a emitida?`)) restaurarFacturaPorError(f.id); }}>{I.check} Restaurar</button>
             )}
           </div>
-        </div>
-
-        {/* Info cards */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:12,marginTop:20,marginBottom:16}}>
+          {facOrigen && (
+            <div style={{display:'flex',alignItems:'center',gap:8,fontSize:13,padding:'8px 12px',borderRadius:6,background:'color-mix(in srgb,var(--cyan) 8%,transparent)',border:'1px solid color-mix(in srgb,var(--cyan) 25%,transparent)',marginBottom:12}}>
+              <span style={{color:'var(--fg-muted)'}}>Vinculada a:</span>
+              <button type="button" className="btn btn-ghost" style={{padding:0,fontWeight:700,color:'var(--cyan)',fontSize:13}} onClick={() => setSelFac(facOrigen.id)}>{facOrigen.numero}</button>
+              <span className={'badge '+(FAC_BADGE_CLASS[facOrigen.estado]||'badge-cyan')} style={{fontSize:10}}>{FAC_BADGE_LABEL[facOrigen.estado]||facOrigen.estado}</span>
+            </div>
+          )}
+          {esAnuladaSinNC(f) && (
+            <div style={{fontSize:13,padding:'8px 14px',borderRadius:6,background:'rgba(234,179,8,0.08)',border:'1px solid var(--orange)',marginBottom:12}}>
+              Anulada directamente (sin NC). Puedes restaurar si fue un error.
+            </div>
+          )}
+          {/* Info cards */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:12,marginBottom:16}}>
           <div className="card" style={{padding:'14px 18px'}}>
             <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:4}}>Cliente</div>
             <div style={{fontWeight:600,fontSize:13}}>{clienteNombreFac}</div>
@@ -3352,9 +3354,12 @@ function Facturacion() {
           </div>
         )}
         {renderPanelEditFac()}
+        </div>{/* end side-panel-body */}
+        </div>{/* end side-panel */}
       </>
     );
-  }
+    } // end if (f)
+  } // end if (selFac)
 
   // ── Form view (shared for both modes) ─────────────────────────────────
   if (mode) {
@@ -3369,9 +3374,9 @@ function Facturacion() {
             <button className="btn btn-ghost" onClick={() => setMode(null)} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>
               ← Volver a Facturación
             </button>
-            <h1 className="page-title">{mode === 'val' ? 'Factura desde Valorización' : 'Factura Directa'}</h1>
+            <h1 className="page-title">{mode === 'val' ? 'Factura desde Valorización' : 'Comprobante Directo'}</h1>
             <div className="page-sub">
-              {mode === 'val' ? 'Emite la factura y genera la CxC automáticamente desde una valorización aprobada.' : 'Emite una factura sin valorización previa — mensualidad, anticipo, servicio puntual.'}
+              {mode === 'val' ? 'Emite la factura y genera la CxC automáticamente desde una valorización aprobada.' : 'Emite factura o boleta sin valorización previa — mensualidad, anticipo, servicio puntual.'}
             </div>
           </div>
           <div className="row" style={{gap:10}}>
@@ -3386,6 +3391,14 @@ function Facturacion() {
           {/* Left — main form */}
           <div style={{display:'flex', flexDirection:'column', gap:16}}>
 
+            {/* Banner origen venta */}
+            {ventaContextId && (
+              <div style={{padding:'10px 14px',borderRadius:8,background:'color-mix(in srgb,var(--cyan) 8%,transparent)',border:'1px solid color-mix(in srgb,var(--cyan) 30%,transparent)',display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:13}}>
+                <span>Facturando desde venta — <strong>{ventaCtxLabel || ventaContextId}</strong></span>
+                <button type="button" className="btn btn-ghost" style={{fontSize:11,padding:0,color:'var(--fg-muted)'}} onClick={() => { setVentaContextId(null); setVentaCtxLabel(''); }}>Descartar vínculo</button>
+              </div>
+            )}
+
             {/* Tipo y número */}
             <div className="card card-body">
               <div className="grid-2" style={{gap:16}}>
@@ -3393,6 +3406,7 @@ function Facturacion() {
                   <label>Tipo de documento</label>
                   <select className="select" value={form.tipo_documento} onChange={e => handleFormChange('tipo_documento', e.target.value)}>
                     <option value="factura">Factura</option>
+                    <option value="boleta">Boleta de Venta</option>
                     <option value="nota_credito">Nota de Crédito</option>
                     <option value="nota_debito">Nota de Débito</option>
                   </select>
@@ -3484,23 +3498,30 @@ function Facturacion() {
               </div>
               <div style={{padding:'12px 16px', borderTop:'1px solid var(--border)'}}>
                 <div style={{width:280, marginLeft:'auto'}}>
-                  <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
-                    <span className="text-muted" style={{fontSize:13}}>Subtotal</span>
-                    <span className="num">{moneyCurrency(subtotalCalc, form.moneda)}</span>
-                  </div>
-                  <div className="row" style={{justifyContent:'space-between', marginBottom:6, alignItems:'center'}}>
-                    <div style={{display:'flex', alignItems:'center', gap:6}}>
-                      <span className="text-muted" style={{fontSize:13}}>IGV</span>
-                      <input type="number" className="input num" min="0" max="100" style={{width:56, padding:'3px 6px', fontSize:12}}
-                        value={igvPct} onChange={e => setIgvPct(Number(e.target.value))} />
-                      <span style={{fontSize:12, color:'var(--fg-muted)'}}>%</span>
-                    </div>
-                    <span className="num">{moneyCurrency(igvCalc, form.moneda)}</span>
-                  </div>
+                  {!esBoleta && (
+                    <>
+                      <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
+                        <span className="text-muted" style={{fontSize:13}}>Subtotal</span>
+                        <span className="num">{moneyCurrency(subtotalCalc, form.moneda)}</span>
+                      </div>
+                      <div className="row" style={{justifyContent:'space-between', marginBottom:6, alignItems:'center'}}>
+                        <div style={{display:'flex', alignItems:'center', gap:6}}>
+                          <span className="text-muted" style={{fontSize:13}}>IGV</span>
+                          <input type="number" className="input num" min="0" max="100" style={{width:56, padding:'3px 6px', fontSize:12}}
+                            value={igvPct} onChange={e => setIgvPct(Number(e.target.value))} />
+                          <span style={{fontSize:12, color:'var(--fg-muted)'}}>%</span>
+                        </div>
+                        <span className="num">{moneyCurrency(igvCalc, form.moneda)}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="row" style={{justifyContent:'space-between', paddingTop:8, borderTop:'1px solid var(--border)', fontWeight:700, fontSize:16, fontFamily:'Sora'}}>
                     <span>Total</span>
                     <span className="num">{moneyCurrency(totalCalc, form.moneda)}</span>
                   </div>
+                  {esBoleta && (
+                    <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4,textAlign:'right'}}>IGV incluido — {igvPct}%</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -3605,16 +3626,20 @@ function Facturacion() {
   const hoy = new Date();
   const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
   const facMes = (facturas||[]).filter(f => f.estado !== 'anulada' && (f.fecha_emision||'').startsWith(mesActual));
-  const montoMes = facMes.reduce((s,f) => s + Number(f.total||0), 0);
-  const montoPendiente = (facturas||[]).filter(f => ['emitida','cobro_parcial'].includes(f.estado)).reduce((s,f) => s + Number(f.total||0), 0);
+  const montoMesPEN = facMes.filter(f => (f.moneda||'PEN') !== 'USD').reduce((s,f) => s + Number(f.total||0), 0);
+  const montoMesUSD = facMes.filter(f => (f.moneda||'PEN') === 'USD').reduce((s,f) => s + Number(f.total||0), 0);
+  const facPendiente = (facturas||[]).filter(f => ['emitida','cobro_parcial'].includes(f.estado));
+  const montoPendientePEN = facPendiente.filter(f => (f.moneda||'PEN') !== 'USD').reduce((s,f) => s + Number(f.total||0), 0);
+  const montoPendienteUSD = facPendiente.filter(f => (f.moneda||'PEN') === 'USD').reduce((s,f) => s + Number(f.total||0), 0);
 
   const clienteOpts = [...new Map((facturas||[]).map(f => [f.cuenta_id, cuentaNombre(f.cuenta_id)])).entries()].filter(([k]) => k);
-  const hasFilters = fCliente||fTipo||fEstado||fEmitDesde||fEmitHasta||fVenceDesde||fVenceHasta;
+  const hasFilters = fCliente||fTipo||fEstado||fMoneda||fEmitDesde||fEmitHasta||fVenceDesde||fVenceHasta;
   const q = (searchQuery||'').toLowerCase();
   const filtered = (facturas||[]).filter(f => {
     if (fCliente && f.cuenta_id !== fCliente) return false;
     if (fTipo && f.tipo_documento !== fTipo) return false;
     if (fEstado && f.estado !== fEstado) return false;
+    if (fMoneda && (f.moneda||'PEN') !== fMoneda) return false;
     if (fEmitDesde && (f.fecha_emision||'') < fEmitDesde) return false;
     if (fEmitHasta && (f.fecha_emision||'') > fEmitHasta) return false;
     if (fVenceDesde && (f.fecha_vencimiento||'') < fVenceDesde) return false;
@@ -3625,6 +3650,7 @@ function Facturacion() {
 
   return (
     <>
+      {fichaFac}
       <div className="page-header">
         <div>
           <h1 className="page-title">Facturación</h1>
@@ -3637,26 +3663,36 @@ function Facturacion() {
       </div>
 
       {/* KPIs */}
-      <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginTop:24, marginBottom:8}}>
-        <div className="card" style={{padding:'16px 20px'}}>
-          <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>Facturas emitidas este mes</div>
-          <div style={{fontSize:28, fontWeight:700, fontFamily:'Sora', color:'var(--cyan)'}}>{facMes.length}</div>
+      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
+        <div className="kpi-card">
+          <div className="kpi-label">Facturas emitidas este mes</div>
+          <div className="kpi-value" style={{marginTop:12}}>{facMes.length}</div>
           <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Documentos emitidos</div>
+          <div className="kpi-icon cyan">{I.receipt}</div>
         </div>
-        <div className="card" style={{padding:'16px 20px'}}>
-          <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>Facturado este mes</div>
-          <div style={{fontSize:22, fontWeight:700, fontFamily:'Sora', color:'var(--green)'}}>{money(montoMes)}</div>
+        <div className="kpi-card">
+          <div className="kpi-label">Facturado este mes</div>
+          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
+            <span>{money(montoMesPEN)}</span>
+            {montoMesUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{money(montoMesUSD, 'US$')}</span>}
+          </div>
           <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>{facMes.length} facturas</div>
+          <div className="kpi-icon green">{I.dollar}</div>
         </div>
-        <div className="card" style={{padding:'16px 20px'}}>
-          <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>Pendiente de cobro</div>
-          <div style={{fontSize:22, fontWeight:700, fontFamily:'Sora', color:'var(--orange)'}}>{money(montoPendiente)}</div>
+        <div className="kpi-card">
+          <div className="kpi-label">Pendiente de cobro</div>
+          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12, color:'var(--orange)'}}>
+            <span>{money(montoPendientePEN)}</span>
+            {montoPendienteUSD > 0 && <span style={{fontSize:16}}>{money(montoPendienteUSD, 'US$')}</span>}
+          </div>
           <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Emitidas + cobro parcial</div>
+          <div className="kpi-icon orange">{I.clock}</div>
         </div>
-        <div className="card" style={{padding:'16px 20px'}}>
-          <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>Valorizaciones por facturar</div>
-          <div style={{fontSize:28, fontWeight:700, fontFamily:'Sora', color:'var(--cyan)'}}>{valsParaFacturar.length}</div>
+        <div className="kpi-card">
+          <div className="kpi-label">Valorizaciones por facturar</div>
+          <div className="kpi-value" style={{marginTop:12}}>{valsParaFacturar.length}</div>
           <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Aprobadas sin factura</div>
+          <div className="kpi-icon cyan">{I.clipboard}</div>
         </div>
       </div>
 
@@ -3675,6 +3711,11 @@ function Facturacion() {
             <option value="">Todos los estados</option>
             {Object.entries(FAC_BADGE_LABEL).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
           </select>
+          <select className="select" style={{flex:'1 1 110px', minWidth:100}} value={fMoneda} onChange={e => setFMoneda(e.target.value)}>
+            <option value="">Todas las monedas</option>
+            <option value="PEN">S/ Soles (PEN)</option>
+            <option value="USD">US$ Dólares (USD)</option>
+          </select>
           <div style={{display:'flex', alignItems:'center', gap:6, flex:'1 1 220px'}}>
             <span style={{fontSize:12, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>Emisión:</span>
             <input className="input" type="date" style={{flex:1}} value={fEmitDesde} onChange={e => setFEmitDesde(e.target.value)} title="Desde" />
@@ -3686,7 +3727,7 @@ function Facturacion() {
             <input className="input" type="date" style={{flex:1}} value={fVenceHasta} onChange={e => setFVenceHasta(e.target.value)} title="Hasta" />
           </div>
           {hasFilters && (
-            <button className="btn btn-ghost btn-sm" onClick={() => { setFCliente(''); setFTipo(''); setFEstado(''); setFEmitDesde(''); setFEmitHasta(''); setFVenceDesde(''); setFVenceHasta(''); }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setFCliente(''); setFTipo(''); setFEstado(''); setFMoneda(''); setFEmitDesde(''); setFEmitHasta(''); setFVenceDesde(''); setFVenceHasta(''); }}>
               {I.x} Limpiar
             </button>
           )}
@@ -3792,11 +3833,10 @@ function Facturacion() {
 
 // ============ VENTAS ============
 const VENTA_ESTADOS = [
-  ['emitida', 'Emitida'],
-  ['pendiente', 'Pendiente'],
-  ['cobrada', 'Cobrada'],
-  ['vencida', 'Vencida'],
-  ['anulada', 'Anulada'],
+  ['borrador',   'Borrador'],
+  ['confirmada', 'Confirmada'],
+  ['facturada',  'Facturada'],
+  ['anulada',    'Anulada'],
 ];
 const VENTA_FORM_INIT = {
   fecha: new Date().toISOString().split('T')[0],
@@ -3804,16 +3844,38 @@ const VENTA_FORM_INIT = {
   concepto: '',
   monto_total: '',
   moneda: 'PEN',
-  estado: 'emitida',
+  estado: 'borrador',
+  condicion_pago: 'contado',
+  dias_credito: 30,
 };
-const ventaEstadoLabel = estado => VENTA_ESTADOS.find(([k]) => k === estado)?.[1] || estado || 'Emitida';
-const ventaBadgeClass = estado => estado === 'cobrada' ? 'badge-green' : 'badge-orange';
+const ventaEstadoLabel = estado => VENTA_ESTADOS.find(([k]) => k === estado)?.[1] || estado || 'Borrador';
+const ventaBadgeClass = estado => {
+  switch (estado) {
+    case 'borrador':   return 'badge-gray';
+    case 'confirmada': return 'badge-cyan';
+    case 'facturada':  return 'badge-green';
+    case 'anulada':    return 'badge-red';
+    default:           return 'badge-gray';
+  }
+};
+function ventaTransicionesValidas(estado) {
+  if (estado === 'borrador')   return [['borrador','Borrador'],['confirmada','Confirmada'],['anulada','Anulada']];
+  if (estado === 'confirmada') return [['confirmada','Confirmada'],['borrador','Borrador'],['anulada','Anulada']];
+  return [[estado, ventaEstadoLabel(estado)]];
+}
 const cuentaVentaNombre = cuenta => cuenta?.razon_social || cuenta?.nombre_comercial || cuenta?.cliente || cuenta?.nombre || '';
 const ventaClienteNombre = venta => venta?.cliente_nombre_snapshot || venta?.cliente || venta?.cuentas?.razon_social || '-';
 const ventaMonto = venta => Number(venta?.monto_total ?? venta?.monto ?? 0);
+const calcVentaFechaVencimiento = (fecha, diasCredito) => {
+  if (!fecha || !diasCredito || Number(diasCredito) <= 0) return '';
+  const d = new Date(`${fecha}T00:00:00`);
+  if (isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + Number(diasCredito));
+  return d.toISOString().split('T')[0];
+};
 
 function Ventas() {
-  const { empresa, authUser, addNotificacion } = useApp();
+  const { empresa, authUser, addNotificacion, navigate } = useApp();
   const supabaseMode = isSupabaseMode();
   const [ventas, setVentas] = useState(() => supabaseMode ? [] : (MOCK.ventas || []));
   const [clientes, setClientes] = useState(() => supabaseMode ? [] : (MOCK.cuentas || []));
@@ -3823,6 +3885,9 @@ function Ventas() {
   const [form, setForm] = useState(VENTA_FORM_INIT);
   const [guardando, setGuardando] = useState(false);
   const [actualizandoId, setActualizandoId] = useState(null);
+  const [selVenta, setSelVenta] = useState(null);
+
+  const fechaVencimientoCalc = calcVentaFechaVencimiento(form.fecha, form.dias_credito);
 
   useEffect(() => {
     if (!supabaseMode) {
@@ -3832,13 +3897,7 @@ function Ventas() {
       setError('');
       return;
     }
-
-    if (!empresa?.id) {
-      setVentas([]);
-      setClientes([]);
-      return;
-    }
-
+    if (!empresa?.id) { setVentas([]); setClientes([]); return; }
     let mounted = true;
     setLoading(true);
     setError('');
@@ -3851,15 +3910,8 @@ function Ventas() {
         setVentas(ventasData || []);
         setClientes((cuentasData || []).filter(c => c.estado !== 'inactivo' && c.estado !== 'eliminado'));
       })
-      .catch(err => {
-        if (!mounted) return;
-        setError(err?.message || 'No se pudieron cargar las ventas.');
-        setVentas([]);
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-
+      .catch(err => { if (!mounted) return; setError(err?.message || 'No se pudieron cargar las ventas.'); setVentas([]); })
+      .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [supabaseMode, empresa?.id]);
 
@@ -3871,52 +3923,37 @@ function Ventas() {
     setError('');
     const cuenta = clientes.find(c => c.id === form.cuenta_id);
     const monto = Number(form.monto_total);
-    if (!form.cuenta_id || !cuenta) {
-      setError('Selecciona un cliente.');
-      return;
-    }
-    if (!form.concepto.trim() || !(monto > 0)) {
-      setError('Completa concepto y monto.');
-      return;
-    }
+    if (!form.cuenta_id || !cuenta) { setError('Selecciona un cliente.'); return; }
+    if (!form.concepto.trim() || !(monto > 0)) { setError('Completa concepto y monto.'); return; }
+    if (form.condicion_pago === 'credito' && !(Number(form.dias_credito) > 0)) { setError('Ingresa los días de crédito.'); return; }
 
-    const base = {
-      empresa_id: empresa?.id,
+    const estadoSeguro = ['borrador','confirmada'].includes(form.estado) ? form.estado : 'borrador';
+    const datos = {
       fecha: form.fecha,
       cuenta_id: form.cuenta_id,
       cliente_nombre_snapshot: cuentaVentaNombre(cuenta),
       concepto: form.concepto.trim(),
       monto_total: monto,
       moneda: form.moneda,
-      estado: form.estado || 'emitida',
-      creado_por: authUser?.id || null,
+      estado: estadoSeguro,
+      condicion_pago: form.condicion_pago || 'contado',
+      dias_credito: form.condicion_pago === 'credito' ? Number(form.dias_credito) : null,
+      fecha_vencimiento_pago: form.condicion_pago === 'credito' ? fechaVencimientoCalc : null,
     };
 
     if (!supabaseMode) {
-      const anio = new Date(`${base.fecha}T00:00:00`).getFullYear();
+      const anio = new Date(`${datos.fecha}T00:00:00`).getFullYear();
       const correlativo = (ventas || []).length + 1;
-      const mockVenta = {
-        id: `VEN-${anio}-${String(correlativo).padStart(4, '0')}`,
-        fecha: base.fecha,
-        cliente: base.cliente_nombre_snapshot,
-        concepto: base.concepto,
-        monto: base.monto_total,
-        moneda: base.moneda,
-        estado: base.estado,
-      };
-      setVentas(prev => [mockVenta, ...prev]);
-      setPanel(false);
-      resetForm();
-      return;
+      setVentas(prev => [{ id: `VEN-${anio}-${String(correlativo).padStart(4,'0')}`, ...datos, cliente: datos.cliente_nombre_snapshot }, ...prev]);
+      setPanel(false); resetForm(); return;
     }
 
     setGuardando(true);
     try {
-      const venta = await finanzasService.crearVenta(base);
+      const venta = await finanzasService.registrarVenta({ empresaId: empresa?.id, usuarioId: authUser?.id || null, datos });
       setVentas(prev => [venta, ...prev]);
-      setPanel(false);
-      resetForm();
-      addNotificacion?.(`Venta ${venta.numero || ''} registrada.`);
+      setPanel(false); resetForm();
+      addNotificacion?.(`Venta ${venta.numero || ''} registrada en estado ${ventaEstadoLabel(venta.estado)}.`);
     } catch (err) {
       setError(err?.message || 'No se pudo registrar la venta.');
     } finally {
@@ -3924,27 +3961,41 @@ function Ventas() {
     }
   };
 
-  const cambiarEstado = async (venta, estado) => {
-    const prevEstado = venta.estado || 'emitida';
-    if (prevEstado === estado) {
-      return;
-    }
+  const cambiarEstado = async (venta, nuevoEstado) => {
+    const prevEstado = venta.estado || 'borrador';
+    if (['facturada','anulada'].includes(prevEstado)) return;
+    if (prevEstado === nuevoEstado) return;
     setError('');
-    setVentas(prev => prev.map(v => v.id === venta.id ? { ...v, estado } : v));
-
+    setVentas(prev => prev.map(v => v.id === venta.id ? { ...v, estado: nuevoEstado } : v));
     if (!supabaseMode) return;
-
     setActualizandoId(venta.id);
     try {
-      const actualizada = await finanzasService.actualizarEstadoVenta(venta.id, estado);
+      const actualizada = await finanzasService.actualizarEstadoVenta(venta.id, nuevoEstado);
       setVentas(prev => prev.map(v => v.id === venta.id ? actualizada : v));
-      addNotificacion?.(`Venta ${actualizada.numero || ''} actualizada a ${ventaEstadoLabel(estado)}.`);
+      addNotificacion?.(`Venta ${actualizada.numero || ''} → ${ventaEstadoLabel(nuevoEstado)}.`);
     } catch (err) {
       setVentas(prev => prev.map(v => v.id === venta.id ? { ...v, estado: prevEstado } : v));
-      setError(err?.message || 'No se pudo actualizar el estado de la venta.');
+      setError(err?.message || 'No se pudo actualizar el estado.');
     } finally {
       setActualizandoId(null);
     }
+  };
+
+  const ventaDetalle = selVenta ? ventas.find(x => x.id === selVenta) : null;
+
+  const emitirComprobante = vd => {
+    setSelVenta(null);
+    navigate('facturacion', {
+      mode: 'venta',
+      ventaSel: vd.id,
+      cuenta_id: vd.cuenta_id,
+      cliente_nombre: ventaClienteNombre(vd),
+      concepto: vd.concepto,
+      monto_total: ventaMonto(vd),
+      moneda: vd.moneda || 'PEN',
+      condicion_pago: vd.condicion_pago,
+      dias_credito: vd.dias_credito,
+    });
   };
 
   return (
@@ -3952,7 +4003,7 @@ function Ventas() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Ventas</h1>
-          <div className="page-sub">Registro y seguimiento de ventas y facturacion directa</div>
+          <div className="page-sub">Pre-facturación con seguimiento — el ingreso en el ER lo registra la factura emitida</div>
         </div>
         <button className="btn btn-primary" data-local-form="true" onClick={() => { setError(''); setPanel(true); }}>{I.plus} Registrar Venta</button>
       </div>
@@ -3962,48 +4013,52 @@ function Ventas() {
           <table className="tbl">
             <thead>
               <tr>
-                <th>Venta ID</th>
-                <th>Fecha</th>
-                <th>Cliente</th>
-                <th>Concepto</th>
-                <th>Monto</th>
-                <th>Estado</th>
-                <th></th>
+                <th>N° Venta</th><th>Fecha</th><th>Cliente</th><th>Concepto</th><th>Condición</th><th className="num">Monto</th><th>Estado</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {loading && (
-                <tr><td colSpan="7" className="text-center text-muted" style={{padding:32}}>Cargando ventas...</td></tr>
-              )}
-              {!loading && ventas.length === 0 && (
-                <tr><td colSpan="7" className="text-center text-muted" style={{padding:32}}>No hay ventas registradas.</td></tr>
-              )}
-              {!loading && ventas.map(v => (
-                <tr key={v.id} className="hover-row">
-                  <td className="mono" style={{fontWeight:600}}>{v.numero || v.id}</td>
-                  <td className="text-muted">{v.fecha}</td>
-                  <td style={{fontWeight:600}}>{ventaClienteNombre(v)}</td>
-                  <td>{v.concepto}</td>
-                  <td className="num"><strong>{money(ventaMonto(v))} {v.moneda || 'PEN'}</strong></td>
-                  <td>
-                    <select
-                      className={'badge ' + ventaBadgeClass(v.estado)}
-                      style={{border:0,cursor:'pointer',fontFamily:'inherit'}}
-                      value={v.estado || 'emitida'}
-                      disabled={actualizandoId === v.id}
-                      onChange={e => cambiarEstado(v, e.target.value)}
-                    >
-                      {VENTA_ESTADOS.map(([estado, label]) => <option key={estado} value={estado}>{label.toUpperCase()}</option>)}
-                    </select>
-                  </td>
-                  <td></td>
-                </tr>
-              ))}
+              {loading && <tr><td colSpan="8" className="text-center text-muted" style={{padding:32}}>Cargando ventas...</td></tr>}
+              {!loading && ventas.length === 0 && <tr><td colSpan="8" className="text-center text-muted" style={{padding:32}}>No hay ventas registradas.</td></tr>}
+              {!loading && ventas.map(v => {
+                const bloqueado = ['facturada','anulada'].includes(v.estado);
+                const transiciones = ventaTransicionesValidas(v.estado);
+                return (
+                  <tr key={v.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => setSelVenta(v.id)}>
+                    <td className="mono" style={{fontWeight:600}}>{v.numero || v.id}</td>
+                    <td className="text-muted">{v.fecha}</td>
+                    <td style={{fontWeight:600,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ventaClienteNombre(v)}</td>
+                    <td style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v.concepto}</td>
+                    <td>
+                      {v.condicion_pago === 'credito'
+                        ? <span className="badge badge-orange" style={{fontSize:11}}>{v.dias_credito || 30}d crédito</span>
+                        : <span className="badge badge-gray" style={{fontSize:11}}>Contado</span>}
+                    </td>
+                    <td className="num" onClick={e => e.stopPropagation()}>
+                      <strong>{money(ventaMonto(v), symOf(v.moneda || 'PEN'))}</strong>
+                    </td>
+                    <td onClick={e => e.stopPropagation()}>
+                      <select
+                        className={'badge ' + ventaBadgeClass(v.estado)}
+                        style={{border:0,cursor: bloqueado ? 'default' : 'pointer',fontFamily:'inherit'}}
+                        value={v.estado || 'borrador'}
+                        disabled={bloqueado || actualizandoId === v.id}
+                        onChange={e => cambiarEstado(v, e.target.value)}
+                      >
+                        {transiciones.map(([est, lbl]) => <option key={est} value={est}>{lbl.toUpperCase()}</option>)}
+                      </select>
+                    </td>
+                    <td onClick={e => e.stopPropagation()}>
+                      <button className="icon-btn" title="Ver detalle" onClick={() => setSelVenta(v.id)}>{I.eye}</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
+      {/* ─── Formulario Registrar Venta ─── */}
       {panel && (
         <>
           <div className="side-panel-backdrop" onClick={() => { setPanel(false); resetForm(); }}/>
@@ -4013,10 +4068,6 @@ function Ventas() {
               <button className="icon-btn" onClick={() => { setPanel(false); resetForm(); }}>{I.x}</button>
             </div>
             <form className="side-panel-body" onSubmit={guardarVenta} style={{display:'flex',flexDirection:'column',gap:14}}>
-              <div className="grid-2" style={{gap:12}}>
-                <div className="input-group"><label>Fecha <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="date" value={form.fecha} onChange={e => setF('fecha', e.target.value)} required/></div>
-                <div className="input-group"><label>Estado inicial</label><select className="select" value={form.estado} onChange={e => setF('estado', e.target.value)}>{VENTA_ESTADOS.filter(([e]) => e !== 'anulada').map(([e,l]) => <option key={e} value={e}>{l}</option>)}</select></div>
-              </div>
               <div className="input-group">
                 <label>Cliente <span style={{color:'var(--danger)'}}>*</span></label>
                 <select className="select" value={form.cuenta_id} onChange={e => setF('cuenta_id', e.target.value)} required>
@@ -4024,10 +4075,52 @@ function Ventas() {
                   {clientes.map(c => <option key={c.id} value={c.id}>{cuentaVentaNombre(c)}</option>)}
                 </select>
               </div>
-              <div className="input-group"><label>Concepto <span style={{color:'var(--danger)'}}>*</span></label><input className="input" value={form.concepto} onChange={e => setF('concepto', e.target.value)} placeholder="Servicio vendido" required/></div>
+              <div className="input-group">
+                <label>Fecha <span style={{color:'var(--danger)'}}>*</span></label>
+                <input className="input" type="date" value={form.fecha} onChange={e => setF('fecha', e.target.value)} required/>
+              </div>
+              <div className="input-group">
+                <label>Concepto <span style={{color:'var(--danger)'}}>*</span></label>
+                <input className="input" value={form.concepto} onChange={e => setF('concepto', e.target.value)} placeholder="Servicio vendido" required/>
+              </div>
               <div className="grid-2" style={{gap:12}}>
-                <div className="input-group"><label>Monto total <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="number" min="0.01" step="0.01" value={form.monto_total} onChange={e => setF('monto_total', e.target.value)} placeholder="0.00" required/></div>
-                <div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e => setF('moneda', e.target.value)}><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
+                <div className="input-group">
+                  <label>Monto <span style={{color:'var(--danger)'}}>*</span></label>
+                  <input className="input" type="number" min="0.01" step="0.01" value={form.monto_total} onChange={e => setF('monto_total', e.target.value)} placeholder="0.00" required/>
+                </div>
+                <div className="input-group">
+                  <label>Moneda</label>
+                  <select className="select" value={form.moneda} onChange={e => setF('moneda', e.target.value)}>
+                    <option value="PEN">S/ Soles</option>
+                    <option value="USD">US$ Dólares</option>
+                  </select>
+                </div>
+              </div>
+              <div className="input-group">
+                <label>Condición de pago</label>
+                <select className="select" value={form.condicion_pago} onChange={e => setF('condicion_pago', e.target.value)}>
+                  <option value="contado">Contado</option>
+                  <option value="credito">Crédito</option>
+                </select>
+              </div>
+              {form.condicion_pago === 'credito' && (
+                <div className="grid-2" style={{gap:12}}>
+                  <div className="input-group">
+                    <label>Días de crédito <span style={{color:'var(--danger)'}}>*</span></label>
+                    <input className="input" type="number" min="1" step="1" value={form.dias_credito} onChange={e => setF('dias_credito', Number(e.target.value))} required/>
+                  </div>
+                  <div className="input-group">
+                    <label>Fecha de vencimiento</label>
+                    <input className="input" type="date" value={fechaVencimientoCalc} readOnly style={{background:'var(--bg-subtle)',color:'var(--fg-muted)',cursor:'default'}}/>
+                  </div>
+                </div>
+              )}
+              <div className="input-group">
+                <label>Estado inicial</label>
+                <select className="select" value={form.estado} onChange={e => setF('estado', e.target.value)}>
+                  <option value="borrador">Borrador</option>
+                  <option value="confirmada">Confirmada</option>
+                </select>
               </div>
               <div className="row mt-4" style={{justifyContent:'flex-end',gap:8}}>
                 <button type="button" className="btn btn-secondary" onClick={() => { setPanel(false); resetForm(); }}>Cancelar</button>
@@ -4037,40 +4130,136 @@ function Ventas() {
           </div>
         </>
       )}
+
+      {/* ─── Panel de detalle ─── */}
+      {ventaDetalle && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setSelVenta(null)}/>
+          <div className="side-panel" style={{width:'min(560px,96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Venta</div>
+                <div className="font-display" style={{fontSize:20,fontWeight:700}}>{ventaDetalle.numero || ventaDetalle.id}</div>
+              </div>
+              <button className="icon-btn" onClick={() => setSelVenta(null)}>{I.x}</button>
+            </div>
+            <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
+
+              {/* Factura vinculada */}
+              {ventaDetalle.factura_id && (
+                <div style={{padding:'10px 14px',borderRadius:8,background:'color-mix(in srgb,var(--green) 8%,transparent)',border:'1px solid color-mix(in srgb,var(--green) 30%,transparent)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                  <div style={{fontSize:13}}>
+                    <span className="badge badge-green" style={{marginRight:8}}>Facturada</span>
+                    <span style={{color:'var(--fg-muted)'}}>Comprobante emitido</span>
+                  </div>
+                  <button className="btn btn-ghost" style={{fontSize:12,color:'var(--cyan)',padding:0}} onClick={() => { setSelVenta(null); navigate('facturacion', { selFac: ventaDetalle.factura_id }); }}>
+                    Ver factura →
+                  </button>
+                </div>
+              )}
+
+              {/* Datos */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                {[
+                  ['Fecha', ventaDetalle.fecha],
+                  ['Cliente', ventaClienteNombre(ventaDetalle)],
+                  ['Concepto', ventaDetalle.concepto],
+                  ['Monto', money(ventaMonto(ventaDetalle), symOf(ventaDetalle.moneda || 'PEN'))],
+                  ['Moneda', ventaDetalle.moneda || 'PEN'],
+                  ['Condición', ventaDetalle.condicion_pago === 'credito' ? `Crédito ${ventaDetalle.dias_credito || 30} días` : 'Contado'],
+                ].map(([lbl, val]) => (
+                  <div key={lbl}>
+                    <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:3}}>{lbl}</div>
+                    <div style={{fontWeight:600,fontSize:14}}>{val || '—'}</div>
+                  </div>
+                ))}
+                {ventaDetalle.condicion_pago === 'credito' && (ventaDetalle.fecha_vencimiento_pago || ventaDetalle.fecha_vencimiento) && (
+                  <div>
+                    <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:3}}>Fecha vencimiento pago</div>
+                    <div style={{fontWeight:600,fontSize:14}}>{ventaDetalle.fecha_vencimiento_pago || ventaDetalle.fecha_vencimiento}</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Estado inline — solo si puede cambiar */}
+              {!['facturada','anulada'].includes(ventaDetalle.estado) && (
+                <div>
+                  <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:6}}>Estado</div>
+                  <select
+                    className={'badge ' + ventaBadgeClass(ventaDetalle.estado)}
+                    style={{border:0,cursor:'pointer',fontFamily:'inherit',fontSize:13,padding:'6px 12px'}}
+                    value={ventaDetalle.estado || 'borrador'}
+                    disabled={actualizandoId === ventaDetalle.id}
+                    onChange={e => cambiarEstado(ventaDetalle, e.target.value)}
+                  >
+                    {ventaTransicionesValidas(ventaDetalle.estado).map(([est, lbl]) => (
+                      <option key={est} value={est}>{lbl}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {['facturada','anulada'].includes(ventaDetalle.estado) && (
+                <div>
+                  <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:6}}>Estado</div>
+                  <span className={'badge ' + ventaBadgeClass(ventaDetalle.estado)} style={{fontSize:13,padding:'6px 12px'}}>{ventaEstadoLabel(ventaDetalle.estado)}</span>
+                </div>
+              )}
+
+              {/* Botones de acción */}
+              {ventaDetalle.estado === 'borrador' && (
+                <button
+                  className="btn btn-secondary"
+                  disabled={actualizandoId === ventaDetalle.id}
+                  onClick={() => cambiarEstado(ventaDetalle, 'confirmada')}
+                >
+                  {actualizandoId === ventaDetalle.id ? 'Actualizando...' : 'Confirmar venta'}
+                </button>
+              )}
+              {ventaDetalle.estado === 'confirmada' && !ventaDetalle.factura_id && (
+                <button className="btn btn-primary" onClick={() => emitirComprobante(ventaDetalle)}>
+                  Emitir Comprobante
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
 
 // ============ CAJA CHICA ============
-const CATS_CC = ['Administrativos','Materiales','Servicios terceros','Logística','Comerciales','Gastos financieros'];
-const CC_FORM_INIT = { fecha: new Date().toISOString().split('T')[0], concepto: '', monto: '', moneda: 'PEN', categoria: 'Administrativos', num_comprobante: '', ceco_id: '' };
+// El módulo es ahora una vista de consulta. Los egresos se crean exclusivamente
+// a través de NuevoEgreso (método de pago "Caja chica"), que es el único flujo
+// de escritura seguro sin riesgo de duplicación.
+
+const CC_PRECONFIG_RAPIDO = {
+  paso: 2,
+  form: { ya_pagado: true, metodo_pago: 'Caja chica' },
+};
 
 function CajaChica() {
-  const { cajaChica, registrarEgresoCajaChica, centrosCosto, authUser } = useApp();
-  const [panel, setPanel] = useState(false);
-  const [form, setForm] = useState(CC_FORM_INIT);
-  const [guardando, setGuardando] = useState(false);
-  const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const totalMes = cajaChica.filter(c => c.estado !== 'anulado' && String(c.fecha || '').slice(0, 7) === new Date().toISOString().slice(0, 7)).reduce((s, c) => s + Number(c.monto || 0), 0);
+  const { cajaChica } = useApp();
+  const [panelNuevoEgreso, setPanelNuevoEgreso] = useState(false);
+  const [preconfigNE, setPreconfigNE] = useState(null);
 
-  const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const mesActual = new Date().toISOString().slice(0, 7);
+  const totalMes = cajaChica
+    .filter(c => c.estado !== 'anulado' && String(c.fecha || '').slice(0, 7) === mesActual)
+    .reduce((s, c) => s + Number(c.monto || 0), 0);
 
-  const guardar = async e => {
-    e.preventDefault();
-    if (!form.concepto || !Number(form.monto)) return;
-    setGuardando(true);
-    try {
-      await registrarEgresoCajaChica({
-        ...form,
-        monto: Number(form.monto),
-        responsable_nombre: authUser?.email || 'usuario',
-        ceco_id: form.ceco_id || null,
-      });
-      setPanel(false);
-      setForm(CC_FORM_INIT);
-    } finally {
-      setGuardando(false);
-    }
+  const totalFondo = cajaChica
+    .filter(c => c.estado !== 'anulado')
+    .reduce((s, c) => s + Number(c.monto || 0), 0);
+
+  const abrirNuevoEgreso = (preconfig = null) => {
+    setPreconfigNE(preconfig);
+    setPanelNuevoEgreso(true);
+  };
+
+  const cerrarNuevoEgreso = () => {
+    setPanelNuevoEgreso(false);
+    setPreconfigNE(null);
   };
 
   return (
@@ -4078,13 +4267,21 @@ function CajaChica() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Caja Chica</h1>
-          <div className="page-sub">Fondos fijos y gastos menores · Mes actual: {money(totalMes)}</div>
+          <div className="page-sub">Vista de movimientos · Registra egresos desde "Nuevo egreso"</div>
         </div>
-        <button className="btn btn-primary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Registrar Gasto</button>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-secondary" style={{fontSize:13}} onClick={() => abrirNuevoEgreso(CC_PRECONFIG_RAPIDO)}>{I.plus} Rápido</button>
+          <button className="btn btn-primary" onClick={() => abrirNuevoEgreso(null)}>{I.plus} Nuevo egreso</button>
+        </div>
       </div>
       <div className="kpi-grid">
-        <div className="kpi-card"><div className="kpi-label">Movimientos</div><div className="kpi-value">{cajaChica.filter(c => c.estado !== 'anulado').length}</div></div>
+        <div className="kpi-card">
+          <div className="kpi-label">Saldo del fondo</div>
+          <div className="kpi-value" style={{color:'var(--cyan)'}}>{money(totalFondo)}</div>
+          <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>Total acumulado sin anulados</div>
+        </div>
         <div className="kpi-card"><div className="kpi-label">Mes actual</div><div className="kpi-value">{money(totalMes)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Movimientos</div><div className="kpi-value">{cajaChica.filter(c => c.estado !== 'anulado').length}</div></div>
         <div className="kpi-card"><div className="kpi-label">Anulados</div><div className="kpi-value">{cajaChica.filter(c => c.estado === 'anulado').length}</div></div>
       </div>
       <div className="card mt-6">
@@ -4111,40 +4308,20 @@ function CajaChica() {
                   <td><span className={'badge ' + (c.estado === 'anulado' ? 'badge-red' : 'badge-green')}>{c.estado}</span></td>
                 </tr>
               )) : (
-                <tr><td colSpan="6" className="text-center text-muted" style={{padding:32}}>No hay movimientos de caja chica.</td></tr>
+                <tr><td colSpan="6" className="text-center text-muted" style={{padding:32}}>No hay movimientos de caja chica. Registra egresos usando "Nuevo egreso" con método "Caja chica".</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {panel && (
-        <>
-          <div className="side-panel-backdrop" onClick={() => setPanel(false)}/>
-          <div className="side-panel" style={{width:'min(520px,96vw)'}}>
-            <div className="side-panel-head">
-              <div><div className="eyebrow">Caja chica</div><div className="font-display" style={{fontSize:20,fontWeight:700}}>Registrar egreso</div></div>
-              <button className="icon-btn" onClick={() => setPanel(false)}>{I.x}</button>
-            </div>
-            <form className="side-panel-body" onSubmit={guardar} style={{display:'flex',flexDirection:'column',gap:14}}>
-              <div className="grid-2" style={{gap:12}}>
-                <div className="input-group"><label>Fecha <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="date" value={form.fecha} onChange={e => setF('fecha',e.target.value)} required/></div>
-                <div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e => setF('moneda',e.target.value)}><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
-              </div>
-              <div className="input-group"><label>Concepto <span style={{color:'var(--danger)'}}>*</span></label><input className="input" value={form.concepto} onChange={e => setF('concepto',e.target.value)} placeholder="Taxi, materiales de oficina..." required/></div>
-              <div className="grid-2" style={{gap:12}}>
-                <div className="input-group"><label>Monto <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="number" min="0.01" step="0.01" value={form.monto} onChange={e => setF('monto',e.target.value)} placeholder="0.00" required/></div>
-                <div className="input-group"><label>Categoría</label><select className="select" value={form.categoria} onChange={e => setF('categoria',e.target.value)}>{CATS_CC.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-              </div>
-              <div className="input-group"><label>N° comprobante</label><input className="input" value={form.num_comprobante} onChange={e => setF('num_comprobante',e.target.value)} placeholder="F001-000123"/></div>
-              <div className="input-group"><label>CECO</label><select className="select" value={form.ceco_id} onChange={e => setF('ceco_id',e.target.value)}><option value="">— Sin CECO —</option>{cecos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ` : ''}{c.nombre}</option>)}</select></div>
-              <div className="row mt-4" style={{justifyContent:'flex-end',gap:8}}>
-                <button type="button" className="btn btn-secondary" onClick={() => setPanel(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : 'Registrar egreso'}</button>
-              </div>
-            </form>
-          </div>
-        </>
+      {panelNuevoEgreso && (
+        <NuevoEgreso
+          origen="caja_chica"
+          preconfig={preconfigNE}
+          onClose={cerrarNuevoEgreso}
+          onSaved={cerrarNuevoEgreso}
+        />
       )}
     </>
   );
@@ -4468,7 +4645,7 @@ function CxPLegacy() {
     <>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Cuentas por Pagar (CxP)</h1>
+          <h1 className="page-title">Cuentas por Pagar</h1>
           <div className="page-sub">Seguimiento de facturas de proveedores y vencimientos</div>
         </div>
         <div className="row">
@@ -4516,6 +4693,39 @@ function CxPLegacy() {
   );
 }
 
+const TRIBUTO_TIPOS = [
+  { value: 'igv_mensual', label: 'IGV mensual' },
+  { value: 'ir_cuenta_3ra', label: 'IR a cuenta 3ra categoria' },
+  { value: 'essalud', label: 'ESSALUD' },
+  { value: 'onp_afp_empleador', label: 'ONP/AFP empleador' },
+  { value: 'retencion_ir_4ta', label: 'Retencion IR 4ta categoria' },
+  { value: 'retencion_ir_5ta', label: 'Retencion IR 5ta categoria' },
+  { value: 'otros_tributos', label: 'Otros tributos' },
+];
+const TRIBUTO_LABEL = Object.fromEntries(TRIBUTO_TIPOS.map(t => [t.value, t.label]));
+const TRIBUTO_CATEGORIA_KEYS = ['tribut', 'impuesto', 'sunat', 'essalud', 'onp', 'afp', 'retencion'];
+const DIVIDENDO_TIPO = 'socio_accionista';
+
+const cxpEsTributo = c => {
+  const tipoComp = normText(c?.tipo_comprobante);
+  const categoria = normText(c?.categoria_er);
+  const motivo = normText(c?.motivo_cxp);
+  return tipoComp === 'tributo'
+    || Boolean(c?.tributo_tipo)
+    || TRIBUTO_CATEGORIA_KEYS.some(k => categoria.includes(k))
+    || ['essalud', 'pensiones', 'ir_5ta'].includes(motivo);
+};
+
+const cxpTributoPeriodo = c => c?.tributo_periodo || (() => {
+  const match = String(c?.concepto || '').match(/Periodo:\s*([^|]+)/i);
+  return match ? match[1].trim() : '';
+})();
+
+const cxpTributoTipoLabel = c => TRIBUTO_LABEL[c?.tributo_tipo] || c?.tributo_tipo || (() => {
+  const match = String(c?.concepto || '').match(/Tributo:\s*([^|]+)/i);
+  return match ? match[1].trim() : 'Tributo';
+})();
+
 function CxP() {
   const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, ots, registrarPagoCxP, generarCxP, crearGasto, addNotificacion, centrosCosto, setCxp } = useApp();
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
@@ -4523,21 +4733,31 @@ function CxP() {
 
   // Panel states
   const [panelCrear, setPanelCrear] = useState(false);
+  const [panelNuevoEgreso, setPanelNuevoEgreso] = useState(false);
   const [sel, setSel] = useState(null);
   const [fichaTab, setFichaTab] = useState('pago');
   const [guardando, setGuardando] = useState(false);
+  const [tabCxP, setTabCxP] = useState('general');
 
   // Form: pago
   const [formPago, setFormPago] = useState({ monto: '', fecha: today, cuenta_bancaria: 'Cuenta principal', referencia: '' });
 
   // Form: nueva CxP
-  const FORM_VACIO = { proveedor_id: '', tipo_comprobante: 'Factura', factura_numero: '', fecha_emision: today, fecha_vencimiento: '', monto_total: '', moneda: 'PEN', concepto: '' };
+  const FORM_VACIO = { proveedor_id: '', tipo_beneficiario: 'proveedor', tipo_comprobante: 'Factura', factura_numero: '', fecha_emision: today, fecha_vencimiento: '', monto_total: '', moneda: 'PEN', concepto: '' };
   const [formCrear, setFormCrear] = useState(FORM_VACIO);
   const [archivoCrearUrl, setArchivoCrearUrl] = useState('');
   // Campos viáticos reembolso
   const [motivoCxP, setMotivoCxP] = useState('');
   const [viaticosPersonalId, setViaticosPersonalId] = useState('');
   const [viaticosOtId, setViaticosOtId] = useState('');
+  // Campos tributos y distribucion de utilidades
+  const [tributoTipo, setTributoTipo] = useState(TRIBUTO_TIPOS[0].value);
+  const [tributoPeriodo, setTributoPeriodo] = useState(today.slice(0, 7));
+  const [tributoFormulario, setTributoFormulario] = useState('');
+  const [socioNombre, setSocioNombre] = useState('');
+  const [socioParticipacion, setSocioParticipacion] = useState('');
+  const [periodoUtilidades, setPeriodoUtilidades] = useState(String(new Date().getFullYear()));
+  const [actaReferencia, setActaReferencia] = useState('');
   // Campos RHE externo
   const [rheRuc, setRheRuc] = useState('');
   const [rheNombre, setRheNombre] = useState('');
@@ -4545,6 +4765,7 @@ function CxP() {
   const [rheNumeroDoc, setRheNumeroDoc] = useState('');
   const [cxpCategoriaEr, setCxpCategoriaEr] = useState('');
   const [cxpCentroCostoId, setCxpCentroCostoId] = useState('');
+  const [cxpYaRegistrado, setCxpYaRegistrado] = useState(false);
   // Edición de clasificación ER en ficha existente
   const [fichaClasifCategoria, setFichaClasifCategoria] = useState('');
   const [fichaClasifCeco, setFichaClasifCeco] = useState('');
@@ -4555,6 +4776,7 @@ function CxP() {
   // Filtros
   const [filtTipo, setFiltTipo] = useState('todos');
   const [filtOrigen, setFiltOrigen] = useState('todos');
+  const [filtMoneda, setFiltMoneda] = useState('todos');
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   const saldoDe  = c => Number(c?.saldo ?? c?.monto_total ?? c?.monto ?? 0);
@@ -4585,6 +4807,7 @@ function CxP() {
   };
 
   const beneficiarioNombre = c => {
+    if (c?.tipo_beneficiario === DIVIDENDO_TIPO) return c?.socio_nombre || c?.concepto || 'Socio / accionista';
     if (c?.tipo_beneficiario === 'colectivo') return c?.concepto || 'Obligación institucional';
     if (c?.tipo_beneficiario === 'personal') {
       const persona = [...(personalAdmin||[]), ...(personalOperativo||[])].find(p => p.id === c?.personal_id);
@@ -4598,13 +4821,58 @@ function CxP() {
   };
 
   const pagosDe = cxpId => (cxpPagos || []).filter(p => p.cxp_id === cxpId);
+  const esTributoForm = tabCxP === 'tributos' || motivoCxP === 'tributo' || formCrear.tipo_comprobante === 'Tributo';
+  const esDividendoForm = formCrear.tipo_beneficiario === DIVIDENDO_TIPO;
+  const tributoConcepto = `Tributo: ${TRIBUTO_LABEL[tributoTipo] || tributoTipo} | Periodo: ${tributoPeriodo || '-'}${tributoFormulario ? ` | Formulario: ${tributoFormulario}` : ''}`;
+  const dividendoConcepto = `Distribucion de utilidades - ${periodoUtilidades || new Date().getFullYear()}`;
+
+  const resetCrearCxP = () => {
+    setPanelCrear(false);
+    setFormCrear(FORM_VACIO);
+    setArchivoCrearUrl('');
+    setMotivoCxP('');
+    setViaticosPersonalId('');
+    setViaticosOtId('');
+    setTributoTipo(TRIBUTO_TIPOS[0].value);
+    setTributoPeriodo(today.slice(0, 7));
+    setTributoFormulario('');
+    setSocioNombre('');
+    setSocioParticipacion('');
+    setPeriodoUtilidades(String(new Date().getFullYear()));
+    setActaReferencia('');
+    setRheRuc('');
+    setRheNombre('');
+    setRheMontoBruto('');
+    setRheNumeroDoc('');
+    setCxpCategoriaEr('');
+    setCxpCentroCostoId('');
+    setCxpYaRegistrado(false);
+  };
+
+  const abrirCrearCxP = (modo = 'general') => {
+    resetCrearCxP();
+    const base = { ...FORM_VACIO, tipo_beneficiario: 'proveedor', tipo_comprobante: 'Factura' };
+    if (modo === 'tributos') {
+      setMotivoCxP('tributo');
+      setCxpCategoriaEr('Tributos');
+      setFormCrear({ ...base, proveedor_id: '', tipo_comprobante: 'Tributo', concepto: tributoConcepto });
+    } else if (modo === 'dividendos') {
+      setFormCrear({ ...base, tipo_beneficiario: DIVIDENDO_TIPO, tipo_comprobante: 'distribucion_utilidades', concepto: dividendoConcepto });
+    } else {
+      setFormCrear(base);
+    }
+    setPanelCrear(true);
+  };
 
   // ── Datos filtrados y KPIs ────────────────────────────────────────────────
   const cxpFiltrada = (cxp || []).filter(c => {
+    if (tabCxP === 'tributos' && !cxpEsTributo(c)) return false;
     if (filtTipo !== 'todos' && (c.tipo_beneficiario || 'proveedor') !== filtTipo) return false;
     if (filtOrigen !== 'todos' && (c.origen || 'manual') !== filtOrigen) return false;
+    if (filtMoneda !== 'todos' && (c.moneda || 'PEN') !== filtMoneda) return false;
     return true;
   });
+  const cxpTributos = (cxp || []).filter(cxpEsTributo);
 
   const totalPorPagar = cxpFiltrada.reduce((s, c) => s + saldoDe(c), 0);
   const totalVencido  = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red').reduce((s, c) => s + saldoDe(c), 0);
@@ -4641,6 +4909,8 @@ function CxP() {
     e.preventDefault();
     const esRhe = formCrear.tipo_comprobante === 'RHE';
     const esViaticos = motivoCxP === 'viaticos_reembolso';
+    const esTributo = esTributoForm;
+    const esDividendo = esDividendoForm;
     const montoTotal = esRhe ? rheMontoNeto : Number(formCrear.monto_total);
     if (!formCrear.fecha_emision || !formCrear.fecha_vencimiento || montoTotal <= 0) {
       addNotificacion('Completa fecha de emisión, vencimiento y monto.');
@@ -4654,19 +4924,27 @@ function CxP() {
       addNotificacion('Para reembolso de viáticos: selecciona al colaborador.');
       return;
     }
+    if (esTributo && (!tributoTipo || !tributoPeriodo)) {
+      addNotificacion('Para tributos: selecciona tipo de tributo y periodo tributario.');
+      return;
+    }
+    if (esDividendo && (!socioNombre.trim() || !periodoUtilidades)) {
+      addNotificacion('Para distribucion de utilidades: ingresa socio y periodo.');
+      return;
+    }
     setGuardando(true);
     try {
       const personal = esViaticos
         ? ([...(personalAdmin||[]), ...(personalOperativo||[])]).find(p => p.id === viaticosPersonalId)
         : null;
       const cxpPayload = {
-        proveedor_id:      esViaticos ? null : (formCrear.proveedor_id || null),
-        tipo_beneficiario: esViaticos ? 'personal' : 'proveedor',
+        proveedor_id:      (esViaticos || esTributo || esDividendo) ? null : (formCrear.proveedor_id || null),
+        tipo_beneficiario: esDividendo ? DIVIDENDO_TIPO : esViaticos ? 'personal' : esTributo ? 'colectivo' : (formCrear.tipo_beneficiario || 'proveedor'),
         personal_id:       esViaticos ? viaticosPersonalId : null,
         ot_vinc_id:        esViaticos && viaticosOtId ? viaticosOtId : null,
-        tipo_comprobante:  formCrear.tipo_comprobante,
-        factura_numero:    esRhe ? (rheNumeroDoc || null) : (formCrear.factura_numero || null),
-        concepto:          formCrear.concepto || (esRhe ? `RHE - ${rheNombre}` : esViaticos ? `Viáticos — ${personal?.nombre || viaticosPersonalId}` : null),
+        tipo_comprobante:  esTributo ? 'Tributo' : esDividendo ? 'distribucion_utilidades' : formCrear.tipo_comprobante,
+        factura_numero:    esTributo ? (tributoFormulario || null) : esRhe ? (rheNumeroDoc || null) : (formCrear.factura_numero || null),
+        concepto:          esTributo ? tributoConcepto : esDividendo ? dividendoConcepto : (formCrear.concepto || (esRhe ? `RHE - ${rheNombre}` : esViaticos ? `Viaticos - ${personal?.nombre || viaticosPersonalId}` : null)),
         fecha_emision:     formCrear.fecha_emision,
         fecha_vencimiento: formCrear.fecha_vencimiento,
         monto_total:       montoTotal,
@@ -4674,20 +4952,18 @@ function CxP() {
         saldo:             montoTotal,
         moneda:            formCrear.moneda || 'PEN',
         estado:            'por_pagar',
-        origen:            esRhe ? 'rhe_externo' : esViaticos ? 'viaticos' : 'manual',
-        motivo_cxp:        motivoCxP || null,
+        origen:            esTributo ? 'tributos' : esDividendo ? 'dividendos' : esRhe ? 'rhe_externo' : esViaticos ? 'viaticos' : 'manual',
+        motivo_cxp:        esTributo ? `${TRIBUTO_LABEL[tributoTipo] || tributoTipo} - ${tributoPeriodo}` : esDividendo ? dividendoConcepto : (motivoCxP || null),
+        ...(esTributo ? { tributo_tipo: tributoTipo, tributo_periodo: tributoPeriodo, tributo_formulario: tributoFormulario || null, categoria_er: cxpCategoriaEr || 'Tributos', no_devengar_er: true } : {}),
+        ...(esDividendo ? { socio_nombre: socioNombre.trim(), socio_participacion_pct: socioParticipacion ? Number(socioParticipacion) : null, periodo_utilidades: periodoUtilidades, acta_referencia: actaReferencia || null, no_devengar_er: true } : {}),
         ...(esRhe ? { ruc_emisor: rheRuc, nombre_emisor: rheNombre, monto_bruto: Number(rheMontoBruto), retencion_ir: rheRetencion } : {}),
         ...(archivoCrearUrl ? { archivo_factura_url: archivoCrearUrl } : {}),
         ...(cxpCategoriaEr   ? { categoria_er:    cxpCategoriaEr   } : {}),
-        ...(cxpCentroCostoId ? { centro_costo_id: cxpCentroCostoId } : {})
+        ...(cxpCentroCostoId ? { centro_costo_id: cxpCentroCostoId } : {}),
+        ...(!esTributo && !esDividendo && cxpYaRegistrado ? { no_devengar_er: true } : {}),
       };
       await generarCxP(cxpPayload);
-      setPanelCrear(false);
-      setFormCrear(FORM_VACIO);
-      setArchivoCrearUrl('');
-      setMotivoCxP(''); setViaticosPersonalId(''); setViaticosOtId('');
-      setRheRuc(''); setRheNombre(''); setRheMontoBruto(''); setRheNumeroDoc('');
-      setCxpCategoriaEr(''); setCxpCentroCostoId('');
+      resetCrearCxP();
     } finally {
       setGuardando(false);
     }
@@ -4738,18 +5014,30 @@ function CxP() {
     <>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Cuentas por Pagar (CxP)</h1>
+          <h1 className="page-title">Cuentas por Pagar</h1>
           <div className="page-sub">
             Total por pagar {money(saldosPEN)}{saldosUSD > 0 && <> · {money(saldosUSD, 'US$')}</>}
             {' · '}
             {money(vencidoPEN)}{vencidoUSD > 0 && <> · {money(vencidoUSD, 'US$')}</>} vencido
           </div>
         </div>
-        <div className="row">
-          <button className="btn btn-primary" onClick={() => { setFormCrear(FORM_VACIO); setPanelCrear(true); }}>
-            {I.plus} Registrar factura
+        <div className="row" style={{gap:8}}>
+          <button className="btn btn-secondary" onClick={() => abrirCrearCxP(tabCxP === 'tributos' ? 'tributos' : 'general')} style={{fontSize:13}}>
+            {I.plus} {tabCxP === 'tributos' ? 'Registrar tributo' : 'Avanzado'}
+          </button>
+          <button className="btn btn-primary" onClick={() => setPanelNuevoEgreso(true)}>
+            {I.plus} Nuevo egreso
           </button>
         </div>
+      </div>
+
+      <div className="tabs" style={{marginBottom:16}}>
+        {[
+          { id:'general', label:`General (${(cxp || []).length})` },
+          { id:'tributos', label:`Tributos (${cxpTributos.length})` },
+        ].map(t => (
+          <div key={t.id} className={'tab '+(tabCxP===t.id?'active':'')} onClick={() => setTabCxP(t.id)}>{t.label}</div>
+        ))}
       </div>
 
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
@@ -4759,6 +5047,7 @@ function CxP() {
             <span>{money(saldosPEN)}</span>
             {saldosUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{money(saldosUSD,'US$')}</span>}
           </div>
+          <div className="kpi-icon cyan">{I.dollar}</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-label">Vencido</div>
@@ -4766,18 +5055,31 @@ function CxP() {
             <span>{money(vencidoPEN)}</span>
             {vencidoUSD > 0 && <span style={{fontSize:16}}>{money(vencidoUSD,'US$')}</span>}
           </div>
+          <div className="kpi-icon danger">{I.alert}</div>
         </div>
-        <div className="kpi-card"><div className="kpi-label">Por vencer (7 d)</div><div className="kpi-value" style={{fontSize:28, marginTop:12, color:'var(--orange)'}}>{porVencer7}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Pagadas</div><div className="kpi-value">{(cxp||[]).filter(c => c.estado === 'pagada').length}</div></div>
+        <div className="kpi-card">
+          <div className="kpi-label">Por vencer (7 d)</div>
+          <div className="kpi-value" style={{marginTop:12, color:'var(--orange)'}}>{porVencer7}</div>
+          <div className="kpi-icon orange">{I.clock}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Pagadas</div>
+          <div className="kpi-value" style={{marginTop:12}}>{(cxp||[]).filter(c => c.estado === 'pagada').length}</div>
+          <div className="kpi-icon green">{I.check}</div>
+        </div>
       </div>
 
       <div className="row" style={{gap:8, marginTop:16, marginBottom:4, flexWrap:'wrap'}}>
-        {[{v:'todos',l:'Todos'},{v:'proveedor',l:'Proveedores'},{v:'personal',l:'Colaboradores'}].map(f => (
+        {[{v:'todos',l:'Todos'},{v:'proveedor',l:'Proveedores'},{v:'personal',l:'Colaboradores'},{v:DIVIDENDO_TIPO,l:'Socio / accionista'}].map(f => (
           <button key={f.v} className={'btn btn-sm '+(filtTipo===f.v?'btn-primary':'btn-secondary')} onClick={() => setFiltTipo(f.v)}>{f.l}</button>
         ))}
         <div style={{width:1,background:'var(--border)',margin:'0 4px'}}/>
         {[{v:'todos',l:'Origen: Todos'},{v:'recepcion',l:'OC'},{v:'gasto',l:'Gasto directo'},{v:'rhe_externo',l:'RHE'},{v:'honorarios',l:'Honorarios'},{v:'viaticos',l:'Viáticos'},{v:'nomina',l:'Nómina'},{v:'manual',l:'Manual'}].map(f => (
           <button key={f.v} className={'btn btn-sm '+(filtOrigen===f.v?'btn-primary':'btn-secondary')} onClick={() => setFiltOrigen(f.v)}>{f.l}</button>
+        ))}
+        <div style={{width:1,background:'var(--border)',margin:'0 4px'}}/>
+        {[{v:'todos',l:'Todas'},{v:'PEN',l:'S/ PEN'},{v:'USD',l:'US$ USD'}].map(f => (
+          <button key={f.v} className={'btn btn-sm '+(filtMoneda===f.v?'btn-primary':'btn-secondary')} onClick={() => setFiltMoneda(f.v)}>{f.l}</button>
         ))}
       </div>
 
@@ -4787,13 +5089,13 @@ function CxP() {
             <thead>
               <tr>
                 <th style={{width:12}}></th>
-                <th>Beneficiario</th>
-                <th>Documento / Concepto</th>
+                <th>{tabCxP === 'tributos' ? 'Periodo tributario' : 'Beneficiario'}</th>
+                <th>{tabCxP === 'tributos' ? 'Tipo de tributo' : 'Documento / Concepto'}</th>
                 <th>Emisión</th>
-                <th>Vencimiento</th>
+                <th>{tabCxP === 'tributos' ? 'Vencimiento SUNAT' : 'Vencimiento'}</th>
                 <th>Total</th>
-                <th>Pagado</th>
-                <th>Saldo</th>
+                <th>{tabCxP === 'tributos' ? 'Estado' : 'Pagado'}</th>
+                <th>{tabCxP === 'tributos' ? 'Formulario' : 'Saldo'}</th>
                 <th></th>
               </tr>
             </thead>
@@ -4804,10 +5106,21 @@ function CxP() {
                   <tr key={c.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => abrirFicha(c)}>
                     <td><span title={sem.label} style={{display:'inline-block',width:10,height:10,borderRadius:999,background:sem.bg,flexShrink:0}}/></td>
                     <td style={{fontWeight:600}}>
-                      {beneficiarioNombre(c)}
-                      {c.tipo_beneficiario === 'personal' && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,padding:'1px 5px'}}>Colab.</span>}
+                      {tabCxP === 'tributos' ? (cxpTributoPeriodo(c) || '-') : (
+                        <>
+                          {beneficiarioNombre(c)}
+                          {c.tipo_beneficiario === 'personal' && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,padding:'1px 5px'}}>Colab.</span>}
+                        </>
+                      )}
                     </td>
-                    <td className="mono text-muted" style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.factura_numero || c.concepto || '-'}</td>
+                    <td className={tabCxP === 'tributos' ? '' : 'mono text-muted'} style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {tabCxP === 'tributos' ? (
+                        <>
+                          <strong>{cxpTributoTipoLabel(c)}</strong>
+                          <div className="text-muted" style={{fontSize:11}}>{c.motivo_cxp || 'tributo'}</div>
+                        </>
+                      ) : (c.factura_numero || c.concepto || '-')}
+                    </td>
                     <td className="text-muted">{c.fecha_emision}</td>
                     <td style={{color: sem.badgeCls === 'badge-red' || sem.badgeCls === 'badge-orange' ? sem.bg : undefined, fontWeight: sem.badgeCls === 'badge-red' ? 600 : undefined}}>
                       <span style={{display:'flex',alignItems:'center',gap:5}}>
@@ -4816,8 +5129,14 @@ function CxP() {
                       </span>
                     </td>
                     <td className="num"><strong>{money(totalDe(c), symOf(c.moneda))}</strong></td>
-                    <td className="num text-muted">{money(pagadoDe(c), symOf(c.moneda))}</td>
-                    <td className="num"><strong>{money(saldoDe(c), symOf(c.moneda))}</strong></td>
+                    <td className={tabCxP === 'tributos' ? '' : 'num text-muted'}>
+                      {tabCxP === 'tributos'
+                        ? <span className={'badge '+(c.estado === 'pagada' ? 'badge-green' : sem.badgeCls)}>{String(c.estado || 'por_pagar').replace('_',' ')}</span>
+                        : money(pagadoDe(c), symOf(c.moneda))}
+                    </td>
+                    <td className={tabCxP === 'tributos' ? 'mono text-muted' : 'num'}>
+                      {tabCxP === 'tributos' ? (c.tributo_formulario || c.factura_numero || '-') : <strong>{money(saldoDe(c), symOf(c.moneda))}</strong>}
+                    </td>
                     <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
                       {c.archivo_factura_url && <a href={c.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:4}} title="Ver RHE adjunto">{I.file}</a>}
                       {c.archivo_constancia_url && <a href={c.archivo_constancia_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:6}} title="Ver constancia de suspensión">{I.doc}</a>}
@@ -4981,26 +5300,64 @@ function CxP() {
         </>
       )}
 
+      {/* ── Panel Nuevo Egreso (flujo unificado) ──────────────────────── */}
+      {panelNuevoEgreso && (
+        <NuevoEgreso
+          origen="cxp"
+          onClose={() => setPanelNuevoEgreso(false)}
+          onSaved={() => setPanelNuevoEgreso(false)}
+        />
+      )}
+
       {/* ── Panel crear CxP manual ─────────────────────────────────────── */}
       {panelCrear && (
         <>
-          <div className="side-panel-backdrop" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); setMotivoCxP(''); setViaticosPersonalId(''); setViaticosOtId(''); setCxpCategoriaEr(''); setCxpCentroCostoId(''); }}/>
+          <div className="side-panel-backdrop" onClick={resetCrearCxP}/>
           <div className="side-panel" style={{width:'min(560px, 96vw)'}}>
             <div className="side-panel-head">
               <div>
                 <div className="eyebrow">Nueva cuenta por pagar</div>
                 <div style={{fontWeight:700,fontSize:20}}>{motivoCxP === 'viaticos_reembolso' ? 'Reembolso de viáticos' : 'Registrar factura'}</div>
               </div>
-              <button className="icon-btn" onClick={() => setPanelCrear(false)}>{I.x}</button>
+              <button className="icon-btn" onClick={resetCrearCxP}>{I.x}</button>
             </div>
             <form className="side-panel-body" onSubmit={guardarNuevaCxP}>
               <div className="input-group">
                 <label>Motivo</label>
-                <select className="select" value={motivoCxP} onChange={e => setMotivoCxP(e.target.value)}>
+                <select className="select" value={motivoCxP} onChange={e => {
+                  const value = e.target.value;
+                  setMotivoCxP(value);
+                  if (value === 'tributo') {
+                    setCxpCategoriaEr('Tributos');
+                    setFormCrear(v => ({...v, tipo_beneficiario:'colectivo', tipo_comprobante:'Tributo', proveedor_id:'', concepto: tributoConcepto}));
+                  } else if (value === 'viaticos_reembolso') {
+                    setFormCrear(v => ({...v, tipo_beneficiario:'personal'}));
+                  }
+                }}>
                   <option value="">Factura / gasto de proveedor (estándar)</option>
                   <option value="viaticos_reembolso">Reembolso de viáticos o gastos de campo a colaborador</option>
                 </select>
               </div>
+              {!esTributoForm && (
+                <div className="input-group">
+                  <label>Tipo de beneficiario</label>
+                  <select className="select" value={formCrear.tipo_beneficiario || 'proveedor'} onChange={e => {
+                    const value = e.target.value;
+                    setFormCrear(v => ({
+                      ...v,
+                      tipo_beneficiario: value,
+                      proveedor_id: value === 'proveedor' ? v.proveedor_id : '',
+                      tipo_comprobante: value === DIVIDENDO_TIPO ? 'distribucion_utilidades' : (v.tipo_comprobante === 'distribucion_utilidades' ? 'Factura' : v.tipo_comprobante),
+                      concepto: value === DIVIDENDO_TIPO ? dividendoConcepto : v.concepto,
+                    }));
+                    if (value === DIVIDENDO_TIPO) setMotivoCxP('');
+                  }}>
+                    <option value="proveedor">Proveedor</option>
+                    <option value="personal">Colaborador</option>
+                    <option value={DIVIDENDO_TIPO}>Socio / accionista</option>
+                  </select>
+                </div>
+              )}
               {motivoCxP === 'viaticos_reembolso' && (
                 <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 14px', display:'flex', flexDirection:'column', gap:12}}>
                   <div style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>Datos del reembolso</div>
@@ -5021,6 +5378,50 @@ function CxP() {
                         <option key={o.id} value={o.id}>{o.numero || o.id} — {o.nombre || o.descripcion || ''}</option>
                       ))}
                     </select>
+                  </div>
+                </div>
+              )}
+              {esTributoForm && (
+                <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 14px', display:'flex', flexDirection:'column', gap:12}}>
+                  <div style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>Datos tributarios</div>
+                  <div className="grid-2" style={{gap:12}}>
+                    <div className="input-group">
+                      <label>Tipo de tributo <span style={{color:'var(--danger)'}}>*</span></label>
+                      <select className="select" value={tributoTipo} onChange={e => setTributoTipo(e.target.value)}>
+                        {TRIBUTO_TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="input-group">
+                      <label>Periodo tributario <span style={{color:'var(--danger)'}}>*</span></label>
+                      <input className="input" type="month" value={tributoPeriodo} onChange={e => setTributoPeriodo(e.target.value)} />
+                    </div>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}>
+                      <label>Nro. declaracion / formulario SUNAT</label>
+                      <input className="input" value={tributoFormulario} onChange={e => setTributoFormulario(e.target.value)} placeholder="Formulario, orden o constancia" />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {esDividendoForm && (
+                <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 14px', display:'flex', flexDirection:'column', gap:12}}>
+                  <div style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>Datos del socio / accionista</div>
+                  <div className="input-group">
+                    <label>Nombre del socio o accionista <span style={{color:'var(--danger)'}}>*</span></label>
+                    <input className="input" value={socioNombre} onChange={e => setSocioNombre(e.target.value)} placeholder="Nombre completo o razon social" />
+                  </div>
+                  <div className="grid-2" style={{gap:12}}>
+                    <div className="input-group">
+                      <label>Participacion %</label>
+                      <input className="input" type="number" min="0" max="100" step="0.01" value={socioParticipacion} onChange={e => setSocioParticipacion(e.target.value)} />
+                    </div>
+                    <div className="input-group">
+                      <label>Periodo utilidades <span style={{color:'var(--danger)'}}>*</span></label>
+                      <input className="input" type="number" min="2000" max="2100" value={periodoUtilidades} onChange={e => setPeriodoUtilidades(e.target.value)} />
+                    </div>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}>
+                      <label>Acuerdo o acta de referencia</label>
+                      <input className="input" value={actaReferencia} onChange={e => setActaReferencia(e.target.value)} placeholder="Acta de junta, acuerdo interno, etc." />
+                    </div>
                   </div>
                 </div>
               )}
@@ -5071,7 +5472,7 @@ function CxP() {
                 </div>
               ) : (
                 <>
-                  <div className="input-group">
+                  <div className="input-group" style={esTributoForm || esDividendoForm ? {display:'none'} : undefined}>
                     <label>Proveedor</label>
                     <select className="select" value={formCrear.proveedor_id} onChange={e => onProveedorChange(e.target.value)}>
                       <option value="">— Seleccionar proveedor —</option>
@@ -5126,6 +5527,29 @@ function CxP() {
                   </select>
                 </div>
               </div>
+              {!esTributoForm && !esDividendoForm && (
+                <label style={{
+                  display:'flex', alignItems:'center', gap:10, cursor:'pointer',
+                  padding:'10px 14px', borderRadius:8,
+                  background: cxpYaRegistrado
+                    ? 'color-mix(in srgb, var(--orange) 8%, var(--surface))'
+                    : 'var(--bg-subtle)',
+                  border: `1px solid ${cxpYaRegistrado ? 'color-mix(in srgb, var(--orange) 30%, var(--border))' : 'var(--border)'}`,
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={cxpYaRegistrado}
+                    onChange={e => setCxpYaRegistrado(e.target.checked)}
+                    style={{width:16, height:16, cursor:'pointer', flexShrink:0}}
+                  />
+                  <div>
+                    <div style={{fontSize:13, fontWeight:600}}>Este gasto ya fue registrado en Compras/Gastos</div>
+                    <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>
+                      Marca esto si el gasto ya existe en compras_gastos para evitar que se cree un devengo duplicado en el ER.
+                    </div>
+                  </div>
+                </label>
+              )}
               <div className="grid-2" style={{gap:12, marginTop:4}}>
                 <div className="input-group">
                   <label>Fecha de emisión</label>
@@ -5152,6 +5576,143 @@ function CxP() {
           </div>
         </>
       )}
+    </>
+  );
+}
+
+const ACTIVO_TIPOS = [
+  { value:'equipo', label:'Equipo' },
+  { value:'vehiculo', label:'Vehiculo' },
+  { value:'mueble', label:'Mueble' },
+  { value:'intangible', label:'Intangible' },
+  { value:'otro', label:'Otro' },
+];
+
+function ActivosFijos() {
+  const { comprasGastos = [], centrosCosto = [], crearGasto, addNotificacion } = useApp();
+  const today = new Date().toISOString().split('T')[0];
+  const [panel, setPanel] = useState(false);
+  const [sel, setSel] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const init = { descripcion:'', activo_tipo:'equipo', fecha:today, monto:'', moneda:'PEN', vida_util_anos:'', centro_costo_id:'', proveedor_referencia:'', notas:'', archivo_url:'', activo_estado:'activo' };
+  const [form, setForm] = useState(init);
+  const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const cecoNombre = id => {
+    const c = (centrosCosto || []).find(x => x.id === id);
+    return c ? `${c.codigo || c.id} - ${c.nombre}` : (id || '-');
+  };
+  const activos = (comprasGastos || [])
+    .filter(g => g.es_activo_fijo)
+    .sort((a,b) => String(a.fecha || '').localeCompare(String(b.fecha || '')) || String(a.id || '').localeCompare(String(b.id || '')))
+    .map((g, i) => ({ ...g, codigo_af: g.codigo_af || `AF-${String(i + 1).padStart(3,'0')}`, activo_estado: g.activo_estado || g.estado_activo || 'activo' }));
+  const activosActivos = activos.filter(a => a.activo_estado === 'activo' && a.estado !== 'anulado');
+  const anioActual = new Date().getFullYear();
+  const valorPeriodo = activos.filter(a => new Date(`${a.fecha || today}T00:00:00`).getFullYear() === anioActual).reduce((s,a) => s + Number(a.monto || 0), 0);
+  const vidaCumplida = a => {
+    if (!a.fecha || !a.vida_util_anos) return false;
+    const fin = new Date(`${a.fecha}T00:00:00`);
+    fin.setFullYear(fin.getFullYear() + Number(a.vida_util_anos));
+    return fin <= new Date(`${today}T00:00:00`);
+  };
+  const porDarBaja = activosActivos.filter(vidaCumplida);
+  const reset = () => { setPanel(false); setForm(init); };
+
+  const exportarExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(activosActivos.map(a => ({
+      codigo: a.codigo_af,
+      descripcion: a.descripcion,
+      tipo: a.activo_tipo || '',
+      fecha_adquisicion: a.fecha || '',
+      valor_adquisicion: Number(a.monto || 0),
+      moneda: a.moneda || 'PEN',
+      vida_util_anos: a.vida_util_anos || '',
+      ceco: cecoNombre(a.centro_costo_id),
+      estado: a.activo_estado,
+      origen_registro: a.origen_registro || 'compras_gastos',
+      gasto_origen_id: a.id,
+      referencia: a.num_comprobante || a.proveedor_referencia || a.referencia_pago || '',
+      notas: a.notas || '',
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Activos Fijos');
+    XLSX.writeFile(wb, `activos_fijos_${today}.xlsx`);
+  };
+
+  const guardar = async e => {
+    e.preventDefault();
+    if (!form.descripcion.trim() || !form.monto || !form.fecha || !form.vida_util_anos) {
+      addNotificacion('Completa nombre, fecha, valor y vida util.');
+      return;
+    }
+    setGuardando(true);
+    try {
+      await crearGasto({
+        tipo: 'activo_fijo',
+        descripcion: form.descripcion.trim(),
+        categoria: 'Activos fijos',
+        monto: Number(form.monto || 0),
+        moneda: form.moneda || 'PEN',
+        fecha: form.fecha,
+        centro_costo_id: form.centro_costo_id || null,
+        es_activo_fijo: true,
+        activo_tipo: form.activo_tipo,
+        vida_util_anos: Number(form.vida_util_anos),
+        origen_registro: 'backoffice',
+        estado: 'registrado',
+        activo_estado: form.activo_estado,
+        proveedor_referencia: form.proveedor_referencia || null,
+        notas: form.notas || null,
+        archivo_url: form.archivo_url || null,
+      });
+      reset();
+      addNotificacion('Activo fijo registrado.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const eventos = a => [
+    { fecha: a.created_at || a.fecha || '-', texto: `Alta registrada desde ${a.origen_registro || 'compras_gastos'}` },
+    ...(a.activo_estado !== 'activo' ? [{ fecha: today, texto: `Estado actual: ${a.activo_estado}` }] : []),
+    ...(a.notas ? [{ fecha: a.fecha || '-', texto: a.notas }] : []),
+  ];
+
+  return (
+    <>
+      <div className="page-header">
+        <div><h1 className="page-title">Activos Fijos</h1><div className="page-sub">Kardex de activos registrados en compras_gastos</div></div>
+        <div className="row"><button className="btn btn-secondary" onClick={exportarExcel}>{I.download} Exportar a Excel</button><button className="btn btn-primary" onClick={() => setPanel(true)}>{I.plus} Nuevo activo</button></div>
+      </div>
+      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)'}}>
+        <div className="kpi-card"><div className="kpi-label">Activos activos</div><div className="kpi-value">{activosActivos.length}</div><div className="kpi-icon green">{I.package}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Valor adquirido {anioActual}</div><div className="kpi-value" style={{fontSize:22}}>{money(valorPeriodo)}</div><div className="kpi-icon cyan">{I.dollar}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Por dar de baja</div><div className="kpi-value" style={{color:porDarBaja.length?'var(--orange)':undefined}}>{porDarBaja.length}</div><div className="kpi-icon orange">{I.clock}</div></div>
+      </div>
+      <div className="card mt-6"><div className="table-wrap"><table className="tbl">
+        <thead><tr><th>Codigo</th><th>Activo</th><th>Tipo</th><th>Adquisicion</th><th>Valor</th><th>Vida util</th><th>CECO</th><th>Estado</th><th>Origen</th></tr></thead>
+        <tbody>{activos.length ? activos.map(a => (
+          <tr key={a.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => setSel(a)}>
+            <td className="mono" style={{fontWeight:700}}>{a.codigo_af}</td><td><strong>{a.descripcion}</strong></td><td>{ACTIVO_TIPOS.find(t => t.value === a.activo_tipo)?.label || a.activo_tipo || '-'}</td><td className="text-muted">{a.fecha || '-'}</td><td className="num"><strong>{money(Number(a.monto || 0), symOf(a.moneda))}</strong></td><td className="num">{a.vida_util_anos ? `${a.vida_util_anos} anos` : '-'}</td><td className="text-muted" style={{fontSize:11}}>{cecoNombre(a.centro_costo_id)}</td><td><span className={'badge '+(a.activo_estado === 'activo' ? 'badge-green' : a.activo_estado === 'mantenimiento' ? 'badge-orange' : 'badge-gray')}>{String(a.activo_estado).replace('_',' ')}</span></td><td>{a.origen_registro === 'backoffice' ? <span className="badge badge-cyan">Backoffice</span> : <span className="badge badge-gray">Compras</span>}</td>
+          </tr>
+        )) : <tr><td colSpan="9" className="text-center text-muted" style={{padding:32}}>No hay activos fijos registrados.</td></tr>}</tbody>
+      </table></div></div>
+
+      {panel && <><div className="side-panel-backdrop" onClick={reset}/><div className="side-panel" style={{width:'min(560px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Alta manual</div><div style={{fontWeight:700,fontSize:20}}>Nuevo activo fijo</div></div><button className="icon-btn" onClick={reset}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardar}>
+        <div className="input-group"><label>Nombre / descripcion</label><input className="input" value={form.descripcion} onChange={e => setForm(v => ({...v,descripcion:e.target.value}))}/></div>
+        <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Tipo</label><select className="select" value={form.activo_tipo} onChange={e => setForm(v => ({...v,activo_tipo:e.target.value}))}>{ACTIVO_TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></div><div className="input-group"><label>Fecha adquisicion</label><input className="input" type="date" value={form.fecha} onChange={e => setForm(v => ({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Valor</label><input className="input" type="number" min="0" step="0.01" value={form.monto} onChange={e => setForm(v => ({...v,monto:e.target.value}))}/></div><div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e => setForm(v => ({...v,moneda:e.target.value}))}><option value="PEN">PEN</option><option value="USD">USD</option></select></div><div className="input-group"><label>Vida util en anos</label><input className="input" type="number" min="1" step="1" value={form.vida_util_anos} onChange={e => setForm(v => ({...v,vida_util_anos:e.target.value}))}/></div><div className="input-group"><label>Estado</label><select className="select" value={form.activo_estado} onChange={e => setForm(v => ({...v,activo_estado:e.target.value}))}><option value="activo">Activo</option><option value="mantenimiento">En mantenimiento</option><option value="dado_baja">Dado de baja</option></select></div></div>
+        <div className="input-group"><label>CECO</label><select className="select" value={form.centro_costo_id} onChange={e => setForm(v => ({...v,centro_costo_id:e.target.value}))}><option value="">Sin CECO</option>{cecos.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}</select></div>
+        <div className="input-group"><label>Proveedor o referencia</label><input className="input" value={form.proveedor_referencia} onChange={e => setForm(v => ({...v,proveedor_referencia:e.target.value}))}/></div>
+        <div className="input-group"><label>Adjunto del comprobante o contrato</label><input className="input" type="file" accept="image/*,.pdf" onChange={e => setForm(v => ({...v,archivo_url:e.target.files[0] ? URL.createObjectURL(e.target.files[0]) : ''}))}/></div>
+        <div className="input-group"><label>Notas</label><textarea className="input" rows="3" value={form.notas} onChange={e => setForm(v => ({...v,notas:e.target.value}))}/></div>
+        <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={reset}>Cancelar</button><button className="btn btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar activo'}</button></div>
+      </form></div></>}
+
+      {sel && <><div className="side-panel-backdrop" onClick={() => setSel(null)}/><div className="side-panel" style={{width:'min(560px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">{sel.codigo_af}</div><div style={{fontWeight:700,fontSize:20}}>{sel.descripcion}</div></div><button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button></div><div className="side-panel-body">
+        <div className="card" style={{padding:14,marginBottom:14}}><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>{[['Tipo', ACTIVO_TIPOS.find(t => t.value === sel.activo_tipo)?.label || sel.activo_tipo || '-'],['Estado', sel.activo_estado],['Fecha adquisicion', sel.fecha || '-'],['Valor', money(Number(sel.monto || 0), symOf(sel.moneda))],['Vida util', sel.vida_util_anos ? `${sel.vida_util_anos} anos` : '-'],['CECO', cecoNombre(sel.centro_costo_id)]].map(([l,v]) => <div key={l}><div style={{fontSize:10,color:'var(--fg-muted)'}}>{l}</div><div style={{fontWeight:600,fontSize:13}}>{v}</div></div>)}</div></div>
+        <div className="card" style={{padding:14,marginBottom:14}}><div style={{fontSize:12,color:'var(--fg-muted)',fontWeight:700,marginBottom:8}}>Datos para depreciacion</div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}><div><div style={{fontSize:10,color:'var(--fg-muted)'}}>Valor base</div><strong>{money(Number(sel.monto || 0), symOf(sel.moneda))}</strong></div><div><div style={{fontSize:10,color:'var(--fg-muted)'}}>Vida util</div><strong>{sel.vida_util_anos || '-'} anos</strong></div><div><div style={{fontSize:10,color:'var(--fg-muted)'}}>Fecha inicio</div><strong>{sel.fecha || '-'}</strong></div></div></div>
+        <div className="card" style={{padding:14,marginBottom:14}}><div style={{fontSize:12,color:'var(--fg-muted)',fontWeight:700,marginBottom:8}}>Origen</div><div style={{fontSize:13}}>Registro: <span className="mono">{sel.id}</span></div><div style={{fontSize:13}}>Referencia: {sel.num_comprobante || sel.proveedor_referencia || sel.referencia_pago || '-'}</div>{sel.archivo_url && <a className="btn btn-secondary btn-sm mt-4" href={sel.archivo_url} target="_blank" rel="noreferrer">{I.file} Ver adjunto</a>}</div>
+        <div className="card" style={{padding:14}}><div style={{fontSize:12,color:'var(--fg-muted)',fontWeight:700,marginBottom:8}}>Historial de eventos</div>{eventos(sel).map((ev,i) => <div key={i} style={{padding:'8px 0',borderBottom:i<eventos(sel).length-1?'1px solid var(--border-subtle)':'none'}}><div style={{fontSize:11,color:'var(--fg-muted)'}}>{ev.fecha}</div><div style={{fontSize:13}}>{ev.texto}</div></div>)}</div>
+      </div></div></>}
     </>
   );
 }
@@ -5650,4 +6211,4 @@ function Presupuestos() {
   );
 }
 
-export { CxC, Tesoreria, Resultados, Facturacion, Ventas, CajaChica, PrestamosPersonal, CxP, Presupuestos };
+export { CxC, Tesoreria, Resultados, Facturacion, Ventas, CajaChica, PrestamosPersonal, CxP, ActivosFijos, Presupuestos };

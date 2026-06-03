@@ -111,6 +111,10 @@ export async function actualizarOT(supabase, otId, datos) {
   if (datos.avance !== undefined) {
     row.avance_pct = datos.avance;
   }
+  if (datos.avance_supervisor_pct !== undefined) row.avance_supervisor_pct = datos.avance_supervisor_pct;
+  if (datos.avance_supervisor_nota !== undefined) row.avance_supervisor_nota = datos.avance_supervisor_nota || null;
+  if (datos.avance_supervisor_en !== undefined) row.avance_supervisor_en = datos.avance_supervisor_en || null;
+  if (datos.avance_supervisor_por !== undefined) row.avance_supervisor_por = datos.avance_supervisor_por || null;
   if (datos.costoReal !== undefined) {
     row.costo_real = datos.costoReal;
   }
@@ -185,6 +189,169 @@ async function selectRows(supabase, table, empresaId, apply = q => q) {
     return [];
   }
   return result?.data || [];
+}
+
+export async function cargarTareasOT(supabase, otId, empresaId) {
+  if (!supabase || !otId || !empresaId) return [];
+  const tareas = await selectRows(supabase, 'ot_tareas', empresaId, q =>
+    q.eq('ot_id', otId).order('orden', { ascending: true }).order('creado_en', { ascending: true })
+  );
+  const partes = await selectRows(supabase, 'partes_diarios', empresaId, q =>
+    q.eq('orden_trabajo_id', otId).eq('estado', 'aprobado')
+  );
+  return tareas.map(t => {
+    const vinculados = partes.filter(p => p.tarea_id === t.id);
+    const horas = vinculados.reduce((s, p) => s + toNumber(p.horas_normales ?? p.horas), 0);
+    const ultimo = [...vinculados].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')))[0] || null;
+    return {
+      ...t,
+      horas_reales: t.horas_reales ?? horas,
+      ultima_actividad_fecha: ultimo?.fecha || null,
+      ultimo_parte_numero: ultimo?.numero || ultimo?.id || null,
+    };
+  });
+}
+
+export async function cargarTareasPendientesTecnico(supabase, tecnicoId, empresaId) {
+  if (!supabase || !tecnicoId || !empresaId) return [];
+  const rows = await selectRows(supabase, 'ot_tareas', empresaId, q =>
+    q.eq('tecnico_id', tecnicoId).eq('completada', false).order('actualizado_en', { ascending: false })
+  );
+  const otIds = [...new Set(rows.map(r => r.ot_id).filter(Boolean))];
+  const ots = otIds.length
+    ? await selectRows(supabase, 'ordenes_trabajo', empresaId, q => q.in('id', otIds))
+    : [];
+  return rows.map(t => ({ ...t, ot: ots.find(o => o.id === t.ot_id) || null }));
+}
+
+export async function crearTarea(supabase, datos, empresaId) {
+  if (!supabase || !empresaId) return { data: null, error: null };
+  const row = {
+    id: datos.id,
+    empresa_id: empresaId,
+    ot_id: datos.ot_id,
+    titulo: datos.titulo || datos.descripcion,
+    descripcion: datos.descripcion || null,
+    tecnico_id: datos.tecnico_id || null,
+    tecnico_nombre: datos.tecnico_nombre || null,
+    tecnico_tipo: datos.tecnico_tipo || null,
+    estado: datos.estado || 'pendiente',
+    horas_estimadas: datos.horas_estimadas !== '' ? (Number(datos.horas_estimadas) || null) : null,
+    horas_reales: datos.horas_reales ?? 0,
+    avance_pct: datos.avance_pct ?? 0,
+    completada: Boolean(datos.completada),
+    orden: Number(datos.orden || 0),
+    creado_por: datos.creado_por || null,
+  };
+  return supabase.from('ot_tareas').insert(row).select('*').single();
+}
+
+export async function actualizarAvanceTarea(supabase, tareaId, avancePct, empresaId) {
+  if (!supabase || !tareaId || !empresaId) return { data: null, error: null };
+  return supabase
+    .from('ot_tareas')
+    .update({ avance_pct: Number(avancePct || 0), actualizado_en: new Date().toISOString() })
+    .eq('id', tareaId)
+    .eq('empresa_id', empresaId)
+    .select('*')
+    .single();
+}
+
+export async function completarTarea(supabase, tareaId, usuarioNombre, empresaId) {
+  if (!supabase || !tareaId || !empresaId) return { data: null, error: null };
+  const partes = await selectRows(supabase, 'partes_diarios', empresaId, q =>
+    q.eq('tarea_id', tareaId).eq('estado', 'aprobado')
+  );
+  const horas = partes.reduce((s, p) => s + toNumber(p.horas_normales ?? p.horas), 0);
+  return supabase
+    .from('ot_tareas')
+    .update({
+      estado: 'completada',
+      completada: true,
+      completada_en: new Date().toISOString(),
+      completada_por: usuarioNombre || null,
+      horas_reales: horas,
+    })
+    .eq('id', tareaId)
+    .eq('empresa_id', empresaId)
+    .select('*')
+    .single();
+}
+
+export async function reabrirTarea(supabase, tareaId, empresaId) {
+  if (!supabase || !tareaId || !empresaId) return { data: null, error: null };
+  return supabase
+    .from('ot_tareas')
+    .update({ estado: 'en_progreso', completada: false, completada_en: null, completada_por: null })
+    .eq('id', tareaId)
+    .eq('empresa_id', empresaId)
+    .select('*')
+    .single();
+}
+
+export async function actualizarAvanceSupervisor(supabase, otId, avanceNuevo, nota, usuarioNombre, empresaId) {
+  if (!supabase || !otId || !empresaId) return { data: null, error: null };
+  const { data: actual } = await supabase
+    .from('ordenes_trabajo')
+    .select('avance_supervisor_pct, avance_pct')
+    .eq('id', otId)
+    .eq('empresa_id', empresaId)
+    .maybeSingle();
+  const avanceAnterior = actual?.avance_supervisor_pct ?? actual?.avance_pct ?? null;
+  const now = new Date().toISOString();
+  const updatePayload = {
+    avance_supervisor_pct: Number(avanceNuevo),
+    avance_supervisor_nota: nota,
+    avance_supervisor_en: now,
+    avance_supervisor_por: usuarioNombre || null,
+    avance_pct: Number(avanceNuevo),
+    updated_at: now,
+  };
+  const otResult = await supabase
+    .from('ordenes_trabajo')
+    .update(updatePayload)
+    .eq('id', otId)
+    .eq('empresa_id', empresaId)
+    .select('*')
+    .single();
+  if (otResult?.error) return otResult;
+  await supabase.from('ot_avance_historial').insert({
+    empresa_id: empresaId,
+    ot_id: otId,
+    avance_anterior: avanceAnterior,
+    avance_nuevo: Number(avanceNuevo),
+    nota,
+    registrado_por: usuarioNombre || null,
+  });
+  return otResult;
+}
+
+export async function cargarHistorialAvance(supabase, otId, empresaId) {
+  if (!supabase || !otId || !empresaId) return [];
+  return selectRows(supabase, 'ot_avance_historial', empresaId, q =>
+    q.eq('ot_id', otId).order('registrado_en', { ascending: false })
+  );
+}
+
+export async function procesarCierreOTConTareas(supabase, otId, tareasPendientesIds, notaSnapshot, usuarioNombre, empresaId) {
+  if (!supabase || !otId || !empresaId) return { data: null, error: null };
+  const now = new Date().toISOString();
+  if (tareasPendientesIds && tareasPendientesIds.length > 0) {
+    await supabase.from('ot_tareas')
+      .update({ estado: 'cerrada_sin_completar', actualizado_en: now })
+      .in('id', tareasPendientesIds)
+      .eq('empresa_id', empresaId);
+  }
+  await supabase.from('ot_avance_historial').insert({
+    empresa_id: empresaId,
+    ot_id: otId,
+    avance_anterior: null,
+    avance_nuevo: null,
+    nota: `CIERRE CON TAREAS INCOMPLETAS: ${notaSnapshot}`,
+    registrado_por: usuarioNombre || null,
+    registrado_en: now
+  });
+  return { success: true };
 }
 
 export async function calcularCostoRealOT(supabase, otId, empresaId) {
@@ -329,6 +496,9 @@ export async function persistirParteDiario(supabase, empresaId, parte) {
     numero: parte.numero || null,
     actividad: parte.actividad || parte.descripcion || null,
     avance_pct: parte.avance_reportado || 0,
+    tarea_id: parte.tarea_id || null,
+    avance_tarea_reportado: parte.avance_tarea_reportado ?? null,
+    avance_tarea_validado: parte.avance_tarea_validado ?? null,
     materiales: parte.materiales_usados || [],
     logistica_lineas: parte.logistica_lineas || [],
     terceros_lineas: parte.terceros_lineas || [],
@@ -337,6 +507,9 @@ export async function persistirParteDiario(supabase, empresaId, parte) {
     datos_borrador: parte.estado === 'borrador' ? {
       tareas_trabajadas: parte.tareas_trabajadas || [],
       actividades_adicionales: parte.actividades_adicionales || [],
+      tarea_id: parte.tarea_id || null,
+      avance_tarea_reportado: parte.avance_tarea_reportado ?? null,
+      tarea_completada_reportada: parte.tarea_completada_reportada || false,
       avance_ajustado_manual: parte.avance_ajustado_manual || false,
       avance_global: parte.avance_global || parte.avance_reportado || 0,
       observaciones: parte.observaciones || '',
@@ -460,18 +633,38 @@ export async function loadOpsFromSupabase(supabase, empresaId) {
 
   const q = table => supabase.from(table).select('*').eq('empresa_id', empresaId);
 
-  const [otsR, partesR, backlogR, plannerR, cierresR] = await Promise.all([
+  const [otsR, partesR, backlogR, plannerR, cierresR, tareasR, avanceHistR] = await Promise.all([
     q('ordenes_trabajo').order('created_at', { ascending: false }),
     q('partes_diarios').order('created_at', { ascending: false }),
     q('backlog').order('created_at', { ascending: false }),
     q('planner_asignaciones').neq('estado', 'cancelado').order('fecha', { ascending: true }),
     q('cierres_tecnicos').order('created_at', { ascending: false }),
+    q('ot_tareas').order('orden', { ascending: true }).order('creado_en', { ascending: true }),
+    q('ot_avance_historial').order('registrado_en', { ascending: false }),
   ]);
+
+  const tareasPorOt = (tareasR.data || []).reduce((acc, t) => {
+    const lista = acc.get(t.ot_id) || [];
+    lista.push({
+      ...t,
+      descripcion: t.descripcion || t.titulo,
+      completado: Boolean(t.completada),
+      responsable_id: t.tecnico_id,
+    });
+    acc.set(t.ot_id, lista);
+    return acc;
+  }, new Map());
+  const avanceHistPorOt = (avanceHistR.data || []).reduce((acc, h) => {
+    const lista = acc.get(h.ot_id) || [];
+    lista.push(h);
+    acc.set(h.ot_id, lista);
+    return acc;
+  }, new Map());
 
   const mapOT = (ot) => ({
     ...ot,
     estado: ot.estado === 'cerrado' ? 'cerrada' : ot.estado,
-    avance: ot.avance_pct,
+    avance: ot.avance_supervisor_pct ?? ot.avance_pct,
     costoEst: ot.costo_estimado_ot ?? ot.costo_estimado,
     costo_estimado_ot: ot.costo_estimado_ot,
     costoReal: ot.costo_real,
@@ -486,6 +679,8 @@ export async function loadOpsFromSupabase(supabase, empresaId) {
     responsable_id: ot.tecnico_responsable_id,
     cliente: ot.cuenta_id,
     es_adicional: ot.es_adicional || false,
+    tareas: tareasPorOt.get(ot.id) || [],
+    avance_historial: avanceHistPorOt.get(ot.id) || [],
   });
 
   const mapParte = (p) => ({
@@ -496,6 +691,9 @@ export async function loadOpsFromSupabase(supabase, empresaId) {
     tecnico: p.tecnico_nombre || p.tecnico_id,
     horas: p.horas_normales,
     avance_reportado: p.avance_pct,
+    tarea_id: p.tarea_id,
+    avance_tarea_reportado: p.avance_tarea_reportado,
+    avance_tarea_validado: p.avance_tarea_validado,
     actividades: p.actividad,
     materiales_usados: p.materiales || [],
     logistica_lineas: p.logistica_lineas || [],
@@ -514,7 +712,8 @@ export async function loadOpsFromSupabase(supabase, empresaId) {
     backlog: backlogR.data || [],
     plannerAsignaciones: plannerR.data || [],
     cierresTecnicos: (cierresR.data || []).map(mapCierre),
-    errors: [otsR, partesR, backlogR, plannerR, cierresR]
+    avanceHistorialOT: avanceHistR.data || [],
+    errors: [otsR, partesR, backlogR, plannerR, cierresR, tareasR, avanceHistR]
       .filter(r => r.error)
       .map(r => r.error?.message),
   };

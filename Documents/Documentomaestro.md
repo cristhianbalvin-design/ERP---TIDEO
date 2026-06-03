@@ -1,6 +1,6 @@
 # ERP Modular Estándar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado — TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS · Última actualización: 28/05/2026
+### Arquitectura Multitenant SaaS · Última actualización: 03/06/2026
 
 ---
 
@@ -23,18 +23,18 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 
 ---
 
-## 3. Estado de desarrollo — 28/05/2026
+## 3. Estado de desarrollo — 03/06/2026
 
 ### 3.1 Resumen de progreso
 
 | Área | Estado |
 |------|--------|
-| Módulos implementados (construidos) | ~64 |
+| Módulos implementados (construidos) | ~68 |
 | Módulos en prompt pendiente de implementar | 0 |
 | Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase |
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
-| Migraciones SQL registradas en el repositorio | hasta 172 |
-| Migraciones creadas pendientes de aplicar | Verificar contra Supabase real; incluye `172_costos_world_class_ot_os.sql` |
+| Migraciones SQL registradas en el repositorio | hasta 171 |
+| Migraciones creadas pendientes de aplicar | Verificar contra Supabase real; el repositorio contiene migraciones posteriores al corte anterior (153–171) |
 
 ### 3.2 Inventario completo de módulos
 
@@ -73,16 +73,17 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 #### RRHH
 | Módulo | Estado | Notas |
 |--------|--------|-------|
-| Personal Operativo | ✅ Implementado (en Configuración) | Mover a sección RRHH |
-| Personal Administrativo | ✅ Implementado (en Configuración) | Mover a sección RRHH |
+| Personal Operativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales y datos de nómina/honorarios. |
+| Personal Administrativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales, reportes, comisiones y datos de honorarios. |
 | Control de Asistencia | ✔ Implementado | 4 tabs: diaria, semanal, mensual, resumen. Tardanzas y horas extra automáticas. Registro masivo. |
 | Turnos y Horarios | ✔ Implementado | Módulo standalone `pages_turnos.jsx`. CRUD completo: crear/editar/eliminar con side-panel. Campos: nombre, entrada/salida, tolerancia, cruza medianoche, días laborables (o variables), refrigerio. Preview de horas efectivas en tiempo real. |
 | Nómina Básica | ✔ Implementado | Cálculo completo corregido: AFP 3 componentes, IR 5ta con UIT dinámica, horas extra 25%/35%, CTS computable, bonif. extraordinaria. Régimen MYPE (microempresa/pequeña empresa). Régimen minero 14×7/20×10/28×14 con días computables. Pago quincenal configurable. Config. nómina en Parámetros Generales. Reporte PLAME para períodos cerrados. Cierre de período → egresos en finanzas. |
 | Comisiones | ✔ Implementado | Liquidación, aprobaciones (acuerdos especiales, +48h sin respuesta), retenciones IR de 4ta categoría según suspensión y tipo de cambio, generación de RHE y CxP asociada. |
 | Solicitudes de RRHH | ✔ Implementado | Flujo multietapa: enviada → aprobada_jefe → confirmada_rrhh → activa. Tipos: vacaciones, permiso con/sin goce, licencia médica/maternidad/paternidad, compensación horas. Saldo de vacaciones automático. Calendario de ausencias mensual. Vista mobile con formulario paso a paso. |
+| Control de Horas | ✔ Implementado | Consolidado operativo/administrativo por período: partes, tareos, OTs, tarifa hora, productividad y costos de mano de obra. |
 | Evaluación de Desempeño | ✔ Implementado | 360° básico (autoevaluación + jefe), competencias + objetivos, score ponderado configurable, solo informativo. |
 | Liquidación por Cese | ✔ Implementado | Todos los tipos de cese (renuncia, despido, mutuo acuerdo, vencimiento contrato, fallecimiento). Motor de cálculo: vacaciones truncas, CTS proporcional, gratificación proporcional + bonif. 9%, indemnización según régimen (general/MYPE/microempresa). Genera CxP automática al confirmar. Colaborador queda marcado como cesado. |
-| Préstamos al Personal | ✅ Implementado (como "Préstamos y Pagos") | Mover a sección RRHH |
+| Préstamos al Personal | ✔ Implementado | En sección RRHH. Incluye schema completo, cuotas, saldo, descuento en nómina e historial de pagos. |
 
 #### Logística
 | Módulo | Estado |
@@ -104,9 +105,9 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 #### Administración y Finanzas
 | Módulo | Estado | Notas |
 |--------|--------|-------|
-| Ventas | ✅ Implementado | |
+| Ventas | ✔ Implementado | Pre-facturación con seguimiento. Estados: borrador/confirmada/facturada/anulada. Puente → Facturación con pre-relleno. No alimenta el ER. |
 | Caja Chica y Anticipos | ✅ Implementado | |
-| Préstamos al Personal | ✅ Implementado | Renombrar y mover a sección RRHH |
+| Préstamos al Personal | Retirado de esta sección | Módulo operativo en RRHH. Se conserva aquí solo como referencia histórica de la reorganización. |
 | Financiamiento y Deuda | ✔ Implementado | `pages_fin_deuda.jsx`. Tabla de amortización automática. Intereses → ER. Reporte de deuda 12 meses. |
 | Cuentas por Cobrar | ✅ Implementado | |
 | Cuentas por Pagar | ✅ Implementado | |
@@ -138,8 +139,8 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 |--------|--------|-------|
 | Usuarios | ✅ Implementado | |
 | Roles y Permisos | ✅ Implementado | |
-| Maestros Base | ✅ Implementado | Pendiente: corregir arquitectura (ver sección 5) |
-| Catálogo de Servicios | ✅ Implementado | Pendiente: revisar si formulario es completo |
+| Maestros Base | ✔ Implementado | Catálogos de referencia alineados: áreas, cargos, especialidades, tipos de servicio, almacenes, sedes, industrias, CECO/CEBE, materiales jerárquicos, monedas/impuestos/unidades. |
+| Catálogo de Servicios | ✔ Implementado | Formulario ampliado con campos comerciales/técnicos, moneda, costo, precio, margen, facturable, entregables y notas internas. |
 | Tarifarios | ✅ Implementado | |
 | Parámetros Generales | ✅ Implementado | |
 
@@ -167,46 +168,70 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 
 | Archivo | Responsabilidad | Tamaño aprox. |
 |---------|----------------|---------------|
-| `src/App.jsx` | Router principal, switch de rutas | 44 KB |
-| `src/data.js` | Todos los datasets mock (MOCK export) | 108 KB |
-| `src/context.jsx` | Estado global, funciones de mutación, CRM sync, historial etapas, asistencia, planner | 259 KB |
-| `src/shell.jsx` | Layout, sidebar, header, dark mode, simulador de roles | 26 KB |
-| `src/pages_core.jsx` | Dashboard, CRM, Leads, Pipeline, Campañas, BI Comercial, BI Operativo | 228 KB |
-| `src/pages_ops.jsx` | OT, Partes, Planner, Tickets, RRHH, Compras, Cuentas 360° | 505 KB |
-| `src/pages_admin.jsx` | Configuración, Usuarios, Roles, Maestros, Tesorería, ER, CxC, CxP, Comisiones, Organigrama | 331 KB |
+| `src/App.jsx` | Router principal, lazy imports, switch de rutas, rutas públicas de aceptación/conformidad | 22 KB |
+| `src/AuthGate.jsx` | Login, recuperación/actualización de contraseña y control de sesión Supabase Auth | 24 KB |
+| `src/main.jsx` | Entrada React/Vite | 0.6 KB |
+| `src/data.js` | Datasets mock, permisos, catálogos base, tickets, campañas, hojas de costeo y demás MOCK export | 115 KB |
+| `src/context.jsx` | Estado global, carga Supabase, acciones de mutación, CRM sync, RRHH, finanzas, materiales, documentos, liquidaciones, evaluaciones, tipo de cambio y parámetros generales | 344 KB |
+| `src/shell.jsx` | Layout, sidebar colapsable, header, selector de empresa, dark mode, badges de sidebar y simulador de roles | 31 KB |
+| `src/styles.css` | Sistema visual global, sidebar, tablas, tabs, paneles laterales, vistas responsive y estados | 92 KB |
+| `src/pages_core.jsx` | Dashboard, Cuentas, Leads, Pipeline, OS Cliente, Campañas, BI Comercial, BI Operativo y Agenda Comercial | 415 KB |
+| `src/pages_ops.jsx` | OT, Partes, Planner, Tickets, RRHH Operativo, Asistencia, Nómina, Tareo Administrativo, Control de Horas, Compras y Cuentas 360° | 825 KB |
+| `src/pages_admin.jsx` | Usuarios, Roles, Maestros, Parámetros, RRHH Administrativo, Comisiones, Organigrama y Plataforma SaaS | 457 KB |
 | `src/pages_turnos.jsx` | Turnos y Horarios (CRUD completo, standalone) | 12 KB |
-| `src/pages_api_keys.jsx` | API Keys — generación, permisos, revocación, one-time display | 16 KB |
-| `src/pages_fin.jsx` | CxC, CxP, Facturación, Tesorería, Presupuesto vs Real, Caja Chica, Préstamos | 236 KB |
-| `src/pages_bi_fin.jsx` | BI Financiero (incluye Tab de Presupuestos) | 62 KB |
-| `src/services/presupuestosService.js` | CRUD presupuestos, partidas, aprobaciones de presupuesto | 2.8 KB |
+| `src/pages_api_keys.jsx` | API Keys — generación, permisos, revocación, one-time display | 15 KB |
+| `src/pages_fin.jsx` | CxC, CxP, Ventas persistentes, Facturación, Tesorería, ER, Presupuesto vs Real, Caja Chica, Préstamos | 326 KB |
+| `src/pages_bi_fin.jsx` | BI Financiero (incluye tab de Presupuestos y filtros CECO/CEBE) | 62 KB |
+| `src/pages_extra.jsx` | Cotizaciones, PDFs, aprobación manual, Valorizaciones, Inventario y Hoja de Costeo | 198 KB |
+| `src/pages_fin_deuda.jsx` | Financiamiento y Deuda (standalone) | 27 KB |
+| `src/pages_mobile.jsx` | Vistas de campo móvil/PWA: técnico, logística, vendedor, supervisor, gerencia, administrativo y solicitudes | 194 KB |
+| `src/pages_evaluaciones.jsx` | Evaluación de Desempeño 360°: plantillas, autoevaluación, jefe, resultados y wizard | 57 KB |
+| `src/pages_liquidaciones.jsx` | Liquidación por Cese: wizard, cálculo, confirmación, anulación y detalle | 43 KB |
+| `src/pages_aceptar.jsx` | Páginas públicas de aceptación de cotización y conformidad de OT por token | 24 KB |
+| `src/pages_pdf.jsx` | Componentes PDF para Hoja de Costeo y Cotización | 26 KB |
 | `src/pages_ia.jsx` | IA Comercial, Operativa, Financiera + Historial auditado | 54 KB |
 | `src/pages_cs.jsx` | Customer Success completo | 46 KB |
-| `src/icons.jsx` | Iconografía, helpers money/moneyD | 8.6 KB |
-| `src/lib/hierarchy.js` | ROLE_CATEGORIES, HIERARCHY_LEVELS, getAssignableUsers, getPotentialManagers | 4.9 KB |
-| `src/pages_extra.jsx` | Cotizaciones, Valorizaciones, Inventario, Hoja de Costeo | 51 KB |
-| `src/pages_fin_deuda.jsx` | Financiamiento y Deuda (standalone) | 28 KB |
-| `src/pages_mobile.jsx` | Vistas de campo móvil (MobileFieldView, PWA) | 80 KB |
+| `src/pages_rrhh.jsx` | Archivo residual sin lógica activa | 0.1 KB |
+| `src/icons.jsx` | Iconografía SVG y helpers `money`/`moneyD` | 10 KB |
 | `src/lib/dataMode.js` | VITE_DATA_MODE switch (supabase/mock) | 0.6 KB |
 | `src/lib/currency.js` | Helpers de formateo de moneda | 2.2 KB |
-| `src/services/crmService.js` | loadCrmFromSupabase, normalización, inserts CRM | 23 KB |
-| `src/services/rrhhService.js` | Personal, turnos, asistencia, nómina | 20 KB |
-| `src/services/comprasService.js` | Proveedores, procesos, OC, OS, recepciones | 13 KB |
+| `src/lib/dates.js` | Helpers de fechas, rangos, meses y vencimientos | 1.9 KB |
+| `src/lib/formValidators.js` | Sanitización y validación de teléfono/RUC | 0.7 KB |
+| `src/lib/hierarchy.js` | ROLE_CATEGORIES, HIERARCHY_LEVELS, asignables, managers y visibilidad jerárquica | 5.7 KB |
+| `src/lib/permissions.js` | Helpers de visibilidad por permisos de rol | 0.9 KB |
+| `src/lib/supabaseClient.js` | Cliente Supabase lazy y detección de configuración | 0.8 KB |
+| `src/lib/tenant.js` | Helpers de empresa activa y scoping por tenant | 0.7 KB |
+| `src/lib/textoComercial.js` | Variables comerciales y renderizado de textos parametrizados | 4.7 KB |
+| `src/services/crmService.js` | loadCrmFromSupabase, normalización, inserts/updates CRM, OS, cotizaciones, hojas de costeo, agenda, notificaciones y acuerdos | 29 KB |
+| `src/services/rrhhService.js` | Personal, turnos, asistencia, ciclos mineros, nómina, préstamos y pagos | 29 KB |
+| `src/services/comprasService.js` | Proveedores, procesos, OC, OS, recepciones, inventario, stock y kardex | 12 KB |
 | `src/services/financiamientosService.js` | Financiamientos, amortización, pagos | 10 KB |
-| `src/services/maestrosService.js` | Catálogos, materiales, especialidades | 9.9 KB |
-| `src/services/plannerService.js` | Planner, cuadrillas, asignaciones | 6.7 KB |
-| `src/services/finanzasService.js` | CxC, CxP, facturas, caja chica | 5.3 KB |
-| `src/services/operacionesService.js` | OTs, partes, cierres tecnicos | 6.2 KB |
-| `src/services/ticketsService.js` | CRUD Soporte y Tickets + SLA | 3 KB |
-| `src/services/solicitudesRrhhService.js` | CRUD solicitudes RRHH, aprobaciones, saldo vacaciones, historial | 5 KB |
-| `src/services/storageService.js` | Acceso centralizado a Supabase Storage y tabla `adjuntos` | 5 KB |
-| `src/components/FileUpload.jsx` | Componente reutilizable de carga, listado y eliminación de adjuntos | 8 KB |
-| `src/services/estadoResultadosService.js` | Cálculo ER, agrupación por categoría | 4.2 KB |
+| `src/services/maestrosService.js` | Catálogos, industrias, monedas/impuestos/unidades, CECO/CEBE y servicios | 17 KB |
+| `src/services/materialService.js` | CRUD e importación masiva de grupos, familias, subfamilias y materiales | 17 KB |
+| `src/services/plannerService.js` | Planner, cuadrillas, asignaciones, conflictos y rangos | 7.7 KB |
+| `src/services/finanzasService.js` | CxC, CxP, facturas, ventas, caja chica, cobros, comisiones, RHE, pagos y bancos | 22 KB |
+| `src/services/operacionesService.js` | OTs, partes, cierres técnicos, costo OT, conformidad e inventario consumido | 15 KB |
+| `src/services/ticketsService.js` | CRUD Soporte y Tickets, SLA, QC, hilo de resolución, reapertura y evidencias | 6.5 KB |
+| `src/services/solicitudesRrhhService.js` | CRUD solicitudes RRHH, aprobaciones, saldo vacaciones, historial y config ausencias | 12 KB |
+| `src/services/storageService.js` | Acceso centralizado a Supabase Storage y tabla `adjuntos` | 8.5 KB |
+| `src/services/personalDocumentosService.js` | Documentos de personal: upload, versionado, validación, vencimiento y signed URLs | 7 KB |
+| `src/services/tareosAdminService.js` | Tareo administrativo: carga, OTs del día, CECOs, creación, edición y envío | 5.4 KB |
+| `src/services/tipoCambioService.js` | Tipo de cambio diario, caché en Supabase y conversión PEN/USD/EUR | 2.3 KB |
+| `src/services/nominaService.js` | Períodos, detalle de nómina y configuración de nómina | 3.7 KB |
+| `src/services/evaluacionesDesempenoService.js` | Evaluaciones 360°: plantillas, respuestas, scores y persistencia | 9.8 KB |
+| `src/services/liquidacionesCeseService.js` | Motor de liquidación por cese, CRUD, confirmación y anulación | 18 KB |
+| `src/services/estadoResultadosService.js` | Cálculo ER multi-moneda, devengos, agrupación por categoría y filtros | 17 KB |
 | `src/services/rolesService.js` | Roles, permisos por pantalla | 4.5 KB |
 | `src/services/campanasService.js` | CRUD campañas, métricas de atribución | 2.2 KB |
 | `src/services/usuariosService.js` | Usuarios, membresías, perfiles | 2.4 KB |
 | `src/services/apiKeysService.js` | Generación tdk_ key, hash SHA-256, CRUD api_keys | 2 KB |
 | `src/services/tesoreriaService.js` | Movimientos de tesorería, match bancario | 1.5 KB |
 | `src/services/plataformaService.js` | Empresas/tenants, métricas SaaS | 1.7 KB |
+| `src/services/auditoriaService.js` | Inserción de eventos en `auditoria` | 0.3 KB |
+| `src/services/createMockRepository.js` | Repositorio genérico para modo mock/local | 1.6 KB |
+| `src/services/createSupabaseRepository.js` | Repositorio genérico para tablas Supabase por tenant | 1.4 KB |
+| `src/components/FileUpload.jsx` | Componente reutilizable de carga, listado y eliminación de adjuntos | 9.8 KB |
+| `src/components/SmartTextField.jsx` | Campo de texto con inserción de variables comerciales | 6.1 KB |
 
 ### 3.5 Convenciones técnicas críticas
 
@@ -227,14 +252,23 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 
 **Moneda:** `money(n)` y `moneyD(n)` desde `icons.jsx`. Local en `pages_bi_fin.jsx`: `const S = n => 'S/ ' + n.toLocaleString('es-PE')`.
 
+**Servicios especializados:** los módulos grandes delegan persistencia y reglas de negocio en servicios pequeños dentro de `src/services/`. `context.jsx` coordina estado global y acciones, pero las consultas Supabase específicas viven en servicios como `finanzasService.js`, `materialService.js`, `personalDocumentosService.js`, `tipoCambioService.js`, `nominaService.js`, `evaluacionesDesempenoService.js` y `liquidacionesCeseService.js`.
+
+**Parámetros editables:** series documentarias, plantillas SLA y diccionario comercial se tratan como catálogos configurables por tenant. Se cargan desde `series_documentarias`, `sla_plantillas` y `diccionario_comercial`, con defaults locales cuando Supabase no está configurado.
+
+**Documentos y Storage:** los adjuntos transversales usan `storageService.js` y `FileUpload.jsx`. Excepciones justificadas: evidencias de tickets usan `ticketsService.subirImagenEvidencia` porque se guardan directamente en `ticket_comentarios.imagen_url`; documentos de personal usan `personalDocumentosService.js` y RPCs propias para versionado.
+
+**Costo hora de colaboradores:** el costo de MO para OT, partes, tareos y Control de Horas debe usar `tarifa_hora` cuando exista. Los campos legacy `costo_hora_real`, `costo` y `costo_hora` quedan como fallback de compatibilidad.
+
 ### 3.6 Deuda técnica conocida
 
 | Ítem | Prioridad |
 |------|-----------|
 | `BarsChart` / `DonutChart` sin uso en `pages_core.jsx` (líneas 219-278) | Baja |
 | OTs inline en BIOperativo — deben migrar a `MOCK.ots` | Media |
-| Costo hora en RRHH Operativo es hardcodeado — debe calcularse desde nómina al cerrar período | Media |
-| Compras en Campo: el comprobante físico no se persiste en `compras_gastos`; el número de comprobante y la imagen quedan pendientes para la infraestructura de Storage | Alta |
+| Costo hora legacy (`costo`, `costo_hora_real`, `costo_hora`) todavía aparece como fallback; el campo vigente es `tarifa_hora` calculado desde `monto_mensual / horas_base_mes` | Media |
+| Compras en Campo: el comprobante físico ya tiene infraestructura de Storage disponible, pero debe verificarse módulo por módulo que el flujo mobile/backoffice guarde URL y trazabilidad completas | Alta |
+| Numeración de migraciones locales tiene duplicados (`093`, `105`, `119`, `133`, `144`, `146`, `158`, `168`); preservar historial y verificar aplicación real en Supabase antes de asumir cobertura productiva | Media |
 
 ---
 
@@ -366,9 +400,9 @@ Dos mediciones independientes del mismo trabajador:
 | Medición | Pregunta que responde | Fuente | Período |
 |---------|----------------------|--------|---------|
 | Nómina | ¿Cuánto le pago este mes? | Control de asistencia | Mensual |
-| Costo OT | ¿Cuánto costó esa OT? | Partes diarios | Por OT |
+| Costo OT | ¿Cuánto costó esa OT? | Partes diarios, tareos y tarifa hora | Por OT |
 
-El **costo hora real** se calcula en nómina: `(Sueldo bruto + cargas sociales) ÷ horas laborables`. Ese valor actualiza el campo COSTO/HORA en la ficha del técnico al cerrar el período de nómina y es el que se imputa a las OTs.
+El costo operativo vigente se imputa con `tarifa_hora` del colaborador. Esa tarifa se calcula desde `monto_mensual / horas_base_mes` y se usa en OTs, partes, tareos administrativos y Control de Horas. Nómina sigue midiendo cuánto se paga al trabajador; no reemplaza automáticamente el costo operativo por OT.
 
 ---
 
@@ -380,6 +414,11 @@ BUSINESS INTELLIGENCE
   BI Comercial
   BI Operativo
   BI Financiero
+
+PLATAFORMA
+  Empresas / Tenants
+  Planes y Licencias
+  Métricas SaaS
 
 INTEGRACIONES
   API Keys
@@ -405,25 +444,26 @@ OPERACIONES
   Cierre y Calidad
   Soporte y Tickets
 
-RRHH                          ← SECCIÓN NUEVA
+RRHH
   Personal Operativo
   Personal Administrativo
   Control de Asistencia
   Turnos y Horarios
   Nómina
-  Comisiones                  ← NUEVO
+  Comisiones
   Solicitudes de RRHH
+  Préstamos al Personal
   Tareo Administrativo
+  Control de Horas
   Evaluación de Desempeño
   Liquidación por Cese
-  Préstamos al Personal
 
 LOGÍSTICA
   Almacenes
   SOLPE Interna
   Transporte y Guías
 
-COMPRAS                       ← SECCIÓN NUEVA
+COMPRAS
   Proveedores
   Cotizaciones (compra)
   Órdenes de Compra
@@ -638,6 +678,8 @@ Crear roles con nombre libre. Clonar. Matriz de permisos por pantalla: Ver | Cre
 | Compras/Gastos | `origen_registro` | campo / backoffice |
 | Compras/Gastos | `datos_extraidos_ia` | JSON extracción IA |
 | Leads | `registrado_desde` | campo / web / formulario |
+| Cuentas | `agente_retencion_sunat` | Marca cliente agente de retención SUNAT |
+| Cuentas | `tasa_retencion_sunat` | Tasa de retención aplicable, por defecto 3% |
 
 ---
 
@@ -648,6 +690,7 @@ Fuente de verdad del cliente. Clasificación, industria, segmento, responsable c
 **Mejoras de Cuentas y Contactos:**
 - **Alta comercial en dos momentos:** Momento 1 (Alta comercial rápida) y Momento 2 (Condiciones financieras y fiscales) están completamente desarrollados.
 - **Ficha 360° del Cliente:** Integración del panel CS 360° y panel financiero restringido por RLS y permisos.
+- **Retención SUNAT:** Las condiciones comerciales permiten marcar al cliente como agente de retención SUNAT y definir tasa de retención. Esta configuración viaja al flujo de Facturación/CxC.
 - **En proceso:** Optimización en la usabilidad del filtrado rápido y asignación de gestor comercial/CS.
 
 ---
@@ -708,19 +751,17 @@ Desde oportunidad. Catálogo + tarifarios con auto-relleno. Cálculo en tiempo r
 
 ### 8.10 OS Cliente
 
-**Actualización 03/06/2026 — Control de Costos:** tab adicional visible solo con `ver_costos`. Incluye baseline del contrato, comparativo de OTs, overhead de proyecto, resumen total del contrato y comprometido total. Campos nuevos en `os_clientes`: `presupuesto_estimado`, `overhead_estimado_monto`, `overhead_estimado_pct`, `overhead_modo` (`monto` o `porcentaje`). El real de overhead queda preparado para `tareos_admin.os_id` con `ot_id = null`.
-
 Vinculada a cotización. Panel de saldos: total aprobado / ejecutado / valorizado / facturado / pendiente. Asociación a múltiples OTs. Tabs: OTs, Valorizaciones, Facturas, Historial. Breadcrumb de flujo en pantallas de detalle.
 
 ---
 
 ### 8.11 OT — Orden de Trabajo
 
-**Actualización 03/06/2026 — Tab Costos:** `costo_estimado_ot` es el estimado propio de la OT, editable antes de ejecución y congelado con `estimado_congelado_en` al iniciar. `estimado_detalle` guarda el desglose por MO, materiales, terceros y logística; si falta, se distribuye usando pesos de HC. El costo real se calcula desde partes aprobados y tareos admin con `tarifa_hora` (fallback legacy), materiales desde partes/kardex, terceros desde OSI cerradas y líneas de partes, y logística desde `compras_gastos` y líneas de partes. Incluye comprometidos, EAC y semáforo verde/naranja/rojo. Requiere `ver_costos`.
-
 Tipos: cliente, interna, tercerizada, garantía, correctiva, preventiva, emergencia, proyecto. Facturable / no facturable. Asociación a OS Cliente, proyecto, centro de costo. `direccion_ejecucion` y `ubicacion_gps`. Tareas, materiales, servicios terceros, gastos, evidencias, conformidad. Cierre técnico y económico. Costo real y margen. PDF. Estados con badges de color.
 
 **Participantes administrativos (opcional):** el formulario de creación y la ficha de edición incluyen una sección "Participantes administrativos" separada visualmente del personal operativo/técnico. Permite seleccionar uno o más colaboradores de `personal_administrativo` que participarán en la OT, registrando snapshot de nombre y horas estimadas de participación. Se persiste en el campo JSONB `participantes_admin` de `ordenes_trabajo` (array de `{personal_id, personal_nombre, horas_estimadas}`). Su gestión no toca el Planner.
+
+**Detalle real manual:** el tab de costos puede persistir `real_detalle` en `ordenes_trabajo` para desglosar costos reales ingresados manualmente por mano de obra, materiales, terceros y logística. Complementa el costo calculado desde partes aprobados.
 
 ---
 
@@ -742,13 +783,19 @@ Calendario visual. Vista por técnico, cuadrilla, sede. Validación de disponibi
 
 ### 8.14 RRHH — Personal Operativo
 
-Ficha completa: cargo, especialidad, turno asignado, costo hora (normal y extra). 3 tabs: Personal (tabla con avatar y datos), Disponibilidad (grilla semanal 5d × 6 técnicos), Documentos (SCTR/Médico/EPP/Licencia con semáforo). Sección "Datos de nómina" visible solo con `ver_finanzas`: sueldo base, AFP/ONP, hijos, régimen. Formulario alta: + Nuevo técnico con todos los campos.
+Ficha completa: cargo, especialidad, turno asignado, centro de costo, modalidad de pago y tarifa hora. 3 tabs: Personal (tabla con avatar y datos), Disponibilidad (grilla semanal), Documentos y reportes operativos. Sección "Datos de nómina" visible solo con `ver_finanzas`: sueldo base, AFP/ONP, hijos, régimen, jornada, comisión AFP, suspensión de retenciones, RUC de colaborador y datos para honorarios cuando aplique. Formulario alta: + Nuevo técnico con todos los campos.
+
+**Documentos reales:** SCTR, examen médico, EPP, licencia, carnet minero, certificados, DNI, contrato y otros documentos se gestionan en tabla `personal_documentos`, con versión activa, estado de validación, fecha de vencimiento y archivo privado en Storage. El JSON legacy de documentos ya no es la fuente principal.
+
+**Tarifa hora vigente:** `tarifa_hora` se calcula a partir de `monto_mensual / horas_base_mes`; `costo_hora_real`, `costo` y `costo_hora` se mantienen como fallback legacy.
 
 ---
 
 ### 8.15 RRHH — Personal Administrativo
 
-2 tabs: Personal (ficha completa: contrato, vacaciones, licencias, permisos), Reportes (headcount por área, contratos por vencer, ranking vacaciones, solicitudes pendientes). Formulario alta: + Nuevo colaborador.
+2 tabs principales: Personal (ficha completa: contrato, vacaciones, licencias, permisos, tarifa hora, RUC de colaborador y retención IR cuando aplica) y Reportes (headcount por área, contratos por vencer, ranking vacaciones, solicitudes pendientes). Formulario alta: + Nuevo colaborador.
+
+**Documentos reales:** usa el mismo sistema `personal_documentos` que Personal Operativo, con tipos administrativos (DNI, contrato, SCTR, médico, otros), versionado, validación por RRHH y alertas de vencimiento.
 
 ---
 
@@ -769,6 +816,8 @@ Registro manual: seleccionar trabajador, fecha, hora de entrada, hora de salida.
 **4 tabs:** Vista diaria (tabla del día), Vista semanal (grilla), Vista mensual (resumen por trabajador con totales), Resumen por trabajador (detalle + impacto referencial en nómina + exportar Excel).
 
 **Registro masivo:** modal con todos los trabajadores del día en una sola grilla.
+
+**Régimen minero:** además del registro diario general, el módulo soporta ciclos mineros 14×7, 20×10 y 28×14 mediante `asistencia_ciclos_mineros`. Al crear o actualizar un ciclo se generan registros diarios vinculados por `ciclo_minero_id`, con `regimen_jornada`, días de trabajo/descanso, incidencias y horas extra del ciclo.
 
 ---
 
@@ -808,6 +857,16 @@ Registro manual: seleccionar trabajador, fecha, hora de entrada, hora de salida.
 **Vista mobile:** formulario 3 pasos (tipo → fechas → motivo/documento → confirmación), acciones de aprobación para supervisores.
 
 **Migración:** `146_solicitudes_rrhh.sql` — tablas `solicitudes_rrhh`, `solicitudes_rrhh_historial`, `rrhh_config_ausencias`. Función `calcular_dias_habiles`. RPC `crear_solicitud_rrhh` (security definer). Trigger historial append-only. Columna `solicitud_rrhh_id` en `registros_asistencia`.
+
+---
+
+### 8.17c RRHH — Control de Horas
+
+Módulo de consolidación mensual de horas y costos de personal. Cruza partes diarios, tareos administrativos, OTs y fichas de personal para mostrar productividad, horas OT, horas libres, tarifa hora, costo de mano de obra y alertas de subregistro.
+
+**Alcance:** muestra personal operativo y administrativo en vistas separadas. Usa `tarifa_hora` como fuente vigente del costo horario y conserva fallback a campos legacy si la tarifa todavía no existe.
+
+**Uso esperado:** RRHH, Operaciones y Finanzas revisan desviaciones entre horas registradas, horas esperadas, costo por colaborador y costo aplicado a OT. Este módulo no reemplaza Nómina; sirve para control operativo y costeo.
 
 ---
 
@@ -891,7 +950,7 @@ Módulo central para la liquidación, aprobación de acuerdos especiales y pago 
 
 **3. Liquidación y Canales de Pago:**
 *   **Planilla:** Si la modalidad de comisión es Planilla, al cerrar el período de comisiones se integran en la remuneración bruta del trabajador para su cálculo mensual.
-*   **Honorarios (Recibos por Honorarios):** Si la modalidad es Honorarios, se genera una orden de RHE agrupando sus comisiones aprobadas. Al confirmarse el recibo en el módulo de Comisiones, se crea automáticamente una Cuenta por Pagar (CxP) de tipo `personal` en el módulo financiero.
+*   **Honorarios (Recibos por Honorarios):** Si la modalidad es Honorarios, se genera una orden de RHE agrupando sus comisiones aprobadas. Al confirmarse el recibo en el módulo de Comisiones, se crea automáticamente una Cuenta por Pagar (CxP) de tipo `personal` en el módulo financiero. El recibo puede conservar `numero_rhe`, `moneda_cxp`, `motivo_retencion` y archivos RHE/constancia mediante Storage privado.
 
 **4. Reglas de Retención del Impuesto a la Renta de 4ta Categoría (RHE - Perú):**
 *   **Agente de Retención:** Se evalúa si la empresa es agente de retención (`agente_retencion = true` en `empresa_config`).
@@ -941,7 +1000,9 @@ Módulo informativo de evaluación 360° básica para colaboradores administrati
 
 ### 8.19 RRHH — Préstamos al Personal
 
-Préstamos que la empresa otorga a sus trabajadores. Naturaleza: activo (nos deben). Se descuenta en nómina. Tabla con empleado, monto, cuotas, avance pagado, estado. Toggle "Descontar automáticamente en nómina". No confundir con financiamiento recibido.
+Préstamos que la empresa otorga a sus trabajadores. Naturaleza: activo (nos deben). Se descuenta en nómina. Tabla con trabajador, tipo de trabajador, monto, cuotas, cuota mensual, cuotas pagadas, saldo, estado, fecha de otorgamiento y toggle "Descontar automáticamente en nómina". No confundir con financiamiento recibido.
+
+**Historial de pagos:** `prestamo_pagos` registra pagos manuales o por nómina, con fecha, monto, concepto y período asociado cuando aplica.
 
 ---
 
@@ -1031,17 +1092,16 @@ Confirmar que lo pedido llegó y en qué condición. Verificación ítem por ít
 ### 8.26b Compras en Campo y Registro de Gastos
 
 Registro estructurado de egresos menores y adquisiciones directas fuera del flujo ordinario de Órdenes de Compra.
-*   **Origen:** Puede ser registrado desde campo vía PWA móvil con OCR de comprobante o cargado manualmente desde el backoffice (Administración / Finanzas). La persistencia del comprobante físico queda registrada como deuda técnica.
+*   **Origen:** Puede ser registrado desde campo vía PWA móvil con OCR de comprobante o cargado manualmente desde el backoffice (Administración / Finanzas). El flujo puede generar una CxP cuando el gasto queda pendiente de pago.
 *   **Validación obligatoria de CECO:** El campo de **Centro de Costo (CECO)** es **estrictamente obligatorio** para guardar cualquier gasto. Si no se selecciona un CECO activo, el sistema bloquea el registro con una alerta visual de error.
+*   **Trazabilidad:** `compras_gastos` puede guardar `estado_pago`, `referencia_pago`, `cxp_id`, `periodo_nomina_id`, `personal_id` y `ot_vinc_id`. También soporta marcación de activo fijo (`es_activo_fijo`, `activo_tipo`, `vida_util_anos`).
 *   **Impacto Financiero:** Todos los registros en `compras_gastos` se integran automáticamente en la visualización del Estado de Resultados y en el BI Financiero bajo el período y CECO correspondientes.
 
 ---
 
 ### 8.27 Costos por OT
 
-**Actualización 03/06/2026:** `operacionesService.js` expone `calcularCostoRealOT(ot_id, empresa_id)`, `calcularCostosComprometidosOT(ot_id, empresa_id)` y `calcularCostosOS(os_id, empresa_id)`. Regla de personal mixto: las horas con OT impactan la OT sin importar si el colaborador es operativo o administrativo; horas libres sin OT van al ER del período. `tarifa_hora` es la fuente vigente en `personal_operativo` y `personal_administrativo`.
-
-Costo estimado vs real. Mano de obra (desde parte diario × costo hora real), materiales (desde inventario), servicios terceros, logística, gastos. Margen bruto y porcentual. Visible solo con `ver_costos`.
+Costo estimado vs real. Mano de obra (desde parte diario/tareo × `tarifa_hora` del colaborador), materiales (desde inventario), servicios terceros, logística, gastos y `real_detalle` manual cuando aplica. Margen bruto y porcentual. Visible solo con `ver_costos`.
 
 ---
 
@@ -1055,15 +1115,57 @@ Agrupar OTs en ejecución o cerradas por cliente/período. Aplicar tarifas, desc
 
 ---
 
+### 8.28b Ventas
+
+Módulo de pre-facturación con seguimiento. Permite registrar una venta acordada con el cliente antes de emitir el comprobante. **No alimenta el Estado de Resultados** — el ingreso lo registra únicamente la factura emitida desde este módulo.
+
+**Estados:** `borrador` → `confirmada` → `facturada` / `anulada`. Las transiciones `facturada` y `anulada` son irreversibles (solo lectura en el dropdown). Badges: borrador (gris), confirmada (azul), facturada (verde), anulada (rojo).
+
+**Condición de pago:** `contado` o `crédito`. Si es crédito, se registran `dias_credito` y `fecha_vencimiento_pago` como referencia informativa al momento de facturar. No se genera CxC desde Ventas.
+
+**Flujo:** desde estado `confirmada`, el botón "Emitir Comprobante" navega a Facturación con los datos pre-rellenos (cliente, concepto, monto, moneda, condición de pago). Al confirmar la factura, la venta pasa automáticamente a `facturada` y queda vinculada via `factura_id`.
+
+**Campos en tabla `ventas`:** `condicion_pago` (contado/credito), `dias_credito`, `fecha_vencimiento_pago`, `factura_id` (FK uuid a `facturas`), `cxc_id` (FK a `cxc`).
+
+**Servicios:** `finanzasService.registrarVenta()` inserta sin generar CxC ni factura. `finanzasService.confirmarVenta(ventaId, facturaId, cxcId)` cierra el ciclo marcando la venta como `facturada` y vinculando los IDs.
+
+---
+
 ### 8.29 Facturación
 
-Desde valorización aprobada o OS Cliente. Datos fiscales, impuestos, vencimiento. Notas de crédito/débito. Exportación para facturación electrónica externa.
+Desde valorización aprobada o OS Cliente. Datos fiscales, impuestos, vencimiento. Notas de crédito/débito. Exportación para facturación electrónica externa. La factura puede guardar `archivo_pdf_url` y `archivo_zip_url` para conservar el PDF y ZIP asociados.
+
+**Retención SUNAT por cliente:** si la cuenta está marcada como agente de retención SUNAT (`agente_retencion_sunat = true`), al emitir se guarda snapshot de `aplica_retencion`, `monto_retencion` y `monto_neto_cobrable`. La CxC conserva `monto_retencion` para cobranza y conciliación. La retención no es gasto; reduce el monto neto cobrado y queda como crédito fiscal/tributario a conciliar.
+
+**Boleta de Venta:** tipo de documento disponible junto a Factura en el selector de Comprobante Directo. Serie B (ej. `B001-0001`). RUC del cliente opcional (puede emitirse a consumidor final). IGV incluido en el precio — el formulario muestra solo "Total — IGV incluido", sin desglose de subtotal. Alimenta el ER igual que la Factura via `loadFacturas` (usando el campo `subtotal` = precio neto sin IGV calculado internamente).
+
+**Origen desde Ventas:** cuando se accede desde el botón "Emitir Comprobante" del módulo Ventas, el formulario llega pre-relleno con cliente, concepto, monto y moneda. Se muestra un banner identificando la venta de origen con opción de descartar el vínculo. Al confirmar la emisión, `finanzasService.confirmarVenta()` cierra el ciclo automáticamente en la venta de origen.
+
+---
+
+### 8.29b Cuentas por Pagar
+
+Gestión de obligaciones por pagar a proveedores, colaboradores, RHE externos, viáticos, devoluciones por nota de crédito, nómina y otros conceptos manuales. Permite registrar pagos parciales vía `cxp_pagos`, clasificar para Estado de Resultados con `categoria_er` y `centro_costo_id`, y vincular la CxP con `compras_gastos` para devengo.
+
+**RHE externo:** el usuario registra RUC, nombre del emisor, monto bruto, retención IR, número de RHE y archivo. La CxP queda por el monto neto y conserva `monto_bruto`, `retencion_ir`, `ruc_emisor`, `nombre_emisor`, `archivo_factura_url` y, cuando aplica, `archivo_constancia_url`.
+
+**Viáticos y reembolsos:** CxP de tipo `personal`, vinculada a colaborador y opcionalmente a OT (`ot_vinc_id`).
+
+**Regla ER:** una CxP que representa gasto puede devengarse como fila en `compras_gastos`; si ya tiene `gasto_id`, `recepcion_id`, `no_devengar_er` o fue anulada, no se duplica en ER.
 
 ---
 
 ### 8.30 Tesorería y Match Bancario
 
 Bancos y cuentas. Ingresos vinculados a CxC/anticipo. Egresos vinculados a CxP/gasto/préstamo/cuota de financiamiento. Match bancario: conciliar movimiento bancario con CxC (créditos) o CxP/gasto (débitos). Flujo de caja proyectado vs real.
+
+---
+
+### 8.30b Caja Chica y Anticipos
+
+Caja chica usa tabla persistente `caja_chica` y registra fecha, concepto, monto, moneda, responsable, CECO, categoría, número de comprobante, URL de comprobante y vínculo opcional a `compras_gastos`.
+
+**Anticipos OC:** `oc_anticipos` registra anticipos a proveedores vinculados a órdenes de compra, con monto, moneda, referencia, notas y movimiento relacionado. Sirven para trazabilidad financiera previa a la recepción o facturación del proveedor.
 
 ---
 
@@ -1079,13 +1181,14 @@ GASTOS OPERATIVOS
   Administrativos | Comerciales | Logísticos
   Planilla período (desde nómina cerrada)
   Cargas sociales (desde nómina cerrada)
+  Devengos CxP clasificados por categoría ER
 RESULTADO OPERATIVO
 GASTOS FINANCIEROS
   Intereses de préstamos (desde cuotas de financiamiento pagadas)
 RESULTADO NETO → margen %
 ```
 
-Filtros: período, cliente, proyecto, centro de costo (CECO) y centro de beneficio (CEBE) completamente funcionales mediante MultiSelect. Drill-down por categoría. Comparativo período anterior.
+Filtros: período, cliente, proyecto, centro de costo (CECO) y centro de beneficio (CEBE) completamente funcionales mediante MultiSelect. Drill-down por categoría. Comparativo período anterior. El ER integra **únicamente facturas y boletas** como fuente de ingresos (tabla `facturas`, tipos `factura` y `boleta`, excluyendo `nota_credito` y `nota_debito`), más costos OT, cierres técnicos, `compras_gastos`, CxP devengables, nómina cerrada y pagos de financiamiento. Las ventas directas ya no alimentan el ER — el ingreso lo registra únicamente la factura o boleta emitida.
 
 ---
 
@@ -1278,21 +1381,21 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 ### 9.3 Tablas de negocio (todas con empresa_id)
 
-**CRM:** cuentas, contactos, relacion_cuenta_contacto, leads (+campana_id), oportunidades (+campana_id), campanas, etapas_pipeline, actividades_comerciales, health_score_cliente, lead_historial_estados (append-only, cargada en boot desde Supabase), opp_historial_etapas (id, empresa_id, opp_id, cuenta_id, etapa_desde, etapa_hasta, usuario, creado_en - aplicada en Supabase).
+**CRM:** cuentas (+agente_retencion_sunat, tasa_retencion_sunat), contactos, relacion_cuenta_contacto, leads (+campana_id), oportunidades (+campana_id), campanas, etapas_pipeline, actividades_comerciales, health_score_cliente, lead_historial_estados (append-only, cargada en boot desde Supabase), opp_historial_etapas (id, empresa_id, opp_id, cuenta_id, etapa_desde, etapa_hasta, usuario, creado_en - aplicada en Supabase).
 
 **Integraciones:** api_keys (empresa_id, key_hash, descripcion, permisos text[], activo, creado_por, ultimo_uso_en).
 
-**Comercial:** hojas_costeo (con secciones jsonb: mano_obra, materiales, servicios_terceros, logistica + totales calculados + margen_objetivo_pct + responsable_costeo + cotizacion_id), cotizaciones (+ hoja_costeo_id para trazabilidad), historial_versiones_cotizacion, os_clientes (+presupuesto_estimado, overhead_estimado_monto, overhead_estimado_pct, overhead_modo), condiciones_comerciales.
+**Comercial:** hojas_costeo (con secciones jsonb: mano_obra, materiales, servicios_terceros, logistica + totales calculados + margen_objetivo_pct + responsable_costeo + cotizacion_id), cotizaciones (+ hoja_costeo_id para trazabilidad), historial_versiones_cotizacion, os_clientes, condiciones_comerciales, series_documentarias, diccionario_comercial.
 
-**Operaciones:** backlog, ordenes_trabajo (+ubicacion_gps, direccion_ejecucion, costo_estimado_ot numeric, estimado_detalle jsonb, estimado_congelado_en timestamptz, +participantes_admin jsonb — array de participantes administrativos con personal_id, personal_nombre, horas_estimadas), partes_diarios (+logistica_lineas, terceros_lineas, tecnico_nombre), tickets (id uuid, empresa_id, numero TK por tenant, titulo, descripcion, tipo, canal_entrada, estado, prioridad, cuenta_id/cuenta_nombre, responsable_id/responsable_nombre, fecha_limite_sla, sla_estado calculado, fecha_resolucion, **qc_estado** ∈ {en_revision, observado, aprobado} nullable, **veces_reabierto** integer default 0, **reabierto_en** timestamptz nullable, creado_por, creado_en, actualizado_en), ticket_comentarios (id uuid, empresa_id, **ticket_id** FK→tickets, **tipo** ∈ {observacion, evidencia, aprobacion, reapertura}, **contenido** text, **imagen_url** text nullable — URL pública en bucket `ticket-evidencias`, **usuario_id** uuid nullable, **usuario_nombre** text, creado_en — append-only: INSERT permitido, UPDATE/DELETE prohibidos por RLS), evidencias, conformidad_cliente, remisiones, valorizaciones.
+**Operaciones:** backlog, ordenes_trabajo (+ubicacion_gps, direccion_ejecucion, +participantes_admin jsonb — array de participantes administrativos con personal_id, personal_nombre, horas_estimadas, +real_detalle jsonb para desglose manual de costos reales, +avance_supervisor_pct/+avance_supervisor_nota/+avance_supervisor_en/+avance_supervisor_por para avance global declarado), partes_diarios (+logistica_lineas, terceros_lineas, tecnico_nombre, +tarea_id, +avance_tarea_reportado, +avance_tarea_validado), ot_tareas (tareas estructuradas por OT con responsable operativo/administrativo, estado, horas estimadas/reales, avance_pct y cierre explicito), ot_avance_historial (trazabilidad de cambios de avance global por supervisor), tickets (id uuid, empresa_id, numero TK por tenant, titulo, descripcion, tipo, canal_entrada, estado, prioridad, cuenta_id/cuenta_nombre, responsable_id/responsable_nombre, fecha_limite_sla, sla_estado calculado, fecha_resolucion, **qc_estado** ∈ {en_revision, observado, aprobado} nullable, **veces_reabierto** integer default 0, **reabierto_en** timestamptz nullable, creado_por, creado_en, actualizado_en), ticket_comentarios (id uuid, empresa_id, **ticket_id** FK→tickets, **tipo** ∈ {observacion, evidencia, aprobacion, reapertura}, **contenido** text, **imagen_url** text nullable — URL pública en bucket `ticket-evidencias`, **usuario_id** uuid nullable, **usuario_nombre** text, creado_en — append-only: INSERT permitido, UPDATE/DELETE prohibidos por RLS), sla_plantillas, evidencias, conformidad_cliente, remisiones, valorizaciones.
 
 **Inventario y compras:** almacenes, stock, movimientos_inventario, kardex, solpe_interna, proveedores, documentos_proveedor, evaluaciones_proveedor, contactos_proveedor, procesos_compra, ordenes_compra, ordenes_servicio, recepciones, conformidad_proveedor, traslados_logisticos.
 
-**RRHH:** personal_operativo (+turno_id, sueldo_base, sistema_pensionario, afp_nombre, tiene_hijos, regimen_laboral, cuota_prestamo_mes, descuento_judicial, **regimen_jornada** ∈ {general,minero_14x7,minero_20x10,minero_28x14}, **horas_diarias_pactadas**, **fecha_inicio_ciclo**, **bonif_altitud**, **tipo_comision_afp** ∈ {flujo,mixta}, **pct_comision_afp_flujo**), personal_administrativo (+turno_id, remuneracion, sistema_pensionario, afp_nombre, tiene_hijos, regimen_laboral, cuota_prestamo_mes, descuento_judicial, suspension_retenciones, vencimiento_suspension, **regimen_jornada**, **horas_diarias_pactadas**, **fecha_inicio_ciclo**, **bonif_altitud**, **tipo_comision_afp**, **pct_comision_afp_flujo**), empresa_config (+**regimen_laboral_empresa** ∈ {general,pequena_empresa,microempresa}, **frecuencia_pago** ∈ {mensual,quincenal}, **dia_corte_mensual**, **dia_pago_mensual**, **dia_corte_q1**, **dia_pago_q1**, **dia_corte_q2**, **dia_pago_q2**, **pct_quincena_1**, **uit_vigente**, **rmv_vigente**, **ram_tope_afp**, **pct_prima_seguro**, **eval_peso_autoevaluacion**, **eval_peso_jefe**, **eval_peso_competencias**, **eval_peso_objetivos**, **eval_escala_min**, **eval_escala_max**, **eval_escala_labels**), turnos, registros_asistencia (+solicitud_rrhh_id), tareos_admin (id, empresa_id, personal_id FK→personal_administrativo, personal_nombre, fecha, horas decimal, descripcion, tipo ∈ {ot,libre}, ot_id nullable FK→ordenes_trabajo, ceco_id nullable FK→centros_costo, ceco_nombre, estado ∈ {borrador,enviado}, origen ∈ {mobile,backoffice}, creado_por, creado_en, actualizado_en), **periodos_nomina** (id, empresa_id, anio, mes, quincena nullable ∈ {1,2}, periodo text, fecha_corte, fecha_pago, estado ∈ {abierto,en_proceso,cerrado,anulado}, total_trabajadores, masa_salarial_bruta, total_neto, total_cargas_empresa, cerrado_por, cerrado_en; índice único empresa+anio+mes+quincena), **nomina_detalle** (id, empresa_id, periodo_id FK, trabajador_id, trabajador_tipo, regimen_jornada_snap, regimen_empresa_snap, dias_laborables, dias_laborados, dias_computables, horas_extra_tramo1_min, horas_extra_tramo2_min, sueldo_base, remuneracion_bruta, asignacion_familiar, add_horas_extra, bonif_altitud, otros_ingresos, desc_faltas, desc_tardanzas, aporte_afp, comision_afp_flujo, prima_seguro_afp, desc_onp, retencion_ir, desc_prestamo, desc_anticipo, desc_judicial, total_descuentos, neto, essalud, cts_mensualizado, tiene_cts, gratificacion_mensualizada, bonif_extraordinaria, tiene_gratificacion, vacaciones_mensualizadas, total_cargas, costo_real_empresa, es_quincena, quincena, pct_quincena_aplicado), prestamos_personal, recibos_honorarios (id, empresa_id, vendedor_id, vendedor_nombre, vendedor_ruc, periodo, comisiones_ids, monto_bruto, retencion_ir, monto_neto, estado, creado_en, moneda, personal_id, motivo_retencion), solicitudes_rrhh (id, empresa_id, personal_id, personal_nombre, personal_tipo, aprobador_id, aprobador_nombre, tipo, fecha_inicio, fecha_fin, dias_habiles, motivo, documento_url, requiere_documento, estado, comentario_jefe, comentario_rrhh, motivo_anulacion, fecha_aprobacion_jefe, fecha_confirmacion, confirmado_por, impacto_nomina, dias_a_descontar, registrado_desde, creado_por, creado_en, actualizado_en), solicitudes_rrhh_historial (id, solicitud_id, empresa_id, estado_desde, estado_hasta, comentario, usuario, creado_en), rrhh_config_ausencias (empresa_id, dias_vacaciones_anio, max_dias_permiso_goce, dias_licencia_empresa, pct_max_equipo_ausente), desempeno_plantillas (empresa_id, nombre, descripcion, periodo, estado, pesos auto/jefe y competencias/objetivos, fechas, creado_por), desempeno_competencias (empresa_id, plantilla_id, nombre, descripcion, escala_min, escala_max, orden), desempeno_objetivos (empresa_id, plantilla_id, nombre, descripcion, unidad_medida, meta_numerica, orden), desempeno_evaluaciones (empresa_id, plantilla_id, evaluado snapshot, jefe snapshot, estado, score_autoevaluacion, score_jefe, score_final, comentario_final_jefe), desempeno_respuestas_competencias (empresa_id, evaluacion_id, competencia_id, tipo_evaluador, puntaje, comentario, respondido_por), desempeno_respuestas_objetivos (empresa_id, evaluacion_id, objetivo_id, tipo_evaluador, resultado_real, porcentaje_cumplimiento, comentario, respondido_por). **Campos agregados en personal_operativo y personal_administrativo (migr. 152):** fecha_ingreso date, estado_laboral ∈ {activo,cesado} default activo, fecha_cese date nullable, tipo_cese ∈ {renuncia_voluntaria,despido_arbitrario,mutuo_acuerdo,vencimiento_contrato,fallecimiento} nullable. **liquidaciones_cese** (id uuid, empresa_id, personal_id text, personal_nombre, personal_tipo ∈ {operativo,administrativo}, tipo_cese, fecha_cese date, fecha_ingreso date, anios/meses/dias_servicio, remuneracion_computable, monto_total, estado ∈ {borrador,calculada,confirmada,anulada}, observaciones, motivo_anulacion, beneficiario_nombre, beneficiario_dni, cxp_id uuid FK→cxp, parametros_calculo jsonb, creado/confirmado/anulado_por, *_en timestamps; índice único (empresa_id, personal_id) where estado <> 'anulada'). **liquidaciones_cese_conceptos** (id uuid, empresa_id, liquidacion_id FK, concepto ∈ {remuneracion_pendiente,vacaciones_truncas,cts_proporcional,gratificacion_proporcional,indemnizacion,otros}, descripcion, descripcion_calculo text —fórmula legible—, monto, aplica boolean, motivo_no_aplica, es_descuento boolean, orden).
+**RRHH:** personal_operativo (+turno_id, sueldo_base, sistema_pensionario, afp_nombre, tiene_hijos, regimen_laboral, cuota_prestamo_mes, descuento_judicial, **regimen_jornada** ∈ {general,minero_14x7,minero_20x10,minero_28x14}, **horas_diarias_pactadas**, **fecha_inicio_ciclo**, **bonif_altitud**, **tipo_comision_afp** ∈ {flujo,mixta}, **pct_comision_afp_flujo**, ruc_colaborador, retencion_ir, suspension_retenciones, vencimiento_suspension, metodo_pago ∈ {mensual,por_horas}, monto_mensual, horas_base_mes, tarifa_hora), personal_administrativo (+turno_id, remuneracion, sistema_pensionario, afp_nombre, tiene_hijos, regimen_laboral, cuota_prestamo_mes, descuento_judicial, suspension_retenciones, vencimiento_suspension, ruc_colaborador, retencion_ir, **regimen_jornada**, **horas_diarias_pactadas**, **fecha_inicio_ciclo**, **bonif_altitud**, **tipo_comision_afp**, **pct_comision_afp_flujo**, metodo_pago, monto_mensual, horas_base_mes, tarifa_hora), empresa_config (+**regimen_laboral_empresa** ∈ {general,pequena_empresa,microempresa}, **frecuencia_pago** ∈ {mensual,quincenal}, **dia_corte_mensual**, **dia_pago_mensual**, **dia_corte_q1**, **dia_pago_q1**, **dia_corte_q2**, **dia_pago_q2**, **pct_quincena_1**, **uit_vigente**, **rmv_vigente**, **ram_tope_afp**, **pct_prima_seguro**, **eval_peso_autoevaluacion**, **eval_peso_jefe**, **eval_peso_competencias**, **eval_peso_objetivos**, **eval_escala_min**, **eval_escala_max**, **eval_escala_labels**, condicion_pago_defecto), turnos, registros_asistencia (+solicitud_rrhh_id, regimen_jornada, ciclo_minero_id), asistencia_ciclos_mineros (id, empresa_id, personal_id, personal_nombre, personal_tipo, regimen_jornada, fecha_inicio_ciclo, fecha_fin_ciclo, dias_ciclo_trabajo, dias_ciclo_descanso, estado_ciclo, incidencias jsonb, horas_extra_ciclo), personal_documentos (id, empresa_id, personal_id, personal_tipo, tipo_doc, nombre_archivo, archivo_url, bucket, fecha_emision, fecha_vencimiento, version, activo, estado_validacion, motivo_rechazo, notas, subido_por, subido_desde, revisado_por, revisado_en, creado_en), tareos_admin (id, empresa_id, personal_id FK→personal_administrativo, personal_nombre, fecha, horas decimal, descripcion, tipo ∈ {ot,libre}, ot_id nullable FK→ordenes_trabajo, ceco_id nullable FK→centros_costo, ceco_nombre, estado ∈ {borrador,enviado}, origen ∈ {mobile,backoffice}, creado_por, creado_en, actualizado_en), **periodos_nomina** (id, empresa_id, anio, mes, quincena nullable ∈ {1,2}, periodo text, fecha_corte, fecha_pago, estado ∈ {abierto,en_proceso,cerrado,anulado}, total_trabajadores, masa_salarial_bruta, total_neto, total_cargas_empresa, cerrado_por, cerrado_en; índice único empresa+anio+mes+quincena), **nomina_detalle** (id, empresa_id, periodo_id FK, trabajador_id, trabajador_tipo, regimen_jornada_snap, regimen_empresa_snap, dias_laborables, dias_laborados, dias_computables, horas_extra_tramo1_min, horas_extra_tramo2_min, sueldo_base, remuneracion_bruta, asignacion_familiar, add_horas_extra, bonif_altitud, otros_ingresos, desc_faltas, desc_tardanzas, aporte_afp, comision_afp_flujo, prima_seguro_afp, desc_onp, retencion_ir, desc_prestamo, desc_anticipo, desc_judicial, total_descuentos, neto, essalud, cts_mensualizado, tiene_cts, gratificacion_mensualizada, bonif_extraordinaria, tiene_gratificacion, vacaciones_mensualizadas, total_cargas, costo_real_empresa, es_quincena, quincena, pct_quincena_aplicado), prestamos_personal (trabajador_id, trabajador_tipo, empleado, monto, cuotas, cuota_mensual, cuotas_pagadas, saldo, descontar_nomina, estado, fecha_otorgamiento, notas), prestamo_pagos (id, empresa_id, prestamo_id, fecha, monto, concepto, periodo_id, created_by, created_at), recibos_honorarios (id, empresa_id, vendedor_id, vendedor_nombre, vendedor_ruc, periodo, comisiones_ids, monto_bruto, retencion_ir, monto_neto, estado, creado_en, moneda, personal_id, motivo_retencion, numero_rhe, moneda_cxp), solicitudes_rrhh (id, empresa_id, personal_id, personal_nombre, personal_tipo, aprobador_id, aprobador_nombre, tipo, fecha_inicio, fecha_fin, dias_habiles, motivo, documento_url, requiere_documento, estado, comentario_jefe, comentario_rrhh, motivo_anulacion, fecha_aprobacion_jefe, fecha_confirmacion, confirmado_por, impacto_nomina, dias_a_descontar, registrado_desde, creado_por, creado_en, actualizado_en), solicitudes_rrhh_historial (id, solicitud_id, empresa_id, estado_desde, estado_hasta, comentario, usuario, creado_en), rrhh_config_ausencias (empresa_id, dias_vacaciones_anio, max_dias_permiso_goce, dias_licencia_empresa, pct_max_equipo_ausente), desempeno_plantillas (empresa_id, nombre, descripcion, periodo, estado, pesos auto/jefe y competencias/objetivos, fechas, creado_por), desempeno_competencias (empresa_id, plantilla_id, nombre, descripcion, escala_min, escala_max, orden), desempeno_objetivos (empresa_id, plantilla_id, nombre, descripcion, unidad_medida, meta_numerica, orden), desempeno_evaluaciones (empresa_id, plantilla_id, evaluado snapshot, jefe snapshot, estado, score_autoevaluacion, score_jefe, score_final, comentario_final_jefe), desempeno_respuestas_competencias (empresa_id, evaluacion_id, competencia_id, tipo_evaluador, puntaje, comentario, respondido_por), desempeno_respuestas_objetivos (empresa_id, evaluacion_id, objetivo_id, tipo_evaluador, resultado_real, porcentaje_cumplimiento, comentario, respondido_por). **Campos agregados en personal_operativo y personal_administrativo (migr. 152):** fecha_ingreso date, estado_laboral ∈ {activo,cesado} default activo, fecha_cese date nullable, tipo_cese ∈ {renuncia_voluntaria,despido_arbitrario,mutuo_acuerdo,vencimiento_contrato,fallecimiento} nullable. **liquidaciones_cese** (id uuid, empresa_id, personal_id text, personal_nombre, personal_tipo ∈ {operativo,administrativo}, tipo_cese, fecha_cese date, fecha_ingreso date, anios/meses/dias_servicio, remuneracion_computable, monto_total, estado ∈ {borrador,calculada,confirmada,anulada}, observaciones, motivo_anulacion, beneficiario_nombre, beneficiario_dni, cxp_id uuid FK→cxp, parametros_calculo jsonb, creado/confirmado/anulado_por, *_en timestamps; índice único (empresa_id, personal_id) where estado <> 'anulada'). **liquidaciones_cese_conceptos** (id uuid, empresa_id, liquidacion_id FK, concepto ∈ {remuneracion_pendiente,vacaciones_truncas,cts_proporcional,gratificacion_proporcional,indemnizacion,otros}, descripcion, descripcion_calculo text —fórmula legible—, monto, aplica boolean, motivo_no_aplica, es_descuento boolean, orden).
 
 **Financiamiento:** financiamientos, tabla_amortizacion, pagos_financiamiento.
 
-**Finanzas:** costos_ot, ventas, compras_gastos (+origen_registro, centro_costo_id; comprobante físico pendiente de Storage), caja_chica, anticipos, facturas, cxc, cobranzas, cxp (id, empresa_id, proveedor_id, factura_numero, factura_imagen_url, fecha_emision, fecha_vencimiento, monto_total, monto_pagado, saldo, moneda, estado, created_at, updated_at, tipo_beneficiario, personal_id, recibo_honorarios_id, concepto), pagos, flujo_caja.
+**Finanzas:** costos_ot, ventas (id, empresa_id, numero, anio, correlativo, fecha, cuenta_id, cliente_nombre_snapshot, concepto, monto_total, moneda, estado, **condicion_pago** ∈ {contado,credito} default contado, **dias_credito** integer nullable, **fecha_vencimiento** date nullable, **cxc_id** uuid nullable FK→cxc, **origen_factura_id** uuid nullable FK→facturas, creado_por, creado_en, actualizado_en), comprasGastos (+origen_registro, centro_costo_id, estado_pago, referencia_pago, cxp_id, periodo_nomina_id, personal_id, ot_vinc_id, es_activo_fijo, activo_tipo, vida_util_anos), caja_chica (id, empresa_id, fecha, concepto, monto, moneda, responsable_id/nombre, ceco_id, categoria, num_comprobante, comprobante_url, estado, origen_registro, gasto_id), oc_anticipos, anticipos, facturas (+concepto, condicion_pago, archivo_url, subtotal, igv, archivo_pdf_url, archivo_zip_url, aplica_retencion, monto_retencion, monto_neto_cobrable), cxc (+concepto, moneda, monto_retencion), cobranzas, cxp (id, empresa_id, proveedor_id, factura_numero, factura_imagen_url, fecha_emision, fecha_vencimiento, monto_total, monto_pagado, saldo, moneda, estado, created_at, updated_at, tipo_beneficiario, personal_id, recibo_honorarios_id, concepto, gasto_id, recepcion_id, origen, tipo_comprobante, archivo_factura_url, archivo_constancia_url, ruc_emisor, nombre_emisor, monto_bruto, retencion_ir, motivo_cxp, ot_vinc_id, nc_id, tipo_cambio, moneda_original, monto_original, categoria_er, centro_costo_id), cxp_pagos, pagos, flujo_caja.
 
 **Presupuestos y Pagos:**
 - `cxp_pagos` (id, empresa_id, cxp_id, fecha_pago, monto, cuenta_bancaria, referencia, registrado_por, creado_en)
@@ -1304,7 +1407,7 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 **IA:** ia_logs.
 
-**Maestros:** servicios, familias_servicios, tarifarios, materiales (+codigo_barras, grupo_id, familia_id, subfamilia_id, nro_parte, unidades_contenidas, almacen_id, ubicacion, observacion, precio_unitario), material_grupos, material_familias, material_subfamilias, especialidades_tecnicas, tipos_servicio_interno, almacenes_depositos, centros_costo, sedes, proyectos, empresa_config (+agente_retencion).
+**Maestros:** servicios, familias_servicios, tarifarios, materiales (+codigo_barras, grupo_id, familia_id, subfamilia_id, nro_parte, unidades_contenidas, almacen_id, ubicacion, observacion, precio_unitario), material_grupos, material_familias, material_subfamilias, especialidades_tecnicas, tipos_servicio_interno, almacenes/almacenes_depositos (según módulo), centros_costo, centros_beneficio, sedes, industrias, proyectos, monedas_impuestos_unidades, empresa_config (+agente_retencion).
 
 ### 9.4 Infraestructura de Storage
 
@@ -1361,9 +1464,12 @@ Sin permiso "Ver" → pantalla no aparece en sidebar. Permisos de costos/precios
     *   **Ganada:** Se cambia automáticamente al aprobarse la cotización (ya sea de forma digital o manual), lo que activa la opción de crear la OS Cliente correspondiente.
     *   **Perdida:** Es la única transición netamente manual y requiere obligatoriamente que el usuario ingrese un motivo de pérdida detallado.
 *   Lead requiere fuente y responsable. OT facturable requiere OS Cliente. Descuento sobre límite requiere aprobación. No duplicar facturación por el mismo alcance.
+*   Cliente agente de retención SUNAT: la cuenta guarda `agente_retencion_sunat` y `tasa_retencion_sunat`; al facturar, la retención se copia a factura y CxC como snapshot. La retención reduce el neto cobrable, pero no se clasifica como gasto.
 
 ### 10.4 Compras
 Solo proveedores homologados en selectores de OC. Bloqueados no aparecen. Toda recepción actualiza: OC + inventario (si bien) + CxP + evaluación proveedor.
+
+Las CxP que representan gasto pueden devengarse en `compras_gastos` para alimentar ER. El sistema evita duplicar devengos cuando la CxP ya tiene `gasto_id`, `recepcion_id`, `no_devengar_er` o está anulada.
 
 ### 10.5 RRHH y nómina
 Nómina ≠ costo de OT. Son dos mediciones independientes. Solo los **intereses** de financiamiento son gasto financiero en ER. El capital reduce el pasivo. Préstamos al personal ≠ financiamiento recibido.
@@ -1371,6 +1477,12 @@ Nómina ≠ costo de OT. Son dos mediciones independientes. Solo los **intereses
 **Cese de colaboradores:** Al confirmar una liquidación por cese, el campo `estado_laboral` del colaborador (en `personal_operativo` o `personal_administrativo`) cambia a `cesado` y se registran `fecha_cese` y `tipo_cese` en su ficha. El colaborador desaparece de todos los selectores de personal activo del sistema (Planner, Partes Diarios, Nómina, Solicitudes RRHH, etc.). La CxP generada queda en estado `pendiente` para que Finanzas la gestione. Anular una liquidación confirmada revierte el estado del colaborador a `activo` y anula la CxP con nota de motivo.
 
 **Comisiones y RHE (Impuestos):** Las comisiones liquidadas por RHE se gravan con retención de IR de 4ta categoría (8% por defecto) si la empresa es agente de retención (`agente_retencion = true`), el recibo supera el umbral de S/ 1,500 en PEN (calculado con `tipo_cambio_referencial` en cobros en USD) y el colaborador no tiene suspensión de retenciones activa. Toda liquidación de RHE confirmada genera automáticamente una CxP de tipo `personal` para el colaborador.
+
+**Tarifa hora:** Para costeo operativo, el campo vigente es `tarifa_hora` calculado por trigger desde `monto_mensual / horas_base_mes`. Los campos `costo_hora_real`, `costo` y `costo_hora` solo son fallback legacy.
+
+**Documentos de personal:** Los documentos no se eliminan. Al subir una nueva versión, la versión anterior queda `activo = false`. RRHH valida o rechaza el documento; el vencimiento se calcula por fecha y alimenta alertas.
+
+**Asistencia minera:** Los ciclos mineros generan registros diarios vinculados por `ciclo_minero_id`. Estos registros conviven con asistencia general y sirven para cálculo operativo/nómina.
 
 **Activos para PDF:** Para la emisión de PDFs de cotizaciones, facturas, valorizaciones y boletas, la empresa puede cargar su `logo_url` y `firma_url` en `empresa_config`. Estos archivos se almacenan de manera pública en el bucket `empresa-assets` para garantizar su renderización correcta en los generadores de PDF del servidor y del cliente.
 
@@ -1442,9 +1554,20 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 
 ## 14. Historial de cambios
 
+Nota 03/06/2026: Modelo A para tareas de OT y avance global. Migración 176 crea `ot_tareas`, `ot_avance_historial`, campos de tarea en `partes_diarios` y campos `avance_supervisor_*` en `ordenes_trabajo`. Preventivas/correctivas requieren tareas antes del parte; emergencias/internas mantienen parte libre. El técnico reporta avance de su tarea y el supervisor declara el avance global de la OT con nota obligatoria.
+
 | Fecha | Cambios principales |
 |-------|---------------------|
-| 03/06/2026 | **Control de costos OT/OS (migración 172):** agrega `costo_estimado_ot`, `estimado_detalle`, `estimado_congelado_en` en `ordenes_trabajo`; `presupuesto_estimado` y overhead en `os_clientes`; `os_id` en `tareos_admin`; `ot_id` en OC/OSI. Corrige tab Costos de OT con estimado propio, comprometidos, EAC, semáforo y recálculo desde Supabase. Agrega tab Control de Costos en OS Cliente y funciones `calcularCostoRealOT`, `calcularCostosComprometidosOT`, `calcularCostosOS`. |
+| 03/06/2026 | **Rediseño módulo Ventas: rol cambia a pre-facturación con seguimiento. Ventas ya no alimenta el ER. Nuevos estados: borrador/confirmada/facturada/anulada. Puente Ventas→Facturación con pre-relleno automático. Boleta de Venta agregada como tipo de documento en Facturación. `loadVentas` eliminado de `estadoResultadosService.js`; `loadFacturas` amplía filtro para incluir tipo `boleta`. Migración 174.** |
+| 03/06/2026 | **Módulo Ventas: condición de pago contado/crédito con generación automática de CxC, badges diferenciados por estado, panel de detalle, protección contra doble conteo en ER (`origen_factura_id`), función `registrarVenta` centralizada en `finanzasService.js`. Migración 173.** |
+| 03/06/2026 | **Auditoría de sincronización código → documento maestro:** revisión completa del documento contra archivos fuente, servicios y migraciones locales. Se actualizan fecha, resumen de progreso, inventario de módulos, tabla 3.4 con tamaños reales, convenciones técnicas, detalle funcional, modelo de datos, reglas transversales e historial. Cambios principales incorporados: Control de Horas, documentos reales de personal, ventas persistentes, CxP/RHE avanzada, devengo CxP→ER, tarifa hora de colaboradores, retención SUNAT por cliente, asistencia minera y migraciones 153–171. |
+| 02/06/2026 | **Retención SUNAT por cliente (migración 171):** `cuentas` agrega `agente_retencion_sunat` y `tasa_retencion_sunat`; `facturas` agrega `aplica_retencion`, `monto_retencion` y `monto_neto_cobrable`; `cxc` agrega `monto_retencion`. El flujo de facturación/CxC distingue monto total de monto neto cobrable. |
+| 02/06/2026 | **Tarifa hora por colaborador (migración 170):** `personal_operativo` y `personal_administrativo` agregan `metodo_pago`, `monto_mensual`, `horas_base_mes` y `tarifa_hora`. Trigger `calcular_tarifa_hora_colaborador` calcula tarifa desde monto mensual y horas base. OT, partes, tareos y Control de Horas usan `tarifa_hora` con fallback legacy. |
+| 02/06/2026 | **CxP, RHE, devengo y clasificación ER (migraciones 166, 168 y 169):** `cxp` incorpora campos de RHE externo, origen, motivo, tipo de cambio, moneda original, OT vinculada, categoría ER y CECO. `compras_gastos` guarda trazabilidad hacia CxP, período de nómina, personal y OT. Se habilita devengo CxP→ER evitando duplicidades. |
+| 02/06/2026 | **Ventas y archivos financieros (migraciones 161, 163, 164, 165, 167 y 168):** tabla `ventas` persistente con correlativo por tenant; `facturas` guarda `archivo_pdf_url` y `archivo_zip_url`; buckets `documentos-generales` y `documentos-privados` reforzados; `ticket_comentarios.imagen_url` garantizado; `recibos_honorarios` agrega `motivo_retencion`, `numero_rhe`, `moneda_cxp` y `personal_id`; vista `tickets_con_sla` refrescada para incluir columnas QC. |
+| 31/05/2026 | **Préstamos al Personal y sincronización financiera (migraciones 158 y 160):** `prestamos_personal` se completa con trabajador, cuotas, saldo, descuento nómina, estado y fecha de otorgamiento; nueva tabla `prestamo_pagos`. `valorizaciones`, `facturas` y `cxc` reciben columnas operativas faltantes (`tipo`, `notas`, `modelo_calculo`, `items`, `historial`, `concepto`, `condicion_pago`, `archivo_url`, `subtotal`, `igv`, `moneda`) para evitar rechazos silenciosos desde frontend. |
+| 30/05/2026 | **Costos OT, asistencia minera, egresos y documentos de personal (migraciones 153–159):** `ordenes_trabajo.real_detalle` para costos reales manuales; RUC/retención en personal administrativo y operativo; tabla `asistencia_ciclos_mineros` + `registros_asistencia.ciclo_minero_id`; cierre de egresos con campos CxP/compras_gastos/caja_chica; anticipos OC y activos fijos; tabla `personal_documentos` con versionado, validación y Storage privado. |
+| 02/06/2026 | **Condición de pago por defecto para CxC (migración duplicada 144):** `empresa_config.condicion_pago_defecto` permite fallback configurable para calcular vencimientos de CxC cuando el cliente/factura no trae condición explícita. |
 | 30/05/2026 | **Liquidación por Cese — módulo completo (migración 152):** módulo exclusivo RRHH/Admin para todos los tipos de cese (D.Leg. 728). (1) **Migración `152_liquidaciones_cese.sql`:** campos `fecha_ingreso`, `estado_laboral`, `fecha_cese`, `tipo_cese` añadidos a `personal_operativo` y `personal_administrativo`; tablas `liquidaciones_cese` y `liquidaciones_cese_conceptos` con RLS por `liquidaciones_puede_gestionar`; índice único parcial para máximo una liquidación activa por persona. (2) **`liquidacionesCeseService.js`:** función pura `calcularConceptos(params)` con motor completo (remuneración pendiente, vacaciones truncas, CTS proporcional, gratificación proporcional + bonif. 9%, indemnización por régimen general/MYPE/microempresa); CRUD: `cargarLiquidaciones`, `crearLiquidacion`, `confirmarLiquidacion` (crea CxP + marca cesado), `anularLiquidacion` (revierte colaborador + anula CxP). (3) **`pages_liquidaciones.jsx`:** KPIs (liquidaciones año, monto, pendientes), tabla con filtros, wizard 3 pasos (datos cese → revisión cálculo con parámetros ajustables → confirmación con checkbox), ficha detalle con trazabilidad y acciones según estado. Disclaimer permanente. (4) **Context/router/sidebar/data.js:** estado `liquidacionesCese` y `liquidacionesConceptos`, acciones `crearLiquidacionCtx`, `confirmarLiquidacionCtx`, `anularLiquidacionCtx`, ruta `liquidaciones_cese`, entrada sidebar bajo Evaluación de Desempeño. (5) **Reglas transversales:** al confirmar, colaborador desaparece de selectores activos en toda la app; anular revierte. |
 | 30/05/2026 | **Valorizaciones — pase automático a Pendiente cierre:** al aprobar una valorización, el sistema calcula el acumulado aprobado por OT contra el monto total de la OS Cliente. Si una OT incluida sigue en `ejecucion` y alcanzó 100%, pasa automáticamente a `pendiente_cierre` sin bloquear la aprobación ni el flujo posterior hacia factura/CxC. La notificación informa cuántas OTs fueron movidas. |
 | 30/05/2026 | **Evaluación de Desempeño — módulo completo (migración 151):** 360° básico informativo con autoevaluación + evaluación de jefe, competencias cualitativas, objetivos cuantitativos, score ponderado configurable y resultados visibles al colaborador solo tras cierre de plantilla. (1) **Migración `151_evaluaciones_desempeno.sql`:** columnas de configuración en `empresa_config`; tablas `desempeno_plantillas`, `desempeno_competencias`, `desempeno_objetivos`, `desempeno_evaluaciones`, `desempeno_respuestas_competencias` y `desempeno_respuestas_objetivos`; RLS por tenant, evaluado, jefe directo y RRHH/admin; permisos funcionales `evaluaciones_desempeno`. (2) **Servicio/contexto:** CRUD de plantillas, generación de evaluaciones, guardado de autoevaluación, guardado de evaluación de jefe, reasignación de jefe y cálculo de scores/clasificación. (3) **UI:** pantalla RRHH con tabs Plantillas, Evaluaciones en curso y Resultados; wizard de creación; flujos de colaborador y jefe; resultados individuales y consolidados con exportación Excel. (4) **Parámetros Generales:** nueva configuración de ponderaciones, escala y labels con validación en tiempo real. (5) **Sidebar/router/documentación:** ruta `evaluaciones_desempeno`, badge de pendientes y documento maestro actualizado. |
@@ -1483,9 +1606,3 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 | 28/04/2026 | Arquitectura de entidades: separación Maestros Base vs módulos transaccionales. Flujo Lead → Cuenta corregido (Lead primero, siempre). Formulario nueva cuenta en dos momentos (comercial + financiero). Formulario lead con RUC/Razón social/Industria. Proveedores con ciclo de vida, homologación y evaluación. Sección COMPRAS nueva en sidebar con 5 módulos. Flujo completo de compras: cotización → comparativo → OC/OS → recepción → CxP + evaluación proveedor. Sección RRHH nueva en sidebar. Control de Asistencia con turnos por trabajador y cálculo automático de tardanzas. Nómina Básica con cálculo completo (bruto, AFP/ONP, IR 5ta, cargas empresa), boleta PDF y cierre de período con egreso en finanzas. Separación Préstamos al Personal vs Financiamiento y Deuda. Módulo Financiamiento y Deuda con tabla de amortización automática, conexión de intereses al ER y reporte de deuda a 12 meses. |
 | 27/04/2026 | Wiring F3 completo (13 rutas). BI Financiero nuevo. Dashboard F3 + CS 360° en cuentas. RRHH Admin reportes. Planner Agenda CS. IA historial auditado. Presupuesto vs Real. Tickets mejorado. RRHH Operativo 3 tabs. BI Comercial y BI Operativo completos. Bug fix CSS (tab-bar→tabs, card-header→card-head). |
 | Anterior | Núcleo multitenant, CRM, OT, administración financiera, operaciones extendidas, compras básico, inventario, Customer Success, IA. |
-
-
-# Actualizaciones - Control de Asistencia Régimen Minero
-- **8.17 Control de Asistencia**: Soporte para régimen minero añadido.
-- **9.3 Tablas RRHH**: Tabla `asistencia_ciclos_mineros` creada.
-- **14 Historial de Cambios**: Actualización aplicada.

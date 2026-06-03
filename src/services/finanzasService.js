@@ -223,6 +223,58 @@ export const finanzasService = {
     return data;
   },
 
+  // ── Registrar Venta (pre-facturación) ────────────────────────────────────
+  // Inserta la venta en estado borrador o confirmada.
+  // NO genera CxC ni factura — eso ocurre al emitir el comprobante.
+  async registrarVenta({ empresaId, usuarioId, datos }) {
+    const supabase = await getSupabaseClient();
+
+    const esCredito = datos.condicion_pago === 'credito';
+    const estadoSeguro = ['borrador', 'confirmada'].includes(datos.estado) ? datos.estado : 'borrador';
+
+    const ventaPayload = {
+      empresa_id: empresaId,
+      fecha: datos.fecha,
+      cuenta_id: datos.cuenta_id || null,
+      cliente_nombre_snapshot: datos.cliente_nombre_snapshot,
+      concepto: datos.concepto,
+      monto_total: Number(datos.monto_total),
+      moneda: datos.moneda || 'PEN',
+      estado: estadoSeguro,
+      condicion_pago: datos.condicion_pago || 'contado',
+      dias_credito: esCredito ? (Number(datos.dias_credito) || 30) : null,
+      fecha_vencimiento_pago: esCredito ? (datos.fecha_vencimiento_pago || null) : null,
+      creado_por: usuarioId || null,
+    };
+
+    const { data: venta, error } = await supabase
+      .from('ventas')
+      .insert(ventaPayload)
+      .select()
+      .single();
+    if (error) throw error;
+    return venta;
+  },
+
+  // ── Confirmar Venta (cerrar ciclo al emitir comprobante) ─────────────────
+  // Llamada desde Facturación al confirmar la emisión.
+  async confirmarVenta(ventaId, facturaId, cxcId = null) {
+    const supabase = await getSupabaseClient();
+    const updates = {
+      estado: 'facturada',
+      factura_id: facturaId,
+      ...(cxcId ? { cxc_id: cxcId } : {}),
+    };
+    const { data, error } = await supabase
+      .from('ventas')
+      .update(updates)
+      .eq('id', ventaId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
   async generarCxC(payload) {
     const supabase = await getSupabaseClient();
     const {
@@ -645,6 +697,52 @@ export const finanzasService = {
       .single();
     if (error) throw error;
     return data;
+  },
+
+  // ── Tipos de Gasto Empresa ──────────────────────────────────────────
+
+  async getTiposGasto(empresaId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('tipos_gasto_empresa')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .eq('activo', true)
+      .order('orden');
+    if (error) throw error;
+    return data || [];
+  },
+
+  async insertarTipoGasto(payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('tipos_gasto_empresa')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async actualizarTipoGasto(id, updates) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('tipos_gasto_empresa')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async eliminarTipoGasto(id) {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase
+      .from('tipos_gasto_empresa')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   },
 
   // ── Retención SUNAT ───────────────────────────────────────────────────

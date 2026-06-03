@@ -67,10 +67,12 @@ const SIDEBAR = [
     { key: 'ordenes_compra', label: 'Ordenes de Compra', icon: I.cart },
     { key: 'ordenes_servicio', label: 'Ordenes de Servicio', icon: I.wrench },
     { key: 'recepciones', label: 'Recepciones', icon: I.check },
+    { key: 'compras_gastos', label: 'Compras / Gastos', icon: I.receipt },
   ]},
   { section: 'Administracion', items: [
     { key: 'ventas', label: 'Ventas', icon: I.store },
     { key: 'caja', label: 'Caja Chica', icon: I.card },
+    { key: 'activos_fijos', label: 'Activos Fijos', icon: I.package },
     { key: 'financiamiento', label: 'Financiamiento y Deuda', icon: I.bank },
     { key: 'cxc', label: 'Cuentas por Cobrar', icon: I.dollar },
     { key: 'cxp', label: 'Cuentas por Pagar', icon: I.dollar },

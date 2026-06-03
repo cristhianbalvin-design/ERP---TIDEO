@@ -28,6 +28,7 @@ const CotizacionesCompras = lazy(() => import('./pages_ops.jsx').then(m => ({ de
 const OrdenesCompra       = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.OrdenesCompra })));
 const OrdenesServicio     = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.OrdenesServicio })));
 const Recepciones         = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.Recepciones })));
+const ComprasGastos       = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.ComprasGastos })));
 const ControlAsistencia   = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.ControlAsistencia })));
 const Nomina              = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.Nomina })));
 const Backlog             = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.Backlog })));
@@ -66,6 +67,7 @@ const Ventas            = lazy(() => import('./pages_fin.jsx').then(m => ({ defa
 const CajaChica         = lazy(() => import('./pages_fin.jsx').then(m => ({ default: m.CajaChica })));
 const PrestamosPersonal = lazy(() => import('./pages_fin.jsx').then(m => ({ default: m.PrestamosPersonal })));
 const CxP               = lazy(() => import('./pages_fin.jsx').then(m => ({ default: m.CxP })));
+const ActivosFijos      = lazy(() => import('./pages_fin.jsx').then(m => ({ default: m.ActivosFijos })));
 const Presupuestos      = lazy(() => import('./pages_fin.jsx').then(m => ({ default: m.Presupuestos })));
 const FinanciamientoDeuda = lazy(() => import('./pages_fin_deuda.jsx').then(m => ({ default: m.FinanciamientoDeuda })));
 
@@ -322,6 +324,7 @@ function MainLayout() {
       case 'ordenes_compra':   return <OrdenesCompra/>;
       case 'ordenes_servicio': return <OrdenesServicio/>;
       case 'recepciones':      return <Recepciones/>;
+      case 'compras_gastos':   return <ComprasGastos/>;
       case 'compras':          return <Compras/>;
       case 'cxc':              return <CxC/>;
       case 'tesoreria':        return <Tesoreria/>;
@@ -345,6 +348,7 @@ function MainLayout() {
       case 'solpe':            return <SOLPE/>;
       case 'ventas':           return <Ventas/>;
       case 'caja':             return <CajaChica/>;
+      case 'activos_fijos':    return <ActivosFijos/>;
       case 'prestamos_personal': return <PrestamosPersonal/>;
       case 'financiamiento':   return <FinanciamientoDeuda/>;
       case 'cxp':              return <CxP/>;

@@ -37,26 +37,25 @@ const emptyResult = (periodo = '') => ({
     resultadoNeto: zeroTotals(),
   },
   hasMovements: false,
+  otherCurrenciesWarning: false,
   sourceCounts: {},
 });
 
 const amount = value => Number(value || 0);
-const currencyOf = value => {
-  const currency = normalizeCurrency(value || 'PEN');
-  return ER_CURRENCIES.includes(currency) ? currency : 'PEN';
-};
+// Corrección 2: no colapsar monedas desconocidas a PEN — preservar el código ISO real.
+const currencyOf = value => normalizeCurrency(value || 'PEN');
 
 const addToBlock = (block, label, value, currency = 'PEN') => {
   const numeric = amount(value);
   if (!numeric) return;
   const moneda = currencyOf(currency);
-  block.total[moneda] += numeric;
+  block.total[moneda] = (block.total[moneda] || 0) + numeric;
   let item = block.items.find(i => i.label === label);
   if (!item) {
     item = { label, totals: zeroTotals() };
     block.items.push(item);
   }
-  item.totals[moneda] += numeric;
+  item.totals[moneda] = (item.totals[moneda] || 0) + numeric;
 };
 
 const subtractTotals = (left, right) => Object.fromEntries(
@@ -85,6 +84,10 @@ const finalizeResult = (result, sourceCounts = {}) => {
     || ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin'].some(block =>
       ER_CURRENCIES.some(moneda => amount(er[block].total[moneda]) !== 0)
     );
+  // Corrección 2: detectar monedas fuera de ER_CURRENCIES que no pudieron sumarse.
+  result.otherCurrenciesWarning = ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin'].some(blockKey =>
+    Object.keys(er[blockKey].total).some(k => !ER_CURRENCIES.includes(k) && er[blockKey].total[k] > 0)
+  );
   return result;
 };
 
@@ -105,7 +108,7 @@ const cxpIsRhe = cxp => cxpDocType(cxp) === 'rhe'
   || Boolean(cxp?.recibo_honorarios_id)
   || amount(cxp?.monto_bruto) > 0;
 
-const excludedCxpOrigins = new Set(['nomina', 'nc_devolucion', 'recepcion']);
+const excludedCxpOrigins = new Set(['nomina', 'nc_devolucion', 'recepcion', 'tributos', 'dividendos']);
 const excludedCxpMotives = new Set(['devolucion_nc', 'planilla', 'essalud', 'pensiones', 'ir_5ta']);
 
 const cxpDevengoAmount = cxp => {
@@ -126,6 +129,10 @@ const cxpDevengoLabel = cxp => {
 
 const cxpCanDevengarEr = cxp => {
   if (!cxp || cxpIsCancelled(cxp)) return false;
+  // Corrección 5: excluir si el campo no_devengar_er está activado.
+  if (cxp.no_devengar_er) return false;
+  // Corrección 5: excluir si hay recepcion_id sin importar el campo origen.
+  if (cxp.recepcion_id != null) return false;
   if (excludedCxpOrigins.has(cxpOrigin(cxp))) return false;
   if (excludedCxpMotives.has(cxpMotive(cxp))) return false;
   return cxpDevengoAmount(cxp) > 0;
@@ -216,19 +223,6 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], empr
   });
 }
 
-async function loadVentas(supabase, empresaId, periodo) {
-  const { start, next } = periodBounds(periodo);
-  const { data, error } = await supabase
-    .from('ventas')
-    .select('id, concepto, monto_total, moneda, fecha, estado')
-    .eq('empresa_id', empresaId)
-    .gte('fecha', start)
-    .lt('fecha', next)
-    .neq('estado', 'anulada');
-  if (error) throw error;
-  return data || [];
-}
-
 async function loadFacturas(supabase, empresaId, periodo) {
   const { start, next } = periodBounds(periodo);
   const { data, error } = await supabase
@@ -238,7 +232,7 @@ async function loadFacturas(supabase, empresaId, periodo) {
     .gte('fecha_emision', start)
     .lt('fecha_emision', next)
     .neq('estado', 'anulada')
-    .not('tipo_documento', 'in', '("nota_credito","nota_debito")');
+    .in('tipo_documento', ['factura', 'boleta']);
   if (error) throw error;
   return data || [];
 }
@@ -279,14 +273,16 @@ async function loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds)
   if (effectiveCecoIds) query = query.in('centro_costo_id', effectiveCecoIds);
   const { data, error } = await query;
   if (error) throw error;
-  return (data || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado' && g.categoria !== 'Gastos financieros');
+  // Corrección 3: ya NO se excluye 'Gastos financieros' aquí; el split se hace en getEstadoResultados.
+  return (data || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado');
 }
 
 async function loadCxPDevengos(supabase, empresaId, periodo) {
   const { start, next } = periodBounds(periodo);
   const { data, error } = await supabase
     .from('cxp')
-    .select('id, tipo_beneficiario, tipo_comprobante, factura_numero, concepto, fecha_emision, monto_total, monto_bruto, retencion_ir, moneda, estado, origen, motivo_cxp, gasto_id, recepcion_id, recibo_honorarios_id, personal_id, nombre_emisor, nc_id, categoria_er, centro_costo_id')
+    // Corrección 5: se agrega no_devengar_er al SELECT.
+    .select('id, tipo_beneficiario, tipo_comprobante, factura_numero, concepto, fecha_emision, monto_total, monto_bruto, retencion_ir, moneda, estado, origen, motivo_cxp, gasto_id, recepcion_id, recibo_honorarios_id, personal_id, nombre_emisor, nc_id, categoria_er, centro_costo_id, no_devengar_er')
     .eq('empresa_id', empresaId)
     .gte('fecha_emision', start)
     .lt('fecha_emision', next);
@@ -305,8 +301,9 @@ async function loadNomina(supabase, empresaId, periodo, effectiveCecoIds) {
   const periodosR = await periodosQ;
   if (periodosR.error) throw periodosR.error;
 
+  // Corrección 7: solo períodos cerrados para evitar montos preliminares de períodos abiertos.
   const periodoIds = (periodosR.data || [])
-    .filter(p => p.estado !== 'anulado')
+    .filter(p => p.estado === 'cerrado')
     .map(p => p.id);
   if (!periodoIds.length) return [];
 
@@ -348,6 +345,21 @@ async function loadPagosFinancieros(supabase, empresaId, periodo) {
   }));
 }
 
+// Corrección 1: caja_chica nunca era consultada; los egresos sin gasto_id desaparecían del ER.
+async function loadCajaChica(supabase, empresaId, periodo) {
+  const { start, next } = periodBounds(periodo);
+  const { data, error } = await supabase
+    .from('caja_chica')
+    .select('id, fecha, monto, moneda, categoria, gasto_id, estado')
+    .eq('empresa_id', empresaId)
+    .gte('fecha', start)
+    .lt('fecha', next)
+    .neq('estado', 'anulado');
+  if (error) throw error;
+  // Excluir registros con gasto_id para no duplicar lo que ya recoge loadComprasGastos.
+  return (data || []).filter(r => r.gasto_id == null);
+}
+
 export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], cebeIds = [] } = {}) {
   if (!isSupabaseMode()) return emptyResult(periodo);
   if (!empresaId) throw new Error('No hay empresa activa.');
@@ -356,26 +368,29 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
   const effectiveCecoIds = await resolveCecoFilter(supabase, empresaId, cecoIds, cebeIds);
   const result = emptyResult(periodo);
 
-  const [ventas, facturas, costosOt, comprasGastos, detalleNomina, pagosFinancieros, cxpDevengos] = await Promise.all([
-    loadVentas(supabase, empresaId, periodo),
+  // Corrección 1: se agrega loadCajaChica al bloque paralelo.
+  const [facturas, costosOt, comprasGastos, detalleNomina, pagosFinancieros, cxpDevengos, cajaChica] = await Promise.all([
     loadFacturas(supabase, empresaId, periodo),
     loadCostosOt(supabase, empresaId),
     loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds),
     loadNomina(supabase, empresaId, periodo, effectiveCecoIds),
     loadPagosFinancieros(supabase, empresaId, periodo),
     loadCxPDevengos(supabase, empresaId, periodo),
+    loadCajaChica(supabase, empresaId, periodo),
   ]);
 
-  ventas.forEach(v => {
-    addToBlock(result.er.ingresos, v.concepto || 'Ventas de servicios', v.monto_total, v.moneda);
-  });
+  // Corrección 3: separar compras_gastos operativos de financieros.
+  const comprasGastosOp = comprasGastos.filter(g => g.categoria !== 'Gastos financieros');
+  const comprasGastosFin = comprasGastos.filter(g => g.categoria === 'Gastos financieros');
 
-  // Facturas como fuente de ingresos (subtotal = neto sin IGV, estándar para P&G)
+  // Facturas y boletas como única fuente de ingresos (subtotal = neto sin IGV)
   facturas.forEach(f => {
     addToBlock(result.er.ingresos, 'Ventas de servicios', f.subtotal, f.moneda);
   });
 
   costosOt
+    // Corrección 4: excluir OTs anuladas del Costo de Ventas.
+    .filter(c => c.ordenes_trabajo?.estado !== 'anulada')
     .filter(c => isInPeriod(c.fecha_er, periodo))
     .filter(c => !effectiveCecoIds || matchesIds(c.ordenes_trabajo?.centro_costo_id, effectiveCecoIds))
     .filter(c => !cebeIds?.length || intersectsIds(c.ordenes_trabajo?.centro_beneficio_id, cebeIds))
@@ -388,14 +403,20 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     });
 
   const comprasGastosParaEr = detalleNomina.length
-    ? comprasGastos.filter(g => !g.periodo_nomina_id && norm(g.origen_registro) !== 'nomina')
-    : comprasGastos;
+    ? comprasGastosOp.filter(g => !g.periodo_nomina_id && norm(g.origen_registro) !== 'nomina')
+    : comprasGastosOp;
 
   comprasGastosParaEr.forEach(g => {
     addToBlock(result.er.gastosOp, g.categoria || g.subcategoria || 'Gasto operativo', g.monto, g.moneda);
   });
 
+  // Corrección 3: registros de compras_gastos con categoria Gastos financieros van a gastosFin.
+  comprasGastosFin.forEach(g => {
+    addToBlock(result.er.gastosFin, g.subcategoria || g.descripcion || 'Gastos financieros', g.monto, g.moneda);
+  });
+
   const hasScopedFilters = Boolean(effectiveCecoIds) || Boolean(cebeIds?.length);
+  // La deduplicación usa comprasGastos completo (incluye financieros) para evitar doble conteo de CxPs.
   const cxpDevengosEr = cxpDevengos.filter(cxp => {
     if (!cxpCanDevengarEr(cxp)) return false;
     if (compraCoversCxp(cxp, comprasGastos)) return false;
@@ -405,7 +426,10 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     return true;
   });
   cxpDevengosEr.forEach(cxp => {
-    addToBlock(result.er.gastosOp, cxpDevengoLabel(cxp), cxpDevengoAmount(cxp), cxp.moneda);
+    const label = cxpDevengoLabel(cxp);
+    // Corrección 6: CxP con label Gastos financieros (via categoria_er) va a gastosFin, no gastosOp.
+    const block = label === 'Gastos financieros' ? result.er.gastosFin : result.er.gastosOp;
+    addToBlock(block, label, cxpDevengoAmount(cxp), cxp.moneda);
   });
 
   detalleNomina.forEach(n => {
@@ -418,17 +442,23 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     );
   });
 
+  // Corrección 1: egresos de caja_chica sin gasto_id van a Gastos Operativos.
+  cajaChica.forEach(r => {
+    addToBlock(result.er.gastosOp, r.categoria || 'Caja chica', r.monto, r.moneda);
+  });
+
   pagosFinancieros.forEach(p => {
     addToBlock(result.er.gastosFin, 'Intereses de financiamiento', p.interes, p.moneda);
   });
 
   return finalizeResult(result, {
-    ventas: ventas.length,
     facturas: facturas.length,
-    costos_ot: costosOt.filter(c => isInPeriod(c.fecha_er, periodo)).length,
+    costos_ot: costosOt.filter(c => isInPeriod(c.fecha_er, periodo) && c.ordenes_trabajo?.estado !== 'anulada').length,
     compras_gastos: comprasGastosParaEr.length,
+    compras_gastos_fin: comprasGastosFin.length,
     cxp_devengos: cxpDevengosEr.length,
     detalle_nomina: detalleNomina.length,
     pagos_financiamiento: pagosFinancieros.length,
+    caja_chica: cajaChica.length,
   });
 }

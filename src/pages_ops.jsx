@@ -10,6 +10,7 @@ import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { FileUpload } from './components/FileUpload.jsx';
+import { NuevoEgreso } from './components/NuevoEgreso.jsx';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
@@ -1261,7 +1262,7 @@ function Cuentas() {
 }
 
 function OT({ role }) {
-  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, comprasGastos, ordenesCompra, ordenesServicio, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
+  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, comprasGastos, ordenesCompra, ordenesServicio, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Resumen');
   const prevDetailRef = useRef(null);
@@ -1432,7 +1433,9 @@ function OT({ role }) {
     }
   };
   const [showNuevaTarea, setShowNuevaTarea] = useState(false);
-  const [nuevaTareaForm, setNuevaTareaForm] = useState({ descripcion: '', responsable_id: '', fecha_limite: '' });
+  const [nuevaTareaForm, setNuevaTareaForm] = useState({ titulo: '', descripcion: '', responsable_id: '', tecnico_id: '', fecha_limite: '', horas_estimadas: '', orden: 0 });
+  const [confirmCompletarTarea, setConfirmCompletarTarea] = useState(null);
+  const [avanceSupervisorForm, setAvanceSupervisorForm] = useState({ pct: '', nota: '' });
   const [showAsignarTec, setShowAsignarTec] = useState(false);
   const [asignarTecForm, setAsignarTecForm] = useState({ tecnico_id: '', fecha_inicio: new Date().toISOString().split('T')[0], fecha_fin: '', hora_inicio: '', hora_fin: '' });
   const [tareosAdminOT, setTareosAdminOT] = useState([]);
@@ -1593,8 +1596,31 @@ function OT({ role }) {
       setSavingTareoAdminOT(false);
     }
   };
-  const tareasOT = sel?.tareas || [];
-  const tareasCompletadasOT = tareasOT.filter(t => t.completado || t.estado === 'completada').length;
+  const tareasOT = (sel?.tareas || []).map((t, idx) => ({
+    ...t,
+    titulo: t.titulo || t.descripcion || `Tarea ${idx + 1}`,
+    descripcion: t.descripcion || t.titulo || '',
+    tecnico_id: t.tecnico_id || t.responsable_id || '',
+    tecnico_nombre: t.tecnico_nombre || '',
+    avance_pct: Number(t.avance_pct ?? t.avance ?? 0),
+    horas_reales: Number(t.horas_reales || 0),
+    horas_estimadas: t.horas_estimadas ?? t.horas_est ?? null,
+    completada: Boolean(t.completada || t.completado || t.estado === 'completada'),
+    orden: Number(t.orden || idx),
+  })).sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0));
+  const tareasCompletadasOT = tareasOT.filter(t => t.completada).length;
+  const tipoSelNorm = normalizarEstadoOT(sel?.tipo || sel?.servicio || '');
+  const otRequiereTareas = Boolean(sel) && (tipoSelNorm.includes('preventiva') || (tipoSelNorm.includes('correctiva') && !tipoSelNorm.includes('emerg')));
+  const tareasAbiertasOT = tareasOT.filter(t => !t.completada && t.estado !== 'completada');
+  const avanceCalculadoTareas = tareasOT.length
+    ? Math.round(tareasOT.reduce((s, t) => s + Number(t.avance_pct || 0), 0) / tareasOT.length)
+    : null;
+  const avanceOficialOT = sel?.avance_supervisor_pct ?? (otRequiereTareas ? null : (sel?.avance ?? sel?.avance_pct ?? 0));
+  const puedeGestionarAvanceOT = role.permisos.todo || (Array.isArray(role.permisos.aprobar) && role.permisos.aprobar.includes('partes')) || (Array.isArray(role.permisos.editar) && role.permisos.editar.includes('ot'));
+  const personasTareaOT = {
+    operativos: tecnicosDeOT.length ? tecnicosDeOT : personalOperativoActivo,
+    administrativos: adminsDeOT.length ? adminsDeOT : (personalAdmin || []).filter(esPersonaActivaOT),
+  };
   const avanceOperativo = sel ? (
     sel.estado === 'anulada' ? 0 :
     ['facturada','valorizada'].includes(sel.estado) ? 100 :
@@ -1632,23 +1658,68 @@ function OT({ role }) {
     </div>
   );
 
-  const agregarTarea = () => {
-    if (!nuevaTareaForm.descripcion.trim()) return;
-    const tareas = [...(sel.tareas || []), { id: Date.now(), descripcion: nuevaTareaForm.descripcion, responsable_id: nuevaTareaForm.responsable_id, fecha_limite: nuevaTareaForm.fecha_limite, estado: 'pendiente', completado: false }];
-    actualizarOT(sel.id, { tareas });
-    setSel(s => ({ ...s, tareas }));
-    setNuevaTareaForm({ descripcion: '', responsable_id: '', fecha_limite: '' });
+  const agregarTarea = async () => {
+    const titulo = (nuevaTareaForm.titulo || nuevaTareaForm.descripcion || '').trim();
+    if (!titulo) return;
+    const tecnicoId = nuevaTareaForm.tecnico_id || nuevaTareaForm.responsable_id || '';
+    const persona =
+      [...personasTareaOT.operativos, ...personasTareaOT.administrativos].find(p => p.id === tecnicoId);
+    const tecnicoTipo = personasTareaOT.administrativos.some(p => p.id === tecnicoId) ? 'administrativo' : 'operativo';
+    const tarea = await crearTareaOT(sel.id, {
+      ...nuevaTareaForm,
+      titulo,
+      descripcion: nuevaTareaForm.descripcion,
+      tecnico_id: tecnicoId,
+      tecnico_nombre: persona?.nombre || '',
+      tecnico_tipo: tecnicoId ? tecnicoTipo : '',
+    });
+    setSel(s => ({ ...s, tareas: [...(s.tareas || []), tarea] }));
+    setNuevaTareaForm({ titulo: '', descripcion: '', responsable_id: '', tecnico_id: '', fecha_limite: '', horas_estimadas: '', orden: tareasOT.length });
     setShowNuevaTarea(false);
   };
 
   const toggleTarea = (tareaId) => {
-    const tareas = (sel.tareas || []).map(t => {
-      if (t.id !== tareaId) return t;
-      const completado = !t.completado;
-      return { ...t, completado, estado: completado ? 'completada' : 'pendiente' };
-    });
-    actualizarOT(sel.id, { tareas });
-    setSel(s => ({ ...s, tareas }));
+    const tarea = tareasOT.find(t => t.id === tareaId);
+    if (!tarea) return;
+    if (tarea.completada) {
+      reabrirTareaOT(sel.id, tareaId);
+      setSel(s => ({ ...s, tareas: (s.tareas || []).map(t => t.id === tareaId ? { ...t, completada: false, completado: false, estado: 'en_progreso', completada_en: null, completada_por: null } : t) }));
+      return;
+    }
+    setConfirmCompletarTarea(tarea);
+  };
+
+  const confirmarCompletarTareaOT = () => {
+    if (!confirmCompletarTarea) return;
+    completarTareaOT(sel.id, confirmCompletarTarea.id);
+    setSel(s => ({
+      ...s,
+      tareas: (s.tareas || []).map(t => t.id === confirmCompletarTarea.id ? {
+        ...t,
+        completada: true,
+        completado: true,
+        estado: 'completada',
+        completada_en: new Date().toISOString(),
+        completada_por: authUser?.nombre || authUser?.email || authUser?.id || 'Usuario',
+      } : t),
+    }));
+    setConfirmCompletarTarea(null);
+  };
+
+  const guardarAvanceSupervisor = async () => {
+    const ok = await actualizarAvanceSupervisorOT(sel.id, avanceSupervisorForm.pct, avanceSupervisorForm.nota);
+    if (ok) {
+      setSel(s => ({
+        ...s,
+        avance: Number(avanceSupervisorForm.pct || 0),
+        avance_pct: Number(avanceSupervisorForm.pct || 0),
+        avance_supervisor_pct: Number(avanceSupervisorForm.pct || 0),
+        avance_supervisor_nota: avanceSupervisorForm.nota,
+        avance_supervisor_en: new Date().toISOString(),
+        avance_supervisor_por: authUser?.nombre || authUser?.email || authUser?.id || 'Supervisor',
+      }));
+      setAvanceSupervisorForm({ pct: '', nota: '' });
+    }
   };
 
   const abrirFormCierre = () => {
@@ -1718,12 +1789,17 @@ function OT({ role }) {
         }
         return 8;
       })(),
-      tareas_trabajadas: (sel?.tareas || []).map(t => ({
+      tarea_id: '',
+      avance_tarea_reportado: '',
+      tarea_completada_reportada: false,
+      tareas_trabajadas: tareasAbiertasOT.map(t => ({
         tarea_id: t.id,
-        nombre: t.descripcion,
-        estado_actual: t.completado ? 'completada' : (t.estado || 'pendiente'),
+        nombre: t.titulo || t.descripcion,
+        estado_actual: t.completada ? 'completada' : (t.estado || 'pendiente'),
+        avance_actual: Number(t.avance_pct || 0),
+        tecnico_id: t.tecnico_id || '',
         trabajado: false,
-        avance_hoy: 0,
+        avance_hoy: Number(t.avance_pct || 0),
       })),
       actividades_adicionales: [],
       avance_global: '',
@@ -1739,14 +1815,17 @@ function OT({ role }) {
   };
 
   const abrirEditarBorrador = (parte) => {
-    const otTareas = (sel?.tareas || []).map(t => {
+    const otTareas = tareasAbiertasOT.map(t => {
       const worked = (parte.tareas_trabajadas || []).find(pt => pt.tarea_id === t.id);
-      return { tarea_id: t.id, nombre: t.descripcion, estado_actual: t.completado ? 'completada' : (t.estado || 'pendiente'), trabajado: !!worked, avance_hoy: worked?.avance_hoy || 0 };
+      return { tarea_id: t.id, nombre: t.titulo || t.descripcion, estado_actual: t.completada ? 'completada' : (t.estado || 'pendiente'), avance_actual: Number(t.avance_pct || 0), tecnico_id: t.tecnico_id || '', trabajado: !!worked || parte.tarea_id === t.id, avance_hoy: worked?.avance_hoy ?? parte.avance_tarea_reportado ?? Number(t.avance_pct || 0) };
     });
     setParteFormOT({
       tecnico_id: parte.tecnico_id || parte.tecnico || '',
       fecha: parte.fecha || new Date().toISOString().split('T')[0],
       horas: parte.horas || 8,
+      tarea_id: parte.tarea_id || '',
+      avance_tarea_reportado: parte.avance_tarea_reportado ?? '',
+      tarea_completada_reportada: Boolean(parte.tarea_completada_reportada),
       tareas_trabajadas: otTareas,
       actividades_adicionales: parte.actividades_adicionales || [],
       avance_global: parte.avance_global || parte.avance_reportado || 0,
@@ -1772,19 +1851,49 @@ function OT({ role }) {
       const [h2, m2] = asig.hora_fin_estimada.split(':').map(Number);
       horas = Math.max(1, (h2 * 60 + m2 - h1 * 60 - m1) / 60);
     }
-    setParteFormOT(s => ({ ...s, tecnico_id: tecnicoId, horas }));
+    setParteFormOT(s => {
+      const tareasCandidato = tareasAbiertasOT.filter(t => !t.tecnico_id || String(t.tecnico_id) === String(tecnicoId));
+      const tareaElegida = tareasCandidato[0] || null;
+      return {
+        ...s,
+        tecnico_id: tecnicoId,
+        horas,
+        tarea_id: tareaElegida?.id || '',
+        avance_tarea_reportado: tareaElegida ? Number(tareaElegida.avance_pct || 0) : '',
+        tareas_trabajadas: tareasAbiertasOT.map(t => ({
+          tarea_id: t.id,
+          nombre: t.titulo || t.descripcion,
+          estado_actual: t.estado || 'pendiente',
+          avance_actual: Number(t.avance_pct || 0),
+          tecnico_id: t.tecnico_id || '',
+          trabajado: tareaElegida?.id === t.id,
+          avance_hoy: tareaElegida?.id === t.id ? Number(t.avance_pct || 0) : 0,
+        })),
+      };
+    });
   };
 
   const buildPartePayload = (modo) => {
     const tecnicoObj = (personalOperativo || []).find(p => p.id === parteFormOT.tecnico_id)
       || (personalAdmin || []).find(p => p.id === parteFormOT.tecnico_id)
       || (usuarios || []).find(u => u.id === parteFormOT.tecnico_id);
-    const tareasActivas = parteFormOT.tareas_trabajadas.filter(t => t.trabajado);
+    const tareaSeleccionada = tareasAbiertasOT.find(t => String(t.id) === String(parteFormOT.tarea_id));
+    const tareasActivas = tareaSeleccionada
+      ? [{
+          tarea_id: tareaSeleccionada.id,
+          nombre: tareaSeleccionada.titulo || tareaSeleccionada.descripcion,
+          estado_actual: tareaSeleccionada.estado || 'pendiente',
+          avance_actual: Number(tareaSeleccionada.avance_pct || 0),
+          avance_hoy: Number(parteFormOT.avance_tarea_reportado || 0),
+        }]
+      : parteFormOT.tareas_trabajadas.filter(t => t.trabajado);
     const actividadesTexto = [
       ...tareasActivas.map(t => `${t.nombre}${t.avance_hoy ? ` (+${t.avance_hoy}%)` : ''}`),
       ...parteFormOT.actividades_adicionales.filter(a => a.descripcion.trim()).map(a => a.descripcion + (a.avance_estimado ? ` (+${a.avance_estimado}%)` : '')),
     ].join('\n');
-    const avanceCalculado = tareasActivas.reduce((s, t) => s + (Number(t.avance_hoy) || 0), 0) + parteFormOT.actividades_adicionales.reduce((s, a) => s + (Number(a.avance_estimado) || 0), 0);
+    const avanceCalculado = tareaSeleccionada
+      ? 0
+      : tareasActivas.reduce((s, t) => s + (Number(t.avance_hoy) || 0), 0) + parteFormOT.actividades_adicionales.reduce((s, a) => s + (Number(a.avance_estimado) || 0), 0);
     const materialesUsados = parteFormOT.materiales_lineas.filter(m => m.mat_id && Number(m.cantidad) > 0).map(m => {
       const cat = (catalogoMateriales || []).find(x => x.id === m.mat_id);
       const inv = (inventario || []).find(x => x.material_id === m.mat_id);
@@ -1798,7 +1907,10 @@ function OT({ role }) {
       tecnico_id: parteFormOT.tecnico_id,
       fecha: parteFormOT.fecha,
       horas: Number(parteFormOT.horas || 0),
-      avance_reportado: parteFormOT.avance_ajustado_manual ? Number(parteFormOT.avance_global) : avanceCalculado,
+      tarea_id: tareaSeleccionada?.id || null,
+      avance_tarea_reportado: tareaSeleccionada ? Number(parteFormOT.avance_tarea_reportado || 0) : null,
+      tarea_completada_reportada: tareaSeleccionada ? Boolean(parteFormOT.tarea_completada_reportada) : false,
+      avance_reportado: tareaSeleccionada ? 0 : (parteFormOT.avance_ajustado_manual ? Number(parteFormOT.avance_global) : avanceCalculado),
       avance_ajustado_manual: parteFormOT.avance_ajustado_manual,
       actividades: actividadesTexto,
       actividad: actividadesTexto,
@@ -1812,11 +1924,12 @@ function OT({ role }) {
       es_restriccion: parteFormOT.es_restriccion,
     };
   };
-  const parteFormReset = { tecnico_id: '', fecha: new Date().toISOString().split('T')[0], horas: 8, tareas_trabajadas: [], actividades_adicionales: [], avance_global: '', avance_ajustado_manual: false, materiales_lineas: [], terceros_lineas: [], logistica_lineas: [], evidencias: [], observaciones: '', es_restriccion: false };
+  const parteFormReset = { tecnico_id: '', fecha: new Date().toISOString().split('T')[0], horas: 8, tarea_id: '', avance_tarea_reportado: '', tarea_completada_reportada: false, tareas_trabajadas: [], actividades_adicionales: [], avance_global: '', avance_ajustado_manual: false, materiales_lineas: [], terceros_lineas: [], logistica_lineas: [], evidencias: [], observaciones: '', es_restriccion: false };
   const submitParteDesdOT = async (e, modo = 'revision') => {
     if (e) e.preventDefault();
     if (!parteFormOT.tecnico_id) return;
-    const tareasActivas = parteFormOT.tareas_trabajadas.filter(t => t.trabajado);
+    const tareasActivas = parteFormOT.tarea_id ? [parteFormOT.tarea_id] : parteFormOT.tareas_trabajadas.filter(t => t.trabajado);
+    if (modo !== 'borrador' && !parteEditandoId && otRequiereTareas && tareasOT.length === 0) { addNotificacion('Debes crear al menos una tarea antes de registrar un parte.', 'error'); return; }
     if (modo !== 'borrador' && !parteEditandoId && tareasActivas.length === 0 && parteFormOT.actividades_adicionales.filter(a => a.descripcion.trim()).length === 0 && !parteFormOT.avance_ajustado_manual && !parteFormOT.observaciones?.trim()) return;
     const payload = buildPartePayload(modo);
     if (parteEditandoId) {
@@ -2439,14 +2552,43 @@ function OT({ role }) {
             )}
 
             {/* ── TAB TAREAS ── */}
+            {activeTab === 'Resumen' && (
+              <div className="card" style={{margin:'0 22px 22px', padding:16}}>
+                <div className="card-head" style={{padding:0, border:0, marginBottom:12}}>
+                  <h3 style={{fontSize:15}}>Avance de la OT</h3>
+                  <span className={`badge ${avanceOficialOT == null ? 'badge-orange' : 'badge-cyan'}`}>
+                    {avanceOficialOT == null ? 'Sin declaracion supervisor' : `${avanceOficialOT}%`}
+                  </span>
+                </div>
+                {sel.avance_supervisor_nota && <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:10}}>Ultima nota: {sel.avance_supervisor_nota}</div>}
+                {puedeGestionarAvanceOT ? (
+                  <div className="grid-2" style={{gap:12}}>
+                    <div className="input-group">
+                      <label>Nuevo avance (%)</label>
+                      <input className="input" type="number" min="0" max="100" value={avanceSupervisorForm.pct} onChange={e => setAvanceSupervisorForm(s => ({...s, pct: e.target.value}))} placeholder={String(avanceOficialOT ?? 0)} />
+                    </div>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}>
+                      <label>Nota obligatoria</label>
+                      <textarea className="input" rows={2} value={avanceSupervisorForm.nota} onChange={e => setAvanceSupervisorForm(s => ({...s, nota: e.target.value}))} placeholder="Sustento del avance global actual..." />
+                    </div>
+                    <div style={{gridColumn:'1/-1', display:'flex', justifyContent:'flex-end'}}>
+                      <button className="btn btn-primary btn-sm" onClick={guardarAvanceSupervisor} disabled={avanceSupervisorForm.nota.trim().length < 10 || avanceSupervisorForm.pct === ''}>Actualizar avance</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{fontSize:12, color:'var(--fg-muted)'}}>Solo lectura. El avance global lo declara el supervisor.</div>
+                )}
+              </div>
+            )}
+
             {activeTab === 'Tareas' && (
               <div style={{padding:22}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
                   <div>
                     <h3 style={{margin:0}}>Tareas</h3>
-                    {(sel.tareas?.length || 0) > 0 && (() => {
-                      const total = sel.tareas.length;
-                      const done = sel.tareas.filter(t => t.completado || t.estado === 'completada').length;
+                    {tareasOT.length > 0 && (() => {
+                      const total = tareasOT.length;
+                      const done = tareasCompletadasOT;
                       const pct = Math.round((done / total) * 100);
                       return (
                         <div style={{display:'flex', alignItems:'center', gap:8, marginTop:4}}>
@@ -2462,6 +2604,13 @@ function OT({ role }) {
                     <button className="btn btn-secondary btn-sm" onClick={() => setShowNuevaTarea(s => !s)}>{I.plus} Nueva tarea</button>
                   )}
                 </div>
+
+                {otRequiereTareas && tareasOT.length === 0 && (
+                  <div className="card" style={{padding:14, marginBottom:16, border:'1px solid var(--orange)', background:'color-mix(in srgb, var(--orange) 8%, transparent)'}}>
+                    <strong>Esta OT requiere al menos una tarea antes de registrar el primer parte diario.</strong>
+                    <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>Crea las tareas que corresponden al trabajo planificado.</div>
+                  </div>
+                )}
 
                 {showNuevaTarea && (
                   <div className="card" style={{padding:16, marginBottom:16, border:'1px solid var(--cyan)'}}>
@@ -2493,16 +2642,25 @@ function OT({ role }) {
                   <div style={{display:'flex', flexDirection:'column', gap:8}}>
                     {sel.tareas.map(t => {
                       const completado = t.completado || t.estado === 'completada';
-                      const estadoBadge = completado ? ['badge-green','Completada'] : (t.estado === 'en_progreso' ? ['badge-orange','En progreso'] : ['badge-gray','Pendiente']);
-                      const resp = personalOperativo.find(p => p.id === t.responsable_id);
+                      const estadoBadge = completado ? ['badge-green','Completada'] : 
+                                          (t.estado === 'cerrada_sin_completar' ? ['badge-red','Incompleta'] : 
+                                          (t.estado === 'en_progreso' ? ['badge-orange','En progreso'] : ['badge-gray','Pendiente']));
+                      const resp = personalOperativo.find(p => p.id === t.responsable_id) || personalAdmin.find(p => p.id === t.responsable_id);
                       return (
                         <div key={t.id} style={{padding:12, border:'1px solid var(--border)', borderRadius:6, background:'var(--bg)', display:'flex', gap:12, alignItems:'flex-start'}}>
-                          <input type="checkbox" checked={completado} onChange={() => toggleTarea(t.id)} style={{marginTop:3, cursor:'pointer'}} />
+                          <input type="checkbox" checked={completado} onChange={() => toggleTarea(t.id)} style={{marginTop:3, cursor:'pointer'}} disabled={t.estado === 'cerrada_sin_completar' || ['cerrada','facturada','anulada'].includes(sel.estado)} />
                           <div style={{flex:1, minWidth:0}}>
                             <div style={{textDecoration: completado?'line-through':'none', color: completado?'var(--fg-muted)':'var(--fg)', fontWeight:500}}>{t.descripcion}</div>
                             <div className="row" style={{gap:12, marginTop:5, fontSize:11, color:'var(--fg-muted)'}}>
                               {resp && <span>👤 {resp.nombre}</span>}
                               {t.fecha_limite && <span>📅 {t.fecha_limite}</span>}
+                              <span>⏱ {t.horas_estimadas ? `${t.horas_estimadas}h est.` : '--'} | {t.horas_reales ? `${t.horas_reales}h reales` : '0h'}</span>
+                              <div style={{display:'flex', alignItems:'center', gap:4}}>
+                                <div style={{width: 60, height: 4, background:'var(--border)', borderRadius: 2, overflow: 'hidden'}}>
+                                  <div style={{width: `${t.avance_pct || 0}%`, height: '100%', background: completado ? 'var(--green)' : 'var(--cyan)'}} />
+                                </div>
+                                <span>{t.avance_pct || 0}%</span>
+                              </div>
                             </div>
                           </div>
                           <span className={`badge ${estadoBadge[0]}`} style={{fontSize:10, flexShrink:0}}>{estadoBadge[1]}</span>
@@ -2651,7 +2809,13 @@ function OT({ role }) {
             {activeTab === 'Partes' && (
               <div style={{padding:22}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
-                  <h3 style={{margin:0}}>Partes Diarios</h3>
+                  <div>
+                    <h3 style={{margin:0}}>Partes Diarios</h3>
+                    <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
+                      Avance oficial (Supervisor): <strong style={{color:'var(--cyan)'}}>{sel.avance_supervisor_pct != null ? `${sel.avance_supervisor_pct}%` : 'N/A'}</strong> | 
+                      Avance referencial: <strong style={{color:'var(--cyan)'}}>{sel.avance ?? 0}%</strong>
+                    </div>
+                  </div>
                   {sel.estado === 'ejecucion' && !showNuevoParte && (
                     <button className="btn btn-secondary btn-sm" onClick={abrirNuevoParte}>{I.plus} Nuevo parte diario</button>
                   )}
@@ -2708,7 +2872,53 @@ function OT({ role }) {
                       </div>
 
                       {/* — Sección 1: Tareas de la OT — */}
-                      {parteFormOT.tareas_trabajadas.length > 0 && (
+                      {tareasAbiertasOT.length > 0 && (
+                        <div style={{marginBottom:16, padding:14, background:'var(--bg-subtle)', borderRadius:8}}>
+                          <div className="input-group">
+                            <label>Tarea trabajada</label>
+                            <select
+                              className="select"
+                              value={parteFormOT.tarea_id || ''}
+                              onChange={e => {
+                                const tarea = tareasAbiertasOT.find(t => String(t.id) === String(e.target.value));
+                                setParteFormOT(s => ({
+                                  ...s,
+                                  tarea_id: e.target.value,
+                                  avance_tarea_reportado: tarea ? Number(tarea.avance_pct || 0) : '',
+                                  tareas_trabajadas: (s.tareas_trabajadas || []).map(x => ({
+                                    ...x,
+                                    trabajado: String(x.tarea_id) === String(e.target.value),
+                                    avance_hoy: String(x.tarea_id) === String(e.target.value) ? Number(tarea?.avance_pct || 0) : 0,
+                                  })),
+                                }));
+                              }}
+                            >
+                              <option value="">Sin tarea vinculada</option>
+                              {tareasAbiertasOT
+                                .filter(t => !parteFormOT.tecnico_id || !t.tecnico_id || String(t.tecnico_id) === String(parteFormOT.tecnico_id))
+                                .map(t => <option key={t.id} value={t.id}>{t.titulo} - {t.estado || 'pendiente'} - {Number(t.avance_pct || 0)}%</option>)}
+                            </select>
+                          </div>
+                          {parteFormOT.tarea_id && (() => {
+                            const tarea = tareasAbiertasOT.find(t => String(t.id) === String(parteFormOT.tarea_id));
+                            return (
+                              <div className="grid-2" style={{gap:12, marginTop:12}}>
+                                <div className="input-group">
+                                  <label>Avance de esta tarea</label>
+                                  <input className="input" type="number" min="0" max="100" value={parteFormOT.avance_tarea_reportado} onChange={e => setParteFormOT(s => ({...s, avance_tarea_reportado: Math.min(100, Math.max(0, Number(e.target.value))) }))} />
+                                  <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Esta tarea va actualmente en {Number(tarea?.avance_pct || 0)}%.</div>
+                                </div>
+                                <label style={{display:'flex', alignItems:'center', gap:8, fontSize:12, color:'var(--fg-muted)', paddingTop:24}}>
+                                  <input type="checkbox" checked={parteFormOT.tarea_completada_reportada || false} onChange={e => setParteFormOT(s => ({...s, tarea_completada_reportada: e.target.checked}))} />
+                                  Esta tarea esta completamente terminada
+                                </label>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {parteFormOT.tareas_trabajadas.length > 0 && !parteFormOT.tarea_id && (
                         <div style={{marginBottom:16}}>
                           <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
                             Tareas de la OT
@@ -2759,7 +2969,7 @@ function OT({ role }) {
                       </div>
 
                       {/* — Sección 3: Avance global del día — */}
-                      <div style={{marginBottom:16, padding:14, background:'var(--bg-subtle)', borderRadius:8}}>
+                      {!parteFormOT.tarea_id && <div style={{marginBottom:16, padding:14, background:'var(--bg-subtle)', borderRadius:8}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Avance global del día</div>
                         <div style={{display:'flex', alignItems:'center', gap:12}}>
                           <div style={{flex:1}}>
@@ -2789,7 +2999,7 @@ function OT({ role }) {
                             </button>
                           )}
                         </div>
-                      </div>
+                      </div>}
 
                       {/* — Sección 4: Materiales usados — */}
                       <div style={{marginBottom:16}}>
@@ -2963,12 +3173,14 @@ function OT({ role }) {
                   <>
                     {(() => {
                       const aprobados = partesOT.filter(p => p.estado === 'aprobado');
-                      const avanceTotal = aprobados.length > 0
+                      const avanceReferencialPartes = aprobados.length > 0
                         ? Math.round(aprobados.reduce((s, p) => s + (p.avance_reportado || 0), 0) / aprobados.length)
-                        : (sel.avance || 0);
+                        : 0;
                       return (
-                        <div style={{display:'flex', gap:24, padding:14, background:'var(--bg-subtle)', borderRadius:8, marginBottom:16}}>
-                          <div><div className="eyebrow">Avance total</div><div style={{fontWeight:700, fontSize:18, color:'var(--cyan)'}}>{avanceTotal}%</div></div>
+                        <div style={{display:'flex', gap:24, padding:14, background:'var(--bg-subtle)', borderRadius:8, marginBottom:16, flexWrap:'wrap'}}>
+                          <div><div className="eyebrow">Avance de la OT</div><div style={{fontWeight:700, fontSize:18, color:avanceOficialOT == null ? 'var(--fg-muted)' : 'var(--cyan)'}}>{avanceOficialOT == null ? 'Sin declaracion' : `${avanceOficialOT}%`}</div></div>
+                          <div><div className="eyebrow">Calculado desde tareas</div><div style={{fontWeight:700, fontSize:18}}>{avanceCalculadoTareas == null ? '-' : `${avanceCalculadoTareas}%`}</div></div>
+                          {avanceOficialOT == null && <div><div className="eyebrow">Referencial desde partes</div><div style={{fontWeight:700, fontSize:18, color:'var(--orange)'}}>{avanceReferencialPartes}%</div></div>}
                           <div><div className="eyebrow">Partes registrados</div><div style={{fontWeight:700, fontSize:18}}>{partesOT.length}</div></div>
                           <div><div className="eyebrow">Aprobados</div><div style={{fontWeight:700, fontSize:18, color:'var(--green)'}}>{aprobados.length}</div></div>
                         </div>
@@ -3180,7 +3392,8 @@ function OT({ role }) {
                 .filter(o => o.ot_id === sel.id && !['recibida','recibido','cerrada','cerrado'].includes(normalizarEstadoOT(o.estado)))
                 .reduce((s, o) => s + Number(o.total || 0), 0);
               const comprometidoTotal = osComprometidas + ocComprometidas;
-              const avancePct = Number(sel.avance || sel.avance_pct || 0);
+              const avancePct = Number(sel.avance_supervisor_pct ?? sel.avance ?? sel.avance_pct ?? 0);
+              const avanceFuenteSupervisor = sel.avance_supervisor_pct !== undefined && sel.avance_supervisor_pct !== null;
               const eac = avancePct > 0 ? costoRealTotal / (avancePct / 100) : null;
 
               const sections = [
@@ -3574,7 +3787,8 @@ function OT({ role }) {
                       <div className="eyebrow" style={{ marginBottom: 8 }}>Proyeccion al cierre (EAC)</div>
                       {eac !== null ? (
                         <>
-                          <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}><span>Avance declarado</span><strong>{avancePct}%</strong></div>
+                          <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}><span>{avanceFuenteSupervisor ? 'Avance declarado por supervisor' : 'Avance referencial desde partes'}</span><strong>{avancePct}%</strong></div>
+                          {!avanceFuenteSupervisor && <div style={{fontSize:11, color:'var(--orange)', marginBottom:4}}>Sin declaracion del supervisor.</div>}
                           <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}><span>Costo real acumulado</span><strong>{money(costoRealTotal, monSym)}</strong></div>
                           <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}><span>EAC proyectado</span><strong>{money(eac, monSym)}</strong></div>
                           <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}><span>Desvio proyectado</span><strong style={{ color: eac > costoEstTotal ? 'var(--danger)' : 'var(--green)' }}>{money(eac - costoEstTotal, monSym)}</strong></div>
@@ -3691,6 +3905,26 @@ function OT({ role }) {
           </div>
         </div>
       </>}
+
+      {confirmCompletarTarea && (
+        <>
+          <div className="modal-backdrop" onClick={() => setConfirmCompletarTarea(null)}/>
+          <div className="modal" style={{maxWidth:420}}>
+            <div className="modal-head">
+              <h3 style={{margin:0}}>Completar tarea</h3>
+              <button className="icon-btn" onClick={() => setConfirmCompletarTarea(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body">
+              <p>Confirmas que esta tarea esta completada?</p>
+              <strong>{confirmCompletarTarea.titulo || confirmCompletarTarea.descripcion}</strong>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-secondary" onClick={() => setConfirmCompletarTarea(null)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={confirmarCompletarTareaOT}>{I.check} Completar</button>
+            </div>
+          </div>
+        </>
+      )}
 
       {showCierreForm && sel && (() => {
         const partesAprobados = partes.filter(p => p.ot_id === sel.id && p.estado === 'aprobado');
@@ -3888,7 +4122,9 @@ function OT({ role }) {
         const estadoBadge = p.estado === 'aprobado' ? 'badge-green' : p.estado === 'rechazado' ? 'badge-red' : p.estado === 'observado' ? 'badge-orange' : p.estado === 'con_restriccion' ? 'badge-red' : p.estado === 'borrador' ? 'badge-gray' : 'badge-orange';
         const estadoLabel = { aprobado: 'Aprobado', rechazado: 'Rechazado', observado: 'Observado', con_restriccion: 'Con restricción', borrador: 'Borrador', en_revision: 'Pendiente revisión' }[p.estado] || p.estado;
         const revisableP = ['en_revision', 'con_restriccion'].includes(p.estado);
-        const avanceParte = p.avance_validado !== undefined ? p.avance_validado : p.avance_reportado || 0;
+        const avanceParte = p.tarea_id
+          ? (p.avance_tarea_validado ?? p.avance_tarea_reportado ?? 0)
+          : (p.avance_validado !== undefined ? p.avance_validado : p.avance_reportado || 0);
         const parteHealthColor = p.estado === 'aprobado' ? 'var(--green)' : p.estado === 'rechazado' ? 'var(--danger)' : p.estado === 'observado' ? 'var(--orange)' : 'var(--cyan)';
         const parteHealthBg = p.estado === 'aprobado' ? 'rgba(16,185,129,0.08)' : p.estado === 'rechazado' ? 'rgba(239,68,68,0.08)' : p.estado === 'observado' ? 'rgba(249,115,22,0.08)' : 'rgba(0,188,212,0.08)';
         const canAprobarPartes = role.permisos.todo || (Array.isArray(role.permisos.aprobar) && role.permisos.aprobar.includes('partes'));
@@ -3922,7 +4158,7 @@ function OT({ role }) {
                 <div><span>Tecnico</span><strong>{p.tecnico}</strong></div>
                 <div><span>Fecha</span><strong>{p.fecha}</strong></div>
                 <div><span>Horas</span><strong>{p.horas}h</strong></div>
-                <div><span>Avance global</span><strong style={{color:'var(--cyan)'}}>{avanceParte}%</strong></div>
+                <div><span>{p.tarea_id ? 'Avance tarea' : 'Avance global'}</span><strong style={{color:'var(--cyan)'}}>{avanceParte}%</strong></div>
               </div>
               <div className="ficha-detail-content parte-review-content">
                 {(p.tareas_trabajadas?.length || 0) > 0 && (
@@ -4058,16 +4294,16 @@ function OT({ role }) {
                     <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>Decisión del supervisor</div>
                     {!modoAccionParteOT && (
                       <div style={{padding:16, display:'flex', gap:8}}>
-                        <button className="btn btn-primary" style={{flex:1}} onClick={() => { setModoAccionParteOT('aprobar'); setAvanceAprobacionParteOT(p.avance_reportado || 0); }}>{I.check} Aprobar</button>
+                        <button className="btn btn-primary" style={{flex:1}} onClick={() => { setModoAccionParteOT('aprobar'); setAvanceAprobacionParteOT(p.tarea_id ? (p.avance_tarea_reportado || 0) : (p.avance_reportado || 0)); }}>{I.check} Aprobar</button>
                         <button className="btn btn-secondary" style={{flex:1}} onClick={() => setModoAccionParteOT('observar')}>Observar</button>
                         <button className="btn btn-secondary" style={{flex:1, color:'var(--danger)'}} onClick={() => setModoAccionParteOT('rechazar')}>Rechazar</button>
                       </div>
                     )}
                     {modoAccionParteOT === 'aprobar' && (
                       <div style={{padding:16, gap:12}} className="col">
-                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>Confirma el avance final que se sumará a la OT.</div>
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>{p.tarea_id ? 'Confirma el avance validado de la tarea. El avance global de la OT no se calcula desde este parte.' : 'Confirma el avance final que se sumara a la OT.'}</div>
                         <div style={{display:'flex', alignItems:'center', gap:10}}>
-                          <label style={{fontSize:13, fontWeight:600, whiteSpace:'nowrap'}}>Avance validado:</label>
+                          <label style={{fontSize:13, fontWeight:600, whiteSpace:'nowrap'}}>{p.tarea_id ? 'Avance tarea validado:' : 'Avance validado:'}</label>
                           <input className="input" type="number" min="0" max="100" style={{width:80, textAlign:'center', fontWeight:700, fontSize:16}} value={avanceAprobacionParteOT} onChange={e => setAvanceAprobacionParteOT(Math.min(100, Math.max(0, Number(e.target.value))))} />
                           <span style={{fontSize:14, fontWeight:600}}>%</span>
                         </div>
@@ -11871,6 +12107,388 @@ function solEstadoBadge(estado) {
 function emptySolForm() {
   const today = new Date().toISOString().slice(0, 10);
   return { tipo: 'vacaciones', fecha_inicio: today, fecha_fin: today, motivo: '', documento_url: '' };
+}
+
+const CG_FORM_INIT = {
+  fecha: new Date().toISOString().split('T')[0],
+  descripcion: '',
+  monto: '',
+  moneda: 'PEN',
+  centro_costo_id: '',
+  categoria: 'Materiales',
+  responsable: '',
+  ot_vinc_id: '',
+  estado_pago: 'pagado',
+  referencia_pago: '',
+  num_comprobante: '',
+  tipo_comprobante: 'Factura',
+};
+
+export function ComprasGastos() {
+  const {
+    comprasGastos, setComprasGastos,
+    centrosCosto, proveedores, ots,
+    crearGasto, generarCxP,
+    empresa,
+  } = useApp();
+
+  const [tab, setTab] = useState('todos');
+  const [filtroCeco, setFiltroCeco] = useState('');
+  const [filtroEstadoPago, setFiltroEstadoPago] = useState('');
+  const [filtroMes, setFiltroMes] = useState('');
+  const [panel, setPanel] = useState(false);
+  const [panelNuevoEgreso, setPanelNuevoEgreso] = useState(false);
+  const [form, setForm] = useState(CG_FORM_INIT);
+  const [errCeco, setErrCeco] = useState(false);
+  const [cxpProvId, setCxpProvId] = useState('');
+  const [cxpVence, setCxpVence] = useState('');
+  const [selCampo, setSelCampo] = useState(null);
+  const [confirmando, setConfirmando] = useState(false);
+
+  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+
+  const setF = (k, v) => { setForm(p => ({ ...p, [k]: v })); if (k === 'centro_costo_id') setErrCeco(false); };
+
+  const cerrarPanel = () => { setPanel(false); setForm(CG_FORM_INIT); setErrCeco(false); setCxpProvId(''); setCxpVence(''); };
+
+  const handleGuardar = async () => {
+    if (!form.centro_costo_id) { setErrCeco(true); return; }
+    if (form.estado_pago === 'pendiente' && !cxpVence) return;
+    const monto = parseFloat(form.monto) || 0;
+    const gastoData = { ...form, monto, tipo: 'gasto', origen_registro: 'backoffice' };
+    if (form.estado_pago === 'pendiente') {
+      await generarCxP({
+        id: `cxp_${Math.random().toString(36).slice(2,10)}`,
+        proveedor_id: cxpProvId || null,
+        tipo_beneficiario: 'proveedor',
+        factura_numero: form.num_comprobante || null,
+        concepto: form.descripcion,
+        fecha_emision: form.fecha,
+        fecha_vencimiento: cxpVence,
+        monto_total: monto,
+        moneda: form.moneda || 'PEN',
+        estado: 'por_pagar',
+        origen: 'gasto',
+        categoria_er: form.categoria,
+        centro_costo_id: form.centro_costo_id,
+      });
+    } else {
+      crearGasto(gastoData);
+    }
+    cerrarPanel();
+  };
+
+  const confirmarGastoCampo = async (gasto) => {
+    setConfirmando(true);
+    const actualizado = { ...gasto, estado: 'revisado' };
+    setComprasGastos(prev => prev.map(g => g.id === gasto.id ? actualizado : g));
+    if (isSupabaseConfigured()) {
+      try {
+        const sb = await getSupabaseClient();
+        await sb.from('compras_gastos').update({ estado: 'revisado' }).eq('id', gasto.id);
+      } catch {}
+    }
+    setConfirmando(false);
+    setSelCampo(null);
+  };
+
+  const mesMostrar = (fecha) => (fecha || '').slice(0, 7);
+  const mesesDisponibles = [...new Set((comprasGastos || []).map(g => mesMostrar(g.fecha)).filter(Boolean))].sort().reverse();
+
+  const cecoNombre = (id) => centrosCosto?.find(c => c.id === id)?.nombre || id || '—';
+  const otCodigo = (id) => ots?.find(o => o.id === id)?.codigo || id || null;
+
+  const rows = (comprasGastos || []).filter(g => {
+    if (tab === 'campo' && g.origen_registro !== 'campo') return false;
+    if (tab === 'backoffice' && g.origen_registro !== 'backoffice') return false;
+    if (tab === 'pendientes' && g.estado !== 'pendiente_revision') return false;
+    if (filtroCeco && g.centro_costo_id !== filtroCeco) return false;
+    if (filtroEstadoPago && g.estado_pago !== filtroEstadoPago) return false;
+    if (filtroMes && mesMostrar(g.fecha) !== filtroMes) return false;
+    return true;
+  });
+
+  const totalMonto = rows.reduce((s, g) => s + (Number(g.monto) || 0), 0);
+  const pendientesRevision = (comprasGastos || []).filter(g => g.estado === 'pendiente_revision').length;
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Compras / Gastos</h1>
+          <div className="page-sub">Registro de gastos directos — campo y backoffice</div>
+        </div>
+        <button className="btn btn-primary" onClick={() => setPanelNuevoEgreso(true)}>{I.plus} Nuevo egreso</button>
+      </div>
+
+      <div className="kpi-grid">
+        <div className="kpi-card"><div className="kpi-label">Total registros</div><div className="kpi-value">{(comprasGastos || []).length}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Monto filtrado</div><div className="kpi-value" style={{fontSize:18}}>{money(totalMonto)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Desde campo</div><div className="kpi-value">{(comprasGastos || []).filter(g => g.origen_registro === 'campo').length}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Pendientes revisión</div><div className="kpi-value" style={{color: pendientesRevision > 0 ? 'var(--orange)' : undefined}}>{pendientesRevision}</div></div>
+      </div>
+
+      <div className="tabs">
+        {[['todos','Todos'],['campo','Campo'],['backoffice','Backoffice'],['pendientes','Pendientes revisión']].map(([k,l]) => (
+          <div key={k} className={'tab ' + (tab === k ? 'active' : '')} onClick={() => setTab(k)}>{l}{k === 'pendientes' && pendientesRevision > 0 ? ` (${pendientesRevision})` : ''}</div>
+        ))}
+      </div>
+
+      <div className="card" style={{marginBottom:12}}>
+        <div className="card-head" style={{flexWrap:'wrap', gap:10}}>
+          <div style={{fontWeight:600, fontSize:13}}>Filtros</div>
+          <select className="select" style={{minWidth:140, fontSize:13}} value={filtroMes} onChange={e => setFiltroMes(e.target.value)}>
+            <option value="">Todos los meses</option>
+            {mesesDisponibles.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <select className="select" style={{minWidth:160, fontSize:13}} value={filtroCeco} onChange={e => setFiltroCeco(e.target.value)}>
+            <option value="">Todos los CECO</option>
+            {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+          <select className="select" style={{minWidth:140, fontSize:13}} value={filtroEstadoPago} onChange={e => setFiltroEstadoPago(e.target.value)}>
+            <option value="">Todo estado pago</option>
+            <option value="pagado">Pagado</option>
+            <option value="pendiente">Pendiente</option>
+          </select>
+          {(filtroMes || filtroCeco || filtroEstadoPago) && (
+            <button className="btn btn-ghost" style={{fontSize:12}} onClick={() => { setFiltroMes(''); setFiltroCeco(''); setFiltroEstadoPago(''); }}>Limpiar filtros</button>
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="table-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Concepto</th>
+                <th>CECO</th>
+                <th>Categoría</th>
+                <th>Monto</th>
+                <th>Estado pago</th>
+                <th>Origen</th>
+                <th>Comprobante</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length ? rows.map(g => {
+                const esCampo = g.origen_registro === 'campo';
+                const esPendRev = g.estado === 'pendiente_revision';
+                return (
+                  <tr key={g.id} style={esPendRev ? {background:'color-mix(in srgb, var(--orange) 5%, transparent)'} : undefined}>
+                    <td className="text-muted" style={{whiteSpace:'nowrap'}}>{g.fecha}</td>
+                    <td>
+                      <div style={{fontWeight:600}}>{g.descripcion || g.concepto || '—'}</div>
+                      {g.responsable && <div style={{fontSize:11, color:'var(--fg-muted)'}}>{g.responsable}</div>}
+                      {g.ot_vinc_id && <div style={{fontSize:11, color:'var(--fg-muted)'}}>OT: {otCodigo(g.ot_vinc_id)}</div>}
+                    </td>
+                    <td style={{fontSize:12}}>{cecoNombre(g.centro_costo_id)}</td>
+                    <td style={{fontSize:12}}>{g.categoria || '—'}</td>
+                    <td className="num"><strong>{money(g.monto)}</strong>{g.moneda && g.moneda !== 'PEN' && <span style={{fontSize:10, marginLeft:4, color:'var(--fg-muted)'}}>{g.moneda}</span>}</td>
+                    <td>
+                      <span className={'badge ' + (g.estado_pago === 'pagado' ? 'badge-green' : 'badge-orange')}>
+                        {g.estado_pago === 'pagado' ? 'Pagado' : 'Pendiente'}
+                      </span>
+                    </td>
+                    <td>
+                      {esCampo
+                        ? <span className="badge badge-cyan" style={{gap:4}}>{I.camera} Campo</span>
+                        : <span className="badge badge-gray">Backoffice</span>
+                      }
+                    </td>
+                    <td style={{textAlign:'center'}}>
+                      {g.num_comprobante ? <span title={g.num_comprobante} style={{color:'var(--green)'}}>{I.receipt}</span> : <span className="text-muted">—</span>}
+                    </td>
+                    <td>
+                      {esCampo && esPendRev && (
+                        <button className="btn btn-ghost" style={{fontSize:12, padding:'2px 10px'}} onClick={() => setSelCampo(g)}>
+                          {I.check} Revisar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr><td colSpan="9" className="text-center text-muted" style={{padding:32}}>No hay registros para los filtros seleccionados.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {panelNuevoEgreso && (
+        <NuevoEgreso
+          origen="compras_gastos"
+          onClose={() => setPanelNuevoEgreso(false)}
+          onSaved={() => setPanelNuevoEgreso(false)}
+        />
+      )}
+
+      {panel && (
+        <>
+          <div className="side-panel-backdrop" onClick={cerrarPanel}/>
+          <div className="side-panel" style={{width:'min(560px,96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Backoffice</div>
+                <div className="font-display" style={{fontSize:20,fontWeight:700}}>Nuevo gasto</div>
+              </div>
+              <button className="icon-btn" onClick={cerrarPanel}>{I.x}</button>
+            </div>
+            <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
+              <div className="form-group">
+                <label className="form-label">Fecha <span style={{color:'var(--danger)'}}>*</span></label>
+                <input className="input" type="date" value={form.fecha} onChange={e => setF('fecha', e.target.value)} required/>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Concepto / descripción <span style={{color:'var(--danger)'}}>*</span></label>
+                <input className="input" placeholder="Ej: Materiales ferretería, Viáticos..." value={form.descripcion} onChange={e => setF('descripcion', e.target.value)}/>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:12}}>
+                <div className="form-group">
+                  <label className="form-label">Monto <span style={{color:'var(--danger)'}}>*</span></label>
+                  <input className="input" type="number" min="0" step="0.01" placeholder="0.00" value={form.monto} onChange={e => setF('monto', e.target.value)}/>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Moneda</label>
+                  <select className="select" value={form.moneda} onChange={e => setF('moneda', e.target.value)}>
+                    <option value="PEN">PEN</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">CECO <span style={{color:'var(--danger)'}}>*</span></label>
+                <select className={'select' + (errCeco ? ' input-error' : '')} value={form.centro_costo_id} onChange={e => setF('centro_costo_id', e.target.value)}>
+                  <option value="">Seleccionar CECO...</option>
+                  {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+                {errCeco && <div style={{color:'var(--danger)',fontSize:12,marginTop:4}}>El CECO es obligatorio para guardar.</div>}
+              </div>
+              <div className="form-group">
+                <label className="form-label">Categoría ER</label>
+                <select className="select" value={form.categoria} onChange={e => setF('categoria', e.target.value)}>
+                  <option value="Materiales">Materiales</option>
+                  <option value="Servicios terceros">Servicios terceros</option>
+                  <option value="Logística">Logística</option>
+                  <option value="Administrativos">Administrativos</option>
+                  <option value="Comerciales">Comerciales</option>
+                  <option value="Gastos financieros">Gastos financieros</option>
+                </select>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <div className="form-group">
+                  <label className="form-label">Responsable</label>
+                  <input className="input" placeholder="Nombre o área" value={form.responsable} onChange={e => setF('responsable', e.target.value)}/>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">OT vinculada</label>
+                  <select className="select" value={form.ot_vinc_id} onChange={e => setF('ot_vinc_id', e.target.value)}>
+                    <option value="">Ninguna</option>
+                    {(ots || []).filter(o => o.estado !== 'cerrada').map(o => <option key={o.id} value={o.id}>{o.codigo || o.id}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Estado de pago</label>
+                <select className="select" value={form.estado_pago} onChange={e => setF('estado_pago', e.target.value)}>
+                  <option value="pagado">Pagado</option>
+                  <option value="pendiente">Pendiente (genera CxP)</option>
+                </select>
+              </div>
+              {form.estado_pago === 'pagado' && (
+                <div className="form-group">
+                  <label className="form-label">Referencia de pago</label>
+                  <input className="input" placeholder="N° transferencia, cheque..." value={form.referencia_pago} onChange={e => setF('referencia_pago', e.target.value)}/>
+                </div>
+              )}
+              {form.estado_pago === 'pendiente' && (
+                <div style={{padding:'10px 14px',borderRadius:8,border:'1px solid var(--orange)',background:'color-mix(in srgb, var(--orange) 8%, transparent)'}}>
+                  <div style={{fontWeight:600,fontSize:12,marginBottom:8,color:'var(--orange)'}}>Genera Cuenta por Pagar</div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                    <div className="form-group">
+                      <label className="form-label">Proveedor</label>
+                      <select className="select" value={cxpProvId} onChange={e => setCxpProvId(e.target.value)}>
+                        <option value="">Sin proveedor</option>
+                        {(proveedores || []).map(p => <option key={p.id} value={p.id}>{p.razon_social}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Vencimiento <span style={{color:'var(--danger)'}}>*</span></label>
+                      <input className="input" type="date" value={cxpVence} onChange={e => setCxpVence(e.target.value)}/>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <div className="form-group">
+                  <label className="form-label">N° comprobante</label>
+                  <input className="input" placeholder="F001-000123" value={form.num_comprobante} onChange={e => setF('num_comprobante', e.target.value)}/>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Tipo comprobante</label>
+                  <select className="select" value={form.tipo_comprobante} onChange={e => setF('tipo_comprobante', e.target.value)}>
+                    <option value="Factura">Factura</option>
+                    <option value="Boleta">Boleta</option>
+                    <option value="Recibo">Recibo por honorarios</option>
+                    <option value="Otro">Otro</option>
+                  </select>
+                </div>
+              </div>
+              <div className="row mt-2" style={{justifyContent:'flex-end',gap:8}}>
+                <button type="button" className="btn btn-secondary" onClick={cerrarPanel}>Cancelar</button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleGuardar}
+                  disabled={!form.descripcion.trim() || !form.monto || !form.fecha || (form.estado_pago === 'pendiente' && !cxpVence)}
+                >
+                  Guardar gasto
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {selCampo && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setSelCampo(null)}/>
+          <div className="side-panel" style={{width:'min(520px,96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Gasto desde campo</div>
+                <div className="font-display mono" style={{fontSize:18,fontWeight:700}}>{selCampo.id}</div>
+              </div>
+              <button className="icon-btn" onClick={() => setSelCampo(null)}>{I.x}</button>
+            </div>
+            <div className="side-panel-body">
+              <div className="row" style={{marginBottom:16,gap:8}}>
+                <span className="badge badge-cyan">{I.camera} Campo</span>
+                <span className="badge badge-orange">Pendiente revisión</span>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
+                <div><div className="eyebrow">Concepto</div><div style={{fontWeight:600}}>{selCampo.descripcion || selCampo.concepto || '—'}</div></div>
+                <div><div className="eyebrow">Monto</div><div style={{fontFamily:'Sora',fontSize:22,fontWeight:700}}>{money(selCampo.monto)}</div></div>
+                <div><div className="eyebrow">Fecha</div><div>{selCampo.fecha}</div></div>
+                <div><div className="eyebrow">CECO</div><div>{cecoNombre(selCampo.centro_costo_id)}</div></div>
+                <div><div className="eyebrow">Categoría</div><div>{selCampo.categoria || '—'}</div></div>
+                <div><div className="eyebrow">Comprobante</div><div className="mono">{selCampo.num_comprobante || '—'}</div></div>
+              </div>
+              {selCampo.responsable && <div style={{marginBottom:12}}><div className="eyebrow">Responsable</div><div>{selCampo.responsable}</div></div>}
+              <div className="row mt-6" style={{gap:8}}>
+                <button className="btn btn-primary flex-1" disabled={confirmando} onClick={() => confirmarGastoCampo(selCampo)}>
+                  {I.check} Confirmar — marcar revisado
+                </button>
+                <button className="btn btn-ghost" onClick={() => setSelCampo(null)}>Cancelar</button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
 }
 
 export function SolicitudesRrhh() {

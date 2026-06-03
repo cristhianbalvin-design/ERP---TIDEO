@@ -423,6 +423,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
 function TecnicoView({ screen, setScreen }) {
   const { ots, cuentas, partes, personalOperativo, registrarParteDiario, authUser, usuarios, personalDocumentos = [], subirDocumentoPersonalCtx, empresa } = useApp();
   const [selectedOt, setSelectedOt] = useState(null);
+  const [selectedTask, setSelectedTask] = useState(null);
   const today = new Date().toISOString().split('T')[0];
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const tecnico =
@@ -436,6 +437,13 @@ function TecnicoView({ screen, setScreen }) {
     .sort((a, b) => String(a.fecha_programada || a.fecha_inicio || '').localeCompare(String(b.fecha_programada || b.fecha_inicio || '')))
     .slice(0, 4);
   const partesTecnico = partes.filter(p => p.tecnico_id === tecnico.id || p.tecnico === tecnico.id || p.tecnico === tecnico.nombre);
+  const tareasPendientes = ots
+    .flatMap(o => (o.tareas || [])
+      .filter(t => !(t.completada || t.completado || t.estado === 'completada'))
+      .filter(t => !t.tecnico_id || String(t.tecnico_id) === String(tecnico.id))
+      .map(t => ({ ...t, ot: o, titulo: t.titulo || t.descripcion || 'Tarea sin titulo', avance_pct: Number(t.avance_pct || 0) })))
+    .sort((a, b) => String(b.actualizado_en || b.ultima_actividad_fecha || '').localeCompare(String(a.actualizado_en || a.ultima_actividad_fecha || '')))
+    .slice(0, 6);
   const docsActivos = personalDocumentos.filter(d => d.personal_id === tecnico.id && d.activo);
   const [docFile, setDocFile] = useState(null);
   const [docTipo, setDocTipo] = useState('');
@@ -443,6 +451,7 @@ function TecnicoView({ screen, setScreen }) {
   const [docSubiendo, setDocSubiendo] = useState(false);
   const [docError, setDocError] = useState('');
   const [docExito, setDocExito] = useState('');
+  const [avanceForm, setAvanceForm] = useState({ avance_pct: 0, completada: false, horas: 8, avance_global: 0 });
 
   const handleSubirDocMovil = async (e) => {
     e.preventDefault();
@@ -469,17 +478,23 @@ function TecnicoView({ screen, setScreen }) {
   const enviarParte = () => {
     const ot = selectedOt || otsTecnico[0];
     if (!ot) return;
+    const tarea = selectedTask;
     registrarParteDiario({
       ot_id: ot.id,
       tecnico_id: tecnico.id,
       tecnico: tecnico.nombre,
       fecha: today,
-      horas: 8,
-      avance_reportado: 25,
-      actividad: `Ejecucion en campo de ${ot.numero || ot.id}`,
+      horas: avanceForm.horas || 8,
+      tarea_id: tarea?.id || null,
+      avance_tarea_reportado: tarea ? avanceForm.avance_pct : null,
+      tarea_completada_reportada: tarea ? avanceForm.completada : false,
+      avance_reportado: tarea ? 0 : avanceForm.avance_global,
+      actividad: tarea ? `Trabajo en tarea: ${tarea.titulo}` : `Ejecucion en campo de ${ot.numero || ot.id}`,
+      tareas_trabajadas: tarea ? [{ tarea_id: tarea.id, nombre: tarea.titulo, estado_actual: tarea.estado || 'pendiente', avance_hoy: avanceForm.avance_pct }] : [],
       evidencias: [{ tipo: 'foto', nombre: 'evidencia_campo.jpg' }],
       registrado_desde: 'campo',
     });
+    setSelectedTask(null);
     setScreen('home');
   };
 
@@ -493,6 +508,22 @@ function TecnicoView({ screen, setScreen }) {
     </div>
     <div className="mobile-content">
       {screen === 'home' && <>
+        {tareasPendientes.length > 0 && (
+          <>
+            <div className="eyebrow" style={{marginBottom:10}}>Mis tareas pendientes</div>
+            {tareasPendientes.map(t => (
+              <div key={t.id} className="card" style={{padding:14, marginBottom:10}}>
+                <div className="mono" style={{fontSize:11, color:'var(--fg-muted)', fontWeight:600, marginBottom:4}}>{t.ot.numero || t.ot.id} · {getCuenta(t.ot.cuenta_id || t.ot.cliente)}</div>
+                <div style={{fontWeight:700, fontSize:14, marginBottom:8}}>→ {t.titulo}</div>
+                <div className="bar" style={{marginBottom:6}}><div style={{width:`${Math.min(100, Math.max(0, t.avance_pct))}%`, background:'var(--cyan)'}}/></div>
+                <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:10}}>{t.ultima_actividad_fecha ? `Ultima vez: ${t.ultima_actividad_fecha}` : 'Sin registro previo'} · {t.avance_pct}%</div>
+                <button className="btn btn-sm btn-primary" style={{width:'100%'}} onClick={() => { setSelectedOt(t.ot); setSelectedTask(t); setAvanceForm({ avance_pct: t.avance_pct || 0, completada: false, horas: 8, avance_global: t.ot.avance ?? 0 }); setScreen('parte'); }}>
+                  {t.avance_pct > 0 ? 'Continuar trabajando en esta tarea' : 'Iniciar esta tarea'}
+                </button>
+              </div>
+            ))}
+          </>
+        )}
         <div className="eyebrow" style={{marginBottom:10}}>OTs de hoy · 22 Abr</div>
         {otsTecnico.map(o=>(
           <div key={o.id} className="card hover-raise" style={{padding:14,marginBottom:10,cursor:'pointer'}}>
@@ -504,7 +535,7 @@ function TecnicoView({ screen, setScreen }) {
             <div className="text-muted" style={{fontSize:12,marginBottom:10}}>{o.sede} · 08:00 - 17:00</div>
             <div className="row" style={{gap:6}}>
               <button className="btn btn-sm btn-secondary flex-1" onClick={()=>{ setSelectedOt(o); setScreen('checklist'); }}>{I.check} SSOMA</button>
-              <button className="btn btn-sm btn-primary flex-1" onClick={()=>{ setSelectedOt(o); setScreen('parte'); }}>{I.play} Parte</button>
+              <button className="btn btn-sm btn-primary flex-1" onClick={()=>{ setSelectedOt(o); setSelectedTask(null); setAvanceForm({ avance_pct: 0, completada: false, horas: 8, avance_global: o.avance ?? 0 }); setScreen('parte'); }}>{I.play} Parte</button>
             </div>
           </div>
         ))}
@@ -598,7 +629,33 @@ function TecnicoView({ screen, setScreen }) {
         <div onClick={()=>setScreen('home')} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← OTs de hoy</div>
         <div className="eyebrow">Parte diario · Paso 4 de 5</div>
         <div className="font-display" style={{fontSize:18,fontWeight:700,margin:'4px 0 16px'}}>{selectedOt?.numero || selectedOt?.id || 'Evidencias'}</div>
+        {selectedTask && (
+          <div className="card" style={{padding:12, marginBottom:14}}>
+            <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Tarea seleccionada</div>
+            <div style={{fontWeight:700, marginBottom:6}}>{selectedTask.titulo}</div>
+            <div style={{fontSize:12, color:'var(--fg-muted)'}}>Avance actual: {selectedTask.avance_pct}%</div>
+          </div>
+        )}
         <div className="bar" style={{marginBottom:20}}><div style={{width:'80%',background:'var(--cyan)'}}/></div>
+        {selectedTask ? (
+          <div style={{marginBottom: 16}}>
+            <label style={{fontSize:12, color:'var(--fg-muted)', display:'block', marginBottom:4}}>¿En qué porcentaje quedó esta tarea hoy?</label>
+            <input className="input" type="number" min="0" max="100" value={avanceForm.avance_pct} onChange={e => setAvanceForm(s => ({...s, avance_pct: Math.min(100, Math.max(0, Number(e.target.value)))}))} style={{width:'100%', marginBottom:12}} />
+            <label style={{display:'flex', alignItems:'center', gap:8, fontSize:13}}>
+              <input type="checkbox" checked={avanceForm.completada} onChange={e => setAvanceForm(s => ({...s, completada: e.target.checked}))} />
+              Esta tarea está completamente terminada
+            </label>
+          </div>
+        ) : (
+          <div style={{marginBottom: 16}}>
+            <label style={{fontSize:12, color:'var(--fg-muted)', display:'block', marginBottom:4}}>Avance global de la OT (%)</label>
+            <input className="input" type="number" min="0" max="100" value={avanceForm.avance_global} onChange={e => setAvanceForm(s => ({...s, avance_global: Math.min(100, Math.max(0, Number(e.target.value)))}))} style={{width:'100%', marginBottom:12}} />
+          </div>
+        )}
+        <div style={{marginBottom: 16}}>
+          <label style={{fontSize:12, color:'var(--fg-muted)', display:'block', marginBottom:4}}>Horas trabajadas</label>
+          <input className="input" type="number" min="0.5" step="0.5" value={avanceForm.horas} onChange={e => setAvanceForm(s => ({...s, horas: Number(e.target.value)}))} style={{width:'100%'}} />
+        </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
           {[1,2,3].map(i=>(<div key={i} style={{aspectRatio:'1',background:'linear-gradient(135deg,#1A2B4A,#0F1B30)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.4)'}}>{I.camera}</div>))}
           <button style={{aspectRatio:'1',border:'2px dashed var(--border)',borderRadius:8,background:'var(--bg-subtle)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4,fontSize:11,color:'var(--fg-muted)',cursor:'pointer'}}>{I.camera}<span>Agregar</span></button>

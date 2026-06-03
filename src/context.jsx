@@ -1,8 +1,8 @@
-﻿import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { MOCK } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
-import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS } from './services/operacionesService.js';
+import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
   calcularFechaVencimientoCxC,
@@ -2992,7 +2992,9 @@ export function AppProvider({ children }) {
       const tareas = o.tareas || [];
       const tareasConPeso = tareas.filter(t => Number(t.peso) > 0);
       let nuevoAvance;
-      if (tareasConPeso.length > 0) {
+      if (parte.tarea_id || tipoOTRequiereTareas(o)) {
+        nuevoAvance = o.avance_supervisor_pct ?? o.avance ?? 0;
+      } else if (tareasConPeso.length > 0) {
         let pond = 0;
         tareasConPeso.forEach(tarea => {
           let ac = 0;
@@ -3122,7 +3124,7 @@ export function AppProvider({ children }) {
   };
 
   const cerrarTecnicamenteOT = async (otId, datosCierre) => {
-    const { conformidad_archivo, ...restDatos } = datosCierre;
+    const { conformidad_archivo, tareas_incompletas, snapshot_tareas, ...restDatos } = datosCierre;
     const cierreId = generateId('cier');
 
     let tokenConformidad = null;
@@ -3139,8 +3141,20 @@ export function AppProvider({ children }) {
     }
 
     const anterior = ots.find(o => o.id === otId) || null;
-    setOts(prev => prev.map(o => o.id === otId ? { ...o, estado: 'cerrada' } : o));
+    const updateOts = (o) => {
+      if (o.id !== otId) return o;
+      let newTareas = o.tareas || [];
+      if (tareas_incompletas?.length > 0) {
+        newTareas = newTareas.map(t => tareas_incompletas.includes(t.id) ? { ...t, estado: 'cerrada_sin_completar' } : t);
+      }
+      return { ...o, estado: 'cerrada', tareas: newTareas };
+    };
+    setOts(prev => prev.map(updateOts));
     opsSync(sb => svcActualizarOT(sb, otId, { estado: 'cerrada' }));
+
+    if (tareas_incompletas?.length > 0) {
+      opsSync(sb => svcProcesarCierreOTConTareas(sb, otId, tareas_incompletas, snapshot_tareas, authUser?.nombre || authUser?.email, empresa.id));
+    }
 
     const cierre = {
       id: cierreId,
@@ -5444,7 +5458,9 @@ export function AppProvider({ children }) {
       ...datosDb
     };
     const cxpParaDevengo = { ...cuentaPagar, no_devengar_er };
-    const gastoDevengo = !cxpExcluidaEr(cxpParaDevengo) && montoDevengoCxP(cxpParaDevengo) > 0
+    const yaDevengado = (comprasGastos || []).some(g => g.cxp_id === cuentaPagar.id);
+    if (yaDevengado) console.log('[generarCxP] Devengo omitido: ya existe compras_gastos con cxp_id', cuentaPagar.id);
+    const gastoDevengo = !cxpExcluidaEr(cxpParaDevengo) && !yaDevengado && montoDevengoCxP(cxpParaDevengo) > 0
       ? buildDevengoCxP(cxpParaDevengo)
       : null;
     if (gastoDevengo) {

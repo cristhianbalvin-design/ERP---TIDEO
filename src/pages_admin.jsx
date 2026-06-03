@@ -4,6 +4,7 @@ import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient } from './lib/supabaseClient.js';
+import { TiposGastoAdmin } from './components/NuevoEgreso.jsx';
 import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getPotentialManagers, getUserHierarchyLevel, hasTeamScope } from './lib/hierarchy.js';
 import { PHONE_PATTERN, RUC_PATTERN, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { VARIABLES_COMERCIALES } from './lib/textoComercial.js';
@@ -4203,6 +4204,7 @@ function Parametros() {
     { key: 'tipo_cambio', title: 'Tipos de Cambio', description: 'Historial diario de tipos de cambio. Fuente: open.er-api.com con ingreso manual como respaldo.' },
     { key: 'nomina', title: 'Nomina', description: 'Regimen laboral, frecuencia de pago, quincenas y valores fiscales vigentes.' },
     { key: 'evaluaciones', title: 'Evaluaciones', description: 'Ponderaciones, escala y labels para evaluaciones de desempeno.' },
+    { key: 'tipos_gasto', title: 'Tipos de Gasto', description: 'Catálogo de tipos de gasto con su mapeo automático a categoría ER. Usados por el flujo "Nuevo Egreso".' },
   ];
   const activeParamSection = paramsSections.find(s => s.key === paramSection) || paramsSections[0];
 
@@ -4817,7 +4819,11 @@ function Parametros() {
             );
           })()}
 
-          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && (
+          {paramSection === 'tipos_gasto' && (
+            <TiposGastoAdmin />
+          )}
+
+          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'tipos_gasto' && (
           <div className="params-footer-actions">
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
               {I.save} {saving ? 'Guardando...' : 'Guardar cambios'}

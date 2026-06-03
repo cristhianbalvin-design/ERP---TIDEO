@@ -1790,6 +1790,7 @@ function Valorizacion({ role }) {
   const [filterCliente, setFilterCliente] = useState('');
   const [filterOs, setFilterOs] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
+  const [filterMoneda, setFilterMoneda] = useState('');
   const [filterPeriodo, setFilterPeriodo] = useState('');
   const [filterModelo, setFilterModelo] = useState('');
 
@@ -2010,9 +2011,10 @@ function Valorizacion({ role }) {
   const nextNumero = `VAL-${new Date().getFullYear()}-${String(valorizaciones.length + 1).padStart(3, '0')}`;
 
   // ── Ficha detail view ─────────────────────────────────────────────────
+  let fichaVal = null;
   if (selVal) {
     const v = valorizaciones.find(x => x.id === selVal);
-    if (!v) { setSelVal(null); return null; }
+    if (v) {
     const os = getOs(v.os_cliente_id);
     const clienteNombre = getClienteNombre(v.os_cliente_id);
     const badgeC = e => ({ aprobada: 'badge-green', facturada: 'badge-navy', anulada: 'badge-red' }[e] || 'badge-gray');
@@ -2022,7 +2024,7 @@ function Valorizacion({ role }) {
     const historial = v.historial || [];
     const TABS = [{ id: 'partidas', label: 'Partidas' }, { id: 'ots', label: `OTs incluidas (${otsIncluidas.length})` }, { id: 'historial', label: 'Historial' }];
 
-    return (
+    fichaVal = (
       <>
         {/* Modal anular */}
         {modalAnular && (
@@ -2048,52 +2050,31 @@ function Valorizacion({ role }) {
           </div>
         )}
 
-        <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
+        <div className="side-panel-backdrop" onClick={() => setSelVal(null)} />
+        <div className="side-panel">
+        <div className="side-panel-head">
           <div>
-            <button className="btn btn-ghost" onClick={() => setSelVal(null)} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>
-              ← Volver a Valorizaciones
-            </button>
-            <div style={{display:'flex', alignItems:'center', gap:12}}>
-              <h1 className="page-title" style={{margin:0}}>{v.numero}</h1>
-              <span className={'badge ' + badgeC(v.estado)} style={{fontSize:13}}>{badgeL(v.estado)}</span>
-              {v.tipo === 'avance' && (
-                <span style={{fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:4, background:'color-mix(in srgb, var(--orange) 15%, transparent)', color:'var(--orange)'}}>
-                  Avance parcial
-                </span>
-              )}
-              {v.tipo === 'final' && (
-                <span style={{fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:4, background:'color-mix(in srgb, var(--green) 15%, transparent)', color:'var(--green)'}}>
-                  Valorización final
-                </span>
-              )}
-            </div>
-            <div className="page-sub">
-              <button className="btn btn-ghost" style={{padding:0, fontSize:13, color:'var(--cyan)'}}
-                onClick={() => navigate('os_clientes', { detail: v.os_cliente_id })}>
-                {os?.numero}
-              </button>
-              {' '}— {clienteNombre} · Período: {v.periodo || '—'}
-              {v.estado === 'aprobada' && v.fecha_aprobacion && (
-                <span style={{marginLeft:8, color:'var(--green)'}}>· Aprobada: {v.fecha_aprobacion}</span>
-              )}
+            <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:2}}>{clienteNombre} · {os?.numero || '—'} · {v.periodo || '—'}</div>
+            <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+              <strong style={{fontSize:16}}>{v.numero}</strong>
+              <span className={'badge ' + badgeC(v.estado)}>{badgeL(v.estado)}</span>
+              {v.tipo === 'avance' && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'color-mix(in srgb,var(--orange) 15%,transparent)',color:'var(--orange)'}}>Avance</span>}
+              {v.tipo === 'final' && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'color-mix(in srgb,var(--green) 15%,transparent)',color:'var(--green)'}}>Final</span>}
             </div>
           </div>
-          <div className="row" style={{gap:10}}>
-            {v.estado === 'borrador' && <>
-              <button className="btn btn-secondary" onClick={() => editarBorrador(v)}>{I.edit} Editar</button>
-              <button className="btn btn-primary" onClick={() => { aprobarValorizacion(v.id); setSelVal(null); }}>{I.check} Aprobar</button>
-            </>}
-            {v.estado === 'aprobada' && <>
-              <button className="btn btn-secondary" style={{color:'var(--danger)', borderColor:'var(--danger)'}} onClick={() => setModalAnular(true)}>Anular</button>
-              <button className="btn btn-primary" style={{background:'var(--green)'}} onClick={() => navigate('facturacion', { valSel: v.id, mode: 'val' })}>
-                {I.plus} Generar Factura
-              </button>
-            </>}
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            {v.estado === 'borrador' && <button className="btn btn-primary btn-sm" onClick={() => { aprobarValorizacion(v.id); setSelVal(null); }}>{I.check} Aprobar</button>}
+            {v.estado === 'aprobada' && <button className="btn btn-primary btn-sm" style={{background:'var(--green)'}} onClick={() => navigate('facturacion', { valSel: v.id, mode: 'val' })}>{I.plus} Factura</button>}
+            <button className="icon-btn" onClick={() => setSelVal(null)}>{I.x}</button>
           </div>
         </div>
-
-        {/* Info cards */}
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginTop:20, marginBottom:16}}>
+        <div className="side-panel-body">
+          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+            {v.estado === 'borrador' && <button className="btn btn-secondary btn-sm" onClick={() => editarBorrador(v)}>{I.edit} Editar</button>}
+            {v.estado === 'aprobada' && <button className="btn btn-secondary btn-sm" style={{color:'var(--danger)',borderColor:'var(--danger)'}} onClick={() => setModalAnular(true)}>Anular</button>}
+          </div>
+          {/* Info cards */}
+          <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, marginBottom:16}}>
           <div className="card" style={{padding:'14px 18px'}}>
             <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>OS Cliente</div>
             <div style={{fontWeight:600}}>{os?.numero || '—'}</div>
@@ -2249,9 +2230,12 @@ function Valorizacion({ role }) {
             ))}
           </div>
         )}
+        </div>{/* end side-panel-body */}
+        </div>{/* end side-panel */}
       </>
     );
-  }
+    } // end if (v)
+  } // end if (selVal)
 
   // ── Editing view (4-step wizard) ──────────────────────────────────────
   if (editing) {
@@ -2820,6 +2804,7 @@ function Valorizacion({ role }) {
     if (filterCliente && getClienteId(v.os_cliente_id) !== filterCliente) return false;
     if (filterOs && v.os_cliente_id !== filterOs) return false;
     if (filterEstado && v.estado !== filterEstado) return false;
+    if (filterMoneda && (v.moneda || 'PEN') !== filterMoneda) return false;
     if (filterPeriodo && (v.periodo || '') !== filterPeriodo) return false;
     if (filterModelo && (v.modelo_calculo || '') !== filterModelo) return false;
     if (query) {
@@ -2831,10 +2816,11 @@ function Valorizacion({ role }) {
     return true;
   });
 
-  const hasFilters = filterCliente || filterOs || filterEstado || filterPeriodo || filterModelo;
+  const hasFilters = filterCliente || filterOs || filterEstado || filterMoneda || filterPeriodo || filterModelo;
 
   return (
     <>
+      {fichaVal}
       <div className="page-header">
         <div>
           <h1 className="page-title">Valorizaciones</h1>
@@ -2844,31 +2830,35 @@ function Valorizacion({ role }) {
       </div>
 
       {/* KPIs */}
-      <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:16, marginTop:24, marginBottom:8}}>
-        <div className="card" style={{padding:'16px 20px'}}>
-          <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>Valorizaciones este mes</div>
-          <div style={{fontSize:28, fontWeight:700, fontFamily:'Sora', color:'var(--cyan)'}}>{valMes}</div>
+      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
+        <div className="kpi-card">
+          <div className="kpi-label">Valorizaciones este mes</div>
+          <div className="kpi-value" style={{marginTop:12}}>{valMes}</div>
+          <div className="kpi-icon cyan">{I.clipboard}</div>
         </div>
-        <div className="card" style={{padding:'16px 20px'}}>
-          <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>Pendiente de facturar</div>
-          <div style={{fontSize:22, fontWeight:700, fontFamily:'Sora', color:'var(--orange)'}}>{money(montoPendientePEN)}</div>
-          {montoPendienteUSD > 0 && (
-            <div style={{fontSize:22, fontWeight:700, fontFamily:'Sora', color:'var(--orange)', marginTop:2}}>{moneyCurrency(montoPendienteUSD, 'USD')}</div>
-          )}
+        <div className="kpi-card">
+          <div className="kpi-label">Pendiente de facturar</div>
+          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
+            <span>{money(montoPendientePEN)}</span>
+            {montoPendienteUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{moneyCurrency(montoPendienteUSD, 'USD')}</span>}
+          </div>
           <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Estado aprobada</div>
+          <div className="kpi-icon orange">{I.clock}</div>
         </div>
-        <div className="card" style={{padding:'16px 20px'}}>
-          <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>Total facturado</div>
-          <div style={{fontSize:22, fontWeight:700, fontFamily:'Sora', color:'var(--green)'}}>{money(montoFacturadoPEN)}</div>
-          {montoFacturadoUSD > 0 && (
-            <div style={{fontSize:22, fontWeight:700, fontFamily:'Sora', color:'var(--green)', marginTop:2}}>{moneyCurrency(montoFacturadoUSD, 'USD')}</div>
-          )}
+        <div className="kpi-card">
+          <div className="kpi-label">Total facturado</div>
+          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
+            <span>{money(montoFacturadoPEN)}</span>
+            {montoFacturadoUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{moneyCurrency(montoFacturadoUSD, 'USD')}</span>}
+          </div>
           <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Estado facturada</div>
+          <div className="kpi-icon green">{I.check}</div>
         </div>
-        <div className="card" style={{padding:'16px 20px'}}>
-          <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6}}>OTs listas para valorizar</div>
-          <div style={{fontSize:28, fontWeight:700, fontFamily:'Sora', color:'var(--cyan)'}}>{otsListasCount}</div>
+        <div className="kpi-card">
+          <div className="kpi-label">OTs listas para valorizar</div>
+          <div className="kpi-value" style={{marginTop:12}}>{otsListasCount}</div>
           <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Con conformidad registrada</div>
+          <div className="kpi-icon cyan">{I.warehouse}</div>
         </div>
       </div>
 
@@ -2898,8 +2888,13 @@ function Valorizacion({ role }) {
             <option value="">Todos los modelos</option>
             {modeloOpts.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
+          <select className="select" style={{flex:'1 1 110px', minWidth:100}} value={filterMoneda} onChange={e => setFilterMoneda(e.target.value)}>
+            <option value="">Todas las monedas</option>
+            <option value="PEN">S/ Soles (PEN)</option>
+            <option value="USD">US$ Dólares (USD)</option>
+          </select>
           {hasFilters && (
-            <button className="btn btn-ghost btn-sm" onClick={() => { setFilterCliente(''); setFilterOs(''); setFilterEstado(''); setFilterPeriodo(''); setFilterModelo(''); }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setFilterCliente(''); setFilterOs(''); setFilterEstado(''); setFilterMoneda(''); setFilterPeriodo(''); setFilterModelo(''); }}>
               {I.x} Limpiar
             </button>
           )}
