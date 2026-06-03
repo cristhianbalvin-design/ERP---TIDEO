@@ -1261,7 +1261,7 @@ function Cuentas() {
 }
 
 function OT({ role }) {
-  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
+  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, comprasGastos, ordenesCompra, ordenesServicio, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Resumen');
   const prevDetailRef = useRef(null);
@@ -1273,7 +1273,7 @@ function OT({ role }) {
   const [motivoAccionParteOT, setMotivoAccionParteOT] = useState('');
   const [avanceAprobacionParteOT, setAvanceAprobacionParteOT] = useState(0);
 
-  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: '', est_mo: '', est_materiales: '', est_terceros: '', est_logistica: '', participantes_admin: [] };
+  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: '', costo_estimado_ot: '', est_mo: '', est_materiales: '', est_terceros: '', est_logistica: '', participantes_admin: [] };
   const [panelNuevaOT, setPanelNuevaOT] = useState(false);
   const [formNuevaOT, setFormNuevaOT] = useState(formNuevaOTBase);
   const [errorNuevaOT, setErrorNuevaOT] = useState('');
@@ -1296,6 +1296,10 @@ function OT({ role }) {
           next.est_materiales = hc.total_materiales ?? '';
           next.est_terceros = hc.total_servicios_terceros ?? '';
           next.est_logistica = hc.total_logistica ?? '';
+          const otsOs = (ots || []).filter(ot => ot.os_cliente_id === v && ot.estado !== 'anulada');
+          const asignado = otsOs.reduce((s, ot) => s + Number(ot.costo_estimado_ot ?? ot.costoEst ?? ot.costo_estimado ?? 0), 0);
+          const sugerido = Math.max(0, Number(hc.costo_total || 0) - asignado);
+          next.costo_estimado_ot = sugerido || Number(hc.costo_total || 0) || '';
         } else {
           const saldo = os.saldo_por_ejecutar ?? os.presupuesto_os ?? 0;
           if (saldo > 0) {
@@ -1303,6 +1307,7 @@ function OT({ role }) {
             next.est_materiales = '';
             next.est_terceros = '';
             next.est_logistica = '';
+            next.costo_estimado_ot = saldo;
           }
         }
       }
@@ -1371,6 +1376,9 @@ function OT({ role }) {
     (parseFloat(formNuevaOT.est_terceros) || 0) +
     (parseFloat(formNuevaOT.est_logistica) || 0)
   );
+  const estimadoPropioNuevaOT = formNuevaOT.costo_estimado_ot !== ''
+    ? Number(formNuevaOT.costo_estimado_ot || 0)
+    : totalEstimadoNuevaOT;
 
   const cerrarPanelNuevaOT = () => { setPanelNuevaOT(false); setFormNuevaOT(formNuevaOTBase); setErrorNuevaOT(''); };
 
@@ -1404,10 +1412,17 @@ function OT({ role }) {
           est_materiales: formNuevaOT.est_materiales !== '' ? Number(formNuevaOT.est_materiales) : null,
           est_terceros: formNuevaOT.est_terceros !== '' ? Number(formNuevaOT.est_terceros) : null,
           est_logistica: formNuevaOT.est_logistica !== '' ? Number(formNuevaOT.est_logistica) : null,
-          costo_estimado: totalEstimadoNuevaOT,
+          costo_estimado: estimadoPropioNuevaOT,
+          costo_estimado_ot: estimadoPropioNuevaOT,
+          estimado_detalle: {
+            mano_obra: Number(formNuevaOT.est_mo || 0),
+            materiales: Number(formNuevaOT.est_materiales || 0),
+            terceros: Number(formNuevaOT.est_terceros || 0),
+            logistica: Number(formNuevaOT.est_logistica || 0),
+          },
         });
       } else {
-        crearOT({ ...datos, centro_beneficio_id: formNuevaOT.centro_beneficio_id });
+        crearOT({ ...datos, centro_beneficio_id: formNuevaOT.centro_beneficio_id, costoEst: estimadoPropioNuevaOT, costo_estimado_ot: estimadoPropioNuevaOT });
       }
       cerrarPanelNuevaOT();
     } catch (err) {
@@ -1938,7 +1953,20 @@ function OT({ role }) {
                   </td>
                   <td><span className={'badge '+(o.sla==='vencido'?'badge-red':o.sla==='riesgo'?'badge-orange':'badge-green')}>{o.sla==='vencido'?'Vencido':o.sla==='riesgo'?'Riesgo':'OK'}</span></td>
                   <td className="text-muted">{o.responsable}</td>
-                  {canCost && <td className="num">{money(o.costoEst||0, otSym(o))}<span className="text-subtle"> / {money(calcCostoRealLive(o), otSym(o))}</span></td>}
+                  {canCost && (() => {
+                    const estimadoOT = Number(o.costo_estimado_ot ?? o.costoEst ?? o.costo_estimado ?? 0);
+                    const realOT = calcCostoRealLive(o);
+                    const pctCosto = estimadoOT > 0 ? (realOT / estimadoOT) * 100 : 0;
+                    const mostrarSem = estimadoOT > 0 && ['ejecucion','pendiente_cierre','cerrada','cerrada_tecnica','valorizada','facturada'].includes(o.estado);
+                    const semColor = pctCosto > 100 ? 'var(--danger)' : pctCosto >= 80 ? 'var(--orange)' : 'var(--green)';
+                    return (
+                      <td className="num">
+                        {mostrarSem && <span title={`Ejecucion costo: ${Math.round(pctCosto)}%`} style={{display:'inline-block', width:8, height:8, borderRadius:'50%', background:semColor, marginRight:6, verticalAlign:'middle'}} />}
+                        {money(estimadoOT, otSym(o))}
+                        <span className="text-subtle"> / {money(realOT, otSym(o))}</span>
+                      </td>
+                    );
+                  })()}
                   <td style={{width:120}}>
                     <div className="bar"><div style={{width:(o.avance||0)+'%', background: o.avance===100?'var(--green)':'var(--cyan)'}}/></div>
                     <div style={{fontSize:11,marginTop:2}}>{o.avance||0}%</div>
@@ -3026,12 +3054,35 @@ function OT({ role }) {
                 return (hojasCosteo || []).find(h => h.id === cot.hoja_costeo_id && h.estado === 'aprobada') ?? null;
               })();
 
-              // Estimado: siempre desde los campos escalares (origen HC, read-only en este tab)
-              const estMoFinal  = sel.est_mo         ?? null;
-              const estMatFinal = sel.est_materiales  ?? null;
-              const estTerFinal = sel.est_terceros    ?? null;
-              const estLogFinal = sel.est_logistica   ?? null;
-              const costoEstTotal = (estMoFinal || 0) + (estMatFinal || 0) + (estTerFinal || 0) + (estLogFinal || 0);
+              const sumEstimadoDetalle = (value) => Array.isArray(value)
+                ? value.reduce((s, i) => s + (Number(i.subtotal ?? i.monto ?? i.total) || 0), 0)
+                : Number(value || 0);
+              const hcRef = {
+                mano_obra: Number(hcVinculadaCostos?.total_mano_obra || sel.est_mo || 0),
+                materiales: Number(hcVinculadaCostos?.total_materiales || sel.est_materiales || 0),
+                terceros: Number(hcVinculadaCostos?.total_servicios_terceros || sel.est_terceros || 0),
+                logistica: Number(hcVinculadaCostos?.total_logistica || sel.est_logistica || 0),
+              };
+              const hcRefTotal = Object.values(hcRef).reduce((s, v) => s + Number(v || 0), 0);
+              const costoEstimadoPropio = Number(sel.costo_estimado_ot ?? sel.costoEst ?? sel.costo_estimado ?? 0);
+              const estimadoDetalleBase = sel.estimado_detalle || sel.est_detalle || {};
+              const estimadoDetalleRaw = {
+                mano_obra: sumEstimadoDetalle(estimadoDetalleBase.mano_obra),
+                materiales: sumEstimadoDetalle(estimadoDetalleBase.materiales),
+                terceros: sumEstimadoDetalle(estimadoDetalleBase.terceros),
+                logistica: sumEstimadoDetalle(estimadoDetalleBase.logistica),
+              };
+              const estimadoDetalleRawTotal = Object.values(estimadoDetalleRaw).reduce((s, v) => s + Number(v || 0), 0);
+              const distribuirEstimado = key => {
+                if (estimadoDetalleRawTotal > 0) return estimadoDetalleRaw[key];
+                if (hcRefTotal > 0 && costoEstimadoPropio > 0) return costoEstimadoPropio * (hcRef[key] / hcRefTotal);
+                return key === 'mano_obra' ? costoEstimadoPropio : 0;
+              };
+              const estMoFinal  = distribuirEstimado('mano_obra');
+              const estMatFinal = distribuirEstimado('materiales');
+              const estTerFinal = distribuirEstimado('terceros');
+              const estLogFinal = distribuirEstimado('logistica');
+              const costoEstTotal = costoEstimadoPropio || (estMoFinal + estMatFinal + estTerFinal + estLogFinal);
 
               // Real: desde realDetalle (manual) con fallback a partes aprobados por sección
               const sumReal = (key) => (realDetalle[key] || []).reduce((s, i) => s + (Number(i.subtotal) || 0), 0);
@@ -3081,11 +3132,56 @@ function OT({ role }) {
 
               const varPct = (est, real) => {
                 if (est == null || real == null || est === 0) return null;
-                return Math.round(((real - est) / est) * 100);
+                return Math.round(((est - real) / est) * 100);
               };
-              const varColor = (pct) => pct === null ? 'var(--fg-muted)' : pct <= 0 ? 'var(--green)' : 'var(--danger)';
-              const margen = costoEstTotal > 0 && costoRealTotal > 0
-                ? Math.round(((costoEstTotal - costoRealTotal) / costoEstTotal) * 100) : 0;
+              const varColor = (pct, est, real) => {
+                if (pct === null) return 'var(--fg-muted)';
+                if (est === undefined && real === undefined) return pct >= 0 ? 'var(--green)' : 'var(--danger)';
+                return Number(real || 0) <= Number(est || 0) ? 'var(--green)' : 'var(--danger)';
+              };
+              const semaforo = (est, real) => {
+                if (!(Number(est) > 0)) return { color: 'var(--fg-muted)', label: 'Sin estimado' };
+                const pct = Number(real || 0) / Number(est) * 100;
+                if (pct > 100) return { color: 'var(--danger)', label: 'Rojo' };
+                if (pct >= 80) return { color: 'var(--orange)', label: 'Naranja' };
+                return { color: 'var(--green)', label: 'Verde' };
+              };
+              const precioVentaOT = Number(sel.precio_venta_ot ?? sel.precio_venta ?? sel.monto_venta ?? sel.valor_venta ?? 0);
+              const margen = precioVentaOT > 0 ? Math.round(((precioVentaOT - costoRealTotal) / precioVentaOT) * 100) : null;
+              const variacionMontoTotal = costoEstTotal - costoRealTotal;
+              const variacionTotalPct = varPct(costoEstTotal || null, costoRealTotal);
+              const estadoNormSel = normalizarEstadoOT(sel.estado);
+              const estimadoCongelado = Boolean(sel.estimado_congelado_en) || ['ejecucion','en_ejecucion','cerrada','cerrada_tecnica','pendiente_cierre','valorizada','facturada'].includes(estadoNormSel);
+              const estimadoEditable = ['borrador','pendiente','programada'].includes(estadoNormSel) && !estimadoCongelado;
+              const guardarEstimadoOT = () => {
+                const detalle = {
+                  mano_obra: Number(estMoFinal || 0),
+                  materiales: Number(estMatFinal || 0),
+                  terceros: Number(estTerFinal || 0),
+                  logistica: Number(estLogFinal || 0),
+                };
+                const updates = { costo_estimado_ot: Number(costoEstTotal || 0), costoEst: Number(costoEstTotal || 0), estimado_detalle: detalle };
+                actualizarOT(sel.id, updates);
+                setSel(s => ({ ...s, ...updates }));
+                addNotificacion('Estimado propio de OT actualizado.');
+              };
+              const importarEstimadoHC = () => {
+                if (!hcVinculadaCostos) return;
+                const otsOS = (ots || []).filter(o => o.os_cliente_id === sel.os_cliente_id && o.estado !== 'anulada');
+                const sugerido = otsOS.length > 1 ? Number(hcVinculadaCostos.costo_total || hcRefTotal || 0) / otsOS.length : Number(hcVinculadaCostos.costo_total || hcRefTotal || 0);
+                const updates = { costo_estimado_ot: sugerido, costoEst: sugerido, estimado_detalle: { ...hcRef } };
+                setSel(s => ({ ...s, ...updates }));
+                addNotificacion('Referencia HC importada como estimado editable. Revisa y guarda.');
+              };
+              const osComprometidas = (ordenesServicio || [])
+                .filter(o => o.ot_id === sel.id && !['cerrada','cerrado'].includes(normalizarEstadoOT(o.estado)))
+                .reduce((s, o) => s + Number(o.total || 0), 0);
+              const ocComprometidas = (ordenesCompra || [])
+                .filter(o => o.ot_id === sel.id && !['recibida','recibido','cerrada','cerrado'].includes(normalizarEstadoOT(o.estado)))
+                .reduce((s, o) => s + Number(o.total || 0), 0);
+              const comprometidoTotal = osComprometidas + ocComprometidas;
+              const avancePct = Number(sel.avance || sel.avance_pct || 0);
+              const eac = avancePct > 0 ? costoRealTotal / (avancePct / 100) : null;
 
               const sections = [
                 { key: 'mano_obra',  label: 'Mano de obra',         est: estMoFinal,  real: realMoFinal  },
@@ -3099,6 +3195,38 @@ function OT({ role }) {
 
               return (
                 <div className="col" style={{ gap: 16, padding: 22 }}>
+                  <div className="card" style={{ padding: 16 }}>
+                    <div className="card-head" style={{ padding: 0, marginBottom: 12, justifyContent: 'space-between' }}>
+                      <h3>Estimado OT</h3>
+                      {estimadoCongelado && <span className="badge badge-gray">Congelado al iniciar ejecucion</span>}
+                    </div>
+                    <div className="grid-2" style={{ gap: 12 }}>
+                      <div className="input-group">
+                        <label>Estimado propio de esta OT</label>
+                        <input
+                          className="input"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={sel.costo_estimado_ot ?? sel.costoEst ?? ''}
+                          onChange={e => setSel(s => ({ ...s, costo_estimado_ot: e.target.value, costoEst: Number(e.target.value || 0) }))}
+                          disabled={!estimadoEditable}
+                        />
+                      </div>
+                      <div className="input-group">
+                        <label>Estado</label>
+                        <div style={{ minHeight: 38, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 700 }}>{money(costoEstTotal, monSym)}</span>
+                          {hcVinculadaCostos && estimadoEditable && (
+                            <button type="button" className="btn btn-secondary" style={{ fontSize: 12 }} onClick={importarEstimadoHC}>Importar desde HC</button>
+                          )}
+                          {estimadoEditable && (
+                            <button type="button" className="btn btn-primary" style={{ fontSize: 12 }} onClick={guardarEstimadoOT}>Guardar estimado</button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* ── MEJORA 2: Referencia HC ── */}
                   {hcVinculadaCostos && (
@@ -3143,9 +3271,9 @@ function OT({ role }) {
                         <tr>
                           <th style={{ width: 28 }} />
                           <th>Categoría</th>
-                          <th className="num">Estimado</th>
-                          <th className="num">Real</th>
-                          <th className="num">VAR</th>
+                          <th className="num">Estimado OT</th>
+                          <th className="num">Real acumulado</th>
+                          <th className="num">VAR %</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3153,6 +3281,8 @@ function OT({ role }) {
                           const expanded = expandedCostSections[key];
                           const items = realDetalle[key] || [];
                           const pct = varPct(est, real);
+                          const varMonto = Number(est || 0) - Number(real || 0);
+                          const sem = semaforo(est, real);
                           const toggleExpand = () => setExpandedCostSections(p => ({ ...p, [key]: !p[key] }));
                           return (
                             <React.Fragment key={key}>
@@ -3170,7 +3300,7 @@ function OT({ role }) {
                               </tr>
                               {expanded && (
                                 <tr>
-                                  <td colSpan={5} style={{ padding: 0, background: 'var(--bg-subtle)' }}>
+                                  <td colSpan={7} style={{ padding: 0, background: 'var(--bg-subtle)' }}>
                                     <div style={{ padding: '10px 12px 12px 28px' }}>
                                       {/* Desglose read-only desde partes cuando no hay ítems manuales */}
                                       {items.length === 0 && (() => {
@@ -3422,20 +3552,46 @@ function OT({ role }) {
                           <td>Total</td>
                           <td className="num">{costoEstTotal > 0 ? money(costoEstTotal, monSym) : '—'}</td>
                           <td className="num">{costoRealTotal > 0 ? money(costoRealTotal, monSym) : '—'}</td>
-                          <td className="num" style={{ color: varColor(varPct(costoEstTotal || null, costoRealTotal > 0 ? costoRealTotal : null)), fontWeight: 700 }}>
-                            {costoEstTotal > 0 && costoRealTotal > 0 ? `${margen <= 0 ? '+' : ''}${-margen}%` : '—'}
+                          <td className="num" style={{ color: varColor(variacionTotalPct, costoEstTotal, costoRealTotal), fontWeight: 700 }}>
+                            {variacionTotalPct !== null ? `${variacionTotalPct > 0 ? '+' : ''}${variacionTotalPct}%` : '-'}
                           </td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
 
-                  {/* Margen */}
-                  <div className="card" style={{ padding: 20, textAlign: 'center' }}>
-                    <div className="eyebrow" style={{ marginBottom: 6 }}>Margen actual</div>
-                    <div style={{ fontSize: 32, fontWeight: 700, color: margen >= 0 ? 'var(--green)' : 'var(--danger)' }}>{margen}%</div>
-                    <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
-                      {cierreOT ? 'Basado en datos del cierre tecnico y tareos admin' : 'Basado en partes aprobados y tareos admin - pendiente de cierre'}
+                  <div className="grid-2" style={{ gap: 12 }}>
+                    <div className="card" style={{ padding: 18 }}>
+                      <div className="eyebrow" style={{ marginBottom: 6 }}>{margen !== null ? 'Margen actual' : 'Variacion estimado vs real'}</div>
+                      <div style={{ fontSize: 28, fontWeight: 700, color: margen === null ? varColor(variacionTotalPct, costoEstTotal, costoRealTotal) : margen >= 0 ? 'var(--green)' : 'var(--danger)' }}>
+                        {margen !== null ? `${margen}%` : `${variacionTotalPct !== null ? (variacionTotalPct > 0 ? '+' : '') + variacionTotalPct + '%' : '-'}`}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+                        {margen !== null ? 'Calculado contra precio de venta de la OT.' : 'La OT no tiene precio de venta propio asignado.'}
+                      </div>
+                    </div>
+                    <div className="card" style={{ padding: 18 }}>
+                      <div className="eyebrow" style={{ marginBottom: 8 }}>Proyeccion al cierre (EAC)</div>
+                      {eac !== null ? (
+                        <>
+                          <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}><span>Avance declarado</span><strong>{avancePct}%</strong></div>
+                          <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}><span>Costo real acumulado</span><strong>{money(costoRealTotal, monSym)}</strong></div>
+                          <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}><span>EAC proyectado</span><strong>{money(eac, monSym)}</strong></div>
+                          <div className="row" style={{ justifyContent: 'space-between', fontSize: 12 }}><span>Desvio proyectado</span><strong style={{ color: eac > costoEstTotal ? 'var(--danger)' : 'var(--green)' }}>{money(eac - costoEstTotal, monSym)}</strong></div>
+                        </>
+                      ) : (
+                        <div className="text-muted" style={{ fontSize: 12 }}>Sin datos suficientes para proyectar.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="card" style={{ padding: 18 }}>
+                    <div className="card-head" style={{ padding: 0, marginBottom: 10 }}><h3>Comprometido</h3></div>
+                    <div className="row" style={{ justifyContent: 'space-between', fontSize: 13 }}><span>OS internas vinculadas abiertas</span><strong>{money(osComprometidas, monSym)}</strong></div>
+                    <div className="row" style={{ justifyContent: 'space-between', fontSize: 13 }}><span>OC vinculadas abiertas</span><strong>{money(ocComprometidas, monSym)}</strong></div>
+                    <div style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 10 }}>
+                      <div className="row" style={{ justifyContent: 'space-between', fontSize: 13, fontWeight: 700 }}><span>Total comprometido</span><span>{money(comprometidoTotal, monSym)}</span></div>
+                      <div className="row" style={{ justifyContent: 'space-between', fontSize: 13, fontWeight: 700 }}><span>Real + comprometido</span><span>{money(costoRealTotal + comprometidoTotal, monSym)}</span></div>
                     </div>
                   </div>
 
@@ -4072,6 +4228,15 @@ function OT({ role }) {
                   Sin hoja de costeo vinculada. El estimado es referencial.
                 </div>
               )}
+              <div className="input-group" style={{marginBottom:12}}>
+                <label>Estimado de esta OT</label>
+                <input className="input" type="number" min="0" step="0.01" value={formNuevaOT.costo_estimado_ot} onChange={e => updNuevaOT('costo_estimado_ot', e.target.value)} placeholder="0.00" />
+                {formNuevaOT.os_cliente_id && (
+                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>
+                    Este monto es el estimado propio de la OT. La referencia de HC queda solo como baseline informativo.
+                  </div>
+                )}
+              </div>
               <div className="grid-2" style={{gap:16, marginBottom:8}}>
                 {[
                   { key: 'est_mo', label: 'Mano de obra', hcVal: hcReferencia?.total_mano_obra ?? null },
@@ -4091,7 +4256,7 @@ function OT({ role }) {
               {totalEstimadoNuevaOT > 0 && (
                 <div style={{display:'flex', justifyContent:'flex-end', alignItems:'center', gap:8, padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:6, marginBottom:20}}>
                   <span style={{fontSize:12, color:'var(--fg-muted)'}}>Total estimado:</span>
-                  <span style={{fontWeight:700, fontSize:15}}>{money(totalEstimadoNuevaOT)}</span>
+                  <span style={{fontWeight:700, fontSize:15}}>{money(estimadoPropioNuevaOT || totalEstimadoNuevaOT)}</span>
                 </div>
               )}
               {totalEstimadoNuevaOT === 0 && <div style={{marginBottom:20}}/>}
@@ -5230,7 +5395,7 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
         <div className="card" style={{padding:20}}>
           {['Emitida','Confirmada','En transito','Recibida'].map((s, i) => (
             <div key={s} style={{padding:'10px 0', borderBottom:'1px solid var(--border-subtle)'}}>
-              <strong>{i===0 || orden.estado!=='emitida' ? '●' : '○'} {s}</strong>
+              <strong>{i===0 || orden.estado!=='emitida' ? '' : '○'} {s}</strong>
               <span className="text-muted" style={{marginLeft:12}}>{i===0 ? orden.fecha_emision : '-'}</span>
             </div>
           ))}
@@ -6506,7 +6671,7 @@ function Cierre() {
   );
 }
 
-// ============ GUÍAS DE REMISIÓN ============
+// ============ GUAS DE REMISIÓN ============
 function Remision() {
   const { searchQuery } = useApp();
   const query = searchQuery.toLowerCase();
@@ -6613,7 +6778,7 @@ function SOLPE() {
               <tr>
                 <th>N° SOLPE</th>
                 <th>OT Asociada</th>
-                <th>Área / Solicitante</th>
+                <th>rea / Solicitante</th>
                 <th>Centro de Costo</th>
                 <th>Tipo</th>
                 <th>Urgencia</th>
@@ -6690,7 +6855,7 @@ function SOLPE() {
               </div>
             </div>
             <div className="form-group">
-              <label className="form-label">Área solicitante *</label>
+              <label className="form-label">rea solicitante *</label>
               <input className="input" placeholder="Ej: Mantenimiento, Operaciones..." value={form.solicitante} onChange={e => set('solicitante', e.target.value)} />
             </div>
             <div className="form-group">
@@ -6924,7 +7089,7 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
                   const conf=conflictosTecs[tid];
                   return (
                     <div key={tid} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,padding:'5px 8px',borderRadius:6,background:conf?'rgba(239,68,68,0.06)':'rgba(0,188,212,0.04)',border:`1px solid ${conf?'rgba(239,68,68,0.2)':'rgba(0,188,212,0.15)'}`}}>
-                      <span style={{color:conf?'var(--danger)':'var(--green)'}}>●</span>
+                      <span style={{color:conf?'var(--danger)':'var(--green)'}}></span>
                       <span style={{fontWeight:600}}>{tec?.nombre||tid}</span>
                       {conf && <span style={{fontSize:10,padding:'1px 5px',borderRadius:3,background:'var(--danger)',color:'#fff'}}>Conflicto</span>}
                     </div>
@@ -6941,7 +7106,7 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
 
           <div className="row" style={{justifyContent:'flex-end',gap:8,marginTop:4}}>
             {paso==='resumen'
-              ? <><button className="btn btn-secondary" onClick={()=>setPaso('form')}>← Volver</button>
+              ? <><button className="btn btn-secondary" onClick={()=>setPaso('form')}> Volver</button>
                   <button className="btn btn-primary" data-local-form="true" disabled={saving} onClick={handleConfirm}>
                     {saving?'Asignando...':'Confirmar asignación'}
                   </button></>
@@ -7867,7 +8032,7 @@ function Planner() {
                                       <div style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{ot.numero || 'OT'}</div>
                                       {cli && <div style={{fontWeight:400, fontSize:9, opacity:0.9, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{cli.razon_social}</div>}
                                       {horario && <div style={{fontWeight:400, fontSize:9, opacity:0.85}}>{horario}</div>}
-                                      {partesPendientesSet.has(`${t.id}__${d.fecha}`) && <div style={{fontSize:8, opacity:0.9}}>● Parte pend.</div>}
+                                      {partesPendientesSet.has(`${t.id}__${d.fecha}`) && <div style={{fontSize:8, opacity:0.9}}> Parte pend.</div>}
                                     </div>
                                   );
                                 })}
@@ -10288,7 +10453,7 @@ function Nomina() {
         ))}
       </div>
 
-      {/* ── TAB: PERÍODOS ── */}
+      {/* ── TAB: PERODOS ── */}
       {tab === 'periodos' && (
         <div>
           <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:20}}>
@@ -10344,7 +10509,7 @@ function Nomina() {
                 {calculos.map(c => (
                   <tr key={c.trabajador_id} style={{cursor:'pointer'}} onClick={()=>setDetallePanel(c)}>
                     <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}</div></td>
-                    <td>{c.regimen_jornada !== 'general' ? <span className="badge badge-orange">⛏ {c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
+                    <td>{c.regimen_jornada !== 'general' ? <span className="badge badge-orange"> {c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
                     {hayMineros && <td>{c.dias_computables ?? '—'}</td>}
                     <td style={{fontSize:11}}>{c.turno?.nombre || '—'}</td>
                     <td>{c.dias_asistidos}/{c.dias_laborables}</td>
@@ -10391,7 +10556,7 @@ function Nomina() {
               {detalle.desc_tardanzas > 0 && <p style={{color:'var(--danger)'}}>(-) Tardanzas: {money(detalle.desc_tardanzas)}</p>}
               <p style={{fontWeight:700, borderTop:'1px solid var(--border-subtle)', paddingTop:8, marginTop:8}}>Total bruto: {money(detalle.remuneracion_bruta)}</p>
               {detalle.regimen_jornada !== 'general' && <div className="card" style={{padding:'8px 12px', marginTop:12, fontSize:12, background:'rgba(251,191,36,0.08)'}}>
-                <p>⛏ Días laborados en ciclo: {detalle.dias_computables ?? '—'} · Horas diarias: {detalle.datosNomina?.horas_diarias_pactadas || 12}h</p>
+                <p> Días laborados en ciclo: {detalle.dias_computables ?? '—'} · Horas diarias: {detalle.datosNomina?.horas_diarias_pactadas || 12}h</p>
                 {detalle.datosNomina?.fecha_inicio_ciclo && <p>Inicio ciclo: {detalle.datosNomina.fecha_inicio_ciclo}</p>}
               </div>}
             </div>
@@ -10934,7 +11099,7 @@ function RRHH_Operativo() {
                   ['Cargo', p.cargo],
                   ['Especialidad', p.especialidad],
                   ['Especialidad 2', p.especialidad2],
-                  ['Área', p.area],
+                  ['rea', p.area],
                   ['Sede base', p.sede],
                   ['Supervisor', p.supervisor],
                   ['Perfil de campo', p.perfil_campo],
@@ -11280,7 +11445,7 @@ function RRHH_Operativo() {
         <div className="card">
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Nombre</th><th>Cargo</th><th>Especialidad</th><th>Área</th><th>Sede base</th><th>Costo/Hora</th><th>Turno</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones disp.</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <thead><tr><th>Nombre</th><th>Cargo</th><th>Especialidad</th><th>rea</th><th>Sede base</th><th>Costo/Hora</th><th>Turno</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones disp.</th><th>Estado</th><th>Acciones</th></tr></thead>
               <tbody>
                 {personal.length === 0 && <tr><td colSpan={12} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
                 {personal.map(p => {
@@ -11614,7 +11779,7 @@ function RRHH_Operativo() {
                       <div className="input-group"><label>Horas diarias pactadas <span className="text-muted">(D. Leg. 857)</span></label><input className="input" type="number" min="1" max="12" value={formAlta.horas_diarias_pactadas} onChange={e=>setFormAlta(v=>({...v,horas_diarias_pactadas:e.target.value}))}/></div>
                       <div className="input-group"><label>Fecha inicio del ciclo actual</label><input className="input" type="date" value={formAlta.fecha_inicio_ciclo} onChange={e=>setFormAlta(v=>({...v,fecha_inicio_ciclo:e.target.value}))}/></div>
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Bonificación por altitud (S/)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.bonif_altitud} onChange={e=>setFormAlta(v=>({...v,bonif_altitud:e.target.value}))} placeholder="0 si no aplica"/></div>
-                      <div className="card" style={{gridColumn:'1/-1',padding:'8px 12px',background:'rgba(6,182,212,0.08)',fontSize:12,color:'var(--cyan)'}}>⛏ Cálculo proporcional por días computables en cada período.</div>
+                      <div className="card" style={{gridColumn:'1/-1',padding:'8px 12px',background:'rgba(6,182,212,0.08)',fontSize:12,color:'var(--cyan)'}}> Cálculo proporcional por días computables en cada período.</div>
                     </>}
                   </div>
 
@@ -12875,3 +13040,4 @@ export function ControlHoras() {
     </>
   );
 }
+

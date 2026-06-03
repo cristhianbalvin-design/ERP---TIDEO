@@ -33,8 +33,8 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Módulos en prompt pendiente de implementar | 0 |
 | Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase |
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
-| Migraciones SQL aplicadas en Supabase | 142 |
-| Migraciones creadas pendientes de aplicar | 149, 150, 151, 152 (aplicar en Supabase) |
+| Migraciones SQL registradas en el repositorio | hasta 172 |
+| Migraciones creadas pendientes de aplicar | Verificar contra Supabase real; incluye `172_costos_world_class_ot_os.sql` |
 
 ### 3.2 Inventario completo de módulos
 
@@ -708,11 +708,15 @@ Desde oportunidad. Catálogo + tarifarios con auto-relleno. Cálculo en tiempo r
 
 ### 8.10 OS Cliente
 
+**Actualización 03/06/2026 — Control de Costos:** tab adicional visible solo con `ver_costos`. Incluye baseline del contrato, comparativo de OTs, overhead de proyecto, resumen total del contrato y comprometido total. Campos nuevos en `os_clientes`: `presupuesto_estimado`, `overhead_estimado_monto`, `overhead_estimado_pct`, `overhead_modo` (`monto` o `porcentaje`). El real de overhead queda preparado para `tareos_admin.os_id` con `ot_id = null`.
+
 Vinculada a cotización. Panel de saldos: total aprobado / ejecutado / valorizado / facturado / pendiente. Asociación a múltiples OTs. Tabs: OTs, Valorizaciones, Facturas, Historial. Breadcrumb de flujo en pantallas de detalle.
 
 ---
 
 ### 8.11 OT — Orden de Trabajo
+
+**Actualización 03/06/2026 — Tab Costos:** `costo_estimado_ot` es el estimado propio de la OT, editable antes de ejecución y congelado con `estimado_congelado_en` al iniciar. `estimado_detalle` guarda el desglose por MO, materiales, terceros y logística; si falta, se distribuye usando pesos de HC. El costo real se calcula desde partes aprobados y tareos admin con `tarifa_hora` (fallback legacy), materiales desde partes/kardex, terceros desde OSI cerradas y líneas de partes, y logística desde `compras_gastos` y líneas de partes. Incluye comprometidos, EAC y semáforo verde/naranja/rojo. Requiere `ver_costos`.
 
 Tipos: cliente, interna, tercerizada, garantía, correctiva, preventiva, emergencia, proyecto. Facturable / no facturable. Asociación a OS Cliente, proyecto, centro de costo. `direccion_ejecucion` y `ubicacion_gps`. Tareas, materiales, servicios terceros, gastos, evidencias, conformidad. Cierre técnico y económico. Costo real y margen. PDF. Estados con badges de color.
 
@@ -1035,6 +1039,8 @@ Registro estructurado de egresos menores y adquisiciones directas fuera del fluj
 
 ### 8.27 Costos por OT
 
+**Actualización 03/06/2026:** `operacionesService.js` expone `calcularCostoRealOT(ot_id, empresa_id)`, `calcularCostosComprometidosOT(ot_id, empresa_id)` y `calcularCostosOS(os_id, empresa_id)`. Regla de personal mixto: las horas con OT impactan la OT sin importar si el colaborador es operativo o administrativo; horas libres sin OT van al ER del período. `tarifa_hora` es la fuente vigente en `personal_operativo` y `personal_administrativo`.
+
 Costo estimado vs real. Mano de obra (desde parte diario × costo hora real), materiales (desde inventario), servicios terceros, logística, gastos. Margen bruto y porcentual. Visible solo con `ver_costos`.
 
 ---
@@ -1276,9 +1282,9 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 **Integraciones:** api_keys (empresa_id, key_hash, descripcion, permisos text[], activo, creado_por, ultimo_uso_en).
 
-**Comercial:** hojas_costeo (con secciones jsonb: mano_obra, materiales, servicios_terceros, logistica + totales calculados + margen_objetivo_pct + responsable_costeo + cotizacion_id), cotizaciones (+ hoja_costeo_id para trazabilidad), historial_versiones_cotizacion, os_clientes, condiciones_comerciales.
+**Comercial:** hojas_costeo (con secciones jsonb: mano_obra, materiales, servicios_terceros, logistica + totales calculados + margen_objetivo_pct + responsable_costeo + cotizacion_id), cotizaciones (+ hoja_costeo_id para trazabilidad), historial_versiones_cotizacion, os_clientes (+presupuesto_estimado, overhead_estimado_monto, overhead_estimado_pct, overhead_modo), condiciones_comerciales.
 
-**Operaciones:** backlog, ordenes_trabajo (+ubicacion_gps, direccion_ejecucion, +participantes_admin jsonb — array de participantes administrativos con personal_id, personal_nombre, horas_estimadas), partes_diarios (+logistica_lineas, terceros_lineas, tecnico_nombre), tickets (id uuid, empresa_id, numero TK por tenant, titulo, descripcion, tipo, canal_entrada, estado, prioridad, cuenta_id/cuenta_nombre, responsable_id/responsable_nombre, fecha_limite_sla, sla_estado calculado, fecha_resolucion, **qc_estado** ∈ {en_revision, observado, aprobado} nullable, **veces_reabierto** integer default 0, **reabierto_en** timestamptz nullable, creado_por, creado_en, actualizado_en), ticket_comentarios (id uuid, empresa_id, **ticket_id** FK→tickets, **tipo** ∈ {observacion, evidencia, aprobacion, reapertura}, **contenido** text, **imagen_url** text nullable — URL pública en bucket `ticket-evidencias`, **usuario_id** uuid nullable, **usuario_nombre** text, creado_en — append-only: INSERT permitido, UPDATE/DELETE prohibidos por RLS), evidencias, conformidad_cliente, remisiones, valorizaciones.
+**Operaciones:** backlog, ordenes_trabajo (+ubicacion_gps, direccion_ejecucion, costo_estimado_ot numeric, estimado_detalle jsonb, estimado_congelado_en timestamptz, +participantes_admin jsonb — array de participantes administrativos con personal_id, personal_nombre, horas_estimadas), partes_diarios (+logistica_lineas, terceros_lineas, tecnico_nombre), tickets (id uuid, empresa_id, numero TK por tenant, titulo, descripcion, tipo, canal_entrada, estado, prioridad, cuenta_id/cuenta_nombre, responsable_id/responsable_nombre, fecha_limite_sla, sla_estado calculado, fecha_resolucion, **qc_estado** ∈ {en_revision, observado, aprobado} nullable, **veces_reabierto** integer default 0, **reabierto_en** timestamptz nullable, creado_por, creado_en, actualizado_en), ticket_comentarios (id uuid, empresa_id, **ticket_id** FK→tickets, **tipo** ∈ {observacion, evidencia, aprobacion, reapertura}, **contenido** text, **imagen_url** text nullable — URL pública en bucket `ticket-evidencias`, **usuario_id** uuid nullable, **usuario_nombre** text, creado_en — append-only: INSERT permitido, UPDATE/DELETE prohibidos por RLS), evidencias, conformidad_cliente, remisiones, valorizaciones.
 
 **Inventario y compras:** almacenes, stock, movimientos_inventario, kardex, solpe_interna, proveedores, documentos_proveedor, evaluaciones_proveedor, contactos_proveedor, procesos_compra, ordenes_compra, ordenes_servicio, recepciones, conformidad_proveedor, traslados_logisticos.
 
@@ -1438,6 +1444,7 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 
 | Fecha | Cambios principales |
 |-------|---------------------|
+| 03/06/2026 | **Control de costos OT/OS (migración 172):** agrega `costo_estimado_ot`, `estimado_detalle`, `estimado_congelado_en` en `ordenes_trabajo`; `presupuesto_estimado` y overhead en `os_clientes`; `os_id` en `tareos_admin`; `ot_id` en OC/OSI. Corrige tab Costos de OT con estimado propio, comprometidos, EAC, semáforo y recálculo desde Supabase. Agrega tab Control de Costos en OS Cliente y funciones `calcularCostoRealOT`, `calcularCostosComprometidosOT`, `calcularCostosOS`. |
 | 30/05/2026 | **Liquidación por Cese — módulo completo (migración 152):** módulo exclusivo RRHH/Admin para todos los tipos de cese (D.Leg. 728). (1) **Migración `152_liquidaciones_cese.sql`:** campos `fecha_ingreso`, `estado_laboral`, `fecha_cese`, `tipo_cese` añadidos a `personal_operativo` y `personal_administrativo`; tablas `liquidaciones_cese` y `liquidaciones_cese_conceptos` con RLS por `liquidaciones_puede_gestionar`; índice único parcial para máximo una liquidación activa por persona. (2) **`liquidacionesCeseService.js`:** función pura `calcularConceptos(params)` con motor completo (remuneración pendiente, vacaciones truncas, CTS proporcional, gratificación proporcional + bonif. 9%, indemnización por régimen general/MYPE/microempresa); CRUD: `cargarLiquidaciones`, `crearLiquidacion`, `confirmarLiquidacion` (crea CxP + marca cesado), `anularLiquidacion` (revierte colaborador + anula CxP). (3) **`pages_liquidaciones.jsx`:** KPIs (liquidaciones año, monto, pendientes), tabla con filtros, wizard 3 pasos (datos cese → revisión cálculo con parámetros ajustables → confirmación con checkbox), ficha detalle con trazabilidad y acciones según estado. Disclaimer permanente. (4) **Context/router/sidebar/data.js:** estado `liquidacionesCese` y `liquidacionesConceptos`, acciones `crearLiquidacionCtx`, `confirmarLiquidacionCtx`, `anularLiquidacionCtx`, ruta `liquidaciones_cese`, entrada sidebar bajo Evaluación de Desempeño. (5) **Reglas transversales:** al confirmar, colaborador desaparece de selectores activos en toda la app; anular revierte. |
 | 30/05/2026 | **Valorizaciones — pase automático a Pendiente cierre:** al aprobar una valorización, el sistema calcula el acumulado aprobado por OT contra el monto total de la OS Cliente. Si una OT incluida sigue en `ejecucion` y alcanzó 100%, pasa automáticamente a `pendiente_cierre` sin bloquear la aprobación ni el flujo posterior hacia factura/CxC. La notificación informa cuántas OTs fueron movidas. |
 | 30/05/2026 | **Evaluación de Desempeño — módulo completo (migración 151):** 360° básico informativo con autoevaluación + evaluación de jefe, competencias cualitativas, objetivos cuantitativos, score ponderado configurable y resultados visibles al colaborador solo tras cierre de plantilla. (1) **Migración `151_evaluaciones_desempeno.sql`:** columnas de configuración en `empresa_config`; tablas `desempeno_plantillas`, `desempeno_competencias`, `desempeno_objetivos`, `desempeno_evaluaciones`, `desempeno_respuestas_competencias` y `desempeno_respuestas_objetivos`; RLS por tenant, evaluado, jefe directo y RRHH/admin; permisos funcionales `evaluaciones_desempeno`. (2) **Servicio/contexto:** CRUD de plantillas, generación de evaluaciones, guardado de autoevaluación, guardado de evaluación de jefe, reasignación de jefe y cálculo de scores/clasificación. (3) **UI:** pantalla RRHH con tabs Plantillas, Evaluaciones en curso y Resultados; wizard de creación; flujos de colaborador y jefe; resultados individuales y consolidados con exportación Excel. (4) **Parámetros Generales:** nueva configuración de ponderaciones, escala y labels con validación en tiempo real. (5) **Sidebar/router/documentación:** ruta `evaluaciones_desempeno`, badge de pendientes y documento maestro actualizado. |

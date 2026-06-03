@@ -5,6 +5,7 @@ import { useApp } from './context.jsx';
 import { canUserSeeOwner, getAssignableUsers, getUserCategory, getUserHierarchyLevel } from './lib/hierarchy.js';
 import { campanasService } from './services/campanasService.js';
 import { maestrosService } from './services/maestrosService.js';
+import * as tareosAdminService from './services/tareosAdminService.js';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 
@@ -3999,7 +4000,7 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
   };
 
   const otsExistentes = (ots || []).filter(o => o.os_cliente_id === os.id && !['anulada'].includes(o.estado));
-  const totalOTsExistentes = otsExistentes.reduce((s, o) => s + Number(o.costoEst || o.costo_estimado || 0), 0);
+  const totalOTsExistentes = otsExistentes.reduce((s, o) => s + Number(o.costo_estimado_ot ?? o.costoEst ?? o.costo_estimado ?? 0), 0);
   const hcSaldoNoAsignado = hcVinculada ? (hcVinculada.costo_total || 0) - totalOTsExistentes : 0;
   const montoBase = hcVinculada ? (hcVinculada.costo_total || 0) : Number(os.monto_aprobado || 0);
   const totalAsignado = filas.reduce((s, f) => s + filaTotal(f), 0);
@@ -4028,7 +4029,7 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
         const otId = await crearOTDesdeOS(os.id, {
           ...datos,
           est_mo: mo || null, est_materiales: mat || null, est_terceros: ter || null, est_logistica: log || null,
-          costo_estimado: total, est_detalle: detFinal, es_adicional: esAdicional,
+          costo_estimado: total, costo_estimado_ot: total, est_detalle: detFinal, estimado_detalle: detFinal, es_adicional: esAdicional,
         });
         if (!otId) throw new Error('No se pudo crear una de las OTs.');
         // Guardar est_detalle via actualizarOT (el RPC no lo incluye)
@@ -4166,7 +4167,7 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
                     <tr key={ot.id} style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
                       <td style={{ padding: '3px 6px', fontFamily: 'monospace', fontWeight: 600 }}>{ot.numero}</td>
                       <td style={{ padding: '3px 6px' }}>{ot.tipo || ot.servicio || '—'}</td>
-                      <td style={{ padding: '3px 6px', textAlign: 'right' }}>{moneyCurrency(ot.costoEst || ot.costo_estimado || 0, os.moneda)}</td>
+                    <td style={{ padding: '3px 6px', textAlign: 'right' }}>{moneyCurrency(ot.costo_estimado_ot ?? ot.costoEst ?? ot.costo_estimado ?? 0, os.moneda)}</td>
                       <td style={{ padding: '3px 6px' }}><span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 8, background: 'rgba(0,0,0,0.06)', color: '#555' }}>{(ot.estado || 'programada').replace(/_/g, ' ')}</span></td>
                     </tr>
                   ))}
@@ -4658,11 +4659,12 @@ function NuevoHitoModal({ moneda, onClose, onSave }) {
 
 function OSCliente() {
   const {
-    osClientes, cuentas, cotizaciones, ots, valorizaciones, facturas, cxc,
+    osClientes, cuentas, cotizaciones, hojasCosteo, ots, valorizaciones, facturas, cxc,
     activeParams, navigate, searchQuery, usuarios,
     cambiarEstadoOS, actualizarHitosFacturacion, vincularCotizacionOS, actualizarOT, eliminarOT,
     actualizarOSCliente, centrosBeneficio,
-    partes, personalOperativo, personalAdmin, inventario,
+    partes, personalOperativo, personalAdmin, inventario, role,
+    ordenesCompra, ordenesServicio, comprasGastos,
   } = useApp();
 
   const calcCostoRealLiveOS = (ot) => {
@@ -4701,6 +4703,7 @@ function OSCliente() {
   const [numClienteTemp, setNumClienteTemp] = useState('');
   const [editandoNombre, setEditandoNombre] = useState(false);
   const [nombreTemp, setNombreTemp] = useState('');
+  const [tareosOverheadOS, setTareosOverheadOS] = useState([]);
 
   useEffect(() => {
     setEditandoNumCliente(false);
@@ -4708,6 +4711,18 @@ function OSCliente() {
     setEditandoNombre(false);
     setNombreTemp('');
   }, [activeParams?.detail]);
+
+  useEffect(() => {
+    if (!activeParams?.detail) {
+      setTareosOverheadOS([]);
+      return;
+    }
+    const empresaId = osClientes.find(o => o.id === activeParams.detail)?.empresa_id;
+    if (!empresaId) return;
+    tareosAdminService.cargarTareos(empresaId, { osId: activeParams.detail })
+      .then(rows => setTareosOverheadOS((rows || []).filter(t => !t.ot_id && t.estado === 'enviado')))
+      .catch(() => setTareosOverheadOS([]));
+  }, [activeParams?.detail, osClientes]);
 
   const getNombre = id => cuentas.find(c => c.id === id)?.razon_social || id;
   const query = searchQuery.toLowerCase();
@@ -4741,7 +4756,7 @@ function OSCliente() {
     }
 
     const osOts  = ots.filter(ot => ot.os_cliente_id === os.id || (os.ots_asociadas || []).includes(ot.id));
-    const totalEstimadoOTs = osOts.reduce((s, o) => s + Number(o.costoEst || o.costo_estimado || 0), 0);
+    const totalEstimadoOTs = osOts.reduce((s, o) => s + Number(o.costo_estimado_ot ?? o.costoEst ?? o.costo_estimado ?? 0), 0);
     const totalRealOTs = osOts.reduce((s, o) => s + calcCostoRealLiveOS(o), 0);
     const osCotz = cotizaciones.filter(c => c.os_cliente_id === os.id || c.id === os.cotizacion_id);
     const osVals = valorizaciones.filter(v => v.os_cliente_id === os.id);
@@ -4752,11 +4767,12 @@ function OSCliente() {
     const totalAprobado = osCotz.length > 0
       ? osCotz.reduce((s, c) => s + Number(c.total_impl || c.total || 0), 0)
       : Number(os.monto_aprobado || 0);
-    const ejecutado  = osOts.filter(ot => ['cerrada_tecnica','cerrada','facturada'].includes(ot.estado)).reduce((s, ot) => s + Number(ot.costo_real || 0), 0);
     const valorizado = osVals.reduce((s, v) => s + Number(v.total || 0), 0);
     const facturado  = Number(os.monto_facturado || 0);
+    const ejecutado  = Math.max(valorizado, facturado);
     const pendiente  = Math.max(0, totalAprobado - facturado);
-    const margenEst  = totalAprobado > 0 ? Math.round((totalAprobado - ejecutado) / totalAprobado * 100) : 0;
+    const margenEst  = totalAprobado > 0 ? Math.round((totalAprobado - totalEstimadoOTs) / totalAprobado * 100) : 0;
+    const canCost = role?.permisos?.ver_costos || role?.permisos?.todo;
 
     const hitos = os.hitos_facturacion || [];
     const handleAddHito = hito => {
@@ -4774,7 +4790,7 @@ function OSCliente() {
     };
 
     const cotsDisponibles = cotizaciones.filter(c => c.cuenta_id === os.cuenta_id && c.estado === 'aprobada' && c.id !== os.cotizacion_id && !c.os_cliente_id);
-    const tabs = ['Cotizaciones', 'OTs', 'Valorizaciones', 'Facturas', 'Historial'];
+    const tabs = ['Cotizaciones', 'OTs', ...(canCost ? ['Control de Costos'] : []), 'Valorizaciones', 'Facturas', 'Historial'];
     const activeTab = activeParams.tab || 'OTs';
     const cerrada = ['cerrada', 'anulada'].includes(os.estado);
 
@@ -4785,6 +4801,39 @@ function OSCliente() {
       ...osVals.map(v => ({ fecha: v.fecha, desc: `Valorización: ${v.numero || v.id?.slice(0,8)} — ${money(v.total)}` })),
       ...osFacts.map(f => ({ fecha: f.fecha_emision, desc: `Factura emitida: ${f.numero} — ${money(f.total)}` })),
     ].filter(e => e.fecha).sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const cotAprobadaOS = osCotz
+      .filter(c => ['aprobada','convertida'].includes(String(c.estado || '').toLowerCase()))
+      .sort((a, b) => String(b.fecha || b.updated_at || '').localeCompare(String(a.fecha || a.updated_at || '')))[0] || osCotz[0];
+    const hcBaseline = cotAprobadaOS?.hoja_costeo_id ? (hojasCosteo || []).find(h => h.id === cotAprobadaOS.hoja_costeo_id) : null;
+    const baselineOS = Number(hcBaseline?.costo_total ?? os.presupuesto_estimado ?? 0);
+    const baselineDetalle = {
+      mo: Number(hcBaseline?.total_mano_obra || 0),
+      mat: Number(hcBaseline?.total_materiales || 0),
+      terceros: Number(hcBaseline?.total_servicios_terceros || 0),
+      log: Number(hcBaseline?.total_logistica || 0),
+    };
+    const overheadEstimado = os.overhead_modo === 'porcentaje'
+      ? totalEstimadoOTs * Number(os.overhead_estimado_pct || 0) / 100
+      : Number(os.overhead_estimado_monto || 0);
+    const overheadReal = (tareosOverheadOS || []).reduce((s, t) => {
+      const persona = (personalAdmin || []).find(p => p.id === t.personal_id);
+      const tarifa = Number(persona?.tarifa_hora ?? persona?.costo_hora_real ?? persona?.costo ?? persona?.costo_hora ?? 0);
+      return s + Number(t.horas || 0) * tarifa;
+    }, 0);
+    const estimadoTotalContrato = totalEstimadoOTs + overheadEstimado;
+    const realTotalContrato = totalRealOTs + overheadReal;
+    const contratoVarMonto = estimadoTotalContrato - realTotalContrato;
+    const contratoVarPct = estimadoTotalContrato > 0 ? Math.round((contratoVarMonto / estimadoTotalContrato) * 100) : null;
+    const otIdsOS = new Set(osOts.map(ot => ot.id));
+    const osComprometidasOS = (ordenesServicio || [])
+      .filter(o => otIdsOS.has(o.ot_id) && !['cerrada','cerrado'].includes(String(o.estado || '').toLowerCase()))
+      .reduce((s, o) => s + Number(o.total || 0), 0);
+    const ocComprometidasOS = (ordenesCompra || [])
+      .filter(o => otIdsOS.has(o.ot_id) && !['recibida','recibido','cerrada','cerrado'].includes(String(o.estado || '').toLowerCase()))
+      .reduce((s, o) => s + Number(o.total || 0), 0);
+    const comprometidoOS = osComprometidasOS + ocComprometidasOS;
+    const margenProyectadoMonto = totalAprobado - realTotalContrato;
+    const margenProyectadoPct = totalAprobado > 0 ? Math.round((margenProyectadoMonto / totalAprobado) * 100) : null;
 
     return (
       <>
@@ -5066,7 +5115,7 @@ function OSCliente() {
                         <td className="mono" style={{fontWeight:600}}>{ot.numero}</td>
                         <td>{ot.tipo || ot.servicio}</td>
                         <td>{ot.fecha_inicio || ot.fecha_programada || '-'}</td>
-                        <td className="num">{moneyCurrency(ot.costoEst || ot.costo_estimado || 0, os.moneda)}</td>
+                        <td className="num">{moneyCurrency(ot.costo_estimado_ot ?? ot.costoEst ?? ot.costo_estimado ?? 0, os.moneda)}</td>
                         <td className="num">{moneyCurrency(calcCostoRealLiveOS(ot), os.moneda)}</td>
                         <td>{ot.avance || ot.avance_pct || 0}%</td>
                         <td>
@@ -5105,6 +5154,106 @@ function OSCliente() {
                     </tfoot>
                   )}
                 </table>
+              </div>
+            </>}
+
+            {activeTab === 'Control de Costos' && canCost && <>
+              <div className="card-head"><h3>Control de Costos</h3></div>
+              <div className="col" style={{gap:16, padding:16}}>
+                <div className="card" style={{padding:16}}>
+                  <div className="card-head" style={{padding:0, marginBottom:10}}><h3>Baseline del contrato</h3></div>
+                  {baselineOS > 0 ? (
+                    <>
+                      <div className="row" style={{justifyContent:'space-between'}}><span>Presupuesto original</span><strong>{moneyCurrency(baselineOS, os.moneda)}</strong></div>
+                      <div className="text-muted" style={{fontSize:12, marginTop:4}}>Fuente: {hcBaseline ? `${hcBaseline.numero || hcBaseline.id} - HC aprobada` : 'Ingreso manual'}</div>
+                      <div className="text-muted" style={{fontSize:12, marginTop:8}}>
+                        MO: {moneyCurrency(baselineDetalle.mo, os.moneda)} | Mat: {moneyCurrency(baselineDetalle.mat, os.moneda)} | 3ros: {moneyCurrency(baselineDetalle.terceros, os.moneda)} | Log: {moneyCurrency(baselineDetalle.log, os.moneda)}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-muted">Sin presupuesto base definido. Ingresa un monto estimado para activar el control de costos.</div>
+                  )}
+                </div>
+
+                <div className="card" style={{padding:0, overflow:'hidden'}}>
+                  <div className="card-head" style={{padding:'14px 16px'}}><h3>Costos de ejecucion - OTs</h3></div>
+                  <div className="table-wrap">
+                    <table className="tbl">
+                      <thead><tr><th>OT</th><th>Estado</th><th className="num">Est. OT</th><th className="num">Real OT</th><th className="num">VAR</th><th className="num">VAR %</th><th>Sem.</th></tr></thead>
+                      <tbody>
+                        {osOts.map(ot => {
+                          const est = Number(ot.costo_estimado_ot ?? ot.costoEst ?? ot.costo_estimado ?? 0);
+                          const real = calcCostoRealLiveOS(ot);
+                          const variacion = est - real;
+                          const pct = est > 0 ? Math.round((variacion / est) * 100) : null;
+                          const pctUso = est > 0 ? real / est * 100 : 0;
+                          const color = pctUso > 100 ? 'var(--danger)' : pctUso >= 80 ? 'var(--orange)' : 'var(--green)';
+                          return (
+                            <tr key={ot.id}>
+                              <td className="mono">{ot.numero}</td>
+                              <td>{(ot.estado || 'programada').replace('_',' ')}</td>
+                              <td className="num">{moneyCurrency(est, os.moneda)}</td>
+                              <td className="num">{moneyCurrency(real, os.moneda)}</td>
+                              <td className="num" style={{color: variacion >= 0 ? 'var(--green)' : 'var(--danger)'}}>{variacion >= 0 ? '+' : '-'}{moneyCurrency(Math.abs(variacion), os.moneda)}</td>
+                              <td className="num" style={{color: variacion >= 0 ? 'var(--green)' : 'var(--danger)'}}>{pct !== null ? `${pct > 0 ? '+' : ''}${pct}%` : '-'}</td>
+                              <td><span style={{display:'inline-block', width:10, height:10, borderRadius:'50%', background:color}} /></td>
+                            </tr>
+                          );
+                        })}
+                        <tr style={{fontWeight:700, background:'var(--bg-subtle)'}}>
+                          <td colSpan="2">Subtotal OTs</td>
+                          <td className="num">{moneyCurrency(totalEstimadoOTs, os.moneda)}</td>
+                          <td className="num">{moneyCurrency(totalRealOTs, os.moneda)}</td>
+                          <td className="num">{moneyCurrency(totalEstimadoOTs - totalRealOTs, os.moneda)}</td>
+                          <td className="num">{totalEstimadoOTs > 0 ? `${Math.round((totalEstimadoOTs - totalRealOTs) / totalEstimadoOTs * 100)}%` : '-'}</td>
+                          <td></td>
+                        </tr>
+                        <tr style={{fontWeight:700}}>
+                          <td colSpan="2">Overhead de proyecto</td>
+                          <td className="num">{moneyCurrency(overheadEstimado, os.moneda)}</td>
+                          <td className="num">{moneyCurrency(overheadReal, os.moneda)}</td>
+                          <td className="num">{moneyCurrency(overheadEstimado - overheadReal, os.moneda)}</td>
+                          <td className="num">{overheadEstimado > 0 ? `${Math.round((overheadEstimado - overheadReal) / overheadEstimado * 100)}%` : '-'}</td>
+                          <td></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  {!cerrada && (
+                    <div className="row" style={{gap:10, padding:16, borderTop:'1px solid var(--border)', flexWrap:'wrap'}}>
+                      <select className="select" style={{width:160}} value={os.overhead_modo || 'monto'} onChange={e => actualizarOSCliente(os.id, { overhead_modo: e.target.value })}>
+                        <option value="monto">Monto fijo</option>
+                        <option value="porcentaje">Porcentaje</option>
+                      </select>
+                      {os.overhead_modo === 'porcentaje' ? (
+                        <input className="input" type="number" min="0" step="0.01" style={{width:160}} value={os.overhead_estimado_pct || ''} onChange={e => actualizarOSCliente(os.id, { overhead_estimado_pct: Number(e.target.value || 0) })} placeholder="% overhead" />
+                      ) : (
+                        <input className="input" type="number" min="0" step="0.01" style={{width:180}} value={os.overhead_estimado_monto || ''} onChange={e => actualizarOSCliente(os.id, { overhead_estimado_monto: Number(e.target.value || 0) })} placeholder="Monto overhead" />
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="card" style={{padding:16}}>
+                  <div className="card-head" style={{padding:0, marginBottom:10}}><h3>Resumen total del contrato</h3></div>
+                  <div className="grid-3" style={{gap:12}}>
+                    <div><div className="kpi-label">Baseline OS</div><div style={{fontWeight:700}}>{moneyCurrency(baselineOS, os.moneda)}</div></div>
+                    <div><div className="kpi-label">Est. OTs + OH</div><div style={{fontWeight:700}}>{moneyCurrency(estimadoTotalContrato, os.moneda)}</div></div>
+                    <div><div className="kpi-label">Real total</div><div style={{fontWeight:700}}>{moneyCurrency(realTotalContrato, os.moneda)}</div></div>
+                  </div>
+                  <div style={{borderTop:'1px solid var(--border)', marginTop:12, paddingTop:12}}>
+                    <div className="row" style={{justifyContent:'space-between'}}><span>Variacion ejecucion</span><strong style={{color: contratoVarMonto >= 0 ? 'var(--green)' : 'var(--danger)'}}>{moneyCurrency(contratoVarMonto, os.moneda)} {contratoVarPct !== null ? `(${contratoVarPct}%)` : ''}</strong></div>
+                    <div className="row" style={{justifyContent:'space-between'}}><span>Ingreso aprobado</span><strong>{moneyCurrency(totalAprobado, os.moneda)}</strong></div>
+                    <div className="row" style={{justifyContent:'space-between'}}><span>Margen proyectado</span><strong style={{color:margenProyectadoMonto >= 0 ? 'var(--green)' : 'var(--danger)'}}>{moneyCurrency(margenProyectadoMonto, os.moneda)} {margenProyectadoPct !== null ? `(${margenProyectadoPct}%)` : ''}</strong></div>
+                  </div>
+                </div>
+
+                <div className="card" style={{padding:16}}>
+                  <div className="card-head" style={{padding:0, marginBottom:10}}><h3>Comprometido total</h3></div>
+                  <div className="row" style={{justifyContent:'space-between'}}><span>OS internas abiertas vinculadas a OTs</span><strong>{moneyCurrency(osComprometidasOS, os.moneda)}</strong></div>
+                  <div className="row" style={{justifyContent:'space-between'}}><span>OC abiertas vinculadas a OTs</span><strong>{moneyCurrency(ocComprometidasOS, os.moneda)}</strong></div>
+                  <div className="row" style={{justifyContent:'space-between', borderTop:'1px solid var(--border)', marginTop:10, paddingTop:10, fontWeight:700}}><span>Real + comprometido</span><span>{moneyCurrency(realTotalContrato + comprometidoOS, os.moneda)}</span></div>
+                </div>
               </div>
             </>}
 

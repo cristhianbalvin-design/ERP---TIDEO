@@ -2,7 +2,7 @@
 import { MOCK } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
-import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT } from './services/operacionesService.js';
+import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
   calcularFechaVencimientoCxC,
@@ -2681,7 +2681,7 @@ export function AppProvider({ children }) {
     const os = osClientes.find(item => item.id === osClienteId);
     if (!os) return null;
 
-    const montoPlanificado = Number(datos.costo_estimado || datos.costoEst || 0);
+    const montoPlanificado = Number(datos.costo_estimado_ot ?? datos.costo_estimado ?? datos.costoEst ?? 0);
 
     // Heredar desglose de HC si la OS viene de una cotizaciÃ³n con HC vinculada
     let hcDesglose = { est_mo: null, est_materiales: null, est_terceros: null, est_logistica: null };
@@ -2723,6 +2723,8 @@ export function AppProvider({ children }) {
       centro_costo_id: datos.centro_costo_id || null,
       centro_beneficio_id: datos.centro_beneficio_id || os.centro_beneficio_id || null,
       costoEst: montoPlanificado,
+      costo_estimado: montoPlanificado,
+      costo_estimado_ot: montoPlanificado,
       costoReal: 0,
       avance: 0,
       es_adicional: datos.es_adicional || false,
@@ -2731,6 +2733,8 @@ export function AppProvider({ children }) {
       est_terceros: datos.est_terceros ?? hcDesglose.est_terceros,
       est_logistica: datos.est_logistica ?? hcDesglose.est_logistica,
       est_detalle: datos.est_detalle || null,
+      estimado_detalle: datos.estimado_detalle || datos.est_detalle || null,
+      estimado_congelado_en: datos.estimado_congelado_en || null,
     };
 
     try {
@@ -2748,10 +2752,12 @@ export function AppProvider({ children }) {
         if ([ot.est_mo, ot.est_materiales, ot.est_terceros, ot.est_logistica].some(v => v != null)) {
           opsSync(sb => svcActualizarOT(sb, ot.id, {
             costoEst: ot.costoEst,
+            costo_estimado_ot: ot.costo_estimado_ot,
             est_mo: ot.est_mo,
             est_materiales: ot.est_materiales,
             est_terceros: ot.est_terceros,
             est_logistica: ot.est_logistica,
+            estimado_detalle: ot.estimado_detalle,
           }));
         }
       } else {
@@ -2780,9 +2786,21 @@ export function AppProvider({ children }) {
 
   const actualizarOT = (otId, datos) => {
     const anterior = ots.find(o => o.id === otId) || null;
-    setOts(prev => prev.map(o => o.id === otId ? { ...o, ...datos } : o));
-    opsSync(sb => svcActualizarOT(sb, otId, datos));
-    auditSync({ modulo: 'operaciones', entidad: 'ordenes_trabajo', entidad_id: otId, accion: 'editar', valor_anterior: anterior, valor_nuevo: datos });
+    const estadoNorm = String(datos.estado || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const debeCongelar = ['ejecucion', 'en ejecucion', 'en_ejecucion'].includes(estadoNorm) && !anterior?.estimado_congelado_en;
+    const payload = debeCongelar ? { ...datos, estimado_congelado_en: new Date().toISOString() } : datos;
+    setOts(prev => prev.map(o => {
+      if (o.id !== otId) return o;
+      const next = { ...o, ...payload };
+      if (payload.costo_estimado_ot !== undefined) {
+        next.costoEst = Number(payload.costo_estimado_ot || 0);
+        next.costo_estimado = next.costoEst;
+      }
+      if (payload.estimado_detalle !== undefined) next.estimado_detalle = payload.estimado_detalle;
+      return next;
+    }));
+    opsSync(sb => svcActualizarOT(sb, otId, payload));
+    auditSync({ modulo: 'operaciones', entidad: 'ordenes_trabajo', entidad_id: otId, accion: 'editar', valor_anterior: anterior, valor_nuevo: payload });
   };
 
   const eliminarOT = async (otId) => {
@@ -3019,9 +3037,30 @@ export function AppProvider({ children }) {
   };
 
   const recalcularCostoRealOT = async (otId) => {
+    const ot = ots.find(o => o.id === otId);
+    if (isSupabaseConfigured() && empresa?.id) {
+      try {
+        const detalle = await opsPersist(sb => svcCalcularCostoRealOT(sb, otId, empresa.id));
+        const nuevosCostoReal = Number(detalle?.total || 0);
+        setOts(prev => prev.map(o => o.id === otId ? { ...o, costoReal: nuevosCostoReal } : o));
+        opsSync(sb => svcActualizarOT(sb, otId, { costoReal: nuevosCostoReal }));
+        opsSync(sb => svcUpsertCostoOT(sb, empresa.id, otId, {
+          mano_obra: detalle.mo,
+          materiales: detalle.materiales,
+          servicios_terceros: detalle.terceros,
+          logistica: detalle.logistica,
+          moneda: ot?.moneda || 'PEN',
+        }));
+        addNotificacion(`OT recalculada desde Supabase: MO=${detalle.mo.toFixed(2)}, materiales=${detalle.materiales.toFixed(2)}, terceros=${detalle.terceros.toFixed(2)}, logistica=${detalle.logistica.toFixed(2)}.`);
+        return nuevosCostoReal;
+      } catch (error) {
+        console.error('[Costo real OT]', error?.message || error, error);
+        addNotificacion(`No se pudo recalcular desde Supabase: ${error?.message || error}`, 'error');
+      }
+    }
+
     const partesAprobados = partes.filter(p => p.ot_id === otId && p.estado === 'aprobado');
 
-    const ot = ots.find(o => o.id === otId);
     const personasSinTarifa = new Map();
     const registrarSinTarifa = (personaId) => {
       const persona = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === personaId);
@@ -7604,7 +7643,7 @@ export function AppProvider({ children }) {
     registrarActividad,
     actualizarActividad,
     // Fase 2 Actions
-    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
+    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     // Finanzas Actions
     emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, registrarMovimientoManual,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,

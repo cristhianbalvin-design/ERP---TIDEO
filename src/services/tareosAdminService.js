@@ -11,7 +11,7 @@ async function sb() { return getSupabaseClient(); }
 
 // ── Lectura ───────────────────────────────────────────────────────────────────
 
-export async function cargarTareos(empresaId, { personalId, fecha, desde, hasta, otId } = {}) {
+export async function cargarTareos(empresaId, { personalId, fecha, desde, hasta, otId, osId } = {}) {
   if (!isSupabaseMode()) {
     return _mockTareos.filter(t =>
       t.empresa_id === empresaId &&
@@ -19,7 +19,8 @@ export async function cargarTareos(empresaId, { personalId, fecha, desde, hasta,
       (!fecha    || t.fecha === fecha) &&
       (!desde    || t.fecha >= desde) &&
       (!hasta    || t.fecha <= hasta) &&
-      (!otId     || t.ot_id === otId)
+      (!otId     || t.ot_id === otId) &&
+      (!osId     || t.os_id === osId)
     );
   }
   const client = await sb();
@@ -29,6 +30,7 @@ export async function cargarTareos(empresaId, { personalId, fecha, desde, hasta,
   if (desde)      q = q.gte('fecha', desde);
   if (hasta)      q = q.lte('fecha', hasta);
   if (otId)       q = q.eq('ot_id', otId);
+  if (osId)       q = q.eq('os_id', osId);
   q = q.order('fecha', { ascending: false }).order('creado_en', { ascending: false });
   const { data, error } = await q;
   if (error) throw error;
@@ -90,6 +92,7 @@ export async function crearTareo(empresaId, tareo) {
     descripcion:    tareo.descripcion,
     tipo:           tareo.tipo,
     ot_id:          tareo.ot_id    || null,
+    os_id:          tareo.os_id    || null,
     ceco_id:        tareo.ceco_id  || null,
     ceco_nombre:    tareo.ceco_nombre || null,
     estado:         tareo.estado   || 'borrador',
