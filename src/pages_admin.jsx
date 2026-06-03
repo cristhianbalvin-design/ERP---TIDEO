@@ -3832,6 +3832,198 @@ function CuentasBancariasSection() {
   );
 }
 
+// ── Configuración del Estado de Resultados por tenant ────────────────────────
+const ER_CATS_INTERNAS = ['Materiales', 'Servicios terceros', 'Logística', 'Administrativos', 'Comerciales', 'Gastos financieros', 'Planilla', 'Cargas sociales'];
+const ER_REGLAS_OT = [
+  { value: 'siempre', label: 'Siempre' },
+  { value: 'con_ot',  label: 'Solo con OT' },
+  { value: 'sin_ot',  label: 'Solo sin OT' },
+];
+const ER_SECCIONES = [
+  { key: 'costo_ventas',      label: 'Costo de Ventas' },
+  { key: 'gastos_operativos', label: 'Gastos Operativos' },
+  { key: 'gastos_financieros',label: 'Gastos Financieros' },
+];
+const ER_ITEMS_AUTO = [
+  { seccion: 'costo_ventas',      nombre: 'Mano de obra directa' },
+  { seccion: 'gastos_operativos', nombre: 'Planilla neta' },
+  { seccion: 'gastos_operativos', nombre: 'Cargas sociales' },
+  { seccion: 'gastos_financieros',nombre: 'Intereses de financiamiento' },
+];
+
+function ErConfigAdmin() {
+  const { empresa, addNotificacion } = useApp();
+  const empresaId = empresa?.id;
+  const [config, setConfig]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(false);
+  const [open, setOpen]       = useState({ costo_ventas: true, gastos_operativos: true, gastos_financieros: true });
+
+  const cargar = async () => {
+    if (!empresaId) { setLoading(false); return; }
+    setLoading(true);
+    try {
+      const sb = await getSupabaseClient();
+      const { data } = await sb
+        .from('er_configuracion')
+        .select('id, seccion, nombre_categoria, categoria_er_interna, regla_ot, orden, activo')
+        .eq('empresa_id', empresaId)
+        .eq('activo', true)
+        .order('orden');
+      setConfig((data || []).map((r, i) => ({ ...r, _key: r.id || `k${i}` })));
+    } catch (err) {
+      addNotificacion(`Error al cargar configuración ER: ${err?.message}`);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { cargar(); }, [empresaId]);
+
+  const updateRow = (key, field, value) =>
+    setConfig(prev => prev.map(r => r._key === key ? { ...r, [field]: value } : r));
+
+  const addRow = (seccion) => {
+    const maxOrden = config.filter(r => r.seccion === seccion).reduce((m, r) => Math.max(m, r.orden || 0), -1);
+    setConfig(prev => [...prev, {
+      id: null, _key: `new_${Date.now()}`, seccion,
+      nombre_categoria: '', categoria_er_interna: 'Materiales',
+      regla_ot: 'siempre', orden: maxOrden + 1, activo: true,
+    }]);
+  };
+
+  const removeRow = (key) => setConfig(prev => prev.filter(r => r._key !== key));
+
+  const guardar = async () => {
+    if (!empresaId) return;
+    setSaving(true);
+    try {
+      const sb = await getSupabaseClient();
+      await sb.from('er_configuracion').delete().eq('empresa_id', empresaId);
+      const toInsert = config
+        .filter(r => r.nombre_categoria.trim())
+        .map(({ id: _id, _key: _k, ...rest }) => ({ ...rest, empresa_id: empresaId }));
+      if (toInsert.length) {
+        const { error } = await sb.from('er_configuracion').insert(toInsert);
+        if (error) throw error;
+      }
+      addNotificacion('Configuración del ER guardada.');
+      cargar();
+    } catch (err) {
+      addNotificacion(`Error: ${err?.message}`);
+    } finally { setSaving(false); }
+  };
+
+  const restaurarDefaults = async () => {
+    if (!window.confirm('¿Restaurar la configuración por defecto? Se eliminará la configuración personalizada.')) return;
+    setSaving(true);
+    try {
+      const sb = await getSupabaseClient();
+      await sb.from('er_configuracion').delete().eq('empresa_id', empresaId);
+      setConfig([]);
+      addNotificacion('Configuración restaurada. El ER usa los valores por defecto del sistema.');
+    } catch (err) {
+      addNotificacion(`Error: ${err?.message}`);
+    } finally { setSaving(false); }
+  };
+
+  if (loading) return (
+    <div className="card params-card mb-6">
+      <div style={{ padding: 24, color: 'var(--fg-muted)', fontSize: 13 }}>Cargando configuración ER...</div>
+    </div>
+  );
+
+  return (
+    <div className="card params-card mb-6">
+      <div className="card-head">
+        <h3>Estructura del Estado de Resultados</h3>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={restaurarDefaults} disabled={saving}>
+            Restaurar defaults
+          </button>
+          <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={guardar} disabled={saving}>
+            {I.save} {saving ? 'Guardando...' : 'Guardar configuración'}
+          </button>
+        </div>
+      </div>
+
+      {config.length === 0 && (
+        <div style={{ padding: '10px 20px', fontSize: 13, color: 'var(--fg-muted)', borderBottom: '1px solid var(--border-subtle)' }}>
+          Sin configuración personalizada — el ER usa los valores por defecto del sistema.
+        </div>
+      )}
+
+      {ER_SECCIONES.map(sec => {
+        const rows      = config.filter(r => r.seccion === sec.key);
+        const autoItems = ER_ITEMS_AUTO.filter(a => a.seccion === sec.key);
+        const isOpen    = open[sec.key];
+        return (
+          <div key={sec.key} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+            <div
+              onClick={() => setOpen(p => ({ ...p, [sec.key]: !p[sec.key] }))}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 20px', cursor: 'pointer', background: 'var(--bg-alt)' }}
+            >
+              <span style={{ display: 'inline-flex', transform: isOpen ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.2s', color: 'var(--fg-muted)' }}>
+                {I.chev}
+              </span>
+              <span style={{ fontWeight: 700, fontSize: 14 }}>{sec.label}</span>
+              <span className="badge badge-gray" style={{ fontSize: 10 }}>{rows.length} cat.</span>
+            </div>
+
+            {isOpen && (
+              <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* Cabecera de columnas */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, fontSize: 11, color: 'var(--fg-muted)', paddingBottom: 2 }}>
+                  <span>Nombre visible</span>
+                  <span>Categoría interna</span>
+                  <span>Regla OT</span>
+                  <span />
+                </div>
+
+                {/* Ítems automáticos — solo informativos */}
+                {autoItems.map(a => (
+                  <div key={a.nombre} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'center' }}>
+                    <input className="input" value={a.nombre} disabled style={{ fontSize: 12, opacity: 0.6 }} />
+                    <span className="badge badge-gray" style={{ fontSize: 10, justifySelf: 'start' }}>Automático</span>
+                    <span />
+                    <span />
+                  </div>
+                ))}
+
+                {/* Filas configurables */}
+                {rows.map(row => (
+                  <div key={row._key} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'center' }}>
+                    <input
+                      className="input" style={{ fontSize: 12 }}
+                      value={row.nombre_categoria}
+                      onChange={e => updateRow(row._key, 'nombre_categoria', e.target.value)}
+                      placeholder="Nombre visible"
+                    />
+                    <select className="select" style={{ fontSize: 12 }} value={row.categoria_er_interna}
+                      onChange={e => updateRow(row._key, 'categoria_er_interna', e.target.value)}>
+                      {ER_CATS_INTERNAS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <select className="select" style={{ fontSize: 12 }} value={row.regla_ot}
+                      onChange={e => updateRow(row._key, 'regla_ot', e.target.value)}>
+                      {ER_REGLAS_OT.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                    </select>
+                    <button className="btn btn-ghost" type="button" style={{ fontSize: 12, color: 'var(--danger)' }}
+                      onClick={() => removeRow(row._key)}>{I.trash}</button>
+                  </div>
+                ))}
+
+                <button className="btn btn-secondary" type="button"
+                  style={{ fontSize: 12, alignSelf: 'flex-start', marginTop: 4 }}
+                  onClick={() => addRow(sec.key)}>
+                  {I.plus} Agregar categoría
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Parametros() {
   const {
     empresaConfig, guardarEmpresaConfig, subirImagenEmpresa, addNotificacion,
@@ -4205,6 +4397,7 @@ function Parametros() {
     { key: 'nomina', title: 'Nomina', description: 'Regimen laboral, frecuencia de pago, quincenas y valores fiscales vigentes.' },
     { key: 'evaluaciones', title: 'Evaluaciones', description: 'Ponderaciones, escala y labels para evaluaciones de desempeno.' },
     { key: 'tipos_gasto', title: 'Tipos de Gasto', description: 'Catálogo de tipos de gasto con su mapeo automático a categoría ER. Usados por el flujo "Nuevo Egreso".' },
+    { key: 'er_config', title: 'ER Estructura', description: 'Categorías del Estado de Resultados: sección, nombre visible y regla de OT vinculada por tenant.' },
   ];
   const activeParamSection = paramsSections.find(s => s.key === paramSection) || paramsSections[0];
 
@@ -4823,7 +5016,11 @@ function Parametros() {
             <TiposGastoAdmin />
           )}
 
-          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'tipos_gasto' && (
+          {paramSection === 'er_config' && (
+            <ErConfigAdmin />
+          )}
+
+          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'tipos_gasto' && paramSection !== 'er_config' && (
           <div className="params-footer-actions">
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
               {I.save} {saving ? 'Guardando...' : 'Guardar cambios'}

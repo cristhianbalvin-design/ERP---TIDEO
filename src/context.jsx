@@ -3123,6 +3123,37 @@ export function AppProvider({ children }) {
     return nuevosCostoReal;
   };
 
+  const crearTareaOT = async (otId, datos) => {
+    const datosTarea = { ...datos, ot_id: otId };
+    if (isSupabaseConfigured() && empresa?.id) {
+      const result = await opsPersist(sb => svcCrearTarea(sb, datosTarea, empresa.id));
+      return result?.data || null;
+    }
+    const tarea = { id: generateId('tar'), empresa_id: empresa?.id, ...datosTarea, creado_en: new Date().toISOString(), actualizado_en: new Date().toISOString() };
+    return tarea;
+  };
+
+  const completarTareaOT = (otId, tareaId) => {
+    const usuarioNombre = authUser?.nombre || authUser?.email || '';
+    opsSync(sb => svcCompletarTarea(sb, tareaId, usuarioNombre, empresa.id));
+  };
+
+  const reabrirTareaOT = (otId, tareaId) => {
+    opsSync(sb => svcReabrirTarea(sb, tareaId, empresa.id));
+  };
+
+  const actualizarAvanceSupervisorOT = async (otId, pct, nota) => {
+    const usuarioNombre = authUser?.nombre || authUser?.email || '';
+    try {
+      const result = await opsPersist(sb => svcActualizarAvanceSupervisor(sb, otId, pct, nota, usuarioNombre, empresa.id));
+      setOts(prev => prev.map(o => o.id === otId ? { ...o, avance: Number(pct || 0), avance_pct: Number(pct || 0), avance_supervisor_pct: Number(pct || 0) } : o));
+      return !!result;
+    } catch (e) {
+      console.error('[actualizarAvanceSupervisorOT]', e);
+      return false;
+    }
+  };
+
   const cerrarTecnicamenteOT = async (otId, datosCierre) => {
     const { conformidad_archivo, tareas_incompletas, snapshot_tareas, ...restDatos } = datosCierre;
     const cierreId = generateId('cier');
@@ -7660,6 +7691,7 @@ export function AppProvider({ children }) {
     actualizarActividad,
     // Fase 2 Actions
     convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
+    crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT,
     // Finanzas Actions
     emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, registrarMovimientoManual,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,

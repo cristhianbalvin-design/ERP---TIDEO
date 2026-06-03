@@ -266,14 +266,13 @@ async function loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds)
   const { start, next } = periodBounds(periodo);
   let query = supabase
     .from('compras_gastos')
-    .select('id, fecha, descripcion, categoria, subcategoria, monto, moneda, centro_costo_id, es_activo_fijo, estado, cxp_id, periodo_nomina_id, origen_registro')
+    .select('id, fecha, descripcion, categoria, subcategoria, monto, moneda, centro_costo_id, ot_vinc_id, es_activo_fijo, estado, cxp_id, periodo_nomina_id, origen_registro')
     .eq('empresa_id', empresaId)
     .gte('fecha', start)
     .lt('fecha', next);
   if (effectiveCecoIds) query = query.in('centro_costo_id', effectiveCecoIds);
   const { data, error } = await query;
   if (error) throw error;
-  // Corrección 3: ya NO se excluye 'Gastos financieros' aquí; el split se hace en getEstadoResultados.
   return (data || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado');
 }
 
@@ -360,6 +359,33 @@ async function loadCajaChica(supabase, empresaId, periodo) {
   return (data || []).filter(r => r.gasto_id == null);
 }
 
+// Configuración por defecto que reproduce el comportamiento actual del ER.
+// Se usa cuando el tenant no tiene filas en er_configuracion.
+const CONFIG_DEFECTO = [
+  { seccion: 'gastos_operativos', nombre_categoria: 'Materiales',        categoria_er_interna: 'Materiales',        regla_ot: 'siempre' },
+  { seccion: 'gastos_operativos', nombre_categoria: 'Servicios terceros', categoria_er_interna: 'Servicios terceros', regla_ot: 'siempre' },
+  { seccion: 'gastos_operativos', nombre_categoria: 'Logística',          categoria_er_interna: 'Logística',          regla_ot: 'siempre' },
+  { seccion: 'gastos_operativos', nombre_categoria: 'Administrativos',    categoria_er_interna: 'Administrativos',    regla_ot: 'siempre' },
+  { seccion: 'gastos_operativos', nombre_categoria: 'Comerciales',        categoria_er_interna: 'Comerciales',        regla_ot: 'siempre' },
+];
+
+export async function cargarConfiguracionER(empresaId) {
+  if (!isSupabaseMode() || !empresaId) return CONFIG_DEFECTO;
+  try {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('er_configuracion')
+      .select('seccion, nombre_categoria, categoria_er_interna, regla_ot, orden')
+      .eq('empresa_id', empresaId)
+      .eq('activo', true)
+      .order('orden');
+    if (error || !data?.length) return CONFIG_DEFECTO;
+    return data;
+  } catch {
+    return CONFIG_DEFECTO;
+  }
+}
+
 export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], cebeIds = [] } = {}) {
   if (!isSupabaseMode()) return emptyResult(periodo);
   if (!empresaId) throw new Error('No hay empresa activa.');
@@ -368,8 +394,7 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
   const effectiveCecoIds = await resolveCecoFilter(supabase, empresaId, cecoIds, cebeIds);
   const result = emptyResult(periodo);
 
-  // Corrección 1: se agrega loadCajaChica al bloque paralelo.
-  const [facturas, costosOt, comprasGastos, detalleNomina, pagosFinancieros, cxpDevengos, cajaChica] = await Promise.all([
+  const [facturas, costosOt, comprasGastos, detalleNomina, pagosFinancieros, cxpDevengos, cajaChica, erConfig] = await Promise.all([
     loadFacturas(supabase, empresaId, periodo),
     loadCostosOt(supabase, empresaId),
     loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds),
@@ -377,19 +402,25 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     loadPagosFinancieros(supabase, empresaId, periodo),
     loadCxPDevengos(supabase, empresaId, periodo),
     loadCajaChica(supabase, empresaId, periodo),
+    cargarConfiguracionER(empresaId),
   ]);
 
-  // Corrección 3: separar compras_gastos operativos de financieros.
-  const comprasGastosOp = comprasGastos.filter(g => g.categoria !== 'Gastos financieros');
-  const comprasGastosFin = comprasGastos.filter(g => g.categoria === 'Gastos financieros');
+  const sectionToBlock = {
+    costo_ventas:      result.er.costoVentas,
+    gastos_operativos: result.er.gastosOp,
+    gastos_financieros: result.er.gastosFin,
+  };
+  const configMap = new Map(erConfig.map(c => [c.categoria_er_interna, c]));
+  // Primera categoría de gastosOp sin restricción de OT — destino de reclasificación.
+  const fallbackGastosOp = erConfig.find(c =>
+    c.seccion === 'gastos_operativos' && (c.regla_ot === 'siempre' || c.regla_ot === 'sin_ot')
+  );
 
-  // Facturas y boletas como única fuente de ingresos (subtotal = neto sin IGV)
   facturas.forEach(f => {
     addToBlock(result.er.ingresos, 'Ventas de servicios', f.subtotal, f.moneda);
   });
 
   costosOt
-    // Corrección 4: excluir OTs anuladas del Costo de Ventas.
     .filter(c => c.ordenes_trabajo?.estado !== 'anulada')
     .filter(c => isInPeriod(c.fecha_er, periodo))
     .filter(c => !effectiveCecoIds || matchesIds(c.ordenes_trabajo?.centro_costo_id, effectiveCecoIds))
@@ -403,16 +434,35 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     });
 
   const comprasGastosParaEr = detalleNomina.length
-    ? comprasGastosOp.filter(g => !g.periodo_nomina_id && norm(g.origen_registro) !== 'nomina')
-    : comprasGastosOp;
+    ? comprasGastos.filter(g => !g.periodo_nomina_id && norm(g.origen_registro) !== 'nomina')
+    : comprasGastos;
 
   comprasGastosParaEr.forEach(g => {
-    addToBlock(result.er.gastosOp, g.categoria || g.subcategoria || 'Gasto operativo', g.monto, g.moneda);
-  });
-
-  // Corrección 3: registros de compras_gastos con categoria Gastos financieros van a gastosFin.
-  comprasGastosFin.forEach(g => {
-    addToBlock(result.er.gastosFin, g.subcategoria || g.descripcion || 'Gastos financieros', g.monto, g.moneda);
+    const entry = configMap.get(g.categoria);
+    if (entry) {
+      const hasOt = g.ot_vinc_id != null;
+      const block = sectionToBlock[entry.seccion] || result.er.gastosOp;
+      if (entry.regla_ot === 'con_ot') {
+        if (hasOt) {
+          addToBlock(block, entry.nombre_categoria, g.monto, g.moneda);
+        } else {
+          // Gasto sin OT que debería tener OT: reclasificar a primer Gasto Operativo sin restricción.
+          const fb = fallbackGastosOp;
+          addToBlock(result.er.gastosOp, fb ? fb.nombre_categoria : (g.categoria || 'Gasto operativo'), g.monto, g.moneda);
+        }
+      } else if (entry.regla_ot === 'sin_ot') {
+        if (g.ot_vinc_id == null) {
+          addToBlock(block, entry.nombre_categoria, g.monto, g.moneda);
+        }
+      } else {
+        addToBlock(block, entry.nombre_categoria, g.monto, g.moneda);
+      }
+    } else if (g.categoria === 'Gastos financieros') {
+      // Categoría financiera sin config explícita — comportamiento original preservado.
+      addToBlock(result.er.gastosFin, g.subcategoria || g.descripcion || 'Gastos financieros', g.monto, g.moneda);
+    } else {
+      addToBlock(result.er.gastosOp, g.categoria || g.subcategoria || 'Gasto operativo', g.monto, g.moneda);
+    }
   });
 
   const hasScopedFilters = Boolean(effectiveCecoIds) || Boolean(cebeIds?.length);
@@ -455,7 +505,6 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     facturas: facturas.length,
     costos_ot: costosOt.filter(c => isInPeriod(c.fecha_er, periodo) && c.ordenes_trabajo?.estado !== 'anulada').length,
     compras_gastos: comprasGastosParaEr.length,
-    compras_gastos_fin: comprasGastosFin.length,
     cxp_devengos: cxpDevengosEr.length,
     detalle_nomina: detalleNomina.length,
     pagos_financiamiento: pagosFinancieros.length,

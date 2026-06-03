@@ -469,7 +469,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             disabled={guardando}
             onClick={handleGuardar}
           >
-            {guardando ? 'Guardando...' : `${I.save} Guardar egreso`}
+            {guardando ? 'Guardando...' : <>{I.save} Guardar egreso</>}
           </button>
         </div>
       </div>
