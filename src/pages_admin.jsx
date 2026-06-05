@@ -5416,7 +5416,7 @@ function RRHHAdmin() {
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const vacacionesSugeridas = String(diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general'));
-  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:'', centro_costo_id:'', modalidad:'planilla', tipo_contrato:'indefinido', fecha_inicio:'', fecha_fin:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', dias_vacaciones:vacacionesSugeridas, estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0' };
+  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:'', centro_costo_id:'', modalidad:'planilla', tipo_contrato:'indefinido', fecha_inicio:'', fecha_fin:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', dias_vacaciones:vacacionesSugeridas, estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', tarifa_hora_referencial:'' };
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [horasBaseOverride, setHorasBaseOverride] = useState(false);
@@ -5538,6 +5538,7 @@ function RRHHAdmin() {
       bonif_altitud: String(p.bonif_altitud ?? '0'),
       tipo_comision_afp: p.tipo_comision_afp || 'mixta',
       pct_comision_afp_flujo: String(p.pct_comision_afp_flujo ?? '0'),
+      tarifa_hora_referencial: p.tarifa_hora_referencial != null ? String(p.tarifa_hora_referencial) : '',
     });
     setPanelAlta(true);
   };
@@ -5601,9 +5602,9 @@ function RRHHAdmin() {
       horas_base_mes: Number(formAlta.horas_base_mes || 0),
       tarifa_hora: tarifaHoraForm,
       modalidad: 'Presencial',
-      dias_vacaciones_total: Number(formAlta.dias_vacaciones) || Number(vacacionesSugeridas),
+      dias_vacaciones_total: Number(vacacionesSugeridas),
       dias_vacaciones_usados: 0,
-      dias_vacaciones_disponibles: Number(formAlta.dias_vacaciones) || Number(vacacionesSugeridas),
+      dias_vacaciones_disponibles: Number(vacacionesSugeridas),
       estado: formAlta.estado || 'activo',
       fecha_ingreso: formAlta.fecha_inicio || new Date().toISOString().slice(0, 10),
       contacto_emergencia: '', relacion_emergencia: '', telefono_emergencia: '',
@@ -5626,7 +5627,7 @@ function RRHHAdmin() {
       cargo_confianza: modalidad === 'planilla' ? Boolean(formAlta.cargo_confianza) : false,
       cuota_prestamo_mes: modalidad === 'planilla' ? Number(formAlta.cuota_prestamo_mes || 0) : 0,
       descuento_judicial: modalidad === 'planilla' ? Number(formAlta.descuento_judicial || 0) : 0,
-      regimen_laboral: null,
+      regimen_laboral: 'general',
       regimen_jornada: modalidad === 'planilla' ? (formAlta.regimen_jornada || 'general') : 'general',
       horas_diarias_pactadas: Number(formAlta.horas_diarias_pactadas || 8),
       fecha_inicio_ciclo: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (formAlta.fecha_inicio_ciclo || null) : null,
@@ -5635,6 +5636,7 @@ function RRHHAdmin() {
       bonif_altitud: Number(formAlta.bonif_altitud || 0),
       tipo_comision_afp: formAlta.tipo_comision_afp || 'mixta',
       pct_comision_afp_flujo: Number(formAlta.pct_comision_afp_flujo || 0),
+      tarifa_hora_referencial: modalidad === 'honorarios' && formAlta.tarifa_hora_referencial !== '' ? Number(formAlta.tarifa_hora_referencial) : null,
     };
     try {
       if (editandoId) {
@@ -6436,7 +6438,6 @@ function RRHHAdmin() {
               </>}
             </div>
 
-            {!esHonorariosAlta && <>
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Tarifa y Costeo</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group">
@@ -6446,25 +6447,36 @@ function RRHHAdmin() {
                   <option value="por_horas">Por horas</option>
                 </select>
               </div>
-              <div className="input-group">
-                <label>Monto mensual ({tarifaSym})</label>
-                <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} onChange={e=>setFormAlta(v=>({...v,monto_mensual:e.target.value,remuneracion:e.target.value}))} placeholder="0"/>
-              </div>
-              <div className="input-group">
-                <label>Horas base del mes</label>
-                <div className="row" style={{gap:8, alignItems:'stretch'}}>
-                  <input className="input" type="number" min="0" step="0.5" readOnly={!horasBaseOverride} value={formAlta.horas_base_mes} onChange={e=>setFormAlta(v=>({...v,horas_base_mes:e.target.value}))} placeholder="0" style={{background:horasBaseOverride ? undefined : 'var(--bg-subtle)', flex:1}}/>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={()=>{ if (horasBaseOverride) setFormAlta(v=>({...v,horas_base_mes:horasBaseParaTurno(v.turno_id)})); setHorasBaseOverride(v=>!v); }}>{horasBaseOverride ? 'Usar turno' : 'Override manual'}</button>
+              {esHonorariosAlta ? <>
+                <div className="input-group">
+                  <label>Honorario pactado ({tarifaSym})</label>
+                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} onChange={e=>{const m=e.target.value;setFormAlta(v=>({...v,monto_mensual:m,remuneracion:m,tarifa_hora_referencial:Number(m)>0?String(Math.round(Number(m)/160*100)/100):'0'}));}} placeholder="0"/>
                 </div>
-                <div className="text-muted" style={{fontSize:11, marginTop:4}}>Se actualiza desde el turno asignado.</div>
-              </div>
-              <div className="input-group">
-                <label>Tarifa por hora ({tarifaSym})</label>
-                <input className="input" type="text" readOnly value={tarifaHoraForm.toFixed(2)} style={{background:'var(--bg-subtle)', fontWeight:700}}/>
-                <div className="text-muted" style={{fontSize:11, marginTop:4}}>{I.dollar} Calculado automáticamente</div>
-              </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Tarifa hora referencial ({tarifaSym})</label>
+                  <input className="input" type="number" min="0" step="0.01" value={formAlta.tarifa_hora_referencial} onChange={e=>setFormAlta(v=>({...v,tarifa_hora_referencial:e.target.value}))} placeholder="0"/>
+                  <div className="text-muted" style={{fontSize:11,marginTop:4}}>Usado para imputar costo de mano de obra en órdenes de trabajo y partes diarios. No es un dato tributario ni laboral.</div>
+                </div>
+              </> : <>
+                <div className="input-group">
+                  <label>Monto mensual ({tarifaSym})</label>
+                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} onChange={e=>setFormAlta(v=>({...v,monto_mensual:e.target.value,remuneracion:e.target.value}))} placeholder="0"/>
+                </div>
+                <div className="input-group">
+                  <label>Horas base del mes</label>
+                  <div className="row" style={{gap:8, alignItems:'stretch'}}>
+                    <input className="input" type="number" min="0" step="0.5" readOnly={!horasBaseOverride} value={formAlta.horas_base_mes} onChange={e=>setFormAlta(v=>({...v,horas_base_mes:e.target.value}))} placeholder="0" style={{background:horasBaseOverride ? undefined : 'var(--bg-subtle)', flex:1}}/>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={()=>{ if (horasBaseOverride) setFormAlta(v=>({...v,horas_base_mes:horasBaseParaTurno(v.turno_id)})); setHorasBaseOverride(v=>!v); }}>{horasBaseOverride ? 'Usar turno' : 'Override manual'}</button>
+                  </div>
+                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>Se actualiza desde el turno asignado.</div>
+                </div>
+                <div className="input-group">
+                  <label>Tarifa por hora ({tarifaSym})</label>
+                  <input className="input" type="text" readOnly value={tarifaHoraForm.toFixed(2)} style={{background:'var(--bg-subtle)', fontWeight:700}}/>
+                  <div className="text-muted" style={{fontSize:11, marginTop:4}}><span style={{display:'inline-block',width:12,height:12,verticalAlign:'middle'}}>{I.dollar}</span> Calculado automáticamente</div>
+                </div>
+              </>}
             </div>
-            </>}
 
             {!esHonorariosAlta && <>
               <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Régimen de jornada</div>
@@ -6497,6 +6509,7 @@ function RRHHAdmin() {
                 <label className="params-toggle-row" style={{gridColumn:'1/-1', cursor:'pointer'}}><input type="checkbox" className="checkbox" checked={formAlta.cargo_confianza} onChange={e=>setFormAlta(v=>({...v,cargo_confianza:e.target.checked}))}/><span>Cargo de dirección o confianza (excluido de fiscalización de horario)</span></label>
                 {formAlta.cargo_confianza && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12}}>Este colaborador no aparecerá en el registro diario de asistencia ni se le calcularán tardanzas u horas extra. Asegúrate de que la exclusión conste en su contrato.</div>}
                 <div style={{gridColumn:'1/-1'}}><span className="badge badge-gray">Fiscalización: {fiscalizacionLabel(tipoFiscalizacionAlta)}</span></div>
+                <div style={{gridColumn:'1/-1'}}><span className="badge badge-gray">Vacaciones: {vacacionesSugeridas} días/año (según régimen {{general:'General',pequena_empresa:'Pequeña empresa',microempresa:'Microempresa'}[empresaConfig?.regimen_laboral_empresa||'general']||'General'})</span></div>
               </div>
             </>}
 
@@ -6534,13 +6547,6 @@ function RRHHAdmin() {
                     <div className="card" style={{padding:'8px 12px', fontSize:12, color:'var(--fg-muted)'}}>Prima de seguro: según tasa vigente de la AFP seleccionada (ver Parámetros → Nómina)</div>
                   </>}
                 </> : <div className="card" style={{gridColumn:'1/-1', padding:'10px 14px', fontSize:13}}>ONP — Tasa: 13% sobre remuneración asegurable.</div>}
-              </div>
-            </>}
-
-            {!esHonorariosAlta && <>
-              <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Beneficios laborales</div>
-              <div className="grid-2" style={{gap:14, marginBottom:20}}>
-                <div className="input-group"><label>Días de vacaciones/año</label><input className="input" type="number" min="0" value={formAlta.dias_vacaciones} onChange={e=>setFormAlta(v=>({...v,dias_vacaciones:e.target.value}))}/></div>
               </div>
             </>}
 

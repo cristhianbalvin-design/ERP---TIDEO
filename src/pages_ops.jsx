@@ -8,6 +8,7 @@ import {
   asignacionFamiliarMonto,
   calcularHorasBaseMesDesdeTurno,
   esModalidadHonorarios,
+  diasVacacionesPorRegimen,
   fiscalizacionLabel,
   getTipoFiscalizacion,
   normalizarModalidadContrato,
@@ -1997,9 +1998,9 @@ function OT({ role }) {
       const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === id);
       const moItem = ((ot.realDetalle?.mano_obra?.length ? ot.realDetalle : ot.est_detalle)?.mano_obra || []).find(m => m.tecnico_id === id);
       if (moItem?.costo_hora > 0) return moItem.costo_hora;
+      if (esModalidadHonorarios(tec)) return Number(tec?.tarifa_hora_referencial ?? 0);
       const explicit = Number(tec?.tarifa_hora ?? tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
-      if (explicit > 0) return explicit;
-      return 0;
+      return explicit > 0 ? explicit : 0;
     };
     const mo = aprobados.reduce((s, p) => s + (p.horas || 0) * costoHoraTec(p.tecnico_id), 0);
     const mat = aprobados.reduce((s, p) =>
@@ -2883,6 +2884,13 @@ function OT({ role }) {
                           ) : (
                             <div style={{fontSize:12, color:'var(--fg-muted)', padding:'6px 0'}}>No hay tecnicos operativos asignados. Asigna tecnicos desde el Planner antes de registrar partes diarios.</div>
                           )}
+                          {parteFormOT.tecnico_id && (() => {
+                            const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === parteFormOT.tecnico_id);
+                            if (esModalidadHonorarios(tec) && !(Number(tec?.tarifa_hora_referencial) > 0)) {
+                              return <div className="alert alert-warning" style={{fontSize:12, marginTop:6}}>Este colaborador no tiene tarifa hora referencial configurada — el costo de MO quedará en S/ 0. Configúralo en su ficha de personal.</div>;
+                            }
+                            return null;
+                          })()}
                         </div>
                       </div>
 
@@ -3252,9 +3260,9 @@ function OT({ role }) {
               const partesAprobados = partesOT.filter(p => p.estado === 'aprobado');
               const costoHoraTec = (personaId) => {
                 const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === personaId);
+                if (esModalidadHonorarios(tec)) return Number(tec?.tarifa_hora_referencial ?? 0);
                 const explicit = Number(tec?.tarifa_hora ?? tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
-                if (explicit > 0) return explicit;
-                return 0;
+                return explicit > 0 ? explicit : 0;
               };
               const costoHoraOT = (tecnicoId) => {
                 const src = (realDetalle.mano_obra?.length ? realDetalle : sel.est_detalle) || {};
@@ -11190,9 +11198,12 @@ function RRHH_Operativo() {
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', fecha_fin:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'' };
+  const vacacionesSugeridas = diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general');
+  const vacRegimenLabel = { general: 'General', pequena_empresa: 'Pequeña empresa', microempresa: 'Microempresa' }[empresaConfig?.regimen_laboral_empresa || 'general'] || 'General';
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', fecha_fin:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [horasBaseOverride, setHorasBaseOverride] = useState(false);
+  const [costoExtraOverride, setCostoExtraOverride] = useState(false);
   const [altaError, setAltaError] = useState('');
   const [altaSaving, setAltaSaving] = useState(false);
   const modalidadAlta = normalizarModalidadContrato(formAlta.modalidad);
@@ -11201,6 +11212,7 @@ function RRHH_Operativo() {
   const mostrarFechaFinAlta = requiereFechaFinContrato(tipoContratoAlta);
   const horasBaseForm = Number(formAlta.horas_base_mes || 0);
   const tarifaHoraForm = Math.round((horasBaseForm > 0 ? Number(formAlta.monto_mensual || 0) / horasBaseForm : 0) * 100) / 100;
+  const costExtraCalc = Math.round(tarifaHoraForm * 125) / 100;
   const tarifaSym = formAlta.moneda === 'USD' ? 'US$' : formAlta.moneda === 'EUR' ? 'EUR' : 'S/';
   const asignacionFamiliar = asignacionFamiliarMonto(empresaConfig);
   const tipoFiscalizacionAlta = getTipoFiscalizacion({
@@ -11234,6 +11246,7 @@ function RRHH_Operativo() {
     setEditandoId(null);
     setFormAlta(formAltaBase);
     setHorasBaseOverride(false);
+    setCostoExtraOverride(false);
     setAltaError('');
   };
   const horasBaseParaTurno = (turnoId) => {
@@ -11252,6 +11265,7 @@ function RRHH_Operativo() {
   const abrirNuevoTecnico = () => {
     setEditandoId(null);
     setHorasBaseOverride(false);
+    setCostoExtraOverride(false);
     setFormAlta({ ...formAltaBase, codigo: codigoSugeridoTecnico(), turno_id: '', horas_base_mes: '' });
     setPanelAlta(true);
   };
@@ -11261,6 +11275,9 @@ function RRHH_Operativo() {
     const horasDerivadas = horasBaseParaTurno(turnoActualId);
     const horasActuales = p.horas_base_mes != null ? String(p.horas_base_mes) : horasDerivadas;
     setHorasBaseOverride(Boolean(horasActuales && horasDerivadas && horasActuales !== horasDerivadas));
+    const storedCostoExtra = Number(p.costo_hora_extra ?? p.costo_extra ?? 0);
+    const expectedCostoExtra = Math.round(Number(p.tarifa_hora ?? 0) * 125) / 100;
+    setCostoExtraOverride(storedCostoExtra > 0 && storedCostoExtra !== expectedCostoExtra);
     setFormAlta({
       ...formAltaBase,
       nombre: p.nombre || '',
@@ -11308,6 +11325,7 @@ function RRHH_Operativo() {
       retencion_ir: String(p.retencion_ir ?? '8'),
       suspension_retenciones: Boolean(p.suspension_retenciones),
       vencimiento_suspension: p.vencimiento_suspension || '',
+      tarifa_hora_referencial: p.tarifa_hora_referencial != null ? String(p.tarifa_hora_referencial) : '',
     });
     setPanelAlta(true);
   };
@@ -11336,7 +11354,7 @@ function RRHH_Operativo() {
       return;
     }
     if (modalidad === 'honorarios' && !isValidRuc(formAlta.ruc_colaborador)) {
-      setAltaError('El RUC es obligatorio para Recibos por Honorarios (11 dígitos).');
+      setAltaError('El RUC es obligatorio para colaboradores con modalidad Honorarios (11 dígitos).');
       return;
     }
     if (requiereFin && !formAlta.fecha_fin) {
@@ -11369,7 +11387,7 @@ function RRHH_Operativo() {
       tarifa_hora: tarifaHoraForm,
       costo: tarifaHoraForm,
       costo_hora_real: tarifaHoraForm,
-      costo_hora_extra: Number(formAlta.costo_extra) || 0,
+      costo_hora_extra: costoExtraOverride ? (Number(formAlta.costo_extra) || 0) : costExtraCalc,
       fecha_ingreso: formAlta.fecha_ingreso || null,
       fecha_inicio_contrato: formAlta.fecha_ingreso || null,
       fecha_fin_contrato: requiereFin ? (formAlta.fecha_fin || null) : null,
@@ -11380,7 +11398,7 @@ function RRHH_Operativo() {
       afp_nombre: modalidad === 'honorarios' ? null : formAlta.afp_nombre,
       tiene_hijos: modalidad === 'honorarios' ? false : formAlta.tiene_hijos,
       cargo_confianza: modalidad === 'honorarios' ? false : Boolean(formAlta.cargo_confianza),
-      regimen_laboral: null,
+      regimen_laboral: 'general',
       cuota_prestamo_mes: modalidad === 'honorarios' ? 0 : Number(formAlta.cuota_prestamo_mes) || 0,
       descuento_judicial: modalidad === 'honorarios' ? 0 : Number(formAlta.descuento_judicial) || 0,
       regimen_jornada: modalidad === 'honorarios' ? 'general' : (formAlta.regimen_jornada || 'general'),
@@ -11399,7 +11417,8 @@ function RRHH_Operativo() {
       turno_id: modalidad === 'honorarios' ? null : formAlta.turno_id,
       centro_costo_id: formAlta.centro_costo_id,
       turno: modalidad === 'honorarios' ? '' : (turnosOptions.find(t => t.id === formAlta.turno_id)?.nombre || ''),
-      docs: { sctr:'pendiente', medico:'pendiente', epp:'pendiente', licencia:'pendiente' }
+      docs: { sctr:'pendiente', medico:'pendiente', epp:'pendiente', licencia:'pendiente' },
+      tarifa_hora_referencial: modalidad === 'honorarios' && formAlta.tarifa_hora_referencial !== '' ? Number(formAlta.tarifa_hora_referencial) : null,
     };
     try {
       if (editandoId) {
@@ -12197,7 +12216,6 @@ function RRHH_Operativo() {
               <div className="input-group"><label>Estado inicial</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="disponible">Disponible</option><option value="inactivo">Inactivo</option></select></div>
             </div>
 
-            {!esHonorarios && <>
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Tarifa y Costeo</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group">
@@ -12207,26 +12225,44 @@ function RRHH_Operativo() {
                   <option value="por_horas">Por horas</option>
                 </select>
               </div>
-              <div className="input-group">
-                <label>Monto mensual ({tarifaSym})</label>
-                <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} onChange={e=>setFormAlta(v=>({...v,monto_mensual:e.target.value,sueldo_base:esHonorarios?v.sueldo_base:e.target.value}))} placeholder="0"/>
-              </div>
-              <div className="input-group">
-                <label>Horas base del mes</label>
-                <div className="row" style={{gap:8, alignItems:'stretch'}}>
-                  <input className="input" type="number" min="0" step="0.5" readOnly={!horasBaseOverride} value={formAlta.horas_base_mes} onChange={e=>setFormAlta(v=>({...v,horas_base_mes:e.target.value}))} placeholder="0" style={{background:horasBaseOverride ? undefined : 'var(--bg-subtle)', flex:1}}/>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={()=>{ if (horasBaseOverride) setFormAlta(v=>({...v,horas_base_mes:horasBaseParaTurno(v.turno_id)})); setHorasBaseOverride(v=>!v); }}>{horasBaseOverride ? 'Usar turno' : 'Override manual'}</button>
+              {esHonorarios ? <>
+                <div className="input-group">
+                  <label>Honorario pactado ({tarifaSym})</label>
+                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} onChange={e=>{const m=e.target.value;setFormAlta(v=>({...v,monto_mensual:m,tarifa_hora_referencial:Number(m)>0?String(Math.round(Number(m)/160*100)/100):'0'}));}} placeholder="0"/>
                 </div>
-                <div className="text-muted" style={{fontSize:11, marginTop:4}}>Se actualiza desde el turno asignado.</div>
-              </div>
-              <div className="input-group">
-                <label>Tarifa por hora ({tarifaSym})</label>
-                <input className="input" type="text" readOnly value={tarifaHoraForm.toFixed(2)} style={{background:'var(--bg-subtle)', fontWeight:700}}/>
-                <div className="text-muted" style={{fontSize:11, marginTop:4}}>Calculado automáticamente</div>
-              </div>
-              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Costo hora extra ({tarifaSym})</label><input className="input" type="number" min="0" step="0.01" value={formAlta.costo_extra} onChange={e=>setFormAlta(v=>({...v,costo_extra:e.target.value}))} placeholder="0"/></div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Tarifa hora referencial ({tarifaSym})</label>
+                  <input className="input" type="number" min="0" step="0.01" value={formAlta.tarifa_hora_referencial} onChange={e=>setFormAlta(v=>({...v,tarifa_hora_referencial:e.target.value}))} placeholder="0"/>
+                  <div className="text-muted" style={{fontSize:11,marginTop:4}}>Usado para imputar costo de mano de obra en órdenes de trabajo y partes diarios. No es un dato tributario ni laboral.</div>
+                </div>
+              </> : <>
+                <div className="input-group">
+                  <label>Monto mensual ({tarifaSym})</label>
+                  <input className="input" type="number" min="0" step="0.01" value={formAlta.monto_mensual} onChange={e=>setFormAlta(v=>({...v,monto_mensual:e.target.value,sueldo_base:e.target.value}))} placeholder="0"/>
+                </div>
+                <div className="input-group">
+                  <label>Horas base del mes</label>
+                  <div className="row" style={{gap:8, alignItems:'stretch'}}>
+                    <input className="input" type="number" min="0" step="0.5" readOnly={!horasBaseOverride} value={formAlta.horas_base_mes} onChange={e=>setFormAlta(v=>({...v,horas_base_mes:e.target.value}))} placeholder="0" style={{background:horasBaseOverride ? undefined : 'var(--bg-subtle)', flex:1}}/>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={()=>{ if (horasBaseOverride) setFormAlta(v=>({...v,horas_base_mes:horasBaseParaTurno(v.turno_id)})); setHorasBaseOverride(v=>!v); }}>{horasBaseOverride ? 'Usar turno' : 'Override manual'}</button>
+                  </div>
+                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>Se actualiza desde el turno asignado.</div>
+                </div>
+                <div className="input-group">
+                  <label>Tarifa por hora ({tarifaSym})</label>
+                  <input className="input" type="text" readOnly value={tarifaHoraForm.toFixed(2)} style={{background:'var(--bg-subtle)', fontWeight:700}}/>
+                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>Calculado automáticamente</div>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Costo hora extra ({tarifaSym})</label>
+                  <div className="row" style={{gap:8, alignItems:'stretch'}}>
+                    <input className="input" type="number" min="0" step="0.01" readOnly={!costoExtraOverride} value={costoExtraOverride ? formAlta.costo_extra : costExtraCalc.toFixed(2)} onChange={e=>setFormAlta(v=>({...v,costo_extra:e.target.value}))} style={{background:costoExtraOverride?undefined:'var(--bg-subtle)',flex:1}}/>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={()=>{ if (costoExtraOverride) setFormAlta(v=>({...v,costo_extra:''})); setCostoExtraOverride(v=>!v); }}>{costoExtraOverride ? 'Usar sugerido' : 'Override manual'}</button>
+                  </div>
+                  <div className="text-muted" style={{fontSize:11,marginTop:4}}>{costoExtraOverride ? 'Valor personalizado.' : 'Sugerido: tarifa hora × 1.25 (primer tramo legal).'}</div>
+                </div>
+              </>}
             </div>
-            </>}
 
             {canFinanzas && <>
               <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos de nomina</div>
@@ -12260,6 +12296,7 @@ function RRHH_Operativo() {
                     <label className="params-toggle-row" style={{gridColumn:'1/-1', cursor:'pointer'}}><input type="checkbox" className="checkbox" checked={formAlta.cargo_confianza} onChange={e=>setFormAlta(v=>({...v,cargo_confianza:e.target.checked}))}/><span>Cargo de dirección o confianza (excluido de fiscalización de horario)</span></label>
                     {formAlta.cargo_confianza && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12}}>Este colaborador no aparecerá en el registro diario de asistencia ni se le calcularán tardanzas u horas extra.</div>}
                     <div style={{gridColumn:'1/-1'}}><span className="badge badge-gray">Fiscalización: {fiscalizacionLabel(tipoFiscalizacionAlta)}</span></div>
+                    <div style={{gridColumn:'1/-1'}}><span className="badge badge-gray">Vacaciones: {vacacionesSugeridas} días/año (según régimen {vacRegimenLabel})</span></div>
                     <div className="input-group"><label>Cuota prestamo mes</label><input className="input" type="number" min="0" value={formAlta.cuota_prestamo_mes} onChange={e=>setFormAlta(v=>({...v,cuota_prestamo_mes:e.target.value}))}/></div>
                     <div className="input-group"><label>Descuento judicial</label><input className="input" type="number" min="0" value={formAlta.descuento_judicial} onChange={e=>setFormAlta(v=>({...v,descuento_judicial:e.target.value}))}/></div>
                   </div>

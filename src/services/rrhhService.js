@@ -227,6 +227,7 @@ const normalizarPersonalOperativo = (p = {}) => ({
   costo: Number(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0),
   costo_hora_real: Number(p.tarifa_hora ?? p.costo_hora_real ?? p.costo ?? 0),
   costo_hora_extra: Number(p.costo_hora_extra ?? p.costo_extra ?? 0),
+  tarifa_hora_referencial: p.tarifa_hora_referencial != null ? Number(p.tarifa_hora_referencial) : null,
   acceso_campo: p.acceso_campo ?? false,
   perfil_campo: p.perfil_campo || null,
   modalidad_contrato: normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato),
@@ -299,6 +300,7 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   pct_comision_afp_flujo: Number(persona.pct_comision_afp_flujo || 0),
   costo_hora_real: Number(persona.tarifa_hora ?? calcularTarifaHora(persona.monto_mensual ?? persona.sueldo_base, persona.horas_base_mes) ?? persona.costo_hora_real ?? persona.costo ?? 0),
   costo_hora_extra: Number(persona.costo_hora_extra ?? persona.costo_extra ?? 0),
+  tarifa_hora_referencial: persona.tarifa_hora_referencial != null ? Number(persona.tarifa_hora_referencial) : null,
   ruc_colaborador: persona.ruc_colaborador || null,
   retencion_ir: Number(persona.retencion_ir ?? 8),
   suspension_retenciones: persona.suspension_retenciones ?? false,
@@ -329,12 +331,16 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
     'costo_hora_real', 'costo_hora_extra',
     'ruc_colaborador', 'retencion_ir', 'suspension_retenciones', 'vencimiento_suspension',
     'acceso_campo', 'perfil_campo',
-    'docs', 'estado', 'centro_costo_id'
+    'docs', 'estado', 'centro_costo_id', 'tarifa_hora_referencial'
   ]);
 
   return Object.entries(cambios).reduce((row, [key, value]) => {
     const target = map[key] || key;
     if (!allowed.has(target)) return row;
+    if (target === 'tarifa_hora_referencial') {
+      row[target] = value !== '' && value != null ? Number(value) : null;
+      return row;
+    }
     row[target] = ['sueldo_base', 'monto_mensual', 'horas_base_mes', 'tarifa_hora', 'costo_hora_real', 'costo_hora_extra', 'cuota_prestamo_mes', 'descuento_judicial', 'horas_diarias_pactadas', 'dias_ciclo_trabajo', 'dias_ciclo_descanso', 'bonif_altitud', 'pct_comision_afp_flujo'].includes(target)
       ? Number(value || 0)
       : value;
@@ -353,6 +359,7 @@ const normalizarPersonalAdmin = (p = {}) => ({
   monto_mensual: Number(p.monto_mensual ?? p.remuneracion ?? p.sueldo_base ?? 0),
   horas_base_mes: Number(p.horas_base_mes ?? 0) || 0,
   tarifa_hora: Number(p.tarifa_hora ?? p.costo_hora_real ?? p.costo ?? 0),
+  tarifa_hora_referencial: p.tarifa_hora_referencial != null ? Number(p.tarifa_hora_referencial) : null,
   modalidad_contrato: normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato),
   tipo_contrato: normalizarTipoContratoDuracion(p.tipo_contrato, p.modalidad_contrato || p.tipo_contrato),
   modalidad: p.modalidad || 'Presencial',
@@ -458,6 +465,7 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   retencion_ir: persona.retencion_ir != null ? Number(persona.retencion_ir) : null,
   suspension_retenciones: Boolean(persona.suspension_retenciones),
   vencimiento_suspension: persona.vencimiento_suspension || null,
+  tarifa_hora_referencial: persona.tarifa_hora_referencial != null ? Number(persona.tarifa_hora_referencial) : null,
 });
 
 const toPersonalAdminUpdate = (cambios = {}) => {
@@ -481,7 +489,7 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     'documentos', 'estado', 'centro_costo_id',
     'auth_user_id', 'tiene_comisiones', 'porcentaje_comision',
     'modalidad_comision', 'ruc_vendedor', 'ruc_colaborador', 'retencion_ir_comision', 'retencion_ir',
-    'suspension_retenciones', 'vencimiento_suspension'
+    'suspension_retenciones', 'vencimiento_suspension', 'tarifa_hora_referencial'
   ]);
 
   return Object.entries(cambios).reduce((row, [key, value]) => {
@@ -489,6 +497,10 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     if (!allowed.has(target)) return row;
     if (['fecha_nacimiento', 'fecha_ingreso', 'fecha_inicio_contrato', 'fecha_fin_contrato'].includes(target)) {
       row[target] = value || null;
+      return row;
+    }
+    if (target === 'tarifa_hora_referencial') {
+      row[target] = value !== '' && value != null ? Number(value) : null;
       return row;
     }
     row[target] = [
