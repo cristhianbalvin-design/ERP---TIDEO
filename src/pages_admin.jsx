@@ -5563,8 +5563,12 @@ function RRHHAdmin() {
       setAltaError('Selecciona un turno real creado en Supabase antes de guardar el colaborador.');
       return;
     }
-    if (modalidad === 'honorarios' && !isValidRuc(formAlta.ruc_colaborador)) {
-      setAltaError('El RUC del colaborador debe tener exactamente 11 dígitos numéricos.');
+    if (modalidad === 'honorarios' && (!formAlta.ruc_colaborador || !isValidRuc(formAlta.ruc_colaborador))) {
+      setAltaError('El RUC del colaborador es obligatorio y debe tener 11 dígitos (comenzar con 1 o 2).');
+      return;
+    }
+    if (modalidad === 'honorarios' && !formAlta.fecha_inicio) {
+      setAltaError('El inicio del encargo es obligatorio.');
       return;
     }
     if (requiereFin && !formAlta.fecha_fin) {
@@ -6406,17 +6410,17 @@ function RRHHAdmin() {
                 <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               )}
               <div className="input-group">
-                <label>{esHonorariosAlta ? 'Inicio del encargo' : 'Fecha de ingreso *'}</label>
-                <input className="input" type="date" value={formAlta.fecha_inicio} onChange={e=>setFormAlta(v=>({...v,fecha_inicio:e.target.value}))}/>
+                <label>{esHonorariosAlta ? 'Inicio del encargo *' : 'Fecha de ingreso *'}</label>
+                <input className="input" type="date" required value={formAlta.fecha_inicio} onChange={e=>setFormAlta(v=>({...v,fecha_inicio:e.target.value}))}/>
               </div>
               {mostrarFechaFinAlta && <div className="input-group">
                 <label>{esHonorariosAlta ? 'Fin del encargo *' : 'Fecha fin contrato *'}</label>
                 <input className="input" type="date" required value={formAlta.fecha_fin} onChange={e=>setFormAlta(v=>({...v,fecha_fin:e.target.value}))}/>
               </div>}
-              <div className="input-group">
-                <label>{esHonorariosAlta ? `Honorario pactado (${tarifaSym})` : `Sueldo base (${tarifaSym})`}</label>
+              {!esHonorariosAlta && <div className="input-group">
+                <label>{`Sueldo base (${tarifaSym})`}</label>
                 <input className="input" type="number" min="0" value={formAlta.remuneracion} onChange={e=>setFormAlta(v=>({...v,remuneracion:e.target.value,monto_mensual:e.target.value}))} placeholder="0"/>
-              </div>
+              </div>}
               <div className="input-group"><label>Estado</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option><option value="suspendido">Suspendido</option></select></div>
               {esHonorariosAlta && <>
                 <div className="input-group">

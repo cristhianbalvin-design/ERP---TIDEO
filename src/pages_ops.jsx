@@ -9857,7 +9857,7 @@ function calcularResultadoAsistencia(horaEntrada, horaSalida, turno, esFalta, ju
   const refriMin = refrigerioTomadoMinutos !== null && refrigerioTomadoMinutos !== '' ? Number(refrigerioTomadoMinutos) : (turno.refrigerio_minutos || 0);
   const trabajadasMin = Math.max(0, salidaMin - entradaMin - refriMin);
   const tardanzaMin = Math.max(0, entradaMin - timeToMinutesHHMM(turno.hora_entrada) - (turno.tolerancia_minutos || 0));
-  const extraMin = Math.max(0, salidaMin - turnoSalidaMin - 30);
+  const extraMin = Math.max(0, salidaMin - turnoSalidaMin);
   const estado = tardanzaMin > 0 ? 'tardanza' : extraMin > 0 ? 'horas_extra' : 'completo';
   const label = tardanzaMin > 0 ? `Tardanza ${tardanzaMin}min` : extraMin > 0 ? `Horas extra ${minutesToLabel(extraMin)}` : 'Completo';
   return { horas_trabajadas_min:trabajadasMin, tardanza_min:tardanzaMin, horas_extra_min:extraMin, estado, label };
@@ -11353,8 +11353,8 @@ function RRHH_Operativo() {
       setAltaError('Este campo es obligatorio. Selecciona un CECO antes de continuar.');
       return;
     }
-    if (modalidad === 'honorarios' && !isValidRuc(formAlta.ruc_colaborador)) {
-      setAltaError('El RUC es obligatorio para colaboradores con modalidad Honorarios (11 dígitos).');
+    if (modalidad === 'honorarios' && (!formAlta.ruc_colaborador || !isValidRuc(formAlta.ruc_colaborador))) {
+      setAltaError('El RUC es obligatorio para colaboradores con modalidad Honorarios (11 dígitos, comenzar con 1 o 2).');
       return;
     }
     if (requiereFin && !formAlta.fecha_fin) {
