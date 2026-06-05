@@ -861,11 +861,11 @@ export const cxc = [
   { id: 'cxc_005', cliente: 'Facilities Lima SA', factura: 'F001-0510', emision: '2026-04-18', vence: '2026-04-18', total: 22400, pagado: 22400, saldo: 0, mora: 0, estado: 'pagada', promesa_pago: null }
 ];
 export const movimientosBanco = [
-  { id: 'mb_001', fecha: '2026-04-22', desc: 'Abono cliente Facilities Lima F001-0510', tipo: 'credito', monto: 22400, vinculado: 'F001-0510', conciliado: true },
-  { id: 'mb_002', fecha: '2026-04-24', desc: 'Pago proveedor Electroandes F002-1122', tipo: 'debito', monto: 1250, vinculado: 'CXP-002', conciliado: true },
-  { id: 'mb_003', fecha: '2026-04-25', desc: 'Abono parcial Logistica Altiplano', tipo: 'credito', monto: 5000, vinculado: 'F001-0461', conciliado: true },
-  { id: 'mb_004', fecha: '2026-04-26', desc: 'Ingreso por identificar BBVA', tipo: 'credito', monto: 10214, vinculado: null, conciliado: false },
-  { id: 'mb_005', fecha: '2026-04-27', desc: 'Cargo comision bancaria', tipo: 'debito', monto: 180, vinculado: null, conciliado: false }
+  { id: 'mb_001', empresa_id: 'emp_001', cuenta_bancaria_id: 'cb_001', fecha: '2026-06-02', desc: 'Abono cliente Facilities Lima F001-0510', tipo: 'credito', monto: 22400, moneda: 'PEN', vinculado_tipo: 'cxc', vinculado_id: 'cxc_005', conciliado: true },
+  { id: 'mb_002', empresa_id: 'emp_001', cuenta_bancaria_id: 'cb_003', fecha: '2026-06-03', desc: 'Pago proveedor Electroandes F002-1122', tipo: 'debito', monto: 340, moneda: 'USD', vinculado_tipo: 'cxp', vinculado_id: 'CXP-002', conciliado: true },
+  { id: 'mb_003', empresa_id: 'emp_001', cuenta_bancaria_id: 'cb_004', fecha: '2026-06-03', desc: 'Abono parcial Logistica Altiplano', tipo: 'credito', monto: 1350, moneda: 'USD', vinculado_tipo: 'cxc', vinculado_id: 'cxc_004', conciliado: true },
+  { id: 'mb_004', empresa_id: 'emp_001', cuenta_bancaria_id: 'cb_002', fecha: '2026-06-04', desc: 'Ingreso por identificar BBVA', tipo: 'credito', monto: 10214, moneda: 'PEN', vinculado: null, conciliado: false },
+  { id: 'mb_005', empresa_id: 'emp_001', cuenta_bancaria_id: 'cb_003', fecha: '2026-06-04', desc: 'Cargo comision bancaria', tipo: 'debito', monto: 48, moneda: 'USD', vinculado: null, conciliado: false }
 ];
 export const estadoResultados = {
   ingresos: { total: 285400, items: [
@@ -934,6 +934,7 @@ export const pantallasPermisos = [
   { key: 'ventas', modulo: 'Administracion', pantalla: 'Ventas', acciones: ['ver','crear','editar','exportar','finanzas'] },
   { key: 'cxc', modulo: 'Administracion', pantalla: 'Cuentas por Cobrar', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
   { key: 'cxp', modulo: 'Administracion', pantalla: 'Cuentas por Pagar', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
+  { key: 'caja', modulo: 'Administracion', pantalla: 'Caja Chica', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
   { key: 'tesoreria', modulo: 'Administracion', pantalla: 'Tesoreria y Match Bancario', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
   { key: 'resultados', modulo: 'Administracion', pantalla: 'Estado de Resultados', acciones: ['ver','exportar','costos','finanzas'] },
   { key: 'roles', modulo: 'Configuracion', pantalla: 'Roles y Permisos', acciones: ['ver','crear','editar','anular','exportar'] },
@@ -1110,19 +1111,26 @@ export const financiamientos = [
   }
 ];
 
-export const movimientosTesoreria = [];
+export const movimientosTesoreria = [
+  { id: 'tes_001', empresa_id: 'emp_001', tipo: 'ingreso', descripcion: 'Cobro F001-0510', monto: 22400, moneda: 'PEN', fecha: '2026-06-02', cuenta_bancaria_id: 'cb_001', tc_aplicado: 1, monto_en_moneda_cuenta: 22400, referencia: 'mb_001', vinculo_tipo: 'cxc', vinculo_id: 'cxc_005', estado: 'registrado' },
+  { id: 'tes_002', empresa_id: 'emp_001', tipo: 'egreso', descripcion: 'Pago Electroandes F002-1122', monto: 1250, moneda: 'PEN', fecha: '2026-06-03', cuenta_bancaria_id: 'cb_003', tc_aplicado: 0.272, monto_en_moneda_cuenta: 340, referencia: 'mb_002', vinculo_tipo: 'cxp', vinculo_id: 'CXP-002', estado: 'registrado' },
+  { id: 'tes_003', empresa_id: 'emp_001', tipo: 'ingreso', descripcion: 'Cobro parcial Logistica Altiplano', monto: 5000, moneda: 'PEN', fecha: '2026-06-03', cuenta_bancaria_id: 'cb_004', tc_aplicado: 0.27, monto_en_moneda_cuenta: 1350, referencia: 'mb_003', vinculo_tipo: 'cxc', vinculo_id: 'cxc_004', estado: 'registrado' },
+  { id: 'tes_004', empresa_id: 'emp_001', tipo: 'egreso', descripcion: 'Gasto operativo pendiente de conciliar', monto: 780, moneda: 'PEN', fecha: '2026-06-04', cuenta_bancaria_id: null, tc_aplicado: null, monto_en_moneda_cuenta: null, referencia: '', vinculo_tipo: 'gasto', vinculo_id: 'gto_mock_001', estado: 'registrado' },
+  { id: 'tes_005', empresa_id: 'emp_001', tipo: 'ingreso', descripcion: 'Ingreso manual sin cuenta asignada', monto: 950, moneda: 'USD', fecha: '2026-06-04', cuenta_bancaria_id: null, tc_aplicado: null, monto_en_moneda_cuenta: null, referencia: '', vinculo_tipo: 'manual', vinculo_id: null, estado: 'registrado', es_manual: true }
+];
 
 export const cuentasBancarias = [
-  { id: 'cb_001', empresa_id: 'emp_001', nombre: 'Cuenta Corriente BCP Soles', banco: 'BCP', numero_cuenta: '191-1234567-0-88', cci: '00219100123456700885', moneda: 'PEN', tipo: 'corriente', estado: 'activo', saldo_inicial: 490900, creado_en: '2026-01-01T00:00:00Z' },
-  { id: 'cb_002', empresa_id: 'emp_001', nombre: 'Cuenta Ahorros BBVA Soles', banco: 'BBVA', numero_cuenta: '0011-0218-0100015231', cci: '01102180100015231', moneda: 'PEN', tipo: 'ahorros', estado: 'activo', saldo_inicial: 85000, creado_en: '2026-01-01T00:00:00Z' },
+  { id: 'cb_001', empresa_id: 'emp_001', nombre: 'Cuenta Corriente BCP Soles', alias: 'BCP Operativa PEN', banco: 'BCP', numero_cuenta: '191-1234567-0-88', cci: '00219100123456700885', moneda: 'PEN', tipo: 'corriente', estado: 'activo', saldo_inicial: 490900, creado_en: '2026-01-01T00:00:00Z' },
+  { id: 'cb_002', empresa_id: 'emp_001', nombre: 'Cuenta Ahorros BBVA Soles', alias: 'BBVA Recaudo PEN', banco: 'BBVA', numero_cuenta: '0011-0218-0100015231', cci: '01102180100015231', moneda: 'PEN', tipo: 'ahorros', estado: 'activo', saldo_inicial: 85000, creado_en: '2026-01-01T00:00:00Z' },
   { id: 'cb_003', empresa_id: 'emp_001', nombre: 'Cuenta Corriente BCP Dólares', banco: 'BCP', numero_cuenta: '191-9876543-1-12', cci: '00219100987654310121', moneda: 'USD', tipo: 'corriente', estado: 'activo', saldo_inicial: 12000, creado_en: '2026-01-01T00:00:00Z' },
+  { id: 'cb_004', empresa_id: 'emp_001', nombre: 'Cuenta Ahorros Interbank Dolares', alias: 'Interbank Reserva USD', banco: 'Interbank', numero_cuenta: '200-445566778', cci: '00320000445566778', moneda: 'USD', tipo: 'ahorros', estado: 'activo', saldo_inicial: 8200, creado_en: '2026-01-01T00:00:00Z' },
 ];
 
 export const cxp = [
-  { id: 'CXP-001', proveedor: 'Ferreteria Industrial SAC', factura: 'F001-2341', emision: '2026-04-22', vencimiento: '2026-05-07', monto: 450, estado: 'por_pagar' },
-  { id: 'CXP-002', proveedor: 'Electroandes', factura: 'F002-1122', emision: '2026-04-20', vencimiento: '2026-04-24', monto: 1250, estado: 'pagada' },
-  { id: 'CXP-003', proveedor: 'Mantenimientos Externos EIRL', factura: 'E001-0881', emision: '2026-04-25', vencimiento: '2026-05-10', monto: 3800, estado: 'por_pagar' },
-  { id: 'CXP-004', proveedor: 'Logistica Norte EIRL', factura: 'F003-0714', emision: '2026-03-28', vencimiento: '2026-04-12', monto: 2100, estado: 'vencido' }
+  { id: 'CXP-001', empresa_id: 'emp_001', proveedor: 'Ferreteria Industrial SAC', factura: 'F001-2341', emision: '2026-04-22', vencimiento: '2026-05-07', monto_total: 450, saldo: 450, moneda: 'PEN', estado: 'pendiente' },
+  { id: 'CXP-002', empresa_id: 'emp_001', proveedor: 'Electroandes', factura: 'F002-1122', emision: '2026-04-20', vencimiento: '2026-04-24', monto_total: 1250, saldo: 0, moneda: 'PEN', estado: 'pagada' },
+  { id: 'CXP-003', empresa_id: 'emp_001', proveedor: 'Mantenimientos Externos EIRL', factura: 'E001-0881', emision: '2026-04-25', vencimiento: '2026-05-10', monto_total: 3800, saldo: 3800, moneda: 'PEN', estado: 'pendiente' },
+  { id: 'CXP-004', empresa_id: 'emp_001', proveedor: 'Logistica Norte EIRL', factura: 'F003-0714', emision: '2026-03-28', vencimiento: '2026-04-12', monto_total: 2100, saldo: 2100, moneda: 'PEN', estado: 'vencido' }
 ];
 
 // ============================================================
@@ -1593,6 +1601,13 @@ export const periodosNomina = [
   { id:'nom_2026_02', empresa_id:'emp_001', periodo:'Febrero 2026', anio:2026, mes:2, estado:'cerrado', fecha_calculo:'2026-02-27', fecha_cierre:'2026-02-28', usuario_cierre:'Administrador', total_trabajadores:9, masa_salarial_bruta:26400, total_neto:20280, total_cargas_empresa:8280 }
 ];
 
+export const afpParametros = [
+  { empresa_id:'emp_001', afp_nombre:'Integra', pct_prima_seguro:1.37, vigente_desde:'2026-01-01' },
+  { empresa_id:'emp_001', afp_nombre:'Prima', pct_prima_seguro:1.37, vigente_desde:'2026-01-01' },
+  { empresa_id:'emp_001', afp_nombre:'Profuturo', pct_prima_seguro:1.37, vigente_desde:'2026-01-01' },
+  { empresa_id:'emp_001', afp_nombre:'Habitat', pct_prima_seguro:1.37, vigente_desde:'2026-01-01' }
+];
+
 export const hojasCosteo = [
   {
     id: 'hc_001', empresa_id: 'emp_001',
@@ -1756,7 +1771,7 @@ export const MOCK = {
   biFinanciero, metricasSaaS,
   especialidadesTecnicas, tiposServicioInterno, almacenesDepositos, cargosEmpresa, industrias,
   // Turnos y asistencia
-  turnos, registrosAsistencia, trabajadoresDatosNomina, periodosNomina,
+  turnos, registrosAsistencia, trabajadoresDatosNomina, periodosNomina, afpParametros,
   // Agenda Comercial
   agendaEventos
 };

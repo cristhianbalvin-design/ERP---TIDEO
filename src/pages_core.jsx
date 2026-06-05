@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { I, money, moneyD } from './icons.jsx';
+import * as XLSX from 'xlsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { canUserSeeOwner, getAssignableUsers, getUserCategory, getUserHierarchyLevel } from './lib/hierarchy.js';
@@ -6381,7 +6382,11 @@ function BIComercial() {
 
 function BIOperativo() {
   const [tab, setTab] = useState('ots');
-  const { ots, partes, backlog, cuentas } = useApp();
+  const [periodoMO, setPeriodoMO] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
+  const [vistaHorasMO, setVistaHorasMO] = useState('colaborador');
+  const [expandedRowMO, setExpandedRowMO] = useState(null);
+  const [tareosMO, setTareosMO] = useState([]);
+  const { ots, partes, backlog, cuentas, personalOperativo = [], personalAdmin = [], empresa } = useApp();
 
   const otsMes = [
     ...ots,
@@ -6430,6 +6435,16 @@ function BIOperativo() {
 
   const tipoColors = ['var(--cyan)','var(--purple)','var(--orange)','var(--green)'];
 
+  useEffect(() => {
+    if (tab !== 'horas_mo' || !empresa?.id) return;
+    const [y, m] = periodoMO.split('-');
+    const desde = `${y}-${m}-01`;
+    const hasta = new Date(Number(y), Number(m), 0).toISOString().split('T')[0];
+    tareosAdminService.cargarTareos(empresa.id, { desde, hasta })
+      .then(setTareosMO)
+      .catch(() => setTareosMO([]));
+  }, [tab, empresa?.id, periodoMO]);
+
   return (
     <>
       <div className="page-header">
@@ -6449,6 +6464,7 @@ function BIOperativo() {
         <div className={'tab '+(tab==='ots'?'active':'')} onClick={()=>setTab('ots')}>OTs y Ejecución</div>
         <div className={'tab '+(tab==='recursos'?'active':'')} onClick={()=>setTab('recursos')}>Recursos</div>
         <div className={'tab '+(tab==='backlog'?'active':'')} onClick={()=>setTab('backlog')}>Backlog y Alertas</div>
+        <div className={'tab '+(tab==='horas_mo'?'active':'')} onClick={()=>setTab('horas_mo')}>Horas y costos de MO</div>
       </div>
 
       {tab === 'ots' && (
@@ -6650,6 +6666,272 @@ function BIOperativo() {
           </div>
         </div>
       )}
+
+      {tab === 'horas_mo' && (() => {
+        const [y, m] = periodoMO.split('-');
+        const desde = `${y}-${m}-01`;
+        const hasta = new Date(Number(y), Number(m), 0).toISOString().split('T')[0];
+        const partesP = (partes || []).filter(p => {
+          const f = p.fecha || p.created_at?.slice?.(0, 10);
+          return String(p.estado || '').toLowerCase() === 'aprobado' && f >= desde && f <= hasta;
+        });
+        const tareosP = (tareosMO || []).filter(t => {
+          const f = t.fecha || t.created_at?.slice?.(0, 10);
+          return f >= desde && f <= hasta && String(t.estado || '').toLowerCase() !== 'anulado';
+        });
+
+        const tarifaP = (p) => Number(p?.tarifa_hora ?? p?.costo_hora_real ?? p?.costo ?? p?.costo_hora ?? 0) || 0;
+        const esHonP = (p) => p?.tipo_contrato === 'Honorarios' || p?.tipo_contrato === 'Recibos por honorarios';
+        const todosPersonal = [...(personalOperativo || []), ...(personalAdmin || [])];
+        const adminIds = new Set((personalAdmin || []).map(p => p.id));
+
+        const mapaColab = {};
+        partesP.forEach(p => {
+          const pid = p.tecnico_id || p.personal_id;
+          if (!pid) return;
+          if (!mapaColab[pid]) mapaColab[pid] = { horas_ot: 0, horas_libre: 0, costo: 0, desglose: [] };
+          const persona = todosPersonal.find(x => x.id === pid);
+          const tarifa = tarifaP(persona);
+          const h = Number(p.horas_normales ?? p.horas ?? 0);
+          const otId = p.ot_id || p.orden_trabajo_id;
+          const ot = otId ? (ots || []).find(o => o.id === otId) : null;
+          mapaColab[pid].horas_ot += h;
+          mapaColab[pid].costo += h * tarifa;
+          mapaColab[pid].desglose.push({ otNumero: ot?.numero || otId || 'Sin OT', otDesc: ot?.servicio || ot?.descripcion || '', horas: h, tarifa });
+        });
+        tareosP.forEach(t => {
+          const pid = t.personal_id;
+          if (!pid) return;
+          if (!mapaColab[pid]) mapaColab[pid] = { horas_ot: 0, horas_libre: 0, costo: 0, desglose: [] };
+          const persona = todosPersonal.find(x => x.id === pid);
+          const tarifa = tarifaP(persona);
+          const h = Number(t.horas || 0);
+          if (t.ot_id) {
+            const ot = (ots || []).find(o => o.id === t.ot_id);
+            mapaColab[pid].horas_ot += h;
+            mapaColab[pid].desglose.push({ otNumero: ot?.numero || t.ot_id, otDesc: ot?.servicio || ot?.descripcion || '', horas: h, tarifa });
+          } else {
+            mapaColab[pid].horas_libre += h;
+          }
+          mapaColab[pid].costo += h * tarifa;
+        });
+
+        const rowsColab = todosPersonal.filter(p => mapaColab[p.id]).map(persona => {
+          const datos = mapaColab[persona.id];
+          const totalHoras = datos.horas_ot + datos.horas_libre;
+          const productividad = totalHoras > 0 ? Math.round((datos.horas_ot / totalHoras) * 100) : 0;
+          const desgloseAgrupado = Object.values(
+            datos.desglose.reduce((acc, d) => {
+              const k = d.otNumero;
+              if (!acc[k]) acc[k] = { otNumero: d.otNumero, otDesc: d.otDesc, horas: 0, costo: 0 };
+              acc[k].horas += d.horas;
+              acc[k].costo += d.horas * d.tarifa;
+              return acc;
+            }, {})
+          ).sort((a, b) => a.otNumero.localeCompare(b.otNumero, 'es'));
+          return { id: persona.id, nombre: persona.nombre, modalidad: esHonP(persona) ? 'Honorarios' : 'Planilla', esAdmin: adminIds.has(persona.id), totalHoras, horas_ot: datos.horas_ot, horas_libre: datos.horas_libre, productividad, tarifa: tarifaP(persona), costo: datos.costo, desgloseAgrupado };
+        }).sort((a, b) => b.totalHoras - a.totalHoras);
+
+        const mapaOT = {};
+        partesP.forEach(p => {
+          const otId = p.ot_id || p.orden_trabajo_id;
+          if (!otId) return;
+          if (!mapaOT[otId]) mapaOT[otId] = { horas: 0, costo: 0, colaboradores: {} };
+          const persona = todosPersonal.find(x => x.id === (p.tecnico_id || p.personal_id));
+          const tarifa = tarifaP(persona);
+          const h = Number(p.horas_normales ?? p.horas ?? 0);
+          mapaOT[otId].horas += h;
+          mapaOT[otId].costo += h * tarifa;
+          const pId = p.tecnico_id || p.personal_id;
+          if (!mapaOT[otId].colaboradores[pId]) mapaOT[otId].colaboradores[pId] = { horas: 0, costo: 0 };
+          mapaOT[otId].colaboradores[pId].horas += h;
+          mapaOT[otId].colaboradores[pId].costo += h * tarifa;
+        });
+        tareosP.filter(t => t.ot_id).forEach(t => {
+          const otId = t.ot_id;
+          if (!mapaOT[otId]) mapaOT[otId] = { horas: 0, costo: 0, colaboradores: {} };
+          const persona = (personalAdmin || []).find(x => x.id === t.personal_id);
+          const tarifa = tarifaP(persona);
+          const h = Number(t.horas || 0);
+          mapaOT[otId].horas += h;
+          mapaOT[otId].costo += h * tarifa;
+          if (!mapaOT[otId].colaboradores[t.personal_id]) mapaOT[otId].colaboradores[t.personal_id] = { horas: 0, costo: 0 };
+          mapaOT[otId].colaboradores[t.personal_id].horas += h;
+          mapaOT[otId].colaboradores[t.personal_id].costo += h * tarifa;
+        });
+        const rowsOT = Object.entries(mapaOT).map(([otId, datos]) => {
+          const ot = (ots || []).find(o => o.id === otId);
+          const estimadoMO = Number(ot?.est_mo || 0);
+          const desviacion = estimadoMO > 0 ? Math.round(((datos.costo - estimadoMO) / estimadoMO) * 100) : null;
+          const colaboradoresDetalle = Object.entries(datos.colaboradores).map(([pid, d]) => {
+            const persona = todosPersonal.find(x => x.id === pid);
+            return { nombre: persona?.nombre || pid, horas: d.horas, costo: d.costo };
+          }).sort((a, b) => b.horas - a.horas);
+          return { otId, otNumero: ot?.numero || otId, cliente: (cuentas || []).find(c => c.id === ot?.cuenta_id)?.razon_social || ot?.cliente || '—', tipo: ot?.tipo || '—', estado: ot?.estado || '—', horas: datos.horas, costo: datos.costo, estimadoMO, desviacion, colaboradoresDetalle };
+        }).sort((a, b) => b.horas - a.horas);
+
+        const exportarMO = () => {
+          const wsColab = XLSX.utils.json_to_sheet(rowsColab.map(r => ({ Colaborador: r.nombre, Modalidad: r.modalidad, Tipo: r.esAdmin ? 'Administrativo' : 'Operativo', Total_Horas: r.totalHoras, Horas_OT: r.horas_ot, Horas_Libre: r.horas_libre, Productividad_pct: r.productividad, Tarifa_Hora: r.tarifa, Costo_Total: r.costo })));
+          const wsOT = XLSX.utils.json_to_sheet(rowsOT.map(r => ({ OT: r.otNumero, Cliente: r.cliente, Tipo: r.tipo, Estado: r.estado, Total_Horas: r.horas, Costo_MO_Real: r.costo, Estimado_MO: r.estimadoMO || '', Desviacion_pct: r.desviacion ?? '' })));
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, wsColab, 'Por colaborador');
+          XLSX.utils.book_append_sheet(wb, wsOT, 'Por OT');
+          XLSX.writeFile(wb, `horas_mo_${periodoMO}.xlsx`);
+        };
+
+        return (
+          <div style={{ display: 'grid', gap: 20 }}>
+            <div className="card">
+              <div className="card-head">
+                <div>
+                  <h3>Horas y costos de mano de obra</h3>
+                  <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{periodoMO}</div>
+                </div>
+                <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                  <input className="input" type="month" value={periodoMO} onChange={e => setPeriodoMO(e.target.value)} style={{ minWidth: 150 }} />
+                  <div style={{ display: 'flex', gap: 4, background: 'var(--bg-subtle)', borderRadius: 6, padding: 3 }}>
+                    <button className={`btn btn-sm ${vistaHorasMO === 'colaborador' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setVistaHorasMO('colaborador')}>Por colaborador</button>
+                    <button className={`btn btn-sm ${vistaHorasMO === 'ot' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setVistaHorasMO('ot')}>Por OT</button>
+                  </div>
+                  <button className="btn btn-secondary btn-sm" onClick={exportarMO}>{I.download} Exportar Excel</button>
+                </div>
+              </div>
+
+              {vistaHorasMO === 'colaborador' && (
+                rowsColab.length === 0
+                  ? <div className="text-muted" style={{ padding: 28, textAlign: 'center' }}>Sin registros de horas en el periodo.</div>
+                  : <div className="table-wrap">
+                      <table className="tbl">
+                        <thead><tr>
+                          <th>Colaborador</th>
+                          <th>Modalidad</th>
+                          <th className="num">Total h</th>
+                          <th className="num">H en OTs</th>
+                          <th className="num">H sin OT</th>
+                          <th className="num">% Productividad</th>
+                          <th className="num">Tarifa/h</th>
+                          <th className="num">Costo total</th>
+                        </tr></thead>
+                        <tbody>
+                          {rowsColab.map(r => (
+                            <React.Fragment key={r.id}>
+                              <tr className="hover-row" style={{ cursor: 'pointer' }} onClick={() => setExpandedRowMO(expandedRowMO === r.id ? null : r.id)}>
+                                <td>
+                                  <strong>{r.nombre}</strong>
+                                  <div className="text-muted" style={{ fontSize: 11 }}>{r.esAdmin ? 'Administrativo' : 'Operativo'}</div>
+                                </td>
+                                <td><span className={`badge ${r.modalidad === 'Honorarios' ? 'badge-orange' : 'badge-green'}`} style={{ fontSize: 11 }}>{r.modalidad}</span></td>
+                                <td className="num" style={{ fontWeight: 700 }}>{r.totalHoras.toFixed(1)}h</td>
+                                <td className="num">{r.horas_ot.toFixed(1)}h</td>
+                                <td className="num">{r.horas_libre.toFixed(1)}h</td>
+                                <td className="num">
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                                    <div style={{ width: 50, height: 6, background: 'var(--bg-subtle)', borderRadius: 3 }}>
+                                      <div style={{ width: `${r.productividad}%`, height: '100%', background: r.productividad >= 70 ? 'var(--green)' : r.productividad >= 40 ? 'var(--orange)' : 'var(--danger)', borderRadius: 3 }} />
+                                    </div>
+                                    <span style={{ fontSize: 12 }}>{r.productividad}%</span>
+                                  </div>
+                                </td>
+                                <td className="num">{r.tarifa > 0 ? money(r.tarifa) : '—'}</td>
+                                <td className="num" style={{ fontWeight: 700 }}>{r.costo > 0 ? money(r.costo) : '—'}</td>
+                              </tr>
+                              {expandedRowMO === r.id && r.desgloseAgrupado.length > 0 && (
+                                <tr>
+                                  <td colSpan={8} style={{ padding: '0 0 0 32px', background: 'var(--bg-subtle)' }}>
+                                    <table className="tbl" style={{ marginBottom: 8, marginTop: 4 }}>
+                                      <thead><tr>
+                                        <th style={{ fontSize: 11 }}>OT</th>
+                                        <th style={{ fontSize: 11 }}>Descripción</th>
+                                        <th className="num" style={{ fontSize: 11 }}>Horas</th>
+                                        <th className="num" style={{ fontSize: 11 }}>Costo</th>
+                                      </tr></thead>
+                                      <tbody>
+                                        {r.desgloseAgrupado.map((d, i) => (
+                                          <tr key={i}>
+                                            <td className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{d.otNumero}</td>
+                                            <td className="text-muted" style={{ fontSize: 12 }}>{d.otDesc || '—'}</td>
+                                            <td className="num" style={{ fontSize: 12 }}>{d.horas.toFixed(1)}h</td>
+                                            <td className="num" style={{ fontSize: 12 }}>{d.costo > 0 ? money(d.costo) : '—'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+              )}
+
+              {vistaHorasMO === 'ot' && (
+                rowsOT.length === 0
+                  ? <div className="text-muted" style={{ padding: 28, textAlign: 'center' }}>Sin registros de horas en OTs en el periodo.</div>
+                  : <div className="table-wrap">
+                      <table className="tbl">
+                        <thead><tr>
+                          <th>OT</th>
+                          <th>Cliente</th>
+                          <th>Tipo</th>
+                          <th>Estado</th>
+                          <th className="num">Total h</th>
+                          <th className="num">Costo MO real</th>
+                          <th className="num">Estimado MO</th>
+                          <th className="num">Desviación</th>
+                        </tr></thead>
+                        <tbody>
+                          {rowsOT.map(r => (
+                            <React.Fragment key={r.otId}>
+                              <tr className="hover-row" style={{ cursor: 'pointer' }} onClick={() => setExpandedRowMO(expandedRowMO === r.otId ? null : r.otId)}>
+                                <td className="mono" style={{ fontWeight: 600 }}>{r.otNumero}</td>
+                                <td><strong>{r.cliente}</strong></td>
+                                <td><span className="badge badge-cyan" style={{ fontSize: 11 }}>{r.tipo}</span></td>
+                                <td><span className={`badge ${r.estado === 'cerrada' ? 'badge-purple' : r.estado === 'ejecucion' ? 'badge-cyan' : 'badge-gray'}`} style={{ fontSize: 11 }}>{r.estado}</span></td>
+                                <td className="num" style={{ fontWeight: 700 }}>{r.horas.toFixed(1)}h</td>
+                                <td className="num">{r.costo > 0 ? money(r.costo) : '—'}</td>
+                                <td className="num">{r.estimadoMO > 0 ? money(r.estimadoMO) : '—'}</td>
+                                <td className="num">
+                                  {r.desviacion !== null
+                                    ? <span style={{ fontWeight: 700, color: r.desviacion > 10 ? 'var(--danger)' : r.desviacion < -10 ? 'var(--green)' : 'var(--fg)' }}>
+                                        {r.desviacion > 0 ? '+' : ''}{r.desviacion}%
+                                      </span>
+                                    : <span className="text-muted">—</span>}
+                                </td>
+                              </tr>
+                              {expandedRowMO === r.otId && r.colaboradoresDetalle.length > 0 && (
+                                <tr>
+                                  <td colSpan={8} style={{ padding: '0 0 0 32px', background: 'var(--bg-subtle)' }}>
+                                    <table className="tbl" style={{ marginBottom: 8, marginTop: 4 }}>
+                                      <thead><tr>
+                                        <th style={{ fontSize: 11 }}>Colaborador</th>
+                                        <th className="num" style={{ fontSize: 11 }}>Horas</th>
+                                        <th className="num" style={{ fontSize: 11 }}>Costo</th>
+                                      </tr></thead>
+                                      <tbody>
+                                        {r.colaboradoresDetalle.map((c, i) => (
+                                          <tr key={i}>
+                                            <td style={{ fontSize: 12 }}>{c.nombre}</td>
+                                            <td className="num" style={{ fontSize: 12 }}>{c.horas.toFixed(1)}h</td>
+                                            <td className="num" style={{ fontSize: 12 }}>{c.costo > 0 ? money(c.costo) : '—'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }

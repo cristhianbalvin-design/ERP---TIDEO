@@ -42,6 +42,7 @@ const CONCEPTO_NOMBRE = {
 };
 const REGIMEN_LABEL = {
   general:       'Régimen General',
+  pequena_empresa: 'Pequeña Empresa',
   mype_pequena:  'Pequeña Empresa',
   microempresa:  'Microempresa',
 };
@@ -182,7 +183,7 @@ function WizardLiquidacion({ onClose, onCreated }) {
   const [obs,       setObs]       = useState('');
   const [checked,   setChecked]   = useState(false);
 
-  const regimen = empresaConfig?.regimen_laboral || 'general';
+  const regimen = empresaConfig?.regimen_laboral_empresa || 'general';
   const moneda  = empresa?.moneda || 'PEN';
 
   const fechaIngreso = persona?.fecha_ingreso || persona?.fecha_inicio_contrato || persona?.fecha_inicio || '';

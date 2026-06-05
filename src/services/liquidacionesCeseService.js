@@ -92,8 +92,9 @@ export function calcularConceptos(params) {
 
   const { anios, meses, dias, totalDias } = calcularTiempoServicio(fechaIngreso, fechaCese);
 
-  const esMicro = regimen === 'microempresa';
-  const esMype  = regimen === 'mype_pequena';
+  const regimenNormalizado = regimen === 'pequena_empresa' ? 'mype_pequena' : regimen;
+  const esMicro = regimenNormalizado === 'microempresa';
+  const esMype  = regimenNormalizado === 'mype_pequena';
 
   // Remuneración computable = sueldo + asig. familiar + 1/6 de última gratificación semestral
   // La "última gratificación semestral" se expresa como su equivalente mensual × 6 / 6 = mensual
@@ -105,7 +106,7 @@ export function calcularConceptos(params) {
   // El usuario ingresa el MONTO MENSUAL aproximado de la última gratificación
   const remComputable = round2(sueldo + asigFam + (ultGrat / 6));
 
-  const diasVacRegimen = esMicro ? 15 : 30;
+  const diasVacRegimen = (esMicro || esMype) ? 15 : 30;
   const ceseDate = new Date(fechaCese + 'T00:00:00');
   const conceptos = [];
 
@@ -147,7 +148,7 @@ export function calcularConceptos(params) {
   const fechaDep    = fechaUltimoDepositoCTS || sugerirFechaUltimoDepositoCTS(fechaCese);
   const depStart    = new Date(fechaDep + 'T00:00:00');
   const diasDesdeDeposito = Math.max(0, Math.floor((ceseDate - depStart) / 86400000));
-  const montoCTS    = esMicro ? 0 : round2(remComputable * (diasDesdeDeposito / 360));
+  const montoCTS    = esMicro ? 0 : round2(remComputable * (diasDesdeDeposito / 360) * (esMype ? 0.5 : 1));
   conceptos.push({
     concepto: 'cts_proporcional',
     descripcion: 'CTS acumulada desde el último depósito semestral',
@@ -173,7 +174,7 @@ export function calcularConceptos(params) {
     ['despido_arbitrario','mutuo_acuerdo','vencimiento_contrato','fallecimiento'].includes(tipoCese) ||
     (tipoCese === 'renuncia_voluntaria' && mesesCompSem >= 1)
   );
-  const montoGrat  = aplicaGrat ? round2(remComputable * (mesesCompSem / 6)) : 0;
+  const montoGrat  = aplicaGrat ? round2(remComputable * (mesesCompSem / 6) * (esMype ? 0.5 : 1)) : 0;
   const bonifExtra = aplicaGrat ? round2(montoGrat * 0.09) : 0;
   const montoGratTotal = round2(montoGrat + bonifExtra);
 

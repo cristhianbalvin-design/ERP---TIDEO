@@ -3,14 +3,26 @@ import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { isSupabaseMode } from './lib/dataMode.js';
-import { ER_CURRENCIES, buildEstadoResultados, getEstadoResultados } from './services/estadoResultadosService.js';
-import { buildTesoreriaSummary } from './services/tesoreriaService.js';
+import { ER_CURRENCIES, buildEstadoResultados, getEstadoResultados, cargarConfiguracionER } from './services/estadoResultadosService.js';
+import {
+  buildTesoreriaSummary,
+  calcularMovimientosMesPorMoneda,
+  calcularMovimientosSinCuentaPorMoneda,
+  calcularSaldosCuentasBancarias,
+  calcularTotalesPorMonedaCuentas,
+  claveEquivalenciaMovimientoCuenta,
+  monedasDifierenMovimientoCuenta,
+  montoMovimientoEnCuenta,
+} from './services/tesoreriaService.js';
+import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
+import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
   calcularFechaVencimientoCxC,
   finanzasService,
   resolverCondicionPagoCxC,
 } from './services/finanzasService.js';
+import { cajaChicaService } from './services/cajaChicaService.js';
 import { rrhhService } from './services/rrhhService.js';
 import * as storageService from './services/storageService.js';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
@@ -21,6 +33,48 @@ const symOf = m => m === 'USD' ? 'US$' : 'S/';
 const moneyCurrency = (value, moneda = 'PEN') => money(value, symOf(moneda));
 const moneyDCurrency = (value, moneda = 'PEN') => moneyD(value, symOf(moneda));
 const normText = value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+// Futuro: mover este umbral a Parametros Generales.
+const RHE_DESVIACION_UMBRAL = 0.20;
+const RHE_MESES = [
+  { value: '1', label: 'Enero' },
+  { value: '2', label: 'Febrero' },
+  { value: '3', label: 'Marzo' },
+  { value: '4', label: 'Abril' },
+  { value: '5', label: 'Mayo' },
+  { value: '6', label: 'Junio' },
+  { value: '7', label: 'Julio' },
+  { value: '8', label: 'Agosto' },
+  { value: '9', label: 'Septiembre' },
+  { value: '10', label: 'Octubre' },
+  { value: '11', label: 'Noviembre' },
+  { value: '12', label: 'Diciembre' },
+];
+
+const periodoRhePrevio = todayStr => {
+  const base = new Date(`${todayStr}T00:00:00`);
+  base.setMonth(base.getMonth() - 1);
+  const mes = String(base.getMonth() + 1);
+  const anio = String(base.getFullYear());
+  return { inicioMes: mes, inicioAnio: anio, finMes: mes, finAnio: anio };
+};
+
+const rangoFechasRhe = periodo => {
+  const inicioMes = Number(periodo?.inicioMes);
+  const inicioAnio = Number(periodo?.inicioAnio);
+  const finMes = Number(periodo?.finMes);
+  const finAnio = Number(periodo?.finAnio);
+  if (!inicioMes || !inicioAnio || !finMes || !finAnio) return { inicio: '', fin: '', valido: false };
+  const inicioDate = new Date(inicioAnio, inicioMes - 1, 1);
+  const finDate = new Date(finAnio, finMes, 0);
+  const valido = inicioDate <= finDate;
+  return {
+    inicio: inicioDate.toISOString().split('T')[0],
+    fin: finDate.toISOString().split('T')[0],
+    valido,
+  };
+};
+
+const tarifaHoraColaborador = p => Number(p?.tarifa_hora ?? p?.costo_hora_real ?? p?.costo ?? p?.costo_hora ?? 0) || 0;
 
 function CxCLegacy() {
   const { cxc } = useApp();
@@ -77,15 +131,31 @@ function CxC() {
   const TASA_MORA_DIARIA = 0.000833; // 0.083% diario — tasa legal Perú ~30% anual
 
   // ── Helpers ───────────────────────────────────────────────────────────
-  const saldoDe   = c => Number(c?.saldo ?? c?.monto_total ?? c?.total ?? 0);
   const totalDe   = c => Number(c?.monto_total ?? c?.total ?? 0);
   const pagadoDe  = c => Number(c?.monto_pagado ?? c?.pagado ?? 0);
+  const retencionDe = c => Number(c?.monto_retencion || 0);
+  const estadoNormalizadoCxC = c => String(c?.estado || '').trim().toLowerCase();
+  const estadoTerminalCxC = c => ['cobrada','pagada','anulada','cancelada'].includes(estadoNormalizadoCxC(c));
+  const montoNetoCobrableDe = c => {
+    const netoSnapshot = Number(c?.monto_neto_cobrable || c?.facturas?.monto_neto_cobrable || 0);
+    if (netoSnapshot > 0) return netoSnapshot;
+    return Math.max(0, totalDe(c) - retencionDe(c));
+  };
+  const saldoDe = c => {
+    if (estadoTerminalCxC(c)) return 0;
+    const saldoNormalizado = c?.saldo_neto_cobranza;
+    if (saldoNormalizado != null) return Math.max(0, Number(saldoNormalizado || 0));
+    const netoSnapshot = Number(c?.monto_neto_cobrable || c?.facturas?.monto_neto_cobrable || 0);
+    if (netoSnapshot > 0) return Math.max(0, netoSnapshot - pagadoDe(c));
+    if (c?.saldo != null) return Math.max(0, Number(c.saldo || 0) - retencionDe(c));
+    return Math.max(0, montoNetoCobrableDe(c) - pagadoDe(c));
+  };
   const clienteDe = c => c?.cliente || c?.cuentas?.razon_social || (cuentas||[]).find(x=>x.id===c?.cuenta_id)?.razon_social || '-';
   const facturaNumeroDe = c => c?.facturas?.numero || c?.factura || (facturas||[]).find(f=>f.id===c?.factura_id)?.numero || '-';
   const osNumeroDe = c => c?.os_clientes?.numero || (osClientes||[]).find(o=>o.id===c?.os_cliente_id)?.numero || '-';
 
   const diasMoraDe = c => {
-    if (saldoDe(c) <= 0 || c?.estado === 'anulada' || c?.estado === 'cobrada') return 0;
+    if (saldoDe(c) <= 0 || estadoTerminalCxC(c)) return 0;
     const vence = c?.fecha_vencimiento || c?.vence;
     if (!vence) return 0;
     return Math.max(0, Math.floor((new Date(`${today}T00:00:00`) - new Date(`${vence}T00:00:00`)) / 86400000));
@@ -99,8 +169,11 @@ function CxC() {
   };
 
   const estadoDe = c => {
-    if (c?.estado === 'anulada') return 'anulada';
+    const estadoOriginal = estadoNormalizadoCxC(c);
+    if (['anulada','cancelada'].includes(estadoOriginal)) return estadoOriginal;
     const saldo = saldoDe(c);
+    const montoNeto = montoNetoCobrableDe(c);
+    if (montoNeto > 0 && pagadoDe(c) >= montoNeto) return 'cobrada';
     if (saldo <= 0) return 'cobrada';
     if (c?.estado === 'en_gestion') return 'en_gestion';
     const tieneGestion = (gestionesCobranza||[]).some(g => g.cxc_id === c.id);
@@ -124,6 +197,7 @@ function CxC() {
     cobrada_parcial: { label: 'Cobro parcial', cls: 'badge-orange' },
     cobrada:         { label: 'Cobrada',       cls: 'badge-green'  },
     anulada:         { label: 'Anulada',       cls: 'badge-gray'   },
+    cancelada:       { label: 'Cancelada',     cls: 'badge-gray'   },
   };
 
   // ── State ─────────────────────────────────────────────────────────────
@@ -139,11 +213,13 @@ function CxC() {
   const [fMoraDesde, setFMoraDesde] = useState('');
   const [fMoraHasta, setFMoraHasta] = useState('');
   const [fGestor, setFGestor] = useState('');
+  const [fPeriodoEmision, setFPeriodoEmision] = useState('');
 
   const [panelCobro, setPanelCobro] = useState(false);
   const [cobroSel, setCobroSel] = useState(null);
   const [formCobro, setFormCobro] = useState({ monto:'', incluye_mora:false, monto_mora:'', fecha_cobro:today, medio_pago:'', cuenta_bancaria:'', numero_operacion:'', notas:'' });
   const [montoError, setMontoError] = useState('');
+  const [savingCobro, setSavingCobro] = useState(false);
   const cuentasBancariasActivas = (cuentasBancarias||[]).filter(cb=>cb.estado!=='inactivo'&&cb.estado!=='eliminado');
 
   const [panelGestion, setPanelGestion] = useState(false);
@@ -155,13 +231,31 @@ function CxC() {
   const [savingCondonar, setSavingCondonar] = useState(false);
 
   // ── KPIs ──────────────────────────────────────────────────────────────
-  const cxcActivas = useMemo(() => (cxc||[]).filter(c => c.estado !== 'anulada'), [cxc]);
-  const totalPorCobrarPEN = useMemo(() => cxcActivas.filter(c => (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas]);
-  const totalPorCobrarUSD = useMemo(() => cxcActivas.filter(c => (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas]);
-  const totalVencidoPEN   = useMemo(() => cxcActivas.filter(c => diasMoraDe(c) > 0 && (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, today]);
-  const totalVencidoUSD   = useMemo(() => cxcActivas.filter(c => diasMoraDe(c) > 0 && (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, today]);
-  const totalEnGestionPEN = useMemo(() => cxcActivas.filter(c => estadoDe(c) === 'en_gestion' && (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, gestionesCobranza, today]);
-  const totalEnGestionUSD = useMemo(() => cxcActivas.filter(c => estadoDe(c) === 'en_gestion' && (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, gestionesCobranza, today]);
+  const MONEDAS_CXC = [
+    { moneda: 'PEN', titulo: 'Soles (PEN)' },
+    { moneda: 'USD', titulo: 'Dolares (USD)' },
+  ];
+  const AGING_BUCKETS_CXC = [
+    { key:'0-30',  label:'0-30 dias',  min:0,  max:30,  color:'green'  },
+    { key:'31-60', label:'31-60 dias', min:31, max:60,  color:'orange' },
+    { key:'61-90', label:'61-90 dias', min:61, max:90,  color:'orange' },
+    { key:'+90',   label:'+90 dias',   min:91, max:null, color:'danger' },
+  ];
+  const monedaCxCDe = c => (c?.moneda || c?.facturas?.moneda || 'PEN') === 'USD' ? 'USD' : 'PEN';
+  const cxcActivas = useMemo(() => (cxc||[]).filter(c => !estadoTerminalCxC(c) && saldoDe(c) > 0), [cxc]);
+  const totalPorCobrarPEN = useMemo(() => cxcActivas.filter(c => monedaCxCDe(c) === 'PEN').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas]);
+  const totalPorCobrarUSD = useMemo(() => cxcActivas.filter(c => monedaCxCDe(c) === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas]);
+  const totalVencidoPEN   = useMemo(() => cxcActivas.filter(c => diasMoraDe(c) > 0 && monedaCxCDe(c) === 'PEN').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, today]);
+  const totalVencidoUSD   = useMemo(() => cxcActivas.filter(c => diasMoraDe(c) > 0 && monedaCxCDe(c) === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, today]);
+  const totalEnGestionPEN = useMemo(() => cxcActivas.filter(c => estadoDe(c) === 'en_gestion' && monedaCxCDe(c) === 'PEN').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, gestionesCobranza, today]);
+  const totalEnGestionUSD = useMemo(() => cxcActivas.filter(c => estadoDe(c) === 'en_gestion' && monedaCxCDe(c) === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, gestionesCobranza, today]);
+  const cxcPendientesAging = useMemo(
+    () => cxcActivas.filter(c => {
+      if (fPeriodoEmision && (c.fecha_emision || '').slice(0, 7) !== fPeriodoEmision) return false;
+      return saldoDe(c) > 0 && !['cobrada','pagada','anulada','cancelada'].includes(estadoDe(c));
+    }),
+    [cxcActivas, gestionesCobranza, today, fPeriodoEmision],
+  );
 
   // ── Aging ─────────────────────────────────────────────────────────────
   const aging = useMemo(() => [
@@ -183,24 +277,98 @@ function CxC() {
   }), [cxcActivas, today]);
 
   // ── Filtered rows ─────────────────────────────────────────────────────
+  const agingPorMoneda = useMemo(() => MONEDAS_CXC.reduce((acc, meta) => {
+    acc[meta.moneda] = AGING_BUCKETS_CXC.map(b => {
+      const items = cxcPendientesAging.filter(c => {
+        const d = diasMoraDe(c);
+        return monedaCxCDe(c) === meta.moneda && d >= b.min && (b.max == null || d <= b.max);
+      });
+      return {
+        ...b,
+        monto: items.reduce((s,c) => s + saldoDe(c), 0),
+        count: items.length,
+      };
+    });
+    return acc;
+  }, {}), [cxcPendientesAging, today]);
+
   const cxcFiltrada = useMemo(() => {
-    let rows = cxcActivas;
+    let rows = cxc || [];
     if (agingFilter) {
-      const b = aging.find(a => a.key === agingFilter);
-      if (b) rows = rows.filter(c => { const d = diasMoraDe(c); return saldoDe(c) > 0 && d >= b.min && (b.max == null || d <= b.max); });
+      const b = AGING_BUCKETS_CXC.find(a => a.key === agingFilter);
+      if (b) rows = cxcActivas.filter(c => { const d = diasMoraDe(c); return saldoDe(c) > 0 && !['cobrada','pagada','anulada','cancelada'].includes(estadoDe(c)) && d >= b.min && (b.max == null || d <= b.max); });
     }
     if (fCliente)    rows = rows.filter(c => clienteDe(c).toLowerCase().includes(fCliente.toLowerCase()));
     if (fEstado)     rows = rows.filter(c => estadoDe(c) === fEstado);
-    if (fMoneda)     rows = rows.filter(c => (c.moneda||'PEN') === fMoneda);
+    if (fMoneda)     rows = rows.filter(c => monedaCxCDe(c) === fMoneda);
     if (fVenceDesde) rows = rows.filter(c => (c.fecha_vencimiento||c.vence||'') >= fVenceDesde);
     if (fVenceHasta) rows = rows.filter(c => (c.fecha_vencimiento||c.vence||'') <= fVenceHasta);
     if (fMoraDesde)  rows = rows.filter(c => diasMoraDe(c) >= Number(fMoraDesde));
-    if (fMoraHasta)  rows = rows.filter(c => diasMoraDe(c) <= Number(fMoraHasta));
-    if (fGestor)     rows = rows.filter(c => (c.gestor_cobranza_id || '') === fGestor);
+    if (fMoraHasta)       rows = rows.filter(c => diasMoraDe(c) <= Number(fMoraHasta));
+    if (fGestor)          rows = rows.filter(c => (c.gestor_cobranza_id || '') === fGestor);
+    if (fPeriodoEmision)  rows = rows.filter(c => (c.fecha_emision || '').slice(0, 7) === fPeriodoEmision);
     return rows;
-  }, [cxcActivas, agingFilter, fCliente, fEstado, fMoneda, fVenceDesde, fVenceHasta, fMoraDesde, fMoraHasta, fGestor, today, gestionesCobranza]);
+  }, [cxc, cxcActivas, agingFilter, fCliente, fEstado, fMoneda, fVenceDesde, fVenceHasta, fMoraDesde, fMoraHasta, fGestor, fPeriodoEmision, today, gestionesCobranza]);
 
-  const hayFiltros = !!(agingFilter||fCliente||fEstado||fMoneda||fVenceDesde||fVenceHasta||fMoraDesde||fMoraHasta||fGestor);
+  const cobradoEsteMesPorMoneda = useMemo(() => {
+    const mes = fPeriodoEmision || today.slice(0, 7);
+
+    const cxcById = new Map((cxc || []).map(c => [c.id, c]));
+    const vistos = new Set();
+    const resultado = {};
+
+    (cobrosHistorial || [])
+      .filter(cb => (cb.fecha_cobro || cb.fecha || '').slice(0, 7) === mes)
+      .forEach(cb => {
+        const monto = Number(cb.monto_capital ?? cb.monto ?? cb.importe ?? cb.total ?? 0);
+        if (monto <= 0) return;
+        const dedupeKey = cb.id || [
+          cb.cxc_id || cb.factura_id || 'sin-cxc',
+          cb.fecha_cobro || cb.fecha || '',
+          monto,
+          cb.numero_operacion || cb.referencia || '',
+        ].join('|');
+        if (vistos.has(dedupeKey)) return;
+        vistos.add(dedupeKey);
+        const cxcRel = cxcById.get(cb.cxc_id);
+        const moneda = String(cb.moneda || cxcRel?.moneda || cxcRel?.facturas?.moneda || 'PEN').trim().toUpperCase();
+        resultado[moneda] = (resultado[moneda] || 0) + monto;
+      });
+
+    if (Object.keys(resultado).length) return resultado;
+
+    const pagadoDeFallback = c => {
+      const explicito = Number(c?.monto_pagado ?? c?.pagado ?? NaN);
+      if (!isNaN(explicito) && explicito > 0) return explicito;
+      return Math.max(0,
+        Number(c?.monto_neto_cobrable || c?.monto_total || 0) -
+        Number(c?.saldo_neto_cobranza ?? c?.saldo ?? 0)
+      );
+    };
+
+    return (cxc || [])
+      .filter(c => (c.fecha_cobro || c.fecha_pago || c.fecha_emision || '').slice(0, 7) === mes && pagadoDeFallback(c) > 0)
+      .reduce((acc, c) => {
+        const m = String(monedaCxCDe(c)).trim().toUpperCase();
+        return { ...acc, [m]: (acc[m] || 0) + pagadoDeFallback(c) };
+      }, {});
+  }, [cobrosHistorial, cxc, fPeriodoEmision, today]);
+
+  const seccionesMoneda = useMemo(() => MONEDAS_CXC.map(meta => {
+    const rows = cxcFiltrada.filter(c => monedaCxCDe(c) === meta.moneda);
+    const aging = fMoneda && fMoneda !== meta.moneda
+      ? AGING_BUCKETS_CXC.map(b => ({ ...b, monto: 0, count: 0 }))
+      : agingPorMoneda[meta.moneda] || [];
+    return {
+      ...meta,
+      rows,
+      aging,
+      mostrarRetencion: rows.some(c => retencionDe(c) > 0),
+      cobradoEsteMes: cobradoEsteMesPorMoneda[meta.moneda] || 0,
+    };
+  }), [cxcFiltrada, agingPorMoneda, fMoneda, cobradoEsteMesPorMoneda]);
+
+  const hayFiltros = !!(agingFilter||fCliente||fEstado||fMoneda||fVenceDesde||fVenceHasta||fMoraDesde||fMoraHasta||fGestor||fPeriodoEmision);
 
   // ── Handlers ─────────────────────────────────────────────────────────
   const abrirFicha = c => { setSelCxC(c.id); setFichaTab('resumen'); };
@@ -214,6 +382,7 @@ function CxC() {
 
   const guardarCobro = async e => {
     e.preventDefault();
+    if (savingCobro) return;
     const monto = Number(formCobro.monto || 0);
     const saldo = saldoDe(cobroSel);
     if (monto <= 0) return;
@@ -230,9 +399,14 @@ function CxC() {
       alert('Ingrese el número de operación o referencia bancaria.');
       return;
     }
-    await registrarCobroCxC(cobroSel.id, monto, formCobro);
-    setPanelCobro(false);
-    setCobroSel(null);
+    setSavingCobro(true);
+    try {
+      await registrarCobroCxC(cobroSel.id, monto, formCobro);
+      setPanelCobro(false);
+      setCobroSel(null);
+    } finally {
+      setSavingCobro(false);
+    }
   };
 
   const abrirGestion = (c, e) => {
@@ -408,7 +582,7 @@ function CxC() {
                     {[
                       ['Total facturado', moneyCurrency(totalDe(c), c.moneda), null],
                       ['Retención SUNAT', `- ${moneyCurrency(Number(c.monto_retencion), c.moneda)}`, 'var(--warning)'],
-                      ['Neto a cobrar', moneyCurrency(totalDe(c) - Number(c.monto_retencion||0), c.moneda), 'var(--cyan)'],
+                      ['Neto a cobrar', moneyCurrency(montoNetoCobrableDe(c), c.moneda), 'var(--cyan)'],
                       ['Cobrado a la fecha', moneyCurrency(pagadoDe(c), c.moneda), 'var(--green)'],
                       ['Saldo pendiente', moneyCurrency(saldo, c.moneda), saldo>0?'var(--orange)':'var(--fg)'],
                     ].map(([label,val,color])=>(
@@ -571,6 +745,21 @@ function CxC() {
   }
 
   // ── Lista principal ───────────────────────────────────────────────────
+  const periodoOptsEmision = (() => {
+    const opts = [];
+    const d = new Date(`${today}T00:00:00`);
+    for (let i = 0; i < 12; i++) {
+      const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const l = d.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' });
+      opts.push({ v, l: l.charAt(0).toUpperCase() + l.slice(1) });
+      d.setMonth(d.getMonth() - 1);
+    }
+    return opts;
+  })();
+  const labelCobradoMes = fPeriodoEmision
+    ? `Cobrado en ${periodoOptsEmision.find(o => o.v === fPeriodoEmision)?.l || fPeriodoEmision}`
+    : 'Cobrado este mes';
+
   return (
     <>
       <div className="page-header">
@@ -578,11 +767,23 @@ function CxC() {
           <h1 className="page-title">Cuentas por Cobrar</h1>
           <div className="page-sub" style={{display:'flex',gap:16,flexWrap:'wrap',alignItems:'center'}}>
             <span>Total por cobrar: <strong>{money(totalPorCobrarPEN)}</strong>{totalPorCobrarUSD > 0 && <> · <strong>{money(totalPorCobrarUSD, 'US$')}</strong></>}</span>
-            <span style={{color:'var(--danger)',fontWeight:600}}>· Vencido: {money(totalVencidoPEN)}{totalVencidoUSD > 0 && <> · {money(totalVencidoUSD, 'US$')}</>}</span>
-            <span style={{color:'var(--orange)',fontWeight:600}}>· En gestión: {money(totalEnGestionPEN)}{totalEnGestionUSD > 0 && <> · {money(totalEnGestionUSD, 'US$')}</>}</span>
+            {(totalVencidoPEN > 0 || totalVencidoUSD > 0) && (
+              <span style={{color:'var(--danger)',fontWeight:600}}>
+                · Vencido:{totalVencidoPEN > 0 && <> {money(totalVencidoPEN)}</>}{totalVencidoUSD > 0 && <> · {money(totalVencidoUSD, 'US$')}</>}
+              </span>
+            )}
+            {(totalEnGestionPEN > 0 || totalEnGestionUSD > 0) && (
+              <span style={{color:'var(--orange)',fontWeight:600}}>
+                · En gestión:{totalEnGestionPEN > 0 && <> {money(totalEnGestionPEN)}</>}{totalEnGestionUSD > 0 && <> · {money(totalEnGestionUSD, 'US$')}</>}
+              </span>
+            )}
           </div>
         </div>
-        <div className="row" style={{gap:8}}>
+        <div className="row" style={{gap:8,alignItems:'center'}}>
+          <select className="select" style={{fontSize:12,padding:'4px 8px'}} value={fPeriodoEmision} onChange={e=>setFPeriodoEmision(e.target.value)}>
+            <option value="">Todos los períodos</option>
+            {periodoOptsEmision.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+          </select>
           <button className="btn btn-secondary" onClick={()=>setShowFiltros(v=>!v)}>
             {I.filter} Filtros{hayFiltros?' ·':''}
           </button>
@@ -591,21 +792,6 @@ function CxC() {
       </div>
 
       {/* Aging — clickable */}
-      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
-        {aging.map(b=>(
-          <div key={b.key} className="kpi-card" style={{cursor:'pointer',outline:agingFilter===b.key?'2px solid var(--cyan)':'none',transition:'outline 0.15s'}}
-            onClick={()=>setAgingFilter(agingFilter===b.key?null:b.key)}>
-            <div className="kpi-label" style={{ paddingRight: 40 }}>{b.label}</div>
-            <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
-              <span>{money(b.montoPEN)}</span>
-              {b.montoUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{money(b.montoUSD, 'US$')}</span>}
-            </div>
-            <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:8}}>{b.count} {b.count===1?'factura':'facturas'}</div>
-            <div className={'kpi-icon '+b.color}>{I.clock}</div>
-          </div>
-        ))}
-      </div>
-
       {/* Filtros */}
       {showFiltros && (
         <div className="card" style={{padding:16,marginTop:12}}>
@@ -645,61 +831,93 @@ function CxC() {
               <label>Mora máx. (días)</label>
               <input className="input" type="number" min="0" value={fMoraHasta} onChange={e=>setFMoraHasta(e.target.value)} />
             </div>
-            <button className="btn btn-secondary" onClick={()=>{setFCliente('');setFEstado('');setFMoneda('');setFVenceDesde('');setFVenceHasta('');setFMoraDesde('');setFMoraHasta('');setFGestor('');setAgingFilter(null);}}>Limpiar</button>
+            <button className="btn btn-secondary" onClick={()=>{setFCliente('');setFEstado('');setFMoneda('');setFVenceDesde('');setFVenceHasta('');setFMoraDesde('');setFMoraHasta('');setFGestor('');setFPeriodoEmision('');setAgingFilter(null);}}>Limpiar</button>
           </div>
         </div>
       )}
 
-      {/* Tabla */}
-      <div className="card mt-6">
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Cliente</th><th>Factura</th><th>OS Cliente</th><th>Vencimiento</th>
-                <th>Total</th><th>Saldo</th><th>Mora</th><th>Interés mora</th>
-                <th>Medio pago esp.</th><th>Estado</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {cxcFiltrada.length ? cxcFiltrada.map(c=>{
-                const dias  = diasMoraDe(c);
-                const inter = interesMoraDe(c);
-                const est   = estadoDe(c);
-                const meta  = ESTADO_META[est] || ESTADO_META.por_cobrar;
-                const vence = c.fecha_vencimiento||c.vence||'—';
-                return (
-                  <tr key={c.id} style={{cursor:'pointer'}} onClick={()=>abrirFicha(c)}>
-                    <td>
-                      <strong>{clienteDe(c)}</strong>
-                      {Number(c.monto_retencion||0)>0 && <span className="badge badge-orange" style={{marginLeft:6,fontSize:10}}>Retención SUNAT</span>}
-                    </td>
-                    <td className="mono">{facturaNumeroDe(c)}</td>
-                    <td className="text-muted">{osNumeroDe(c)}</td>
-                    <td style={{color:dias>0?'var(--danger)':dias===0?'var(--orange)':'inherit',fontWeight:dias>0?600:400}}>{vence}</td>
-                    <td className="num">{moneyCurrency(totalDe(c), c.moneda)}</td>
-                    <td className="num"><strong>{moneyCurrency(saldoDe(c), c.moneda)}</strong></td>
-                    <td className="num">{dias>0?<span style={{color:'var(--danger)',fontWeight:600}}>{dias}d</span>:<span className="text-subtle">—</span>}</td>
-                    <td className="num">{inter>0?<span style={{color:'var(--danger)'}}>{moneyCurrency(inter, c.moneda)}</span>:<span className="text-subtle">—</span>}</td>
-                    <td style={{color:'var(--fg-muted)',fontSize:12}}>{c.medio_pago_esperado||<span className="text-subtle">—</span>}</td>
-                    <td><span className={'badge '+meta.cls}>{meta.label}</span></td>
-                    <td onClick={e=>e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
-                      {saldoDe(c)>0 && <button className="btn btn-sm btn-primary" data-local-form="true" onClick={e=>abrirCobro(c,e)} style={{marginRight:6}}>Cobrar</button>}
-                      {puedeEditarCxC && est !== 'anulada' && (
-                        <button className="icon-btn" title="Anular CxC" style={{color:'var(--danger)'}} onClick={e=>{e.stopPropagation();setConfirmAnular(c);}}>{I.trash}</button>
-                      )}
-                    </td>
+      {seccionesMoneda.map(sec => {
+        if (sec.rows.length === 0) return null;
+        return (
+        <React.Fragment key={sec.moneda}>
+          <div style={{marginTop:18,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+            <div>
+              <div className="eyebrow">CxC {sec.moneda}</div>
+              <h2 style={{fontSize:18,margin:0,fontWeight:700}}>{sec.titulo}</h2>
+            </div>
+            <div style={{fontSize:12,color:'var(--fg-muted)'}}>{sec.rows.length} {sec.rows.length===1?'registro':'registros'}</div>
+          </div>
+
+          <div className="kpi-grid" style={{gridTemplateColumns:'repeat(5,1fr)',marginTop:12}}>
+            {sec.aging.map(b=>(
+              <div key={`${sec.moneda}-${b.key}`} className="kpi-card" style={{cursor:'pointer',outline:agingFilter===b.key?'2px solid var(--cyan)':'none',transition:'outline 0.15s'}}
+                onClick={()=>setAgingFilter(agingFilter===b.key?null:b.key)}>
+                <div className="kpi-label" style={{ paddingRight: 40 }}>{b.label}</div>
+                <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
+                  <span>{moneyCurrency(b.monto, sec.moneda)}</span>
+                </div>
+                <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:8}}>{b.count} {b.count===1?'factura':'facturas'}</div>
+                <div className={'kpi-icon '+b.color}>{I.clock}</div>
+              </div>
+            ))}
+            <div className="kpi-card">
+              <div className="kpi-label">{labelCobradoMes}</div>
+              <div className="kpi-value" style={{fontSize:20,color:'var(--green)'}}>{moneyCurrency(sec.cobradoEsteMes, sec.moneda)}</div>
+              <div className="kpi-icon green">{I.check}</div>
+            </div>
+          </div>
+
+          <div className="card mt-6">
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Cliente</th><th>Factura</th><th>OS Cliente</th><th>Vencimiento</th>
+                    <th>Total</th><th>Saldo neto</th>{sec.mostrarRetencion && <th>Retencion SUNAT</th>}
+                    <th>Medio pago esp.</th><th>Estado</th><th></th>
                   </tr>
-                );
-              }) : (
-                <tr><td colSpan="11" style={{textAlign:'center',padding:36,color:'var(--fg-muted)'}}>
-                  {hayFiltros ? 'Sin resultados con los filtros aplicados.' : 'No hay cuentas por cobrar registradas.'}
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </thead>
+                <tbody>
+                  {sec.rows.length ? sec.rows.map(c=>{
+                    const dias  = diasMoraDe(c);
+                    const est   = estadoDe(c);
+                    const meta  = ESTADO_META[est] || ESTADO_META.por_cobrar;
+                    const vence = c.fecha_vencimiento||c.vence||'--';
+                    const moneda = monedaCxCDe(c);
+                    return (
+                      <tr key={c.id} style={{cursor:'pointer'}} onClick={()=>abrirFicha(c)}>
+                        <td>
+                          <strong>{clienteDe(c)}</strong>
+                          {retencionDe(c)>0 && <span className="badge badge-orange" style={{marginLeft:6,fontSize:10}}>Retencion SUNAT</span>}
+                        </td>
+                        <td className="mono">{facturaNumeroDe(c)}</td>
+                        <td className="text-muted">{osNumeroDe(c)}</td>
+                        <td style={{color:dias>0?'var(--danger)':dias===0?'var(--orange)':'inherit',fontWeight:dias>0?600:400}}>{vence}</td>
+                        <td className="num">{moneyCurrency(totalDe(c), moneda)}</td>
+                        <td className="num"><strong>{moneyCurrency(saldoDe(c), moneda)}</strong></td>
+                        {sec.mostrarRetencion && <td className="num">{retencionDe(c)>0 ? moneyCurrency(retencionDe(c), moneda) : <span className="text-subtle">--</span>}</td>}
+                        <td style={{color:'var(--fg-muted)',fontSize:12}}>{c.medio_pago_esperado||<span className="text-subtle">--</span>}</td>
+                        <td><span className={'badge '+meta.cls}>{meta.label}</span></td>
+                        <td onClick={e=>e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
+                          {saldoDe(c)>0 && !estadoTerminalCxC(c) && <button className="btn btn-sm btn-primary" data-local-form="true" onClick={e=>abrirCobro(c,e)} style={{marginRight:6}}>Cobrar</button>}
+                          {puedeEditarCxC && !estadoTerminalCxC(c) && (
+                            <button className="icon-btn" title="Anular CxC" style={{color:'var(--danger)'}} onClick={e=>{e.stopPropagation();setConfirmAnular(c);}}>{I.trash}</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  }) : (
+                    <tr><td colSpan={sec.mostrarRetencion ? 10 : 9} style={{textAlign:'center',padding:36,color:'var(--fg-muted)'}}>
+                      {hayFiltros ? 'Sin resultados con los filtros aplicados.' : 'Sin facturas en esta moneda.'}
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </React.Fragment>
+        );
+      })}
 
       {fichaJSX}
 
@@ -916,7 +1134,7 @@ function CxC() {
 
               <div className="row mt-6" style={{justifyContent:'flex-end',gap:10}}>
                 <button type="button" className="btn btn-secondary" onClick={()=>setPanelCobro(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary">{I.check} Registrar cobro</button>
+                <button type="submit" className="btn btn-primary" disabled={savingCobro}>{savingCobro ? 'Registrando...' : <>{I.check} Registrar cobro</>}</button>
               </div>
             </form>
           </div>
@@ -1031,7 +1249,7 @@ function TesoreriaLegacy() {
                   <td className="text-muted">{m.fecha}</td>
                   <td><strong>{m.descripcion || m.desc}</strong></td>
                   <td><span className={'badge '+(m.tipo==='credito'?'badge-green':'badge-orange')}>{m.tipo==='credito'?'↓ Crédito':'↑ Débito'}</span></td>
-                  <td className="num"><strong style={{color:m.tipo==='credito'?'var(--green)':'var(--fg)'}}>{m.tipo==='credito'?'+':'-'}{money(m.monto)}</strong></td>
+                  <td className="num"><strong style={{color:m.tipo==='credito'?'var(--green)':'var(--fg)'}}>{m.tipo==='credito'?'+':'-'}{moneyCurrency(m.monto, m.moneda)}</strong></td>
                   <td>{m.vinculado_id || m.vinculado ? <span className="mono">{m.vinculado_id || m.vinculado}</span> : <span className="text-subtle">—</span>}</td>
                   <td>{m.conciliado ? <span className="badge badge-green">{I.check}Conciliado</span> : <span className="badge badge-orange">Sin conciliar</span>}</td>
                   <td>{!m.conciliado && <button className="btn btn-sm btn-primary" onClick={() => conciliarMovimientoBanco(m.id, 'otros', 'id')}>Conciliar</button>}</td>
@@ -1088,27 +1306,49 @@ const CATS_EGRESO = [
 ];
 const catLabel = v => [...CATS_INGRESO, ...CATS_EGRESO].find(c => c.v === v)?.l || v || '—';
 
-function BarChartProyeccion({ semanas, saldoInicial }) {
+function BarChartProyeccion({ semanas, saldoInicialPorMoneda = {} }) {
   const W = 700, H = 160, PX = 30, PY = 16;
   const iW = W - PX * 2, iH = H - PY * 2;
   const n = semanas.length;
+  if (!n) return null;
   const cW = iW / n;
   const bW = Math.max(3, cW * 0.3);
-  const maxBar = Math.max(1, ...semanas.flatMap(s => [s.ingresos, s.egresos]));
+
+  // Sumar todas las monedas para las barras (visual de magnitud por semana)
+  const semanasNorm = semanas.map(s => ({
+    ...s,
+    ingresos: s.ingresosPorMoneda ? Object.values(s.ingresosPorMoneda).reduce((a, v) => a + v, 0) : (s.ingresos || 0),
+    egresos:  s.egresosPorMoneda  ? Object.values(s.egresosPorMoneda).reduce((a, v) => a + v, 0)  : (s.egresos  || 0),
+  }));
+  const maxBar = Math.max(1, ...semanasNorm.flatMap(s => [s.ingresos, s.egresos]));
   const bScale = iH / maxBar;
-  let saldo = saldoInicial;
-  const saldos = semanas.map(s => { saldo += s.ingresos - s.egresos; return saldo; });
-  const sMin = Math.min(saldoInicial, ...saldos, 0);
-  const sMax = Math.max(saldoInicial, ...saldos, 1);
+
+  // Línea de saldo por moneda
+  const COLORES = { PEN: 'var(--cyan)', USD: '#a855f7' };
+  const monedas = Object.keys(saldoInicialPorMoneda).length ? Object.keys(saldoInicialPorMoneda) : ['PEN'];
+  const lineas = monedas.map(mon => {
+    let saldo = Number(saldoInicialPorMoneda[mon] || 0);
+    const puntos = semanas.map(s => {
+      saldo += ((s.ingresosPorMoneda || {})[mon] || 0) - ((s.egresosPorMoneda || {})[mon] || 0);
+      return saldo;
+    });
+    return { mon, saldoIni: Number(saldoInicialPorMoneda[mon] || 0), puntos, color: COLORES[mon] || 'var(--cyan)' };
+  });
+
+  const allV = lineas.flatMap(l => [l.saldoIni, ...l.puntos]);
+  const sMin = Math.min(...allV, 0);
+  const sMax = Math.max(...allV, 1);
   const sRange = sMax - sMin || 1;
   const sY = v => PY + iH - ((v - sMin) / sRange) * iH;
-  const pts = [`${PX},${sY(saldoInicial)}`, ...semanas.map((_, i) => `${PX + (i + 0.5) * cW},${sY(saldos[i])}`)].join(' ');
+
+  const legendaMonedas = lineas.map((l, idx) => `${l.mon} (${idx === 0 ? 'cyan' : 'morado'})`).join(' · ');
+
   return (
     <svg viewBox={`0 0 ${W} ${H + 28}`} style={{width:'100%', display:'block', marginTop:8}}>
       {[0,0.25,0.5,0.75,1].map(f => (
         <line key={f} x1={PX} y1={PY + iH*(1-f)} x2={W-PX} y2={PY + iH*(1-f)} stroke="var(--border)" strokeWidth={0.5}/>
       ))}
-      {semanas.map((s, i) => {
+      {semanasNorm.map((s, i) => {
         const x = PX + i * cW;
         return (
           <g key={i}>
@@ -1118,21 +1358,39 @@ function BarChartProyeccion({ semanas, saldoInicial }) {
           </g>
         );
       })}
-      <polyline points={pts} fill="none" stroke="var(--cyan)" strokeWidth={2} strokeLinejoin="round"/>
-      {semanas.map((_, i) => (
-        <circle key={i} cx={PX + (i+0.5)*cW} cy={sY(saldos[i])} r={3} fill={saldos[i] < 0 ? 'var(--danger)' : 'var(--cyan)'}/>
-      ))}
-      <text x={PX} y={PY - 4} fontSize={8} fill="var(--muted)">▲ Saldo (línea cyan) · Ingresos (verde) · Egresos (naranja)</text>
+      {lineas.map(({ mon, saldoIni, puntos, color }) => {
+        const allPts = [
+          { x: PX, y: sY(saldoIni), v: saldoIni },
+          ...puntos.map((v, i) => ({ x: PX + (i + 0.5) * cW, y: sY(v), v })),
+        ];
+        return (
+          <g key={mon}>
+            {allPts.slice(0, -1).map((p1, k) => {
+              const p2 = allPts[k + 1];
+              const sc = p1.v < 0 || p2.v < 0 ? 'var(--danger)' : color;
+              return <line key={k} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={sc} strokeWidth={2} strokeLinecap="round"/>;
+            })}
+            {allPts.slice(1).map(({ x, y, v }, i) => (
+              <circle key={i} cx={x} cy={y} r={3} fill={v < 0 ? 'var(--danger)' : color}/>
+            ))}
+          </g>
+        );
+      })}
+      <text x={PX} y={PY - 4} fontSize={8} fill="var(--muted)">▲ Saldo {legendaMonedas} · Ingresos (verde) · Egresos (naranja)</text>
     </svg>
   );
 }
 
 function ManualMovimientoPanel({ cuentasBancarias, onClose, onGuardar }) {
-  const empty = { tipo: 'ingreso', fecha: new Date().toISOString().slice(0,10), descripcion: '', monto: '', categoria: '', cuenta_origen_id: '', cuenta_destino_id: '', referencia: '' };
+  const empty = { tipo: 'ingreso', fecha: new Date().toISOString().slice(0,10), descripcion: '', monto: '', categoria: '', cuenta_origen_id: '', cuenta_destino_id: '', moneda: '', referencia: '' };
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
   const cuentasActivas = (cuentasBancarias || []).filter(c => c.estado === 'activo');
+  const cuentaActiva = cuentasActivas.find(c =>
+    c.id === (form.tipo === 'ingreso' ? form.cuenta_destino_id : form.cuenta_origen_id)
+  );
+  const monedaEfectiva = form.moneda || cuentaActiva?.moneda || '';
   const cats = form.tipo === 'egreso' ? CATS_EGRESO : form.tipo === 'ingreso' ? CATS_INGRESO : [...CATS_INGRESO.slice(-1), ...CATS_EGRESO.slice(-1)];
 
   const guardar = async e => {
@@ -1158,9 +1416,16 @@ function ManualMovimientoPanel({ cuentasBancarias, onClose, onGuardar }) {
               <option value="transferencia">Transferencia entre cuentas</option>
             </select>
           </div>
-          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10}}>
             <div className="input-group"><label>Fecha *</label><input className="input" type="date" value={form.fecha} onChange={set('fecha')} required/></div>
             <div className="input-group"><label>Monto *</label><input className="input" type="number" step="0.01" min="0.01" value={form.monto} onChange={set('monto')} required/></div>
+            <div className="input-group"><label>Moneda *</label>
+              <select className="input" value={monedaEfectiva} onChange={set('moneda')} required>
+                <option value="">—</option>
+                <option value="PEN">S/ Soles (PEN)</option>
+                <option value="USD">US$ Dólares (USD)</option>
+              </select>
+            </div>
           </div>
           <div className="input-group"><label>Descripción *</label><input className="input" value={form.descripcion} onChange={set('descripcion')} placeholder="Detalle del movimiento" required/></div>
           <div className="input-group"><label>Categoría</label>
@@ -1189,7 +1454,7 @@ function ManualMovimientoPanel({ cuentasBancarias, onClose, onGuardar }) {
           <div className="input-group"><label>Adjuntar comprobante</label><input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png"/><div style={{fontSize:11, color:'var(--muted)', marginTop:4}}>Opcional — subida próximamente.</div></div>
           <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : `${I.plus} Registrar`}</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : <>{I.plus} Registrar</>}</button>
           </div>
         </form>
       </div>
@@ -1344,6 +1609,7 @@ function ImportarExtractoModal({ cuentasBancarias, onClose }) {
 }
 
 function Tesoreria() {
+  const cuentaBancariaFormVacio = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'' };
   const [tab, setTab] = useState('match');
   const [panel, setPanel] = useState(false);
   const [movSel, setMovSel] = useState(null);
@@ -1354,57 +1620,262 @@ function Tesoreria() {
   const [showImport, setShowImport] = useState(false);
   const [filtroEstado, setFiltroEstado] = useState('todos');
   const [panelManual, setPanelManual] = useState(false);
+  const [panelCuentaBancaria, setPanelCuentaBancaria] = useState(false);
+  const [savingCuentaBancaria, setSavingCuentaBancaria] = useState(false);
+  const [formCuentaBancaria, setFormCuentaBancaria] = useState(cuentaBancariaFormVacio);
+  const [periodoTesoreria, setPeriodoTesoreria] = useState(new Date().toISOString().slice(0, 7));
   const [resumenCuenta, setResumenCuenta] = useState('');
+  const [editandoCuentaMovId, setEditandoCuentaMovId] = useState(null);
+  const [asignandoCuentaMovId, setAsignandoCuentaMovId] = useState(null);
+  const [equivalenciasCuenta, setEquivalenciasCuenta] = useState({});
+  const [editandoSaldoInicialId, setEditandoSaldoInicialId] = useState(null);
+  const [saldoInicialDraft, setSaldoInicialDraft] = useState('');
+  const [guardandoSaldoInicialId, setGuardandoSaldoInicialId] = useState(null);
+  const [hoverCuentaSaldoId, setHoverCuentaSaldoId] = useState(null);
   const [resumenDesde, setResumenDesde] = useState(new Date().toISOString().slice(0,7) + '-01');
   const [resumenHasta, setResumenHasta] = useState(new Date().toISOString().slice(0,10));
   const {
-    movimientosTesoreria, movimientosBanco, cxc, cxp, cuentas, cuentasBancarias = [],
-    conciliarMovimientoBancoConDocumento, empresa, addNotificacion,
+    movimientosTesoreria, movimientosBanco, cxc, cxp, facturas, cuentas, cuentasBancarias = [],
+    conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, empresa, addNotificacion, actualizarCuentaBancaria, crearCuentaBancaria,
     registrarMovimientoManual, empresaConfig, financiamientos = [], periodosNomina = [],
+    tipoCambioHoy, convertirMonto,
   } = useApp();
+  const empresaId = empresa?.id;
+  const SIN_VINCULAR = '__sin_vincular';
 
   const hoy = new Date().toISOString().slice(0, 7);
-  const tesoreria = buildTesoreriaSummary({
-    movimientos: movimientosTesoreria,
-    empresa,
-    periodo: hoy,
-    saldosIniciales: { PEN: 0 },
-  });
-
   const cuentasActivas = useMemo(() => (cuentasBancarias || []).filter(c => c.estado === 'activo'), [cuentasBancarias]);
+  const cuentaResumenActiva = useMemo(
+    () => cuentasActivas.find(c => c.id === resumenCuenta) || null,
+    [cuentasActivas, resumenCuenta],
+  );
+  const filtroSinVincularActivo = resumenCuenta === SIN_VINCULAR;
+  const cuentasParaResumen = useMemo(
+    () => cuentaResumenActiva ? [cuentaResumenActiva] : cuentasActivas,
+    [cuentaResumenActiva, cuentasActivas],
+  );
+
+  const normalizeFinText = value => String(value || '').trim().toLowerCase();
+  const monedaMov = (m, fallback = 'PEN') => String(m?.moneda || fallback || 'PEN').trim().toUpperCase();
+  const fechaMov = m => m?.fecha || m?.fecha_movimiento || m?.fecha_operacion || m?.created_at || m?.creado_en || '';
+  const esIngresoMov = m => ['ingreso', 'credito', 'crédito'].includes(normalizeFinText(m?.tipo));
+  const esEgresoMov = m => ['egreso', 'debito', 'débito'].includes(normalizeFinText(m?.tipo));
+  const movTieneCuentaExplicita = m => Boolean(m?.cuenta_bancaria_id);
+  const movPerteneceCuenta = (m, cb) => {
+    if (!cb) return true;
+    return m?.cuenta_bancaria_id === cb.id;
+  };
+  const sumarMoneda = (rows, montoDe = r => r.monto, monedaDe = r => r.moneda || 'PEN') =>
+    rows.reduce((acc, row) => {
+      const moneda = String(monedaDe(row) || 'PEN').trim().toUpperCase();
+      return { ...acc, [moneda]: (acc[moneda] || 0) + Number(montoDe(row) || 0) };
+    }, {});
+  const formatTotales = (totales, defaultCurrency = empresa?.moneda || 'PEN') => {
+    const entries = Object.entries(totales || {}).filter(([, value]) => Math.abs(Number(value || 0)) > 0.009);
+    if (!entries.length) return moneyCurrency(0, defaultCurrency);
+    return entries.map(([moneda, value]) => moneyCurrency(value, moneda)).join(' - ');
+  };
+  const totalesEntries = (totales, defaultCurrency = empresa?.moneda || 'PEN') => {
+    const entries = Object.entries(totales || {}).filter(([, value]) => Math.abs(Number(value || 0)) > 0.009);
+    return entries.length ? entries : [[defaultCurrency, 0]];
+  };
+
+  const facturasPorId = useMemo(() => new Map((facturas || []).map(f => [f.id, f])), [facturas]);
+  const cxcPorId = useMemo(() => new Map((cxc || []).map(row => [row.id, row])), [cxc]);
+  const cxpPorId = useMemo(() => new Map((cxp || []).map(row => [row.id, row])), [cxp]);
+  const categoriaMovimientoDe = m => {
+    if (m.categoria) return catLabel(m.categoria);
+    const vt = normalizeFinText(m.vinculo_tipo || m.vinculado_tipo || '');
+    const vid = m.vinculo_id || m.vinculado_id;
+    if (vt === 'cxc') return 'Cobranza';
+    if (vt === 'cxp') {
+      const row = vid ? cxpPorId.get(vid) : null;
+      return row?.concepto || row?.descripcion || 'Cuenta por pagar';
+    }
+    if (vt === 'gasto') return 'Gasto';
+    if (m.es_manual) return 'Manual';
+    return '—';
+  };
+  const movimientoEsCobroFactura = m => {
+    const vinculoTipo = normalizeFinText(m?.vinculo_tipo || m?.vinculado_tipo);
+    return normalizeFinText(m?.tipo) === 'ingreso' && (vinculoTipo === 'cxc' || m?.cxc_id || m?.factura_id);
+  };
+  const descripcionCobroUsaIdInterno = descripcion => {
+    const value = String(descripcion || '').trim();
+    return !value || /^cobro\s+(fac_|cxc_|[0-9a-f]{6,})/i.test(value);
+  };
+  const movimientosTesoreriaVista = useMemo(() => {
+    // Dedup de cobros con mismo cxc_id + monto + fecha (registro doble del mismo cobro)
+    const cobrosVistos = new Set();
+    return (movimientosTesoreria || []).reduce((acc, m) => {
+      if (!movimientoEsCobroFactura(m)) { acc.push(m); return acc; }
+      const vinculoTipo = normalizeFinText(m.vinculo_tipo || m.vinculado_tipo);
+      const cxcId = m.cxc_id || (vinculoTipo === 'cxc' ? (m.vinculo_id || m.vinculado_id) : null);
+      const facturaIdDirecto = m.factura_id || (vinculoTipo === 'factura' ? (m.vinculo_id || m.vinculado_id) : null);
+      if (cxcId) {
+        const dk = `${cxcId}|${m.monto}|${m.fecha || ''}`;
+        if (cobrosVistos.has(dk)) return acc;
+        cobrosVistos.add(dk);
+      }
+      const cxcOrigen = cxcPorId.get(cxcId) || null;
+      const facturaOrigen = cxcOrigen?.facturas ||
+        facturasPorId.get(cxcOrigen?.factura_id) ||
+        facturasPorId.get(facturaIdDirecto) ||
+        null;
+      const numeroFactura = facturaOrigen?.numero || null;
+      const monedaOrigen = cxcOrigen?.moneda || facturaOrigen?.moneda || m.moneda || 'PEN';
+      acc.push({
+        ...m,
+        moneda: monedaOrigen,
+        descripcion: descripcionCobroUsaIdInterno(m.descripcion) ? `Cobro ${numeroFactura || 'factura'}` : m.descripcion,
+      });
+      return acc;
+    }, []);
+  }, [movimientosTesoreria, cxcPorId, facturasPorId]);
+
+  const movimientosEmpresa = useMemo(() => (movimientosTesoreriaVista || []).filter(m =>
+    (!empresaId || m.empresa_id === empresaId) &&
+    m.estado !== 'anulado'
+  ), [movimientosTesoreriaVista, empresaId]);
+  const fechaBanco = m => m?.fecha || m?.fecha_operacion || m?.created_at || m?.creado_en || '';
+  const periodoOpcionesTesoreria = useMemo(() => {
+    const opciones = new Map();
+    const base = new Date(`${hoy}-01T00:00:00`);
+    for (let i = 0; i < 36; i++) {
+      const d = new Date(base);
+      d.setMonth(base.getMonth() - i);
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' });
+      opciones.set(value, label.charAt(0).toUpperCase() + label.slice(1));
+    }
+    movimientosEmpresa.forEach(m => {
+      const value = fechaMov(m).slice(0, 7);
+      if (!value || opciones.has(value)) return;
+      const d = new Date(`${value}-01T00:00:00`);
+      const label = d.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' });
+      opciones.set(value, label.charAt(0).toUpperCase() + label.slice(1));
+    });
+    return [...opciones.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => b.value.localeCompare(a.value));
+  }, [hoy, movimientosEmpresa]);
+  const periodoTesoreriaLabel = periodoTesoreria
+    ? periodoOpcionesTesoreria.find(o => o.value === periodoTesoreria)?.label || periodoTesoreria
+    : 'Todos';
+  const periodoTesoreriaLabelCorto = periodoTesoreria
+    ? periodoTesoreriaLabel.slice(0, 3).toUpperCase() + ` ${periodoTesoreria.slice(0, 4)}`
+    : 'TODOS';
+  const filtraPeriodoTesoreria = fecha => !periodoTesoreria || String(fecha || '').slice(0, 7) === periodoTesoreria;
+  const movimientosPeriodoTesoreria = useMemo(
+    () => movimientosEmpresa.filter(m => filtraPeriodoTesoreria(fechaMov(m))),
+    [movimientosEmpresa, periodoTesoreria],
+  );
+
+  const movimientosConConversionLegacy = useMemo(() => movimientosEmpresa
+    .map(mov => {
+      const cuenta = cuentasActivas.find(c => c.id === mov?.cuenta_bancaria_id);
+      return cuenta ? { mov, cuenta, key: claveEquivalenciaMovimientoCuenta(mov, cuenta) } : null;
+    })
+    .filter(item =>
+      item &&
+      monedasDifierenMovimientoCuenta(item.mov, item.cuenta) &&
+      (item.mov.monto_en_moneda_cuenta == null || item.mov.monto_en_moneda_cuenta === '')
+    ), [movimientosEmpresa, cuentasActivas]);
+
+  useEffect(() => {
+    if (!movimientosConConversionLegacy.length) return;
+    let activo = true;
+    const cargarEquivalencias = async () => {
+      const supabase = isSupabaseConfigured() ? await getSupabaseClient() : null;
+      const calculadas = {};
+      for (const item of movimientosConConversionLegacy) {
+        const tc = await getTipoCambioPorFecha(fechaMov(item.mov), supabase);
+        calculadas[item.key] = convertirMontoConTc(
+          item.mov.monto,
+          monedaMov(item.mov),
+          item.cuenta.moneda,
+          tc
+        );
+      }
+      if (!activo) return;
+      setEquivalenciasCuenta(prev => {
+        const next = { ...prev };
+        let cambio = false;
+        Object.entries(calculadas).forEach(([key, value]) => {
+          if (next[key] !== value) {
+            next[key] = value;
+            cambio = true;
+          }
+        });
+        return cambio ? next : prev;
+      });
+    };
+    cargarEquivalencias();
+    return () => { activo = false; };
+  }, [movimientosConConversionLegacy]);
+
+  const movimientosResumen = useMemo(() => movimientosPeriodoTesoreria.filter(m => {
+    if (cuentaResumenActiva) {
+      return movPerteneceCuenta(m, cuentaResumenActiva);
+    }
+    if (filtroSinVincularActivo) return !movTieneCuentaExplicita(m);
+    return true;
+  }), [movimientosPeriodoTesoreria, cuentaResumenActiva, filtroSinVincularActivo]);
 
   const saldoPorCuenta = useMemo(() => {
-    return cuentasActivas.map(cb => {
-      const movsCuenta = (movimientosTesoreria || []).filter(m => m.cuenta_bancaria_id === cb.id);
-      const ingresos = movsCuenta.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + Number(m.monto || 0), 0);
-      const egresos = movsCuenta.filter(m => m.tipo === 'egreso').reduce((s, m) => s + Number(m.monto || 0), 0);
-      return { ...cb, saldo: Number(cb.saldo_inicial || 0) + ingresos - egresos };
-    });
-  }, [cuentasActivas, movimientosTesoreria]);
+    return calcularSaldosCuentasBancarias(cuentasActivas, movimientosEmpresa, equivalenciasCuenta);
+  }, [cuentasActivas, movimientosEmpresa, equivalenciasCuenta]);
 
-  const totalPEN = useMemo(() => saldoPorCuenta.filter(c => c.moneda === 'PEN').reduce((s, c) => s + c.saldo, 0), [saldoPorCuenta]);
-  const totalUSD = useMemo(() => saldoPorCuenta.filter(c => c.moneda === 'USD').reduce((s, c) => s + c.saldo, 0), [saldoPorCuenta]);
+  const saldoDisponiblePorMoneda = useMemo(() => {
+    const cuentasSaldo = cuentaResumenActiva
+      ? saldoPorCuenta.filter(cb => cb.id === cuentaResumenActiva.id)
+      : saldoPorCuenta;
+    return calcularTotalesPorMonedaCuentas(cuentasSaldo);
+  }, [saldoPorCuenta, cuentaResumenActiva]);
+  const movimientosSinCuentaPorMoneda = useMemo(
+    () => calcularMovimientosSinCuentaPorMoneda(movimientosPeriodoTesoreria),
+    [movimientosPeriodoTesoreria],
+  );
+  const totalPEN = Number(saldoDisponiblePorMoneda.PEN || 0);
+  const saldoPendienteCxPDe = p => {
+    if (p?.saldo != null) return Math.max(0, Number(p.saldo || 0));
+    return Math.max(0, Number(p?.monto_total ?? p?.monto ?? 0) - Number(p?.monto_pagado || 0));
+  };
 
-  const pendienteCxC = useMemo(() => (cxc || []).filter(c => !['cobrada','anulada'].includes(c.estado)).reduce((s, c) => s + Number(c.saldo ?? c.monto_total ?? 0), 0), [cxc]);
-  const pendienteCxP = useMemo(() => (cxp || []).filter(p => !['pagada','anulada'].includes(p.estado)).reduce((s, p) => s + Number(p.saldo ?? p.monto_total ?? 0), 0), [cxp]);
+  const cxcPendienteRows = useMemo(() => (cxc || []).filter(c =>
+    (!empresaId || c.empresa_id === empresaId) &&
+    !['cobrada','pagada','anulada','cancelada'].includes(normalizeFinText(c.estado)) &&
+    Number(c.saldo ?? c.monto_total ?? 0) > 0
+  ), [cxc, empresaId]);
+  const cxpPendienteRows = useMemo(() => (cxp || []).filter(p =>
+    (!empresaId || p.empresa_id === empresaId) &&
+    !['pagada','cobrada','anulada','cancelada'].includes(normalizeFinText(p.estado)) &&
+    saldoPendienteCxPDe(p) > 0
+  ), [cxp, empresaId]);
+  const pendienteCxC = useMemo(() => sumarMoneda(cxcPendienteRows, c => c.saldo ?? c.monto_total, c => c.moneda || 'PEN'), [cxcPendienteRows]);
+  const pendienteCxP = useMemo(() => sumarMoneda(cxpPendienteRows, saldoPendienteCxPDe, p => p.moneda || 'PEN'), [cxpPendienteRows]);
 
   const movBancoFiltrado = useMemo(() => {
-    const all = movimientosBanco || [];
+    const all = (movimientosBanco || []).filter(m => filtraPeriodoTesoreria(fechaBanco(m)));
     if (filtroEstado === 'conciliados') return all.filter(m => m.conciliado);
     if (filtroEstado === 'pendientes') return all.filter(m => !m.conciliado);
     return all;
-  }, [movimientosBanco, filtroEstado]);
+  }, [movimientosBanco, filtroEstado, periodoTesoreria]);
 
-  const vinculados = (movimientosBanco || []).filter(m => m.conciliado).length;
-  const pendientes = (movimientosBanco || []).length - vinculados;
-  const pctConciliado = (movimientosBanco || []).length > 0 ? Math.round(vinculados / (movimientosBanco || []).length * 100) : 0;
+  const movimientosBancoPeriodo = useMemo(
+    () => (movimientosBanco || []).filter(m => filtraPeriodoTesoreria(fechaBanco(m))),
+    [movimientosBanco, periodoTesoreria],
+  );
+  const vinculados = movimientosBancoPeriodo.filter(m => m.conciliado).length;
+  const pendientes = movimientosBancoPeriodo.length - vinculados;
+  const pctConciliado = movimientosBancoPeriodo.length > 0 ? Math.round(vinculados / movimientosBancoPeriodo.length * 100) : 0;
 
   const clienteNombre = id => {
     const c = (cuentas || []).find(x => x.id === id);
     return c?.razon_social || c?.nombre_comercial || '-';
   };
   const saldoCxc = c => Number(c.saldo ?? c.monto_total ?? 0);
-  const saldoCxp = p => Number(p.saldo ?? p.monto_total ?? 0);
+  const saldoCxp = saldoPendienteCxPDe;
 
   const candidatos = useMemo(() => {
     if (!movSel) return [];
@@ -1436,6 +1907,35 @@ function Tesoreria() {
   }, [movSel, cxc, cxp, cuentas]);
 
   const sugeridos = candidatos.filter(c => c.sugerido);
+  const cuentaBancoMovSel = useMemo(
+    () => cuentasActivas.find(c => c.id === movSel?.cuenta_bancaria_id) || null,
+    [cuentasActivas, movSel],
+  );
+  const candidatoSeleccionado = useMemo(
+    () => candidatos.find(c => `${c.tipo}:${c.id}` === target) || null,
+    [candidatos, target],
+  );
+  const monedaSistemaMatch = useMemo(() => {
+    if (!candidatoSeleccionado) return movSel?.moneda || 'PEN';
+    if (candidatoSeleccionado.tipo === 'cxc') {
+      const row = (cxc || []).find(c => c.id === candidatoSeleccionado.id);
+      const factura = (facturas || []).find(f => f.id === row?.factura_id);
+      return row?.moneda || factura?.moneda || movSel?.moneda || 'PEN';
+    }
+    const row = (cxp || []).find(p => p.id === candidatoSeleccionado.id);
+    return row?.moneda || movSel?.moneda || 'PEN';
+  }, [candidatoSeleccionado, cxc, cxp, facturas, movSel]);
+  const requiereTcMatch = Boolean(cuentaBancoMovSel && candidatoSeleccionado && monedaSistemaMatch !== cuentaBancoMovSel.moneda);
+  const tcPreviewMatch = requiereTcMatch
+    ? (monedaSistemaMatch === 'PEN' && cuentaBancoMovSel.moneda === 'USD'
+      ? tipoCambioHoy?.usd
+      : monedaSistemaMatch === 'USD' && cuentaBancoMovSel.moneda === 'PEN' && tipoCambioHoy?.usd
+        ? Math.round((1 / tipoCambioHoy.usd) * 10000) / 10000
+        : null)
+    : 1;
+  const equivalentePreviewMatch = requiereTcMatch && candidatoSeleccionado && convertirMonto
+    ? convertirMonto(candidatoSeleccionado.monto, monedaSistemaMatch, cuentaBancoMovSel.moneda)
+    : candidatoSeleccionado?.monto;
 
   const abrirMatch = mov => { setMovSel(mov); setPanel(true); setTarget(''); setConDiferencia(false); setMotivoDif(''); setMontoDif(''); };
 
@@ -1450,30 +1950,148 @@ function Tesoreria() {
     setPanel(false); setMovSel(null);
   };
 
-  const mesActual = new Date().toISOString().slice(0, 7);
-  const cobrosDelMes = (movimientosTesoreria || []).filter(m => m.tipo === 'ingreso' && (m.fecha || '').startsWith(mesActual)).reduce((s, m) => s + Number(m.monto || 0), 0);
-  const pagosDelMes = (movimientosTesoreria || []).filter(m => m.tipo === 'egreso' && (m.fecha || '').startsWith(mesActual)).reduce((s, m) => s + Number(m.monto || 0), 0);
+  const cuentaNombreCorto = cuenta => cuenta?.alias || cuenta?.nombre || cuenta?.banco || 'Cuenta';
+  const cuentaOptionLabel = cuenta => `${cuentaNombreCorto(cuenta)} (${cuenta?.moneda || 'PEN'})`;
+  const cuentaMovimientoDe = mov => cuentasActivas.find(c => c.id === mov?.cuenta_bancaria_id) || null;
+  const cambiarCuentaMovimiento = async (mov, cuentaId) => {
+    if (!mov?.id || asignandoCuentaMovId) return;
+    setAsignandoCuentaMovId(mov.id);
+    try {
+      await asignarCuentaMovimientoTesoreria?.(mov.id, cuentaId || null);
+      setEditandoCuentaMovId(null);
+    } finally {
+      setAsignandoCuentaMovId(null);
+    }
+  };
+
+  const iniciarEdicionSaldoInicial = cuenta => {
+    setEditandoSaldoInicialId(cuenta.id);
+    setSaldoInicialDraft(String(Number(cuenta.saldo_inicial || 0)));
+  };
+
+  const cancelarEdicionSaldoInicial = () => {
+    setEditandoSaldoInicialId(null);
+    setSaldoInicialDraft('');
+  };
+
+  const guardarSaldoInicialCuenta = async cuenta => {
+    if (!cuenta?.id || guardandoSaldoInicialId) return;
+    const saldoInicial = Number(saldoInicialDraft || 0);
+    if (!Number.isFinite(saldoInicial)) {
+      alert('Ingrese un saldo inicial valido.');
+      return;
+    }
+    setGuardandoSaldoInicialId(cuenta.id);
+    try {
+      await actualizarCuentaBancaria?.(cuenta.id, {
+        saldo_inicial: saldoInicial,
+        fecha_saldo_inicial: cuenta.fecha_saldo_inicial || new Date().toISOString().slice(0, 10),
+      });
+      addNotificacion?.('Saldo inicial actualizado.');
+      cancelarEdicionSaldoInicial();
+    } finally {
+      setGuardandoSaldoInicialId(null);
+    }
+  };
+
+  const setCuentaBancariaField = field => e => setFormCuentaBancaria(prev => ({ ...prev, [field]: e.target.value }));
+
+  const abrirNuevaCuentaBancaria = () => {
+    setFormCuentaBancaria(cuentaBancariaFormVacio);
+    setPanelCuentaBancaria(true);
+  };
+
+  const cerrarNuevaCuentaBancaria = () => {
+    setPanelCuentaBancaria(false);
+    setFormCuentaBancaria(cuentaBancariaFormVacio);
+  };
+
+  const guardarNuevaCuentaBancaria = async e => {
+    e.preventDefault();
+    if (!formCuentaBancaria.nombre.trim() || !formCuentaBancaria.banco.trim() || savingCuentaBancaria) return;
+    setSavingCuentaBancaria(true);
+    try {
+      await crearCuentaBancaria?.({
+        ...formCuentaBancaria,
+        saldo_inicial: Number(formCuentaBancaria.saldo_inicial || 0),
+      });
+      cerrarNuevaCuentaBancaria();
+    } finally {
+      setSavingCuentaBancaria(false);
+    }
+  };
+
+  const cobrosDelMes = useMemo(
+    () => calcularMovimientosMesPorMoneda(movimientosEmpresa, 'ingreso', periodoTesoreria),
+    [movimientosEmpresa, periodoTesoreria]
+  );
+  const pagosDelMes = useMemo(
+    () => calcularMovimientosMesPorMoneda(movimientosEmpresa, 'egreso', periodoTesoreria),
+    [movimientosEmpresa, periodoTesoreria]
+  );
+  const movimientosEgresoPeriodo = useMemo(
+    () => movimientosPeriodoTesoreria.filter(esEgresoMov),
+    [movimientosPeriodoTesoreria],
+  );
+  const pagosPeriodoCuentaPorMoneda = useMemo(() => movimientosEgresoPeriodo.reduce((acc, mov) => {
+    const cuenta = cuentaMovimientoDe(mov);
+    const moneda = String(cuenta?.moneda || mov.moneda || 'PEN').trim().toUpperCase();
+    const monto = cuenta ? montoMovimientoEnCuenta(mov, cuenta, equivalenciasCuenta) : Number(mov.monto || 0);
+    return { ...acc, [moneda]: (acc[moneda] || 0) + monto };
+  }, {}), [movimientosEgresoPeriodo, cuentasActivas, equivalenciasCuenta]);
+  const pagosPeriodoOrigenPorMoneda = useMemo(() => movimientosEgresoPeriodo.reduce((acc, mov) => {
+    const cuenta = cuentaMovimientoDe(mov);
+    const monedaOrigen = String(mov.moneda || 'PEN').trim().toUpperCase();
+    if (!cuenta || String(cuenta.moneda || 'PEN').trim().toUpperCase() === monedaOrigen) return acc;
+    return { ...acc, [monedaOrigen]: (acc[monedaOrigen] || 0) + Number(mov.monto || 0) };
+  }, {}), [movimientosEgresoPeriodo, cuentasActivas]);
 
   // Resumen tab: filtered movements with running balance
   const movResumen = useMemo(() => {
-    let movs = (movimientosTesoreria || [])
+    const movs = (movimientosTesoreriaVista || [])
       .filter(m => m.estado !== 'anulado')
-      .filter(m => !resumenCuenta || m.cuenta_bancaria_id === resumenCuenta)
+      .filter(m => {
+        if (resumenCuenta === SIN_VINCULAR) return !m.cuenta_bancaria_id;
+        return !resumenCuenta || m.cuenta_bancaria_id === resumenCuenta;
+      })
       .filter(m => (!resumenDesde || (m.fecha || '') >= resumenDesde) && (!resumenHasta || (m.fecha || '') <= resumenHasta))
       .slice().sort((a, b) => (a.fecha || '') < (b.fecha || '') ? -1 : 1);
 
     const cuentaObj = cuentasActivas.find(c => c.id === resumenCuenta);
-    let saldoAcum = resumenCuenta
-      ? Number(cuentaObj?.saldo_inicial || 0)
-      : cuentasActivas.reduce((s, c) => s + Number(c.saldo_inicial || 0), 0);
 
+    if (cuentaObj) {
+      const monedaCuenta = (cuentaObj.moneda || 'PEN').toUpperCase();
+      let saldoAcum = Number(cuentaObj.saldo_inicial || 0);
+      return movs.map(m => {
+        const monedaMov = (m.moneda || 'PEN').toUpperCase();
+        const montoCuenta = monedaMov === monedaCuenta
+          ? Number(m.monto || 0)
+          : Number(m.monto_en_moneda_cuenta ?? equivalenciasCuenta[claveEquivalenciaMovimientoCuenta(m, cuentaObj)] ?? 0);
+        saldoAcum = m.tipo === 'ingreso' ? saldoAcum + montoCuenta : saldoAcum - montoCuenta;
+        return { ...m, saldoAcum, saldoAcumMoneda: monedaCuenta, montoCuenta };
+      });
+    }
+
+    // Todas las cuentas o Sin vincular: acumulador por moneda usando la moneda de la cuenta asignada
+    const acumPorMoneda = {};
+    if (resumenCuenta !== SIN_VINCULAR) {
+      cuentasActivas.forEach(c => {
+        const mon = (c.moneda || 'PEN').toUpperCase();
+        acumPorMoneda[mon] = (acumPorMoneda[mon] || 0) + Number(c.saldo_inicial || 0);
+      });
+    }
     return movs.map(m => {
-      saldoAcum = m.tipo === 'ingreso' ? saldoAcum + Number(m.monto || 0) : saldoAcum - Number(m.monto || 0);
-      return { ...m, saldoAcum };
+      const cuentaMov = cuentasActivas.find(c => c.id === m.cuenta_bancaria_id);
+      const mon = cuentaMov ? (cuentaMov.moneda || 'PEN').toUpperCase() : (m.moneda || 'PEN').toUpperCase();
+      const monto = cuentaMov ? montoMovimientoEnCuenta(m, cuentaMov, equivalenciasCuenta) : Number(m.monto || 0);
+      acumPorMoneda[mon] = m.tipo === 'ingreso'
+        ? (acumPorMoneda[mon] || 0) + monto
+        : (acumPorMoneda[mon] || 0) - monto;
+      return { ...m, saldoAcum: acumPorMoneda[mon], saldoAcumMoneda: mon, montoCuenta: monto };
     });
-  }, [movimientosTesoreria, resumenCuenta, resumenDesde, resumenHasta, cuentasActivas]);
+  }, [movimientosTesoreriaVista, resumenCuenta, resumenDesde, resumenHasta, cuentasActivas, equivalenciasCuenta]);
 
-  // Proyección 90 días (13 semanas)
+  // Proyección 90 días (13 semanas), agrupada por moneda
   const proyeccionSemanas = useMemo(() => {
     const hoyDate = new Date();
     return Array.from({ length: 13 }, (_, i) => {
@@ -1481,89 +2099,238 @@ function Tesoreria() {
       const fin = new Date(ini); fin.setDate(fin.getDate() + 6);
       const s = ini.toISOString().slice(0, 10);
       const e = fin.toISOString().slice(0, 10);
-      let ingresos = 0, egresos = 0;
-      (cxc || []).filter(c => !['cobrada','anulada'].includes(c.estado) && c.fecha_vencimiento >= s && c.fecha_vencimiento <= e)
-        .forEach(c => { ingresos += Number(c.saldo ?? c.monto_total ?? 0); });
+      const ingresosPorMoneda = {};
+      const egresosPorMoneda = {};
+      (cxc || []).filter(c => !['cobrada','pagada','anulada','cancelada'].includes(normalizeFinText(c.estado)) && c.fecha_vencimiento >= s && c.fecha_vencimiento <= e)
+        .forEach(c => {
+          const mon = (c.moneda || 'PEN').toUpperCase();
+          ingresosPorMoneda[mon] = (ingresosPorMoneda[mon] || 0) + Number(c.saldo ?? c.monto_total ?? 0);
+        });
       (cxp || []).filter(p => !['pagada','anulada'].includes(p.estado) && p.fecha_vencimiento >= s && p.fecha_vencimiento <= e)
-        .forEach(p => { egresos += Number(p.saldo ?? p.monto_total ?? 0); });
+        .forEach(p => {
+          const mon = (p.moneda || 'PEN').toUpperCase();
+          egresosPorMoneda[mon] = (egresosPorMoneda[mon] || 0) + saldoPendienteCxPDe(p);
+        });
       const ultimaNomina = (periodosNomina || []).slice(-1)[0];
-      if (i === 4 && ultimaNomina) egresos += Number(ultimaNomina.total_neto || ultimaNomina.total || 0);
-      return { label: `S${i+1}`, startStr: s, endStr: e, ingresos, egresos };
+      if (i === 4 && ultimaNomina) {
+        egresosPorMoneda['PEN'] = (egresosPorMoneda['PEN'] || 0) + Number(ultimaNomina.total_neto || ultimaNomina.total || 0);
+      }
+      return { label: `S${i+1}`, startStr: s, endStr: e, ingresosPorMoneda, egresosPorMoneda };
     });
   }, [cxc, cxp, periodosNomina]);
 
-  const bloques90 = useMemo(() => [0,1,2].map(b => {
-    const sems = proyeccionSemanas.slice(b * 4, b * 4 + (b === 2 ? 5 : 4));
-    const ingresos = sems.reduce((s, x) => s + x.ingresos, 0);
-    const egresos = sems.reduce((s, x) => s + x.egresos, 0);
-    return { label: `Días ${b*30+1}–${(b+1)*30}`, ingresos, egresos, flujoNeto: ingresos - egresos };
-  }), [proyeccionSemanas]);
+  const bloques90 = useMemo(() => {
+    const acumPorMoneda = {};
+    Object.entries(saldoDisponiblePorMoneda).forEach(([mon, v]) => { acumPorMoneda[mon] = v; });
+    return [0, 1, 2].map(b => {
+      const sems = proyeccionSemanas.slice(b * 4, b * 4 + (b === 2 ? 5 : 4));
+      const ingresosPorMoneda = {};
+      const egresosPorMoneda = {};
+      sems.forEach(s => {
+        Object.entries(s.ingresosPorMoneda).forEach(([mon, v]) => { ingresosPorMoneda[mon] = (ingresosPorMoneda[mon] || 0) + v; });
+        Object.entries(s.egresosPorMoneda).forEach(([mon, v]) => { egresosPorMoneda[mon] = (egresosPorMoneda[mon] || 0) + v; });
+      });
+      const flujoNetoPorMoneda = {};
+      const allMon = new Set([...Object.keys(ingresosPorMoneda), ...Object.keys(egresosPorMoneda), ...Object.keys(acumPorMoneda)]);
+      allMon.forEach(mon => {
+        flujoNetoPorMoneda[mon] = (ingresosPorMoneda[mon] || 0) - (egresosPorMoneda[mon] || 0);
+        acumPorMoneda[mon] = (acumPorMoneda[mon] || 0) + flujoNetoPorMoneda[mon];
+      });
+      return { label: `Días ${b*30+1}–${(b+1)*30}`, ingresosPorMoneda, egresosPorMoneda, flujoNetoPorMoneda, saldoProyPorMoneda: { ...acumPorMoneda } };
+    });
+  }, [proyeccionSemanas, saldoDisponiblePorMoneda]);
 
   const umbralMinimo = Number(empresaConfig?.umbral_liquidez_minimo || 0);
   const alertaLiquidez = useMemo(() => {
     if (!umbralMinimo) return null;
     let saldo = totalPEN;
     for (let i = 0; i < proyeccionSemanas.length; i++) {
-      saldo += proyeccionSemanas[i].ingresos - proyeccionSemanas[i].egresos;
+      const s = proyeccionSemanas[i];
+      saldo += (s.ingresosPorMoneda['PEN'] || 0) - (s.egresosPorMoneda['PEN'] || 0);
       if (saldo < umbralMinimo) {
-        return { saldo, semana: i + 1, fecha: proyeccionSemanas[i].startStr };
+        return { saldo, semana: i + 1, fecha: s.startStr };
       }
     }
     return null;
   }, [proyeccionSemanas, totalPEN, umbralMinimo]);
+  const proyeccionSemanasGrafico = useMemo(() => {
+    const lastActive = proyeccionSemanas.reduce((last, s, i) => {
+      const hayDatos = Object.values(s.ingresosPorMoneda).some(v => v > 0) ||
+                       Object.values(s.egresosPorMoneda).some(v => v > 0);
+      return hayDatos ? i : last;
+    }, -1);
+    if (lastActive === -1) return proyeccionSemanas.slice(0, 1);
+    return proyeccionSemanas.slice(0, Math.min(proyeccionSemanas.length, lastActive + 2));
+  }, [proyeccionSemanas]);
+  const hayProyeccion = useMemo(
+    () => proyeccionSemanas.some(s =>
+      Object.values(s.ingresosPorMoneda).some(v => v > 0) || Object.values(s.egresosPorMoneda).some(v => v > 0)
+    ),
+    [proyeccionSemanas]
+  );
+  const alertasNegativas = useMemo(() => {
+    const result = [];
+    const monedas = Object.keys(saldoDisponiblePorMoneda).length ? Object.keys(saldoDisponiblePorMoneda) : ['PEN'];
+    monedas.forEach(mon => {
+      let saldo = Number(saldoDisponiblePorMoneda[mon] || 0);
+      for (const s of proyeccionSemanasGrafico) {
+        saldo += (s.ingresosPorMoneda[mon] || 0) - (s.egresosPorMoneda[mon] || 0);
+        if (saldo < 0) { result.push({ mon, semana: s.label, saldo }); break; }
+      }
+    });
+    return result;
+  }, [proyeccionSemanasGrafico, saldoDisponiblePorMoneda]);
+
+  const saldoFinalResumenDisplay = cuentaResumenActiva
+    ? moneyCurrency(movResumen[movResumen.length - 1]?.saldoAcum ?? cuentaResumenActiva.saldo_inicial ?? 0, cuentaResumenActiva.moneda)
+    : formatTotales(saldoDisponiblePorMoneda);
+  const monedasCuentasActivas = [...new Set(cuentasActivas.map(c => String(c.moneda || 'PEN').trim().toUpperCase()))];
+  const posicionTotalEntries = monedasCuentasActivas.length
+    ? monedasCuentasActivas.map(moneda => [moneda, Number(saldoDisponiblePorMoneda[moneda] || 0)])
+    : totalesEntries(saldoDisponiblePorMoneda);
+  const cobrosPeriodoEntries = totalesEntries(cobrosDelMes);
+  const pagosCuentaEntries = totalesEntries(pagosPeriodoCuentaPorMoneda);
+  const pagosOrigenEntries = Object.entries(pagosPeriodoOrigenPorMoneda).filter(([, value]) => Math.abs(Number(value || 0)) > 0.009);
+  const sinCuentaTienePendientes = Object.values(movimientosSinCuentaPorMoneda || {}).some(value => Math.abs(Number(value || 0)) > 0.009);
+  const sinCuentaEntries = sinCuentaTienePendientes ? totalesEntries(movimientosSinCuentaPorMoneda) : [['USD', 0]];
+  const ingresosPeriodoCount = movimientosPeriodoTesoreria.filter(esIngresoMov).length;
+  const facturasPendientesCount = cxcPendienteRows.length;
+  const pendienteCxPEntries = totalesEntries(pendienteCxP);
+  const sinVincularPorCuenta = useMemo(() => {
+    const conciliadosIds = new Set(
+      (movimientosBancoPeriodo || []).filter(b => b.conciliado && b.vinculado_id).map(b => b.vinculado_id)
+    );
+    const result = {};
+    movimientosPeriodoTesoreria.forEach(m => {
+      if (!m.cuenta_bancaria_id) return;
+      if (!result[m.cuenta_bancaria_id]) result[m.cuenta_bancaria_id] = 0;
+      if (!conciliadosIds.has(m.id)) result[m.cuenta_bancaria_id]++;
+    });
+    return result;
+  }, [movimientosBancoPeriodo, movimientosPeriodoTesoreria]);
+  const metricCardStyle = {background:'var(--bg-subtle)', border:'none', borderRadius:8, padding:'14px 16px', minHeight:116};
+  const accountGridStyle = {display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:10, marginTop:8};
+  const accountCardStyle = {background:'var(--surface)', border:'0.5px solid var(--border-subtle)', borderRadius:10, padding:'12px 14px', minHeight:154};
 
   return (
     <>
       <div className="page-header">
         <div>
           <h1 className="page-title">Tesorería</h1>
-          <div className="page-sub">{vinculados}/{(movimientosBanco||[]).length} conciliados · {pctConciliado}%</div>
+          <div className="page-sub">{vinculados}/{movimientosBancoPeriodo.length} conciliados · {pctConciliado}%</div>
         </div>
-        <div className="row" style={{gap:8}}>
+        <div className="row" style={{gap:8,alignItems:'center'}}>
+          <select className="select" style={{fontSize:12,padding:'4px 8px'}} value={periodoTesoreria} onChange={e=>setPeriodoTesoreria(e.target.value)}>
+            <option value="">Todos</option>
+            {periodoOpcionesTesoreria.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
           <button className="btn btn-secondary" onClick={() => setPanelManual(true)}>{I.plus} Movimiento manual</button>
           <button className="btn btn-secondary" onClick={() => setShowImport(true)}>{I.download} Importar extracto</button>
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
-        <div className="kpi-card">
-          <div className="kpi-label">Saldo disponible (PEN)</div>
-          <div className="kpi-value" style={{fontSize:20}}>{money(totalPEN)}</div>
-          {totalUSD > 0 && <div style={{fontSize:12, color:'var(--muted)', marginTop:2}}>+ USD {totalUSD.toLocaleString('es-PE',{minimumFractionDigits:2})}</div>}
-          <div className="kpi-icon cyan">{I.bank}</div>
+      <div style={{fontSize:11, color:'var(--muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:1, margin:'6px 0 8px'}}>Resumen global del periodo</div>
+      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,minmax(0,1fr))', gap:10}}>
+        <div style={metricCardStyle}>
+          <div className="kpi-label">Posicion total</div>
+          <div className="kpi-value" style={{fontSize:20}}>{moneyCurrency(posicionTotalEntries[0]?.[1] || 0, posicionTotalEntries[0]?.[0] || empresa?.moneda || 'PEN')}</div>
+          {posicionTotalEntries.slice(1).map(([moneda, value]) => (
+            <div key={moneda} className="text-muted" style={{fontSize:12, marginTop:2}}>{moneyCurrency(value, moneda)}</div>
+          ))}
+          <div className="text-muted" style={{fontSize:11, marginTop:8}}>Saldo acumulado real</div>
         </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Cobros del mes</div>
-          <div className="kpi-value" style={{fontSize:20, color:'var(--green)'}}>{money(cobrosDelMes)}</div>
-          <div className="kpi-icon green">{I.arrowDown}</div>
+        <div style={metricCardStyle}>
+          <div className="kpi-label">Cobros - {periodoTesoreriaLabelCorto}</div>
+          <div className="kpi-value" style={{fontSize:20, color:'var(--green)'}}>{moneyCurrency(cobrosPeriodoEntries[0]?.[1] || 0, cobrosPeriodoEntries[0]?.[0] || empresa?.moneda || 'PEN')}</div>
+          {cobrosPeriodoEntries.slice(1).map(([moneda, value]) => (
+            <div key={moneda} className="text-muted" style={{fontSize:12, marginTop:2}}>{moneyCurrency(value, moneda)}</div>
+          ))}
+          <div className="text-muted" style={{fontSize:11, marginTop:8}}>{ingresosPeriodoCount} ingresos en el periodo</div>
         </div>
-        <div className="kpi-card">
-          <div className="kpi-label">Pagos del mes</div>
-          <div className="kpi-value" style={{fontSize:20, color:'var(--orange)'}}>{money(pagosDelMes)}</div>
-          <div className="kpi-icon orange">{I.arrowUp}</div>
+        <div style={metricCardStyle}>
+          <div className="kpi-label">Pagos - {periodoTesoreriaLabelCorto}</div>
+          <div className="kpi-value" style={{fontSize:20, color:'var(--danger)'}}>{moneyCurrency(pagosCuentaEntries[0]?.[1] || 0, pagosCuentaEntries[0]?.[0] || empresa?.moneda || 'PEN')}</div>
+          {pagosCuentaEntries.slice(1).map(([moneda, value]) => (
+            <div key={moneda} className="text-muted" style={{fontSize:12, marginTop:2}}>{moneyCurrency(value, moneda)}</div>
+          ))}
+          {pagosOrigenEntries.map(([moneda, value]) => (
+            <div key={moneda} style={{fontSize:11, marginTop:4, color:'var(--orange)'}}>{moneyCurrency(value, moneda)} en origen</div>
+          ))}
+          <div className="text-muted" style={{fontSize:11, marginTop:8}}>Convertido al TC del dia</div>
         </div>
-        <div className="kpi-card">
+        <div style={metricCardStyle}>
           <div className="kpi-label">Por cobrar pendiente</div>
-          <div className="kpi-value" style={{fontSize:20, color:'var(--orange)'}}>{money(pendienteCxC)}</div>
-          <div style={{fontSize:11, color:'var(--muted)'}}>CxP pendiente: {money(pendienteCxP)}</div>
-          <div className="kpi-icon orange">{I.clock}</div>
+          <div className="kpi-value" style={{fontSize:20, color:'var(--orange)'}}>{formatTotales(pendienteCxC)}</div>
+          {pendienteCxPEntries.map(([mon, val]) => (
+            <div key={mon} className="text-muted" style={{fontSize:11, marginTop:4}}>CxP pendiente: {moneyCurrency(val, mon)}</div>
+          ))}
+          <div className="text-muted" style={{fontSize:11, marginTop:8}}>{facturasPendientesCount} facturas por vencer</div>
         </div>
       </div>
 
-      {/* Saldo por cuenta */}
-      {saldoPorCuenta.length > 0 && (
-        <div style={{display:'flex', gap:10, flexWrap:'wrap', marginTop:12}}>
-          {saldoPorCuenta.map(cb => (
-            <div key={cb.id} style={{background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 18px', minWidth:180, flex:'1 1 180px'}}>
-              <div style={{fontSize:11, color:'var(--muted)', fontWeight:600, textTransform:'uppercase', letterSpacing:1}}>{cb.banco}</div>
-              <div style={{fontWeight:700, fontSize:15, marginTop:2}}>{cb.nombre}</div>
-              <div style={{fontSize:21, fontWeight:800, color: cb.saldo >= 0 ? 'var(--cyan)' : 'var(--danger)', marginTop:4}}>{cb.moneda} {cb.saldo.toLocaleString('es-PE',{minimumFractionDigits:2})}</div>
-              <div style={{fontSize:11, color:'var(--muted)', marginTop:2, textTransform:'capitalize'}}>{cb.tipo} · {cb.moneda}</div>
+      <div style={{fontSize:11, color:'var(--muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:1, margin:'16px 0 8px'}}>Cuentas bancarias</div>
+      <div style={accountGridStyle}>
+        {saldoPorCuenta.map(cb => {
+          const saldoInicialCuenta = Number(cb.saldo_inicial || 0);
+          const editandoSaldoInicial = editandoSaldoInicialId === cb.id;
+          const guardandoSaldoInicial = guardandoSaldoInicialId === cb.id;
+          const tieneMovimientosCuenta = Number(cb.movimientos_asignados || 0) > 0;
+          const sinVincularCuenta = sinVincularPorCuenta[cb.id] ?? 0;
+          return (
+            <div key={cb.id} style={{...accountCardStyle, opacity: tieneMovimientosCuenta ? 1 : 0.6}}>
+              <div className="text-muted" style={{fontSize:11, textTransform:'uppercase'}}>{cb.banco} - {cb.moneda}</div>
+              <div style={{fontSize:13, fontWeight:500, marginTop:4}}>{cb.alias || cb.nombre}</div>
+              <div style={{fontSize:20, fontWeight:800, color: cb.saldo >= 0 ? 'var(--green)' : 'var(--danger)', marginTop:8}}>{moneyCurrency(cb.saldo, cb.moneda)}</div>
+              {editandoSaldoInicial ? (
+                <div className="row" style={{gap:6, alignItems:'center', marginTop:6, flexWrap:'nowrap'}}>
+                  <span className="text-muted" style={{fontSize:11}}>Saldo inicial:</span>
+                  <input
+                    className="input"
+                    type="number"
+                    step="0.01"
+                    autoFocus
+                    value={saldoInicialDraft}
+                    onChange={e => setSaldoInicialDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') guardarSaldoInicialCuenta(cb);
+                      if (e.key === 'Escape') cancelarEdicionSaldoInicial();
+                    }}
+                    placeholder="0.00"
+                    style={{fontSize:11, padding:'3px 6px', width:92}}
+                  />
+                  <button className="icon-btn" style={{width:22, height:22}} title="Guardar saldo inicial" disabled={guardandoSaldoInicial} onClick={() => guardarSaldoInicialCuenta(cb)}>{I.check}</button>
+                  <button className="icon-btn" style={{width:22, height:22}} title="Cancelar" disabled={guardandoSaldoInicial} onClick={cancelarEdicionSaldoInicial}>{I.x}</button>
+                </div>
+              ) : (
+                <div className="text-muted" style={{fontSize:11, marginTop:6, display:'flex', alignItems:'center', gap:6}}>
+                  <span>Saldo inicial: {moneyCurrency(saldoInicialCuenta, cb.moneda)}</span>
+                  <button className="icon-btn" style={{width:22, height:22}} title="Editar saldo inicial" onClick={() => iniciarEdicionSaldoInicial(cb)}>{I.edit}</button>
+                </div>
+              )}
+              <div style={{borderTop:'1px solid var(--border-subtle)', marginTop:10, paddingTop:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8}}>
+                <span className="text-muted" style={{fontSize:11, textTransform:'capitalize'}}>{cb.tipo}</span>
+                {tieneMovimientosCuenta && (
+                  sinVincularCuenta > 0
+                    ? <span className="badge badge-orange" style={{fontSize:10}}>{sinVincularCuenta} sin vincular</span>
+                    : <span className="badge badge-green" style={{fontSize:10}}>Al día</span>
+                )}
+              </div>
             </div>
+          );
+        })}
+        <button type="button" onClick={abrirNuevaCuentaBancaria} style={{...accountCardStyle, border:'1.5px dashed var(--border-subtle)', background:'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, color:'var(--muted)', minHeight:154}}>
+          <span style={{width:22, height:22, display:'inline-flex'}}>{I.plus}</span>
+          <span style={{fontSize:13}}>Agregar cuenta</span>
+        </button>
+        <div style={{...metricCardStyle, minHeight:154}}>
+          <div className="kpi-label">Sin cuenta asignada</div>
+          <div className="kpi-value" style={{fontSize:20, color: sinCuentaTienePendientes ? 'var(--orange)' : 'var(--fg)'}}>{moneyCurrency(sinCuentaEntries[0]?.[1] || 0, sinCuentaEntries[0]?.[0] || 'USD')}</div>
+          {sinCuentaEntries.slice(1).map(([moneda, value]) => (
+            <div key={moneda} className="text-muted" style={{fontSize:12, marginTop:2}}>{moneyCurrency(value, moneda)}</div>
           ))}
+          <div className="text-muted" style={{fontSize:11, marginTop:8}}>{sinCuentaTienePendientes ? 'Movimientos pendientes de match bancario' : 'Todos los movimientos vinculados'}</div>
         </div>
-      )}
+      </div>
 
       <div className="tabs mt-6">
         {[{id:'match',label:'Match Bancario'},{id:'resumen',label:'Flujo de caja'},{id:'extracto',label:'Extracto banco'}].map(t => (
@@ -1584,18 +2351,54 @@ function Tesoreria() {
           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:16}}>
             {/* Sistema */}
             <div className="card">
-              <div className="card-head"><h3>Sistema (movimientos tesorería)</h3><span className="badge badge-cyan">{(movimientosTesoreria||[]).length}</span></div>
+              <div className="card-head"><h3>Sistema (movimientos tesorería)</h3><span className="badge badge-cyan">{movimientosPeriodoTesoreria.length}</span></div>
               <div className="table-wrap" style={{maxHeight:420}}>
-                <table className="tbl">
-                  <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Monto</th></tr></thead>
-                  <tbody>{(movimientosTesoreria||[]).slice(0,50).map((m,i) => (
-                    <tr key={m.id||i}>
-                      <td className="text-muted" style={{fontSize:12}}>{m.fecha}</td>
-                      <td style={{fontSize:12}}>{m.descripcion}</td>
-                      <td><span className={'badge '+(m.tipo==='ingreso'?'badge-green':'badge-orange')} style={{fontSize:10}}>{m.tipo}</span></td>
-                      <td className="num" style={{fontSize:12, color:m.tipo==='ingreso'?'var(--green)':'var(--fg)'}}>{m.tipo==='ingreso'?'+':'-'}{money(m.monto)}</td>
-                    </tr>
-                  ))}</tbody>
+                <table className="tbl" style={{minWidth:720}}>
+                  <thead><tr><th>Fecha</th><th>Descripcion</th><th>Tipo</th><th>Monto</th><th>Cuenta</th></tr></thead>
+                  <tbody>{(movimientosPeriodoTesoreria||[]).slice(0,50).map((m,i) => {
+                    const cuentaMov = cuentaMovimientoDe(m);
+                    const editandoCuenta = editandoCuentaMovId === m.id || !cuentaMov;
+                    const asignandoCuenta = asignandoCuentaMovId === m.id;
+                    const mostrarEquivalente = cuentaMov && monedasDifierenMovimientoCuenta(m, cuentaMov);
+                    const montoEquivalenteCuenta = mostrarEquivalente
+                      ? montoMovimientoEnCuenta(m, cuentaMov, equivalenciasCuenta)
+                      : 0;
+                    return (
+                      <tr key={m.id||i}>
+                        <td className="text-muted" style={{fontSize:12}}>{m.fecha}</td>
+                        <td style={{fontSize:12}}>{m.descripcion}</td>
+                        <td><span className={'badge '+(m.tipo==='ingreso'?'badge-green':'badge-orange')} style={{fontSize:10}}>{m.tipo}</span></td>
+                        <td className="num" style={{fontSize:12, color:m.tipo==='ingreso'?'var(--green)':'var(--fg)'}}>
+                          <div>{m.tipo==='ingreso'?'+':'-'}{moneyCurrency(m.monto, m.moneda)}</div>
+                          {mostrarEquivalente && (
+                            <div className="text-muted" style={{fontSize:11}}>≈ {m.tipo==='ingreso'?'+':'-'}{moneyCurrency(montoEquivalenteCuenta, cuentaMov.moneda)}</div>
+                          )}
+                        </td>
+                        <td style={{fontSize:12, minWidth:150}}>
+                          {editandoCuenta ? (
+                            <select
+                              className="input"
+                              style={{fontSize:11, padding:'3px 6px', minWidth:138}}
+                              value={cuentaMov?.id || ''}
+                              disabled={asignandoCuenta}
+                              onChange={e => cambiarCuentaMovimiento(m, e.target.value)}
+                              onBlur={() => cuentaMov && setEditandoCuentaMovId(null)}
+                            >
+                              {cuentaMov ? <option value="">Sin cuenta</option> : <option value="">Asignar cuenta</option>}
+                              {cuentasActivas.map(cuenta => (
+                                <option key={cuenta.id} value={cuenta.id}>{cuentaOptionLabel(cuenta)}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span style={{display:'inline-flex', alignItems:'center', gap:6, whiteSpace:'nowrap'}}>
+                              <span>{cuentaOptionLabel(cuentaMov)}</span>
+                              <button className="icon-btn" style={{width:22, height:22}} title="Editar cuenta" onClick={() => setEditandoCuentaMovId(m.id)}>{I.edit}</button>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}</tbody>
                 </table>
               </div>
             </div>
@@ -1610,10 +2413,10 @@ function Tesoreria() {
                       <td className="text-muted" style={{fontSize:12}}>{m.fecha}</td>
                       <td style={{fontSize:12}}><strong>{m.descripcion || m.desc}</strong></td>
                       <td><span className={'badge '+(m.tipo==='credito'?'badge-green':'badge-orange')} style={{fontSize:10}}>{m.tipo==='credito'?'Crédito':'Débito'}</span></td>
-                      <td className="num" style={{fontSize:12, color:m.tipo==='credito'?'var(--green)':'var(--fg)'}}>{m.tipo==='credito'?'+':'-'}{money(m.monto)}</td>
+                      <td className="num" style={{fontSize:12, color:m.tipo==='credito'?'var(--green)':'var(--fg)'}}>{m.tipo==='credito'?'+':'-'}{moneyCurrency(m.monto, m.moneda)}</td>
                       <td>
                         {m.conciliado
-                          ? <span style={{fontSize:11, color:'var(--green)'}}>{I.check}</span>
+                          ? <button className="btn btn-sm btn-secondary" data-local-form="true" style={{fontSize:11, padding:'2px 8px'}} onClick={() => deshacerConciliacionBanco?.(m.id)}>Deshacer</button>
                           : <button className="btn btn-sm btn-primary" data-local-form="true" style={{fontSize:11, padding:'2px 8px'}} onClick={() => abrirMatch(m)}>Conciliar</button>}
                       </td>
                     </tr>
@@ -1638,6 +2441,7 @@ function Tesoreria() {
               <span style={{fontSize:12, color:'var(--muted)'}}>Cuenta:</span>
               <select className="input" style={{fontSize:12, padding:'4px 8px', minWidth:180}} value={resumenCuenta} onChange={e=>setResumenCuenta(e.target.value)}>
                 <option value="">Todas las cuentas</option>
+                <option value={SIN_VINCULAR}>Sin vincular</option>
                 {cuentasActivas.map(c=><option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
               </select>
             </div>
@@ -1650,7 +2454,7 @@ function Tesoreria() {
               <input className="input" type="date" style={{fontSize:12, padding:'4px 8px'}} value={resumenHasta} onChange={e=>setResumenHasta(e.target.value)}/>
             </div>
             <div style={{marginLeft:'auto', fontSize:12, color:'var(--muted)'}}>
-              {movResumen.length} movimientos · Saldo final: <strong style={{color:'var(--cyan)'}}>{money(movResumen[movResumen.length-1]?.saldoAcum ?? 0)}</strong>
+              {movResumen.length} movimientos · Saldo final: <strong style={{color:'var(--cyan)'}}>{saldoFinalResumenDisplay}</strong>
             </div>
           </div>
 
@@ -1679,10 +2483,10 @@ function Tesoreria() {
                         {m.es_manual && <span className="badge badge-gray" style={{fontSize:9, marginLeft:4}}>Manual</span>}
                       </td>
                       <td><span className={'badge '+(m.tipo==='ingreso'?'badge-green':'badge-orange')} style={{fontSize:10}}>{m.tipo}</span></td>
-                      <td style={{fontSize:11, color:'var(--muted)'}}>{catLabel(m.categoria)}</td>
-                      <td className="num" style={{fontWeight:600, color:m.tipo==='ingreso'?'var(--green)':'var(--fg)'}}>{m.tipo==='ingreso'?'+':'-'}{money(m.monto)}</td>
+                      <td style={{fontSize:11, color:'var(--muted)'}}>{categoriaMovimientoDe(m)}</td>
+                      <td className="num" style={{fontWeight:600, color:m.tipo==='ingreso'?'var(--green)':'var(--fg)'}}>{m.tipo==='ingreso'?'+':'-'}{moneyCurrency(m.monto, m.moneda || cb?.moneda)}</td>
                       <td style={{fontSize:11}}>{cb?.nombre || '—'}</td>
-                      <td className="num" style={{fontWeight:700, color: m.saldoAcum >= 0 ? 'var(--cyan)' : 'var(--danger)'}}>{money(m.saldoAcum)}</td>
+                      <td className="num" style={{fontWeight:700, color: m.saldoAcum >= 0 ? 'var(--cyan)' : 'var(--danger)'}}>{moneyCurrency(m.saldoAcum, m.saldoAcumMoneda || cb?.moneda || m.moneda)}</td>
                       <td>{movBanco ? <span style={{color:'var(--green)', fontSize:11}}>{I.check} Sí</span> : <span style={{color:'var(--muted)', fontSize:11}}>No</span>}</td>
                       <td style={{fontSize:11, color:'var(--muted)'}}>{vinculo ? `${vinculoTipo}` : '—'}</td>
                     </tr>
@@ -1711,37 +2515,60 @@ function Tesoreria() {
 
               {/* 3-block summary table */}
               <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:16}}>
-                {(() => {
-                  let saldoAcum = totalPEN;
-                  return bloques90.map((b, i) => {
-                    saldoAcum += b.flujoNeto;
-                    return (
-                      <div key={i} style={{background:'var(--surface-2)', borderRadius:10, padding:'14px 16px', border:'1px solid var(--border)'}}>
-                        <div style={{fontSize:11, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:1, marginBottom:8}}>{b.label}</div>
-                        <div style={{display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4}}>
-                          <span style={{color:'var(--muted)'}}>Ingresos proyect.</span>
-                          <strong style={{color:'var(--green)'}}>{money(b.ingresos)}</strong>
-                        </div>
-                        <div style={{display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4}}>
-                          <span style={{color:'var(--muted)'}}>Egresos proyect.</span>
-                          <strong style={{color:'var(--orange)'}}>{money(b.egresos)}</strong>
-                        </div>
-                        <div style={{borderTop:'1px solid var(--border)', marginTop:6, paddingTop:6, display:'flex', justifyContent:'space-between', fontSize:13}}>
-                          <span style={{color:'var(--muted)'}}>Flujo neto</span>
-                          <strong style={{color: b.flujoNeto >= 0 ? 'var(--green)' : 'var(--danger)'}}>{b.flujoNeto >= 0 ? '+' : ''}{money(b.flujoNeto)}</strong>
-                        </div>
-                        <div style={{display:'flex', justifyContent:'space-between', fontSize:12, marginTop:4}}>
-                          <span style={{color:'var(--muted)'}}>Saldo proy.</span>
-                          <strong style={{color: saldoAcum >= 0 ? 'var(--cyan)' : 'var(--danger)'}}>{money(saldoAcum)}</strong>
+                {bloques90.map((b, i) => {
+                  const monedas = Object.keys(b.saldoProyPorMoneda).length
+                    ? Object.keys(b.saldoProyPorMoneda)
+                    : ['PEN'];
+                  return (
+                    <div key={i} style={{background:'var(--surface-2)', borderRadius:10, padding:'14px 16px', border:'1px solid var(--border)'}}>
+                      <div style={{fontSize:11, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:1, marginBottom:8}}>{b.label}</div>
+                      <div style={{display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4, alignItems:'flex-start'}}>
+                        <span style={{color:'var(--muted)'}}>Ingresos proyect.</span>
+                        <div style={{textAlign:'right'}}>
+                          {monedas.map(mon => <div key={mon}><strong style={{color:'var(--green)'}}>{moneyCurrency(b.ingresosPorMoneda[mon] || 0, mon)}</strong></div>)}
                         </div>
                       </div>
-                    );
-                  });
-                })()}
+                      <div style={{display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4, alignItems:'flex-start'}}>
+                        <span style={{color:'var(--muted)'}}>Egresos proyect.</span>
+                        <div style={{textAlign:'right'}}>
+                          {monedas.map(mon => <div key={mon}><strong style={{color:'var(--orange)'}}>{moneyCurrency(b.egresosPorMoneda[mon] || 0, mon)}</strong></div>)}
+                        </div>
+                      </div>
+                      <div style={{borderTop:'1px solid var(--border)', marginTop:6, paddingTop:6, display:'flex', justifyContent:'space-between', fontSize:13, alignItems:'flex-start'}}>
+                        <span style={{color:'var(--muted)'}}>Flujo neto</span>
+                        <div style={{textAlign:'right'}}>
+                          {monedas.map(mon => {
+                            const neto = b.flujoNetoPorMoneda[mon] || 0;
+                            return <div key={mon}><strong style={{color: neto >= 0 ? 'var(--green)' : 'var(--danger)'}}>{neto >= 0 ? '+' : ''}{moneyCurrency(neto, mon)}</strong></div>;
+                          })}
+                        </div>
+                      </div>
+                      <div style={{display:'flex', justifyContent:'space-between', fontSize:12, marginTop:4, alignItems:'flex-start'}}>
+                        <span style={{color:'var(--muted)'}}>Saldo proy.</span>
+                        <div style={{textAlign:'right'}}>
+                          {monedas.map(mon => {
+                            const saldo = b.saldoProyPorMoneda[mon] || 0;
+                            return <div key={mon}><strong style={{color: saldo >= 0 ? 'var(--cyan)' : 'var(--danger)'}}>{moneyCurrency(saldo, mon)}</strong></div>;
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Bar chart */}
-              <BarChartProyeccion semanas={proyeccionSemanas} saldoInicial={totalPEN} />
+              <BarChartProyeccion semanas={proyeccionSemanasGrafico} saldoInicialPorMoneda={saldoDisponiblePorMoneda} />
+              {alertasNegativas.map(({ mon, semana, saldo }) => (
+                <div key={mon} style={{marginTop:8, padding:'8px 12px', background:'rgba(220,30,30,0.07)', border:'1px solid rgba(220,30,30,0.25)', borderRadius:6, fontSize:12, color:'var(--danger)'}}>
+                  ⚠ Alerta: saldo {mon} proyectado negativo en {semana} ({moneyCurrency(saldo, mon)}). Considera transferir fondos o programar el pago desde tu cuenta {mon === 'PEN' ? 'USD' : 'PEN'}.
+                </div>
+              ))}
+              {!hayProyeccion && (
+                <div style={{textAlign:'center', color:'var(--muted)', fontSize:12, marginTop:8}}>
+                  Sin CxC ni CxP con vencimiento en los próximos 90 días
+                </div>
+              )}
             </div>
           </div>
         </>
@@ -1755,15 +2582,16 @@ function Tesoreria() {
           </div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Monto</th><th>Conciliado</th><th>Vinculado a</th></tr></thead>
+              <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Monto</th><th>Conciliado</th><th>Vinculado a</th><th></th></tr></thead>
               <tbody>{(movimientosBanco||[]).map((m,i) => (
                 <tr key={m.id||i}>
                   <td>{m.fecha}</td>
                   <td>{m.descripcion || m.desc}</td>
                   <td><span className={'badge '+(m.tipo==='credito'?'badge-green':'badge-orange')}>{m.tipo==='credito'?'Crédito':'Débito'}</span></td>
-                  <td className="num" style={{color:m.tipo==='credito'?'var(--green)':'var(--fg)'}}>{m.tipo==='credito'?'+':'-'}{money(m.monto)}</td>
+                  <td className="num" style={{color:m.tipo==='credito'?'var(--green)':'var(--fg)'}}>{m.tipo==='credito'?'+':'-'}{moneyCurrency(m.monto, m.moneda)}</td>
                   <td>{m.conciliado ? <span className="badge badge-green">{I.check} Sí</span> : <span className="badge badge-gray">No</span>}</td>
                   <td className="text-muted mono" style={{fontSize:11}}>{m.vinculado_id ? `${m.vinculado_tipo}:${m.vinculado_id}` : '—'}</td>
+                  <td>{m.conciliado && <button className="btn btn-sm btn-secondary" onClick={() => deshacerConciliacionBanco?.(m.id)}>Deshacer</button>}</td>
                 </tr>
               ))}</tbody>
             </table>
@@ -1793,7 +2621,15 @@ function Tesoreria() {
               <div style={{background:'var(--surface-2)', borderRadius:8, padding:12, fontSize:13, display:'flex', flexDirection:'column', gap:4}}>
                 <div><strong>Descripción:</strong> {movSel?.descripcion || movSel?.desc}</div>
                 <div><strong>Fecha:</strong> {movSel?.fecha} &nbsp; <strong>Tipo:</strong> {movSel?.tipo}</div>
+                <div><strong>Cuenta bancaria:</strong> {cuentaBancoMovSel ? `${cuentaBancoMovSel.alias || cuentaBancoMovSel.nombre} · ${cuentaBancoMovSel.banco} · ${cuentaBancoMovSel.moneda}` : 'Sin cuenta en extracto'}</div>
               </div>
+
+              {requiereTcMatch && (
+                <div style={{marginTop:12, padding:10, background:'rgba(0,180,216,0.08)', borderRadius:8, border:'1px solid rgba(0,180,216,0.25)', fontSize:12}}>
+                  <strong>ConversiÃ³n a moneda de cuenta:</strong>{' '}
+                  TC {tcPreviewMatch ? Number(tcPreviewMatch).toFixed(4) : 'por fecha del movimiento'} · equivalente {moneyCurrency(equivalentePreviewMatch || 0, cuentaBancoMovSel.moneda)}
+                </div>
+              )}
 
               {sugeridos.length > 0 && (
                 <div style={{marginTop:14, padding:10, background:'rgba(0,200,100,0.07)', borderRadius:8, border:'1px solid rgba(0,200,100,0.2)'}}>
@@ -1835,6 +2671,36 @@ function Tesoreria() {
               <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:18}}>
                 <button type="button" className="btn btn-secondary" onClick={() => setPanel(false)}>Cancelar</button>
                 <button className="btn btn-primary" type="submit" disabled={!target}>{I.check} Confirmar match</button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
+
+      {panelCuentaBancaria && (
+        <>
+          <div className="side-panel-backdrop" onClick={cerrarNuevaCuentaBancaria} />
+          <div className="side-panel" style={{width:'min(520px, 96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Cuentas bancarias</div>
+                <div style={{fontSize:22, fontWeight:700}}>Agregar cuenta</div>
+              </div>
+              <button className="icon-btn" onClick={cerrarNuevaCuentaBancaria}>{I.x}</button>
+            </div>
+            <form className="side-panel-body" onSubmit={guardarNuevaCuentaBancaria} data-local-form="true">
+              <div className="grid-2" style={{gap:12}}>
+                <div className="input-group"><label>Nombre / Alias *</label><input className="input" value={formCuentaBancaria.nombre} onChange={setCuentaBancariaField('nombre')} placeholder="Interbank USD principal" required /></div>
+                <div className="input-group"><label>Banco *</label><input className="input" value={formCuentaBancaria.banco} onChange={setCuentaBancariaField('banco')} placeholder="Interbank" required /></div>
+                <div className="input-group"><label>Nro. cuenta</label><input className="input" value={formCuentaBancaria.numero_cuenta} onChange={setCuentaBancariaField('numero_cuenta')} placeholder="000-000000000" /></div>
+                <div className="input-group"><label>CCI</label><input className="input" value={formCuentaBancaria.cci} onChange={setCuentaBancariaField('cci')} placeholder="00000000000000000000" /></div>
+                <div className="input-group"><label>Moneda</label><select className="select" value={formCuentaBancaria.moneda} onChange={setCuentaBancariaField('moneda')}><option value="PEN">PEN</option><option value="USD">USD</option><option value="EUR">EUR</option></select></div>
+                <div className="input-group"><label>Tipo</label><select className="select" value={formCuentaBancaria.tipo} onChange={setCuentaBancariaField('tipo')}><option value="corriente">Corriente</option><option value="ahorros">Ahorros</option><option value="recaudadora">Recaudadora</option><option value="caja_chica">Caja chica</option></select></div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Saldo inicial ({formCuentaBancaria.moneda})</label><input className="input" type="number" step="0.01" value={formCuentaBancaria.saldo_inicial} onChange={setCuentaBancariaField('saldo_inicial')} placeholder="0.00 - dejar en blanco si la cuenta empieza desde cero" /></div>
+              </div>
+              <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:18}}>
+                <button type="button" className="btn btn-secondary" onClick={cerrarNuevaCuentaBancaria}>Cancelar</button>
+                <button className="btn btn-primary" type="submit" disabled={savingCuentaBancaria}>{I.plus} {savingCuentaBancaria ? 'Guardando...' : 'Agregar cuenta'}</button>
               </div>
             </form>
           </div>
@@ -1886,12 +2752,13 @@ const erMoney = (totals, currency) => moneyCurrency(erAmount(totals, currency), 
 
 function Resultados({ role }) {
   const [expanded, setExpanded] = useState({ ingresos: true, costo: false, gastos: false, gastosFin: false });
-  const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio } = useApp();
+  const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio, tipoCambioHoy } = useApp();
   const [cecosSel, setCecosSel] = useState([]);
   const [cebesSel, setCebesSel] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [erData, setErData] = useState(null);
+  const [tcPeriodo, setTcPeriodo] = useState(null);
   const supabaseMode = isSupabaseMode();
   const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const now = new Date();
@@ -1958,7 +2825,23 @@ function Resultados({ role }) {
         if (mounted) setLoading(false);
       });
     return () => { mounted = false; };
-  }, [supabaseMode, canFin, empresa?.id, periodo, cecosSel, cebesSel]);
+  }, [supabaseMode, canFin, empresa?.id, periodo, cecosSel, cebesSel, comprasGastos?.length]);
+
+  useEffect(() => {
+    const currentPeriodo = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    if (periodo === currentPeriodo || !supabaseMode) {
+      setTcPeriodo(null);
+      return;
+    }
+    const [y, m] = periodo.split('-').map(Number);
+    const lastDay = new Date(Date.UTC(y, m, 0));
+    const fechaFin = lastDay.toISOString().split('T')[0];
+    let cancelled = false;
+    getSupabaseClient().then(sb => getTipoCambioPorFecha(fechaFin, sb)).then(tc => {
+      if (!cancelled) setTcPeriodo(tc?.usd ? Math.round(100 / tc.usd) / 100 : null);
+    }).catch(() => { if (!cancelled) setTcPeriodo(null); });
+    return () => { cancelled = true; };
+  }, [periodo, supabaseMode]);
 
   if (!canFin) return (
     <div className="card" style={{ padding:40, textAlign:'center' }}>
@@ -1984,20 +2867,36 @@ function Resultados({ role }) {
     cebesSel.length ? `CEBE: ${cebesDeEmpresa.filter(c=>cebesSel.includes(c.id)).map(c=>c.nombre).join(', ')}` : '',
   ].filter(Boolean).join(' / ');
 
+  const tcFallback = tipoCambioHoy?.usd ? Math.round(100 / tipoCambioHoy.usd) / 100 : null;
+  const tcRef = tcPeriodo ?? tcFallback;
+  const erRefValue = totals => erAmount(totals, 'PEN') + erAmount(totals, 'USD') * (tcRef || 0);
+  const tcRefLabel = tcRef ? `S/ ${tcRef.toFixed(2)}` : '';
+  const tooltipRef = tcRef
+    ? `Valor referencial calculado al TC de S/ ${tcRef.toFixed(2)} del período. No usar para reportes formales ni declaraciones tributarias.`
+    : '';
+
   const toggle = k => setExpanded(e => ({ ...e, [k]: !e[k] }));
-  const MoneyCols = ({ totals, neg, marginTotals }) => (
-    <>
-      {ER_CURRENCIES.map(currency => {
-        const value = erAmount(totals, currency);
-        return (
-          <div key={currency} className="num" style={{ minWidth:130, textAlign:'right' }}>
-            <div>{neg && value !== 0 ? '(' : ''}{erMoney(totals, currency)}{neg && value !== 0 ? ')' : ''}</div>
-            {marginTotals && <div style={{ color:'var(--fg-muted)', fontSize:11 }}>[{erAmount(marginTotals, currency)}% margen]</div>}
+  const MoneyCols = ({ totals, neg, marginTotals }) => {
+    const refVal = tcRef ? erRefValue(totals) : null;
+    return (
+      <>
+        {ER_CURRENCIES.map(currency => {
+          const value = erAmount(totals, currency);
+          return (
+            <div key={currency} className="num" style={{ minWidth:130, textAlign:'right' }}>
+              <div>{neg && value !== 0 ? '(' : ''}{erMoney(totals, currency)}{neg && value !== 0 ? ')' : ''}</div>
+              {marginTotals && <div style={{ color:'var(--fg-muted)', fontSize:11 }}>[{erAmount(marginTotals, currency)}% margen]</div>}
+            </div>
+          );
+        })}
+        {tcRef && (
+          <div className="num" style={{ minWidth:120, textAlign:'right', borderLeft:'2px solid var(--border-subtle)', paddingLeft:8, color:'var(--fg-muted)', opacity:0.7 }}>
+            {neg && refVal !== 0 ? `(${money(refVal)})` : money(refVal)}
           </div>
-        );
-      })}
-    </>
-  );
+        )}
+      </>
+    );
+  };
   const Row = ({ label, totals, bold, neg, marginTotals, expandKey, items }) => (
     <>
       <div onClick={() => expandKey && toggle(expandKey)} style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 20px', borderBottom:'1px solid var(--border-subtle)', cursor:expandKey?'pointer':'default', background:bold?'var(--bg-subtle)':'transparent' }}>
@@ -2040,6 +2939,14 @@ function Resultados({ role }) {
         <div style={{ display:'flex', gap:12, padding:'10px 20px', borderBottom:'1px solid var(--border-subtle)', color:'var(--fg-muted)', fontSize:12, fontWeight:700 }}>
           <div style={{ flex:1 }}>Concepto</div>
           {ER_CURRENCIES.map(currency => <div key={currency} className="num" style={{ minWidth:130, textAlign:'right' }}>{currency}</div>)}
+          {tcRef && (
+            <div className="num" style={{ minWidth:120, textAlign:'right', borderLeft:'2px solid var(--border-subtle)', paddingLeft:8, fontWeight:400, fontSize:11, color:'var(--fg-muted)' }}>
+              <span>Total S/ (ref.)</span>{' '}
+              <span style={{ cursor:'help', display:'inline-flex', alignItems:'center', verticalAlign:'middle' }} title={tooltipRef}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width={11} height={11} style={{ strokeWidth:2, flexShrink:0 }}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+              </span>
+            </div>
+          )}
         </div>
         {loading || waitingForData ? (
           <div className="text-center text-muted" style={{ padding:40 }}>Calculando Estado de Resultados...</div>
@@ -2065,11 +2972,20 @@ function Resultados({ role }) {
                   <div style={{ color:'rgba(255,255,255,0.7)', fontSize:11, fontFamily:'DM Sans' }}>[{erAmount(margenes.resultadoNeto, currency)}% margen]</div>
                 </div>
               ))}
+              {tcRef && (
+                <div className="num" style={{ minWidth:120, textAlign:'right', borderLeft:'2px solid rgba(255,255,255,0.15)', paddingLeft:8, color:'rgba(255,255,255,0.5)', fontFamily:'Sora' }}>
+                  <div style={{ fontSize:14, fontWeight:600 }}>{money(erRefValue(resultadoNeto))} <span style={{ fontSize:10, fontWeight:400, opacity:0.8 }}>(ref.)</span></div>
+                  <div style={{ fontSize:9, fontWeight:400, marginTop:2 }}>TC {tcRefLabel}</div>
+                </div>
+              )}
             </div>
           </>
         )}
       </div>
-      <div className="text-muted mt-4" style={{ fontSize:12, textAlign:'center' }}>Haz clic en las filas principales para expandir el detalle por concepto. El ER no convierte entre PEN y USD.</div>
+      <div className="text-muted mt-4" style={{ fontSize:12, textAlign:'center' }}>
+        Haz clic en las filas principales para expandir el detalle por concepto. El ER no convierte entre PEN y USD.
+        {tcRef && <span> · La columna Total S/ es referencial y usa el TC {tcRefLabel} del período. El ER no consolida monedas para fines contables.</span>}
+      </div>
     </>
   );
 }
@@ -4238,7 +5154,7 @@ const CC_PRECONFIG_RAPIDO = {
   form: { ya_pagado: true, metodo_pago: 'Caja chica' },
 };
 
-function CajaChica() {
+function CajaChicaLegacy() {
   const { cajaChica } = useApp();
   const [panelNuevoEgreso, setPanelNuevoEgreso] = useState(false);
   const [preconfigNE, setPreconfigNE] = useState(null);
@@ -4322,6 +5238,493 @@ function CajaChica() {
           onClose={cerrarNuevoEgreso}
           onSaved={cerrarNuevoEgreso}
         />
+      )}
+    </>
+  );
+}
+
+const CC_FONDO_FORM = {
+  nombre: '',
+  responsable_id: '',
+  monto_asignado: '',
+  monto_minimo: '',
+  cuenta_bancaria_id: '',
+  moneda: 'PEN',
+  fecha_apertura: new Date().toISOString().slice(0, 10),
+  notas: '',
+};
+
+function CajaChica() {
+  const { empresa, authUser, role, cajaChica, centrosCosto, cuentasBancarias, usuarios, addNotificacion } = useApp();
+  const empresaId = empresa?.id;
+  const [tab, setTab] = useState('fondos');
+  const [fondos, setFondos] = useState([]);
+  const [movimientos, setMovimientos] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [panelNuevoEgreso, setPanelNuevoEgreso] = useState(false);
+  const [preconfigNE, setPreconfigNE] = useState(null);
+  const [panelFondo, setPanelFondo] = useState(false);
+  const [formFondo, setFormFondo] = useState(CC_FONDO_FORM);
+  const [savingFondo, setSavingFondo] = useState(false);
+  const [fondoSelId, setFondoSelId] = useState(null);
+  const [rendicionForm, setRendicionForm] = useState(null);
+  const [arqueoFondo, setArqueoFondo] = useState(null);
+  const [arqueoForm, setArqueoForm] = useState({ efectivo_declarado: '', comprobantes_pendientes: '', justificacion: '' });
+  const [fFondo, setFFondo] = useState('');
+  const [fPeriodo, setFPeriodo] = useState(new Date().toISOString().slice(0, 7));
+  const [fCeco, setFCeco] = useState('');
+
+  const perm = accion => {
+    const p = role?.permisos || {};
+    const current = p[accion];
+    return Boolean(p.todo || p.tenant_admin || p.ver_finanzas || current === true || current?.includes?.('caja'));
+  };
+  const puedeCrear = perm('crear');
+  const puedeAprobar = perm('aprobar');
+  const puedeGestionar = perm('editar') || perm('anular');
+
+  const usuariosEmpresa = useMemo(() => (usuarios || []).filter(u => !u.empresa_id || u.empresa_id === empresaId), [usuarios, empresaId]);
+  const cuentasActivas = useMemo(() => (cuentasBancarias || []).filter(c => !['inactivo', 'eliminado'].includes(c.estado)), [cuentasBancarias]);
+  const fondoSel = fondos.find(f => f.id === fondoSelId) || null;
+  const usuarioDe = id => usuariosEmpresa.find(u => u.id === id);
+  const cuentaDe = id => (cuentasBancarias || []).find(c => c.id === id);
+  const cecoDe = id => (centrosCosto || []).find(c => c.id === id);
+  const esResponsable = fondo => {
+    const u = usuarioDe(fondo?.responsable_id);
+    return Boolean(fondo?.responsable_id && (
+      fondo.responsable_id === authUser?.id ||
+      String(u?.email || '').toLowerCase() === String(authUser?.email || '').toLowerCase()
+    ));
+  };
+
+  const construirMock = () => {
+    const activos = (cajaChica || []).filter(c => c.estado !== 'anulado');
+    const gastado = activos.reduce((s, c) => s + Number(c.monto || 0), 0);
+    const moneda = empresa?.moneda || 'PEN';
+    const fondo = {
+      id: 'mock_fondo_general',
+      empresa_id: empresaId,
+      nombre: 'Caja Chica General',
+      responsable_id: authUser?.id || null,
+      monto_asignado: Math.max(5000, gastado),
+      monto_minimo: 500,
+      moneda,
+      estado: 'activo',
+      fecha_apertura: new Date().toISOString().slice(0, 10),
+      saldo_disponible: Math.max(0, 5000 - gastado),
+      monto_gastado: gastado,
+      monto_repuesto: 0,
+      requiere_reposicion: Math.max(0, 5000 - gastado) <= 500,
+    };
+    return {
+      fondos: [fondo],
+      movimientos: activos.map(c => ({
+        ...c,
+        fondo_id: c.fondo_id || fondo.id,
+        fondo_nombre: fondo.nombre,
+        tipo_movimiento: 'egreso',
+        fecha_movimiento: c.fecha,
+        monto_movimiento: -Number(c.monto || 0),
+      })),
+    };
+  };
+
+  const cargar = async () => {
+    if (!empresaId) return;
+    if (!isSupabaseMode()) {
+      const mock = construirMock();
+      setFondos(mock.fondos);
+      setMovimientos(mock.movimientos);
+      return;
+    }
+    setLoading(true);
+    try {
+      const [fondosData, movsData] = await Promise.all([
+        cajaChicaService.listarFondos(empresaId),
+        cajaChicaService.listarMovimientos(empresaId),
+      ]);
+      setFondos(fondosData || []);
+      setMovimientos(movsData || []);
+    } catch (err) {
+      console.warn('[CajaChica] fondos:', err?.message || err);
+      setFondos([]);
+      setMovimientos((cajaChica || []).map(c => ({
+        ...c,
+        tipo_movimiento: 'egreso',
+        fecha_movimiento: c.fecha,
+        monto_movimiento: -Number(c.monto || 0),
+      })));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { cargar(); }, [empresaId, cajaChica.length]);
+
+  const fondosActivos = fondos.filter(f => f.estado === 'activo');
+  const fondosAlerta = fondosActivos.filter(f => f.requiere_reposicion);
+  const saldoTotal = fondosActivos.reduce((s, f) => s + Number(f.saldo_disponible || 0), 0);
+  const asignadoTotal = fondosActivos.reduce((s, f) => s + Number(f.monto_asignado || 0), 0);
+  const egresosMes = movimientos
+    .filter(m => m.tipo_movimiento === 'egreso' && String(m.fecha_movimiento || m.fecha || '').slice(0, 7) === new Date().toISOString().slice(0, 7))
+    .reduce((s, m) => s + Math.abs(Number(m.monto_movimiento || m.monto || 0)), 0);
+
+  const abrirEgreso = fondo => {
+    setPreconfigNE({ ...CC_PRECONFIG_RAPIDO, form: { ...CC_PRECONFIG_RAPIDO.form, fondo_caja_chica_id: fondo?.id || '' } });
+    setPanelNuevoEgreso(true);
+  };
+  const cerrarNuevoEgreso = () => {
+    setPanelNuevoEgreso(false);
+    setPreconfigNE(null);
+    cargar();
+  };
+
+  const guardarFondo = async () => {
+    const monto = Number(formFondo.monto_asignado || 0);
+    if (!formFondo.nombre.trim() || monto <= 0) return;
+    setSavingFondo(true);
+    try {
+      const payload = {
+        empresa_id: empresaId,
+        nombre: formFondo.nombre.trim(),
+        responsable_id: formFondo.responsable_id || null,
+        monto_asignado: monto,
+        monto_minimo: Number(formFondo.monto_minimo || 0),
+        cuenta_bancaria_id: formFondo.cuenta_bancaria_id || null,
+        moneda: formFondo.moneda || empresa?.moneda || 'PEN',
+        fecha_apertura: formFondo.fecha_apertura,
+        notas: formFondo.notas || null,
+        creado_por: authUser?.id || null,
+      };
+      if (isSupabaseMode()) {
+        await cajaChicaService.crearFondo(payload);
+        await cargar();
+      } else {
+        setFondos(prev => [{ ...payload, id: `ccf_${Date.now()}`, estado: 'activo', saldo_disponible: monto, monto_gastado: 0, monto_repuesto: 0 }, ...prev]);
+      }
+      setPanelFondo(false);
+      addNotificacion('Fondo de caja chica creado.');
+    } catch (err) {
+      addNotificacion(`No se pudo crear el fondo: ${err?.message || err}`);
+    } finally {
+      setSavingFondo(false);
+    }
+  };
+
+  const solicitarRendicion = async fondo => {
+    const monto = Number(rendicionForm?.monto_solicitado || 0);
+    if (!monto) return;
+    try {
+      if (isSupabaseMode()) {
+        await cajaChicaService.solicitarRendicion({
+          empresa_id: empresaId,
+          fondo_id: fondo.id,
+          periodo_inicio: rendicionForm.periodo_inicio,
+          periodo_fin: rendicionForm.periodo_fin,
+          monto_solicitado: monto,
+          moneda: fondo.moneda || empresa?.moneda || 'PEN',
+          creado_por: authUser?.id || null,
+        });
+        await cargar();
+      }
+      setRendicionForm(null);
+      addNotificacion('Rendicion solicitada.');
+    } catch (err) {
+      addNotificacion(`No se pudo solicitar rendicion: ${err?.message || err}`);
+    }
+  };
+
+  const procesarRendicion = async (rendicion, accion) => {
+    const monto = accion === 'aprobar' ? Number(window.prompt('Monto aprobado', rendicion.monto_solicitado) || 0) : 0;
+    if (accion === 'aprobar' && monto <= 0) return;
+    const referencia = accion === 'aprobar' ? window.prompt('Referencia de transferencia', '') : '';
+    try {
+      if (isSupabaseMode()) {
+        await cajaChicaService.procesarRendicion(rendicion.id, {
+          accion,
+          monto_aprobado: monto,
+          aprobado_por: authUser?.id || null,
+          transferencia_reposicion_ref: referencia,
+          cuenta_bancaria_id: rendicion.cuenta_bancaria_id || fondoSel?.cuenta_bancaria_id || null,
+        });
+        await cargar();
+      }
+      addNotificacion(accion === 'aprobar' ? 'Rendicion aprobada y reposicion registrada.' : 'Rendicion rechazada.');
+    } catch (err) {
+      addNotificacion(`No se pudo procesar rendicion: ${err?.message || err}`);
+    }
+  };
+
+  const registrarArqueo = async () => {
+    try {
+      if (isSupabaseMode()) {
+        await cajaChicaService.registrarArqueo({
+          empresa_id: empresaId,
+          fondo_id: arqueoFondo.id,
+          saldo_sistema: Number(arqueoFondo.saldo_disponible || 0),
+          efectivo_declarado: Number(arqueoForm.efectivo_declarado || 0),
+          comprobantes_pendientes: Number(arqueoForm.comprobantes_pendientes || 0),
+          justificacion: arqueoForm.justificacion || null,
+          arqueado_por: authUser?.id || null,
+        });
+        await cargar();
+      }
+      setArqueoFondo(null);
+      setArqueoForm({ efectivo_declarado: '', comprobantes_pendientes: '', justificacion: '' });
+      addNotificacion('Arqueo registrado.');
+    } catch (err) {
+      addNotificacion(err?.message || 'No se pudo registrar el arqueo.');
+    }
+  };
+
+  const cerrarFondo = async fondo => {
+    if (!window.confirm(`Cerrar el fondo ${fondo.nombre}?`)) return;
+    const remanente = Number(window.prompt('Remanente devuelto a banco', fondo.saldo_disponible || 0) || 0);
+    try {
+      if (isSupabaseMode()) {
+        await cajaChicaService.cerrarFondo(fondo.id, { remanente, cuenta_bancaria_id: fondo.cuenta_bancaria_id || null, cerrado_por: authUser?.id || null });
+        await cargar();
+      } else {
+        setFondos(prev => prev.map(f => f.id === fondo.id ? { ...f, estado: 'cerrado', fecha_cierre: new Date().toISOString().slice(0, 10) } : f));
+      }
+      setFondoSelId(null);
+      addNotificacion('Fondo cerrado.');
+    } catch (err) {
+      addNotificacion(`No se pudo cerrar el fondo: ${err?.message || err}`);
+    }
+  };
+
+  const movsFiltrados = movimientos.filter(m => {
+    if (fFondo && m.fondo_id !== fFondo) return false;
+    if (fPeriodo && String(m.fecha_movimiento || m.fecha || '').slice(0, 7) !== fPeriodo) return false;
+    if (fCeco && (m.ceco_id || m.centro_costo_id) !== fCeco) return false;
+    return true;
+  });
+  const historialFondo = fondoSel ? movimientos.filter(m => m.fondo_id === fondoSel.id) : [];
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Caja Chica</h1>
+          <div className="page-sub">Fondos administrados con saldo, rendicion, reposicion y arqueo</div>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          {puedeCrear && <button className="btn btn-secondary" style={{fontSize:13}} onClick={() => { setFormFondo({ ...CC_FONDO_FORM, moneda: empresa?.moneda || 'PEN' }); setPanelFondo(true); }}>{I.plus} Nuevo fondo</button>}
+          <button className="btn btn-primary" onClick={() => abrirEgreso(null)}>{I.plus} Nuevo egreso</button>
+        </div>
+      </div>
+
+      <div className="kpi-grid">
+        <div className="kpi-card"><div className="kpi-label">Saldo disponible</div><div className="kpi-value" style={{color:'var(--cyan)'}}>{money(saldoTotal)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Asignado</div><div className="kpi-value">{money(asignadoTotal)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Egresos mes</div><div className="kpi-value">{money(egresosMes)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Alertas</div><div className="kpi-value" style={{color:fondosAlerta.length?'var(--orange)':'var(--green)'}}>{fondosAlerta.length}</div></div>
+      </div>
+
+      {fondosAlerta.length > 0 && (
+        <div className="card mt-6" style={{ padding: '14px 18px', borderColor: 'color-mix(in srgb, var(--orange) 45%, var(--border))', background: 'color-mix(in srgb, var(--orange) 7%, var(--surface))' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, color: 'var(--orange)' }}>{I.alert} Fondos en minimo de reposicion</div>
+          <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 4 }}>{fondosAlerta.map(f => `${f.nombre}: ${moneyCurrency(f.saldo_disponible, f.moneda)}`).join(' · ')}</div>
+        </div>
+      )}
+
+      <div className="card mt-6" style={{padding:0}}>
+        <div style={{display:'flex',gap:0,padding:'4px 20px'}}>
+          {[{key:'fondos',label:'Fondos'}, {key:'movimientos',label:'Movimientos'}].map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)} style={{padding:'10px 18px',border:'none',background:'none',cursor:'pointer',fontWeight:tab===t.key?700:400,borderBottom:tab===t.key?'2px solid var(--cyan)':'2px solid transparent',color:tab===t.key?'var(--cyan)':'var(--fg-muted)',fontSize:13}}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {tab === 'fondos' && (
+        <div className="card mt-6">
+          <div className="card-head"><h3>Fondos administrados</h3><span className="badge badge-gray">{fondosActivos.length} activos</span></div>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Fondo</th><th>Responsable</th><th>Cuenta origen</th><th className="num">Asignado</th><th className="num">Disponible</th><th>Minimo</th><th>Estado</th></tr></thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan="7" className="text-center text-muted" style={{padding:28}}>Cargando fondos...</td></tr>
+                ) : fondos.length ? fondos.map(f => {
+                  const responsable = usuarioDe(f.responsable_id);
+                  const cuenta = cuentaDe(f.cuenta_bancaria_id);
+                  return (
+                    <tr key={f.id} className="hover-row" onClick={() => setFondoSelId(f.id)} style={{cursor:'pointer'}}>
+                      <td><strong>{f.nombre}</strong>{f.requiere_reposicion && <span className="badge badge-orange" style={{marginLeft:8}}>Reponer</span>}</td>
+                      <td className="text-muted">{responsable?.nombre || responsable?.email || 'Sin asignar'}</td>
+                      <td className="text-muted">{cuenta ? `${cuenta.banco || ''} ${cuenta.nombre || ''}`.trim() : 'Sin cuenta'}</td>
+                      <td className="num">{moneyCurrency(f.monto_asignado, f.moneda)}</td>
+                      <td className="num"><strong style={{color:f.requiere_reposicion?'var(--orange)':'var(--green)'}}>{moneyCurrency(f.saldo_disponible, f.moneda)}</strong></td>
+                      <td>{moneyCurrency(f.monto_minimo, f.moneda)}</td>
+                      <td><span className={`badge ${f.estado === 'activo' ? 'badge-green' : f.estado === 'cerrado' ? 'badge-gray' : 'badge-orange'}`}>{f.estado}</span></td>
+                    </tr>
+                  );
+                }) : (
+                  <tr><td colSpan="7" className="text-center text-muted" style={{padding:32}}>Sin fondos configurados.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === 'movimientos' && (
+        <div className="card mt-6">
+          <div className="card-head" style={{alignItems:'flex-end'}}>
+            <div><h3>Movimientos consolidados</h3><div style={{fontSize:12,color:'var(--fg-muted)'}}>Egresos, reposiciones y registros legacy.</div></div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}>
+              <select className="select" style={{width:180}} value={fFondo} onChange={e=>setFFondo(e.target.value)}>
+                <option value="">Todos los fondos</option>
+                {fondos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+              </select>
+              <input className="input" style={{width:135}} type="month" value={fPeriodo} onChange={e=>setFPeriodo(e.target.value)} />
+              <select className="select" style={{width:180}} value={fCeco} onChange={e=>setFCeco(e.target.value)}>
+                <option value="">Todos los CECO</option>
+                {(centrosCosto || []).map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Fecha</th><th>Fondo</th><th>Tipo</th><th>Concepto</th><th>CECO</th><th>Comprobante</th><th className="num">Monto</th><th>Estado</th></tr></thead>
+              <tbody>
+                {movsFiltrados.length ? movsFiltrados.map(m => {
+                  const tipo = m.tipo_movimiento || 'egreso';
+                  const ceco = cecoDe(m.ceco_id || m.centro_costo_id);
+                  return (
+                    <tr key={`${tipo}_${m.id}`}>
+                      <td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td>
+                      <td>{m.fondo_nombre || fondos.find(f => f.id === m.fondo_id)?.nombre || 'Legacy sin fondo'}</td>
+                      <td><span className={`badge ${tipo === 'reposicion' ? 'badge-green' : 'badge-cyan'}`}>{tipo}</span></td>
+                      <td>{m.concepto || m.descripcion}</td>
+                      <td className="text-muted">{ceco?.nombre || '-'}</td>
+                      <td className="mono text-muted">{m.num_comprobante || m.transferencia_reposicion_ref || '-'}</td>
+                      <td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda)}</strong></td>
+                      <td><span className={`badge ${m.estado === 'anulado' || m.estado === 'rechazada' ? 'badge-red' : 'badge-green'}`}>{m.estado || 'registrado'}</span></td>
+                    </tr>
+                  );
+                }) : (
+                  <tr><td colSpan="8" className="text-center text-muted" style={{padding:32}}>Sin movimientos para los filtros seleccionados.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {fondoSel && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setFondoSelId(null)} />
+          <div className="side-panel" style={{width:'min(760px,96vw)'}}>
+            <div className="side-panel-head">
+              <div><div className="eyebrow">Fondo caja chica</div><div className="font-display" style={{fontSize:20,fontWeight:700}}>{fondoSel.nombre}</div></div>
+              <button className="icon-btn" onClick={() => setFondoSelId(null)}>{I.x}</button>
+            </div>
+            <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:16}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
+                <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Disponible</div><div className="kpi-value" style={{fontSize:24,color:fondoSel.requiere_reposicion?'var(--orange)':'var(--green)'}}>{moneyCurrency(fondoSel.saldo_disponible, fondoSel.moneda)}</div></div>
+                <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Asignado</div><div className="kpi-value" style={{fontSize:20}}>{moneyCurrency(fondoSel.monto_asignado, fondoSel.moneda)}</div></div>
+                <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Minimo</div><div className="kpi-value" style={{fontSize:20}}>{moneyCurrency(fondoSel.monto_minimo, fondoSel.moneda)}</div></div>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,fontSize:13}}>
+                <div><span className="text-muted">Responsable: </span><strong>{usuarioDe(fondoSel.responsable_id)?.nombre || usuarioDe(fondoSel.responsable_id)?.email || 'Sin asignar'}</strong></div>
+                <div><span className="text-muted">Cuenta origen: </span><strong>{cuentaDe(fondoSel.cuenta_bancaria_id)?.nombre || 'Sin cuenta'}</strong></div>
+                <div><span className="text-muted">Apertura: </span><strong>{fondoSel.fecha_apertura}</strong></div>
+                <div><span className="text-muted">Estado: </span><span className={`badge ${fondoSel.estado === 'activo' ? 'badge-green' : 'badge-gray'}`}>{fondoSel.estado}</span></div>
+              </div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                <button className="btn btn-primary" onClick={() => abrirEgreso(fondoSel)}>{I.plus} Nuevo egreso</button>
+                {(esResponsable(fondoSel) || puedeCrear) && <button className="btn btn-secondary" onClick={() => setRendicionForm({ periodo_inicio: `${new Date().toISOString().slice(0,7)}-01`, periodo_fin: new Date().toISOString().slice(0,10), monto_solicitado: String(fondoSel.monto_gastado || 0) })}>{I.receipt} Solicitar rendicion</button>}
+                {puedeGestionar && <button className="btn btn-secondary" onClick={() => { setArqueoFondo(fondoSel); setArqueoForm({ efectivo_declarado: fondoSel.saldo_disponible || '', comprobantes_pendientes: '', justificacion: '' }); }}>{I.clipboard} Arqueo</button>}
+                {puedeGestionar && fondoSel.estado === 'activo' && <button className="btn btn-secondary" onClick={() => cerrarFondo(fondoSel)}>{I.x} Cerrar</button>}
+              </div>
+              {fondoSel.rendicion_vigente && (
+                <div style={{padding:12,border:'1px solid var(--border)',borderRadius:8}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+                    <div><div style={{fontWeight:700}}>Rendicion vigente</div><div style={{fontSize:12,color:'var(--fg-muted)'}}>{fondoSel.rendicion_vigente.periodo_inicio} - {fondoSel.rendicion_vigente.periodo_fin} · {moneyCurrency(fondoSel.rendicion_vigente.monto_solicitado, fondoSel.moneda)}</div></div>
+                    <span className="badge badge-orange">{fondoSel.rendicion_vigente.estado}</span>
+                  </div>
+                  {puedeAprobar && fondoSel.rendicion_vigente.estado === 'solicitada' && (
+                    <div style={{marginTop:10,display:'flex',gap:8}}>
+                      <button className="btn btn-primary" style={{fontSize:12}} onClick={() => procesarRendicion(fondoSel.rendicion_vigente, 'aprobar')}>Aprobar</button>
+                      <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => procesarRendicion(fondoSel.rendicion_vigente, 'rechazar')}>Rechazar</button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {rendicionForm && (
+                <div style={{padding:12,border:'1px solid var(--border)',borderRadius:8}}>
+                  <div style={{fontWeight:700,marginBottom:10}}>Nueva rendicion</div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+                    <input className="input" type="date" value={rendicionForm.periodo_inicio} onChange={e=>setRendicionForm(p=>({...p,periodo_inicio:e.target.value}))}/>
+                    <input className="input" type="date" value={rendicionForm.periodo_fin} onChange={e=>setRendicionForm(p=>({...p,periodo_fin:e.target.value}))}/>
+                    <input className="input" type="number" min="0" step="0.01" value={rendicionForm.monto_solicitado} onChange={e=>setRendicionForm(p=>({...p,monto_solicitado:e.target.value}))}/>
+                  </div>
+                  <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:10}}>
+                    <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => setRendicionForm(null)}>Cancelar</button>
+                    <button className="btn btn-primary" style={{fontSize:12}} onClick={() => solicitarRendicion(fondoSel)}>Solicitar</button>
+                  </div>
+                </div>
+              )}
+              <div>
+                <div style={{fontWeight:700,marginBottom:8}}>Historial</div>
+                <div className="table-wrap" style={{border:'1px solid var(--border)',borderRadius:8}}>
+                  <table className="tbl">
+                    <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th className="num">Monto</th><th>Estado</th></tr></thead>
+                    <tbody>{historialFondo.length ? historialFondo.map(m => (
+                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${m.tipo_movimiento === 'reposicion' ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray">{m.estado || 'registrado'}</span></td></tr>
+                    )) : <tr><td colSpan="5" className="text-center text-muted" style={{padding:24}}>Sin movimientos vinculados.</td></tr>}</tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {panelFondo && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setPanelFondo(false)} />
+          <div className="side-panel" style={{width:'min(520px,96vw)'}}>
+            <div className="side-panel-head"><div><div className="eyebrow">Caja chica</div><div className="font-display" style={{fontSize:18,fontWeight:700}}>Nuevo fondo</div></div><button className="icon-btn" onClick={() => setPanelFondo(false)}>{I.x}</button></div>
+            <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
+              <div className="input-group"><label>Nombre *</label><input className="input" value={formFondo.nombre} onChange={e=>setFormFondo(p=>({...p,nombre:e.target.value}))} placeholder="Ej: Caja chica Operaciones Lima"/></div>
+              <div className="input-group"><label>Responsable</label><select className="select" value={formFondo.responsable_id} onChange={e=>setFormFondo(p=>({...p,responsable_id:e.target.value}))}><option value="">- Seleccionar usuario -</option>{usuariosEmpresa.map(u=><option key={u.id} value={u.id}>{u.nombre || u.email}</option>)}</select></div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <div className="input-group"><label>Monto asignado *</label><input className="input" type="number" min="0" step="0.01" value={formFondo.monto_asignado} onChange={e=>setFormFondo(p=>({...p,monto_asignado:e.target.value}))}/></div>
+                <div className="input-group"><label>Monto minimo</label><input className="input" type="number" min="0" step="0.01" value={formFondo.monto_minimo} onChange={e=>setFormFondo(p=>({...p,monto_minimo:e.target.value}))}/></div>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <div className="input-group"><label>Cuenta origen</label><select className="select" value={formFondo.cuenta_bancaria_id} onChange={e=>setFormFondo(p=>({...p,cuenta_bancaria_id:e.target.value}))}><option value="">- Sin cuenta -</option>{cuentasActivas.map(c=><option key={c.id} value={c.id}>{c.banco} - {c.nombre}</option>)}</select></div>
+                <div className="input-group"><label>Moneda</label><select className="select" value={formFondo.moneda} onChange={e=>setFormFondo(p=>({...p,moneda:e.target.value}))}><option value="PEN">PEN</option><option value="USD">USD</option><option value="EUR">EUR</option></select></div>
+              </div>
+              <div className="input-group"><label>Fecha apertura</label><input className="input" type="date" value={formFondo.fecha_apertura} onChange={e=>setFormFondo(p=>({...p,fecha_apertura:e.target.value}))}/></div>
+              <div className="input-group"><label>Notas</label><textarea className="input" rows={3} value={formFondo.notas} onChange={e=>setFormFondo(p=>({...p,notas:e.target.value}))}/></div>
+              <div style={{display:'flex',justifyContent:'flex-end',gap:8}}><button className="btn btn-secondary" onClick={() => setPanelFondo(false)}>Cancelar</button><button className="btn btn-primary" disabled={savingFondo || !formFondo.nombre.trim() || !Number(formFondo.monto_asignado || 0)} onClick={guardarFondo}>{savingFondo ? 'Guardando...' : 'Crear fondo'}</button></div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {arqueoFondo && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setArqueoFondo(null)} />
+          <div className="side-panel" style={{width:'min(460px,96vw)'}}>
+            <div className="side-panel-head"><div><div className="eyebrow">Arqueo</div><div className="font-display" style={{fontSize:18,fontWeight:700}}>{arqueoFondo.nombre}</div></div><button className="icon-btn" onClick={() => setArqueoFondo(null)}>{I.x}</button></div>
+            <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
+              <div style={{padding:12,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Saldo sistema</div><div style={{fontSize:22,fontWeight:700}}>{moneyCurrency(arqueoFondo.saldo_disponible, arqueoFondo.moneda)}</div></div>
+              <div className="input-group"><label>Efectivo declarado</label><input className="input" type="number" min="0" step="0.01" value={arqueoForm.efectivo_declarado} onChange={e=>setArqueoForm(p=>({...p,efectivo_declarado:e.target.value}))}/></div>
+              <div className="input-group"><label>Comprobantes pendientes</label><input className="input" type="number" min="0" step="0.01" value={arqueoForm.comprobantes_pendientes} onChange={e=>setArqueoForm(p=>({...p,comprobantes_pendientes:e.target.value}))}/></div>
+              <div className="input-group"><label>Justificacion si hay diferencia</label><textarea className="input" rows={3} value={arqueoForm.justificacion} onChange={e=>setArqueoForm(p=>({...p,justificacion:e.target.value}))}/></div>
+              <div style={{display:'flex',justifyContent:'flex-end',gap:8}}><button className="btn btn-secondary" onClick={() => setArqueoFondo(null)}>Cancelar</button><button className="btn btn-primary" onClick={registrarArqueo}>Registrar arqueo</button></div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {panelNuevoEgreso && (
+        <NuevoEgreso origen="caja_chica" preconfig={preconfigNE} onClose={cerrarNuevoEgreso} onSaved={cerrarNuevoEgreso} />
       )}
     </>
   );
@@ -4727,8 +6130,16 @@ const cxpTributoTipoLabel = c => TRIBUTO_LABEL[c?.tributo_tipo] || c?.tributo_ti
 })();
 
 function CxP() {
-  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, ots, registrarPagoCxP, generarCxP, crearGasto, addNotificacion, centrosCosto, setCxp } = useApp();
+  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], registrarPagoCxP, generarCxP, crearGasto, addNotificacion, centrosCosto, setCxp, empresa } = useApp();
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const [erCatOpts, setErCatOpts] = useState([]);
+  const [erCategorias, setErCategorias] = useState([]);
+  useEffect(() => {
+    cargarConfiguracionER(empresa?.id).then(cats => {
+      setErCategorias(cats || []);
+      setErCatOpts((cats || []).map(c => c.nombre));
+    });
+  }, [empresa?.id]);
   const today = new Date().toISOString().split('T')[0];
 
   // Panel states
@@ -4763,6 +6174,16 @@ function CxP() {
   const [rheNombre, setRheNombre] = useState('');
   const [rheMontoBruto, setRheMontoBruto] = useState('');
   const [rheNumeroDoc, setRheNumeroDoc] = useState('');
+  const [rheTipoEmisor, setRheTipoEmisor] = useState('');
+  const [rheColaboradorId, setRheColaboradorId] = useState('');
+  const [rheTrabajoFacturable, setRheTrabajoFacturable] = useState(true);
+  const [rheOtId, setRheOtId] = useState('');
+  const [rheRucAviso, setRheRucAviso] = useState(null);
+  const [rhePeriodoServicio, setRhePeriodoServicio] = useState(() => periodoRhePrevio(today));
+  const [rheReferenciaHoras, setRheReferenciaHoras] = useState(null);
+  const [rheReferenciaLoading, setRheReferenciaLoading] = useState(false);
+  const [rheReferenciaError, setRheReferenciaError] = useState('');
+  const [rheMontoEditadoManual, setRheMontoEditadoManual] = useState(false);
   const [cxpCategoriaEr, setCxpCategoriaEr] = useState('');
   const [cxpCentroCostoId, setCxpCentroCostoId] = useState('');
   const [cxpYaRegistrado, setCxpYaRegistrado] = useState(false);
@@ -4772,6 +6193,125 @@ function CxP() {
   const [guardandoClasif, setGuardandoClasif] = useState(false);
   const rheRetencion = Math.round(Number(rheMontoBruto || 0) * 0.08 * 100) / 100;
   const rheMontoNeto = Math.round((Number(rheMontoBruto || 0) - rheRetencion) * 100) / 100;
+  const colaboradoresHonorarios = [
+    ...(personalAdmin||[]).filter(p => p.estado === 'activo' && (p.tipo_contrato === 'Honorarios' || p.ruc_colaborador)),
+    ...(personalOperativo||[]).filter(p => p.estado !== 'inactivo' && (p.tipo_contrato === 'Honorarios' || p.ruc_colaborador)),
+  ];
+  const rheColaboradorSel = colaboradoresHonorarios.find(p => p.id === rheColaboradorId) || null;
+  const rheColaboradorTasaIR = (() => {
+    if (!rheColaboradorSel) return 0.08;
+    const suspVigente = Boolean(rheColaboradorSel.suspension_retenciones) &&
+      (!rheColaboradorSel.vencimiento_suspension || rheColaboradorSel.vencimiento_suspension >= today);
+    if (suspVigente) return 0;
+    return Number(rheColaboradorSel.retencion_ir ?? rheColaboradorSel.retencion_ir_comision ?? 8) / 100;
+  })();
+  const rheRetencionInterna = Math.round(Number(rheMontoBruto || 0) * rheColaboradorTasaIR * 100) / 100;
+  const rheMontoNetoInterno = Math.round((Number(rheMontoBruto || 0) - rheRetencionInterna) * 100) / 100;
+  const rheCategoriaManoObraCosto = (erCategorias || []).find(c => c.tipo_sistema === 'mano_obra' && c.seccion === 'costo_ventas') || null;
+  const rheCategoriaManoObraGasto = (erCategorias || []).find(c => c.tipo_sistema === 'mano_obra' && c.seccion === 'gastos_operativos') || null;
+  const rheCategoriaManoObra = rheTipoEmisor === 'interno'
+    ? (rheTrabajoFacturable ? rheCategoriaManoObraCosto : rheCategoriaManoObraGasto)
+    : null;
+  const rheFaltaCategoriaManoObra = rheTipoEmisor === 'interno' && !rheCategoriaManoObra;
+  const rheCategoriaErAuto = rheTipoEmisor === 'interno' ? (rheCategoriaManoObra?.nombre || '') : '';
+  const rheCategoriaErAsignada = rheTipoEmisor === 'interno' ? (rheCategoriaErAuto || cxpCategoriaEr || '') : '';
+  const rheSinCategoriasManoObra = rheTipoEmisor === 'interno' && !rheCategoriaManoObraCosto && !rheCategoriaManoObraGasto;
+  const rheDestinoErLabel = rheTrabajoFacturable ? 'Costo de Ventas' : 'Gastos Operativos';
+  const rhePeriodoRango = rangoFechasRhe(rhePeriodoServicio);
+  const rheTarifaHora = tarifaHoraColaborador(rheColaboradorSel);
+  const rheHorasTotal = Number(rheReferenciaHoras?.horasTotal || 0);
+  const rheMontoSugerido = rheHorasTotal > 0 && rheTarifaHora > 0
+    ? Math.round(rheHorasTotal * rheTarifaHora * 100) / 100
+    : 0;
+  const rheMontoIngresado = Number(rheMontoBruto || 0);
+  const rheAdvertenciaDesviacion = rheMontoSugerido > 0 && rheMontoIngresado > 0
+    && Math.abs(rheMontoIngresado - rheMontoSugerido) / rheMontoSugerido > RHE_DESVIACION_UMBRAL;
+  const rheYearOptions = useMemo(() => {
+    const current = new Date(`${today}T00:00:00`).getFullYear();
+    return Array.from({ length: 6 }, (_, idx) => String(current - 4 + idx));
+  }, [today]);
+  const actualizarPeriodoRhe = cambios => {
+    setRhePeriodoServicio(prev => ({ ...prev, ...cambios }));
+    setRheMontoEditadoManual(false);
+    setRheMontoBruto('');
+  };
+  useEffect(() => {
+    if (rheTipoEmisor !== 'externo' || rheRuc.length !== 11) { setRheRucAviso(null); return; }
+    const match = [...(personalAdmin||[]), ...(personalOperativo||[])].find(
+      p => p.ruc_colaborador === rheRuc && p.estado !== 'inactivo'
+    );
+    setRheRucAviso(match ? { nombre: match.nombre, id: match.id } : null);
+  }, [rheRuc, rheTipoEmisor, personalAdmin, personalOperativo]);
+
+  useEffect(() => {
+    if (rheTipoEmisor !== 'interno' || !empresa?.id || !rheColaboradorId || !rhePeriodoRango.valido) {
+      setRheReferenciaHoras(null);
+      setRheReferenciaLoading(false);
+      setRheReferenciaError('');
+      return;
+    }
+    if (!isSupabaseMode()) {
+      const partesPeriodo = (partes || []).filter(p =>
+        p.empresa_id === empresa.id &&
+        (p.tecnico_id || p.personal_id || p.tecnico) === rheColaboradorId &&
+        p.estado === 'aprobado' &&
+        (p.fecha || p.fecha_parte || p.created_at?.slice?.(0, 10)) >= rhePeriodoRango.inicio &&
+        (p.fecha || p.fecha_parte || p.created_at?.slice?.(0, 10)) <= rhePeriodoRango.fin
+      );
+      const horasPartes = Math.round(partesPeriodo.reduce((sum, p) => sum + Number(p.horas ?? p.horas_normales ?? p.horas_total ?? 0), 0) * 100) / 100;
+      const existeEnCxp = (cxp || []).some(c =>
+        c.empresa_id === empresa.id &&
+        c.personal_id === rheColaboradorId &&
+        c.tipo_comprobante === 'RHE' &&
+        c.fecha_emision <= rhePeriodoRango.fin &&
+        c.fecha_vencimiento >= rhePeriodoRango.inicio
+      );
+      const existeEnRecibos = (recibosHonorarios || []).some(r =>
+        r.empresa_id === empresa.id &&
+        r.personal_id === rheColaboradorId &&
+        r.periodo >= rhePeriodoRango.inicio.slice(0, 7) &&
+        r.periodo <= rhePeriodoRango.fin.slice(0, 7)
+      );
+      setRheReferenciaHoras({
+        horasPartes,
+        horasTareos: 0,
+        horasTotal: horasPartes,
+        existeRhePeriodo: existeEnCxp || existeEnRecibos,
+      });
+      setRheReferenciaLoading(false);
+      setRheReferenciaError('');
+      return;
+    }
+    let cancelado = false;
+    setRheReferenciaLoading(true);
+    setRheReferenciaError('');
+    finanzasService.getReferenciaRheInterno({
+      empresaId: empresa.id,
+      personalId: rheColaboradorId,
+      periodoInicio: rhePeriodoRango.inicio,
+      periodoFin: rhePeriodoRango.fin,
+    }).then(ref => {
+      if (!cancelado) setRheReferenciaHoras(ref);
+    }).catch(err => {
+      console.error('[RHE referencia]', err);
+      if (!cancelado) {
+        setRheReferenciaHoras(null);
+        setRheReferenciaError('No se pudo consultar las horas registradas para este periodo.');
+      }
+    }).finally(() => {
+      if (!cancelado) setRheReferenciaLoading(false);
+    });
+    return () => { cancelado = true; };
+  }, [cxp, empresa?.id, partes, recibosHonorarios, rheColaboradorId, rhePeriodoRango.fin, rhePeriodoRango.inicio, rhePeriodoRango.valido, rheTipoEmisor]);
+
+  useEffect(() => {
+    if (rheTipoEmisor !== 'interno' || rheReferenciaLoading || rheMontoEditadoManual) return;
+    if (rheMontoSugerido > 0) {
+      setRheMontoBruto(rheMontoSugerido.toFixed(2));
+    } else if (rheReferenciaHoras) {
+      setRheMontoBruto('');
+    }
+  }, [rheMontoEditadoManual, rheMontoSugerido, rheReferenciaHoras, rheReferenciaLoading, rheTipoEmisor]);
 
   // Filtros
   const [filtTipo, setFiltTipo] = useState('todos');
@@ -4782,6 +6322,13 @@ function CxP() {
   const saldoDe  = c => Number(c?.saldo ?? c?.monto_total ?? c?.monto ?? 0);
   const totalDe  = c => Number(c?.monto_total ?? c?.monto ?? 0);
   const pagadoDe = c => Number(c?.monto_pagado ?? 0);
+  const gastoOrigenDe = c => (comprasGastos || []).find(g => g.id === c?.gasto_id) || null;
+  const conceptoGastoDe = gasto => gasto?.concepto || gasto?.descripcion || gasto?.detalle || '';
+  const cecoNombreDe = id => {
+    const ceco = (centrosCosto || []).find(c => c.id === id);
+    return ceco ? `${ceco.codigo ? `${ceco.codigo} - ` : ''}${ceco.nombre}` : '';
+  };
+  const categoriaGastoDe = gasto => gasto?.categoria_er || gasto?.categoria || '';
 
   const addDays = (dateStr, n) => {
     const d = new Date(`${dateStr || today}T00:00:00`);
@@ -4820,6 +6367,47 @@ function CxP() {
       || c?.proveedor_id || '-';
   };
 
+  const beneficiarioDetalle = c => {
+    if (c?.tipo_beneficiario === DIVIDENDO_TIPO) {
+      return { nombre: c?.socio_nombre || c?.concepto || 'Socio / accionista', badge: 'Socio', badgeCls: 'badge-purple', tipo: 'socio' };
+    }
+    if (c?.tipo_beneficiario === 'colectivo') {
+      return { nombre: c?.concepto || 'Obligacion institucional', badge: 'Colectivo', badgeCls: 'badge-gray', tipo: 'colectivo' };
+    }
+    if (c?.tipo_beneficiario === 'personal') {
+      const persona = [...(personalAdmin||[]), ...(personalOperativo||[])].find(p => p.id === c?.personal_id);
+      return {
+        nombre: persona?.nombre || c?.personal_administrativo?.nombre || c?.personal_id || 'Colaborador',
+        badge: 'Colab.',
+        badgeCls: 'badge-cyan',
+        tipo: 'personal',
+      };
+    }
+    if (c?.proveedor_id) {
+      const nombreProveedor = c?.proveedor || c?.proveedores?.razon_social
+        || (proveedores || []).find(p => p.id === c?.proveedor_id)?.razon_social
+        || c?.proveedor_id;
+      return { nombre: nombreProveedor, badge: 'Proveedor', badgeCls: 'badge-blue', tipo: 'proveedor' };
+    }
+    if (c?.origen === 'auto_gasto') {
+      const gasto = gastoOrigenDe(c);
+      return {
+        nombre: conceptoGastoDe(gasto) || c?.concepto || 'Gasto directo',
+        badge: 'Gasto directo',
+        badgeCls: 'badge-gray',
+        tipo: 'gasto',
+        icon: I.receipt,
+        tone: 'var(--fg-muted)',
+      };
+    }
+    const nombreFallback = c?.proveedor || c?.proveedores?.razon_social
+      || (proveedores || []).find(p => p.id === c?.proveedor_id)?.razon_social
+      || c?.proveedor_id;
+    return nombreFallback
+      ? { nombre: nombreFallback, badge: 'Proveedor', badgeCls: 'badge-blue', tipo: 'proveedor' }
+      : { nombre: 'Gasto directo', badge: 'Gasto directo', badgeCls: 'badge-gray', tipo: 'gasto', tone: 'var(--fg-subtle)' };
+  };
+
   const pagosDe = cxpId => (cxpPagos || []).filter(p => p.cxp_id === cxpId);
   const esTributoForm = tabCxP === 'tributos' || motivoCxP === 'tributo' || formCrear.tipo_comprobante === 'Tributo';
   const esDividendoForm = formCrear.tipo_beneficiario === DIVIDENDO_TIPO;
@@ -4844,6 +6432,15 @@ function CxP() {
     setRheNombre('');
     setRheMontoBruto('');
     setRheNumeroDoc('');
+    setRheTipoEmisor('');
+    setRheColaboradorId('');
+    setRheTrabajoFacturable(true);
+    setRheRucAviso(null);
+    setRhePeriodoServicio(periodoRhePrevio(today));
+    setRheReferenciaHoras(null);
+    setRheReferenciaLoading(false);
+    setRheReferenciaError('');
+    setRheMontoEditadoManual(false);
     setCxpCategoriaEr('');
     setCxpCentroCostoId('');
     setCxpYaRegistrado(false);
@@ -4858,6 +6455,8 @@ function CxP() {
       setFormCrear({ ...base, proveedor_id: '', tipo_comprobante: 'Tributo', concepto: tributoConcepto });
     } else if (modo === 'dividendos') {
       setFormCrear({ ...base, tipo_beneficiario: DIVIDENDO_TIPO, tipo_comprobante: 'distribucion_utilidades', concepto: dividendoConcepto });
+    } else if (modo === 'rhe') {
+      setFormCrear({ ...base, tipo_comprobante: 'RHE' });
     } else {
       setFormCrear(base);
     }
@@ -4911,13 +6510,26 @@ function CxP() {
     const esViaticos = motivoCxP === 'viaticos_reembolso';
     const esTributo = esTributoForm;
     const esDividendo = esDividendoForm;
-    const montoTotal = esRhe ? rheMontoNeto : Number(formCrear.monto_total);
+    const esRheInterno = esRhe && rheTipoEmisor === 'interno';
+    const montoTotal = esRhe ? (esRheInterno ? rheMontoNetoInterno : rheMontoNeto) : Number(formCrear.monto_total);
     if (!formCrear.fecha_emision || !formCrear.fecha_vencimiento || montoTotal <= 0) {
       addNotificacion('Completa fecha de emisión, vencimiento y monto.');
       return;
     }
-    if (esRhe && (!rheRuc || rheRuc.length !== 11 || !rheNombre || !Number(rheMontoBruto))) {
-      addNotificacion('Para RHE: ingresa RUC (11 dígitos), nombre del emisor y monto bruto.');
+    if (esRhe && !rheTipoEmisor) {
+      addNotificacion('Selecciona el tipo de emisor del RHE antes de continuar.');
+      return;
+    }
+    if (esRhe && esRheInterno && (!rheColaboradorId || !Number(rheMontoBruto))) {
+      addNotificacion('Para RHE interno: selecciona el colaborador y el monto bruto.');
+      return;
+    }
+    if (esRheInterno && !rheCategoriaErAsignada) {
+      addNotificacion('Selecciona una categoria ER para registrar el RHE del colaborador interno.');
+      return;
+    }
+    if (esRhe && !esRheInterno && (!rheRuc || rheRuc.length !== 11 || !rheNombre || !Number(rheMontoBruto))) {
+      addNotificacion('Para RHE externo: ingresa RUC (11 dígitos), nombre del emisor y monto bruto.');
       return;
     }
     if (esViaticos && !viaticosPersonalId) {
@@ -4937,11 +6549,12 @@ function CxP() {
       const personal = esViaticos
         ? ([...(personalAdmin||[]), ...(personalOperativo||[])]).find(p => p.id === viaticosPersonalId)
         : null;
+      const rheRetencionEfectiva = esRheInterno ? rheRetencionInterna : rheRetencion;
       const cxpPayload = {
-        proveedor_id:      (esViaticos || esTributo || esDividendo) ? null : (formCrear.proveedor_id || null),
-        tipo_beneficiario: esDividendo ? DIVIDENDO_TIPO : esViaticos ? 'personal' : esTributo ? 'colectivo' : (formCrear.tipo_beneficiario || 'proveedor'),
-        personal_id:       esViaticos ? viaticosPersonalId : null,
-        ot_vinc_id:        esViaticos && viaticosOtId ? viaticosOtId : null,
+        proveedor_id:      (esViaticos || esTributo || esDividendo || esRheInterno) ? null : (formCrear.proveedor_id || null),
+        tipo_beneficiario: esDividendo ? DIVIDENDO_TIPO : esViaticos ? 'personal' : esTributo ? 'colectivo' : esRheInterno ? 'personal' : (formCrear.tipo_beneficiario || 'proveedor'),
+        personal_id:       esViaticos ? viaticosPersonalId : esRheInterno ? rheColaboradorId : null,
+        ot_vinc_id:        (esViaticos && viaticosOtId) ? viaticosOtId : null,
         tipo_comprobante:  esTributo ? 'Tributo' : esDividendo ? 'distribucion_utilidades' : formCrear.tipo_comprobante,
         factura_numero:    esTributo ? (tributoFormulario || null) : esRhe ? (rheNumeroDoc || null) : (formCrear.factura_numero || null),
         concepto:          esTributo ? tributoConcepto : esDividendo ? dividendoConcepto : (formCrear.concepto || (esRhe ? `RHE - ${rheNombre}` : esViaticos ? `Viaticos - ${personal?.nombre || viaticosPersonalId}` : null)),
@@ -4956,9 +6569,9 @@ function CxP() {
         motivo_cxp:        esTributo ? `${TRIBUTO_LABEL[tributoTipo] || tributoTipo} - ${tributoPeriodo}` : esDividendo ? dividendoConcepto : (motivoCxP || null),
         ...(esTributo ? { tributo_tipo: tributoTipo, tributo_periodo: tributoPeriodo, tributo_formulario: tributoFormulario || null, categoria_er: cxpCategoriaEr || 'Tributos', no_devengar_er: true } : {}),
         ...(esDividendo ? { socio_nombre: socioNombre.trim(), socio_participacion_pct: socioParticipacion ? Number(socioParticipacion) : null, periodo_utilidades: periodoUtilidades, acta_referencia: actaReferencia || null, no_devengar_er: true } : {}),
-        ...(esRhe ? { ruc_emisor: rheRuc, nombre_emisor: rheNombre, monto_bruto: Number(rheMontoBruto), retencion_ir: rheRetencion } : {}),
+        ...(esRhe ? { ruc_emisor: rheRuc, nombre_emisor: rheNombre, monto_bruto: Number(rheMontoBruto), retencion_ir: rheRetencionEfectiva } : {}),
         ...(archivoCrearUrl ? { archivo_factura_url: archivoCrearUrl } : {}),
-        ...(cxpCategoriaEr   ? { categoria_er:    cxpCategoriaEr   } : {}),
+        ...(esRheInterno ? { categoria_er: rheCategoriaErAsignada } : cxpCategoriaEr ? { categoria_er: cxpCategoriaEr } : {}),
         ...(cxpCentroCostoId ? { centro_costo_id: cxpCentroCostoId } : {}),
         ...(!esTributo && !esDividendo && cxpYaRegistrado ? { no_devengar_er: true } : {}),
       };
@@ -5009,6 +6622,31 @@ function CxP() {
     setFormCrear(v => ({ ...v, fecha_emision: fecha, fecha_vencimiento: vence }));
   };
 
+  const selBeneficiario = sel ? beneficiarioDetalle(sel) : null;
+  const selGastoOrigen = sel ? gastoOrigenDe(sel) : null;
+  const selSemaforo = sel ? semaforoDe(sel) : null;
+  const selDocumento = sel ? (sel.factura_numero || sel.tipo_comprobante || sel.concepto || 'Sin documento') : '';
+  const selCecoNombre = sel ? (cecoNombreDe(sel.centro_costo_id) || '-') : '-';
+  const selGastoCecoNombre = selGastoOrigen ? (cecoNombreDe(selGastoOrigen.centro_costo_id) || '-') : '-';
+  const selGastoConcepto = conceptoGastoDe(selGastoOrigen);
+  const selGastoCategoria = categoriaGastoDe(selGastoOrigen);
+  const selComprobanteValor = sel
+    ? (sel.archivo_factura_url
+        ? 'Adjunto disponible'
+        : (sel.factura_numero || sel.tipo_comprobante || '-'))
+    : '-';
+  const selDatosComprobante = sel ? [
+    ['Concepto', sel.concepto || selGastoConcepto || '-'],
+    ['Moneda y monto total', money(totalDe(sel), symOf(sel.moneda))],
+    ['Monto pagado', money(pagadoDe(sel), symOf(sel.moneda))],
+    ['Saldo pendiente', money(saldoDe(sel), symOf(sel.moneda))],
+    ['Fecha de emision', sel.fecha_emision || '-'],
+    ['Fecha de vencimiento', sel.fecha_vencimiento || '-'],
+    ['CECO', selCecoNombre],
+    ['Categoria ER', sel.categoria_er || '-'],
+    ['Comprobante', selComprobanteValor],
+  ] : [];
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
@@ -5022,8 +6660,8 @@ function CxP() {
           </div>
         </div>
         <div className="row" style={{gap:8}}>
-          <button className="btn btn-secondary" onClick={() => abrirCrearCxP(tabCxP === 'tributos' ? 'tributos' : 'general')} style={{fontSize:13}}>
-            {I.plus} {tabCxP === 'tributos' ? 'Registrar tributo' : 'Avanzado'}
+          <button className="btn btn-secondary" onClick={() => abrirCrearCxP(tabCxP === 'tributos' ? 'tributos' : 'rhe')} style={{fontSize:13}}>
+            {I.plus} {tabCxP === 'tributos' ? 'Registrar tributo' : 'Registrar RHE'}
           </button>
           <button className="btn btn-primary" onClick={() => setPanelNuevoEgreso(true)}>
             {I.plus} Nuevo egreso
@@ -5074,7 +6712,7 @@ function CxP() {
           <button key={f.v} className={'btn btn-sm '+(filtTipo===f.v?'btn-primary':'btn-secondary')} onClick={() => setFiltTipo(f.v)}>{f.l}</button>
         ))}
         <div style={{width:1,background:'var(--border)',margin:'0 4px'}}/>
-        {[{v:'todos',l:'Origen: Todos'},{v:'recepcion',l:'OC'},{v:'gasto',l:'Gasto directo'},{v:'rhe_externo',l:'RHE'},{v:'honorarios',l:'Honorarios'},{v:'viaticos',l:'Viáticos'},{v:'nomina',l:'Nómina'},{v:'manual',l:'Manual'}].map(f => (
+        {[{v:'todos',l:'Origen: Todos'},{v:'recepcion',l:'OC'},{v:'auto_gasto',l:'Gasto directo'},{v:'rhe_externo',l:'RHE'},{v:'honorarios',l:'Honorarios'},{v:'viaticos',l:'Viáticos'},{v:'nomina',l:'Nómina'},{v:'manual',l:'Manual'}].map(f => (
           <button key={f.v} className={'btn btn-sm '+(filtOrigen===f.v?'btn-primary':'btn-secondary')} onClick={() => setFiltOrigen(f.v)}>{f.l}</button>
         ))}
         <div style={{width:1,background:'var(--border)',margin:'0 4px'}}/>
@@ -5102,14 +6740,18 @@ function CxP() {
             <tbody>
               {cxpFiltrada.length ? cxpFiltrada.map(c => {
                 const sem = semaforoDe(c);
+                const ben = beneficiarioDetalle(c);
                 return (
                   <tr key={c.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => abrirFicha(c)}>
                     <td><span title={sem.label} style={{display:'inline-block',width:10,height:10,borderRadius:999,background:sem.bg,flexShrink:0}}/></td>
                     <td style={{fontWeight:600}}>
                       {tabCxP === 'tributos' ? (cxpTributoPeriodo(c) || '-') : (
                         <>
-                          {beneficiarioNombre(c)}
-                          {c.tipo_beneficiario === 'personal' && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,padding:'1px 5px'}}>Colab.</span>}
+                          <span style={{color: ben.tone || 'inherit', display:'inline-flex', alignItems:'center', gap:5}}>
+                            {ben.icon && <span style={{width:14,height:14,display:'inline-flex'}}>{ben.icon}</span>}
+                            {ben.nombre}
+                          </span>
+                          {ben.badge && <span className={'badge '+ben.badgeCls} style={{marginLeft:6,fontSize:10,padding:'1px 5px'}}>{ben.badge}</span>}
                         </>
                       )}
                     </td>
@@ -5138,7 +6780,7 @@ function CxP() {
                       {tabCxP === 'tributos' ? (c.tributo_formulario || c.factura_numero || '-') : <strong>{money(saldoDe(c), symOf(c.moneda))}</strong>}
                     </td>
                     <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
-                      {c.archivo_factura_url && <a href={c.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:4}} title="Ver RHE adjunto">{I.file}</a>}
+                      {c.archivo_factura_url && <a href={c.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:4}} title="Ver comprobante adjunto">{I.file}</a>}
                       {c.archivo_constancia_url && <a href={c.archivo_constancia_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:6}} title="Ver constancia de suspensión">{I.doc}</a>}
                       {saldoDe(c) > 0 && <button className="btn btn-sm btn-primary" onClick={() => abrirFicha(c)}>Pagar</button>}
                     </td>
@@ -5159,9 +6801,15 @@ function CxP() {
           <div className="side-panel" style={{width:'min(520px, 96vw)'}}>
             <div className="side-panel-head">
               <div>
-                <div className="eyebrow">{sel.tipo_beneficiario === 'personal' ? 'Honorarios colaborador' : 'Factura proveedor'}</div>
-                <div style={{fontWeight:700,fontSize:20}}>{beneficiarioNombre(sel)}</div>
-                <div style={{fontSize:12,color:'var(--fg-muted)'}}>{sel.factura_numero || sel.concepto || sel.id}</div>
+                <div className="eyebrow">{sel.origen === 'rhe_externo' || sel.tipo_comprobante === 'RHE' ? 'RHE — Recibo por Honorarios' : sel.tipo_beneficiario === 'personal' ? 'Honorarios colaborador' : 'Factura proveedor'}</div>
+                <div style={{fontWeight:700,fontSize:20}}>{selBeneficiario?.nombre}</div>
+                <div style={{fontSize:12,color:'var(--fg-muted)'}}>{selDocumento}</div>
+                <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginTop:6}}>
+                  <span className={'badge '+(sel.estado === 'pagada' ? 'badge-green' : sel.estado === 'pago_parcial' ? 'badge-orange' : selSemaforo?.badgeCls || 'badge-orange')}>
+                    {sel.estado === 'pagada' ? 'Pagado' : sel.estado === 'pago_parcial' ? 'Parcial' : 'Pendiente'}
+                  </span>
+                  {selBeneficiario?.badge && <span className={'badge '+selBeneficiario.badgeCls}>{selBeneficiario.badge}</span>}
+                </div>
               </div>
               <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
             </div>
@@ -5170,8 +6818,6 @@ function CxP() {
               {[
                 {id:'pago',label:'Registrar pago'},
                 {id:'historial',label:`Historial (${pagosDe(sel.id).length})`},
-                ...(sel.archivo_factura_url ? [{id:'comprobante',label:'RHE'}] : []),
-                ...(sel.archivo_constancia_url ? [{id:'constancia',label:'Constancia'}] : []),
               ].map(t => (
                 <div key={t.id} className={'tab '+(fichaTab===t.id?'active':'')} onClick={() => setFichaTab(t.id)}>{t.label}</div>
               ))}
@@ -5180,16 +6826,45 @@ function CxP() {
             {fichaTab === 'pago' && (
               <form className="side-panel-body" onSubmit={guardarPago}>
                 <div className="card" style={{padding:14,marginBottom:16}}>
+                  <div style={{fontSize:11,color:'var(--fg-muted)',fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:10}}>Datos del comprobante</div>
+                  <div style={{display:'grid',gridTemplateColumns:'minmax(130px, 0.8fr) 1fr',gap:'8px 12px',fontSize:13,marginBottom:12}}>
+                    {selDatosComprobante.map(([l,v]) => (
+                      <React.Fragment key={l}>
+                        <div style={{color:'var(--fg-muted)'}}>{l}</div>
+                        <div style={{fontWeight:600,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                          <span>{v}</span>
+                          {l === 'Fecha de vencimiento' && selSemaforo?.badgeCls !== 'badge-gray' && (
+                            <span className={'badge '+selSemaforo.badgeCls} style={{fontSize:9,padding:'1px 5px'}}>{selSemaforo.label}</span>
+                          )}
+                          {l === 'Comprobante' && sel.archivo_factura_url && (
+                            <a href={sel.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{padding:'2px 6px'}}>{I.file}</a>
+                          )}
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  {sel.origen === 'auto_gasto' && selGastoOrigen && (
+                    <div style={{marginTop:12,paddingTop:12,borderTop:'1px solid var(--border-subtle)'}}>
+                      <div style={{fontSize:11,color:'var(--fg-muted)',fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:8}}>Gasto de origen</div>
+                      <div style={{display:'flex',alignItems:'flex-start',gap:8}}>
+                        <span style={{width:16,height:16,color:'var(--fg-muted)',marginTop:2}}>{I.receipt}</span>
+                        <div style={{display:'flex',flexDirection:'column',gap:3}}>
+                          <div style={{fontWeight:700,fontSize:13}}>{selGastoConcepto || sel.concepto}</div>
+                          <div style={{fontSize:12,color:'var(--fg-muted)'}}>
+                            {[selGastoCategoria, selGastoCecoNombre].filter(Boolean).join(' · ')}
+                          </div>
+                          <div style={{fontSize:11,color:'var(--fg-subtle)'}}>Registro en Compras/Gastos</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{marginTop:12,paddingTop:12,borderTop:'1px solid var(--border-subtle)',fontSize:11,color:'var(--fg-muted)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Resumen de pago</div>
+                  <div style={{height:8}}/>
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
                     {[['Total',money(totalDe(sel),symOf(sel.moneda))],['Pagado',money(pagadoDe(sel),symOf(sel.moneda))],['Saldo pendiente',money(saldoDe(sel),symOf(sel.moneda))],['Vencimiento',sel.fecha_vencimiento || '—']].map(([l,v]) => (
                       <div key={l}><div style={{fontSize:10,color:'var(--fg-muted)',marginBottom:2}}>{l}</div><div style={{fontWeight:600,fontSize:13}}>{v}</div></div>
                     ))}
                   </div>
-                  {sel.gasto_id && (
-                    <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid var(--border-subtle)',fontSize:12,color:'var(--fg-muted)',display:'flex',alignItems:'center',gap:6}}>
-                      {I.receipt} Originada desde gasto: <span className="mono" style={{fontWeight:600,color:'var(--fg)'}}>{sel.gasto_id}</span>
-                    </div>
-                  )}
                   <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid var(--border-subtle)',display:'flex',flexDirection:'column',gap:8}}>
                     <div style={{fontSize:11,color:'var(--fg-muted)',fontWeight:600}}>Clasificación en Estado de Resultados</div>
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
@@ -5197,11 +6872,7 @@ function CxP() {
                         <label style={{fontSize:11}}>Categoría ER</label>
                         <select className="select" style={{fontSize:12}} value={fichaClasifCategoria} onChange={e => setFichaClasifCategoria(e.target.value)}>
                           <option value="">Automático</option>
-                          <option value="Materiales">Materiales</option>
-                          <option value="Servicios terceros">Servicios terceros</option>
-                          <option value="Logística">Logística</option>
-                          <option value="Administrativos">Administrativos</option>
-                          <option value="Comerciales">Comerciales</option>
+                          {erCatOpts.map(n => <option key={n} value={n}>{n}</option>)}
                         </select>
                       </div>
                       <div className="input-group" style={{marginBottom:0}}>
@@ -5317,28 +6988,30 @@ function CxP() {
             <div className="side-panel-head">
               <div>
                 <div className="eyebrow">Nueva cuenta por pagar</div>
-                <div style={{fontWeight:700,fontSize:20}}>{motivoCxP === 'viaticos_reembolso' ? 'Reembolso de viáticos' : 'Registrar factura'}</div>
+                <div style={{fontWeight:700,fontSize:20}}>{formCrear.tipo_comprobante === 'RHE' ? 'Registrar RHE' : motivoCxP === 'viaticos_reembolso' ? 'Reembolso de viáticos' : 'Registrar factura'}</div>
               </div>
               <button className="icon-btn" onClick={resetCrearCxP}>{I.x}</button>
             </div>
             <form className="side-panel-body" onSubmit={guardarNuevaCxP}>
-              <div className="input-group">
-                <label>Motivo</label>
-                <select className="select" value={motivoCxP} onChange={e => {
-                  const value = e.target.value;
-                  setMotivoCxP(value);
-                  if (value === 'tributo') {
-                    setCxpCategoriaEr('Tributos');
-                    setFormCrear(v => ({...v, tipo_beneficiario:'colectivo', tipo_comprobante:'Tributo', proveedor_id:'', concepto: tributoConcepto}));
-                  } else if (value === 'viaticos_reembolso') {
-                    setFormCrear(v => ({...v, tipo_beneficiario:'personal'}));
-                  }
-                }}>
-                  <option value="">Factura / gasto de proveedor (estándar)</option>
-                  <option value="viaticos_reembolso">Reembolso de viáticos o gastos de campo a colaborador</option>
-                </select>
-              </div>
-              {!esTributoForm && (
+              {formCrear.tipo_comprobante !== 'RHE' && (
+                <div className="input-group">
+                  <label>Motivo</label>
+                  <select className="select" value={motivoCxP} onChange={e => {
+                    const value = e.target.value;
+                    setMotivoCxP(value);
+                    if (value === 'tributo') {
+                      setCxpCategoriaEr('Tributos');
+                      setFormCrear(v => ({...v, tipo_beneficiario:'colectivo', tipo_comprobante:'Tributo', proveedor_id:'', concepto: tributoConcepto}));
+                    } else if (value === 'viaticos_reembolso') {
+                      setFormCrear(v => ({...v, tipo_beneficiario:'personal'}));
+                    }
+                  }}>
+                    <option value="">Factura / gasto de proveedor (estándar)</option>
+                    <option value="viaticos_reembolso">Reembolso de viáticos o gastos de campo a colaborador</option>
+                  </select>
+                </div>
+              )}
+              {!esTributoForm && formCrear.tipo_comprobante !== 'RHE' && (
                 <div className="input-group">
                   <label>Tipo de beneficiario</label>
                   <select className="select" value={formCrear.tipo_beneficiario || 'proveedor'} onChange={e => {
@@ -5425,48 +7098,273 @@ function CxP() {
                   </div>
                 </div>
               )}
-              <div className="input-group">
-                <label>Tipo de comprobante</label>
-                <select className="select" value={formCrear.tipo_comprobante} onChange={e => setFormCrear(v => ({...v,tipo_comprobante:e.target.value}))}>
-                  <option value="Factura">Factura</option>
-                  <option value="Boleta">Boleta</option>
-                  <option value="RHE">RHE — Recibo por Honorarios (externo)</option>
-                </select>
-              </div>
+              {formCrear.tipo_comprobante !== 'RHE' && (
+                <div className="input-group">
+                  <label>Tipo de comprobante</label>
+                  <select className="select" value={formCrear.tipo_comprobante} onChange={e => setFormCrear(v => ({...v,tipo_comprobante:e.target.value}))}>
+                    <option value="Factura">Factura</option>
+                    <option value="Boleta">Boleta</option>
+                    <option value="RHE">RHE — Recibo por Honorarios (externo)</option>
+                  </select>
+                </div>
+              )}
               {formCrear.tipo_comprobante === 'RHE' ? (
-                <div style={{background:'var(--bg-subtle)',borderRadius:8,padding:'14px',display:'flex',flexDirection:'column',gap:12}}>
-                  <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:2}}>Datos del emisor del RHE</div>
-                  <div className="grid-2" style={{gap:12}}>
-                    <div className="input-group" style={{gridColumn:'1/-1'}}>
-                      <label>RUC del emisor <span style={{color:'var(--danger)'}}>*</span></label>
-                      <input className="input" value={rheRuc} onChange={e => setRheRuc(e.target.value.replace(/\D/g,'').slice(0,11))} placeholder="20512345678" maxLength={11}/>
-                      {rheRuc && rheRuc.length !== 11 && <div style={{fontSize:11,color:'var(--danger)',marginTop:2}}>El RUC debe tener 11 dígitos</div>}
-                    </div>
-                    <div className="input-group" style={{gridColumn:'1/-1'}}>
-                      <label>Nombre / Razón Social <span style={{color:'var(--danger)'}}>*</span></label>
-                      <input className="input" value={rheNombre} onChange={e => setRheNombre(e.target.value)} placeholder="Consultor Externo SAC"/>
-                    </div>
-                    <div className="input-group" style={{gridColumn:'1/-1'}}>
-                      <label>N° RHE</label>
-                      <input className="input" value={rheNumeroDoc} onChange={e => setRheNumeroDoc(e.target.value)} placeholder="RHE-00001"/>
-                    </div>
-                    <div className="input-group">
-                      <label>Monto bruto <span style={{color:'var(--danger)'}}>*</span></label>
-                      <input className="input" type="number" min="0" step="0.01" value={rheMontoBruto} onChange={e => setRheMontoBruto(e.target.value)} placeholder="0.00"/>
-                    </div>
-                    <div className="input-group">
-                      <label>Moneda</label>
-                      <select className="select" value={formCrear.moneda} onChange={e => setFormCrear(v => ({...v,moneda:e.target.value}))}>
-                        <option value="PEN">PEN</option>
-                        <option value="USD">USD</option>
-                      </select>
-                    </div>
+                <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                  {/* Cambio 5 — Regla de negocio permanente */}
+                  <div style={{background:'var(--bg-subtle)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 14px',fontSize:12,color:'var(--fg-muted)',lineHeight:1.5}}>
+                    <strong style={{color:'var(--fg)',display:'block',marginBottom:3}}>Regla de registro RHE</strong>
+                    Colaboradores recurrentes con OT asignada → <strong>colaborador interno</strong> (Mano de obra / Costo de Ventas). Externos puntuales sin OT → <strong>proveedor externo</strong> (Servicios terceros / Gastos Operativos). El canal determina el impacto en el Estado de Resultados.
                   </div>
-                  {Number(rheMontoBruto) > 0 && (
-                    <div style={{background:'var(--bg)',borderRadius:6,padding:'10px 12px',fontSize:13}}>
-                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:'var(--fg-muted)'}}>Monto bruto</span><strong>{Number(rheMontoBruto).toFixed(2)}</strong></div>
-                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:'var(--danger)'}}>Retención IR 8%</span><span style={{color:'var(--danger)'}}>- {rheRetencion.toFixed(2)}</span></div>
-                      <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,borderTop:'1px solid var(--border)',paddingTop:6}}><span>Monto a pagar (neto)</span><span>{rheMontoNeto.toFixed(2)}</span></div>
+                  {/* Cambio 1 — Selección de tipo de emisor */}
+                  {!rheTipoEmisor ? (
+                    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                      <div style={{fontSize:12,color:'var(--fg-muted)',fontWeight:600}}>¿Quién emite este RHE? <span style={{color:'var(--danger)'}}>*</span></div>
+                      {[
+                        {val:'interno', titulo:'Colaborador interno con honorarios', desc:'Persona registrada en RRHH con modalidad Honorarios'},
+                        {val:'externo', titulo:'Proveedor externo / tercero', desc:'Consultor, freelance o persona natural sin ficha en el sistema'},
+                      ].map(opt => (
+                        <button key={opt.val} type="button" onClick={() => { setRheTipoEmisor(opt.val); setRheMontoEditadoManual(false); setRheMontoBruto(''); }} style={{display:'flex',flexDirection:'column',alignItems:'flex-start',padding:'12px 14px',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg-subtle)',cursor:'pointer',textAlign:'left',gap:4,width:'100%'}}>
+                          <span style={{fontSize:13,fontWeight:600,color:'var(--fg)'}}>{opt.titulo}</span>
+                          <span style={{fontSize:11,color:'var(--fg-muted)'}}>{opt.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'var(--bg-subtle)',borderRadius:8,border:'1px solid var(--border)'}}>
+                      <span style={{fontSize:12,fontWeight:600,color:'var(--fg)'}}>
+                        {rheTipoEmisor === 'interno' ? 'Colaborador interno con honorarios' : 'Proveedor externo / tercero'}
+                      </span>
+                      <button type="button" onClick={() => { setRheTipoEmisor(''); setRheColaboradorId(''); setRheTrabajoFacturable(true); setRheRuc(''); setRheNombre(''); setRheRucAviso(null); setRheReferenciaHoras(null); setRheReferenciaError(''); setRheMontoEditadoManual(false); setRheMontoBruto(''); setCxpCategoriaEr(''); }} style={{fontSize:11,color:'var(--fg-muted)',background:'none',border:'none',cursor:'pointer',padding:'2px 6px',borderRadius:4}}>
+                        Cambiar
+                      </button>
+                    </div>
+                  )}
+                  {/* Cambio 2 — Flujo colaborador interno */}
+                  {rheTipoEmisor === 'interno' && (
+                    <div style={{background:'var(--bg-subtle)',borderRadius:8,padding:'14px',display:'flex',flexDirection:'column',gap:12}}>
+                      <div style={{fontSize:12,color:'var(--fg-muted)',fontWeight:600}}>Datos del colaborador</div>
+                      <div className="input-group">
+                        <label>Colaborador <span style={{color:'var(--danger)'}}>*</span></label>
+                        <select className="select" value={rheColaboradorId} onChange={e => {
+                          const id = e.target.value;
+                          setRheColaboradorId(id);
+                          setRheMontoEditadoManual(false);
+                          setRheMontoBruto('');
+                          const col = colaboradoresHonorarios.find(p => p.id === id);
+                          setRheRuc(col?.ruc_colaborador || '');
+                          setRheNombre(col?.nombre || '');
+                        }}>
+                          <option value="">— Seleccionar colaborador —</option>
+                          {colaboradoresHonorarios.map(p => (
+                            <option key={p.id} value={p.id}>{p.nombre} — {p.cargo || p.area || 'Sin cargo'}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {rheColaboradorSel && (
+                        <div style={{background:'var(--bg)',borderRadius:6,padding:'8px 12px',fontSize:12,color:'var(--fg-muted)',display:'flex',flexDirection:'column',gap:4}}>
+                          {rheColaboradorSel.ruc_colaborador && <span>RUC: <strong style={{color:'var(--fg)'}}>{rheColaboradorSel.ruc_colaborador}</strong></span>}
+                          {rheColaboradorTasaIR === 0 && <span style={{color:'var(--green)'}}>Sin retención IR — constancia de suspensión vigente</span>}
+                        </div>
+                      )}
+                      <div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,padding:'12px',display:'flex',flexDirection:'column',gap:10}}>
+                        <div style={{fontSize:12,color:'var(--fg-muted)',fontWeight:600}}>Periodo de servicio</div>
+                        <div className="grid-2" style={{gap:10}}>
+                          <div className="input-group">
+                            <label>Mes inicio</label>
+                            <select className="select" value={rhePeriodoServicio.inicioMes} onChange={e => actualizarPeriodoRhe({ inicioMes: e.target.value })}>
+                              {RHE_MESES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                            </select>
+                          </div>
+                          <div className="input-group">
+                            <label>Anio inicio</label>
+                            <select className="select" value={rhePeriodoServicio.inicioAnio} onChange={e => actualizarPeriodoRhe({ inicioAnio: e.target.value })}>
+                              {rheYearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                          </div>
+                          <div className="input-group">
+                            <label>Mes fin</label>
+                            <select className="select" value={rhePeriodoServicio.finMes} onChange={e => actualizarPeriodoRhe({ finMes: e.target.value })}>
+                              {RHE_MESES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                            </select>
+                          </div>
+                          <div className="input-group">
+                            <label>Anio fin</label>
+                            <select className="select" value={rhePeriodoServicio.finAnio} onChange={e => actualizarPeriodoRhe({ finAnio: e.target.value })}>
+                              {rheYearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        {!rhePeriodoRango.valido && (
+                          <div style={{fontSize:12,color:'var(--danger)'}}>El periodo final no puede ser anterior al periodo inicial.</div>
+                        )}
+                      </div>
+                      {rheColaboradorId && (
+                        <div style={{background:'color-mix(in srgb, var(--cyan) 8%, var(--surface))',border:'1px solid color-mix(in srgb, var(--cyan) 28%, var(--border))',borderRadius:8,padding:'12px 14px',fontSize:12,lineHeight:1.5,display:'flex',flexDirection:'column',gap:8}}>
+                          <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'center'}}>
+                            <strong style={{color:'var(--fg)'}}>Referencia por horas reales</strong>
+                            {rheReferenciaLoading && <span style={{color:'var(--fg-muted)'}}>Consultando...</span>}
+                          </div>
+                          {rheReferenciaError ? (
+                            <span style={{color:'var(--danger)'}}>{rheReferenciaError}</span>
+                          ) : rheReferenciaHoras ? (
+                            <>
+                              <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:'4px 12px'}}>
+                                <span style={{color:'var(--fg-muted)'}}>Partes aprobados</span>
+                                <strong>{Number(rheReferenciaHoras.horasPartes || 0).toFixed(2)} h</strong>
+                                <span style={{color:'var(--fg-muted)'}}>Tareos enviados</span>
+                                <strong>{Number(rheReferenciaHoras.horasTareos || 0).toFixed(2)} h</strong>
+                                <span style={{color:'var(--fg-muted)'}}>Horas registradas</span>
+                                <strong>{rheHorasTotal.toFixed(2)} h</strong>
+                              </div>
+                              {rheTarifaHora > 0 ? (
+                                <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:'4px 12px',borderTop:'1px solid color-mix(in srgb, var(--cyan) 22%, var(--border))',paddingTop:8}}>
+                                  <span style={{color:'var(--fg-muted)'}}>Tarifa hora</span>
+                                  <strong>{moneyD(rheTarifaHora, symOf(formCrear.moneda))}/h</strong>
+                                  <span style={{color:'var(--fg-muted)'}}>Monto sugerido</span>
+                                  <strong style={{fontSize:14}}>{moneyD(rheMontoSugerido, symOf(formCrear.moneda))}</strong>
+                                </div>
+                              ) : (
+                                <span style={{color:'var(--orange)',fontWeight:600}}>Tarifa hora no configurada - configurala en la ficha del colaborador.</span>
+                              )}
+                              {rheReferenciaHoras.existeRhePeriodo && (
+                                <div style={{background:'color-mix(in srgb, var(--orange) 12%, var(--surface))',border:'1px solid color-mix(in srgb, var(--orange) 35%, var(--border))',borderRadius:6,padding:'8px 10px',color:'var(--fg)'}}>
+                                  Ya existe un RHE registrado para este colaborador en el periodo seleccionado. Verifica si es un registro duplicado antes de continuar.
+                                </div>
+                              )}
+                              <span style={{color:'var(--fg-muted)'}}>Referencia orientativa. Puedes ingresar un monto distinto si el acuerdo aplicado es diferente.</span>
+                            </>
+                          ) : (
+                            <span style={{color:'var(--fg-muted)'}}>Selecciona un periodo valido para consultar horas registradas.</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="input-group">
+                        <label>¿Este honorario es por trabajo directo en proyectos facturables?</label>
+                        <div className="row" style={{gap:8,flexWrap:'wrap'}}>
+                          <button type="button" className={'btn btn-sm ' + (rheTrabajoFacturable ? 'btn-primary' : 'btn-secondary')} onClick={() => { setRheTrabajoFacturable(true); setCxpCategoriaEr(''); }}>Sí</button>
+                          <button type="button" className={'btn btn-sm ' + (!rheTrabajoFacturable ? 'btn-primary' : 'btn-secondary')} onClick={() => { setRheTrabajoFacturable(false); setCxpCategoriaEr(''); }}>No</button>
+                        </div>
+                        <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4,lineHeight:1.4}}>
+                          {rheTrabajoFacturable
+                            ? 'Impacta como Mano de obra en Costo de Ventas del ER.'
+                            : 'Impacta como Mano de obra en Gastos Operativos del ER.'}
+                        </div>
+                      </div>
+                      <div className="input-group" style={{display:'none'}}>
+                        <label>Legacy RHE OT</label>
+                        <select className="select" value={rheOtId} onChange={e => setRheOtId(e.target.value)}>
+                          <option value="">Sin OT</option>
+                          {(ots||[]).filter(o => o.estado !== 'anulada').map(o => (
+                            <option key={o.id} value={o.id}>{o.numero || o.id} — {o.nombre || o.descripcion || ''}</option>
+                          ))}
+                        </select>
+                        <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4,lineHeight:1.4}}>
+                          {rheOtId ? 'Con OT → Mano de obra en Costo de Ventas.' : 'Sin OT → Mano de obra en Gastos Operativos.'}
+                        </div>
+                      </div>
+                      <div className="input-group">
+                        <label>Categoría ER (automático)</label>
+                        <input className="input" value={rheCategoriaErAsignada} readOnly style={{background:'var(--bg)',color:'var(--fg-muted)',cursor:'default'}}/>
+                        {rheFaltaCategoriaManoObra && (
+                          <>
+                            <div style={{fontSize:11,color:'var(--orange)',marginTop:4,lineHeight:1.4}}>
+                              {rheSinCategoriasManoObra
+                                ? 'Este tenant no tiene configurada una categoria de Mano de obra. Configurala en Parametros Generales - Categorias ER o selecciona una categoria manual como fallback.'
+                                : `No hay una categoria de Mano de obra para ${rheDestinoErLabel}. Puedes configurarla en Parametros Generales - Categorias ER o seleccionar una categoria manual como fallback.`}
+                            </div>
+                            <select className="select" value={cxpCategoriaEr} onChange={e => setCxpCategoriaEr(e.target.value)} style={{marginTop:8}}>
+                              <option value="">Seleccionar categoria fallback...</option>
+                              {erCatOpts.map(n => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                          </>
+                        )}
+                      </div>
+                      <div className="grid-2" style={{gap:12}}>
+                        <div className="input-group" style={{gridColumn:'1/-1'}}>
+                          <label>N° RHE</label>
+                          <input className="input" value={rheNumeroDoc} onChange={e => setRheNumeroDoc(e.target.value)} placeholder="RHE-00001"/>
+                        </div>
+                        <div className="input-group">
+                          <label>Monto bruto <span style={{color:'var(--danger)'}}>*</span></label>
+                          <input className="input" type="number" min="0" step="0.01" value={rheMontoBruto} onChange={e => { setRheMontoBruto(e.target.value); setRheMontoEditadoManual(true); }} placeholder="0.00"/>
+                          {rheAdvertenciaDesviacion && (
+                            <div style={{fontSize:11,color:'var(--orange)',marginTop:4,lineHeight:1.4}}>
+                              El monto ingresado difiere significativamente del calculado segun horas registradas. Puedes continuar si el acuerdo es diferente a la tarifa hora configurada.
+                            </div>
+                          )}
+                        </div>
+                        <div className="input-group">
+                          <label>Moneda</label>
+                          <select className="select" value={formCrear.moneda} onChange={e => setFormCrear(v => ({...v,moneda:e.target.value}))}>
+                            <option value="PEN">PEN</option>
+                            <option value="USD">USD</option>
+                          </select>
+                        </div>
+                      </div>
+                      {Number(rheMontoBruto) > 0 && (
+                        <div style={{background:'var(--bg)',borderRadius:6,padding:'10px 12px',fontSize:13}}>
+                          <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:'var(--fg-muted)'}}>Monto bruto</span><strong>{Number(rheMontoBruto).toFixed(2)}</strong></div>
+                          {rheColaboradorTasaIR > 0
+                            ? <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:'var(--danger)'}}>Retención IR {(rheColaboradorTasaIR*100).toFixed(0)}%</span><span style={{color:'var(--danger)'}}>- {rheRetencionInterna.toFixed(2)}</span></div>
+                            : <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:'var(--green)'}}>Sin retención IR (suspensión vigente)</span><span style={{color:'var(--green)'}}>0.00</span></div>
+                          }
+                          <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,borderTop:'1px solid var(--border)',paddingTop:6}}><span>Monto a pagar (neto)</span><span>{rheMontoNetoInterno.toFixed(2)}</span></div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* Cambio 3 — Flujo proveedor externo */}
+                  {rheTipoEmisor === 'externo' && (
+                    <div style={{background:'var(--bg-subtle)',borderRadius:8,padding:'14px',display:'flex',flexDirection:'column',gap:12}}>
+                      <div style={{fontSize:12,color:'var(--fg-muted)',fontWeight:600}}>Datos del emisor del RHE</div>
+                      {/* Cambio 4 — Advertencia RUC coincide con colaborador */}
+                      {rheRucAviso && (
+                        <div style={{background:'color-mix(in srgb, var(--orange) 10%, var(--surface))',border:'1px solid color-mix(in srgb, var(--orange) 30%, var(--border))',borderRadius:8,padding:'10px 12px',fontSize:12,lineHeight:1.5}}>
+                          <strong style={{display:'block',marginBottom:4}}>Este RUC pertenece a {rheRucAviso.nombre}</strong>
+                          <span style={{color:'var(--fg-muted)'}}>Está registrado como colaborador interno con modalidad Honorarios. Si este pago es por trabajo en una OT, considera registrarlo como colaborador interno para que impacte correctamente el Costo de Ventas.</span>
+                          <button type="button" onClick={() => {
+                            setRheTipoEmisor('interno');
+                            const col = [...(personalAdmin||[]), ...(personalOperativo||[])].find(p => p.ruc_colaborador === rheRuc && p.estado !== 'inactivo');
+                            if (col) { setRheColaboradorId(col.id); setRheNombre(col.nombre || ''); }
+                            setRheRucAviso(null);
+                          }} style={{display:'block',marginTop:8,fontSize:12,fontWeight:600,color:'var(--fg)',background:'none',border:'none',cursor:'pointer',padding:0,textDecoration:'underline'}}>
+                            Registrar como colaborador interno →
+                          </button>
+                        </div>
+                      )}
+                      <div className="grid-2" style={{gap:12}}>
+                        <div className="input-group" style={{gridColumn:'1/-1'}}>
+                          <label>RUC del emisor <span style={{color:'var(--danger)'}}>*</span></label>
+                          <input className="input" value={rheRuc} onChange={e => setRheRuc(e.target.value.replace(/\D/g,'').slice(0,11))} placeholder="20512345678" maxLength={11}/>
+                          {rheRuc && rheRuc.length !== 11 && <div style={{fontSize:11,color:'var(--danger)',marginTop:2}}>El RUC debe tener 11 dígitos</div>}
+                        </div>
+                        <div className="input-group" style={{gridColumn:'1/-1'}}>
+                          <label>Nombre / Razón Social <span style={{color:'var(--danger)'}}>*</span></label>
+                          <input className="input" value={rheNombre} onChange={e => setRheNombre(e.target.value)} placeholder="Consultor Externo SAC"/>
+                        </div>
+                        <div className="input-group" style={{gridColumn:'1/-1'}}>
+                          <label>N° RHE</label>
+                          <input className="input" value={rheNumeroDoc} onChange={e => setRheNumeroDoc(e.target.value)} placeholder="RHE-00001"/>
+                        </div>
+                        <div className="input-group">
+                          <label>Monto bruto <span style={{color:'var(--danger)'}}>*</span></label>
+                          <input className="input" type="number" min="0" step="0.01" value={rheMontoBruto} onChange={e => setRheMontoBruto(e.target.value)} placeholder="0.00"/>
+                        </div>
+                        <div className="input-group">
+                          <label>Moneda</label>
+                          <select className="select" value={formCrear.moneda} onChange={e => setFormCrear(v => ({...v,moneda:e.target.value}))}>
+                            <option value="PEN">PEN</option>
+                            <option value="USD">USD</option>
+                          </select>
+                        </div>
+                      </div>
+                      {Number(rheMontoBruto) > 0 && (
+                        <div style={{background:'var(--bg)',borderRadius:6,padding:'10px 12px',fontSize:13}}>
+                          <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:'var(--fg-muted)'}}>Monto bruto</span><strong>{Number(rheMontoBruto).toFixed(2)}</strong></div>
+                          <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:'var(--danger)'}}>Retención IR 8%</span><span style={{color:'var(--danger)'}}>- {rheRetencion.toFixed(2)}</span></div>
+                          <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,borderTop:'1px solid var(--border)',paddingTop:6}}><span>Monto a pagar (neto)</span><span>{rheMontoNeto.toFixed(2)}</span></div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -5506,17 +7404,15 @@ function CxP() {
               )}
               <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 14px', display:'flex', flexDirection:'column', gap:12}}>
                 <div style={{fontSize:12, color:'var(--fg-muted)', fontWeight:600}}>Clasificación en Estado de Resultados</div>
-                <div className="input-group">
-                  <label>Categoría ER</label>
-                  <select className="select" value={cxpCategoriaEr} onChange={e => setCxpCategoriaEr(e.target.value)}>
-                    <option value="">Automático (según tipo de comprobante)</option>
-                    <option value="Materiales">Materiales</option>
-                    <option value="Servicios terceros">Servicios terceros</option>
-                    <option value="Logística">Logística</option>
-                    <option value="Administrativos">Administrativos</option>
-                    <option value="Comerciales">Comerciales</option>
-                  </select>
-                </div>
+                {(formCrear.tipo_comprobante !== 'RHE' || rheTipoEmisor !== 'interno') && (
+                  <div className="input-group">
+                    <label>Categoría ER</label>
+                    <select className="select" value={cxpCategoriaEr} onChange={e => setCxpCategoriaEr(e.target.value)}>
+                      <option value="">Automático (según tipo de comprobante)</option>
+                      {erCatOpts.map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div className="input-group">
                   <label>Centro de costo (opcional)</label>
                   <select className="select" value={cxpCentroCostoId} onChange={e => setCxpCentroCostoId(e.target.value)}>
@@ -5569,7 +7465,7 @@ function CxP() {
                 {archivoCrearUrl && <div style={{fontSize:12,color:'var(--green)',marginTop:4}}>Archivo adjunto listo.</div>}
               </div>
               <div className="row mt-6" style={{justifyContent:'flex-end'}}>
-                <button type="button" className="btn btn-secondary" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); setRheRuc(''); setRheNombre(''); setRheMontoBruto(''); setRheNumeroDoc(''); setCxpCategoriaEr(''); setCxpCentroCostoId(''); }}>Cancelar</button>
+                <button type="button" className="btn btn-secondary" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); setRheRuc(''); setRheNombre(''); setRheMontoBruto(''); setRheNumeroDoc(''); setRheTipoEmisor(''); setRheColaboradorId(''); setRheTrabajoFacturable(true); setRheOtId(''); setRheRucAviso(null); setCxpCategoriaEr(''); setCxpCentroCostoId(''); }}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : 'Registrar CxP'}</button>
               </div>
             </form>

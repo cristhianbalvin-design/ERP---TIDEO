@@ -51,7 +51,227 @@ export const calcularFechaVencimientoCxC = (fechaEmision, condicionPago, condici
   return fecha.toISOString().split('T')[0];
 };
 
+const numeroFin = value => Number(value || 0);
+const redondear2 = value => Math.round(numeroFin(value) * 100) / 100;
+
+const sumarCampoHoras = (rows, field = 'horas') =>
+  (rows || []).reduce((sum, row) => sum + numeroFin(row?.[field] ?? row?.horas), 0);
+
+const horasParteAprobado = parte => numeroFin(parte?.horas ?? parte?.horas_normales ?? parte?.horas_total);
+const personaIdParte = parte => parte?.tecnico_id || parte?.personal_id || parte?.tecnico;
+
+const queryRows = async (query) => {
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+};
+
+const montoNetoCobrableCxC = cxc => {
+  const netoSnapshot = numeroFin(cxc?.monto_neto_cobrable || cxc?.facturas?.monto_neto_cobrable);
+  if (netoSnapshot > 0) return netoSnapshot;
+  const total = numeroFin(cxc?.monto_total ?? cxc?.total);
+  const retencion = numeroFin(cxc?.monto_retencion);
+  return Math.max(0, total - retencion);
+};
+
+const saldoNetoCxC = cxc => {
+  const estadoOriginal = String(cxc?.estado || '').toLowerCase();
+  if (['anulada', 'cancelada'].includes(estadoOriginal)) return 0;
+  if (cxc?.saldo != null) return Math.max(0, numeroFin(cxc.saldo));
+  const netoSnapshot = numeroFin(cxc?.monto_neto_cobrable || cxc?.facturas?.monto_neto_cobrable);
+  if (netoSnapshot > 0) return Math.max(0, netoSnapshot - numeroFin(cxc?.monto_pagado ?? cxc?.pagado));
+  return Math.max(0, montoNetoCobrableCxC(cxc) - numeroFin(cxc?.monto_pagado ?? cxc?.pagado));
+};
+
+const normalizarCxC = cxc => {
+  const montoNeto = montoNetoCobrableCxC(cxc);
+  const saldoNeto = saldoNetoCxC(cxc);
+  const pagado = numeroFin(cxc?.monto_pagado ?? cxc?.pagado);
+  const estadoOriginal = String(cxc?.estado || '').toLowerCase();
+  const estado = ['anulada', 'cancelada'].includes(estadoOriginal)
+    ? estadoOriginal
+    : (montoNeto > 0 && pagado >= montoNeto) || saldoNeto <= 0
+      ? 'cobrada'
+      : cxc?.estado;
+  return {
+    ...cxc,
+    monto_neto_cobrable: montoNeto,
+    saldo_neto_cobranza: saldoNeto,
+    saldo: saldoNeto,
+    estado,
+  };
+};
+
+const movimientoEsCobroFactura = movimiento => {
+  const tipo = String(movimiento?.tipo || '').toLowerCase();
+  const vinculoTipo = String(movimiento?.vinculo_tipo || movimiento?.vinculado_tipo || '').toLowerCase();
+  return tipo === 'ingreso' && (vinculoTipo === 'cxc' || movimiento?.cxc_id || movimiento?.factura_id);
+};
+
+const descripcionCobroUsaIdInterno = descripcion => {
+  const value = String(descripcion || '').trim();
+  return !value || /^cobro\s+(fac_|cxc_|[0-9a-f]{6,})/i.test(value);
+};
+
+const obtenerOrigenCobroMovimiento = async (supabase, movimiento = {}) => {
+  const vinculoTipo = String(movimiento?.vinculo_tipo || movimiento?.vinculado_tipo || '').toLowerCase();
+  const cxcId = movimiento?.cxc_id || (vinculoTipo === 'cxc' ? (movimiento?.vinculo_id || movimiento?.vinculado_id) : null);
+  const facturaIdDirecto = movimiento?.factura_id || (vinculoTipo === 'factura' ? (movimiento?.vinculo_id || movimiento?.vinculado_id) : null);
+  let cxc = null;
+  let factura = null;
+
+  if (cxcId) {
+    const withRelation = await supabase
+      .from('cxc')
+      .select('id, moneda, factura_id, facturas(id, numero, moneda)')
+      .eq('id', cxcId)
+      .maybeSingle();
+    if (!withRelation.error) {
+      cxc = withRelation.data || null;
+      factura = cxc?.facturas || null;
+    } else {
+      const fallback = await supabase
+        .from('cxc')
+        .select('id, moneda, factura_id')
+        .eq('id', cxcId)
+        .maybeSingle();
+      if (!fallback.error) cxc = fallback.data || null;
+    }
+  }
+
+  const facturaId = factura?.id || cxc?.factura_id || facturaIdDirecto;
+  if (!factura && facturaId) {
+    const facturaResult = await supabase
+      .from('facturas')
+      .select('id, numero, moneda')
+      .eq('id', facturaId)
+      .maybeSingle();
+    if (!facturaResult.error) factura = facturaResult.data || null;
+  }
+
+  return { cxc, factura };
+};
+
+const normalizarMovimientoTesoreriaCobro = async (supabase, movimiento = {}) => {
+  if (!movimientoEsCobroFactura(movimiento)) return movimiento;
+  const { cxc, factura } = await obtenerOrigenCobroMovimiento(supabase, movimiento);
+  const numeroFactura = factura?.numero || null;
+  const monedaOrigen = cxc?.moneda || factura?.moneda || movimiento?.moneda || 'PEN';
+  const descripcion = descripcionCobroUsaIdInterno(movimiento?.descripcion)
+    ? `Cobro ${numeroFactura || 'factura'}`
+    : movimiento.descripcion;
+  return {
+    ...movimiento,
+    descripcion,
+    moneda: monedaOrigen,
+  };
+};
+
+const missingColumnFromError = error =>
+  error?.message?.match(/column "([^"]+)" of relation/)?.[1]
+  || error?.message?.match(/'([^']+)' column/)?.[1]
+  || null;
+
+const insertOneTolerante = async (supabase, table, payload) => {
+  let p = { ...payload };
+  for (let i = 0; i < 10; i++) {
+    const { data, error } = await supabase.from(table).insert(p).select().single();
+    if (!error) return data;
+    const col = missingColumnFromError(error);
+    if (!col || !(col in p)) throw error;
+    delete p[col];
+  }
+  const { data, error } = await supabase.from(table).insert(p).select().single();
+  if (error) throw error;
+  return data;
+};
+
+const updateOneTolerante = async (supabase, table, id, payload) => {
+  let p = { ...payload };
+  for (let i = 0; i < 10; i++) {
+    const { data, error } = await supabase.from(table).update(p).eq('id', id).select().single();
+    if (!error) return data;
+    const col = missingColumnFromError(error);
+    if (!col || !(col in p)) throw error;
+    delete p[col];
+  }
+  const { data, error } = await supabase.from(table).update(p).eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+};
+
 export const finanzasService = {
+  async getReferenciaRheInterno({ empresaId, personalId, periodoInicio, periodoFin }) {
+    if (!empresaId || !personalId || !periodoInicio || !periodoFin) {
+      return {
+        horasPartes: 0,
+        horasTareos: 0,
+        horasTotal: 0,
+        existeRhePeriodo: false,
+      };
+    }
+
+    const supabase = await getSupabaseClient();
+    const [partesPeriodo, tareos, cxpRhe, recibos] = await Promise.all([
+      queryRows(
+        supabase
+          .from('partes_diarios')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .eq('estado', 'aprobado')
+          .gte('fecha', periodoInicio)
+          .lte('fecha', periodoFin)
+      ),
+      queryRows(
+        supabase
+          .from('tareos_admin')
+          .select('id, fecha, personal_id, horas, estado')
+          .eq('empresa_id', empresaId)
+          .eq('personal_id', personalId)
+          .eq('estado', 'enviado')
+          .gte('fecha', periodoInicio)
+          .lte('fecha', periodoFin)
+      ),
+      queryRows(
+        supabase
+          .from('cxp')
+          .select('id, fecha_emision, fecha_vencimiento, tipo_comprobante, personal_id')
+          .eq('empresa_id', empresaId)
+          .eq('personal_id', personalId)
+          .eq('tipo_comprobante', 'RHE')
+          .lte('fecha_emision', periodoFin)
+          .gte('fecha_vencimiento', periodoInicio)
+      ).catch(err => {
+        console.warn('[RHE referencia] cxp duplicado:', err.message);
+        return [];
+      }),
+      queryRows(
+        supabase
+          .from('recibos_honorarios')
+          .select('id, personal_id, periodo')
+          .eq('empresa_id', empresaId)
+          .eq('personal_id', personalId)
+          .gte('periodo', periodoInicio.slice(0, 7))
+          .lte('periodo', periodoFin.slice(0, 7))
+      ).catch(err => {
+        console.warn('[RHE referencia] recibos_honorarios:', err.message);
+        return [];
+      }),
+    ]);
+
+    const partes = partesPeriodo.filter(parte => personaIdParte(parte) === personalId);
+    const horasPartes = redondear2(partes.reduce((sum, parte) => sum + horasParteAprobado(parte), 0));
+    const horasTareos = redondear2(sumarCampoHoras(tareos, 'horas'));
+    const horasTotal = redondear2(horasPartes + horasTareos);
+
+    return {
+      horasPartes,
+      horasTareos,
+      horasTotal,
+      existeRhePeriodo: cxpRhe.length > 0 || recibos.length > 0,
+    };
+  },
+
   async getValorizaciones(empresaId) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
@@ -162,10 +382,10 @@ export const finanzasService = {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('cxc')
-      .select(`*, cuentas(id, razon_social, nombre_comercial, condicion_pago, responsable_id, responsable_comercial, moneda), facturas(id, numero, moneda, os_cliente_id), os_clientes(id, numero, oportunidad_id, cuenta_id, moneda, responsable_comercial_id, responsable_comercial, monto_aprobado)`)
+      .select(`*, cuentas(id, razon_social, nombre_comercial, condicion_pago, responsable_id, responsable_comercial, moneda), facturas(id, numero, moneda, os_cliente_id, monto_neto_cobrable), os_clientes(id, numero, oportunidad_id, cuenta_id, moneda, responsable_comercial_id, responsable_comercial, monto_aprobado)`)
       .eq('empresa_id', empresaId)
       .order('fecha_vencimiento', { ascending: true });
-    if (!error) return data;
+    if (!error) return (data || []).map(normalizarCxC);
 
     console.warn('[finanzas] getCxC: fallback sin referencias comerciales extendidas', error?.message || error);
     const fallback = await supabase
@@ -174,7 +394,7 @@ export const finanzasService = {
       .eq('empresa_id', empresaId)
       .order('fecha_vencimiento', { ascending: true });
     if (fallback.error) throw fallback.error;
-    return fallback.data;
+    return (fallback.data || []).map(normalizarCxC);
   },
 
   async getVentas(empresaId) {
@@ -514,8 +734,9 @@ export const finanzasService = {
       .single();
     if (getError) throw getError;
 
-    const nuevoMontoPagado = Number(currentCxC.monto_pagado) + Number(monto);
-    const nuevoSaldo = Number(currentCxC.monto_total) - nuevoMontoPagado;
+    const montoNeto = montoNetoCobrableCxC(currentCxC);
+    const nuevoMontoPagado = Number(currentCxC.monto_pagado || 0) + Number(monto);
+    const nuevoSaldo = Math.max(0, montoNeto - nuevoMontoPagado);
     const nuevoEstado = nuevoSaldo <= 0 ? 'cobrada' : 'cobro_parcial';
 
     const { data, error } = await supabase
@@ -532,14 +753,15 @@ export const finanzasService = {
         .update({ estado: 'pagada' })
         .eq('id', currentCxC.factura_id);
     }
-    return data;
+    return normalizarCxC(data);
   },
 
   async registrarMovimientoTesoreria(payload) {
     const supabase = await getSupabaseClient();
+    const movimiento = await normalizarMovimientoTesoreriaCobro(supabase, payload);
     const { data, error } = await supabase
       .from('movimientos_tesoreria')
-      .insert(payload)
+      .insert(movimiento)
       .select()
       .single();
     if (error) throw error;
@@ -550,7 +772,7 @@ export const finanzasService = {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('cxp')
-      .select(`*, proveedores(id, razon_social), personal_administrativo(id, nombre)`)
+      .select(`*, proveedores(id, razon_social)`)
       .eq('empresa_id', empresaId)
       .order('fecha_vencimiento', { ascending: true });
     if (error) throw error;
@@ -642,6 +864,86 @@ export const finanzasService = {
     return data;
   },
 
+  async registrarGastoPagadoAutomatico({ cxp, pago, movimiento, gastoId }) {
+    const supabase = await getSupabaseClient();
+    const payload = { cxp, pago, movimiento, gasto_id: gastoId || cxp?.gasto_id || movimiento?.gasto_id || null };
+
+    try {
+      const { data, error } = await supabase.rpc('registrar_gasto_pagado_auto', { p_payload: payload });
+      if (!error) return data || payload;
+      if (!/registrar_gasto_pagado_auto|function.*not.*exist|schema cache/i.test(error.message || '')) throw error;
+    } catch (error) {
+      if (!/registrar_gasto_pagado_auto|function.*not.*exist|schema cache/i.test(error.message || '')) throw error;
+    }
+
+    const creados = { cxp: null, pago: null, movimiento: null };
+    try {
+      const cxpGuardada = await insertOneTolerante(supabase, 'cxp', cxp);
+      creados.cxp = cxpGuardada;
+      const pagoGuardado = await insertOneTolerante(supabase, 'cxp_pagos', pago);
+      creados.pago = pagoGuardado;
+      const movNormalizado = await normalizarMovimientoTesoreriaCobro(supabase, movimiento);
+      const movGuardado = await insertOneTolerante(supabase, 'movimientos_tesoreria', movNormalizado);
+      creados.movimiento = movGuardado;
+      if (gastoId) {
+        await updateOneTolerante(supabase, 'compras_gastos', gastoId, {
+          cxp_id: cxp.id,
+          estado_pago: 'pagado',
+        });
+      }
+      return { cxp: cxpGuardada, pago: pagoGuardado, movimiento: movGuardado };
+    } catch (error) {
+      if (creados.movimiento?.id) {
+        await supabase.from('movimientos_tesoreria').delete().eq('id', creados.movimiento.id).catch(() => null);
+      }
+      if (creados.pago?.id) {
+        await supabase.from('cxp_pagos').delete().eq('id', creados.pago.id).catch(() => null);
+      }
+      if (creados.cxp?.id) {
+        await supabase.from('cxp').delete().eq('id', creados.cxp.id).catch(() => null);
+      }
+      if (gastoId) {
+        await supabase.from('compras_gastos').update({ cxp_id: null, estado_pago: 'pendiente' }).eq('id', gastoId).catch(() => null);
+      }
+      throw error;
+    }
+  },
+
+  async revertirGastoPagadoAutomatico(gastoId) {
+    const supabase = await getSupabaseClient();
+    try {
+      const { data, error } = await supabase.rpc('revertir_gasto_pagado_auto', { p_gasto_id: gastoId });
+      if (!error) return data || true;
+      if (!/revertir_gasto_pagado_auto|function.*not.*exist|schema cache/i.test(error.message || '')) throw error;
+    } catch (error) {
+      if (!/revertir_gasto_pagado_auto|function.*not.*exist|schema cache/i.test(error.message || '')) throw error;
+    }
+
+    const { data: cxpRows, error: cxpError } = await supabase
+      .from('cxp')
+      .select('*')
+      .eq('gasto_id', gastoId);
+    if (cxpError) throw cxpError;
+    const cxpAuto = (cxpRows || []).find(c => String(c.origen || '').toLowerCase() === 'auto_gasto');
+    const cxpRel = cxpAuto || (cxpRows || [])[0] || null;
+    if (cxpRel?.id) {
+      await supabase.from('cxp_pagos').delete().eq('cxp_id', cxpRel.id);
+    }
+    await supabase.from('movimientos_tesoreria').delete().eq('gasto_id', gastoId).catch(() => null);
+    if (cxpAuto?.id) {
+      await updateOneTolerante(supabase, 'cxp', cxpAuto.id, {
+        estado: 'por_pagar',
+        monto_pagado: 0,
+        saldo: Number(cxpAuto.monto_total || 0),
+      });
+    }
+    await updateOneTolerante(supabase, 'compras_gastos', gastoId, {
+      estado_pago: 'pendiente',
+      ...(cxpAuto?.id ? { cxp_id: cxpAuto.id } : {}),
+    });
+    return true;
+  },
+
   async getMovimientosBanco(empresaId) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
@@ -653,16 +955,55 @@ export const finanzasService = {
     return data;
   },
 
-  async conciliarMovimiento(movimientoId, vinculadoTipo, vinculadoId) {
+  async conciliarMovimiento(movimientoId, vinculadoTipo, vinculadoId, extra = {}) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('movimientos_banco')
-      .update({ conciliado: true, vinculado_tipo: vinculadoTipo, vinculado_id: vinculadoId })
+      .update({ conciliado: true, vinculado_tipo: vinculadoTipo, vinculado_id: vinculadoId, ...extra })
       .eq('id', movimientoId)
       .select()
       .single();
     if (error) throw error;
     return data;
+  },
+
+  async deshacerConciliacionMovimiento(movimientoId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('movimientos_banco')
+      .update({ conciliado: false, vinculado_tipo: null, vinculado_id: null })
+      .eq('id', movimientoId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async actualizarMovimientoTesoreria(id, updates) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('movimientos_tesoreria')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async actualizarMovimientoTesoreriaPorVinculo(vinculoTipo, vinculoId, updates) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('movimientos_tesoreria')
+      .update(updates)
+      .eq('vinculo_tipo', vinculoTipo)
+      .eq('vinculo_id', vinculoId)
+      .neq('estado', 'anulado')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .select();
+    if (error) throw error;
+    return data?.[0] || null;
   },
 
   async getCajaChica(empresaId) {

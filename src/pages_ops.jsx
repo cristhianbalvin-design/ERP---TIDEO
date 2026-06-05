@@ -2,12 +2,25 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
-import { rrhhService } from './services/rrhhService.js';
+import {
+  rrhhService,
+  CONTRATO_DURACION_OPCIONES,
+  asignacionFamiliarMonto,
+  calcularHorasBaseMesDesdeTurno,
+  esModalidadHonorarios,
+  fiscalizacionLabel,
+  getTipoFiscalizacion,
+  normalizarModalidadContrato,
+  normalizarTipoContratoDuracion,
+  requiereFechaFinContrato,
+  retencionIrHonorariosLabel,
+} from './services/rrhhService.js';
 import * as ticketsService from './services/ticketsService.js';
 import * as storageService from './services/storageService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
+import { getPrimaSeguroAfp } from './services/nominaService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { FileUpload } from './components/FileUpload.jsx';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
@@ -17,6 +30,8 @@ import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sa
 import * as XLSX from 'xlsx';
 
 // Operations: OT, Partes, Valorization & Cuentas
+const symOf = m => String(m || 'PEN').trim().toUpperCase() === 'USD' ? 'US$' : 'S/';
+const moneyCurrency = (value, moneda = 'PEN') => money(value, symOf(moneda));
 
 // ============ CUENTAS Y CONTACTOS ============
 function Cuentas() {
@@ -3406,6 +3421,30 @@ function OT({ role }) {
               const monedaOT = osVinculada?.moneda || 'PEN';
               const monSym = monedaOT === 'USD' ? 'US$' : monedaOT === 'EUR' ? '€' : 'S/';
 
+              const filasDesgloseOT = [
+                ...(partesOT || []).map(p => {
+                  const persona = [...(personalOperativo || []), ...(personalAdmin || [])].find(x => x.id === p.tecnico_id);
+                  const tarifa = costoHoraTec(p.tecnico_id);
+                  const horas = Number(p.horas_normales ?? p.horas ?? 0);
+                  const estado = String(p.estado || '').toLowerCase();
+                  const aprobado = estado === 'aprobado';
+                  const esHon = persona ? esModalidadHonorarios(persona) : false;
+                  return { nombre: persona?.nombre || p.tecnico_nombre || p.tecnico || '—', tipo: 'Operativo', esHon, fecha: p.fecha || '—', horas, tarifa, aprobado, estadoLabel: aprobado ? 'Aprobado' : estado === 'en_revision' ? 'En revision' : estado };
+                }),
+                ...(tareosAdminOT || []).map(t => {
+                  const persona = (personalAdmin || []).find(x => x.id === t.personal_id);
+                  const tarifa = costoHoraTec(t.personal_id);
+                  const horas = Number(t.horas || 0);
+                  const estado = String(t.estado || '').toLowerCase();
+                  const aprobado = estado === 'enviado';
+                  const esHon = persona ? esModalidadHonorarios(persona) : false;
+                  return { nombre: persona?.nombre || t.personal_nombre || '—', tipo: 'Administrativo', esHon, fecha: t.fecha || '—', horas, tarifa, aprobado, estadoLabel: aprobado ? 'Enviado' : estado === 'borrador' ? 'Borrador' : estado };
+                }),
+              ].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es') || a.fecha.localeCompare(b.fecha));
+              const totalHorasDesgloseAprobadas = filasDesgloseOT.filter(f => f.aprobado).reduce((s, f) => s + f.horas, 0);
+              const totalHorasDesglosePendientes = filasDesgloseOT.filter(f => !f.aprobado).reduce((s, f) => s + f.horas, 0);
+              const totalCostoDesgloseAprobado = filasDesgloseOT.filter(f => f.aprobado).reduce((s, f) => s + f.horas * f.tarifa, 0);
+
               return (
                 <div className="col" style={{ gap: 16, padding: 22 }}>
                   <div className="card" style={{ padding: 16 }}>
@@ -3807,6 +3846,70 @@ function OT({ role }) {
                       <div className="row" style={{ justifyContent: 'space-between', fontSize: 13, fontWeight: 700 }}><span>Total comprometido</span><span>{money(comprometidoTotal, monSym)}</span></div>
                       <div className="row" style={{ justifyContent: 'space-between', fontSize: 13, fontWeight: 700 }}><span>Real + comprometido</span><span>{money(costoRealTotal + comprometidoTotal, monSym)}</span></div>
                     </div>
+                  </div>
+
+                  {/* Desglose de mano de obra */}
+                  <div className="card" style={{ padding: 18 }}>
+                    <div className="card-head" style={{ padding: 0, marginBottom: 12 }}>
+                      <h3>Desglose de mano de obra</h3>
+                      <span className="badge badge-gray">{filasDesgloseOT.length} registros</span>
+                    </div>
+                    {filasDesgloseOT.length === 0 ? (
+                      <div className="text-muted" style={{ textAlign: 'center', padding: 20, fontSize: 13 }}>Sin registros de mano de obra para esta OT.</div>
+                    ) : (
+                      <div className="table-wrap">
+                        <table className="tbl">
+                          <thead><tr>
+                            <th>Colaborador</th>
+                            <th>Tipo</th>
+                            <th>Modalidad</th>
+                            <th>Fecha</th>
+                            <th className="num">Horas</th>
+                            <th className="num">Tarifa/h</th>
+                            <th className="num">Costo calc.</th>
+                            <th>Estado</th>
+                          </tr></thead>
+                          <tbody>
+                            {filasDesgloseOT.map((f, i) => (
+                              <tr key={i} style={{ opacity: f.aprobado ? 1 : 0.75 }}>
+                                <td>
+                                  <strong>{f.nombre}</strong>
+                                  {f.esHon && <span className="badge badge-orange" style={{ fontSize: 10, marginLeft: 6 }}>Honorarios</span>}
+                                </td>
+                                <td><span className="badge badge-gray" style={{ fontSize: 11 }}>{f.tipo}</span></td>
+                                <td><span className={`badge ${f.esHon ? 'badge-orange' : 'badge-green'}`} style={{ fontSize: 11 }}>{f.esHon ? 'Honorarios' : 'Planilla'}</span></td>
+                                <td className="text-muted" style={{ fontSize: 12 }}>{f.fecha}</td>
+                                <td className="num">{f.horas.toFixed(1)}h</td>
+                                <td className="num">{f.tarifa > 0 ? money(f.tarifa, monSym) : '—'}</td>
+                                <td className="num">{f.tarifa > 0 ? money(f.horas * f.tarifa, monSym) : '—'}</td>
+                                <td>
+                                  <span className={`badge ${f.aprobado ? 'badge-green' : 'badge-orange'}`} style={{ fontSize: 11 }}>
+                                    {f.estadoLabel}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg-subtle)' }}>
+                              <td colSpan={4} style={{ fontWeight: 700, padding: '8px 0', fontSize: 13 }}>Aprobados</td>
+                              <td className="num" style={{ fontWeight: 700 }}>{totalHorasDesgloseAprobadas.toFixed(1)}h</td>
+                              <td></td>
+                              <td className="num" style={{ fontWeight: 700 }}>{money(totalCostoDesgloseAprobado, monSym)}</td>
+                              <td></td>
+                            </tr>
+                            {totalHorasDesglosePendientes > 0 && (
+                              <tr>
+                                <td colSpan={4} style={{ fontSize: 12, color: 'var(--orange)', padding: '4px 0' }}>Pendientes de aprobacion</td>
+                                <td className="num" style={{ fontSize: 12, color: 'var(--orange)' }}>{totalHorasDesglosePendientes.toFixed(1)}h</td>
+                                <td></td>
+                                <td colSpan={2} style={{ fontSize: 12, color: 'var(--orange)' }}>Costo no definitivo hasta aprobacion</td>
+                              </tr>
+                            )}
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
                   </div>
 
                   {/* Acciones */}
@@ -7808,7 +7911,7 @@ function construirFilasControlHoras({ personal = [], partes = [], tareos = [], o
       const horasTareo = tareosLibres.reduce((s, t) => s + Number(t.horas || 0), 0);
       const horasOT = horasPartes + horasTareoOT;
       const total = horasOT + horasTareo;
-      const horasBase = Number(p.horas_base_mes || 160) || 160;
+      const horasBase = Number(p.horas_base_mes || 0) || 0;
       const cobertura = horasBase > 0 ? (total / horasBase) * 100 : 0;
       const tarifa = tarifaColaborador(p);
       const estado = estadoCoberturaHoras(cobertura);
@@ -7858,6 +7961,67 @@ function construirFilasControlHoras({ personal = [], partes = [], tareos = [], o
         detalleOTs,
       };
     });
+}
+
+function construirFilasPorOT({ personalOperativo = [], personalAdmin = [], partes = [], tareos = [], ots = [], cuentas = [], periodo = periodoMesActual() }) {
+  const { desde, hasta } = rangoPeriodoMes(periodo);
+  const partesAprobados = (partes || []).filter(p => {
+    const fecha = p.fecha || p.created_at?.slice?.(0, 10);
+    return String(p.estado || '').toLowerCase() === 'aprobado' && fecha >= desde && fecha <= hasta;
+  });
+  const tareosPeriodo = (tareos || []).filter(t => {
+    const fecha = t.fecha || t.created_at?.slice?.(0, 10);
+    return fecha >= desde && fecha <= hasta && String(t.estado || '').toLowerCase() !== 'anulado' && t.ot_id;
+  });
+
+  const mapa = {};
+  partesAprobados.forEach(p => {
+    const personaId = p.tecnico_id || p.personal_id;
+    const otId = p.ot_id || p.orden_trabajo_id;
+    if (!personaId || !otId) return;
+    const key = `${personaId}__${otId}`;
+    if (!mapa[key]) mapa[key] = { personaId, otId, horas_partes: 0, horas_tareos: 0 };
+    mapa[key].horas_partes += horasParteAprobado(p);
+  });
+  tareosPeriodo.forEach(t => {
+    const personaId = t.personal_id;
+    const otId = t.ot_id;
+    if (!personaId || !otId) return;
+    const key = `${personaId}__${otId}`;
+    if (!mapa[key]) mapa[key] = { personaId, otId, horas_partes: 0, horas_tareos: 0 };
+    mapa[key].horas_tareos += Number(t.horas || 0);
+  });
+
+  const adminIds = new Set((personalAdmin || []).map(p => p.id));
+  const todosPersonal = [...(personalOperativo || []), ...(personalAdmin || [])];
+
+  return Object.values(mapa).map(entry => {
+    const persona = todosPersonal.find(p => p.id === entry.personaId);
+    if (!persona) return null;
+    const ot = (ots || []).find(o => o.id === entry.otId);
+    const tarifa = tarifaColaborador(persona);
+    const totalHoras = entry.horas_partes + entry.horas_tareos;
+    const esAdmin = adminIds.has(entry.personaId);
+    const esHon = esModalidadHonorarios(persona);
+    const cliente = (cuentas || []).find(c => c.id === ot?.cuenta_id)?.razon_social || ot?.cliente || '—';
+    return {
+      personaId: persona.id,
+      nombre: persona.nombre,
+      tipo: esAdmin ? 'Administrativo' : 'Operativo',
+      modalidad: esHon ? 'Honorarios' : 'Planilla',
+      otId: entry.otId,
+      otNumero: ot?.numero || entry.otId,
+      otDescripcion: ot?.servicio || ot?.descripcion || '',
+      cliente,
+      horas_partes: entry.horas_partes,
+      horas_tareos: entry.horas_tareos,
+      total_horas: totalHoras,
+      tarifa,
+      costo: totalHoras * tarifa,
+      moneda: simboloColaborador(persona),
+    };
+  }).filter(Boolean)
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es') || a.otNumero.localeCompare(b.otNumero, 'es'));
 }
 
 function ControlHorasResumen({
@@ -9739,10 +9903,12 @@ function calcularHorasExtra(registros, valorHora) {
 }
 
 // Calcular días computables para régimen minero en un mes
-function calcularDiasComputables(anio, mes, regimen_jornada, fecha_inicio_ciclo) {
+function calcularDiasComputables(anio, mes, regimen_jornada, fecha_inicio_ciclo, trabajador = {}) {
   if (!fecha_inicio_ciclo || regimen_jornada === 'general') return null;
   const cicloMap = { minero_14x7: { trabajo: 14, descanso: 7 }, minero_20x10: { trabajo: 20, descanso: 10 }, minero_28x14: { trabajo: 28, descanso: 14 } };
-  const ciclo = cicloMap[regimen_jornada];
+  const ciclo = regimen_jornada === 'ciclo_acumulativo'
+    ? { trabajo: Number(trabajador.dias_ciclo_trabajo || 14) || 14, descanso: Number(trabajador.dias_ciclo_descanso || 7) || 7 }
+    : cicloMap[regimen_jornada];
   if (!ciclo) return null;
   const duracionCiclo = ciclo.trabajo + ciclo.descanso;
   const inicioMes = new Date(anio, mes - 1, 1);
@@ -9758,11 +9924,12 @@ function calcularDiasComputables(anio, mes, regimen_jornada, fecha_inicio_ciclo)
 }
 
 function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg = {}) {
+  if (esModalidadHonorarios(trabajador)) return null;
   const {
     regimen_laboral_empresa = 'general',
     uit_vigente = 5500,
     ram_tope_afp = 12598.91,
-    pct_prima_seguro = 1.37,
+    afp_parametros = [],
   } = empresaCfg;
 
   const regimenJornada = datosNomina?.regimen_jornada || trabajador.regimen_jornada || 'general';
@@ -9773,31 +9940,56 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   // Días computables (régimen minero)
   const fechaInicioCiclo = datosNomina?.fecha_inicio_ciclo || trabajador.fecha_inicio_ciclo;
   const diasComputables = esMinero
-    ? (calcularDiasComputables(periodo?.anio || new Date().getFullYear(), periodo?.mes || new Date().getMonth() + 1, regimenJornada, fechaInicioCiclo) || 22)
+    ? (calcularDiasComputables(periodo?.anio || new Date().getFullYear(), periodo?.mes || new Date().getMonth() + 1, regimenJornada, fechaInicioCiclo, trabajador) || 22)
     : null;
   const diasLaborables = 22;
   const diasBase = esMinero ? (diasComputables || 22) : diasLaborables;
+
+  // Proporcionalidad por ingreso o cese dentro del período
+  const _fechaIng  = trabajador.fecha_inicio_contrato || trabajador.fecha_ingreso || null;
+  const _fechaCese = trabajador.fecha_fin_contrato    || trabajador.fecha_cese    || null;
+  const _pYear = periodo?.anio || new Date().getFullYear();
+  const _pMes  = periodo?.mes  || new Date().getMonth() + 1;
+  const _pIni  = new Date(_pYear, _pMes - 1, 1);
+  const _pFin  = new Date(_pYear, _pMes, 0);
+  const _dtIng  = _fechaIng  ? new Date(`${_fechaIng}T00:00:00`)  : null;
+  const _dtCese = _fechaCese ? new Date(`${_fechaCese}T00:00:00`) : null;
+  let diasEfectivos = 30;
+  let esProporcional = false;
+  if (_dtIng  && _dtIng  > _pIni) esProporcional = true;
+  if (_dtCese && _dtCese < _pFin) esProporcional = true;
+  if (esProporcional) {
+    const desdeEf = (_dtIng && _dtIng > _pIni) ? _dtIng : _pIni;
+    const hastaEf = (_dtCese && _dtCese < _pFin) ? _dtCese : _pFin;
+    diasEfectivos = Math.max(0, Math.min(30, hastaEf.getDate()) - Math.max(1, desdeEf.getDate()) + 1);
+  }
+  const factorProp = esProporcional ? diasEfectivos / 30 : 1;
 
   const valorDia = sueldoBase / 30;
   const valorHora = esMinero ? sueldoBase / (diasBase * horasEfectivas) : sueldoBase / (30 * horasEfectivas);
   const valorMinuto = valorHora / 60;
 
-  const asistencias = registros.filter(r => !r.es_falta).length;
-  const faltasInjustificadas = registros.filter(r => r.estado === 'falta').length;
-  const faltasJustificadas = registros.filter(r => r.estado === 'falta_justificada').length;
-  const tardanzas = registros.filter(r => r.estado === 'tardanza').length;
-  const minutosTardanza = registros.reduce((s, r) => s + (Number(r.tardanza_min) || 0), 0);
+  const sinFiscalizacionDiaria = trabajador.cargo_confianza || getTipoFiscalizacion(trabajador) !== 'diaria';
+  const registrosNomina = sinFiscalizacionDiaria ? [] : registros;
+  const asistencias = registrosNomina.filter(r => !r.es_falta).length;
+  const faltasInjustificadas = registrosNomina.filter(r => r.estado === 'falta').length;
+  const faltasJustificadas = registrosNomina.filter(r => r.estado === 'falta_justificada').length;
+  const tardanzas = registrosNomina.filter(r => r.estado === 'tardanza').length;
+  const minutosTardanza = registrosNomina.reduce((s, r) => s + (Number(r.tardanza_min) || 0), 0);
 
   const descFaltas = faltasInjustificadas * valorDia;
   const descTardanzas = minutosTardanza * valorMinuto;
-  const { tramo1Min, tramo2Min, addHorasExtra, addTramo1, addTramo2 } = calcularHorasExtra(registros, valorHora);
+  const { tramo1Min, tramo2Min, addHorasExtra, addTramo1, addTramo2 } = sinFiscalizacionDiaria
+    ? { tramo1Min: 0, tramo2Min: 0, addHorasExtra: 0, addTramo1: 0, addTramo2: 0 }
+    : calcularHorasExtra(registrosNomina, valorHora);
   const horasExtraMin = tramo1Min + tramo2Min;
 
-  const asignacionFamiliar = datosNomina?.tiene_hijos || trabajador.tiene_hijos ? 102.5 : 0;
-  const bonifAltitud = esMinero ? (Number(datosNomina?.bonif_altitud || trabajador.bonif_altitud) || 0) * (diasBase / 30) : 0;
+  const asignacionFamiliarBase = datosNomina?.tiene_hijos || trabajador.tiene_hijos ? asignacionFamiliarMonto(empresaCfg) : 0;
+  const asignacionFamiliar = asignacionFamiliarBase * factorProp;
+  const bonifAltitud = (Number(datosNomina?.bonif_altitud || trabajador.bonif_altitud) || 0) * (esMinero ? (diasBase / 30) : 1) * factorProp;
 
   // Remuneración proporcional para minero si no completó ciclo
-  const sueldoProporcional = esMinero ? sueldoBase * (diasBase / 30) : sueldoBase;
+  const sueldoProporcional = esMinero ? sueldoBase * (diasBase / 30) * factorProp : sueldoBase * factorProp;
   const remuneracionBruta = sueldoProporcional - descFaltas - descTardanzas + addHorasExtra + asignacionFamiliar + bonifAltitud;
 
   // ── Sistema previsional ──
@@ -9811,7 +10003,8 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const baseRam = Math.min(baseAfp, Number(ram_tope_afp));
   const aporteAfp = sistema === 'AFP' ? baseAfp * 0.10 : 0;
   const comisionFlujoCal = (sistema === 'AFP' && tipoComisionAfp === 'flujo') ? baseAfp * (pctComisionFlujo / 100) : 0;
-  const primaSeguro = sistema === 'AFP' ? baseRam * (Number(pct_prima_seguro) / 100) : 0;
+  const pctPrimaSeguro = sistema === 'AFP' ? getPrimaSeguroAfp(afpNombre, afp_parametros) : 0;
+  const primaSeguro = sistema === 'AFP' ? baseRam * (pctPrimaSeguro / 100) : 0;
   const descOnp = sistema === 'ONP' ? remuneracionBruta * 0.13 : 0;
   const descPensiones = aporteAfp + comisionFlujoCal + primaSeguro + descOnp;
 
@@ -9825,13 +10018,14 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   // ── Cargas empresa ──
   const essalud = remuneracionBruta * 0.09;
   const esMicro = regimen_laboral_empresa === 'microempresa';
-  const tieneCts = !esMicro && trabajador.tipo_contrato !== 'Recibos por honorarios';
-  const tieneGratif = !esMicro && trabajador.tipo_contrato !== 'Recibos por honorarios';
+  const esPequena = regimen_laboral_empresa === 'pequena_empresa';
+  const tieneCts = !esMicro;
+  const tieneGratif = !esMicro;
   // Remuneración computable = básico + AF + 1/6 gratif estimada
   const gratAnual = tieneGratif ? sueldoProporcional + asignacionFamiliar : 0;
   const remComputable = sueldoProporcional + asignacionFamiliar + (tieneGratif ? gratAnual / 6 : 0);
-  const cts = tieneCts ? remComputable / 12 : 0;
-  const gratificacion = tieneGratif ? remComputable / 6 : 0;
+  const cts = tieneCts ? remComputable / (esPequena ? 24 : 12) : 0;
+  const gratificacion = tieneGratif ? remComputable / (esPequena ? 12 : 6) : 0;
   const bonifExtraordinaria = tieneGratif ? gratificacion * 0.09 : 0;
   const diasVacaciones = regimen_laboral_empresa === 'general' ? 30 : 15;
   const vacaciones = (sueldoProporcional + asignacionFamiliar) / 12 * (diasVacaciones / 30);
@@ -9852,7 +10046,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
     desc_faltas: descFaltas, desc_tardanzas: descTardanzas, add_horas_extra: addHorasExtra,
     asignacion_familiar: asignacionFamiliar, bonif_altitud: bonifAltitud,
     remuneracion_bruta: remuneracionBruta,
-    sistema_pensionario: sistema, afp_nombre: afpNombre, tipo_comision_afp: tipoComisionAfp,
+    sistema_pensionario: sistema, afp_nombre: afpNombre, tipo_comision_afp: tipoComisionAfp, pct_prima_seguro: pctPrimaSeguro,
     aporte_afp: aporteAfp, comision_flujo: comisionFlujoCal, prima_seguro: primaSeguro, desc_onp: descOnp,
     desc_pensiones: descPensiones,
     desc_prestamo: descPrestamo, desc_anticipo: descAnticipo, desc_judicial: descJudicial,
@@ -9862,6 +10056,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
     vacaciones_mensualizadas: vacaciones,
     total_cargas: totalCargas, costo_real_empresa: costoReal,
     costo_hora_real: horasPeriodo > 0 ? costoReal / horasPeriodo : 0,
+    es_proporcional: esProporcional, dias_efectivos_periodo: diasEfectivos,
   };
 }
 
@@ -9995,12 +10190,12 @@ function ControlAsistencia() {
 
   // Trabajadores
   const trabajadores = [
-    ...personalOperativo.map(p => ({ ...p, trabajador_tipo:'operativo', area:p.area || 'Operativo', remuneracion:p.remuneracion || p.sueldo_base || 3000, regimen_jornada: p.regimen_laboral || p.regimen_jornada || 'general', horas_diarias_pactadas: p.horas_diarias_pactadas || 12 })),
-    ...personalAdmin.filter(p => p.tipo_contrato !== 'Honorarios').map(p => ({ ...p, trabajador_tipo:'administrativo', id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:p.turno_id || 'tur_005', remuneracion:p.remuneracion || 3000, regimen_jornada: p.regimen_laboral || p.regimen_jornada || 'general', horas_diarias_pactadas: p.horas_diarias_pactadas || 12 }))
+    ...personalOperativo.map(p => ({ ...p, trabajador_tipo:'operativo', area:p.area || 'Operativo', remuneracion:p.remuneracion || p.sueldo_base || 3000, regimen_jornada: p.regimen_jornada || 'general', horas_diarias_pactadas: p.horas_diarias_pactadas || 12 })),
+    ...personalAdmin.map(p => ({ ...p, trabajador_tipo:'administrativo', id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:p.turno_id || 'tur_005', remuneracion:p.remuneracion || 3000, regimen_jornada: p.regimen_jornada || 'general', horas_diarias_pactadas: p.horas_diarias_pactadas || 12 }))
   ];
 
-  const trabajadoresGenerales = trabajadores.filter(t => !t.regimen_jornada.startsWith('minero'));
-  const trabajadoresMineros = trabajadores.filter(t => t.regimen_jornada.startsWith('minero'));
+  const trabajadoresGenerales = trabajadores.filter(t => getTipoFiscalizacion(t) === 'diaria');
+  const trabajadoresMineros = trabajadores.filter(t => getTipoFiscalizacion(t) === 'ciclo');
 
   useEffect(() => {
     if (trabajadoresMineros.length > 0) {
@@ -10031,9 +10226,9 @@ function ControlAsistencia() {
 
   const kpis = {
     total: trabajadoresGenerales.length,
-    completos: registrosPeriodo.filter(r => (r.estado === 'completo' || r.estado === 'horas_extra') && !r.regimen_jornada?.startsWith('minero')).length,
-    tardanzas: registrosPeriodo.filter(r => r.estado === 'tardanza' && !r.regimen_jornada?.startsWith('minero')).length,
-    faltas: registrosPeriodo.filter(r => (r.estado === 'falta' || r.estado === 'falta_justificada') && !r.regimen_jornada?.startsWith('minero')).length
+    completos: registrosPeriodo.filter(r => (r.estado === 'completo' || r.estado === 'horas_extra') && r.regimen_jornada !== 'ciclo_acumulativo').length,
+    tardanzas: registrosPeriodo.filter(r => r.estado === 'tardanza' && r.regimen_jornada !== 'ciclo_acumulativo').length,
+    faltas: registrosPeriodo.filter(r => (r.estado === 'falta' || r.estado === 'falta_justificada') && r.regimen_jornada !== 'ciclo_acumulativo').length
   };
 
   const guardarRegistro = async (e) => {
@@ -10042,6 +10237,7 @@ function ControlAsistencia() {
       addNotificacion('El colaborador no tiene un turno real asignado. Crea un turno y asignalo en Personal antes de registrar asistencia.');
       return;
     }
+    if (getTipoFiscalizacion(trabajador) !== 'diaria') return;
     const nuevo = {
       empresa_id:empresa.id, trabajador_id:form.trabajador_id, fecha:form.fecha,
       trabajador_tipo: trabajador?.trabajador_tipo || 'operativo',
@@ -10165,7 +10361,13 @@ function ControlAsistencia() {
   };
 
   // ── Funciones Minero ──
-  const getCicloDias = (regimen) => {
+  const getCicloDias = (regimen, trabajador = {}) => {
+    if (regimen === 'ciclo_acumulativo') {
+      return {
+        t: Number(trabajador.dias_ciclo_trabajo || 14) || 14,
+        d: Number(trabajador.dias_ciclo_descanso || 7) || 7,
+      };
+    }
     if (regimen === 'minero_14x7') return { t: 14, d: 7 };
     if (regimen === 'minero_20x10') return { t: 20, d: 10 };
     if (regimen === 'minero_28x14') return { t: 28, d: 14 };
@@ -10183,7 +10385,7 @@ function ControlAsistencia() {
     if (ciclo) {
       setFormMinero({ ...ciclo, incidencias: ciclo.incidencias || [] });
     } else {
-      const { t, d } = getCicloDias(trabajador.regimen_jornada);
+      const { t, d } = getCicloDias(trabajador.regimen_jornada, trabajador);
       const hoy = new Date().toISOString().split('T')[0];
       setFormMinero({ ...formMineroBase, personal_id: trabajador.id, regimen_jornada: trabajador.regimen_jornada, fecha_inicio_ciclo: hoy });
     }
@@ -10194,7 +10396,7 @@ function ControlAsistencia() {
     e.preventDefault();
     const t = trabajadoresMineros.find(x => x.id === formMinero.personal_id);
     if (!t) return;
-    const { t: diasT, d: diasD } = getCicloDias(t.regimen_jornada);
+    const { t: diasT, d: diasD } = getCicloDias(t.regimen_jornada, t);
     const fecha_fin = calcularFechaFinCiclo(formMinero.fecha_inicio_ciclo, diasT, diasD);
     const cicloParams = {
       personal_id: t.id, personal_nombre: t.nombre, personal_tipo: t.trabajador_tipo,
@@ -10303,7 +10505,7 @@ function ControlAsistencia() {
       {tab === 'semanal' && <div className="card"><div className="card-head"><h3>Vista semanal (Régimen General)</h3><span className="text-muted">{semanaTexto}</span></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.slice(0,8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
       
       {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head"><h3>Resumen mensual - {mesNombreCap}</h3></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Régimen/Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>{trabajadores.slice(0,8).map(t=>{ 
-        if (t.regimen_jornada.startsWith('minero')) {
+        if (getTipoFiscalizacion(t) === 'ciclo') {
            const ciclos = ciclosMineros.filter(c => c.personal_id === t.id && c.fecha_inicio_ciclo.startsWith(currentMonth));
            return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td><span className="badge badge-blue">{t.regimen_jornada}</span></td><td>-</td><td>{ciclos.length} ciclos</td><td>-</td><td>-</td><td>{ciclos.reduce((s,c)=>s+Number(c.horas_extra_ciclo||0),0)} h</td><td>-</td></tr>;
         } else {
@@ -10359,7 +10561,7 @@ function ControlAsistencia() {
       {tab === 'resumen' && <div className="card" style={{padding:20}}><div className="card-head"><h3>Resumen por trabajador</h3><button className="btn btn-secondary btn-sm">{I.download} Exportar Excel</button></div>
         <div className="input-group" style={{maxWidth:300, marginBottom:20}}><label>Seleccionar Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div>
         {!resumenTrabajador ? <div style={{padding:24, textAlign:'center', color:'var(--fg-muted)'}}>Sin trabajadores registrados.</div> : 
-        resumenTrabajador.regimen_jornada.startsWith('minero') ? 
+        getTipoFiscalizacion(resumenTrabajador) === 'ciclo' ? 
         <div className="grid-2" style={{gap:20}}>
           <div><p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p><p><strong>Régimen:</strong> <span className="badge badge-blue">{resumenTrabajador.regimen_jornada}</span></p><p><strong>Ciclos registrados:</strong> {ciclosMineros.filter(c => c.personal_id === resumenTrabajador.id).length}</p></div>
           <div><p><strong>Días de descanso remunerado:</strong> Según ciclos completos</p><p><strong>Total Horas Extra:</strong> {ciclosMineros.filter(c => c.personal_id === resumenTrabajador.id).reduce((s,c)=>s+Number(c.horas_extra_ciclo||0),0)}h</p><p><strong>Impacto nomina:</strong> Días laborables proporcionales por ciclo minero.</p></div>
@@ -10450,7 +10652,7 @@ function Nomina() {
   const {
     turnos, registrosAsistencia, personalOperativo, personalAdmin, trabajadoresDatosNomina,
     periodosNomina, setPeriodosNomina, crearGasto, generarCxP, role, empresa, addNotificacion, empresaConfig,
-    comisiones = [], setComisiones,
+    comisiones = [], setComisiones, afpParametros = [],
   } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('periodos');
@@ -10465,7 +10667,7 @@ function Nomina() {
     regimen_laboral_empresa: empresaConfig?.regimen_laboral_empresa || 'general',
     uit_vigente: Number(empresaConfig?.uit_vigente) || 5500,
     ram_tope_afp: Number(empresaConfig?.ram_tope_afp) || 12598.91,
-    pct_prima_seguro: Number(empresaConfig?.pct_prima_seguro) || 1.37,
+    afp_parametros: afpParametros,
     frecuencia_pago: empresaConfig?.frecuencia_pago || 'mensual',
     pct_quincena_1: Number(empresaConfig?.pct_quincena_1) || 50,
   };
@@ -10506,9 +10708,19 @@ function Nomina() {
     return map;
   }, [comisionesPlanilla]);
 
+  const periodoIni = periodo ? new Date(periodo.anio, periodo.mes - 1, 1) : null;
+  const periodoFin = periodo ? new Date(periodo.anio, periodo.mes, 0) : null;
+  const estaActivoEnPeriodo = (p) => {
+    if (!periodoIni || !periodoFin) return true;
+    const ing  = p.fecha_inicio_contrato || p.fecha_ingreso || null;
+    const cese = p.fecha_fin_contrato    || p.fecha_cese    || null;
+    if (ing  && new Date(`${ing}T00:00:00`)  > periodoFin) return false;
+    if (cese && new Date(`${cese}T00:00:00`) < periodoIni) return false;
+    return true;
+  };
   const trabajadores = [
-    ...personalOperativo.map(p => ({ ...p, area: p.area || 'Operativo', tipo: 'operativo' })),
-    ...personalAdmin.filter(p => p.tipo_contrato !== 'Honorarios').map(p => ({ ...p, area: p.area || 'Administrativo', tipo: 'admin' })),
+    ...personalOperativo.filter(p => !esModalidadHonorarios(p)).filter(estaActivoEnPeriodo).map(p => ({ ...p, area: p.area || 'Operativo', tipo: 'operativo' })),
+    ...personalAdmin.filter(p => !esModalidadHonorarios(p)).filter(estaActivoEnPeriodo).map(p => ({ ...p, area: p.area || 'Administrativo', tipo: 'admin' })),
   ];
 
   useEffect(() => {
@@ -10522,8 +10734,8 @@ function Nomina() {
       const datos = trabajadoresDatosNomina[t.id] || {};
       const regs = registrosAsistencia.filter(r => r.trabajador_id === t.id && r.fecha.startsWith(periodoKey));
       return calcularNominaTrabajador(t, datos, turno, regs, periodo, empresaCfg);
-    });
-  }, [periodo?.id, trabajadores.length, registrosAsistencia.length, empresaCfg.regimen_laboral_empresa]);
+    }).filter(Boolean);
+  }, [periodo?.id, trabajadores.length, registrosAsistencia.length, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, afpParametros]);
 
   const hayMineros = calculos.some(c => c.regimen_jornada !== 'general');
 
@@ -10744,7 +10956,7 @@ function Nomina() {
                 {calculos.length === 0 && <tr><td colSpan={12} style={{textAlign:'center',color:'var(--fg-muted)',padding:28}}>Sin trabajadores registrados.</td></tr>}
                 {calculos.map(c => (
                   <tr key={c.trabajador_id} style={{cursor:'pointer'}} onClick={()=>setDetallePanel(c)}>
-                    <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}</div></td>
+                    <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}{c.es_proporcional && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>{c.dias_efectivos_periodo}d</span>}</div></td>
                     <td>{c.regimen_jornada !== 'general' ? <span className="badge badge-orange"> {c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
                     {hayMineros && <td>{c.dias_computables ?? '—'}</td>}
                     <td style={{fontSize:11}}>{c.turno?.nombre || '—'}</td>
@@ -10780,9 +10992,10 @@ function Nomina() {
           <div className="grid-2" style={{gap:24}}>
             <div>
               <div style={{fontWeight:700, marginBottom:8}}>{detalle.trabajador.nombre} · {periodo.periodo}</div>
-              <div className="text-muted" style={{fontSize:12, marginBottom:16}}>{detalle.turno?.nombre} · {detalle.dias_laborables} días lab.</div>
+              <div className="text-muted" style={{fontSize:12, marginBottom:8}}>{detalle.turno?.nombre} · {detalle.dias_laborables} días lab.</div>
+              {detalle.es_proporcional && <div style={{padding:'6px 10px', marginBottom:12, fontSize:12, background:'rgba(6,182,212,0.08)', color:'var(--cyan)', borderLeft:'3px solid var(--cyan)', borderRadius:4}}>Cálculo proporcional · {detalle.dias_efectivos_periodo} días de 30</div>}
               <div style={{fontWeight:600, marginBottom:6}}>Ingresos</div>
-              <p>(+) Sueldo base: {money(detalle.sueldo_base)}{detalle.regimen_jornada !== 'general' && ` → prop. ${money(detalle.sueldo_proporcional)}`}</p>
+              <p>(+) Sueldo base: {money(detalle.sueldo_base)}{(detalle.regimen_jornada !== 'general' || detalle.es_proporcional) && ` → prop. ${money(detalle.sueldo_proporcional)}`}</p>
               {detalle.asignacion_familiar > 0 && <p>(+) Asignacion familiar: {money(detalle.asignacion_familiar)}</p>}
               {detalle.horas_extra_tramo1_min > 0 && <p>(+) Horas extra tramo 1 (25%) · {minutesToLabel(detalle.horas_extra_tramo1_min)}: {money(detalle.add_tramo1)}</p>}
               {detalle.horas_extra_tramo2_min > 0 && <p>(+) Horas extra tramo 2 (35%) · {minutesToLabel(detalle.horas_extra_tramo2_min)}: {money(detalle.add_tramo2)}</p>}
@@ -10944,7 +11157,7 @@ function Nomina() {
 }
 
 function RRHH_Operativo() {
-  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [] } = useApp();
+  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [] } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('personal');
   const personal = personalOperativo;
@@ -10977,13 +11190,24 @@ function RRHH_Operativo() {
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', fecha_ingreso:'', tipo_contrato:'Planilla', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'160', tarifa_hora:'0', costo:'', costo_extra:'', acceso_campo:true, perfil_campo:'Tecnico', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'' };
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', fecha_fin:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
+  const [horasBaseOverride, setHorasBaseOverride] = useState(false);
   const [altaError, setAltaError] = useState('');
   const [altaSaving, setAltaSaving] = useState(false);
-  const esHonorarios = formAlta.tipo_contrato === 'Recibos por honorarios';
-  const tarifaHoraForm = Math.round((Number(formAlta.monto_mensual || 0) / (Number(formAlta.horas_base_mes || 160) || 160)) * 100) / 100;
+  const modalidadAlta = normalizarModalidadContrato(formAlta.modalidad);
+  const esHonorarios = modalidadAlta === 'honorarios';
+  const tipoContratoAlta = normalizarTipoContratoDuracion(formAlta.tipo_contrato, modalidadAlta);
+  const mostrarFechaFinAlta = requiereFechaFinContrato(tipoContratoAlta);
+  const horasBaseForm = Number(formAlta.horas_base_mes || 0);
+  const tarifaHoraForm = Math.round((horasBaseForm > 0 ? Number(formAlta.monto_mensual || 0) / horasBaseForm : 0) * 100) / 100;
   const tarifaSym = formAlta.moneda === 'USD' ? 'US$' : formAlta.moneda === 'EUR' ? 'EUR' : 'S/';
+  const asignacionFamiliar = asignacionFamiliarMonto(empresaConfig);
+  const tipoFiscalizacionAlta = getTipoFiscalizacion({
+    modalidad_contrato: modalidadAlta,
+    regimen_jornada: formAlta.regimen_jornada,
+    cargo_confianza: formAlta.cargo_confianza,
+  });
 
   const cargosOperativosOptions = cargos
     .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Administrativa' && c.tipo !== 'Administrativo')
@@ -11009,19 +11233,34 @@ function RRHH_Operativo() {
     setPanelAlta(false);
     setEditandoId(null);
     setFormAlta(formAltaBase);
+    setHorasBaseOverride(false);
     setAltaError('');
   };
+  const horasBaseParaTurno = (turnoId) => {
+    const turno = turnosOptions.find(t => t.id === turnoId);
+    const horas = turno ? calcularHorasBaseMesDesdeTurno(turno) : 0;
+    return horas ? String(horas) : '';
+  };
+  const codigoSugeridoTecnico = () => {
+    const nums = (personal || [])
+      .map(p => String(p.codigo || '').match(/^TEC-(\d+)$/i)?.[1])
+      .filter(Boolean)
+      .map(Number);
+    const next = Math.max(0, ...nums, personal.length) + 1;
+    return `TEC-${String(next).padStart(4, '0')}`;
+  };
   const abrirNuevoTecnico = () => {
-    if (!turnosOptions.length) {
-      addNotificacion('Primero crea un turno real en RRHH > Turnos y Horarios.');
-      return;
-    }
     setEditandoId(null);
-    setFormAlta({ ...formAltaBase, turno_id: defaultTurnoId });
+    setHorasBaseOverride(false);
+    setFormAlta({ ...formAltaBase, codigo: codigoSugeridoTecnico(), turno_id: '', horas_base_mes: '' });
     setPanelAlta(true);
   };
   const abrirEditarTecnico = (p) => {
     setEditandoId(p.id);
+    const turnoActualId = turnosOptions.some(t => t.id === p.turno_id) ? p.turno_id : defaultTurnoId;
+    const horasDerivadas = horasBaseParaTurno(turnoActualId);
+    const horasActuales = p.horas_base_mes != null ? String(p.horas_base_mes) : horasDerivadas;
+    setHorasBaseOverride(Boolean(horasActuales && horasDerivadas && horasActuales !== horasDerivadas));
     setFormAlta({
       ...formAltaBase,
       nombre: p.nombre || '',
@@ -11035,28 +11274,31 @@ function RRHH_Operativo() {
       supervisor_id: p.supervisor_id || personal.find(s => s.nombre === p.supervisor)?.id || '',
       supervisor: p.supervisor || '',
       sede: p.sede || '',
-      turno_id: turnosOptions.some(t => t.id === p.turno_id) ? p.turno_id : defaultTurnoId,
+      turno_id: turnoActualId,
       centro_costo_id: p.centro_costo_id || '',
-      fecha_ingreso: p.fecha_ingreso || '',
-      tipo_contrato: p.tipo_contrato || 'Planilla',
+      fecha_ingreso: p.fecha_inicio_contrato || p.fecha_ingreso || '',
+      fecha_fin: p.fecha_fin_contrato || '',
+      modalidad: normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato),
+      tipo_contrato: normalizarTipoContratoDuracion(p.tipo_contrato, p.modalidad_contrato || p.tipo_contrato),
       moneda: p.moneda || 'PEN',
       metodo_pago: p.metodo_pago || 'mensual',
       monto_mensual: String(p.monto_mensual ?? p.sueldo_base ?? ''),
-      horas_base_mes: String(p.horas_base_mes ?? 160),
+      horas_base_mes: horasActuales,
       tarifa_hora: String(p.tarifa_hora ?? 0),
       costo: String(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? ''),
       costo_extra: String(p.costo_hora_extra ?? p.costo_extra ?? ''),
-      acceso_campo: p.acceso_campo ?? true,
-      perfil_campo: p.perfil_campo || 'Tecnico',
       estado: p.estado || 'disponible',
       sueldo_base: String(p.sueldo_base || ''),
       sistema_pensionario: p.sistema_pensionario || 'AFP',
       afp_nombre: p.afp_nombre || (p.sistema_pensionario === 'ONP' ? 'ONP' : 'Integra'),
       tiene_hijos: Boolean(p.tiene_hijos),
-      regimen_laboral: p.regimen_laboral || (p.tipo_contrato === 'Recibos por honorarios' ? 'honorarios' : 'general'),
+      cargo_confianza: Boolean(p.cargo_confianza),
+      regimen_laboral: p.regimen_laboral || (esModalidadHonorarios(p) ? 'honorarios' : 'general'),
       cuota_prestamo_mes: String(p.cuota_prestamo_mes ?? '0'),
       descuento_judicial: String(p.descuento_judicial ?? '0'),
       regimen_jornada: p.regimen_jornada || 'general',
+      dias_ciclo_trabajo: String(p.dias_ciclo_trabajo ?? ''),
+      dias_ciclo_descanso: String(p.dias_ciclo_descanso ?? ''),
       horas_diarias_pactadas: String(p.horas_diarias_pactadas ?? '8'),
       fecha_inicio_ciclo: p.fecha_inicio_ciclo || '',
       bonif_altitud: String(p.bonif_altitud ?? '0'),
@@ -11082,7 +11324,10 @@ function RRHH_Operativo() {
   const guardarTecnico = async (e) => {
     e.preventDefault();
     if (altaSaving) return;
-    if (!turnosOptions.some(t => t.id === formAlta.turno_id)) {
+    const modalidad = normalizarModalidadContrato(formAlta.modalidad);
+    const tipoContrato = normalizarTipoContratoDuracion(formAlta.tipo_contrato, modalidad);
+    const requiereFin = requiereFechaFinContrato(tipoContrato);
+    if (modalidad !== 'honorarios' && !turnosOptions.some(t => t.id === formAlta.turno_id)) {
       setAltaError('Selecciona un turno real creado en Supabase antes de guardar el tecnico.');
       return;
     }
@@ -11090,8 +11335,12 @@ function RRHH_Operativo() {
       setAltaError('Este campo es obligatorio. Selecciona un CECO antes de continuar.');
       return;
     }
-    if (esHonorarios && !/^\d{11}$/.test(formAlta.ruc_colaborador)) {
+    if (modalidad === 'honorarios' && !isValidRuc(formAlta.ruc_colaborador)) {
       setAltaError('El RUC es obligatorio para Recibos por Honorarios (11 dígitos).');
+      return;
+    }
+    if (requiereFin && !formAlta.fecha_fin) {
+      setAltaError('La fecha fin es obligatoria para este tipo de contrato o encargo.');
       return;
     }
     setAltaSaving(true);
@@ -11116,36 +11365,40 @@ function RRHH_Operativo() {
       moneda: formAlta.moneda || 'PEN',
       metodo_pago: formAlta.metodo_pago || 'mensual',
       monto_mensual: Number(formAlta.monto_mensual || formAlta.sueldo_base || 0),
-      horas_base_mes: Number(formAlta.horas_base_mes || 160),
+      horas_base_mes: Number(formAlta.horas_base_mes || 0),
       tarifa_hora: tarifaHoraForm,
       costo: tarifaHoraForm,
       costo_hora_real: tarifaHoraForm,
       costo_hora_extra: Number(formAlta.costo_extra) || 0,
-      acceso_campo: formAlta.acceso_campo,
-      perfil_campo: formAlta.perfil_campo,
       fecha_ingreso: formAlta.fecha_ingreso || null,
-      tipo_contrato: formAlta.tipo_contrato || 'Planilla',
-      sueldo_base: esHonorarios ? 0 : Number(formAlta.sueldo_base) || 0,
-      sistema_pensionario: esHonorarios ? null : formAlta.sistema_pensionario,
-      afp_nombre: esHonorarios ? null : formAlta.afp_nombre,
-      tiene_hijos: esHonorarios ? false : formAlta.tiene_hijos,
-      regimen_laboral: esHonorarios ? 'honorarios' : formAlta.regimen_laboral,
-      cuota_prestamo_mes: esHonorarios ? 0 : Number(formAlta.cuota_prestamo_mes) || 0,
-      descuento_judicial: esHonorarios ? 0 : Number(formAlta.descuento_judicial) || 0,
-      regimen_jornada: esHonorarios ? 'general' : (formAlta.regimen_jornada || 'general'),
+      fecha_inicio_contrato: formAlta.fecha_ingreso || null,
+      fecha_fin_contrato: requiereFin ? (formAlta.fecha_fin || null) : null,
+      modalidad_contrato: modalidad,
+      tipo_contrato: tipoContrato,
+      sueldo_base: modalidad === 'honorarios' ? 0 : Number(formAlta.sueldo_base || formAlta.monto_mensual) || 0,
+      sistema_pensionario: modalidad === 'honorarios' ? null : formAlta.sistema_pensionario,
+      afp_nombre: modalidad === 'honorarios' ? null : formAlta.afp_nombre,
+      tiene_hijos: modalidad === 'honorarios' ? false : formAlta.tiene_hijos,
+      cargo_confianza: modalidad === 'honorarios' ? false : Boolean(formAlta.cargo_confianza),
+      regimen_laboral: null,
+      cuota_prestamo_mes: modalidad === 'honorarios' ? 0 : Number(formAlta.cuota_prestamo_mes) || 0,
+      descuento_judicial: modalidad === 'honorarios' ? 0 : Number(formAlta.descuento_judicial) || 0,
+      regimen_jornada: modalidad === 'honorarios' ? 'general' : (formAlta.regimen_jornada || 'general'),
       horas_diarias_pactadas: Number(formAlta.horas_diarias_pactadas || 8),
-      fecha_inicio_ciclo: formAlta.regimen_jornada !== 'general' ? (formAlta.fecha_inicio_ciclo || null) : null,
+      fecha_inicio_ciclo: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (formAlta.fecha_inicio_ciclo || null) : null,
+      dias_ciclo_trabajo: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (Number(formAlta.dias_ciclo_trabajo || 0) || null) : null,
+      dias_ciclo_descanso: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (Number(formAlta.dias_ciclo_descanso || 0) || null) : null,
       bonif_altitud: Number(formAlta.bonif_altitud || 0),
       tipo_comision_afp: formAlta.tipo_comision_afp || 'mixta',
       pct_comision_afp_flujo: Number(formAlta.pct_comision_afp_flujo || 0),
-      ruc_colaborador: esHonorarios ? (formAlta.ruc_colaborador || null) : null,
-      retencion_ir: esHonorarios ? Number(formAlta.retencion_ir || 8) : null,
-      suspension_retenciones: esHonorarios ? formAlta.suspension_retenciones : false,
-      vencimiento_suspension: esHonorarios && formAlta.suspension_retenciones ? (formAlta.vencimiento_suspension || null) : null,
+      ruc_colaborador: modalidad === 'honorarios' ? (formAlta.ruc_colaborador || null) : null,
+      retencion_ir: modalidad === 'honorarios' ? Number(empresaConfig?.pct_retencion_ir_honorarios ?? formAlta.retencion_ir ?? 8) : null,
+      suspension_retenciones: modalidad === 'honorarios' ? formAlta.suspension_retenciones : false,
+      vencimiento_suspension: modalidad === 'honorarios' && formAlta.suspension_retenciones ? (formAlta.vencimiento_suspension || null) : null,
       estado: formAlta.estado || 'disponible',
-      turno_id: formAlta.turno_id,
+      turno_id: modalidad === 'honorarios' ? null : formAlta.turno_id,
       centro_costo_id: formAlta.centro_costo_id,
-      turno: turnosOptions.find(t => t.id === formAlta.turno_id)?.nombre || '',
+      turno: modalidad === 'honorarios' ? '' : (turnosOptions.find(t => t.id === formAlta.turno_id)?.nombre || ''),
       docs: { sctr:'pendiente', medico:'pendiente', epp:'pendiente', licencia:'pendiente' }
     };
     try {
@@ -11166,8 +11419,8 @@ function RRHH_Operativo() {
   };
 
   const disponibles = personal.filter(p => p.estado === 'disponible').length;
-  const countPlanilla = personal.filter(p => p.tipo_contrato !== 'Recibos por honorarios').length;
-  const countHonorarios = personal.filter(p => p.tipo_contrato === 'Recibos por honorarios').length;
+  const countPlanilla = personal.filter(p => !esModalidadHonorarios(p)).length;
+  const countHonorarios = personal.filter(p => esModalidadHonorarios(p)).length;
 
   // Columnas de compliance derivadas de personal_documentos (no del JSON legacy p.docs)
   const COMPLIANCE_TIPOS = [
@@ -11222,7 +11475,7 @@ function RRHH_Operativo() {
   // ── Ficha de detalle de técnico ───────────────────────────────────────────────
   if (selTecnico) {
     const p = selTecnico;
-    const esHon = p.tipo_contrato === 'Recibos por honorarios';
+    const esHon = esModalidadHonorarios(p);
     const docsPersona = personalDocumentos.filter(d => d.personal_id === p.id && d.activo);
     const solPersona = solicitudesRRHH.filter(s => s.personal_id === p.id);
     const vacPersona = solPersona.filter(s => s.tipo === 'vacaciones');
@@ -11685,7 +11938,7 @@ function RRHH_Operativo() {
               <tbody>
                 {personal.length === 0 && <tr><td colSpan={12} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
                 {personal.map(p => {
-                  const esHon = p.tipo_contrato === 'Recibos por honorarios';
+                  const esHon = esModalidadHonorarios(p);
                   const turnoNombre = workerTurno(turnosOptions, p).nombre;
                   const contratoTexto = p.fecha_inicio_contrato
                     ? (p.fecha_fin_contrato ? `${p.fecha_inicio_contrato} – ${p.fecha_fin_contrato}` : `Desde ${p.fecha_inicio_contrato}`)
@@ -11848,7 +12101,7 @@ function RRHH_Operativo() {
                       <td style={{fontWeight:600}}>{p.nombre}</td>
                       <td>{p.cargo}</td>
                       <td>{p.especialidad}</td>
-                      <td><span className={'badge '+(p.tipo_contrato==='Recibos por honorarios'?'badge-gray':'badge-green')}>{p.tipo_contrato==='Recibos por honorarios'?'Honorarios':'Planilla'}</span></td>
+                      <td><span className={'badge '+(esModalidadHonorarios(p)?'badge-gray':'badge-green')}>{esModalidadHonorarios(p)?'Honorarios':'Planilla'}</span></td>
                     </tr>
                   ))}
                 </tbody>
@@ -11889,7 +12142,7 @@ function RRHH_Operativo() {
                       <td style={{fontWeight:600}}>{p.nombre}</td>
                       <td>{p.especialidad}</td>
                       <td className="num" style={{fontWeight:700}}>{money(p.tarifa_hora??p.costo??p.costo_hora_real??0, p.moneda === 'USD' ? 'US$' : 'S/')}/hr</td>
-                      <td><span className={'badge '+(p.tipo_contrato==='Recibos por honorarios'?'badge-gray':'badge-green')}>{p.tipo_contrato==='Recibos por honorarios'?'Honorarios':'Planilla'}</span></td>
+                      <td><span className={'badge '+(esModalidadHonorarios(p)?'badge-gray':'badge-green')}>{esModalidadHonorarios(p)?'Honorarios':'Planilla'}</span></td>
                       <td><span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span></td>
                     </tr>
                   ))}
@@ -11931,17 +12184,20 @@ function RRHH_Operativo() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder={`TEC-00${personal.length+1}`}/></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
-              <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
+              <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato)}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
+              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorarios} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value,fecha_fin:requiereFechaFinContrato(e.target.value)?v.fecha_fin:''}))}>{CONTRATO_DURACION_OPCIONES.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
+              {!esHonorarios && <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>}
               <div className="input-group"><label>Cargo</label><select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{cargosOperativosOptions.map(c=><option key={c}>{c}</option>)}</select></div>
               <div className="input-group"><label>Especialidad principal</label><select className="select" value={formAlta.especialidad} onChange={e=>setFormAlta(v=>({...v,especialidad:e.target.value}))}><option value="">Seleccionar...</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>
               <div className="input-group"><label>Especialidad secundaria <span className="text-muted">(opcional)</span></label><select className="select" value={formAlta.especialidad2} onChange={e=>setFormAlta(v=>({...v,especialidad2:e.target.value}))}><option value="">Ninguna</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>
               <div className="input-group"><label>Sede base</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
               <div className="input-group"><label>Supervisor directo</label><select className="select" value={formAlta.supervisor_id} onChange={e=>setFormAlta(v=>({...v,supervisor_id:e.target.value}))}><option value="">Sin supervisor asignado</option>{supervisorOptions.map(p=><option key={p.id} value={p.id}>{p.nombre} - {p.cargo}</option>)}</select>{!supervisorOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Crea o edita un colaborador con perfil de campo Supervisor.</div>}</div>
               <div className="input-group"><label>Fecha de ingreso</label><input className="input" type="date" value={formAlta.fecha_ingreso} onChange={e=>setFormAlta(v=>({...v,fecha_ingreso:e.target.value}))}/></div>
-              <div className="input-group"><label>Modalidad de contrato</label><select className="select" value={formAlta.tipo_contrato} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value, ...(e.target.value === 'Recibos por honorarios' ? {sueldo_base:'', sistema_pensionario:'', afp_nombre:'', tiene_hijos:false, regimen_laboral:'honorarios', cuota_prestamo_mes:'0', descuento_judicial:'0'} : {sistema_pensionario:v.sistema_pensionario || 'AFP', afp_nombre:v.afp_nombre || 'Integra', regimen_laboral:v.regimen_laboral === 'honorarios' ? 'general' : v.regimen_laboral})}))}><option>Planilla</option><option>Recibos por honorarios</option><option>CAS</option><option>Practicante</option><option>Temporal</option></select></div>
+              {mostrarFechaFinAlta && <div className="input-group"><label>{esHonorarios ? 'Fin del encargo *' : 'Fecha fin contrato *'}</label><input className="input" type="date" required value={formAlta.fecha_fin} onChange={e=>setFormAlta(v=>({...v,fecha_fin:e.target.value}))}/></div>}
               <div className="input-group"><label>Estado inicial</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="disponible">Disponible</option><option value="inactivo">Inactivo</option></select></div>
             </div>
 
+            {!esHonorarios && <>
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Tarifa y Costeo</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group">
@@ -11957,14 +12213,20 @@ function RRHH_Operativo() {
               </div>
               <div className="input-group">
                 <label>Horas base del mes</label>
-                <input className="input" type="number" min="1" step="0.5" value={formAlta.horas_base_mes} onChange={e=>setFormAlta(v=>({...v,horas_base_mes:e.target.value}))} placeholder="160"/>
+                <div className="row" style={{gap:8, alignItems:'stretch'}}>
+                  <input className="input" type="number" min="0" step="0.5" readOnly={!horasBaseOverride} value={formAlta.horas_base_mes} onChange={e=>setFormAlta(v=>({...v,horas_base_mes:e.target.value}))} placeholder="0" style={{background:horasBaseOverride ? undefined : 'var(--bg-subtle)', flex:1}}/>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={()=>{ if (horasBaseOverride) setFormAlta(v=>({...v,horas_base_mes:horasBaseParaTurno(v.turno_id)})); setHorasBaseOverride(v=>!v); }}>{horasBaseOverride ? 'Usar turno' : 'Override manual'}</button>
+                </div>
+                <div className="text-muted" style={{fontSize:11, marginTop:4}}>Se actualiza desde el turno asignado.</div>
               </div>
               <div className="input-group">
                 <label>Tarifa por hora ({tarifaSym})</label>
                 <input className="input" type="text" readOnly value={tarifaHoraForm.toFixed(2)} style={{background:'var(--bg-subtle)', fontWeight:700}}/>
+                <div className="text-muted" style={{fontSize:11, marginTop:4}}>Calculado automáticamente</div>
               </div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Costo hora extra ({tarifaSym})</label><input className="input" type="number" min="0" step="0.01" value={formAlta.costo_extra} onChange={e=>setFormAlta(v=>({...v,costo_extra:e.target.value}))} placeholder="0"/></div>
             </div>
+            </>}
 
             {canFinanzas && <>
               <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos de nomina</div>
@@ -11972,7 +12234,7 @@ function RRHH_Operativo() {
                 <div className="grid-2" style={{gap:14, marginBottom:20}}>
                   <div className="input-group">
                     <label>Retención IR (%)</label>
-                    <input className="input" type="number" min="0" max="30" step="0.5" value={formAlta.retencion_ir} onChange={e=>setFormAlta(v=>({...v,retencion_ir:e.target.value}))} placeholder="8"/>
+                    <input className="input" readOnly value={retencionIrHonorariosLabel(empresaConfig)} style={{background:'var(--bg-subtle)'}}/>
                     <div className="text-muted" style={{fontSize:11, marginTop:4}}>Por defecto 8%. Solo aplica si la empresa es Agente de Retención y el honorario supera S/ 1,500.</div>
                   </div>
                   <div style={{display:'flex', flexDirection:'column', gap:8}}>
@@ -11992,10 +12254,12 @@ function RRHH_Operativo() {
               ) : (
                 <>
                   <div className="grid-2" style={{gap:14, marginBottom:20}}>
-                    <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" value={formAlta.sueldo_base} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value,monto_mensual:e.target.value}))} placeholder="3000"/></div>
+                    <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" value={formAlta.sueldo_base} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value,monto_mensual:e.target.value}))} placeholder="0"/></div>
                     <div className="input-group"><label>Sistema pensionario</label><select className="select" value={formAlta.sistema_pensionario} onChange={e=>setFormAlta(v=>({...v,sistema_pensionario:e.target.value, afp_nombre:e.target.value === 'ONP' ? 'ONP' : v.afp_nombre}))}><option value="AFP">AFP</option><option value="ONP">ONP</option></select></div>
-                    <div className="input-group"><label>Regimen laboral</label><select className="select" value={formAlta.regimen_laboral} onChange={e=>setFormAlta(v=>({...v,regimen_laboral:e.target.value}))}><option value="general">General</option><option value="mype">MYPE</option><option value="cas">CAS</option><option value="otro">Otro</option></select></div>
-                    <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos para asignacion familiar</label>
+                    <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos (asignación familiar S/ {asignacionFamiliar.toFixed(2)})</label>
+                    <label className="params-toggle-row" style={{gridColumn:'1/-1', cursor:'pointer'}}><input type="checkbox" className="checkbox" checked={formAlta.cargo_confianza} onChange={e=>setFormAlta(v=>({...v,cargo_confianza:e.target.checked}))}/><span>Cargo de dirección o confianza (excluido de fiscalización de horario)</span></label>
+                    {formAlta.cargo_confianza && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12}}>Este colaborador no aparecerá en el registro diario de asistencia ni se le calcularán tardanzas u horas extra.</div>}
+                    <div style={{gridColumn:'1/-1'}}><span className="badge badge-gray">Fiscalización: {fiscalizacionLabel(tipoFiscalizacionAlta)}</span></div>
                     <div className="input-group"><label>Cuota prestamo mes</label><input className="input" type="number" min="0" value={formAlta.cuota_prestamo_mes} onChange={e=>setFormAlta(v=>({...v,cuota_prestamo_mes:e.target.value}))}/></div>
                     <div className="input-group"><label>Descuento judicial</label><input className="input" type="number" min="0" value={formAlta.descuento_judicial} onChange={e=>setFormAlta(v=>({...v,descuento_judicial:e.target.value}))}/></div>
                   </div>
@@ -12014,6 +12278,8 @@ function RRHH_Operativo() {
                     {formAlta.regimen_jornada !== 'general' && <>
                       <div className="input-group"><label>Horas diarias pactadas <span className="text-muted">(D. Leg. 857)</span></label><input className="input" type="number" min="1" max="12" value={formAlta.horas_diarias_pactadas} onChange={e=>setFormAlta(v=>({...v,horas_diarias_pactadas:e.target.value}))}/></div>
                       <div className="input-group"><label>Fecha inicio del ciclo actual</label><input className="input" type="date" value={formAlta.fecha_inicio_ciclo} onChange={e=>setFormAlta(v=>({...v,fecha_inicio_ciclo:e.target.value}))}/></div>
+                      <div className="input-group"><label>Días de trabajo en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_trabajo} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_trabajo:e.target.value}))}/></div>
+                      <div className="input-group"><label>Días de descanso en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_descanso} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_descanso:e.target.value}))}/></div>
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Bonificación por altitud (S/)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.bonif_altitud} onChange={e=>setFormAlta(v=>({...v,bonif_altitud:e.target.value}))} placeholder="0 si no aplica"/></div>
                       <div className="card" style={{gridColumn:'1/-1',padding:'8px 12px',background:'rgba(6,182,212,0.08)',fontSize:12,color:'var(--cyan)'}}> Cálculo proporcional por días computables en cada período.</div>
                     </>}
@@ -12043,13 +12309,6 @@ function RRHH_Operativo() {
                 </>
               )}
             </>}
-
-            <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Acceso a campo móvil</div>
-            <div className="grid-2" style={{gap:14, marginBottom:24}}>
-              <div className="input-group"><label>Acceso a app de campo</label><select className="select" value={formAlta.acceso_campo?'si':'no'} onChange={e=>setFormAlta(v=>({...v,acceso_campo:e.target.value==='si'}))}><option value="si">Si</option><option value="no">No</option></select></div>
-              {formAlta.acceso_campo && <div className="input-group"><label>Perfil de campo</label><select className="select" value={formAlta.perfil_campo} onChange={e=>setFormAlta(v=>({...v,perfil_campo:e.target.value}))}><option>Tecnico</option><option>Supervisor</option><option>Compras</option></select></div>}
-              {formAlta.acceso_campo && <div style={{gridColumn:'1/-1', fontSize:12, color:'var(--cyan)', padding:'8px 12px', background:'rgba(6,182,212,0.08)', borderRadius:8}}>Al activar esto, el técnico podrá ver sus OTs asignadas y registrar partes diarios desde su celular.</div>}
-            </div>
 
             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
               <button type="button" className="btn btn-secondary" onClick={cerrarPanelTecnico}>Cancelar</button>
@@ -12208,7 +12467,14 @@ export function ComprasGastos() {
     return true;
   });
 
-  const totalMonto = rows.reduce((s, g) => s + (Number(g.monto) || 0), 0);
+  const totalMontoPorMoneda = rows.reduce((acc, g) => {
+    const moneda = String(g.moneda || 'PEN').trim().toUpperCase();
+    return { ...acc, [moneda]: (acc[moneda] || 0) + (Number(g.monto) || 0) };
+  }, {});
+  const totalMontoDisplay = Object.entries(totalMontoPorMoneda)
+    .filter(([, value]) => Math.abs(Number(value || 0)) > 0.009)
+    .map(([moneda, value]) => moneyCurrency(value, moneda))
+    .join(' · ') || moneyCurrency(0, empresa?.moneda || 'PEN');
   const pendientesRevision = (comprasGastos || []).filter(g => g.estado === 'pendiente_revision').length;
 
   return (
@@ -12223,7 +12489,7 @@ export function ComprasGastos() {
 
       <div className="kpi-grid">
         <div className="kpi-card"><div className="kpi-label">Total registros</div><div className="kpi-value">{(comprasGastos || []).length}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Monto filtrado</div><div className="kpi-value" style={{fontSize:18}}>{money(totalMonto)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Monto filtrado</div><div className="kpi-value" style={{fontSize:18}}>{totalMontoDisplay}</div></div>
         <div className="kpi-card"><div className="kpi-label">Desde campo</div><div className="kpi-value">{(comprasGastos || []).filter(g => g.origen_registro === 'campo').length}</div></div>
         <div className="kpi-card"><div className="kpi-label">Pendientes revisión</div><div className="kpi-value" style={{color: pendientesRevision > 0 ? 'var(--orange)' : undefined}}>{pendientesRevision}</div></div>
       </div>
@@ -12286,7 +12552,7 @@ export function ComprasGastos() {
                     </td>
                     <td style={{fontSize:12}}>{cecoNombre(g.centro_costo_id)}</td>
                     <td style={{fontSize:12}}>{g.categoria || '—'}</td>
-                    <td className="num"><strong>{money(g.monto)}</strong>{g.moneda && g.moneda !== 'PEN' && <span style={{fontSize:10, marginLeft:4, color:'var(--fg-muted)'}}>{g.moneda}</span>}</td>
+                    <td className="num"><strong>{moneyCurrency(g.monto, g.moneda || 'PEN')}</strong></td>
                     <td>
                       <span className={'badge ' + (g.estado_pago === 'pagado' ? 'badge-green' : 'badge-orange')}>
                         {g.estado_pago === 'pagado' ? 'Pagado' : 'Pendiente'}
@@ -13486,12 +13752,15 @@ export function TareoAdmin() {
 }
 
 export function ControlHoras() {
-  const { empresa, role, personalOperativo = [], personalAdmin = [], partes = [], ots = [], usuarios = [], addNotificacion } = useApp();
+  const { empresa, role, personalOperativo = [], personalAdmin = [], partes = [], ots = [], usuarios = [], cuentas = [], addNotificacion } = useApp();
   const [tab, setTab] = useState('operativo');
   const [periodo, setPeriodo] = useState(periodoMesActual());
   const [tareos, setTareos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [evaluando, setEvaluando] = useState(false);
+  const [cxpRhe, setCxpRhe] = useState([]);
+  const [filtroColabPorOT, setFiltroColabPorOT] = useState('');
+  const [filtroModalidadPorOT, setFiltroModalidadPorOT] = useState('');
 
   const canVer = role?.permisos?.todo
     || role?.permisos?.control_horas?.ver
@@ -13529,6 +13798,17 @@ export function ControlHoras() {
     tipo: 'admin',
   }), [personalAdmin, partes, tareos, ots, periodo]);
   const rowsActuales = tab === 'operativo' ? rowsOperativo : rowsAdmin;
+  const rowsPorOT = useMemo(() => construirFilasPorOT({
+    personalOperativo, personalAdmin, partes, tareos, ots, cuentas, periodo,
+  }), [personalOperativo, personalAdmin, partes, tareos, ots, cuentas, periodo]);
+
+  useEffect(() => {
+    if (tab !== 'por_ot' || !empresa?.id || !canVer) return;
+    const { desde, hasta } = rangoPeriodoMes(periodo);
+    rrhhService.cargarCxpRhePeriodo(empresa.id, { desde, hasta })
+      .then(setCxpRhe)
+      .catch(() => setCxpRhe([]));
+  }, [tab, empresa?.id, periodo, canVer]);
 
   const obtenerSupervisorAuthId = (persona, tipo) => {
     if (!persona) return null;
@@ -13637,24 +13917,160 @@ export function ControlHoras() {
       <div className="tabs">
         <div className={'tab ' + (tab === 'operativo' ? 'active' : '')} onClick={() => setTab('operativo')}>Tecnicos</div>
         <div className={'tab ' + (tab === 'admin' ? 'active' : '')} onClick={() => setTab('admin')}>Administrativos</div>
+        <div className={'tab ' + (tab === 'por_ot' ? 'active' : '')} onClick={() => setTab('por_ot')}>Por OT</div>
       </div>
 
-      <ControlHorasResumen
-        modo="rrhh"
-        tipo={tab === 'operativo' ? 'operativo' : 'admin'}
-        personal={tab === 'operativo' ? personalOperativo : personalAdmin}
-        partes={partes}
-        tareos={tareos}
-        ots={ots}
-        periodo={periodo}
-        setPeriodo={setPeriodo}
-        showTareo={tab === 'admin'}
-        showCosto
-        showNavegacion
-        loading={loading || evaluando}
-        onExport={exportarExcel}
-        onEvaluarMes={(rows, periodoEval) => evaluarMes(rows, periodoEval, { tipoEval: tab })}
-      />
+      {tab !== 'por_ot' && (
+        <ControlHorasResumen
+          modo="rrhh"
+          tipo={tab === 'operativo' ? 'operativo' : 'admin'}
+          personal={tab === 'operativo' ? personalOperativo : personalAdmin}
+          partes={partes}
+          tareos={tareos}
+          ots={ots}
+          periodo={periodo}
+          setPeriodo={setPeriodo}
+          showTareo={tab === 'admin'}
+          showCosto
+          showNavegacion
+          loading={loading || evaluando}
+          onExport={exportarExcel}
+          onEvaluarMes={(rows, periodoEval) => evaluarMes(rows, periodoEval, { tipoEval: tab })}
+        />
+      )}
+
+      {tab === 'por_ot' && (() => {
+        const { label } = rangoPeriodoMes(periodo);
+        const todosColab = [...personalOperativo, ...personalAdmin].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+        const filasFiltradas = rowsPorOT.filter(r => {
+          if (filtroColabPorOT && r.personaId !== filtroColabPorOT) return false;
+          if (filtroModalidadPorOT === 'planilla' && r.modalidad !== 'Planilla') return false;
+          if (filtroModalidadPorOT === 'honorarios' && r.modalidad !== 'Honorarios') return false;
+          return true;
+        });
+        const personasUnicas = [...new Set(filasFiltradas.map(r => r.personaId))];
+        const agrupadas = personasUnicas.map(pId => {
+          const filas = filasFiltradas.filter(r => r.personaId === pId);
+          const totalHoras = filas.reduce((s, r) => s + r.total_horas, 0);
+          const totalCosto = filas.reduce((s, r) => s + r.costo, 0);
+          const rheTotal = cxpRhe.filter(c => c.personal_id === pId).reduce((s, c) => s + Number(c.monto_total || 0), 0);
+          return { pId, nombre: filas[0]?.nombre, modalidad: filas[0]?.modalidad, tipo: filas[0]?.tipo, moneda: filas[0]?.moneda, filas, totalHoras, totalCosto, rheTotal };
+        });
+        const exportarPorOT = () => {
+          const data = filasFiltradas.map(r => ({
+            Colaborador: r.nombre, Tipo: r.tipo, Modalidad: r.modalidad,
+            OT: r.otNumero, OT_Descripcion: r.otDescripcion, Cliente: r.cliente,
+            Horas_Partes: r.horas_partes, Horas_Tareos: r.horas_tareos, Total_Horas: r.total_horas,
+            Tarifa_Hora: r.tarifa, Costo_Calculado: r.costo, Moneda: r.moneda,
+          }));
+          const ws = XLSX.utils.json_to_sheet(data);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, 'Horas por OT');
+          XLSX.writeFile(wb, `horas_por_ot_${periodo}.xlsx`);
+        };
+        return (
+          <>
+            <div className="card">
+              <div className="card-head">
+                <div>
+                  <h3>Horas por colaborador × OT</h3>
+                  <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{label}</div>
+                </div>
+                <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                  <button className="icon-btn" onClick={() => setPeriodo(desplazarPeriodoMes(periodo, -1))} title="Mes anterior">{I.chevronLeft}</button>
+                  <input className="input" type="month" value={periodo} onChange={e => setPeriodo(e.target.value || periodoMesActual())} style={{ minWidth: 150 }} />
+                  <button className="icon-btn" onClick={() => setPeriodo(desplazarPeriodoMes(periodo, 1))} title="Mes siguiente">{I.chevronRight}</button>
+                  <select className="select" style={{ minWidth: 180 }} value={filtroColabPorOT} onChange={e => setFiltroColabPorOT(e.target.value)}>
+                    <option value="">Todos los colaboradores</option>
+                    {todosColab.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                  <select className="select" style={{ minWidth: 160 }} value={filtroModalidadPorOT} onChange={e => setFiltroModalidadPorOT(e.target.value)}>
+                    <option value="">Todas las modalidades</option>
+                    <option value="planilla">Solo planilla</option>
+                    <option value="honorarios">Solo honorarios</option>
+                  </select>
+                  <button className="btn btn-primary btn-sm" onClick={exportarPorOT}>{I.download} Exportar Excel</button>
+                </div>
+              </div>
+              {loading ? (
+                <div className="text-muted" style={{ padding: 28, textAlign: 'center' }}>Cargando datos...</div>
+              ) : filasFiltradas.length === 0 ? (
+                <div className="text-muted" style={{ padding: 28, textAlign: 'center' }}>Sin registros de horas en OTs para el periodo seleccionado.</div>
+              ) : (
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead><tr>
+                      <th>Colaborador</th>
+                      <th>Modalidad</th>
+                      <th>OT</th>
+                      <th>Cliente</th>
+                      <th className="num">H. Partes</th>
+                      <th className="num">H. Tareos</th>
+                      <th className="num">Total h</th>
+                      <th className="num">Tarifa/h</th>
+                      <th className="num">Costo calc.</th>
+                      <th className="num">RHE periodo</th>
+                    </tr></thead>
+                    <tbody>
+                      {agrupadas.map(grupo => (
+                        <React.Fragment key={grupo.pId}>
+                          {grupo.filas.map((r, i) => (
+                            <tr key={`${r.personaId}_${r.otId}`}>
+                              {i === 0 ? (
+                                <td rowSpan={grupo.filas.length} style={{ verticalAlign: 'top', paddingTop: 10 }}>
+                                  <strong>{r.nombre}</strong>
+                                  <div className="text-muted" style={{ fontSize: 11 }}>{r.tipo}</div>
+                                </td>
+                              ) : null}
+                              {i === 0 ? (
+                                <td rowSpan={grupo.filas.length} style={{ verticalAlign: 'top', paddingTop: 10 }}>
+                                  <span className={`badge ${r.modalidad === 'Honorarios' ? 'badge-orange' : 'badge-green'}`} style={{ fontSize: 11 }}>{r.modalidad}</span>
+                                </td>
+                              ) : null}
+                              <td>
+                                <strong className="mono" style={{ fontSize: 12 }}>{r.otNumero}</strong>
+                                {r.otDescripcion && <div className="text-muted" style={{ fontSize: 11 }}>{r.otDescripcion}</div>}
+                              </td>
+                              <td style={{ fontSize: 13 }}>{r.cliente}</td>
+                              <td className="num">{r.horas_partes > 0 ? `${r.horas_partes.toFixed(1)}h` : '—'}</td>
+                              <td className="num">{r.horas_tareos > 0 ? `${r.horas_tareos.toFixed(1)}h` : '—'}</td>
+                              <td className="num" style={{ fontWeight: 700 }}>{r.total_horas.toFixed(1)}h</td>
+                              <td className="num">{r.tarifa > 0 ? moneyD(r.tarifa, r.moneda) : '—'}</td>
+                              <td className="num">{r.tarifa > 0 ? moneyD(r.costo, r.moneda) : '—'}</td>
+                              {i === 0 ? (
+                                <td rowSpan={grupo.filas.length} style={{ verticalAlign: 'top', paddingTop: 10 }}>
+                                  {grupo.modalidad === 'Honorarios' ? (
+                                    grupo.rheTotal > 0 ? (
+                                      <div>
+                                        <div style={{ fontWeight: 700, fontSize: 13 }}>{moneyD(grupo.rheTotal, grupo.moneda)}</div>
+                                        <span className={`badge ${grupo.rheTotal <= grupo.totalCosto * 1.10 ? 'badge-green' : 'badge-orange'}`} style={{ fontSize: 10, marginTop: 2 }}>
+                                          {grupo.rheTotal <= grupo.totalCosto * 1.10 ? 'OK' : 'Supera estimado'}
+                                        </span>
+                                      </div>
+                                    ) : <span className="text-muted" style={{ fontSize: 12 }}>Sin RHE</span>
+                                  ) : <span className="text-muted" style={{ fontSize: 12 }}>—</span>}
+                                </td>
+                              ) : null}
+                            </tr>
+                          ))}
+                          <tr style={{ background: 'var(--bg-subtle)', borderTop: '2px solid var(--border)' }}>
+                            <td colSpan={2} style={{ fontWeight: 700, fontSize: 12, padding: '6px 12px' }}>Total {grupo.nombre}</td>
+                            <td colSpan={4}></td>
+                            <td className="num" style={{ fontWeight: 700 }}>{grupo.totalHoras.toFixed(1)}h</td>
+                            <td></td>
+                            <td className="num" style={{ fontWeight: 700 }}>{grupo.totalCosto > 0 ? moneyD(grupo.totalCosto, grupo.moneda) : '—'}</td>
+                            <td></td>
+                          </tr>
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
     </>
   );
 }

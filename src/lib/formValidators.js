@@ -21,5 +21,12 @@ export function isValidPhone(value = '') {
 }
 
 export function isValidRuc(value = '') {
-  return !value || /^[12]\d{10}$/.test(String(value));
+  const ruc = String(value || '');
+  if (!ruc) return true;
+  if (!/^[12]\d{10}$/.test(ruc)) return false;
+  const weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  const sum = weights.reduce((acc, weight, idx) => acc + Number(ruc[idx]) * weight, 0);
+  const raw = 11 - (sum % 11);
+  const checkDigit = raw === 10 ? 0 : raw === 11 ? 1 : raw;
+  return checkDigit === Number(ruc[10]);
 }

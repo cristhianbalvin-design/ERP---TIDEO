@@ -108,6 +108,76 @@ const cxpIsRhe = cxp => cxpDocType(cxp) === 'rhe'
   || Boolean(cxp?.recibo_honorarios_id)
   || amount(cxp?.monto_bruto) > 0;
 
+export const ER_TIPO_SISTEMA_LABELS = {
+  mano_obra: 'Mano de obra',
+  materiales: 'Materiales',
+  servicios_terceros: 'Servicios terceros',
+  logistica: 'Logistica',
+  administrativos: 'Administrativos',
+  comerciales: 'Comerciales',
+  gastos_financieros: 'Gastos financieros',
+  planilla: 'Planilla',
+  cargas_sociales: 'Cargas sociales',
+  intereses_financiamiento: 'Intereses de financiamiento',
+};
+
+export const ER_TIPO_SISTEMA_OPTIONS = Object.entries(ER_TIPO_SISTEMA_LABELS)
+  .map(([value, label]) => ({ value, label }));
+
+const ER_FALLBACK_BY_TIPO = {
+  // Fallbacks universales cuando el tenant aun no tiene una categoria configurada para ese tipo.
+  mano_obra: { seccion: 'costo_ventas', regla_ot: 'con_ot', nombre: 'Mano de obra' },
+  materiales: { seccion: 'costo_ventas', regla_ot: 'con_ot', nombre: 'Materiales' },
+  servicios_terceros: { seccion: 'costo_ventas', regla_ot: 'con_ot', nombre: 'Servicios terceros' },
+  logistica: { seccion: 'costo_ventas', regla_ot: 'con_ot', nombre: 'Logistica' },
+  administrativos: { seccion: 'gastos_operativos', regla_ot: 'siempre', nombre: 'Administrativos' },
+  comerciales: { seccion: 'gastos_operativos', regla_ot: 'siempre', nombre: 'Comerciales' },
+  gastos_financieros: { seccion: 'gastos_financieros', regla_ot: 'siempre', nombre: 'Gastos financieros' },
+  planilla: { seccion: 'gastos_operativos', regla_ot: 'siempre', nombre: 'Planilla' },
+  cargas_sociales: { seccion: 'gastos_operativos', regla_ot: 'siempre', nombre: 'Cargas sociales' },
+  intereses_financiamiento: { seccion: 'gastos_financieros', regla_ot: 'siempre', nombre: 'Intereses de financiamiento' },
+};
+
+const inferTipoSistema = value => {
+  const v = norm(value);
+  if (!v) return null;
+  if (v.includes('mano de obra') || v.includes('mo operativa')) return 'mano_obra';
+  if (v.includes('material')) return 'materiales';
+  if (v.includes('servicio') && v.includes('tercero')) return 'servicios_terceros';
+  if (v.includes('tercero')) return 'servicios_terceros';
+  if (v.includes('logistica') || v.includes('transporte')) return 'logistica';
+  if (v.includes('administrativ')) return 'administrativos';
+  if (v.includes('comercial')) return 'comerciales';
+  if (v.includes('gasto') && v.includes('financier')) return 'gastos_financieros';
+  if (v.includes('planilla')) return 'planilla';
+  if (v.includes('carga') && v.includes('social')) return 'cargas_sociales';
+  if (v.includes('essalud') || v.includes('cts')) return 'cargas_sociales';
+  if (v.includes('interes') && (v.includes('financ') || v.includes('prestamo'))) return 'intereses_financiamiento';
+  return null;
+};
+
+const preferConfigByReglaOt = (configs, hasOt) => {
+  if (!configs.length) return null;
+  if (configs.length === 1) return configs[0];
+  const preferredRules = hasOt ? ['con_ot', 'siempre', 'sin_ot'] : ['sin_ot', 'siempre', 'con_ot'];
+  return preferredRules.map(rule => configs.find(c => c.regla_ot === rule)).find(Boolean) || configs[0];
+};
+
+export const resolverCategoriaPorTipoSistema = (erConfig = [], tipoSistema, { hasOt = false, allowFallback = true } = {}) => {
+  if (!tipoSistema) return null;
+  const configs = (erConfig || []).filter(c => c.tipo_sistema === tipoSistema && (allowFallback || !c.es_fallback));
+  const config = preferConfigByReglaOt(configs, hasOt);
+  if (config) return config;
+  const fallback = ER_FALLBACK_BY_TIPO[tipoSistema];
+  return allowFallback && fallback ? { ...fallback, tipo_sistema: tipoSistema, es_fallback: true } : null;
+};
+
+const resolverCategoriaEr = (erConfig = [], label, { hasOt = false } = {}) => {
+  const byName = (erConfig || []).find(c => norm(c.nombre) === norm(label));
+  if (byName) return byName;
+  return resolverCategoriaPorTipoSistema(erConfig, inferTipoSistema(label), { hasOt });
+};
+
 const excludedCxpOrigins = new Set(['nomina', 'nc_devolucion', 'recepcion', 'tributos', 'dividendos']);
 const excludedCxpMotives = new Set(['devolucion_nc', 'planilla', 'essalud', 'pensiones', 'ir_5ta']);
 
@@ -196,10 +266,10 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], empr
 
   comprasGastos
     .filter(g =>
-      (!empresaId || g.empresa_id === empresaId) &&
+      (!empresaId || !g.empresa_id || g.empresa_id === empresaId) &&
       isInPeriod(g.fecha, periodo) &&
       !g.es_activo_fijo &&
-      g.categoria !== 'Gastos financieros'
+      inferTipoSistema(g.categoria) !== 'gastos_financieros'
     )
     .forEach(g => addToBlock(result.er.gastosOp, g.categoria || 'Gasto operativo', g.monto, g.moneda || 'PEN'));
 
@@ -209,9 +279,9 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], empr
   if (moReal > 0) addToBlock(result.er.costoVentas, 'Mano de obra directa', moReal, 'PEN');
 
   const intereses = comprasGastos.filter(g =>
-    (!empresaId || g.empresa_id === empresaId) &&
+    (!empresaId || !g.empresa_id || g.empresa_id === empresaId) &&
     isInPeriod(g.fecha, periodo) &&
-    g.categoria === 'Gastos financieros'
+    inferTipoSistema(g.categoria) === 'gastos_financieros'
   );
   intereses.forEach(g => addToBlock(result.er.gastosFin, g.subcategoria || g.descripcion || 'Gastos financieros', g.monto, g.moneda || 'PEN'));
 
@@ -281,7 +351,7 @@ async function loadCxPDevengos(supabase, empresaId, periodo) {
   const { data, error } = await supabase
     .from('cxp')
     // Corrección 5: se agrega no_devengar_er al SELECT.
-    .select('id, tipo_beneficiario, tipo_comprobante, factura_numero, concepto, fecha_emision, monto_total, monto_bruto, retencion_ir, moneda, estado, origen, motivo_cxp, gasto_id, recepcion_id, recibo_honorarios_id, personal_id, nombre_emisor, nc_id, categoria_er, centro_costo_id, no_devengar_er')
+    .select('id, tipo_beneficiario, tipo_comprobante, factura_numero, concepto, fecha_emision, monto_total, monto_bruto, retencion_ir, moneda, estado, origen, motivo_cxp, gasto_id, recepcion_id, recibo_honorarios_id, personal_id, nombre_emisor, nc_id, categoria_er, centro_costo_id, ot_vinc_id, no_devengar_er')
     .eq('empresa_id', empresaId)
     .gte('fecha_emision', start)
     .lt('fecha_emision', next);
@@ -359,30 +429,31 @@ async function loadCajaChica(supabase, empresaId, periodo) {
   return (data || []).filter(r => r.gasto_id == null);
 }
 
-// Configuración por defecto que reproduce el comportamiento actual del ER.
-// Se usa cuando el tenant no tiene filas en er_configuracion.
-const CONFIG_DEFECTO = [
-  { seccion: 'gastos_operativos', nombre_categoria: 'Materiales',        categoria_er_interna: 'Materiales',        regla_ot: 'siempre' },
-  { seccion: 'gastos_operativos', nombre_categoria: 'Servicios terceros', categoria_er_interna: 'Servicios terceros', regla_ot: 'siempre' },
-  { seccion: 'gastos_operativos', nombre_categoria: 'Logística',          categoria_er_interna: 'Logística',          regla_ot: 'siempre' },
-  { seccion: 'gastos_operativos', nombre_categoria: 'Administrativos',    categoria_er_interna: 'Administrativos',    regla_ot: 'siempre' },
-  { seccion: 'gastos_operativos', nombre_categoria: 'Comerciales',        categoria_er_interna: 'Comerciales',        regla_ot: 'siempre' },
+// Fallback cuando el tenant no tiene filas en er_categorias (tenant nuevo sin configurar).
+const CATS_BASE_FALLBACK = [
+  { nombre: 'Mano de obra',       tipo_sistema: 'mano_obra',          seccion: 'costo_ventas',       regla_ot: 'con_ot', es_fallback: true  },
+  { nombre: 'Materiales',         tipo_sistema: 'materiales',         seccion: 'costo_ventas',       regla_ot: 'con_ot', es_fallback: true  },
+  { nombre: 'Servicios terceros', tipo_sistema: 'servicios_terceros', seccion: 'costo_ventas',       regla_ot: 'con_ot', es_fallback: true  },
+  { nombre: 'Logística',          seccion: 'costo_ventas',       regla_ot: 'con_ot'  },
+  { nombre: 'Administrativos',    tipo_sistema: 'administrativos',    seccion: 'gastos_operativos',  regla_ot: 'siempre', es_fallback: true },
+  { nombre: 'Comerciales',        tipo_sistema: 'comerciales',        seccion: 'gastos_operativos',  regla_ot: 'siempre', es_fallback: true },
+  { nombre: 'Gastos financieros', tipo_sistema: 'gastos_financieros', seccion: 'gastos_financieros', regla_ot: 'siempre', es_fallback: true },
 ];
 
 export async function cargarConfiguracionER(empresaId) {
-  if (!isSupabaseMode() || !empresaId) return CONFIG_DEFECTO;
+  if (!isSupabaseMode() || !empresaId) return CATS_BASE_FALLBACK;
   try {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
-      .from('er_configuracion')
-      .select('seccion, nombre_categoria, categoria_er_interna, regla_ot, orden')
+      .from('er_categorias')
+      .select('nombre, seccion, regla_ot, tipo_sistema')
       .eq('empresa_id', empresaId)
       .eq('activo', true)
       .order('orden');
-    if (error || !data?.length) return CONFIG_DEFECTO;
+    if (error || !data?.length) return CATS_BASE_FALLBACK;
     return data;
   } catch {
-    return CONFIG_DEFECTO;
+    return CATS_BASE_FALLBACK;
   }
 }
 
@@ -410,11 +481,8 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     gastos_operativos: result.er.gastosOp,
     gastos_financieros: result.er.gastosFin,
   };
-  const configMap = new Map(erConfig.map(c => [c.categoria_er_interna, c]));
-  // Primera categoría de gastosOp sin restricción de OT — destino de reclasificación.
-  const fallbackGastosOp = erConfig.find(c =>
-    c.seccion === 'gastos_operativos' && (c.regla_ot === 'siempre' || c.regla_ot === 'sin_ot')
-  );
+  const labelByTipo = (tipoSistema, fallback, hasOt = true) =>
+    resolverCategoriaPorTipoSistema(erConfig, tipoSistema, { hasOt })?.nombre || fallback;
 
   facturas.forEach(f => {
     addToBlock(result.er.ingresos, 'Ventas de servicios', f.subtotal, f.moneda);
@@ -426,10 +494,10 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     .filter(c => !effectiveCecoIds || matchesIds(c.ordenes_trabajo?.centro_costo_id, effectiveCecoIds))
     .filter(c => !cebeIds?.length || intersectsIds(c.ordenes_trabajo?.centro_beneficio_id, cebeIds))
     .forEach(c => {
-      addToBlock(result.er.costoVentas, 'Mano de obra directa', c.mano_obra, c.moneda);
-      addToBlock(result.er.costoVentas, 'Materiales consumidos', c.materiales, c.moneda);
-      addToBlock(result.er.costoVentas, 'Servicios terceros', c.servicios_terceros, c.moneda);
-      addToBlock(result.er.costoVentas, 'Logistica directa', c.logistica, c.moneda);
+      addToBlock(result.er.costoVentas, labelByTipo('mano_obra', 'Mano de obra directa'), c.mano_obra, c.moneda);
+      addToBlock(result.er.costoVentas, labelByTipo('materiales', 'Materiales consumidos'), c.materiales, c.moneda);
+      addToBlock(result.er.costoVentas, labelByTipo('servicios_terceros', 'Servicios terceros'), c.servicios_terceros, c.moneda);
+      addToBlock(result.er.costoVentas, labelByTipo('logistica', 'Logistica directa'), c.logistica, c.moneda);
       addToBlock(result.er.costoVentas, 'Otros costos directos', c.otros, c.moneda);
     });
 
@@ -438,30 +506,25 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     : comprasGastos;
 
   comprasGastosParaEr.forEach(g => {
-    const entry = configMap.get(g.categoria);
+    const hasOt = g.ot_vinc_id != null;
+    const entry = resolverCategoriaEr(erConfig, g.categoria, { hasOt });
     if (entry) {
-      const hasOt = g.ot_vinc_id != null;
       const block = sectionToBlock[entry.seccion] || result.er.gastosOp;
       if (entry.regla_ot === 'con_ot') {
-        if (hasOt) {
-          addToBlock(block, entry.nombre_categoria, g.monto, g.moneda);
-        } else {
-          // Gasto sin OT que debería tener OT: reclasificar a primer Gasto Operativo sin restricción.
-          const fb = fallbackGastosOp;
-          addToBlock(result.er.gastosOp, fb ? fb.nombre_categoria : (g.categoria || 'Gasto operativo'), g.monto, g.moneda);
-        }
+        addToBlock(block, entry.nombre, g.monto, g.moneda);
       } else if (entry.regla_ot === 'sin_ot') {
         if (g.ot_vinc_id == null) {
-          addToBlock(block, entry.nombre_categoria, g.monto, g.moneda);
+          addToBlock(block, entry.nombre, g.monto, g.moneda);
         }
       } else {
-        addToBlock(block, entry.nombre_categoria, g.monto, g.moneda);
+        addToBlock(block, entry.nombre, g.monto, g.moneda);
       }
-    } else if (g.categoria === 'Gastos financieros') {
+    } else if (inferTipoSistema(g.categoria) === 'gastos_financieros') {
       // Categoría financiera sin config explícita — comportamiento original preservado.
       addToBlock(result.er.gastosFin, g.subcategoria || g.descripcion || 'Gastos financieros', g.monto, g.moneda);
     } else {
-      addToBlock(result.er.gastosOp, g.categoria || g.subcategoria || 'Gasto operativo', g.monto, g.moneda);
+      // Sin coincidencia en categorías del sistema ni personalizadas: clasificar como Otros gastos.
+      addToBlock(result.er.gastosOp, 'Otros gastos', g.monto, g.moneda);
     }
   });
 
@@ -478,15 +541,17 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
   cxpDevengosEr.forEach(cxp => {
     const label = cxpDevengoLabel(cxp);
     // Corrección 6: CxP con label Gastos financieros (via categoria_er) va a gastosFin, no gastosOp.
-    const block = label === 'Gastos financieros' ? result.er.gastosFin : result.er.gastosOp;
-    addToBlock(block, label, cxpDevengoAmount(cxp), cxp.moneda);
+    const hasOt = cxp.ot_vinc_id != null;
+    const entry = resolverCategoriaEr(erConfig, label, { hasOt });
+    const block = entry ? (sectionToBlock[entry.seccion] || result.er.gastosOp) : result.er.gastosOp;
+    addToBlock(block, entry?.nombre || label, cxpDevengoAmount(cxp), cxp.moneda);
   });
 
   detalleNomina.forEach(n => {
-    addToBlock(result.er.gastosOp, 'Planilla neta', n.neto, n.moneda);
+    addToBlock(result.er.gastosOp, labelByTipo('planilla', 'Planilla neta', false), n.neto, n.moneda);
     addToBlock(
       result.er.gastosOp,
-      'Cargas sociales',
+      labelByTipo('cargas_sociales', 'Cargas sociales', false),
       amount(n.essalud) + amount(n.cts) + amount(n.gratificacion) + amount(n.vacaciones),
       n.moneda
     );
@@ -498,7 +563,7 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
   });
 
   pagosFinancieros.forEach(p => {
-    addToBlock(result.er.gastosFin, 'Intereses de financiamiento', p.interes, p.moneda);
+    addToBlock(result.er.gastosFin, labelByTipo('intereses_financiamiento', 'Intereses de financiamiento', false), p.interes, p.moneda);
   });
 
   return finalizeResult(result, {

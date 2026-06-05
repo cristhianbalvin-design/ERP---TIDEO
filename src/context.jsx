@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { MOCK } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
@@ -24,7 +24,12 @@ import * as liquidacionesCeseService from './services/liquidacionesCeseService.j
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
-import { getTipoCambioHoy, convertirMonto as convertirMontoFn } from './services/tipoCambioService.js';
+import { AFP_PARAMETROS_DEFAULT, latestAfpParametros, nominaService } from './services/nominaService.js';
+import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto as convertirMontoFn } from './services/tipoCambioService.js';
+import {
+  prepararDesvinculacionMovimientoCuenta,
+  prepararVinculacionMovimientoCuenta,
+} from './services/tesoreriaService.js';
 import {
   getMateriales, crearMaterial as svcCrearMaterial, actualizarMaterial as svcActualizarMaterial, eliminarMaterial as svcEliminarMaterial,
   getMaterialGrupos, crearMaterialGrupo as svcCrearGrupo, actualizarMaterialGrupo as svcActualizarGrupo, eliminarMaterialGrupo as svcEliminarGrupo,
@@ -255,52 +260,54 @@ export function AppProvider({ children }) {
     if (isSupabaseConfigured()) return;
     try { localStorage.setItem('tideo_usuarios', JSON.stringify(usuarios)); } catch {}
   }, [usuarios]);
-  const [leads, setLeads] = useState(MOCK.leads);
+  const useSupabase = isSupabaseConfigured();
+  const [leads, setLeads] = useState(useSupabase ? [] : MOCK.leads);
   const [historialEstados, setHistorialEstados] = useState([]);
   const [oppHistorialEtapas, setOppHistorialEtapas] = useState([]);
-  const [cuentas, setCuentas] = useState(MOCK.cuentas);
-  const [contactos, setContactos] = useState(MOCK.contactos);
-  const [oportunidades, setOportunidades] = useState(MOCK.oportunidades);
-  const [campanas, setCampanas] = useState(MOCK.campanas || []);
-  const [actividades, setActividades] = useState(MOCK.actividades);
-  const [agendaEventos, setAgendaEventos] = useState(MOCK.agendaEventos || []);
-  const [hojasCosteo, setHojasCosteo] = useState(MOCK.hojasCosteo || []);
-  const [cotizaciones, setCotizaciones] = useState(MOCK.cotizaciones);
-  const [osClientes, setOsClientes] = useState(MOCK.osClientes);
-  const [cxp, setCxp] = useState(MOCK.cxp || []);
+  const [cuentas, setCuentas] = useState(useSupabase ? [] : MOCK.cuentas);
+  const [contactos, setContactos] = useState(useSupabase ? [] : MOCK.contactos);
+  const [oportunidades, setOportunidades] = useState(useSupabase ? [] : MOCK.oportunidades);
+  const [campanas, setCampanas] = useState(useSupabase ? [] : (MOCK.campanas || []));
+  const [actividades, setActividades] = useState(useSupabase ? [] : MOCK.actividades);
+  const [agendaEventos, setAgendaEventos] = useState(useSupabase ? [] : (MOCK.agendaEventos || []));
+  const [hojasCosteo, setHojasCosteo] = useState(useSupabase ? [] : (MOCK.hojasCosteo || []));
+  const [cotizaciones, setCotizaciones] = useState(useSupabase ? [] : MOCK.cotizaciones);
+  const [osClientes, setOsClientes] = useState(useSupabase ? [] : MOCK.osClientes);
+  const [cxp, setCxp] = useState(useSupabase ? [] : (MOCK.cxp || []));
   const [cxpPagos, setCxpPagos] = useState([]);
   const [cajaChica, setCajaChica] = useState([]);
-  const [cxc, setCxc] = useState(MOCK.cxc || []);
+  const [cxc, setCxc] = useState(useSupabase ? [] : (MOCK.cxc || []));
   const [cobrosHistorial, setCobrosHistorial] = useState([]);
+  const cobrosEnProceso = useRef(new Set());
   const [gestionesCobranza, setGestionesCobranza] = useState([]);
   const [comisiones, setComisiones] = useState([]);
   const [recibosHonorarios, setRecibosHonorarios] = useState([]);
-  const [cuentasBancarias, setCuentasBancarias] = useState(MOCK.cuentasBancarias || []);
-  const [facturas, setFacturas] = useState(MOCK.facturas || []);
-  const [comprasGastos, setComprasGastos] = useState(MOCK.compras || []);
+  const [cuentasBancarias, setCuentasBancarias] = useState(useSupabase ? [] : (MOCK.cuentasBancarias || []));
+  const [facturas, setFacturas] = useState(useSupabase ? [] : (MOCK.facturas || []));
+  const [comprasGastos, setComprasGastos] = useState(useSupabase ? [] : (MOCK.compras || []));
   const [presupuestos, setPresupuestos] = useState([]);
   const [presupuestoPartidas, setPresupuestoPartidas] = useState([]);
   const [presupuestoAprobaciones, setPresupuestoAprobaciones] = useState([]);
-  const [financiamientos, setFinanciamientos] = useState(MOCK.financiamientos || []);
-  const [movimientosTesoreria, setMovimientosTesoreria] = useState(MOCK.movimientosTesoreria || []);
-  const [movimientosBanco, setMovimientosBanco] = useState(MOCK.movimientosBanco || []);
-  
+  const [financiamientos, setFinanciamientos] = useState(useSupabase ? [] : (MOCK.financiamientos || []));
+  const [movimientosTesoreria, setMovimientosTesoreria] = useState(useSupabase ? [] : (MOCK.movimientosTesoreria || []));
+  const [movimientosBanco, setMovimientosBanco] = useState(useSupabase ? [] : (MOCK.movimientosBanco || []));
+
 
   // Fase 2 Data
-  const [ots, setOts] = useState(MOCK.ots || []);
-  const [partes, setPartes] = useState(MOCK.partes || []);
-  const [backlog, setBacklog] = useState(MOCK.backlog || []);
-  const [inventario, setInventario] = useState(MOCK.inventario || []);
-  const [solpes, setSolpes] = useState(MOCK.solpes || []);
-  const [cierresTecnicos, setCierresTecnicos] = useState(MOCK.cierresTecnicos || []);
-  const [valorizaciones, setValorizaciones] = useState(MOCK.valorizaciones || []);
-  const [proveedores, setProveedores] = useState(MOCK.proveedores || []);
-  const [evaluacionesProveedor, setEvaluacionesProveedor] = useState(MOCK.evaluacionesProveedor || []);
-  const [procesosCompra, setProcesosCompra] = useState(MOCK.procesosCompra || []);
-  const [respuestasCompra, setRespuestasCompra] = useState(MOCK.respuestasCompra || []);
-  const [ordenesCompra, setOrdenesCompra] = useState(MOCK.ordenesCompra || []);
-  const [ordenesServicio, setOrdenesServicio] = useState(MOCK.ordenesServicio || []);
-  const [recepciones, setRecepciones] = useState(MOCK.recepciones || []);
+  const [ots, setOts] = useState(useSupabase ? [] : (MOCK.ots || []));
+  const [partes, setPartes] = useState(useSupabase ? [] : (MOCK.partes || []));
+  const [backlog, setBacklog] = useState(useSupabase ? [] : (MOCK.backlog || []));
+  const [inventario, setInventario] = useState(useSupabase ? [] : (MOCK.inventario || []));
+  const [solpes, setSolpes] = useState(useSupabase ? [] : (MOCK.solpes || []));
+  const [cierresTecnicos, setCierresTecnicos] = useState(useSupabase ? [] : (MOCK.cierresTecnicos || []));
+  const [valorizaciones, setValorizaciones] = useState(useSupabase ? [] : (MOCK.valorizaciones || []));
+  const [proveedores, setProveedores] = useState(useSupabase ? [] : (MOCK.proveedores || []));
+  const [evaluacionesProveedor, setEvaluacionesProveedor] = useState(useSupabase ? [] : (MOCK.evaluacionesProveedor || []));
+  const [procesosCompra, setProcesosCompra] = useState(useSupabase ? [] : (MOCK.procesosCompra || []));
+  const [respuestasCompra, setRespuestasCompra] = useState(useSupabase ? [] : (MOCK.respuestasCompra || []));
+  const [ordenesCompra, setOrdenesCompra] = useState(useSupabase ? [] : (MOCK.ordenesCompra || []));
+  const [ordenesServicio, setOrdenesServicio] = useState(useSupabase ? [] : (MOCK.ordenesServicio || []));
+  const [recepciones, setRecepciones] = useState(useSupabase ? [] : (MOCK.recepciones || []));
 
   // ConfiguraciÃ³n de empresa
   const [empresaConfig, setEmpresaConfig] = useState({});
@@ -341,24 +348,25 @@ export function AppProvider({ children }) {
   const [evaluacionRespObjetivos, setEvaluacionRespObjetivos] = useState([]);
   const [liquidacionesCese,       setLiquidacionesCese]       = useState([]);
   const [liquidacionesConceptos,  setLiquidacionesConceptos]  = useState([]);
-  const [onboardings, setOnboardings] = useState(MOCK.onboardings || []);
-  const [planesExito, setPlanesExito] = useState(MOCK.planesExito || []);
-  const [healthScoresDetalle, setHealthScoresDetalle] = useState(MOCK.healthScoresDetalle || []);
-  const [churnPlanes, setChurnPlanes] = useState(MOCK.churnPlanes || []);
-  const [renovaciones, setRenovaciones] = useState(MOCK.renovaciones || []);
-  const [npsEncuestas, setNpsEncuestas] = useState(MOCK.npsEncuestas || []);
-  const [referidos, setReferidos] = useState(MOCK.referidos || []);
-  const [casosExito, setCasosExito] = useState(MOCK.casosExito || []);
-  const [iaLogs, setIaLogs] = useState(MOCK.iaLogs || []);
+  const [onboardings, setOnboardings] = useState(useSupabase ? [] : (MOCK.onboardings || []));
+  const [planesExito, setPlanesExito] = useState(useSupabase ? [] : (MOCK.planesExito || []));
+  const [healthScoresDetalle, setHealthScoresDetalle] = useState(useSupabase ? [] : (MOCK.healthScoresDetalle || []));
+  const [churnPlanes, setChurnPlanes] = useState(useSupabase ? [] : (MOCK.churnPlanes || []));
+  const [renovaciones, setRenovaciones] = useState(useSupabase ? [] : (MOCK.renovaciones || []));
+  const [npsEncuestas, setNpsEncuestas] = useState(useSupabase ? [] : (MOCK.npsEncuestas || []));
+  const [referidos, setReferidos] = useState(useSupabase ? [] : (MOCK.referidos || []));
+  const [casosExito, setCasosExito] = useState(useSupabase ? [] : (MOCK.casosExito || []));
+  const [iaLogs, setIaLogs] = useState(useSupabase ? [] : (MOCK.iaLogs || []));
   // Planner v2
   const [plannerAsignaciones, setPlannerAsignaciones] = useState([]);
   const [cuadrillas, setCuadrillas] = useState([]);
   const [semanaPlanner, setSemanaPlanner] = useState(null); // { inicio, fin } de la semana cargada
 
-  const [turnos, setTurnos] = useState(MOCK.turnos || []);
-  const [registrosAsistencia, setRegistrosAsistencia] = useState(MOCK.registrosAsistencia || []);
-  const [periodosNomina, setPeriodosNomina] = useState(MOCK.periodosNomina || []);
-  const [trabajadoresDatosNomina, setTrabajadoresDatosNomina] = useState(MOCK.trabajadoresDatosNomina || {});
+  const [turnos, setTurnos] = useState(useSupabase ? [] : (MOCK.turnos || []));
+  const [registrosAsistencia, setRegistrosAsistencia] = useState(useSupabase ? [] : (MOCK.registrosAsistencia || []));
+  const [periodosNomina, setPeriodosNomina] = useState(useSupabase ? [] : (MOCK.periodosNomina || []));
+  const [trabajadoresDatosNomina, setTrabajadoresDatosNomina] = useState(useSupabase ? {} : (MOCK.trabajadoresDatosNomina || {}));
+  const [afpParametros, setAfpParametros] = useState(useSupabase ? AFP_PARAMETROS_DEFAULT : (MOCK.afpParametros || AFP_PARAMETROS_DEFAULT));
   const [ocAnticipos, setOcAnticipos] = useState([]);
   const [tipoCambioHoy, setTipoCambioHoy] = useState({ cargando: true, usd: null, eur: null, fecha: null, desactualizado: false });
 
@@ -879,6 +887,8 @@ export function AppProvider({ children }) {
         try {
           const { data: cfgData } = await supabase.from('empresa_config').select('*').eq('empresa_id', empresa.id).maybeSingle();
           if (mounted) setEmpresaConfig(cfgData || {});
+          const afpData = await nominaService.getAfpParametros(empresa.id);
+          if (mounted) setAfpParametros(afpData || AFP_PARAMETROS_DEFAULT);
           const [{ data: seriesData }, { data: slaData }, { data: diccionarioData }] = await Promise.all([
             supabase.from('series_documentarias').select('*').eq('empresa_id', empresa.id).order('documento', { ascending: true }),
             supabase.from('sla_plantillas').select('*').eq('empresa_id', empresa.id).order('nombre', { ascending: true }),
@@ -4554,13 +4564,18 @@ export function AppProvider({ children }) {
   };
 
   const registrarCobroCxC = async (cxcId, monto, datos = {}) => {
+    if (cobrosEnProceso.current.has(cxcId)) return;
+    cobrosEnProceso.current.add(cxcId);
     const cuentaCobrar = cxc.find(c => c.id === cxcId);
     const montoCobrado = Number(monto || 0);
     const montoMora = Number(datos.monto_mora || 0);
     const totalCuenta = Number(cuentaCobrar?.monto_total || cuentaCobrar?.total || 0);
+    const retencionCuenta = Number(cuentaCobrar?.monto_retencion || 0);
+    const netoSnapshot = Number(cuentaCobrar?.monto_neto_cobrable || cuentaCobrar?.facturas?.monto_neto_cobrable || 0);
+    const montoNetoCobrable = netoSnapshot > 0 ? netoSnapshot : Math.max(0, totalCuenta - retencionCuenta);
     const pagadoActual = Number(cuentaCobrar?.monto_pagado || cuentaCobrar?.pagado || 0);
     const nuevoMontoPagado = pagadoActual + montoCobrado;
-    const nuevoSaldo = Math.max(0, totalCuenta - nuevoMontoPagado);
+    const nuevoSaldo = Math.max(0, montoNetoCobrable - nuevoMontoPagado);
     const nuevoEstado = nuevoSaldo <= 0 ? 'cobrada' : 'cobro_parcial';
     setCxc(prev => prev.map(c => {
       if (c.id === cxcId) {
@@ -4581,14 +4596,20 @@ export function AppProvider({ children }) {
           } : o));
         }
 
-        return { ...c, monto_pagado: nuevoMontoPagado, pagado: nuevoMontoPagado, saldo: nuevoSaldo, estado: nuevoEstado };
+        return { ...c, monto_pagado: nuevoMontoPagado, pagado: nuevoMontoPagado, monto_neto_cobrable: montoNetoCobrable, saldo: nuevoSaldo, saldo_neto_cobranza: nuevoSaldo, estado: nuevoEstado };
       }
       return c;
     }));
 
     const fecha = datos.fecha_cobro || datos.fecha || new Date().toISOString().split('T')[0];
     const cobroId = generateId('cob');
-    const facturaNumero = cuentaCobrar?.facturas?.numero || cuentaCobrar?.factura || cuentaCobrar?.factura_id || cxcId;
+    const facturaCobro = cuentaCobrar?.facturas ||
+      facturas.find(f => f.id === cuentaCobrar?.factura_id) ||
+      (cuentaCobrar?.factura_id ? await fetchRegistroSupabase('facturas', cuentaCobrar.factura_id) : null);
+    const facturaTexto = String(cuentaCobrar?.factura || '').trim();
+    const facturaTextoLegible = facturaTexto && !/^fac_/i.test(facturaTexto) ? facturaTexto : null;
+    const facturaNumero = facturaCobro?.numero || cuentaCobrar?.factura_numero || facturaTextoLegible || 'factura';
+    const monedaCobro = cuentaCobrar?.moneda || facturaCobro?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN';
 
     const cobro = {
       id: cobroId,
@@ -4614,9 +4635,12 @@ export function AppProvider({ children }) {
       tipo: 'ingreso',
       descripcion: `Cobro ${facturaNumero}`,
       monto: montoCobrado + montoMora,
-      moneda: cuentaCobrar?.moneda || 'PEN',
+      moneda: monedaCobro,
       fecha,
       cuenta_bancaria: datos.cuenta_bancaria || 'Cuenta principal',
+      cuenta_bancaria_id: datos.cuenta_bancaria_id || null,
+      tc_aplicado: datos.tc_aplicado ?? null,
+      monto_en_moneda_cuenta: datos.monto_en_moneda_cuenta ?? null,
       referencia: datos.numero_operacion || datos.referencia || '',
       vinculo_tipo: 'cxc',
       vinculo_id: cxcId,
@@ -4654,6 +4678,8 @@ export function AppProvider({ children }) {
 
     auditSync({ modulo: 'finanzas', entidad: 'cxc', entidad_id: cxcId, accion: 'cobrar', valor_anterior: cuentaCobrar || null, valor_nuevo: { monto: montoCobrado, estado: nuevoEstado } });
     addNotificacion(`Cobro de ${facturaNumero} registrado. Nuevo estado: ${nuevoEstado === 'cobrada' ? 'Cobrada' : 'Cobro parcial'}.`);
+    cobrosEnProceso.current.delete(cxcId);
+    return movimiento;
   };
 
   const reconciliarComisionesPendientes = async ({ silencioso = false } = {}) => {
@@ -4998,10 +5024,29 @@ export function AppProvider({ children }) {
 
   const registrarMovimientoManual = async (datos) => {
     const now = new Date().toISOString().split('T')[0];
+    const monedaDatos = String(datos.moneda || 'PEN').trim().toUpperCase();
     if (datos.tipo === 'transferencia') {
+      const cuentaOrigen = (cuentasBancarias || []).find(c => c.id === datos.cuenta_origen_id);
+      const cuentaDestino = (cuentasBancarias || []).find(c => c.id === datos.cuenta_destino_id);
       const base = { empresa_id: empresa.id, fecha: datos.fecha || now, descripcion: datos.descripcion || 'Transferencia entre cuentas', monto: Number(datos.monto || 0), categoria: 'transferencia', es_manual: true, referencia: datos.referencia || null, creado_en: new Date().toISOString() };
-      const movE = { ...base, id: generateId('mov'), tipo: 'egreso', cuenta_bancaria_id: datos.cuenta_origen_id || null };
-      const movI = { ...base, id: generateId('mov'), tipo: 'ingreso', cuenta_bancaria_id: datos.cuenta_destino_id || null };
+      const movE = {
+        ...base,
+        id: generateId('mov'),
+        tipo: 'egreso',
+        moneda: cuentaOrigen?.moneda || monedaDatos,
+        cuenta_bancaria_id: datos.cuenta_origen_id || null,
+        tc_aplicado: datos.cuenta_origen_id ? 1 : null,
+        monto_en_moneda_cuenta: datos.cuenta_origen_id ? Number(datos.monto || 0) : null,
+      };
+      const movI = {
+        ...base,
+        id: generateId('mov'),
+        tipo: 'ingreso',
+        moneda: cuentaDestino?.moneda || monedaDatos,
+        cuenta_bancaria_id: datos.cuenta_destino_id || null,
+        tc_aplicado: datos.cuenta_destino_id ? 1 : null,
+        monto_en_moneda_cuenta: datos.cuenta_destino_id ? Number(datos.monto || 0) : null,
+      };
       setMovimientosTesoreria(prev => [...prev, movE, movI]);
       if (isSupabaseConfigured()) {
         finSync(async () => {
@@ -5010,6 +5055,9 @@ export function AppProvider({ children }) {
         });
       }
     } else {
+      const cuentaSeleccionada = (cuentasBancarias || []).find(c =>
+        c.id === (datos.tipo === 'ingreso' ? datos.cuenta_destino_id : datos.cuenta_origen_id)
+      );
       const mov = {
         id: generateId('mov'),
         empresa_id: empresa.id,
@@ -5017,8 +5065,11 @@ export function AppProvider({ children }) {
         fecha: datos.fecha || now,
         descripcion: datos.descripcion,
         monto: Number(datos.monto || 0),
+        moneda: cuentaSeleccionada?.moneda || monedaDatos,
         categoria: datos.categoria || null,
         cuenta_bancaria_id: datos.tipo === 'ingreso' ? (datos.cuenta_destino_id || null) : (datos.cuenta_origen_id || null),
+        tc_aplicado: cuentaSeleccionada ? 1 : null,
+        monto_en_moneda_cuenta: cuentaSeleccionada ? Number(datos.monto || 0) : null,
         es_manual: true,
         referencia: datos.referencia || null,
         creado_en: new Date().toISOString(),
@@ -5285,7 +5336,13 @@ export function AppProvider({ children }) {
   const emitirNotaCredito = async (facturaOrigenId, datos) => {
     const facOrigen = facturas.find(f => f.id === facturaOrigenId);
     if (!facOrigen) return null;
-    const cxcVinc = cxc.find(c => c.factura_id === facturaOrigenId && c.estado !== 'cobrada');
+    const cxcVinc = cxc.find(c => {
+      const estado = String(c?.estado || '').toLowerCase();
+      const mismaFactura = c.factura_id === facturaOrigenId ||
+        c.factura === facOrigen.numero ||
+        c.facturas?.numero === facOrigen.numero;
+      return mismaFactura && !['cobrada','pagada','anulada','cancelada'].includes(estado);
+    });
     const ncCount = facturas.filter(f => f.tipo_documento === 'nota_credito').length + 1;
     const numero = `NC01-${String(ncCount).padStart(4,'0')}`;
     const totalAcreditar = Number(datos.total || 0);
@@ -5317,7 +5374,7 @@ export function AppProvider({ children }) {
       // AnulaciÃ³n total
       setFacturas(prev => prev.map(f => f.id === facturaOrigenId
         ? { ...f, estado: 'anulada', motivo_anulacion: `NC emitida: ${numero}` } : f));
-      if (cxcVinc) setCxc(prev => prev.map(c => c.id === cxcVinc.id ? { ...c, estado: 'anulada', saldo: 0 } : c));
+      if (cxcVinc) setCxc(prev => prev.map(c => c.id === cxcVinc.id ? { ...c, estado: 'cancelada', saldo: 0 } : c));
       if (facOrigen.valorizacion_id) {
         setValorizaciones(prev => prev.map(v => v.id === facOrigen.valorizacion_id ? { ...v, estado: 'aprobada' } : v));
         if (isSupabaseConfigured()) {
@@ -5331,14 +5388,14 @@ export function AppProvider({ children }) {
         finSync(async () => {
           const sb = await getSupabaseClient();
           await sb.from('facturas').update({ estado: 'anulada', motivo_anulacion: `NC emitida: ${numero}` }).eq('id', facturaOrigenId);
-          if (cxcVinc) await sb.from('cxc').update({ estado: 'anulada', saldo: 0 }).eq('id', cxcVinc.id);
+          if (cxcVinc) await sb.from('cxc').update({ estado: 'cancelada', saldo: 0 }).eq('id', cxcVinc.id);
         });
       }
     } else if (cxcVinc) {
       // ReducciÃ³n parcial de CxC
       const nuevoTotal = Math.max(0, Number(cxcVinc.monto_total || 0) - totalAcreditar);
       const nuevoSaldo = Math.max(0, Number(cxcVinc.saldo || 0) - totalAcreditar);
-      const nuevoEstado = nuevoSaldo <= 0 ? 'cobrada' : cxcVinc.estado;
+      const nuevoEstado = nuevoSaldo <= 0 ? 'cancelada' : cxcVinc.estado;
       setCxc(prev => prev.map(c => c.id === cxcVinc.id ? { ...c, monto_total: nuevoTotal, saldo: nuevoSaldo, estado: nuevoEstado } : c));
       if (isSupabaseConfigured()) {
         finSync(async () => {
@@ -5676,12 +5733,23 @@ export function AppProvider({ children }) {
       moneda: cuentaPagar?.moneda || 'PEN',
       fecha: now,
       cuenta_bancaria: datos.cuenta_bancaria || 'Cuenta principal',
+      cuenta_bancaria_id: datos.cuenta_bancaria_id || null,
+      tc_aplicado: datos.tc_aplicado ?? null,
+      monto_en_moneda_cuenta: datos.monto_en_moneda_cuenta ?? null,
       referencia: datos.referencia || '',
       vinculo_tipo: 'cxp',
       vinculo_id: cxpId,
       estado: 'registrado'
     };
     setMovimientosTesoreria(prev => [movimiento, ...prev]);
+
+    // Sincronizar compras_gastos cuando la CxP queda completamente pagada
+    const gastoIdVinculado = cuentaPagar?.gasto_id;
+    if (nuevoEstado === 'pagada' && gastoIdVinculado) {
+      setComprasGastos(prev => prev.map(g =>
+        g.id === gastoIdVinculado ? { ...g, estado_pago: 'pagado' } : g
+      ));
+    }
 
     // Cuando la CxP de honorarios queda pagada, cerrar el ciclo de comisiones
     const reciboId = cuentaPagar?.recibo_honorarios_id;
@@ -5700,6 +5768,10 @@ export function AppProvider({ children }) {
         await finanzasService.registrarPagoCxP(cxpId, montoPagado);
         await finanzasService.insertarCxpPago(registroPago);
         await finanzasService.registrarMovimientoTesoreria(movimiento);
+        if (nuevoEstado === 'pagada' && gastoIdVinculado) {
+          const sb = await getSupabaseClient();
+          await sb.from('compras_gastos').update({ estado_pago: 'pagado' }).eq('id', gastoIdVinculado);
+        }
         if (nuevoEstado === 'pagada' && reciboId) {
           const sb = await getSupabaseClient();
           await sb.from('recibos_honorarios').update({ estado: 'pagado' }).eq('id', reciboId);
@@ -5712,6 +5784,49 @@ export function AppProvider({ children }) {
     }
     auditSync({ modulo: 'finanzas', entidad: 'cxp', entidad_id: cxpId, accion: 'pagar', valor_anterior: cuentaPagar || null, valor_nuevo: { monto: montoPagado, estado: nuevoEstado, movimiento } });
     addNotificacion(`Pago registrado. Estado: ${nuevoEstado || 'Actualizado'}`);
+    return movimiento;
+  };
+
+  const prepararCamposVinculacionBanco = async (movBanco, movimientoSistema) => {
+    const cuentaBanco = (cuentasBancarias || []).find(c => c.id === movBanco?.cuenta_bancaria_id);
+    if (!cuentaBanco || !movimientoSistema) return {};
+    const monedaMovimiento = String(movimientoSistema.moneda || 'PEN').trim().toUpperCase();
+    const monedaCuenta = String(cuentaBanco.moneda || 'PEN').trim().toUpperCase();
+    if (monedaMovimiento === monedaCuenta) {
+      return prepararVinculacionMovimientoCuenta(movimientoSistema, cuentaBanco, null);
+    }
+    const supabase = isSupabaseConfigured() ? await getSupabaseClient() : null;
+    const tc = await getTipoCambioPorFecha(movimientoSistema.fecha || movBanco.fecha, supabase);
+    return prepararVinculacionMovimientoCuenta(movimientoSistema, cuentaBanco, tc);
+  };
+
+  const asignarCuentaMovimientoTesoreria = async (movimientoId, cuentaBancariaId) => {
+    const movimiento = (movimientosTesoreria || []).find(m => m.id === movimientoId);
+    if (!movimiento) return;
+
+    let updates = prepararDesvinculacionMovimientoCuenta();
+    if (cuentaBancariaId) {
+      const cuentaBanco = (cuentasBancarias || []).find(c => c.id === cuentaBancariaId);
+      if (!cuentaBanco) return;
+      const monedaMovimiento = String(movimiento.moneda || 'PEN').trim().toUpperCase();
+      const monedaCuenta = String(cuentaBanco.moneda || 'PEN').trim().toUpperCase();
+      const tc = monedaMovimiento === monedaCuenta
+        ? null
+        : await getTipoCambioPorFecha(
+            movimiento.fecha || movimiento.fecha_movimiento || new Date().toISOString().slice(0, 10),
+            isSupabaseConfigured() ? await getSupabaseClient() : null,
+          );
+      updates = prepararVinculacionMovimientoCuenta(movimiento, cuentaBanco, tc);
+    }
+
+    setMovimientosTesoreria(prev => prev.map(m =>
+      m.id === movimientoId ? { ...m, ...updates } : m
+    ));
+
+    if (isSupabaseConfigured()) {
+      finSync(() => finanzasService.actualizarMovimientoTesoreria(movimientoId, updates));
+    }
+    addNotificacion(cuentaBancariaId ? 'Cuenta bancaria asignada al movimiento.' : 'Cuenta bancaria desasignada del movimiento.');
   };
 
   const conciliarMovimientoBancoConDocumento = async (movId, vinculadoTipo, vinculadoId) => {
@@ -5723,37 +5838,89 @@ export function AppProvider({ children }) {
       return;
     }
 
+    const cuentaBanco = (cuentasBancarias || []).find(c => c.id === mov.cuenta_bancaria_id);
+    const cuentaBancoNombre = cuentaBanco
+      ? `${cuentaBanco.banco || ''} ${cuentaBanco.nombre || cuentaBanco.alias || ''}`.trim()
+      : 'Banco';
+
     if (vinculadoTipo === 'cxc') {
+      const cuentaCobrar = cxc.find(c => c.id === vinculadoId);
+      const facturaCobro = facturas.find(f => f.id === cuentaCobrar?.factura_id);
+      const moneda = cuentaCobrar?.moneda || facturaCobro?.moneda || empresa?.moneda || 'PEN';
+      const camposVinculo = await prepararCamposVinculacionBanco(mov, {
+        tipo: 'ingreso',
+        monto: Number(mov.monto || 0),
+        moneda,
+        fecha: mov.fecha,
+      });
       await registrarCobroCxC(vinculadoId, Number(mov.monto || 0), {
         fecha: mov.fecha,
-        cuenta_bancaria: 'Banco',
+        cuenta_bancaria: cuentaBancoNombre,
         referencia: mov.id,
-        descripcion: mov.descripcion || mov.desc || `Cobro bancario ${mov.id}`
+        descripcion: mov.descripcion || mov.desc || `Cobro bancario ${mov.id}`,
+        ...camposVinculo,
       });
     } else if (vinculadoTipo === 'cxp') {
+      const cuentaPagar = cxp.find(p => p.id === vinculadoId);
+      const camposVinculo = await prepararCamposVinculacionBanco(mov, {
+        tipo: 'egreso',
+        monto: Number(mov.monto || 0),
+        moneda: cuentaPagar?.moneda || empresa?.moneda || 'PEN',
+        fecha: mov.fecha,
+      });
       await registrarPagoCxP(vinculadoId, Number(mov.monto || 0), {
         fecha: mov.fecha,
-        cuenta_bancaria: 'Banco',
+        cuenta_bancaria: cuentaBancoNombre,
         referencia: mov.id,
-        descripcion: mov.descripcion || mov.desc || `Pago bancario ${mov.id}`
+        descripcion: mov.descripcion || mov.desc || `Pago bancario ${mov.id}`,
+        ...camposVinculo,
       });
     }
 
-    await conciliarMovimientoBanco(movId, vinculadoTipo, vinculadoId);
+    await conciliarMovimientoBanco(
+      movId,
+      vinculadoTipo,
+      vinculadoId,
+      cuentaBanco ? { cuenta_bancaria_id: cuentaBanco.id } : {},
+    );
   };
 
-  const conciliarMovimientoBanco = async (movId, vinculadoTipo, vinculadoId) => {
+  const conciliarMovimientoBanco = async (movId, vinculadoTipo, vinculadoId, extra = {}) => {
     setMovimientosBanco(prev => prev.map(m => 
-      m.id === movId ? { ...m, conciliado: true, vinculado_tipo: vinculadoTipo, vinculado_id: vinculadoId } : m
+      m.id === movId ? { ...m, conciliado: true, vinculado_tipo: vinculadoTipo, vinculado_id: vinculadoId, ...extra } : m
     ));
 
     if (isSupabaseConfigured()) {
       finSync(async () => {
-        await finanzasService.conciliarMovimiento(movId, vinculadoTipo, vinculadoId);
+        await finanzasService.conciliarMovimiento(movId, vinculadoTipo, vinculadoId, extra);
       });
     }
     auditSync({ modulo: 'finanzas', entidad: 'movimientos_banco', entidad_id: movId, accion: 'conciliar', valor_nuevo: { vinculado_tipo: vinculadoTipo, vinculado_id: vinculadoId } });
     addNotificacion('Movimiento bancario conciliado.');
+  };
+
+  const deshacerConciliacionBanco = async (movId) => {
+    const mov = movimientosBanco.find(m => m.id === movId);
+    if (!mov?.conciliado) return;
+    const desvinculo = prepararDesvinculacionMovimientoCuenta();
+    setMovimientosBanco(prev => prev.map(m =>
+      m.id === movId ? { ...m, conciliado: false, vinculado_tipo: null, vinculado_id: null } : m
+    ));
+    setMovimientosTesoreria(prev => prev.map(m =>
+      m.vinculo_tipo === mov.vinculado_tipo && m.vinculo_id === mov.vinculado_id
+        ? { ...m, ...desvinculo }
+        : m
+    ));
+    if (isSupabaseConfigured()) {
+      finSync(async () => {
+        await finanzasService.deshacerConciliacionMovimiento(movId);
+        if (mov.vinculado_tipo && mov.vinculado_id) {
+          await finanzasService.actualizarMovimientoTesoreriaPorVinculo(mov.vinculado_tipo, mov.vinculado_id, desvinculo);
+        }
+      });
+    }
+    auditSync({ modulo: 'finanzas', entidad: 'movimientos_banco', entidad_id: movId, accion: 'desconciliar' });
+    addNotificacion('Conciliacion bancaria deshecha.');
   };
 
   // ============================================================
@@ -5866,8 +6033,9 @@ export function AppProvider({ children }) {
 
   // ---- Empresa Config ----
   const guardarEmpresaConfig = async (datos) => {
-    const payload = { ...datos, empresa_id: empresa?.id };
-    setEmpresaConfig(prev => ({ ...prev, ...datos }));
+    const { pct_prima_seguro: _deprecatedPrimaSeguro, ...safeDatos } = datos || {};
+    const payload = { ...safeDatos, empresa_id: empresa?.id };
+    setEmpresaConfig(prev => ({ ...prev, ...safeDatos }));
     if (isSupabaseConfigured() && empresa?.id) {
       try {
         const supabase = await getSupabaseClient();
@@ -5880,6 +6048,27 @@ export function AppProvider({ children }) {
       } catch (_err) { console.error('[empresa_config]', _err); }
     }
     addNotificacion('ConfiguraciÃ³n de empresa guardada.');
+  };
+
+  const guardarAfpParametro = async (datos) => {
+    const payload = {
+      ...datos,
+      empresa_id: empresa?.id,
+      pct_prima_seguro: Number(datos.pct_prima_seguro),
+      vigente_desde: datos.vigente_desde || new Date().toISOString().slice(0, 10),
+    };
+    setAfpParametros(prev => latestAfpParametros([...(prev || []), payload]));
+    if (isSupabaseConfigured() && empresa?.id) {
+      try {
+        const saved = await nominaService.saveAfpParametro(empresa.id, payload);
+        setAfpParametros(prev => latestAfpParametros([...(prev || []), saved]));
+      } catch (err) {
+        console.error('[afp_parametros]', err);
+        addNotificacion('Error al guardar tasa AFP: ' + (err?.message || 'error'));
+        throw err;
+      }
+    }
+    addNotificacion(`Tasa AFP ${payload.afp_nombre} guardada.`);
   };
 
   const subirImagenEmpresa = async (campo, file) => {
@@ -7693,7 +7882,7 @@ export function AppProvider({ children }) {
     convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT,
     // Finanzas Actions
-    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, registrarMovimientoManual,
+    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,
     recibosHonorarios, setRecibosHonorarios,
     aprobarComision, rechazarComision, corregirMontoComision, corregirBonificacionComision, generarReciboHonorarios, confirmarReciboHonorarios,
@@ -7732,6 +7921,7 @@ export function AppProvider({ children }) {
     registrosAsistencia, setRegistrosAsistencia,
     periodosNomina, setPeriodosNomina,
     trabajadoresDatosNomina, setTrabajadoresDatosNomina,
+    afpParametros, setAfpParametros, guardarAfpParametro,
     // Fase 3 Actions
     calcularHealthScore,
     // RRHH Actions

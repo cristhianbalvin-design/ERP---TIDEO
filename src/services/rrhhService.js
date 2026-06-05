@@ -10,6 +10,123 @@ const hhmm = (value) => {
   return String(value).slice(0, 5);
 };
 
+export const CONTRATO_DURACION_DEFAULT = 'indefinido';
+export const CONTRATO_DURACION_OPCIONES = [
+  ['indefinido', 'Indefinido'],
+  ['plazo_fijo', 'Plazo fijo'],
+  ['obra_determinada', 'Obra determinada'],
+  ['por_encargo', 'Por encargo'],
+];
+
+export const normalizarModalidadContrato = (value = '') => {
+  const v = String(value || '').trim().toLowerCase();
+  if (['honorarios', 'recibos por honorarios', 'recibos_por_honorarios', 'recibo_honorarios', 'rhe'].includes(v)) return 'honorarios';
+  if (['planilla', 'cas', 'practicante', 'temporal'].includes(v)) return 'planilla';
+  return v || 'planilla';
+};
+
+export const esModalidadHonorarios = (persona = {}) => {
+  return normalizarModalidadContrato(persona.modalidad_contrato || persona.modalidad_laboral || persona.tipo_contrato) === 'honorarios';
+};
+
+export const normalizarTipoContratoDuracion = (value = '', modalidad = 'planilla') => {
+  if (normalizarModalidadContrato(modalidad) === 'honorarios') return 'por_encargo';
+  const v = String(value || '').trim().toLowerCase();
+  if (['plazo_fijo', 'plazo fijo', 'temporal'].includes(v)) return 'plazo_fijo';
+  if (['obra_determinada', 'obra determinada'].includes(v)) return 'obra_determinada';
+  if (['por_encargo', 'por encargo', 'honorarios', 'recibos por honorarios'].includes(v)) return 'por_encargo';
+  return CONTRATO_DURACION_DEFAULT;
+};
+
+export const requiereFechaFinContrato = (tipoContrato = '') => {
+  return ['plazo_fijo', 'obra_determinada', 'por_encargo'].includes(String(tipoContrato || '').toLowerCase());
+};
+
+export const getTipoFiscalizacion = (persona = {}) => {
+  if (esModalidadHonorarios(persona)) return 'ninguna';
+  if ((persona.regimen_jornada || 'general') === 'ciclo_acumulativo') return 'ciclo';
+  if (Boolean(persona.cargo_confianza)) return 'ninguna';
+  return 'diaria';
+};
+
+export const fiscalizacionLabel = (tipo = '') => ({
+  diaria: 'Diaria',
+  ciclo: 'Por ciclo',
+  ninguna: 'Ninguna',
+}[tipo] || 'Diaria');
+
+export const diasVacacionesPorRegimen = (regimen = 'general') => regimen === 'general' ? 30 : 15;
+
+export const asignacionFamiliarMonto = (empresaConfig = {}) => {
+  const rmv = Number(empresaConfig?.rmv_vigente || 1130);
+  return Math.round(rmv * 0.10 * 100) / 100;
+};
+
+export const retencionIrHonorariosLabel = (empresaConfig = {}) => {
+  const agente = Boolean(empresaConfig?.agente_retencion);
+  const pct = Number(empresaConfig?.pct_retencion_ir_honorarios ?? empresaConfig?.retencion_ir_honorarios ?? 8);
+  return agente
+    ? `${pct}% (empresa es agente de retencion - configurado en Parametros)`
+    : 'No aplica - la empresa no es agente de retencion SUNAT';
+};
+
+const parseHoraToMin = (value) => {
+  const [hh, mm] = String(value || '').slice(0, 5).split(':').map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  return hh * 60 + mm;
+};
+
+const DIA_TURNO_TO_JS = {
+  dom: 0,
+  lun: 1,
+  mar: 2,
+  mie: 3,
+  jue: 4,
+  vie: 5,
+  sab: 6,
+};
+
+const normalizarDiaTurno = (dia = '') => String(dia || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .slice(0, 3)
+  .toLowerCase();
+
+const contarDiasLaborablesDelMes = (diasLaborables = [], fechaBase = new Date()) => {
+  if (!Array.isArray(diasLaborables) || !diasLaborables.length) return 0;
+  const diasSemana = new Set(
+    diasLaborables
+      .map(dia => DIA_TURNO_TO_JS[normalizarDiaTurno(dia)])
+      .filter(dia => Number.isInteger(dia))
+  );
+  if (!diasSemana.size) return 0;
+
+  const year = fechaBase.getFullYear();
+  const month = fechaBase.getMonth();
+  const ultimoDia = new Date(year, month + 1, 0).getDate();
+  let total = 0;
+  for (let day = 1; day <= ultimoDia; day += 1) {
+    if (diasSemana.has(new Date(year, month, day).getDay())) total += 1;
+  }
+  return total;
+};
+
+export const calcularHorasBaseMesDesdeTurno = (turno = {}, fechaBase = new Date()) => {
+  if (!turno?.id && !turno?.nombre) return 0;
+  const horasEfectivas = Number(turno?.horas_efectivas || 0) || (() => {
+    const entrada = parseHoraToMin(turno?.hora_entrada);
+    const salida = parseHoraToMin(turno?.hora_salida);
+    if (entrada == null || salida == null) return 0;
+    let total = salida - entrada;
+    if (total <= 0 || turno?.cruza_medianoche) total += 24 * 60;
+    total -= Number(turno?.minutos_refrigerio ?? turno?.refrigerio_minutos ?? 0);
+    return Math.max(0, total / 60);
+  })();
+  const dias = contarDiasLaborablesDelMes(turno?.dias_laborables, fechaBase);
+  const calculado = Math.round(horasEfectivas * dias);
+  return calculado > 0 ? calculado : 0;
+};
+
 const normalizarTurno = (t = {}) => ({
   ...t,
   codigo: t.codigo || t.id,
@@ -105,17 +222,23 @@ const normalizarPersonalOperativo = (p = {}) => ({
   supervisor: p.supervisor || '',
   metodo_pago: p.metodo_pago || 'mensual',
   monto_mensual: Number(p.monto_mensual ?? p.sueldo_base ?? 0),
-  horas_base_mes: Number(p.horas_base_mes ?? 160) || 160,
+  horas_base_mes: Number(p.horas_base_mes ?? 0) || 0,
   tarifa_hora: Number(p.tarifa_hora ?? p.costo_hora_real ?? p.costo ?? 0),
   costo: Number(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0),
   costo_hora_real: Number(p.tarifa_hora ?? p.costo_hora_real ?? p.costo ?? 0),
   costo_hora_extra: Number(p.costo_hora_extra ?? p.costo_extra ?? 0),
-  acceso_campo: p.acceso_campo ?? true,
-  perfil_campo: p.perfil_campo || 'Tecnico',
-  tipo_contrato: p.tipo_contrato || 'Planilla',
+  acceso_campo: p.acceso_campo ?? false,
+  perfil_campo: p.perfil_campo || null,
+  modalidad_contrato: normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato),
+  tipo_contrato: normalizarTipoContratoDuracion(p.tipo_contrato, p.modalidad_contrato || p.tipo_contrato),
   afp_nombre: p.afp_nombre || null,
   tiene_hijos: Boolean(p.tiene_hijos),
+  // Deprecated: regimen_laboral individual ya no gobierna calculos; usar empresa_config.regimen_laboral_empresa.
   regimen_laboral: p.regimen_laboral || null,
+  regimen_jornada: p.regimen_jornada || 'general',
+  dias_ciclo_trabajo: p.dias_ciclo_trabajo ?? null,
+  dias_ciclo_descanso: p.dias_ciclo_descanso ?? null,
+  cargo_confianza: Boolean(p.cargo_confianza),
   cuota_prestamo_mes: Number(p.cuota_prestamo_mes || 0),
   descuento_judicial: Number(p.descuento_judicial || 0),
   docs: p.docs || { sctr: 'pendiente', medico: 'pendiente', epp: 'pendiente', licencia: 'pendiente' },
@@ -127,7 +250,7 @@ const normalizarPersonalOperativo = (p = {}) => ({
 
 const calcularTarifaHora = (montoMensual, horasBaseMes) => {
   const monto = Number(montoMensual || 0);
-  const horas = Number(horasBaseMes || 160) || 160;
+  const horas = Number(horasBaseMes || 0) || 0;
   return Math.round((horas > 0 ? monto / horas : 0) * 100) / 100;
 };
 
@@ -147,28 +270,41 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   sede: persona.sede || null,
   supervisor_id: persona.supervisor_id || null,
   supervisor: persona.supervisor || null,
-  fecha_ingreso: persona.fecha_ingreso || null,
+  fecha_ingreso: persona.fecha_ingreso || persona.fecha_inicio_contrato || null,
+  fecha_inicio_contrato: persona.fecha_inicio_contrato || persona.fecha_ingreso || null,
+  fecha_fin_contrato: persona.fecha_fin_contrato || persona.fecha_fin || null,
   sueldo_base: Number(persona.sueldo_base || 0),
   moneda: persona.moneda || 'PEN',
   sistema_pensionario: persona.sistema_pensionario || null,
   metodo_pago: persona.metodo_pago || 'mensual',
   monto_mensual: Number(persona.monto_mensual ?? persona.sueldo_base ?? 0),
-  horas_base_mes: Number(persona.horas_base_mes || 160),
+  horas_base_mes: Number(persona.horas_base_mes || 0),
   tarifa_hora: calcularTarifaHora(persona.monto_mensual ?? persona.sueldo_base, persona.horas_base_mes),
-  tipo_contrato: persona.tipo_contrato || 'Planilla',
+  modalidad_contrato: normalizarModalidadContrato(persona.modalidad_contrato || persona.tipo_contrato),
+  tipo_contrato: normalizarTipoContratoDuracion(persona.tipo_contrato, persona.modalidad_contrato || persona.tipo_contrato),
   afp_nombre: persona.afp_nombre || null,
   tiene_hijos: persona.tiene_hijos ?? false,
+  // Deprecated: fuente de verdad de regimen laboral es empresa_config.regimen_laboral_empresa.
   regimen_laboral: persona.regimen_laboral || null,
   cuota_prestamo_mes: Number(persona.cuota_prestamo_mes || 0),
   descuento_judicial: Number(persona.descuento_judicial || 0),
+  regimen_jornada: persona.regimen_jornada || 'general',
+  horas_diarias_pactadas: Number(persona.horas_diarias_pactadas || 8),
+  fecha_inicio_ciclo: persona.fecha_inicio_ciclo || null,
+  dias_ciclo_trabajo: persona.regimen_jornada === 'ciclo_acumulativo' ? (Number(persona.dias_ciclo_trabajo || 0) || null) : null,
+  dias_ciclo_descanso: persona.regimen_jornada === 'ciclo_acumulativo' ? (Number(persona.dias_ciclo_descanso || 0) || null) : null,
+  cargo_confianza: Boolean(persona.cargo_confianza),
+  bonif_altitud: Number(persona.bonif_altitud || 0),
+  tipo_comision_afp: persona.tipo_comision_afp || 'mixta',
+  pct_comision_afp_flujo: Number(persona.pct_comision_afp_flujo || 0),
   costo_hora_real: Number(persona.tarifa_hora ?? calcularTarifaHora(persona.monto_mensual ?? persona.sueldo_base, persona.horas_base_mes) ?? persona.costo_hora_real ?? persona.costo ?? 0),
   costo_hora_extra: Number(persona.costo_hora_extra ?? persona.costo_extra ?? 0),
   ruc_colaborador: persona.ruc_colaborador || null,
   retencion_ir: Number(persona.retencion_ir ?? 8),
   suspension_retenciones: persona.suspension_retenciones ?? false,
   vencimiento_suspension: persona.vencimiento_suspension || null,
-  acceso_campo: persona.acceso_campo ?? true,
-  perfil_campo: persona.perfil_campo || 'Tecnico',
+  acceso_campo: persona.acceso_campo ?? false,
+  perfil_campo: persona.perfil_campo || null,
   docs: persona.docs || { sctr: 'pendiente', medico: 'pendiente', epp: 'pendiente', licencia: 'pendiente' },
   centro_costo_id: persona.centro_costo_id || null,
   estado: persona.estado || 'disponible',
@@ -183,10 +319,13 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
   const allowed = new Set([
     'codigo', 'nombre', 'documento', 'cargo', 'especialidad', 'especialidad2',
     'area', 'turno_id', 'telefono', 'email', 'sede', 'supervisor_id', 'supervisor',
-    'fecha_ingreso', 'sueldo_base', 'moneda', 'sistema_pensionario',
+    'fecha_ingreso', 'fecha_inicio_contrato', 'fecha_fin_contrato', 'sueldo_base', 'moneda', 'sistema_pensionario',
     'metodo_pago', 'monto_mensual', 'horas_base_mes', 'tarifa_hora',
-    'tipo_contrato', 'afp_nombre', 'tiene_hijos', 'regimen_laboral',
+    'modalidad_contrato', 'tipo_contrato', 'afp_nombre', 'tiene_hijos', 'regimen_laboral',
     'cuota_prestamo_mes', 'descuento_judicial',
+    'regimen_jornada', 'horas_diarias_pactadas', 'fecha_inicio_ciclo',
+    'dias_ciclo_trabajo', 'dias_ciclo_descanso', 'cargo_confianza',
+    'bonif_altitud', 'tipo_comision_afp', 'pct_comision_afp_flujo',
     'costo_hora_real', 'costo_hora_extra',
     'ruc_colaborador', 'retencion_ir', 'suspension_retenciones', 'vencimiento_suspension',
     'acceso_campo', 'perfil_campo',
@@ -196,7 +335,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
   return Object.entries(cambios).reduce((row, [key, value]) => {
     const target = map[key] || key;
     if (!allowed.has(target)) return row;
-    row[target] = ['sueldo_base', 'monto_mensual', 'horas_base_mes', 'tarifa_hora', 'costo_hora_real', 'costo_hora_extra', 'cuota_prestamo_mes', 'descuento_judicial'].includes(target)
+    row[target] = ['sueldo_base', 'monto_mensual', 'horas_base_mes', 'tarifa_hora', 'costo_hora_real', 'costo_hora_extra', 'cuota_prestamo_mes', 'descuento_judicial', 'horas_diarias_pactadas', 'dias_ciclo_trabajo', 'dias_ciclo_descanso', 'bonif_altitud', 'pct_comision_afp_flujo'].includes(target)
       ? Number(value || 0)
       : value;
     return row;
@@ -212,12 +351,13 @@ const normalizarPersonalAdmin = (p = {}) => ({
   sueldo_base: Number(p.sueldo_base ?? p.remuneracion ?? 0),
   metodo_pago: p.metodo_pago || 'mensual',
   monto_mensual: Number(p.monto_mensual ?? p.remuneracion ?? p.sueldo_base ?? 0),
-  horas_base_mes: Number(p.horas_base_mes ?? 160) || 160,
+  horas_base_mes: Number(p.horas_base_mes ?? 0) || 0,
   tarifa_hora: Number(p.tarifa_hora ?? p.costo_hora_real ?? p.costo ?? 0),
-  tipo_contrato: p.tipo_contrato || 'Planilla',
+  modalidad_contrato: normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato),
+  tipo_contrato: normalizarTipoContratoDuracion(p.tipo_contrato, p.modalidad_contrato || p.tipo_contrato),
   modalidad: p.modalidad || 'Presencial',
   sede: p.sede || '',
-  turno_id: p.turno_id || 'tur_005',
+  turno_id: p.turno_id || '',
   dias_vacaciones_total: Number(p.dias_vacaciones_total ?? p.vacaciones_pendientes ?? 30),
   dias_vacaciones_usados: Number(p.dias_vacaciones_usados ?? 0),
   dias_vacaciones_disponibles: Number(p.dias_vacaciones_disponibles ?? p.vacaciones_pendientes ?? 0),
@@ -229,6 +369,23 @@ const normalizarPersonalAdmin = (p = {}) => ({
   modalidad_comision: p.modalidad_comision || null,
   ruc_vendedor: p.ruc_vendedor || null,
   retencion_ir_comision: p.retencion_ir_comision != null ? Number(p.retencion_ir_comision) : 8,
+  sistema_pensionario: p.sistema_pensionario || null,
+  afp_nombre: p.afp_nombre || null,
+  tiene_hijos: Boolean(p.tiene_hijos),
+  // Deprecated: regimen_laboral individual ya no gobierna calculos; usar empresa_config.regimen_laboral_empresa.
+  regimen_laboral: p.regimen_laboral || null,
+  cuota_prestamo_mes: Number(p.cuota_prestamo_mes || 0),
+  descuento_judicial: Number(p.descuento_judicial || 0),
+  regimen_jornada: p.regimen_jornada || 'general',
+  horas_diarias_pactadas: Number(p.horas_diarias_pactadas || 8),
+  fecha_inicio_ciclo: p.fecha_inicio_ciclo || null,
+  dias_ciclo_trabajo: p.dias_ciclo_trabajo ?? null,
+  dias_ciclo_descanso: p.dias_ciclo_descanso ?? null,
+  cargo_confianza: Boolean(p.cargo_confianza),
+  bonif_altitud: Number(p.bonif_altitud || 0),
+  tipo_comision_afp: p.tipo_comision_afp || 'mixta',
+  pct_comision_afp_flujo: Number(p.pct_comision_afp_flujo || 0),
+  retencion_ir: p.retencion_ir != null ? Number(p.retencion_ir) : 8,
   suspension_retenciones: Boolean(p.suspension_retenciones),
   vencimiento_suspension: p.vencimiento_suspension || null,
 });
@@ -249,7 +406,8 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   supervisor: persona.supervisor || null,
   sede: persona.sede || null,
   turno_id: persona.turno_id || null,
-  tipo_contrato: persona.tipo_contrato || persona.modalidad || 'Planilla',
+  modalidad_contrato: normalizarModalidadContrato(persona.modalidad_contrato || persona.tipo_contrato || persona.modalidad),
+  tipo_contrato: normalizarTipoContratoDuracion(persona.tipo_contrato, persona.modalidad_contrato || persona.tipo_contrato || persona.modalidad),
   fecha_ingreso: persona.fecha_ingreso || persona.fecha_inicio || persona.fecha_inicio_contrato || null,
   fecha_inicio_contrato: persona.fecha_inicio_contrato || persona.fecha_inicio || persona.fecha_ingreso || null,
   fecha_fin_contrato: persona.fecha_fin_contrato || persona.fecha_fin || null,
@@ -258,9 +416,24 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   moneda: persona.moneda || 'PEN',
   metodo_pago: persona.metodo_pago || 'mensual',
   monto_mensual: Number(persona.monto_mensual ?? persona.remuneracion ?? persona.sueldo_base ?? 0),
-  horas_base_mes: Number(persona.horas_base_mes || 160),
+  horas_base_mes: Number(persona.horas_base_mes || 0),
   tarifa_hora: calcularTarifaHora(persona.monto_mensual ?? persona.remuneracion ?? persona.sueldo_base, persona.horas_base_mes),
   sistema_pensionario: persona.sistema_pensionario || null,
+  afp_nombre: persona.afp_nombre || null,
+  tiene_hijos: persona.tiene_hijos ?? false,
+  // Deprecated: fuente de verdad de regimen laboral es empresa_config.regimen_laboral_empresa.
+  regimen_laboral: persona.regimen_laboral || null,
+  cuota_prestamo_mes: Number(persona.cuota_prestamo_mes || 0),
+  descuento_judicial: Number(persona.descuento_judicial || 0),
+  regimen_jornada: persona.regimen_jornada || 'general',
+  horas_diarias_pactadas: Number(persona.horas_diarias_pactadas || 8),
+  fecha_inicio_ciclo: persona.fecha_inicio_ciclo || null,
+  dias_ciclo_trabajo: persona.regimen_jornada === 'ciclo_acumulativo' ? (Number(persona.dias_ciclo_trabajo || 0) || null) : null,
+  dias_ciclo_descanso: persona.regimen_jornada === 'ciclo_acumulativo' ? (Number(persona.dias_ciclo_descanso || 0) || null) : null,
+  cargo_confianza: Boolean(persona.cargo_confianza),
+  bonif_altitud: Number(persona.bonif_altitud || 0),
+  tipo_comision_afp: persona.tipo_comision_afp || 'mixta',
+  pct_comision_afp_flujo: Number(persona.pct_comision_afp_flujo || 0),
   modalidad: persona.modalidad_visual || persona.modalidad_trabajo || 'Presencial',
   vacaciones_pendientes: Number(persona.vacaciones_pendientes ?? persona.dias_vacaciones_disponibles ?? persona.dias_vacaciones ?? 0),
   dias_vacaciones_total: Number(persona.dias_vacaciones_total ?? persona.dias_vacaciones ?? 30),
@@ -282,6 +455,7 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   ruc_vendedor: persona.ruc_vendedor || null,
   ruc_colaborador: persona.ruc_colaborador || null,
   retencion_ir_comision: persona.retencion_ir_comision != null ? Number(persona.retencion_ir_comision) : 8,
+  retencion_ir: persona.retencion_ir != null ? Number(persona.retencion_ir) : null,
   suspension_retenciones: Boolean(persona.suspension_retenciones),
   vencimiento_suspension: persona.vencimiento_suspension || null,
 });
@@ -294,15 +468,19 @@ const toPersonalAdminUpdate = (cambios = {}) => {
   const allowed = new Set([
     'codigo', 'nombre', 'documento', 'dni', 'fecha_nacimiento', 'direccion',
     'cargo', 'area', 'telefono', 'email', 'supervisor', 'sede', 'turno_id',
-    'tipo_contrato', 'fecha_ingreso', 'fecha_inicio_contrato', 'fecha_fin_contrato',
+    'modalidad_contrato', 'tipo_contrato', 'fecha_ingreso', 'fecha_inicio_contrato', 'fecha_fin_contrato',
     'sueldo_base', 'remuneracion', 'moneda', 'metodo_pago', 'monto_mensual',
     'horas_base_mes', 'tarifa_hora', 'sistema_pensionario', 'modalidad',
+    'afp_nombre', 'tiene_hijos', 'regimen_laboral', 'cuota_prestamo_mes',
+    'descuento_judicial', 'regimen_jornada', 'horas_diarias_pactadas',
+    'fecha_inicio_ciclo', 'dias_ciclo_trabajo', 'dias_ciclo_descanso',
+    'cargo_confianza', 'bonif_altitud', 'tipo_comision_afp', 'pct_comision_afp_flujo',
     'vacaciones_pendientes', 'dias_vacaciones_total', 'dias_vacaciones_usados',
     'dias_vacaciones_disponibles', 'contacto_emergencia', 'relacion_emergencia',
     'telefono_emergencia', 'nivel_estudios', 'especialidad', 'institucion',
     'documentos', 'estado', 'centro_costo_id',
     'auth_user_id', 'tiene_comisiones', 'porcentaje_comision',
-    'modalidad_comision', 'ruc_vendedor', 'ruc_colaborador', 'retencion_ir_comision',
+    'modalidad_comision', 'ruc_vendedor', 'ruc_colaborador', 'retencion_ir_comision', 'retencion_ir',
     'suspension_retenciones', 'vencimiento_suspension'
   ]);
 
@@ -316,8 +494,9 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     row[target] = [
       'sueldo_base', 'remuneracion', 'vacaciones_pendientes',
       'dias_vacaciones_total', 'dias_vacaciones_usados', 'dias_vacaciones_disponibles',
-      'porcentaje_comision', 'retencion_ir_comision', 'monto_mensual', 'horas_base_mes',
-      'tarifa_hora'
+      'porcentaje_comision', 'retencion_ir_comision', 'retencion_ir', 'monto_mensual', 'horas_base_mes',
+      'tarifa_hora', 'cuota_prestamo_mes', 'descuento_judicial', 'horas_diarias_pactadas',
+      'dias_ciclo_trabajo', 'dias_ciclo_descanso', 'bonif_altitud', 'pct_comision_afp_flujo'
     ].includes(target) ? Number(value || 0) : value;
     return row;
   }, {});
@@ -606,5 +785,19 @@ export const rrhhService = {
     }
 
     return data;
+  },
+
+  async cargarCxpRhePeriodo(empresaId, { desde, hasta } = {}) {
+    const supabase = await getSupabaseClient();
+    let q = supabase
+      .from('cxp')
+      .select('id, personal_id, monto_total, monto_bruto, fecha_emision, estado')
+      .eq('empresa_id', empresaId)
+      .eq('tipo_comprobante', 'RHE');
+    if (desde) q = q.gte('fecha_emision', desde);
+    if (hasta) q = q.lte('fecha_emision', hasta);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data || [];
   },
 };

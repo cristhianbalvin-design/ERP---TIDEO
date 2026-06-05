@@ -6,12 +6,26 @@ import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient } from './lib/supabaseClient.js';
 import { TiposGastoAdmin } from './components/NuevoEgreso.jsx';
 import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getPotentialManagers, getUserHierarchyLevel, hasTeamScope } from './lib/hierarchy.js';
-import { PHONE_PATTERN, RUC_PATTERN, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
+import { PHONE_PATTERN, RUC_PATTERN, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { VARIABLES_COMERCIALES } from './lib/textoComercial.js';
 import { maestrosService } from './services/maestrosService.js';
 import { importarMaterialesMasivo } from './services/materialService.js';
+import { ER_TIPO_SISTEMA_LABELS, ER_TIPO_SISTEMA_OPTIONS } from './services/estadoResultadosService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
+import { AFP_PARAMETROS_DEFAULT, AFP_PRIMA_SEGURO_FALLBACK, latestAfpParametros } from './services/nominaService.js';
+import {
+  CONTRATO_DURACION_OPCIONES,
+  asignacionFamiliarMonto,
+  calcularHorasBaseMesDesdeTurno,
+  diasVacacionesPorRegimen,
+  fiscalizacionLabel,
+  getTipoFiscalizacion,
+  normalizarModalidadContrato,
+  normalizarTipoContratoDuracion,
+  requiereFechaFinContrato,
+  retencionIrHonorariosLabel,
+} from './services/rrhhService.js';
 import * as XLSX from 'xlsx';
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
 import { SmartTextField } from './components/SmartTextField.jsx';
@@ -45,7 +59,7 @@ const rrhhBajaProductividad = (persona, partes = [], tareos = [], periodo = rrhh
       return fecha >= desde && fecha <= hasta && t.personal_id === persona.id && String(t.estado || '').toLowerCase() !== 'anulado';
     })
     .reduce((s, t) => s + Number(t.horas || 0), 0);
-  const base = Number(persona.horas_base_mes || 160) || 160;
+  const base = Number(persona.horas_base_mes || 0) || 0;
   return base > 0 && ((horasPartes + horasTareo) / base) * 100 < 50;
 };
 
@@ -3832,201 +3846,485 @@ function CuentasBancariasSection() {
   );
 }
 
-// ── Configuración del Estado de Resultados por tenant ────────────────────────
-const ER_CATS_INTERNAS = ['Materiales', 'Servicios terceros', 'Logística', 'Administrativos', 'Comerciales', 'Gastos financieros', 'Planilla', 'Cargas sociales'];
-const ER_REGLAS_OT = [
-  { value: 'siempre', label: 'Siempre' },
-  { value: 'con_ot',  label: 'Solo con OT' },
-  { value: 'sin_ot',  label: 'Solo sin OT' },
-];
-const ER_SECCIONES = [
-  { key: 'costo_ventas',      label: 'Costo de Ventas' },
-  { key: 'gastos_operativos', label: 'Gastos Operativos' },
-  { key: 'gastos_financieros',label: 'Gastos Financieros' },
-];
-const ER_ITEMS_AUTO = [
-  { seccion: 'costo_ventas',      nombre: 'Mano de obra directa' },
-  { seccion: 'gastos_operativos', nombre: 'Planilla neta' },
-  { seccion: 'gastos_operativos', nombre: 'Cargas sociales' },
-  { seccion: 'gastos_financieros',nombre: 'Intereses de financiamiento' },
-];
+// ── Categorías ER por tenant: CRUD + Excel import ────────────────────────────
+const ER_SECCIONES_LABELS = {
+  costo_ventas:       'Costo de Ventas',
+  gastos_operativos:  'Gastos Operativos',
+  gastos_financieros: 'Gastos Financieros',
+};
+const ER_SECCIONES_BADGES = {
+  costo_ventas:       'badge-blue',
+  gastos_operativos:  'badge-cyan',
+  gastos_financieros: 'badge-yellow',
+};
+const ER_REGLA_LABELS = { siempre: 'Siempre', con_ot: 'Con OT', sin_ot: 'Sin OT' };
+const ER_TIPO_SISTEMA_BADGE = tipo => tipo ? (ER_TIPO_SISTEMA_LABELS[tipo] || tipo) : 'Personalizado';
 
-function ErConfigAdmin() {
+const normCat = s => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const SECCION_MAP_IMPORT = {
+  'costo de ventas':   'costo_ventas',
+  'gastos operativos': 'gastos_operativos',
+  'gastos financieros':'gastos_financieros',
+};
+const REGLA_MAP_IMPORT = { 'con ot': 'con_ot', 'sin ot': 'sin_ot', 'siempre': 'siempre' };
+
+function ErCategoriasAdmin() {
   const { empresa, addNotificacion } = useApp();
   const empresaId = empresa?.id;
-  const [config, setConfig]   = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving]   = useState(false);
-  const [open, setOpen]       = useState({ costo_ventas: true, gastos_operativos: true, gastos_financieros: true });
+  const [cats, setCats]         = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [panel, setPanel]       = useState(false);
+  const [editando, setEditando] = useState(null);
+  const [form, setForm]         = useState({ nombre: '', seccion: 'gastos_operativos', regla_ot: 'siempre', tipo_sistema: '', activo: true, orden: 0 });
+  const [guardando, setGuardando] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [resultImport, setResultImport] = useState(null);
+  const [preview, setPreview]   = useState(null);
+  const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const cargar = async () => {
     if (!empresaId) { setLoading(false); return; }
     setLoading(true);
     try {
       const sb = await getSupabaseClient();
-      const { data } = await sb
-        .from('er_configuracion')
-        .select('id, seccion, nombre_categoria, categoria_er_interna, regla_ot, orden, activo')
-        .eq('empresa_id', empresaId)
-        .eq('activo', true)
-        .order('orden');
-      setConfig((data || []).map((r, i) => ({ ...r, _key: r.id || `k${i}` })));
-    } catch (err) {
-      addNotificacion(`Error al cargar configuración ER: ${err?.message}`);
-    } finally { setLoading(false); }
+      const { data } = await sb.from('er_categorias').select('*').eq('empresa_id', empresaId).order('orden');
+      setCats(data || []);
+    } catch (err) { addNotificacion(`Error: ${err?.message}`); }
+    finally { setLoading(false); }
   };
-
   useEffect(() => { cargar(); }, [empresaId]);
 
-  const updateRow = (key, field, value) =>
-    setConfig(prev => prev.map(r => r._key === key ? { ...r, [field]: value } : r));
-
-  const addRow = (seccion) => {
-    const maxOrden = config.filter(r => r.seccion === seccion).reduce((m, r) => Math.max(m, r.orden || 0), -1);
-    setConfig(prev => [...prev, {
-      id: null, _key: `new_${Date.now()}`, seccion,
-      nombre_categoria: '', categoria_er_interna: 'Materiales',
-      regla_ot: 'siempre', orden: maxOrden + 1, activo: true,
-    }]);
+  const abrirNuevo = () => {
+    setEditando(null);
+    setForm({ nombre: '', seccion: 'gastos_operativos', regla_ot: 'siempre', tipo_sistema: '', activo: true, orden: cats.length });
+    setPanel(true);
   };
-
-  const removeRow = (key) => setConfig(prev => prev.filter(r => r._key !== key));
+  const abrirEditar = (c) => {
+    setEditando(c);
+    setForm({ nombre: c.nombre, seccion: c.seccion, regla_ot: c.regla_ot, tipo_sistema: c.tipo_sistema || '', activo: c.activo, orden: c.orden });
+    setPanel(true);
+  };
 
   const guardar = async () => {
-    if (!empresaId) return;
-    setSaving(true);
+    if (!form.nombre.trim() || !empresaId) return;
+    setGuardando(true);
     try {
       const sb = await getSupabaseClient();
-      await sb.from('er_configuracion').delete().eq('empresa_id', empresaId);
-      const toInsert = config
-        .filter(r => r.nombre_categoria.trim())
-        .map(({ id: _id, _key: _k, ...rest }) => ({ ...rest, empresa_id: empresaId }));
-      if (toInsert.length) {
-        const { error } = await sb.from('er_configuracion').insert(toInsert);
+      if (editando) {
+        const { data, error } = await sb.from('er_categorias')
+          .update({ nombre: form.nombre, seccion: form.seccion, regla_ot: form.regla_ot, tipo_sistema: form.tipo_sistema || null, activo: form.activo, orden: form.orden })
+          .eq('id', editando.id).select().single();
         if (error) throw error;
+        setCats(prev => prev.map(c => c.id === editando.id ? data : c));
+        addNotificacion('Categoría actualizada.');
+      } else {
+        const { data, error } = await sb.from('er_categorias')
+          .insert({ nombre: form.nombre, seccion: form.seccion, regla_ot: form.regla_ot, tipo_sistema: form.tipo_sistema || null, activo: form.activo, orden: form.orden, empresa_id: empresaId })
+          .select().single();
+        if (error) throw error;
+        setCats(prev => [...prev, data]);
+        addNotificacion('Categoría creada.');
       }
-      addNotificacion('Configuración del ER guardada.');
-      cargar();
-    } catch (err) {
-      addNotificacion(`Error: ${err?.message}`);
-    } finally { setSaving(false); }
+      setPanel(false);
+    } catch (err) { addNotificacion(`Error: ${err?.message}`); }
+    finally { setGuardando(false); }
   };
 
-  const restaurarDefaults = async () => {
-    if (!window.confirm('¿Restaurar la configuración por defecto? Se eliminará la configuración personalizada.')) return;
-    setSaving(true);
+  const toggleActivo = async (c) => {
     try {
       const sb = await getSupabaseClient();
-      await sb.from('er_configuracion').delete().eq('empresa_id', empresaId);
-      setConfig([]);
-      addNotificacion('Configuración restaurada. El ER usa los valores por defecto del sistema.');
-    } catch (err) {
-      addNotificacion(`Error: ${err?.message}`);
-    } finally { setSaving(false); }
+      await sb.from('er_categorias').update({ activo: !c.activo }).eq('id', c.id);
+      setCats(prev => prev.map(x => x.id === c.id ? { ...x, activo: !c.activo } : x));
+      addNotificacion(c.activo ? 'Categoría desactivada.' : 'Categoría activada.');
+    } catch (err) { addNotificacion(`Error: ${err?.message}`); }
   };
 
-  if (loading) return (
-    <div className="card params-card mb-6">
-      <div style={{ padding: 24, color: 'var(--fg-muted)', fontSize: 13 }}>Cargando configuración ER...</div>
-    </div>
-  );
+  const descargarPlantilla = () => {
+    // Hoja 1: fila 1 = encabezados, fila 2 = notas, fila 3+ = datos del usuario
+    const headers = ['Nombre tipo gasto', 'Categoría ER', 'Sección ER', 'Regla OT'];
+    const notas   = [
+      'Nombre que verá el usuario al registrar un gasto. Ej: Mano de obra técnica, Materiales e insumos',
+      'Cómo se agrupará esta línea en el ER. Texto libre. Si no existe, se creará automáticamente.',
+      'Elegir de la lista desplegable',
+      'Elegir de la lista desplegable',
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([headers, notas]);
+    ws['!cols'] = [{ wch: 28 }, { wch: 22 }, { wch: 20 }, { wch: 14 }];
+    // Comentario indicativo en A3
+    ws['A3'] = { t: 's', v: '', c: [{ a: 'Sistema', t: 'Ingresa tus datos a partir de esta fila' }] };
+    ws['!dataValidations'] = [
+      { type: 'list', sqref: 'C3:C1048576', formula1: '"Costo de Ventas,Gastos Operativos,Gastos Financieros"' },
+      { type: 'list', sqref: 'D3:D1048576', formula1: '"Con OT,Sin OT,Siempre"' },
+    ];
+
+    // Hoja 2: referencia de columnas + ejemplos + FAQ
+    const ws2 = XLSX.utils.aoa_to_sheet([
+      ['Columna', 'Valores válidos', 'Ejemplo'],
+      ['Nombre tipo gasto', 'Texto libre', 'Mano de obra técnica'],
+      ['Categoría ER', 'Texto libre — si no existe se creará automáticamente', 'Mano de obra'],
+      ['Sección ER', 'Costo de Ventas / Gastos Operativos / Gastos Financieros', 'Costo de Ventas'],
+      ['Regla OT', 'Con OT / Sin OT / Siempre', 'Con OT'],
+      [],
+      ['Ejemplos de llenado', '', ''],
+      ['Nombre tipo gasto', 'Categoría ER', 'Sección ER', 'Regla OT'],
+      ['Mano de obra técnica',     'Mano de obra',       'Costo de Ventas',    'Con OT'],
+      ['Materiales e insumos',      'Materiales',         'Costo de Ventas',    'Con OT'],
+      ['Gasto administrativo',      'Administrativos',    'Gastos Operativos',  'Siempre'],
+      ['Interés préstamo bancario', 'Gastos financieros', 'Gastos Financieros', 'Siempre'],
+      [],
+      ['PREGUNTAS FRECUENTES', '', ''],
+      ['¿Qué pasa si la categoría ER ya existe?', 'Se reutiliza sin crear duplicado.', ''],
+      ['¿Qué pasa si el tipo de gasto ya existe?', 'Se omite sin error. El sistema nunca duplica.', ''],
+      ['¿Qué significa Regla OT?', "Con OT = solo aparece si el gasto tiene OT vinculada. Sin OT = solo sin OT. Siempre = siempre aparece en el ER.", ''],
+    ]);
+    ws2['!cols'] = [{ wch: 40 }, { wch: 70 }, { wch: 30 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Configuración de egresos');
+    XLSX.utils.book_append_sheet(wb, ws2, 'Instrucciones');
+    XLSX.writeFile(wb, 'plantilla_egresos.xlsx');
+  };
+
+  const procesarFilas = rows => {
+    // rows = array de arrays (header:1). rows[0]=headers, rows[1]=notas, rows[2+]=datos del usuario
+    const dataRows = rows.slice(2).filter(r => String(r[0] || '').trim());
+    const errores = [];
+    const filasValidas = [];
+    const catsActualesNorm = new Map(cats.map(c => [normCat(c.nombre), c]));
+    const nuevasCatsSet = new Set();
+
+    dataRows.forEach((r, idx) => {
+      const excelRow = idx + 3;
+      const nombre   = String(r[0] || '').trim();
+      const catEr    = String(r[1] || '').trim();
+      const secRaw   = normCat(String(r[2] || '').trim());
+      const reglaRaw = normCat(String(r[3] || '').trim());
+      const rowErrs  = [];
+      if (!nombre)                          rowErrs.push('Nombre tipo gasto vacío');
+      if (!catEr)                           rowErrs.push('Categoría ER vacía');
+      if (!SECCION_MAP_IMPORT[secRaw])      rowErrs.push(`Sección ER inválida: "${r[2]}"`);
+      if (!REGLA_MAP_IMPORT[reglaRaw])      rowErrs.push(`Regla OT inválida: "${r[3]}"`);
+      if (rowErrs.length) { errores.push({ fila: excelRow, errores: rowErrs }); return; }
+      filasValidas.push({ nombre, catEr, seccion: SECCION_MAP_IMPORT[secRaw], reglaOt: REGLA_MAP_IMPORT[reglaRaw] });
+      if (!catsActualesNorm.has(normCat(catEr))) nuevasCatsSet.add(catEr);
+    });
+    return { total: dataRows.length, nuevasCats: [...nuevasCatsSet], errores, filasValidas };
+  };
+
+  const leerExcel = async e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    try {
+      const buf  = await file.arrayBuffer();
+      const wb   = XLSX.read(buf, { type: 'array' });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      setPreview(procesarFilas(rows));
+    } catch (err) { addNotificacion(`Error al leer el archivo: ${err?.message}`); }
+  };
+
+  const confirmarImport = async () => {
+    if (!preview || !empresaId) return;
+    setImportando(true);
+    let tiposCreados = 0, catsCreadas = 0, omitidas = 0;
+    try {
+      const sb = await getSupabaseClient();
+      const catsActuales = new Map(cats.map(c => [normCat(c.nombre), c]));
+      for (const catNombre of preview.nuevasCats) {
+        const nk = normCat(catNombre);
+        if (!catsActuales.has(nk)) {
+          const ref = preview.filasValidas.find(f => normCat(f.catEr) === nk);
+          const { data, error } = await sb.from('er_categorias')
+            .insert({ nombre: catNombre, seccion: ref?.seccion || 'gastos_operativos', regla_ot: ref?.reglaOt || 'siempre', empresa_id: empresaId })
+            .select().single();
+          if (!error) { catsCreadas++; catsActuales.set(nk, data); setCats(prev => [...prev, data]); }
+        }
+      }
+      const { data: exTipos } = await sb.from('tipos_gasto_empresa').select('nombre').eq('empresa_id', empresaId);
+      const tiposExistentes = new Set((exTipos || []).map(t => normCat(t.nombre)));
+      for (const fila of preview.filasValidas) {
+        if (!tiposExistentes.has(normCat(fila.nombre))) {
+          const { error } = await sb.from('tipos_gasto_empresa')
+            .insert({ nombre: fila.nombre, categoria_er: fila.catEr, empresa_id: empresaId });
+          if (!error) { tiposCreados++; tiposExistentes.add(normCat(fila.nombre)); }
+          else omitidas++;
+        } else { omitidas++; }
+      }
+      setPreview(null);
+      setResultImport({ tiposCreados, catsCreadas, omitidas });
+      addNotificacion(`Importación completada: ${tiposCreados} tipos creados, ${catsCreadas} categorías nuevas, ${omitidas} omitidas por duplicado.`);
+    } catch (err) { addNotificacion(`Error en importación: ${err?.message}`); }
+    finally { setImportando(false); }
+  };
 
   return (
     <div className="card params-card mb-6">
       <div className="card-head">
-        <h3>Estructura del Estado de Resultados</h3>
+        <h3>Categorías del Estado de Resultados</h3>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={restaurarDefaults} disabled={saving}>
-            Restaurar defaults
-          </button>
-          <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={guardar} disabled={saving}>
-            {I.save} {saving ? 'Guardando...' : 'Guardar configuración'}
-          </button>
+          <label className={'btn btn-secondary' + (importando ? ' disabled' : '')} style={{ cursor: importando ? 'not-allowed' : 'pointer', fontSize: 12 }}>
+            {importando ? 'Importando...' : <>{I.download} Importar Excel</>}
+            <input type="file" accept=".xlsx,.xls" onChange={leerExcel} style={{ display: 'none' }} disabled={importando} />
+          </label>
+          <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={descargarPlantilla}>{I.download} Descargar plantilla</button>
+          <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={abrirNuevo}>{I.plus} Nueva</button>
         </div>
       </div>
 
-      {config.length === 0 && (
-        <div style={{ padding: '10px 20px', fontSize: 13, color: 'var(--fg-muted)', borderBottom: '1px solid var(--border-subtle)' }}>
-          Sin configuración personalizada — el ER usa los valores por defecto del sistema.
+      {resultImport && (
+        <div style={{ margin: '0 20px 12px', fontSize: 12, background: 'var(--success-lt)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Importación completada: <strong>{resultImport.tiposCreados}</strong> tipos creados · <strong>{resultImport.catsCreadas}</strong> categorías nuevas · <strong>{resultImport.omitidas}</strong> omitidas</span>
+          <button onClick={() => setResultImport(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--fg-muted)' }}>×</button>
         </div>
       )}
 
-      {ER_SECCIONES.map(sec => {
-        const rows      = config.filter(r => r.seccion === sec.key);
-        const autoItems = ER_ITEMS_AUTO.filter(a => a.seccion === sec.key);
-        const isOpen    = open[sec.key];
-        return (
-          <div key={sec.key} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-            <div
-              onClick={() => setOpen(p => ({ ...p, [sec.key]: !p[sec.key] }))}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 20px', cursor: 'pointer', background: 'var(--bg-alt)' }}
-            >
-              <span style={{ display: 'inline-flex', transform: isOpen ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.2s', color: 'var(--fg-muted)' }}>
-                {I.chev}
-              </span>
-              <span style={{ fontWeight: 700, fontSize: 14 }}>{sec.label}</span>
-              <span className="badge badge-gray" style={{ fontSize: 10 }}>{rows.length} cat.</span>
+      {preview && (
+        <div style={{ margin: '0 20px 12px', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ background: 'var(--bg-alt)', padding: '10px 16px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+            Previsualización — confirmar importación
+          </div>
+          <div style={{ padding: '12px 16px' }}>
+            <div style={{ display: 'flex', gap: 24, marginBottom: 10, fontSize: 13 }}>
+              <span><strong>{preview.total}</strong> filas detectadas</span>
+              <span><strong>{preview.filasValidas.length}</strong> válidas</span>
+              <span><strong>{preview.nuevasCats.length}</strong> categorías nuevas</span>
+              {preview.errores.length > 0 && <span style={{ color: 'var(--danger)' }}><strong>{preview.errores.length}</strong> errores</span>}
             </div>
-
-            {isOpen && (
-              <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {/* Cabecera de columnas */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, fontSize: 11, color: 'var(--fg-muted)', paddingBottom: 2 }}>
-                  <span>Nombre visible</span>
-                  <span>Categoría interna</span>
-                  <span>Regla OT</span>
-                  <span />
-                </div>
-
-                {/* Ítems automáticos — solo informativos */}
-                {autoItems.map(a => (
-                  <div key={a.nombre} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'center' }}>
-                    <input className="input" value={a.nombre} disabled style={{ fontSize: 12, opacity: 0.6 }} />
-                    <span className="badge badge-gray" style={{ fontSize: 10, justifySelf: 'start' }}>Automático</span>
-                    <span />
-                    <span />
-                  </div>
-                ))}
-
-                {/* Filas configurables */}
-                {rows.map(row => (
-                  <div key={row._key} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'center' }}>
-                    <input
-                      className="input" style={{ fontSize: 12 }}
-                      value={row.nombre_categoria}
-                      onChange={e => updateRow(row._key, 'nombre_categoria', e.target.value)}
-                      placeholder="Nombre visible"
-                    />
-                    <select className="select" style={{ fontSize: 12 }} value={row.categoria_er_interna}
-                      onChange={e => updateRow(row._key, 'categoria_er_interna', e.target.value)}>
-                      {ER_CATS_INTERNAS.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <select className="select" style={{ fontSize: 12 }} value={row.regla_ot}
-                      onChange={e => updateRow(row._key, 'regla_ot', e.target.value)}>
-                      {ER_REGLAS_OT.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                    </select>
-                    <button className="btn btn-ghost" type="button" style={{ fontSize: 12, color: 'var(--danger)' }}
-                      onClick={() => removeRow(row._key)}>{I.trash}</button>
-                  </div>
-                ))}
-
-                <button className="btn btn-secondary" type="button"
-                  style={{ fontSize: 12, alignSelf: 'flex-start', marginTop: 4 }}
-                  onClick={() => addRow(sec.key)}>
-                  {I.plus} Agregar categoría
-                </button>
+            {preview.nuevasCats.length > 0 && (
+              <div style={{ fontSize: 12, marginBottom: 8 }}>
+                <strong>Categorías a crear:</strong>{' '}
+                {preview.nuevasCats.map(c => <span key={c} className="badge badge-cyan" style={{ marginRight: 4 }}>{c}</span>)}
               </div>
             )}
+            {preview.errores.length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                {preview.errores.slice(0, 5).map((e, i) => (
+                  <div key={i} style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 3 }}>Fila {e.fila}: {e.errores.join(', ')}</div>
+                ))}
+                {preview.errores.length > 5 && <div style={{ fontSize: 12, color: 'var(--fg-muted)' }}>...y {preview.errores.length - 5} errores más</div>}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => setPreview(null)}>Cancelar</button>
+              {preview.filasValidas.length > 0 && (
+                <button className="btn btn-primary" style={{ fontSize: 12 }} disabled={importando} onClick={confirmarImport}>
+                  {importando ? 'Importando...' : `Confirmar e importar ${preview.filasValidas.length} filas`}
+                </button>
+              )}
+            </div>
           </div>
-        );
-      })}
+        </div>
+      )}
+
+      <div className="card-body" style={{ padding: 0 }}>
+        {loading ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--fg-muted)' }}>Cargando...</div>
+        ) : cats.length === 0 ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--fg-muted)' }}>Sin categorías — el ER usará las categorías base del sistema.</div>
+        ) : (
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Nombre</th><th>Sección ER</th><th>Regla OT</th><th>Tipo</th><th>Estado</th>
+                <th>Tipo sistema</th>
+                <th style={{ textAlign: 'right' }}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cats.map(c => (
+                <tr key={c.id} style={{ opacity: c.activo ? 1 : 0.55 }}>
+                  <td style={{ fontWeight: 600 }}>{c.nombre}</td>
+                  <td><span className={`badge ${ER_SECCIONES_BADGES[c.seccion] || 'badge-gray'}`}>{ER_SECCIONES_LABELS[c.seccion] || c.seccion}</span></td>
+                  <td><span className="badge badge-gray">{ER_REGLA_LABELS[c.regla_ot] || c.regla_ot}</span></td>
+                  <td>{c.es_base && <span className="badge badge-yellow">Base</span>}</td>
+                  <td><span className={`badge ${c.activo ? 'badge-green' : 'badge-gray'}`}>{c.activo ? 'Activo' : 'Inactivo'}</span></td>
+                  <td><span className={`badge ${c.tipo_sistema ? 'badge-cyan' : 'badge-gray'}`}>{ER_TIPO_SISTEMA_BADGE(c.tipo_sistema)}</span></td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => abrirEditar(c)}>{I.edit}</button>
+                    <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => toggleActivo(c)}>{c.activo ? 'Desactivar' : 'Activar'}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {panel && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setPanel(false)} />
+          <div className="side-panel" style={{ width: 'min(440px, 96vw)' }}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">ER · Categorías</div>
+                <div style={{ fontWeight: 700, fontSize: 18 }}>{editando ? 'Editar categoría' : 'Nueva categoría'}</div>
+              </div>
+              <button className="icon-btn" onClick={() => setPanel(false)}>{I.x}</button>
+            </div>
+            <div className="side-panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="input-group">
+                <label>Nombre <span style={{ color: 'var(--danger)' }}>*</span></label>
+                <input className="input" value={form.nombre} onChange={e => setF('nombre', e.target.value)} placeholder="Ej: Mano de obra, Explosivos, Insumos médicos" />
+              </div>
+              <div className="input-group">
+                <label>Sección del ER</label>
+                <select className="select" value={form.seccion} onChange={e => setF('seccion', e.target.value)}>
+                  <option value="costo_ventas">Costo de Ventas</option>
+                  <option value="gastos_operativos">Gastos Operativos</option>
+                  <option value="gastos_financieros">Gastos Financieros</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Regla OT</label>
+                <select className="select" value={form.regla_ot} onChange={e => setF('regla_ot', e.target.value)}>
+                  <option value="siempre">Siempre</option>
+                  <option value="con_ot">Solo con OT</option>
+                  <option value="sin_ot">Solo sin OT</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Tipo sistema</label>
+                <select className="select" value={form.tipo_sistema} onChange={e => setF('tipo_sistema', e.target.value)}>
+                  <option value="">Personalizado / Sin tipo</option>
+                  {ER_TIPO_SISTEMA_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4,lineHeight:1.4}}>
+                  El tipo de sistema permite que el ERP identifique esta categoria para reglas automaticas, como el formulario de RHE. Si no aplica ningun tipo estandar, deja Personalizado.
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="input-group">
+                  <label>Orden</label>
+                  <input className="input" type="number" min="0" value={form.orden} onChange={e => setF('orden', Number(e.target.value))} />
+                </div>
+                <div className="input-group">
+                  <label>Estado</label>
+                  <select className="select" value={form.activo ? 'activo' : 'inactivo'} onChange={e => setF('activo', e.target.value === 'activo')}>
+                    <option value="activo">Activo</option>
+                    <option value="inactivo">Inactivo</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4 }}>
+                <button className="btn btn-secondary" type="button" onClick={() => setPanel(false)}>Cancelar</button>
+                <button className="btn btn-primary" type="button" disabled={guardando || !form.nombre.trim()} onClick={guardar}>
+                  {guardando ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
+// ── Vista de solo lectura del Estado de Resultados ────────────────────────────
+function EstructuraERView() {
+  const { empresa } = useApp();
+  const empresaId   = empresa?.id;
+  const [cats, setCats]       = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!empresaId) { setLoading(false); return; }
+    getSupabaseClient().then(sb =>
+      sb.from('er_categorias').select('id, nombre, seccion, regla_ot, tipo_sistema, es_base')
+        .eq('empresa_id', empresaId).eq('activo', true).order('orden')
+    ).then(({ data }) => setCats(data || [])).catch(() => {}).finally(() => setLoading(false));
+  }, [empresaId]);
+
+  const ER_AUTO = [
+    { seccion: 'costo_ventas',       nombre: 'Mano de obra directa (costos OT)' },
+    { seccion: 'gastos_operativos',  nombre: 'Planilla neta' },
+    { seccion: 'gastos_operativos',  nombre: 'Cargas sociales' },
+    { seccion: 'gastos_financieros', nombre: 'Intereses de financiamiento' },
+  ];
+
+  return (
+    <div className="card params-card mb-6">
+      <div className="card-head">
+        <h3>Vista previa del Estado de Resultados</h3>
+        <span className="badge badge-gray" style={{ fontSize: 11 }}>Solo lectura — edita en Categorías ER</span>
+      </div>
+      {loading ? (
+        <div style={{ padding: 24, color: 'var(--fg-muted)', fontSize: 13 }}>Cargando...</div>
+      ) : (
+        <div style={{ padding: '12px 20px' }}>
+          {['costo_ventas', 'gastos_operativos', 'gastos_financieros'].map(sec => {
+            const autoItems = ER_AUTO.filter(a => a.seccion === sec);
+            const secCats   = cats.filter(c => c.seccion === sec);
+            return (
+              <div key={sec} style={{ marginBottom: 20 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, padding: '6px 10px', background: 'var(--bg-alt)', borderRadius: 6 }}>
+                  {ER_SECCIONES_LABELS[sec]}
+                </div>
+                {autoItems.map(a => (
+                  <div key={a.nombre} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', fontSize: 13, color: 'var(--fg-muted)' }}>
+                    <span style={{ flex: 1 }}>{a.nombre}</span>
+                    <span className="badge badge-gray" style={{ fontSize: 10 }}>Automático</span>
+                  </div>
+                ))}
+                {secCats.map(c => (
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', fontSize: 13 }}>
+                    <span style={{ flex: 1 }}>{c.nombre}</span>
+                    <span className="badge badge-gray" style={{ fontSize: 10 }}>{ER_REGLA_LABELS[c.regla_ot] || c.regla_ot}</span>
+                    <span className={`badge ${c.tipo_sistema ? 'badge-cyan' : 'badge-gray'}`} style={{ fontSize: 10 }}>{ER_TIPO_SISTEMA_BADGE(c.tipo_sistema)}</span>
+                    {c.es_base && <span className="badge badge-yellow" style={{ fontSize: 10 }}>Base</span>}
+                  </div>
+                ))}
+                {!autoItems.length && !secCats.length && (
+                  <div style={{ padding: '5px 10px', fontSize: 13, color: 'var(--fg-muted)', fontStyle: 'italic' }}>Sin categorías en esta sección</div>
+                )}
+              </div>
+            );
+          })}
+          {!cats.length && (
+            <div style={{ textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13, padding: 12 }}>
+              Sin categorías configuradas — el ER usará las categorías base del sistema al calcular.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const EGRESOS_TABS = [
+  { key: 'categorias', label: 'Categorías ER' },
+  { key: 'tipos',      label: 'Tipos de gasto' },
+  { key: 'estructura', label: 'Estructura del ER' },
+];
+
+function EgresosConfigAdmin() {
+  const [tabEgresos, setTabEgresos] = useState('categorias');
+  return (
+    <div>
+      <div className="card params-card" style={{ marginBottom: 0, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}>
+        <div style={{ display: 'flex', gap: 0, padding: '4px 20px' }}>
+          {EGRESOS_TABS.map(t => (
+            <button key={t.key} onClick={() => setTabEgresos(t.key)} style={{ padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: tabEgresos === t.key ? 700 : 400, borderBottom: tabEgresos === t.key ? '2px solid var(--cyan)' : '2px solid transparent', color: tabEgresos === t.key ? 'var(--cyan)' : 'var(--fg-muted)', marginBottom: -1, fontSize: 13 }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        {tabEgresos === 'categorias' && <ErCategoriasAdmin />}
+        {tabEgresos === 'tipos'      && <TiposGastoAdmin />}
+        {tabEgresos === 'estructura' && <EstructuraERView />}
+      </div>
+    </div>
+  );
+}
+
+
 function Parametros() {
   const {
     empresaConfig, guardarEmpresaConfig, subirImagenEmpresa, addNotificacion,
+    afpParametros = AFP_PARAMETROS_DEFAULT, guardarAfpParametro,
     seriesDocumentarias = [], slaPlantillas = [], diccionarioComercial = [],
     monedasImpuestosUnidades = [],
     crearSerieDocumentaria, actualizarSerieDocumentaria, eliminarSerieDocumentaria,
@@ -4082,12 +4380,15 @@ function Parametros() {
     dia_corte_q1: 10, dia_pago_q1: 15,
     dia_corte_q2: 25, dia_pago_q2: 30,
     pct_quincena_1: 50,
-    uit_vigente: 5500, rmv_vigente: 1130, ram_tope_afp: 12598.91, pct_prima_seguro: 1.37,
+    uit_vigente: 5500, rmv_vigente: 1130, ram_tope_afp: 12598.91,
   };
   const [nominaCfg, setNominaCfg] = useState(nominaBase);
   const [savingNomina, setSavingNomina] = useState(false);
   const [showRegimenModal, setShowRegimenModal] = useState(false);
   const [pendingRegimen, setPendingRegimen] = useState(null);
+  const [afpEdit, setAfpEdit] = useState(null);
+  const [afpSaving, setAfpSaving] = useState(false);
+  const [regimenConfirmCheck, setRegimenConfirmCheck] = useState(false);
   const evaluacionBase = {
     eval_peso_autoevaluacion: 30,
     eval_peso_jefe: 70,
@@ -4137,7 +4438,6 @@ function Parametros() {
       uit_vigente: empresaConfig.uit_vigente ?? 5500,
       rmv_vigente: empresaConfig.rmv_vigente ?? 1130,
       ram_tope_afp: empresaConfig.ram_tope_afp ?? 12598.91,
-      pct_prima_seguro: empresaConfig.pct_prima_seguro ?? 1.37,
     });
     setEvalCfg({
       eval_peso_autoevaluacion: empresaConfig.eval_peso_autoevaluacion ?? 30,
@@ -4260,7 +4560,33 @@ function Parametros() {
   const confirmarCambioRegimen = (nuevoRegimen) => {
     if (nuevoRegimen === nominaCfg.regimen_laboral_empresa) return;
     setPendingRegimen(nuevoRegimen);
+    setRegimenConfirmCheck(false);
     setShowRegimenModal(true);
+  };
+
+  const abrirEditarAfp = (row) => {
+    setAfpEdit({
+      afp_nombre: row.afp_nombre,
+      pct_prima_seguro: String(row.pct_prima_seguro ?? AFP_PRIMA_SEGURO_FALLBACK),
+      vigente_desde: row.vigente_desde || new Date().toISOString().slice(0, 10),
+    });
+  };
+
+  const guardarTasaAfp = async () => {
+    if (!afpEdit?.afp_nombre) return;
+    setAfpSaving(true);
+    try {
+      await guardarAfpParametro({
+        afp_nombre: afpEdit.afp_nombre,
+        pct_prima_seguro: Number(afpEdit.pct_prima_seguro),
+        vigente_desde: afpEdit.vigente_desde,
+      });
+      setAfpEdit(null);
+    } catch (err) {
+      addNotificacion(`Error al guardar tasa AFP: ${err?.message || 'error'}`);
+    } finally {
+      setAfpSaving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -4396,8 +4722,7 @@ function Parametros() {
     { key: 'tipo_cambio', title: 'Tipos de Cambio', description: 'Historial diario de tipos de cambio. Fuente: open.er-api.com con ingreso manual como respaldo.' },
     { key: 'nomina', title: 'Nomina', description: 'Regimen laboral, frecuencia de pago, quincenas y valores fiscales vigentes.' },
     { key: 'evaluaciones', title: 'Evaluaciones', description: 'Ponderaciones, escala y labels para evaluaciones de desempeno.' },
-    { key: 'tipos_gasto', title: 'Tipos de Gasto', description: 'Catálogo de tipos de gasto con su mapeo automático a categoría ER. Usados por el flujo "Nuevo Egreso".' },
-    { key: 'er_config', title: 'ER Estructura', description: 'Categorías del Estado de Resultados: sección, nombre visible y regla de OT vinculada por tenant.' },
+    { key: 'egresos_config', title: 'Egresos', description: 'Tipos de gasto, estructura del ER y categorías personalizadas. Importa desde Excel para configurar todo de una vez.' },
   ];
   const activeParamSection = paramsSections.find(s => s.key === paramSection) || paramsSections[0];
 
@@ -4848,11 +5173,13 @@ function Parametros() {
             const pct2 = 100 - Number(nominaCfg.pct_quincena_1);
             const mesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
             const mesActual = mesNombres[new Date().getMonth()];
-            return (<>
+            const tasasAfp = latestAfpParametros(afpParametros);
+            return (<div style={{overflowY:'auto', paddingBottom:24}}>
               {/* Bloque 1 — Régimen laboral */}
               <div className="card params-card mb-6">
                 <div className="card-head"><h3>Régimen laboral de la empresa</h3></div>
                 <div className="card-body">
+                  <div className="text-muted" style={{fontSize:12, marginBottom:12}}>Selecciona el régimen que gobierna los beneficios laborales futuros de nómina.</div>
                   <div style={{display:'flex', gap:12, flexWrap:'wrap', marginBottom:20}}>
                     {regimenes.map(r => (
                       <button key={r.key} type="button" data-local-form="true"
@@ -4866,12 +5193,14 @@ function Parametros() {
                   </div>
                   <div style={{overflowX:'auto', marginTop:8}}>
                     <table className="tbl" style={{fontSize:12}}>
-                      <thead><tr><th>Beneficio</th><th>Microempresa</th><th>Pequeña empresa</th><th>Régimen general</th></tr></thead>
+                      <thead><tr><th>Beneficio</th><th>Microempresa<br/><span style={{fontWeight:400,opacity:0.65}}>Hasta 10 trab. — Ley 28015</span></th><th>Pequeña empresa<br/><span style={{fontWeight:400,opacity:0.65}}>10–100 trab. — Ley 28015</span></th><th>Régimen general<br/><span style={{fontWeight:400,opacity:0.65}}>D.Leg. 728</span></th></tr></thead>
                       <tbody>
-                        <tr><td>Vacaciones</td><td>15 días</td><td>15 días</td><td>30 días</td></tr>
-                        <tr><td>CTS</td><td><span className="badge badge-red">No corresponde</span></td><td><span className="badge badge-green">Sí</span></td><td><span className="badge badge-green">Sí</span></td></tr>
-                        <tr><td>Gratificación</td><td><span className="badge badge-red">No corresponde</span></td><td><span className="badge badge-green">Sí</span></td><td><span className="badge badge-green">Sí</span></td></tr>
-                        <tr><td>ESSALUD empleador</td><td>9%</td><td>9%</td><td>9%</td></tr>
+                        <tr><td><strong>CTS</strong></td><td><span className="badge badge-red">✗ No aplica</span></td><td><span style={{color:'var(--success)'}}>✓</span> 1 rem/año</td><td><span style={{color:'var(--success)'}}>✓</span> 1 rem/año</td></tr>
+                        <tr><td><strong>Gratificación</strong></td><td><span className="badge badge-red">✗ No aplica</span></td><td><span style={{color:'var(--success)'}}>✓</span> ½ sueldo (jul/dic)</td><td><span style={{color:'var(--success)'}}>✓</span> 1 sueldo (jul/dic)</td></tr>
+                        <tr><td><strong>Bonificación extraordinaria 9%</strong></td><td><span className="badge badge-red">✗ No aplica</span></td><td><span style={{color:'var(--success)'}}>✓</span> 9% s/ ½ gratif.</td><td><span style={{color:'var(--success)'}}>✓</span> 9% s/ gratif. completa</td></tr>
+                        <tr><td><strong>Vacaciones</strong></td><td>15 días/año</td><td>15 días/año</td><td>30 días/año</td></tr>
+                        <tr><td><strong>ESSALUD empleador</strong></td><td>SIS (S/ 15 fijo)</td><td>9%</td><td>9%</td></tr>
+                        <tr><td><strong>Indemnización por despido</strong></td><td>10 jornadas/año<br/><span style={{opacity:0.65}}>tope 90 días</span></td><td>20 jornadas/año<br/><span style={{opacity:0.65}}>tope 120 días</span></td><td>1.5 rem/año<br/><span style={{opacity:0.65}}>tope 12 rem</span></td></tr>
                       </tbody>
                     </table>
                   </div>
@@ -4934,9 +5263,40 @@ function Parametros() {
                     <div className="input-group"><label>UIT vigente (S/)</label><input className="input" type="number" min="0" step="50" value={nominaCfg.uit_vigente} onChange={e=>setNominaCfg(p=>({...p,uit_vigente:Number(e.target.value)}))}/></div>
                     <div className="input-group"><label>RMV vigente (S/)</label><input className="input" type="number" min="0" step="10" value={nominaCfg.rmv_vigente} onChange={e=>setNominaCfg(p=>({...p,rmv_vigente:Number(e.target.value)}))}/></div>
                     <div className="input-group"><label>RAM tope AFP (S/)</label><input className="input" type="number" min="0" step="0.01" value={nominaCfg.ram_tope_afp} onChange={e=>setNominaCfg(p=>({...p,ram_tope_afp:Number(e.target.value)}))}/></div>
-                    <div className="input-group"><label>Prima seguro AFP (%)</label><input className="input" type="number" min="0" step="0.01" value={nominaCfg.pct_prima_seguro} onChange={e=>setNominaCfg(p=>({...p,pct_prima_seguro:Number(e.target.value)}))}/></div>
                   </div>
                   <p className="text-muted" style={{fontSize:12, marginTop:8}}>Actualizar según publicación oficial del MEF y SBS al inicio de cada año fiscal.</p>
+                </div>
+              </div>
+
+              <div className="card params-card mb-6">
+                <div className="card-head"><h3>Prima de seguro AFP por administradora</h3><span className="badge badge-cyan">SBS</span></div>
+                <div className="card-body">
+                  <div className="alert alert-info" style={{marginBottom:14}}>Actualizar al inicio de cada año fiscal según publicación de la SBS.</div>
+                  <div className="table-wrap">
+                    <table className="tbl" style={{fontSize:12}}>
+                      <thead><tr><th>AFP</th><th>Prima de seguro vigente (%)</th><th>Vigente desde</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+                      <tbody>{tasasAfp.map(row => {
+                        const editing = afpEdit?.afp_nombre === row.afp_nombre;
+                        return (
+                          <tr key={row.afp_nombre}>
+                            <td><strong>{row.afp_nombre}</strong></td>
+                            <td>{editing ? <input className="input" type="number" min="0" step="0.01" value={afpEdit.pct_prima_seguro} onChange={e=>setAfpEdit(p=>({...p,pct_prima_seguro:e.target.value}))}/> : `${Number(row.pct_prima_seguro ?? AFP_PRIMA_SEGURO_FALLBACK).toFixed(2)}%`}</td>
+                            <td>{editing ? <input className="input" type="date" value={afpEdit.vigente_desde} onChange={e=>setAfpEdit(p=>({...p,vigente_desde:e.target.value}))}/> : (row.vigente_desde || '2026-01-01')}</td>
+                            <td style={{textAlign:'right'}}>
+                              {editing ? (
+                                <div className="row" style={{justifyContent:'flex-end', gap:6}}>
+                                  <button className="btn btn-secondary btn-sm" type="button" data-local-form="true" onClick={()=>setAfpEdit(null)}>Cancelar</button>
+                                  <button className="btn btn-primary btn-sm" type="button" data-local-form="true" disabled={afpSaving} onClick={guardarTasaAfp}>{afpSaving ? 'Guardando...' : 'Guardar'}</button>
+                                </div>
+                              ) : (
+                                <button className="icon-btn" type="button" title="Editar tasa AFP" style={{color:'var(--cyan)'}} onClick={()=>abrirEditarAfp(row)}>{I.edit}</button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}</tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
 
@@ -4947,8 +5307,8 @@ function Parametros() {
               </div>
 
               {/* Modal confirmación cambio régimen */}
-              {showRegimenModal && <><div className="side-panel-backdrop" onClick={()=>setShowRegimenModal(false)}/><div className="modal"><div className="modal-head"><h3>Confirmar cambio de régimen laboral</h3><button className="icon-btn" onClick={()=>setShowRegimenModal(false)}>{I.x}</button></div><div className="modal-body"><div className="alert alert-warning" style={{marginBottom:16}}>Cambiar el régimen laboral afecta el cálculo de todos los períodos futuros. Los períodos ya cerrados no se recalculan.</div><p>¿Confirmar el cambio a <strong>{regimenes.find(r=>r.key===pendingRegimen)?.label}</strong>?</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setShowRegimenModal(false)}>Cancelar</button><button className="btn btn-primary" onClick={()=>{setNominaCfg(p=>({...p,regimen_laboral_empresa:pendingRegimen}));setShowRegimenModal(false);setPendingRegimen(null);}}>Confirmar cambio</button></div></div></div></>}
-            </>);
+              {showRegimenModal && <div className="modal-backdrop" onClick={e=>{if(e.target===e.currentTarget)setShowRegimenModal(false)}}><div className="modal"><div className="modal-head"><h3>Confirmar cambio de régimen laboral</h3><button className="icon-btn" style={{color:'var(--fg-muted)'}} onClick={()=>setShowRegimenModal(false)}>{I.x}</button></div><div className="modal-body"><div className="alert alert-warning" style={{marginBottom:16}}>Cambiar el régimen laboral afecta el cálculo de todos los períodos futuros. Los períodos ya cerrados no se recalculan.</div><p>¿Confirmar el cambio a <strong>{regimenes.find(r=>r.key===pendingRegimen)?.label}</strong>?</p><label style={{display:'flex', alignItems:'center', gap:8, margin:'12px 0', fontSize:13, cursor:'pointer'}}><input type="checkbox" checked={regimenConfirmCheck} onChange={e=>setRegimenConfirmCheck(e.target.checked)}/> Entiendo que este cambio aplica solo a períodos futuros y no recalcula nóminas cerradas.</label><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setShowRegimenModal(false)}>Cancelar</button><button className="btn btn-primary" disabled={!regimenConfirmCheck} onClick={()=>{setNominaCfg(p=>({...p,regimen_laboral_empresa:pendingRegimen}));setShowRegimenModal(false);setPendingRegimen(null);}}>Confirmar cambio</button></div></div></div></div>}
+            </div>);
           })()}
 
           {paramSection === 'evaluaciones' && (() => {
@@ -5012,15 +5372,11 @@ function Parametros() {
             );
           })()}
 
-          {paramSection === 'tipos_gasto' && (
-            <TiposGastoAdmin />
+          {paramSection === 'egresos_config' && (
+            <EgresosConfigAdmin />
           )}
 
-          {paramSection === 'er_config' && (
-            <ErConfigAdmin />
-          )}
-
-          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'tipos_gasto' && paramSection !== 'er_config' && (
+          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'egresos_config' && (
           <div className="params-footer-actions">
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
               {I.save} {saving ? 'Guardando...' : 'Guardar cambios'}
@@ -5059,11 +5415,24 @@ function RRHHAdmin() {
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:defaultTurnoId, centro_costo_id:'', modalidad:'Planilla', fecha_inicio:'', fecha_fin:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'160', tarifa_hora:'0', dias_vacaciones:'30', estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0' };
+  const vacacionesSugeridas = String(diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general'));
+  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:'', centro_costo_id:'', modalidad:'planilla', tipo_contrato:'indefinido', fecha_inicio:'', fecha_fin:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', dias_vacaciones:vacacionesSugeridas, estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0' };
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const [formAlta, setFormAlta] = useState(formAltaBase);
-  const tarifaHoraForm = Math.round((Number(formAlta.monto_mensual || 0) / (Number(formAlta.horas_base_mes || 160) || 160)) * 100) / 100;
+  const [horasBaseOverride, setHorasBaseOverride] = useState(false);
+  const horasBaseForm = Number(formAlta.horas_base_mes || 0);
+  const tarifaHoraForm = Math.round((horasBaseForm > 0 ? Number(formAlta.monto_mensual || 0) / horasBaseForm : 0) * 100) / 100;
   const tarifaSym = symOf(formAlta.moneda || 'PEN');
+  const modalidadAlta = normalizarModalidadContrato(formAlta.modalidad);
+  const esHonorariosAlta = modalidadAlta === 'honorarios';
+  const tipoContratoAlta = normalizarTipoContratoDuracion(formAlta.tipo_contrato, modalidadAlta);
+  const mostrarFechaFinAlta = requiereFechaFinContrato(tipoContratoAlta);
+  const asignacionFamiliar = asignacionFamiliarMonto(empresaConfig);
+  const tipoFiscalizacionAlta = getTipoFiscalizacion({
+    modalidad_contrato: modalidadAlta,
+    regimen_jornada: formAlta.regimen_jornada,
+    cargo_confianza: formAlta.cargo_confianza,
+  });
   const cargosAdminOptions = cargos
     .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Operativo')
     .map(c => c.nombre)
@@ -5090,19 +5459,34 @@ function RRHHAdmin() {
     setPanelAlta(false);
     setEditandoId(null);
     setFormAlta(formAltaBase);
+    setHorasBaseOverride(false);
     setAltaError('');
   };
+  const horasBaseParaTurno = (turnoId) => {
+    const turno = turnosOptions.find(t => t.id === turnoId);
+    const horas = turno ? calcularHorasBaseMesDesdeTurno(turno) : 0;
+    return horas ? String(horas) : '';
+  };
+  const codigoSugeridoAdmin = () => {
+    const nums = (todosPersonal || [])
+      .map(p => String(p.codigo || '').match(/^ADM-(\d+)$/i)?.[1])
+      .filter(Boolean)
+      .map(Number);
+    const next = Math.max(0, ...nums, todosPersonal.length) + 1;
+    return `ADM-${String(next).padStart(3, '0')}`;
+  };
   const abrirNuevoColaborador = () => {
-    if (!turnosOptions.length) {
-      addNotificacion('Primero crea un turno real en RRHH > Turnos y Horarios.');
-      return;
-    }
     setEditandoId(null);
-    setFormAlta({ ...formAltaBase, turno_id: defaultTurnoId });
+    setHorasBaseOverride(false);
+    setFormAlta({ ...formAltaBase, codigo: codigoSugeridoAdmin(), turno_id: '', horas_base_mes: '', dias_vacaciones: vacacionesSugeridas });
     setPanelAlta(true);
   };
   const abrirEditarColaborador = (p) => {
     setEditandoId(p.id);
+    const turnoActualId = turnosOptions.some(t => t.id === p.turno_id) ? p.turno_id : defaultTurnoId;
+    const horasDerivadas = horasBaseParaTurno(turnoActualId);
+    const horasActuales = p.horas_base_mes != null ? String(p.horas_base_mes) : horasDerivadas;
+    setHorasBaseOverride(Boolean(horasActuales && horasDerivadas && horasActuales !== horasDerivadas));
     setFormAlta({
       ...formAltaBase,
       nombre: p.nombre || '',
@@ -5115,18 +5499,19 @@ function RRHHAdmin() {
       cargo: p.cargo || '',
       area: p.area || '',
       sede: p.sede || '',
-      turno_id: turnosOptions.some(t => t.id === p.turno_id) ? p.turno_id : defaultTurnoId,
+      turno_id: turnoActualId,
       centro_costo_id: p.centro_costo_id || '',
-      modalidad: p.tipo_contrato || 'Planilla',
+      modalidad: normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato),
+      tipo_contrato: normalizarTipoContratoDuracion(p.tipo_contrato, p.modalidad_contrato || p.tipo_contrato),
       fecha_inicio: p.fecha_inicio_contrato || p.fecha_ingreso || '',
       fecha_fin: p.fecha_fin_contrato || '',
       remuneracion: String(p.remuneracion ?? p.sueldo_base ?? ''),
       moneda: p.moneda || 'PEN',
       metodo_pago: p.metodo_pago || 'mensual',
       monto_mensual: String(p.monto_mensual ?? p.remuneracion ?? p.sueldo_base ?? ''),
-      horas_base_mes: String(p.horas_base_mes ?? 160),
+      horas_base_mes: horasActuales,
       tarifa_hora: String(p.tarifa_hora ?? 0),
-      dias_vacaciones: String(p.dias_vacaciones_total ?? p.dias_vacaciones_disponibles ?? 30),
+      dias_vacaciones: String(p.dias_vacaciones_total ?? p.dias_vacaciones_disponibles ?? vacacionesSugeridas),
       estado: p.estado || 'activo',
       auth_user_id: p.auth_user_id || '',
       tiene_comisiones: Boolean(p.tiene_comisiones),
@@ -5141,10 +5526,13 @@ function RRHHAdmin() {
       vencimiento_suspension: p.vencimiento_suspension || '',
       afp_nombre: p.afp_nombre || 'Integra',
       tiene_hijos: Boolean(p.tiene_hijos),
+      cargo_confianza: Boolean(p.cargo_confianza),
       cuota_prestamo_mes: String(p.cuota_prestamo_mes ?? '0'),
       descuento_judicial: String(p.descuento_judicial ?? '0'),
       regimen_laboral: p.regimen_laboral || 'general',
       regimen_jornada: p.regimen_jornada || 'general',
+      dias_ciclo_trabajo: String(p.dias_ciclo_trabajo ?? ''),
+      dias_ciclo_descanso: String(p.dias_ciclo_descanso ?? ''),
       horas_diarias_pactadas: String(p.horas_diarias_pactadas ?? '8'),
       fecha_inicio_ciclo: p.fecha_inicio_ciclo || '',
       bonif_altitud: String(p.bonif_altitud ?? '0'),
@@ -5167,12 +5555,19 @@ function RRHHAdmin() {
   const guardarColaborador = async (e) => {
     e.preventDefault();
     if (altaSaving) return;
-    if (formAlta.modalidad !== 'Honorarios' && !turnosOptions.some(t => t.id === formAlta.turno_id)) {
+    const modalidad = normalizarModalidadContrato(formAlta.modalidad);
+    const tipoContrato = normalizarTipoContratoDuracion(formAlta.tipo_contrato, modalidad);
+    const requiereFin = requiereFechaFinContrato(tipoContrato);
+    if (modalidad !== 'honorarios' && !turnosOptions.some(t => t.id === formAlta.turno_id)) {
       setAltaError('Selecciona un turno real creado en Supabase antes de guardar el colaborador.');
       return;
     }
-    if (formAlta.modalidad === 'Honorarios' && !/^\d{11}$/.test(formAlta.ruc_colaborador)) {
+    if (modalidad === 'honorarios' && !isValidRuc(formAlta.ruc_colaborador)) {
       setAltaError('El RUC del colaborador debe tener exactamente 11 dígitos numéricos.');
+      return;
+    }
+    if (requiereFin && !formAlta.fecha_fin) {
+      setAltaError('La fecha fin es obligatoria para este tipo de contrato o encargo.');
       return;
     }
     if (!formAlta.centro_costo_id) {
@@ -5195,19 +5590,20 @@ function RRHHAdmin() {
       supervisor: '', sede: formAlta.sede || '', turno_id: formAlta.turno_id,
       centro_costo_id: formAlta.centro_costo_id,
       nivel_estudios: '', especialidad: '', institucion: '',
-      tipo_contrato: formAlta.modalidad || 'Planilla',
+      modalidad_contrato: modalidad,
+      tipo_contrato: tipoContrato,
       fecha_inicio_contrato: formAlta.fecha_inicio || '',
-      fecha_fin_contrato: formAlta.fecha_fin || null,
+      fecha_fin_contrato: requiereFin ? (formAlta.fecha_fin || null) : null,
       remuneracion: Number(formAlta.remuneracion) || 0,
       moneda: formAlta.moneda || 'PEN',
       metodo_pago: formAlta.metodo_pago || 'mensual',
       monto_mensual: Number(formAlta.monto_mensual || formAlta.remuneracion || 0),
-      horas_base_mes: Number(formAlta.horas_base_mes || 160),
+      horas_base_mes: Number(formAlta.horas_base_mes || 0),
       tarifa_hora: tarifaHoraForm,
       modalidad: 'Presencial',
-      dias_vacaciones_total: Number(formAlta.dias_vacaciones) || 30,
+      dias_vacaciones_total: Number(formAlta.dias_vacaciones) || Number(vacacionesSugeridas),
       dias_vacaciones_usados: 0,
-      dias_vacaciones_disponibles: Number(formAlta.dias_vacaciones) || 30,
+      dias_vacaciones_disponibles: Number(formAlta.dias_vacaciones) || Number(vacacionesSugeridas),
       estado: formAlta.estado || 'activo',
       fecha_ingreso: formAlta.fecha_inicio || new Date().toISOString().slice(0, 10),
       contacto_emergencia: '', relacion_emergencia: '', telefono_emergencia: '',
@@ -5217,22 +5613,25 @@ function RRHHAdmin() {
       porcentaje_comision: Number(formAlta.porcentaje_comision || 0),
       modalidad_comision: formAlta.modalidad_comision || 'Planilla',
       ruc_vendedor: formAlta.modalidad_comision === 'Honorarios'
-        ? (formAlta.modalidad === 'Honorarios' ? (formAlta.ruc_colaborador || null) : (formAlta.ruc_vendedor || null))
+        ? (modalidad === 'honorarios' ? (formAlta.ruc_colaborador || null) : (formAlta.ruc_vendedor || null))
         : null,
       retencion_ir_comision: Number(formAlta.retencion_ir_comision || 8),
-      ruc_colaborador: formAlta.modalidad === 'Honorarios' ? (formAlta.ruc_colaborador || null) : null,
-      sistema_pensionario: formAlta.modalidad === 'Planilla' ? (formAlta.sistema_pensionario || 'AFP') : null,
-      retencion_ir: formAlta.modalidad === 'Honorarios' ? Number(formAlta.retencion_ir || 8) : null,
-      suspension_retenciones: formAlta.modalidad_comision === 'Honorarios' ? Boolean(formAlta.suspension_retenciones) : false,
-      vencimiento_suspension: formAlta.modalidad_comision === 'Honorarios' && formAlta.suspension_retenciones ? (formAlta.vencimiento_suspension || null) : null,
-      afp_nombre: formAlta.modalidad === 'Planilla' && formAlta.sistema_pensionario === 'AFP' ? (formAlta.afp_nombre || 'Integra') : null,
-      tiene_hijos: formAlta.modalidad === 'Planilla' ? Boolean(formAlta.tiene_hijos) : false,
-      cuota_prestamo_mes: formAlta.modalidad === 'Planilla' ? Number(formAlta.cuota_prestamo_mes || 0) : 0,
-      descuento_judicial: formAlta.modalidad === 'Planilla' ? Number(formAlta.descuento_judicial || 0) : 0,
-      regimen_laboral: formAlta.modalidad === 'Planilla' ? (formAlta.regimen_laboral || 'general') : 'honorarios',
-      regimen_jornada: formAlta.modalidad === 'Planilla' ? (formAlta.regimen_jornada || 'general') : 'general',
+      ruc_colaborador: modalidad === 'honorarios' ? (formAlta.ruc_colaborador || null) : null,
+      sistema_pensionario: modalidad === 'planilla' ? (formAlta.sistema_pensionario || 'AFP') : null,
+      retencion_ir: modalidad === 'honorarios' ? Number(empresaConfig?.pct_retencion_ir_honorarios ?? formAlta.retencion_ir ?? 8) : null,
+      suspension_retenciones: modalidad === 'honorarios' ? Boolean(formAlta.suspension_retenciones) : false,
+      vencimiento_suspension: modalidad === 'honorarios' && formAlta.suspension_retenciones ? (formAlta.vencimiento_suspension || null) : null,
+      afp_nombre: modalidad === 'planilla' && formAlta.sistema_pensionario === 'AFP' ? (formAlta.afp_nombre || 'Integra') : null,
+      tiene_hijos: modalidad === 'planilla' ? Boolean(formAlta.tiene_hijos) : false,
+      cargo_confianza: modalidad === 'planilla' ? Boolean(formAlta.cargo_confianza) : false,
+      cuota_prestamo_mes: modalidad === 'planilla' ? Number(formAlta.cuota_prestamo_mes || 0) : 0,
+      descuento_judicial: modalidad === 'planilla' ? Number(formAlta.descuento_judicial || 0) : 0,
+      regimen_laboral: null,
+      regimen_jornada: modalidad === 'planilla' ? (formAlta.regimen_jornada || 'general') : 'general',
       horas_diarias_pactadas: Number(formAlta.horas_diarias_pactadas || 8),
-      fecha_inicio_ciclo: formAlta.regimen_jornada !== 'general' ? (formAlta.fecha_inicio_ciclo || null) : null,
+      fecha_inicio_ciclo: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (formAlta.fecha_inicio_ciclo || null) : null,
+      dias_ciclo_trabajo: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (Number(formAlta.dias_ciclo_trabajo || 0) || null) : null,
+      dias_ciclo_descanso: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (Number(formAlta.dias_ciclo_descanso || 0) || null) : null,
       bonif_altitud: Number(formAlta.bonif_altitud || 0),
       tipo_comision_afp: formAlta.tipo_comision_afp || 'mixta',
       pct_comision_afp_flujo: Number(formAlta.pct_comision_afp_flujo || 0),
@@ -5792,7 +6191,7 @@ function RRHHAdmin() {
   const porArea = personalAdmin.reduce((acc, p) => { acc[p.area] = (acc[p.area] || 0) + 1; return acc; }, {});
   const maxArea = Math.max(...Object.values(porArea), 1);
   const contratosVencer = personalAdmin
-    .filter(p => p.fecha_fin_contrato && p.tipo_contrato !== 'Indefinido')
+    .filter(p => p.fecha_fin_contrato && p.tipo_contrato !== 'indefinido')
     .map(p => {
       const fechaFin = new Date(p.fecha_fin_contrato);
       fechaFin.setHours(0, 0, 0, 0);
@@ -5849,10 +6248,10 @@ function RRHHAdmin() {
                     <td>{p.cargo}</td>
                     <td>{p.area}</td>
                     <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
-                    <td>{p.tipo_contrato === 'Honorarios' ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnosOptions.find(t => t.id === p.turno_id)?.nombre || 'Sin turno'}</span>}</td>
+                    <td>{normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato) === 'honorarios' ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnosOptions.find(t => t.id === p.turno_id)?.nombre || 'Sin turno'}</span>}</td>
                     <td><span className={'badge badge-' + contratoColor(p.tipo_contrato)}>{p.tipo_contrato}</span></td>
-                    <td>{p.tipo_contrato === 'Honorarios' ? <span className="text-subtle">—</span> : p.modalidad}</td>
-                    <td className="num">{p.tipo_contrato === 'Honorarios' ? <span className="text-subtle">—</span> : `${p.dias_vacaciones_disponibles} días`}</td>
+                    <td>{normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato) === 'honorarios' ? <span className="text-subtle">—</span> : p.modalidad}</td>
+                    <td className="num">{normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato) === 'honorarios' ? <span className="text-subtle">—</span> : `${p.dias_vacaciones_disponibles} días`}</td>
                     <td><span className="badge badge-green">{p.estado}</span></td>
                     <td>
                       <div style={{display:'flex', gap:4, justifyContent:'flex-end'}}>
@@ -5983,7 +6382,7 @@ function RRHHAdmin() {
               <div className="input-group"><label>Teléfono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group"><label>Email corporativo</label><input className="input" type="email" value={formAlta.email} onChange={e=>setFormAlta(v=>({...v,email:e.target.value}))} placeholder="nombre@empresa.pe"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Dirección personal</label><input className="input" value={formAlta.direccion} onChange={e=>setFormAlta(v=>({...v,direccion:e.target.value}))} placeholder="Dirección completa"/></div>
-              {formAlta.modalidad === 'Honorarios' && (
+              {esHonorariosAlta && (
                 <div className="input-group">
                   <label>RUC <span style={{color:'var(--red)'}}>*</span></label>
                   <input className="input" type="text" inputMode="numeric" maxLength={11} pattern="[0-9]{11}" value={formAlta.ruc_colaborador} onChange={e=>setFormAlta(v=>({...v,ruc_colaborador:e.target.value.replace(/\D/g,'')}))} placeholder="20XXXXXXXXX"/>
@@ -5994,32 +6393,33 @@ function RRHHAdmin() {
 
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos laborales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder="ADM-008"/></div>
-              <div className="input-group"><label>Modalidad de contrato</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>({...v,modalidad:e.target.value}))}>{['Planilla','Honorarios','CAS','Practicante'].map(m=><option key={m}>{m}</option>)}</select></div>
+              <div className="input-group"><label>Código de empleado *</label><input className="input" readOnly value={formAlta.codigo} placeholder="ADM-008" style={{background:'var(--bg-subtle)', fontWeight:700}}/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Autogenerado por correlativo. Solo Admin puede modificarlo después del alta.</div></div>
+              <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato), ruc_colaborador: modalidad === 'honorarios' ? v.ruc_colaborador : ''}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
+              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorariosAlta} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value,fecha_fin:requiereFechaFinContrato(e.target.value)?v.fecha_fin:''}))}>{CONTRATO_DURACION_OPCIONES.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
               <div className="input-group"><label>Cargo</label>{cargosAdminOptions.length ? <select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{cargosAdminOptions.map(c=><option key={c}>{c}</option>)}</select> : <input className="input" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))} placeholder="Ej: Ejecutivo Comercial"/>}</div>
               <div className="input-group"><label>Área</label>{areasOptions.length ? <select className="select" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))}><option value="">Seleccionar área...</option>{areasOptions.map(a=><option key={a}>{a}</option>)}</select> : <input className="input" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))} placeholder="Ej: Comercial"/>}</div>
               <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
-              {formAlta.modalidad !== 'Honorarios' && (
-                <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>setFormAlta(v=>({...v,turno_id:e.target.value}))}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
+              {!esHonorariosAlta && (
+                <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               )}
               <div className="input-group">
-                <label>{formAlta.modalidad === 'Honorarios' ? 'Fecha inicio del encargo' : 'Fecha inicio contrato *'}</label>
+                <label>{esHonorariosAlta ? 'Inicio del encargo' : 'Fecha de ingreso *'}</label>
                 <input className="input" type="date" value={formAlta.fecha_inicio} onChange={e=>setFormAlta(v=>({...v,fecha_inicio:e.target.value}))}/>
               </div>
+              {mostrarFechaFinAlta && <div className="input-group">
+                <label>{esHonorariosAlta ? 'Fin del encargo *' : 'Fecha fin contrato *'}</label>
+                <input className="input" type="date" required value={formAlta.fecha_fin} onChange={e=>setFormAlta(v=>({...v,fecha_fin:e.target.value}))}/>
+              </div>}
               <div className="input-group">
-                <label>{formAlta.modalidad === 'Honorarios' ? 'Fecha fin del encargo' : <span>Fecha fin contrato <span className="text-muted">(vacío = indefinido)</span></span>}</label>
-                <input className="input" type="date" value={formAlta.fecha_fin} onChange={e=>setFormAlta(v=>({...v,fecha_fin:e.target.value}))}/>
-              </div>
-              <div className="input-group">
-                <label>{formAlta.modalidad === 'Honorarios' ? `Honorario pactado (${tarifaSym})` : `Sueldo base (${tarifaSym})`}</label>
+                <label>{esHonorariosAlta ? `Honorario pactado (${tarifaSym})` : `Sueldo base (${tarifaSym})`}</label>
                 <input className="input" type="number" min="0" value={formAlta.remuneracion} onChange={e=>setFormAlta(v=>({...v,remuneracion:e.target.value,monto_mensual:e.target.value}))} placeholder="0"/>
               </div>
               <div className="input-group"><label>Estado</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option><option value="suspendido">Suspendido</option></select></div>
-              {formAlta.modalidad === 'Honorarios' && <>
+              {esHonorariosAlta && <>
                 <div className="input-group">
                   <label>Retención IR (%)</label>
-                  <input className="input" type="number" min="0" max="30" step="0.5" value={formAlta.retencion_ir} onChange={e=>setFormAlta(v=>({...v,retencion_ir:e.target.value}))} placeholder="8"/>
+                  <input className="input" readOnly value={retencionIrHonorariosLabel(empresaConfig)} style={{background:'var(--bg-subtle)'}}/>
                   <div className="text-muted" style={{fontSize:11, marginTop:4}}>Por defecto 8%. Solo aplica si la empresa es Agente de Retención, el monto supera S/ 1,500 y no hay suspensión vigente.</div>
                 </div>
                 <label className="params-toggle-row" style={{cursor:'pointer'}}>
@@ -6036,6 +6436,7 @@ function RRHHAdmin() {
               </>}
             </div>
 
+            {!esHonorariosAlta && <>
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Tarifa y Costeo</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group">
@@ -6051,15 +6452,21 @@ function RRHHAdmin() {
               </div>
               <div className="input-group">
                 <label>Horas base del mes</label>
-                <input className="input" type="number" min="1" step="0.5" value={formAlta.horas_base_mes} onChange={e=>setFormAlta(v=>({...v,horas_base_mes:e.target.value}))} placeholder="160"/>
+                <div className="row" style={{gap:8, alignItems:'stretch'}}>
+                  <input className="input" type="number" min="0" step="0.5" readOnly={!horasBaseOverride} value={formAlta.horas_base_mes} onChange={e=>setFormAlta(v=>({...v,horas_base_mes:e.target.value}))} placeholder="0" style={{background:horasBaseOverride ? undefined : 'var(--bg-subtle)', flex:1}}/>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={()=>{ if (horasBaseOverride) setFormAlta(v=>({...v,horas_base_mes:horasBaseParaTurno(v.turno_id)})); setHorasBaseOverride(v=>!v); }}>{horasBaseOverride ? 'Usar turno' : 'Override manual'}</button>
+                </div>
+                <div className="text-muted" style={{fontSize:11, marginTop:4}}>Se actualiza desde el turno asignado.</div>
               </div>
               <div className="input-group">
                 <label>Tarifa por hora ({tarifaSym})</label>
                 <input className="input" type="text" readOnly value={tarifaHoraForm.toFixed(2)} style={{background:'var(--bg-subtle)', fontWeight:700}}/>
+                <div className="text-muted" style={{fontSize:11, marginTop:4}}>{I.dollar} Calculado automáticamente</div>
               </div>
             </div>
+            </>}
 
-            {['Planilla','CAS'].includes(formAlta.modalidad) && <>
+            {!esHonorariosAlta && <>
               <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Régimen de jornada</div>
               <div className="grid-2" style={{gap:14, marginBottom:12}}>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
@@ -6071,9 +6478,12 @@ function RRHHAdmin() {
                     <option value="minero_28x14">Minero 28×14</option>
                   </select>
                 </div>
-                {formAlta.regimen_jornada !== 'general' && <>
+                {formAlta.regimen_jornada === 'ciclo_acumulativo' && <>
                   <div className="input-group"><label>Horas diarias pactadas <span className="text-muted">(D. Leg. 857)</span></label><input className="input" type="number" min="1" max="12" value={formAlta.horas_diarias_pactadas} onChange={e=>setFormAlta(v=>({...v,horas_diarias_pactadas:e.target.value}))}/></div>
                   <div className="input-group"><label>Fecha inicio del ciclo actual</label><input className="input" type="date" value={formAlta.fecha_inicio_ciclo} onChange={e=>setFormAlta(v=>({...v,fecha_inicio_ciclo:e.target.value}))}/></div>
+                  <div className="input-group"><label>Días de trabajo en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_trabajo} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_trabajo:e.target.value}))}/></div>
+                  <div className="input-group"><label>Días de descanso en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_descanso} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_descanso:e.target.value}))}/></div>
+                  <div className="card" style={{gridColumn:'1/-1', padding:'8px 12px', background:'rgba(6,182,212,0.08)', fontSize:12, color:'var(--cyan)'}}>Ciclo de {(Number(formAlta.dias_ciclo_trabajo)||0) + (Number(formAlta.dias_ciclo_descanso)||0)} días: {Number(formAlta.dias_ciclo_trabajo)||0} en campo + {Number(formAlta.dias_ciclo_descanso)||0} de descanso.</div>
                   <div className="input-group" style={{gridColumn:'1/-1'}}><label>Bonificación por altitud (S/)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.bonif_altitud} onChange={e=>setFormAlta(v=>({...v,bonif_altitud:e.target.value}))} placeholder="0 si no aplica"/></div>
                   <div className="card" style={{gridColumn:'1/-1', padding:'8px 12px', background:'rgba(6,182,212,0.08)', fontSize:12, color:'var(--cyan)'}}>⛏ Este trabajador usa cálculo proporcional por días computables en cada período.</div>
                 </>}
@@ -6083,11 +6493,14 @@ function RRHHAdmin() {
               <div className="grid-2" style={{gap:14, marginBottom:20}}>
                 <div className="input-group"><label>Cuota préstamo mes</label><input className="input" type="number" min="0" value={formAlta.cuota_prestamo_mes} onChange={e=>setFormAlta(v=>({...v,cuota_prestamo_mes:e.target.value}))}/></div>
                 <div className="input-group"><label>Descuento judicial</label><input className="input" type="number" min="0" value={formAlta.descuento_judicial} onChange={e=>setFormAlta(v=>({...v,descuento_judicial:e.target.value}))}/></div>
-                <label className="row" style={{gap:8, gridColumn:'1/-1', alignItems:'center'}}><input type="checkbox" checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos (asignación familiar S/ 102.50)</label>
+                <label className="row" style={{gap:8, gridColumn:'1/-1', alignItems:'center'}}><input type="checkbox" checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos (asignación familiar S/ {asignacionFamiliar.toFixed(2)})</label>
+                <label className="params-toggle-row" style={{gridColumn:'1/-1', cursor:'pointer'}}><input type="checkbox" className="checkbox" checked={formAlta.cargo_confianza} onChange={e=>setFormAlta(v=>({...v,cargo_confianza:e.target.checked}))}/><span>Cargo de dirección o confianza (excluido de fiscalización de horario)</span></label>
+                {formAlta.cargo_confianza && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12}}>Este colaborador no aparecerá en el registro diario de asistencia ni se le calcularán tardanzas u horas extra. Asegúrate de que la exclusión conste en su contrato.</div>}
+                <div style={{gridColumn:'1/-1'}}><span className="badge badge-gray">Fiscalización: {fiscalizacionLabel(tipoFiscalizacionAlta)}</span></div>
               </div>
             </>}
 
-            {['Planilla','CAS','Practicante'].includes(formAlta.modalidad) && <>
+            {!esHonorariosAlta && <>
               <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Sistema previsional</div>
               <div className="grid-2" style={{gap:14, marginBottom:20}}>
                 <div className="input-group">
@@ -6107,7 +6520,7 @@ function RRHHAdmin() {
                       <option>Habitat</option><option>Integra</option><option>Prima</option><option>Profuturo</option>
                     </select>
                   </div>
-                  {['Planilla','CAS'].includes(formAlta.modalidad) && <>
+                  {!esHonorariosAlta && <>
                     <div className="input-group">
                       <label>Tipo de comisión</label>
                       <select className="select" value={formAlta.tipo_comision_afp} onChange={e=>setFormAlta(v=>({...v,tipo_comision_afp:e.target.value}))}>
@@ -6118,13 +6531,13 @@ function RRHHAdmin() {
                       ? <div className="input-group"><label>Comisión por flujo (%)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.pct_comision_afp_flujo} onChange={e=>setFormAlta(v=>({...v,pct_comision_afp_flujo:e.target.value}))}/></div>
                       : <div className="card" style={{padding:'8px 12px', fontSize:12, color:'var(--fg-muted)'}}>Comisión mixta: se descuenta del fondo, no del sueldo mensual.</div>
                     }
-                    <div className="card" style={{padding:'8px 12px', fontSize:12, color:'var(--fg-muted)'}}>Prima de seguro: configurable en Parámetros de Nómina (actualmente {empresaConfig?.pct_prima_seguro ?? '1.37'}%).</div>
+                    <div className="card" style={{padding:'8px 12px', fontSize:12, color:'var(--fg-muted)'}}>Prima de seguro: según tasa vigente de la AFP seleccionada (ver Parámetros → Nómina)</div>
                   </>}
                 </> : <div className="card" style={{gridColumn:'1/-1', padding:'10px 14px', fontSize:13}}>ONP — Tasa: 13% sobre remuneración asegurable.</div>}
               </div>
             </>}
 
-            {formAlta.modalidad !== 'Honorarios' && <>
+            {!esHonorariosAlta && <>
               <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Beneficios laborales</div>
               <div className="grid-2" style={{gap:14, marginBottom:20}}>
                 <div className="input-group"><label>Días de vacaciones/año</label><input className="input" type="number" min="0" value={formAlta.dias_vacaciones} onChange={e=>setFormAlta(v=>({...v,dias_vacaciones:e.target.value}))}/></div>
@@ -6156,7 +6569,7 @@ function RRHHAdmin() {
                         </select>
                       </div>
                       {formAlta.modalidad_comision === 'Honorarios' && <>
-                        {formAlta.modalidad === 'Honorarios' ? (
+                        {esHonorariosAlta ? (
                           <div className="input-group" style={{gridColumn:'1/-1'}}>
                             <div className="text-muted" style={{fontSize:12, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6}}>
                               RUC para el pago: se usará el RUC ingresado en Datos Personales (<strong>{formAlta.ruc_colaborador || '—'}</strong>).

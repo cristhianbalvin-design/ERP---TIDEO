@@ -1,5 +1,39 @@
 const HOY = () => new Date().toISOString().split('T')[0];
 
+export async function getTipoCambioPorFecha(fechaMovimiento, supabase) {
+  const fecha = fechaMovimiento || HOY();
+
+  if (supabase) {
+    try {
+      const { data } = await supabase
+        .from('tipo_cambio_historico')
+        .select('*')
+        .eq('fecha', fecha)
+        .eq('moneda_base', 'PEN')
+        .maybeSingle();
+      if (data) return { ...data, desactualizado: false };
+    } catch (_) {}
+  }
+
+  if (fecha === HOY()) return getTipoCambioHoy(supabase);
+
+  if (supabase) {
+    try {
+      const { data } = await supabase
+        .from('tipo_cambio_historico')
+        .select('*')
+        .eq('moneda_base', 'PEN')
+        .lte('fecha', fecha)
+        .order('fecha', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) return { ...data, desactualizado: true };
+    } catch (_) {}
+  }
+
+  return getTipoCambioHoy(supabase);
+}
+
 export async function getTipoCambioHoy(supabase) {
   const fecha = HOY();
 
