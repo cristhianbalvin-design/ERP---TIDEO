@@ -8,6 +8,7 @@ import * as personalDocumentosService from './services/personalDocumentosService
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { PHONE_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { getSupabaseClient } from './lib/supabaseClient.js';
+import { porcentajeBaseComision, resolverVendedorComision } from './lib/comisiones.js';
 
 // Mobile field views - all field profiles
 
@@ -757,7 +758,7 @@ function LogisticaView({ screen, setScreen }) {
 }
 
 function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setProfile }) {
-  const { agendaEventos, cuentas, contactos, oportunidades, cotizaciones, actividades, leads, historialEstados, oppHistorialEtapas, updateLeadState, convertirLead, descartarLead, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, marcarPerdida, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva, empresa, dataMode, supabaseStatus, signOut, notificaciones, markNotificacionesRead, addNotificacion, monedasActivas, personalAdmin, actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision, actualizarLeadDatos } = useApp();
+  const { agendaEventos, cuentas, contactos, oportunidades, cotizaciones, actividades, leads, historialEstados, oppHistorialEtapas, updateLeadState, convertirLead, descartarLead, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, marcarPerdida, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva, empresa, dataMode, supabaseStatus, signOut, notificaciones, markNotificacionesRead, addNotificacion, monedasActivas, personalAdmin, setPersonalAdmin, actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision, actualizarLeadDatos } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const esDelUsuario = valor => normalizarTexto(valor) === normalizarTexto(usuarioMovil.nombre);
   const rolNombre = normalizarTexto(role?.nombre || membresiaActiva?.rol?.nombre);
@@ -802,6 +803,32 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
   const [drawerTab, setDrawerTab] = useState('timeline');
   const [comisionEdit, setComisionEdit] = useState(null); // { pct, bonificacion, justificacion }
   const [comisionEnviando, setComisionEnviando] = useState(false);
+  useEffect(() => {
+    if (!empresa?.id || !authUser?.id || !setPersonalAdmin) return;
+    const emailAuth = normalizarTexto(authUser.email);
+    const yaTieneFicha = (personalAdmin || []).some(p =>
+      p.auth_user_id === authUser.id ||
+      (emailAuth && normalizarTexto(p.email) === emailAuth)
+    );
+    if (yaTieneFicha) return;
+    let cancelado = false;
+    rrhhService.getPersonalAdminPropio(empresa.id, {
+      authUserId: authUser.id,
+      email: authUser.email || usuarioMovil.email,
+      nombre: usuarioMovil.nombre,
+    })
+      .then(ficha => {
+        if (cancelado || !ficha) return;
+        setPersonalAdmin(prev => {
+          if ((prev || []).some(p => p.id === ficha.id)) {
+            return prev.map(p => p.id === ficha.id ? { ...p, ...ficha } : p);
+          }
+          return [ficha, ...(prev || [])];
+        });
+      })
+      .catch(() => {});
+    return () => { cancelado = true; };
+  }, [empresa?.id, authUser?.id, authUser?.email, personalAdmin, setPersonalAdmin]);
   const patchDrawerOpp = (oppId, patch) => {
     setDrawerItem(prev => {
       if (!prev || prev.type !== 'opp' || prev.data?.id !== oppId) return prev;
@@ -1929,25 +1956,17 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
                     )}
                     {drawerTab === 'comision' && !isLead && (() => {
                       const opp = item;
-                      const normNombre = s => (s || '').trim().toLowerCase();
-                      const normEmail = s => (s || '').trim().toLowerCase();
-                      const vendedorUsuario = usuarios.find(u =>
-                        u.id === opp.responsable_id ||
-                        u.auth_user_id === opp.responsable_id ||
-                        normNombre(u.nombre) === normNombre(opp.responsable)
-                      );
-                      const vendedorPersonal = personalAdmin.find(p =>
-                        (vendedorUsuario?.auth_user_id && p.auth_user_id === vendedorUsuario.auth_user_id) ||
-                        (vendedorUsuario?.email && p.email && normEmail(p.email) === normEmail(vendedorUsuario.email)) ||
-                        p.id === opp.responsable_id ||
-                        p.auth_user_id === opp.responsable_id ||
-                        (p.email && normEmail(p.email) === normEmail(opp.responsable)) ||
-                        (authUser?.id === opp.responsable_id && p.email && normEmail(p.email) === normEmail(authUser.email)) ||
-                        normNombre(p.nombre) === normNombre(opp.responsable)
-                      );
-                      const pctBase = vendedorPersonal?.porcentaje_comision !== null && vendedorPersonal?.porcentaje_comision !== undefined
-                        ? Number(vendedorPersonal.porcentaje_comision)
-                        : null;
+                      const usarAuthComoFallback = esDelUsuario(opp.responsable) ||
+                        opp.responsable_id === authUser?.id;
+                      const vendedorPersonal = resolverVendedorComision({
+                        oportunidad: opp,
+                        usuarios,
+                        personalAdmin,
+                        authUser,
+                        usuarioActual: usuarioMovil,
+                        usarAuthComoFallback,
+                      });
+                      const pctBase = porcentajeBaseComision(vendedorPersonal);
                       const monedaSim = opp.moneda === 'USD' ? 'US$' : 'S/';
                       const estado = opp.acuerdo_estado || 'sin_acuerdo';
                       const editando = comisionEdit !== null;

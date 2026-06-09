@@ -557,6 +557,36 @@ export const rrhhService = {
     if (error) { console.error('Error fetching personal_administrativo:', error); return []; }
     return (data || []).map(normalizarPersonalAdmin);
   },
+  getPersonalAdminPropio: async (empresaId, { authUserId, email, nombre } = {}) => {
+    if (!empresaId || (!authUserId && !email && !nombre)) return null;
+    const supabase = await getSupabaseClient();
+    const select = '*';
+    const base = () => supabase.from('personal_administrativo').select(select).eq('empresa_id', empresaId);
+
+    const byAuthOrEmail = [];
+    if (authUserId) byAuthOrEmail.push(`auth_user_id.eq.${authUserId}`);
+    if (email) byAuthOrEmail.push(`email.ilike.${String(email).trim()}`);
+
+    if (byAuthOrEmail.length) {
+      const { data, error } = await base().or(byAuthOrEmail.join(',')).limit(2);
+      if (error) { console.error('Error fetching own personal_administrativo:', error); return null; }
+      if ((data || []).length === 1) return normalizarPersonalAdmin(data[0]);
+      const exact = (data || []).find(p =>
+        (authUserId && p.auth_user_id === authUserId) ||
+        (email && String(p.email || '').trim().toLowerCase() === String(email).trim().toLowerCase())
+      );
+      if (exact) return normalizarPersonalAdmin(exact);
+    }
+
+    if (nombre) {
+      const { data, error } = await base().ilike('nombre', String(nombre).trim()).limit(2);
+      if (error) return null;
+      if ((data || []).length === 1) return normalizarPersonalAdmin(data[0]);
+    }
+
+    return null;
+  },
+  getPersonalAdminPorAuth: async (empresaId, authUserId) => rrhhService.getPersonalAdminPropio(empresaId, { authUserId }),
   crearPersonalAdmin: async (empresaId, persona) => {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
