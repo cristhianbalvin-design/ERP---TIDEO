@@ -495,7 +495,7 @@ function Roles() {
 }
 
 function Usuarios() {
-  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, roles: rolesCtx, accessDebug } = useApp();
+  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, roles: rolesCtx, accessDebug, navigate, personalAdmin = [], personalOperativo = [] } = useApp();
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('Tideo2026!');
   const [creando, setCreando] = useState(false);
@@ -504,6 +504,7 @@ function Usuarios() {
   const [guardandoNuevo, setGuardandoNuevo] = useState(false);
   const [nuevoError, setNuevoError] = useState('');
   const [editando, setEditando] = useState(null);
+  const [fichaUsuario, setFichaUsuario] = useState({ loading: false, error: '', tieneFicha: false, tieneTurno: false, ficha: null, tipo: null });
   const mobileModuleOptions = [
     { id: 'tecnico', label: 'Tecnico' },
     { id: 'logistica', label: 'Logistica' },
@@ -525,6 +526,69 @@ function Usuarios() {
     if (Array.isArray(usuario.campoModulos) && usuario.campoModulos.length) return usuario.campoModulos;
     if (Array.isArray(usuario.campo_modulos) && usuario.campo_modulos.length) return usuario.campo_modulos;
     return usuario.campo ? [legacyModuloCampo(usuario.campoPerfil || usuario.campo_perfil)] : [];
+  };
+  const modulosTransaccionales = new Set(['tecnico', 'asistencia', 'administrativo', 'compras']);
+  const esRolAdminODireccion = (rolId) => {
+    const rol = rolesCtx?.[rolId] || MOCK.roles?.[rolId] || {};
+    return Boolean(rol.es_admin_empresa || ['direccion', 'jefatura'].includes(String(rol.nivel_jerarquico || '').toLowerCase()));
+  };
+  const estadoFichaDesdeListas = (email) => {
+    const normalized = normalizarEmail(email);
+    if (!normalized) return { tieneFicha: false, tieneTurno: false, ficha: null, tipo: null };
+    const operativo = (personalOperativo || []).find(p => normalizarEmail(p.email) === normalized && !['inactivo', 'cesado', 'suspendido'].includes(String(p.estado || '').toLowerCase()));
+    if (operativo) return { tieneFicha: true, tieneTurno: Boolean(operativo.turno_id), ficha: operativo, tipo: 'operativo' };
+    const administrativo = (personalAdmin || []).find(p => normalizarEmail(p.email) === normalized && !['inactivo', 'cesado', 'suspendido'].includes(String(p.estado || '').toLowerCase()));
+    if (administrativo) return { tieneFicha: true, tieneTurno: Boolean(administrativo.turno_id), ficha: administrativo, tipo: 'administrativo' };
+    return { tieneFicha: false, tieneTurno: false, ficha: null, tipo: null };
+  };
+  const consultarFichaUsuario = async ({ email, empresaId }) => {
+    const fallback = estadoFichaDesdeListas(email);
+    if (!email || !empresaId) {
+      setFichaUsuario({ loading: false, error: '', ...fallback });
+      return;
+    }
+    setFichaUsuario({ loading: true, error: '', ...fallback });
+    try {
+      const supabase = await getSupabaseClient();
+      const selectCols = 'id,nombre,email,turno_id,estado';
+      const [opResult, admResult] = await Promise.all([
+        supabase.from('personal_operativo').select(selectCols).eq('empresa_id', empresaId).ilike('email', email).limit(1),
+        supabase.from('personal_administrativo').select(selectCols).eq('empresa_id', empresaId).ilike('email', email).limit(1),
+      ]);
+      if (opResult.error) throw opResult.error;
+      if (admResult.error) throw admResult.error;
+      const activo = row => row && !['inactivo', 'cesado', 'suspendido'].includes(String(row.estado || '').toLowerCase());
+      const operativo = (opResult.data || []).find(activo);
+      const administrativo = (admResult.data || []).find(activo);
+      const ficha = operativo || administrativo || null;
+      setFichaUsuario({
+        loading: false,
+        error: '',
+        tieneFicha: Boolean(ficha),
+        tieneTurno: Boolean(ficha?.turno_id),
+        ficha,
+        tipo: operativo ? 'operativo' : administrativo ? 'administrativo' : null,
+      });
+    } catch (error) {
+      setFichaUsuario({ loading: false, error: error?.message || 'No se pudo verificar la ficha RRHH.', ...fallback });
+    }
+  };
+  const getRestriccionModulo = (modId) => {
+    const esAdminODireccion = esRolAdminODireccion(editForm.rol);
+    if (!modulosTransaccionales.has(modId) || esAdminODireccion) return { disabled: false, tooltip: '' };
+    if (!fichaUsuario.tieneFicha) {
+      return {
+        disabled: true,
+        tooltip: 'Requiere ficha de colaborador en RRHH. Crea primero la ficha en Personal Operativo o Personal Administrativo.',
+      };
+    }
+    if (modId === 'asistencia' && !fichaUsuario.tieneTurno) {
+      return {
+        disabled: true,
+        tooltip: 'La ficha existe pero no tiene turno asignado. Asigna un turno en la ficha del colaborador.',
+      };
+    }
+    return { disabled: false, tooltip: '' };
   };
   const [editForm, setEditForm] = useState({ nombre: '', email: '', rol: '', jefe_user_id: '', asignaciones: [], campo: false, campoModulos: [], estado: 'Activo' });
   const [guardandoEdit, setGuardandoEdit] = useState(false);
@@ -574,6 +638,7 @@ function Usuarios() {
   const abrirEditarUsuario = (usuario) => {
     setEditError('');
     setEditando(usuario);
+    setFichaUsuario({ loading: true, error: '', ...estadoFichaDesdeListas(usuario.email) });
     setEditForm({
       nombre: usuario.nombre || '',
       email: usuario.email || '',
@@ -591,6 +656,7 @@ function Usuarios() {
       campoModulos: getCampoModulos(usuario),
       estado: usuario.estado || 'Activo',
     });
+    consultarFichaUsuario({ email: usuario.email || '', empresaId: usuario.empresa_id || empresa?.id });
   };
 
   const handleEditarUsuario = async (e) => {
@@ -599,10 +665,13 @@ function Usuarios() {
     setEditError('');
     setGuardandoEdit(true);
     try {
+      const campoModulos = editForm.campo
+        ? editForm.campoModulos.filter(mod => !getRestriccionModulo(mod).disabled)
+        : [];
       await actualizarUsuarioAcceso(editando.id, {
         ...editForm,
         empresa_id: editando.empresa_id,
-        campoModulos: editForm.campo ? editForm.campoModulos : [],
+        campoModulos,
       });
       setEditando(null);
     } catch (error) {
@@ -611,6 +680,14 @@ function Usuarios() {
       setGuardandoEdit(false);
     }
   };
+
+  useEffect(() => {
+    if (!editando) return;
+    const handle = setTimeout(() => {
+      consultarFichaUsuario({ email: editForm.email || '', empresaId: editando.empresa_id || empresa?.id });
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [editando?.id, editForm.email, editando?.empresa_id, empresa?.id]);
 
   const rolPerteneceTenant = (r) => {
     if (!empresa?.id) return true;
@@ -946,12 +1023,30 @@ function Usuarios() {
                 <div className="input-group">
                   <label>Modulos moviles habilitados</label>
                   <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
-                    {mobileModuleOptions.map(mod => (
-                      <label key={mod.id} className="row" style={{gap:8, fontSize:13, padding:'8px 10px', border:'1px solid var(--border)', borderRadius:8}}>
+                    {mobileModuleOptions.map(mod => {
+                      const restriccion = getRestriccionModulo(mod.id);
+                      const checked = editForm.campoModulos.includes(mod.id) && !restriccion.disabled;
+                      return (
+                      <label
+                        key={mod.id}
+                        className="row"
+                        title={restriccion.tooltip}
+                        style={{
+                          gap:8,
+                          fontSize:13,
+                          padding:'8px 10px',
+                          border:'1px solid var(--border)',
+                          borderRadius:8,
+                          opacity: restriccion.disabled ? 0.55 : 1,
+                          cursor: restriccion.disabled ? 'not-allowed' : 'pointer',
+                          background: restriccion.disabled ? 'var(--bg-subtle)' : undefined,
+                        }}
+                      >
                         <input
                           type="checkbox"
                           className="checkbox"
-                          checked={editForm.campoModulos.includes(mod.id)}
+                          disabled={restriccion.disabled}
+                          checked={checked}
                           onChange={e => setEditForm(p => ({
                             ...p,
                             campoModulos: e.target.checked
@@ -961,9 +1056,37 @@ function Usuarios() {
                         />
                         {mod.label}
                       </label>
-                    ))}
+                    )})}
                   </div>
-                  <div className="text-muted" style={{fontSize:12, marginTop:6}}>Control de asistencia requiere una ficha de colaborador con el mismo email y turno asignado.</div>
+                  {fichaUsuario.loading && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Verificando ficha RRHH por email...</div>}
+                  {fichaUsuario.error && <div className="text-muted" style={{fontSize:12, marginTop:6}}>No se pudo refrescar la ficha desde Supabase; se esta usando la informacion cargada localmente.</div>}
+                  {!fichaUsuario.loading && !esRolAdminODireccion(editForm.rol) && !fichaUsuario.tieneFicha && (
+                    <div className="alert alert-warning" style={{marginTop:10}}>
+                      <div className="row" style={{alignItems:'flex-start', gap:8}}>
+                        <span style={{width:18, height:18, display:'inline-flex', color:'var(--orange)', flex:'0 0 auto'}}>{I.alert}</span>
+                        <div style={{fontSize:13}}>
+                          Este usuario no tiene ficha de colaborador en RRHH. Los modulos de registro (asistencia, tecnico, administrativo, comprador) estan deshabilitados hasta que se cree la ficha.
+                          <div className="row" style={{gap:8, marginTop:10, flexWrap:'wrap'}}>
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setEditando(null); navigate('rrhh_operativo', { action: 'new', email: editForm.email }); }}>Crear ficha en Personal Operativo</button>
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setEditando(null); navigate('rrhh_admin', { action: 'new', email: editForm.email }); }}>Crear ficha en Personal Administrativo</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {!fichaUsuario.loading && !esRolAdminODireccion(editForm.rol) && fichaUsuario.tieneFicha && !fichaUsuario.tieneTurno && (
+                    <div className="alert alert-warning" style={{marginTop:10}}>
+                      <div className="row" style={{alignItems:'flex-start', gap:8}}>
+                        <span style={{width:18, height:18, display:'inline-flex', color:'var(--orange)', flex:'0 0 auto'}}>{I.alert}</span>
+                        <div style={{fontSize:13}}>
+                          La ficha de este colaborador no tiene turno asignado. El modulo de asistencia requiere turno para calcular tardanzas y horas extra.
+                          <div style={{marginTop:10}}>
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setEditando(null); navigate(fichaUsuario.tipo === 'administrativo' ? 'rrhh_admin' : 'rrhh_operativo', { detail: fichaUsuario.ficha?.id, email: editForm.email }); }}>Ir a la ficha para asignar turno</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="modal-foot mt-4">
@@ -1095,7 +1218,7 @@ function Usuarios() {
 
 
 function Tenants() {
-  const { empresasPlataforma = MOCK.empresas, usuarios = [], actualizarTenant, eliminarTenant, addNotificacion } = useApp();
+  const { empresasPlataforma = MOCK.empresas, usuarios = [], crearTenantConAdmin, actualizarTenant, eliminarTenant, addNotificacion } = useApp();
   const tenants = empresasPlataforma.length ? empresasPlataforma : MOCK.empresas;
   const activos = tenants.filter(t => ['activa', 'activo'].includes(String(t.estado || '').toLowerCase())).length;
   const demos = tenants.filter(t => String(t.estado || '').toLowerCase() === 'demo').length;
@@ -1106,6 +1229,8 @@ function Tenants() {
   const [saving, setSaving] = useState(false);
   const [confirmando, setConfirmando] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
+  const [creando, setCreando] = useState(false);
+  const [formNuevo, setFormNuevo] = useState({ razon_social: '', nombre_comercial: '', ruc: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa', admin_email: '', admin_nombre: '' });
 
   const abrirEditar = (t) => {
     setForm({
@@ -1128,6 +1253,20 @@ function Tenants() {
       setEditando(null);
     } catch (e) {
       addNotificacion(`Error al actualizar: ${e.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const crearNuevo = async () => {
+    if (!formNuevo.razon_social?.trim()) return;
+    setSaving(true);
+    try {
+      await crearTenantConAdmin(formNuevo);
+      setCreando(false);
+      setFormNuevo({ razon_social: '', nombre_comercial: '', ruc: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa', admin_email: '', admin_nombre: '' });
+    } catch (e) {
+      addNotificacion(`Error al crear tenant: ${e.message}`);
     } finally {
       setSaving(false);
     }
@@ -1159,7 +1298,7 @@ function Tenants() {
     <>
       <div className="page-header">
         <div><h1 className="page-title">Empresas / Tenants</h1><div className="page-sub">{activos} tenants activos · alta operativa sin dependencia de pagos</div></div>
-        <div className="row"><button className="btn btn-secondary">{I.download} Reporte plataforma</button><button className="btn btn-primary">{I.plus} Nueva empresa</button></div>
+        <div className="row"><button className="btn btn-secondary">{I.download} Reporte plataforma</button><button className="btn btn-primary" onClick={() => setCreando(true)}>{I.plus} Nueva empresa</button></div>
       </div>
       <div className="kpi-grid">
         <div className="kpi-card"><div className="kpi-label">Tenants activos</div><div className="kpi-value">{activos}</div><div className="kpi-icon cyan">{I.building}</div></div>
@@ -1240,6 +1379,70 @@ function Tenants() {
           <div className="row" style={{gap:8, marginTop:24, justifyContent:'flex-end'}}>
             <button className="btn btn-secondary" onClick={() => setEditando(null)} disabled={saving}>Cancelar</button>
             <button className="btn btn-primary" onClick={guardar} disabled={saving || !form.razon_social?.trim()}>{saving ? 'Guardando...' : 'Guardar cambios'}</button>
+          </div>
+        </div>
+      </>}
+
+      {/* Modal: Nueva empresa */}
+      {creando && <>
+        <div className="side-panel-backdrop" onClick={() => setCreando(false)}/>
+        <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:500,zIndex:200,boxShadow:'0 20px 60px rgba(0,0,0,0.2)',maxHeight:'90vh',overflowY:'auto'}}>
+          <h3 style={{marginBottom:20}}>Nueva empresa / tenant</h3>
+          <div className="col" style={{gap:14}}>
+            <div className="input-group">
+              <label>Razón Social *</label>
+              <input className="input" value={formNuevo.razon_social} onChange={e => setFormNuevo(f => ({...f, razon_social: e.target.value}))} placeholder="Razón Social" autoFocus/>
+            </div>
+            <div className="input-group">
+              <label>Nombre Comercial</label>
+              <input className="input" value={formNuevo.nombre_comercial} onChange={e => setFormNuevo(f => ({...f, nombre_comercial: e.target.value}))} placeholder="Nombre que aparece en el sistema (opcional)"/>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+              <div className="input-group">
+                <label>RUC / NIT</label>
+                <input className="input" inputMode="numeric" maxLength={11} value={formNuevo.ruc} onChange={e => setFormNuevo(f => ({...f, ruc: sanitizeRuc(e.target.value)}))} placeholder="20000000000"/>
+              </div>
+              <div className="input-group">
+                <label>País</label>
+                <input className="input" value={formNuevo.pais} onChange={e => setFormNuevo(f => ({...f, pais: e.target.value}))} placeholder="PE"/>
+              </div>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+              <div className="input-group">
+                <label>Moneda</label>
+                <select className="input" value={formNuevo.moneda_base} onChange={e => setFormNuevo(f => ({...f, moneda_base: e.target.value}))}>
+                  <option value="PEN">PEN</option>
+                  <option value="USD">USD</option>
+                  <option value="COP">COP</option>
+                  <option value="CLP">CLP</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Estado</label>
+                <select className="input" value={formNuevo.estado} onChange={e => setFormNuevo(f => ({...f, estado: e.target.value}))}>
+                  <option value="activa">Activa</option>
+                  <option value="demo">Demo</option>
+                  <option value="suspendida">Suspendida</option>
+                </select>
+              </div>
+            </div>
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:14}}>
+              <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:10}}>Admin inicial (opcional) — si el email ya existe en el sistema se vinculará automáticamente</div>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                <div className="input-group">
+                  <label>Email admin</label>
+                  <input className="input" type="email" value={formNuevo.admin_email} onChange={e => setFormNuevo(f => ({...f, admin_email: e.target.value}))} placeholder="admin@empresa.com"/>
+                </div>
+                <div className="input-group">
+                  <label>Nombre admin</label>
+                  <input className="input" value={formNuevo.admin_nombre} onChange={e => setFormNuevo(f => ({...f, admin_nombre: e.target.value}))} placeholder="Nombre completo"/>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="row" style={{gap:8, marginTop:24, justifyContent:'flex-end'}}>
+            <button className="btn btn-secondary" onClick={() => setCreando(false)} disabled={saving}>Cancelar</button>
+            <button className="btn btn-primary" onClick={crearNuevo} disabled={saving || !formNuevo.razon_social?.trim()}>{saving ? 'Creando...' : 'Crear empresa'}</button>
           </div>
         </div>
       </>}
@@ -1498,6 +1701,24 @@ function CecoCebePanel({ onClose }) {
     const blob = new Blob([rows.join('\n')], { type:'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
   };
+  const exportXlsx = (data, headers, filename) => {
+    const ws = XLSX.utils.json_to_sheet(data.map(r => Object.fromEntries(headers.map(h => [h, r[h] ?? '']))), { header: headers });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Datos');
+    XLSX.writeFile(wb, filename);
+  };
+  const parseXlsx = file => new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = ev => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        resolve(XLSX.utils.sheet_to_json(ws, { defval: '' }));
+      } catch(e) { reject(e); }
+    };
+    r.onerror = reject;
+    r.readAsArrayBuffer(file);
+  });
 
   return (
     <>
@@ -1524,7 +1745,7 @@ function CecoCebePanel({ onClose }) {
           {tab === 'ceco' && (<>
             <div className="row" style={{ gap:10, marginBottom:18 }}>
               <button className="btn btn-secondary" onClick={() => { setCecoModalImport(true); setCecoImportRows([]); setCecoImportStep(1); }}>{I.download} Importar Excel</button>
-              <button className="btn btn-secondary" onClick={() => { const data = (centrosCosto||[]).map(c => ({ ...c, cebe_padre: (centrosBeneficio||[]).find(b=>b.id===c.cebe_id)?.nombre || '', responsable: c.responsable_nombre || '' })); exportCsv(data, ['codigo','nombre','tipo','responsable','cebe_padre','presupuesto_mensual','fecha_inicio','fecha_fin','descripcion','estado'], 'cecos.csv'); }}>{I.download} Exportar Excel</button>
+              <button className="btn btn-secondary" onClick={() => { const data = (centrosCosto||[]).map(c => ({ ...c, cebe_padre: (centrosBeneficio||[]).find(b=>b.id===c.cebe_id)?.nombre || '', responsable: c.responsable_nombre || '' })); exportXlsx(data, ['codigo','nombre','tipo','responsable','cebe_padre','presupuesto_mensual','fecha_inicio','fecha_fin','descripcion','estado'], 'cecos.xlsx'); }}>{I.download} Exportar Excel</button>
               <span className="badge badge-cyan">Validación de duplicados activa</span>
             </div>
 
@@ -1650,7 +1871,7 @@ function CecoCebePanel({ onClose }) {
           {tab === 'cebe' && (<>
             <div className="row" style={{ gap:10, marginBottom:18 }}>
               <button className="btn btn-secondary" onClick={() => { setCebeModalImport(true); setCebeImportRows([]); setCebeImportStep(1); }}>{I.download} Importar Excel</button>
-              <button className="btn btn-secondary" onClick={() => exportCsv(centrosBeneficio||[], ['codigo','nombre','tipo','responsable_nombre','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.csv')}>{I.download} Exportar Excel</button>
+              <button className="btn btn-secondary" onClick={() => exportXlsx(centrosBeneficio||[], ['codigo','nombre','tipo','responsable_nombre','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.xlsx')}>{I.download} Exportar Excel</button>
               <span className="badge badge-cyan">Validación de duplicados activa</span>
             </div>
 
@@ -1781,8 +2002,8 @@ function CecoCebePanel({ onClose }) {
               <div className="modal-body">
                 {cecoImportStep === 1 && (
                   <div>
-                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un CSV con columnas: <code>codigo, nombre, tipo, responsable, cebe_padre, presupuesto_mensual, estado</code></p>
-                    <input type="file" accept=".csv" onChange={e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>{ setCecoImportRows(validarCecoImport(parseCsv(ev.target.result))); setCecoImportStep(2); }; r.readAsText(f); }}/>
+                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con columnas: <code>codigo, nombre, tipo, responsable, cebe_padre, presupuesto_mensual, estado</code></p>
+                    <input type="file" accept=".xlsx,.xls" onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const rows = await parseXlsx(f); setCecoImportRows(validarCecoImport(rows)); setCecoImportStep(2); }}/>
                   </div>
                 )}
                 {cecoImportStep === 2 && (
@@ -1841,8 +2062,8 @@ function CecoCebePanel({ onClose }) {
               <div className="modal-body">
                 {cebeImportStep === 1 && (
                   <div>
-                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un CSV con columnas: <code>codigo, nombre, tipo, responsable_nombre, meta_ingresos, estado</code></p>
-                    <input type="file" accept=".csv" onChange={e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>{ setCebeImportRows(validarCebeImport(parseCsv(ev.target.result))); setCebeImportStep(2); }; r.readAsText(f); }}/>
+                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con columnas: <code>codigo, nombre, tipo, responsable_nombre, meta_ingresos, estado</code></p>
+                    <input type="file" accept=".xlsx,.xls" onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const rows = await parseXlsx(f); setCebeImportRows(validarCebeImport(rows)); setCebeImportStep(2); }}/>
                   </div>
                 )}
                 {cebeImportStep === 2 && (
@@ -5394,7 +5615,7 @@ function Parametros() {
 // RRHH ADMINISTRATIVO — Fase 3
 // ============================================================
 function RRHHAdmin() {
-  const { personalAdmin, partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, cxc = [], facturas = [] } = useApp();
+  const { personalAdmin, partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, cxc = [], facturas = [], activeParams } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -5402,6 +5623,7 @@ function RRHHAdmin() {
   const [editandoId, setEditandoId] = useState(null);
   const [altaSaving, setAltaSaving] = useState(false);
   const [altaError, setAltaError] = useState('');
+  const paramsHandledRef = useRef('');
   // Estados para subida de documentos en tab Documentos
   const [docUploadForm, setDocUploadForm] = useState({ tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '' });
   const [docUploadFile, setDocUploadFile] = useState(null);
@@ -5542,6 +5764,27 @@ function RRHHAdmin() {
     });
     setPanelAlta(true);
   };
+  useEffect(() => {
+    const key = JSON.stringify(activeParams || {});
+    if (!activeParams || paramsHandledRef.current === key) return;
+    if (activeParams.detail) {
+      const personaParam = todosPersonal.find(p => p.id === activeParams.detail);
+      if (personaParam) {
+        setSel(personaParam.id);
+        setView('personal');
+        paramsHandledRef.current = key;
+      }
+      return;
+    }
+    if (activeParams.action === 'new' && activeParams.email) {
+      setEditandoId(null);
+      setHorasBaseOverride(false);
+      setFormAlta({ ...formAltaBase, codigo: codigoSugeridoAdmin(), turno_id: '', horas_base_mes: '', dias_vacaciones: vacacionesSugeridas, email: activeParams.email });
+      setPanelAlta(true);
+      setView('personal');
+      paramsHandledRef.current = key;
+    }
+  }, [activeParams, todosPersonal, vacacionesSugeridas]);
   const eliminarColaborador = async (p) => {
     if (!window.confirm(`Eliminar a ${p.nombre}? Esta accion se reflejara en la base de datos.`)) return;
     try {

@@ -14,11 +14,20 @@ import { getSupabaseClient } from './lib/supabaseClient.js';
 function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
   const { authUser, usuarios, personalAdmin, personalOperativo, role } = useApp();
   const [screen, setScreen] = useState('home');
-  const trabajadorAsistencia = getTrabajadorAsistenciaMovil({ authUser, usuarios, personalAdmin, personalOperativo });
+  const fichaColaborador = getFichaColaboradorMovil({ authUser, usuarios, personalAdmin, personalOperativo });
+  const trabajadorAsistencia = fichaColaborador?.turno_id ? fichaColaborador : null;
   // Usar role.permisos.campo_modulos (de membresiaActiva, disponible desde el login)
   // en lugar de buscar en usuarios[] que puede estar vacío por RLS para roles no-admin.
-  const modulosUsuario = (role?.permisos?.campo_modulos?.length ? role.permisos.campo_modulos : null)
+  const modulosAsignados = (role?.permisos?.campo_modulos?.length ? role.permisos.campo_modulos : null)
     ?? getUsuarioCampoModulos(authUser, usuarios);
+  const esSupervisionSinFicha = !fichaColaborador && esAdminODireccionMovil(authUser, role);
+  const modulosSinFichaPermitidos = modulosAsignados.filter(m => m === 'vendedor');
+  const requiereConfiguracion = !fichaColaborador && !esSupervisionSinFicha && !modulosSinFichaPermitidos.length;
+  const modulosUsuario = esSupervisionSinFicha
+    ? modulosAsignados.filter(m => ['supervisor', 'gerencia'].includes(m))
+    : fichaColaborador
+      ? modulosAsignados
+      : modulosSinFichaPermitidos;
   const modulosUsuarioKey = modulosUsuario.join('|');
   const puedeVerAsistencia = Boolean(trabajadorAsistencia);
 
@@ -75,18 +84,37 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
           <div className="mobile-frame">
             <div className="mobile-notch"/>
             <div className="mobile-screen">
-              {profile === 'tecnico' && <TecnicoView screen={screen} setScreen={setScreen}/>}
-              {profile === 'logistica' && <LogisticaView screen={screen} setScreen={setScreen}/>}
-              {profile === 'vendedor' && <VendedorView screen={screen} setScreen={setScreen} dark={dark} setDark={setDark} onExit={onExit} profile={profile} setProfile={setProfile}/>}
-              {profile === 'compras' && <ComprasView screen={screen} setScreen={setScreen}/>}
-              {profile === 'supervisor' && <SupervisorView screen={screen} setScreen={setScreen}/>}
-              {profile === 'gerencia' && <GerenciaView screen={screen} setScreen={setScreen}/>}
-              {profile === 'asistencia' && <AsistenciaMobileView screen={screen} setScreen={setScreen}/>}
-              {profile === 'solicitudes' && <SolicitudesMovilView screen={screen} setScreen={setScreen}/>}
-              {profile === 'administrativo' && <AdministrativoView screen={screen} setScreen={setScreen}/>}
+              {requiereConfiguracion ? (
+                <MobileAccessMessage text="Tu acceso de campo requiere configuracion adicional. Contacta al administrador." />
+              ) : profiles.length === 0 ? (
+                <MobileAccessMessage text={esSupervisionSinFicha ? 'No tienes modulos de supervision habilitados para esta empresa.' : 'No tienes modulos moviles habilitados.'} />
+              ) : (
+                <>
+                  {profile === 'tecnico' && <TecnicoView screen={screen} setScreen={setScreen}/>}
+                  {profile === 'logistica' && <LogisticaView screen={screen} setScreen={setScreen}/>}
+                  {profile === 'vendedor' && <VendedorView screen={screen} setScreen={setScreen} dark={dark} setDark={setDark} onExit={onExit} profile={profile} setProfile={setProfile}/>}
+                  {profile === 'compras' && <ComprasView screen={screen} setScreen={setScreen}/>}
+                  {profile === 'supervisor' && <SupervisorView screen={screen} setScreen={setScreen}/>}
+                  {profile === 'gerencia' && <GerenciaView screen={screen} setScreen={setScreen}/>}
+                  {profile === 'asistencia' && <AsistenciaMobileView screen={screen} setScreen={setScreen}/>}
+                  {profile === 'solicitudes' && <SolicitudesMovilView screen={screen} setScreen={setScreen}/>}
+                  {profile === 'administrativo' && <AdministrativoView screen={screen} setScreen={setScreen}/>}
+                </>
+              )}
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileAccessMessage({ text }) {
+  return (
+    <div style={{height:'100%', display:'flex', alignItems:'center', justifyContent:'center', padding:24, textAlign:'center'}}>
+      <div>
+        <div style={{width:44, height:44, margin:'0 auto 14px', color:'var(--orange)'}}>{I.alert}</div>
+        <div style={{fontWeight:700, color:'var(--navy)', lineHeight:1.35}}>{text}</div>
       </div>
     </div>
   );
@@ -142,6 +170,10 @@ function getUsuarioMovil(authUser, usuarios = []) {
 }
 
 function getTrabajadorAsistenciaMovil({ authUser, usuarios = [], personalAdmin = [], personalOperativo = [] }) {
+  return getFichaColaboradorMovil({ authUser, usuarios, personalAdmin, personalOperativo });
+}
+
+function getFichaColaboradorMovil({ authUser, usuarios = [], personalAdmin = [], personalOperativo = [] }) {
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const emailAuth = normalizarTexto(authUser?.email || usuarioMovil.email);
   const usuarioSlug = slugPersona(usuarioMovil.nombre || emailAuth.split('@')[0]);
@@ -160,6 +192,17 @@ function getTrabajadorAsistenciaMovil({ authUser, usuarios = [], personalAdmin =
       (emailAuth && email === emailAuth) ||
       (usuarioSlug && nombreSlug === usuarioSlug);
   }) || null;
+}
+
+function esAdminODireccionMovil(authUser, role) {
+  const nivel = normalizarTexto(authUser?.nivel_jerarquico);
+  return Boolean(
+    authUser?.es_admin_empresa ||
+    authUser?.es_superadmin ||
+    role?.permisos?.tenant_admin ||
+    role?.permisos?.todo ||
+    ['direccion', 'jefatura'].includes(nivel)
+  );
 }
 
 function getUsuarioCampoModulos(authUser, usuarios = []) {

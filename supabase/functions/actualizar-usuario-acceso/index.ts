@@ -80,7 +80,7 @@ const estadoToProfile = (estado: string) => {
   return labels[value] || "Activo";
 };
 
-const allowedCampoModulos = new Set(["tecnico", "logistica", "vendedor", "compras", "supervisor", "gerencia", "asistencia"]);
+const allowedCampoModulos = new Set(["tecnico", "logistica", "vendedor", "compras", "supervisor", "gerencia", "asistencia", "administrativo"]);
 const legacyPerfilToModulo = (perfil: string | null) => {
   const value = String(perfil || "").toLowerCase();
   if (value.includes("vendedor")) return "vendedor";
@@ -89,6 +89,7 @@ const legacyPerfilToModulo = (perfil: string | null) => {
   if (value.includes("gerencia")) return "gerencia";
   if (value.includes("logistica")) return "logistica";
   if (value.includes("asistencia")) return "asistencia";
+  if (value.includes("admin")) return "administrativo";
   return "tecnico";
 };
 const moduloToPerfil = (modulo: string | null) => {
@@ -100,6 +101,7 @@ const moduloToPerfil = (modulo: string | null) => {
     supervisor: "Supervisor",
     gerencia: "Gerencia",
     asistencia: "Asistencia",
+    administrativo: "Administrativo",
   };
   return modulo ? (map[modulo] || "Tecnico") : null;
 };
@@ -235,6 +237,52 @@ const saveFunctionalAssignments = async (
     .order("principal", { ascending: false });
   if (savedError) throw savedError;
   return saved || [];
+};
+
+const syncAsistenciaMovilFlag = async (
+  adminClient: ReturnType<typeof createClient>,
+  params: {
+    empresaId: string;
+    email: string;
+    habilitar: boolean;
+  },
+) => {
+  const normalizedEmail = normalizeEmail(params.email);
+  if (!params.empresaId || !normalizedEmail) return;
+
+  const updateTable = async (table: "personal_operativo" | "personal_administrativo") => {
+    const { data: rows, error: lookupError } = await adminClient
+      .from(table)
+      .select("id, turno_id")
+      .eq("empresa_id", params.empresaId)
+      .ilike("email", normalizedEmail);
+    if (lookupError) throw lookupError;
+    if (!rows?.length) return;
+
+    const now = new Date().toISOString();
+    const trueIds = params.habilitar ? rows.filter((row) => Boolean(row.turno_id)).map((row) => row.id) : [];
+    const falseIds = params.habilitar
+      ? rows.filter((row) => !row.turno_id).map((row) => row.id)
+      : rows.map((row) => row.id);
+
+    if (trueIds.length) {
+      const { error } = await adminClient
+        .from(table)
+        .update({ acceso_asistencia_movil: true, updated_at: now })
+        .in("id", trueIds);
+      if (error) throw error;
+    }
+    if (falseIds.length) {
+      const { error } = await adminClient
+        .from(table)
+        .update({ acceso_asistencia_movil: false, updated_at: now })
+        .in("id", falseIds);
+      if (error) throw error;
+    }
+  };
+
+  await updateTable("personal_operativo");
+  await updateTable("personal_administrativo");
 };
 
 serve(async (req) => {
@@ -463,6 +511,16 @@ serve(async (req) => {
     });
   } catch (error) {
     return jsonResponse({ success: false, error: error instanceof Error ? error.message : "No se pudieron guardar las asignaciones funcionales." }, 500);
+  }
+
+  try {
+    await syncAsistenciaMovilFlag(adminClient, {
+      empresaId,
+      email,
+      habilitar: accesoCampo && campoModulos.includes("asistencia"),
+    });
+  } catch (error) {
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : "No se pudo sincronizar el acceso de asistencia movil." }, 500);
   }
 
   return jsonResponse({

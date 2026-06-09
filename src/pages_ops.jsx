@@ -10033,7 +10033,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const gratAnual = tieneGratif ? sueldoProporcional + asignacionFamiliar : 0;
   const remComputable = sueldoProporcional + asignacionFamiliar + (tieneGratif ? gratAnual / 6 : 0);
   const cts = tieneCts ? remComputable / (esPequena ? 24 : 12) : 0;
-  const gratificacion = tieneGratif ? remComputable / (esPequena ? 12 : 6) : 0;
+  const gratificacion = tieneGratif ? (sueldoProporcional + asignacionFamiliar) / (esPequena ? 12 : 6) : 0;
   const bonifExtraordinaria = tieneGratif ? gratificacion * 0.09 : 0;
   const diasVacaciones = regimen_laboral_empresa === 'general' ? 30 : 15;
   const vacaciones = (sueldoProporcional + asignacionFamiliar) / 12 * (diasVacaciones / 30);
@@ -10684,24 +10684,23 @@ function Nomina() {
   const mesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const hoy = new Date();
 
-  // Auto-generar período del mes actual si no existe
+  // Auto-generar período del mes actual si no existe aún para este mes
   useEffect(() => {
-    if (!periodosNomina || periodosNomina.length === 0) {
-      const anio = hoy.getFullYear();
-      const mes = hoy.getMonth() + 1;
-      const mesN = mesNombres[mes - 1];
-      if (empresaCfg.frecuencia_pago === 'quincenal') {
-        const p1 = { id: `nom_${anio}_${mes}_1`, empresa_id: empresa?.id, anio, mes, quincena: 1, periodo: `${mesN} ${anio} — 1ra quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q1 || 10).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q1 || 15).padStart(2,'0')}` };
-        const p2 = { id: `nom_${anio}_${mes}_2`, empresa_id: empresa?.id, anio, mes, quincena: 2, periodo: `${mesN} ${anio} — 2da quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q2 || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q2 || 30).padStart(2,'0')}` };
-        setPeriodosNomina([p1, p2]);
-        addNotificacion(`Períodos de ${mesN} ${anio} generados automáticamente.`);
-      } else {
-        const p = { id: `nom_${anio}_${mes}`, empresa_id: empresa?.id, anio, mes, quincena: null, periodo: `${mesN} ${anio}`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_mensual || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_mensual || 30).padStart(2,'0')}` };
-        setPeriodosNomina([p]);
-        addNotificacion(`Período de ${mesN} ${anio} generado automáticamente.`);
-      }
+    const anio = hoy.getFullYear();
+    const mes = hoy.getMonth() + 1;
+    if (periodosNomina.some(p => p.anio === anio && p.mes === mes)) return;
+    const mesN = mesNombres[mes - 1];
+    if (empresaCfg.frecuencia_pago === 'quincenal') {
+      const p1 = { id: `nom_${anio}_${mes}_1`, empresa_id: empresa?.id, anio, mes, quincena: 1, periodo: `${mesN} ${anio} — 1ra quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q1 || 10).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q1 || 15).padStart(2,'0')}` };
+      const p2 = { id: `nom_${anio}_${mes}_2`, empresa_id: empresa?.id, anio, mes, quincena: 2, periodo: `${mesN} ${anio} — 2da quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q2 || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q2 || 30).padStart(2,'0')}` };
+      setPeriodosNomina(prev => [...prev, p1, p2]);
+      addNotificacion(`Períodos de ${mesN} ${anio} generados automáticamente.`);
+    } else {
+      const p = { id: `nom_${anio}_${mes}`, empresa_id: empresa?.id, anio, mes, quincena: null, periodo: `${mesN} ${anio}`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_mensual || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_mensual || 30).padStart(2,'0')}` };
+      setPeriodosNomina(prev => [...prev, p]);
+      addNotificacion(`Período de ${mesN} ${anio} generado automáticamente.`);
     }
-  }, []);
+  }, [periodosNomina.length]);
 
   const periodoActivo = periodoId ? periodosNomina.find(p => p.id === periodoId) : null;
   const periodo = periodoActivo || periodosNomina[0];
@@ -10719,16 +10718,14 @@ function Nomina() {
   const periodoIni = periodo ? new Date(periodo.anio, periodo.mes - 1, 1) : null;
   const periodoFin = periodo ? new Date(periodo.anio, periodo.mes, 0) : null;
   const estaActivoEnPeriodo = (p) => {
-    if (!periodoIni || !periodoFin) return true;
-    const ing  = p.fecha_inicio_contrato || p.fecha_ingreso || null;
-    const cese = p.fecha_fin_contrato    || p.fecha_cese    || null;
-    if (ing  && new Date(`${ing}T00:00:00`)  > periodoFin) return false;
-    if (cese && new Date(`${cese}T00:00:00`) < periodoIni) return false;
+    if (!periodoFin) return true;
+    const ing = p.fecha_inicio_contrato || p.fecha_ingreso || null;
+    if (ing && new Date(`${ing}T00:00:00`) > periodoFin) return false;
     return true;
   };
   const trabajadores = [
-    ...personalOperativo.filter(p => !esModalidadHonorarios(p)).filter(estaActivoEnPeriodo).map(p => ({ ...p, area: p.area || 'Operativo', tipo: 'operativo' })),
-    ...personalAdmin.filter(p => !esModalidadHonorarios(p)).filter(estaActivoEnPeriodo).map(p => ({ ...p, area: p.area || 'Administrativo', tipo: 'admin' })),
+    ...personalOperativo.filter(p => p.estado_laboral === 'activo' && !esModalidadHonorarios(p) && estaActivoEnPeriodo(p)).map(p => ({ ...p, area: p.area || 'Operativo', tipo: 'operativo' })),
+    ...personalAdmin.filter(p => p.estado_laboral === 'activo' && !esModalidadHonorarios(p) && estaActivoEnPeriodo(p)).map(p => ({ ...p, area: p.area || 'Administrativo', tipo: 'admin' })),
   ];
 
   useEffect(() => {
@@ -10871,7 +10868,7 @@ function Nomina() {
     ['plame', periodo?.estado === 'cerrado' ? 'Reporte PLAME' : 'PLAME'],
   ];
 
-  const proximoCorte = periodosNomina.find(p => p.estado === 'abierto' || p.estado === 'en_proceso');
+  const proximoCorte = periodo;
   const regimenBadge = { general: 'badge-gray', pequena_empresa: 'badge-cyan', microempresa: 'badge-purple' };
 
   return (
@@ -10931,7 +10928,7 @@ function Nomina() {
                   <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
                     {p.quincena && <span className={`badge ${p.quincena===1?'badge-cyan':'badge-purple'}`}>{p.quincena === 1 ? `1ra quincena (${empresaCfg.pct_quincena_1}%)` : `2da quincena (${100-empresaCfg.pct_quincena_1}%)`}</span>}
                     <span className={`badge ${estadoBadge(p.estado)}`}>{p.estado}</span>
-                    {p.total_trabajadores > 0 && <span className="badge badge-gray">{p.total_trabajadores} trabajadores</span>}
+                    {(() => { const n = p.id === periodo?.id ? resumen.total_trabajadores : (p.total_trabajadores || 0); return n > 0 ? <span className="badge badge-gray">{n} trabajadores</span> : null; })()}
                     {(p.estado === 'en_proceso' || p.estado === 'cerrado') && p.total_neto > 0 && <span style={{fontWeight:700, color:'var(--green)', fontSize:14}}>Neto: {money(p.total_neto)}</span>}
                   </div>
                 </div>
@@ -11165,7 +11162,7 @@ function Nomina() {
 }
 
 function RRHH_Operativo() {
-  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [] } = useApp();
+  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('personal');
   const personal = personalOperativo;
@@ -11206,6 +11203,7 @@ function RRHH_Operativo() {
   const [costoExtraOverride, setCostoExtraOverride] = useState(false);
   const [altaError, setAltaError] = useState('');
   const [altaSaving, setAltaSaving] = useState(false);
+  const paramsHandledRef = useRef('');
   const modalidadAlta = normalizarModalidadContrato(formAlta.modalidad);
   const esHonorarios = modalidadAlta === 'honorarios';
   const tipoContratoAlta = normalizarTipoContratoDuracion(formAlta.tipo_contrato, modalidadAlta);
@@ -11329,6 +11327,28 @@ function RRHH_Operativo() {
     });
     setPanelAlta(true);
   };
+  useEffect(() => {
+    const key = JSON.stringify(activeParams || {});
+    if (!activeParams || paramsHandledRef.current === key) return;
+    if (activeParams.detail) {
+      const tecnicoParam = personal.find(p => p.id === activeParams.detail);
+      if (tecnicoParam) {
+        setSelTecnico(tecnicoParam);
+        setTab('personal');
+        paramsHandledRef.current = key;
+      }
+      return;
+    }
+    if (activeParams.action === 'new' && activeParams.email) {
+      setEditandoId(null);
+      setHorasBaseOverride(false);
+      setCostoExtraOverride(false);
+      setFormAlta({ ...formAltaBase, codigo: codigoSugeridoTecnico(), turno_id: '', horas_base_mes: '', email: activeParams.email });
+      setPanelAlta(true);
+      setTab('personal');
+      paramsHandledRef.current = key;
+    }
+  }, [activeParams, personal]);
   const eliminarTecnico = async (p) => {
     if (!window.confirm(`Eliminar a ${p.nombre}? Esta accion se reflejara en la base de datos.`)) return;
     try {
@@ -11355,6 +11375,10 @@ function RRHH_Operativo() {
     }
     if (modalidad === 'honorarios' && (!formAlta.ruc_colaborador || !isValidRuc(formAlta.ruc_colaborador))) {
       setAltaError('El RUC es obligatorio para colaboradores con modalidad Honorarios (11 dígitos, comenzar con 1 o 2).');
+      return;
+    }
+    if (!formAlta.fecha_ingreso) {
+      setAltaError('La fecha de ingreso es obligatoria.');
       return;
     }
     if (requiereFin && !formAlta.fecha_fin) {
@@ -12211,7 +12235,7 @@ function RRHH_Operativo() {
               <div className="input-group"><label>Especialidad secundaria <span className="text-muted">(opcional)</span></label><select className="select" value={formAlta.especialidad2} onChange={e=>setFormAlta(v=>({...v,especialidad2:e.target.value}))}><option value="">Ninguna</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>
               <div className="input-group"><label>Sede base</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
               <div className="input-group"><label>Supervisor directo</label><select className="select" value={formAlta.supervisor_id} onChange={e=>setFormAlta(v=>({...v,supervisor_id:e.target.value}))}><option value="">Sin supervisor asignado</option>{supervisorOptions.map(p=><option key={p.id} value={p.id}>{p.nombre} - {p.cargo}</option>)}</select>{!supervisorOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Crea o edita un colaborador con perfil de campo Supervisor.</div>}</div>
-              <div className="input-group"><label>Fecha de ingreso</label><input className="input" type="date" value={formAlta.fecha_ingreso} onChange={e=>setFormAlta(v=>({...v,fecha_ingreso:e.target.value}))}/></div>
+              <div className="input-group"><label>Fecha de ingreso *</label><input className="input" type="date" required value={formAlta.fecha_ingreso} onChange={e=>setFormAlta(v=>({...v,fecha_ingreso:e.target.value}))}/></div>
               {mostrarFechaFinAlta && <div className="input-group"><label>{esHonorarios ? 'Fin del encargo *' : 'Fecha fin contrato *'}</label><input className="input" type="date" required value={formAlta.fecha_fin} onChange={e=>setFormAlta(v=>({...v,fecha_fin:e.target.value}))}/></div>}
               <div className="input-group"><label>Estado inicial</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="disponible">Disponible</option><option value="inactivo">Inactivo</option></select></div>
             </div>
