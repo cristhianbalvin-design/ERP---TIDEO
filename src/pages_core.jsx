@@ -580,56 +580,39 @@ function Dashboard({ role }) {
             <table className="tbl">
               <thead><tr><th>OT</th><th>Cliente</th><th>SLA</th><th>Responsable</th></tr></thead>
               <tbody>
-                {otsActivas.slice(0, 4).map(o => {
-                  const fechaFin = o.fecha_fin || o.fecha_programada;
-                  const diasFin = fechaFin ? Math.ceil((new Date(fechaFin) - new Date(todayDash)) / 86400000) : null;
-                  const slaEst = diasFin === null ? 'ok' : diasFin < 0 ? 'vencido' : diasFin <= 3 ? 'riesgo' : 'ok';
-                  const clienteNombre = (cuentas || []).find(c => c.id === o.cuenta_id)?.razon_social || o.cliente || '—';
-                  const responsable = o.tecnico_responsable || o.responsable || '—';
-                  return (
-                    <tr key={o.id}>
-                      <td className="mono">{o.numero || o.id}</td>
-                      <td>{clienteNombre}</td>
-                      <td><span className={'badge ' + (slaEst==='vencido'?'badge-red':slaEst==='riesgo'?'badge-orange':'badge-green')}>{slaEst==='vencido'?'Vencido':slaEst==='riesgo'?'En riesgo':'En plazo'}</span></td>
-                      <td className="text-muted">{responsable}</td>
-                    </tr>
-                  );
-                })}
+                {MOCK.ots.filter(o => o.estado === 'ejecucion' || o.sla === 'vencido').slice(0,4).map(o => (
+                  <tr key={o.id}>
+                    <td className="mono">{o.id}</td>
+                    <td>{o.cliente}</td>
+                    <td><span className={'badge ' + (o.sla==='vencido'?'badge-red':o.sla==='riesgo'?'badge-orange':'badge-green')}>{o.sla==='vencido'?'Vencido':o.sla==='riesgo'?'En riesgo':'En plazo'}</span></td>
+                    <td className="text-muted">{o.responsable}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
 
         <div className="card">
-          {(() => {
-            const partesEnRevision = (partes || []).filter(p => p.estado === 'en_revision');
-            return (
-              <>
-                <div className="card-head">
-                  <h3>Pendientes desde campo</h3>
-                  {partesEnRevision.length > 0 && <span className="badge badge-cyan">{partesEnRevision.length} por revisar</span>}
+          <div className="card-head">
+            <h3>Pendientes desde campo</h3>
+            <span className="badge badge-cyan">2 por revisar</span>
+          </div>
+          <div className="card-body col" style={{gap:10}}>
+            {MOCK.compras.filter(c => c.campo).map(c => (
+              <div key={c.id} className="row" style={{gap:12, padding:10, border:'1px solid var(--border)', borderRadius:8}}>
+                <div className="kpi-icon cyan" style={{position:'static',width:34,height:34}}>{I.camera}</div>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontWeight:600, fontSize:13}}>Compra {c.id} · {c.proveedor}</div>
+                  <div className="text-muted" style={{fontSize:12}}>{c.ot} · {money(c.monto)}</div>
                 </div>
-                <div className="card-body col" style={{gap:10}}>
-                  {partesEnRevision.slice(0, 3).map(p => {
-                    const otInfo = (ots || []).find(o => o.id === p.ot_id);
-                    return (
-                      <div key={p.id} className="row" style={{gap:12, padding:10, border:'1px solid var(--border)', borderRadius:8}}>
-                        <div className="kpi-icon cyan" style={{position:'static',width:34,height:34}}>{I.camera}</div>
-                        <div style={{flex:1, minWidth:0}}>
-                          <div style={{fontWeight:600, fontSize:13}}>Parte {p.fecha || p.id} · {p.tecnico || '—'}</div>
-                          <div className="text-muted" style={{fontSize:12}}>{otInfo?.numero || p.ot_id || '—'}</div>
-                        </div>
-                        <span className="badge badge-cyan">Desde campo</span>
-                      </div>
-                    );
-                  })}
-                  {partesEnRevision.length === 0 && (
-                    <div style={{padding:10, fontSize:12, color:'var(--fg-muted)', textAlign:'center'}}>Sin partes pendientes de aprobación</div>
-                  )}
-                </div>
-              </>
-            );
-          })()}
+                <span className="badge badge-cyan">Desde campo</span>
+              </div>
+            ))}
+            <div style={{padding:10, border:'1px dashed var(--border)', borderRadius:8, fontSize:12, color:'var(--fg-muted)', textAlign:'center'}}>
+              3 partes diarios pendientes de aprobación del supervisor
+            </div>
+          </div>
         </div>
       </div>
 
