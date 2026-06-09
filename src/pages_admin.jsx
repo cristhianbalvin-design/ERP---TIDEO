@@ -1687,7 +1687,6 @@ function CecoCebePanel({ onClose }) {
     else if ((centrosCosto||[]).some(c=>c.codigo===r.codigo) || rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado');
     if (!r.nombre) errores.push('Nombre vacío');
     if (!r.tipo) errores.push('Tipo vacío');
-    else if (!CECO_TIPOS.includes(tipoNorm)) errores.push(`Tipo inválido: "${r.tipo}". Usa: area_funcional, proyecto, sede, temporal`);
     if (r.cebe_padre && !findCebe(r.cebe_padre)) errores.push(`CEBE "${r.cebe_padre}" no encontrado`);
     if (r.estado && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido (usa "activo" o "inactivo")');
     const cebe = findCebe(r.cebe_padre);
