@@ -416,15 +416,12 @@ const getPersonalAsignableOT = (personalOperativo = [], personalAdmin = []) => {
 };
 
 function Dashboard({ role }) {
-  const { financiamientos, navigate, empresa, cxp, leads, oportunidades, cotizaciones, ots, facturas, cxc, cuentas, healthScoresDetalle, renovaciones, partes, comprasGastos, tcUSDaPEN } = useApp();
+  const { financiamientos, navigate, empresa, cxp } = useApp();
   const [cebeWarning, setCebeWarning] = useState(false);
   const canFin = role.permisos.ver_finanzas || role.permisos.todo;
   const isSuperadmin = role.permisos.plataforma;
 
   const todayDash = new Date().toISOString().split('T')[0];
-  const mesActual = todayDash.slice(0, 7);
-
-  // CxP
   const cxpVencidas = (cxp || []).filter(c => {
     if (!c.fecha_vencimiento || Number(c.saldo ?? c.monto_total ?? 0) <= 0 || c.estado === 'pagada') return false;
     return c.fecha_vencimiento < todayDash;
@@ -435,78 +432,6 @@ function Dashboard({ role }) {
     return dias >= 0 && dias <= 7;
   });
   const montoCxpVencido = cxpVencidas.reduce((s, c) => s + Number(c.saldo ?? c.monto_total ?? 0), 0);
-
-  // Helper: agrupa {monto, moneda}[] → strings formateados por moneda, PEN primero
-  const monedaBase = empresa?.moneda || empresa?.moneda_base || 'PEN';
-  const formatPorMoneda = (items) => {
-    const acc = {};
-    items.forEach(({ monto, moneda }) => {
-      const m = normalizeCurrencyCode(moneda || monedaBase);
-      acc[m] = (acc[m] || 0) + monto;
-    });
-    const entries = Object.entries(acc).filter(([, v]) => v > 0).sort(([a], [b]) => a === 'PEN' ? -1 : b === 'PEN' ? 1 : a.localeCompare(b));
-    return entries.length ? entries.map(([m, v]) => moneyCurrency(Math.round(v), m)) : [moneyCurrency(0, monedaBase)];
-  };
-
-  // Leads este mes
-  const leadsEsteMes = (leads || []).filter(l => (l.created_at || '').startsWith(mesActual)).length;
-
-  // Oportunidades activas (pipeline abierto) — por moneda
-  const oppsActivas = (oportunidades || []).filter(o => !['ganada', 'perdida'].includes(String(o.etapa || o.estado || '').toLowerCase()));
-  const oppsActivasDisplay = formatPorMoneda(oppsActivas.map(o => getOppMontoReal(o, cotizaciones || [])));
-
-  // Ventas del mes = oportunidades ganadas cerradas este mes — por moneda
-  const ventasMesItems = (oportunidades || [])
-    .filter(o => ['ganada'].includes(String(o.etapa || o.estado || '').toLowerCase()))
-    .filter(o => (o.fecha_cierre || o.updated_at || '').startsWith(mesActual))
-    .map(o => getOppMontoReal(o, cotizaciones || []));
-  const ventasMesDisplay = formatPorMoneda(ventasMesItems);
-
-  // OTs activas y SLA
-  const ESTADOS_OT_ACTIVOS = new Set(['programada', 'en_ejecucion', 'ejecucion', 'pendiente_cierre', 'en ejecucion']);
-  const otsActivas = (ots || []).filter(o => ESTADOS_OT_ACTIVOS.has(String(o.estado || '').toLowerCase()));
-  const otsEnRiesgo = otsActivas.filter(o => {
-    const fechaFin = o.fecha_fin || o.fecha_programada;
-    if (!fechaFin) return false;
-    return Math.ceil((new Date(fechaFin) - new Date(todayDash)) / 86400000) <= 3;
-  });
-
-  // Facturación del mes — por moneda
-  const facturacionMesDisplay = formatPorMoneda(
-    (facturas || []).filter(f => f.estado !== 'anulada' && (f.fecha_emision || '').startsWith(mesActual))
-      .map(f => ({ monto: Number(f.total || 0), moneda: f.moneda || monedaBase }))
-  );
-
-  // Pendiente por cobrar (CxC) — por moneda
-  const saldoCxc = c => Number(c?.saldo ?? c?.monto_total ?? c?.total ?? 0);
-  const cxcActivas = (cxc || []).filter(c => !['anulada', 'cobrada'].includes(c.estado) && saldoCxc(c) > 0);
-  const cxcVencidas = cxcActivas.filter(c => c.fecha_vencimiento && c.fecha_vencimiento < todayDash);
-  const pendienteCobrarDisplay = formatPorMoneda(cxcActivas.map(c => ({ monto: saldoCxc(c), moneda: c.moneda || monedaBase })));
-  const cxcVencidoDisplay = formatPorMoneda(cxcVencidas.map(c => ({ monto: saldoCxc(c), moneda: c.moneda || monedaBase })));
-  const hayCxcVencida = cxcVencidas.length > 0;
-
-  // Barras: últimos 6 meses de facturación y gastos (convertido a moneda base PEN)
-  const barsData = (() => {
-    const now = new Date();
-    const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-    const tc = tcUSDaPEN || 3.8;
-    const toPEN = (monto, moneda) => normalizeCurrencyCode(moneda || monedaBase) === 'USD' ? monto * tc : monto;
-    return Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
-      const mes = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const v = (facturas || []).filter(f => f.estado !== 'anulada' && (f.fecha_emision || '').startsWith(mes)).reduce((s, f) => s + toPEN(Number(f.total || 0), f.moneda), 0);
-      const c = (comprasGastos || []).filter(g => (g.fecha || '').startsWith(mes)).reduce((s, g) => s + toPEN(Number(g.total || g.monto || 0), g.moneda), 0);
-      return { m: MESES_CORTOS[d.getMonth()], v: Math.round(v / 1000), c: Math.round(c / 1000) };
-    });
-  })();
-
-  // Donut: OTs por estado
-  const donutData = [
-    { l: 'Programadas',      v: (ots || []).filter(o => o.estado === 'programada').length,                                          c: 'var(--cyan)' },
-    { l: 'En ejecución',     v: (ots || []).filter(o => ['en_ejecucion','ejecucion'].includes(String(o.estado||'').toLowerCase())).length, c: 'var(--orange)' },
-    { l: 'Cerradas técnicas', v: (ots || []).filter(o => o.estado === 'pendiente_cierre').length,                                   c: 'var(--purple)' },
-    { l: 'Facturadas',       v: (ots || []).filter(o => o.estado === 'cerrada').length,                                             c: 'var(--green)' },
-  ];
 
   useEffect(() => {
     let mounted = true;
@@ -522,26 +447,26 @@ function Dashboard({ role }) {
   }, [empresa?.id]);
 
   const kpis = [
-    { label: 'Leads este mes', val: String(leadsEsteMes), icon: I.target, color: 'cyan' },
-    { label: 'Oportunidades activas', val: oppsActivasDisplay, icon: I.pipe, color: 'purple' },
-    { label: 'Ventas del mes', val: ventasMesDisplay, icon: I.dollar, color: 'green', fin: true },
-    { label: 'OTs activas', val: String(otsActivas.length), sub: otsEnRiesgo.length > 0 ? `${otsEnRiesgo.length} en riesgo SLA` : undefined, icon: I.wrench, color: 'orange' },
-    { label: 'Facturación del mes', val: facturacionMesDisplay, icon: I.receipt, color: 'cyan', fin: true },
-    { label: 'Pendiente por cobrar', val: pendienteCobrarDisplay, sub: hayCxcVencida ? cxcVencidoDisplay.join(' · ') + ' vencido' : 'Al día', icon: I.dollar, color: hayCxcVencida ? 'danger' : 'green', fin: true },
+    { label: 'Leads este mes', val: '24', delta: '+12%', up: true, icon: I.target, color: 'cyan' },
+    { label: 'Oportunidades activas', val: money(185000), delta: '+8%', up: true, icon: I.pipe, color: 'purple' },
+    { label: 'Ventas del mes', val: money(342000), delta: '+15%', up: true, icon: I.dollar, color: 'green', fin: true },
+    { label: 'OTs activas', val: '12', sub: '3 en riesgo SLA', icon: I.wrench, color: 'orange' },
+    { label: 'Facturación del mes', val: money(298000), delta: '+6%', up: true, icon: I.receipt, color: 'cyan', fin: true },
+    { label: 'Pendiente por cobrar', val: money(172900), sub: 'S/ 51.3K vencido', icon: I.dollar, color: 'danger', fin: true },
     { label: 'CxP vencidas', val: money(montoCxpVencido), sub: `${cxpVencidas.length} documento${cxpVencidas.length !== 1 ? 's' : ''}`, icon: I.clock, color: 'danger', fin: true },
     { label: 'CxP por vencer (7d)', val: String(cxpPorVencer7.length), sub: cxpPorVencer7.length > 0 ? 'Requieren atención' : 'Al día', icon: I.bell, color: cxpPorVencer7.length > 0 ? 'orange' : 'green', fin: true },
   ].filter(k => !k.fin || canFin);
 
   const healthDist = {
-    verde:    (healthScoresDetalle || []).filter(h => h.semaforo === 'verde').length,
-    amarillo: (healthScoresDetalle || []).filter(h => h.semaforo === 'amarillo').length,
-    rojo:     (healthScoresDetalle || []).filter(h => h.semaforo === 'rojo').length,
+    verde:    MOCK.healthScoresDetalle.filter(h => h.semaforo === 'verde').length,
+    amarillo: MOCK.healthScoresDetalle.filter(h => h.semaforo === 'amarillo').length,
+    rojo:     MOCK.healthScoresDetalle.filter(h => h.semaforo === 'rojo').length,
   };
-  const atRisk = (healthScoresDetalle || [])
+  const atRisk = MOCK.healthScoresDetalle
     .filter(h => h.score_total < 50)
-    .map(h => ({ ...h, nombre: (cuentas || []).find(c => c.id === h.cuenta_id)?.razon_social || h.cuenta_id }));
-  const cuentaNombre = id => (cuentas || []).find(c => c.id === id)?.razon_social || id;
-  const upcomingRenovaciones = [...(renovaciones || [])]
+    .map(h => ({ ...h, nombre: MOCK.cuentas.find(c => c.id === h.cuenta_id)?.razon_social || h.cuenta_id }));
+  const cuentaNombre = id => MOCK.cuentas.find(c => c.id === id)?.razon_social || id;
+  const upcomingRenovaciones = [...(MOCK.renovaciones || [])]
     .sort((a, b) => a.dias_restantes - b.dias_restantes)
     .slice(0, 3);
   const deudaPorVencer = (financiamientos || []).filter(f => {
@@ -587,16 +512,7 @@ function Dashboard({ role }) {
         {kpis.map((k, i) => (
           <div key={i} className="kpi-card hover-raise">
             <div className="kpi-label">{k.label}</div>
-            <div className="kpi-value">
-              {Array.isArray(k.val)
-                ? k.val.map((v, j) => (
-                    <div key={j} style={j > 0 ? { fontSize: '0.72em', fontWeight: 700, lineHeight: 1.3, marginTop: 2 } : {}}>
-                      {v}
-                    </div>
-                  ))
-                : k.val
-              }
-            </div>
+            <div className="kpi-value">{k.val}</div>
             {k.delta && <div className={'kpi-delta ' + (k.up ? 'up' : 'down')}>{k.up ? I.arrowUp : I.arrowDown}{k.delta} vs mes anterior</div>}
             {k.sub && <div className="kpi-delta" style={{color: k.color === 'danger' ? 'var(--danger)' : 'var(--fg-muted)'}}>{k.sub}</div>}
             <div className={'kpi-icon ' + k.color}>{k.icon}</div>
@@ -608,24 +524,24 @@ function Dashboard({ role }) {
         <div className="card">
           <div className="card-head">
             <h3>Ventas vs Costos — Últimos 6 meses</h3>
-            {(() => {
-              const totalV = barsData.reduce((s, d) => s + d.v, 0);
-              const totalC = barsData.reduce((s, d) => s + d.c, 0);
-              const margen = totalV > 0 ? Math.round((totalV - totalC) / totalV * 100) : null;
-              return margen !== null ? <span className="badge badge-cyan">Margen prom. {margen}%</span> : null;
-            })()}
+            <span className="badge badge-cyan">Margen prom. 37%</span>
           </div>
           <div className="card-body">
-            <BarsChart data={barsData}/>
+            <BarsChart/>
           </div>
         </div>
 
         <div className="card">
           <div className="card-head"><h3>OTs por estado</h3></div>
           <div className="card-body">
-            <DonutChart data={donutData}/>
+            <DonutChart/>
             <div className="col mt-4" style={{gap:6}}>
-              {donutData.map((x,i) => (
+              {[
+                {l:'Programadas', v:4, c:'var(--cyan)'},
+                {l:'En ejecución', v:5, c:'var(--orange)'},
+                {l:'Cerradas técnicas', v:2, c:'var(--purple)'},
+                {l:'Facturadas', v:3, c:'var(--green)'},
+              ].map((x,i) => (
                 <div key={i} className="row" style={{justifyContent:'space-between', fontSize:12}}>
                   <span className="row" style={{gap:6}}><span style={{width:8,height:8,borderRadius:999,background:x.c}}/>{x.l}</span>
                   <strong>{x.v}</strong>
@@ -786,12 +702,16 @@ function Dashboard({ role }) {
 }
 
 // Simple bar/donut charts
-function BarsChart({ data }) {
-  const max = Math.max(10, ...data.map(d => Math.max(d.v, d.c))) * 1.1;
-  const ticks = [0, Math.round(max * 0.25), Math.round(max * 0.5), Math.round(max * 0.75), Math.round(max)];
+function BarsChart() {
+  const data = [
+    { m:'Nov', v:280, c:180 }, { m:'Dic', v:320, c:200 },
+    { m:'Ene', v:260, c:175 }, { m:'Feb', v:310, c:195 },
+    { m:'Mar', v:355, c:220 }, { m:'Abr', v:342, c:216 },
+  ];
+  const max = 400;
   return (
     <svg viewBox="0 0 600 240" width="100%" height="240">
-      {ticks.map((y, i) => (
+      {[0, 100, 200, 300, 400].map((y, i) => (
         <g key={i}>
           <line x1="40" y1={220 - y/max*200} x2="590" y2={220 - y/max*200} stroke="var(--border-subtle)"/>
           <text x="32" y={224 - y/max*200} textAnchor="end" fontSize="10" fill="var(--fg-subtle)">{y}K</text>
@@ -817,8 +737,13 @@ function BarsChart({ data }) {
   );
 }
 
-function DonutChart({ data }) {
-  const segs = data.map(d => ({ v: d.v, c: d.c }));
+function DonutChart() {
+  const segs = [
+    { v: 4, c: 'var(--cyan)' },
+    { v: 5, c: 'var(--orange)' },
+    { v: 2, c: 'var(--purple)' },
+    { v: 3, c: 'var(--green)' },
+  ];
   const total = segs.reduce((s, x) => s + x.v, 0);
   let offset = 0;
   const R = 60, C = 2 * Math.PI * R;
