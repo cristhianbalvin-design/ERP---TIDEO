@@ -139,6 +139,7 @@ const normalizarTurno = (t = {}) => ({
 const toTurnoRow = (empresaId, turno = {}) => {
   return {
     empresa_id: empresaId,
+    codigo: turno.codigo || null,
     nombre: turno.nombre,
     hora_entrada: turno.hora_entrada,
     hora_salida: turno.hora_salida,

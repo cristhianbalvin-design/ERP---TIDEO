@@ -77,7 +77,12 @@ export function TurnosHorarios() {
     setSaving(true);
     setSaveError('');
     const horas = Math.floor((timeToMinutes(form.hora_salida) + (form.cruza_medianoche ? 1440 : 0) - timeToMinutes(form.hora_entrada) - Number(form.refrigerio_minutos)) / 60);
-    const payload = { ...form, horas_efectivas: horas, tolerancia_minutos: Number(form.tolerancia_minutos), refrigerio_minutos: Number(form.refrigerio_minutos) };
+    const generarCodigo = () => {
+      const nums = (turnos || []).map(t => { const m = (t.codigo || t.id || '').match(/(\d+)$/); return m ? parseInt(m[1], 10) : 0; });
+      const next = (nums.length ? Math.max(...nums) : 0) + 1;
+      return `tur_${String(next).padStart(3, '0')}`;
+    };
+    const payload = { ...form, codigo: editandoId ? ((turnos||[]).find(t=>t.id===editandoId)?.codigo || generarCodigo()) : generarCodigo(), horas_efectivas: horas, tolerancia_minutos: Number(form.tolerancia_minutos), refrigerio_minutos: Number(form.refrigerio_minutos) };
     try {
       if (editandoId) {
         const actualizado = await rrhhService.actualizarTurno(empresa.id, editandoId, payload);

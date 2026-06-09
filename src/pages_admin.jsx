@@ -1659,8 +1659,15 @@ function CecoCebePanel({ onClose }) {
     });
   };
   const normEstado = v => (v||'').trim().toLowerCase();
-  const tipoKeyMap = { 'área funcional':'area_funcional', 'area funcional':'area_funcional', 'proyecto':'proyecto', 'sede':'sede', 'temporal':'temporal', 'línea de servicio':'linea_servicio', 'linea de servicio':'linea_servicio', 'cliente':'cliente', 'producto':'producto' };
-  const normTipo = v => tipoKeyMap[(v||'').trim().toLowerCase()] || (v||'').trim().toLowerCase();
+  const tipoKeyMap = {
+    'área funcional':'area_funcional', 'area funcional':'area_funcional', 'area_funcional':'area_funcional', 'funcional':'area_funcional',
+    'proyecto':'proyecto', 'project':'proyecto',
+    'sede':'sede', 'sucursal':'sede',
+    'temporal':'temporal',
+    'línea de servicio':'linea_servicio', 'linea de servicio':'linea_servicio', 'linea_servicio':'linea_servicio', 'línea':'linea_servicio', 'servicio':'linea_servicio',
+    'cliente':'cliente', 'producto':'producto',
+  };
+  const normTipo = v => tipoKeyMap[(v||'').trim().toLowerCase()] || (v||'').trim().toLowerCase().replace(/\s+/g,'_');
   const findCebe = val => {
     if (!val) return null;
     const v = val.trim();
@@ -1675,26 +1682,30 @@ function CecoCebePanel({ onClose }) {
   const validarCecoImport = rows => rows.map(r => {
     const errores = [];
     const estadoNorm = normEstado(r.estado);
+    const tipoNorm = normTipo(r.tipo);
     if (!r.codigo) errores.push('Código vacío');
     else if ((centrosCosto||[]).some(c=>c.codigo===r.codigo) || rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado');
     if (!r.nombre) errores.push('Nombre vacío');
     if (!r.tipo) errores.push('Tipo vacío');
+    else if (!CECO_TIPOS.includes(tipoNorm)) errores.push(`Tipo inválido: "${r.tipo}". Usa: area_funcional, proyecto, sede, temporal`);
     if (r.cebe_padre && !findCebe(r.cebe_padre)) errores.push(`CEBE "${r.cebe_padre}" no encontrado`);
     if (r.estado && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido (usa "activo" o "inactivo")');
     const cebe = findCebe(r.cebe_padre);
     const resp = usuariosActivos.find(u=>u.nombre===r.responsable);
-    return { ...r, tipo: normTipo(r.tipo), estado: estadoNorm || 'activo', cebe_id: cebe?.id || null, responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, presupuesto_mensual: r.presupuesto_mensual || null, _errores: errores };
+    return { ...r, tipo: tipoNorm, estado: estadoNorm || 'activo', cebe_id: cebe?.id || null, responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, presupuesto_mensual: r.presupuesto_mensual || null, _errores: errores };
   });
   const validarCebeImport = rows => rows.map(r => {
     const errores = [];
     const estadoNorm = normEstado(r.estado);
+    const tipoNorm = normTipo(r.tipo);
     if (!r.codigo) errores.push('Código vacío');
     else if ((centrosBeneficio||[]).some(c=>c.codigo===r.codigo) || rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado');
     if (!r.nombre) errores.push('Nombre vacío');
     if (!r.tipo) errores.push('Tipo vacío');
+    else if (!CEBE_TIPOS.includes(tipoNorm)) errores.push(`Tipo inválido: "${r.tipo}". Usa: linea_servicio, cliente, proyecto, producto, temporal`);
     if (r.estado && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido (usa "activo" o "inactivo")');
     const resp = usuariosActivos.find(u=>u.nombre===r.responsable);
-    return { ...r, tipo: normTipo(r.tipo), estado: estadoNorm || 'activo', responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, meta_ingresos: r.meta_ingresos || null, cuenta_id: r.cuenta_id || null, _errores: errores };
+    return { ...r, tipo: tipoNorm, estado: estadoNorm || 'activo', responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, meta_ingresos: r.meta_ingresos || null, cuenta_id: r.cuenta_id || null, _errores: errores };
   });
   const exportCsv = (data, headers, filename) => {
     const rows = [headers.join(','), ...data.map(r => headers.map(h=>`"${r[h]??''}"` ).join(','))];
