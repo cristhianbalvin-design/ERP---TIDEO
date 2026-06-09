@@ -757,7 +757,7 @@ function LogisticaView({ screen, setScreen }) {
 }
 
 function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setProfile }) {
-  const { agendaEventos, cuentas, contactos, oportunidades, cotizaciones, actividades, leads, historialEstados, oppHistorialEtapas, updateLeadState, convertirLead, descartarLead, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, marcarPerdida, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva, empresa, dataMode, supabaseStatus, signOut, notificaciones, markNotificacionesRead, addNotificacion, monedasActivas, personalAdmin, actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision } = useApp();
+  const { agendaEventos, cuentas, contactos, oportunidades, cotizaciones, actividades, leads, historialEstados, oppHistorialEtapas, updateLeadState, convertirLead, descartarLead, actualizarAgendaEvento, crearAgendaEvento, actualizarEtapaOportunidad, marcarPerdida, searchQuery, crearLead, industrias, registrarActividad, authUser, usuarios, role, membresiaActiva, empresa, dataMode, supabaseStatus, signOut, notificaciones, markNotificacionesRead, addNotificacion, monedasActivas, personalAdmin, actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision, actualizarLeadDatos } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const esDelUsuario = valor => normalizarTexto(valor) === normalizarTexto(usuarioMovil.nombre);
   const rolNombre = normalizarTexto(role?.nombre || membresiaActiva?.rol?.nombre);
@@ -790,6 +790,8 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
   const [modalMovLead, setModalMovLead] = useState(null); // { lead, destino }
   const [movMotivo, setMovMotivo] = useState('');
   const [movError, setMovError] = useState('');
+  const [movPresupuesto, setMovPresupuesto] = useState('');
+  const [movMoneda, setMovMoneda] = useState('PEN');
   const [modalConvertirLead, setModalConvertirLead] = useState(null);
   const [convertirForm, setConvertirForm] = useState(null);
   const [convertirError, setConvertirError] = useState('');
@@ -886,9 +888,15 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
   };
   const confirmarMovLead = () => {
     const { lead, destino } = modalMovLead;
-    if (destino === 'calificado' && !(lead.presupuesto_estimado > 0)) {
-      setMovError('Para calificar debes registrar un presupuesto estimado desde el desktop.');
-      return;
+    if (destino === 'calificado') {
+      const presupFinal = Number(movPresupuesto) > 0 ? Number(movPresupuesto) : lead.presupuesto_estimado;
+      if (!(presupFinal > 0)) {
+        setMovError('Ingresa el presupuesto estimado para calificar.');
+        return;
+      }
+      if (Number(movPresupuesto) > 0) {
+        actualizarLeadDatos(lead.id, { presupuesto_estimado: Number(movPresupuesto), moneda: movMoneda });
+      }
     }
     if (!movMotivo.trim()) { setMovError('El motivo es obligatorio.'); return; }
     if (destino === 'descartado') descartarLead(lead.id, movMotivo.trim());
@@ -896,6 +904,8 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
     setModalMovLead(null);
     setMovMotivo('');
     setMovError('');
+    setMovPresupuesto('');
+    setMovMoneda('PEN');
   };
   const abrirPerderOpp = (opp) => {
     setModalPerderOpp(opp);
@@ -1306,7 +1316,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
                 <label>Industria</label>
                 <select name="industria" className="select" defaultValue="">
                   <option value="">Seleccionar...</option>
-                  {(industrias || []).map(i => <option key={i.id} value={i.nombre}>{i.nombre}</option>)}
+                  {(industrias?.length ? industrias : ['Mineria','Industrial','Construccion','Agroindustria','Facilities','Energia','Petroleo & Gas','Logistica','Retail','Salud','Educacion','Tecnologia','Servicios profesionales','Sector publico','Otro'].map(n=>({id:n,nombre:n}))).map(i => <option key={i.id} value={i.nombre}>{i.nombre}</option>)}
                 </select>
               </div>
               <div className="input-group">
@@ -1356,7 +1366,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
               <label>Industria</label>
               <select name="industria" className="select" defaultValue="">
                 <option value="">Seleccionar...</option>
-                {(industrias || []).map(i => <option key={i.id} value={i.nombre}>{i.nombre}</option>)}
+                {(industrias?.length ? industrias : ['Mineria','Industrial','Construccion','Agroindustria','Facilities','Energia','Petroleo & Gas','Logistica','Retail','Salud','Educacion','Tecnologia','Servicios profesionales','Sector publico','Otro'].map(n=>({id:n,nombre:n}))).map(i => <option key={i.id} value={i.nombre}>{i.nombre}</option>)}
               </select>
             </div>
             <div className="input-group">
@@ -1478,11 +1488,42 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
 
               {modalMovLead && (
                 <div style={{position:'absolute', inset:0, background:'rgba(0,0,0,0.45)', zIndex:200, display:'flex', alignItems:'flex-end'}}
-                  onClick={e => { if (e.target === e.currentTarget) setModalMovLead(null); }}>
+                  onClick={e => { if (e.target === e.currentTarget) { setModalMovLead(null); setMovMotivo(''); setMovError(''); setMovPresupuesto(''); setMovMoneda('PEN'); } }}>
                   <div style={{background:'var(--bg)', borderRadius:'16px 16px 0 0', padding:20, width:'100%', boxSizing:'border-box'}}>
                     <div style={{fontWeight:700, fontSize:15, marginBottom:12, color:'var(--navy)'}}>
                       {MOV_CFG[modalMovLead.destino]?.titulo || 'Cambiar estado'}
                     </div>
+                    {modalMovLead.destino === 'calificado' && (
+                      <div style={{marginBottom:12}}>
+                        <div style={{fontSize:12, fontWeight:600, color:'var(--fg-muted)', marginBottom:6}}>Presupuesto estimado {!(modalMovLead.lead.presupuesto_estimado > 0) && <span style={{color:'var(--danger)'}}>*</span>}</div>
+                        <div className="row" style={{gap:8}}>
+                          <select
+                            className="select"
+                            value={movMoneda}
+                            onChange={e => setMovMoneda(e.target.value)}
+                            style={{width:90, flexShrink:0}}
+                          >
+                            {(monedasActivas?.length ? monedasActivas : [{codigo:'PEN'},{codigo:'USD'}]).map(m => (
+                              <option key={m.codigo} value={m.codigo}>{m.codigo}</option>
+                            ))}
+                          </select>
+                          <input
+                            className="input"
+                            type="number"
+                            inputMode="decimal"
+                            placeholder={modalMovLead.lead.presupuesto_estimado > 0 ? String(modalMovLead.lead.presupuesto_estimado) : 'Ej: 15000'}
+                            value={movPresupuesto}
+                            onChange={e => { setMovPresupuesto(e.target.value); setMovError(''); }}
+                            style={{flex:1}}
+                          />
+                        </div>
+                        {modalMovLead.lead.presupuesto_estimado > 0 && (
+                          <div style={{fontSize:11, color:'var(--fg-subtle)', marginTop:4}}>
+                            Actual: {modalMovLead.lead.moneda || 'PEN'} {Number(modalMovLead.lead.presupuesto_estimado).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <textarea
                       className="input"
                       rows={3}
@@ -1494,7 +1535,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
                     />
                     {movError && <div style={{fontSize:12, color:'var(--danger)', marginBottom:8}}>{movError}</div>}
                     <div className="row" style={{gap:8, marginTop:4}}>
-                      <button className="btn btn-secondary flex-1" onClick={() => setModalMovLead(null)}>Cancelar</button>
+                      <button className="btn btn-secondary flex-1" onClick={() => { setModalMovLead(null); setMovMotivo(''); setMovError(''); setMovPresupuesto(''); setMovMoneda('PEN'); }}>Cancelar</button>
                       <button className="btn btn-primary flex-1" style={{background:'var(--green)', border:'none'}} onClick={confirmarMovLead}>Confirmar</button>
                     </div>
                   </div>

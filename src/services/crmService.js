@@ -59,6 +59,7 @@ const normalizarOportunidad = o => ({
   responsable: o.responsable || 'Por asignar',
   servicio_interes: o.servicio_interes || o.nombre,
   fuente: o.fuente || null,
+  moneda: o.moneda || 'PEN',
   forecast_ponderado: Number(
     o.forecast_ponderado ?? (Number(o.monto_estimado || 0) * Number(o.probabilidad || 0) / 100)
   ),

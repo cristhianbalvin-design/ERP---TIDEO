@@ -4851,6 +4851,8 @@ function Parametros() {
         config_flujos_alertas: flujosAlertas,
         ...extra,
       });
+    } catch (err) {
+      console.error('[Parametros.handleSave]', err);
     } finally {
       setSaving(false);
     }

@@ -858,7 +858,7 @@ function Leads() {
       contacto_email: modalConvertir.email || '',
       nombre_oportunidad: `${modalConvertir.necesidad?.slice(0,50) || 'Venta'} — ${modalConvertir.empresa_contacto}`,
       monto_estimado: potencial.monto || '',
-      moneda: potencial.moneda || 'PEN',
+      moneda: (() => { const m = potencial.moneda || empresa?.moneda || 'PEN'; const codes = monedasActivas.map(x => x.codigo); return codes.includes(m) ? m : (codes[0] || empresa?.moneda || 'PEN'); })(),
       etapa_inicial: 'calificacion'
     });
   }, [modalConvertir, oportunidades, cotizaciones]);
@@ -927,7 +927,7 @@ function Leads() {
       urgencia: lead.urgencia || 'media',
       necesidad: lead.necesidad || '',
       presupuesto_estimado: potencial.monto ?? '',
-      moneda: potencial.moneda || lead.moneda || 'PEN',
+      moneda: (() => { const m = potencial.moneda || lead.moneda || empresa?.moneda || 'PEN'; const codes = monedasActivas.map(x => x.codigo); return codes.includes(m) ? m : (codes[0] || empresa?.moneda || 'PEN'); })(),
       servicio_interes: lead.servicio_interes || '',
     });
     setEditandoLead(lead);
@@ -2075,7 +2075,7 @@ function Leads() {
               </div>
               <div className="input-group"><label>Industria {campoBloqueadoConvertido && <LockHint>Cuentas y Contactos</LockHint>}</label><select className="select" value={formNuevo.industria} onChange={e=>updateNuevo('industria',e.target.value)} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}>
                 <option value="">Seleccionar...</option>
-                {['Mineria','Industrial','Construccion','Agroindustria','Facilities','Energia','Petroleo & Gas','Logistica','Retail','Salud','Educacion','Tecnologia','Servicios profesionales','Sector publico','Otro'].map(i=><option key={i}>{i}</option>)}
+                {opcionesIndustria.map(i=><option key={i}>{i}</option>)}
               </select></div>
             </div>
 

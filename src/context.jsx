@@ -406,17 +406,23 @@ export function AppProvider({ children }) {
   }, [membresiaActiva?.rol_id, rolesCtx]);
 
   const [notificaciones, setNotificaciones] = useState([
-    { id: 'f3_1', text: 'Health Score de LogÃ­stica Altiplano bajÃ³ a 28 â€” riesgo crÃ­tico. Se requiere plan de retenciÃ³n urgente.', read: false, time: 'Hace 15 min' },
-    { id: 'f3_2', text: 'RenovaciÃ³n de Planta Industrial Norte vence en 28 dÃ­as (S/ 76,200). Responsable: Pedro Salas.', read: false, time: 'Hace 1h' },
-    { id: 'f3_3', text: 'NPS 9 recibido de Minera Andes â€” cliente promotor. Solicitar autorizaciÃ³n para caso de Ã©xito.', read: false, time: 'Hace 2h' },
-    { id: 'f3_4', text: 'Onboarding de Facilities Lima SA: hito "CapacitaciÃ³n tÃ©cnica" con 2 dÃ­as de atraso. Revisar.', read: false, time: 'Hace 3h' },
-    { id: 'f3_5', text: 'Nuevo lead referido por LogÃ­stica Altiplano SAC en proceso de calificaciÃ³n.', read: true, time: 'Ayer' },
-    { id: 'f3_6', text: 'Bienvenido al ERP TIDEO Fase 3 â€” Customer Success, BI Financiero e IA Copiloto activos.', read: true, time: 'Hace 2 dÃ­as' },
-    { id: 'notif_fin_001', tipo: 'alerta', modulo: 'financiamiento', text: 'BCP PrÃ©stamo â€” Cuota NÂ°2 vence en 7 dÃ­as Â· S/ 2,354.17', read: false, time: 'Hoy' },
+    { id: 'f3_1', text: 'Health Score de Logística Altiplano bajó a 28 — riesgo crítico. Se requiere plan de retención urgente.', read: false, time: 'Hace 15 min' },
+    { id: 'f3_2', text: 'Renovación de Planta Industrial Norte vence en 28 días (S/ 76,200). Responsable: Pedro Salas.', read: false, time: 'Hace 1h' },
+    { id: 'f3_3', text: 'NPS 9 recibido de Minera Andes — cliente promotor. Solicitar autorización para caso de éxito.', read: false, time: 'Hace 2h' },
+    { id: 'f3_4', text: 'Onboarding de Facilities Lima SA: hito “Capacitación técnica” con 2 días de atraso. Revisar.', read: false, time: 'Hace 3h' },
+    { id: 'f3_5', text: 'Nuevo lead referido por Logística Altiplano SAC en proceso de calificación.', read: true, time: 'Ayer' },
+    { id: 'f3_6', text: 'Bienvenido al ERP TIDEO Fase 3 — Customer Success, BI Financiero e IA Copiloto activos.', read: true, time: 'Hace 2 días' },
+    { id: 'notif_fin_001', tipo: 'alerta', modulo: 'financiamiento', text: 'BCP Préstamo — Cuota N°2 vence en 7 días · S/ 2,354.17', read: false, time: 'Hoy' },
   ]);
 
   const addNotificacion = (msg) => {
-    setNotificaciones(prev => [{ id: generateId('not'), text: msg, read: false, time: 'Justo ahora' }, ...prev]);
+    const id = generateId('not');
+    setNotificaciones(prev => [{ id, text: msg, read: false, time: 'Justo ahora' }, ...prev]);
+    if (isSupabaseConfigured() && authUser?.id) {
+      getSupabaseClient().then(sb =>
+        sb.from('notificaciones_sistema').insert({ id, user_id: authUser.id, texto: msg, leida: false })
+      ).catch(() => {});
+    }
   };
 
   const [toasts, setToasts] = useState([]);
@@ -6034,20 +6040,33 @@ export function AppProvider({ children }) {
   // ---- Empresa Config ----
   const guardarEmpresaConfig = async (datos) => {
     const { pct_prima_seguro: _deprecatedPrimaSeguro, ...safeDatos } = datos || {};
-    const payload = { ...safeDatos, empresa_id: empresa?.id };
-    setEmpresaConfig(prev => ({ ...prev, ...safeDatos }));
-    if (isSupabaseConfigured() && empresa?.id) {
+    if (!empresa?.id) {
+      const error = new Error('No hay una empresa activa para guardar la configuracion.');
+      addNotificacion(error.message);
+      throw error;
+    }
+
+    const payload = { ...safeDatos, empresa_id: empresa.id, updated_at: new Date().toISOString() };
+    if (isSupabaseConfigured()) {
       try {
         const supabase = await getSupabaseClient();
-        const { error } = await supabase.from('empresa_config').upsert(payload, { onConflict: 'empresa_id' });
-        if (error) {
-          console.error('[empresa_config upsert]', error.message, error.details);
-          addNotificacion('Error al guardar configuraciÃ³n: ' + error.message);
-          return;
-        }
-      } catch (_err) { console.error('[empresa_config]', _err); }
+        const { data, error } = await supabase
+          .from('empresa_config')
+          .upsert(payload, { onConflict: 'empresa_id' })
+          .select('*')
+          .single();
+        if (error) throw error;
+        setEmpresaConfig(prev => ({ ...prev, ...(data || payload) }));
+      } catch (_err) {
+        console.error('[empresa_config]', _err?.message || _err, _err?.details || '');
+        addNotificacion('Error al guardar configuracion: ' + (_err?.message || 'error desconocido'));
+        throw _err;
+      }
+    } else {
+      setEmpresaConfig(prev => ({ ...prev, ...payload }));
     }
-    addNotificacion('ConfiguraciÃ³n de empresa guardada.');
+    addNotificacion('Configuracion de empresa guardada.');
+    return payload;
   };
 
   const guardarAfpParametro = async (datos) => {
