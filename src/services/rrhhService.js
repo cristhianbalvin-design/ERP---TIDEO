@@ -462,7 +462,7 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   ruc_vendedor: persona.ruc_vendedor || null,
   ruc_colaborador: persona.ruc_colaborador || null,
   retencion_ir_comision: persona.retencion_ir_comision != null ? Number(persona.retencion_ir_comision) : 8,
-  retencion_ir: persona.retencion_ir != null ? Number(persona.retencion_ir) : null,
+  retencion_ir: persona.retencion_ir != null ? Number(persona.retencion_ir) : 8,
   suspension_retenciones: Boolean(persona.suspension_retenciones),
   vencimiento_suspension: persona.vencimiento_suspension || null,
   tarifa_hora_referencial: persona.tarifa_hora_referencial != null ? Number(persona.tarifa_hora_referencial) : null,
