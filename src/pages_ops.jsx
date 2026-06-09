@@ -10188,6 +10188,7 @@ function ControlAsistencia() {
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [panel, setPanel] = useState(false);
   const [masivo, setMasivo] = useState(false);
+  const [masivoDatos, setMasivoDatos] = useState({});
   const [kiosk, setKiosk] = useState(false);
 
   // Estados Mineros
@@ -10202,7 +10203,7 @@ function ControlAsistencia() {
     ...personalAdmin.map(p => ({ ...p, trabajador_tipo:'administrativo', id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:p.turno_id || 'tur_005', remuneracion:p.remuneracion || 3000, regimen_jornada: p.regimen_jornada || 'general', horas_diarias_pactadas: p.horas_diarias_pactadas || 12 }))
   ];
 
-  const trabajadoresGenerales = trabajadores.filter(t => getTipoFiscalizacion(t) === 'diaria');
+  const trabajadoresGenerales = trabajadores.filter(t => getTipoFiscalizacion(t) === 'diaria' && (!t.modalidad_contrato || t.modalidad_contrato === 'planilla'));
   const trabajadoresMineros = trabajadores.filter(t => getTipoFiscalizacion(t) === 'ciclo');
 
   useEffect(() => {
@@ -10218,17 +10219,26 @@ function ControlAsistencia() {
     }
   }, [form.trabajador_id, trabajadoresGenerales[0]?.id]);
 
+  useEffect(() => {
+    if (!empresa?.id || !fecha) return;
+    let cancelled = false;
+    rrhhService.getAsistencia(empresa.id, fecha, fecha).then(registrosDia => {
+      if (!cancelled) setRegistrosAsistencia(prev => [...registrosDia, ...prev.filter(r => r.fecha !== fecha)]);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [fecha, empresa?.id]);
+
   const trabajador = trabajadoresGenerales.find(t => t.id === form.trabajador_id) || trabajadoresGenerales[0];
   const turno = workerTurno(turnos, trabajador || {});
   const turnoPersistibleId = turnos.some(t => t.id === turno.id) ? turno.id : null;
   const resultado = calcularResultadoAsistencia(form.hora_entrada, form.hora_salida, turno, form.asistio === 'no', form.justificada, form.refrigerio_tomado_minutos);
   const currentMonth = fecha.substring(0, 7);
-  const registrosPeriodo = registrosAsistencia.filter(r => r.fecha.startsWith(currentMonth));
+  const registrosPeriodo = registrosAsistencia.filter(r => r.fecha.startsWith(currentMonth) && trabajadoresGenerales.some(t => t.id === r.trabajador_id));
 
   const diaRows = trabajadoresGenerales.map(t => {
     const reg = registrosAsistencia.find(r => r.trabajador_id === t.id && r.fecha === fecha);
     const trn = workerTurno(turnos, t);
-    const calc = reg ? calcularResultadoAsistencia(reg.hora_entrada, reg.hora_salida, trn, reg.es_falta, reg.justificada) : { estado:'falta', label:'Falta', horas_trabajadas_min:0, tardanza_min:0, horas_extra_min:0 };
+    const calc = reg ? calcularResultadoAsistencia(reg.hora_entrada, reg.hora_salida, trn, reg.es_falta, reg.justificada) : null;
     return { trabajador:t, turno:trn, registro:reg, calc };
   });
 
@@ -10357,14 +10367,38 @@ function ControlAsistencia() {
     setPanel(true);
   };
 
-  const guardarMasivo = () => {
-    const nuevos = trabajadoresGenerales.map(t => {
+  const abrirMasivo = () => {
+    const init = {};
+    trabajadoresGenerales.forEach(t => {
       const trn = workerTurno(turnos, t);
-      const calc = calcularResultadoAsistencia(trn.hora_entrada, trn.hora_salida, trn, false, false);
-      return { id:`asis_${Date.now()}_${t.id}`, empresa_id:empresa.id, trabajador_id:t.id, fecha, turno_id:trn.id, hora_entrada:trn.hora_entrada, hora_salida:trn.hora_salida, horas_trabajadas_min:calc.horas_trabajadas_min, tardanza_min:0, horas_extra_min:calc.horas_extra_min, estado:calc.estado, es_falta:false, justificada:false, motivo_falta:null, notas:'Registro masivo', regimen_jornada: 'general' };
+      const reg = registrosAsistencia.find(r => r.trabajador_id === t.id && r.fecha === fecha);
+      init[t.id] = { estado: reg?.estado || 'completo', hora_entrada: reg?.hora_entrada || trn.hora_entrada, hora_salida: reg?.hora_salida || trn.hora_salida };
     });
-    setRegistrosAsistencia(prev => [...nuevos, ...prev.filter(r => r.fecha !== fecha && r.regimen_jornada !== 'minero')]);
-    addNotificacion('Registro masivo del dia guardado para el Régimen General.');
+    setMasivoDatos(init);
+    setMasivo(true);
+  };
+
+  const guardarMasivo = async () => {
+    const ops = trabajadoresGenerales.map(t => {
+      const trn = workerTurno(turnos, t);
+      const d = masivoDatos[t.id] || { estado: 'completo', hora_entrada: trn.hora_entrada, hora_salida: trn.hora_salida };
+      const esFalta = d.estado === 'falta' || d.estado === 'falta_justificada';
+      const calc = esFalta ? { horas_trabajadas_min: 0, tardanza_min: 0, horas_extra_min: 0 } : calcularResultadoAsistencia(d.hora_entrada, d.hora_salida, trn, false, false);
+      const turno_id = turnos.some(x => x.id === trn.id) ? trn.id : null;
+      return { empresa_id: empresa.id, trabajador_id: t.id, fecha, turno_id, hora_entrada: esFalta ? null : d.hora_entrada, hora_salida: esFalta ? null : d.hora_salida, horas_trabajadas_min: calc.horas_trabajadas_min, tardanza_min: calc.tardanza_min || 0, horas_extra_min: calc.horas_extra_min, estado: d.estado, es_falta: esFalta, justificada: d.estado === 'falta_justificada', motivo_falta: null, notas: 'Registro masivo', regimen_jornada: 'general' };
+    });
+    const guardados = await Promise.all(ops.map(async registro => {
+      const existente = registrosAsistencia.find(r => r.trabajador_id === registro.trabajador_id && r.fecha === fecha);
+      try {
+        if (existente?.id) return await rrhhService.actualizarAsistencia(existente.id, registro);
+        return await rrhhService.registrarAsistencia(empresa.id, registro);
+      } catch {
+        return { ...registro, id: existente?.id || `asis_${Date.now()}_${registro.trabajador_id}` };
+      }
+    }));
+    const ids = new Set(guardados.map(r => r.trabajador_id));
+    setRegistrosAsistencia(prev => [...guardados, ...prev.filter(r => !(r.fecha === fecha && ids.has(r.trabajador_id)))]);
+    addNotificacion('Registro masivo guardado correctamente.');
     setMasivo(false);
   };
 
@@ -10501,14 +10535,14 @@ function ControlAsistencia() {
     <>
       <div className="page-header">
         <div><h1 className="page-title">Control de Asistencia</h1><div className="page-sub">Registro manual, tardanzas y horas trabajadas</div></div>
-        <div className="row" style={{gap:10}}><button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}} onClick={() => setKiosk(true)}>{I.clock} Reloj Control (Móvil)</button><button className="btn btn-secondary" onClick={() => setMasivo(true)}>Registro masivo</button><button className="btn btn-secondary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Manual</button></div>
+        <div className="row" style={{gap:10}}><button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}} onClick={() => setKiosk(true)}>{I.clock} Reloj Control (Móvil)</button><button className="btn btn-secondary" onClick={abrirMasivo}>Registro masivo</button><button className="btn btn-secondary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Manual</button></div>
       </div>
       
       {tab !== 'minero' && <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Total Gral.</div><div className="kpi-value">{kpis.total}</div></div><div className="kpi-card"><div className="kpi-label">Dias completos</div><div className="kpi-value">{kpis.completos}</div></div><div className="kpi-card"><div className="kpi-label">Tardanzas</div><div className="kpi-value" style={{color:'var(--orange)'}}>{kpis.tardanzas}</div></div><div className="kpi-card"><div className="kpi-label">Faltas</div><div className="kpi-value" style={{color:'var(--danger)'}}>{kpis.faltas}</div></div></div>}
       
       <div className="tabs">{allTabs.map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
       
-      {tab === 'diaria' && <div className="card"><div className="card-head"><h3>Asistencia del dia (Régimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.map(row=><tr key={row.trabajador.id}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{minutesToLabel(row.calc.horas_trabajadas_min)}</td><td><span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span></td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>abrirEdicion(row)}>Editar</button></td></tr>)}</tbody></table></div></div>}
+      {tab === 'diaria' && <div className="card"><div className="card-head"><h3>Asistencia del dia (Régimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.map(row=><tr key={row.trabajador.id}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td><td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>abrirEdicion(row)}>Editar</button></td></tr>)}</tbody></table></div></div>}
       
       {tab === 'semanal' && <div className="card"><div className="card-head"><h3>Vista semanal (Régimen General)</h3><span className="text-muted">{semanaTexto}</span></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.slice(0,8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
       
@@ -10649,7 +10683,7 @@ function ControlAsistencia() {
       {/* Modal General */}
       {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registrar asistencia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{form.fecha}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarRegistro}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={form.fecha} onChange={e=>setForm(v=>({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:12, margin:'12px 0'}}>Turno asignado: <strong>{turno.nombre}</strong> · {turno.hora_entrada} - {turno.hora_salida} · Tolerancia {turno.tolerancia_minutos} min</div><div className="input-group"><label>Asistio</label><select className="select" value={form.asistio} onChange={e=>setForm(v=>({...v,asistio:e.target.value}))}><option value="si">Si</option><option value="no">No - falta</option></select></div>{form.asistio==='si' ? <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Hora entrada</label><input className="input" type="time" value={form.hora_entrada} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div><div className="input-group"><label>Hora salida</label><input className="input" type="time" value={form.hora_salida} onChange={e=>setForm(v=>({...v,hora_salida:e.target.value}))}/></div></div> : <><label className="row" style={{gap:8}}><input type="checkbox" checked={form.justificada} onChange={e=>setForm(v=>({...v,justificada:e.target.checked}))}/> Falta justificada</label>{form.justificada && <div className="input-group"><label>Motivo</label><select className="select" value={form.motivo_falta} onChange={e=>setForm(v=>({...v,motivo_falta:e.target.value}))}><option>Enfermedad con certificado</option><option>Permiso autorizado</option><option>Licencia</option><option>Otro</option></select></div>}</>}<div className="input-group"><label>Minutos de refrigerio tomados</label><input className="input" type="number" min="0" value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación (Opcional)</label><button type="button" className="btn btn-secondary" style={{width:'100%'}} onClick={obtenerUbicacion}>{form.ubicacion_estado || 'Capturar lat/lng'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:12, marginBottom:10}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}<div className="card" style={{padding:12, margin:'14px 0'}}><p><strong>Horas trabajadas:</strong> {minutesToLabel(resultado.horas_trabajadas_min)}</p><p><strong>Tardanza:</strong> {resultado.tardanza_min} min</p><p><strong>Horas extra:</strong> {minutesToLabel(resultado.horas_extra_min)}</p><p><strong>Estado:</strong> <span className={'badge '+asistenciaBadge(resultado.estado)}>{resultado.label}</span></p></div><div className="input-group"><label>Notas adicionales</label><textarea className="input" rows="3" value={form.notas} onChange={e=>setForm(v=>({...v,notas:e.target.value}))}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Guardar registro</button></div></form></div></>}
       {kiosk && <><div className="side-panel-backdrop" onClick={()=>setKiosk(false)}/><div className="side-panel" style={{width:'min(520px,100vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Reloj Control Móvil</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{new Date().toLocaleDateString()}</div></div><button className="icon-btn" onClick={()=>setKiosk(false)}>{I.x}</button></div><div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:24}}><div className="input-group"><label>Trabajador</label><select className="select" style={{fontSize:16, padding:12}} value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:20, textAlign:'center', background:'var(--bg-subtle)'}}><button className="btn btn-primary" style={{width:'100%', padding:'24px 20px', fontSize:20, marginBottom:20, justifyContent:'center'}} onClick={() => marcarKiosk('entrada')}>Entrada</button><button className="btn btn-secondary" style={{width:'100%', padding:'24px 20px', fontSize:20, justifyContent:'center'}} onClick={() => marcarKiosk('salida')}>Salida</button></div><div className="input-group"><label>Minutos de refrigerio tomados (especificar al marcar salida)</label><input className="input" type="number" min="0" style={{fontSize:16, padding:12}} value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación requerida</label><button className="btn btn-secondary" style={{width:'100%', padding:12, justifyContent:'center'}} onClick={obtenerUbicacion}>{I.mapPin} {form.ubicacion_estado || 'Obtener mi ubicación actual'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:14, textAlign:'center'}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}</div></div></>}
-      {masivo && <><div className="side-panel-backdrop" onClick={()=>setMasivo(false)}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registro masivo</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{fecha}</div></div><button className="icon-btn" onClick={()=>setMasivo(false)}>{I.x}</button></div><div className="side-panel-body"><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Falta</th><th>Justif.</th></tr></thead><tbody>{trabajadoresGenerales.slice(0,8).map(t=>{const trn=workerTurno(turnos,t);return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{trn.nombre}</td><td><input className="input" type="time" defaultValue={trn.hora_entrada}/></td><td><input className="input" type="time" defaultValue={trn.hora_salida}/></td><td><input type="checkbox"/></td><td><input type="checkbox"/></td></tr>})}</tbody></table></div>
+      {masivo && <><div className="side-panel-backdrop" onClick={()=>setMasivo(false)}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registro masivo</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{fecha}</div></div><button className="icon-btn" onClick={()=>setMasivo(false)}>{I.x}</button></div><div className="side-panel-body"><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead><tbody>{trabajadoresGenerales.map(t=>{const trn=workerTurno(turnos,t);const d=masivoDatos[t.id]||{estado:'completo',hora_entrada:trn.hora_entrada,hora_salida:trn.hora_salida};const esFalta=d.estado==='falta'||d.estado==='falta_justificada';return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{trn.nombre}</td><td><input className="input" type="time" value={d.hora_entrada} disabled={esFalta} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],hora_entrada:e.target.value}}))} /></td><td><input className="input" type="time" value={d.hora_salida} disabled={esFalta} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],hora_salida:e.target.value}}))} /></td><td><select className="select" style={{minWidth:140}} value={d.estado} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],estado:e.target.value}}))}>  <option value="completo">Completo</option><option value="tardanza">Tardanza</option><option value="falta">Falta</option><option value="falta_justificada">Falta Justificada</option></select></td></tr>})}</tbody></table></div>
       {trabajadoresMineros.length > 0 && <div style={{marginTop:16, padding:16, background:'var(--bg-subtle)', borderRadius:8}}><p style={{margin:0, fontSize:13}}>Los trabajadores del régimen minero han sido excluidos. <a href="#" onClick={(e) => { e.preventDefault(); setMasivo(false); setTab('minero'); }} style={{color:'var(--cyan)', fontWeight:600}}>Ir a registro de ciclos mineros</a></p></div>}
       <div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setMasivo(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={guardarMasivo}>Guardar todos los registros</button></div></div></div></>}
     </>
