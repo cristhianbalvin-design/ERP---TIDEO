@@ -6576,6 +6576,12 @@ function RRHHAdmin() {
   const [docValidandoId, setDocValidandoId] = useState(null);
   const [showRechazoInput, setShowRechazoInput] = useState(null);
   const [motivoRechazo, setMotivoRechazo] = useState('');
+  
+  const [inlineUploadReq, setInlineUploadReq] = useState(null);
+  const [inlineUploadForm, setInlineUploadForm] = useState({ fechaEmision: '', fechaVencimiento: '', notas: '' });
+  const [inlineUploadFile, setInlineUploadFile] = useState(null);
+  const [inlineUploading, setInlineUploading] = useState(false);
+  const [inlineUploadError, setInlineUploadError] = useState('');
   const periodoAlertaHoras = useMemo(() => rrhhDesplazarPeriodoMes(rrhhPeriodoMesActual(), -1), []);
   const [tareosAlertaHoras, setTareosAlertaHoras] = useState([]);
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
@@ -7018,14 +7024,11 @@ function RRHHAdmin() {
 
           {tab === 'documentos' && (() => {
             const docsPersona = personalDocumentos.filter(d => d.personal_id === persona.id && d.activo);
-            // ── Motor de habilitaciones (espejo del motor BD 207) ─────────────
-            const DOC_LBL = { vigente:'Vigente', por_vencer:'Por vencer', vencido:'Vencido', en_revision:'En revisión', rechazado:'Rechazado', falta:'Falta', sin_fecha_vencimiento:'Sin fecha venc.' };
-            const DOC_BDG = { vigente:'badge-green', por_vencer:'badge-orange', vencido:'badge-red', en_revision:'badge-cyan', rechazado:'badge-red', falta:'badge-gray', sin_fecha_vencimiento:'badge-orange' };
-            const GLOB_LBL = { en_regla:'En regla', advertencia:'Advertencia', critico:'Crítico', sin_cargo:'Sin cargo asignado — requisitos no determinables', sin_requisitos:'Sin requisitos configurados para este cargo' };
-            const GLOB_BDG = { en_regla:'badge-green', advertencia:'badge-orange', critico:'badge-red', sin_cargo:'badge-gray', sin_requisitos:'badge-gray' };
+            // ── Motor de habilitaciones (Fase 1B: Provisional sin cálculo de fechas) ─────────────
+            const DOC_LBL = { cargado:'Cargado / Validado', en_revision:'En revisión', rechazado:'Rechazado', falta:'Falta' };
+            const DOC_BDG = { cargado:'badge-green', en_revision:'badge-cyan', rechazado:'badge-red', falta:'badge-gray' };
             const habPersona = (() => {
               if (!persona.cargo_id) return { estado_global: 'sin_cargo', docs: [], tiene_cargo: false };
-              const today = new Date(); today.setHours(0,0,0,0);
               const tipoIdx = Object.fromEntries(tiposDocumento.map(t => [t.id, t]));
               const docIdx = {};
               for (const d of docsPersona) {
@@ -7036,28 +7039,39 @@ function RRHHAdmin() {
                 if (!doc) return 'falta';
                 if (doc.estado_validacion === 'rechazado') return 'rechazado';
                 if (doc.estado_validacion === 'pendiente' && tipo?.requiere_validacion) return 'en_revision';
-                if (tipo?.exige_vencimiento) {
-                  if (!doc.fecha_vencimiento) return 'sin_fecha_vencimiento';
-                  const venc = new Date(doc.fecha_vencimiento + 'T00:00:00');
-                  if (venc < today) return 'vencido';
-                  const lim = new Date(today); lim.setDate(lim.getDate() + (tipo.dias_alerta ?? 30));
-                  if (venc <= lim) return 'por_vencer';
-                }
-                return 'vigente';
+                return 'cargado';
               };
-              const CRIT = new Set(['vencido','rechazado','falta','sin_fecha_vencimiento']);
-              const ADVERT = new Set(['por_vencer','en_revision']);
               const reqCargo = requisitosCargo.filter(r => r.cargo_id === persona.cargo_id);
               const docs = reqCargo.map(req => {
                 const tipo = tipoIdx[req.tipo_documento_id];
                 const doc = docIdx[req.tipo_documento_id] || null;
                 return { ...req, tipo, doc, estado: calcEst(doc, tipo) };
               });
-              const obs = docs.filter(d => d.obligatorio).map(d => d.estado);
-              const estado_global = !obs.length ? 'sin_requisitos' : obs.some(e => CRIT.has(e)) ? 'critico' : obs.some(e => ADVERT.has(e)) ? 'advertencia' : 'en_regla';
-              return { estado_global, docs, tiene_cargo: true };
+              return { estado_global: 'en_regla', docs, tiene_cargo: true };
             })();
             const docReqPorTipo = Object.fromEntries(habPersona.docs.map(d => [d.tipo_documento_id, d]));
+            const reqPendientes = habPersona.docs.filter(r => r.estado === 'falta' && r.obligatorio).length;
+
+            const handleSubirInline = async (e) => {
+              e.preventDefault();
+              if (!inlineUploadFile || !inlineUploadReq) { setInlineUploadError('Selecciona el archivo.'); return; }
+              setInlineUploading(true); setInlineUploadError('');
+              try {
+                await subirDocumentoPersonalCtx({
+                  personalId: persona.id, personalTipo: 'administrativo',
+                  tipoDoc: inlineUploadReq.tipo_documento_id, file: inlineUploadFile,
+                  fechaEmision: inlineUploadForm.fechaEmision || null,
+                  fechaVencimiento: inlineUploadReq.tipo?.exige_vencimiento ? (inlineUploadForm.fechaVencimiento || null) : null,
+                  notas: inlineUploadForm.notas || null, subidoDesde: 'backoffice',
+                });
+                setInlineUploadFile(null);
+                setInlineUploadForm({ fechaEmision: '', fechaVencimiento: '', notas: '' });
+                setInlineUploadReq(null);
+                addNotificacion('Documento subido correctamente.');
+              } catch (err) { setInlineUploadError(err?.message || 'Error al subir.'); }
+              finally { setInlineUploading(false); }
+            };
+
             const handleSubirDocAdmin = async (e) => {
               e.preventDefault();
               if (!docUploadFile || !docUploadForm.tipoDoc) { setDocUploadError('Selecciona el tipo y el archivo.'); return; }
@@ -7072,7 +7086,7 @@ function RRHHAdmin() {
                 });
                 setDocUploadFile(null);
                 setDocUploadForm({ tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '' });
-                addNotificacion('Documento subido. Pendiente de aprobación.');
+                addNotificacion('Documento subido correctamente.');
               } catch (err) { setDocUploadError(err?.message || 'Error al subir.'); }
               finally { setDocUploading(false); }
             };
@@ -7086,61 +7100,157 @@ function RRHHAdmin() {
               } catch { addNotificacion('Error al validar.'); }
               finally { setDocValidandoId(null); }
             };
+            
+            const tiposRestantes = personalDocumentosService.TIPOS_DOC_ADMIN.filter(t => !docReqPorTipo[t.key]);
+            
             return (
               <div className="card-body">
-                {/* Estado global de habilitaciones */}
-                <div style={{display:'flex', alignItems:'center', gap:12, padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, marginBottom:16}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:2}}>Estado habilitacional</div>
-                    <span className={'badge ' + (GLOB_BDG[habPersona.estado_global] || 'badge-gray')} style={{fontSize:13, padding:'4px 10px'}}>
-                      {GLOB_LBL[habPersona.estado_global] || habPersona.estado_global}
-                    </span>
-                  </div>
-                </div>
                 {/* Requisitos del cargo */}
-                {habPersona.tiene_cargo && habPersona.docs.length > 0 && (
-                  <div style={{marginBottom:20}}>
-                    <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8}}>Requisitos del cargo</div>
-                    <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                <div style={{marginBottom:32}}>
+                  <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12}}>
+                    Requisitos del cargo
+                  </div>
+                  
+                  {!habPersona.tiene_cargo ? (
+                    <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'24px 0', background:'var(--bg-subtle)', borderRadius:8, fontSize:13}}>
+                      Este colaborador no tiene cargo asignado. <a onClick={() => { abrirEditarColaborador(persona); setSel(null); }} style={{color:'var(--primary)', cursor:'pointer', textDecoration:'underline'}}>Asigna un cargo</a> para determinar sus requisitos documentales.
+                    </div>
+                  ) : tiposDocumento.length === 0 ? (
+                    <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'24px 0', background:'var(--bg-subtle)', borderRadius:8, fontSize:13}}>
+                      No hay tipos de documento configurados en la plataforma. Configúralos en Tipos de Documento.
+                    </div>
+                  ) : habPersona.docs.length === 0 ? (
+                    <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'24px 0', background:'var(--bg-subtle)', borderRadius:8, fontSize:13}}>
+                      El cargo <strong>{persona.cargo}</strong> aún no tiene requisitos documentales configurados. <a onClick={() => { setSel({id:'mst_requisitos_cargo'}); }} style={{color:'var(--primary)', cursor:'pointer', textDecoration:'underline'}}>Configurar matriz</a>.
+                    </div>
+                  ) : (
+                    <div style={{display:'flex', flexDirection:'column', gap:8}}>
                       {habPersona.docs.map(req => (
-                        <div key={req.tipo_documento_id} style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6, border:'1px solid var(--border-subtle)'}}>
-                          <span className={'badge ' + (DOC_BDG[req.estado] || 'badge-gray')} style={{fontSize:10, flexShrink:0}}>{DOC_LBL[req.estado] || req.estado}</span>
-                          <span style={{flex:1, fontSize:13, fontWeight:500}}>{req.tipo?.nombre || req.tipo_documento_id}</span>
-                          {!req.obligatorio && <span style={{fontSize:10, color:'var(--fg-muted)'}}>Opcional</span>}
-                          {req.doc?.fecha_vencimiento && <span style={{fontSize:11, color:'var(--fg-muted)'}}>Vence {req.doc.fecha_vencimiento}</span>}
+                        <div key={req.tipo_documento_id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border-subtle)'}}>
+                          <div style={{display:'flex', alignItems:'center', gap:10}}>
+                            <span className={'badge ' + (DOC_BDG[req.estado] || 'badge-gray')} style={{fontSize:11, flexShrink:0, width:90, justifyContent:'center'}}>{DOC_LBL[req.estado] || req.estado}</span>
+                            <div>
+                              <div style={{fontSize:13, fontWeight:600}}>{req.tipo?.nombre || req.tipo_documento_id}</div>
+                              <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>
+                                {!req.obligatorio && <span>Opcional</span>}
+                                {req.obligatorio && <span>Obligatorio</span>}
+                                {req.doc?.version && ` · v${req.doc.version}`}
+                                {req.doc?.fecha_vencimiento && ` · Vence: ${req.doc.fecha_vencimiento}`}
+                              </div>
+                            </div>
+                          </div>
+                          <button className="btn btn-sm btn-ghost" style={{borderColor:'var(--border)', background:'var(--bg)', flexShrink:0}} onClick={() => setInlineUploadReq(req)}>
+                            {req.estado === 'falta' ? 'Subir' : 'Ver / Reemplazar'}
+                          </button>
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
-                <details style={{marginBottom:20}}>
-                  <summary style={{cursor:'pointer', fontWeight:600, fontSize:13, padding:'10px 0'}}>+ Subir nuevo documento</summary>
-                  <form onSubmit={handleSubirDocAdmin} style={{display:'grid', gap:12, marginTop:12}}>
-                    <div className="grid-2" style={{gap:12}}>
-                      <div className="input-group">
-                        <label>Tipo *</label>
-                        <select className="select" value={docUploadForm.tipoDoc} onChange={e => setDocUploadForm(f=>({...f,tipoDoc:e.target.value}))} required>
-                          <option value="">Seleccionar...</option>
-                          {personalDocumentosService.TIPOS_DOC_ADMIN.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-                        </select>
+                  )}
+                </div>
+
+                {inlineUploadReq && (
+                  <div className="modal-backdrop" onClick={() => setInlineUploadReq(null)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:500}}>
+                      <div className="modal-head">
+                        <h3>Subir {inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id}</h3>
+                        <button className="icon-btn" onClick={() => setInlineUploadReq(null)}>{I.x}</button>
                       </div>
-                      <div className="input-group">
-                        <label>Archivo *</label>
-                        <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>setDocUploadFile(e.target.files?.[0]||null)} required />
-                      </div>
-                      <div className="input-group">
-                        <label>Fecha emisión</label>
-                        <input className="input" type="date" value={docUploadForm.fechaEmision} onChange={e=>setDocUploadForm(f=>({...f,fechaEmision:e.target.value}))} />
-                      </div>
-                      <div className="input-group">
-                        <label>Fecha vencimiento</label>
-                        <input className="input" type="date" value={docUploadForm.fechaVencimiento} onChange={e=>setDocUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} />
+                      <div className="modal-body">
+                        {inlineUploadReq.doc?.archivo_url && (
+                          <div style={{marginBottom:16, padding:12, background:'var(--bg-subtle)', borderRadius:6, border:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                            <div>
+                              <div style={{fontWeight:500, fontSize:13}}>Documento actual (v{inlineUploadReq.doc.version})</div>
+                              <div className="text-muted" style={{fontSize:11}}>{inlineUploadReq.doc.nombre_archivo}</div>
+                            </div>
+                            <a href={inlineUploadReq.doc.archivo_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-ghost">{I.file} Ver archivo</a>
+                          </div>
+                        )}
+                        <form onSubmit={handleSubirInline} style={{display:'grid', gap:14}}>
+                          {inlineUploadReq.tipo?.requiere_validacion && (
+                            <div style={{fontSize:12, color:'var(--orange)', padding:'8px 12px', background:'rgba(255,160,0,0.1)', borderRadius:6, border:'1px solid rgba(255,160,0,0.3)'}}>
+                              Al subir este documento, quedará "En revisión" hasta que sea validado por RRHH.
+                            </div>
+                          )}
+                          <div className="input-group">
+                            <label>Tipo de documento</label>
+                            <input className="input" type="text" value={inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id} disabled />
+                          </div>
+                          <div className="input-group">
+                            <label>Archivo *</label>
+                            <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>setInlineUploadFile(e.target.files?.[0]||null)} required />
+                            <div className="text-muted" style={{fontSize:11, marginTop:4}}>PDF, JPG o PNG. Tamaño máximo recomendado 5MB.</div>
+                          </div>
+                          <div className="grid-2" style={{gap:12}}>
+                            <div className="input-group">
+                              <label>Fecha de emisión {inlineUploadReq.tipo?.exige_emision ? '*' : ''}</label>
+                              <input className="input" type="date" value={inlineUploadForm.fechaEmision} onChange={e=>setInlineUploadForm(f=>({...f,fechaEmision:e.target.value}))} required={inlineUploadReq.tipo?.exige_emision} />
+                            </div>
+                            {inlineUploadReq.tipo?.exige_vencimiento && (
+                              <div className="input-group">
+                                <label>Fecha de vencimiento *</label>
+                                <input className="input" type="date" value={inlineUploadForm.fechaVencimiento} onChange={e=>setInlineUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} required />
+                              </div>
+                            )}
+                          </div>
+                          <div className="input-group">
+                            <label>Notas (opcional)</label>
+                            <input className="input" type="text" placeholder="Alguna observación sobre este documento..." value={inlineUploadForm.notas} onChange={e=>setInlineUploadForm(f=>({...f,notas:e.target.value}))} />
+                          </div>
+                          
+                          {inlineUploadError && <div style={{fontSize:12, color:'var(--danger)'}}>{inlineUploadError}</div>}
+                          
+                          <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
+                            <button type="button" className="btn btn-secondary" onClick={() => setInlineUploadReq(null)}>Cancelar</button>
+                            <button type="submit" className="btn btn-primary" disabled={inlineUploading}>
+                              {inlineUploading ? 'Subiendo...' : (inlineUploadReq.doc ? 'Subir nueva versión' : 'Subir documento')}
+                            </button>
+                          </div>
+                        </form>
                       </div>
                     </div>
-                    {docUploadError && <div style={{fontSize:12, color:'var(--danger)'}}>{docUploadError}</div>}
-                    <button className="btn btn-primary" type="submit" disabled={docUploading}>{docUploading?'Subiendo...':'Subir'}</button>
-                  </form>
-                </details>
+                  </div>
+                )}
+
+                <div style={{marginTop:40, borderTop:'1px solid var(--border)', paddingTop:24}}>
+                  <details>
+                    <summary style={{cursor:'pointer', fontWeight:600, fontSize:13, padding:'10px 0', userSelect:'none'}}>
+                      + Subir documento adicional (fuera de los requisitos del cargo)
+                    </summary>
+                    {tiposRestantes.length === 0 ? (
+                      <div className="text-muted" style={{fontSize:12, padding:'12px 0'}}>
+                        No hay más tipos de documentos aplicables fuera de los requeridos.
+                      </div>
+                    ) : (
+                      <form onSubmit={handleSubirDocAdmin} style={{display:'grid', gap:12, marginTop:12, padding:16, background:'var(--bg-subtle)', borderRadius:8}}>
+                        <div className="grid-2" style={{gap:12}}>
+                          <div className="input-group">
+                            <label>Tipo *</label>
+                            <select className="select" value={docUploadForm.tipoDoc} onChange={e => setDocUploadForm(f=>({...f,tipoDoc:e.target.value}))} required>
+                              <option value="">Seleccionar...</option>
+                              {tiposRestantes.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                            </select>
+                          </div>
+                          <div className="input-group">
+                            <label>Archivo *</label>
+                            <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>setDocUploadFile(e.target.files?.[0]||null)} required />
+                          </div>
+                          <div className="input-group">
+                            <label>Fecha emisión</label>
+                            <input className="input" type="date" value={docUploadForm.fechaEmision} onChange={e=>setDocUploadForm(f=>({...f,fechaEmision:e.target.value}))} />
+                          </div>
+                          <div className="input-group">
+                            <label>Fecha vencimiento</label>
+                            <input className="input" type="date" value={docUploadForm.fechaVencimiento} onChange={e=>setDocUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} />
+                          </div>
+                        </div>
+                        {docUploadError && <div style={{fontSize:12, color:'var(--danger)'}}>{docUploadError}</div>}
+                        <div style={{display:'flex', justifyContent:'flex-end'}}>
+                          <button className="btn btn-primary" type="submit" disabled={docUploading}>{docUploading?'Subiendo...':'Subir adicional'}</button>
+                        </div>
+                      </form>
+                    )}
+                  </details>
+                </div>
                 {docsPersona.length === 0 ? (
                   <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'32px 0', fontSize:13}}>No hay documentos registrados. Sube el primero arriba.</div>
                 ) : (

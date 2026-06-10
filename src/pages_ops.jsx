@@ -10006,8 +10006,15 @@ function _isoDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+const FERIADOS_PERU = [
+  '2026-01-01', '2026-04-02', '2026-04-03', '2026-05-01', '2026-06-29', '2026-07-28', '2026-07-29', '2026-08-06', '2026-08-30', '2026-10-08', '2026-11-01', '2026-12-08', '2026-12-09', '2026-12-25'
+];
+function esFeriado(fechaDate) {
+  return FERIADOS_PERU.includes(_isoDate(fechaDate));
+}
+
 // Calcula remuneración de un tramo (sin AFP/IR/cargas — se aplican sobre el total)
-function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros) {
+function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno) {
   const { asignacion, fechaSegIni, fechaSegFin } = seg;
   const iniStr = _isoDate(fechaSegIni);
   const finStr = _isoDate(fechaSegFin);
@@ -10015,8 +10022,45 @@ function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registr
   const valorMinuto = valorHora / 60;
   const diasCal = diasCalendarioEnRango(fechaSegIni, fechaSegFin);
 
+  let esperados = 0;
+  let asistidos = 0;
+  const mapDias = ['dom','lun','mar','mie','jue','vie','sab'];
+  const diasLaborablesSemana = turno?.dias_laborables || ['lun','mar','mie','jue','vie','sab'];
+
   if (asignacion.tipo_tramo === 'suspension_perfecta') {
-    return { tipo: 'suspension_perfecta', fechaIni: iniStr, fechaFin: finStr, diasCal, sueldoTramo: 0, descFaltas: 0, descTardanzas: 0, addHorasExtra: 0, tramo1Min: 0, tramo2Min: 0, addTramo1: 0, addTramo2: 0, faltas: 0, justificadas: 0, tardanzas: 0, minutosTardanza: 0 };
+    esperados = 0;
+    asistidos = 0;
+  } else if (asignacion.regimen_jornada === 'ciclo_acumulativo') {
+    const t = Number(asignacion.dias_ciclo_trabajo) || 0;
+    const d_ciclo = Number(asignacion.dias_ciclo_descanso) || 0;
+    const duracion = t + d_ciclo;
+    if (duracion > 0 && asignacion.fecha_inicio_ciclo) {
+      const inicio = new Date(asignacion.fecha_inicio_ciclo + 'T00:00:00');
+      for (let dia = new Date(fechaSegIni); dia <= fechaSegFin; dia.setDate(dia.getDate() + 1)) {
+        const diff = Math.floor((dia - inicio) / 86400000);
+        const pos = ((diff % duracion) + duracion) % duracion;
+        if (pos < t) {
+          esperados++;
+          const iso = _isoDate(dia);
+          const reg = regsTramo.find(r => r.fecha === iso);
+          if (reg && !reg.es_falta) asistidos++;
+        }
+      }
+    }
+  } else {
+    for (let dia = new Date(fechaSegIni); dia <= fechaSegFin; dia.setDate(dia.getDate() + 1)) {
+      if (diasLaborablesSemana.includes(mapDias[dia.getDay()]) && !esFeriado(dia)) {
+        esperados++;
+        const iso = _isoDate(dia);
+        const reg = regsTramo.find(r => r.fecha === iso);
+        if (reg && !reg.es_falta) asistidos++;
+      }
+    }
+  }
+  if (asistidos > esperados) asistidos = esperados;
+
+  if (asignacion.tipo_tramo === 'suspension_perfecta') {
+    return { tipo: 'suspension_perfecta', fechaIni: iniStr, fechaFin: finStr, diasCal, esperados, asistidos, sueldoTramo: 0, descFaltas: 0, descTardanzas: 0, addHorasExtra: 0, tramo1Min: 0, tramo2Min: 0, addTramo1: 0, addTramo2: 0, faltas: 0, justificadas: 0, tardanzas: 0, minutosTardanza: 0 };
   }
 
   const faltas          = regsTramo.filter(r => r.estado === 'falta').length;
@@ -10040,6 +10084,7 @@ function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registr
   return {
     tipo: asignacion.regimen_jornada || 'general',
     fechaIni: iniStr, fechaFin: finStr, diasCal, diasComp,
+    esperados, asistidos,
     sueldoTramo, descFaltas, descTardanzas, addHorasExtra,
     tramo1Min, tramo2Min, addTramo1, addTramo2,
     faltas, justificadas, tardanzas, minutosTardanza,
@@ -10070,13 +10115,13 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     const { asignacion } = segmentos[0];
     if (asignacion.tipo_tramo === 'suspension_perfecta') {
       const base = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg) || {};
-      return { ...base, sueldo_proporcional: 0, remuneracion_bruta: 0, total_descuentos: 0, neto: 0, essalud: 0, cts_mensualizado: 0, gratificacion_mensualizada: 0, bonif_extraordinaria: 0, vacaciones_mensualizadas: 0, total_cargas: 0, costo_real_empresa: 0, tramos: [calcularRemuneracionTramo(segmentos[0], 0, 0, 0, [])], multi_tramo: false, tiene_suspension: true };
+      return { ...base, sueldo_proporcional: 0, remuneracion_bruta: 0, total_descuentos: 0, neto: 0, essalud: 0, cts_mensualizado: 0, gratificacion_mensualizada: 0, bonif_extraordinaria: 0, vacaciones_mensualizadas: 0, total_cargas: 0, costo_real_empresa: 0, tramos: [calcularRemuneracionTramo(segmentos[0], 0, 0, 0, registros, turno)], multi_tramo: false, tiene_suspension: true };
     }
     const workerAdaptado = { ...trabajador, regimen_jornada: asignacion.regimen_jornada || trabajador.regimen_jornada, dias_ciclo_trabajo: asignacion.dias_ciclo_trabajo ?? trabajador.dias_ciclo_trabajo, dias_ciclo_descanso: asignacion.dias_ciclo_descanso ?? trabajador.dias_ciclo_descanso, fecha_inicio_ciclo: asignacion.fecha_inicio_ciclo ?? trabajador.fecha_inicio_ciclo };
     const result = calcularNominaTrabajador(workerAdaptado, { ...datosNomina, ...workerAdaptado }, turno, registros, periodo, empresaCfg);
     if (!result) return null;
     const sb = Number(datosNomina?.sueldo_base || trabajador.remuneracion || 3000);
-    return { ...result, tramos: [calcularRemuneracionTramo(segmentos[0], sb, result.valor_dia, result.valor_hora, registros)], multi_tramo: false };
+    return { ...result, tramos: [calcularRemuneracionTramo(segmentos[0], sb, result.valor_dia, result.valor_hora, registros, turno)], multi_tramo: false };
   }
 
   // ── Multi-tramo ───────────────────────────────────────────────────────────────
@@ -10097,7 +10142,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     }
   }
 
-  const tramosCalc = segmentos.map(seg => calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros));
+  const tramosCalc = segmentos.map(seg => calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno));
 
   const sueldoProporcional   = tramosCalc.reduce((s, t) => s + t.sueldoTramo, 0);
   const descFaltasTotal      = tramosCalc.reduce((s, t) => s + t.descFaltas, 0);
@@ -10154,13 +10199,31 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   const costoReal   = remuneracionBruta + essalud + cts + gratificacion + bonifExtraordinaria + vacaciones;
 
   const ultimoActivo = [...tramosCalc].reverse().find(t => t.tipo !== 'suspension_perfecta');
-  const regimenDisplay = ultimoActivo?.tipo || trabajador.regimen_jornada || 'general';
+  const tiposSet = [...new Set(tramosCalc.map(t => t.tipo))];
+  let regimenDisplay = trabajador.regimen_jornada || 'general';
+  if (segmentos.length > 1) {
+    const nombres = tramosCalc.map(t => t.tipo === 'suspension_perfecta' ? 'Suspensión' : t.tipo === 'ciclo_acumulativo' ? 'Minero' : 'General');
+    const displayUnicos = [];
+    nombres.forEach(n => { if (displayUnicos[displayUnicos.length - 1] !== n) displayUnicos.push(n); });
+    regimenDisplay = `Mixto (${displayUnicos.join(' → ')})`;
+  } else {
+    regimenDisplay = ultimoActivo?.tipo || trabajador.regimen_jornada || 'general';
+  }
+
+  const esperadosTotal = tramosCalc.reduce((s, t) => s + (t.esperados || 0), 0);
+  const asistidosTotal = tramosCalc.reduce((s, t) => s + (t.asistidos || 0), 0);
+
+  let diasComputablesDisplay = '—';
+  if (tramosCalc.some(t => t.tipo === 'ciclo_acumulativo')) {
+    diasComputablesDisplay = segmentos.length > 1 ? `${diasCompTotal} (mina)` : diasCompTotal;
+  }
 
   return {
     trabajador_id: trabajador.id, trabajador, datosNomina, turno, periodo,
     regimen_jornada: regimenDisplay, regimen_empresa: regimen_laboral_empresa,
-    dias_laborables: 22, dias_asistidos: tramosCalc.reduce((s, t) => s + (t.diasCal - (t.faltas||0) - (t.justificadas||0)), 0),
+    dias_laborables: esperadosTotal, dias_asistidos: asistidosTotal,
     dias_computables: diasCompTotal > 0 ? diasCompTotal : null,
+    dias_computables_display: diasComputablesDisplay,
     faltas_injustificadas: faltasTotal, faltas_justificadas: faltasJustTotal,
     tardanzas: tardanzasTotal, minutos_tardanza_total: minutosTardanzaTotal,
     horas_extra_total_min: tramo1MinTotal + tramo2MinTotal, horas_extra_tramo1_min: tramo1MinTotal, horas_extra_tramo2_min: tramo2MinTotal,
@@ -10230,16 +10293,55 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
       es_proporcional: false, dias_efectivos_periodo: 0,
     };
   }
-  const diasLaborables = 22;
-  const diasBase = esMinero ? diasComputables : diasLaborables;
-
-  // Proporcionalidad por ingreso o cese dentro del período
-  const _fechaIng  = trabajador.fecha_inicio_contrato || trabajador.fecha_ingreso || null;
-  const _fechaCese = trabajador.fecha_fin_contrato    || trabajador.fecha_cese    || null;
+  let esperados = 0;
+  let asistidos = 0;
+  const mapDias = ['dom','lun','mar','mie','jue','vie','sab'];
+  const diasLaborablesSemana = turno?.dias_laborables || ['lun','mar','mie','jue','vie','sab'];
+  
   const _pYear = periodo?.anio || new Date().getFullYear();
   const _pMes  = periodo?.mes  || new Date().getMonth() + 1;
   const _pIni  = new Date(_pYear, _pMes - 1, 1);
   const _pFin  = new Date(_pYear, _pMes, 0);
+
+  const sinFiscalizacionDiariaLocal = trabajador.cargo_confianza || getTipoFiscalizacion(trabajador) !== 'diaria';
+  const registrosNominaLocal = sinFiscalizacionDiariaLocal ? [] : registros;
+
+  if (esMinero) {
+    esperados = diasComputables || 0;
+    const t = Number(trabajador.dias_ciclo_trabajo) || 0;
+    const d_ciclo = Number(trabajador.dias_ciclo_descanso) || 0;
+    const duracion = t + d_ciclo;
+    if (duracion > 0 && fechaInicioCiclo) {
+      const inicio = new Date(fechaInicioCiclo + 'T00:00:00');
+      for (let dia = new Date(_pIni); dia <= _pFin; dia.setDate(dia.getDate() + 1)) {
+        const diff = Math.floor((dia - inicio) / 86400000);
+        const pos = ((diff % duracion) + duracion) % duracion;
+        if (pos < t) {
+          const iso = _isoDate(dia);
+          const reg = registrosNominaLocal.find(r => r.fecha === iso);
+          if (reg && !reg.es_falta) asistidos++;
+        }
+      }
+    }
+  } else {
+    for (let dia = new Date(_pIni); dia <= _pFin; dia.setDate(dia.getDate() + 1)) {
+      if (diasLaborablesSemana.includes(mapDias[dia.getDay()]) && !esFeriado(dia)) {
+        esperados++;
+        const iso = _isoDate(dia);
+        const reg = registrosNominaLocal.find(r => r.fecha === iso);
+        if (reg && !reg.es_falta) asistidos++;
+      }
+    }
+  }
+  if (asistidos > esperados) asistidos = esperados;
+  
+  const diasLaborables = esperados;
+  const diasBase = esMinero ? diasComputables : diasLaborables;
+  let diasComputablesDisplay = esMinero ? (diasComputables ?? '—') : '—';
+
+  // Proporcionalidad por ingreso o cese dentro del período
+  const _fechaIng  = trabajador.fecha_inicio_contrato || trabajador.fecha_ingreso || null;
+  const _fechaCese = trabajador.fecha_fin_contrato    || trabajador.fecha_cese    || null;
   const _dtIng  = _fechaIng  ? new Date(`${_fechaIng}T00:00:00`)  : null;
   const _dtCese = _fechaCese ? new Date(`${_fechaCese}T00:00:00`) : null;
   let diasEfectivos = 30;
@@ -10264,7 +10366,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
 
   const sinFiscalizacionDiaria = trabajador.cargo_confianza || getTipoFiscalizacion(trabajador) !== 'diaria';
   const registrosNomina = sinFiscalizacionDiaria ? [] : registros;
-  const asistencias = registrosNomina.filter(r => !r.es_falta).length;
+  const asistencias = asistidos;
   const faltasInjustificadas = registrosNomina.filter(r => r.estado === 'falta').length;
   const faltasJustificadas = registrosNomina.filter(r => r.estado === 'falta_justificada').length;
   const tardanzas = registrosNomina.filter(r => r.estado === 'tardanza').length;
@@ -10333,6 +10435,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
     trabajador_id: trabajador.id, trabajador, datosNomina, turno, periodo,
     regimen_jornada: regimenJornada, regimen_empresa: regimen_laboral_empresa,
     dias_laborables: diasLaborables, dias_asistidos: asistencias, dias_computables: diasComputables,
+    dias_computables_display: diasComputablesDisplay,
     faltas_injustificadas: faltasInjustificadas, faltas_justificadas: faltasJustificadas,
     tardanzas, minutos_tardanza_total: minutosTardanza,
     horas_extra_total_min: horasExtraMin, horas_extra_tramo1_min: tramo1Min, horas_extra_tramo2_min: tramo2Min,
@@ -11291,8 +11394,8 @@ function Nomina() {
                 {calculos.map(c => (
                   <tr key={c.trabajador_id} style={{cursor:'pointer', background: c.incompleto_ciclo ? 'rgba(239,68,68,0.06)' : undefined}} onClick={()=>setDetallePanel(c)}>
                     <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}{c.es_proporcional && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>{c.dias_efectivos_periodo}d</span>}</div></td>
-                    <td>{c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
-                    {hayMineros && <td>{c.dias_computables ?? '—'}</td>}
+                    <td>{c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada.startsWith('Mixto') ? <span className="badge badge-purple">{c.regimen_jornada}</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
+                    {hayMineros && <td>{c.dias_computables_display ?? (c.dias_computables ?? '—')}</td>}
                     <td style={{fontSize:11}}>{c.turno?.nombre || '—'}</td>
                     <td>{c.incompleto_ciclo ? '—' : `${c.dias_asistidos}/${c.dias_laborables}`}</td>
                     <td>{c.incompleto_ciclo ? '—' : (c.faltas_injustificadas > 0 ? <span style={{color:'var(--danger)'}}>{c.faltas_injustificadas}</span> : '0')}</td>
@@ -11523,6 +11626,14 @@ function RRHH_Operativo() {
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const [showRechazoInput, setShowRechazoInput] = useState(null);
   const [docFiltro, setDocFiltro] = useState('todos');
+  
+  // Estado para subida inline
+  const [inlineUploadReq, setInlineUploadReq] = useState(null);
+  const [inlineUploadFile, setInlineUploadFile] = useState(null);
+  const [inlineUploadForm, setInlineUploadForm] = useState({ fechaEmision: '', fechaVencimiento: '', notas: '' });
+  const [inlineUploading, setInlineUploading] = useState(false);
+  const [inlineUploadError, setInlineUploadError] = useState('');
+
   /*
   const turnosBaseOperativo = [
     { id: 'turno_manana', nombre: 'Ma\u00f1ana', hora_entrada: '08:00', hora_salida: '17:00' },
@@ -12279,50 +12390,73 @@ function RRHH_Operativo() {
           )}
 
           {fichaTab === 'documentos' && (() => {
-            const DOC_LBL = { vigente:'Vigente', por_vencer:'Por vencer', vencido:'Vencido', en_revision:'En revisión', rechazado:'Rechazado', falta:'Falta', sin_fecha_vencimiento:'Sin fecha venc.' };
-            const DOC_BDG = { vigente:'badge-green', por_vencer:'badge-orange', vencido:'badge-red', en_revision:'badge-cyan', rechazado:'badge-red', falta:'badge-gray', sin_fecha_vencimiento:'badge-orange' };
-            const GLOB_LBL = { en_regla:'En regla', advertencia:'Advertencia', critico:'Crítico', sin_cargo:'Sin cargo asignado — requisitos no determinables', sin_requisitos:'Sin requisitos configurados para este cargo' };
-            const GLOB_BDG = { en_regla:'badge-green', advertencia:'badge-orange', critico:'badge-red', sin_cargo:'badge-gray', sin_requisitos:'badge-gray' };
+            // ── Fase 1B: Motor de habilitaciones (Provisional sin cálculo de fechas) ─────────────
+            const DOC_LBL = { vigente:'Cargado / Validado', por_vencer:'Cargado / Validado', vencido:'Cargado / Validado', en_revision:'En revisión', rechazado:'Rechazado', falta:'Falta', sin_fecha_vencimiento:'Cargado / Validado' };
+            const DOC_BDG = { vigente:'badge-green', por_vencer:'badge-green', vencido:'badge-green', en_revision:'badge-cyan', rechazado:'badge-red', falta:'badge-gray', sin_fecha_vencimiento:'badge-green' };
+            
             const hab = habIdx[p.id] || { estado_global: 'sin_cargo', docs: [], tiene_cargo: false };
             const docReqPorTipo = Object.fromEntries(hab.docs.map(d => [d.tipo_documento_id, d]));
+            const tiposCargados = new Set(hab.docs.map(d => d.tipo_documento_id));
+            const tiposRestantes = tipoDocOpts.filter(t => !tiposCargados.has(t.id || t.key));
+
+            const handleSubirInline = async (e) => {
+              e.preventDefault();
+              if (!inlineUploadFile) { setInlineUploadError('Selecciona el archivo.'); return; }
+              if (inlineUploadReq.tipo?.exige_vencimiento && !inlineUploadForm.fechaVencimiento) {
+                setInlineUploadError('Este tipo exige fecha de vencimiento.'); return;
+              }
+              setInlineUploading(true); setInlineUploadError('');
+              try {
+                await subirDocumentoPersonalCtx({
+                  personalId: p.id,
+                  personalTipo: 'operativo',
+                  tipoDoc: inlineUploadReq.tipo_documento_id,
+                  file: inlineUploadFile,
+                  fechaEmision: inlineUploadReq.tipo?.exige_emision ? (inlineUploadForm.fechaEmision || null) : null,
+                  fechaVencimiento: inlineUploadReq.tipo?.exige_vencimiento ? (inlineUploadForm.fechaVencimiento || null) : null,
+                  notas: inlineUploadForm.notas || null,
+                  subidoDesde: 'backoffice',
+                });
+                setInlineUploadReq(null); setInlineUploadFile(null);
+                setInlineUploadForm({ fechaEmision:'', fechaVencimiento:'', notas:'' });
+                addNotificacion('Documento subido correctamente.');
+              } catch (err) { setInlineUploadError(err?.message || 'Error al subir el documento.'); }
+              finally { setInlineUploading(false); }
+            };
+
             return (
               <div className="card-body">
-                {/* Estado global de habilitaciones */}
-                <div style={{display:'flex', alignItems:'center', gap:12, padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, marginBottom:20}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:2}}>Estado habilitacional</div>
-                    <span className={'badge ' + (GLOB_BDG[hab.estado_global] || 'badge-gray')} style={{fontSize:13, padding:'4px 10px'}}>
-                      {GLOB_LBL[hab.estado_global] || hab.estado_global}
-                    </span>
-                  </div>
-                  {hab.tiene_cargo && hab.docs.length > 0 && (
-                    <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
-                      {Object.entries(DOC_LBL).map(([k]) => {
-                        const cnt = hab.docs.filter(d => d.obligatorio && d.estado === k).length;
-                        if (!cnt) return null;
-                        return <span key={k} className={'badge ' + (DOC_BDG[k] || 'badge-gray')} style={{fontSize:11}}>{cnt} {DOC_LBL[k]}</span>;
-                      })}
-                    </div>
-                  )}
-                </div>
 
                 {/* Documentos requeridos por cargo */}
-                {hab.tiene_cargo && hab.docs.length > 0 && (
+                {(!p.cargo_id) ? (
+                  <div style={{marginBottom:20, padding:'24px', textAlign:'center', background:'var(--bg-subtle)', borderRadius:8, border:'1px dashed var(--border)'}}>
+                    <div style={{fontWeight:600, marginBottom:8}}>Este colaborador no tiene cargo asignado</div>
+                    <div className="text-muted" style={{fontSize:13, marginBottom:16}}>Asigna un cargo para determinar sus requisitos documentales.</div>
+                    <button className="btn btn-primary btn-sm" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>Editar ficha</button>
+                  </div>
+                ) : (!hab.docs || hab.docs.length === 0) ? (
+                  <div style={{marginBottom:20, padding:'24px', textAlign:'center', background:'var(--bg-subtle)', borderRadius:8, border:'1px dashed var(--border)'}}>
+                    <div style={{fontWeight:600, marginBottom:8}}>El cargo "{p.cargo}" aún no tiene requisitos documentales</div>
+                    <div className="text-muted" style={{fontSize:13}}>Ve a Maestros Base para configurar la matriz de requisitos.</div>
+                  </div>
+                ) : (
                   <div style={{marginBottom:20}}>
                     <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8}}>Requisitos del cargo</div>
                     <div style={{display:'flex', flexDirection:'column', gap:6}}>
                       {hab.docs.map(req => {
                         const nombreTipo = req.tipo?.nombre || req.tipo_documento_id;
-                        const vence = req.doc?.fecha_vencimiento;
+                        const esActivo = !!req.doc;
                         return (
                           <div key={req.tipo_documento_id} style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6, border:'1px solid var(--border-subtle)'}}>
                             <span className={'badge ' + (DOC_BDG[req.estado] || 'badge-gray')} style={{fontSize:10, flexShrink:0}}>{DOC_LBL[req.estado] || req.estado}</span>
                             <span style={{flex:1, fontSize:13, fontWeight:500}}>{nombreTipo}</span>
                             {!req.obligatorio && <span style={{fontSize:10, color:'var(--fg-muted)'}}>Opcional</span>}
-                            {vence && <span style={{fontSize:11, color:'var(--fg-muted)'}}>Vence {vence}</span>}
                             {req.estado === 'rechazado' && req.doc?.motivo_rechazo && (
-                              <span style={{fontSize:10, color:'var(--danger)'}} title={req.doc.motivo_rechazo}>Rechazado</span>
+                              <span style={{fontSize:10, color:'var(--danger)', marginLeft:8}} title={req.doc.motivo_rechazo}>Motivo: {req.doc.motivo_rechazo}</span>
                             )}
+                            <button className="btn btn-sm btn-ghost" onClick={() => setInlineUploadReq(req)} style={{color: esActivo ? 'var(--fg)' : 'var(--cyan)'}}>
+                              {esActivo ? 'Ver / Reemplazar' : 'Subir'}
+                            </button>
                           </div>
                         );
                       })}
@@ -12330,24 +12464,92 @@ function RRHH_Operativo() {
                   </div>
                 )}
 
-                {/* Formulario de subida */}
-                <details style={{marginBottom:20}}>
-                  <summary style={{cursor:'pointer', fontWeight:600, fontSize:13, padding:'10px 0'}}>+ Subir nuevo documento</summary>
-                  <form onSubmit={handleSubirDoc} style={{display:'grid', gap:12, marginTop:12}}>
-                    <div className="grid-2" style={{gap:12}}>
-                      <div className="input-group">
-                        <label>Tipo de documento *</label>
-                        <select className="select" value={docUploadForm.tipoDoc} onChange={e => setDocUploadForm(f => ({...f, tipoDoc: e.target.value, fechaVencimiento: ''}))} required>
-                          <option value="">Seleccionar...</option>
-                          {usarMaestro
-                            ? tipoDocOpts.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)
-                            : tipoDocOpts.map(t => <option key={t.key} value={t.key}>{t.label}</option>)
-                          }
-                        </select>
+                {/* Modal inline upload */}
+                {inlineUploadReq && (
+                  <div className="modal-backdrop" onClick={() => setInlineUploadReq(null)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:500}}>
+                      <div className="modal-head">
+                        <h3>Subir {inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id}</h3>
+                        <button className="icon-btn" onClick={() => setInlineUploadReq(null)}>{I.x}</button>
                       </div>
-                      <div className="input-group">
-                        <label>Archivo (PDF / JPG / PNG) *</label>
-                        <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e => setDocUploadFile(e.target.files?.[0] || null)} required />
+                      <div className="modal-body">
+                        {inlineUploadReq.doc?.archivo_url && (
+                          <div style={{marginBottom:16, padding:12, background:'var(--bg-subtle)', borderRadius:6, border:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                            <div>
+                              <div style={{fontWeight:500, fontSize:13}}>Documento actual (v{inlineUploadReq.doc.version})</div>
+                              <div className="text-muted" style={{fontSize:11}}>{inlineUploadReq.doc.nombre_archivo}</div>
+                            </div>
+                            <a href={inlineUploadReq.doc.archivo_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-ghost">{I.file} Ver archivo</a>
+                          </div>
+                        )}
+                        <form onSubmit={handleSubirInline} style={{display:'grid', gap:14}}>
+                          {inlineUploadReq.tipo?.requiere_validacion && (
+                            <div style={{fontSize:12, color:'var(--orange)', padding:'8px 12px', background:'rgba(255,160,0,0.1)', borderRadius:6, border:'1px solid rgba(255,160,0,0.3)'}}>
+                              Al subir este documento, quedará "En revisión" hasta que sea validado por RRHH.
+                            </div>
+                          )}
+                          <div className="input-group">
+                            <label>Tipo de documento</label>
+                            <input className="input" type="text" value={inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id} disabled />
+                          </div>
+                          <div className="input-group">
+                            <label>Archivo *</label>
+                            <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>setInlineUploadFile(e.target.files?.[0]||null)} required />
+                            <div className="text-muted" style={{fontSize:11, marginTop:4}}>PDF, JPG o PNG. Tamaño máximo recomendado 5MB.</div>
+                          </div>
+                          <div className="grid-2" style={{gap:12}}>
+                            <div className="input-group">
+                              <label>Fecha de emisión {inlineUploadReq.tipo?.exige_emision ? '*' : ''}</label>
+                              <input className="input" type="date" value={inlineUploadForm.fechaEmision} onChange={e=>setInlineUploadForm(f=>({...f,fechaEmision:e.target.value}))} required={inlineUploadReq.tipo?.exige_emision} />
+                            </div>
+                            {inlineUploadReq.tipo?.exige_vencimiento && (
+                              <div className="input-group">
+                                <label>Fecha de vencimiento *</label>
+                                <input className="input" type="date" value={inlineUploadForm.fechaVencimiento} onChange={e=>setInlineUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} required />
+                              </div>
+                            )}
+                          </div>
+                          <div className="input-group">
+                            <label>Notas (opcional)</label>
+                            <input className="input" type="text" placeholder="Alguna observación sobre este documento..." value={inlineUploadForm.notas} onChange={e=>setInlineUploadForm(f=>({...f,notas:e.target.value}))} />
+                          </div>
+                          
+                          {inlineUploadError && <div style={{fontSize:12, color:'var(--danger)'}}>{inlineUploadError}</div>}
+                          
+                          <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
+                            <button type="button" className="btn btn-secondary" onClick={() => setInlineUploadReq(null)}>Cancelar</button>
+                            <button type="submit" className="btn btn-primary" disabled={inlineUploading}>
+                              {inlineUploading ? 'Subiendo...' : (inlineUploadReq.doc ? 'Subir nueva versión' : 'Subir documento')}
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{marginTop:40, borderTop:'1px solid var(--border)', paddingTop:24}}>
+                  <details>
+                    <summary style={{cursor:'pointer', fontWeight:600, fontSize:13, padding:'10px 0', userSelect:'none'}}>
+                      + Subir documento adicional (fuera de los requisitos del cargo)
+                    </summary>
+                    {tiposRestantes.length === 0 ? (
+                      <div className="text-muted" style={{fontSize:12, padding:'12px 0'}}>
+                        No hay más tipos de documentos aplicables fuera de los requeridos.
+                      </div>
+                    ) : (
+                      <form onSubmit={handleSubirDoc} style={{display:'grid', gap:12, marginTop:12, padding:16, background:'var(--bg-subtle)', borderRadius:8}}>
+                        <div className="grid-2" style={{gap:12}}>
+                          <div className="input-group">
+                            <label>Tipo de documento *</label>
+                            <select className="select" value={docUploadForm.tipoDoc} onChange={e => setDocUploadForm(f => ({...f, tipoDoc: e.target.value, fechaVencimiento: ''}))} required>
+                              <option value="">Seleccionar...</option>
+                              {tiposRestantes.map(t => <option key={t.id || t.key} value={t.id || t.key}>{t.nombre || t.label}</option>)}
+                            </select>
+                          </div>
+                          <div className="input-group">
+                            <label>Archivo (PDF / JPG / PNG) *</label>
+                            <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e => setDocUploadFile(e.target.files?.[0] || null)} required />
                       </div>
                       <div className="input-group">
                         <label>Fecha de emisión</label>
@@ -12368,7 +12570,9 @@ function RRHH_Operativo() {
                     {docUploadError && <div className="text-danger" style={{fontSize:12}}>{docUploadError}</div>}
                     <button className="btn btn-primary" type="submit" disabled={docUploading}>{docUploading ? 'Subiendo...' : 'Subir documento'}</button>
                   </form>
+                )}
                 </details>
+              </div>
 
                 {/* Lista de documentos cargados */}
                 <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8}}>Documentos cargados</div>
