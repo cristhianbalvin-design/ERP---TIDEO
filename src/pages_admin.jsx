@@ -2645,19 +2645,26 @@ function Maestros() {
     areasEmpresa, cargos, especialidades, tiposServicio, almacenes, sedes, industrias,
     monedasImpuestosUnidades = [],
     crearArea, actualizarArea, eliminarArea,
-    crearCargo, actualizarCargo, eliminarCargo,
+    crearCargo, actualizarCargo, eliminarCargo, fusionarCargos,
     crearEspecialidad, actualizarEspecialidad, eliminarEspecialidad,
     crearTipoServicio, actualizarTipoServicio, eliminarTipoServicio,
     crearAlmacen, actualizarAlmacen, eliminarAlmacen,
     crearSede, actualizarSede, eliminarSede,
     crearIndustria, actualizarIndustria, eliminarIndustria,
     crearMonedaImpuestoUnidad, actualizarMonedaImpuestoUnidad, eliminarMonedaImpuestoUnidad,
+    tiposDocumento = [], crearTipoDocumento, actualizarTipoDocumento, importarPlantillaTiposDoc,
+    requisitosCargo = [], upsertRequisitoCargo, eliminarRequisitoCargo,
     addNotificacion
   } = useApp();
   const { centrosCosto, centrosBeneficio } = useApp();
   const [sel, setSel] = useState(null);
   const [showCecoCebe, setShowCecoCebe] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
+  const [fusionOrigenId, setFusionOrigenId] = useState(null);
+  const [fusionDestinoId, setFusionDestinoId] = useState('');
+  const [fusionSaving, setFusionSaving] = useState(false);
+  const [matrizCargoId, setMatrizCargoId] = useState('');
+  const [matrizSaving, setMatrizSaving] = useState(false);
   const formRef = React.useRef(null);
   const [clienteSearch, setClienteSearch] = useState('');
 
@@ -2667,13 +2674,15 @@ function Maestros() {
     { id: 'mst_ceco_cebe', tabla: 'Centros de Costo y Beneficio' },
     { id: 'mst_areas', tabla: 'Areas de la empresa' },
     { id: 'mst_cargos', tabla: 'Cargos de la empresa' },
+    { id: 'mst_tipos_documento', tabla: 'Tipos de Documento' },
+    { id: 'mst_requisitos_cargo', tabla: 'Requisitos por Cargo' },
     { id: 'mst_especialidades', tabla: 'Especialidades técnicas' },
     { id: 'mst_materiales', tabla: 'Materiales e insumos con codigo de barras' },
     { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades' },
     { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno' },
     { id: 'mst_almacenes', tabla: 'Almacenes y depósitos' },
   ];
-  const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', tipo_catalogo:'moneda' };
+  const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', tipo_catalogo:'moneda', ambito:'Ambos', exige_vencimiento:false, dias_alerta:30, es_habilitante:false, requiere_validacion:true, orden:0 };
   const [rows, setRows] = useState({
     mst_clientes: [],
     mst_proveedores: [],
@@ -2690,6 +2699,8 @@ function Maestros() {
     if (!sel) return [];
     if (sel.id === 'mst_areas') return areasEmpresa;
     if (sel.id === 'mst_cargos') return cargos;
+    if (sel.id === 'mst_tipos_documento') return tiposDocumento;
+    if (sel.id === 'mst_requisitos_cargo') return requisitosCargo;
     if (sel.id === 'mst_especialidades') return especialidades;
     if (sel.id === 'mst_tipos_servicio') return tiposServicio;
     if (sel.id === 'mst_almacenes') return almacenes;
@@ -2773,6 +2784,13 @@ function Maestros() {
       ejemplo: ['USD','moneda','Dólar americano','Dólar estadounidense','activo'],
       hint: 'Tipo: moneda / impuesto / unidad — Codigo es obligatorio',
     },
+    mst_tipos_documento: {
+      sheetName: 'TiposDocumento', filename: 'tipos_documento.xlsx',
+      headers: ['Codigo','Nombre','Ambito','Exige vencimiento','Dias alerta','Es habilitante','Requiere validacion','Estado','Orden'],
+      fields:  ['codigo','nombre','ambito','exige_vencimiento','dias_alerta','es_habilitante','requiere_validacion','estado','orden'],
+      ejemplo: ['TDOC-001','SCTR','Operativo','si','30','si','si','activo','1'],
+      hint: 'Ambito: Operativo / Administrativo / Ambos · Exige vencimiento, Es habilitante, Requiere validacion: si / no',
+    },
   };
 
   const parseMstXlsx = async (file) => {
@@ -2845,6 +2863,7 @@ function Maestros() {
         else if (sel.id === 'mst_sedes') await crearSede({ ...base, direccion: r.direccion || '', gps: r.gps || '' });
         else if (sel.id === 'mst_industrias') await crearIndustria({ ...base, categoria: r.categoria || r.detalle || 'General' });
         else if (sel.id === 'mst_impuestos') await crearMonedaImpuestoUnidad({ codigo: (r.codigo||'').trim().toUpperCase(), tipo: r.tipo || 'moneda', nombre: r.nombre, detalle: r.detalle || '', estado: r.estado || 'activo' });
+        else if (sel.id === 'mst_tipos_documento') await crearTipoDocumento({ ...base, ambito: r.ambito || 'Ambos', exige_vencimiento: (r.exige_vencimiento||'').toLowerCase()==='si', dias_alerta: parseInt(r.dias_alerta)||30, es_habilitante: (r.es_habilitante||'').toLowerCase()==='si', requiere_validacion: (r.requiere_validacion||'si').toLowerCase()==='si', orden: parseInt(r.orden)||0 });
         count++;
       }
       addNotificacion?.(`${count} registros importados correctamente.`);
@@ -2856,7 +2875,7 @@ function Maestros() {
   };
 
   const autoCode = (id, len) => {
-    const prefixMap = { mst_areas:'ARE', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_almacenes:'ALM', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX' };
+    const prefixMap = { mst_areas:'ARE', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_almacenes:'ALM', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX', mst_tipos_documento:'TDOC', mst_requisitos_cargo:'CDR' };
     const prefix = prefixMap[id] || id.slice(4,7).toUpperCase();
     return `${prefix}-${String(len+1).padStart(3,'0')}`;
   };
@@ -2911,6 +2930,18 @@ function Maestros() {
         if (!item.codigo) throw new Error('Completa el codigo del valor.');
         if (editandoId) await actualizarMonedaImpuestoUnidad(editandoId, item);
         else await crearMonedaImpuestoUnidad(item);
+      } else if (sel.id === 'mst_tipos_documento') {
+        const item = {
+          ...base,
+          ambito: nuevo.ambito || 'Ambos',
+          exige_vencimiento: Boolean(nuevo.exige_vencimiento),
+          dias_alerta: parseInt(nuevo.dias_alerta) || 0,
+          es_habilitante: Boolean(nuevo.es_habilitante),
+          requiere_validacion: nuevo.requiere_validacion !== false,
+          orden: parseInt(nuevo.orden) || 0,
+        };
+        if (editandoId) await actualizarTipoDocumento(editandoId, item);
+        else await crearTipoDocumento(item);
       } else {
         return;
       }
@@ -2934,7 +2965,9 @@ function Maestros() {
   const NOTAS_PANEL = {
     mst_especialidades: 'Estas especialidades se asignan al personal desde RRHH Operativo.',
     mst_tipos_servicio: 'Estos tipos se usan al crear Órdenes de Trabajo.',
-    mst_almacenes: 'Los almacenes se administran con stock y movimientos desde el módulo de Inventario.'
+    mst_almacenes: 'Los almacenes se administran con stock y movimientos desde el módulo de Inventario.',
+    mst_tipos_documento: 'Define qué documentos existen en tu empresa. Usa "Importar Plantilla" para partir de tipos comunes del sector minero. Puedes editarlos libremente después.',
+    mst_requisitos_cargo: 'Define qué documentos requiere cada cargo. El sistema usará esta configuración para calcular el cumplimiento documental del personal.',
   };
 
   const CodPreview = ({ id, len }) => (
@@ -2971,7 +3004,13 @@ function Maestros() {
       responsable: r.responsable || '',
       direccion: r.direccion || '',
       gps: r.gps || '',
-      tipo_cargo: r.tipo || ''
+      tipo_cargo: r.tipo || '',
+      ambito: r.ambito || 'Ambos',
+      exige_vencimiento: Boolean(r.exige_vencimiento),
+      dias_alerta: r.dias_alerta ?? 30,
+      es_habilitante: Boolean(r.es_habilitante),
+      requiere_validacion: r.requiere_validacion !== false,
+      orden: r.orden ?? 0
     };
     setEditandoId(r.id);
     setNuevo(form);
@@ -2990,6 +3029,12 @@ function Maestros() {
       else if (sel.id === 'mst_sedes') await eliminarSede(r.id);
       else if (sel.id === 'mst_industrias') await eliminarIndustria(r.id);
       else if (sel.id === 'mst_impuestos') await eliminarMonedaImpuestoUnidad(r.id);
+      else if (sel.id === 'mst_tipos_documento') {
+        await actualizarTipoDocumento(r.id, { estado: 'inactivo' });
+        if (editandoId === r.id) resetForm();
+        addNotificacion?.(`Tipo de documento desactivado.`);
+        return;
+      }
       else return;
       if (editandoId === r.id) resetForm();
       addNotificacion?.(`${sel.tabla}: registro eliminado.`);
@@ -3155,6 +3200,89 @@ function Maestros() {
         </div>
       </form>
     );
+    if (sel?.id === 'mst_tipos_documento') return (
+      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+          <CodPreview id={sel.id} len={formLen}/>
+          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: SCTR" autoFocus/></div>
+          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
+          <div className="input-group"><label>Ámbito</label><select className="select" value={nuevo.ambito||'Ambos'} onChange={e=>setNuevo(v=>({...v,ambito:e.target.value}))}><option value="Operativo">Operativo</option><option value="Administrativo">Administrativo</option><option value="Ambos">Ambos</option></select></div>
+          <div className="input-group"><label>Exige vencimiento</label><select className="select" value={nuevo.exige_vencimiento?'si':'no'} onChange={e=>setNuevo(v=>({...v,exige_vencimiento:e.target.value==='si'}))}><option value="no">No</option><option value="si">Sí</option></select></div>
+          <div className="input-group"><label>Días de alerta</label><input className="input" type="number" min="0" value={nuevo.dias_alerta??30} onChange={e=>setNuevo(v=>({...v,dias_alerta:parseInt(e.target.value)||0}))}/></div>
+          <div className="input-group"><label>Es habilitante</label><select className="select" value={nuevo.es_habilitante?'si':'no'} onChange={e=>setNuevo(v=>({...v,es_habilitante:e.target.value==='si'}))}><option value="no">No</option><option value="si">Sí</option></select></div>
+          <div className="input-group"><label>Requiere validación RRHH</label><select className="select" value={nuevo.requiere_validacion!==false?'si':'no'} onChange={e=>setNuevo(v=>({...v,requiere_validacion:e.target.value==='si'}))}><option value="si">Sí</option><option value="no">No</option></select></div>
+          <div className="input-group"><label>Orden</label><input className="input" type="number" min="0" value={nuevo.orden??0} onChange={e=>setNuevo(v=>({...v,orden:parseInt(e.target.value)||0}))}/></div>
+          <FormActions label="tipo de documento" />
+        </div>
+      </form>
+    );
+    if (sel?.id === 'mst_requisitos_cargo') {
+      const cargosActivos = (cargos || []).filter(c => c.estado === 'activo');
+      const tiposActivos = (tiposDocumento || []).filter(t => t.estado === 'activo');
+      const reqDelCargo = (requisitosCargo || []).filter(r => r.cargo_id === matrizCargoId);
+      return (
+        <div className="card" style={{padding:16, marginBottom:18}}>
+          <div className="input-group" style={{maxWidth:360, marginBottom:20}}>
+            <label>Cargo a configurar</label>
+            <select className="select" value={matrizCargoId} onChange={e => setMatrizCargoId(e.target.value)}>
+              <option value="">Elegir cargo...</option>
+              {cargosActivos.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.tipo})</option>)}
+            </select>
+          </div>
+          {!matrizCargoId ? (
+            <div className="text-muted" style={{fontSize:13}}>Selecciona un cargo para ver y configurar sus documentos requeridos.</div>
+          ) : tiposActivos.length === 0 ? (
+            <div className="text-muted" style={{fontSize:13}}>No hay tipos de documento activos. Crea algunos en "Tipos de Documento" primero.</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead><tr><th>Documento</th><th>Ámbito</th><th style={{textAlign:'center'}}>Habilitante</th><th style={{textAlign:'center'}}>Requerido</th><th style={{textAlign:'center'}}>Modalidad</th></tr></thead>
+                <tbody>
+                  {tiposActivos.map(tipo => {
+                    const req = reqDelCargo.find(r => r.tipo_documento_id === tipo.id);
+                    const estaRequerido = Boolean(req);
+                    return (
+                      <tr key={tipo.id}>
+                        <td><strong style={{fontSize:13}}>{tipo.nombre}</strong></td>
+                        <td><span className="badge badge-cyan" style={{fontSize:11}}>{tipo.ambito}</span></td>
+                        <td style={{textAlign:'center'}}>{tipo.es_habilitante ? <span className="badge badge-orange" style={{fontSize:11}}>Sí</span> : <span className="badge badge-gray" style={{fontSize:11}}>No</span>}</td>
+                        <td style={{textAlign:'center'}}>
+                          <input type="checkbox" checked={estaRequerido} disabled={matrizSaving}
+                            onChange={async (e) => {
+                              setMatrizSaving(true);
+                              try {
+                                if (e.target.checked) await upsertRequisitoCargo(matrizCargoId, tipo.id, true);
+                                else if (req) await eliminarRequisitoCargo(req.id);
+                              } catch(err) { addNotificacion?.('Error: ' + (err?.message||'No se pudo guardar')); }
+                              finally { setMatrizSaving(false); }
+                            }}
+                          />
+                        </td>
+                        <td style={{textAlign:'center'}}>
+                          {estaRequerido && (
+                            <select className="select" style={{fontSize:12, padding:'2px 8px', minWidth:100}} value={req?.obligatorio?'si':'no'} disabled={matrizSaving}
+                              onChange={async (e) => {
+                                if (!req) return;
+                                setMatrizSaving(true);
+                                try { await upsertRequisitoCargo(matrizCargoId, tipo.id, e.target.value==='si'); }
+                                catch(err) { addNotificacion?.('Error: ' + (err?.message||'')); }
+                                finally { setMatrizSaving(false); }
+                              }}>
+                              <option value="si">Obligatorio</option>
+                              <option value="no">Opcional</option>
+                            </select>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
   };
 
   const renderTable = () => {
@@ -3197,21 +3325,74 @@ function Maestros() {
         ))}</tbody>
       </table>
     );
-    if (sel?.id === 'mst_cargos') return (
-      <table className="tbl">
-        <thead><tr><th>Código</th><th>Cargo</th><th>Tipo</th><th>Descripción</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
-        <tbody>{selectedRows.map((r,i) => (
-          <tr key={`${r.codigo}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
-            <td className="mono text-muted">{r.codigo}</td>
-            <td><strong>{r.nombre}</strong></td>
-            <td><span className={'badge '+(r.tipo==='Operativo'?'badge-cyan':r.tipo==='Ambos'?'badge-purple':'badge-gray')} style={{fontSize:11}}>{r.tipo||'—'}</span></td>
-            <td className="text-muted" style={{fontSize:12}}>{r.detalle}</td>
-            <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
-            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
-          </tr>
-        ))}</tbody>
-      </table>
-    );
+    if (sel?.id === 'mst_cargos') {
+      const handleFusionar = async () => {
+        if (!fusionOrigenId || !fusionDestinoId || fusionOrigenId === fusionDestinoId) return;
+        setFusionSaving(true);
+        try {
+          await fusionarCargos(fusionOrigenId, fusionDestinoId);
+          setFusionOrigenId(null);
+          setFusionDestinoId('');
+          addNotificacion('Cargos fusionados correctamente.');
+        } catch (err) {
+          alert(`Error al fusionar: ${err?.message || 'error desconocido'}`);
+        } finally {
+          setFusionSaving(false);
+        }
+      };
+      const contarColaboradores = (cargoId) =>
+        personalAdmin.filter(p => p.cargo_id === cargoId).length +
+        personalOperativo.filter(p => p.cargo_id === cargoId).length;
+      return (<>
+        {fusionOrigenId && (
+          <div className="modal-backdrop" onClick={() => { setFusionOrigenId(null); setFusionDestinoId(''); }}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:480}}>
+              <div className="modal-head">
+                <h3>Fusionar cargo</h3>
+                <button className="icon-btn" onClick={() => { setFusionOrigenId(null); setFusionDestinoId(''); }}>{I.x}</button>
+              </div>
+              <div className="modal-body">
+                <p style={{marginBottom:12}}>
+                  Las fichas de <strong>{cargos.find(c=>c.id===fusionOrigenId)?.nombre}</strong> se reapuntarán al cargo destino y el origen quedará inactivo.
+                </p>
+                <div className="input-group" style={{marginBottom:16}}>
+                  <label>Cargo destino *</label>
+                  <select className="select" value={fusionDestinoId} onChange={e => setFusionDestinoId(e.target.value)}>
+                    <option value="">Seleccionar cargo destino...</option>
+                    {cargos.filter(c => c.id !== fusionOrigenId && c.estado === 'activo').map(c => (
+                      <option key={c.id} value={c.id}>{c.nombre} ({c.tipo})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="row" style={{justifyContent:'flex-end', gap:8}}>
+                  <button className="btn btn-secondary" onClick={() => { setFusionOrigenId(null); setFusionDestinoId(''); }}>Cancelar</button>
+                  <button className="btn btn-primary" disabled={!fusionDestinoId || fusionSaving} onClick={handleFusionar}>
+                    {fusionSaving ? 'Fusionando...' : 'Confirmar fusión'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        <table className="tbl">
+          <thead><tr><th>Código</th><th>Cargo</th><th>Tipo</th><th>Colaboradores</th><th>Descripción</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+          <tbody>{selectedRows.map((r,i) => (
+            <tr key={`${r.codigo}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
+              <td className="mono text-muted">{r.codigo}</td>
+              <td><strong>{r.nombre}</strong></td>
+              <td><span className={'badge '+(r.tipo==='Operativo'?'badge-cyan':r.tipo==='Ambos'?'badge-purple':'badge-gray')} style={{fontSize:11}}>{r.tipo||'—'}</span></td>
+              <td className="text-muted" style={{fontSize:12}}>{contarColaboradores(r.id)}</td>
+              <td className="text-muted" style={{fontSize:12}}>{r.detalle}</td>
+              <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
+              <td style={{textAlign:'right', whiteSpace:'nowrap'}}>
+                {r.estado === 'activo' && <button className="btn btn-ghost" style={{fontSize:11, padding:'2px 8px', marginRight:6}} title="Fusionar con otro cargo" onClick={() => { setFusionOrigenId(r.id); setFusionDestinoId(''); }}>Fusionar</button>}
+                <RowActions item={r} />
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </>);
+    }
     if (sel?.id === 'mst_especialidades') return (
       <table className="tbl">
         <thead><tr><th>Código</th><th>Especialidad</th><th>Área</th><th>Certif.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
@@ -3287,6 +3468,24 @@ function Maestros() {
         ))}</tbody>
       </table>
     );
+    if (sel?.id === 'mst_tipos_documento') return (
+      <table className="tbl">
+        <thead><tr><th>Código</th><th>Nombre</th><th>Ámbito</th><th style={{textAlign:'center'}}>Venc.</th><th style={{textAlign:'center'}}>Habilitante</th><th style={{textAlign:'center'}}>Validación</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <tbody>{tiposDocumento.map((r, i) => (
+          <tr key={`${r.codigo}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
+            <td className="mono text-muted" style={{fontSize:12}}>{r.codigo}</td>
+            <td><strong>{r.nombre}</strong></td>
+            <td><span className="badge badge-cyan" style={{fontSize:11}}>{r.ambito}</span></td>
+            <td style={{textAlign:'center'}}>{r.exige_vencimiento ? <span className="badge badge-orange" style={{fontSize:11}}>Sí</span> : <span className="badge badge-gray" style={{fontSize:11}}>No</span>}</td>
+            <td style={{textAlign:'center'}}>{r.es_habilitante ? <span className="badge badge-green" style={{fontSize:11}}>Sí</span> : <span className="badge badge-gray" style={{fontSize:11}}>No</span>}</td>
+            <td style={{textAlign:'center'}}>{r.requiere_validacion ? <span className="badge badge-orange" style={{fontSize:11}}>RRHH</span> : <span className="badge badge-gray" style={{fontSize:11}}>Auto</span>}</td>
+            <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
+            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
+          </tr>
+        ))}</tbody>
+      </table>
+    );
+    if (sel?.id === 'mst_requisitos_cargo') return null;
     return (
       <table className="tbl">
         <thead><tr><th>Codigo</th><th>Valor</th><th>Detalle</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
@@ -3433,10 +3632,18 @@ function Maestros() {
             <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
           </div>
           <div className="side-panel-body">
-            {sel.id !== 'mst_clientes' && sel.id !== 'mst_proveedores' && (
-              <div className="row" style={{gap:10, marginBottom:18}}>
+            {sel.id !== 'mst_clientes' && sel.id !== 'mst_proveedores' && sel.id !== 'mst_requisitos_cargo' && (
+              <div className="row" style={{gap:10, marginBottom:18, flexWrap:'wrap'}}>
                 <button className="btn btn-secondary" onClick={() => { setImportRows([]); setImportStep(1); setImportModal(true); }}>{I.download} Importar Excel</button>
                 <button className="btn btn-secondary" onClick={exportarMaestro}>{I.download} Exportar</button>
+                {sel.id === 'mst_tipos_documento' && (
+                  <button className="btn btn-secondary" onClick={async () => {
+                    try {
+                      await importarPlantillaTiposDoc();
+                      addNotificacion?.('Plantilla importada. Puedes editar cada tipo libremente.');
+                    } catch(err) { addNotificacion?.('Error al importar: ' + (err?.message || '')); }
+                  }}>Importar Plantilla Base</button>
+                )}
                 <span className="badge badge-cyan">Validación de duplicados activa</span>
               </div>
             )}
@@ -5627,7 +5834,7 @@ function Parametros() {
 // RRHH ADMINISTRATIVO — Fase 3
 // ============================================================
 function RRHHAdmin() {
-  const { personalAdmin, partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, cxc = [], facturas = [], activeParams } = useApp();
+  const { personalAdmin, partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, cxc = [], facturas = [], activeParams, crearCargo } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -5650,9 +5857,10 @@ function RRHHAdmin() {
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const vacacionesSugeridas = String(diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general'));
-  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', area:'', sede:'', turno_id:'', centro_costo_id:'', modalidad:'planilla', tipo_contrato:'indefinido', fecha_inicio:'', fecha_fin:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', dias_vacaciones:vacacionesSugeridas, estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', tarifa_hora_referencial:'' };
+  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', cargo_id:'', area:'', sede:'', turno_id:'', centro_costo_id:'', modalidad:'planilla', tipo_contrato:'indefinido', fecha_inicio:'', fecha_fin:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', dias_vacaciones:vacacionesSugeridas, estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', tarifa_hora_referencial:'' };
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const [formAlta, setFormAlta] = useState(formAltaBase);
+  const [nuevoCargoTextoAdmin, setNuevoCargoTextoAdmin] = useState('');
   const [horasBaseOverride, setHorasBaseOverride] = useState(false);
   const horasBaseForm = Number(formAlta.horas_base_mes || 0);
   const tarifaHoraForm = Math.round((horasBaseForm > 0 ? Number(formAlta.monto_mensual || 0) / horasBaseForm : 0) * 100) / 100;
@@ -5668,9 +5876,8 @@ function RRHHAdmin() {
     cargo_confianza: formAlta.cargo_confianza,
   });
   const cargosAdminOptions = cargos
-    .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Operativo')
-    .map(c => c.nombre)
-    .filter(Boolean);
+    .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Operativo' && c.nombre)
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
   const sedesOptions = sedes
     .filter(s => s.estado !== 'inactivo')
     .map(s => ({ nombre: s.nombre, detalle: s.direccion || s.detalle || s.gps || '' }))
@@ -5731,6 +5938,7 @@ function RRHHAdmin() {
       direccion: p.direccion || '',
       codigo: p.codigo || p.id || '',
       cargo: p.cargo || '',
+      cargo_id: p.cargo_id || '',
       area: p.area || '',
       sede: p.sede || '',
       turno_id: turnoActualId,
@@ -5846,6 +6054,7 @@ function RRHHAdmin() {
       email: formAlta.email || '',
       direccion: formAlta.direccion || '',
       cargo: formAlta.cargo || 'Por definir',
+      cargo_id: formAlta.cargo_id || null,
       area: formAlta.area || 'Sin area',
       supervisor: '', sede: formAlta.sede || '', turno_id: formAlta.turno_id,
       centro_costo_id: formAlta.centro_costo_id,
@@ -6084,6 +6293,46 @@ function RRHHAdmin() {
 
           {tab === 'documentos' && (() => {
             const docsPersona = personalDocumentos.filter(d => d.personal_id === persona.id && d.activo);
+            // ── Motor de habilitaciones (espejo del motor BD 207) ─────────────
+            const DOC_LBL = { vigente:'Vigente', por_vencer:'Por vencer', vencido:'Vencido', en_revision:'En revisión', rechazado:'Rechazado', falta:'Falta', sin_fecha_vencimiento:'Sin fecha venc.' };
+            const DOC_BDG = { vigente:'badge-green', por_vencer:'badge-orange', vencido:'badge-red', en_revision:'badge-cyan', rechazado:'badge-red', falta:'badge-gray', sin_fecha_vencimiento:'badge-orange' };
+            const GLOB_LBL = { en_regla:'En regla', advertencia:'Advertencia', critico:'Crítico', sin_cargo:'Sin cargo asignado — requisitos no determinables', sin_requisitos:'Sin requisitos configurados para este cargo' };
+            const GLOB_BDG = { en_regla:'badge-green', advertencia:'badge-orange', critico:'badge-red', sin_cargo:'badge-gray', sin_requisitos:'badge-gray' };
+            const habPersona = (() => {
+              if (!persona.cargo_id) return { estado_global: 'sin_cargo', docs: [], tiene_cargo: false };
+              const today = new Date(); today.setHours(0,0,0,0);
+              const tipoIdx = Object.fromEntries(tiposDocumento.map(t => [t.id, t]));
+              const docIdx = {};
+              for (const d of docsPersona) {
+                const prev = docIdx[d.tipo_doc];
+                if (!prev || (d.version ?? 0) >= (prev.version ?? 0)) docIdx[d.tipo_doc] = d;
+              }
+              const calcEst = (doc, tipo) => {
+                if (!doc) return 'falta';
+                if (doc.estado_validacion === 'rechazado') return 'rechazado';
+                if (doc.estado_validacion === 'pendiente' && tipo?.requiere_validacion) return 'en_revision';
+                if (tipo?.exige_vencimiento) {
+                  if (!doc.fecha_vencimiento) return 'sin_fecha_vencimiento';
+                  const venc = new Date(doc.fecha_vencimiento + 'T00:00:00');
+                  if (venc < today) return 'vencido';
+                  const lim = new Date(today); lim.setDate(lim.getDate() + (tipo.dias_alerta ?? 30));
+                  if (venc <= lim) return 'por_vencer';
+                }
+                return 'vigente';
+              };
+              const CRIT = new Set(['vencido','rechazado','falta','sin_fecha_vencimiento']);
+              const ADVERT = new Set(['por_vencer','en_revision']);
+              const reqCargo = requisitosCargo.filter(r => r.cargo_id === persona.cargo_id);
+              const docs = reqCargo.map(req => {
+                const tipo = tipoIdx[req.tipo_documento_id];
+                const doc = docIdx[req.tipo_documento_id] || null;
+                return { ...req, tipo, doc, estado: calcEst(doc, tipo) };
+              });
+              const obs = docs.filter(d => d.obligatorio).map(d => d.estado);
+              const estado_global = !obs.length ? 'sin_requisitos' : obs.some(e => CRIT.has(e)) ? 'critico' : obs.some(e => ADVERT.has(e)) ? 'advertencia' : 'en_regla';
+              return { estado_global, docs, tiene_cargo: true };
+            })();
+            const docReqPorTipo = Object.fromEntries(habPersona.docs.map(d => [d.tipo_documento_id, d]));
             const handleSubirDocAdmin = async (e) => {
               e.preventDefault();
               if (!docUploadFile || !docUploadForm.tipoDoc) { setDocUploadError('Selecciona el tipo y el archivo.'); return; }
@@ -6114,6 +6363,31 @@ function RRHHAdmin() {
             };
             return (
               <div className="card-body">
+                {/* Estado global de habilitaciones */}
+                <div style={{display:'flex', alignItems:'center', gap:12, padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, marginBottom:16}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:2}}>Estado habilitacional</div>
+                    <span className={'badge ' + (GLOB_BDG[habPersona.estado_global] || 'badge-gray')} style={{fontSize:13, padding:'4px 10px'}}>
+                      {GLOB_LBL[habPersona.estado_global] || habPersona.estado_global}
+                    </span>
+                  </div>
+                </div>
+                {/* Requisitos del cargo */}
+                {habPersona.tiene_cargo && habPersona.docs.length > 0 && (
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8}}>Requisitos del cargo</div>
+                    <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                      {habPersona.docs.map(req => (
+                        <div key={req.tipo_documento_id} style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6, border:'1px solid var(--border-subtle)'}}>
+                          <span className={'badge ' + (DOC_BDG[req.estado] || 'badge-gray')} style={{fontSize:10, flexShrink:0}}>{DOC_LBL[req.estado] || req.estado}</span>
+                          <span style={{flex:1, fontSize:13, fontWeight:500}}>{req.tipo?.nombre || req.tipo_documento_id}</span>
+                          {!req.obligatorio && <span style={{fontSize:10, color:'var(--fg-muted)'}}>Opcional</span>}
+                          {req.doc?.fecha_vencimiento && <span style={{fontSize:11, color:'var(--fg-muted)'}}>Vence {req.doc.fecha_vencimiento}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <details style={{marginBottom:20}}>
                   <summary style={{cursor:'pointer', fontWeight:600, fontSize:13, padding:'10px 0'}}>+ Subir nuevo documento</summary>
                   <form onSubmit={handleSubirDocAdmin} style={{display:'grid', gap:12, marginTop:12}}>
@@ -6147,12 +6421,14 @@ function RRHHAdmin() {
                 ) : (
                   <div style={{display:'flex', flexDirection:'column', gap:10}}>
                     {docsPersona.map(doc => {
-                      const tipoInfo = personalDocumentosService.TIPOS_DOC_ADMIN.find(t => t.key === doc.tipo_doc);
+                      const tipoInfo = tiposDocumento.find(t => t.id === doc.tipo_doc) || personalDocumentosService.TIPOS_DOC_ADMIN.find(t => t.key === doc.tipo_doc);
+                      const reqDoc = docReqPorTipo[doc.tipo_doc];
+                      const estadoMotor = reqDoc?.estado;
                       return (
                         <div key={doc.id} style={{padding:'14px 16px', border:'1px solid var(--border)', borderRadius:8, display:'flex', flexDirection:'column', gap:8}}>
                           <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8}}>
                             <div>
-                              <div style={{fontWeight:600, fontSize:13}}>{tipoInfo?.label || doc.tipo_doc}</div>
+                              <div style={{fontWeight:600, fontSize:13}}>{tipoInfo?.nombre || tipoInfo?.label || doc.tipo_doc}</div>
                               <div className="text-muted" style={{fontSize:11}}>
                                 {doc.nombre_archivo || '—'} · v{doc.version}
                                 {doc.fecha_emision && ` · Emitido: ${doc.fecha_emision}`}
@@ -6160,9 +6436,11 @@ function RRHHAdmin() {
                               </div>
                             </div>
                             <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
-                              <span className={'badge '+(personalDocumentosService.BADGE_VENCIMIENTO[doc.estado_vencimiento]||'badge-gray')}>
-                                {personalDocumentosService.LABEL_VENCIMIENTO[doc.estado_vencimiento]||doc.estado_vencimiento}
-                              </span>
+                              {estadoMotor && (
+                                <span className={'badge ' + (DOC_BDG[estadoMotor] || 'badge-gray')} style={{fontSize:11}}>
+                                  {DOC_LBL[estadoMotor] || estadoMotor}
+                                </span>
+                              )}
                               <span className={'badge '+(personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion]||'badge-gray')}>
                                 {doc.estado_validacion}
                               </span>
@@ -6657,7 +6935,22 @@ function RRHHAdmin() {
               <div className="input-group"><label>Código de empleado *</label><input className="input" readOnly value={formAlta.codigo} placeholder="ADM-008" style={{background:'var(--bg-subtle)', fontWeight:700}}/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Autogenerado por correlativo. Solo Admin puede modificarlo después del alta.</div></div>
               <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato), ruc_colaborador: modalidad === 'honorarios' ? v.ruc_colaborador : ''}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
               <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorariosAlta} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value,fecha_fin:requiereFechaFinContrato(e.target.value)?v.fecha_fin:''}))}>{CONTRATO_DURACION_OPCIONES.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
-              <div className="input-group"><label>Cargo</label>{cargosAdminOptions.length ? <select className="select" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))}><option value="">Seleccionar cargo...</option>{cargosAdminOptions.map(c=><option key={c}>{c}</option>)}</select> : <input className="input" value={formAlta.cargo} onChange={e=>setFormAlta(v=>({...v,cargo:e.target.value}))} placeholder="Ej: Ejecutivo Comercial"/>}</div>
+              <div className="input-group"><label>Cargo</label>
+                <select className="select" value={formAlta.cargo_id} onChange={e=>{
+                  if(e.target.value==='__nuevo__'){setFormAlta(v=>({...v,cargo_id:'__nuevo__'}));setNuevoCargoTextoAdmin('');return;}
+                  const c=cargosAdminOptions.find(x=>x.id===e.target.value);
+                  setFormAlta(v=>({...v,cargo_id:e.target.value,cargo:c?.nombre||v.cargo}));
+                }}>
+                  <option value="">Seleccionar cargo...</option>
+                  {cargosAdminOptions.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  <option value="__nuevo__">+ Agregar nuevo cargo...</option>
+                </select>
+                {formAlta.cargo_id==='__nuevo__' && <div style={{display:'flex',gap:6,marginTop:6}}>
+                  <input className="input" value={nuevoCargoTextoAdmin} onChange={e=>setNuevoCargoTextoAdmin(e.target.value)} placeholder="Nombre del nuevo cargo" autoFocus/>
+                  <button type="button" className="btn btn-sm" disabled={!nuevoCargoTextoAdmin.trim()} onClick={async()=>{const c=await crearCargo({nombre:nuevoCargoTextoAdmin.trim(),tipo:'Administrativo',estado:'activo'});setFormAlta(v=>({...v,cargo_id:c.id,cargo:c.nombre}));setNuevoCargoTextoAdmin('');}}>Crear</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setFormAlta(v=>({...v,cargo_id:''}))}>×</button>
+                </div>}
+              </div>
               <div className="input-group"><label>Área</label>{areasOptions.length ? <select className="select" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))}><option value="">Seleccionar área...</option>{areasOptions.map(a=><option key={a}>{a}</option>)}</select> : <input className="input" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))} placeholder="Ej: Comercial"/>}</div>
               <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
@@ -6742,11 +7035,21 @@ function RRHHAdmin() {
               <div className="grid-2" style={{gap:14, marginBottom:12}}>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Régimen de jornada</label>
-                  <select className="select" value={formAlta.regimen_jornada} onChange={e=>setFormAlta(v=>({...v,regimen_jornada:e.target.value, horas_diarias_pactadas:e.target.value==='general'?'8':'12'}))}>
+                  <select className="select" value={formAlta.regimen_jornada} onChange={e=>{
+                    const val = e.target.value;
+                    const presets = { minero_14x7:[14,7], minero_20x10:[20,10], minero_28x14:[28,14] };
+                    if (presets[val]) {
+                      const [t,d] = presets[val];
+                      setFormAlta(v=>({...v, regimen_jornada:'ciclo_acumulativo', horas_diarias_pactadas:'12', dias_ciclo_trabajo:String(t), dias_ciclo_descanso:String(d)}));
+                    } else {
+                      setFormAlta(v=>({...v, regimen_jornada:val, horas_diarias_pactadas:val==='general'?'8':'12'}));
+                    }
+                  }}>
                     <option value="general">General (8h/día estándar)</option>
-                    <option value="minero_14x7">Minero 14×7</option>
-                    <option value="minero_20x10">Minero 20×10</option>
-                    <option value="minero_28x14">Minero 28×14</option>
+                    <option value="ciclo_acumulativo">Ciclo acumulativo (personalizado)</option>
+                    <option value="minero_14x7">Minero 14×7 (atajo → 14d+7d)</option>
+                    <option value="minero_20x10">Minero 20×10 (atajo → 20d+10d)</option>
+                    <option value="minero_28x14">Minero 28×14 (atajo → 28d+14d)</option>
                   </select>
                 </div>
                 {formAlta.regimen_jornada === 'ciclo_acumulativo' && <>

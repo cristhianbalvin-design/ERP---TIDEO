@@ -73,6 +73,14 @@ export const maestrosService = {
     const { error } = await supabase.from('cargos_empresa').delete().eq('id', cargoId);
     if (error) throw error;
   },
+  fusionarCargos: async (origenId, destinoId) => {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.rpc('fusionar_cargos', {
+      p_cargo_origen_id: origenId,
+      p_cargo_destino_id: destinoId,
+    });
+    if (error) throw error;
+  },
 
   // Especialidades
   getEspecialidades: async (empresaId) => {

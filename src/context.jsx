@@ -23,6 +23,7 @@ import * as evaluacionesDesempenoService from './services/evaluacionesDesempenoS
 import * as liquidacionesCeseService from './services/liquidacionesCeseService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
+import { tiposDocumentoService } from './services/tiposDocumentoService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { AFP_PARAMETROS_DEFAULT, latestAfpParametros, nominaService } from './services/nominaService.js';
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto as convertirMontoFn } from './services/tipoCambioService.js';
@@ -319,6 +320,8 @@ export function AppProvider({ children }) {
   // Maestros Base Data
   const [areasEmpresa, setAreasEmpresa] = useState([]);
   const [cargos, setCargos] = useState([]);
+  const [tiposDocumento, setTiposDocumento] = useState(useSupabase ? [] : (MOCK.tiposDocumento || []));
+  const [requisitosCargo, setRequisitosCargo] = useState(useSupabase ? [] : (MOCK.requisitosCargo || []));
   const [especialidades, setEspecialidades] = useState([]);
   const [tiposServicio, setTiposServicio] = useState([]);
   const [almacenes, setAlmacenes] = useState([]);
@@ -332,14 +335,15 @@ export function AppProvider({ children }) {
   const [materiales, setMateriales] = useState([]);
 
   // Personal Operativo (separado del admin, estado propio)
-  const [personalOperativo, setPersonalOperativo] = useState([]);
+  const [personalOperativo, setPersonalOperativo] = useState(useSupabase ? [] : (MOCK.personalOperativo || []));
 
   // Fase 3 Data
   const [personalAdmin, setPersonalAdmin] = useState([]);
   const [vacacionesSolicitudes, setVacacionesSolicitudes] = useState([]);
   const [licencias, setLicencias] = useState([]);
-  const [solicitudesRRHH, setSolicitudesRRHH] = useState([]);
-  const [personalDocumentos, setPersonalDocumentos] = useState([]);
+  const [solicitudesRRHH, setSolicitudesRRHH] = useState(useSupabase ? [] : (MOCK.solicitudesRRHH || []));
+  const [personalDocumentos, setPersonalDocumentos] = useState(useSupabase ? [] : (MOCK.personalDocumentos || []));
+  const [asignacionesJornada, setAsignacionesJornada] = useState([]);
   const [evaluacionPlantillas, setEvaluacionPlantillas] = useState([]);
   const [evaluacionCompetencias, setEvaluacionCompetencias] = useState([]);
   const [evaluacionObjetivos, setEvaluacionObjetivos] = useState([]);
@@ -948,12 +952,13 @@ export function AppProvider({ children }) {
         } catch (_err) { /* keep mock */ }
 
         try {
-          const [persOpsData, persAdmData, turnosData, asistenciaData, nominaData] = await Promise.all([
+          const [persOpsData, persAdmData, turnosData, asistenciaData, nominaData, asigJornadaData] = await Promise.all([
             rrhhService.getPersonalOperativo(empresa.id),
             rrhhService.getPersonalAdmin(empresa.id),
             rrhhService.getTurnos(empresa.id),
             rrhhService.getAsistencia(empresa.id),
             rrhhService.getPeriodosNomina(empresa.id),
+            rrhhService.getAsignacionesJornada(empresa.id),
           ]);
           if (mounted) {
             setPersonalOperativo(persOpsData || []);
@@ -961,6 +966,7 @@ export function AppProvider({ children }) {
             setTurnos(turnosData || []);
             setRegistrosAsistencia(asistenciaData || []);
             setPeriodosNomina(nominaData || []);
+            setAsignacionesJornada(asigJornadaData || []);
           }
         } catch (_err) {
           if (mounted) {
@@ -978,7 +984,18 @@ export function AppProvider({ children }) {
             setSolicitudesRRHH(solData || []);
             setPersonalDocumentos(pdocsData || []);
           }
-        } catch (_err) { /* mÃ³dulo documental puede no estar migrado aÃºn */ }
+        } catch (_err) { /* módulo documental puede no estar migrado aún */ }
+
+        try {
+          const [tdocsData, reqData] = await Promise.all([
+            tiposDocumentoService.getTiposDocumento(empresa.id),
+            tiposDocumentoService.getRequisitosCargo(empresa.id),
+          ]);
+          if (mounted) {
+            setTiposDocumento(tdocsData || []);
+            setRequisitosCargo(reqData || []);
+          }
+        } catch (_err) { /* modulo aun no migrado */ }
 
         try {
           const evalData = await evaluacionesDesempenoService.cargarEvaluacionesDesempeno(empresa.id);
@@ -6319,6 +6336,64 @@ export function AppProvider({ children }) {
     }
     setCargos(prev => prev.filter(c => c.id !== id));
   };
+  const fusionarCargos = async (origenId, destinoId) => {
+    if (isSupabaseConfigured()) {
+      await maestrosService.fusionarCargos(origenId, destinoId);
+      // Recargar cargos y reapuntar personal en estado local
+      const cargosAct = await maestrosService.getCargos(empresa?.id);
+      setCargos(cargosAct || []);
+    } else {
+      // Mock: desactivar origen, no mover fichas (sin BD real no hay fichas reapuntadas)
+      setCargos(prev => prev.map(c => c.id === origenId ? { ...c, estado: 'inactivo' } : c));
+    }
+  };
+
+  const crearTipoDocumento = async (tipo) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await tiposDocumentoService.crearTipoDocumento(empresa.id, tipo);
+      setTiposDocumento(prev => [...prev, data].sort((a, b) => (a.orden || 0) - (b.orden || 0) || a.nombre.localeCompare(b.nombre)));
+      return data;
+    }
+    const nuevo = { ...tipo, id: generateId('tdoc'), empresa_id: empresa?.id, created_at: new Date().toISOString() };
+    setTiposDocumento(prev => [...prev, nuevo]);
+    return nuevo;
+  };
+  const actualizarTipoDocumento = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const act = await tiposDocumentoService.actualizarTipoDocumento(id, datos);
+      setTiposDocumento(prev => prev.map(t => t.id === id ? act : t));
+      return act;
+    }
+    setTiposDocumento(prev => prev.map(t => t.id === id ? { ...t, ...datos } : t));
+    return datos;
+  };
+  const importarPlantillaTiposDoc = async () => {
+    if (!isSupabaseConfigured() || !empresa?.id) throw new Error('Requiere Supabase configurado');
+    await tiposDocumentoService.importarPlantilla(empresa.id);
+    const data = await tiposDocumentoService.getTiposDocumento(empresa.id);
+    setTiposDocumento(data || []);
+  };
+  const upsertRequisitoCargo = async (cargoId, tipoDocId, obligatorio) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await tiposDocumentoService.upsertRequisitoCargo(empresa.id, cargoId, tipoDocId, obligatorio);
+      setRequisitosCargo(prev => {
+        const sin = prev.filter(r => !(r.cargo_id === cargoId && r.tipo_documento_id === tipoDocId));
+        return [...sin, data];
+      });
+      return data;
+    }
+    const nuevo = { id: generateId('cdr'), empresa_id: empresa?.id, cargo_id: cargoId, tipo_documento_id: tipoDocId, obligatorio };
+    setRequisitosCargo(prev => {
+      const sin = prev.filter(r => !(r.cargo_id === cargoId && r.tipo_documento_id === tipoDocId));
+      return [...sin, nuevo];
+    });
+    return nuevo;
+  };
+  const eliminarRequisitoCargo = async (id) => {
+    if (isSupabaseConfigured()) await tiposDocumentoService.eliminarRequisitoCargo(id);
+    setRequisitosCargo(prev => prev.filter(r => r.id !== id));
+  };
+
   const actualizarEspecialidad = async (id, datos) => {
     if (isSupabaseConfigured()) {
       const act = await maestrosService.actualizarEspecialidad(id, datos);
@@ -7016,6 +7091,14 @@ export function AppProvider({ children }) {
   const validarDocumentoPersonalCtx = async (documentoId, decision, motivoRechazo = null) => {
     const data = await personalDocumentosService.validarDocumento(documentoId, decision, motivoRechazo);
     setPersonalDocumentos(prev => prev.map(d => d.id === documentoId ? data : d));
+    return data;
+  };
+
+  const crearAsignacionJornadaCtx = async (personalId, personalTipo, params) => {
+    const data = await rrhhService.crearAsignacionJornada(empresa?.id, personalId, personalTipo, params);
+    // La RPC cierra la anterior y retorna la nueva; recargar historial del trabajador
+    const actualizado = await rrhhService.getAsignacionesJornada(empresa?.id);
+    setAsignacionesJornada(actualizado || []);
     return data;
   };
 
@@ -7866,7 +7949,9 @@ export function AppProvider({ children }) {
     
     // Maestros Base Data
     areasEmpresa, setAreasEmpresa, crearArea, actualizarArea, eliminarArea,
-    cargos, setCargos, actualizarCargo, eliminarCargo,
+    cargos, setCargos, actualizarCargo, eliminarCargo, fusionarCargos,
+    tiposDocumento, setTiposDocumento, crearTipoDocumento, actualizarTipoDocumento, importarPlantillaTiposDoc,
+    requisitosCargo, setRequisitosCargo, upsertRequisitoCargo, eliminarRequisitoCargo,
     especialidades, setEspecialidades, actualizarEspecialidad, eliminarEspecialidad,
     tiposServicio, setTiposServicio, actualizarTipoServicio, eliminarTipoServicio,
     almacenes, setAlmacenes, actualizarAlmacen, eliminarAlmacen,
@@ -7906,7 +7991,7 @@ export function AppProvider({ children }) {
     recibosHonorarios, setRecibosHonorarios,
     aprobarComision, rechazarComision, corregirMontoComision, corregirBonificacionComision, generarReciboHonorarios, confirmarReciboHonorarios,
     // Maestros Base Actions
-    crearCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria,
+    crearCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria, crearTipoDocumento,
     // Compras Actions
     registrarProveedor, actualizarProveedorCtx,
     crearProcesoCompraCtx, actualizarProcesoCompraCtx,
@@ -7951,6 +8036,7 @@ export function AppProvider({ children }) {
     reasignarJefeEvaluacionCtx, guardarAutoevaluacionCtx, guardarEvaluacionJefeCtx,
     aprobarVacacion, rechazarVacacion,
     subirDocumentoPersonalCtx, validarDocumentoPersonalCtx,
+    asignacionesJornada, setAsignacionesJornada, crearAsignacionJornadaCtx,
     crearOnboarding, registrarNPS,
     generarRenovacion, crearPlanRetencion,
     registrarIaLog,

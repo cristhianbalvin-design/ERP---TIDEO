@@ -1134,6 +1134,136 @@ export const cxp = [
 ];
 
 // ============================================================
+// FASE 3 — RRHH OPERATIVO (mock para demo de habilitaciones)
+// ============================================================
+export const personalOperativo = [
+  { id: 'pop_001', empresa_id: 'emp_001', nombre: 'Luis Mendoza', dni: '45678901', codigo: 'TEC-001',
+    cargo_id: 'car_011', cargo: 'Técnico Mecánico', especialidad: 'Mecánica', turno_id: 'tur_001',
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 35, moneda: 'PEN' },
+  { id: 'pop_002', empresa_id: 'emp_001', nombre: 'Carlos Reyes', dni: '34567890', codigo: 'TEC-002',
+    cargo_id: 'car_011', cargo: 'Técnico Mecánico', especialidad: 'Mecánica', turno_id: 'tur_001',
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 32, moneda: 'PEN' },
+  { id: 'pop_003', empresa_id: 'emp_001', nombre: 'Ana Torres', dni: '23456789', codigo: 'TEC-003',
+    cargo_id: 'car_015', cargo: 'Electricista Industrial', especialidad: 'Eléctrica', turno_id: 'tur_001',
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 38, moneda: 'PEN' },
+  { id: 'pop_004', empresa_id: 'emp_001', nombre: 'Jorge Quispe', dni: '12345678', codigo: 'TEC-004',
+    cargo_id: 'car_011', cargo: 'Técnico Mecánico', especialidad: 'Mecánica', turno_id: 'tur_004',
+    estado: 'disponible', modalidad_contrato: 'honorarios', tarifa_hora: 42, moneda: 'PEN' },
+  { id: 'pop_005', empresa_id: 'emp_001', nombre: 'Pedro Condori', dni: '56789012', codigo: 'TEC-005',
+    cargo_id: 'car_015', cargo: 'Electricista Industrial', especialidad: 'Eléctrica', turno_id: 'tur_002',
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 36, moneda: 'PEN' },
+  { id: 'pop_006', empresa_id: 'emp_001', nombre: 'Rosa Huanca', dni: '67890123', codigo: 'TEC-006',
+    cargo_id: null, cargo: '', especialidad: 'General', turno_id: null,
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 28, moneda: 'PEN' },
+];
+
+// Tipos de documento (maestro del tenant — mock)
+// Fecha ref: hoy es 2026-06-10 en la sesión de demo
+export const tiposDocumento = [
+  { id: 'tdoc_m001', empresa_id: 'emp_001', codigo: 'TDOC-001', nombre: 'SCTR',
+    ambito: 'Operativo', exige_vencimiento: true, dias_alerta: 30,
+    es_habilitante: true, requiere_validacion: true, estado: 'activo', orden: 1 },
+  { id: 'tdoc_m002', empresa_id: 'emp_001', codigo: 'TDOC-002', nombre: 'Examen Médico Ocupacional',
+    ambito: 'Ambos', exige_vencimiento: true, dias_alerta: 30,
+    es_habilitante: true, requiere_validacion: true, estado: 'activo', orden: 2 },
+  { id: 'tdoc_m003', empresa_id: 'emp_001', codigo: 'TDOC-003', nombre: 'Entrega de EPP',
+    ambito: 'Operativo', exige_vencimiento: false, dias_alerta: 0,
+    es_habilitante: true, requiere_validacion: false, estado: 'activo', orden: 3 },
+  { id: 'tdoc_m004', empresa_id: 'emp_001', codigo: 'TDOC-004', nombre: 'Licencia de Conducir',
+    ambito: 'Operativo', exige_vencimiento: true, dias_alerta: 30,
+    es_habilitante: false, requiere_validacion: false, estado: 'activo', orden: 4 },
+  { id: 'tdoc_m005', empresa_id: 'emp_001', codigo: 'TDOC-007', nombre: 'DNI',
+    ambito: 'Ambos', exige_vencimiento: false, dias_alerta: 0,
+    es_habilitante: false, requiere_validacion: false, estado: 'activo', orden: 5 },
+];
+
+// Matriz cargo × tipo de documento (mock)
+// car_011 (Técnico Mecánico):     SCTR(ob), Médico(ob), EPP(ob), Licencia(no-ob)
+// car_015 (Electricista):         SCTR(ob), Médico(ob), EPP(ob)
+export const requisitosCargo = [
+  { id: 'cdr_m01', empresa_id: 'emp_001', cargo_id: 'car_011', tipo_documento_id: 'tdoc_m001', obligatorio: true },
+  { id: 'cdr_m02', empresa_id: 'emp_001', cargo_id: 'car_011', tipo_documento_id: 'tdoc_m002', obligatorio: true },
+  { id: 'cdr_m03', empresa_id: 'emp_001', cargo_id: 'car_011', tipo_documento_id: 'tdoc_m003', obligatorio: true },
+  { id: 'cdr_m04', empresa_id: 'emp_001', cargo_id: 'car_011', tipo_documento_id: 'tdoc_m004', obligatorio: false },
+  { id: 'cdr_m05', empresa_id: 'emp_001', cargo_id: 'car_015', tipo_documento_id: 'tdoc_m001', obligatorio: true },
+  { id: 'cdr_m06', empresa_id: 'emp_001', cargo_id: 'car_015', tipo_documento_id: 'tdoc_m002', obligatorio: true },
+  { id: 'cdr_m07', empresa_id: 'emp_001', cargo_id: 'car_015', tipo_documento_id: 'tdoc_m003', obligatorio: true },
+];
+
+// Documentos del personal (mock — cubre todos los estados del semáforo)
+// Referencia: hoy = 2026-06-10
+export const personalDocumentos = [
+  // pop_001 — en_regla: SCTR vigente, Médico vigente, EPP ok (sin vencimiento)
+  { id: 'pdoc_m001', empresa_id: 'emp_001', personal_id: 'pop_001', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m001', nombre_archivo: 'sctr_mendoza.pdf', activo: true,
+    fecha_emision: '2026-01-01', fecha_vencimiento: '2026-12-31',
+    version: 1, estado_validacion: 'aprobado', notas: null },
+  { id: 'pdoc_m002', empresa_id: 'emp_001', personal_id: 'pop_001', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m002', nombre_archivo: 'medico_mendoza.pdf', activo: true,
+    fecha_emision: '2026-02-01', fecha_vencimiento: '2026-12-01',
+    version: 1, estado_validacion: 'aprobado', notas: null },
+  { id: 'pdoc_m003', empresa_id: 'emp_001', personal_id: 'pop_001', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m003', nombre_archivo: 'epp_mendoza.pdf', activo: true,
+    fecha_emision: '2026-03-01', fecha_vencimiento: null,
+    version: 1, estado_validacion: 'aprobado', notas: null },
+
+  // pop_002 — advertencia: SCTR por vencer (15 días), Médico vigente, EPP ok
+  { id: 'pdoc_m004', empresa_id: 'emp_001', personal_id: 'pop_002', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m001', nombre_archivo: 'sctr_reyes.pdf', activo: true,
+    fecha_emision: '2025-06-25', fecha_vencimiento: '2026-06-25',
+    version: 1, estado_validacion: 'aprobado', notas: null },
+  { id: 'pdoc_m005', empresa_id: 'emp_001', personal_id: 'pop_002', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m002', nombre_archivo: 'medico_reyes.pdf', activo: true,
+    fecha_emision: '2026-01-15', fecha_vencimiento: '2026-11-15',
+    version: 1, estado_validacion: 'aprobado', notas: null },
+  { id: 'pdoc_m006', empresa_id: 'emp_001', personal_id: 'pop_002', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m003', nombre_archivo: 'epp_reyes.pdf', activo: true,
+    fecha_emision: '2026-02-01', fecha_vencimiento: null,
+    version: 1, estado_validacion: 'aprobado', notas: null },
+
+  // pop_003 — crítico: SCTR vigente, Médico VENCIDO, EPP en revisión
+  { id: 'pdoc_m007', empresa_id: 'emp_001', personal_id: 'pop_003', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m001', nombre_archivo: 'sctr_torres.pdf', activo: true,
+    fecha_emision: '2025-10-01', fecha_vencimiento: '2026-09-30',
+    version: 1, estado_validacion: 'aprobado', notas: null },
+  { id: 'pdoc_m008', empresa_id: 'emp_001', personal_id: 'pop_003', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m002', nombre_archivo: 'medico_torres.pdf', activo: true,
+    fecha_emision: '2025-05-01', fecha_vencimiento: '2026-05-01',
+    version: 1, estado_validacion: 'aprobado', notas: null },
+  { id: 'pdoc_m009', empresa_id: 'emp_001', personal_id: 'pop_003', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m003', nombre_archivo: 'epp_torres_v2.pdf', activo: true,
+    fecha_emision: '2026-06-05', fecha_vencimiento: null,
+    version: 2, estado_validacion: 'pendiente', notas: 'Reposición de equipo' },
+
+  // pop_004 — crítico: SCTR rechazado, Médico vigente, EPP FALTA (no hay doc)
+  { id: 'pdoc_m010', empresa_id: 'emp_001', personal_id: 'pop_004', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m001', nombre_archivo: 'sctr_quispe.pdf', activo: true,
+    fecha_emision: '2026-01-01', fecha_vencimiento: '2026-12-31',
+    version: 1, estado_validacion: 'rechazado', motivo_rechazo: 'Datos del empleador incorrectos', notas: null },
+  { id: 'pdoc_m011', empresa_id: 'emp_001', personal_id: 'pop_004', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m002', nombre_archivo: 'medico_quispe.pdf', activo: true,
+    fecha_emision: '2026-03-01', fecha_vencimiento: '2026-11-01',
+    version: 1, estado_validacion: 'aprobado', notas: null },
+  // tdoc_m003 (EPP) no tiene documento → falta
+
+  // pop_005 — advertencia: SCTR en revisión, Médico por vencer, EPP ok
+  { id: 'pdoc_m012', empresa_id: 'emp_001', personal_id: 'pop_005', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m001', nombre_archivo: 'sctr_condori.pdf', activo: true,
+    fecha_emision: '2026-06-08', fecha_vencimiento: '2026-12-08',
+    version: 2, estado_validacion: 'pendiente', notas: 'Renovación subida hoy' },
+  { id: 'pdoc_m013', empresa_id: 'emp_001', personal_id: 'pop_005', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m002', nombre_archivo: 'medico_condori.pdf', activo: true,
+    fecha_emision: '2025-07-01', fecha_vencimiento: '2026-06-30',
+    version: 1, estado_validacion: 'aprobado', notas: null },
+  { id: 'pdoc_m014', empresa_id: 'emp_001', personal_id: 'pop_005', personal_tipo: 'operativo',
+    tipo_doc: 'tdoc_m003', nombre_archivo: 'epp_condori.pdf', activo: true,
+    fecha_emision: '2026-01-10', fecha_vencimiento: null,
+    version: 1, estado_validacion: 'aprobado', notas: null },
+
+  // pop_006 — sin cargo (no tiene cargo_id, no aplican requisitos)
+];
+
+// ============================================================
 // FASE 3 — RRHH ADMINISTRATIVO
 // ============================================================
 export const personalAdmin = [];
@@ -1764,8 +1894,9 @@ export const MOCK = {
   prestamos, financiamientos, movimientosTesoreria, cuentasBancarias, cxp, inventario, valorizaciones, proveedores, documentosProveedor,
   evaluacionesProveedor, contactosProveedor, procesosCompra, respuestasCompra,
   ordenesCompra, ordenesServicio, recepciones,
-  // Fase 3
-  personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH,
+  // Fase 3 — RRHH
+  personalOperativo, personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH,
+  tiposDocumento, requisitosCargo, personalDocumentos,
   onboardings, planesExito, healthScoresDetalle, churnPlanes,
   renovaciones, npsEncuestas, referidos, casosExito, iaLogs,
   biFinanciero, metricasSaaS,

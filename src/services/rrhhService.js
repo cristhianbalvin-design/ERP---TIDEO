@@ -262,6 +262,7 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   nombre: persona.nombre,
   documento: persona.documento || persona.dni || null,
   cargo: persona.cargo || 'Tecnico de Campo',
+  cargo_id: persona.cargo_id || null,
   especialidad: persona.especialidad || 'General',
   especialidad2: persona.especialidad2 || null,
   area: persona.area || 'Operaciones',
@@ -319,7 +320,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
     costo_extra: 'costo_hora_extra',
   };
   const allowed = new Set([
-    'codigo', 'nombre', 'documento', 'cargo', 'especialidad', 'especialidad2',
+    'codigo', 'nombre', 'documento', 'cargo', 'cargo_id', 'especialidad', 'especialidad2',
     'area', 'turno_id', 'telefono', 'email', 'sede', 'supervisor_id', 'supervisor',
     'fecha_ingreso', 'fecha_inicio_contrato', 'fecha_fin_contrato', 'sueldo_base', 'moneda', 'sistema_pensionario',
     'metodo_pago', 'monto_mensual', 'horas_base_mes', 'tarifa_hora',
@@ -407,6 +408,7 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   fecha_nacimiento: persona.fecha_nacimiento || null,
   direccion: persona.direccion || null,
   cargo: persona.cargo || 'Por definir',
+  cargo_id: persona.cargo_id || null,
   area: persona.area || 'Administracion',
   telefono: persona.telefono || null,
   email: persona.email || null,
@@ -475,7 +477,7 @@ const toPersonalAdminUpdate = (cambios = {}) => {
   };
   const allowed = new Set([
     'codigo', 'nombre', 'documento', 'dni', 'fecha_nacimiento', 'direccion',
-    'cargo', 'area', 'telefono', 'email', 'supervisor', 'sede', 'turno_id',
+    'cargo', 'cargo_id', 'area', 'telefono', 'email', 'supervisor', 'sede', 'turno_id',
     'modalidad_contrato', 'tipo_contrato', 'fecha_ingreso', 'fecha_inicio_contrato', 'fecha_fin_contrato',
     'sueldo_base', 'remuneracion', 'moneda', 'metodo_pago', 'monto_mensual',
     'horas_base_mes', 'tarifa_hora', 'sistema_pensionario', 'modalidad',
@@ -841,5 +843,38 @@ export const rrhhService = {
     const { data, error } = await q;
     if (error) throw error;
     return data || [];
+  },
+
+  // ── Asignaciones de jornada con vigencia ─────────────────────────────────────
+
+  async getAsignacionesJornada(empresaId) {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('personal_asignaciones_jornada')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('fecha_inicio', { ascending: true });
+    if (error) { console.error('Error fetching asignaciones_jornada:', error); return []; }
+    return data || [];
+  },
+
+  async crearAsignacionJornada(empresaId, personalId, personalTipo, params) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('crear_asignacion_jornada', {
+      p_empresa_id:          empresaId,
+      p_personal_id:         personalId,
+      p_personal_tipo:       personalTipo,
+      p_tipo_tramo:          params.tipo_tramo || 'normal',
+      p_fecha_inicio:        params.fecha_inicio,
+      p_regimen_jornada:     params.regimen_jornada || null,
+      p_dias_ciclo_trabajo:  params.dias_ciclo_trabajo ? Number(params.dias_ciclo_trabajo) : null,
+      p_dias_ciclo_descanso: params.dias_ciclo_descanso ? Number(params.dias_ciclo_descanso) : null,
+      p_fecha_inicio_ciclo:  params.fecha_inicio_ciclo || null,
+      p_turno_id:            params.turno_id || null,
+      p_motivo:              params.motivo || null,
+    });
+    if (error) throw error;
+    return data;
   },
 };
