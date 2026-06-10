@@ -2638,6 +2638,755 @@ function MaterialesMaestro({ onClose }) {
   );
 }
 
+// ============ TIPOS DE DOCUMENTO (panel y plantilla) ============
+const PLANTILLA_BASE_TIPOS_DOC = [
+  { nombre: 'DNI', ambito: 'Ambos', exige_vencimiento: 'SÍ', dias_alerta: 60, es_habilitante: 'NO', requiere_validacion: 'SÍ', orden: 10 },
+  { nombre: 'CV / Hoja de vida', ambito: 'Ambos', exige_vencimiento: 'NO', dias_alerta: '', es_habilitante: 'NO', requiere_validacion: 'NO', orden: 20 },
+  { nombre: 'Contrato de trabajo', ambito: 'Ambos', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 30 },
+  { nombre: 'Antecedentes penales', ambito: 'Ambos', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 40 },
+  { nombre: 'Antecedentes policiales', ambito: 'Ambos', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 50 },
+  { nombre: 'Declaración jurada de domicilio', ambito: 'Ambos', exige_vencimiento: 'SÍ', dias_alerta: 60, es_habilitante: 'NO', requiere_validacion: 'SÍ', orden: 60 },
+  { nombre: 'SCTR Salud', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 100 },
+  { nombre: 'SCTR Pensión', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 110 },
+  { nombre: 'Examen Médico Ocupacional (EMO)', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 60, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 120 },
+  { nombre: 'Inducción de seguridad', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 130 },
+  { nombre: 'Entrega de EPP', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 140 },
+  { nombre: 'Capacitación trabajos en altura', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 200 },
+  { nombre: 'Capacitación espacios confinados', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 210 },
+  { nombre: 'Capacitación trabajos en caliente', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 220 },
+  { nombre: 'Capacitación bloqueo y etiquetado (LOTO)', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 230 },
+  { nombre: 'Matriz IPERC', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 240 },
+  { nombre: 'Licencia de conducir', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 60, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 300 },
+  { nombre: 'Certificado de operador de equipos', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 310 },
+  { nombre: 'Certificación técnica de especialidad', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 60, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 320 },
+  { nombre: 'Pasaporte de seguridad minera', ambito: 'Operativo', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 330 },
+  { nombre: 'Ficha RUC', ambito: 'Ambos', exige_vencimiento: 'NO', dias_alerta: '', es_habilitante: 'NO', requiere_validacion: 'SÍ', orden: 400 },
+  { nombre: 'Suspensión de retención 4ta categoría', ambito: 'Administrativo', exige_vencimiento: 'SÍ', dias_alerta: 30, es_habilitante: 'SÍ', requiere_validacion: 'SÍ', orden: 410 },
+  { nombre: 'Datos bancarios / cuenta de haberes', ambito: 'Ambos', exige_vencimiento: 'NO', dias_alerta: '', es_habilitante: 'NO', requiere_validacion: 'SÍ', orden: 420 }
+];
+
+function ImportarTiposDocPreview({ dataRows, tiposActuales, onClose, onImported }) {
+  const { crearTipoDocumento, addNotificacion } = useApp();
+  const [saving, setSaving] = useState(false);
+  const [items, setItems] = useState([]);
+
+  React.useEffect(() => {
+    const processRows = () => {
+      const normalizeStr = (s) => s ? s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim() : '';
+      const parseBool = (val, def) => {
+        if (val === undefined || val === null || val === '') return def;
+        const s = String(val).trim().toLowerCase();
+        if (['si', 'sí', 'yes', 'y', 'true', '1'].includes(s)) return true;
+        if (['no', 'n', 'false', '0'].includes(s)) return false;
+        return def;
+      };
+      const parseAmbito = (val) => {
+        if (!val) return 'Ambos';
+        const s = String(val).trim().toLowerCase();
+        if (s.includes('oper')) return 'Operativo';
+        if (s.includes('admin')) return 'Administrativo';
+        if (s.includes('ambos') || s.includes('ambas')) return 'Ambos';
+        return null;
+      };
+
+      const dbNames = new Set(tiposActuales.map(t => normalizeStr(t.nombre)));
+      const fileNames = new Set();
+      let maxOrden = tiposActuales.length > 0 ? Math.max(...tiposActuales.map(t => t.orden||0)) : 0;
+      
+      const parsed = dataRows.map((r, index) => {
+        const item = {
+          id: `imp_${index}`,
+          nombre: (r.nombre || '').toString().trim(),
+          ambito: parseAmbito(r.ambito),
+          exige_vencimiento: parseBool(r.exige_vencimiento, true),
+          dias_alerta: parseInt(r.dias_alerta),
+          es_habilitante: parseBool(r.es_habilitante, false),
+          requiere_validacion: parseBool(r.requiere_validacion, true),
+          orden: parseInt(r.orden),
+          selected: false,
+          status: 'LISTO',
+          errorMsg: ''
+        };
+
+        if (!item.nombre) {
+          item.status = 'ERROR';
+          item.errorMsg = 'Nombre vacío';
+        } else if (!item.ambito) {
+          item.status = 'ERROR';
+          item.errorMsg = 'Ámbito inválido';
+        } else if (item.exige_vencimiento && (isNaN(item.dias_alerta) || item.dias_alerta < 0)) {
+          item.status = 'ERROR';
+          item.errorMsg = 'Días alerta inválido';
+        } else {
+          const norm = normalizeStr(item.nombre);
+          if (dbNames.has(norm)) {
+            item.status = 'OMITIDO_DB';
+            item.errorMsg = 'Ya existe en el sistema';
+          } else if (fileNames.has(norm)) {
+            item.status = 'OMITIDO_EXCEL';
+            item.errorMsg = 'Duplicada en el archivo';
+          } else {
+            fileNames.add(norm);
+            item.selected = true;
+          }
+        }
+        
+        if (isNaN(item.orden) || item.orden <= 0) {
+          maxOrden += 10;
+          item.orden = maxOrden;
+        }
+        return item;
+      });
+      setItems(parsed);
+    };
+    if (dataRows?.length) processRows();
+  }, [dataRows, tiposActuales]);
+
+  const toggleSelect = (id) => setItems(p => p.map(t => t.id === id && t.status === 'LISTO' ? { ...t, selected: !t.selected } : t));
+  const updateField = (id, field, value) => setItems(p => p.map(t => t.id === id ? { ...t, [field]: value } : t));
+
+  const handleImport = async () => {
+    const toImport = items.filter(t => t.selected && t.status === 'LISTO');
+    if (!toImport.length) return;
+    setSaving(true);
+    let successCount = 0;
+    let currentLength = tiposActuales.length;
+    try {
+      for (const t of toImport) {
+        currentLength++;
+        const codigo = `DOC${String(currentLength).padStart(3, '0')}`;
+        await crearTipoDocumento({
+          codigo,
+          nombre: t.nombre,
+          ambito: t.ambito,
+          exige_vencimiento: t.exige_vencimiento,
+          dias_alerta: t.exige_vencimiento ? (t.dias_alerta || 0) : 0,
+          es_habilitante: t.es_habilitante,
+          requiere_validacion: t.requiere_validacion,
+          estado: 'activo',
+          orden: t.orden
+        });
+        successCount++;
+      }
+      addNotificacion?.(`${successCount} tipos de documento importados exitosamente.`);
+      onImported();
+    } catch (err) {
+      addNotificacion?.('Error al importar: ' + (err?.message || ''));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const validCount = items.filter(t => t.status === 'LISTO').length;
+  const selCount = items.filter(t => t.selected).length;
+
+  return (
+    <div className="modal-backdrop" style={{ zIndex: 1100 }}>
+      <div className="modal" style={{ maxWidth: 1060, width: '96vw' }}>
+        <div className="modal-head">
+          <div>
+            <h2>Previsualizar Importación</h2>
+            <div className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
+              Se detectaron {items.length} filas. {validCount} listas para importar.
+            </div>
+          </div>
+          <button className="icon-btn" onClick={onClose} disabled={saving}>{I.x}</button>
+        </div>
+        <div className="modal-body" style={{ padding: 0 }}>
+          <div className="table-wrap" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            <table className="tbl">
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg)' }}>
+                <tr>
+                  <th style={{ width: 40, textAlign: 'center' }}>
+                    <input type="checkbox" checked={validCount > 0 && selCount === validCount} onChange={e => setItems(p => p.map(t => t.status === 'LISTO' ? { ...t, selected: e.target.checked } : t))} disabled={validCount === 0} />
+                  </th>
+                  <th style={{ width: 40 }}>Est.</th>
+                  <th>Nombre</th>
+                  <th>Ámbito</th>
+                  <th style={{ textAlign: 'center' }}>Exige Venc.</th>
+                  <th style={{ textAlign: 'center' }}>Días Alerta</th>
+                  <th style={{ textAlign: 'center' }}>Habilitante</th>
+                  <th>Mensaje</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(t => (
+                  <tr key={t.id} style={{ opacity: t.status !== 'LISTO' ? 0.6 : 1, background: t.status === 'ERROR' ? 'var(--danger-lt)' : t.status !== 'LISTO' ? 'var(--bg-subtle)' : 'transparent' }}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="checkbox" checked={t.selected} onChange={() => toggleSelect(t.id)} disabled={t.status !== 'LISTO'} />
+                    </td>
+                    <td style={{ textAlign: 'center', fontSize: 16 }}>
+                      {t.status === 'LISTO' ? '✅' : t.status === 'ERROR' ? '❌' : '⏭'}
+                    </td>
+                    <td><input className="input" style={{ width: '100%', minWidth: 160 }} value={t.nombre} onChange={e => updateField(t.id, 'nombre', e.target.value)} disabled={t.status !== 'LISTO'} /></td>
+                    <td>
+                      <select className="select" value={t.ambito || ''} onChange={e => updateField(t.id, 'ambito', e.target.value)} disabled={t.status !== 'LISTO'}>
+                        <option value="Operativo">Operativo</option>
+                        <option value="Administrativo">Administrativo</option>
+                        <option value="Ambos">Ambos</option>
+                        {!['Operativo','Administrativo','Ambos'].includes(t.ambito) && <option value={t.ambito}>{t.ambito}</option>}
+                      </select>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="checkbox" checked={t.exige_vencimiento} onChange={e => updateField(t.id, 'exige_vencimiento', e.target.checked)} disabled={t.status !== 'LISTO'} />
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="number" className="input" style={{ width: 60, textAlign: 'center' }} value={isNaN(t.dias_alerta)?'':t.dias_alerta} onChange={e => updateField(t.id, 'dias_alerta', parseInt(e.target.value) || 0)} disabled={t.status !== 'LISTO' || !t.exige_vencimiento} />
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="checkbox" checked={t.es_habilitante} onChange={e => updateField(t.id, 'es_habilitante', e.target.checked)} disabled={t.status !== 'LISTO'} />
+                    </td>
+                    <td style={{ fontSize: 12, color: t.status === 'ERROR' ? 'var(--danger)' : 'var(--fg-muted)', whiteSpace: 'nowrap' }}>{t.errorMsg}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="modal-foot" style={{ padding: 16, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>
+            Omitidas por duplicado: {items.filter(i => i.status.startsWith('OMITIDO')).length} | Errores: {items.filter(i => i.status === 'ERROR').length}
+          </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleImport} disabled={saving || selCount === 0}>
+              {saving ? 'Importando...' : `Importar ${selCount} tipos`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
+  const { tiposDocumento = [], crearTipoDocumento, actualizarTipoDocumento, addNotificacion } = useApp();
+  const [previewData, setPreviewData] = useState(null);
+  const [editando, setEditando] = useState(null);
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const fileInputRef = React.useRef(null);
+
+  const tiposActivos = tiposDocumento.filter(t => t.estado === 'activo');
+  const tiposInactivos = tiposDocumento.filter(t => t.estado !== 'activo');
+  const allTipos = [...tiposActivos, ...tiposInactivos];
+
+  const handleEdit = (tipo) => {
+    setForm({
+      nombre: tipo.nombre,
+      ambito: tipo.ambito || 'Ambos',
+      exige_vencimiento: Boolean(tipo.exige_vencimiento),
+      dias_alerta: tipo.dias_alerta ?? 30,
+      es_habilitante: Boolean(tipo.es_habilitante),
+      requiere_validacion: tipo.requiere_validacion !== false,
+      orden: tipo.orden ?? 0,
+      estado: tipo.estado || 'activo'
+    });
+    setEditando(tipo);
+  };
+
+  const handleNew = () => {
+    setForm({
+      nombre: '',
+      ambito: 'Ambos',
+      exige_vencimiento: true,
+      dias_alerta: 30,
+      es_habilitante: false,
+      requiere_validacion: true,
+      orden: 0,
+      estado: 'activo'
+    });
+    setEditando(null);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!form.nombre.trim()) return addNotificacion?.('El nombre es requerido');
+    
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        codigo: editando ? editando.codigo : `DOC${String(allTipos.length + 1).padStart(3, '0')}`,
+        dias_alerta: form.exige_vencimiento ? (form.dias_alerta || 0) : 0
+      };
+
+      if (editando) {
+        await actualizarTipoDocumento(editando.id, payload);
+        addNotificacion?.('Tipo de documento actualizado');
+      } else {
+        await crearTipoDocumento(payload);
+        addNotificacion?.('Tipo de documento creado');
+      }
+      setForm(null);
+    } catch (err) {
+      addNotificacion?.('Error: ' + (err?.message || 'No se pudo guardar'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDescargarPlantilla = () => {
+    const wsData = [
+      ['nombre', 'ambito', 'exige_vencimiento', 'dias_alerta', 'es_habilitante', 'requiere_validacion', 'orden'],
+      ['Ej: Certificado Médico', 'Ambos', 'SÍ', 30, 'SÍ', 'SÍ', 10]
+    ];
+    const wsInstr = [
+      ['Instrucciones para Plantilla de Tipos de Documento'],
+      [''],
+      ['Columna', 'Requerido', 'Valores Permitidos', 'Descripción'],
+      ['nombre', 'SÍ', 'Texto', 'Nombre del tipo de documento (ej: SCTR, DNI)'],
+      ['ambito', 'SÍ', 'Operativo, Administrativo, Ambos', 'A qué tipo de personal aplica'],
+      ['exige_vencimiento', 'SÍ', 'SÍ, NO', 'Si el documento caduca en el tiempo'],
+      ['dias_alerta', 'Si exige_vencimiento=SÍ', 'Número entero >= 0', 'Días de anticipación para alertar expiración'],
+      ['es_habilitante', 'SÍ', 'SÍ, NO', 'Si bloquea al trabajador en caso de no tenerlo'],
+      ['requiere_validacion', 'SÍ', 'SÍ, NO', 'Si requiere que RRHH lo apruebe tras subirse'],
+      ['orden', 'NO', 'Número entero', 'Orden de visualización (sugerencia: 10, 20, 30...)']
+    ];
+    const wb = XLSX.utils.book_new();
+    const sheetInstr = XLSX.utils.aoa_to_sheet(wsInstr);
+    const sheetData = XLSX.utils.aoa_to_sheet(wsData);
+    XLSX.utils.book_append_sheet(wb, sheetInstr, 'Instrucciones');
+    XLSX.utils.book_append_sheet(wb, sheetData, 'Tipos de Documento');
+    XLSX.writeFile(wb, 'plantilla_tipos_documento.xlsx');
+  };
+
+  const handleExportar = () => {
+    if (!allTipos.length) return addNotificacion?.('No hay datos para exportar.');
+    const data = allTipos.map(t => ({
+      nombre: t.nombre,
+      ambito: t.ambito || 'Ambos',
+      exige_vencimiento: t.exige_vencimiento ? 'SÍ' : 'NO',
+      dias_alerta: t.exige_vencimiento ? t.dias_alerta : '',
+      es_habilitante: t.es_habilitante ? 'SÍ' : 'NO',
+      requiere_validacion: t.requiere_validacion ? 'SÍ' : 'NO',
+      orden: t.orden || 0,
+      estado: t.estado
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Tipos de Documento');
+    XLSX.writeFile(wb, `tipos_documento_${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target.result;
+        const wb = XLSX.read(data, { type: 'array' });
+        const sheetName = wb.SheetNames.find(n => n.trim() === 'Tipos de Documento') || wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        setPreviewData(json);
+      } catch (err) {
+        addNotificacion?.('Error al leer el archivo Excel: ' + (err?.message || ''));
+      }
+      e.target.value = ''; // Reset input
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  return (
+    <>
+      <div className="side-panel-backdrop" onClick={onClose} />
+      <div className="side-panel" style={{ width: 'min(1060px, 98vw)' }}>
+        <div className="side-panel-head">
+          <div>
+            <div className="eyebrow">Gestión Documental</div>
+            <div className="font-display" style={{ fontSize: 22, fontWeight: 700, marginTop: 2 }}>Tipos de Documento</div>
+            <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+              Catálogo central de documentos · {tiposActivos.length} activos
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            {onGoToRequisitos && (
+              <button className="btn btn-ghost btn-sm" onClick={onGoToRequisitos} title="Ir a Requisitos por Cargo">
+                Requisitos por Cargo →
+              </button>
+            )}
+            <button className="icon-btn" onClick={onClose}>{I.x}</button>
+          </div>
+        </div>
+
+        <div className="side-panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {form ? (
+            <form className="card" onSubmit={handleSave} style={{ borderLeft: '3px solid var(--cyan)' }}>
+              <h3 style={{ fontSize: 16, marginBottom: 16 }}>{editando ? 'Editar Tipo de Documento' : 'Nuevo Tipo de Documento'}</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+                <div className="input-group" style={{ gridColumn: 'span 2' }}>
+                  <label>Nombre *</label>
+                  <input className="input" required value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Ej: Certificado Médico" />
+                </div>
+                <div className="input-group">
+                  <label>Ámbito *</label>
+                  <select className="select" value={form.ambito} onChange={e => setForm({ ...form, ambito: e.target.value })}>
+                    <option value="Operativo">Operativo</option>
+                    <option value="Administrativo">Administrativo</option>
+                    <option value="Ambos">Ambos</option>
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Estado</label>
+                  <select className="select" value={form.estado} onChange={e => setForm({ ...form, estado: e.target.value })}>
+                    <option value="activo">Activo</option>
+                    <option value="inactivo">Inactivo</option>
+                  </select>
+                </div>
+                
+                <div className="input-group">
+                  <label>Exige vencimiento</label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <input type="checkbox" checked={form.exige_vencimiento} onChange={e => setForm({ ...form, exige_vencimiento: e.target.checked })} style={{ width: 18, height: 18 }} />
+                    <span style={{ fontSize: 13 }}>Sí, vence</span>
+                  </label>
+                </div>
+                <div className="input-group" style={{ opacity: form.exige_vencimiento ? 1 : 0.4 }}>
+                  <label>Días de alerta previa</label>
+                  <input className="input" type="number" min="0" value={form.dias_alerta} onChange={e => setForm({ ...form, dias_alerta: parseInt(e.target.value) || 0 })} disabled={!form.exige_vencimiento} />
+                </div>
+                <div className="input-group">
+                  <label>Es habilitante</label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <input type="checkbox" checked={form.es_habilitante} onChange={e => setForm({ ...form, es_habilitante: e.target.checked })} style={{ width: 18, height: 18 }} />
+                    <span style={{ fontSize: 13 }}>Bloquea si no está</span>
+                  </label>
+                </div>
+                <div className="input-group">
+                  <label>Validación RRHH</label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <input type="checkbox" checked={form.requiere_validacion} onChange={e => setForm({ ...form, requiere_validacion: e.target.checked })} style={{ width: 18, height: 18 }} />
+                    <span style={{ fontSize: 13 }}>Requiere aprobación</span>
+                  </label>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setForm(null)} disabled={saving}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar Tipo'}</button>
+              </div>
+            </form>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', alignItems: 'center' }}>
+              <button className="btn btn-primary" onClick={handleNew}>{I.plus} Nuevo tipo de documento</button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input type="file" ref={fileInputRef} accept=".xlsx" style={{ display: 'none' }} onChange={handleFileUpload} />
+                <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()}>{I.download} Importar Excel</button>
+                <button className="btn btn-secondary" onClick={handleExportar}>{I.download} Exportar</button>
+                <button className="btn btn-secondary" onClick={handleDescargarPlantilla}>{I.download} Descargar plantilla vacía</button>
+                <button className="btn btn-secondary" onClick={() => setPreviewData(PLANTILLA_BASE_TIPOS_DOC)}>{I.download} Importar Plantilla Base</button>
+              </div>
+            </div>
+          )}
+
+          {!form && (
+            <div className="card" style={{ padding: 0 }}>
+              {allTipos.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-muted)' }}>
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>📄</div>
+                  <div style={{ fontSize: 16, fontWeight: 600 }}>No hay tipos de documento</div>
+                  <div style={{ fontSize: 14, marginTop: 4 }}>Crea uno manualmente o importa un archivo Excel.</div>
+                </div>
+              ) : (
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Código</th>
+                        <th>Nombre</th>
+                        <th>Ámbito</th>
+                        <th style={{ textAlign: 'center' }}>Venc.</th>
+                        <th style={{ textAlign: 'center' }}>Habilitante</th>
+                        <th style={{ textAlign: 'center' }}>Validación</th>
+                        <th>Estado</th>
+                        <th style={{ textAlign: 'right' }}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allTipos.map(t => (
+                        <tr key={t.id} style={{ opacity: t.estado === 'activo' ? 1 : 0.6 }}>
+                          <td className="mono text-muted" style={{ fontSize: 12 }}>{t.codigo}</td>
+                          <td><strong>{t.nombre}</strong></td>
+                          <td><span className="badge badge-cyan" style={{ fontSize: 11 }}>{t.ambito || 'Ambos'}</span></td>
+                          <td style={{ textAlign: 'center' }}>
+                            {t.exige_vencimiento ? <span className="badge badge-orange" style={{ fontSize: 10 }}>Sí ({t.dias_alerta}d)</span> : <span className="badge badge-gray" style={{ fontSize: 10 }}>No</span>}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {t.es_habilitante ? <span className="badge badge-green" style={{ fontSize: 10 }}>Sí</span> : <span className="badge badge-gray" style={{ fontSize: 10 }}>No</span>}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {t.requiere_validacion ? <span className="badge badge-purple" style={{ fontSize: 10 }}>RRHH</span> : <span className="badge badge-gray" style={{ fontSize: 10 }}>Auto</span>}
+                          </td>
+                          <td><span className={'badge ' + (t.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{t.estado}</span></td>
+                          <td style={{ textAlign: 'right' }}>
+                            <button className="icon-btn" style={{ color: 'var(--cyan)' }} onClick={() => handleEdit(t)}>{I.edit}</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      {previewData && <ImportarTiposDocPreview dataRows={previewData} tiposActuales={allTipos} onClose={() => setPreviewData(null)} onImported={() => setPreviewData(null)} />}
+    </>
+  );
+}
+
+// ============ REQUISITOS POR CARGO (panel master-detail) ============
+function RequisitosPorCargo({ onClose, onGoToTiposDoc }) {
+  const {
+    cargos = [], tiposDocumento = [], requisitosCargo = [],
+    upsertRequisitoCargo, eliminarRequisitoCargo, addNotificacion,
+  } = useApp();
+
+  const [busqueda, setBusqueda] = useState('');
+  const [cargoSelId, setCargoSelId] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const cargosActivos = (cargos || []).filter(c => c.estado === 'activo');
+  const cargosFiltrados = busqueda.trim()
+    ? cargosActivos.filter(c => c.nombre.toLowerCase().includes(busqueda.toLowerCase()))
+    : cargosActivos;
+
+  const cargoSel = cargoSelId ? cargosActivos.find(c => c.id === cargoSelId) : null;
+
+  const contarRequisitos = (cargoId) =>
+    (requisitosCargo || []).filter(r => r.cargo_id === cargoId).length;
+
+  const ambitoLabel = (tipo) => {
+    if (!tipo) return null;
+    const m = { Operativo: 'Operativo', Administrativo: 'Administrativo', Ambos: 'Ambos' };
+    return m[tipo] || tipo;
+  };
+
+  // Filtrar tipos por ámbito del cargo seleccionado
+  const tiposCompatibles = cargoSel
+    ? (tiposDocumento || []).filter(t => {
+        if (t.estado !== 'activo') return false;
+        const ambitoCargo = cargoSel.tipo;
+        if (!ambitoCargo) return true; // sin ámbito definido → mostrar todos
+        if (t.ambito === 'Ambos' || ambitoCargo === 'Ambos') return true;
+        return t.ambito === ambitoCargo;
+      })
+    : [];
+
+  const reqDelCargo = cargoSelId
+    ? (requisitosCargo || []).filter(r => r.cargo_id === cargoSelId)
+    : [];
+
+  const toggle = async (tipo, campo) => {
+    if (!cargoSelId || saving) return;
+    setSaving(true);
+    try {
+      const req = reqDelCargo.find(r => r.tipo_documento_id === tipo.id);
+      if (campo === 'requerido') {
+        if (req) {
+          await eliminarRequisitoCargo(req.id);
+        } else {
+          await upsertRequisitoCargo(cargoSelId, tipo.id, false);
+        }
+      } else if (campo === 'obligatorio') {
+        if (!req) return;
+        await upsertRequisitoCargo(cargoSelId, tipo.id, !req.obligatorio);
+      }
+    } catch (err) {
+      addNotificacion?.('Error: ' + (err?.message || 'No se pudo guardar'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="side-panel-backdrop" onClick={onClose} />
+      <div className="side-panel" style={{ width: 'min(1060px, 98vw)' }}>
+        <div className="side-panel-head">
+          <div>
+            <div className="eyebrow">Configuración de personal</div>
+            <div className="font-display" style={{ fontSize: 22, fontWeight: 700, marginTop: 2 }}>Requisitos por Cargo</div>
+            <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+              Define qué documentos requiere cada cargo · {cargosActivos.length} cargos · {(tiposDocumento||[]).filter(t=>t.estado==='activo').length} tipos de documento activos
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            {onGoToTiposDoc && (
+              <button className="btn btn-ghost btn-sm" onClick={onGoToTiposDoc} title="Ir al maestro de Tipos de Documento">
+                Tipos de Documento →
+              </button>
+            )}
+            <button className="icon-btn" onClick={onClose}>{I.x}</button>
+          </div>
+        </div>
+
+        <div className="side-panel-body">
+          <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20, minHeight: 500 }}>
+
+            {/* COLUMNA MAESTRO — lista de cargos */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <input
+                className="input"
+                placeholder="Buscar cargo..."
+                value={busqueda}
+                onChange={e => setBusqueda(e.target.value)}
+              />
+              <div style={{ fontWeight: 600, fontSize: 11, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '0.08em', paddingLeft: 2 }}>
+                {cargosFiltrados.length} cargos
+              </div>
+              <div style={{ overflowY: 'auto', maxHeight: 520, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {cargosFiltrados.length === 0 && (
+                  <div style={{ color: 'var(--fg-muted)', fontSize: 13, padding: '12px 8px' }}>
+                    {busqueda ? 'Sin resultados.' : 'No hay cargos activos. Crea cargos en el maestro de Cargos.'}
+                  </div>
+                )}
+                {cargosFiltrados.map(c => {
+                  const cnt = contarRequisitos(c.id);
+                  const isActive = cargoSelId === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setCargoSelId(c.id)}
+                      style={{
+                        textAlign: 'left', background: isActive ? 'var(--cyan-lt)' : 'var(--bg-card)',
+                        border: `1px solid ${isActive ? 'var(--cyan)' : 'var(--border)'}`,
+                        borderRadius: 8, padding: '10px 12px', cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: 13, color: isActive ? 'var(--cyan-dk)' : 'var(--fg)' }}>{c.nombre}</div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center' }}>
+                        <span className={'badge badge-' + (c.tipo === 'Operativo' ? 'cyan' : c.tipo === 'Administrativo' ? 'gray' : 'purple')} style={{ fontSize: 10 }}>
+                          {c.tipo || 'Sin ámbito'}
+                        </span>
+                        {cnt > 0 && (
+                          <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{cnt} req.</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* COLUMNA DETALLE — tipos de documento */}
+            <div>
+              {!cargoSel ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--fg-muted)', fontSize: 14, flexDirection: 'column', gap: 8 }}>
+                  <span style={{ fontSize: 28 }}>📋</span>
+                  <span>Selecciona un cargo para configurar sus requisitos</span>
+                </div>
+              ) : (
+                <>
+                  <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 16 }}>{cargoSel.nombre}</div>
+                      <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>
+                        Ámbito: <strong>{ambitoLabel(cargoSel.tipo) || <span style={{ color: 'var(--orange)' }}>⚠ No definido — mostrando todos los tipos</span>}</strong>
+                        {cargoSel.tipo && <> · Se muestran tipos de ámbito <em>{cargoSel.tipo === 'Ambos' ? 'Operativo, Administrativo y Ambos' : cargoSel.tipo + ' + Ambos'}</em></>}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{reqDelCargo.length} de {tiposCompatibles.length} asignados</div>
+                  </div>
+
+                  {tiposCompatibles.length === 0 ? (
+                    <div style={{ padding: '24px', background: 'var(--bg-subtle)', borderRadius: 10, textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>
+                      No hay tipos de documento activos compatibles con el ámbito de este cargo.
+                      {onGoToTiposDoc && (
+                        <div style={{ marginTop: 10 }}>
+                          <button className="btn btn-ghost btn-sm" onClick={onGoToTiposDoc}>→ Ir a Tipos de Documento</button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="card" style={{ padding: 0 }}>
+                      <div className="table-wrap">
+                        <table className="tbl">
+                          <thead>
+                            <tr>
+                              <th>Tipo de documento</th>
+                              <th style={{ textAlign: 'center' }}>Venc.</th>
+                              <th style={{ textAlign: 'center' }}>Habilitante</th>
+                              <th style={{ textAlign: 'center' }}>Val. RRHH</th>
+                              <th style={{ textAlign: 'center', width: 90 }}>Requerido</th>
+                              <th style={{ textAlign: 'center', width: 110 }}>Obligatorio</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tiposCompatibles.map(tipo => {
+                              const req = reqDelCargo.find(r => r.tipo_documento_id === tipo.id);
+                              const esRequerido = Boolean(req);
+                              return (
+                                <tr key={tipo.id}>
+                                  <td>
+                                    <strong style={{ fontSize: 13 }}>{tipo.nombre}</strong>
+                                    <div style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>{tipo.ambito}</div>
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    {tipo.exige_vencimiento
+                                      ? <span className="badge badge-orange" style={{ fontSize: 10 }}>Sí</span>
+                                      : <span className="badge badge-gray" style={{ fontSize: 10 }}>No</span>}
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    {tipo.es_habilitante
+                                      ? <span className="badge badge-green" style={{ fontSize: 10 }}>Sí</span>
+                                      : <span className="badge badge-gray" style={{ fontSize: 10 }}>No</span>}
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    {tipo.requiere_validacion
+                                      ? <span className="badge badge-cyan" style={{ fontSize: 10 }}>RRHH</span>
+                                      : <span className="badge badge-gray" style={{ fontSize: 10 }}>Auto</span>}
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={esRequerido}
+                                      disabled={saving}
+                                      title={esRequerido ? 'Quitar requisito' : 'Marcar como requerido'}
+                                      style={{ width: 16, height: 16, cursor: saving ? 'wait' : 'pointer', accentColor: 'var(--cyan)' }}
+                                      onChange={() => toggle(tipo, 'requerido')}
+                                    />
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    {esRequerido ? (
+                                      <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, cursor: saving ? 'wait' : 'pointer', fontSize: 12 }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={Boolean(req?.obligatorio)}
+                                          disabled={saving}
+                                          style={{ width: 16, height: 16, accentColor: 'var(--cyan)' }}
+                                          onChange={() => toggle(tipo, 'obligatorio')}
+                                        />
+                                        {req?.obligatorio ? <span style={{ color: 'var(--danger)', fontWeight: 600 }}>Sí</span> : <span style={{ color: 'var(--fg-muted)' }}>No</span>}
+                                      </label>
+                                    ) : (
+                                      <span style={{ color: 'var(--fg-subtle)', fontSize: 11 }}>—</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  {saving && (
+                    <div style={{ marginTop: 8, fontSize: 12, color: 'var(--cyan)', textAlign: 'right' }}>Guardando...</div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ============ CONFIGURACIÓN Y MAESTROS ============
 function Maestros() {
   const {
@@ -2659,6 +3408,8 @@ function Maestros() {
   const { centrosCosto, centrosBeneficio } = useApp();
   const [sel, setSel] = useState(null);
   const [showCecoCebe, setShowCecoCebe] = useState(false);
+  const [showRequisitos, setShowRequisitos] = useState(false);
+  const [showTiposDocumento, setShowTiposDocumento] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [fusionOrigenId, setFusionOrigenId] = useState(null);
   const [fusionDestinoId, setFusionDestinoId] = useState('');
@@ -3200,22 +3951,6 @@ function Maestros() {
         </div>
       </form>
     );
-    if (sel?.id === 'mst_tipos_documento') return (
-      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          <CodPreview id={sel.id} len={formLen}/>
-          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: SCTR" autoFocus/></div>
-          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
-          <div className="input-group"><label>Ámbito</label><select className="select" value={nuevo.ambito||'Ambos'} onChange={e=>setNuevo(v=>({...v,ambito:e.target.value}))}><option value="Operativo">Operativo</option><option value="Administrativo">Administrativo</option><option value="Ambos">Ambos</option></select></div>
-          <div className="input-group"><label>Exige vencimiento</label><select className="select" value={nuevo.exige_vencimiento?'si':'no'} onChange={e=>setNuevo(v=>({...v,exige_vencimiento:e.target.value==='si'}))}><option value="no">No</option><option value="si">Sí</option></select></div>
-          <div className="input-group"><label>Días de alerta</label><input className="input" type="number" min="0" value={nuevo.dias_alerta??30} onChange={e=>setNuevo(v=>({...v,dias_alerta:parseInt(e.target.value)||0}))}/></div>
-          <div className="input-group"><label>Es habilitante</label><select className="select" value={nuevo.es_habilitante?'si':'no'} onChange={e=>setNuevo(v=>({...v,es_habilitante:e.target.value==='si'}))}><option value="no">No</option><option value="si">Sí</option></select></div>
-          <div className="input-group"><label>Requiere validación RRHH</label><select className="select" value={nuevo.requiere_validacion!==false?'si':'no'} onChange={e=>setNuevo(v=>({...v,requiere_validacion:e.target.value==='si'}))}><option value="si">Sí</option><option value="no">No</option></select></div>
-          <div className="input-group"><label>Orden</label><input className="input" type="number" min="0" value={nuevo.orden??0} onChange={e=>setNuevo(v=>({...v,orden:parseInt(e.target.value)||0}))}/></div>
-          <FormActions label="tipo de documento" />
-        </div>
-      </form>
-    );
     if (sel?.id === 'mst_requisitos_cargo') {
       const cargosActivos = (cargos || []).filter(c => c.estado === 'activo');
       const tiposActivos = (tiposDocumento || []).filter(t => t.estado === 'activo');
@@ -3468,23 +4203,6 @@ function Maestros() {
         ))}</tbody>
       </table>
     );
-    if (sel?.id === 'mst_tipos_documento') return (
-      <table className="tbl">
-        <thead><tr><th>Código</th><th>Nombre</th><th>Ámbito</th><th style={{textAlign:'center'}}>Venc.</th><th style={{textAlign:'center'}}>Habilitante</th><th style={{textAlign:'center'}}>Validación</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
-        <tbody>{tiposDocumento.map((r, i) => (
-          <tr key={`${r.codigo}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
-            <td className="mono text-muted" style={{fontSize:12}}>{r.codigo}</td>
-            <td><strong>{r.nombre}</strong></td>
-            <td><span className="badge badge-cyan" style={{fontSize:11}}>{r.ambito}</span></td>
-            <td style={{textAlign:'center'}}>{r.exige_vencimiento ? <span className="badge badge-orange" style={{fontSize:11}}>Sí</span> : <span className="badge badge-gray" style={{fontSize:11}}>No</span>}</td>
-            <td style={{textAlign:'center'}}>{r.es_habilitante ? <span className="badge badge-green" style={{fontSize:11}}>Sí</span> : <span className="badge badge-gray" style={{fontSize:11}}>No</span>}</td>
-            <td style={{textAlign:'center'}}>{r.requiere_validacion ? <span className="badge badge-orange" style={{fontSize:11}}>RRHH</span> : <span className="badge badge-gray" style={{fontSize:11}}>Auto</span>}</td>
-            <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
-            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
-          </tr>
-        ))}</tbody>
-      </table>
-    );
     if (sel?.id === 'mst_requisitos_cargo') return null;
     return (
       <table className="tbl">
@@ -3523,12 +4241,20 @@ function Maestros() {
                 <div className="maestro-card-meta">{(centrosCosto||[]).length} CECOs · {(centrosBeneficio||[]).length} CEBEs</div>
               )}
             </div>
-            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { if (m.id === 'mst_ceco_cebe') { setShowCecoCebe(true); } else { setSel(m); resetForm(); } }}>
+            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { if (m.id === 'mst_ceco_cebe') { setShowCecoCebe(true); } else if (m.id === 'mst_requisitos_cargo') { setShowRequisitos(true); } else if (m.id === 'mst_tipos_documento') { setShowTiposDocumento(true); } else { setSel(m); resetForm(); } }}>
               Gestionar {I.chevRight}
             </button>
           </div>
         ))}
       </div>
+
+      {showCecoCebe && <CecoCebePanel onClose={() => setShowCecoCebe(false)} />}
+
+      {showRequisitos && <RequisitosPorCargo onClose={() => setShowRequisitos(false)} onGoToTiposDoc={() => { setShowRequisitos(false); setShowTiposDocumento(true); }} />}
+
+      {showTiposDocumento && <TiposDocumentoPanel onClose={() => setShowTiposDocumento(false)} onGoToRequisitos={() => { setShowTiposDocumento(false); setShowRequisitos(true); }} />}
+
+      {sel?.id === 'mst_materiales' && <MaterialesMaestro onClose={() => setSel(null)} />}
 
       <div className="maestros-help">
         <div className="maestros-help-icon">{I.users}</div>
@@ -3542,9 +4268,6 @@ function Maestros() {
         </div>
       </div>
 
-      {showCecoCebe && <CecoCebePanel onClose={() => setShowCecoCebe(false)} />}
-
-      {sel?.id === 'mst_materiales' && <MaterialesMaestro onClose={() => setSel(null)} />}
 
       {importModal && sel && MAESTRO_XLSX_CFG[sel.id] && (
         <div className="modal-backdrop">
@@ -5839,6 +6562,8 @@ function RRHHAdmin() {
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
   const [panelAlta, setPanelAlta] = useState(false);
+  const [showRequisitosRRHH, setShowRequisitosRRHH] = useState(false);
+  const [showTiposDocumentoRRHH, setShowTiposDocumentoRRHH] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [altaSaving, setAltaSaving] = useState(false);
   const [altaError, setAltaError] = useState('');
@@ -6746,10 +7471,17 @@ function RRHHAdmin() {
       <div className="page-header">
         <div><h1 className="page-title">RRHH Administrativo</h1><div className="page-sub">{colaboradoresActivos} colaboradores activos · Fase 3</div></div>
         <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4}}>
-          <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoColaborador} disabled={!turnosOptions.length}>{I.plus} Nuevo colaborador</button>
+          <div style={{display:'flex', gap:8}}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowTiposDocumentoRRHH(true)} title="Gestionar catálogo de tipos de documento">📄 Tipos de Documento</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowRequisitosRRHH(true)} title="Configurar documentos requeridos por cargo">{I.shield} Requisitos por Cargo</button>
+            <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoColaborador} disabled={!turnosOptions.length}>{I.plus} Nuevo colaborador</button>
+          </div>
           {!turnosOptions.length && <span style={{fontSize:11, color:'var(--danger, #e53e3e)'}}>Crea un turno en Turnos y Horarios para habilitar esta opción.</span>}
         </div>
       </div>
+
+      {showRequisitosRRHH && <RequisitosPorCargo onClose={() => setShowRequisitosRRHH(false)} onGoToTiposDoc={() => { setShowRequisitosRRHH(false); setShowTiposDocumentoRRHH(true); }} />}
+      {showTiposDocumentoRRHH && <TiposDocumentoPanel onClose={() => setShowTiposDocumentoRRHH(false)} onGoToRequisitos={() => { setShowTiposDocumentoRRHH(false); setShowRequisitosRRHH(true); }} />}
 
       <div className="tabs">
         <div className={'tab '+(view==='personal'?'active':'')} onClick={()=>setView('personal')}>Personal</div>

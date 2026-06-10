@@ -12091,7 +12091,14 @@ function RRHH_Operativo() {
               if (formAsig.tipo_tramo === 'normal' && formAsig.regimen_jornada === 'ciclo_acumulativo' && (!formAsig.dias_ciclo_trabajo || !formAsig.dias_ciclo_descanso || !formAsig.fecha_inicio_ciclo)) { addNotificacion('Completa los datos del ciclo: días de trabajo, de descanso y fecha de inicio.', 'error'); return; }
               setSavingAsig(true);
               try {
-                await crearAsignacionJornadaCtx(p.id, 'operativo', { ...formAsig, dias_ciclo_trabajo: formAsig.dias_ciclo_trabajo ? Number(formAsig.dias_ciclo_trabajo) : null, dias_ciclo_descanso: formAsig.dias_ciclo_descanso ? Number(formAsig.dias_ciclo_descanso) : null });
+                const payload = {
+                  ...formAsig,
+                  regimen_jornada: formAsig.tipo_tramo === 'suspension_perfecta' ? null : formAsig.regimen_jornada,
+                  dias_ciclo_trabajo: formAsig.tipo_tramo === 'normal' && formAsig.dias_ciclo_trabajo ? Number(formAsig.dias_ciclo_trabajo) : null,
+                  dias_ciclo_descanso: formAsig.tipo_tramo === 'normal' && formAsig.dias_ciclo_descanso ? Number(formAsig.dias_ciclo_descanso) : null,
+                  fecha_inicio_ciclo: formAsig.tipo_tramo === 'normal' ? formAsig.fecha_inicio_ciclo : null,
+                };
+                await crearAsignacionJornadaCtx(p.id, 'operativo', payload);
                 setShowFormAsig(false);
                 setFormAsig({ tipo_tramo: 'normal', fecha_inicio: '', regimen_jornada: 'general', dias_ciclo_trabajo: '', dias_ciclo_descanso: '', fecha_inicio_ciclo: '', motivo: '' });
                 addNotificacion('Asignación de jornada registrada.');
