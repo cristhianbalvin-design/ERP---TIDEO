@@ -2964,113 +2964,891 @@ function Valorizacion({ role }) {
   );
 }
 
-function Inventario() {
-  const { inventario, searchQuery } = useApp();
-  const [selSku, setSelSku] = useState(null);
+// ─── Modal Entrada Manual ──────────────────────────────────────────────────────
+function ModalEntradaManual({ materiales, almacenes, onClose, onSave }) {
+  // '' = auto-crear ALM-001 (cuando la empresa no tiene almacenes aún)
+  const [form, setForm] = useState({ motivo: 'saldo_inicial', cantidad: '', costo_unitario: '', moneda: 'PEN', material_id: '', almacen_id: almacenes[0]?.id || '', lote: '', serie: '', vencimiento: '', nro_documento: '', observacion: '' });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const mat = materiales.find(m => m.id === form.material_id);
+  const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const sinAlmacenes = almacenes.length === 0;
 
-  const query = searchQuery.toLowerCase();
-  const filteredInv = inventario.filter(i => 
-    i.sku.toLowerCase().includes(query) ||
-    i.nombre.toLowerCase().includes(query) ||
-    i.categoria.toLowerCase().includes(query) ||
-    i.almacen.toLowerCase().includes(query)
-  );
+  const MOTIVOS = [
+    { value: 'saldo_inicial', label: 'Saldo Inicial / Migración' },
+    { value: 'ajuste_positivo', label: 'Ajuste Positivo' },
+    { value: 'devolucion_ot', label: 'Devolución desde OT' },
+    { value: 'compra_directa_sin_oc', label: 'Compra Directa sin OC' },
+  ];
 
-  const totalValor = filteredInv.reduce((acc, curr) => acc + (curr.stock_actual * curr.costo_promedio), 0);
-  const stockCritico = filteredInv.filter(i => i.stock_actual === 0).length;
-  const stockBajo = filteredInv.filter(i => i.stock_actual > 0 && i.stock_actual <= 5).length;
+  const handleSave = async () => {
+    setErr('');
+    if (!form.material_id) { setErr('Selecciona un material'); return; }
+    // almacen_id vacío = auto ALM-001 via resolverAlmacen; solo bloqueamos si hay lista y no se eligió
+    if (!form.almacen_id && !sinAlmacenes) { setErr('Selecciona un almacén'); return; }
+    if (!form.cantidad || Number(form.cantidad) <= 0) { setErr('Cantidad debe ser mayor a cero'); return; }
+    // Costo obligatorio solo en compra directa (los demás usan el costo promedio vigente)
+    if (form.motivo === 'compra_directa_sin_oc' && (!form.costo_unitario || Number(form.costo_unitario) <= 0)) {
+      setErr('El costo unitario es obligatorio para Compra Directa sin OC');
+      return;
+    }
+    if (mat?.tipo_control === 'serie' && Number(form.cantidad) !== 1) { setErr('Artículos por serie: cantidad debe ser 1'); return; }
+    if (mat?.tipo_control === 'lote' && !form.lote) { setErr('Este artículo requiere número de lote'); return; }
+    if (mat?.tipo_control === 'serie' && !form.serie) { setErr('Este artículo requiere número de serie'); return; }
+    setSaving(true);
+    try { await onSave(form); onClose(); }
+    catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  };
 
   return (
-    <>
-      <div className="page-header">
-        <div><h1 className="page-title">Almacenes e Inventario</h1><div className="page-sub">Almacén principal · {inventario.length} SKUs registrados</div></div>
-        <div className="row"><button className="btn btn-primary">{I.plus} Registrar Entrada</button></div>
-      </div>
-      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
-        <div className="kpi-card"><div className="kpi-label">Valor inventario</div><div className="kpi-value">{money(totalValor)}</div><div className="kpi-icon cyan">{I.package}</div></div>
-        <div className="kpi-card"><div className="kpi-label">SKUs activos</div><div className="kpi-value">{filteredInv.length}</div><div className="kpi-icon purple">{I.warehouse}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Stock bajo ({"<="}5)</div><div className="kpi-value" style={{color:'var(--orange)'}}>{stockBajo}</div><div className="kpi-icon orange">{I.alert}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Stock crítico (0)</div><div className="kpi-value" style={{color:'var(--danger)'}}>{stockCritico}</div><div className="kpi-icon danger">{I.alert}</div></div>
-      </div>
-      
-      <div className="card mt-6">
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead><tr><th>SKU</th><th>Descripción</th><th>Categoría</th><th>Almacén</th><th>Unidad</th><th>Stock</th><th>Costo Prom.</th><th>Valor Total</th></tr></thead>
-            <tbody>{filteredInv.map(r=>(
-              <tr key={r.id} onClick={() => setSelSku(r)} className="hover-row" style={{cursor:'pointer'}}>
-                <td className="mono" style={{fontWeight:600}}>{r.sku}</td>
-                <td><strong>{r.nombre}</strong></td>
-                <td>{r.categoria}</td>
-                <td>{r.almacen}</td>
-                <td className="text-muted">{r.unidad}</td>
-                <td className="num" style={{fontWeight:600,color:r.stock_actual===0?'var(--danger)':r.stock_actual<=5?'var(--orange)':'var(--fg)'}}>{r.stock_actual}</td>
-                <td className="num">{money(r.costo_promedio)}</td>
-                <td className="num">{money(r.stock_actual * r.costo_promedio)}</td>
-              </tr>
-            ))}
-            {filteredInv.length === 0 && <tr><td colSpan="8" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>No se encontraron materiales</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {selSku && (
-        <>
-          <div className="side-panel-backdrop" onClick={() => setSelSku(null)}/>
-          <div className="side-panel" style={{width: 600}}>
-            <div className="side-panel-head">
-              <div>
-                <div className="eyebrow">KARDEX y Detalles de SKU</div>
-                <div className="font-display mono" style={{fontSize:20, fontWeight:700, marginTop:2}}>{selSku.sku}</div>
-              </div>
-              <button className="icon-btn" onClick={() => setSelSku(null)}>{I.x}</button>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{maxWidth:520}} onClick={e => e.stopPropagation()}>
+        <div className="modal-head"><h2>Registrar Entrada</h2><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
+        <div className="modal-body" style={{display:'flex',flexDirection:'column',gap:14}}>
+          <div>
+            <label className="label">Motivo *</label>
+            <select className="select" value={form.motivo} onChange={e => setF('motivo', e.target.value)}>
+              {MOTIVOS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </div>
+          <div className="grid-2" style={{gap:12}}>
+            <div>
+              <label className="label">Material *</label>
+              <select className="select" value={form.material_id} onChange={e => setF('material_id', e.target.value)}>
+                <option value="">— Seleccionar —</option>
+                {materiales.map(m => <option key={m.id} value={m.id}>{m.codigo} · {m.descripcion}</option>)}
+              </select>
             </div>
-            <div className="side-panel-body">
-              <div className="grid-2" style={{gap:16, marginBottom:24}}>
-                <div><div className="eyebrow">Descripción</div><div style={{fontWeight:600, fontSize:16}}>{selSku.nombre}</div></div>
-                <div><div className="eyebrow">Categoría</div><div>{selSku.categoria}</div></div>
-                <div>
-                  <div className="eyebrow">Stock Actual</div>
-                  <div style={{fontSize:24, fontWeight:700, color:selSku.stock_actual===0?'var(--danger)':selSku.stock_actual<=5?'var(--orange)':'var(--cyan)'}}>
-                    {selSku.stock_actual} {selSku.unidad}
-                  </div>
-                  <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Min: 5 | Max: 100</div>
-                </div>
-                <div><div className="eyebrow">Costo Promedio</div><div style={{fontSize:24, fontWeight:700}}>{money(selSku.costo_promedio)}</div></div>
-              </div>
-
-              <div className="row" style={{marginBottom:24, gap:10}}>
-                <button className="btn btn-secondary flex-1">{I.plus} Transferencia Interna</button>
-                <button className="btn btn-secondary flex-1">Ajuste de Inventario</button>
-                {selSku.stock_actual <= 5 && <button className="btn btn-primary flex-1">Generar SOLPE Automática</button>}
-              </div>
-
-              <h3 style={{marginBottom:16}}>Movimientos Recientes (KARDEX)</h3>
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead><tr><th>Fecha</th><th>Operación</th><th>OT/Doc</th><th>Cant.</th><th>Saldo</th></tr></thead>
-                  <tbody>
-                    <tr>
-                      <td className="text-muted">Hoy</td>
-                      <td><span className="badge badge-orange">SALIDA</span> (Consumo)</td>
-                      <td className="mono text-muted">OT-25-0012</td>
-                      <td className="num" style={{color:'var(--danger)'}}>-2</td>
-                      <td className="num">{selSku.stock_actual}</td>
-                    </tr>
-                    <tr>
-                      <td className="text-muted">Hace 5 días</td>
-                      <td><span className="badge badge-green">ENTRADA</span> (Compra)</td>
-                      <td className="mono text-muted">OC-25-0104</td>
-                      <td className="num" style={{color:'var(--green)'}}>+20</td>
-                      <td className="num">{selSku.stock_actual + 2}</td>
-                    </tr>
-                  </tbody>
-                </table>
+            <div>
+              <label className="label">Almacén *</label>
+              <select className="select" value={form.almacen_id} onChange={e => setF('almacen_id', e.target.value)}>
+                {sinAlmacenes
+                  ? <option value="">Almacén Principal (se creará automáticamente)</option>
+                  : <>{almacenes.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</>
+                }
+              </select>
+            </div>
+          </div>
+          <div className="grid-2" style={{gap:12}}>
+            <div>
+              <label className="label">Cantidad *{mat?.tipo_control === 'serie' ? ' (máx. 1)' : ''}</label>
+              <input className="input" type="number" min="0.001" step="any" value={form.cantidad} onChange={e => setF('cantidad', e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <label className="label">Costo Unitario</label>
+              <div className="row" style={{gap:6}}>
+                <select className="select" style={{width:72,flexShrink:0}} value={form.moneda} onChange={e => setF('moneda', e.target.value)}>
+                  <option value="PEN">PEN</option><option value="USD">USD</option>
+                </select>
+                <input className="input" type="number" min="0" step="any" value={form.costo_unitario} onChange={e => setF('costo_unitario', e.target.value)} placeholder="0.00" />
               </div>
             </div>
           </div>
-        </>
+          {mat?.tipo_control !== 'sin_control' && (
+            <div className="grid-2" style={{gap:12}}>
+              {mat?.tipo_control === 'lote' && <>
+                <div><label className="label">Número de Lote *</label><input className="input" value={form.lote} onChange={e => setF('lote', e.target.value)} /></div>
+                <div><label className="label">Vencimiento</label><input className="input" type="date" value={form.vencimiento} onChange={e => setF('vencimiento', e.target.value)} /></div>
+              </>}
+              {mat?.tipo_control === 'serie' && (
+                <div><label className="label">Número de Serie *</label><input className="input" value={form.serie} onChange={e => setF('serie', e.target.value)} /></div>
+              )}
+            </div>
+          )}
+          {form.motivo === 'compra_directa_sin_oc' && (
+            <div><label className="label">Nro. Documento / Factura</label><input className="input" value={form.nro_documento} onChange={e => setF('nro_documento', e.target.value)} placeholder="FAC-001" /></div>
+          )}
+          <div><label className="label">Observación</label><input className="input" value={form.observacion} onChange={e => setF('observacion', e.target.value)} /></div>
+          {err && <div className="alert alert-danger">{err}</div>}
+        </div>
+        <div className="modal-foot">
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : <>{I.plus} Registrar Entrada</>}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal Transferencia ──────────────────────────────────────────────────────
+function ModalTransferencia({ sku, almacenes, onClose, onSave }) {
+  const [form, setForm] = useState({ almacen_origen_id: sku.almacen_id || '', almacen_destino_id: '', cantidad: '', observacion: '' });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleSave = async () => {
+    setErr('');
+    if (!form.almacen_destino_id) { setErr('Selecciona almacén destino'); return; }
+    if (form.almacen_origen_id === form.almacen_destino_id) { setErr('Origen y destino no pueden ser el mismo'); return; }
+    if (!form.cantidad || Number(form.cantidad) <= 0) { setErr('Cantidad debe ser mayor a cero'); return; }
+    if (Number(form.cantidad) > sku.disponible) { setErr(`Stock disponible insuficiente (${sku.disponible} ${sku.unidad})`); return; }
+    setSaving(true);
+    try { await onSave({ ...form, material_id: sku.material_id, lote: sku.lote, serie: sku.serie }); onClose(); }
+    catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{maxWidth:460}} onClick={e => e.stopPropagation()}>
+        <div className="modal-head"><h2>Transferencia Interna</h2><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
+        <div className="modal-body" style={{display:'flex',flexDirection:'column',gap:14}}>
+          <div style={{padding:'10px 14px',background:'var(--bg-subtle)',borderRadius:8}}>
+            <div className="eyebrow">Material</div>
+            <div style={{fontWeight:600}}>{sku.sku} · {sku.nombre}</div>
+            <div style={{fontSize:12,color:'var(--fg-muted)'}}>Disponible: {sku.disponible} {sku.unidad}</div>
+          </div>
+          <div className="grid-2" style={{gap:12}}>
+            <div>
+              <label className="label">Almacén Origen</label>
+              <select className="select" value={form.almacen_origen_id} onChange={e => setF('almacen_origen_id', e.target.value)}>
+                {almacenes.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Almacén Destino *</label>
+              <select className="select" value={form.almacen_destino_id} onChange={e => setF('almacen_destino_id', e.target.value)}>
+                <option value="">— Seleccionar —</option>
+                {almacenes.filter(a => a.id !== form.almacen_origen_id).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="label">Cantidad *</label>
+            <input className="input" type="number" min="0.001" max={sku.disponible} step="any" value={form.cantidad} onChange={e => setF('cantidad', e.target.value)} />
+          </div>
+          <div><label className="label">Observación</label><input className="input" value={form.observacion} onChange={e => setF('observacion', e.target.value)} /></div>
+          {err && <div className="alert alert-danger">{err}</div>}
+        </div>
+        <div className="modal-foot">
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Transferir'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal Ajuste ─────────────────────────────────────────────────────────────
+function ModalAjuste({ sku, onClose, onSave }) {
+  const [form, setForm] = useState({ cantidad_fisica: sku.fisico ?? sku.disponible, motivo: 'ajuste_manual', observacion: '' });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const delta = Number(form.cantidad_fisica) - Number(sku.fisico ?? sku.disponible);
+
+  const MOTIVOS_AJUSTE = [
+    { value: 'ajuste_manual', label: 'Ajuste manual' },
+    { value: 'merma', label: 'Merma / Pérdida' },
+    { value: 'robo', label: 'Robo / Extravío' },
+    { value: 'error_ingreso', label: 'Corrección de error de ingreso' },
+    { value: 'ajuste_conteo', label: 'Resultado de conteo físico' },
+  ];
+
+  const handleSave = async () => {
+    setErr('');
+    if (form.cantidad_fisica === '' || form.cantidad_fisica === null) { setErr('Ingresa la cantidad física contada'); return; }
+    if (Number(form.cantidad_fisica) < 0) { setErr('La cantidad no puede ser negativa'); return; }
+    if (delta === 0) { setErr('Sin diferencia. No se registrará movimiento.'); return; }
+    if (!form.observacion.trim()) { setErr('Ingresa un motivo/observación'); return; }
+    setSaving(true);
+    try {
+      await onSave({ material_id: sku.material_id, almacen_id: sku.almacen_id, cantidad_teorica: sku.fisico ?? sku.disponible, cantidad_fisica: Number(form.cantidad_fisica), motivo: form.motivo, observacion: form.observacion, lote: sku.lote, serie: sku.serie });
+      onClose();
+    } catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{maxWidth:440}} onClick={e => e.stopPropagation()}>
+        <div className="modal-head"><h2>Ajuste de Inventario</h2><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
+        <div className="modal-body" style={{display:'flex',flexDirection:'column',gap:14}}>
+          <div style={{padding:'10px 14px',background:'var(--bg-subtle)',borderRadius:8}}>
+            <div style={{fontWeight:600}}>{sku.sku} · {sku.nombre}</div>
+            <div style={{fontSize:12,color:'var(--fg-muted)'}}>Físico actual: {sku.fisico ?? sku.disponible} {sku.unidad}</div>
+          </div>
+          <div>
+            <label className="label">Cantidad física contada *</label>
+            <input className="input" type="number" min="0" step="any" value={form.cantidad_fisica} onChange={e => setF('cantidad_fisica', e.target.value)} />
+          </div>
+          {delta !== 0 && (
+            <div style={{padding:'8px 12px',borderRadius:6,background:delta > 0 ? 'rgba(22,163,74,0.08)' : 'rgba(239,68,68,0.08)',color:delta > 0 ? 'var(--green)' : 'var(--danger)',fontSize:13,fontWeight:600}}>
+              Diferencia: {delta > 0 ? '+' : ''}{delta} {sku.unidad} → {delta > 0 ? 'Entrada' : 'Salida'} de ajuste
+            </div>
+          )}
+          <div>
+            <label className="label">Tipo de ajuste</label>
+            <select className="select" value={form.motivo} onChange={e => setF('motivo', e.target.value)}>
+              {MOTIVOS_AJUSTE.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </div>
+          <div><label className="label">Observación / Descripción *</label><textarea className="input" rows={2} value={form.observacion} onChange={e => setF('observacion', e.target.value)} /></div>
+          {err && <div className="alert alert-danger">{err}</div>}
+        </div>
+        <div className="modal-foot">
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Registrar Ajuste'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Panel Kardex ─────────────────────────────────────────────────────────────
+function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSolpe, getKardexMaterialCtx }) {
+  const [kardex, setKardex] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('kardex');
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) { setLoading(false); return; }
+    setLoading(true);
+    getKardexMaterialCtx(sku.material_id, sku.almacen_id)
+      .then(data => { setKardex(data || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [sku.material_id, sku.almacen_id]);
+
+  const fmtFecha = (ts) => {
+    if (!ts) return '—';
+    const d = new Date(ts);
+    const hoy = new Date();
+    const diff = Math.floor((hoy - d) / 86400000);
+    if (diff === 0) return 'Hoy';
+    if (diff === 1) return 'Ayer';
+    if (diff < 7) return `Hace ${diff} días`;
+    return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' });
+  };
+
+  const badgeTipo = (tipo) => {
+    if (tipo === 'entrada' || tipo === 'transferencia_entrada') return 'badge-green';
+    if (tipo === 'salida' || tipo === 'transferencia_salida') return 'badge-orange';
+    return 'badge-gray';
+  };
+
+  const labelTipo = (tipo, motivo) => {
+    const labels = { entrada: 'ENTRADA', salida: 'SALIDA', ajuste: 'AJUSTE', transferencia_entrada: 'TRANSFER IN', transferencia_salida: 'TRANSFER OUT' };
+    return labels[tipo] || tipo.toUpperCase();
+  };
+
+  const disponibleColor = sku.disponible === 0 ? 'var(--danger)' : sku.disponible <= (sku.punto_reorden || sku.stock_minimo || 5) ? 'var(--orange)' : 'var(--cyan)';
+  const bajoPuntReorden = sku.disponible <= (sku.punto_reorden || sku.stock_minimo || 0) && (sku.punto_reorden || sku.stock_minimo || 0) > 0;
+
+  return (
+    <>
+      <div className="side-panel-backdrop" onClick={onClose} />
+      <div className="side-panel" style={{width:620}}>
+        <div className="side-panel-head">
+          <div>
+            <div className="eyebrow">Kardex · Almacén {sku.almacen}</div>
+            <div className="font-display mono" style={{fontSize:20,fontWeight:700,marginTop:2}}>{sku.sku}</div>
+          </div>
+          <button className="icon-btn" onClick={onClose}>{I.x}</button>
+        </div>
+        <div className="side-panel-body">
+          <div className="grid-2" style={{gap:14,marginBottom:20}}>
+            <div><div className="eyebrow">Descripción</div><div style={{fontWeight:600}}>{sku.nombre}</div><div style={{fontSize:12,color:'var(--fg-muted)'}}>{sku.categoria}</div></div>
+            <div><div className="eyebrow">Control</div><div style={{fontSize:12}}>{sku.tipo_control === 'lote' ? '📦 Por lote' : sku.tipo_control === 'serie' ? '🔢 Por serie' : 'Sin control'}</div>{sku.lote && <div style={{fontSize:11,color:'var(--fg-muted)'}}>Lote: {sku.lote}</div>}</div>
+            <div>
+              <div className="eyebrow">Stock Físico / Disponible / Reservado</div>
+              <div style={{fontSize:22,fontWeight:700,color:disponibleColor}}>{sku.disponible} <span style={{fontSize:13,fontWeight:400}}>{sku.unidad}</span></div>
+              <div style={{fontSize:11,color:'var(--fg-muted)'}}>Físico: {sku.fisico ?? sku.disponible} · Reservado: {sku.reservado ?? 0} · Min: {sku.stock_minimo} · Reorden: {sku.punto_reorden}</div>
+              {bajoPuntReorden && <div style={{fontSize:11,color:'var(--orange)',fontWeight:600,marginTop:4}}>⚠ Por debajo del punto de reorden</div>}
+            </div>
+            <div><div className="eyebrow">Costo Promedio</div><div style={{fontSize:22,fontWeight:700}}>{money(sku.costo_promedio)}</div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Valor total: {money(sku.disponible * sku.costo_promedio)}</div></div>
+          </div>
+
+          <div className="row" style={{marginBottom:20,gap:8,flexWrap:'wrap'}}>
+            <button className="btn btn-sm btn-secondary" onClick={onTransferencia}>{I.truck} Transferir</button>
+            <button className="btn btn-sm btn-secondary" onClick={onAjuste}>{I.edit} Ajustar</button>
+            {bajoPuntReorden && <button className="btn btn-sm btn-primary" onClick={onSolpe}>{I.alert} Generar SOLPE</button>}
+          </div>
+
+          <div className="tabs" style={{marginBottom:12}}>
+            {['kardex','detalles'].map(t => <button key={t} className={`tab${tab===t?' active':''}`} onClick={() => setTab(t)}>{t === 'kardex' ? 'Movimientos KARDEX' : 'Detalles'}</button>)}
+          </div>
+
+          {tab === 'kardex' && (
+            loading ? (
+              <div style={{textAlign:'center',padding:40,color:'var(--fg-muted)'}}>Cargando movimientos...</div>
+            ) : kardex.length === 0 ? (
+              <div style={{textAlign:'center',padding:40,color:'var(--fg-muted)'}}>
+                {isSupabaseConfigured() ? 'Sin movimientos registrados aún.' : 'Conecta Supabase para ver el kardex real.'}
+              </div>
+            ) : (
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Fecha</th><th>Tipo</th><th>Motivo</th><th>Ref.</th><th>Cant.</th><th>Costo U.</th><th>Saldo</th></tr></thead>
+                  <tbody>
+                    {kardex.map(k => (
+                      <tr key={k.id} style={{opacity: k.anulado ? 0.4 : 1}}>
+                        <td className="text-muted" style={{whiteSpace:'nowrap'}}>{fmtFecha(k.created_at)}</td>
+                        <td><span className={`badge ${badgeTipo(k.tipo)}`}>{labelTipo(k.tipo, k.motivo)}</span></td>
+                        <td style={{fontSize:12,color:'var(--fg-muted)'}}>{k.motivo || '—'}</td>
+                        <td className="mono" style={{fontSize:11}}>{k.referencia_id ? k.referencia_id.slice(0,12) + '...' : '—'}</td>
+                        <td className="num" style={{color: (k.tipo === 'entrada' || k.tipo === 'transferencia_entrada') ? 'var(--green)' : 'var(--danger)', fontWeight:600}}>
+                          {(k.tipo === 'entrada' || k.tipo === 'transferencia_entrada') ? '+' : '-'}{k.cantidad}
+                        </td>
+                        <td className="num">{money(k.costo_unitario)}</td>
+                        <td className="num">{k.saldo_cantidad ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+
+          {tab === 'detalles' && (
+            <div className="col" style={{gap:12}}>
+              <div className="grid-2" style={{gap:12}}>
+                <div style={{padding:'10px 14px',background:'var(--bg-subtle)',borderRadius:8}}>
+                  <div className="eyebrow">Stock Mínimo</div><div style={{fontWeight:600}}>{sku.stock_minimo} {sku.unidad}</div>
+                </div>
+                <div style={{padding:'10px 14px',background:'var(--bg-subtle)',borderRadius:8}}>
+                  <div className="eyebrow">Stock Máximo</div><div style={{fontWeight:600}}>{sku.stock_maximo || '—'} {sku.unidad}</div>
+                </div>
+                <div style={{padding:'10px 14px',background:'var(--bg-subtle)',borderRadius:8}}>
+                  <div className="eyebrow">Punto de Reorden</div><div style={{fontWeight:600}}>{sku.punto_reorden || '—'} {sku.unidad}</div>
+                </div>
+                <div style={{padding:'10px 14px',background:'var(--bg-subtle)',borderRadius:8}}>
+                  <div className="eyebrow">Código de Barras</div><div style={{fontWeight:600,fontFamily:'monospace'}}>{sku.codigo_barras || '—'}</div>
+                </div>
+              </div>
+              {sku.vencimiento && (
+                <div style={{padding:'10px 14px',background:'rgba(245,158,11,0.08)',borderRadius:8,border:'1px solid var(--orange)'}}>
+                  <div className="eyebrow">Vencimiento</div>
+                  <div style={{fontWeight:600,color:'var(--orange)'}}>{new Date(sku.vencimiento).toLocaleDateString('es-PE')}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Componente principal Inventario ──────────────────────────────────────────
+function fmtDateShort(ts) {
+  if (!ts) return '—';
+  try { return new Date(ts).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: '2-digit' }); }
+  catch { return '—'; }
+}
+
+const pctText = (n) => `${Math.round(Number(n || 0) * 100)}%`;
+const qtyText = (n) => Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
+const rotText = (n) => Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function ModalIniciarConteo({ almacenes, onClose, onStart }) {
+  const [form, setForm] = useState({ nombre: `Conteo fisico ${new Date().toLocaleDateString('es-PE')}`, tipo: 'total', almacen_id: '', zona: '' });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const handleStart = async () => {
+    setErr('');
+    if (!form.nombre.trim()) { setErr('Ingresa un nombre para el conteo'); return; }
+    setSaving(true);
+    try { await onStart({ ...form, nombre: form.nombre.trim() }); onClose(); }
+    catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{maxWidth:520}} onClick={e => e.stopPropagation()}>
+        <div className="modal-head"><h2>Iniciar Conteo</h2><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
+        <div className="modal-body" style={{display:'grid', gap:14}}>
+          <div><label className="label">Nombre *</label><input className="input" value={form.nombre} onChange={e => setF('nombre', e.target.value)} autoFocus /></div>
+          <div className="grid-2" style={{gap:12}}>
+            <div>
+              <label className="label">Tipo</label>
+              <select className="select" value={form.tipo} onChange={e => setF('tipo', e.target.value)}>
+                <option value="total">Total</option>
+                <option value="ciclico">Filtrado / cíclico</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Almacén</label>
+              <select className="select" value={form.almacen_id} onChange={e => setF('almacen_id', e.target.value)}>
+                <option value="">Todos</option>
+                {almacenes.map(a => <option key={a.id} value={a.id}>{a.nombre || a.codigo}</option>)}
+              </select>
+            </div>
+          </div>
+          <div><label className="label">Zona / ubicación</label><input className="input" value={form.zona} onChange={e => setF('zona', e.target.value)} placeholder="Opcional" /></div>
+          {err && <div className="alert alert-danger">{err}</div>}
+        </div>
+        <div className="modal-foot">
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleStart} disabled={saving}>{saving ? 'Iniciando...' : <>{I.play} Iniciar Conteo</>}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, mostrarToast }) {
+  const [modalInicio, setModalInicio] = useState(false);
+  const [selectedId, setSelectedId] = useState('');
+  const [items, setItems] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const invMap = new Map(inventario.map(i => [`${i.material_id}::${i.almacen_id}::${i.lote || ''}::${i.serie || ''}`, i]));
+  const conteoSel = conteos.find(c => c.id === selectedId) || conteos.find(c => c.estado !== 'cerrado') || conteos[0] || null;
+
+  useEffect(() => {
+    if (!conteoSel) { setSelectedId(''); setItems([]); return; }
+    if (selectedId !== conteoSel.id) setSelectedId(conteoSel.id);
+    setItems((conteoSel.items || []).map(it => {
+      const inv = invMap.get(`${it.material_id}::${it.almacen_id}::${it.lote || ''}::${it.serie || ''}`) || {};
+      return { ...it, sku: it.sku || inv.sku, nombre: it.nombre || inv.nombre, categoria: it.categoria || inv.categoria, unidad: it.unidad || inv.unidad, almacen: it.almacen || inv.almacen, tipo_control: it.tipo_control || inv.tipo_control || 'sin_control', vencimiento: it.vencimiento || inv.vencimiento || null };
+    }));
+  }, [conteoSel?.id, conteos.length, inventario.length]);
+
+  const contados = items.filter(it => it.fisico !== null && it.fisico !== undefined && it.fisico !== '').length;
+  const total = items.length;
+  const cerrado = conteoSel?.estado === 'cerrado';
+  const allCounted = total > 0 && contados === total;
+  const diferencias = items.filter(it => Number(it.fisico ?? it.teorico) - Number(it.teorico || 0) !== 0).length;
+
+  const updateFisico = (idx, value) => {
+    setItems(prev => prev.map((it, i) => {
+      if (i !== idx) return it;
+      let fisico = value;
+      if (it.tipo_control === 'serie' && value !== '') fisico = Math.min(1, Math.max(0, Number(value)));
+      return { ...it, fisico };
+    }));
+  };
+
+  const handleStart = async (form) => {
+    const nuevo = await iniciarConteoCtx(form);
+    setSelectedId(nuevo.id);
+    mostrarToast('Conteo iniciado');
+  };
+
+  const handleGuardar = async () => {
+    if (!conteoSel) return;
+    setErr('');
+    setSaving(true);
+    try {
+      await guardarAvanceConteoCtx(conteoSel.id, items);
+      mostrarToast('Avance guardado');
+      await recargarConteosInventarioCtx?.();
+    } catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleCerrar = async () => {
+    if (!conteoSel || !allCounted) return;
+    setErr('');
+    setSaving(true);
+    try {
+      await cerrarConteoCtx(conteoSel.id, items.map(it => ({ ...it, fisico: Number(it.fisico || 0) })));
+      mostrarToast('Conteo cerrado y ajustes generados');
+    } catch (e) { setErr(e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div style={{display:'grid', gap:16}}>
+      <div className="row" style={{justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
+        <div><div className="eyebrow">Conteo físico</div><div style={{fontSize:18, fontWeight:800, fontFamily:'Sora'}}>Control por SKU, lote y serie</div></div>
+        <button className="btn btn-primary" onClick={() => setModalInicio(true)}>{I.play} Iniciar Conteo</button>
+      </div>
+
+      <div className="grid-2" style={{gap:16, alignItems:'start'}}>
+        <div className="card" style={{margin:0}}>
+          <div className="row" style={{justifyContent:'space-between', marginBottom:12, gap:8}}>
+            <div>
+              <div className="eyebrow">Conteo activo</div>
+              <select className="select" value={conteoSel?.id || ''} onChange={e => setSelectedId(e.target.value)} style={{marginTop:6, minWidth:260}}>
+                {conteos.length === 0 && <option value="">Sin conteos</option>}
+                {conteos.map(c => <option key={c.id} value={c.id}>{c.codigo || c.id} · {c.nombre}</option>)}
+              </select>
+            </div>
+            {conteoSel && <span className={`badge ${cerrado ? 'badge-green' : 'badge-cyan'}`}>{cerrado ? 'cerrado' : 'en proceso'}</span>}
+          </div>
+
+          {!conteoSel ? (
+            <div style={{textAlign:'center', padding:44, color:'var(--fg-muted)'}}>No hay conteos registrados. Inicia uno para cargar el stock teórico actual.</div>
+          ) : (
+            <>
+              <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:16}}>
+                <div className="kpi-card"><div className="kpi-label">Progreso</div><div className="kpi-value">{contados}/{total}</div></div>
+                <div className="kpi-card"><div className="kpi-label">Diferencias</div><div className="kpi-value" style={{color:diferencias ? 'var(--orange)' : 'var(--green)'}}>{diferencias}</div></div>
+                <div className="kpi-card"><div className="kpi-label">Ajustes</div><div className="kpi-value">{conteoSel.ajustes_generados ? 'Sí' : 'No'}</div></div>
+              </div>
+              <div style={{height:8, background:'var(--bg-subtle)', borderRadius:999, overflow:'hidden', marginBottom:14}}>
+                <div style={{height:'100%', width:`${total ? Math.round((contados / total) * 100) : 0}%`, background:'var(--cyan)', transition:'width .2s'}} />
+              </div>
+              {err && <div className="alert alert-danger" style={{marginBottom:12}}>{err}</div>}
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>SKU</th><th>Descripción</th><th>Almacén</th><th>Lote/Serie</th><th className="num">Teórico</th><th className="num">Físico</th><th className="num">Dif.</th></tr></thead>
+                  <tbody>
+                    {items.map((it, idx) => {
+                      const fisicoNum = it.fisico === '' || it.fisico == null ? null : Number(it.fisico);
+                      const dif = fisicoNum == null ? null : fisicoNum - Number(it.teorico || 0);
+                      return (
+                        <tr key={`${it.material_id}-${it.almacen_id}-${it.lote || ''}-${it.serie || ''}-${idx}`}>
+                          <td className="mono" style={{fontWeight:700}}>{it.sku || it.material_id}</td>
+                          <td><strong>{it.nombre || it.material_id}</strong><div className="text-muted" style={{fontSize:11}}>{it.categoria || 'General'} · {it.unidad || 'und'}{it.vencimiento ? ` · Vence ${fmtDateShort(it.vencimiento)}` : ''}</div></td>
+                          <td className="text-muted">{it.almacen || it.almacen_id}</td>
+                          <td className="mono" style={{fontSize:11}}>{it.serie ? `Serie ${it.serie}` : it.lote ? `Lote ${it.lote}` : '—'}</td>
+                          <td className="num">{qtyText(it.teorico)}</td>
+                          <td className="num" style={{minWidth:110}}>
+                            {cerrado ? qtyText(it.fisico) : <input className="input num" type="number" min="0" max={it.tipo_control === 'serie' ? 1 : undefined} step={it.tipo_control === 'serie' ? 1 : 'any'} value={it.fisico ?? ''} onChange={e => updateFisico(idx, e.target.value)} style={{height:32, maxWidth:96}} />}
+                          </td>
+                          <td className="num" style={{fontWeight:700, color:dif > 0 ? 'var(--green)' : dif < 0 ? 'var(--danger)' : 'var(--fg-muted)'}}>{dif == null ? '—' : `${dif > 0 ? '+' : ''}${qtyText(dif)}`}</td>
+                        </tr>
+                      );
+                    })}
+                    {items.length === 0 && <tr><td colSpan="7" style={{textAlign:'center', padding:36, color:'var(--fg-muted)'}}>El conteo no tiene SKUs. Revisa el filtro de almacén o registra stock antes de iniciar.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              {!cerrado && (
+                <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:14}}>
+                  <button className="btn btn-secondary" onClick={handleGuardar} disabled={saving}>{I.save} Guardar avance</button>
+                  <button className="btn btn-primary" onClick={handleCerrar} disabled={saving || !allCounted}>{I.check} Cerrar Conteo</button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="card" style={{margin:0}}>
+          <div className="eyebrow">Historial</div>
+          <div className="table-wrap" style={{marginTop:10}}>
+            <table className="tbl">
+              <thead><tr><th>Fecha</th><th>Código</th><th>Tipo</th><th>SKUs</th><th>Estado</th></tr></thead>
+              <tbody>
+                {conteos.map(c => {
+                  const ajustados = (c.items || []).filter(it => Number(it.diferencia || 0) !== 0).length;
+                  return (
+                    <tr key={c.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => setSelectedId(c.id)}>
+                      <td className="text-muted">{fmtDateShort(c.created_at)}</td>
+                      <td className="mono">{c.codigo || c.id}</td>
+                      <td>{c.tipo || 'total'}</td>
+                      <td>{(c.items || []).length}{c.estado === 'cerrado' ? ` · ${ajustados} ajust.` : ''}</td>
+                      <td><span className={`badge ${c.estado === 'cerrado' ? 'badge-green' : 'badge-cyan'}`}>{c.estado || 'en_proceso'}</span></td>
+                    </tr>
+                  );
+                })}
+                {conteos.length === 0 && <tr><td colSpan="5" style={{textAlign:'center', padding:30, color:'var(--fg-muted)'}}>Sin historial de conteos.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {modalInicio && <ModalIniciarConteo almacenes={almacenes} onClose={() => setModalInicio(false)} onStart={handleStart} />}
+    </div>
+  );
+}
+
+function ParetoChart({ rows }) {
+  const data = rows.slice(0, 10);
+  const max = Math.max(...data.map(r => Number(r.valor_salidas || 0)), 1);
+  if (!data.length) return null;
+  return (
+    <div style={{height:190, display:'flex', alignItems:'end', gap:8, padding:'18px 8px 4px', border:'1px solid var(--border)', borderRadius:8, background:'var(--surface)'}}>
+      {data.map(r => (
+        <div key={r.material_id} style={{flex:1, minWidth:34, display:'flex', flexDirection:'column', alignItems:'center', gap:6}}>
+          <div className="text-muted" style={{fontSize:10}}>{pctText(r.pct_acumulado)}</div>
+          <div title={`${r.sku} · ${money(r.valor_salidas)}`} style={{width:'100%', maxWidth:42, height:`${Math.max(8, (Number(r.valor_salidas || 0) / max) * 120)}px`, borderRadius:'5px 5px 2px 2px', background:r.clase === 'A' ? 'var(--green)' : r.clase === 'B' ? 'var(--orange)' : 'var(--slate-300)'}} />
+          <div className="mono" style={{fontSize:10, maxWidth:54, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{r.sku}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AnaliticaInventarioTab({ almacenes, getAnaliticaInventarioCtx }) {
+  const [periodo, setPeriodo] = useState('trimestre');
+  const [almacenId, setAlmacenId] = useState('');
+  const [dias, setDias] = useState(90);
+  const [tab, setTab] = useState('abc');
+  const [data, setData] = useState({ abc: [], rotacion: [], stockMuerto: [], meta: {} });
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setErr('');
+    getAnaliticaInventarioCtx({ periodo, almacen_id: almacenId, dias_sin_actividad: dias })
+      .then(res => { if (alive) setData(res || { abc: [], rotacion: [], stockMuerto: [], meta: {} }); })
+      .catch(e => { if (alive) setErr(e.message); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [periodo, almacenId, dias]);
+
+  const meta = data.meta || {};
+  return (
+    <div style={{display:'grid', gap:16}}>
+      <div className="row" style={{justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
+        <div><div className="eyebrow">Analítica WMS</div><div style={{fontSize:18, fontWeight:800, fontFamily:'Sora'}}>ABC, rotación y stock muerto</div></div>
+        <div className="row" style={{gap:8, flexWrap:'wrap'}}>
+          <select className="select" value={periodo} onChange={e => setPeriodo(e.target.value)} style={{width:150}}>
+            <option value="mes">Último mes</option>
+            <option value="trimestre">Trimestre</option>
+            <option value="anio">Año</option>
+          </select>
+          <select className="select" value={almacenId} onChange={e => setAlmacenId(e.target.value)} style={{width:190}}>
+            <option value="">Todos los almacenes</option>
+            {almacenes.map(a => <option key={a.id} value={a.id}>{a.nombre || a.codigo}</option>)}
+          </select>
+          <input className="input num" type="number" min="1" value={dias} onChange={e => setDias(e.target.value)} title="Días sin actividad" style={{width:86}} />
+        </div>
+      </div>
+
+      {err && <div className="alert alert-danger">{err}</div>}
+      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
+        <div className="kpi-card"><div className="kpi-label">Movimientos período</div><div className="kpi-value">{loading ? '...' : Number(meta.movimientosPeriodo || 0)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Salidas valorizadas</div><div className="kpi-value">{loading ? '...' : money(meta.totalSalidasValor || 0)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">SKUs stock muerto</div><div className="kpi-value" style={{color:'var(--orange)'}}>{loading ? '...' : data.stockMuerto.length}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Valor inmovilizado</div><div className="kpi-value" style={{color:'var(--orange)'}}>{loading ? '...' : money(meta.valorInmovilizado || 0)}</div></div>
+      </div>
+
+      <div className="tabs">{[['abc', 'ABC'], ['rotacion', 'Rotación'], ['muerto', 'Stock muerto']].map(([id, label]) => <button key={id} className={`tab${tab === id ? ' active' : ''}`} onClick={() => setTab(id)}>{label}</button>)}</div>
+
+      <div className="card" style={{margin:0}}>
+        {loading ? (
+          <div style={{textAlign:'center', padding:44, color:'var(--fg-muted)'}}>Calculando analítica...</div>
+        ) : tab === 'abc' ? (
+          data.abc.length === 0 ? <div style={{textAlign:'center', padding:44, color:'var(--fg-muted)'}}>No hay salidas en el período seleccionado. El ABC necesita movimientos de salida para clasificar artículos.</div> : <>
+            <ParetoChart rows={data.abc} />
+            <div className="table-wrap" style={{marginTop:16}}>
+              <table className="tbl"><thead><tr><th>SKU</th><th>Descripción</th><th className="num">Valor salidas</th><th className="num">% total</th><th className="num">% acum.</th><th>ABC</th></tr></thead><tbody>
+                {data.abc.map(r => <tr key={r.material_id}><td className="mono" style={{fontWeight:700}}>{r.sku}</td><td>{r.nombre}</td><td className="num">{money(r.valor_salidas)}</td><td className="num">{pctText(r.pct_total)}</td><td className="num">{pctText(r.pct_acumulado)}</td><td><span className={`badge ${r.clase === 'A' ? 'badge-green' : r.clase === 'B' ? 'badge-orange' : 'badge-gray'}`}>{r.clase}</span></td></tr>)}
+              </tbody></table>
+            </div>
+          </>
+        ) : tab === 'rotacion' ? (
+          data.rotacion.length === 0 || Number(meta.movimientosPeriodo || 0) === 0 ? <div style={{textAlign:'center', padding:44, color:'var(--fg-muted)'}}>No hay movimientos suficientes para calcular rotación en el período.</div> : (
+            <div className="table-wrap"><table className="tbl"><thead><tr><th>SKU</th><th>Descripción</th><th>Almacén</th><th className="num">Salidas</th><th className="num">Stock prom.</th><th className="num">Rotación</th></tr></thead><tbody>
+              {data.rotacion.map(r => <tr key={r.key}><td className="mono" style={{fontWeight:700}}>{r.sku}</td><td>{r.nombre || r.material_id}</td><td>{r.almacen || '—'}</td><td className="num">{qtyText(r.salidas_periodo)}</td><td className="num">{qtyText(r.stock_promedio)}</td><td className="num" style={{fontWeight:700}}>{rotText(r.rotacion)}</td></tr>)}
+            </tbody></table></div>
+          )
+        ) : (
+          data.stockMuerto.length === 0 ? <div style={{textAlign:'center', padding:44, color:'var(--fg-muted)'}}>No se detectó stock sin salidas para el umbral seleccionado.</div> : (
+            <div className="table-wrap"><table className="tbl"><thead><tr><th>SKU</th><th>Descripción</th><th>Almacén</th><th className="num">Stock</th><th>Última salida</th><th className="num">Días sin actividad</th><th className="num">Valor inmovilizado</th></tr></thead><tbody>
+              {data.stockMuerto.map(r => <tr key={`${r.material_id}-${r.almacen_id}`}><td className="mono" style={{fontWeight:700}}>{r.sku}</td><td>{r.nombre}</td><td>{r.almacen}</td><td className="num">{qtyText(r.stock_actual)}</td><td>{r.ultima_salida ? fmtDateShort(r.ultima_salida) : 'Sin salidas registradas'}</td><td className="num">{r.dias_sin_actividad == null ? `>${dias}` : r.dias_sin_actividad}</td><td className="num" style={{fontWeight:700}}>{money(r.valor_inmovilizado)}</td></tr>)}
+            </tbody></table></div>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Inventario() {
+  const { inventario, inventarioConteos = [], almacenes, materiales: catalogoMateriales = [], searchQuery, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx, getKardexMaterialCtx, crearSOLPE, recargarInventario, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, getAnaliticaInventarioCtx } = useApp();
+  const [selSku, setSelSku] = useState(null);
+  const [modalEntrada, setModalEntrada] = useState(false);
+  const [modalTransf, setModalTransf] = useState(false);
+  const [modalAjuste, setModalAjuste] = useState(false);
+  const [cargando, setCargando] = useState(false);
+  const [toast, setToast] = useState('');
+  const [mainTab, setMainTab] = useState('stock');
+
+  const mostrarToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    setCargando(true);
+    Promise.all([recargarInventario?.(), recargarConteosInventarioCtx?.()]).finally(() => setCargando(false));
+  }, []);
+
+  const query = searchQuery.toLowerCase();
+  const filteredInv = inventario.filter(i =>
+    (i.sku || '').toLowerCase().includes(query) ||
+    (i.nombre || '').toLowerCase().includes(query) ||
+    (i.categoria || '').toLowerCase().includes(query) ||
+    (i.almacen || '').toLowerCase().includes(query)
+  );
+
+  // KPIs con umbrales reales
+  const totalValor = filteredInv.reduce((s, i) => s + ((i.disponible ?? i.stock_actual ?? 0) * (i.costo_promedio ?? 0)), 0);
+  const stockCritico = filteredInv.filter(i => (i.disponible ?? i.stock_actual ?? 0) === 0).length;
+  const stockBajo = filteredInv.filter(i => {
+    const disp = i.disponible ?? i.stock_actual ?? 0;
+    const umbral = i.punto_reorden || i.stock_minimo || 0;
+    return disp > 0 && umbral > 0 && disp <= umbral;
+  }).length;
+
+  const handleEntrada = async (form) => {
+    await registrarEntradaManualCtx(form);
+    mostrarToast('Entrada registrada correctamente');
+  };
+
+  const handleTransferencia = async (form) => {
+    await registrarTransferenciaCtx(form);
+    mostrarToast('Transferencia registrada');
+    setSelSku(null);
+  };
+
+  const handleAjuste = async (form) => {
+    await registrarAjusteCtx(form);
+    mostrarToast('Ajuste registrado');
+    setSelSku(null);
+  };
+
+  const handleSolpe = () => {
+    if (selSku && crearSOLPE) {
+      crearSOLPE({ descripcion: `Reposición de ${selSku.nombre} (${selSku.sku})`, tipo: 'bien', prioridad: 'alta', origen_tipo: 'inventario', origen_id: selSku.material_id });
+      mostrarToast('SOLPE generada y enviada a Compras');
+    }
+    setSelSku(null);
+  };
+
+  const coloresFila = (r) => {
+    const disp = r.disponible ?? r.stock_actual ?? 0;
+    const umbral = r.punto_reorden || r.stock_minimo || 0;
+    if (disp === 0) return 'var(--danger)';
+    if (umbral > 0 && disp <= umbral) return 'var(--orange)';
+    return 'var(--fg)';
+  };
+
+  return (
+    <>
+      {toast && <div style={{position:'fixed',top:20,right:24,zIndex:9999,background:'var(--green)',color:'white',padding:'10px 20px',borderRadius:8,fontWeight:600,boxShadow:'0 4px 12px rgba(0,0,0,0.2)'}}>{toast}</div>}
+
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Almacenes e Inventario</h1>
+          <div className="page-sub">{inventario.length} SKUs · {almacenes.length} almacén(es)</div>
+        </div>
+        <div className="row" style={{gap:8}}>
+          {cargando && <span style={{fontSize:12,color:'var(--fg-muted)',alignSelf:'center'}}>Actualizando...</span>}
+          {mainTab === 'stock' && <button className="btn btn-primary" onClick={() => setModalEntrada(true)}>{I.plus} Registrar Entrada</button>}
+          {mainTab === 'conteo' && <button className="btn btn-secondary" onClick={() => recargarConteosInventarioCtx?.()}>{I.refresh} Actualizar</button>}
+        </div>
+      </div>
+
+      <div className="tabs" style={{marginBottom:16}}>
+        {[
+          ['stock', 'Stock'],
+          ['conteo', 'Conteo físico'],
+          ['analitica', 'Analítica'],
+        ].map(([id, label]) => <button key={id} className={`tab${mainTab === id ? ' active' : ''}`} onClick={() => setMainTab(id)}>{label}</button>)}
+      </div>
+
+      {mainTab === 'stock' && <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
+          <div className="kpi-card"><div className="kpi-label">Valor inventario</div><div className="kpi-value">{money(totalValor)}</div><div className="kpi-icon cyan">{I.package}</div></div>
+          <div className="kpi-card"><div className="kpi-label">SKUs activos</div><div className="kpi-value">{filteredInv.length}</div><div className="kpi-icon purple">{I.warehouse}</div></div>
+          <div className="kpi-card"><div className="kpi-label">Bajo reorden</div><div className="kpi-value" style={{color:'var(--orange)'}}>{stockBajo}</div><div className="kpi-icon orange">{I.alert}</div></div>
+          <div className="kpi-card"><div className="kpi-label">Stock agotado</div><div className="kpi-value" style={{color:'var(--danger)'}}>{stockCritico}</div><div className="kpi-icon danger">{I.alert}</div></div>
+        </div>}
+
+      {mainTab === 'stock' && <div className="card mt-6">
+        {inventario.length === 0 && !cargando && (
+          <div style={{textAlign:'center',padding:60,color:'var(--fg-muted)'}}>
+            <div style={{fontSize:40,marginBottom:12}}>📦</div>
+            <div style={{fontWeight:600,fontSize:16,marginBottom:8}}>Sin stock registrado</div>
+            <div style={{fontSize:13,marginBottom:20}}>Registra una entrada manual o confirma una recepción de compras.</div>
+            <button className="btn btn-primary" onClick={() => setModalEntrada(true)}>{I.plus} Primera Entrada</button>
+          </div>
+        )}
+        {(inventario.length > 0 || cargando) && (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>SKU</th><th>Descripción</th><th>Categoría</th><th>Almacén</th><th>Unidad</th>
+                  <th className="num">Físico</th><th className="num">Disponible</th><th className="num">Reservado</th>
+                  <th className="num">Costo Prom.</th><th className="num">Valor Total</th><th>Control</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredInv.map(r => (
+                  <tr key={r.id} onClick={() => setSelSku(r)} className="hover-row" style={{cursor:'pointer'}}>
+                    <td className="mono" style={{fontWeight:600}}>{r.sku}</td>
+                    <td><strong>{r.nombre}</strong></td>
+                    <td>{r.categoria}</td>
+                    <td>{r.almacen}</td>
+                    <td className="text-muted">{r.unidad}</td>
+                    <td className="num">{r.fisico ?? r.disponible ?? 0}</td>
+                    <td className="num" style={{fontWeight:600,color:coloresFila(r)}}>{r.disponible ?? r.stock_actual ?? 0}</td>
+                    <td className="num" style={{color:'var(--fg-muted)'}}>{r.reservado ?? 0}</td>
+                    <td className="num">{money(r.costo_promedio)}</td>
+                    <td className="num">{money((r.disponible ?? r.stock_actual ?? 0) * (r.costo_promedio ?? 0))}</td>
+                    <td><span className="badge badge-gray" style={{fontSize:10}}>{r.tipo_control === 'lote' ? 'LOTE' : r.tipo_control === 'serie' ? 'SERIE' : '—'}</span></td>
+                  </tr>
+                ))}
+                {filteredInv.length === 0 && !cargando && (
+                  <tr><td colSpan="11" style={{textAlign:'center',padding:40,color:'var(--fg-muted)'}}>No se encontraron materiales para la búsqueda</td></tr>
+                )}
+                {cargando && (
+                  <tr><td colSpan="11" style={{textAlign:'center',padding:30,color:'var(--fg-muted)'}}>Cargando inventario...</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>}
+
+      {mainTab === 'conteo' && (
+        <ConteoFisicoTab
+          inventario={inventario}
+          almacenes={almacenes.filter(a => !a.estado || a.estado === 'activo')}
+          conteos={inventarioConteos}
+          iniciarConteoCtx={iniciarConteoCtx}
+          guardarAvanceConteoCtx={guardarAvanceConteoCtx}
+          cerrarConteoCtx={cerrarConteoCtx}
+          recargarConteosInventarioCtx={recargarConteosInventarioCtx}
+          mostrarToast={mostrarToast}
+        />
+      )}
+
+      {mainTab === 'analitica' && (
+        <AnaliticaInventarioTab
+          almacenes={almacenes.filter(a => !a.estado || a.estado === 'activo')}
+          getAnaliticaInventarioCtx={getAnaliticaInventarioCtx}
+        />
+      )}
+
+      {modalEntrada && (
+        <ModalEntradaManual
+          materiales={catalogoMateriales.filter(m => m.estado !== 'inactivo')}
+          almacenes={almacenes.filter(a => !a.estado || a.estado === 'activo')}
+          onClose={() => setModalEntrada(false)}
+          onSave={handleEntrada}
+        />
+      )}
+
+      {selSku && !modalTransf && !modalAjuste && (
+        <PanelKardex
+          sku={selSku}
+          almacenes={almacenes}
+          onClose={() => setSelSku(null)}
+          onTransferencia={() => setModalTransf(true)}
+          onAjuste={() => setModalAjuste(true)}
+          onSolpe={handleSolpe}
+          getKardexMaterialCtx={getKardexMaterialCtx}
+        />
+      )}
+
+      {selSku && modalTransf && (
+        <ModalTransferencia
+          sku={selSku}
+          almacenes={almacenes.filter(a => !a.estado || a.estado === 'activo')}
+          onClose={() => setModalTransf(false)}
+          onSave={handleTransferencia}
+        />
+      )}
+
+      {selSku && modalAjuste && (
+        <ModalAjuste
+          sku={selSku}
+          onClose={() => setModalAjuste(false)}
+          onSave={handleAjuste}
+        />
       )}
     </>
   );

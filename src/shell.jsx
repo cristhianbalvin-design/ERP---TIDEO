@@ -403,7 +403,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
 }
 
 export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey, dark, setDark, setMobileMode, openSelectorSignal }) {
-  const { notificaciones, markNotificacionesRead, dataMode, authUser, todasMembresias, seleccionarEmpresa, signOut, tipoCambioHoy } = useApp();
+  const { notificaciones, markNotificacionesRead, navigate, dataMode, authUser, todasMembresias, seleccionarEmpresa, signOut, tipoCambioHoy } = useApp();
   const [compOpen, setCompOpen] = useState(false);
   useEffect(() => { if (openSelectorSignal > 0) setCompOpen(true); }, [openSelectorSignal]);
   const [roleOpen, setRoleOpen] = useState(false);
@@ -425,6 +425,20 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
   const avatarText = isSupabase && authUser?.email
     ? authUser.email.slice(0, 2).toUpperCase()
     : 'LM';
+
+  const handleNotificacionClick = (n) => {
+    markNotificacionesRead(n.id);
+    if (n.referenceType === 'personal_documento') {
+      const payload = n.referencePayload || {};
+      const target = payload.personal_tipo === 'administrativo' ? 'rrhh_admin' : 'rrhh_operativo';
+      navigate(target, {
+        detail: payload.personal_id,
+        tab: 'documentos',
+        docTipo: payload.tipo_documento_id,
+      });
+      setNotiOpen(false);
+    }
+  };
 
   const empresaItems = isSupabase
     ? todasMembresias.map(m => ({
@@ -477,7 +491,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
         {!isMobile && <button className="icon-btn" onClick={() => setMobileMode(true)} title="Modo campo">{I.mobile}</button>}
 
         <div style={{position:'relative'}}>
-          <button className="icon-btn" onClick={() => { setNotiOpen(v => !v); if(!notiOpen) markNotificacionesRead(); }} title="Notificaciones">
+          <button className="icon-btn" onClick={() => setNotiOpen(v => !v)} title="Notificaciones">
             {I.bell}
             {unreadCount > 0 && <span className="dot-badge" style={{background:'var(--danger)', width:16, height:16, display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, color:'white', right:0, top:0}}>{unreadCount}</span>}
           </button>
@@ -485,16 +499,24 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
             <div className="dropdown" style={{top: 42, right: 0, minWidth: isMobile ? 'calc(100vw - 24px)' : 320, maxWidth: isMobile ? 'calc(100vw - 24px)' : 360, padding:0, zIndex:100}} onMouseLeave={() => !isMobile && setNotiOpen(false)}>
               <div style={{padding:'12px 16px', borderBottom:'1px solid var(--border-subtle)', fontWeight:600, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                 Notificaciones
-                {isMobile && <button className="icon-btn" style={{width:28, height:28}} onClick={() => setNotiOpen(false)}>{I.x}</button>}
+                <div className="row" style={{gap:6}}>
+                  {unreadCount > 0 && <button className="btn btn-sm btn-ghost" onClick={() => markNotificacionesRead()} style={{fontSize:11}}>Marcar todas</button>}
+                  {isMobile && <button className="icon-btn" style={{width:28, height:28}} onClick={() => setNotiOpen(false)}>{I.x}</button>}
+                </div>
               </div>
               <div style={{maxHeight: 400, overflowY:'auto'}}>
                 {notificaciones.length === 0 && <div style={{padding:20, textAlign:'center', color:'var(--fg-muted)'}}>No hay notificaciones</div>}
-                {notificaciones.map(n => (
-                  <div key={n.id} style={{padding:'12px 16px', borderBottom:'1px solid var(--border-subtle)', background: n.read ? 'transparent' : 'var(--bg-subtle)'}}>
+                {notificaciones.map(n => {
+                  const docColor = n.priority === 'alta' ? 'var(--danger)' : n.priority === 'media' ? 'var(--orange)' : 'var(--border)';
+                  const isDoc = n.referenceType === 'personal_documento';
+                  return (
+                  <div key={n.id} onClick={() => handleNotificacionClick(n)} style={{padding:'12px 16px', borderBottom:'1px solid var(--border-subtle)', background: n.read ? 'transparent' : 'var(--bg-subtle)', borderLeft:isDoc ? `3px solid ${docColor}` : '3px solid transparent', cursor:isDoc ? 'pointer' : 'default'}}>
+                    {n.title && <div style={{fontSize:11, fontWeight:700, color:isDoc ? docColor : 'var(--fg-muted)', textTransform:'uppercase', letterSpacing:'0.04em', marginBottom:4}}>{n.title}</div>}
                     <div style={{fontSize:13, color:'var(--fg)'}}>{n.text}</div>
                     <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>{n.time}</div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

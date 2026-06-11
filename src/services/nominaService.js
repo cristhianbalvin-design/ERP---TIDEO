@@ -2,12 +2,22 @@ import { getSupabaseClient } from '../lib/supabaseClient.js';
 
 export const AFP_NOMBRES = ['Integra', 'Prima', 'Profuturo', 'Habitat'];
 export const AFP_PRIMA_SEGURO_FALLBACK = 1.37;
-export const AFP_PARAMETROS_DEFAULT = AFP_NOMBRES.map(afp_nombre => ({
-  afp_nombre,
-  pct_prima_seguro: AFP_PRIMA_SEGURO_FALLBACK,
-  vigente_desde: '2026-01-01',
-  fallback: true,
-}));
+export const AFP_PARAMETROS_DEFAULT = AFP_NOMBRES.map(afp_nombre => {
+  const tasas = {
+    'Habitat': { pct_comision_flujo: 1.47, pct_comision_mixta_saldo: 1.25 },
+    'Integra': { pct_comision_flujo: 1.55, pct_comision_mixta_saldo: 0.78 },
+    'Prima': { pct_comision_flujo: 1.60, pct_comision_mixta_saldo: 1.25 },
+    'Profuturo': { pct_comision_flujo: 1.69, pct_comision_mixta_saldo: 0.68 }
+  };
+  return {
+    afp_nombre,
+    pct_prima_seguro: AFP_PRIMA_SEGURO_FALLBACK,
+    pct_comision_flujo: tasas[afp_nombre]?.pct_comision_flujo || 0,
+    pct_comision_mixta_saldo: tasas[afp_nombre]?.pct_comision_mixta_saldo || 0,
+    vigente_desde: '2026-01-01',
+    fallback: true,
+  };
+});
 
 export function normalizarAfpNombre(value) {
   const clean = String(value || '').replace(/^AFP\s*-\s*/i, '').trim().toLowerCase();
@@ -23,6 +33,8 @@ export function latestAfpParametros(rows = []) {
       ...row,
       afp_nombre: afp,
       pct_prima_seguro: Number(row.pct_prima_seguro ?? AFP_PRIMA_SEGURO_FALLBACK),
+      pct_comision_flujo: Number(row.pct_comision_flujo ?? 0),
+      pct_comision_mixta_saldo: Number(row.pct_comision_mixta_saldo ?? 0),
       vigente_desde: row.vigente_desde || '2026-01-01',
       fallback: false,
     };
@@ -153,7 +165,7 @@ export const nominaService = {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('afp_parametros')
-      .select('empresa_id,afp_nombre,pct_prima_seguro,vigente_desde,creado_en')
+      .select('empresa_id,afp_nombre,pct_prima_seguro,pct_comision_flujo,pct_comision_mixta_saldo,vigente_desde,creado_en')
       .eq('empresa_id', empresaId)
       .lte('vigente_desde', new Date().toISOString().slice(0, 10))
       .order('afp_nombre', { ascending: true })
@@ -172,13 +184,15 @@ export const nominaService = {
       empresa_id: empresaId,
       afp_nombre: afp,
       pct_prima_seguro: Number(row.pct_prima_seguro),
+      pct_comision_flujo: Number(row.pct_comision_flujo || 0),
+      pct_comision_mixta_saldo: Number(row.pct_comision_mixta_saldo || 0),
       vigente_desde: row.vigente_desde || new Date().toISOString().slice(0, 10),
     };
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('afp_parametros')
       .upsert(payload, { onConflict: 'empresa_id,afp_nombre,vigente_desde' })
-      .select('empresa_id,afp_nombre,pct_prima_seguro,vigente_desde,creado_en')
+      .select('empresa_id,afp_nombre,pct_prima_seguro,pct_comision_flujo,pct_comision_mixta_saldo,vigente_desde,creado_en')
       .single();
     if (error) throw error;
     return data;

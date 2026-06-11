@@ -1,0 +1,10 @@
+[2m8:33:31 a. m.[22m [33m[1m[vite][22m[39m [33mwarning: [33mDuplicate key "crearTipoDocumento" in object literal[33m
+8523|      aprobarComision, rechazarComision, corregirMontoComision, corregirBonificacionComision, generarReciboHonorarios, confirmarReciboHonorarios,
+8524|      // Maestros Base Actions
+8525|      crearCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria, crearTipoDocumento,
+   |                                                                                                 ^
+8526|      // Compras Actions
+8527|      registrarProveedor, actualizarProveedorCtx,
+[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/VIBECODING/ERP - TIDEO/src/context.jsx[39m

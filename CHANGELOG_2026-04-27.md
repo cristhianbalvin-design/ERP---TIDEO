@@ -476,4 +476,13 @@ const S = n => 'S/ ' + n.toLocaleString('es-PE');
 
 ---
 
-*Generado automáticamente · ERP TIDEO · Sesión 27/04/2026*
+## Reglas de negocio transversales — Junio 2026
+
+### Asistencia del Minero (Ciclo Acumulativo)
+- **Asistencia derivada del ciclo:** El número de asistencia del minero de mes completo o trabajador de transición (tramo mina) se deriva como días del ciclo trabajados, asumiendo asistencia en días computables, a menos que exista un registro físico explícito de falta.
+- **Separación de capas:** El indicador de días trabajados en nómina es estrictamente un conteo para cálculo y resumen. **No se auto-generan marcaciones físicas de entrada/salida** para rellenar este número. El registro legal de marcaciones (Control de Asistencia) permanece intacto y distinto del indicador de ciclo.
+- **Trato uniforme:** Un tramo de mina de un trabajador de transición se calcula con la misma lógica que un minero de mes completo.
+
+---
+
+*Generado automáticamente — ERP TIDEO*

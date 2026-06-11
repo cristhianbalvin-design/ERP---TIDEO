@@ -10,12 +10,22 @@ import { prepararVinculacionMovimientoCuenta } from '../services/tesoreriaServic
 
 // ── Datos por defecto si el admin no configuró tipos ──────────────────────────
 const TIPOS_GASTO_DEFECTO = [
-  { id: 'def_1', nombre: 'Materiales e insumos',   categoria_er: 'Materiales',        icono: 'package'  },
-  { id: 'def_2', nombre: 'Servicio de tercero',     categoria_er: 'Servicios terceros', icono: 'wrench'   },
-  { id: 'def_3', nombre: 'Gasto administrativo',   categoria_er: 'Administrativos',   icono: 'building' },
-  { id: 'def_4', nombre: 'Gasto de campo/OT',      categoria_er: 'Materiales',        icono: 'truck'    },
-  { id: 'def_5', nombre: 'Servicio básico',         categoria_er: 'Administrativos',   icono: 'receipt'  },
-  { id: 'def_6', nombre: 'Logística/transporte',   categoria_er: 'Logística',         icono: 'truck'    },
+  { id: 'def_1', nombre: 'Materiales e insumos',   categoria_er: 'Materiales',           icono: 'package'   },
+  { id: 'def_2', nombre: 'Servicio de tercero',     categoria_er: 'Servicios terceros',   icono: 'wrench'    },
+  { id: 'def_3', nombre: 'Gasto administrativo',   categoria_er: 'Administrativos',      icono: 'building'  },
+  { id: 'def_4', nombre: 'Gasto de campo/OT',      categoria_er: 'Materiales',           icono: 'truck'     },
+  { id: 'def_5', nombre: 'Servicio básico',         categoria_er: 'Administrativos',      icono: 'receipt'   },
+  { id: 'def_6', nombre: 'Logística/transporte',   categoria_er: 'Logística',            icono: 'truck'     },
+  { id: 'def_7', nombre: 'Activo Fijo',             categoria_er: 'Inversiones / Activos', icono: 'package', es_capitalizacion: true },
+];
+
+const ACTIVO_TIPOS_WIZ = [
+  { value: 'equipo',      label: 'Equipo' },
+  { value: 'vehiculo',    label: 'Vehículo' },
+  { value: 'herramienta', label: 'Herramienta' },
+  { value: 'inmueble',    label: 'Inmueble' },
+  { value: 'intangible',  label: 'Intangible' },
+  { value: 'otro',        label: 'Otro' },
 ];
 
 const METODOS_PAGO = ['Transferencia bancaria', 'Caja chica', 'Tarjeta empresa', 'Efectivo', 'Otro'];
@@ -161,6 +171,11 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const [errFondo, setErrFondo]   = useState(false);
   const [errFechaPago, setErrFechaPago] = useState(false);
   const [errCuentaPago, setErrCuentaPago] = useState(false);
+  // Campos de activo fijo (solo cuando es_capitalizacion = true)
+  const [activoTipo, setActivoTipo]         = useState('equipo');
+  const [activoSerie, setActivoSerie]       = useState('');
+  const [activoVidaUtil, setActivoVidaUtil] = useState('');
+  const [errActivoVidaUtil, setErrActivoVidaUtil] = useState(false);
   const [cxpYaRegistrado, setCxpYaRegistrado] = useState(true);
   const [fondosCaja, setFondosCaja] = useState([]);
   const [loadingFondosCaja, setLoadingFondosCaja] = useState(false);
@@ -194,13 +209,24 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const provsActivos = (proveedores || []).filter(p => p.estado !== 'inactivo');
   const cuentasBancariasActivas = (cuentasBancarias || []).filter(c => !['inactivo', 'eliminado'].includes(String(c.estado || '').toLowerCase()));
 
+  const esCapitalizacion = !!tipoSel?.es_capitalizacion;
+
   // Cargar tipos de gasto y tipo de cambio al montar
   useEffect(() => {
     const load = async () => {
       if (isSupabaseConfigured() && empresa?.id) {
         try {
-          const data = await finanzasService.getTiposGasto(empresa.id);
-          setTiposGasto(data.length ? data : TIPOS_GASTO_DEFECTO);
+          const sb = await getSupabaseClient();
+          const [tiposData, { data: catsData }] = await Promise.all([
+            finanzasService.getTiposGasto(empresa.id),
+            sb.from('er_categorias').select('nombre, es_capitalizacion').eq('empresa_id', empresa.id).eq('activo', true),
+          ]);
+          const capMap = Object.fromEntries((catsData || []).map(c => [c.nombre, !!c.es_capitalizacion]));
+          const tipos = (tiposData.length ? tiposData : TIPOS_GASTO_DEFECTO).map(t => ({
+            ...t,
+            es_capitalizacion: capMap[t.categoria_er] ?? (t.categoria_er === 'Inversiones / Activos'),
+          }));
+          setTiposGasto(tipos);
         } catch {
           setTiposGasto(TIPOS_GASTO_DEFECTO);
         }
@@ -288,15 +314,26 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       {tipoSel && (
         <div style={{
           display: 'flex', gap: 14, padding: '12px 16px', borderRadius: 8,
-          background: 'color-mix(in srgb, var(--cyan) 6%, var(--surface))',
-          border: '1px solid color-mix(in srgb, var(--cyan) 25%, var(--border))',
+          background: esCapitalizacion
+            ? 'color-mix(in srgb, var(--orange) 6%, var(--surface))'
+            : 'color-mix(in srgb, var(--cyan) 6%, var(--surface))',
+          border: `1px solid ${esCapitalizacion
+            ? 'color-mix(in srgb, var(--orange) 30%, var(--border))'
+            : 'color-mix(in srgb, var(--cyan) 25%, var(--border))'}`,
         }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 3 }}>Categoría ER</div>
             <div style={{ fontWeight: 600, fontSize: 13 }}>
               {tipoSel.categoria_er}
-              <span className="badge badge-cyan" style={{ marginLeft: 8, fontSize: 10 }}>automático</span>
+              {esCapitalizacion
+                ? <span className="badge badge-orange" style={{ marginLeft: 8, fontSize: 10 }}>Capitalización</span>
+                : <span className="badge badge-cyan" style={{ marginLeft: 8, fontSize: 10 }}>automático</span>}
             </div>
+            {esCapitalizacion && (
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+                No aparece como gasto en el ER — se capitaliza como activo fijo.
+              </div>
+            )}
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 3 }}>Destino</div>
@@ -321,6 +358,64 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   // ── Paso 2: detalle y pago ────────────────────────────────────────────────
   const renderPaso2 = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+      {/* Aviso capitalización */}
+      {esCapitalizacion && (
+        <div style={{
+          padding: '12px 16px', borderRadius: 8, fontSize: 13,
+          background: 'color-mix(in srgb, var(--orange) 8%, var(--surface))',
+          border: '1px solid color-mix(in srgb, var(--orange) 35%, var(--border))',
+          display: 'flex', gap: 10,
+        }}>
+          <span style={{ fontSize: 18, flexShrink: 0 }}>📦</span>
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>Este egreso se capitalizará como activo fijo</div>
+            <div style={{ color: 'var(--fg-muted)', fontSize: 12 }}>
+              No aparecerá como gasto en el ER del período. Su depreciación mensual se registrará desde el módulo Activos Fijos.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Campos de activo fijo */}
+      {esCapitalizacion && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="input-group">
+              <label>Tipo de activo <span style={{ color: 'var(--danger)' }}>*</span></label>
+              <select className="select" value={activoTipo} onChange={e => setActivoTipo(e.target.value)}>
+                {ACTIVO_TIPOS_WIZ.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div className="input-group">
+              <label>N° de serie o placa <span style={{ color: 'var(--fg-muted)', fontWeight: 400, fontSize: 11 }}>(opcional)</span></label>
+              <input
+                className="input"
+                value={activoSerie}
+                onChange={e => setActivoSerie(e.target.value)}
+                placeholder="Ej: ABC-123, SN-987654"
+              />
+            </div>
+          </div>
+          <div className="input-group">
+            <label>Vida útil en años <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <input
+              className={`input${errActivoVidaUtil ? ' input-error' : ''}`}
+              type="number" min="1" step="1"
+              value={activoVidaUtil}
+              onChange={e => { setActivoVidaUtil(e.target.value); setErrActivoVidaUtil(false); }}
+              placeholder="Ej: 5"
+            />
+            {errActivoVidaUtil && (
+              <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>
+                La vida útil es obligatoria para registrar el activo.
+              </div>
+            )}
+          </div>
+          <div style={{ height: 1, background: 'var(--border-subtle)' }} />
+        </>
+      )}
+
       {/* Concepto */}
       <div className="input-group">
         <label>Concepto / descripción <span style={{ color: 'var(--danger)' }}>*</span></label>
@@ -665,6 +760,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) { setErrFondo(true); ok = false; }
             if (form.ya_pagado && form.metodo_pago !== 'Caja chica' && !(form.fecha_pago || form.fecha)) { setErrFechaPago(true); ok = false; }
             if (form.ya_pagado && form.metodo_pago !== 'Caja chica' && !form.cuenta_bancaria_id) { setErrCuentaPago(true); ok = false; }
+            if (esCapitalizacion && !activoVidaUtil) { setErrActivoVidaUtil(true); ok = false; }
             if (!form.concepto.trim() || !parseFloat(form.monto)) return;
             if (ok) setPaso(3);
           }}
@@ -688,7 +784,12 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
     const filas = [
       ['Tipo de gasto',  tipoSel?.nombre || '—'],
-      ['Categoría ER',   <><strong>{categoria}</strong> <span className="badge badge-cyan" style={{fontSize:10}}>automático</span></>],
+      ['Categoría ER',   esCapitalizacion
+        ? <><strong>{categoria}</strong> <span className="badge badge-orange" style={{fontSize:10}}>Capitalización</span></>
+        : <><strong>{categoria}</strong> <span className="badge badge-cyan" style={{fontSize:10}}>automático</span></>],
+      esCapitalizacion ? ['Tipo de activo', ACTIVO_TIPOS_WIZ.find(t => t.value === activoTipo)?.label || activoTipo] : null,
+      esCapitalizacion && activoSerie ? ['N° serie / placa', activoSerie] : null,
+      esCapitalizacion ? ['Vida útil', `${activoVidaUtil} años`] : null,
       ['Concepto',       form.concepto],
       ['Fecha',          form.fecha],
       ['Monto',          `${form.moneda} ${monto.toFixed(2)}${form.moneda !== 'PEN' ? ` (S/ ${montoPEN.toFixed(2)})` : ''}`],
@@ -758,6 +859,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       setPaso(2);
       return;
     }
+    if (esCapitalizacion && !activoVidaUtil) { setErrActivoVidaUtil(true); setPaso(2); return; }
 
     setGuardando(true);
     let gastoPersistidoSupabase = false;
@@ -799,6 +901,14 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         referencia_pago:    form.ya_pagado ? (form.referencia_pago || null) : null,
         creado_por:         authUser?.id || null,
         created_at:         new Date().toISOString(),
+        // Activo fijo
+        es_activo_fijo:     esCapitalizacion,
+        ...(esCapitalizacion ? {
+          activo_tipo:       activoTipo,
+          numero_serie:      activoSerie || null,
+          vida_util_anos:    Number(activoVidaUtil) || null,
+          activo_estado:     'activo',
+        } : {}),
       };
 
       if (isSupabaseConfigured()) {
@@ -823,6 +933,14 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           ...(form.ot_vinc_id ? { ot_vinc_id: form.ot_vinc_id } : {}),
           proveedor_referencia: proveedorNombre || null,
           archivo_url:      archivoUrl || null,
+          // Activo fijo
+          es_activo_fijo:   esCapitalizacion,
+          ...(esCapitalizacion ? {
+            activo_tipo:    activoTipo,
+            numero_serie:   activoSerie || null,
+            vida_util_anos: Number(activoVidaUtil) || null,
+            activo_estado:  'activo',
+          } : {}),
         };
         let gp = { ...gastoPayload };
         let ok = false;
@@ -1110,7 +1228,7 @@ export function TiposGastoAdmin() {
       const sb = await getSupabaseClient();
       const [tiposR, catsR] = await Promise.all([
         sb.from('tipos_gasto_empresa').select('*').eq('empresa_id', empresa.id).order('orden'),
-        sb.from('er_categorias').select('id, nombre').eq('empresa_id', empresa.id).eq('activo', true).order('orden'),
+        sb.from('er_categorias').select('id, nombre, es_capitalizacion').eq('empresa_id', empresa.id).eq('activo', true).order('orden'),
       ]);
       setTipos(tiposR.data || []);
       setErCats(catsR.data || []);
@@ -1121,6 +1239,7 @@ export function TiposGastoAdmin() {
   useEffect(() => { cargar(); }, [empresa?.id]);
 
   const catOpts = erCats.length ? erCats.map(c => c.nombre) : CATS_ER_FALLBACK;
+  const capMap  = Object.fromEntries((erCats || []).map(c => [c.nombre, !!c.es_capitalizacion]));
 
   const abrirNuevo = () => {
     setEditando(null);
@@ -1194,7 +1313,12 @@ export function TiposGastoAdmin() {
               {tipos.length ? tipos.map(t => (
                 <tr key={t.id}>
                   <td style={{ fontWeight: 600 }}>{t.nombre}</td>
-                  <td><span className="badge badge-cyan">{t.categoria_er}</span></td>
+                  <td>
+                    <span className="badge badge-cyan">{t.categoria_er}</span>
+                    {capMap[t.categoria_er] && (
+                      <span className="badge badge-orange" style={{ marginLeft: 6, fontSize: 10 }}>Capitalización</span>
+                    )}
+                  </td>
                   <td><span style={{ width: 18, height: 18, display: 'inline-block' }}>{icono(t.icono)}</span></td>
                   <td>
                     <span className={`badge ${t.activo ? 'badge-green' : 'badge-gray'}`}>
@@ -1237,6 +1361,16 @@ export function TiposGastoAdmin() {
                 <select className="select" value={form.categoria_er} onChange={e => setF('categoria_er', e.target.value)}>
                   {catOpts.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
+                {capMap[form.categoria_er] && (
+                  <div style={{
+                    marginTop: 8, fontSize: 12, padding: '9px 12px', borderRadius: 7,
+                    background: 'color-mix(in srgb, var(--orange) 8%, var(--surface))',
+                    border: '1px solid color-mix(in srgb, var(--orange) 30%, var(--border))',
+                    color: 'var(--fg)',
+                  }}>
+                    Los egresos de este tipo no aparecen como gasto en el ER. Se capitalizan como activo y su depreciación se registra mensualmente.
+                  </div>
+                )}
               </div>
               <div className="input-group">
                 <label>Ícono</label>

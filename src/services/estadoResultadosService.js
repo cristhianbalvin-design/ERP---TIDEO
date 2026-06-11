@@ -22,6 +22,7 @@ const emptyER = () => ({
   costoVentas: emptyBlock(),
   gastosOp: emptyBlock(),
   gastosFin: emptyBlock(),
+  depreciacion: emptyBlock(),
 });
 
 const emptyResult = (periodo = '') => ({
@@ -30,10 +31,14 @@ const emptyResult = (periodo = '') => ({
   er: emptyER(),
   utilidadBruta: zeroTotals(),
   resultadoOp: zeroTotals(),
+  ebitda: zeroTotals(),
+  ebit: zeroTotals(),
   resultadoNeto: zeroTotals(),
   margenes: {
     utilidadBruta: zeroTotals(),
     resultadoOp: zeroTotals(),
+    ebitda: zeroTotals(),
+    ebit: zeroTotals(),
     resultadoNeto: zeroTotals(),
   },
   hasMovements: false,
@@ -72,20 +77,24 @@ const marginTotals = (result, ingresos) => Object.fromEntries(
 const finalizeResult = (result, sourceCounts = {}) => {
   const er = result.er;
   result.utilidadBruta = subtractTotals(er.ingresos.total, er.costoVentas.total);
-  result.resultadoOp = subtractTotals(result.utilidadBruta, er.gastosOp.total);
-  result.resultadoNeto = subtractTotals(result.resultadoOp, er.gastosFin.total);
+  result.resultadoOp   = subtractTotals(result.utilidadBruta, er.gastosOp.total);
+  result.ebitda        = subtractTotals(result.resultadoOp, er.gastosFin.total);
+  result.ebit          = subtractTotals(result.ebitda, er.depreciacion.total);
+  result.resultadoNeto = result.ebit;
   result.margenes = {
     utilidadBruta: marginTotals(result.utilidadBruta, er.ingresos.total),
-    resultadoOp: marginTotals(result.resultadoOp, er.ingresos.total),
+    resultadoOp:   marginTotals(result.resultadoOp, er.ingresos.total),
+    ebitda:        marginTotals(result.ebitda, er.ingresos.total),
+    ebit:          marginTotals(result.ebit, er.ingresos.total),
     resultadoNeto: marginTotals(result.resultadoNeto, er.ingresos.total),
   };
   result.sourceCounts = sourceCounts;
   result.hasMovements = Object.values(sourceCounts).some(v => Number(v || 0) > 0)
-    || ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin'].some(block =>
+    || ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin', 'depreciacion'].some(block =>
       ER_CURRENCIES.some(moneda => amount(er[block].total[moneda]) !== 0)
     );
   // Corrección 2: detectar monedas fuera de ER_CURRENCIES que no pudieron sumarse.
-  result.otherCurrenciesWarning = ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin'].some(blockKey =>
+  result.otherCurrenciesWarning = ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin', 'depreciacion'].some(blockKey =>
     Object.keys(er[blockKey].total).some(k => !ER_CURRENCIES.includes(k) && er[blockKey].total[k] > 0)
   );
   return result;
@@ -119,6 +128,7 @@ export const ER_TIPO_SISTEMA_LABELS = {
   planilla: 'Planilla',
   cargas_sociales: 'Cargas sociales',
   intereses_financiamiento: 'Intereses de financiamiento',
+  inversiones: 'Inversiones / Activos',
 };
 
 export const ER_TIPO_SISTEMA_OPTIONS = Object.entries(ER_TIPO_SISTEMA_LABELS)

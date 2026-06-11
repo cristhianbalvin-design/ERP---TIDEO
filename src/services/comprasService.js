@@ -1,15 +1,5 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
-
-const materialCode = (descripcion = '') => {
-  const base = String(descripcion || 'material')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .toUpperCase()
-    .slice(0, 18);
-  return `MAT-${base || Date.now()}`;
-};
+import { registrarEntradaDesdeRecepcion, getStockCompleto } from './inventarioService.js';
 
 export const comprasService = {
 
@@ -174,134 +164,12 @@ export const comprasService = {
   },
 
   getInventario: async (empresaId) => {
-    if (!empresaId) return [];
-    const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('stock')
-      .select(`*, materiales(id, codigo, descripcion, unidad, familia, costo_promedio), almacenes(id, codigo, nombre)`)
-      .eq('empresa_id', empresaId)
-      .order('updated_at', { ascending: false });
-    if (error) { console.error('Error fetching inventario:', error); return []; }
-    return (data || []).map(row => ({
-      id: row.id,
-      material_id: row.material_id,
-      almacen_id: row.almacen_id,
-      sku: row.materiales?.codigo || row.material_id,
-      nombre: row.materiales?.descripcion || row.material_id,
-      categoria: row.materiales?.familia || 'Compras',
-      unidad: row.materiales?.unidad || 'und',
-      stock_actual: Number(row.disponible || 0),
-      reservado: Number(row.reservado || 0),
-      costo_promedio: Number(row.materiales?.costo_promedio || 0),
-      almacen: row.almacenes?.nombre || row.almacenes?.codigo || row.almacen_id
-    }));
+    return getStockCompleto(empresaId);
   },
 
-  registrarEntradaInventario: async (empresaId, item, referencia) => {
-    const supabase = await getSupabaseClient();
-    const almacenCodigo = item.almacen_codigo || 'ALM-001';
-    const { data: almacenExistente } = await supabase
-      .from('almacenes')
-      .select('*')
-      .eq('empresa_id', empresaId)
-      .eq('codigo', almacenCodigo)
-      .maybeSingle();
-
-    let almacen = almacenExistente;
-    if (!almacen) {
-      const { data, error } = await supabase
-        .from('almacenes')
-        .insert({
-          id: `alm_${Date.now()}`,
-          empresa_id: empresaId,
-          codigo: almacenCodigo,
-          nombre: 'Almacen principal',
-          estado: 'activo'
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      almacen = data;
-    }
-
-    const codigo = item.codigo || item.sku || materialCode(item.descripcion);
-    const { data: materialExistente } = await supabase
-      .from('materiales')
-      .select('*')
-      .eq('empresa_id', empresaId)
-      .eq('codigo', codigo)
-      .maybeSingle();
-
-    let material = materialExistente;
-    if (!material) {
-      const { data, error } = await supabase
-        .from('materiales')
-        .insert({
-          id: `mat_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-          empresa_id: empresaId,
-          codigo,
-          descripcion: item.descripcion,
-          unidad: item.unidad || 'und',
-          familia: item.familia || 'Compras',
-          costo_promedio: Number(item.costo_unitario || item.precio_unitario || 0),
-          moneda: item.moneda || 'PEN',
-          estado: 'activo'
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      material = data;
-    }
-
-    await supabase.from('kardex').insert({
-      id: `kdx_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      empresa_id: empresaId,
-      material_id: material.id,
-      almacen_id: almacen.id,
-      tipo: 'entrada',
-      cantidad: Number(item.cantidad || item.recibido || 0),
-      costo_unitario: Number(item.costo_unitario || item.precio_unitario || material.costo_promedio || 0),
-      moneda: item.moneda || 'PEN',
-      referencia_tipo: referencia?.tipo || 'recepcion',
-      referencia_id: referencia?.id || null,
-      observacion: referencia?.observacion || `Entrada por ${referencia?.tipo || 'recepcion'}`
-    });
-
-    const { data: stockExistente } = await supabase
-      .from('stock')
-      .select('*')
-      .eq('empresa_id', empresaId)
-      .eq('material_id', material.id)
-      .eq('almacen_id', almacen.id)
-      .is('lote', null)
-      .is('serie', null)
-      .maybeSingle();
-
-    if (stockExistente) {
-      const disponible = Number(stockExistente.disponible || 0) + Number(item.cantidad || item.recibido || 0);
-      const { data, error } = await supabase
-        .from('stock')
-        .update({ disponible, updated_at: new Date().toISOString() })
-        .eq('id', stockExistente.id)
-        .select()
-        .single();
-      if (error) throw error;
-      return { material, almacen, stock: data };
-    }
-
-    const { data: stock, error: stockError } = await supabase
-      .from('stock')
-      .insert({
-        empresa_id: empresaId,
-        material_id: material.id,
-        almacen_id: almacen.id,
-        disponible: Number(item.cantidad || item.recibido || 0),
-        reservado: 0
-      })
-      .select()
-      .single();
-    if (stockError) throw stockError;
-    return { material, almacen, stock };
+  // Delega al motor WMS. Mantiene la firma para compatibilidad con context.jsx.
+  registrarEntradaInventario: async (empresaId, item, referencia, usuarioId) => {
+    return registrarEntradaDesdeRecepcion(empresaId, item, referencia, usuarioId);
   },
 
 };

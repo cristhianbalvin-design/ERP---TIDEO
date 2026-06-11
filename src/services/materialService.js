@@ -116,11 +116,20 @@ const MAT_FIELDS = [
 export const getMateriales = async (empresaId) => {
   if (!empresaId) return [];
   const supabase = await getSupabaseClient();
-  const { data, error } = await supabase
-    .from('materiales').select('*')
-    .eq('empresa_id', empresaId).order('codigo');
-  if (error) { console.error('getMateriales:', error); return []; }
-  return data;
+  const PAGE = 1000;
+  let all = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('materiales').select('*')
+      .eq('empresa_id', empresaId).order('codigo')
+      .range(from, from + PAGE - 1);
+    if (error) { console.error('getMateriales:', error); return []; }
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 };
 
 export const generarCodigoMaterial = async (subfamiliaId, empresaId) => {

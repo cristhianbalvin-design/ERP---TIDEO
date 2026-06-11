@@ -2855,6 +2855,8 @@ function Resultados({ role }) {
   const er = data?.er || mockErData.er;
   const utilidadBruta = data?.utilidadBruta || mockErData.utilidadBruta;
   const resultadoOp = data?.resultadoOp || mockErData.resultadoOp;
+  const ebitda = data?.ebitda || mockErData.ebitda;
+  const ebit   = data?.ebit   || mockErData.ebit;
   const resultadoNeto = data?.resultadoNeto || mockErData.resultadoNeto;
   const margenes = data?.margenes || mockErData.margenes;
   const waitingForData = supabaseMode && !data && !error;
@@ -7477,138 +7479,616 @@ function CxP() {
 }
 
 const ACTIVO_TIPOS = [
-  { value:'equipo', label:'Equipo' },
-  { value:'vehiculo', label:'Vehiculo' },
-  { value:'mueble', label:'Mueble' },
-  { value:'intangible', label:'Intangible' },
-  { value:'otro', label:'Otro' },
+  { value: 'equipo',     label: 'Equipo' },
+  { value: 'vehiculo',   label: 'Vehículo' },
+  { value: 'mueble',     label: 'Mueble' },
+  { value: 'inmueble',   label: 'Inmueble' },
+  { value: 'intangible', label: 'Intangible' },
+  { value: 'otro',       label: 'Otro' },
 ];
 
+const DOC_TIPOS_ACTIVO = ['SOAT', 'Póliza todo riesgo', 'Revisión técnica', 'Inspección interna', 'Seguro carga', 'Otro'];
+
 function ActivosFijos() {
-  const { comprasGastos = [], centrosCosto = [], crearGasto, addNotificacion } = useApp();
-  const today = new Date().toISOString().split('T')[0];
-  const [panel, setPanel] = useState(false);
-  const [sel, setSel] = useState(null);
+  const {
+    activos = [], comprasGastos = [], centrosCosto = [],
+    crearActivoCtx, actualizarActivoCtx, bajaActivoCtx, importarActivosCtx,
+    crearGasto, addNotificacion,
+  } = useApp();
+
+  const today = new Date().toISOString().slice(0, 10);
+  const [tab, setTab] = useState('maestro');
+
+  // ─── Maestro: estado local ─────────────────────────────────────────────────
+  const [panel, setPanel] = useState(null); // null | 'nuevo' | 'editar' | 'ver'
+  const [selActivo, setSelActivo] = useState(null);
   const [guardando, setGuardando] = useState(false);
-  const init = { descripcion:'', activo_tipo:'equipo', fecha:today, monto:'', moneda:'PEN', vida_util_anos:'', centro_costo_id:'', proveedor_referencia:'', notas:'', archivo_url:'', activo_estado:'activo' };
-  const [form, setForm] = useState(init);
+  const [importando, setImportando] = useState(false);
+  const [resultImport, setResultImport] = useState(null);
+  const [modalBaja, setModalBaja] = useState(null);
+  const [bajaMotivo, setBajaMotivo] = useState('');
+  const [busqueda, setBusqueda] = useState('');
+
+  const initForm = {
+    codigo: '', nombre: '', tipo_categoria: 'equipo', marca: '', modelo: '',
+    placa_serie: '', ubicacion: '', estado: 'operativo', centro_costo_id: '',
+    responsable_nombre: '', fecha_alta: today, valor_adquisicion: '',
+    moneda: 'PEN', vida_util_anos: '', observacion: '', compras_gasto_id: null,
+  };
+  const [form, setForm] = useState(initForm);
+  const [formDocs, setFormDocs] = useState([]);
+
+  // ─── Helpers ───────────────────────────────────────────────────────────────
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const cecoNombre = id => {
     const c = (centrosCosto || []).find(x => x.id === id);
-    return c ? `${c.codigo || c.id} - ${c.nombre}` : (id || '-');
+    return c ? `${c.codigo || ''} ${c.nombre}`.trim() : (id || '-');
   };
-  const activos = (comprasGastos || [])
+
+  const semaforo = (doc) => {
+    if (!doc?.fecha_vencimiento) return 'gris';
+    const diasAlerta = Number(doc.dias_alerta || 30);
+    const hoy = new Date(today + 'T00:00:00');
+    const venc = new Date(doc.fecha_vencimiento + 'T00:00:00');
+    const diff = Math.floor((venc - hoy) / 86400000);
+    if (diff < 0) return 'rojo';
+    if (diff <= diasAlerta) return 'amarillo';
+    return 'verde';
+  };
+
+  const colorSemaforo = { verde: 'var(--success)', amarillo: 'var(--orange)', rojo: 'var(--danger)', gris: 'var(--fg-muted)' };
+
+  const semaforoActivo = (a) => {
+    const docs = Array.isArray(a.documentos) ? a.documentos : [];
+    if (!docs.length) return 'gris';
+    if (docs.some(d => semaforo(d) === 'rojo')) return 'rojo';
+    if (docs.some(d => semaforo(d) === 'amarillo')) return 'amarillo';
+    return 'verde';
+  };
+
+  const calcDeprec = (activo) => {
+    if (!activo.valor_adquisicion || !activo.vida_util_anos || !activo.fecha_alta) return null;
+    const alta = new Date(activo.fecha_alta + 'T00:00:00');
+    const hoy = new Date(today + 'T00:00:00');
+    const mesesVividos = (hoy.getFullYear() - alta.getFullYear()) * 12 + (hoy.getMonth() - alta.getMonth());
+    const vidaMeses = Number(activo.vida_util_anos) * 12;
+    if (vidaMeses <= 0) return null;
+    const base = Number(activo.valor_adquisicion);
+    const deprecAcum = Math.min(base, (base / vidaMeses) * Math.max(0, mesesVividos));
+    const pct = Math.min(100, Math.round((deprecAcum / base) * 100));
+    return { pct, valorActual: Math.max(0, base - deprecAcum) };
+  };
+
+  // ─── KPIs maestro ─────────────────────────────────────────────────────────
+  const activosOperativos = activos.filter(a => a.estado === 'operativo');
+  const activosMantenimiento = activos.filter(a => a.estado === 'en_mantenimiento');
+  const activosConAlerta = activos.filter(a => ['rojo', 'amarillo'].includes(semaforoActivo(a)));
+  const valorTotal = activos.filter(a => a.estado !== 'dado_baja').reduce((s, a) => s + Number(a.valor_adquisicion || 0), 0);
+
+  const activosFiltrados = activos.filter(a => {
+    if (!busqueda) return true;
+    const q = busqueda.toLowerCase();
+    return (a.codigo || '').toLowerCase().includes(q) || (a.nombre || '').toLowerCase().includes(q) || (a.marca || '').toLowerCase().includes(q) || (a.placa_serie || '').toLowerCase().includes(q);
+  });
+
+  // ─── CRUD maestro ─────────────────────────────────────────────────────────
+  const abrirNuevo = () => { setForm(initForm); setFormDocs([]); setSelActivo(null); setPanel('nuevo'); };
+
+  const abrirNuevoDesdeCompras = (gasto) => {
+    setForm({
+      ...initForm,
+      nombre:           gasto.descripcion || '',
+      tipo_categoria:   gasto.activo_tipo || 'equipo',
+      valor_adquisicion: gasto.monto ?? '',
+      moneda:           gasto.moneda || 'PEN',
+      vida_util_anos:   gasto.vida_util_anos ?? '',
+      fecha_alta:       gasto.fecha || today,
+      placa_serie:      gasto.numero_serie || '',
+      centro_costo_id:  gasto.centro_costo_id || '',
+      compras_gasto_id: gasto.id,
+      observacion:      `Promovido desde Compras/Gastos${gasto.num_comprobante ? ` · ${gasto.num_comprobante}` : ''}`,
+    });
+    setFormDocs([]);
+    setSelActivo(null);
+    setSelC(null);
+    setTab('maestro');
+    setPanel('nuevo');
+  };
+  const abrirEditar = (a) => {
+    setSelActivo(a);
+    setForm({ ...initForm, ...a, valor_adquisicion: a.valor_adquisicion ?? '', vida_util_anos: a.vida_util_anos ?? '' });
+    setFormDocs(Array.isArray(a.documentos) ? a.documentos : []);
+    setPanel('editar');
+  };
+  const abrirVer = (a) => { setSelActivo(a); setPanel('ver'); };
+  const cerrarPanel = () => { setPanel(null); setSelActivo(null); };
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    if (!form.codigo.trim() || !form.nombre.trim()) { addNotificacion('Código y nombre son obligatorios.', 'error'); return; }
+    setGuardando(true);
+    try {
+      const payload = {
+        ...form,
+        documentos: formDocs,
+        valor_adquisicion: Number(form.valor_adquisicion) || 0,
+        vida_util_anos: parseInt(form.vida_util_anos, 10) || 0,
+        centro_costo_id: form.centro_costo_id || null,
+      };
+      if (panel === 'nuevo') await crearActivoCtx(payload);
+      else await actualizarActivoCtx(selActivo.id, payload);
+      cerrarPanel();
+      addNotificacion(panel === 'nuevo' ? 'Activo creado.' : 'Activo actualizado.');
+    } catch (err) {
+      addNotificacion(`Error: ${err.message}`, 'error');
+    } finally { setGuardando(false); }
+  };
+
+  const confirmarBaja = async () => {
+    if (!bajaMotivo.trim()) { addNotificacion('Indica el motivo de baja.', 'error'); return; }
+    try {
+      await bajaActivoCtx(modalBaja.id, bajaMotivo.trim());
+      setModalBaja(null); setBajaMotivo('');
+      addNotificacion('Activo dado de baja.');
+    } catch (err) { addNotificacion(`Error: ${err.message}`, 'error'); }
+  };
+
+  // ─── Documentos en form ────────────────────────────────────────────────────
+  const addDoc = () => setFormDocs(prev => [...prev, { tipo: 'SOAT', nombre: '', fecha_vencimiento: '', dias_alerta: 30 }]);
+  const updDoc = (i, k, v) => setFormDocs(prev => prev.map((d, idx) => idx === i ? { ...d, [k]: v } : d));
+  const delDoc = (i) => setFormDocs(prev => prev.filter((_, idx) => idx !== i));
+
+  // ─── Importación Excel ─────────────────────────────────────────────────────
+  const descargarPlantilla = () => {
+    const headers = ['codigo','nombre','tipo_categoria','marca','modelo','placa_serie','ubicacion','estado','centro_costo','responsable','fecha_alta','valor_adquisicion','moneda','vida_util_anos','observacion'];
+    const ejemplo = ['ACT-001','Volquete Volvo FMX','vehiculo','Volvo','FMX 440','ABC-123','Patio Sur','operativo','CC-OPS','Juan Pérez','2023-05-15','280000','PEN','10',''];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ejemplo]);
+    ws['!cols'] = headers.map((_, i) => ({ wch: i === 1 ? 28 : i === 0 ? 12 : 16 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Activos');
+    XLSX.writeFile(wb, 'plantilla_activos.xlsx');
+  };
+
+  const importarExcel = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    e.target.value = '';
+    setImportando(true); setResultImport(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const filas = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (!filas.length) {
+        setResultImport({ creados: 0, actualizados: 0, errores: [{ fila: '—', error: 'El archivo está vacío o sin filas de datos.' }] });
+        return;
+      }
+      const res = await importarActivosCtx(filas);
+      setResultImport(res);
+    } catch (err) {
+      setResultImport({ creados: 0, actualizados: 0, errores: [{ fila: '—', error: err.message }] });
+    } finally { setImportando(false); }
+  };
+
+  // ─── Tab Compras: estado local (preservado del original) ──────────────────
+  const [panelC, setPanelC] = useState(false);
+  const [selC, setSelC] = useState(null);
+  const [guardandoC, setGuardandoC] = useState(false);
+  const initC = { descripcion:'', activo_tipo:'equipo', fecha:today, monto:'', moneda:'PEN', vida_util_anos:'', centro_costo_id:'', proveedor_referencia:'', notas:'', archivo_url:'', activo_estado:'activo' };
+  const [formC, setFormC] = useState(initC);
+  const resetC = () => { setPanelC(false); setFormC(initC); };
+
+  const activosDeCompras = (comprasGastos || [])
     .filter(g => g.es_activo_fijo)
-    .sort((a,b) => String(a.fecha || '').localeCompare(String(b.fecha || '')) || String(a.id || '').localeCompare(String(b.id || '')))
+    .sort((a,b) => String(a.fecha || '').localeCompare(String(b.fecha || '')))
     .map((g, i) => ({ ...g, codigo_af: g.codigo_af || `AF-${String(i + 1).padStart(3,'0')}`, activo_estado: g.activo_estado || g.estado_activo || 'activo' }));
-  const activosActivos = activos.filter(a => a.activo_estado === 'activo' && a.estado !== 'anulado');
-  const anioActual = new Date().getFullYear();
-  const valorPeriodo = activos.filter(a => new Date(`${a.fecha || today}T00:00:00`).getFullYear() === anioActual).reduce((s,a) => s + Number(a.monto || 0), 0);
   const vidaCumplida = a => {
     if (!a.fecha || !a.vida_util_anos) return false;
     const fin = new Date(`${a.fecha}T00:00:00`);
     fin.setFullYear(fin.getFullYear() + Number(a.vida_util_anos));
     return fin <= new Date(`${today}T00:00:00`);
   };
-  const porDarBaja = activosActivos.filter(vidaCumplida);
-  const reset = () => { setPanel(false); setForm(init); };
+  const activosComprasActivos = activosDeCompras.filter(a => a.activo_estado === 'activo' && a.estado !== 'anulado');
+  const porDarBajaC = activosComprasActivos.filter(vidaCumplida);
 
-  const exportarExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(activosActivos.map(a => ({
-      codigo: a.codigo_af,
-      descripcion: a.descripcion,
-      tipo: a.activo_tipo || '',
-      fecha_adquisicion: a.fecha || '',
-      valor_adquisicion: Number(a.monto || 0),
-      moneda: a.moneda || 'PEN',
-      vida_util_anos: a.vida_util_anos || '',
-      ceco: cecoNombre(a.centro_costo_id),
-      estado: a.activo_estado,
-      origen_registro: a.origen_registro || 'compras_gastos',
-      gasto_origen_id: a.id,
-      referencia: a.num_comprobante || a.proveedor_referencia || a.referencia_pago || '',
-      notas: a.notas || '',
-    })));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Activos Fijos');
-    XLSX.writeFile(wb, `activos_fijos_${today}.xlsx`);
-  };
-
-  const guardar = async e => {
+  const guardarCompras = async e => {
     e.preventDefault();
-    if (!form.descripcion.trim() || !form.monto || !form.fecha || !form.vida_util_anos) {
-      addNotificacion('Completa nombre, fecha, valor y vida util.');
-      return;
+    if (!formC.descripcion.trim() || !formC.monto || !formC.fecha || !formC.vida_util_anos) {
+      addNotificacion('Completa nombre, fecha, valor y vida util.'); return;
     }
-    setGuardando(true);
+    setGuardandoC(true);
     try {
       await crearGasto({
-        tipo: 'activo_fijo',
-        descripcion: form.descripcion.trim(),
-        categoria: 'Activos fijos',
-        monto: Number(form.monto || 0),
-        moneda: form.moneda || 'PEN',
-        fecha: form.fecha,
-        centro_costo_id: form.centro_costo_id || null,
-        es_activo_fijo: true,
-        activo_tipo: form.activo_tipo,
-        vida_util_anos: Number(form.vida_util_anos),
-        origen_registro: 'backoffice',
-        estado: 'registrado',
-        activo_estado: form.activo_estado,
-        proveedor_referencia: form.proveedor_referencia || null,
-        notas: form.notas || null,
-        archivo_url: form.archivo_url || null,
+        tipo: 'activo_fijo', descripcion: formC.descripcion.trim(), categoria: 'Activos fijos',
+        monto: Number(formC.monto || 0), moneda: formC.moneda || 'PEN', fecha: formC.fecha,
+        centro_costo_id: formC.centro_costo_id || null, es_activo_fijo: true,
+        activo_tipo: formC.activo_tipo, vida_util_anos: Number(formC.vida_util_anos),
+        origen_registro: 'backoffice', estado: 'registrado', activo_estado: formC.activo_estado,
+        proveedor_referencia: formC.proveedor_referencia || null, notas: formC.notas || null, archivo_url: formC.archivo_url || null,
       });
-      reset();
-      addNotificacion('Activo fijo registrado.');
-    } finally {
-      setGuardando(false);
-    }
+      resetC(); addNotificacion('Activo registrado en Compras/Gastos.');
+    } finally { setGuardandoC(false); }
   };
 
-  const eventos = a => [
-    { fecha: a.created_at || a.fecha || '-', texto: `Alta registrada desde ${a.origen_registro || 'compras_gastos'}` },
-    ...(a.activo_estado !== 'activo' ? [{ fecha: today, texto: `Estado actual: ${a.activo_estado}` }] : []),
-    ...(a.notas ? [{ fecha: a.fecha || '-', texto: a.notas }] : []),
-  ];
+  const badgeEstado = (e) => {
+    if (e === 'operativo') return 'badge-green';
+    if (e === 'en_mantenimiento') return 'badge-orange';
+    if (e === 'dado_baja') return 'badge-gray';
+    return 'badge-gray';
+  };
 
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Activos Fijos</h1><div className="page-sub">Kardex de activos registrados en compras_gastos</div></div>
-        <div className="row"><button className="btn btn-secondary" onClick={exportarExcel}>{I.download} Exportar a Excel</button><button className="btn btn-primary" onClick={() => setPanel(true)}>{I.plus} Nuevo activo</button></div>
+        <div>
+          <h1 className="page-title">Activos Fijos</h1>
+          <div className="page-sub">Maestro de activos operativos de la empresa</div>
+        </div>
       </div>
-      <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)'}}>
-        <div className="kpi-card"><div className="kpi-label">Activos activos</div><div className="kpi-value">{activosActivos.length}</div><div className="kpi-icon green">{I.package}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Valor adquirido {anioActual}</div><div className="kpi-value" style={{fontSize:22}}>{money(valorPeriodo)}</div><div className="kpi-icon cyan">{I.dollar}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Por dar de baja</div><div className="kpi-value" style={{color:porDarBaja.length?'var(--orange)':undefined}}>{porDarBaja.length}</div><div className="kpi-icon orange">{I.clock}</div></div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid var(--border)' }}>
+        {[['maestro', 'Maestro de Activos'], ['compras', 'Desde Compras/Gastos']].map(([k, l]) => (
+          <button key={k} className={`tab-btn${tab === k ? ' active' : ''}`} onClick={() => setTab(k)}>{l}</button>
+        ))}
       </div>
-      <div className="card mt-6"><div className="table-wrap"><table className="tbl">
-        <thead><tr><th>Codigo</th><th>Activo</th><th>Tipo</th><th>Adquisicion</th><th>Valor</th><th>Vida util</th><th>CECO</th><th>Estado</th><th>Origen</th></tr></thead>
-        <tbody>{activos.length ? activos.map(a => (
-          <tr key={a.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => setSel(a)}>
-            <td className="mono" style={{fontWeight:700}}>{a.codigo_af}</td><td><strong>{a.descripcion}</strong></td><td>{ACTIVO_TIPOS.find(t => t.value === a.activo_tipo)?.label || a.activo_tipo || '-'}</td><td className="text-muted">{a.fecha || '-'}</td><td className="num"><strong>{money(Number(a.monto || 0), symOf(a.moneda))}</strong></td><td className="num">{a.vida_util_anos ? `${a.vida_util_anos} anos` : '-'}</td><td className="text-muted" style={{fontSize:11}}>{cecoNombre(a.centro_costo_id)}</td><td><span className={'badge '+(a.activo_estado === 'activo' ? 'badge-green' : a.activo_estado === 'mantenimiento' ? 'badge-orange' : 'badge-gray')}>{String(a.activo_estado).replace('_',' ')}</span></td><td>{a.origen_registro === 'backoffice' ? <span className="badge badge-cyan">Backoffice</span> : <span className="badge badge-gray">Compras</span>}</td>
-          </tr>
-        )) : <tr><td colSpan="9" className="text-center text-muted" style={{padding:32}}>No hay activos fijos registrados.</td></tr>}</tbody>
-      </table></div></div>
 
-      {panel && <><div className="side-panel-backdrop" onClick={reset}/><div className="side-panel" style={{width:'min(560px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Alta manual</div><div style={{fontWeight:700,fontSize:20}}>Nuevo activo fijo</div></div><button className="icon-btn" onClick={reset}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardar}>
-        <div className="input-group"><label>Nombre / descripcion</label><input className="input" value={form.descripcion} onChange={e => setForm(v => ({...v,descripcion:e.target.value}))}/></div>
-        <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Tipo</label><select className="select" value={form.activo_tipo} onChange={e => setForm(v => ({...v,activo_tipo:e.target.value}))}>{ACTIVO_TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></div><div className="input-group"><label>Fecha adquisicion</label><input className="input" type="date" value={form.fecha} onChange={e => setForm(v => ({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Valor</label><input className="input" type="number" min="0" step="0.01" value={form.monto} onChange={e => setForm(v => ({...v,monto:e.target.value}))}/></div><div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e => setForm(v => ({...v,moneda:e.target.value}))}><option value="PEN">PEN</option><option value="USD">USD</option></select></div><div className="input-group"><label>Vida util en anos</label><input className="input" type="number" min="1" step="1" value={form.vida_util_anos} onChange={e => setForm(v => ({...v,vida_util_anos:e.target.value}))}/></div><div className="input-group"><label>Estado</label><select className="select" value={form.activo_estado} onChange={e => setForm(v => ({...v,activo_estado:e.target.value}))}><option value="activo">Activo</option><option value="mantenimiento">En mantenimiento</option><option value="dado_baja">Dado de baja</option></select></div></div>
-        <div className="input-group"><label>CECO</label><select className="select" value={form.centro_costo_id} onChange={e => setForm(v => ({...v,centro_costo_id:e.target.value}))}><option value="">Sin CECO</option>{cecos.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}</select></div>
-        <div className="input-group"><label>Proveedor o referencia</label><input className="input" value={form.proveedor_referencia} onChange={e => setForm(v => ({...v,proveedor_referencia:e.target.value}))}/></div>
-        <div className="input-group"><label>Adjunto del comprobante o contrato</label><input className="input" type="file" accept="image/*,.pdf" onChange={e => setForm(v => ({...v,archivo_url:e.target.files[0] ? URL.createObjectURL(e.target.files[0]) : ''}))}/></div>
-        <div className="input-group"><label>Notas</label><textarea className="input" rows="3" value={form.notas} onChange={e => setForm(v => ({...v,notas:e.target.value}))}/></div>
-        <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={reset}>Cancelar</button><button className="btn btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar activo'}</button></div>
-      </form></div></>}
+      {/* ── TAB MAESTRO ─────────────────────────────────────────────────────── */}
+      {tab === 'maestro' && (
+        <>
+          {/* KPIs */}
+          <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 20 }}>
+            <div className="kpi-card"><div className="kpi-label">Operativos</div><div className="kpi-value">{activosOperativos.length}</div><div className="kpi-icon green">{I.package}</div></div>
+            <div className="kpi-card"><div className="kpi-label">En mantenimiento</div><div className="kpi-value" style={{ color: activosMantenimiento.length ? 'var(--orange)' : undefined }}>{activosMantenimiento.length}</div><div className="kpi-icon orange">{I.wrench}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Docs por vencer/vencidos</div><div className="kpi-value" style={{ color: activosConAlerta.length ? 'var(--danger)' : undefined }}>{activosConAlerta.length}</div><div className="kpi-icon red">{I.alert}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Valor total activos</div><div className="kpi-value" style={{ fontSize: 20 }}>{money(valorTotal)}</div><div className="kpi-icon cyan">{I.dollar}</div></div>
+          </div>
 
-      {sel && <><div className="side-panel-backdrop" onClick={() => setSel(null)}/><div className="side-panel" style={{width:'min(560px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">{sel.codigo_af}</div><div style={{fontWeight:700,fontSize:20}}>{sel.descripcion}</div></div><button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button></div><div className="side-panel-body">
-        <div className="card" style={{padding:14,marginBottom:14}}><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>{[['Tipo', ACTIVO_TIPOS.find(t => t.value === sel.activo_tipo)?.label || sel.activo_tipo || '-'],['Estado', sel.activo_estado],['Fecha adquisicion', sel.fecha || '-'],['Valor', money(Number(sel.monto || 0), symOf(sel.moneda))],['Vida util', sel.vida_util_anos ? `${sel.vida_util_anos} anos` : '-'],['CECO', cecoNombre(sel.centro_costo_id)]].map(([l,v]) => <div key={l}><div style={{fontSize:10,color:'var(--fg-muted)'}}>{l}</div><div style={{fontWeight:600,fontSize:13}}>{v}</div></div>)}</div></div>
-        <div className="card" style={{padding:14,marginBottom:14}}><div style={{fontSize:12,color:'var(--fg-muted)',fontWeight:700,marginBottom:8}}>Datos para depreciacion</div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}><div><div style={{fontSize:10,color:'var(--fg-muted)'}}>Valor base</div><strong>{money(Number(sel.monto || 0), symOf(sel.moneda))}</strong></div><div><div style={{fontSize:10,color:'var(--fg-muted)'}}>Vida util</div><strong>{sel.vida_util_anos || '-'} anos</strong></div><div><div style={{fontSize:10,color:'var(--fg-muted)'}}>Fecha inicio</div><strong>{sel.fecha || '-'}</strong></div></div></div>
-        <div className="card" style={{padding:14,marginBottom:14}}><div style={{fontSize:12,color:'var(--fg-muted)',fontWeight:700,marginBottom:8}}>Origen</div><div style={{fontSize:13}}>Registro: <span className="mono">{sel.id}</span></div><div style={{fontSize:13}}>Referencia: {sel.num_comprobante || sel.proveedor_referencia || sel.referencia_pago || '-'}</div>{sel.archivo_url && <a className="btn btn-secondary btn-sm mt-4" href={sel.archivo_url} target="_blank" rel="noreferrer">{I.file} Ver adjunto</a>}</div>
-        <div className="card" style={{padding:14}}><div style={{fontSize:12,color:'var(--fg-muted)',fontWeight:700,marginBottom:8}}>Historial de eventos</div>{eventos(sel).map((ev,i) => <div key={i} style={{padding:'8px 0',borderBottom:i<eventos(sel).length-1?'1px solid var(--border-subtle)':'none'}}><div style={{fontSize:11,color:'var(--fg-muted)'}}>{ev.fecha}</div><div style={{fontSize:13}}>{ev.texto}</div></div>)}</div>
-      </div></div></>}
+          {/* Toolbar */}
+          <div className="row" style={{ gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button className="btn btn-primary" onClick={abrirNuevo}>{I.plus} Nuevo activo</button>
+            <label className={'btn btn-secondary' + (importando ? ' disabled' : '')} style={{ cursor: importando ? 'not-allowed' : 'pointer' }}>
+              {importando ? 'Importando...' : <>{I.download} Importar Excel</>}
+              <input type="file" accept=".xlsx,.xls" onChange={importarExcel} style={{ display: 'none' }} disabled={importando} />
+            </label>
+            <button className="btn btn-secondary" onClick={descargarPlantilla}>{I.download} Descargar plantilla</button>
+            <input className="input" style={{ width: 240, marginLeft: 'auto' }} placeholder="Buscar activo..." value={busqueda} onChange={e => setBusqueda(e.target.value)} />
+          </div>
+
+          {/* Resultado importación */}
+          {resultImport && (
+            <div style={{ fontSize: 12, background: resultImport.errores?.length ? 'var(--danger-lt)' : 'var(--success-lt)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 14px', marginBottom: 12 }}>
+              <strong>Resultado importación:</strong> {resultImport.creados} creados · {resultImport.actualizados} actualizados
+              {resultImport.errores?.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  {resultImport.errores.slice(0, 6).map((e, i) => (
+                    <div key={i} style={{ color: 'var(--danger)' }}>⚠ {e.fila}: {e.error}</div>
+                  ))}
+                  {resultImport.errores.length > 6 && <div>…y {resultImport.errores.length - 6} errores más</div>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tabla */}
+          <div className="card"><div className="table-wrap"><table className="tbl">
+            <thead>
+              <tr>
+                <th>Código</th><th>Nombre</th><th>Tipo</th><th>Marca / Modelo</th>
+                <th>Placa / Serie</th><th>Ubicación</th><th>CECO</th>
+                <th>Estado</th><th>Valor Adq.</th><th>Deprec.</th><th>Docs</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {activosFiltrados.length ? activosFiltrados.map(a => {
+                const deprec = calcDeprec(a);
+                const semDoc = semaforoActivo(a);
+                return (
+                  <tr key={a.id} className="hover-row" style={{ cursor: 'pointer' }} onClick={() => abrirVer(a)}>
+                    <td className="mono" style={{ fontWeight: 700 }}>{a.codigo}</td>
+                    <td><strong>{a.nombre}</strong>{a.responsable_nombre && <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{a.responsable_nombre}</div>}</td>
+                    <td>{ACTIVO_TIPOS.find(t => t.value === a.tipo_categoria)?.label || a.tipo_categoria || '-'}</td>
+                    <td className="text-muted" style={{ fontSize: 12 }}>{[a.marca, a.modelo].filter(Boolean).join(' / ') || '-'}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>{a.placa_serie || '-'}</td>
+                    <td style={{ fontSize: 12 }}>{a.ubicacion || '-'}</td>
+                    <td style={{ fontSize: 11 }}>{cecoNombre(a.centro_costo_id)}</td>
+                    <td><span className={`badge ${badgeEstado(a.estado)}`}>{String(a.estado || '').replace('_', ' ')}</span></td>
+                    <td className="num">{money(Number(a.valor_adquisicion || 0), symOf(a.moneda))}</td>
+                    <td className="num">
+                      {deprec ? (
+                        <span title={`Valor actual estimado: ${money(deprec.valorActual, symOf(a.moneda))}`} style={{ fontSize: 12 }}>
+                          <span style={{ color: deprec.pct >= 80 ? 'var(--danger)' : deprec.pct >= 50 ? 'var(--orange)' : 'var(--fg-muted)' }}>{deprec.pct}%</span>
+                        </span>
+                      ) : <span className="text-muted">—</span>}
+                    </td>
+                    <td>
+                      {Array.isArray(a.documentos) && a.documentos.length > 0 ? (
+                        <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: colorSemaforo[semDoc] }} title={semDoc} />
+                      ) : <span className="text-muted">—</span>}
+                    </td>
+                    <td onClick={e => e.stopPropagation()}>
+                      <div className="row" style={{ gap: 4 }}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => abrirEditar(a)}>Editar</button>
+                        {a.estado !== 'dado_baja' && <button className="btn btn-secondary btn-sm" style={{ color: 'var(--danger)' }} onClick={() => { setModalBaja(a); setBajaMotivo(''); }}>Baja</button>}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr><td colSpan="12" className="text-center text-muted" style={{ padding: 32 }}>
+                  {activos.length ? 'Sin resultados para la búsqueda.' : 'No hay activos registrados. Usa "+ Nuevo activo" o importa la plantilla Excel.'}
+                </td></tr>
+              )}
+            </tbody>
+          </table></div></div>
+        </>
+      )}
+
+      {/* ── TAB DESDE COMPRAS ──────────────────────────────────────────────── */}
+      {tab === 'compras' && (
+        <>
+          <div className="row" style={{ gap: 10, marginBottom: 14 }}>
+            <div className="text-muted" style={{ fontSize: 13, alignSelf: 'center' }}>Activos registrados a través del módulo Compras/Gastos con flag "es activo fijo".</div>
+            <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setPanelC(true)}>{I.plus} Nuevo activo (Compras)</button>
+          </div>
+          <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 20 }}>
+            <div className="kpi-card"><div className="kpi-label">Activos activos</div><div className="kpi-value">{activosComprasActivos.length}</div><div className="kpi-icon green">{I.package}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Vida útil cumplida</div><div className="kpi-value" style={{ color: porDarBajaC.length ? 'var(--orange)' : undefined }}>{porDarBajaC.length}</div><div className="kpi-icon orange">{I.clock}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Total registrados</div><div className="kpi-value">{activosDeCompras.length}</div><div className="kpi-icon cyan">{I.receipt}</div></div>
+          </div>
+          <div className="card"><div className="table-wrap"><table className="tbl">
+            <thead><tr><th>Código</th><th>Activo</th><th>Tipo</th><th>Adquisición</th><th>Valor</th><th>Vida útil</th><th>CECO</th><th>Estado</th><th>Origen</th></tr></thead>
+            <tbody>{activosDeCompras.length ? activosDeCompras.map(a => (
+              <tr key={a.id} className="hover-row" style={{ cursor: 'pointer' }} onClick={() => setSelC(a)}>
+                <td className="mono" style={{ fontWeight: 700 }}>{a.codigo_af}</td>
+                <td><strong>{a.descripcion}</strong></td>
+                <td>{ACTIVO_TIPOS.find(t => t.value === a.activo_tipo)?.label || a.activo_tipo || '-'}</td>
+                <td className="text-muted">{a.fecha || '-'}</td>
+                <td className="num"><strong>{money(Number(a.monto || 0), symOf(a.moneda))}</strong></td>
+                <td className="num">{a.vida_util_anos ? `${a.vida_util_anos} años` : '-'}</td>
+                <td style={{ fontSize: 11 }}>{cecoNombre(a.centro_costo_id)}</td>
+                <td><span className={`badge ${a.activo_estado === 'activo' ? 'badge-green' : a.activo_estado === 'mantenimiento' ? 'badge-orange' : 'badge-gray'}`}>{String(a.activo_estado || '').replace('_', ' ')}</span></td>
+                <td>{a.origen_registro === 'backoffice' ? <span className="badge badge-cyan">Backoffice</span> : <span className="badge badge-gray">Compras</span>}</td>
+              </tr>
+            )) : <tr><td colSpan="9" className="text-center text-muted" style={{ padding: 32 }}>No hay activos fijos registrados en Compras/Gastos.</td></tr>}</tbody>
+          </table></div></div>
+
+          {/* Panel Compras: nuevo */}
+          {panelC && <><div className="side-panel-backdrop" onClick={resetC} /><div className="side-panel" style={{ width: 'min(520px,96vw)' }}>
+            <div className="side-panel-head"><div><div className="eyebrow">Alta desde Compras</div><div style={{ fontWeight: 700, fontSize: 20 }}>Nuevo activo fijo</div></div><button className="icon-btn" onClick={resetC}>{I.x}</button></div>
+            <form className="side-panel-body" onSubmit={guardarCompras}>
+              <div className="input-group"><label>Nombre / descripción</label><input className="input" value={formC.descripcion} onChange={e => setFormC(v => ({ ...v, descripcion: e.target.value }))} /></div>
+              <div className="grid-2" style={{ gap: 12 }}>
+                <div className="input-group"><label>Tipo</label><select className="select" value={formC.activo_tipo} onChange={e => setFormC(v => ({ ...v, activo_tipo: e.target.value }))}>{ACTIVO_TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></div>
+                <div className="input-group"><label>Fecha adquisición</label><input className="input" type="date" value={formC.fecha} onChange={e => setFormC(v => ({ ...v, fecha: e.target.value }))} /></div>
+                <div className="input-group"><label>Valor</label><input className="input" type="number" min="0" step="0.01" value={formC.monto} onChange={e => setFormC(v => ({ ...v, monto: e.target.value }))} /></div>
+                <div className="input-group"><label>Moneda</label><select className="select" value={formC.moneda} onChange={e => setFormC(v => ({ ...v, moneda: e.target.value }))}><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
+                <div className="input-group"><label>Vida útil (años)</label><input className="input" type="number" min="1" step="1" value={formC.vida_util_anos} onChange={e => setFormC(v => ({ ...v, vida_util_anos: e.target.value }))} /></div>
+                <div className="input-group"><label>Estado</label><select className="select" value={formC.activo_estado} onChange={e => setFormC(v => ({ ...v, activo_estado: e.target.value }))}><option value="activo">Activo</option><option value="mantenimiento">En mantenimiento</option><option value="dado_baja">Dado de baja</option></select></div>
+              </div>
+              <div className="input-group"><label>CECO</label><select className="select" value={formC.centro_costo_id} onChange={e => setFormC(v => ({ ...v, centro_costo_id: e.target.value }))}><option value="">Sin CECO</option>{cecos.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}</select></div>
+              <div className="input-group"><label>Proveedor o referencia</label><input className="input" value={formC.proveedor_referencia} onChange={e => setFormC(v => ({ ...v, proveedor_referencia: e.target.value }))} /></div>
+              <div className="input-group"><label>Notas</label><textarea className="input" rows="2" value={formC.notas} onChange={e => setFormC(v => ({ ...v, notas: e.target.value }))} /></div>
+              <div className="row mt-6" style={{ justifyContent: 'flex-end' }}><button type="button" className="btn btn-secondary" onClick={resetC}>Cancelar</button><button className="btn btn-primary" disabled={guardandoC}>{guardandoC ? 'Guardando...' : 'Guardar'}</button></div>
+            </form>
+          </div></>}
+
+          {/* Panel Compras: ver detalle */}
+          {selC && <><div className="side-panel-backdrop" onClick={() => setSelC(null)} /><div className="side-panel" style={{ width: 'min(520px,96vw)' }}>
+            <div className="side-panel-head"><div><div className="eyebrow">{selC.codigo_af}</div><div style={{ fontWeight: 700, fontSize: 20 }}>{selC.descripcion}</div></div><button className="icon-btn" onClick={() => setSelC(null)}>{I.x}</button></div>
+            <div className="side-panel-body">
+              <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {[['Tipo', ACTIVO_TIPOS.find(t => t.value === selC.activo_tipo)?.label || selC.activo_tipo || '-'], ['Estado', selC.activo_estado], ['Fecha adquisición', selC.fecha || '-'], ['Valor', money(Number(selC.monto || 0), symOf(selC.moneda))], ['Vida útil', selC.vida_util_anos ? `${selC.vida_util_anos} años` : '-'], ['CECO', cecoNombre(selC.centro_costo_id)]].map(([l, v]) => (
+                    <div key={l}><div style={{ fontSize: 10, color: 'var(--fg-muted)' }}>{l}</div><div style={{ fontWeight: 600, fontSize: 13 }}>{v}</div></div>
+                  ))}
+                </div>
+              </div>
+              <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: 'var(--fg-muted)', fontWeight: 700, marginBottom: 8 }}>Origen del registro</div>
+                <div style={{ fontSize: 13 }}>ID: <span className="mono">{selC.id}</span></div>
+                <div style={{ fontSize: 13 }}>Ref: {selC.num_comprobante || selC.proveedor_referencia || selC.referencia_pago || '-'}</div>
+                {selC.archivo_url && <a className="btn btn-secondary btn-sm mt-4" href={selC.archivo_url} target="_blank" rel="noreferrer">{I.file} Ver adjunto</a>}
+              </div>
+              {selC.notas && <div className="card" style={{ padding: 14, marginBottom: 14 }}><div style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 4 }}>Notas</div><div style={{ fontSize: 13 }}>{selC.notas}</div></div>}
+              <div style={{
+                padding: '14px 16px', borderRadius: 8,
+                background: 'color-mix(in srgb, var(--cyan) 6%, var(--surface))',
+                border: '1px solid color-mix(in srgb, var(--cyan) 25%, var(--border))',
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Promover al Maestro de Activos</div>
+                <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 10 }}>
+                  Registra este activo en el Maestro con los campos pre-llenados. Quedará vinculado al egreso de origen.
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={() => abrirNuevoDesdeCompras(selC)}>
+                  {I.plus} Promover al Maestro
+                </button>
+              </div>
+            </div>
+          </div></>}
+        </>
+      )}
+
+      {/* ── PANEL NUEVO / EDITAR (Maestro) ─────────────────────────────────── */}
+      {(panel === 'nuevo' || panel === 'editar') && (
+        <><div className="side-panel-backdrop" onClick={cerrarPanel} /><div className="side-panel" style={{ width: 'min(580px,96vw)' }}>
+          <div className="side-panel-head">
+            <div><div className="eyebrow">{panel === 'nuevo' ? 'Alta' : 'Editar'}</div><div style={{ fontWeight: 700, fontSize: 20 }}>{panel === 'nuevo' ? 'Nuevo activo' : selActivo?.nombre}</div></div>
+            <button className="icon-btn" onClick={cerrarPanel}>{I.x}</button>
+          </div>
+          <form className="side-panel-body" onSubmit={guardar}>
+            {form.compras_gasto_id && (
+              <div style={{
+                marginBottom: 14, padding: '10px 14px', borderRadius: 8, fontSize: 12,
+                background: 'color-mix(in srgb, var(--cyan) 6%, var(--surface))',
+                border: '1px solid color-mix(in srgb, var(--cyan) 25%, var(--border))',
+                color: 'var(--fg-muted)',
+              }}>
+                Promovido desde Compras/Gastos · <span className="mono" style={{ fontSize: 11 }}>{form.compras_gasto_id}</span>
+              </div>
+            )}
+            <div className="grid-2" style={{ gap: 12 }}>
+              <div className="input-group"><label>Código *</label><input className="input" value={form.codigo} onChange={e => setForm(v => ({ ...v, codigo: e.target.value }))} /></div>
+              <div className="input-group"><label>Tipo / Categoría</label><select className="select" value={form.tipo_categoria} onChange={e => setForm(v => ({ ...v, tipo_categoria: e.target.value }))}>{ACTIVO_TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></div>
+            </div>
+            <div className="input-group"><label>Nombre *</label><input className="input" value={form.nombre} onChange={e => setForm(v => ({ ...v, nombre: e.target.value }))} /></div>
+            <div className="grid-2" style={{ gap: 12 }}>
+              <div className="input-group"><label>Marca</label><input className="input" value={form.marca} onChange={e => setForm(v => ({ ...v, marca: e.target.value }))} /></div>
+              <div className="input-group"><label>Modelo</label><input className="input" value={form.modelo} onChange={e => setForm(v => ({ ...v, modelo: e.target.value }))} /></div>
+              <div className="input-group"><label>Placa / Nro serie</label><input className="input" value={form.placa_serie} onChange={e => setForm(v => ({ ...v, placa_serie: e.target.value }))} /></div>
+              <div className="input-group"><label>Ubicación</label><input className="input" value={form.ubicacion} onChange={e => setForm(v => ({ ...v, ubicacion: e.target.value }))} /></div>
+              <div className="input-group"><label>Estado</label><select className="select" value={form.estado} onChange={e => setForm(v => ({ ...v, estado: e.target.value }))}><option value="operativo">Operativo</option><option value="en_mantenimiento">En mantenimiento</option><option value="dado_baja">Dado de baja</option></select></div>
+              <div className="input-group"><label>Fecha de alta</label><input className="input" type="date" value={form.fecha_alta} onChange={e => setForm(v => ({ ...v, fecha_alta: e.target.value }))} /></div>
+            </div>
+            <div className="grid-2" style={{ gap: 12 }}>
+              <div className="input-group"><label>Valor adquisición</label><input className="input" type="number" min="0" step="0.01" value={form.valor_adquisicion} onChange={e => setForm(v => ({ ...v, valor_adquisicion: e.target.value }))} /></div>
+              <div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e => setForm(v => ({ ...v, moneda: e.target.value }))}><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
+              <div className="input-group"><label>Vida útil (años)</label><input className="input" type="number" min="0" step="1" value={form.vida_util_anos} onChange={e => setForm(v => ({ ...v, vida_util_anos: e.target.value }))} /></div>
+              <div className="input-group"><label>CECO por defecto</label><select className="select" value={form.centro_costo_id} onChange={e => setForm(v => ({ ...v, centro_costo_id: e.target.value }))}><option value="">Sin CECO</option>{cecos.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}</select></div>
+            </div>
+            <div className="input-group"><label>Responsable</label><input className="input" placeholder="Nombre del responsable" value={form.responsable_nombre} onChange={e => setForm(v => ({ ...v, responsable_nombre: e.target.value }))} /></div>
+            <div className="input-group"><label>Observación</label><textarea className="input" rows="2" value={form.observacion} onChange={e => setForm(v => ({ ...v, observacion: e.target.value }))} /></div>
+
+            {/* Documentos con vencimiento */}
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>Documentos con vencimiento</div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={addDoc}>{I.plus} Agregar doc</button>
+              </div>
+              {formDocs.length === 0 && <div className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>Sin documentos. Agrega SOAT, pólizas, revisiones técnicas.</div>}
+              {formDocs.map((doc, i) => (
+                <div key={i} style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 8 }}>
+                  <div className="grid-2" style={{ gap: 8, marginBottom: 8 }}>
+                    <div className="input-group" style={{ marginBottom: 0 }}><label style={{ fontSize: 11 }}>Tipo</label>
+                      <select className="select" value={doc.tipo} onChange={e => updDoc(i, 'tipo', e.target.value)}>
+                        {DOC_TIPOS_ACTIVO.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div className="input-group" style={{ marginBottom: 0 }}><label style={{ fontSize: 11 }}>Nombre / descripción</label><input className="input" value={doc.nombre} onChange={e => updDoc(i, 'nombre', e.target.value)} /></div>
+                    <div className="input-group" style={{ marginBottom: 0 }}><label style={{ fontSize: 11 }}>Vencimiento</label><input className="input" type="date" value={doc.fecha_vencimiento} onChange={e => updDoc(i, 'fecha_vencimiento', e.target.value)} /></div>
+                    <div className="input-group" style={{ marginBottom: 0 }}><label style={{ fontSize: 11 }}>Días de alerta</label><input className="input" type="number" min="0" step="1" value={doc.dias_alerta} onChange={e => updDoc(i, 'dias_alerta', e.target.value)} /></div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    {doc.fecha_vencimiento ? (
+                      <span style={{ fontSize: 11, color: colorSemaforo[semaforo(doc)] }}>
+                        ● {semaforo(doc) === 'verde' ? 'Vigente' : semaforo(doc) === 'amarillo' ? 'Por vencer' : 'VENCIDO'}
+                      </span>
+                    ) : <span />}
+                    <button type="button" className="btn btn-secondary btn-sm" style={{ color: 'var(--danger)' }} onClick={() => delDoc(i)}>Quitar</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="row mt-6" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-secondary" onClick={cerrarPanel}>Cancelar</button>
+              <button className="btn btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : panel === 'nuevo' ? 'Crear activo' : 'Guardar cambios'}</button>
+            </div>
+          </form>
+        </div></>
+      )}
+
+      {/* ── PANEL VER DETALLE (Maestro) ─────────────────────────────────────── */}
+      {panel === 'ver' && selActivo && (
+        <><div className="side-panel-backdrop" onClick={cerrarPanel} /><div className="side-panel" style={{ width: 'min(560px,96vw)' }}>
+          <div className="side-panel-head">
+            <div><div className="eyebrow">{selActivo.codigo}</div><div style={{ fontWeight: 700, fontSize: 20 }}>{selActivo.nombre}</div></div>
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => abrirEditar(selActivo)}>Editar</button>
+              {selActivo.estado !== 'dado_baja' && (
+                <button className="btn btn-secondary btn-sm" style={{ color: 'var(--danger)' }} onClick={() => { setModalBaja(selActivo); setBajaMotivo(''); cerrarPanel(); }}>Dar de baja</button>
+              )}
+              <button className="icon-btn" onClick={cerrarPanel}>{I.x}</button>
+            </div>
+          </div>
+          <div className="side-panel-body">
+            {/* Ficha */}
+            <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {[
+                  ['Tipo', ACTIVO_TIPOS.find(t => t.value === selActivo.tipo_categoria)?.label || selActivo.tipo_categoria || '-'],
+                  ['Estado', String(selActivo.estado || '').replace('_', ' ')],
+                  ['Marca / Modelo', [selActivo.marca, selActivo.modelo].filter(Boolean).join(' / ') || '-'],
+                  ['Placa / Serie', selActivo.placa_serie || '-'],
+                  ['Ubicación', selActivo.ubicacion || '-'],
+                  ['Responsable', selActivo.responsable_nombre || '-'],
+                  ['CECO', cecoNombre(selActivo.centro_costo_id)],
+                  ['Fecha alta', selActivo.fecha_alta || '-'],
+                ].map(([l, v]) => <div key={l}><div style={{ fontSize: 10, color: 'var(--fg-muted)' }}>{l}</div><div style={{ fontWeight: 600, fontSize: 13 }}>{v}</div></div>)}
+              </div>
+            </div>
+
+            {/* Depreciación referencial */}
+            {(() => { const d = calcDeprec(selActivo); return d ? (
+              <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: 'var(--fg-muted)', fontWeight: 700, marginBottom: 8 }}>Depreciación referencial lineal</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <div><div style={{ fontSize: 10, color: 'var(--fg-muted)' }}>Valor adquisición</div><strong>{money(Number(selActivo.valor_adquisicion || 0), symOf(selActivo.moneda))}</strong></div>
+                  <div><div style={{ fontSize: 10, color: 'var(--fg-muted)' }}>Valor actual est.</div><strong>{money(d.valorActual, symOf(selActivo.moneda))}</strong></div>
+                  <div><div style={{ fontSize: 10, color: 'var(--fg-muted)' }}>Depreciado</div><strong style={{ color: d.pct >= 80 ? 'var(--danger)' : d.pct >= 50 ? 'var(--orange)' : undefined }}>{d.pct}%</strong></div>
+                </div>
+                <div style={{ background: 'var(--border-subtle)', borderRadius: 4, height: 6, marginTop: 10, overflow: 'hidden' }}>
+                  <div style={{ width: `${d.pct}%`, height: '100%', background: d.pct >= 80 ? 'var(--danger)' : d.pct >= 50 ? 'var(--orange)' : 'var(--success)', borderRadius: 4 }} />
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>Vida útil: {selActivo.vida_util_anos} años · Inicio: {selActivo.fecha_alta}</div>
+              </div>
+            ) : null; })()}
+
+            {/* Documentos */}
+            {Array.isArray(selActivo.documentos) && selActivo.documentos.length > 0 && (
+              <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: 'var(--fg-muted)', fontWeight: 700, marginBottom: 8 }}>Documentos con vencimiento</div>
+                {selActivo.documentos.map((doc, i) => {
+                  const s = semaforo(doc);
+                  return (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: i < selActivo.documentos.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{doc.tipo}{doc.nombre ? ` — ${doc.nombre}` : ''}</div>
+                        <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Vence: {doc.fecha_vencimiento || 'Sin fecha'}</div>
+                      </div>
+                      <span style={{ fontSize: 12, color: colorSemaforo[s], fontWeight: 700 }}>
+                        ● {s === 'verde' ? 'Vigente' : s === 'amarillo' ? 'Por vencer' : s === 'rojo' ? 'VENCIDO' : 'Sin fecha'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {selActivo.observacion && (
+              <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 4 }}>Observación</div>
+                <div style={{ fontSize: 13 }}>{selActivo.observacion}</div>
+              </div>
+            )}
+
+            {selActivo.estado === 'dado_baja' && selActivo.baja_motivo && (
+              <div className="card" style={{ padding: 14, border: '1px solid var(--danger)', background: 'var(--danger-lt)' }}>
+                <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 700, marginBottom: 4 }}>Dado de baja</div>
+                <div style={{ fontSize: 13 }}>{selActivo.baja_motivo}</div>
+                {selActivo.baja_at && <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>{selActivo.baja_at.slice(0, 10)}</div>}
+              </div>
+            )}
+          </div>
+        </div></>
+      )}
+
+      {/* ── MODAL BAJA ────────────────────────────────────────────────────────── */}
+      {modalBaja && (
+        <><div className="side-panel-backdrop" onClick={() => setModalBaja(null)} />
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 1001, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 12, padding: 28, width: 'min(460px,96vw)', boxShadow: '0 8px 32px rgba(0,0,0,.18)' }}>
+            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 8 }}>Dar de baja: {modalBaja.nombre}</div>
+            <div className="text-muted" style={{ fontSize: 13, marginBottom: 16 }}>Esta acción desactiva el activo. El registro queda con historial completo (no se elimina).</div>
+            <div className="input-group">
+              <label>Motivo de baja *</label>
+              <textarea className="input" rows="3" placeholder="Ej: Siniestro total, fin de vida útil, venta..." value={bajaMotivo} onChange={e => setBajaMotivo(e.target.value)} />
+            </div>
+            <div className="row mt-6" style={{ justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn btn-secondary" onClick={() => setModalBaja(null)}>Cancelar</button>
+              <button className="btn btn-primary" style={{ background: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={confirmarBaja}>Confirmar baja</button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

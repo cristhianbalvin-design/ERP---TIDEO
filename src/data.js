@@ -1014,10 +1014,148 @@ export const almacenesDepositos = [
   { id:'alm_003', codigo:'ALM-003', nombre:'Almacén Móvil Unidad 1', tipo:'Móvil', responsable:'Juan Técnico', direccion:'—', estado:'activo' },
   { id:'alm_004', codigo:'ALM-004', nombre:'Almacén en Tránsito', tipo:'Tránsito', responsable:'—', direccion:'—', estado:'activo' }
 ];
+// ─── Mock: Transportistas ─────────────────────────────────────────────────────
+export const transportistasMock = [
+  {
+    id: 'tra_001', empresa_id: 'emp_001',
+    ruc: '20512345678', razon_social: 'Transporte Rapido SAC',
+    nombre_comercial: 'Transporte Rapido', nro_mtc: 'MTC-0024587',
+    direccion: 'Av. Huarochiri 1205, Lima', telefono: '01-480-2233', email: 'ops@transporterapido.pe',
+    activo: true, created_at: '2025-01-10T00:00:00Z',
+    vehiculos: [
+      { id: 'veh_001', placa: 'A3G-452', marca: 'Volvo', modelo: 'FH 460', tipo: 'camion', nro_certificado_habilitacion: 'HAB-2024-00451', activo: true },
+      { id: 'veh_002', placa: 'B7K-890', marca: 'Mercedes', modelo: 'Atego 1726', tipo: 'furgon', nro_certificado_habilitacion: 'HAB-2024-00892', activo: true },
+    ],
+    conductores: [
+      { id: 'con_001', nombre: 'Hugo Pinedo Salas', dni: '42356789', brevete: 'Q62845901', categoria_brevete: 'A-III', vigencia_brevete: '2027-06-30', activo: true },
+      { id: 'con_002', nombre: 'Carlos Villena Ramos', dni: '38901234', brevete: 'Q51234567', categoria_brevete: 'A-II', vigencia_brevete: '2026-12-31', activo: true },
+    ]
+  },
+  {
+    id: 'tra_002', empresa_id: 'emp_001',
+    ruc: '20587654321', razon_social: 'Logistica Norte EIRL',
+    nombre_comercial: 'LogNorte', nro_mtc: 'MTC-0098241',
+    direccion: 'Jr. Los Eucaliptos 342, Independencia', telefono: '01-525-8891', email: 'logistica@lognorte.pe',
+    activo: true, created_at: '2025-03-01T00:00:00Z',
+    vehiculos: [
+      { id: 'veh_003', placa: 'D2H-311', marca: 'Scania', modelo: 'R 450', tipo: 'camion', nro_certificado_habilitacion: 'HAB-2025-00123', activo: true },
+    ],
+    conductores: [
+      { id: 'con_003', nombre: 'Andres Gomez Flores', dni: '45678901', brevete: 'Q78912340', categoria_brevete: 'A-III', vigencia_brevete: '2028-03-15', activo: true },
+    ]
+  },
+];
+
+// ─── Mock: Catálogo de Venta ──────────────────────────────────────────────────
+export const catalogoVentaMock = [
+  { id: 'cat_001', empresa_id: 'emp_001', codigo: 'PROD-001', descripcion: 'Filtro de aceite industrial CAT', unidad: 'NIU', precio_lista: 180, moneda: 'PEN', descuento_maximo_pct: 15, activo: true },
+  { id: 'cat_002', empresa_id: 'emp_001', codigo: 'PROD-002', descripcion: 'Rodamiento SKF 6205-2RS', unidad: 'NIU', precio_lista: 95, moneda: 'PEN', descuento_maximo_pct: 10, activo: true },
+  { id: 'cat_003', empresa_id: 'emp_001', codigo: 'PROD-003', descripcion: 'Correa de transmisión B-65', unidad: 'NIU', precio_lista: 75, moneda: 'PEN', descuento_maximo_pct: 10, activo: true },
+  { id: 'cat_004', empresa_id: 'emp_001', codigo: 'PROD-004', descripcion: 'Kit de empaques variados 1/2"', unidad: 'NIU', precio_lista: 48, moneda: 'PEN', descuento_maximo_pct: 5, activo: true },
+  { id: 'cat_005', empresa_id: 'emp_001', codigo: 'PROD-005', descripcion: 'Grasa industrial Mobilux EP 2 (18 kg)', unidad: 'NIU', precio_lista: 320, moneda: 'PEN', descuento_maximo_pct: 20, activo: true },
+];
+
+// ─── Mock: Órdenes de Venta ───────────────────────────────────────────────────
+export const ordenesVentaMock = [
+  {
+    id: 'ov_001', empresa_id: 'emp_001', numero: 'OV-2026-0012',
+    cuenta_id: 'cta_001', cliente_nombre: 'Minera Andes SAC', cliente_ruc_dni: '20123456789',
+    cliente_direccion: 'Av. Javier Prado Este 4200, San Isidro',
+    moneda: 'PEN', condicion_pago: '30_dias',
+    fecha_emision: '2026-06-05', fecha_entrega: '2026-06-10',
+    almacen_despacho_id: 'alm_001',
+    subtotal: 720, igv: 129.60, total: 849.60,
+    estado: 'confirmada',
+    lineas: [
+      { id: 'ovl_001', descripcion: 'Filtro de aceite industrial CAT', codigo: 'PROD-001', unidad: 'NIU', cantidad: 4, precio_unitario: 180, descuento_pct: 0, subtotal: 720 },
+    ]
+  },
+  {
+    id: 'ov_002', empresa_id: 'emp_001', numero: 'OV-2026-0011',
+    cuenta_id: 'cta_002', cliente_nombre: 'Facilities Lima SA', cliente_ruc_dni: '20456789012',
+    cliente_direccion: 'Jr. Las Orquídeas 123, San Borja',
+    moneda: 'PEN', condicion_pago: 'contado',
+    fecha_emision: '2026-06-03', fecha_entrega: '2026-06-07',
+    almacen_despacho_id: 'alm_001',
+    subtotal: 760, igv: 136.80, total: 896.80,
+    estado: 'despachada',
+    lineas: [
+      { id: 'ovl_002', descripcion: 'Rodamiento SKF 6205-2RS', codigo: 'PROD-002', unidad: 'NIU', cantidad: 4, precio_unitario: 95, descuento_pct: 0, subtotal: 380 },
+      { id: 'ovl_003', descripcion: 'Correa de transmisión B-65', codigo: 'PROD-003', unidad: 'NIU', cantidad: 4, precio_unitario: 75, descuento_pct: 5, subtotal: 285 },
+      { id: 'ovl_004', descripcion: 'Grasa industrial Mobilux EP 2 (18 kg)', codigo: 'PROD-005', unidad: 'NIU', cantidad: 0.3, precio_unitario: 320, descuento_pct: 10, subtotal: 86.40 },
+    ]
+  },
+];
+
+// ─── Mock: Guías de Remisión (estructura SUNAT completa) ─────────────────────
 export const remisiones = [
-  { id: 'GR-002-4512', ot: 'OT-25-0012', destino: 'Minera Andes - Planta Norte', transportista: 'Transporte Rapido SAC / H. Pinedo', fecha: '2026-04-26', estado: 'en_transito' },
-  { id: 'GR-002-4508', ot: 'OT-25-0013', destino: 'Facilities Lima - Sede Sur', transportista: 'Unidad propia / A. Gomez', fecha: '2026-04-24', estado: 'entregado' },
-  { id: 'GR-002-4499', ot: 'OT-25-0011', destino: 'PIN SRL - Planta Ancon', transportista: 'Logistica Norte EIRL', fecha: '2026-04-20', estado: 'entregado' }
+  {
+    id: 'gr_001', empresa_id: 'emp_001',
+    serie: 'T001', numero: 3, numero_completo: 'T001-00000003',
+    fecha_emision: '2026-06-10', fecha_inicio_traslado: '2026-06-10',
+    tipo_origen: 'despacho_venta', motivo_traslado: '01', modalidad: 'remitente',
+    orden_venta_id: 'ov_001', ot_id: null,
+    almacen_origen_id: 'alm_001',
+    partida_direccion: 'Av. Argentina 2450, Cercado de Lima', partida_ubigeo: '150101',
+    llegada_direccion: 'Av. Javier Prado Este 4200, San Isidro, Lima', llegada_ubigeo: '150131',
+    destinatario_ruc_dni: '20123456789', destinatario_razon_social: 'Minera Andes SAC',
+    peso_bruto_total: 12.5, unidad_peso: 'KGM',
+    transportista_id: 'tra_001', transportista_ruc: '20512345678',
+    transportista_razon_social: 'Transporte Rapido SAC', transportista_nro_mtc: 'MTC-0024587',
+    vehiculo_id: 'veh_001', vehiculo_placa: 'A3G-452', vehiculo_cert_habilitacion: 'HAB-2024-00451',
+    conductor_id: 'con_001', conductor_nombre: 'Hugo Pinedo Salas', conductor_dni: '42356789', conductor_brevete: 'Q62845901',
+    estado: 'en_transito', kardex_salida_ids: [],
+    anulado: false,
+    lineas: [
+      { id: 'grl_001', material_id: null, descripcion: 'Filtro de aceite industrial CAT', codigo: 'PROD-001', unidad: 'NIU', cantidad: 4, peso_unitario: 3.1, peso_total: 12.4, precio_unitario: 180, valor_total: 720, moneda: 'PEN' }
+    ],
+    created_at: '2026-06-10T08:00:00Z'
+  },
+  {
+    id: 'gr_002', empresa_id: 'emp_001',
+    serie: 'T001', numero: 2, numero_completo: 'T001-00000002',
+    fecha_emision: '2026-06-07', fecha_inicio_traslado: '2026-06-07',
+    tipo_origen: 'despacho_venta', motivo_traslado: '01', modalidad: 'remitente',
+    orden_venta_id: 'ov_002', ot_id: null,
+    almacen_origen_id: 'alm_001',
+    partida_direccion: 'Av. Argentina 2450, Cercado de Lima', partida_ubigeo: '150101',
+    llegada_direccion: 'Jr. Las Orquídeas 123, San Borja, Lima', llegada_ubigeo: '150137',
+    destinatario_ruc_dni: '20456789012', destinatario_razon_social: 'Facilities Lima SA',
+    peso_bruto_total: 8.2, unidad_peso: 'KGM',
+    transportista_id: 'tra_001', transportista_ruc: '20512345678',
+    transportista_razon_social: 'Transporte Rapido SAC', transportista_nro_mtc: 'MTC-0024587',
+    vehiculo_id: 'veh_001', vehiculo_placa: 'A3G-452', vehiculo_cert_habilitacion: 'HAB-2024-00451',
+    conductor_id: 'con_001', conductor_nombre: 'Hugo Pinedo Salas', conductor_dni: '42356789', conductor_brevete: 'Q62845901',
+    estado: 'entregada', kardex_salida_ids: ['kdx_mock_001'],
+    anulado: false,
+    lineas: [
+      { id: 'grl_002', material_id: null, descripcion: 'Rodamiento SKF 6205-2RS', codigo: 'PROD-002', unidad: 'NIU', cantidad: 4, peso_unitario: 0.4, peso_total: 1.6, precio_unitario: 95, valor_total: 380, moneda: 'PEN' },
+      { id: 'grl_003', material_id: null, descripcion: 'Correa de transmisión B-65', codigo: 'PROD-003', unidad: 'NIU', cantidad: 4, peso_unitario: 1.2, peso_total: 4.8, precio_unitario: 75, valor_total: 300, moneda: 'PEN' },
+    ],
+    created_at: '2026-06-07T09:30:00Z'
+  },
+  {
+    id: 'gr_003', empresa_id: 'emp_001',
+    serie: 'T001', numero: 1, numero_completo: 'T001-00000001',
+    fecha_emision: '2026-05-28', fecha_inicio_traslado: '2026-05-28',
+    tipo_origen: 'traslado_interno', motivo_traslado: '03', modalidad: 'remitente',
+    orden_venta_id: null, ot_id: 'OT-25-0012',
+    almacen_origen_id: 'alm_001',
+    partida_direccion: 'Av. Argentina 2450, Cercado de Lima', partida_ubigeo: '150101',
+    llegada_direccion: 'Carretera Panamericana Norte Km 23, Puente Piedra', llegada_ubigeo: '150122',
+    destinatario_ruc_dni: '20101234567', destinatario_razon_social: 'Servicios Industriales Norte SAC',
+    peso_bruto_total: 45.0, unidad_peso: 'KGM',
+    transportista_id: 'tra_002', transportista_ruc: '20587654321',
+    transportista_razon_social: 'Logistica Norte EIRL', transportista_nro_mtc: 'MTC-0098241',
+    vehiculo_id: 'veh_003', vehiculo_placa: 'D2H-311', vehiculo_cert_habilitacion: 'HAB-2025-00123',
+    conductor_id: 'con_003', conductor_nombre: 'Andres Gomez Flores', conductor_dni: '45678901', conductor_brevete: 'Q78912340',
+    estado: 'entregada', kardex_salida_ids: ['kdx_mock_002'],
+    anulado: false,
+    lineas: [
+      { id: 'grl_004', material_id: null, descripcion: 'Equipo de soldadura TIG 350A', codigo: 'EQP-TIG-350', unidad: 'NIU', cantidad: 1, peso_unitario: 45, peso_total: 45, precio_unitario: 0, valor_total: 0, moneda: 'PEN' }
+    ],
+    created_at: '2026-05-28T07:00:00Z'
+  },
 ];
 export const ventas = [
   { id: 'VEN-2026-0041', fecha: '2026-04-20', cliente: 'Minera Andes SAC', concepto: 'Servicio mantenimiento preventivo', monto: 95000, moneda: 'PEN', estado: 'emitida' },
@@ -1190,73 +1328,76 @@ export const requisitosCargo = [
   { id: 'cdr_m07', empresa_id: 'emp_001', cargo_id: 'car_015', tipo_documento_id: 'tdoc_m003', obligatorio: true },
 ];
 
+const MOCK_DOC_PDF_URL = 'data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAzMDAgMTQ0XSA+PgplbmRvYmoKeHJlZgowIDQKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTggMDAwMDAgbiAKMDAwMDAwMDExNSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9Sb290IDEgMCBSIC9TaXplIDQgPj4Kc3RhcnR4cmVmCjE4OQolJUVPRgo=';
+const MOCK_DOC_IMAGE_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAwCAIAAAAtpsTAAAAATUlEQVRo3u3OMQ0AAAgDsPn/0yEQQQqtBcw7STPzNwEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4NwIPAAFo4gD5AAAAAElFTkSuQmCC';
+
 // Documentos del personal (mock — cubre todos los estados del semáforo)
 // Referencia: hoy = 2026-06-10
 export const personalDocumentos = [
   // pop_001 — en_regla: SCTR vigente, Médico vigente, EPP ok (sin vencimiento)
   { id: 'pdoc_m001', empresa_id: 'emp_001', personal_id: 'pop_001', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m001', nombre_archivo: 'sctr_mendoza.pdf', activo: true,
+    tipo_doc: 'tdoc_m001', tipo_documento_id: 'tdoc_m001', nombre_archivo: 'sctr_mendoza.pdf', activo: true,
     fecha_emision: '2026-01-01', fecha_vencimiento: '2026-12-31',
-    version: 1, estado_validacion: 'aprobado', notas: null },
+    version: 1, estado_validacion: 'aprobado', archivo_url: MOCK_DOC_PDF_URL, subido_por: 'RRHH Demo', creado_en: '2026-01-01T09:00:00Z', revisado_por: 'RRHH Demo', revisado_en: '2026-01-01T10:00:00Z', notas: null },
   { id: 'pdoc_m002', empresa_id: 'emp_001', personal_id: 'pop_001', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m002', nombre_archivo: 'medico_mendoza.pdf', activo: true,
+    tipo_doc: 'tdoc_m002', tipo_documento_id: 'tdoc_m002', nombre_archivo: 'medico_mendoza.pdf', activo: true,
     fecha_emision: '2026-02-01', fecha_vencimiento: '2026-12-01',
     version: 1, estado_validacion: 'aprobado', notas: null },
   { id: 'pdoc_m003', empresa_id: 'emp_001', personal_id: 'pop_001', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m003', nombre_archivo: 'epp_mendoza.pdf', activo: true,
+    tipo_doc: 'tdoc_m003', tipo_documento_id: 'tdoc_m003', nombre_archivo: 'epp_mendoza.png', activo: true,
     fecha_emision: '2026-03-01', fecha_vencimiento: null,
-    version: 1, estado_validacion: 'aprobado', notas: null },
+    version: 1, estado_validacion: 'aprobado', archivo_url: MOCK_DOC_IMAGE_URL, subido_por: 'RRHH Demo', creado_en: '2026-03-01T09:00:00Z', revisado_por: 'RRHH Demo', revisado_en: '2026-03-01T10:00:00Z', notas: null },
 
   // pop_002 — advertencia: SCTR por vencer (15 días), Médico vigente, EPP ok
   { id: 'pdoc_m004', empresa_id: 'emp_001', personal_id: 'pop_002', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m001', nombre_archivo: 'sctr_reyes.pdf', activo: true,
+    tipo_doc: 'tdoc_m001', tipo_documento_id: 'tdoc_m001', nombre_archivo: 'sctr_reyes.pdf', activo: true,
     fecha_emision: '2025-06-25', fecha_vencimiento: '2026-06-25',
     version: 1, estado_validacion: 'aprobado', notas: null },
   { id: 'pdoc_m005', empresa_id: 'emp_001', personal_id: 'pop_002', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m002', nombre_archivo: 'medico_reyes.pdf', activo: true,
+    tipo_doc: 'tdoc_m002', tipo_documento_id: 'tdoc_m002', nombre_archivo: 'medico_reyes.pdf', activo: true,
     fecha_emision: '2026-01-15', fecha_vencimiento: '2026-11-15',
     version: 1, estado_validacion: 'aprobado', notas: null },
   { id: 'pdoc_m006', empresa_id: 'emp_001', personal_id: 'pop_002', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m003', nombre_archivo: 'epp_reyes.pdf', activo: true,
+    tipo_doc: 'tdoc_m003', tipo_documento_id: 'tdoc_m003', nombre_archivo: 'epp_reyes.pdf', activo: true,
     fecha_emision: '2026-02-01', fecha_vencimiento: null,
     version: 1, estado_validacion: 'aprobado', notas: null },
 
   // pop_003 — crítico: SCTR vigente, Médico VENCIDO, EPP en revisión
   { id: 'pdoc_m007', empresa_id: 'emp_001', personal_id: 'pop_003', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m001', nombre_archivo: 'sctr_torres.pdf', activo: true,
+    tipo_doc: 'tdoc_m001', tipo_documento_id: 'tdoc_m001', nombre_archivo: 'sctr_torres.pdf', activo: true,
     fecha_emision: '2025-10-01', fecha_vencimiento: '2026-09-30',
     version: 1, estado_validacion: 'aprobado', notas: null },
   { id: 'pdoc_m008', empresa_id: 'emp_001', personal_id: 'pop_003', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m002', nombre_archivo: 'medico_torres.pdf', activo: true,
+    tipo_doc: 'tdoc_m002', tipo_documento_id: 'tdoc_m002', nombre_archivo: 'medico_torres.pdf', activo: true,
     fecha_emision: '2025-05-01', fecha_vencimiento: '2026-05-01',
     version: 1, estado_validacion: 'aprobado', notas: null },
   { id: 'pdoc_m009', empresa_id: 'emp_001', personal_id: 'pop_003', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m003', nombre_archivo: 'epp_torres_v2.pdf', activo: true,
+    tipo_doc: 'tdoc_m003', tipo_documento_id: 'tdoc_m003', nombre_archivo: 'epp_torres_v2.pdf', activo: true,
     fecha_emision: '2026-06-05', fecha_vencimiento: null,
     version: 2, estado_validacion: 'pendiente', notas: 'Reposición de equipo' },
 
   // pop_004 — crítico: SCTR rechazado, Médico vigente, EPP FALTA (no hay doc)
   { id: 'pdoc_m010', empresa_id: 'emp_001', personal_id: 'pop_004', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m001', nombre_archivo: 'sctr_quispe.pdf', activo: true,
+    tipo_doc: 'tdoc_m001', tipo_documento_id: 'tdoc_m001', nombre_archivo: 'sctr_quispe.pdf', activo: true,
     fecha_emision: '2026-01-01', fecha_vencimiento: '2026-12-31',
     version: 1, estado_validacion: 'rechazado', motivo_rechazo: 'Datos del empleador incorrectos', notas: null },
   { id: 'pdoc_m011', empresa_id: 'emp_001', personal_id: 'pop_004', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m002', nombre_archivo: 'medico_quispe.pdf', activo: true,
-    fecha_emision: '2026-03-01', fecha_vencimiento: '2026-11-01',
+    tipo_doc: 'tdoc_m002', tipo_documento_id: 'tdoc_m002', nombre_archivo: 'medico_quispe.pdf', activo: true,
+    fecha_emision: '2026-03-01', fecha_vencimiento: null,
     version: 1, estado_validacion: 'aprobado', notas: null },
   // tdoc_m003 (EPP) no tiene documento → falta
 
   // pop_005 — advertencia: SCTR en revisión, Médico por vencer, EPP ok
   { id: 'pdoc_m012', empresa_id: 'emp_001', personal_id: 'pop_005', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m001', nombre_archivo: 'sctr_condori.pdf', activo: true,
+    tipo_doc: 'tdoc_m001', tipo_documento_id: 'tdoc_m001', nombre_archivo: 'sctr_condori.pdf', activo: true,
     fecha_emision: '2026-06-08', fecha_vencimiento: '2026-12-08',
     version: 2, estado_validacion: 'pendiente', notas: 'Renovación subida hoy' },
   { id: 'pdoc_m013', empresa_id: 'emp_001', personal_id: 'pop_005', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m002', nombre_archivo: 'medico_condori.pdf', activo: true,
+    tipo_doc: 'tdoc_m002', tipo_documento_id: 'tdoc_m002', nombre_archivo: 'medico_condori.pdf', activo: true,
     fecha_emision: '2025-07-01', fecha_vencimiento: '2026-06-30',
     version: 1, estado_validacion: 'aprobado', notas: null },
   { id: 'pdoc_m014', empresa_id: 'emp_001', personal_id: 'pop_005', personal_tipo: 'operativo',
-    tipo_doc: 'tdoc_m003', nombre_archivo: 'epp_condori.pdf', activo: true,
+    tipo_doc: 'tdoc_m003', tipo_documento_id: 'tdoc_m003', nombre_archivo: 'epp_condori.pdf', activo: true,
     fecha_emision: '2026-01-10', fecha_vencimiento: null,
     version: 1, estado_validacion: 'aprobado', notas: null },
 
@@ -1891,6 +2032,7 @@ export const MOCK = {
   actividades, hojasCosteo, cotizaciones, osClientes, ots, partes, compras, cxc,
   movimientosBanco, estadoResultados, pantallasPermisos, servicios,
   tarifarios, maestros, backlog, tickets, remisiones, solpes, ventas, cajaChica,
+  transportistasMock, catalogoVentaMock, ordenesVentaMock,
   prestamos, financiamientos, movimientosTesoreria, cuentasBancarias, cxp, inventario, valorizaciones, proveedores, documentosProveedor,
   evaluacionesProveedor, contactosProveedor, procesosCompra, respuestasCompra,
   ordenesCompra, ordenesServicio, recepciones,

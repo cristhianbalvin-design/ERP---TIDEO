@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+﻿import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
@@ -34,6 +34,197 @@ import * as XLSX from 'xlsx';
 const symOf = m => String(m || 'PEN').trim().toUpperCase() === 'USD' ? 'US$' : 'S/';
 const moneyCurrency = (value, moneda = 'PEN') => money(value, symOf(moneda));
 
+const HAB_DOC_LABEL = {
+  vigente: 'Vigente',
+  por_vencer: 'Por vencer',
+  vencido: 'Vencido',
+  falta: 'Falta',
+  en_revision: 'En revision',
+  rechazado: 'Rechazado',
+  incompleto: 'Incompleto',
+};
+
+const HAB_DOC_BADGE = {
+  vigente: 'badge-green',
+  por_vencer: 'badge-orange',
+  vencido: 'badge-red',
+  falta: 'badge-gray',
+  en_revision: 'badge-cyan',
+  rechazado: 'badge-red',
+  incompleto: 'badge-orange',
+};
+
+const HAB_GLOBAL_LABEL = {
+  no_habilitado: 'No habilitado para campo',
+  alerta: 'Alerta',
+  habilitado: 'En regla',
+  sin_configurar: 'Sin configurar',
+};
+
+const HAB_GLOBAL_BADGE = {
+  no_habilitado: 'badge-red',
+  alerta: 'badge-orange',
+  habilitado: 'badge-green',
+  sin_configurar: 'badge-gray',
+};
+
+const habEstadoGlobalDesdeDocs = (docs = []) => {
+  const habilitantes = docs.filter(d => d.es_habilitante === true || d.es_habilitante === 'true' || d.es_habilitante === 1 || d.es_habilitante === '1');
+  if (!habilitantes.length) return 'sin_configurar';
+  const estados = habilitantes.map(d => d.estado);
+  if (estados.some(e => ['vencido', 'rechazado', 'falta', 'incompleto'].includes(e))) return 'no_habilitado';
+  if (estados.some(e => ['por_vencer', 'en_revision'].includes(e))) return 'alerta';
+  return 'habilitado';
+};
+
+const habDiasTexto = (dias) => {
+  if (dias === null || dias === undefined || dias === '') return '';
+  const n = Number(dias);
+  if (!Number.isFinite(n)) return '';
+  if (n === 0) return 'vence hoy';
+  return n > 0 ? `quedan ${n} dias` : `vencio hace ${Math.abs(n)} dias`;
+};
+
+const habTooltip = (req) => {
+  if (!req) return '';
+  const partes = [
+    req.tipo?.nombre || req.tipo_doc_nombre || req.tipo_documento_id,
+    `Estado: ${HAB_DOC_LABEL[req.estado] || req.estado || 'sin estado'}`,
+  ];
+  if (req.fecha_vencimiento) partes.push(`Vence: ${req.fecha_vencimiento}`);
+  const dias = habDiasTexto(req.dias_restantes);
+  if (dias) partes.push(dias);
+  if (req.doc?.motivo_rechazo) partes.push(`Motivo: ${req.doc.motivo_rechazo}`);
+  return partes.filter(Boolean).join('\n');
+};
+
+const habMimeKind = (doc = {}, url = '') => {
+  const raw = `${doc.nombre_archivo || ''} ${doc.mime_type || doc.content_type || ''} ${url || doc.archivo_url || ''}`.toLowerCase();
+  if (raw.includes('application/pdf') || raw.includes('.pdf')) return 'pdf';
+  if (raw.includes('image/') || /\.(png|jpe?g|webp|gif)(\?|#|$)/i.test(raw)) return 'image';
+  return 'other';
+};
+
+function DocumentoPersonalPreview({
+  req,
+  persona,
+  url,
+  loadingUrl,
+  canValidate,
+  validatingId,
+  onClose,
+  onReplace,
+  onValidate,
+  onDownload,
+}) {
+  const [imgFit, setImgFit] = useState('fit');
+  const [rejecting, setRejecting] = useState(false);
+  const [motivo, setMotivo] = useState('');
+  if (!req?.doc) return null;
+  const doc = req.doc;
+  const kind = habMimeKind(doc, url);
+  const estado = req.estado || doc.estado;
+  const dias = habDiasTexto(req.dias_restantes);
+  const puedeValidar = Boolean(
+    canValidate &&
+    doc.estado_validacion === 'pendiente' &&
+    req.tipo?.requiere_validacion
+  );
+  const metaRow = (label, value, tone) => value ? (
+    <div style={{display:'grid', gap:3}}>
+      <div style={{fontSize:11, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:0}}>{label}</div>
+      <div style={{fontSize:13, color:tone || 'var(--fg)'}}>{value}</div>
+    </div>
+  ) : null;
+  const confirmarRechazo = () => {
+    if (!motivo.trim()) return;
+    onValidate(doc.id, 'rechazado', motivo.trim());
+    setRejecting(false);
+    setMotivo('');
+  };
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{width:'min(1120px,96vw)', maxWidth:'1120px'}}>
+        <div className="modal-head">
+          <div>
+            <h3 style={{marginBottom:2}}>{req.tipo?.nombre || req.tipo_documento_id}</h3>
+            <div className="text-muted" style={{fontSize:12}}>{persona?.nombre} Â· {doc.nombre_archivo || 'Documento'}</div>
+          </div>
+          <button className="icon-btn" onClick={onClose}>{I.x}</button>
+        </div>
+        <div className="modal-body" style={{display:'grid', gridTemplateColumns:'minmax(0,1fr) 300px', gap:18, alignItems:'stretch'}}>
+          <div style={{minHeight:520, background:'var(--bg-subtle)', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center'}}>
+            {loadingUrl ? (
+              <div className="text-muted" style={{fontSize:13}}>Cargando documento...</div>
+            ) : !url ? (
+              <div style={{textAlign:'center', padding:24}}>
+                <div style={{fontWeight:600, marginBottom:8}}>No se pudo generar el visor</div>
+                <button className="btn btn-secondary btn-sm" onClick={onDownload}>{I.download} Descargar</button>
+              </div>
+            ) : kind === 'pdf' ? (
+              <iframe title={doc.nombre_archivo || 'Documento PDF'} src={url} style={{border:0, width:'100%', height:'72vh', minHeight:520}} />
+            ) : kind === 'image' ? (
+              <div style={{width:'100%', height:'72vh', minHeight:520, display:'flex', flexDirection:'column'}}>
+                <div style={{padding:8, borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'flex-end', gap:6}}>
+                  <button className={'btn btn-sm ' + (imgFit === 'fit' ? 'btn-primary' : 'btn-ghost')} onClick={() => setImgFit('fit')}>Ajustar</button>
+                  <button className={'btn btn-sm ' + (imgFit === 'real' ? 'btn-primary' : 'btn-ghost')} onClick={() => setImgFit('real')}>100%</button>
+                </div>
+                <div style={{flex:1, overflow:'auto', display:'flex', alignItems:imgFit === 'fit' ? 'center' : 'flex-start', justifyContent:imgFit === 'fit' ? 'center' : 'flex-start', padding:16}}>
+                  <img src={url} alt={doc.nombre_archivo || 'Documento'} style={imgFit === 'fit' ? {maxWidth:'100%', maxHeight:'100%', objectFit:'contain'} : {maxWidth:'none'}} />
+                </div>
+              </div>
+            ) : (
+              <div style={{textAlign:'center', padding:24}}>
+                <div style={{fontWeight:600, marginBottom:8}}>Formato no reconocido</div>
+                <div className="text-muted" style={{fontSize:12, marginBottom:14}}>Usa la descarga como respaldo para abrir el archivo.</div>
+                <button className="btn btn-secondary btn-sm" onClick={onDownload}>{I.download} Descargar</button>
+              </div>
+            )}
+          </div>
+          <aside style={{display:'flex', flexDirection:'column', gap:14}}>
+            <span className={'badge ' + (HAB_DOC_BADGE[estado] || 'badge-gray')} style={{alignSelf:'flex-start'}}>
+              {HAB_DOC_LABEL[estado] || estado}
+            </span>
+            {metaRow('Tipo', req.tipo?.nombre || req.tipo_documento_id)}
+            {metaRow('Emision', doc.fecha_emision)}
+            {metaRow('Vencimiento', [doc.fecha_vencimiento, dias].filter(Boolean).join(' Â· '))}
+            {metaRow('Version activa', `Version ${doc.version || 1}${doc.creado_en ? ` Â· Subida el ${String(doc.creado_en).slice(0,10)}` : ''}`)}
+            {metaRow('Subido por', [doc.subido_por_nombre || doc.subido_por, doc.creado_en ? String(doc.creado_en).slice(0,16).replace('T', ' ') : ''].filter(Boolean).join(' Â· '))}
+            {doc.revisado_en && metaRow('Validado por', [doc.revisado_por_nombre || doc.revisado_por, String(doc.revisado_en).slice(0,16).replace('T', ' ')].filter(Boolean).join(' Â· '))}
+            {doc.motivo_rechazo && metaRow('Motivo de rechazo', doc.motivo_rechazo, 'var(--danger)')}
+            {metaRow('Notas', doc.notas)}
+            <div style={{borderTop:'1px solid var(--border)', paddingTop:14, display:'grid', gap:8}}>
+              <button className="btn btn-secondary btn-sm" onClick={onDownload}>{I.download} Descargar</button>
+              {puedeValidar && (
+                <>
+                  <button className="btn btn-primary btn-sm" disabled={validatingId === doc.id} onClick={() => onValidate(doc.id, 'aprobado')}>
+                    {validatingId === doc.id ? 'Procesando...' : 'Validar'}
+                  </button>
+                  {rejecting ? (
+                    <div style={{display:'grid', gap:6}}>
+                      <input className="input" placeholder="Motivo de rechazo" value={motivo} onChange={e => setMotivo(e.target.value)} />
+                      <div className="row" style={{gap:6}}>
+                        <button className="btn btn-danger btn-sm" disabled={!motivo.trim() || validatingId === doc.id} onClick={confirmarRechazo}>Confirmar</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setRejecting(false); setMotivo(''); }}>Cancelar</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} disabled={validatingId === doc.id} onClick={() => setRejecting(true)}>
+                      Rechazar con motivo
+                    </button>
+                  )}
+                </>
+              )}
+              <button className="btn btn-ghost btn-sm" onClick={onReplace}>{I.upload} Reemplazar</button>
+              <button className="btn btn-ghost btn-sm" onClick={onClose}>Cerrar</button>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============ CUENTAS Y CONTACTOS ============
 function Cuentas() {
   const { cuentas, setCuentas, crearCuenta, actualizarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, usuarios, roles, navigate, empresa, addNotificacion, role, authUser, healthScoresDetalle, onboardings, planesExito, npsEncuestas, renovaciones } = useApp();
@@ -49,7 +240,7 @@ function Cuentas() {
     razon_social: '',
     nombre_comercial: '',
     ruc: '',
-    pais: 'Perú',
+    pais: 'PerÃº',
     tipo: 'prospecto',
     industria: '',
     tamano: '',
@@ -84,7 +275,7 @@ function Cuentas() {
   const csPlan    = sel ? planesExito.find(p => p.cuenta_id === sel.id) : null;
   const csNps     = sel ? [...npsEncuestas].filter(n => n.cuenta_id === sel.id).sort((a,b) => (b.fecha_respuesta||'').localeCompare(a.fecha_respuesta||''))[0] : null;
   const csRenov   = sel ? renovaciones.find(r => r.cuenta_id === sel.id) : null;
-  const dimLabels = { comercial:'Comercial', operativa:'Operativa', financiera:'Financiera', soporte:'Soporte', satisfaccion:'Satisfacción' };
+  const dimLabels = { comercial:'Comercial', operativa:'Operativa', financiera:'Financiera', soporte:'Soporte', satisfaccion:'SatisfacciÃ³n' };
 
   const [tlFiltro, setTlFiltro] = useState('todos');
   const [tlDesde, setTlDesde] = useState('');
@@ -105,9 +296,9 @@ function Cuentas() {
     // Lead origen y su historial
     const leadOrig = sel.lead_origen ? leads.find(l => l.id === sel.lead_origen) : null;
     if (leadOrig) {
-      eventos.push({ id:`lead-crea-${leadOrig.id}`, tipo:'lead', fecha:leadOrig.fecha_creacion, titulo:'Lead registrado', descripcion:`${leadOrig.nombre} · ${leadOrig.empresa_contacto} · ${leadOrig.fuente||''}`, usuario:leadOrig.responsable, nav:'leads', navParams:null });
+      eventos.push({ id:`lead-crea-${leadOrig.id}`, tipo:'lead', fecha:leadOrig.fecha_creacion, titulo:'Lead registrado', descripcion:`${leadOrig.nombre} Â· ${leadOrig.empresa_contacto} Â· ${leadOrig.fuente||''}`, usuario:leadOrig.responsable, nav:'leads', navParams:null });
       historialEstados.filter(h => h.lead_id === leadOrig.id).forEach(h => {
-        eventos.push({ id:`lead-hist-${h.id}`, tipo:'lead', fecha:(h.creado_en||'').slice(0,10), titulo:`Lead: ${h.estado_desde} → ${h.estado_hasta}`, descripcion:h.motivo||'', usuario:null, nav:null });
+        eventos.push({ id:`lead-hist-${h.id}`, tipo:'lead', fecha:(h.creado_en||'').slice(0,10), titulo:`Lead: ${h.estado_desde} â†’ ${h.estado_hasta}`, descripcion:h.motivo||'', usuario:null, nav:null });
       });
       if (leadOrig.convertido) {
         eventos.push({ id:`lead-conv-${leadOrig.id}`, tipo:'lead', fecha:leadOrig.fecha_conversion||leadOrig.fecha_creacion, titulo:'Lead convertido en cuenta', descripcion:`Origen de ${sel.razon_social}`, usuario:leadOrig.responsable, nav:'leads', navParams:null });
@@ -121,20 +312,20 @@ function Cuentas() {
 
     // Oportunidades
     opps.forEach(o => {
-      eventos.push({ id:`opp-${o.id}`, tipo:'oportunidad', fecha:o.fecha_creacion, titulo:`Oportunidad creada: ${o.nombre}`, descripcion:`${o.etapa} · ${money(o.monto_estimado)}`, usuario:o.responsable, nav:'pipeline', navParams:{ panel:o.id } });
+      eventos.push({ id:`opp-${o.id}`, tipo:'oportunidad', fecha:o.fecha_creacion, titulo:`Oportunidad creada: ${o.nombre}`, descripcion:`${o.etapa} Â· ${money(o.monto_estimado)}`, usuario:o.responsable, nav:'pipeline', navParams:{ panel:o.id } });
       if (o.fecha_cierre_real && o.estado==='ganada') eventos.push({ id:`opp-won-${o.id}`, tipo:'oportunidad', fecha:o.fecha_cierre_real, titulo:`Oportunidad ganada: ${o.nombre}`, descripcion:money(o.monto_estimado), usuario:o.responsable, nav:'pipeline', navParams:{ panel:o.id } });
       if (o.estado==='perdida') eventos.push({ id:`opp-lost-${o.id}`, tipo:'oportunidad', fecha:o.fecha_cierre_real||o.fecha_cierre_estimada, titulo:`Oportunidad perdida: ${o.nombre}`, descripcion:o.motivo_perdida||'', usuario:o.responsable, nav:'pipeline', navParams:{ panel:o.id } });
     });
     // Cambios de etapa en oportunidades
     (oppHistorialEtapas || []).filter(h => oppIds.has(h.opp_id)).forEach(h => {
       const oppNombre = opps.find(o => o.id === h.opp_id)?.nombre || '';
-      eventos.push({ id:`ohe-${h.id}`, tipo:'oportunidad', fecha:h.fecha, titulo:`Etapa: ${h.etapa_desde} → ${h.etapa_hasta}`, descripcion:oppNombre, usuario:h.usuario, nav:'pipeline', navParams:{ panel:h.opp_id } });
+      eventos.push({ id:`ohe-${h.id}`, tipo:'oportunidad', fecha:h.fecha, titulo:`Etapa: ${h.etapa_desde} â†’ ${h.etapa_hasta}`, descripcion:oppNombre, usuario:h.usuario, nav:'pipeline', navParams:{ panel:h.opp_id } });
     });
 
     // Cotizaciones
     cotizaciones.filter(c => c.cuenta_id===cId).forEach(c => {
-      const cotSym = c.moneda === 'USD' ? 'US$' : c.moneda === 'EUR' ? '€' : 'S/';
-      eventos.push({ id:`cot-${c.id}`, tipo:'cotizacion', fecha:c.fecha, titulo:`Cotización ${c.numero} v${c.version||1}`, descripcion:`${c.estado} · ${money(c.total_impl || c.total, cotSym)}`, usuario:c.responsable, nav:'cotizaciones', navParams:{ detail:c.id } });
+      const cotSym = c.moneda === 'USD' ? 'US$' : c.moneda === 'EUR' ? 'â‚¬' : 'S/';
+      eventos.push({ id:`cot-${c.id}`, tipo:'cotizacion', fecha:c.fecha, titulo:`CotizaciÃ³n ${c.numero} v${c.version||1}`, descripcion:`${c.estado} Â· ${money(c.total_impl || c.total, cotSym)}`, usuario:c.responsable, nav:'cotizaciones', navParams:{ detail:c.id } });
     });
 
     // Hojas de costeo aprobadas
@@ -144,40 +335,40 @@ function Cuentas() {
 
     // OS Cliente
     osClientes.filter(os => os.cuenta_id===cId).forEach(os => {
-      const sym = os.moneda === 'USD' ? 'US$' : os.moneda === 'EUR' ? '€' : 'S/';
-      eventos.push({ id:`os-${os.id}`, tipo:'os_cliente', fecha:os.fecha_emision, titulo:`OS Cliente: ${os.numero}`, descripcion:`${os.estado} · ${money(os.monto_aprobado, sym)}`, usuario:null, nav:'os_cliente', navParams:{ detail:os.id } });
+      const sym = os.moneda === 'USD' ? 'US$' : os.moneda === 'EUR' ? 'â‚¬' : 'S/';
+      eventos.push({ id:`os-${os.id}`, tipo:'os_cliente', fecha:os.fecha_emision, titulo:`OS Cliente: ${os.numero}`, descripcion:`${os.estado} Â· ${money(os.monto_aprobado, sym)}`, usuario:null, nav:'os_cliente', navParams:{ detail:os.id } });
     });
 
     // OTs
     ots.filter(o => o.cuenta_id===cId || osIds.has(o.os_cliente_id)).forEach(o => {
-      eventos.push({ id:`ot-ini-${o.id}`, tipo:'ot', fecha:o.fecha_inicio, titulo:`OT abierta: ${o.numero}`, descripcion:`${o.tipo} — ${o.descripcion||''}`, usuario:o.responsable, nav:'ot', navParams:{ detail:o.id } });
+      eventos.push({ id:`ot-ini-${o.id}`, tipo:'ot', fecha:o.fecha_inicio, titulo:`OT abierta: ${o.numero}`, descripcion:`${o.tipo} â€” ${o.descripcion||''}`, usuario:o.responsable, nav:'ot', navParams:{ detail:o.id } });
       if (['cerrada','completada'].includes(o.estado) && o.fecha_fin) eventos.push({ id:`ot-fin-${o.id}`, tipo:'ot', fecha:o.fecha_fin, titulo:`OT cerrada: ${o.numero}`, descripcion:`Costo real: ${money(o.costoReal||0)}`, usuario:o.responsable, nav:'ot', navParams:{ detail:o.id } });
     });
 
     // Valorizaciones
     valorizaciones.filter(v => osIds.has(v.os_cliente_id)).forEach(v => {
-      eventos.push({ id:`val-${v.id}`, tipo:'valorizacion', fecha:v.fecha, titulo:`Valorización ${v.numero}`, descripcion:`${v.estado} · ${money(v.total)}`, usuario:null, nav:'os_cliente', navParams:{ detail:v.os_cliente_id } });
+      eventos.push({ id:`val-${v.id}`, tipo:'valorizacion', fecha:v.fecha, titulo:`ValorizaciÃ³n ${v.numero}`, descripcion:`${v.estado} Â· ${money(v.total)}`, usuario:null, nav:'os_cliente', navParams:{ detail:v.os_cliente_id } });
     });
 
     // Facturas
     facturas.filter(f => f.cuenta_id===cId).forEach(f => {
-      eventos.push({ id:`fac-${f.id}`, tipo:'factura', fecha:f.fecha_emision||f.fecha, titulo:`Factura ${f.numero||''}`, descripcion:`${f.estado} · ${money(f.monto_total||f.total||0)}`, usuario:null, nav:null });
+      eventos.push({ id:`fac-${f.id}`, tipo:'factura', fecha:f.fecha_emision||f.fecha, titulo:`Factura ${f.numero||''}`, descripcion:`${f.estado} Â· ${money(f.monto_total||f.total||0)}`, usuario:null, nav:null });
     });
 
     // CxC por nombre
     cxc.filter(c => c.cliente===sel.razon_social).forEach(c => {
-      eventos.push({ id:`cxc-${c.id}`, tipo:'cobranza', fecha:c.emision, titulo:`Cobranza: ${c.factura}`, descripcion:`${c.estado} · ${money(c.total)}`, usuario:null, nav:null });
+      eventos.push({ id:`cxc-${c.id}`, tipo:'cobranza', fecha:c.emision, titulo:`Cobranza: ${c.factura}`, descripcion:`${c.estado} Â· ${money(c.total)}`, usuario:null, nav:null });
     });
 
     // Customer Success
     const csObLoc = onboardings.find(o => o.cuenta_id===cId);
     if (csObLoc?.estado==='completado') eventos.push({ id:'cs-ob', tipo:'cs', fecha:csObLoc.fecha_cierre||csObLoc.fecha_inicio, titulo:'Onboarding completado', descripcion:csObLoc.tipo_servicio, usuario:null, nav:null });
     const csNpsLoc = [...npsEncuestas].filter(n => n.cuenta_id===cId).sort((a,b)=>(b.fecha_respuesta||'').localeCompare(a.fecha_respuesta||''))[0];
-    if (csNpsLoc) eventos.push({ id:'cs-nps', tipo:'cs', fecha:csNpsLoc.fecha_respuesta, titulo:`NPS registrado: ${csNpsLoc.score}`, descripcion:`${csNpsLoc.clasificacion}${csNpsLoc.comentario?` · "${csNpsLoc.comentario}"`:''}`, usuario:null, nav:null });
+    if (csNpsLoc) eventos.push({ id:'cs-nps', tipo:'cs', fecha:csNpsLoc.fecha_respuesta, titulo:`NPS registrado: ${csNpsLoc.score}`, descripcion:`${csNpsLoc.clasificacion}${csNpsLoc.comentario?` Â· "${csNpsLoc.comentario}"`:''}`, usuario:null, nav:null });
     const csRenovLoc = renovaciones.find(r => r.cuenta_id===cId);
-    if (csRenovLoc) eventos.push({ id:'cs-renov', tipo:'cs', fecha:csRenovLoc.fecha_renovacion||csRenovLoc.fecha_vencimiento, titulo:`Renovación: ${csRenovLoc.servicio}`, descripcion:`${csRenovLoc.estado||''} · ${money(csRenovLoc.monto_contrato)}`, usuario:null, nav:null });
+    if (csRenovLoc) eventos.push({ id:'cs-renov', tipo:'cs', fecha:csRenovLoc.fecha_renovacion||csRenovLoc.fecha_vencimiento, titulo:`RenovaciÃ³n: ${csRenovLoc.servicio}`, descripcion:`${csRenovLoc.estado||''} Â· ${money(csRenovLoc.monto_contrato)}`, usuario:null, nav:null });
     const csHLoc = healthScoresDetalle.find(h => h.cuenta_id===cId);
-    if (csHLoc?.score_total < 40) eventos.push({ id:'cs-health', tipo:'cs', fecha:csHLoc.fecha||new Date().toISOString().slice(0,10), titulo:'Health score bajo umbral crítico', descripcion:`Score: ${csHLoc.score_total} · ${csHLoc.semaforo}`, usuario:null, nav:null });
+    if (csHLoc?.score_total < 40) eventos.push({ id:'cs-health', tipo:'cs', fecha:csHLoc.fecha||new Date().toISOString().slice(0,10), titulo:'Health score bajo umbral crÃ­tico', descripcion:`Score: ${csHLoc.score_total} Â· ${csHLoc.semaforo}`, usuario:null, nav:null });
 
     return eventos.filter(e => e.fecha).sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
   }, [sel, leads, historialEstados, actividades, oportunidades, cotizaciones, hojasCosteo, osClientes, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, onboardings, npsEncuestas, renovaciones, healthScoresDetalle]);
@@ -255,7 +446,7 @@ function Cuentas() {
     setFormCuenta(prev => ({ ...prev, [field]: value }));
   };
 
-  const formCuentaBase = { razon_social:'', nombre_comercial:'', ruc:'', pais:'Perú', tipo:'prospecto', industria:'', tamano:'', telefono_empresa:'', email_corporativo:'', direccion:'', nombre_contacto:'', cargo_contacto:'', telefono:'', email:'', responsable_comercial:'', fuente_origen:'', notas:'' };
+  const formCuentaBase = { razon_social:'', nombre_comercial:'', ruc:'', pais:'PerÃº', tipo:'prospecto', industria:'', tamano:'', telefono_empresa:'', email_corporativo:'', direccion:'', nombre_contacto:'', cargo_contacto:'', telefono:'', email:'', responsable_comercial:'', fuente_origen:'', notas:'' };
   const contactFormBase = { nombre:'', cargo:'', telefono:'', email:'', principal:false };
 
   const startNuevoContacto = () => {
@@ -375,7 +566,7 @@ function Cuentas() {
       razon_social: formCuenta.razon_social || 'Nueva cuenta sin nombre',
       nombre_comercial: formCuenta.nombre_comercial || formCuenta.razon_social || 'Nueva cuenta',
       tipo: formCuenta.tipo || 'prospecto',
-      pais: formCuenta.pais || 'Perú',
+      pais: formCuenta.pais || 'PerÃº',
       industria: formCuenta.industria || 'Por definir',
       tamano: formCuenta.tamano || 'Por definir',
       estado: 'activo',
@@ -433,16 +624,16 @@ function Cuentas() {
         <button className="btn btn-primary" data-local-form="true" onClick={() => setNewOpen(true)}>{I.plus} Nueva cuenta</button>
       </div>
       <div style={{marginBottom:16, padding:'12px 16px', background:'rgba(6,182,212,0.06)', border:'1px solid var(--border)', borderLeft:'3px solid var(--cyan)', borderRadius:8, fontSize:13}}>
-        <strong>Recomendación: </strong><span className="text-muted">El flujo ideal es registrar primero un <strong>Lead</strong> y convertirlo desde el módulo de Leads. Esto pre-completa la cuenta con el RUC, razón social e industria del prospecto.</span>
+        <strong>RecomendaciÃ³n: </strong><span className="text-muted">El flujo ideal es registrar primero un <strong>Lead</strong> y convertirlo desde el mÃ³dulo de Leads. Esto pre-completa la cuenta con el RUC, razÃ³n social e industria del prospecto.</span>
         <button className="btn btn-ghost btn-sm" style={{marginLeft:12}} onClick={()=>navigate('leads')}>Ir a Leads</button>
       </div>
 
-      {/* ── Barra de filtros ── */}
+      {/* â”€â”€ Barra de filtros â”€â”€ */}
       <div style={{display:'flex', flexWrap:'wrap', gap:8, marginBottom:16, alignItems:'center'}}>
         <input
           className="input"
           style={{height:34, width:220, fontSize:13}}
-          placeholder="Buscar por nombre, razón social o RUC..."
+          placeholder="Buscar por nombre, razÃ³n social o RUC..."
           value={filtroTexto}
           onChange={e => setFiltroTexto(e.target.value)}
         />
@@ -451,7 +642,7 @@ function Cuentas() {
           <option value="cliente">Cliente</option>
           <option value="prospecto">Prospecto</option>
           <option value="partner">Partner</option>
-          <option value="proveedor_estrategico">Proveedor estratégico</option>
+          <option value="proveedor_estrategico">Proveedor estratÃ©gico</option>
         </select>
         <select className="select" style={{height:34, fontSize:13, width:'auto', minWidth:140}} value={filtroIndustria} onChange={e => setFiltroIndustria(e.target.value)}>
           <option value="">Todas las industrias</option>
@@ -508,7 +699,7 @@ function Cuentas() {
                   <div><span>Tipo</span><strong className={'badge ' + getTipoBadge(c.tipo)}>{c.tipo.replace('_', ' ')}</strong></div>
                   <div><span>Industria</span><strong>{c.industria || 'Por definir'}</strong></div>
                   <div><span>Responsable</span><strong>{c.responsable_comercial || 'Sin asignar'}</strong></div>
-                  <div><span>Última compra</span><strong>{c.fecha_ultima_compra || '—'}</strong></div>
+                  <div><span>Ãšltima compra</span><strong>{c.fecha_ultima_compra || 'â€”'}</strong></div>
                 </div>
                 <div className="account-footer">
                   <div className="row" style={{gap:8}}>
@@ -550,40 +741,40 @@ function Cuentas() {
           <form className="side-panel-body" onSubmit={guardarCuenta}>
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Datos de la empresa</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group"><label>Razón social *</label><input className="input" required value={formCuenta.razon_social} onChange={e=>updateCuentaForm('razon_social', e.target.value)} autoFocus placeholder="Nombre legal de la empresa"/></div>
-              <div className="input-group"><label>RUC <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>· 11 dígitos</span></label><input className="input" value={formCuenta.ruc} onChange={e=>updateCuentaForm('ruc', sanitizeRuc(e.target.value))} placeholder="20xxxxxxxxx" inputMode="numeric" pattern={RUC_PATTERN} maxLength={11}/></div>
-              <div className="input-group"><label>Nombre comercial</label><input className="input" value={formCuenta.nombre_comercial} onChange={e=>updateCuentaForm('nombre_comercial', e.target.value)} placeholder="Si es diferente a la razón social"/></div>
-              <div className="input-group"><label>País</label><select className="select" value={formCuenta.pais} onChange={e=>updateCuentaForm('pais', e.target.value)}>
-                {['Perú','Chile','Colombia','México','Ecuador','Bolivia','Argentina','Brasil','Uruguay','Otro'].map(p=><option key={p}>{p}</option>)}
+              <div className="input-group"><label>RazÃ³n social *</label><input className="input" required value={formCuenta.razon_social} onChange={e=>updateCuentaForm('razon_social', e.target.value)} autoFocus placeholder="Nombre legal de la empresa"/></div>
+              <div className="input-group"><label>RUC <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>Â· 11 dÃ­gitos</span></label><input className="input" value={formCuenta.ruc} onChange={e=>updateCuentaForm('ruc', sanitizeRuc(e.target.value))} placeholder="20xxxxxxxxx" inputMode="numeric" pattern={RUC_PATTERN} maxLength={11}/></div>
+              <div className="input-group"><label>Nombre comercial</label><input className="input" value={formCuenta.nombre_comercial} onChange={e=>updateCuentaForm('nombre_comercial', e.target.value)} placeholder="Si es diferente a la razÃ³n social"/></div>
+              <div className="input-group"><label>PaÃ­s</label><select className="select" value={formCuenta.pais} onChange={e=>updateCuentaForm('pais', e.target.value)}>
+                {['PerÃº','Chile','Colombia','MÃ©xico','Ecuador','Bolivia','Argentina','Brasil','Uruguay','Otro'].map(p=><option key={p}>{p}</option>)}
               </select></div>
               <div className="input-group"><label>Tipo de cuenta</label><select className="select" value={formCuenta.tipo} onChange={e=>updateCuentaForm('tipo', e.target.value)}>
                 <option value="prospecto">Prospecto</option>
                 <option value="cliente">Cliente</option>
                 <option value="partner">Partner</option>
-                <option value="proveedor_estrategico">Proveedor estratégico</option>
+                <option value="proveedor_estrategico">Proveedor estratÃ©gico</option>
               </select></div>
               <div className="input-group"><label>Industria</label><select className="select" value={formCuenta.industria} onChange={e=>updateCuentaForm('industria', e.target.value)}>
                 <option value="">Seleccionar...</option>
-                {['Minería','Industrial','Construcción','Agroindustria','Facilities','Energía','Petróleo & Gas','Logística','Otro'].map(i=><option key={i}>{i}</option>)}
+                {['MinerÃ­a','Industrial','ConstrucciÃ³n','Agroindustria','Facilities','EnergÃ­a','PetrÃ³leo & Gas','LogÃ­stica','Otro'].map(i=><option key={i}>{i}</option>)}
               </select></div>
-              <div className="input-group"><label>Tamaño empresa</label><select className="select" value={formCuenta.tamano} onChange={e=>updateCuentaForm('tamano', e.target.value)}>
+              <div className="input-group"><label>TamaÃ±o empresa</label><select className="select" value={formCuenta.tamano} onChange={e=>updateCuentaForm('tamano', e.target.value)}>
                 <option value="">Seleccionar...</option>
-                {['pequeña','mediana','grande','corporativo'].map(t=><option key={t}>{t}</option>)}
+                {['pequeÃ±a','mediana','grande','corporativo'].map(t=><option key={t}>{t}</option>)}
               </select></div>
-              <div className="input-group"><label>Teléfono empresa</label><input className="input" type="tel" inputMode="numeric" value={formCuenta.telefono_empresa} onChange={e=>updateCuentaForm('telefono_empresa', e.target.value)} placeholder="01XXXXXXX o 9XXXXXXXX"/></div>
+              <div className="input-group"><label>TelÃ©fono empresa</label><input className="input" type="tel" inputMode="numeric" value={formCuenta.telefono_empresa} onChange={e=>updateCuentaForm('telefono_empresa', e.target.value)} placeholder="01XXXXXXX o 9XXXXXXXX"/></div>
               <div className="input-group"><label>Email corporativo</label><input className="input" type="email" value={formCuenta.email_corporativo} onChange={e=>updateCuentaForm('email_corporativo', e.target.value)} placeholder="info@empresa.pe"/></div>
-              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Dirección</label><input className="input" value={formCuenta.direccion} onChange={e=>updateCuentaForm('direccion', e.target.value)} placeholder="Dirección fiscal o principal"/></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>DirecciÃ³n</label><input className="input" value={formCuenta.direccion} onChange={e=>updateCuentaForm('direccion', e.target.value)} placeholder="DirecciÃ³n fiscal o principal"/></div>
             </div>
 
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Contacto principal</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Nombre del contacto</label><input className="input" value={formCuenta.nombre_contacto} onChange={e=>updateCuentaForm('nombre_contacto', e.target.value)} placeholder="Nombre y apellido"/></div>
               <div className="input-group"><label>Cargo</label><input className="input" value={formCuenta.cargo_contacto} onChange={e=>updateCuentaForm('cargo_contacto', e.target.value)} placeholder="Ej: Gerente de Operaciones"/></div>
-              <div className="input-group"><label>Teléfono directo</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formCuenta.telefono} onChange={e=>updateCuentaForm('telefono', sanitizePhone(e.target.value))} placeholder="9XXXXXXXX"/></div>
+              <div className="input-group"><label>TelÃ©fono directo</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formCuenta.telefono} onChange={e=>updateCuentaForm('telefono', sanitizePhone(e.target.value))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group"><label>Email personal</label><input className="input" type="email" value={formCuenta.email} onChange={e=>updateCuentaForm('email', e.target.value)} placeholder="contacto@empresa.pe"/></div>
             </div>
 
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Asignación</div>
+            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>AsignaciÃ³n</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Responsable comercial *</label><select className="select" required value={formCuenta.responsable_comercial} onChange={e=>updateCuentaForm('responsable_comercial', e.target.value)}>
                 <option value="">Seleccionar...</option>
@@ -591,17 +782,17 @@ function Cuentas() {
               </select></div>
               <div className="input-group"><label>Fuente de origen</label><select className="select" value={formCuenta.fuente_origen} onChange={e=>updateCuentaForm('fuente_origen', e.target.value)}>
                 <option value="">Seleccionar...</option>
-                {['Referido','Prospección directa','Evento / Feria','Web','Otro'].map(f=><option key={f}>{f}</option>)}
+                {['Referido','ProspecciÃ³n directa','Evento / Feria','Web','Otro'].map(f=><option key={f}>{f}</option>)}
               </select></div>
             </div>
 
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Notas iniciales</div>
             <div style={{marginBottom:20}}>
-              <textarea className="input" rows={3} style={{resize:'vertical', minHeight:72}} value={formCuenta.notas} onChange={e=>updateCuentaForm('notas', e.target.value)} placeholder="Contexto inicial, cómo llegó el prospecto, observaciones relevantes..."/>
+              <textarea className="input" rows={3} style={{resize:'vertical', minHeight:72}} value={formCuenta.notas} onChange={e=>updateCuentaForm('notas', e.target.value)} placeholder="Contexto inicial, cÃ³mo llegÃ³ el prospecto, observaciones relevantes..."/>
             </div>
 
             <div style={{padding:'10px 14px', background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.3)', borderRadius:8, fontSize:12, color:'var(--fg-muted)', marginBottom:20}}>
-              Las <strong>condiciones comerciales</strong> (crédito, forma de pago, clasificación) se completan en una segunda etapa desde el área de Finanzas/Administración.
+              Las <strong>condiciones comerciales</strong> (crÃ©dito, forma de pago, clasificaciÃ³n) se completan en una segunda etapa desde el Ã¡rea de Finanzas/AdministraciÃ³n.
             </div>
 
             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
@@ -624,13 +815,13 @@ function Cuentas() {
               </label>
             </div>
             <div className="account-profile-title">
-              <div className="eyebrow">Ficha 360° · Cliente</div>
+              <div className="eyebrow">Ficha 360Â° Â· Cliente</div>
               <h2 className="ficha-detail-title">{sel.razon_social}</h2>
               <div className="account-profile-tags">
                 <span className={'badge ' + getTipoBadge(sel.tipo)}>{(sel.tipo || 'cliente').replace('_', ' ')}</span>
                 <span className="badge badge-gray">{sel.industria || 'Industria pendiente'}</span>
                 {sel.condicion_pago === 'Por definir' && <span className="badge badge-orange">Condiciones pendientes</span>}
-                {sel.agente_retencion_sunat && <span className="badge badge-orange" title={`Retiene ${sel.tasa_retencion_sunat ?? 3}% del precio de venta al momento de pagar`}>⚠ Agente de Retención SUNAT</span>}
+                {sel.agente_retencion_sunat && <span className="badge badge-orange" title={`Retiene ${sel.tasa_retencion_sunat ?? 3}% del precio de venta al momento de pagar`}>âš  Agente de RetenciÃ³n SUNAT</span>}
               </div>
             </div>
             <div className="account-profile-contact">
@@ -689,7 +880,7 @@ function Cuentas() {
                       ))}
                     </select>
                     <input type="date" className="input" style={{height:32, fontSize:12, padding:'0 8px', width:'auto'}} value={tlDesde} onChange={e=>setTlDesde(e.target.value)} />
-                    <span style={{fontSize:12, color:'var(--fg-muted)'}}>–</span>
+                    <span style={{fontSize:12, color:'var(--fg-muted)'}}>â€“</span>
                     <input type="date" className="input" style={{height:32, fontSize:12, padding:'0 8px', width:'auto'}} value={tlHasta} onChange={e=>setTlHasta(e.target.value)} />
                     {(tlFiltro!=='todos'||tlDesde||tlHasta) && (
                       <button className="btn btn-ghost btn-sm" onClick={()=>{setTlFiltro('todos');setTlDesde('');setTlHasta('');}}>
@@ -726,7 +917,7 @@ function Cuentas() {
                                 {ev.nav && (
                                   <button className="btn btn-ghost btn-sm" style={{fontSize:11, height:22, padding:'0 8px'}}
                                     onClick={()=>navigate(ev.nav, ev.navParams||{})}>
-                                    Ver en módulo
+                                    Ver en mÃ³dulo
                                   </button>
                                 )}
                               </div>
@@ -745,18 +936,18 @@ function Cuentas() {
                 <div className="account-profile-kpis">
                   <div><span>Health score</span><strong><span className={'health-dot health-'+getHealthColor(cuentaHealthScore)}/>{cuentaHealthScore}</strong></div>
                   <div><span>Saldo CxC</span><strong>{money(sel.saldo_cxc)}</strong></div>
-                  <div><span>Días mora</span><strong className={(sel.dias_mora||0)>30?'danger':(sel.dias_mora||0)>0?'warning':'success'}>{sel.dias_mora || 0}d</strong></div>
-                  <div><span>Última compra</span><strong>{sel.fecha_ultima_compra || '—'}</strong></div>
+                  <div><span>DÃ­as mora</span><strong className={(sel.dias_mora||0)>30?'danger':(sel.dias_mora||0)>0?'warning':'success'}>{sel.dias_mora || 0}d</strong></div>
+                  <div><span>Ãšltima compra</span><strong>{sel.fecha_ultima_compra || 'â€”'}</strong></div>
                 </div>
                 <div className="account-profile-grid">
                   <div className="account-info-card">
                     <div className="card-head"><h3>Datos de empresa</h3></div>
                     <div className="account-info-list">
                       <div><span>RUC</span><strong>{sel.ruc || 'Pendiente'}</strong></div>
-                      <div><span>Razón social</span><strong>{sel.razon_social}</strong></div>
-                      <div><span>Dirección</span><strong>{sel.direccion || 'Pendiente'}</strong></div>
+                      <div><span>RazÃ³n social</span><strong>{sel.razon_social}</strong></div>
+                      <div><span>DirecciÃ³n</span><strong>{sel.direccion || 'Pendiente'}</strong></div>
                       <div><span>Responsable comercial</span><strong>{sel.responsable_comercial || 'Sin asignar'}</strong></div>
-                      <div><span>Teléfono empresa</span><strong>{sel.telefono || contactoPrincipal?.telefono || 'Pendiente'}</strong></div>
+                      <div><span>TelÃ©fono empresa</span><strong>{sel.telefono || contactoPrincipal?.telefono || 'Pendiente'}</strong></div>
                       <div><span>Email empresa</span><strong>{sel.email || contactoPrincipal?.email || 'Pendiente'}</strong></div>
                     </div>
                   </div>
@@ -773,14 +964,14 @@ function Cuentas() {
                           <small>{c.cargo || c.email || c.telefono || 'Sin datos'}</small>
                         </button>
                       ))}
-                      {cuentaContactos.length === 0 && <div className="account-empty-note">Aún no hay contactos registrados.</div>}
+                      {cuentaContactos.length === 0 && <div className="account-empty-note">AÃºn no hay contactos registrados.</div>}
                     </div>
                   </div>
                 </div>
                 <div className="account-info-card">
                   <div className="card-head"><h3>Actividad reciente</h3></div>
                   <div className="account-timeline">
-                    {['Revisión de cuenta · hace 2 días', 'Llamada seguimiento · hace 1 semana'].map((t,i)=>(
+                    {['RevisiÃ³n de cuenta Â· hace 2 dÃ­as', 'Llamada seguimiento Â· hace 1 semana'].map((t,i)=>(
                       <div key={i}><span/><p>{t}</p></div>
                     ))}
                   </div>
@@ -815,7 +1006,7 @@ function Cuentas() {
                       <span className="badge badge-gray">{c.estado}</span>
                     </div>
                     <div className="row mt-2" style={{justifyContent:'space-between', fontSize:12}}>
-                      <span className="text-muted">Total: <strong style={{color:'var(--fg)'}}>{money(c.total_impl || c.total, c.moneda === 'USD' ? 'US$' : c.moneda === 'EUR' ? '€' : 'S/')}</strong></span>
+                      <span className="text-muted">Total: <strong style={{color:'var(--fg)'}}>{money(c.total_impl || c.total, c.moneda === 'USD' ? 'US$' : c.moneda === 'EUR' ? 'â‚¬' : 'S/')}</strong></span>
                       <span className="text-muted">{c.fecha}</span>
                     </div>
                   </div>
@@ -832,7 +1023,7 @@ function Cuentas() {
                       <span className="badge badge-gray">{os.estado}</span>
                     </div>
                     <div className="row mt-2" style={{justifyContent:'space-between', fontSize:12}}>
-                      <span className="text-muted">Monto Aprobado: <strong style={{color:'var(--fg)'}}>{money(os.monto_aprobado, os.moneda === 'USD' ? 'US$' : os.moneda === 'EUR' ? '€' : 'S/')}</strong></span>
+                      <span className="text-muted">Monto Aprobado: <strong style={{color:'var(--fg)'}}>{money(os.monto_aprobado, os.moneda === 'USD' ? 'US$' : os.moneda === 'EUR' ? 'â‚¬' : 'S/')}</strong></span>
                       <span className="text-muted">{os.fecha_emision}</span>
                     </div>
                   </div>
@@ -853,7 +1044,7 @@ function Cuentas() {
                       <table className="tbl">
                         <thead>
                           <tr>
-                            <th>Número</th><th>Fecha</th><th>Total</th>
+                            <th>NÃºmero</th><th>Fecha</th><th>Total</th>
                             {tieneRetencion && <th className="num">Neto a cobrar</th>}
                             <th>Estado</th>
                           </tr>
@@ -861,12 +1052,12 @@ function Cuentas() {
                         <tbody>
                           {facturasCliente.map(f => (
                             <tr key={f.id}>
-                              <td className="mono">{f.numero || '—'}</td>
-                              <td style={{fontSize:12, color:'var(--fg-muted)'}}>{f.fecha_emision || '—'}</td>
+                              <td className="mono">{f.numero || 'â€”'}</td>
+                              <td style={{fontSize:12, color:'var(--fg-muted)'}}>{f.fecha_emision || 'â€”'}</td>
                               <td className="num">{money(f.total || 0)}</td>
                               {tieneRetencion && (
                                 <td className="num" style={{color: f.aplica_retencion ? 'var(--cyan)' : 'var(--fg-muted)'}}>
-                                  {f.aplica_retencion ? money(f.monto_neto_cobrable ?? (f.total - (f.monto_retencion || 0))) : '—'}
+                                  {f.aplica_retencion ? money(f.monto_neto_cobrable ?? (f.total - (f.monto_retencion || 0))) : 'â€”'}
                                 </td>
                               )}
                               <td><span className={'badge ' + (f.estado === 'pagada' ? 'badge-green' : f.estado === 'anulada' ? 'badge-gray' : 'badge-cyan')}>{f.estado}</span></td>
@@ -929,7 +1120,7 @@ function Cuentas() {
                       <input className="input" value={contactForm.cargo} onChange={e=>setContactForm(p=>({...p,cargo:e.target.value}))} placeholder="Ej: Jefe de Compras" />
                     </div>
                     <div className="input-group">
-                      <label>Teléfono</label>
+                      <label>TelÃ©fono</label>
                       <input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={contactForm.telefono} onChange={e=>setContactForm(p=>({...p,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX" />
                     </div>
                     <div className="input-group">
@@ -951,7 +1142,7 @@ function Cuentas() {
 
             {activeTab === 'Customer Success' && (
               <div className="col" style={{gap:14}}>
-                {/* ── Health Score ── */}
+                {/* â”€â”€ Health Score â”€â”€ */}
                 {csHealth ? (
                   <div className="card p-4">
                     <div className="row" style={{justifyContent:'space-between', marginBottom:10}}>
@@ -980,14 +1171,14 @@ function Cuentas() {
                   <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin health score registrado para este cliente.</div>
                 )}
 
-                {/* ── Onboarding ── */}
+                {/* â”€â”€ Onboarding â”€â”€ */}
                 {csOb ? (
                   <div className="card p-4">
                     <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
                       <div className="eyebrow">Onboarding</div>
                       <span className={'badge ' + (csOb.estado==='completado'?'badge-green':csOb.estado==='en_progreso'?'badge-cyan':'badge-gray')}>{csOb.estado}</span>
                     </div>
-                    <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>{csOb.tipo_servicio || csOb.nombre || '—'}</div>
+                    <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>{csOb.tipo_servicio || csOb.nombre || 'â€”'}</div>
                     {csOb.checklist?.length > 0 && (
                       <>
                         <div style={{fontSize:12, color:'var(--fg-subtle)', marginBottom:6}}>
@@ -1003,43 +1194,43 @@ function Cuentas() {
                   <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin onboarding registrado para este cliente.</div>
                 )}
 
-                {/* ── Plan de Éxito ── */}
+                {/* â”€â”€ Plan de Ã‰xito â”€â”€ */}
                 {csPlan ? (
                   <div className="card p-4">
-                    <div className="eyebrow" style={{marginBottom:8}}>Plan de Éxito</div>
-                    <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>{csPlan.objetivo || csPlan.nombre || '—'}</div>
+                    <div className="eyebrow" style={{marginBottom:8}}>Plan de Ã‰xito</div>
+                    <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>{csPlan.objetivo || csPlan.nombre || 'â€”'}</div>
                     <div className="row" style={{gap:16, fontSize:12, color:'var(--fg-subtle)'}}>
-                      {csPlan.adopcion_pct != null && <span>Adopción: <strong style={{color:'var(--cyan)'}}>{csPlan.adopcion_pct}%</strong></span>}
+                      {csPlan.adopcion_pct != null && <span>AdopciÃ³n: <strong style={{color:'var(--cyan)'}}>{csPlan.adopcion_pct}%</strong></span>}
                       {csPlan.reuniones?.length > 0 && <span>Reuniones: {csPlan.reuniones.length}</span>}
                     </div>
                     {csPlan.alertas?.length > 0 && (
                       <div style={{marginTop:8, padding:'6px 10px', background:'rgba(251,191,36,0.1)', borderRadius:6, fontSize:12, color:'var(--warning)'}}>
-                        ⚠ {csPlan.alertas[0]}
+                        âš  {csPlan.alertas[0]}
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin plan de éxito registrado para este cliente.</div>
+                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin plan de Ã©xito registrado para este cliente.</div>
                 )}
 
-                {/* ── Renovación ── */}
+                {/* â”€â”€ RenovaciÃ³n â”€â”€ */}
                 {csRenov ? (
                   <div className="card p-4">
-                    <div className="eyebrow" style={{marginBottom:8}}>Renovación</div>
+                    <div className="eyebrow" style={{marginBottom:8}}>RenovaciÃ³n</div>
                     <div className="row" style={{justifyContent:'space-between', marginBottom:4}}>
-                      <span style={{fontSize:13, fontWeight:600}}>{csRenov.servicio || csRenov.nombre || '—'}</span>
+                      <span style={{fontSize:13, fontWeight:600}}>{csRenov.servicio || csRenov.nombre || 'â€”'}</span>
                       {csRenov.dias_restantes != null && <span className={'badge ' + (csRenov.dias_restantes<=30?'badge-red':csRenov.dias_restantes<=60?'badge-yellow':'badge-green')}>{csRenov.dias_restantes}d restantes</span>}
                     </div>
-                    <div style={{fontSize:12, color:'var(--fg-subtle)'}}>Vence: {csRenov.fecha_vencimiento || '—'}{csRenov.monto_contrato ? ` · ${money(csRenov.monto_contrato)}` : ''}</div>
+                    <div style={{fontSize:12, color:'var(--fg-subtle)'}}>Vence: {csRenov.fecha_vencimiento || 'â€”'}{csRenov.monto_contrato ? ` Â· ${money(csRenov.monto_contrato)}` : ''}</div>
                   </div>
                 ) : (
-                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin renovación registrada para este cliente.</div>
+                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin renovaciÃ³n registrada para este cliente.</div>
                 )}
 
-                {/* ── Último NPS ── */}
+                {/* â”€â”€ Ãšltimo NPS â”€â”€ */}
                 {csNps ? (
                   <div className="card p-4">
-                    <div className="eyebrow" style={{marginBottom:8}}>Último NPS</div>
+                    <div className="eyebrow" style={{marginBottom:8}}>Ãšltimo NPS</div>
                     <div className="row" style={{alignItems:'center', gap:12}}>
                       <div style={{fontSize:40, fontWeight:800, color:csNps.score>=9?'var(--green)':csNps.score>=7?'var(--warning)':'var(--danger)'}}>{csNps.score}</div>
                       <div>
@@ -1050,7 +1241,7 @@ function Cuentas() {
                     {csNps.comentario && <div style={{fontSize:12, color:'var(--fg-subtle)', marginTop:8, fontStyle:'italic'}}>"{csNps.comentario}"</div>}
                   </div>
                 ) : (
-                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin NPS registrado aún para este cliente.</div>
+                  <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin NPS registrado aÃºn para este cliente.</div>
                 )}
               </div>
             )}
@@ -1058,22 +1249,22 @@ function Cuentas() {
             {activeTab === 'Condiciones comerciales' && canFinanzas && (
               <div className="col" style={{gap:16}}>
                 <div style={{padding:'10px 14px', background:'rgba(6,182,212,0.06)', border:'1px solid var(--border)', borderRadius:8, fontSize:12, color:'var(--fg-muted)'}}>
-                  Visible solo para Finanzas y Administración. {condEditing ? 'Editando condiciones comerciales.' : 'Modo lectura.'}
+                  Visible solo para Finanzas y AdministraciÃ³n. {condEditing ? 'Editando condiciones comerciales.' : 'Modo lectura.'}
                 </div>
                 <div className="card">
                   <div className="card-head">
-                    <h3>Condiciones de pago y crédito</h3>
+                    <h3>Condiciones de pago y crÃ©dito</h3>
                     {!condEditing && <button className="btn btn-secondary btn-sm" onClick={startEditarCondiciones}>{I.edit} Editar</button>}
                   </div>
                   <div className="card-body">
                     <div className="grid-2" style={{gap:16}}>
                       {[
-                        { k:'condicion_pago', label:'Condición de pago', type:'select', opts:['Contado','7 días','15 días','30 días','45 días','60 días','Por definir'] },
-                        { k:'limite_credito', label:'Límite de crédito (S/)', type:'number' },
+                        { k:'condicion_pago', label:'CondiciÃ³n de pago', type:'select', opts:['Contado','7 dÃ­as','15 dÃ­as','30 dÃ­as','45 dÃ­as','60 dÃ­as','Por definir'] },
+                        { k:'limite_credito', label:'LÃ­mite de crÃ©dito (S/)', type:'number' },
                         { k:'moneda', label:'Moneda', type:'select', opts:['PEN','USD','EUR'] },
-                        { k:'requiere_oc', label:'Requiere OC', type:'select', opts:['Sí','No','A veces'] },
+                        { k:'requiere_oc', label:'Requiere OC', type:'select', opts:['SÃ­','No','A veces'] },
                         { k:'riesgo_financiero', label:'Riesgo financiero', type:'select', opts:['bajo','medio','alto'] },
-                        { k:'clasificacion_interna', label:'Clasificación interna', type:'select', opts:['A','B','C','VIP'] },
+                        { k:'clasificacion_interna', label:'ClasificaciÃ³n interna', type:'select', opts:['A','B','C','VIP'] },
                       ].map(({k, label, type, opts}) => (
                         <div className="input-group" key={k}>
                           <label style={{fontSize:11}}>{label}</label>
@@ -1095,9 +1286,9 @@ function Cuentas() {
                     <div className="grid-2" style={{gap:16}}>
                       {[
                         { k:'ruc', label:'RUC', type:'text' },
-                        { k:'razon_social', label:'Razón social legal', type:'text' },
-                        { k:'direccion', label:'Dirección fiscal', type:'text' },
-                        { k:'condicion_tributaria', label:'Condición tributaria', type:'select', opts:['Habido','No Habido','No hallado','Suspensión temporal'] },
+                        { k:'razon_social', label:'RazÃ³n social legal', type:'text' },
+                        { k:'direccion', label:'DirecciÃ³n fiscal', type:'text' },
+                        { k:'condicion_tributaria', label:'CondiciÃ³n tributaria', type:'select', opts:['Habido','No Habido','No hallado','SuspensiÃ³n temporal'] },
                       ].map(({k, label, type, opts}) => (
                         <div className="input-group" key={k}>
                           <label style={{fontSize:11}}>{label}</label>
@@ -1120,8 +1311,8 @@ function Cuentas() {
                       {[
                         { k:'banco_cliente', label:'Banco', type:'text', placeholder:'Ej: BCP, Interbank, BBVA' },
                         { k:'tipo_cuenta_bancaria', label:'Tipo de cuenta', type:'select', opts:['','Corriente','Ahorros'] },
-                        { k:'nro_cuenta_cliente', label:'Número de cuenta', type:'text', placeholder:'Nro. de cuenta' },
-                        { k:'cci_cliente', label:'CCI', type:'text', placeholder:'Código de cuenta interbancario' },
+                        { k:'nro_cuenta_cliente', label:'NÃºmero de cuenta', type:'text', placeholder:'Nro. de cuenta' },
+                        { k:'cci_cliente', label:'CCI', type:'text', placeholder:'CÃ³digo de cuenta interbancario' },
                       ].map(({k, label, type, opts, placeholder}) => (
                         <div className="input-group" key={k}>
                           <label style={{fontSize:11}}>{label}</label>
@@ -1138,7 +1329,7 @@ function Cuentas() {
                   </div>
                 </div>
                 <div className="card">
-                  <div className="card-head"><h3>Retención SUNAT</h3><span className="text-muted" style={{fontSize:12}}>Aplica cuando el cliente está designado como Agente de Retención del IGV</span></div>
+                  <div className="card-head"><h3>RetenciÃ³n SUNAT</h3><span className="text-muted" style={{fontSize:12}}>Aplica cuando el cliente estÃ¡ designado como Agente de RetenciÃ³n del IGV</span></div>
                   <div className="card-body">
                     <div style={{display:'flex', alignItems:'center', gap:12, marginBottom: (condEdit.agente_retencion_sunat ?? sel.agente_retencion_sunat) ? 16 : 0}}>
                       <label style={{display:'flex', alignItems:'center', gap:8, cursor: condEditing && !condSaving ? 'pointer' : 'default', fontSize:13}}>
@@ -1148,12 +1339,12 @@ function Cuentas() {
                           checked={Boolean(condEdit.agente_retencion_sunat ?? sel.agente_retencion_sunat)}
                           onChange={e => setCondEdit(p => ({...p, agente_retencion_sunat: e.target.checked}))}
                         />
-                        <strong>Este cliente es Agente de Retención SUNAT</strong>
+                        <strong>Este cliente es Agente de RetenciÃ³n SUNAT</strong>
                       </label>
                     </div>
                     {(condEdit.agente_retencion_sunat ?? sel.agente_retencion_sunat) && (
                       <div className="input-group" style={{maxWidth:220}}>
-                        <label style={{fontSize:11}}>Tasa de retención (%)</label>
+                        <label style={{fontSize:11}}>Tasa de retenciÃ³n (%)</label>
                         <input
                           className="input num"
                           type="number"
@@ -1164,7 +1355,7 @@ function Cuentas() {
                           value={condEdit.tasa_retencion_sunat ?? sel.tasa_retencion_sunat ?? 3}
                           onChange={e => setCondEdit(p => ({...p, tasa_retencion_sunat: e.target.value}))}
                         />
-                        <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Tasa estándar SUNAT: 3.00%. Modificar solo si SUNAT estableció una tasa diferente para este agente.</div>
+                        <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Tasa estÃ¡ndar SUNAT: 3.00%. Modificar solo si SUNAT estableciÃ³ una tasa diferente para este agente.</div>
                       </div>
                     )}
                   </div>
@@ -1194,11 +1385,11 @@ function Cuentas() {
             <div className="modal-body col" style={{gap:14}}>
               <div className="grid-2">
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
-                  <label>Razón Social</label>
+                  <label>RazÃ³n Social</label>
                   <input className="input" value={editCuentaForm.razon_social} onChange={e=>setEditCuentaForm(p=>({...p,razon_social:e.target.value}))} autoFocus/>
                 </div>
                 <div className="input-group">
-                  <label>RUC <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>(11 dígitos)</span></label>
+                  <label>RUC <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>(11 dÃ­gitos)</span></label>
                   <input className="input" value={editCuentaForm.ruc} maxLength={11}
                     onChange={e=>setEditCuentaForm(p=>({...p,ruc:sanitizeRuc(e.target.value)}))}/>
                 </div>
@@ -1212,7 +1403,7 @@ function Cuentas() {
                   <label>Industria</label>
                   <select className="select" value={editCuentaForm.industria} onChange={e=>setEditCuentaForm(p=>({...p,industria:e.target.value}))}>
                     <option value="">Seleccionar...</option>
-                    {['Minería','Industrial','Construcción','Agroindustria','Facilities','Energía','Petróleo & Gas','Logística','Otro'].map(i=><option key={i}>{i}</option>)}
+                    {['MinerÃ­a','Industrial','ConstrucciÃ³n','Agroindustria','Facilities','EnergÃ­a','PetrÃ³leo & Gas','LogÃ­stica','Otro'].map(i=><option key={i}>{i}</option>)}
                   </select>
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
@@ -1241,8 +1432,8 @@ function Cuentas() {
               <button className="icon-btn" onClick={() => setConfirmDelCuenta(null)}>{I.x}</button>
             </div>
             <div className="modal-body">
-              <p>¿Eliminar <strong>{confirmDelCuenta.razon_social}</strong>? Esta acción no se puede deshacer.</p>
-              <p className="text-muted" style={{fontSize:12, marginTop:8}}>Las oportunidades y contactos vinculados quedarán sin cuenta asociada.</p>
+              <p>Â¿Eliminar <strong>{confirmDelCuenta.razon_social}</strong>? Esta acciÃ³n no se puede deshacer.</p>
+              <p className="text-muted" style={{fontSize:12, marginTop:8}}>Las oportunidades y contactos vinculados quedarÃ¡n sin cuenta asociada.</p>
             </div>
             <div className="modal-foot">
               <button className="btn btn-secondary" onClick={() => setConfirmDelCuenta(null)}>Cancelar</button>
@@ -1261,7 +1452,7 @@ function Cuentas() {
               <button className="icon-btn" onClick={() => setConfirmDelContacto(null)}>{I.x}</button>
             </div>
             <div className="modal-body">
-              <p>¿Eliminar a <strong>{confirmDelContacto.nombre}</strong>?</p>
+              <p>Â¿Eliminar a <strong>{confirmDelContacto.nombre}</strong>?</p>
               {(confirmDelContacto.principal || confirmDelContacto.es_principal) && (
                 <p className="text-muted" style={{fontSize:12, marginTop:8}}>Este es el contacto principal de la cuenta.</p>
               )}
@@ -1406,7 +1597,7 @@ function OT({ role }) {
       setErrorNuevaOT('Selecciona la OS Cliente vinculada.'); return;
     }
     if (formNuevaOT.os_cliente_id) {
-      if (!osSeleccionada?.centro_beneficio_id) { setErrorNuevaOT('La OS Cliente seleccionada no tiene CEBE asignado. Asígnalo desde la ficha de la OS.'); return; }
+      if (!osSeleccionada?.centro_beneficio_id) { setErrorNuevaOT('La OS Cliente seleccionada no tiene CEBE asignado. AsÃ­gnalo desde la ficha de la OS.'); return; }
     }
     setSavingNuevaOT(true);
     setErrorNuevaOT('');
@@ -1527,11 +1718,11 @@ function OT({ role }) {
 
   const canCost = role.permisos.ver_costos || role.permisos.todo;
   const getCuenta = (id) => cuentas.find(c => c.id === id)?.razon_social || id;
-  const otSym = (ot) => { const m = osClientes.find(o => o.id === ot.os_cliente_id)?.moneda; return m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'S/'; };
+  const otSym = (ot) => { const m = osClientes.find(o => o.id === ot.os_cliente_id)?.moneda; return m === 'USD' ? 'US$' : m === 'EUR' ? 'â‚¬' : 'S/'; };
 
   const badges = {
     borrador: ['badge-gray','Borrador'], programada: ['badge-cyan','Programada'],
-    ejecucion: ['badge-orange','En ejecución'], cerrada: ['badge-purple','Cerrada técnica'],
+    ejecucion: ['badge-orange','En ejecuciÃ³n'], cerrada: ['badge-purple','Cerrada tÃ©cnica'],
     pendiente_cierre: ['badge-cyan','Pendiente cierre'],
     valorizada: ['badge-green','Valorizada'], facturada: ['badge-navy','Facturada'], anulada: ['badge-red','Anulada']
   };
@@ -1540,10 +1731,10 @@ function OT({ role }) {
 
   const osVinculada = sel?.os_cliente_id ? osClientes.find(o => o.id === sel.os_cliente_id) : null;
   const responsableNombre = sel
-    ? (personalOperativo.find(p => p.id === sel.tecnico_responsable_id)?.nombre || usuarios.find(u => u.id === sel.tecnico_responsable_id)?.nombre || sel.responsable || '—')
-    : '—';
-  const supervisorNombre = sel?.supervisor || '—';
-  const prioridadMeta = { normal: ['badge-gray','Normal'], urgente: ['badge-orange','Urgente'], critica: ['badge-red','Crítica'] };
+    ? (personalOperativo.find(p => p.id === sel.tecnico_responsable_id)?.nombre || usuarios.find(u => u.id === sel.tecnico_responsable_id)?.nombre || sel.responsable || 'â€”')
+    : 'â€”';
+  const supervisorNombre = sel?.supervisor || 'â€”';
+  const prioridadMeta = { normal: ['badge-gray','Normal'], urgente: ['badge-orange','Urgente'], critica: ['badge-red','CrÃ­tica'] };
   const asignacionesOT = sel ? plannerAsignaciones.filter(a => a.ot_id === sel.id && a.estado !== 'cancelado') : [];
   const tecnicosDeOT = [...new Set(asignacionesOT.map(a => a.tecnico_id))]
     .map(id => (personalOperativo || []).find(p => p.id === id))
@@ -1658,9 +1849,9 @@ function OT({ role }) {
   ] : [];
   const puedeIniciarOT = !!sel?.centro_costo_id && tecnicosAsignadosOT > 0;
   const tooltipIniciarOT = !sel?.centro_costo_id && tecnicosAsignadosOT === 0
-    ? 'Asigna un CECO y al menos un técnico antes de iniciar'
+    ? 'Asigna un CECO y al menos un tÃ©cnico antes de iniciar'
     : !sel?.centro_costo_id ? 'Asigna un CECO antes de iniciar'
-    : 'Asigna al menos un técnico antes de iniciar';
+    : 'Asigna al menos un tÃ©cnico antes de iniciar';
   const OtField = ({ label, value, children, strong = false }) => (
     <div>
       <div className="eyebrow" style={{marginBottom:6}}>{label}</div>
@@ -1743,7 +1934,7 @@ function OT({ role }) {
     const aprobados = partesDeOT.filter(p => p.estado === 'aprobado').sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
     const pendientes = partesDeOT.filter(p => !['aprobado', 'rechazado'].includes(p.estado));
     if (!aprobados.length) { addNotificacion('No puedes cerrar una OT sin partes diarios aprobados.', 'error'); return; }
-    if (pendientes.length) { addNotificacion(`No puedes cerrar esta OT. Tienes ${pendientes.length} parte(s) pendiente(s) de aprobación.`, 'error'); return; }
+    if (pendientes.length) { addNotificacion(`No puedes cerrar esta OT. Tienes ${pendientes.length} parte(s) pendiente(s) de aprobaciÃ³n.`, 'error'); return; }
     const horasTotal = aprobados.reduce((s, p) => s + (p.horas || 0), 0);
     const descripcion = [...new Set(aprobados.map(p => p.actividades).filter(Boolean))].join('\n');
     const costo_terceros_pre = aprobados.reduce((s, p) => s + (p.terceros_lineas || []).reduce((sm, l) => sm + Number(l.monto || 0), 0), 0);
@@ -1971,9 +2162,9 @@ function OT({ role }) {
   };
 
   const historialOT = sel ? [
-    { id: 'create', fecha: sel.created_at || sel.fecha_inicio || '', usuario: '—', evento: `OT ${sel.numero} creada`, tipo: 'creacion' },
-    ...partesOT.map(p => ({ id: p.id, fecha: p.fecha, usuario: p.tecnico, evento: `Parte diario registrado · ${p.horas}h · +${p.avance_reportado}% avance`, tipo: 'parte' })),
-    ...(['cerrada','valorizada','facturada'].includes(sel.estado) ? [{ id: 'close', fecha: sel.fecha_fin || '', usuario: '—', evento: 'OT cerrada técnicamente', tipo: 'cierre' }] : []),
+    { id: 'create', fecha: sel.created_at || sel.fecha_inicio || '', usuario: 'â€”', evento: `OT ${sel.numero} creada`, tipo: 'creacion' },
+    ...partesOT.map(p => ({ id: p.id, fecha: p.fecha, usuario: p.tecnico, evento: `Parte diario registrado Â· ${p.horas}h Â· +${p.avance_reportado}% avance`, tipo: 'parte' })),
+    ...(['cerrada','valorizada','facturada'].includes(sel.estado) ? [{ id: 'close', fecha: sel.fecha_fin || '', usuario: 'â€”', evento: 'OT cerrada tÃ©cnicamente', tipo: 'cierre' }] : []),
   ].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')) : [];
 
   useEffect(() => {
@@ -2019,7 +2210,7 @@ function OT({ role }) {
     <>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Órdenes de Trabajo</h1>
+          <h1 className="page-title">Ã“rdenes de Trabajo</h1>
           <div className="page-sub">{ots.length} OTs totales</div>
         </div>
         <div className="row">
@@ -2029,14 +2220,14 @@ function OT({ role }) {
       </div>
 
       <div className="flow">
-        <span className="flow-step done"><span className="flow-dot"/>Lead</span><span className="flow-sep">→</span>
-        <span className="flow-step done"><span className="flow-dot"/>Oportunidad</span><span className="flow-sep">→</span>
-        <span className="flow-step done"><span className="flow-dot"/>Cotización</span><span className="flow-sep">→</span>
-        <span className="flow-step done"><span className="flow-dot"/>OS Cliente</span><span className="flow-sep">→</span>
-        <span className="flow-step current"><span className="flow-dot"/>OT</span><span className="flow-sep">→</span>
-        <span className="flow-step"><span className="flow-dot"/>Parte</span><span className="flow-sep">→</span>
-        <span className="flow-step"><span className="flow-dot"/>Cierre</span><span className="flow-sep">→</span>
-        <span className="flow-step"><span className="flow-dot"/>Valorización</span><span className="flow-sep">→</span>
+        <span className="flow-step done"><span className="flow-dot"/>Lead</span><span className="flow-sep">â†’</span>
+        <span className="flow-step done"><span className="flow-dot"/>Oportunidad</span><span className="flow-sep">â†’</span>
+        <span className="flow-step done"><span className="flow-dot"/>CotizaciÃ³n</span><span className="flow-sep">â†’</span>
+        <span className="flow-step done"><span className="flow-dot"/>OS Cliente</span><span className="flow-sep">â†’</span>
+        <span className="flow-step current"><span className="flow-dot"/>OT</span><span className="flow-sep">â†’</span>
+        <span className="flow-step"><span className="flow-dot"/>Parte</span><span className="flow-sep">â†’</span>
+        <span className="flow-step"><span className="flow-dot"/>Cierre</span><span className="flow-sep">â†’</span>
+        <span className="flow-step"><span className="flow-dot"/>ValorizaciÃ³n</span><span className="flow-sep">â†’</span>
         <span className="flow-step"><span className="flow-dot"/>Factura</span>
       </div>
 
@@ -2075,7 +2266,7 @@ function OT({ role }) {
                       <span className={'badge '+badgeColor}>{label}</span>
                       {uniqueTecs > 0 && (
                         <span style={{fontSize:10, color:'var(--purple)', fontWeight:600, display:'flex', alignItems:'center', gap:4}}>
-                          👥 {uniqueTecs} técnicos
+                          ðŸ‘¥ {uniqueTecs} tÃ©cnicos
                         </span>
                       )}
                     </div>
@@ -2103,7 +2294,7 @@ function OT({ role }) {
                 </tr>
               );
             })}
-            {ots.length===0 && <tr><td colSpan="9" style={{textAlign:'center', padding:40}}>No hay órdenes de trabajo</td></tr>}
+            {ots.length===0 && <tr><td colSpan="9" style={{textAlign:'center', padding:40}}>No hay Ã³rdenes de trabajo</td></tr>}
             </tbody>
           </table>
         </div>
@@ -2194,15 +2385,15 @@ function OT({ role }) {
                     onClick={() => { setSel(null); navigate('os_cliente', { detail: osVinculada.id }); }}>
                     {osVinculada.numero}
                   </button>
-                  <span>›</span>
+                  <span>â€º</span>
                   <span style={{color:'var(--fg)', fontWeight:600}}>{sel.numero}</span>
                 </>
               ) : (
-                <span style={{color:'var(--fg-muted)'}}>Órdenes de Trabajo › {sel.numero}</span>
+                <span style={{color:'var(--fg-muted)'}}>Ã“rdenes de Trabajo â€º {sel.numero}</span>
               )}
             </div>
 
-            {/* Título + cerrar */}
+            {/* TÃ­tulo + cerrar */}
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
               <div>
                 <div className="eyebrow">Ficha de OT</div>
@@ -2212,9 +2403,9 @@ function OT({ role }) {
                 {!['cerrada','cerrada_tecnica','facturada','anulada'].includes(sel.estado) && (
                   confirmAnular
                     ? <div className="row" style={{gap:6, alignItems:'center'}}>
-                        <span style={{fontSize:12, color:'var(--danger)'}}>¿Confirmar anulación?</span>
+                        <span style={{fontSize:12, color:'var(--danger)'}}>Â¿Confirmar anulaciÃ³n?</span>
                         <button className="btn btn-secondary" style={{fontSize:11, padding:'2px 8px'}} onClick={() => setConfirmAnular(false)}>No</button>
-                        <button className="btn" style={{fontSize:11, padding:'2px 8px', background:'var(--danger)', color:'#fff'}} onClick={() => { actualizarOT(sel.id, { estado: 'anulada' }); setConfirmAnular(false); setSel(s => ({ ...s, estado: 'anulada' })); }}>Sí, anular</button>
+                        <button className="btn" style={{fontSize:11, padding:'2px 8px', background:'var(--danger)', color:'#fff'}} onClick={() => { actualizarOT(sel.id, { estado: 'anulada' }); setConfirmAnular(false); setSel(s => ({ ...s, estado: 'anulada' })); }}>SÃ­, anular</button>
                       </div>
                     : <button className="btn btn-secondary" style={{fontSize:12, color:'var(--danger)'}} onClick={() => setConfirmAnular(true)}>Anular OT</button>
                 )}
@@ -2222,7 +2413,7 @@ function OT({ role }) {
               </div>
             </div>
 
-            {/* Estado + botones de acción */}
+            {/* Estado + botones de acciÃ³n */}
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8}}>
               <div className="row" style={{gap:6, flexWrap:'wrap'}}>
                 <span className={'badge '+(badges[sel.estado]?.[0]||'badge-gray')}>{badges[sel.estado]?.[1]||sel.estado}</span>
@@ -2251,8 +2442,8 @@ function OT({ role }) {
                     </button>
                   )}
                   {sel.estado === 'pendiente_cierre' && (
-                    <span className="badge badge-cyan" title="La OS ya alcanzó el 100% valorizado; corresponde formalizar el cierre técnico.">
-                      Lista para cierre técnico
+                    <span className="badge badge-cyan" title="La OS ya alcanzÃ³ el 100% valorizado; corresponde formalizar el cierre tÃ©cnico.">
+                      Lista para cierre tÃ©cnico
                     </span>
                   )}
                   {(() => {
@@ -2262,7 +2453,7 @@ function OT({ role }) {
                     const tooltip = partesOT.length === 0
                       ? 'Registra al menos un parte diario antes de cerrar la OT'
                       : pendientes.length > 0
-                        ? `Tienes ${pendientes.length} parte(s) pendiente(s) de aprobación`
+                        ? `Tienes ${pendientes.length} parte(s) pendiente(s) de aprobaciÃ³n`
                         : aprobados.length === 0
                           ? 'Necesitas al menos un parte diario aprobado para cerrar la OT'
                           : '';
@@ -2280,11 +2471,11 @@ function OT({ role }) {
                 </>}
                 {(sel.estado === 'cerrada' || sel.estado === 'cerrada_tecnica') && (
                   <button className="btn btn-secondary" style={{fontSize:13}} onClick={() => navigate('cierre', { detail: sel.id, tab: 'conformidad' })}>
-                    {I.file} Ver cierre técnico
+                    {I.file} Ver cierre tÃ©cnico
                   </button>
                 )}
                 {sel.estado === 'cerrada' && (
-                  <button className="btn btn-secondary" style={{fontSize:13}}>{I.truck} Enviar a remisión</button>
+                  <button className="btn btn-secondary" style={{fontSize:13}}>{I.truck} Enviar a remisiÃ³n</button>
                 )}
               </div>
             </div>
@@ -2309,7 +2500,7 @@ function OT({ role }) {
                 {criteriosOT.map((c, i) => (
                   <div key={i} style={{display:'flex', alignItems:'center', gap:6}}>
                     <span style={{width:14, height:14, flex:'0 0 14px', display:'inline-flex', alignItems:'center', justifyContent:'center', color:c.ok ? 'var(--green)' : c.warn ? 'var(--orange)' : 'var(--fg-muted)'}}>
-                      {c.ok ? I.check : <span style={{fontSize:14, lineHeight:1}}>–</span>}
+                      {c.ok ? I.check : <span style={{fontSize:14, lineHeight:1}}>â€“</span>}
                     </span>
                     <span style={{fontSize:10.5, lineHeight:1.3, color:c.ok || c.warn ? 'var(--fg)' : 'var(--fg-muted)'}}>{c.text}</span>
                   </div>
@@ -2325,7 +2516,7 @@ function OT({ role }) {
             </div>
             <div className="ficha-detail-content">
 
-            {/* ── TAB RESUMEN ── */}
+            {/* â”€â”€ TAB RESUMEN â”€â”€ */}
             {activeTab === 'Resumen' && (
               <div className="col" style={{gap:16, padding:22}}>
                 <div style={{display:'grid', gridTemplateColumns:'1.35fr 1fr', gap:16, alignItems:'stretch'}}>
@@ -2341,7 +2532,7 @@ function OT({ role }) {
                   <div style={{padding:18, border:'1px solid var(--border)', borderRadius:10, background:'var(--surface)', boxShadow:'var(--shadow-sm)'}}>
                     <div className="eyebrow" style={{marginBottom:8}}>Avance operativo</div>
                     <div className="font-display" style={{fontSize:24, fontWeight:800, color:'var(--navy)'}}>{sel.avance || 0}%</div>
-                    <div className="text-muted" style={{fontSize:12, marginTop:8}}>{partesOT.length} parte(s) · {tecnicosAsignadosOT} tecnico(s)</div>
+                    <div className="text-muted" style={{fontSize:12, marginTop:8}}>{partesOT.length} parte(s) Â· {tecnicosAsignadosOT} tecnico(s)</div>
                   </div>
                 </div>
                 <div style={{border:'1px solid var(--border)', borderRadius:10, padding:16, background:'var(--surface)'}}>
@@ -2361,13 +2552,13 @@ function OT({ role }) {
                           <label>CECO</label>
                           <select className="select" value={formDatos.centro_costo_id} onChange={e => setFormDatos(p => ({...p, centro_costo_id: e.target.value}))}>
                             <option value="">Sin CECO</option>
-                            {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre}</option>)}
+                            {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} â€” ${c.nombre}` : c.nombre}</option>)}
                           </select>
                         </div>
                         <div className="input-group">
                           <label>Tipo</label>
                           <select className="select" value={formDatos.tipo} onChange={e => setFormDatos(p => ({...p, tipo: e.target.value}))}>
-                            <option value="">—</option>
+                            <option value="">â€”</option>
                             {(() => {
                               const opts = tiposActivos.length > 0
                                 ? tiposActivos.map(t => t.nombre)
@@ -2382,11 +2573,11 @@ function OT({ role }) {
                           <select className="select" value={formDatos.prioridad} onChange={e => setFormDatos(p => ({...p, prioridad: e.target.value}))}>
                             <option value="normal">Normal</option>
                             <option value="urgente">Urgente</option>
-                            <option value="critica">Crítica</option>
+                            <option value="critica">CrÃ­tica</option>
                           </select>
                         </div>
                         <div className="input-group">
-                          <label>Facturación</label>
+                          <label>FacturaciÃ³n</label>
                           <select className="select" value={formDatos.facturable ? 'si' : 'no'} onChange={e => setFormDatos(p => ({...p, facturable: e.target.value === 'si'}))}>
                             <option value="si">Facturable</option>
                             <option value="no">No facturable</option>
@@ -2424,7 +2615,7 @@ function OT({ role }) {
                         </div>
                       </div>
                       <div className="input-group">
-                        <label>Descripción / Alcance</label>
+                        <label>DescripciÃ³n / Alcance</label>
                         <textarea className="input" rows={3} value={formDatos.descripcion} onChange={e => setFormDatos(p => ({...p, descripcion: e.target.value}))} placeholder="Describe el alcance de la OT..." style={{resize:'vertical'}} />
                       </div>
                       <div style={{borderTop:'1px solid var(--border)', paddingTop:14}}>
@@ -2434,7 +2625,7 @@ function OT({ role }) {
                             { key: 'est_mo',         label: 'Mano de obra' },
                             { key: 'est_materiales', label: 'Materiales' },
                             { key: 'est_terceros',   label: 'Terceros' },
-                            { key: 'est_logistica',  label: 'Logística' },
+                            { key: 'est_logistica',  label: 'LogÃ­stica' },
                           ].map(({ key, label }) => (
                             <div className="input-group" key={key}>
                               <label style={{fontSize:11}}>{label}</label>
@@ -2483,7 +2674,7 @@ function OT({ role }) {
                             >
                               <option value="">Seleccionar colaborador...</option>
                               {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
-                                <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` — ${p.cargo}` : ''}</option>
+                                <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` â€” ${p.cargo}` : ''}</option>
                               ))}
                               </select>
                             </div>
@@ -2533,12 +2724,12 @@ function OT({ role }) {
                                 onClick={() => { setSel(null); navigate('os_cliente', { detail: osVinculada.id }); }}>
                                 {osVinculada.numero}
                               </button>
-                            : <span className="text-muted">—</span>
+                            : <span className="text-muted">â€”</span>
                           }
                         </div>
-                        <div><div className="eyebrow">Cliente</div><div>{getCuenta(sel.cuenta_id) || sel.cliente || '—'}</div></div>
-                        <div><div className="eyebrow">Sede</div><div>{sel.sede || '—'}</div></div>
-                        <div><div className="eyebrow">Tipo</div><div>{sel.tipo || '—'}</div></div>
+                        <div><div className="eyebrow">Cliente</div><div>{getCuenta(sel.cuenta_id) || sel.cliente || 'â€”'}</div></div>
+                        <div><div className="eyebrow">Sede</div><div>{sel.sede || 'â€”'}</div></div>
+                        <div><div className="eyebrow">Tipo</div><div>{sel.tipo || 'â€”'}</div></div>
                         <div>
                           <div className="eyebrow">Prioridad</div>
                           <span className={`badge ${prioridadMeta[sel.prioridad || 'normal']?.[0] || 'badge-gray'}`}>
@@ -2546,20 +2737,20 @@ function OT({ role }) {
                           </span>
                         </div>
                         <div>
-                          <div className="eyebrow">Facturación</div>
+                          <div className="eyebrow">FacturaciÃ³n</div>
                           <span className={`badge ${sel.facturable === false ? 'badge-gray' : 'badge-green'}`}>
                             {sel.facturable === false ? 'No facturable' : 'Facturable'}
                           </span>
                         </div>
                         <div><div className="eyebrow">Responsable</div><div>{responsableNombre}</div></div>
                         <div><div className="eyebrow">Supervisor</div><div>{supervisorNombre}</div></div>
-                        <div><div className="eyebrow">Fecha comprometida</div><div>{sel.fecha_programada || '—'}</div></div>
-                        <div><div className="eyebrow">Inicio real</div><div>{partesOT.some(p => p.estado === 'aprobado') ? (sel.fecha_inicio || '—') : <span style={{fontSize:11,color:'var(--fg-muted)'}}>Pendiente primer parte</span>}</div></div>
-                        <div><div className="eyebrow">Fin real</div><div>{partesOT.some(p => p.estado === 'aprobado') ? (sel.fecha_fin || '—') : <span style={{fontSize:11,color:'var(--fg-muted)'}}>En ejecución</span>}</div></div>
+                        <div><div className="eyebrow">Fecha comprometida</div><div>{sel.fecha_programada || 'â€”'}</div></div>
+                        <div><div className="eyebrow">Inicio real</div><div>{partesOT.some(p => p.estado === 'aprobado') ? (sel.fecha_inicio || 'â€”') : <span style={{fontSize:11,color:'var(--fg-muted)'}}>Pendiente primer parte</span>}</div></div>
+                        <div><div className="eyebrow">Fin real</div><div>{partesOT.some(p => p.estado === 'aprobado') ? (sel.fecha_fin || 'â€”') : <span style={{fontSize:11,color:'var(--fg-muted)'}}>En ejecuciÃ³n</span>}</div></div>
                       </div>
                       <div style={{background:'var(--bg-subtle)', padding:16, borderRadius:8, marginTop:14}}>
-                        <div className="eyebrow" style={{marginBottom:8}}>Descripción / Alcance</div>
-                        <p style={{fontSize:13, lineHeight:1.5, margin:0}}>{sel.descripcion || 'Sin descripción detallada.'}</p>
+                        <div className="eyebrow" style={{marginBottom:8}}>DescripciÃ³n / Alcance</div>
+                        <p style={{fontSize:13, lineHeight:1.5, margin:0}}>{sel.descripcion || 'Sin descripciÃ³n detallada.'}</p>
                       </div>
                     </>
                   )}
@@ -2567,7 +2758,7 @@ function OT({ role }) {
               </div>
             )}
 
-            {/* ── TAB TAREAS ── */}
+            {/* â”€â”€ TAB TAREAS â”€â”€ */}
             {activeTab === 'Resumen' && (
               <div className="card" style={{margin:'0 22px 22px', padding:16}}>
                 <div className="card-head" style={{padding:0, border:0, marginBottom:12}}>
@@ -2632,7 +2823,7 @@ function OT({ role }) {
                   <div className="card" style={{padding:16, marginBottom:16, border:'1px solid var(--cyan)'}}>
                     <div className="grid-2" style={{gap:12}}>
                       <div className="input-group" style={{gridColumn:'1/-1'}}>
-                        <label>Descripción *</label>
+                        <label>DescripciÃ³n *</label>
                         <input className="input" value={nuevaTareaForm.descripcion} onChange={e => setNuevaTareaForm(s => ({...s, descripcion: e.target.value}))} placeholder="Describe la tarea..." autoFocus />
                       </div>
                       <div className="input-group">
@@ -2643,7 +2834,7 @@ function OT({ role }) {
                         </select>
                       </div>
                       <div className="input-group">
-                        <label>Fecha límite</label>
+                        <label>Fecha lÃ­mite</label>
                         <input className="input" type="date" value={nuevaTareaForm.fecha_limite} onChange={e => setNuevaTareaForm(s => ({...s, fecha_limite: e.target.value}))} />
                       </div>
                     </div>
@@ -2668,9 +2859,9 @@ function OT({ role }) {
                           <div style={{flex:1, minWidth:0}}>
                             <div style={{textDecoration: completado?'line-through':'none', color: completado?'var(--fg-muted)':'var(--fg)', fontWeight:500}}>{t.descripcion}</div>
                             <div className="row" style={{gap:12, marginTop:5, fontSize:11, color:'var(--fg-muted)'}}>
-                              {resp && <span>👤 {resp.nombre}</span>}
-                              {t.fecha_limite && <span>📅 {t.fecha_limite}</span>}
-                              <span>⏱ {t.horas_estimadas ? `${t.horas_estimadas}h est.` : '--'} | {t.horas_reales ? `${t.horas_reales}h reales` : '0h'}</span>
+                              {resp && <span>ðŸ‘¤ {resp.nombre}</span>}
+                              {t.fecha_limite && <span>ðŸ“… {t.fecha_limite}</span>}
+                              <span>â± {t.horas_estimadas ? `${t.horas_estimadas}h est.` : '--'} | {t.horas_reales ? `${t.horas_reales}h reales` : '0h'}</span>
                               <div style={{display:'flex', alignItems:'center', gap:4}}>
                                 <div style={{width: 60, height: 4, background:'var(--border)', borderRadius: 2, overflow: 'hidden'}}>
                                   <div style={{width: `${t.avance_pct || 0}%`, height: '100%', background: completado ? 'var(--green)' : 'var(--cyan)'}} />
@@ -2693,7 +2884,7 @@ function OT({ role }) {
               </div>
             )}
 
-            {/* ── TAB CHECKLISTS ── */}
+            {/* â”€â”€ TAB CHECKLISTS â”€â”€ */}
             {activeTab === 'Checklists y Calidad' && (
               <div className="col" style={{gap:20, padding:22}}>
                 <div className="card">
@@ -2705,7 +2896,7 @@ function OT({ role }) {
                     <div className="grid-2" style={{gap:12}}>
                       <label style={{display:'flex', gap:8, alignItems:'center'}}><input type="checkbox" checked readOnly/> Charla de 5 minutos realizada</label>
                       <label style={{display:'flex', gap:8, alignItems:'center'}}><input type="checkbox" checked readOnly/> EPPs completos y en buen estado</label>
-                      <label style={{display:'flex', gap:8, alignItems:'center'}}><input type="checkbox" checked readOnly/> Área de trabajo delimitada</label>
+                      <label style={{display:'flex', gap:8, alignItems:'center'}}><input type="checkbox" checked readOnly/> Ãrea de trabajo delimitada</label>
                       <label style={{display:'flex', gap:8, alignItems:'center'}}><input type="checkbox" checked readOnly/> Permisos de trabajo de alto riesgo (PTAR) firmados</label>
                     </div>
                   </div>
@@ -2717,7 +2908,7 @@ function OT({ role }) {
                   </div>
                   <div className="table-wrap">
                     <table className="tbl">
-                      <thead><tr><th>ID</th><th>Fecha</th><th>Severidad</th><th>Descripción</th><th>Estado</th></tr></thead>
+                      <thead><tr><th>ID</th><th>Fecha</th><th>Severidad</th><th>DescripciÃ³n</th><th>Estado</th></tr></thead>
                       <tbody>
                         <tr><td colSpan="5" style={{textAlign:'center', padding:24, color:'var(--fg-muted)'}}>Sin incidentes registrados</td></tr>
                       </tbody>
@@ -2727,7 +2918,7 @@ function OT({ role }) {
               </div>
             )}
 
-            {/* ── TAB PERSONAL Y RECURSOS ── */}
+            {/* â”€â”€ TAB PERSONAL Y RECURSOS â”€â”€ */}
             {activeTab === 'Personal y Recursos' && (
               <div style={{padding:22}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
@@ -2760,11 +2951,11 @@ function OT({ role }) {
                       </div>
                       <div className="input-group" style={{visibility:'hidden'}} />
                       <div className="input-group">
-                        <label>Hora inicio (por día)</label>
+                        <label>Hora inicio (por dÃ­a)</label>
                         <input className="input" type="time" value={asignarTecForm.hora_inicio} onChange={e => setAsignarTecForm(s => ({...s, hora_inicio: e.target.value}))} />
                       </div>
                       <div className="input-group">
-                        <label>Hora fin (por día)</label>
+                        <label>Hora fin (por dÃ­a)</label>
                         <input className="input" type="time" value={asignarTecForm.hora_fin} onChange={e => setAsignarTecForm(s => ({...s, hora_fin: e.target.value}))} />
                       </div>
                     </div>
@@ -2781,7 +2972,7 @@ function OT({ role }) {
                     a.estado !== 'cancelado' &&
                     (personalOperativo || []).some(p => p.id === a.tecnico_id)
                   );
-                  if (asigs.length === 0) return <div className="card" style={{padding:32, textAlign:'center', color:'var(--fg-muted)'}}>No hay tecnicos operativos asignados a esta OT todavía.</div>;
+                  if (asigs.length === 0) return <div className="card" style={{padding:32, textAlign:'center', color:'var(--fg-muted)'}}>No hay tecnicos operativos asignados a esta OT todavÃ­a.</div>;
                   const porTecnico = {};
                   asigs.forEach(a => {
                     if (!porTecnico[a.tecnico_id]) porTecnico[a.tecnico_id] = [];
@@ -2801,14 +2992,14 @@ function OT({ role }) {
                         return (
                           <div key={tecId} className="card" style={{padding:16}}>
                             <div style={{fontWeight:700, fontSize:15, marginBottom:2}}>{tec.nombre || tecId}</div>
-                            <div style={{fontSize:12, color:'var(--fg-muted)'}}>{tec.cargo || 'Técnico'}</div>
+                            <div style={{fontSize:12, color:'var(--fg-muted)'}}>{tec.cargo || 'TÃ©cnico'}</div>
                             {totalHoras > 0 && <div style={{fontSize:12, color:'var(--cyan)', fontWeight:600, marginTop:4}}>{totalHoras.toFixed(1)}h asignadas</div>}
                             <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:8, marginTop:2}}>Desde {sorted[0].fecha}</div>
                             <div style={{display:'flex', flexDirection:'column', gap:4}}>
                               {sorted.map(a => (
                                 <div key={a.id} style={{fontSize:11, display:'flex', justifyContent:'space-between', padding:'3px 8px', background:'var(--bg-subtle)', borderRadius:4}}>
                                   <span style={{fontWeight:600}}>{a.fecha}</span>
-                                  <span style={{color:'var(--cyan)'}}>{a.hora_inicio_estimada?.slice(0,5)||'--'} – {a.hora_fin_estimada?.slice(0,5)||'--'}</span>
+                                  <span style={{color:'var(--cyan)'}}>{a.hora_inicio_estimada?.slice(0,5)||'--'} â€“ {a.hora_fin_estimada?.slice(0,5)||'--'}</span>
                                 </div>
                               ))}
                             </div>
@@ -2821,7 +3012,7 @@ function OT({ role }) {
               </div>
             )}
 
-            {/* ── TAB PARTES ── */}
+            {/* â”€â”€ TAB PARTES â”€â”€ */}
             {activeTab === 'Partes' && (
               <div style={{padding:22}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
@@ -2858,7 +3049,7 @@ function OT({ role }) {
                         {avancePreview > 0 && <span style={{fontSize:12, color:'var(--fg-muted)'}}>Avance total reportado: <strong style={{color:'var(--cyan)'}}>{avancePreview}%</strong></span>}
                       </div>
 
-                      {/* — Encabezado — */}
+                      {/* â€” Encabezado â€” */}
                       <div style={{background:'var(--bg-subtle)', padding:14, borderRadius:8, marginBottom:16}}>
                         <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:12}}>
                           <div className="input-group">
@@ -2879,7 +3070,7 @@ function OT({ role }) {
                           {tecnicosDeOT.length > 0 ? (
                             <select className="select" value={parteFormOT.tecnico_id} onChange={e => updParteHorasTecnico(e.target.value)} required>
                               <option value="">Seleccionar...</option>
-                              {tecnicosDeOT.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.cargo ? ` — ${t.cargo}` : ''}</option>)}
+                              {tecnicosDeOT.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.cargo ? ` â€” ${t.cargo}` : ''}</option>)}
                             </select>
                           ) : (
                             <div style={{fontSize:12, color:'var(--fg-muted)', padding:'6px 0'}}>No hay tecnicos operativos asignados. Asigna tecnicos desde el Planner antes de registrar partes diarios.</div>
@@ -2887,14 +3078,14 @@ function OT({ role }) {
                           {parteFormOT.tecnico_id && (() => {
                             const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === parteFormOT.tecnico_id);
                             if (esModalidadHonorarios(tec) && !(Number(tec?.tarifa_hora_referencial) > 0)) {
-                              return <div className="alert alert-warning" style={{fontSize:12, marginTop:6}}>Este colaborador no tiene tarifa hora referencial configurada — el costo de MO quedará en S/ 0. Configúralo en su ficha de personal.</div>;
+                              return <div className="alert alert-warning" style={{fontSize:12, marginTop:6}}>Este colaborador no tiene tarifa hora referencial configurada â€” el costo de MO quedarÃ¡ en S/ 0. ConfigÃºralo en su ficha de personal.</div>;
                             }
                             return null;
                           })()}
                         </div>
                       </div>
 
-                      {/* — Sección 1: Tareas de la OT — */}
+                      {/* â€” SecciÃ³n 1: Tareas de la OT â€” */}
                       {tareasAbiertasOT.length > 0 && (
                         <div style={{marginBottom:16, padding:14, background:'var(--bg-subtle)', borderRadius:8}}>
                           <div className="input-group">
@@ -2968,7 +3159,7 @@ function OT({ role }) {
                         </div>
                       )}
 
-                      {/* — Sección 2: Actividades adicionales — */}
+                      {/* â€” SecciÃ³n 2: Actividades adicionales â€” */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
                           Actividades adicionales
@@ -2977,7 +3168,7 @@ function OT({ role }) {
                         <div className="col" style={{gap:8}}>
                           {parteFormOT.actividades_adicionales.map((a, idx) => (
                             <div key={idx} style={{display:'flex', gap:8, alignItems:'flex-start'}}>
-                              <input className="input" style={{flex:1}} placeholder="Descripción de la actividad *" value={a.descripcion} onChange={e => setParteFormOT(s => ({ ...s, actividades_adicionales: s.actividades_adicionales.map((x, i) => i === idx ? {...x, descripcion: e.target.value} : x) }))} />
+                              <input className="input" style={{flex:1}} placeholder="DescripciÃ³n de la actividad *" value={a.descripcion} onChange={e => setParteFormOT(s => ({ ...s, actividades_adicionales: s.actividades_adicionales.map((x, i) => i === idx ? {...x, descripcion: e.target.value} : x) }))} />
                               <div style={{display:'flex', alignItems:'center', gap:4, flexShrink:0}}>
                                 <input className="input" type="number" min="0" max="100" style={{width:72, padding:'6px 8px', fontSize:12}} placeholder="0" value={a.avance_estimado} onChange={e => setParteFormOT(s => ({ ...s, actividades_adicionales: s.actividades_adicionales.map((x, i) => i === idx ? {...x, avance_estimado: Number(e.target.value)} : x) }))} />
                                 <span style={{fontSize:11, color:'var(--fg-muted)'}}>%</span>
@@ -2991,9 +3182,9 @@ function OT({ role }) {
                         </button>
                       </div>
 
-                      {/* — Sección 3: Avance global del día — */}
+                      {/* â€” SecciÃ³n 3: Avance global del dÃ­a â€” */}
                       {!parteFormOT.tarea_id && <div style={{marginBottom:16, padding:14, background:'var(--bg-subtle)', borderRadius:8}}>
-                        <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Avance global del día</div>
+                        <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Avance global del dÃ­a</div>
                         <div style={{display:'flex', alignItems:'center', gap:12}}>
                           <div style={{flex:1}}>
                             <div style={{display:'flex', alignItems:'center', gap:8}}>
@@ -3013,7 +3204,7 @@ function OT({ role }) {
                               )}
                             </div>
                             <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>
-                              Calculado automáticamente: {avancePreview}% · Puedes ajustarlo si no refleja la realidad
+                              Calculado automÃ¡ticamente: {avancePreview}% Â· Puedes ajustarlo si no refleja la realidad
                             </div>
                           </div>
                           {parteFormOT.avance_ajustado_manual && (
@@ -3024,11 +3215,11 @@ function OT({ role }) {
                         </div>
                       </div>}
 
-                      {/* — Sección 4: Materiales usados — */}
+                      {/* â€” SecciÃ³n 4: Materiales usados â€” */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
                           Materiales usados
-                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional — solo si se consumieron materiales</span>
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional â€” solo si se consumieron materiales</span>
                         </div>
                         {parteFormOT.materiales_lineas.length > 0 && (
                           <div className="col" style={{gap:8, marginBottom:8}}>
@@ -3043,8 +3234,8 @@ function OT({ role }) {
                                   <div style={{position:'relative'}}>
                                     <input
                                       className="input"
-                                      placeholder="Buscar material por código o nombre..."
-                                      value={m.mat_id ? `${cat?.codigo} — ${cat?.descripcion}` : (m.query || '')}
+                                      placeholder="Buscar material por cÃ³digo o nombre..."
+                                      value={m.mat_id ? `${cat?.codigo} â€” ${cat?.descripcion}` : (m.query || '')}
                                       onChange={e => updLine({ query: e.target.value, mat_id: '' })}
                                       onFocus={e => { if (!m.mat_id) updLine({ query: e.target.value }); }}
                                       autoComplete="off"
@@ -3078,17 +3269,17 @@ function OT({ role }) {
                         </button>
                       </div>
 
-                      {/* — Sección 5: Servicios de terceros — */}
+                      {/* â€” SecciÃ³n 5: Servicios de terceros â€” */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
                           Servicios de terceros
-                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional — subcontratistas, alquileres, servicios externos</span>
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional â€” subcontratistas, alquileres, servicios externos</span>
                         </div>
                         {(parteFormOT.terceros_lineas || []).length > 0 && (
                           <div className="col" style={{gap:8, marginBottom:8}}>
                             {parteFormOT.terceros_lineas.map((l, idx) => (
                               <div key={idx} style={{display:'grid', gridTemplateColumns:'2fr 1fr auto', gap:8, alignItems:'center'}}>
-                                <input className="input" placeholder="Descripción del servicio" value={l.descripcion} onChange={e => setParteFormOT(s => ({ ...s, terceros_lineas: s.terceros_lineas.map((x, i) => i === idx ? {...x, descripcion: e.target.value} : x) }))} />
+                                <input className="input" placeholder="DescripciÃ³n del servicio" value={l.descripcion} onChange={e => setParteFormOT(s => ({ ...s, terceros_lineas: s.terceros_lineas.map((x, i) => i === idx ? {...x, descripcion: e.target.value} : x) }))} />
                                 <input className="input" type="number" min="0" step="0.01" placeholder="Monto" value={l.monto} onChange={e => setParteFormOT(s => ({ ...s, terceros_lineas: s.terceros_lineas.map((x, i) => i === idx ? {...x, monto: e.target.value} : x) }))} />
                                 <button type="button" className="icon-btn" onClick={() => setParteFormOT(s => ({ ...s, terceros_lineas: s.terceros_lineas.filter((_, i) => i !== idx) }))}>{I.x}</button>
                               </div>
@@ -3100,17 +3291,17 @@ function OT({ role }) {
                         </button>
                       </div>
 
-                      {/* — Sección 6: Logística y viáticos — */}
+                      {/* â€” SecciÃ³n 6: LogÃ­stica y viÃ¡ticos â€” */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
-                          Logística y viáticos
-                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional — transporte, hospedaje, alimentación, combustible</span>
+                          LogÃ­stica y viÃ¡ticos
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional â€” transporte, hospedaje, alimentaciÃ³n, combustible</span>
                         </div>
                         {(parteFormOT.logistica_lineas || []).length > 0 && (
                           <div className="col" style={{gap:8, marginBottom:8}}>
                             {parteFormOT.logistica_lineas.map((l, idx) => (
                               <div key={idx} style={{display:'grid', gridTemplateColumns:'2fr 1fr auto', gap:8, alignItems:'center'}}>
-                                <input className="input" placeholder="Descripción del gasto" value={l.descripcion} onChange={e => setParteFormOT(s => ({ ...s, logistica_lineas: s.logistica_lineas.map((x, i) => i === idx ? {...x, descripcion: e.target.value} : x) }))} />
+                                <input className="input" placeholder="DescripciÃ³n del gasto" value={l.descripcion} onChange={e => setParteFormOT(s => ({ ...s, logistica_lineas: s.logistica_lineas.map((x, i) => i === idx ? {...x, descripcion: e.target.value} : x) }))} />
                                 <input className="input" type="number" min="0" step="0.01" placeholder="Monto" value={l.monto} onChange={e => setParteFormOT(s => ({ ...s, logistica_lineas: s.logistica_lineas.map((x, i) => i === idx ? {...x, monto: e.target.value} : x) }))} />
                                 <button type="button" className="icon-btn" onClick={() => setParteFormOT(s => ({ ...s, logistica_lineas: s.logistica_lineas.filter((_, i) => i !== idx) }))}>{I.x}</button>
                               </div>
@@ -3118,15 +3309,15 @@ function OT({ role }) {
                           </div>
                         )}
                         <button type="button" className="btn btn-ghost" style={{fontSize:12}} onClick={() => setParteFormOT(s => ({ ...s, logistica_lineas: [...(s.logistica_lineas || []), { descripcion: '', monto: '' }] }))}>
-                          {I.plus} Agregar gasto logístico
+                          {I.plus} Agregar gasto logÃ­stico
                         </button>
                       </div>
 
-                      {/* — Sección 7: Evidencias — */}
+                      {/* â€” SecciÃ³n 7: Evidencias â€” */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
                           Evidencias
-                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional — fotos o documentos del trabajo ejecutado hoy</span>
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional â€” fotos o documentos del trabajo ejecutado hoy</span>
                         </div>
                         {parteFormOT.evidencias.length > 0 && (
                           <div style={{display:'flex', flexWrap:'wrap', gap:8, marginBottom:8}}>
@@ -3136,17 +3327,17 @@ function OT({ role }) {
                                   <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} />
                                 ) : (
                                   <div style={{width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4}}>
-                                    <span style={{fontSize:22}}>📄</span>
+                                    <span style={{fontSize:22}}>ðŸ“„</span>
                                     <span style={{fontSize:9, color:'var(--fg-muted)', textAlign:'center', padding:'0 4px', lineHeight:1.2, overflow:'hidden', textOverflow:'ellipsis', maxWidth:'100%'}}>{ev.nombre}</span>
                                   </div>
                                 )}
-                                <button type="button" onClick={() => setParteFormOT(s => ({ ...s, evidencias: s.evidencias.filter((_, i) => i !== idx) }))} style={{position:'absolute', top:2, right:2, width:18, height:18, borderRadius:'50%', background:'rgba(0,0,0,0.55)', color:'#fff', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, lineHeight:1}}>×</button>
+                                <button type="button" onClick={() => setParteFormOT(s => ({ ...s, evidencias: s.evidencias.filter((_, i) => i !== idx) }))} style={{position:'absolute', top:2, right:2, width:18, height:18, borderRadius:'50%', background:'rgba(0,0,0,0.55)', color:'#fff', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, lineHeight:1}}>Ã—</button>
                               </div>
                             ))}
                           </div>
                         )}
                         <label className="btn btn-ghost" style={{fontSize:12, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6}}>
-                          📎 Adjuntar archivo (imagen, PDF, Word)
+                          ðŸ“Ž Adjuntar archivo (imagen, PDF, Word)
                           <input type="file" accept="image/*,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple style={{display:'none'}} onChange={e => {
                             const files = Array.from(e.target.files || []);
                             const nuevas = files.map(f => ({ nombre: f.name, tipo: f.type, tamanio: f.size, url: URL.createObjectURL(f) }));
@@ -3156,12 +3347,12 @@ function OT({ role }) {
                         </label>
                       </div>
 
-                      {/* — Sección 8: Observaciones / Restricciones — */}
+                      {/* â€” SecciÃ³n 8: Observaciones / Restricciones â€” */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Observaciones o restricciones</div>
                         <textarea
                           className="input" rows={3}
-                          placeholder="Reporta cualquier problema, restricción o novedad del día (falta de materiales, acceso restringido, condiciones climáticas, equipos defectuosos...)"
+                          placeholder="Reporta cualquier problema, restricciÃ³n o novedad del dÃ­a (falta de materiales, acceso restringido, condiciones climÃ¡ticas, equipos defectuosos...)"
                           value={parteFormOT.observaciones}
                           onChange={e => setParteFormOT(s => ({...s, observaciones: e.target.value}))}
                           style={{resize:'vertical'}}
@@ -3173,8 +3364,8 @@ function OT({ role }) {
                             <div style={{position:'absolute', top:2, left: parteFormOT.es_restriccion ? 18 : 2, width:16, height:16, borderRadius:'50%', background:'#fff', transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.2)'}} />
                           </div>
                           <div>
-                            <div style={{fontSize:13, fontWeight:600, color: parteFormOT.es_restriccion ? 'var(--danger)' : 'var(--fg)'}}>Reportar como restricción</div>
-                            <div style={{fontSize:11, color:'var(--fg-muted)'}}>El parte quedará marcado como "Con restricción" y se generará una alerta al supervisor</div>
+                            <div style={{fontSize:13, fontWeight:600, color: parteFormOT.es_restriccion ? 'var(--danger)' : 'var(--fg)'}}>Reportar como restricciÃ³n</div>
+                            <div style={{fontSize:11, color:'var(--fg-muted)'}}>El parte quedarÃ¡ marcado como "Con restricciÃ³n" y se generarÃ¡ una alerta al supervisor</div>
                           </div>
                         </label>
                       </div>
@@ -3184,7 +3375,7 @@ function OT({ role }) {
                         <div className="row" style={{gap:8}}>
                           <button type="button" className="btn btn-secondary btn-sm" onClick={e => submitParteDesdOT(null, 'borrador')} disabled={!parteFormOT.tecnico_id}>{I.save} Guardar borrador</button>
                           <button type="submit" className="btn btn-primary btn-sm" disabled={!puedeEnviar}>
-                            {parteFormOT.es_restriccion ? '⚠ Enviar con restricción' : <>{I.check} Enviar a revisión</>}
+                            {parteFormOT.es_restriccion ? 'âš  Enviar con restricciÃ³n' : <>{I.check} Enviar a revisiÃ³n</>}
                           </button>
                         </div>
                       </div>
@@ -3226,11 +3417,11 @@ function OT({ role }) {
                                   {I.edit} Editar
                                 </button>
                                 <button type="button" className="btn btn-primary btn-sm" style={{padding:'2px 10px', fontSize:12}} onClick={e => { e.stopPropagation(); enviarParteARevision(p.id); }}>
-                                  Enviar a revisión
+                                  Enviar a revisiÃ³n
                                 </button>
                               </>)}
                               <span className={`badge ${p.estado==='aprobado'?'badge-green':p.estado==='rechazado'?'badge-red':p.estado==='observado'?'badge-orange':p.estado==='con_restriccion'?'badge-red':p.estado==='borrador'?'badge-gray':'badge-orange'}`}>
-                                {p.estado==='aprobado'?'Aprobado':p.estado==='rechazado'?'Rechazado':p.estado==='observado'?'Observado':p.estado==='con_restriccion'?'Con restricción':p.estado==='borrador'?'Borrador':'Pendiente'}
+                                {p.estado==='aprobado'?'Aprobado':p.estado==='rechazado'?'Rechazado':p.estado==='observado'?'Observado':p.estado==='con_restriccion'?'Con restricciÃ³n':p.estado==='borrador'?'Borrador':'Pendiente'}
                               </span>
                             </div>
                           </div>
@@ -3247,14 +3438,14 @@ function OT({ role }) {
                   </>
                 ) : (
                   <div className="text-muted" style={{padding:32, textAlign:'center'}}>
-                    Aún no se han registrado partes diarios.
+                    AÃºn no se han registrado partes diarios.
                     {sel.estado === 'ejecucion' && <div style={{marginTop:6, fontSize:12}}>Usa &quot;+ Nuevo parte diario&quot; para registrar.</div>}
                   </div>
                 )}
               </div>
             )}
 
-            {/* ── TAB COSTOS ── */}
+            {/* â”€â”€ TAB COSTOS â”€â”€ */}
             {activeTab === 'Costos' && canCost && (() => {
               const cierreOT = (cierresTecnicos || []).find(ct => ct.ot_id === sel.id);
               const partesAprobados = partesOT.filter(p => p.estado === 'aprobado');
@@ -3281,7 +3472,7 @@ function OT({ role }) {
               const terceroReal = partesAprobados.reduce((s, p) => s + (p.terceros_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0) + (cierreOT?.costo_terceros || 0);
               const logisticaReal = partesAprobados.reduce((s, p) => s + (p.logistica_lineas || []).reduce((sm, l) => sm + (Number(l.monto) || 0), 0), 0) + (cierreOT?.costo_logistica || 0);
 
-              // MEJORA 2: HC vinculada a través de OS Cliente
+              // MEJORA 2: HC vinculada a travÃ©s de OS Cliente
               const hcVinculadaCostos = (() => {
                 if (!osVinculada?.cotizacion_id) return null;
                 const cot = (cotizaciones || []).find(c => c.id === osVinculada.cotizacion_id);
@@ -3319,7 +3510,7 @@ function OT({ role }) {
               const estLogFinal = distribuirEstimado('logistica');
               const costoEstTotal = costoEstimadoPropio || (estMoFinal + estMatFinal + estTerFinal + estLogFinal);
 
-              // Real: desde realDetalle (manual) con fallback a partes aprobados por sección
+              // Real: desde realDetalle (manual) con fallback a partes aprobados por secciÃ³n
               const sumReal = (key) => (realDetalle[key] || []).reduce((s, i) => s + (Number(i.subtotal) || 0), 0);
               const realMoFinal  = (realDetalle.mano_obra  || []).length > 0 ? sumReal('mano_obra') + moAdminReal : (moReal  > 0 ? moReal  : null);
               const realMatFinal = (realDetalle.materiales || []).length > 0 ? sumReal('materiales') : (matReal > 0 ? matReal : null);
@@ -3423,11 +3614,11 @@ function OT({ role }) {
                 { key: 'mano_obra',  label: 'Mano de obra',         est: estMoFinal,  real: realMoFinal  },
                 { key: 'materiales', label: 'Materiales',            est: estMatFinal, real: realMatFinal },
                 { key: 'terceros',   label: 'Servicios terceros',    est: estTerFinal, real: realTerFinal },
-                { key: 'logistica',  label: 'Logística y viáticos',  est: estLogFinal, real: realLogFinal },
+                { key: 'logistica',  label: 'LogÃ­stica y viÃ¡ticos',  est: estLogFinal, real: realLogFinal },
               ];
               const inputSt = { fontSize: 12, padding: '3px 6px' };
               const monedaOT = osVinculada?.moneda || 'PEN';
-              const monSym = monedaOT === 'USD' ? 'US$' : monedaOT === 'EUR' ? '€' : 'S/';
+              const monSym = monedaOT === 'USD' ? 'US$' : monedaOT === 'EUR' ? 'â‚¬' : 'S/';
 
               const filasDesgloseOT = [
                 ...(partesOT || []).map(p => {
@@ -3437,7 +3628,7 @@ function OT({ role }) {
                   const estado = String(p.estado || '').toLowerCase();
                   const aprobado = estado === 'aprobado';
                   const esHon = persona ? esModalidadHonorarios(persona) : false;
-                  return { nombre: persona?.nombre || p.tecnico_nombre || p.tecnico || '—', tipo: 'Operativo', esHon, fecha: p.fecha || '—', horas, tarifa, aprobado, estadoLabel: aprobado ? 'Aprobado' : estado === 'en_revision' ? 'En revision' : estado };
+                  return { nombre: persona?.nombre || p.tecnico_nombre || p.tecnico || 'â€”', tipo: 'Operativo', esHon, fecha: p.fecha || 'â€”', horas, tarifa, aprobado, estadoLabel: aprobado ? 'Aprobado' : estado === 'en_revision' ? 'En revision' : estado };
                 }),
                 ...(tareosAdminOT || []).map(t => {
                   const persona = (personalAdmin || []).find(x => x.id === t.personal_id);
@@ -3446,7 +3637,7 @@ function OT({ role }) {
                   const estado = String(t.estado || '').toLowerCase();
                   const aprobado = estado === 'enviado';
                   const esHon = persona ? esModalidadHonorarios(persona) : false;
-                  return { nombre: persona?.nombre || t.personal_nombre || '—', tipo: 'Administrativo', esHon, fecha: t.fecha || '—', horas, tarifa, aprobado, estadoLabel: aprobado ? 'Enviado' : estado === 'borrador' ? 'Borrador' : estado };
+                  return { nombre: persona?.nombre || t.personal_nombre || 'â€”', tipo: 'Administrativo', esHon, fecha: t.fecha || 'â€”', horas, tarifa, aprobado, estadoLabel: aprobado ? 'Enviado' : estado === 'borrador' ? 'Borrador' : estado };
                 }),
               ].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es') || a.fecha.localeCompare(b.fecha));
               const totalHorasDesgloseAprobadas = filasDesgloseOT.filter(f => f.aprobado).reduce((s, f) => s + f.horas, 0);
@@ -3488,13 +3679,13 @@ function OT({ role }) {
                     </div>
                   </div>
 
-                  {/* ── MEJORA 2: Referencia HC ── */}
+                  {/* â”€â”€ MEJORA 2: Referencia HC â”€â”€ */}
                   {hcVinculadaCostos && (
                     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                       <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'space-between', padding: '10px 16px', borderRadius: 0, fontSize: 13 }}
                         onClick={() => setShowHCRefCostos(v => !v)}>
-                        <span>📋 Referencia Hoja de Costeo</span>
-                        <span style={{ fontSize: 10, color: 'var(--fg-muted)' }}>{showHCRefCostos ? '▲ ocultar' : '▼ ver'}</span>
+                        <span>ðŸ“‹ Referencia Hoja de Costeo</span>
+                        <span style={{ fontSize: 10, color: 'var(--fg-muted)' }}>{showHCRefCostos ? 'â–² ocultar' : 'â–¼ ver'}</span>
                       </button>
                       {showHCRefCostos && (
                         <div style={{ padding: '0 16px 14px' }}>
@@ -3510,11 +3701,11 @@ function OT({ role }) {
                                 ['Mano de obra',       hcVinculadaCostos.total_mano_obra],
                                 ['Materiales',         hcVinculadaCostos.total_materiales],
                                 ['Servicios terceros', hcVinculadaCostos.total_servicios_terceros],
-                                ['Logística',          hcVinculadaCostos.total_logistica],
+                                ['LogÃ­stica',          hcVinculadaCostos.total_logistica],
                               ].map(([lbl, val]) => (
                                 <tr key={lbl} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                                   <td style={{ padding: '5px 0' }}>{lbl}</td>
-                                  <td style={{ textAlign: 'right', padding: '5px 0', fontWeight: 600 }}>{val != null ? money(val, monSym) : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '5px 0', fontWeight: 600 }}>{val != null ? money(val, monSym) : 'â€”'}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -3524,13 +3715,13 @@ function OT({ role }) {
                     </div>
                   )}
 
-                  {/* ── MEJORA 1: Tabla comparativa con desglose expandible ── */}
+                  {/* â”€â”€ MEJORA 1: Tabla comparativa con desglose expandible â”€â”€ */}
                   <div className="table-wrap">
                     <table className="tbl">
                       <thead>
                         <tr>
                           <th style={{ width: 28 }} />
-                          <th>Categoría</th>
+                          <th>CategorÃ­a</th>
                           <th className="num">Estimado OT</th>
                           <th className="num">Real acumulado</th>
                           <th className="num">VAR %</th>
@@ -3547,22 +3738,22 @@ function OT({ role }) {
                           return (
                             <React.Fragment key={key}>
                               <tr style={{ cursor: 'pointer' }} onClick={toggleExpand}>
-                                <td style={{ textAlign: 'center', fontSize: 10, color: 'var(--fg-muted)' }}>{expanded ? '▼' : '▶'}</td>
+                                <td style={{ textAlign: 'center', fontSize: 10, color: 'var(--fg-muted)' }}>{expanded ? 'â–¼' : 'â–¶'}</td>
                                 <td>
                                   {label}
-                                  {items.length > 0 && <span style={{ fontSize: 11, color: 'var(--cyan)', marginLeft: 6 }}>{items.length} ítem{items.length !== 1 ? 's' : ''}</span>}
+                                  {items.length > 0 && <span style={{ fontSize: 11, color: 'var(--cyan)', marginLeft: 6 }}>{items.length} Ã­tem{items.length !== 1 ? 's' : ''}</span>}
                                 </td>
-                                <td className="num">{est != null ? money(est, monSym) : '—'}</td>
-                                <td className="num">{real != null ? money(real, monSym) : '—'}</td>
+                                <td className="num">{est != null ? money(est, monSym) : 'â€”'}</td>
+                                <td className="num">{real != null ? money(real, monSym) : 'â€”'}</td>
                                 <td className="num" style={{ color: varColor(pct), fontWeight: 600 }}>
-                                  {pct !== null ? `${pct > 0 ? '+' : ''}${pct}%` : '—'}
+                                  {pct !== null ? `${pct > 0 ? '+' : ''}${pct}%` : 'â€”'}
                                 </td>
                               </tr>
                               {expanded && (
                                 <tr>
                                   <td colSpan={7} style={{ padding: 0, background: 'var(--bg-subtle)' }}>
                                     <div style={{ padding: '10px 12px 12px 28px' }}>
-                                      {/* Desglose read-only desde partes cuando no hay ítems manuales */}
+                                      {/* Desglose read-only desde partes cuando no hay Ã­tems manuales */}
                                       {items.length === 0 && (() => {
                                         const td = (content, opts = {}) => (
                                           <td style={{ padding: '3px 4px', textAlign: opts.right ? 'right' : 'left', color: opts.muted ? 'var(--fg-muted)' : 'var(--fg)', fontWeight: opts.bold ? 600 : 400, width: opts.w }}>{content}</td>
@@ -3604,9 +3795,9 @@ function OT({ role }) {
                                               const sub = (m.cantidad || 0) * (m.costo_unitario || 0);
                                               if (!sub) return null;
                                               return <tr key={`${p.id}-${i}`} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                                                {td(m.nombre || m.sku || '—')}
+                                                {td(m.nombre || m.sku || 'â€”')}
                                                 {td(m.cantidad, { right: true, muted: true, w: 60 })}
-                                                {td(m.unidad || '—', { muted: true, w: 52 })}
+                                                {td(m.unidad || 'â€”', { muted: true, w: 52 })}
                                                 {td(money(m.costo_unitario || 0, monSym), { right: true, muted: true, w: 90 })}
                                                 {td(money(sub, monSym), { right: true, bold: true, w: 82 })}
                                                 <td style={{ width: 28 }} />
@@ -3628,7 +3819,7 @@ function OT({ role }) {
                                               })
                                             ).filter(Boolean),
                                             ...(cierreOT?.costo_terceros ? [<tr key="cierre" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                                              {td('Cierre técnico')}{td('', { w: 60 })}{td('', { w: 52 })}{td('', { w: 90 })}
+                                              {td('Cierre tÃ©cnico')}{td('', { w: 60 })}{td('', { w: 52 })}{td('', { w: 90 })}
                                               {td(money(cierreOT.costo_terceros, monSym), { right: true, bold: true, w: 82 })}
                                               <td style={{ width: 28 }} />
                                             </tr>] : []),
@@ -3640,7 +3831,7 @@ function OT({ role }) {
                                                 const sub = Number(l.monto || 0);
                                                 if (!sub) return null;
                                                 return <tr key={`${p.id}-${i}`} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                                                  {td(l.descripcion || 'Logística')}
+                                                  {td(l.descripcion || 'LogÃ­stica')}
                                                   {td('', { w: 60 })}{td('', { w: 52 })}{td('', { w: 90 })}
                                                   {td(money(sub, monSym), { right: true, bold: true, w: 82 })}
                                                   <td style={{ width: 28 }} />
@@ -3648,7 +3839,7 @@ function OT({ role }) {
                                               })
                                             ).filter(Boolean),
                                             ...(cierreOT?.costo_logistica ? [<tr key="cierre" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                                              {td('Cierre técnico')}{td('', { w: 60 })}{td('', { w: 52 })}{td('', { w: 90 })}
+                                              {td('Cierre tÃ©cnico')}{td('', { w: 60 })}{td('', { w: 52 })}{td('', { w: 90 })}
                                               {td(money(cierreOT.costo_logistica, monSym), { right: true, bold: true, w: 82 })}
                                               <td style={{ width: 28 }} />
                                             </tr>] : []),
@@ -3661,7 +3852,7 @@ function OT({ role }) {
                                             <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginBottom: 4 }}>
                                               <tbody>{rows}</tbody>
                                             </table>
-                                            <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Para ingresar costos reales manualmente, usa "Agregar ítem".</div>
+                                            <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Para ingresar costos reales manualmente, usa "Agregar Ã­tem".</div>
                                           </div>
                                         );
                                       })()}
@@ -3671,9 +3862,9 @@ function OT({ role }) {
                                             <tr style={{ borderBottom: '1px solid var(--border)' }}>
                                               {key === 'mano_obra' ? (
                                                 <>
-                                                  <th style={{ textAlign: 'left', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600 }}>Técnico</th>
-                                                  <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 56 }}>Días</th>
-                                                  <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 62 }}>Hrs/día</th>
+                                                  <th style={{ textAlign: 'left', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600 }}>TÃ©cnico</th>
+                                                  <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 56 }}>DÃ­as</th>
+                                                  <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 62 }}>Hrs/dÃ­a</th>
                                                   <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 80 }}>Costo/h</th>
                                                 </>
                                               ) : key === 'materiales' ? (
@@ -3685,7 +3876,7 @@ function OT({ role }) {
                                                 </>
                                               ) : (
                                                 <>
-                                                  <th style={{ textAlign: 'left', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600 }}>Descripción</th>
+                                                  <th style={{ textAlign: 'left', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600 }}>DescripciÃ³n</th>
                                                   <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 60 }}>Cant.</th>
                                                   <th style={{ textAlign: 'left', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 60 }}>Unidad</th>
                                                   <th style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--fg-muted)', fontWeight: 600, width: 90 }}>Costo u.</th>
@@ -3715,7 +3906,7 @@ function OT({ role }) {
                                                             }),
                                                           }));
                                                         }}>
-                                                        <option value="">Técnico...</option>
+                                                        <option value="">TÃ©cnico...</option>
                                                         {(personalOperativo || []).filter(t => t.estado !== 'inactivo').map(t => (
                                                           <option key={t.id} value={t.id}>{t.nombre}</option>
                                                         ))}
@@ -3730,7 +3921,7 @@ function OT({ role }) {
                                                         value={item.horas_dia} onChange={e => updItem('mano_obra', idx, 'horas_dia', e.target.value)} />
                                                     </td>
                                                     <td style={{ padding: '3px 4px', textAlign: 'right', color: 'var(--fg-muted)' }}>
-                                                      {item.costo_hora > 0 ? money(item.costo_hora, monSym) : '—'}
+                                                      {item.costo_hora > 0 ? money(item.costo_hora, monSym) : 'â€”'}
                                                     </td>
                                                   </>
                                                 ) : key === 'materiales' ? (
@@ -3752,7 +3943,7 @@ function OT({ role }) {
                                                         }}>
                                                         <option value="">Material...</option>
                                                         {(inventario || []).map(inv => (
-                                                          <option key={inv.id} value={inv.id}>{inv.sku} — {inv.nombre}</option>
+                                                          <option key={inv.id} value={inv.id}>{inv.sku} â€” {inv.nombre}</option>
                                                         ))}
                                                       </select>
                                                     </td>
@@ -3760,7 +3951,7 @@ function OT({ role }) {
                                                       <input className="input" type="number" min="0" step="0.01" style={{ ...inputSt, width: '100%', textAlign: 'right' }}
                                                         value={item.cantidad} onChange={e => updItem('materiales', idx, 'cantidad', e.target.value)} />
                                                     </td>
-                                                    <td style={{ padding: '3px 4px', fontSize: 11, color: 'var(--fg-muted)' }}>{item.unidad || '—'}</td>
+                                                    <td style={{ padding: '3px 4px', fontSize: 11, color: 'var(--fg-muted)' }}>{item.unidad || 'â€”'}</td>
                                                     <td style={{ padding: '3px 4px' }}>
                                                       <input className="input" type="number" min="0" step="0.01" style={{ ...inputSt, width: '100%', textAlign: 'right' }}
                                                         value={item.costo_unit} onChange={e => updItem('materiales', idx, 'costo_unit', e.target.value)} />
@@ -3769,7 +3960,7 @@ function OT({ role }) {
                                                 ) : (
                                                   <>
                                                     <td style={{ padding: '3px 4px' }}>
-                                                      <input className="input" style={{ ...inputSt, width: '100%' }} placeholder="Descripción..."
+                                                      <input className="input" style={{ ...inputSt, width: '100%' }} placeholder="DescripciÃ³n..."
                                                         value={item.descripcion} onChange={e => updItem(key, idx, 'descripcion', e.target.value)} />
                                                     </td>
                                                     <td style={{ padding: '3px 4px' }}>
@@ -3787,7 +3978,7 @@ function OT({ role }) {
                                                   </>
                                                 )}
                                                 <td style={{ padding: '3px 4px', textAlign: 'right', fontWeight: 600 }}>
-                                                  {item.subtotal > 0 ? money(item.subtotal, monSym) : '—'}
+                                                  {item.subtotal > 0 ? money(item.subtotal, monSym) : 'â€”'}
                                                 </td>
                                                 <td style={{ padding: '3px 4px', textAlign: 'center' }}>
                                                   <button type="button" className="icon-btn" style={{ fontSize: 11 }} onClick={() => removeItem(key, idx)}>{I.x}</button>
@@ -3798,7 +3989,7 @@ function OT({ role }) {
                                         </table>
                                       )}
                                       <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => addItem(key)}>
-                                        {I.plus} Agregar ítem
+                                        {I.plus} Agregar Ã­tem
                                       </button>
                                     </div>
                                   </td>
@@ -3810,8 +4001,8 @@ function OT({ role }) {
                         <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, background: 'var(--bg-subtle)' }}>
                           <td />
                           <td>Total</td>
-                          <td className="num">{costoEstTotal > 0 ? money(costoEstTotal, monSym) : '—'}</td>
-                          <td className="num">{costoRealTotal > 0 ? money(costoRealTotal, monSym) : '—'}</td>
+                          <td className="num">{costoEstTotal > 0 ? money(costoEstTotal, monSym) : 'â€”'}</td>
+                          <td className="num">{costoRealTotal > 0 ? money(costoRealTotal, monSym) : 'â€”'}</td>
                           <td className="num" style={{ color: varColor(variacionTotalPct, costoEstTotal, costoRealTotal), fontWeight: 700 }}>
                             {variacionTotalPct !== null ? `${variacionTotalPct > 0 ? '+' : ''}${variacionTotalPct}%` : '-'}
                           </td>
@@ -3888,8 +4079,8 @@ function OT({ role }) {
                                 <td><span className={`badge ${f.esHon ? 'badge-orange' : 'badge-green'}`} style={{ fontSize: 11 }}>{f.esHon ? 'Honorarios' : 'Planilla'}</span></td>
                                 <td className="text-muted" style={{ fontSize: 12 }}>{f.fecha}</td>
                                 <td className="num">{f.horas.toFixed(1)}h</td>
-                                <td className="num">{f.tarifa > 0 ? money(f.tarifa, monSym) : '—'}</td>
-                                <td className="num">{f.tarifa > 0 ? money(f.horas * f.tarifa, monSym) : '—'}</td>
+                                <td className="num">{f.tarifa > 0 ? money(f.tarifa, monSym) : 'â€”'}</td>
+                                <td className="num">{f.tarifa > 0 ? money(f.horas * f.tarifa, monSym) : 'â€”'}</td>
                                 <td>
                                   <span className={`badge ${f.aprobado ? 'badge-green' : 'badge-orange'}`} style={{ fontSize: 11 }}>
                                     {f.estadoLabel}
@@ -3938,7 +4129,7 @@ function OT({ role }) {
               );
             })()}
 
-            {/* ── TAB EVIDENCIAS ── */}
+            {/* â”€â”€ TAB EVIDENCIAS â”€â”€ */}
             {activeTab === 'Evidencias' && (() => {
               const evidenciasOT = partesOT.flatMap(p =>
                 (p.evidencias || []).map(ev => ({ ...ev, parte_numero: p.id, parte_fecha: p.fecha, tecnico: p.tecnico }))
@@ -3953,9 +4144,9 @@ function OT({ role }) {
                   </div>
                   {evidenciasOT.length === 0 ? (
                     <div style={{padding:48, textAlign:'center', color:'var(--fg-muted)', border:'2px dashed var(--border)', borderRadius:8}}>
-                      <div style={{fontSize:36, marginBottom:8}}>📎</div>
+                      <div style={{fontSize:36, marginBottom:8}}>ðŸ“Ž</div>
                       <div style={{fontWeight:600, marginBottom:6}}>Sin evidencias registradas</div>
-                      <div style={{fontSize:12}}>Las fotos y documentos adjuntos al registrar partes diarios aparecerán aquí automáticamente.</div>
+                      <div style={{fontSize:12}}>Las fotos y documentos adjuntos al registrar partes diarios aparecerÃ¡n aquÃ­ automÃ¡ticamente.</div>
                     </div>
                   ) : (
                     <div style={{display:'flex', flexWrap:'wrap', gap:12}}>
@@ -3965,12 +4156,12 @@ function OT({ role }) {
                             {ev.tipo?.startsWith('image/') && ev.url ? (
                               <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} />
                             ) : (
-                              <span style={{fontSize:32}}>📄</span>
+                              <span style={{fontSize:32}}>ðŸ“„</span>
                             )}
                           </div>
                           <div style={{padding:'6px 8px'}}>
                             <div style={{fontSize:11, fontWeight:600, color:'var(--fg)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}} title={ev.nombre}>{ev.nombre}</div>
-                            <div style={{fontSize:10, color:'var(--fg-muted)', marginTop:2}}>{ev.tecnico} · {ev.parte_fecha}</div>
+                            <div style={{fontSize:10, color:'var(--fg-muted)', marginTop:2}}>{ev.tecnico} Â· {ev.parte_fecha}</div>
                           </div>
                         </div>
                       ))}
@@ -3980,7 +4171,7 @@ function OT({ role }) {
               );
             })()}
 
-            {/* ── TAB HISTORIAL ── */}
+            {/* â”€â”€ TAB HISTORIAL â”€â”€ */}
             {activeTab === 'Historial' && (
               <div style={{padding:22}}>
                 <h3 style={{marginBottom:16}}>Historial de eventos</h3>
@@ -4000,7 +4191,7 @@ function OT({ role }) {
                               <div style={{fontSize:13, fontWeight:600}}>{ev.evento}</div>
                               <div style={{fontSize:11, color:'var(--fg-muted)', flexShrink:0}}>{ev.fecha}</div>
                             </div>
-                            {ev.usuario !== '—' && <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:3}}>{ev.usuario}</div>}
+                            {ev.usuario !== 'â€”' && <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:3}}>{ev.usuario}</div>}
                           </div>
                         </div>
                       ))}
@@ -4052,18 +4243,18 @@ function OT({ role }) {
             <div className="side-panel" style={{width:'min(680px, 96vw)'}}>
               <div className="side-panel-head">
                 <div>
-                  <div style={{fontSize:11, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:1, marginBottom:4}}>Cierre técnico</div>
+                  <div style={{fontSize:11, color:'var(--fg-muted)', textTransform:'uppercase', letterSpacing:1, marginBottom:4}}>Cierre tÃ©cnico</div>
                   <h2 style={{margin:0, fontSize:18}}>{sel.numero}</h2>
                 </div>
                 <button className="icon-btn" onClick={() => setShowCierreForm(false)}>{I.x}</button>
               </div>
 
               <div style={{flex:1, overflowY:'auto', minHeight:0}}>
-              {/* ── Sección 1: Resumen de ejecución ── */}
+              {/* â”€â”€ SecciÃ³n 1: Resumen de ejecuciÃ³n â”€â”€ */}
               <div style={{padding:'20px 24px', borderBottom:'1px solid var(--border)'}}>
-                <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>1. Resumen de ejecución</div>
+                <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>1. Resumen de ejecuciÃ³n</div>
                 <div className="input-group" style={{marginBottom:12}}>
-                  <label>Descripción del trabajo ejecutado</label>
+                  <label>DescripciÃ³n del trabajo ejecutado</label>
                   <textarea className="input" rows={4} value={cierreForm.descripcion_trabajo} onChange={e => setCierreForm(v => ({...v, descripcion_trabajo: e.target.value}))} placeholder="Resumen de las actividades realizadas..." style={{resize:'vertical'}}/>
                 </div>
                 <div className="grid-2" style={{gap:12, marginBottom:12}}>
@@ -4088,7 +4279,7 @@ function OT({ role }) {
                 </div>
               </div>
 
-              {/* ── Sección 2: Costos (solo con permiso) ── */}
+              {/* â”€â”€ SecciÃ³n 2: Costos (solo con permiso) â”€â”€ */}
               {canCost && (
                 <div style={{padding:'20px 24px', borderBottom:'1px solid var(--border)'}}>
                   <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>2. Resumen de costos</div>
@@ -4107,23 +4298,23 @@ function OT({ role }) {
                       ].map(([label, est, real]) => (
                         <tr key={label} style={{borderBottom:'1px solid var(--border-subtle)'}}>
                           <td style={{padding:'8px 0'}}>{label}</td>
-                          <td style={{textAlign:'right', padding:'8px 0', color:'var(--fg-muted)'}}>{est != null ? money(est, sym) : '—'}</td>
-                          <td style={{textAlign:'right', padding:'8px 0', fontWeight: real > 0 ? 600 : 400, color:'var(--fg-muted)', fontSize:12}}>{real > 0 ? money(real, sym) : '—'} <span style={{fontSize:10, color:'var(--fg-muted)'}}>auto</span></td>
+                          <td style={{textAlign:'right', padding:'8px 0', color:'var(--fg-muted)'}}>{est != null ? money(est, sym) : 'â€”'}</td>
+                          <td style={{textAlign:'right', padding:'8px 0', fontWeight: real > 0 ? 600 : 400, color:'var(--fg-muted)', fontSize:12}}>{real > 0 ? money(real, sym) : 'â€”'} <span style={{fontSize:10, color:'var(--fg-muted)'}}>auto</span></td>
                         </tr>
                       ))}
                       <tr style={{borderBottom:'1px solid var(--border-subtle)'}}>
                         <td style={{padding:'6px 0'}}>Servicios terceros</td>
-                        <td style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)'}}>{sel.est_terceros != null ? money(sel.est_terceros, sym) : '—'}</td>
+                        <td style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)'}}>{sel.est_terceros != null ? money(sel.est_terceros, sym) : 'â€”'}</td>
                         <td style={{textAlign:'right', padding:'4px 0'}}><input className="input" type="number" min="0" step="0.01" value={cierreForm.costo_terceros} onChange={e => setCierreForm(v => ({...v, costo_terceros: e.target.value}))} style={{width:110, textAlign:'right', padding:'4px 8px', fontSize:13}}/></td>
                       </tr>
                       <tr style={{borderBottom:'1px solid var(--border-subtle)'}}>
-                        <td style={{padding:'6px 0'}}>Logística y viáticos</td>
-                        <td style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)'}}>{sel.est_logistica != null ? money(sel.est_logistica, sym) : '—'}</td>
+                        <td style={{padding:'6px 0'}}>LogÃ­stica y viÃ¡ticos</td>
+                        <td style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)'}}>{sel.est_logistica != null ? money(sel.est_logistica, sym) : 'â€”'}</td>
                         <td style={{textAlign:'right', padding:'4px 0'}}><input className="input" type="number" min="0" step="0.01" value={cierreForm.costo_logistica} onChange={e => setCierreForm(v => ({...v, costo_logistica: e.target.value}))} style={{width:110, textAlign:'right', padding:'4px 8px', fontSize:13}}/></td>
                       </tr>
                       <tr style={{borderTop:'2px solid var(--border)'}}>
                         <td style={{padding:'8px 0', fontWeight:700}}>Total</td>
-                        <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color:'var(--fg-muted)'}}>{costoEst > 0 ? money(costoEst, sym) : '—'}</td>
+                        <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color:'var(--fg-muted)'}}>{costoEst > 0 ? money(costoEst, sym) : 'â€”'}</td>
                         <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color: costoReal > costoEst && costoEst > 0 ? 'var(--danger)' : 'var(--green)'}}>{money(costoReal, sym)}</td>
                       </tr>
                       {margen !== null && (
@@ -4138,14 +4329,14 @@ function OT({ role }) {
                 </div>
               )}
 
-              {/* ── Sección 3: Conformidad del cliente ── */}
+              {/* â”€â”€ SecciÃ³n 3: Conformidad del cliente â”€â”€ */}
               <div style={{padding:'20px 24px', borderBottom:'1px solid var(--border)'}}>
                 <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>3. Conformidad del cliente</div>
                 <div className="col" style={{gap:10}}>
                   {[
-                    { val: 'digital', label: 'Sí — firma digital', desc: 'Se genera un link único para que el cliente firme en línea con nombre y DNI.' },
-                    { val: 'fisico', label: 'Sí — documento físico', desc: 'Adjunta el documento de conformidad firmado (PDF o imagen).' },
-                    { val: 'pendiente', label: 'No — pendiente', desc: 'La OT se cierra técnicamente. La conformidad queda pendiente.' },
+                    { val: 'digital', label: 'SÃ­ â€” firma digital', desc: 'Se genera un link Ãºnico para que el cliente firme en lÃ­nea con nombre y DNI.' },
+                    { val: 'fisico', label: 'SÃ­ â€” documento fÃ­sico', desc: 'Adjunta el documento de conformidad firmado (PDF o imagen).' },
+                    { val: 'pendiente', label: 'No â€” pendiente', desc: 'La OT se cierra tÃ©cnicamente. La conformidad queda pendiente.' },
                   ].map(opt => (
                     <label key={opt.val} style={{display:'flex', gap:12, padding:'12px 14px', borderRadius:8, border:`1.5px solid ${cierreForm.conformidad === opt.val ? 'var(--cyan)' : 'var(--border)'}`, background: cierreForm.conformidad === opt.val ? 'color-mix(in srgb, var(--cyan) 6%, transparent)' : 'var(--bg)', cursor:'pointer'}}>
                       <input type="radio" name="conformidad" value={opt.val} checked={cierreForm.conformidad === opt.val} onChange={() => setCierreForm(v => ({...v, conformidad: opt.val, conformidad_archivo: null}))} style={{marginTop:2, flexShrink:0}}/>
@@ -4162,7 +4353,7 @@ function OT({ role }) {
                             />
                             {cierreForm.conformidad_archivo ? (
                               <div style={{display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'var(--bg-subtle)', borderRadius:6, fontSize:12}}>
-                                <span>📄</span>
+                                <span>ðŸ“„</span>
                                 <span style={{flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{cierreForm.conformidad_archivo.name}</span>
                                 <button type="button" className="btn btn-ghost" style={{fontSize:11, padding:'2px 6px'}} onClick={() => setCierreForm(v => ({...v, conformidad_archivo: null}))}>Quitar</button>
                               </div>
@@ -4175,7 +4366,7 @@ function OT({ role }) {
                         )}
                         {opt.val === 'digital' && cierreForm.conformidad === 'digital' && (
                           <div style={{marginTop:8, padding:'8px 10px', background:'color-mix(in srgb, var(--cyan) 8%, transparent)', borderRadius:6, fontSize:12, color:'var(--fg-muted)'}}>
-                            Al confirmar el cierre se generará un link único. Cópialo y envíaselo al cliente para que firme en línea.
+                            Al confirmar el cierre se generarÃ¡ un link Ãºnico. CÃ³pialo y envÃ­aselo al cliente para que firme en lÃ­nea.
                           </div>
                         )}
                       </div>
@@ -4184,17 +4375,17 @@ function OT({ role }) {
                 </div>
               </div>
 
-              {/* ── Sección 4: Observaciones finales ── */}
+              {/* â”€â”€ SecciÃ³n 4: Observaciones finales â”€â”€ */}
               <div style={{padding:'20px 24px'}}>
                 <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>4. Observaciones finales</div>
                 <div className="input-group">
-                  <label>Notas del supervisor <span className="text-muted">(lecciones aprendidas, garantías, próximas intervenciones...)</span></label>
+                  <label>Notas del supervisor <span className="text-muted">(lecciones aprendidas, garantÃ­as, prÃ³ximas intervenciones...)</span></label>
                   <textarea className="input" rows={3} value={cierreForm.observaciones_finales} onChange={e => setCierreForm(v => ({...v, observaciones_finales: e.target.value}))} placeholder="Opcional" style={{resize:'vertical'}}/>
                 </div>
               </div>
               </div>{/* fin scroll */}
 
-              {/* ── Pie ── */}
+              {/* â”€â”€ Pie â”€â”€ */}
               <div style={{padding:'16px 24px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0, background:'var(--bg-card)'}}>
                 <button className="btn btn-ghost" onClick={() => setShowCierreForm(false)}>Cancelar</button>
                 <button className="btn btn-primary" disabled={!cierreForm.fecha_fin_real} onClick={confirmarCierreOT}>
@@ -4212,10 +4403,10 @@ function OT({ role }) {
           <div className="modal" style={{maxWidth:480}}>
             <div className="modal-head">
               <h3 style={{margin:0}}>Link de firma generado</h3>
-              <button className="icon-btn" onClick={() => setCierreConfirmandoLink(null)}>×</button>
+              <button className="icon-btn" onClick={() => setCierreConfirmandoLink(null)}>Ã—</button>
             </div>
             <div style={{padding:'20px 24px'}}>
-              <p style={{fontSize:13, color:'var(--fg-muted)', marginBottom:16}}>Copia este link y envíaselo al cliente para que firme la conformidad en línea con su nombre y DNI.</p>
+              <p style={{fontSize:13, color:'var(--fg-muted)', marginBottom:16}}>Copia este link y envÃ­aselo al cliente para que firme la conformidad en lÃ­nea con su nombre y DNI.</p>
               <div style={{display:'flex', gap:8, alignItems:'center', padding:'10px 12px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)'}}>
                 <span style={{flex:1, fontSize:12, wordBreak:'break-all', color:'var(--fg-muted)'}}>{cierreConfirmandoLink}</span>
                 <button className="btn btn-secondary" style={{flexShrink:0, fontSize:12}} onClick={() => { navigator.clipboard?.writeText(cierreConfirmandoLink); }}>Copiar</button>
@@ -4231,7 +4422,7 @@ function OT({ role }) {
       {parteSelOT && (() => {
         const p = parteSelOT;
         const estadoBadge = p.estado === 'aprobado' ? 'badge-green' : p.estado === 'rechazado' ? 'badge-red' : p.estado === 'observado' ? 'badge-orange' : p.estado === 'con_restriccion' ? 'badge-red' : p.estado === 'borrador' ? 'badge-gray' : 'badge-orange';
-        const estadoLabel = { aprobado: 'Aprobado', rechazado: 'Rechazado', observado: 'Observado', con_restriccion: 'Con restricción', borrador: 'Borrador', en_revision: 'Pendiente revisión' }[p.estado] || p.estado;
+        const estadoLabel = { aprobado: 'Aprobado', rechazado: 'Rechazado', observado: 'Observado', con_restriccion: 'Con restricciÃ³n', borrador: 'Borrador', en_revision: 'Pendiente revisiÃ³n' }[p.estado] || p.estado;
         const revisableP = ['en_revision', 'con_restriccion'].includes(p.estado);
         const avanceParte = p.tarea_id
           ? (p.avance_tarea_validado ?? p.avance_tarea_reportado ?? 0)
@@ -4245,7 +4436,7 @@ function OT({ role }) {
           <div className="side-panel ficha-detail-panel parte-review-panel" style={{width:'min(560px, 96vw)', zIndex: 63}}>
             <div className="side-panel-head">
               <div>
-                <div className="eyebrow">Parte diario · {sel?.numero}</div>
+                <div className="eyebrow">Parte diario Â· {sel?.numero}</div>
                 <div className="font-display ficha-detail-title mono" style={{marginTop:4}}>{p.tecnico}</div>
               </div>
               <button className="icon-btn" onClick={cerrarPartePanel}>{I.x}</button>
@@ -4311,7 +4502,7 @@ function OT({ role }) {
                   <div>
                     <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Materiales usados</div>
                     <table className="tbl" style={{fontSize:12}}>
-                      <thead><tr><th>SKU</th><th>Descripción</th><th className="num">Cant.</th></tr></thead>
+                      <thead><tr><th>SKU</th><th>DescripciÃ³n</th><th className="num">Cant.</th></tr></thead>
                       <tbody>
                         {p.materiales_usados.map((m, i) => <tr key={i}><td className="mono text-muted">{m.sku}</td><td>{m.nombre}</td><td className="num">{m.cantidad}</td></tr>)}
                       </tbody>
@@ -4322,7 +4513,7 @@ function OT({ role }) {
                   <div>
                     <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Servicios de terceros</div>
                     <table className="tbl" style={{fontSize:12}}>
-                      <thead><tr><th>Descripción</th><th className="num">Monto</th></tr></thead>
+                      <thead><tr><th>DescripciÃ³n</th><th className="num">Monto</th></tr></thead>
                       <tbody>
                         {p.terceros_lineas.map((l, i) => (
                           <tr key={i}><td>{l.descripcion}</td><td className="num" style={{fontWeight:600}}>{Number(l.monto || 0).toFixed(2)}</td></tr>
@@ -4333,9 +4524,9 @@ function OT({ role }) {
                 )}
                 {(p.logistica_lineas?.length || 0) > 0 && (
                   <div>
-                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Logística y viáticos</div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>LogÃ­stica y viÃ¡ticos</div>
                     <table className="tbl" style={{fontSize:12}}>
-                      <thead><tr><th>Descripción</th><th className="num">Monto</th></tr></thead>
+                      <thead><tr><th>DescripciÃ³n</th><th className="num">Monto</th></tr></thead>
                       <tbody>
                         {p.logistica_lineas.map((l, i) => (
                           <tr key={i}><td>{l.descripcion}</td><td className="num" style={{fontWeight:600}}>{Number(l.monto || 0).toFixed(2)}</td></tr>
@@ -4350,7 +4541,7 @@ function OT({ role }) {
                     <div style={{display:'flex', flexWrap:'wrap', gap:8}}>
                       {p.evidencias.map((ev, i) => (
                         <div key={i} style={{width:72, height:72, borderRadius:6, overflow:'hidden', border:'1px solid var(--border)', background:'var(--bg-subtle)', display:'flex', alignItems:'center', justifyContent:'center'}} title={ev.nombre}>
-                          {ev.tipo?.startsWith('image/') && ev.url ? <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <span style={{fontSize:24}}>📄</span>}
+                          {ev.tipo?.startsWith('image/') && ev.url ? <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <span style={{fontSize:24}}>ðŸ“„</span>}
                         </div>
                       ))}
                     </div>
@@ -4360,14 +4551,14 @@ function OT({ role }) {
                   <div>
                     <div style={{fontWeight:600, fontSize:13, marginBottom:8, display:'flex', alignItems:'center', gap:8}}>
                       Observaciones
-                      {p.es_restriccion && <span className="badge badge-red" style={{fontSize:10}}>⚠ Con restricción</span>}
+                      {p.es_restriccion && <span className="badge badge-red" style={{fontSize:10}}>âš  Con restricciÃ³n</span>}
                     </div>
                     <div style={{background: p.es_restriccion ? 'color-mix(in srgb, var(--danger) 6%, transparent)' : 'var(--bg-subtle)', padding:12, borderRadius:6, fontSize:13, lineHeight:1.6, border: p.es_restriccion ? '1px solid var(--danger)' : 'none'}}>{p.observaciones}</div>
                   </div>
                 )}
                 {p.motivo_observacion && (
                   <div style={{background:'color-mix(in srgb, var(--orange) 8%, transparent)', border:'1px solid var(--orange)', borderRadius:6, padding:12}}>
-                    <div style={{fontWeight:600, fontSize:12, color:'var(--orange)', marginBottom:4}}>Observación del supervisor</div>
+                    <div style={{fontWeight:600, fontSize:12, color:'var(--orange)', marginBottom:4}}>ObservaciÃ³n del supervisor</div>
                     <div style={{fontSize:13}}>{p.motivo_observacion}</div>
                   </div>
                 )}
@@ -4379,7 +4570,7 @@ function OT({ role }) {
                 )}
                 {p.estado === 'aprobado' && canAprobarPartes && (
                   <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
-                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>Corrección</div>
+                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>CorrecciÃ³n</div>
                     {modoAccionParteOT !== 'reabrir' ? (
                       <div style={{padding:16}}>
                         <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:10}}>Reabrir el parte lo devuelve a borrador. Los costos y avance de la OT se recalculan sin este parte hasta que sea re-aprobado.</div>
@@ -4387,7 +4578,7 @@ function OT({ role }) {
                       </div>
                     ) : (
                       <div style={{padding:16, gap:12}} className="col">
-                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverá a borrador y el técnico podrá editarlo.</div>
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverÃ¡ a borrador y el tÃ©cnico podrÃ¡ editarlo.</div>
                         <div className="input-group">
                           <label style={{fontSize:12}}>Motivo de reapertura <span style={{color:'var(--fg-muted)'}}>(opcional)</span></label>
                           <textarea className="input" rows={2} placeholder="Ej: Error en horas registradas..." value={motivoAccionParteOT} onChange={e => setMotivoAccionParteOT(e.target.value)} style={{resize:'vertical'}} autoFocus />
@@ -4402,7 +4593,7 @@ function OT({ role }) {
                 )}
                 {revisableP && canAprobarPartes && (
                   <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
-                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>Decisión del supervisor</div>
+                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>DecisiÃ³n del supervisor</div>
                     {!modoAccionParteOT && (
                       <div style={{padding:16, display:'flex', gap:8}}>
                         <button className="btn btn-primary" style={{flex:1}} onClick={() => { setModoAccionParteOT('aprobar'); setAvanceAprobacionParteOT(p.tarea_id ? (p.avance_tarea_reportado || 0) : (p.avance_reportado || 0)); }}>{I.check} Aprobar</button>
@@ -4420,23 +4611,23 @@ function OT({ role }) {
                         </div>
                         <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
                           <button className="btn btn-secondary btn-sm" onClick={() => setModoAccionParteOT(null)}>Cancelar</button>
-                          <button className="btn btn-primary btn-sm" onClick={() => { aprobarParteDiario(p.id, avanceAprobacionParteOT); cerrarPartePanel(); }}>{I.check} Confirmar aprobación</button>
+                          <button className="btn btn-primary btn-sm" onClick={() => { aprobarParteDiario(p.id, avanceAprobacionParteOT); cerrarPartePanel(); }}>{I.check} Confirmar aprobaciÃ³n</button>
                         </div>
                       </div>
                     )}
                     {modoAccionParteOT === 'observar' && (
                       <div style={{padding:16, gap:12}} className="col">
-                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverá al técnico para corrección.</div>
-                        <textarea className="input" rows={3} placeholder="Motivo de la observación (obligatorio)..." value={motivoAccionParteOT} onChange={e => setMotivoAccionParteOT(e.target.value)} autoFocus style={{resize:'vertical'}} />
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverÃ¡ al tÃ©cnico para correcciÃ³n.</div>
+                        <textarea className="input" rows={3} placeholder="Motivo de la observaciÃ³n (obligatorio)..." value={motivoAccionParteOT} onChange={e => setMotivoAccionParteOT(e.target.value)} autoFocus style={{resize:'vertical'}} />
                         <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
                           <button className="btn btn-secondary btn-sm" onClick={() => { setModoAccionParteOT(null); setMotivoAccionParteOT(''); }}>Cancelar</button>
-                          <button className="btn btn-secondary btn-sm" style={{color:'var(--orange)'}} disabled={!motivoAccionParteOT.trim()} onClick={() => { observarParteDiario(p.id, motivoAccionParteOT); cerrarPartePanel(); }}>Enviar observación</button>
+                          <button className="btn btn-secondary btn-sm" style={{color:'var(--orange)'}} disabled={!motivoAccionParteOT.trim()} onClick={() => { observarParteDiario(p.id, motivoAccionParteOT); cerrarPartePanel(); }}>Enviar observaciÃ³n</button>
                         </div>
                       </div>
                     )}
                     {modoAccionParteOT === 'rechazar' && (
                       <div style={{padding:16, gap:12}} className="col">
-                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte quedará rechazado. El técnico deberá registrar uno nuevo.</div>
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte quedarÃ¡ rechazado. El tÃ©cnico deberÃ¡ registrar uno nuevo.</div>
                         <textarea className="input" rows={3} placeholder="Motivo del rechazo (obligatorio)..." value={motivoAccionParteOT} onChange={e => setMotivoAccionParteOT(e.target.value)} autoFocus style={{resize:'vertical'}} />
                         <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
                           <button className="btn btn-secondary btn-sm" onClick={() => { setModoAccionParteOT(null); setMotivoAccionParteOT(''); }}>Cancelar</button>
@@ -4461,12 +4652,12 @@ function OT({ role }) {
                 <div className="eyebrow">Formulario de registro</div>
                 <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>Nueva Orden de Trabajo</div>
               </div>
-              <button className="icon-btn" onClick={cerrarPanelNuevaOT}>×</button>
+              <button className="icon-btn" onClick={cerrarPanelNuevaOT}>Ã—</button>
             </div>
             <div className="side-panel-body">
               {errorNuevaOT && <div className="alert alert-danger" style={{marginBottom:16}}>{errorNuevaOT}</div>}
 
-              <div className="eyebrow" style={{marginBottom:12}}>Clasificación</div>
+              <div className="eyebrow" style={{marginBottom:12}}>ClasificaciÃ³n</div>
               <div className="grid-2" style={{gap:16, marginBottom:20}}>
                 <div className="input-group">
                   <label>Tipo de OT <span style={{color:'var(--danger)'}}>*</span></label>
@@ -4476,7 +4667,7 @@ function OT({ role }) {
                     <option value="correctiva">Correctiva</option>
                     <option value="preventiva">Preventiva</option>
                     <option value="tercerizada">Tercerizada</option>
-                    <option value="garantia">Garantía</option>
+                    <option value="garantia">GarantÃ­a</option>
                     <option value="emergencia">Emergencia</option>
                     <option value="proyecto">Proyecto</option>
                   </select>
@@ -4486,7 +4677,7 @@ function OT({ role }) {
                   <select className="select" value={formNuevaOT.prioridad} onChange={e => updNuevaOT('prioridad', e.target.value)}>
                     <option value="normal">Normal</option>
                     <option value="urgente">Urgente</option>
-                    <option value="critica">Crítica</option>
+                    <option value="critica">CrÃ­tica</option>
                   </select>
                 </div>
               </div>
@@ -4499,19 +4690,19 @@ function OT({ role }) {
                     <select className="select" value={formNuevaOT.os_cliente_id} onChange={e => updNuevaOT('os_cliente_id', e.target.value)}>
                       <option value="">{debeTenerOSCliente ? 'Seleccionar OS Cliente...' : 'Sin OS Cliente vinculada'}</option>
                       {osClientes.filter(o => !['cerrada','anulada'].includes(o.estado)).map(o => (
-                        <option key={o.id} value={o.id}>{o.numero} — {cuentas.find(c => c.id === o.cuenta_id)?.razon_social || o.cuenta_id}</option>
+                        <option key={o.id} value={o.id}>{o.numero} â€” {cuentas.find(c => c.id === o.cuenta_id)?.razon_social || o.cuenta_id}</option>
                       ))}
                     </select>
                   </div>
                 </>
               )}
 
-              <div className="eyebrow" style={{marginBottom:12}}>Vinculación contable</div>
+              <div className="eyebrow" style={{marginBottom:12}}>VinculaciÃ³n contable</div>
               <div className="grid-2" style={{gap:16, marginBottom:20}}>
                 <div className="input-group">
                   <label>CECO <span style={{color:'var(--danger)'}}>*</span></label>
                   <select className="select" value={formNuevaOT.centro_costo_id} onChange={e => updNuevaOT('centro_costo_id', e.target.value)}>
-                    <option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'Sin CECOs activos — crea uno en Maestros Base'}</option>
+                    <option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'Sin CECOs activos â€” crea uno en Maestros Base'}</option>
                     {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
                   </select>
                 </div>
@@ -4520,11 +4711,11 @@ function OT({ role }) {
                   {formNuevaOT.os_cliente_id ? (
                     <input className="input" readOnly style={{opacity:0.75}}
                       value={cebeHeredado ? `${cebeHeredado.codigo ? cebeHeredado.codigo + ' - ' : ''}${cebeHeredado.nombre}` : ''}
-                      placeholder={formNuevaOT.os_cliente_id ? 'Sin CEBE en la OS — asígnalo primero' : 'Se hereda de la OS Cliente'}
+                      placeholder={formNuevaOT.os_cliente_id ? 'Sin CEBE en la OS â€” asÃ­gnalo primero' : 'Se hereda de la OS Cliente'}
                     />
                   ) : (
                     <select className="select" value={formNuevaOT.centro_beneficio_id} onChange={e => updNuevaOT('centro_beneficio_id', e.target.value)}>
-                      <option value="">{cebesActivos.length ? 'Seleccionar CEBE...' : 'Sin CEBEs activos — crea uno en Maestros Base'}</option>
+                      <option value="">{cebesActivos.length ? 'Seleccionar CEBE...' : 'Sin CEBEs activos â€” crea uno en Maestros Base'}</option>
                       {cebesActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
                     </select>
                   )}
@@ -4537,7 +4728,7 @@ function OT({ role }) {
                   <label>Servicio / tipo de trabajo</label>
                   {itemsCotizacion.length > 0 ? (
                     <>
-                      <input className="input" list="svc-sugerencias-nueva-ot" value={formNuevaOT.servicio} onChange={e => updNuevaOT('servicio', e.target.value)} placeholder="Elige de la cotización o escribe..." />
+                      <input className="input" list="svc-sugerencias-nueva-ot" value={formNuevaOT.servicio} onChange={e => updNuevaOT('servicio', e.target.value)} placeholder="Elige de la cotizaciÃ³n o escribe..." />
                       <datalist id="svc-sugerencias-nueva-ot">
                         {itemsCotizacion.map((s, i) => <option key={i} value={s} />)}
                       </datalist>
@@ -4552,7 +4743,7 @@ function OT({ role }) {
                   )}
                 </div>
                 <div className="input-group">
-                  <label>Responsable técnico</label>
+                  <label>Responsable tÃ©cnico</label>
                   <select className="select" value={formNuevaOT.tecnico_responsable_id} onChange={e => updNuevaOT('tecnico_responsable_id', e.target.value)}>
                     <option value="">Sin asignar</option>
                     {responsablesTecnicosOT.map(p => <option key={p.id} value={p.id}>{etiquetaTecnicoOT(p)}</option>)}
@@ -4564,12 +4755,12 @@ function OT({ role }) {
                   <input className="input" type="date" value={formNuevaOT.fecha_programada} onChange={e => updNuevaOT('fecha_programada', e.target.value)} />
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
-                  <label>Descripción / alcance</label>
+                  <label>DescripciÃ³n / alcance</label>
                   <textarea className="input" rows="3" value={formNuevaOT.descripcion} onChange={e => updNuevaOT('descripcion', e.target.value)} placeholder="Describe el trabajo a realizar..." />
                 </div>
               </div>
 
-              <div className="eyebrow" style={{marginBottom:12}}>Estimado de costos <span style={{fontSize:11, fontWeight:400, color:'var(--fg-muted)'}}>— opcional</span></div>
+              <div className="eyebrow" style={{marginBottom:12}}>Estimado de costos <span style={{fontSize:11, fontWeight:400, color:'var(--fg-muted)'}}>â€” opcional</span></div>
               {formNuevaOT.os_cliente_id && !hcReferencia && (
                 <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:12, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6}}>
                   Sin hoja de costeo vinculada. El estimado es referencial.
@@ -4589,7 +4780,7 @@ function OT({ role }) {
                   { key: 'est_mo', label: 'Mano de obra', hcVal: hcReferencia?.total_mano_obra ?? null },
                   { key: 'est_materiales', label: 'Materiales', hcVal: hcReferencia?.total_materiales ?? null },
                   { key: 'est_terceros', label: 'Servicios terceros', hcVal: hcReferencia?.total_servicios_terceros ?? null },
-                  { key: 'est_logistica', label: 'Logística', hcVal: hcReferencia?.total_logistica ?? null },
+                  { key: 'est_logistica', label: 'LogÃ­stica', hcVal: hcReferencia?.total_logistica ?? null },
                 ].map(({ key, label, hcVal }) => (
                   <div className="input-group" key={key}>
                     <label style={{display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
@@ -4643,7 +4834,7 @@ function OT({ role }) {
                         >
                           <option value="">Seleccionar colaborador...</option>
                           {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
-                            <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` — ${p.cargo}` : ''}</option>
+                            <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` â€” ${p.cargo}` : ''}</option>
                           ))}
                           </select>
                         </div>
@@ -4711,13 +4902,13 @@ function Partes() {
 
   const hoy = new Date().toISOString().split('T')[0];
   const getOT = id => ots.find(o => o.id === id);
-  const getOTNumero = id => getOT(id)?.numero || '—';
+  const getOTNumero = id => getOT(id)?.numero || 'â€”';
   const getCuenta = otId => {
     const ot = getOT(otId);
-    return (cuentas || []).find(c => c.id === ot?.cuenta_id)?.razon_social || '—';
+    return (cuentas || []).find(c => c.id === ot?.cuenta_id)?.razon_social || 'â€”';
   };
 
-  // Número de parte legible: PD-YYYY-NNNN basado en orden de creación por año
+  // NÃºmero de parte legible: PD-YYYY-NNNN basado en orden de creaciÃ³n por aÃ±o
   const partesOrdenados = [...partes].sort((a, b) => (a.created_at || a.fecha || '') < (b.created_at || b.fecha || '') ? -1 : 1);
   const getNumeroParte = p => {
     if (p.numero) return p.numero;
@@ -4754,18 +4945,18 @@ function Partes() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Partes Diarios</h1>
-          <div className="page-sub">Vista de supervisión · {partes.length} partes totales</div>
+          <div className="page-sub">Vista de supervisiÃ³n Â· {partes.length} partes totales</div>
         </div>
       </div>
 
       {/* KPIs */}
       <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20}}>
         <div className="card" style={{padding:'14px 18px'}}>
-          <div className="eyebrow" style={{marginBottom:6}}>Total partes del día</div>
+          <div className="eyebrow" style={{marginBottom:6}}>Total partes del dÃ­a</div>
           <div style={{fontSize:28, fontWeight:800, color:'var(--navy)'}}>{partesHoy.length}</div>
         </div>
         <div className="card" style={{padding:'14px 18px', borderLeft:'3px solid var(--orange)'}}>
-          <div className="eyebrow" style={{marginBottom:6}}>Pendientes de aprobación</div>
+          <div className="eyebrow" style={{marginBottom:6}}>Pendientes de aprobaciÃ³n</div>
           <div style={{fontSize:28, fontWeight:800, color:'var(--orange)'}}>{pendientesTotal}</div>
         </div>
         <div className="card" style={{padding:'14px 18px', borderLeft:'3px solid var(--green)'}}>
@@ -4790,7 +4981,7 @@ function Partes() {
             {otsFiltro.map(o => <option key={o.id} value={o.id}>{o.numero}</option>)}
           </select>
           <select className="select" value={filtroTecnico} onChange={e => setFiltroTecnico(e.target.value)}>
-            <option value="">Todos los técnicos</option>
+            <option value="">Todos los tÃ©cnicos</option>
             {tecnicosFiltro.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
           <select className="select" value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
@@ -4801,7 +4992,7 @@ function Partes() {
           </select>
           <input className="input" type="date" value={filtroDesde} onChange={e => setFiltroDesde(e.target.value)} title="Fecha desde" />
           <input className="input" type="date" value={filtroHasta} onChange={e => setFiltroHasta(e.target.value)} title="Fecha hasta" />
-          {hayFiltros && <button className="btn btn-ghost" style={{fontSize:12, whiteSpace:'nowrap'}} onClick={() => { setFiltroOT(''); setFiltroTecnico(''); setFiltroEstado(''); setFiltroDesde(''); setFiltroHasta(''); setFiltroCliente(''); }}>✕ Limpiar</button>}
+          {hayFiltros && <button className="btn btn-ghost" style={{fontSize:12, whiteSpace:'nowrap'}} onClick={() => { setFiltroOT(''); setFiltroTecnico(''); setFiltroEstado(''); setFiltroDesde(''); setFiltroHasta(''); setFiltroCliente(''); }}>âœ• Limpiar</button>}
         </div>
       </div>
 
@@ -4811,7 +5002,7 @@ function Partes() {
           <table className="tbl">
             <thead>
               <tr>
-                <th>N° Parte</th><th>OT</th><th>Cliente</th><th>Técnico</th>
+                <th>NÂ° Parte</th><th>OT</th><th>Cliente</th><th>TÃ©cnico</th>
                 <th>Fecha</th><th className="num">Horas</th><th>Avance rep.</th><th>Estado</th><th></th>
               </tr>
             </thead>
@@ -4835,7 +5026,7 @@ function Partes() {
                   </td>
                   <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
                     {['borrador','rechazado','observado'].includes(p.estado) && (
-                      <button className="btn btn-primary" style={{fontSize:11, padding:'2px 8px'}} onClick={() => enviarParteARevision(p.id)}>Enviar a revisión</button>
+                      <button className="btn btn-primary" style={{fontSize:11, padding:'2px 8px'}} onClick={() => enviarParteARevision(p.id)}>Enviar a revisiÃ³n</button>
                     )}
                     {p.estado === 'en_revision' && <>
                       <button className="btn btn-primary" style={{fontSize:11, padding:'2px 8px', marginRight:4}} onClick={() => aprobarParteDiario(p.id)}>{I.check}</button>
@@ -4854,10 +5045,10 @@ function Partes() {
         </div>
       </div>
 
-      {/* Panel lateral de detalle / revisión */}
+      {/* Panel lateral de detalle / revisiÃ³n */}
       {sel && (() => {
         const estadoBadge = sel.estado === 'aprobado' ? 'badge-green' : sel.estado === 'rechazado' ? 'badge-red' : sel.estado === 'observado' ? 'badge-orange' : sel.estado === 'con_restriccion' ? 'badge-red' : sel.estado === 'borrador' ? 'badge-gray' : 'badge-orange';
-        const estadoLabel = { aprobado: 'Aprobado', rechazado: 'Rechazado', observado: 'Observado', con_restriccion: 'Con restricción', borrador: 'Borrador', en_revision: 'Pendiente revisión' }[sel.estado] || sel.estado;
+        const estadoLabel = { aprobado: 'Aprobado', rechazado: 'Rechazado', observado: 'Observado', con_restriccion: 'Con restricciÃ³n', borrador: 'Borrador', en_revision: 'Pendiente revisiÃ³n' }[sel.estado] || sel.estado;
         const revisable = ['en_revision', 'con_restriccion'].includes(sel.estado);
         const avanceParte = sel.avance_validado !== undefined ? sel.avance_validado : sel.avance_reportado || 0;
         const parteHealthColor = sel.estado === 'aprobado' ? 'var(--green)' : sel.estado === 'rechazado' ? 'var(--danger)' : sel.estado === 'observado' ? 'var(--orange)' : 'var(--cyan)';
@@ -4878,7 +5069,7 @@ function Partes() {
               <div className="parte-review-chips">
                 <span className={`badge ${estadoBadge}`}>{estadoLabel}</span>
                 {['campo','mobile'].includes(sel.origen) && <span className="badge badge-cyan" style={{fontSize:10}}>{I.camera}Campo</span>}
-                <button className="btn btn-ghost" style={{padding:0, color:'var(--cyan)', fontWeight:600, fontSize:12}} onClick={() => { cerrarPanel(); navigate('ot', { detail: sel.ot_id }); }}>{getOTNumero(sel.ot_id)} ↗</button>
+                <button className="btn btn-ghost" style={{padding:0, color:'var(--cyan)', fontWeight:600, fontSize:12}} onClick={() => { cerrarPanel(); navigate('ot', { detail: sel.ot_id }); }}>{getOTNumero(sel.ot_id)} â†—</button>
                 <span className="badge badge-gray">{getCuenta(sel.ot_id)}</span>
                 {sel.es_restriccion && <span className="badge badge-red">Restriccion reportada</span>}
               </div>
@@ -4949,7 +5140,7 @@ function Partes() {
                   <div>
                     <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Materiales usados</div>
                     <table className="tbl" style={{fontSize:12}}>
-                      <thead><tr><th>SKU</th><th>Descripción</th><th className="num">Cant.</th></tr></thead>
+                      <thead><tr><th>SKU</th><th>DescripciÃ³n</th><th className="num">Cant.</th></tr></thead>
                       <tbody>
                         {sel.materiales_usados.map((m, i) => <tr key={i}><td className="mono text-muted">{m.sku}</td><td>{m.nombre}</td><td className="num">{m.cantidad}</td></tr>)}
                       </tbody>
@@ -4962,7 +5153,7 @@ function Partes() {
                   <div>
                     <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Servicios de terceros</div>
                     <table className="tbl" style={{fontSize:12}}>
-                      <thead><tr><th>Descripción</th><th className="num">Monto</th></tr></thead>
+                      <thead><tr><th>DescripciÃ³n</th><th className="num">Monto</th></tr></thead>
                       <tbody>
                         {sel.terceros_lineas.map((l, i) => (
                           <tr key={i}>
@@ -4975,12 +5166,12 @@ function Partes() {
                   </div>
                 )}
 
-                {/* Logística */}
+                {/* LogÃ­stica */}
                 {(sel.logistica_lineas?.length || 0) > 0 && (
                   <div>
-                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Logística y viáticos</div>
+                    <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>LogÃ­stica y viÃ¡ticos</div>
                     <table className="tbl" style={{fontSize:12}}>
-                      <thead><tr><th>Descripción</th><th className="num">Monto</th></tr></thead>
+                      <thead><tr><th>DescripciÃ³n</th><th className="num">Monto</th></tr></thead>
                       <tbody>
                         {sel.logistica_lineas.map((l, i) => (
                           <tr key={i}>
@@ -5000,28 +5191,28 @@ function Partes() {
                     <div style={{display:'flex', flexWrap:'wrap', gap:8}}>
                       {sel.evidencias.map((ev, i) => (
                         <div key={i} style={{width:72, height:72, borderRadius:6, overflow:'hidden', border:'1px solid var(--border)', background:'var(--bg-subtle)', display:'flex', alignItems:'center', justifyContent:'center'}} title={ev.nombre}>
-                          {ev.tipo?.startsWith('image/') && ev.url ? <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <span style={{fontSize:24}}>📄</span>}
+                          {ev.tipo?.startsWith('image/') && ev.url ? <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <span style={{fontSize:24}}>ðŸ“„</span>}
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* Observaciones / Restricción */}
+                {/* Observaciones / RestricciÃ³n */}
                 {sel.observaciones && (
                   <div>
                     <div style={{fontWeight:600, fontSize:13, marginBottom:8, display:'flex', alignItems:'center', gap:8}}>
                       Observaciones
-                      {sel.es_restriccion && <span className="badge badge-red" style={{fontSize:10}}>⚠ Con restricción</span>}
+                      {sel.es_restriccion && <span className="badge badge-red" style={{fontSize:10}}>âš  Con restricciÃ³n</span>}
                     </div>
                     <div style={{background: sel.es_restriccion ? 'color-mix(in srgb, var(--danger) 6%, transparent)' : 'var(--bg-subtle)', padding:12, borderRadius:6, fontSize:13, lineHeight:1.6, border: sel.es_restriccion ? '1px solid var(--danger)' : 'none'}}>{sel.observaciones}</div>
                   </div>
                 )}
 
-                {/* Motivo de observación/rechazo previo */}
+                {/* Motivo de observaciÃ³n/rechazo previo */}
                 {sel.motivo_observacion && (
                   <div style={{background:'color-mix(in srgb, var(--orange) 8%, transparent)', border:'1px solid var(--orange)', borderRadius:6, padding:12}}>
-                    <div style={{fontWeight:600, fontSize:12, color:'var(--orange)', marginBottom:4}}>Observación del supervisor</div>
+                    <div style={{fontWeight:600, fontSize:12, color:'var(--orange)', marginBottom:4}}>ObservaciÃ³n del supervisor</div>
                     <div style={{fontSize:13}}>{sel.motivo_observacion}</div>
                   </div>
                 )}
@@ -5032,10 +5223,10 @@ function Partes() {
                   </div>
                 )}
 
-                {/* ── Reabrir parte aprobado ── */}
+                {/* â”€â”€ Reabrir parte aprobado â”€â”€ */}
                 {sel.estado === 'aprobado' && (
                   <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
-                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>Corrección</div>
+                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>CorrecciÃ³n</div>
                     {modoAccion !== 'reabrir' ? (
                       <div style={{padding:16}}>
                         <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:10}}>
@@ -5047,7 +5238,7 @@ function Partes() {
                       </div>
                     ) : (
                       <div style={{padding:16, gap:12}} className="col">
-                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverá a borrador y el técnico podrá editarlo. El avance y costo de la OT se recalcularán en ese momento.</div>
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverÃ¡ a borrador y el tÃ©cnico podrÃ¡ editarlo. El avance y costo de la OT se recalcularÃ¡n en ese momento.</div>
                         <div className="input-group">
                           <label style={{fontSize:12}}>Motivo de reapertura <span style={{color:'var(--fg-muted)'}}>(opcional)</span></label>
                           <textarea className="input" rows={2} placeholder="Ej: Error en horas registradas..." value={motivoAccion} onChange={e => setMotivoAccion(e.target.value)} style={{resize:'vertical'}} autoFocus />
@@ -5063,10 +5254,10 @@ function Partes() {
                   </div>
                 )}
 
-                {/* ── Bloque de aprobación ── */}
+                {/* â”€â”€ Bloque de aprobaciÃ³n â”€â”€ */}
                 {revisable && (
                   <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
-                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>Decisión del supervisor</div>
+                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>DecisiÃ³n del supervisor</div>
 
                     {/* Sin modo seleccionado: tres botones */}
                     {!modoAccion && (
@@ -5080,18 +5271,18 @@ function Partes() {
                     {/* Modo: Aprobar */}
                     {modoAccion === 'aprobar' && (
                       <div style={{padding:16, gap:12}} className="col">
-                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>Confirma el avance final que se sumará a la OT. Puedes ajustarlo si el técnico lo sobreestimó.</div>
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>Confirma el avance final que se sumarÃ¡ a la OT. Puedes ajustarlo si el tÃ©cnico lo sobreestimÃ³.</div>
                         <div style={{display:'flex', alignItems:'center', gap:10}}>
                           <label style={{fontSize:13, fontWeight:600, whiteSpace:'nowrap'}}>Avance validado:</label>
                           <input className="input" type="number" min="0" max="100" style={{width:80, textAlign:'center', fontWeight:700, fontSize:16}} value={avanceAprobacion} onChange={e => setAvanceAprobacion(Math.min(100, Math.max(0, Number(e.target.value))))} />
                           <span style={{fontSize:14, fontWeight:600}}>%</span>
                         </div>
                         <div style={{fontSize:11, color:'var(--fg-muted)'}}>
-                          Esto también registrará salidas de inventario por los materiales usados y sumará el costo de mano de obra al tab Costos de la OT.
+                          Esto tambiÃ©n registrarÃ¡ salidas de inventario por los materiales usados y sumarÃ¡ el costo de mano de obra al tab Costos de la OT.
                         </div>
                         <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
                           <button className="btn btn-secondary btn-sm" onClick={() => setModoAccion(null)}>Cancelar</button>
-                          <button className="btn btn-primary btn-sm" onClick={() => { aprobarParteDiario(sel.id, avanceAprobacion); cerrarPanel(); }}>{I.check} Confirmar aprobación</button>
+                          <button className="btn btn-primary btn-sm" onClick={() => { aprobarParteDiario(sel.id, avanceAprobacion); cerrarPanel(); }}>{I.check} Confirmar aprobaciÃ³n</button>
                         </div>
                       </div>
                     )}
@@ -5099,11 +5290,11 @@ function Partes() {
                     {/* Modo: Observar */}
                     {modoAccion === 'observar' && (
                       <div style={{padding:16, gap:12}} className="col">
-                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverá al técnico para corrección. Escribe el motivo — será visible para el técnico.</div>
-                        <textarea className="input" rows={3} placeholder="Motivo de la observación (obligatorio)..." value={motivoAccion} onChange={e => setMotivoAccion(e.target.value)} autoFocus style={{resize:'vertical'}} />
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverÃ¡ al tÃ©cnico para correcciÃ³n. Escribe el motivo â€” serÃ¡ visible para el tÃ©cnico.</div>
+                        <textarea className="input" rows={3} placeholder="Motivo de la observaciÃ³n (obligatorio)..." value={motivoAccion} onChange={e => setMotivoAccion(e.target.value)} autoFocus style={{resize:'vertical'}} />
                         <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
                           <button className="btn btn-secondary btn-sm" onClick={() => { setModoAccion(null); setMotivoAccion(''); }}>Cancelar</button>
-                          <button className="btn btn-secondary btn-sm" style={{color:'var(--orange)'}} disabled={!motivoAccion.trim()} onClick={() => { observarParteDiario(sel.id, motivoAccion); cerrarPanel(); }}>Enviar observación</button>
+                          <button className="btn btn-secondary btn-sm" style={{color:'var(--orange)'}} disabled={!motivoAccion.trim()} onClick={() => { observarParteDiario(sel.id, motivoAccion); cerrarPanel(); }}>Enviar observaciÃ³n</button>
                         </div>
                       </div>
                     )}
@@ -5111,7 +5302,7 @@ function Partes() {
                     {/* Modo: Rechazar */}
                     {modoAccion === 'rechazar' && (
                       <div style={{padding:16, gap:12}} className="col">
-                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte quedará <strong>rechazado definitivamente</strong>. Las horas y materiales no se imputarán a la OT. Escribe el motivo — será visible para el técnico.</div>
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte quedarÃ¡ <strong>rechazado definitivamente</strong>. Las horas y materiales no se imputarÃ¡n a la OT. Escribe el motivo â€” serÃ¡ visible para el tÃ©cnico.</div>
                         <textarea className="input" rows={3} placeholder="Motivo del rechazo (obligatorio)..." value={motivoAccion} onChange={e => setMotivoAccion(e.target.value)} autoFocus style={{resize:'vertical', borderColor:'var(--danger)'}} />
                         <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
                           <button className="btn btn-secondary btn-sm" onClick={() => { setModoAccion(null); setMotivoAccion(''); }}>Cancelar</button>
@@ -5550,7 +5741,7 @@ function CotizacionesCompras() {
         <div className="tabs">{Object.entries(tabLabels).map(([k,l])=><div key={k} className={'tab '+(detailTab===k?'active':'')} onClick={()=>setDetailTab(k)}>{l}</div>)}</div>
         {detailTab === 'detalle' && <div className="card" style={{padding:20}}><div className="card-head"><h3>Detalle del proceso</h3><span className={'badge '+compraBadge(sel.estado)}>{sel.estado.replace('_',' ')}</span></div><p><strong>Origen:</strong> {sel.solpe_id || 'Libre'}</p><p><strong>OT vinculada:</strong> {sel.ot_id || '-'}</p><p><strong>Tipo:</strong> {sel.tipo === 'bien' ? 'Bien - Orden de Compra' : 'Servicio - Orden de Servicio'}</p><p><strong>Monto referencial:</strong> {money(sel.monto_referencial)}</p><p><strong>Fecha limite:</strong> {sel.fecha_limite}</p><p><strong>Responsable:</strong> {sel.responsable}</p></div>}
         {detailTab === 'respuestas' && <div className="grid-2">{resps.map(r => { const p = proveedorById(proveedores, r.proveedor_id); return <div key={r.id} className="card" style={{padding:18}}><div className="card-head"><h3>{p.razon_social}</h3><span className={'badge '+(r.estado==='respondida'?'badge-green':'badge-orange')}>{r.estado}</span></div><p className="text-muted">Solicitado: {r.solicitado}</p>{r.estado==='respondida' ? <><p><strong>Precio total:</strong> {money(r.precio_total)}</p><p><strong>Plazo:</strong> {r.plazo_entrega}</p><p><strong>Condiciones:</strong> {r.condiciones}</p><p><strong>Valido hasta:</strong> {r.valido_hasta}</p><p>{r.observaciones}</p></> : <button className="btn btn-secondary" onClick={()=>registrarRespuesta(sel, r.proveedor_id)}>{I.plus} Registrar respuesta</button>}</div>})}</div>}
-        {detailTab === 'comparativo' && <div className="card"><div className="card-head"><h3>Cuadro comparativo</h3>{barata && <button className="btn btn-primary" onClick={()=>setWinner(barata.proveedor_id)}>Seleccionar ganador</button>}</div><div className="table-wrap"><table className="tbl"><thead><tr><th>Proveedor</th><th>Precio total</th><th>Plazo</th><th>Condicion</th><th>Calificacion</th><th>Docs al dia</th></tr></thead><tbody>{respondidas.map(r => { const p = proveedorById(proveedores, r.proveedor_id); return <tr key={r.id}><td><strong>{p.razon_social}</strong>{barata?.id===r.id && <span className="badge badge-green" style={{marginLeft:8}}>★ menor precio</span>}</td><td>{money(r.precio_total)}</td><td>{r.plazo_entrega}</td><td>{r.condiciones}</td><td>{ratingText(p.calificacion_promedio)}</td><td>{docsVencidosProveedor(p.id) ? <span className="badge badge-red">No</span> : <span className="badge badge-green">Si</span>}</td></tr>})}</tbody></table></div>{barata && <p style={{padding:16}}><strong>Recomendacion:</strong> {proveedorById(proveedores, barata.proveedor_id).razon_social} - mejor precio, ahorro {money((sel.monto_referencial || 0) - barata.precio_total)} vs referencia.</p>}</div>}
+        {detailTab === 'comparativo' && <div className="card"><div className="card-head"><h3>Cuadro comparativo</h3>{barata && <button className="btn btn-primary" onClick={()=>setWinner(barata.proveedor_id)}>Seleccionar ganador</button>}</div><div className="table-wrap"><table className="tbl"><thead><tr><th>Proveedor</th><th>Precio total</th><th>Plazo</th><th>Condicion</th><th>Calificacion</th><th>Docs al dia</th></tr></thead><tbody>{respondidas.map(r => { const p = proveedorById(proveedores, r.proveedor_id); return <tr key={r.id}><td><strong>{p.razon_social}</strong>{barata?.id===r.id && <span className="badge badge-green" style={{marginLeft:8}}>â˜… menor precio</span>}</td><td>{money(r.precio_total)}</td><td>{r.plazo_entrega}</td><td>{r.condiciones}</td><td>{ratingText(p.calificacion_promedio)}</td><td>{docsVencidosProveedor(p.id) ? <span className="badge badge-red">No</span> : <span className="badge badge-green">Si</span>}</td></tr>})}</tbody></table></div>{barata && <p style={{padding:16}}><strong>Recomendacion:</strong> {proveedorById(proveedores, barata.proveedor_id).razon_social} - mejor precio, ahorro {money((sel.monto_referencial || 0) - barata.precio_total)} vs referencia.</p>}</div>}
         {detailTab === 'resultado' && <div className="card" style={{padding:20}}><div className="card-head"><h3>Resultado</h3></div>{sel.proveedor_ganador ? <><p><strong>Proveedor seleccionado:</strong> {proveedorById(proveedores, sel.proveedor_ganador).razon_social}</p><p><strong>Monto seleccionado:</strong> {money(sel.monto_seleccionado)}</p><p><strong>Documento generado:</strong> {sel.documento_generado || 'Pendiente'}</p></> : <p className="text-muted">Aun no se selecciono proveedor ganador.</p>}</div>}
         {winner && <><div className="side-panel-backdrop" onClick={()=>setWinner('')}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Seleccionar ganador</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{proveedorById(proveedores, winner).razon_social}</div></div><button className="icon-btn" onClick={()=>setWinner('')}>{I.x}</button></div><div className="side-panel-body"><p>Confirma la seleccion y genera el documento de compra.</p><textarea className="input" rows="4" placeholder="Justificacion si no eliges el menor precio"/><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setWinner('')}>Cancelar</button><button className="btn btn-primary" onClick={()=>generarDocumento(sel, winner, sel.tipo)}>Confirmar seleccion y generar {sel.tipo==='bien'?'OC':'OS'}</button></div></div></div></>}
       </>
@@ -5644,7 +5835,7 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
         <div>
           <button className="btn btn-ghost btn-sm" onClick={onBack}>Volver</button>
           <h1 className="page-title">{orden.codigo}</h1>
-          <div className="page-sub">{proveedor.razon_social} — {money(totalOC)}</div>
+          <div className="page-sub">{proveedor.razon_social} â€” {money(totalOC)}</div>
         </div>
         <div className="row">
           {orden.estado === 'emitida' && <button className="btn btn-secondary" onClick={onConfirmar}>Marcar confirmada</button>}
@@ -5656,7 +5847,7 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
       {totalAnticipado > 0 && (
         <div className="row" style={{gap:12, marginBottom:12, padding:'10px 16px', background:'color-mix(in srgb, var(--orange) 8%, transparent)', border:'1px solid color-mix(in srgb, var(--orange) 30%, transparent)', borderRadius:8, flexWrap:'wrap'}}>
           <span style={{fontSize:13}}>Anticipado: <strong style={{color:'var(--orange)'}}>{money(totalAnticipado)}</strong> ({pctAnticipado}%)</span>
-          <span style={{fontSize:13}}>·</span>
+          <span style={{fontSize:13}}>Â·</span>
           <span style={{fontSize:13}}>Saldo pendiente: <strong style={{color: saldoPendiente > 0 ? 'var(--fg)' : 'var(--green)'}}>{money(saldoPendiente)}</strong></span>
         </div>
       )}
@@ -5715,8 +5906,8 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
                         <tr key={a.id}>
                           <td>{a.fecha}</td>
                           <td className="num"><strong>{money(a.monto)}</strong></td>
-                          <td className="mono text-muted">{a.referencia || '—'}</td>
-                          <td style={{fontSize:12, color:'var(--fg-muted)'}}>{a.notas || '—'}</td>
+                          <td className="mono text-muted">{a.referencia || 'â€”'}</td>
+                          <td style={{fontSize:12, color:'var(--fg-muted)'}}>{a.notas || 'â€”'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -5742,7 +5933,7 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
         <div className="card" style={{padding:20}}>
           {['Emitida','Confirmada','En transito','Recibida'].map((s, i) => (
             <div key={s} style={{padding:'10px 0', borderBottom:'1px solid var(--border-subtle)'}}>
-              <strong>{i===0 || orden.estado!=='emitida' ? '' : '○'} {s}</strong>
+              <strong>{i===0 || orden.estado!=='emitida' ? '' : 'â—‹'} {s}</strong>
               <span className="text-muted" style={{marginLeft:12}}>{i===0 ? orden.fecha_emision : '-'}</span>
             </div>
           ))}
@@ -5764,7 +5955,7 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
                 <div className="eyebrow">Orden de Compra {orden.codigo}</div>
                 <div style={{fontWeight:700, fontSize:20}}>Registrar anticipo</div>
                 <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
-                  Total OC: {money(totalOC)} · Ya anticipado: {money(totalAnticipado)} · Saldo: {money(saldoPendiente)}
+                  Total OC: {money(totalOC)} Â· Ya anticipado: {money(totalAnticipado)} Â· Saldo: {money(saldoPendiente)}
                 </div>
               </div>
               <button className="icon-btn" onClick={() => setPanelAnticipo(false)}>{I.x}</button>
@@ -5779,11 +5970,11 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
                   <label>Monto <span style={{color:'var(--danger)'}}>*</span></label>
                   <input className="input" type="number" min="0.01" step="0.01" max={saldoPendiente} required
                     value={formAnticipo.monto} onChange={e => setFormAnticipo(v => ({...v, monto: e.target.value}))}
-                    placeholder={`Máx. ${saldoPendiente.toFixed(2)}`}/>
+                    placeholder={`MÃ¡x. ${saldoPendiente.toFixed(2)}`}/>
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Referencia de pago <span style={{color:'var(--danger)'}}>*</span></label>
-                  <input className="input" required value={formAnticipo.referencia} onChange={e => setFormAnticipo(v => ({...v, referencia: e.target.value}))} placeholder="N° transferencia, cheque..."/>
+                  <input className="input" required value={formAnticipo.referencia} onChange={e => setFormAnticipo(v => ({...v, referencia: e.target.value}))} placeholder="NÂ° transferencia, cheque..."/>
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Notas</label>
@@ -5812,36 +6003,6 @@ function OrdenesServicio() {
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const crear = () => { if (!form.centro_costo_id) { addNotificacion('Este campo es obligatorio. Selecciona un CECO antes de continuar.'); return; } const p=proveedorById(proveedores,form.proveedor_id); const os={id:`os_${Date.now()}`,empresa_id:empresa.id,codigo:`OS-2025-${String(ordenesServicio.length+13).padStart(4,'0')}`,proveedor_id:form.proveedor_id,ot_id:form.ot_id,centro_costo_id:form.centro_costo_id,descripcion:form.descripcion||'Servicio tercerizado',alcance:form.descripcion||'Servicio tercerizado',entregables:'Evidencia del servicio',criterios_conformidad:'Conforme a alcance',total:Number(form.total)||0,moneda:'PEN',condicion_pago:p.condicion_pago||'Contado',fecha_emision:new Date().toISOString().slice(0,10),fecha_inicio:form.fecha_inicio,fecha_fin:form.fecha_fin,responsable_validacion:form.responsable_validacion,estado:'emitida',notas:''}; setOrdenesServicio(prev=>[os,...prev]); addNotificacion(`${os.codigo} emitida.`); setPanel(false); };
   return <><div className="page-header"><div><h1 className="page-title">Ordenes de Servicio</h1><div className="page-sub">Servicios tercerizados, conformidad y cierre</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>setPanel(true)}>{I.plus} Nueva OS</button></div><div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas</div><div className="kpi-value">{ordenesServicio.length}</div></div><div className="kpi-card"><div className="kpi-label">En ejecucion</div><div className="kpi-value">{ordenesServicio.filter(o=>o.estado==='en_ejecucion').length}</div></div><div className="kpi-card"><div className="kpi-label">Pendiente conformidad</div><div className="kpi-value">{ordenesServicio.filter(o=>o.estado==='pendiente_conformidad').length}</div></div><div className="kpi-card"><div className="kpi-label">Valor total</div><div className="kpi-value">{money(ordenesServicio.reduce((s,o)=>s+(o.total||0),0))}</div></div></div><div className="tabs">{['todas','emitida','confirmada','en_ejecucion','pendiente_conformidad','cerrada','observada'].map(t=><div key={t} className={'tab '+(tab===t?'active':'')} onClick={()=>setTab(t)}>{t.replace('_',' ')}</div>)}</div><div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>OS</th><th>Proveedor</th><th>Servicio</th><th>Monto</th><th>OT</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Validador</th><th>Acciones</th></tr></thead><tbody>{list.map(o=>{const p=proveedorById(proveedores,o.proveedor_id);return <tr key={o.id}><td className="mono">{o.codigo}</td><td><strong>{p.razon_social}</strong></td><td>{o.descripcion}</td><td>{money(o.total)}</td><td className="mono">{o.ot_id||'-'}</td><td><span className={'badge '+estadoOcBadge(o.estado)}>{o.estado.replace('_',' ')}</span></td><td>{o.fecha_inicio}</td><td>{o.fecha_fin}</td><td>{o.responsable_validacion}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>navigate('recepciones',{osId:o.id})}>Conformidad</button></td></tr>})}</tbody></table></div></div>{panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de servicio</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OS</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}><div className="input-group"><label>Proveedor</label><select className="select" value={form.proveedor_id} onChange={e=>setForm(v=>({...v,proveedor_id:e.target.value}))}>{provs.map(p=><option key={p.id} value={p.id}>{p.razon_social}</option>)}</select></div><div className="input-group"><label>OT</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero||o.id}</option>)}</select></div><div className="input-group" style={{gridColumn:'1/-1'}}><label>Servicio / alcance</label><textarea className="input" rows="4" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div><div className="input-group"><label>Fecha inicio</label><input className="input" type="date" value={form.fecha_inicio} onChange={e=>setForm(v=>({...v,fecha_inicio:e.target.value}))}/></div><div className="input-group"><label>Fecha fin</label><input className="input" type="date" value={form.fecha_fin} onChange={e=>setForm(v=>({...v,fecha_fin:e.target.value}))}/></div><div className="input-group"><label>Total</label><input className="input" type="number" value={form.total} onChange={e=>setForm(v=>({...v,total:e.target.value}))}/></div><div className="input-group"><label>Responsable validacion</label><input className="input" value={form.responsable_validacion} onChange={e=>setForm(v=>({...v,responsable_validacion:e.target.value}))}/></div></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={crear}>Emitir OS</button></div></div></div></>}</>;
-}
-
-function RecepcionesLegacy() {
-  const { activeParams, ordenesCompra, setOrdenesCompra, ordenesServicio, setOrdenesServicio, recepciones, setRecepciones, proveedores, usuarios, empresa, setInventario, cxp, setCxp, addNotificacion } = useApp();
-  const [tab, setTab] = useState('pendientes');
-  const [panel, setPanel] = useState(Boolean(activeParams?.ocId || activeParams?.osId));
-  const [origen, setOrigen] = useState(activeParams?.osId ? `os:${activeParams.osId}` : activeParams?.ocId ? `oc:${activeParams.ocId}` : '');
-  const [obs, setObs] = useState('');
-  const ocOrigen = origen.startsWith('oc:') ? ordenesCompra.find(o=>o.id===origen.slice(3)) : null;
-  const osOrigen = origen.startsWith('os:') ? ordenesServicio.find(o=>o.id===origen.slice(3)) : null;
-  const pendientes = ordenesCompra.filter(o=>(o.porcentaje_recibido||0)<100).length;
-  const rows = recepciones.filter(r => tab === 'todos' || (tab === 'pendientes' ? false : tab === 'conforme' ? r.estado === 'conforme' : r.estado === 'observada'));
-  const confirmarRecepcion = () => {
-    const base = ocOrigen || osOrigen;
-    if (!base) return;
-    const isOC = Boolean(ocOrigen);
-    const items = isOC ? (ocOrigen.items || []).map(i=>({ descripcion:i.descripcion, pedido:i.cantidad, recibido:i.cantidad, unidad:i.unidad, conforme:true, precio_unitario:i.precio_unitario })) : [];
-    const nueva = { id:`rec_${String(recepciones.length+1).padStart(3,'0')}`, empresa_id:empresa.id, codigo:`REC-2025-${String(recepciones.length+19).padStart(4,'0')}`, oc_id:isOC?base.id:null, os_id:isOC?null:base.id, proveedor_id:base.proveedor_id, fecha:new Date().toISOString().slice(0,10), responsable:usuarios[0]?.nombre || 'Compras', almacen:'ALM-001', items_recibidos:items, tipo:obs?'observada':'total', estado:obs?'observada':'conforme', observaciones:obs, archivo_guia:'guia_proveedor.pdf', cxp_generada:true, cxp_id:`cxp_${cxp.length+1}` };
-    if (isOC) {
-      setOrdenesCompra(prev=>prev.map(o=>o.id===base.id?{...o,estado:'cerrada',porcentaje_recibido:100}:o));
-      setInventario(prev=>[...prev, ...items.map((i,idx)=>({ id:`inv_${Date.now()}_${idx}`, sku:`CMP-${Date.now()}-${idx}`, nombre:i.descripcion, categoria:'Compras', almacen:'ALM-001', unidad:i.unidad, stock_actual:i.recibido, costo_promedio:i.precio_unitario || 0 }))]);
-    } else {
-      setOrdenesServicio(prev=>prev.map(o=>o.id===base.id?{...o,estado:'cerrada'}:o));
-    }
-    setCxp(prev=>[...prev,{ id:nueva.cxp_id, empresa_id:empresa.id, proveedor_id:base.proveedor_id, recepcion_id:nueva.id, oc_id:isOC?base.id:null, monto:isOC?base.total:base.total, moneda:base.moneda, condicion_pago:base.condicion_pago, fecha_emision:nueva.fecha, fecha_vencimiento:'2025-05-30', estado:'pendiente', descripcion:`${base.codigo} - ${base.descripcion}` }]);
-    setRecepciones(prev=>[nueva,...prev]);
-    addNotificacion(`Recepcion registrada - ${isOC ? 'OC cerrada' : 'OS conforme'} - CxP generada.`);
-    setPanel(false); setOrigen(''); setObs('');
-  };
-  return <><div className="page-header"><div><h1 className="page-title">Recepciones</h1><div className="page-sub">Confirmacion de entrega, conformidad e impacto en inventario/CxP</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>setPanel(true)}>{I.plus} Nueva recepcion</button></div><div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">OCs pendientes</div><div className="kpi-value">{pendientes}</div></div><div className="kpi-card"><div className="kpi-label">Recibidas hoy</div><div className="kpi-value">1</div></div><div className="kpi-card"><div className="kpi-label">Con observaciones</div><div className="kpi-value">{recepciones.filter(r=>r.estado==='observada').length}</div></div><div className="kpi-card"><div className="kpi-label">CxP generadas</div><div className="kpi-value">{recepciones.filter(r=>r.cxp_generada).length}</div></div></div><div className="tabs">{[['pendientes','Pendientes'],['conforme','Recibidas conforme'],['observada','Con observaciones'],['todos','Todos']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div><div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>N Recepcion</th><th>OC/OS origen</th><th>Proveedor</th><th>Descripcion</th><th>Estado</th><th>Fecha</th><th>CxP</th><th>Responsable</th></tr></thead><tbody>{rows.map(r=>{const p=proveedorById(proveedores,r.proveedor_id);const oc=ordenesCompra.find(o=>o.id===r.oc_id);const os=ordenesServicio.find(o=>o.id===r.os_id);return <tr key={r.id}><td className="mono">{r.codigo}</td><td className="mono">{oc?.codigo || os?.codigo || '-'}</td><td>{p.razon_social}</td><td>{oc?.descripcion || os?.descripcion || '-'}</td><td><span className={'badge '+(r.estado==='conforme'?'badge-green':'badge-orange')}>{r.estado}</span></td><td>{r.fecha}</td><td>{r.cxp_generada?'Si':'Pendiente'}</td><td>{r.responsable}</td></tr>})}</tbody></table></div></div>{panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(600px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">{osOrigen?'Conformidad de servicio':'Registro de recepcion'}</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{ocOrigen?.codigo || osOrigen?.codigo || 'Nueva recepcion'}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><div className="side-panel-body"><div className="input-group"><label>OC/OS origen</label><select className="select" value={origen} onChange={e=>setOrigen(e.target.value)}><option value="">Seleccionar...</option>{ordenesCompra.filter(o=>(o.porcentaje_recibido||0)<100).map(o=><option key={o.id} value={`oc:${o.id}`}>{o.codigo} - {o.descripcion}</option>)}{ordenesServicio.filter(o=>o.estado!=='cerrada').map(o=><option key={o.id} value={`os:${o.id}`}>{o.codigo} - {o.descripcion}</option>)}</select></div>{ocOrigen && <div className="card" style={{padding:12}}><div className="card-head"><h3>Verificacion de items</h3></div>{ocOrigen.items.map((i,idx)=><div key={idx} className="row" style={{justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid var(--border-subtle)'}}><span>{i.descripcion}</span><span>{i.cantidad} {i.unidad} - Conforme</span></div>)}</div>}{osOrigen && <div className="card" style={{padding:12}}><p><strong>Servicio:</strong> {osOrigen.descripcion}</p><p><strong>Entregables:</strong> {osOrigen.entregables}</p><p><strong>Evaluacion rapida:</strong> plazo 5/5 - calidad 4/5 - comunicacion 4/5</p></div>}<div className="input-group mt-6"><label>Observaciones</label><textarea className="input" rows="4" value={obs} onChange={e=>setObs(e.target.value)} placeholder="Dejar vacio si todo esta conforme"/></div><div className="input-group"><label>Guia / evidencia</label><input className="input" defaultValue={osOrigen?'evidencia_servicio.pdf':'guia_proveedor.pdf'}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" disabled={!ocOrigen && !osOrigen} onClick={confirmarRecepcion}>Confirmar recepcion</button></div></div></div></>}</>;
 }
 
 function Recepciones() {
@@ -5927,12 +6088,12 @@ function Recepciones() {
               <div style={{borderTop:'1px solid var(--border)',marginTop:20,paddingTop:16}}>
                 <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>Datos de la factura del proveedor</div>
                 <div className="input-group">
-                  <label>N° Factura <span style={{color:'var(--danger)'}}>*</span></label>
+                  <label>NÂ° Factura <span style={{color:'var(--danger)'}}>*</span></label>
                   <input className="input" value={facturaNum} onChange={e => setFacturaNum(e.target.value)} placeholder="E001-000123" required/>
                 </div>
                 <div className="grid-2 mt-4" style={{gap:12,gridTemplateColumns:'1fr 1fr'}}>
                   <div className="input-group">
-                    <label>Fecha de emisión <span style={{color:'var(--danger)'}}>*</span></label>
+                    <label>Fecha de emisiÃ³n <span style={{color:'var(--danger)'}}>*</span></label>
                     <input className="input" type="date" value={facturaEmision} onChange={e => setFacturaEmision(e.target.value)} required/>
                   </div>
                   <div className="input-group">
@@ -6028,11 +6189,11 @@ function Compras() {
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Compras, Gastos y Proveedores</h1><div className="page-sub">Abastecimiento estructurado y gestión de proveedores</div></div>
+        <div><h1 className="page-title">Compras, Gastos y Proveedores</h1><div className="page-sub">Abastecimiento estructurado y gestiÃ³n de proveedores</div></div>
         <button className="btn btn-primary" onClick={() => setShowGastoForm(true)}>{I.plus} Nuevo Registro</button>
       </div>
       <div className="tabs">
-        {['Compras en Campo', 'Activos fijos', 'Proveedores', 'Órdenes de Compra (OC)', 'Órdenes de Servicio (OSI)', 'Recepción y Conformidad'].map(t => (
+        {['Compras en Campo', 'Activos fijos', 'Proveedores', 'Ã“rdenes de Compra (OC)', 'Ã“rdenes de Servicio (OSI)', 'RecepciÃ³n y Conformidad'].map(t => (
           <div key={t} className={`tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
             {t === 'Activos fijos' ? `Activos fijos (${activosFijos.length})` : t}
           </div>
@@ -6061,16 +6222,16 @@ function Compras() {
             )}
             {activeTab === 'Activos fijos' && (
               <>
-                <thead><tr><th>Descripción</th><th>Tipo</th><th>Vida útil</th><th>Monto</th><th>Fecha</th><th>CECO</th><th>N° Comprobante</th></tr></thead>
+                <thead><tr><th>DescripciÃ³n</th><th>Tipo</th><th>Vida Ãºtil</th><th>Monto</th><th>Fecha</th><th>CECO</th><th>NÂ° Comprobante</th></tr></thead>
                 <tbody>{activosFijos.length ? activosFijos.map(g => (
                   <tr key={g.id}>
                     <td><strong>{g.descripcion}</strong></td>
-                    <td>{g.activo_tipo || <span className="text-muted">—</span>}</td>
-                    <td className="num">{g.vida_util_anos ? `${g.vida_util_anos} años` : <span className="text-muted">—</span>}</td>
+                    <td>{g.activo_tipo || <span className="text-muted">â€”</span>}</td>
+                    <td className="num">{g.vida_util_anos ? `${g.vida_util_anos} aÃ±os` : <span className="text-muted">â€”</span>}</td>
                     <td className="num"><strong>{money(g.monto)}</strong></td>
                     <td className="text-muted">{g.fecha}</td>
-                    <td className="text-muted" style={{fontSize:11}}>{g.centro_costo_id || '—'}</td>
-                    <td className="mono text-muted">{g.num_comprobante || '—'}</td>
+                    <td className="text-muted" style={{fontSize:11}}>{g.centro_costo_id || 'â€”'}</td>
+                    <td className="mono text-muted">{g.num_comprobante || 'â€”'}</td>
                   </tr>
                 )) : (
                   <tr><td colSpan="7" style={{textAlign:'center', padding:32, color:'var(--fg-muted)'}}>No hay activos fijos registrados. Usa "Nuevo Registro" y marca "Es activo fijo".</td></tr>
@@ -6079,7 +6240,7 @@ function Compras() {
             )}
             {activeTab === 'Proveedores' && (
               <>
-                <thead><tr><th>RUC</th><th>Razón Social</th><th>Categoría</th><th>Contacto</th><th>Teléfono</th><th>Calificación</th></tr></thead>
+                <thead><tr><th>RUC</th><th>RazÃ³n Social</th><th>CategorÃ­a</th><th>Contacto</th><th>TelÃ©fono</th><th>CalificaciÃ³n</th></tr></thead>
                 <tbody>{(proveedores.length ? proveedores : MOCK.proveedores).map(p => (
                   <tr key={p.id}>
                     <td className="mono text-muted">{p.ruc}</td>
@@ -6092,7 +6253,7 @@ function Compras() {
                 ))}</tbody>
               </>
             )}
-            {activeTab === 'Órdenes de Compra (OC)' && (
+            {activeTab === 'Ã“rdenes de Compra (OC)' && (
               <>
                 <thead><tr><th>OC</th><th>Proveedor</th><th>Fecha</th><th>Monto</th><th>OT</th><th>Entrega</th><th>Estado</th></tr></thead>
                 <tbody>{(ordenesCompra.length ? ordenesCompra : MOCK.ordenesCompra).map(oc => (
@@ -6108,7 +6269,7 @@ function Compras() {
                 ))}</tbody>
               </>
             )}
-            {activeTab === 'Órdenes de Servicio (OSI)' && (
+            {activeTab === 'Ã“rdenes de Servicio (OSI)' && (
               <>
                 <thead><tr><th>OSI</th><th>Proveedor</th><th>Servicio</th><th>Monto</th><th>OT</th><th>Estado</th></tr></thead>
                 <tbody>{(ordenesServicio.length ? ordenesServicio : MOCK.ordenesServicio).map(os => (
@@ -6123,9 +6284,9 @@ function Compras() {
                 ))}</tbody>
               </>
             )}
-            {activeTab === 'Recepción y Conformidad' && (
+            {activeTab === 'RecepciÃ³n y Conformidad' && (
               <>
-                <thead><tr><th>Recepción</th><th>Documento (OC)</th><th>Proveedor</th><th>Fecha</th><th>Responsable</th><th>Estado</th></tr></thead>
+                <thead><tr><th>RecepciÃ³n</th><th>Documento (OC)</th><th>Proveedor</th><th>Fecha</th><th>Responsable</th><th>Estado</th></tr></thead>
                 <tbody>{(recepciones.length ? recepciones : MOCK.recepciones).map(r => (
                   <tr key={r.id}>
                     <td className="mono">{r.codigo || r.id}</td>
@@ -6155,7 +6316,7 @@ function Compras() {
           <div className="side-panel-body">
             <div className="row" style={{marginBottom:16}}>
               <span className="badge badge-cyan">{I.camera}Capturado desde campo</span>
-              <span className="badge badge-orange">Pendiente revisión backoffice</span>
+              <span className="badge badge-orange">Pendiente revisiÃ³n backoffice</span>
             </div>
             <div className="grid-2" style={{gap:16}}>
               <div className="card" style={{padding:0, overflow:'hidden'}}>
@@ -6175,11 +6336,11 @@ function Compras() {
                 </div>
               </div>
               <div className="col" style={{gap:12}}>
-                <div><div className="eyebrow row" style={{gap:6}}><span className="badge badge-purple" style={{padding:'1px 6px'}}>IA</span> Proveedor extraído</div><div style={{fontWeight:600}}>{sel.proveedor}</div></div>
-                <div><div className="eyebrow row" style={{gap:6}}><span className="badge badge-purple" style={{padding:'1px 6px'}}>IA</span> N° documento</div><div className="mono">{sel.doc}</div></div>
+                <div><div className="eyebrow row" style={{gap:6}}><span className="badge badge-purple" style={{padding:'1px 6px'}}>IA</span> Proveedor extraÃ­do</div><div style={{fontWeight:600}}>{sel.proveedor}</div></div>
+                <div><div className="eyebrow row" style={{gap:6}}><span className="badge badge-purple" style={{padding:'1px 6px'}}>IA</span> NÂ° documento</div><div className="mono">{sel.doc}</div></div>
                 <div><div className="eyebrow row" style={{gap:6}}><span className="badge badge-purple" style={{padding:'1px 6px'}}>IA</span> Monto</div><div style={{fontFamily:'Sora',fontSize:22,fontWeight:700}}>{money(sel.monto)}</div></div>
                 <div><div className="eyebrow">OT asignada</div><div className="mono">{sel.ot}</div></div>
-                <div><div className="eyebrow">Capturado por</div><div>J. Quispe · {sel.fecha}</div></div>
+                <div><div className="eyebrow">Capturado por</div><div>J. Quispe Â· {sel.fecha}</div></div>
               </div>
             </div>
             <div className="row mt-6">
@@ -6209,21 +6370,21 @@ function Compras() {
               </label>
               {esActivoFijo && (
                 <div style={{marginTop:8, fontSize:12, color:'var(--cyan)', padding:'4px 8px', background:'color-mix(in srgb, var(--cyan) 8%, transparent)', borderRadius:4}}>
-                  Este egreso se registrará como activo del balance. No aparecerá como gasto del período.
+                  Este egreso se registrarÃ¡ como activo del balance. No aparecerÃ¡ como gasto del perÃ­odo.
                 </div>
               )}
             </div>
             <div className="form-group">
-              <label className="form-label">Descripción {esActivoFijo ? 'del activo' : 'del gasto'} *</label>
-              <input className="input" placeholder={esActivoFijo ? 'Ej: Laptop Dell XPS 13, Camión Volvo FH...' : 'Ej: Ferretería Industrial SAC, Viáticos Lima...'} value={gastoForm.descripcion} onChange={e => setG('descripcion', e.target.value)} />
+              <label className="form-label">DescripciÃ³n {esActivoFijo ? 'del activo' : 'del gasto'} *</label>
+              <input className="input" placeholder={esActivoFijo ? 'Ej: Laptop Dell XPS 13, CamiÃ³n Volvo FH...' : 'Ej: FerreterÃ­a Industrial SAC, ViÃ¡ticos Lima...'} value={gastoForm.descripcion} onChange={e => setG('descripcion', e.target.value)} />
             </div>
             {!esActivoFijo && (
               <div className="form-group">
-                <label className="form-label">Categoría *</label>
+                <label className="form-label">CategorÃ­a *</label>
                 <select className="select" value={gastoForm.categoria} onChange={e => setG('categoria', e.target.value)}>
                   <option value="Materiales">Materiales</option>
                   <option value="Servicios terceros">Servicios terceros</option>
-                  <option value="Logística">Logística</option>
+                  <option value="LogÃ­stica">LogÃ­stica</option>
                   <option value="Administrativos">Administrativos</option>
                   <option value="Comerciales">Comerciales</option>
                   <option value="Gastos financieros">Gastos financieros</option>
@@ -6236,8 +6397,8 @@ function Compras() {
                   <label className="form-label">Tipo de activo</label>
                   <select className="select" value={activoTipo} onChange={e => setActivoTipo(e.target.value)}>
                     <option value="">Seleccionar...</option>
-                    <option value="Equipo de computo">Equipo de cómputo</option>
-                    <option value="Vehiculo">Vehículo</option>
+                    <option value="Equipo de computo">Equipo de cÃ³mputo</option>
+                    <option value="Vehiculo">VehÃ­culo</option>
                     <option value="Maquinaria">Maquinaria</option>
                     <option value="Mobiliario">Mobiliario y equipos de oficina</option>
                     <option value="Herramienta">Herramientas</option>
@@ -6246,7 +6407,7 @@ function Compras() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Vida útil estimada (años)</label>
+                  <label className="form-label">Vida Ãºtil estimada (aÃ±os)</label>
                   <input className="input" type="number" min="1" max="50" step="1"
                     value={activoVidaUtil} onChange={e => setActivoVidaUtil(e.target.value)}
                     placeholder="Ej: 3, 5, 10"/>
@@ -6272,7 +6433,7 @@ function Compras() {
             </div>
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
               <div className="form-group">
-                <label className="form-label">N° Comprobante</label>
+                <label className="form-label">NÂ° Comprobante</label>
                 <input className="input" placeholder="F001-0001" value={gastoForm.num_comprobante} onChange={e => setG('num_comprobante', e.target.value)} />
               </div>
               <div className="form-group">
@@ -6288,8 +6449,8 @@ function Compras() {
             <div className="form-group">
               <label className="form-label">Centro de Costo (CECO) *</label>
               <select className={`select ${errCecoGasto ? 'input-error' : ''}`} value={gastoForm.centro_costo_id} onChange={e => setG('centro_costo_id', e.target.value)}>
-                <option value="">— Seleccionar CECO —</option>
-                {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                <option value="">â€” Seleccionar CECO â€”</option>
+                {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo} â€” {c.nombre}</option>)}
               </select>
               {errCecoGasto && <div style={{color:'var(--danger, #ef4444)', fontSize:12, marginTop:4}}>El CECO es obligatorio para registrar un gasto.</div>}
             </div>
@@ -6303,14 +6464,14 @@ function Compras() {
                   </label>
                   <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',margin:0}}>
                     <input type="radio" name="estadoPago" value="pendiente" checked={estadoPago==='pendiente'} onChange={() => setEstadoPago('pendiente')}/>
-                    <span style={{fontSize:13}}>Está pendiente de pago <span style={{color:'var(--fg-muted)',fontSize:12}}>(genera CxP)</span></span>
+                    <span style={{fontSize:13}}>EstÃ¡ pendiente de pago <span style={{color:'var(--fg-muted)',fontSize:12}}>(genera CxP)</span></span>
                   </label>
                 </div>
                 {estadoPago === 'pagado' && (
                   <div style={{marginTop:10}}>
                     <div className="form-group" style={{margin:0}}>
                       <label className="form-label">Referencia de pago (opcional)</label>
-                      <input className="input" placeholder="N° operación, transferencia..." value={referenciaPago} onChange={e => setReferenciaPago(e.target.value)}/>
+                      <input className="input" placeholder="NÂ° operaciÃ³n, transferencia..." value={referenciaPago} onChange={e => setReferenciaPago(e.target.value)}/>
                     </div>
                   </div>
                 )}
@@ -6319,7 +6480,7 @@ function Compras() {
                     <div className="form-group" style={{margin:0}}>
                       <label className="form-label">Proveedor (opcional)</label>
                       <select className="select" value={gastoCxpProvId} onChange={e => setGastoCxpProvId(e.target.value)}>
-                        <option value="">— De la lista —</option>
+                        <option value="">â€” De la lista â€”</option>
                         {(proveedores || []).filter(p => p.estado !== 'inactivo').map(p => (
                           <option key={p.id} value={p.id}>{p.razon_social}</option>
                         ))}
@@ -6371,7 +6532,7 @@ function Backlog() {
 
   const cols = [
     { k: 'pendiente', title: 'Pendientes', color: '#64748b' },
-    { k: 'en_revision', title: 'En Revisión', color: '#06b6d4' },
+    { k: 'en_revision', title: 'En RevisiÃ³n', color: '#06b6d4' },
     { k: 'convertido', title: 'Convertido', color: '#10b981' },
   ];
 
@@ -6393,7 +6554,7 @@ function Backlog() {
         <div>
           <h1 className="page-title" style={{fontSize:24, fontWeight:800}}>Backlog de Trabajo</h1>
           <div className="page-sub" style={{marginTop:4}}>
-            Cola priorizada de requerimientos para programación de OTs
+            Cola priorizada de requerimientos para programaciÃ³n de OTs
           </div>
         </div>
         <div className="row" style={{gap:12}}>
@@ -6487,7 +6648,7 @@ function Backlog() {
                     ) : (
                       <div className="card-empty-state">
                         <div style={{opacity:0.5}}>{[I.clock, I.search, I.check][i]}</div>
-                        <p>No hay requerimientos en {c.title}<br/><span style={{fontSize:10}}>Los nuevos aparecerán aquí.</span></p>
+                        <p>No hay requerimientos en {c.title}<br/><span style={{fontSize:10}}>Los nuevos aparecerÃ¡n aquÃ­.</span></p>
                       </div>
                     )}
                   </div>
@@ -6537,7 +6698,7 @@ function Backlog() {
           <div className="card" style={{width:420, padding:24, boxShadow:'0 8px 32px rgba(0,0,0,0.18)'}}>
             <div style={{fontWeight:800, fontSize:16, marginBottom:4}}>Convertir a OT</div>
             <div className="text-muted" style={{fontSize:13, marginBottom:20}}>
-              {modalConvertir.servicio} · {getCuenta(modalConvertir.cuenta_id)}
+              {modalConvertir.servicio} Â· {getCuenta(modalConvertir.cuenta_id)}
             </div>
             <div className="input-group" style={{marginBottom:20}}>
               <label>Centro de Costo (CECO) <span style={{color:'var(--danger)'}}>*</span></label>
@@ -6571,7 +6732,7 @@ function Backlog() {
   );
 }
 
-// ============ CIERRE TÉCNICO ============
+// ============ CIERRE TÃ‰CNICO ============
 function Cierre() {
   const { ots, partes, cierresTecnicos, valorizaciones, osClientes, cuentas, personalOperativo, personalAdmin, searchQuery, role, navigate, activeParams, actualizarCierreTecnico, addNotificacion } = useApp();
   const canCost = role?.permisos?.ver_costos || role?.permisos?.todo;
@@ -6593,8 +6754,8 @@ function Cierre() {
   const hoy = new Date().toISOString().split('T')[0];
   const mesActual = hoy.slice(0, 7);
 
-  const getCuenta = (id) => { const c = cuentas.find(x => x.id === id); return c?.razon_social || c?.nombre_comercial || id || '—'; };
-  const getTecnico = (id) => { const p = (personalOperativo || []).find(x => x.id === id); return p?.nombre || id || '—'; };
+  const getCuenta = (id) => { const c = cuentas.find(x => x.id === id); return c?.razon_social || c?.nombre_comercial || id || 'â€”'; };
+  const getTecnico = (id) => { const p = (personalOperativo || []).find(x => x.id === id); return p?.nombre || id || 'â€”'; };
   const getOS = (id) => osClientes.find(o => o.id === id);
 
   const otsCerradas = ots.filter(o => ['pendiente_cierre', 'cerrada', 'valorizada', 'facturada'].includes(o.estado));
@@ -6652,8 +6813,8 @@ function Cierre() {
     <>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Cierre Técnico</h1>
-          <div className="page-sub">OTs cerradas, conformidad del cliente y estado de valorización</div>
+          <h1 className="page-title">Cierre TÃ©cnico</h1>
+          <div className="page-sub">OTs cerradas, conformidad del cliente y estado de valorizaciÃ³n</div>
         </div>
       </div>
 
@@ -6695,12 +6856,12 @@ function Cierre() {
             <select className="select" value={filtros.conformidad} onChange={e => setFiltros(v => ({...v, conformidad: e.target.value}))}>
               <option value="">Todas</option>
               <option value="digital">Firma digital</option>
-              <option value="fisico">Documento físico</option>
+              <option value="fisico">Documento fÃ­sico</option>
               <option value="pendiente">Pendiente</option>
             </select>
           </div>
           <div style={{margin:0}}>
-            <label style={{fontSize:11}}>Estado valorización</label>
+            <label style={{fontSize:11}}>Estado valorizaciÃ³n</label>
             <select className="select" value={filtros.valoriz} onChange={e => setFiltros(v => ({...v, valoriz: e.target.value}))}>
               <option value="">Todos</option>
               <option value="pendiente_cierre">Pendiente cierre</option>
@@ -6735,7 +6896,7 @@ function Cierre() {
                 <th>Horas</th>
                 {canCost && <th>Costo real</th>}
                 <th>Conformidad</th>
-                <th>Valorización</th>
+                <th>ValorizaciÃ³n</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -6756,12 +6917,12 @@ function Cierre() {
                 return (
                   <tr key={o.id} className="hover-row" onClick={() => abrirFicha(o)} style={{cursor:'pointer'}}>
                     <td className="mono" style={{fontWeight:600}}>{o.numero}</td>
-                    <td style={{fontWeight:500}}>{getCuenta(o.cuenta_id) || o.cliente || '—'}</td>
-                    <td>{os ? <span style={{fontSize:12}}>{os.numero}</span> : <span className="text-muted">—</span>}</td>
-                    <td className="text-muted" style={{fontSize:12}}>{c?.fecha || '—'}</td>
+                    <td style={{fontWeight:500}}>{getCuenta(o.cuenta_id) || o.cliente || 'â€”'}</td>
+                    <td>{os ? <span style={{fontSize:12}}>{os.numero}</span> : <span className="text-muted">â€”</span>}</td>
+                    <td className="text-muted" style={{fontSize:12}}>{c?.fecha || 'â€”'}</td>
                     <td style={{fontWeight:600, color:'var(--green)'}}>{c?.avance_final ?? o.avance ?? 0}%</td>
-                    <td style={{fontSize:12}}>{horasReal > 0 ? `${horasReal}h` : '—'}</td>
-                    {canCost && <td className="num" style={{fontSize:12}}>{costoReal > 0 ? money(costoReal) : '—'}</td>}
+                    <td style={{fontSize:12}}>{horasReal > 0 ? `${horasReal}h` : 'â€”'}</td>
+                    {canCost && <td className="num" style={{fontSize:12}}>{costoReal > 0 ? money(costoReal) : 'â€”'}</td>}
                     <td>{conformidadBadge(confTipo)}</td>
                     <td>{valorizBadge(o)}</td>
                     <td onClick={e => e.stopPropagation()}>
@@ -6786,7 +6947,7 @@ function Cierre() {
         </div>
       </div>
 
-      {/* Ficha de cierre — panel lateral de solo lectura */}
+      {/* Ficha de cierre â€” panel lateral de solo lectura */}
       {sel && (() => {
         const c = cierreDeOT(sel);
         const os = getOS(sel.os_cliente_id);
@@ -6824,10 +6985,10 @@ function Cierre() {
                   <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
                 </div>
                 <div className="cierre-detail-meta">
-                  <span>Cliente: <strong>{getCuenta(sel.cuenta_id) || sel.cliente || '—'}</strong></span>
-                  <span>OS Cliente: <strong>{os?.numero || '—'}</strong></span>
-                  <span>Responsable: <strong>{sel.responsable || '—'}</strong></span>
-                  <span>Fecha cierre: <strong>{c?.fecha || '—'}</strong></span>
+                  <span>Cliente: <strong>{getCuenta(sel.cuenta_id) || sel.cliente || 'â€”'}</strong></span>
+                  <span>OS Cliente: <strong>{os?.numero || 'â€”'}</strong></span>
+                  <span>Responsable: <strong>{sel.responsable || 'â€”'}</strong></span>
+                  <span>Fecha cierre: <strong>{c?.fecha || 'â€”'}</strong></span>
                   <span className="cierre-detail-badge">Conformidad: {conformidadBadge(confTipo)}</span>
                 </div>
               </div>
@@ -6836,7 +6997,7 @@ function Cierre() {
                 <div className="cierre-detail-score" style={{color:cierreHealthColor}}>{avanceFinal}%</div>
                 <div className="cierre-detail-health-copy">
                   <div><span style={{borderColor:cierreHealthColor, color:cierreHealthColor}}>{cierreHealthLabel}</span></div>
-                  <div className="text-muted">Horas: {horasReal > 0 ? `${horasReal}h` : '—'} - Partes aprobados: {partesAp.length}</div>
+                  <div className="text-muted">Horas: {horasReal > 0 ? `${horasReal}h` : 'â€”'} - Partes aprobados: {partesAp.length}</div>
                 </div>
                 <div className="cierre-detail-progress">
                   <div style={{width:`${Math.min(100, Math.max(0, avanceFinal))}%`, background:cierreHealthColor}}/>
@@ -6855,13 +7016,13 @@ function Cierre() {
                 {tabCierre === 'resumen' && (
                   <div className="col" style={{gap:16}}>
                     <div className="input-group">
-                      <label>Descripción del trabajo ejecutado</label>
-                      <div style={{padding:'10px 12px', background:'var(--bg-subtle)', borderRadius:6, fontSize:13, lineHeight:1.6, whiteSpace:'pre-wrap', minHeight:80}}>{c?.descripcion_trabajo || '—'}</div>
+                      <label>DescripciÃ³n del trabajo ejecutado</label>
+                      <div style={{padding:'10px 12px', background:'var(--bg-subtle)', borderRadius:6, fontSize:13, lineHeight:1.6, whiteSpace:'pre-wrap', minHeight:80}}>{c?.descripcion_trabajo || 'â€”'}</div>
                     </div>
                     <div className="grid-2" style={{gap:12}}>
-                      <div><span className="text-muted" style={{fontSize:12}}>Fecha real de inicio</span><div style={{fontWeight:600}}>{c?.fecha_inicio_real || '—'}</div></div>
-                      <div><span className="text-muted" style={{fontSize:12}}>Fecha real de fin</span><div style={{fontWeight:600}}>{c?.fecha || c?.fecha_fin_real || '—'}</div></div>
-                      <div><span className="text-muted" style={{fontSize:12}}>Total horas trabajadas</span><div style={{fontWeight:600}}>{horasReal > 0 ? `${horasReal}h` : '—'}</div></div>
+                      <div><span className="text-muted" style={{fontSize:12}}>Fecha real de inicio</span><div style={{fontWeight:600}}>{c?.fecha_inicio_real || 'â€”'}</div></div>
+                      <div><span className="text-muted" style={{fontSize:12}}>Fecha real de fin</span><div style={{fontWeight:600}}>{c?.fecha || c?.fecha_fin_real || 'â€”'}</div></div>
+                      <div><span className="text-muted" style={{fontSize:12}}>Total horas trabajadas</span><div style={{fontWeight:600}}>{horasReal > 0 ? `${horasReal}h` : 'â€”'}</div></div>
                       <div><span className="text-muted" style={{fontSize:12}}>Avance final</span><div style={{fontWeight:700, fontSize:18, color:'var(--green)'}}>{avanceFinal}%</div></div>
                     </div>
                   </div>
@@ -6882,17 +7043,17 @@ function Cierre() {
                         ['Mano de obra', sel.est_mo ?? null, moReal],
                         ['Materiales', sel.est_materiales ?? null, matReal],
                         ['Servicios terceros', sel.est_terceros ?? null, terceroReal],
-                        ['Logística y viáticos', sel.est_logistica ?? null, logisticaReal],
+                        ['LogÃ­stica y viÃ¡ticos', sel.est_logistica ?? null, logisticaReal],
                       ].map(([label, est, real]) => (
                         <tr key={label} style={{borderBottom:'1px solid var(--border-subtle)'}}>
                           <td style={{padding:'8px 0'}}>{label}</td>
-                          <td style={{textAlign:'right', padding:'8px 0', color:'var(--fg-muted)'}}>{est != null ? money(est) : '—'}</td>
-                          <td style={{textAlign:'right', padding:'8px 0', fontWeight: real > 0 ? 600 : 400}}>{real > 0 ? money(real) : '—'}</td>
+                          <td style={{textAlign:'right', padding:'8px 0', color:'var(--fg-muted)'}}>{est != null ? money(est) : 'â€”'}</td>
+                          <td style={{textAlign:'right', padding:'8px 0', fontWeight: real > 0 ? 600 : 400}}>{real > 0 ? money(real) : 'â€”'}</td>
                         </tr>
                       ))}
                       <tr style={{borderTop:'2px solid var(--border)'}}>
                         <td style={{padding:'8px 0', fontWeight:700}}>Total</td>
-                        <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color:'var(--fg-muted)'}}>{costoEst > 0 ? money(costoEst) : '—'}</td>
+                        <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color:'var(--fg-muted)'}}>{costoEst > 0 ? money(costoEst) : 'â€”'}</td>
                         <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color: costoReal > costoEst && costoEst > 0 ? 'var(--danger)' : 'var(--green)'}}>{money(costoReal)}</td>
                       </tr>
                       {margen !== null && (
@@ -6915,14 +7076,14 @@ function Cierre() {
                     </div>
                     {confTipo === 'digital' && c?.conformidad_cliente && (
                       <div className="grid-2" style={{gap:12}}>
-                        <div><span className="text-muted" style={{fontSize:12}}>Firmante</span><div style={{fontWeight:600}}>{c.conformidad_cliente.nombre || '—'}</div></div>
-                        <div><span className="text-muted" style={{fontSize:12}}>DNI</span><div style={{fontWeight:600}}>{c.conformidad_cliente.dni || '—'}</div></div>
-                        <div><span className="text-muted" style={{fontSize:12}}>Fecha y hora</span><div style={{fontWeight:600}}>{c.conformidad_cliente.firmado_at || '—'}</div></div>
-                        <div><span className="text-muted" style={{fontSize:12}}>IP</span><div style={{fontWeight:600, fontFamily:'monospace', fontSize:12}}>{c.conformidad_cliente.ip || '—'}</div></div>
+                        <div><span className="text-muted" style={{fontSize:12}}>Firmante</span><div style={{fontWeight:600}}>{c.conformidad_cliente.nombre || 'â€”'}</div></div>
+                        <div><span className="text-muted" style={{fontSize:12}}>DNI</span><div style={{fontWeight:600}}>{c.conformidad_cliente.dni || 'â€”'}</div></div>
+                        <div><span className="text-muted" style={{fontSize:12}}>Fecha y hora</span><div style={{fontWeight:600}}>{c.conformidad_cliente.firmado_at || 'â€”'}</div></div>
+                        <div><span className="text-muted" style={{fontSize:12}}>IP</span><div style={{fontWeight:600, fontFamily:'monospace', fontSize:12}}>{c.conformidad_cliente.ip || 'â€”'}</div></div>
                       </div>
                     )}
                     {confTipo === 'fisico' && (
-                      <div style={{fontSize:13, color:'var(--fg-muted)'}}>Documento físico adjunto al momento del cierre.</div>
+                      <div style={{fontSize:13, color:'var(--fg-muted)'}}>Documento fÃ­sico adjunto al momento del cierre.</div>
                     )}
                     {confTipo === 'pendiente' && (
                       <div className="col" style={{gap:12}}>
@@ -6933,7 +7094,7 @@ function Cierre() {
                           <div style={{fontWeight:700, fontSize:13, marginBottom:12}}>Registrar conformidad</div>
                           <div className="col" style={{gap:8, marginBottom:14}}>
                             {[
-                              { val: 'fisico', label: 'Documento físico', desc: 'El cliente firmó un documento físico de conformidad.' },
+                              { val: 'fisico', label: 'Documento fÃ­sico', desc: 'El cliente firmÃ³ un documento fÃ­sico de conformidad.' },
                               { val: 'digital', label: 'Conformidad digital', desc: 'Se registra nombre, fecha y referencia del documento digital.' },
                             ].map(opt => (
                               <label key={opt.val} style={{display:'flex', gap:10, padding:'10px 12px', borderRadius:6, border:`1.5px solid ${confForm.tipo === opt.val ? 'var(--cyan)' : 'var(--border)'}`, background: confForm.tipo === opt.val ? 'color-mix(in srgb, var(--cyan) 6%, transparent)' : 'var(--bg)', cursor:'pointer'}}>
@@ -6956,7 +7117,7 @@ function Cierre() {
                                 <input className="input" type="date" style={{fontSize:13}} value={confForm.fecha_firma} onChange={e => setConfForm(v => ({...v, fecha_firma: e.target.value}))}/>
                               </div>
                               <div className="input-group" style={{margin:0}}>
-                                <label style={{fontSize:12}}>Código / referencia del documento <span className="text-muted">(opcional)</span></label>
+                                <label style={{fontSize:12}}>CÃ³digo / referencia del documento <span className="text-muted">(opcional)</span></label>
                                 <input className="input" style={{fontSize:13}} value={confForm.referencia} onChange={e => setConfForm(v => ({...v, referencia: e.target.value}))} placeholder="Ej: DOC-2026-001"/>
                               </div>
                             </div>
@@ -6994,7 +7155,7 @@ function Cierre() {
                       <div key={p.id} style={{padding:'10px 14px', border:'1px solid var(--border)', borderRadius:6, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                         <div>
                           <div style={{fontWeight:600, fontSize:13}}>{getTecnico(p.tecnico_id || p.tecnico)}</div>
-                          <div style={{fontSize:12, color:'var(--fg-muted)'}}>{p.fecha} · {p.horas}h · +{p.avance_reportado}%</div>
+                          <div style={{fontSize:12, color:'var(--fg-muted)'}}>{p.fecha} Â· {p.horas}h Â· +{p.avance_reportado}%</div>
                           {p.actividades && <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>{p.actividades}</div>}
                         </div>
                         <span className="badge badge-green">{I.check} Aprobado</span>
@@ -7018,67 +7179,985 @@ function Cierre() {
   );
 }
 
-// ============ GUAS DE REMISIÓN ============
+// ============ TRANSPORTE Y GUÍAS DE REMISIÓN ============
+const GR_ESTADO_BADGE = {
+  borrador: 'badge-gray', emitida: 'badge-cyan', en_transito: 'badge-orange',
+  entregada: 'badge-green', anulada: 'badge-red',
+};
+const GR_ESTADO_LABEL = {
+  borrador: 'Borrador', emitida: 'Emitida', en_transito: 'En Tránsito',
+  entregada: 'Entregada', anulada: 'Anulada',
+};
+const GR_TIPO_LABEL = {
+  traslado_interno: 'Traslado Interno', despacho_venta: 'Despacho Venta',
+  despacho_servicio: 'Despacho Servicio',
+};
+const OV_ESTADO_BADGE = {
+  pendiente: 'badge-gray', confirmada: 'badge-cyan',
+  parcialmente_despachada: 'badge-orange', despachada: 'badge-green',
+  facturada: 'badge-purple', anulada: 'badge-red',
+};
+const OV_ESTADO_LABEL = {
+  pendiente: 'Pendiente', confirmada: 'Confirmada',
+  parcialmente_despachada: 'Parc. Despachada', despachada: 'Despachada',
+  facturada: 'Facturada', anulada: 'Anulada',
+};
+const MOTIVOS_GR = [
+  { codigo: '01', nombre: 'Venta' },
+  { codigo: '03', nombre: 'Traslado entre establecimientos' },
+  { codigo: '04', nombre: 'Traslado en consignación' },
+  { codigo: '05', nombre: 'Devolución' },
+  { codigo: '17', nombre: 'Distribución de bienes' },
+  { codigo: '99', nombre: 'Otros' },
+];
+
+const GR_FORM_INIT = {
+  tipo_origen: 'traslado_interno', motivo_traslado: '03', modalidad: 'remitente',
+  serie: 'T001', fecha_emision: new Date().toISOString().slice(0,10),
+  fecha_inicio_traslado: new Date().toISOString().slice(0,10),
+  partida_direccion: '', partida_ubigeo: '', llegada_direccion: '', llegada_ubigeo: '',
+  destinatario_ruc_dni: '', destinatario_razon_social: '',
+  peso_bruto_total: '', unidad_peso: 'KGM',
+  transportista_id: '', transportista_ruc: '', transportista_razon_social: '', transportista_nro_mtc: '',
+  vehiculo_id: '', vehiculo_placa: '', vehiculo_cert_habilitacion: '',
+  conductor_id: '', conductor_nombre: '', conductor_dni: '', conductor_brevete: '',
+  orden_venta_id: '', ot_id: '', almacen_origen_id: '',
+  lineas: [],
+};
+const OV_FORM_INIT = {
+  cliente_nombre: '', cliente_ruc_dni: '', cliente_direccion: '',
+  moneda: 'PEN', condicion_pago: '30_dias',
+  fecha_emision: new Date().toISOString().slice(0,10), fecha_entrega: '',
+  almacen_despacho_id: '', observaciones: '', lineas: [],
+};
+const TRANS_FORM_INIT = { ruc: '', razon_social: '', nombre_comercial: '', nro_mtc: '', direccion: '', telefono: '', email: '' };
+
 function Remision() {
-  const { searchQuery } = useApp();
-  const query = searchQuery.toLowerCase();
-  const filteredRemisiones = MOCK.remisiones.filter(r => 
-    r.id.toLowerCase().includes(query) ||
-    r.ot.toLowerCase().includes(query) ||
-    r.destino.toLowerCase().includes(query) ||
-    r.transportista.toLowerCase().includes(query)
+  const {
+    guiasRemision, ordenesVenta, transportistas, catalogoVenta, almacenes,
+    crearGuiaCtx, emitirGuiaCtx, marcarEnTransitoCtx, confirmarEntregaCtx, anularGuiaCtx,
+    crearTransportistaCtx, actualizarTransportistaCtx, crearVehiculoCtx, crearConductorCtx,
+    crearOVCtx, confirmarOVCtx, anularOVCtx,
+    searchQuery, addToast,
+  } = useApp();
+
+  const [tab, setTab] = useState('guias');
+  const [filtroEstadoGR, setFiltroEstadoGR] = useState('');
+  const [filtroTipoGR, setFiltroTipoGR] = useState('');
+
+  const [modalGuia, setModalGuia] = useState(null);
+  const [modalOV, setModalOV] = useState(null);
+  const [modalTrans, setModalTrans] = useState(null);
+  const [modalAnular, setModalAnular] = useState(null);
+  const [anularMotivo, setAnularMotivo] = useState('');
+
+  const [wizardStep, setWizardStep] = useState(1);
+  const [grForm, setGrForm] = useState(GR_FORM_INIT);
+  const [grLinea, setGrLinea] = useState({ descripcion: '', codigo: '', unidad: 'NIU', cantidad: 1, peso_unitario: 0 });
+
+  const [ovForm, setOvForm] = useState(OV_FORM_INIT);
+  const [ovLinea, setOvLinea] = useState({ descripcion: '', codigo: '', unidad: 'NIU', cantidad: 1, precio_unitario: 0, descuento_pct: 0 });
+
+  const [transForm, setTransForm] = useState(TRANS_FORM_INIT);
+  const [vehiculoForm, setVehiculoForm] = useState({ placa: '', marca: '', modelo: '', tipo: 'camion', nro_certificado_habilitacion: '' });
+  const [conductorForm, setConductorForm] = useState({ nombre: '', dni: '', brevete: '', categoria_brevete: 'A-III', vigencia_brevete: '' });
+  const [subTab, setSubTab] = useState('lista');
+
+  const [submitting, setSubmitting] = useState(false);
+  const [errores, setErrores] = useState([]);
+
+  const query = searchQuery?.toLowerCase() || '';
+
+  const guiasFiltradas = (guiasRemision || []).filter(g => {
+    const matchQ = !query || (g.numero_completo || g.id || '').toLowerCase().includes(query) ||
+      (g.destinatario_razon_social || '').toLowerCase().includes(query) ||
+      (g.llegada_direccion || '').toLowerCase().includes(query);
+    const matchE = !filtroEstadoGR || g.estado === filtroEstadoGR;
+    const matchT = !filtroTipoGR || g.tipo_origen === filtroTipoGR;
+    return matchQ && matchE && matchT;
+  });
+
+  const ovsFiltradas = (ordenesVenta || []).filter(o =>
+    !query || (o.numero || '').toLowerCase().includes(query) ||
+    (o.cliente_nombre || '').toLowerCase().includes(query)
   );
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  const mes = new Date().toISOString().slice(0, 7);
+  const guiasHoy = (guiasRemision || []).filter(g => (g.fecha_emision || '').slice(0, 10) === hoy && g.estado !== 'anulada').length;
+  const enTransito = (guiasRemision || []).filter(g => g.estado === 'en_transito').length;
+  const entregadasMes = (guiasRemision || []).filter(g => g.estado === 'entregada' && (g.fecha_emision || '').slice(0, 7) === mes).length;
+  const ovsPendientes = (ordenesVenta || []).filter(o => ['pendiente', 'confirmada', 'parcialmente_despachada'].includes(o.estado)).length;
+
+  const setGr = (k, v) => setGrForm(p => ({ ...p, [k]: v }));
+
+  const autocompletarTransportista = (id) => {
+    const t = (transportistas || []).find(t => t.id === id);
+    if (!t) return;
+    setGr('transportista_id', id);
+    setGr('transportista_ruc', t.ruc);
+    setGr('transportista_razon_social', t.razon_social);
+    setGr('transportista_nro_mtc', t.nro_mtc || '');
+  };
+
+  const autocompletarVehiculo = (id) => {
+    const trans = (transportistas || []).find(t => t.id === grForm.transportista_id);
+    const v = (trans?.vehiculos || []).find(v => v.id === id);
+    if (!v) return;
+    setGr('vehiculo_id', id);
+    setGr('vehiculo_placa', v.placa);
+    setGr('vehiculo_cert_habilitacion', v.nro_certificado_habilitacion || '');
+  };
+
+  const autocompletarConductor = (id) => {
+    const trans = (transportistas || []).find(t => t.id === grForm.transportista_id);
+    const c = (trans?.conductores || []).find(c => c.id === id);
+    if (!c) return;
+    setGr('conductor_id', id);
+    setGr('conductor_nombre', c.nombre);
+    setGr('conductor_dni', c.dni);
+    setGr('conductor_brevete', c.brevete || '');
+  };
+
+  const agregarLineaGR = () => {
+    if (!grLinea.descripcion) return;
+    setGrForm(p => ({ ...p, lineas: [...p.lineas, { ...grLinea, id: `tmp_${Date.now()}` }] }));
+    setGrLinea({ descripcion: '', codigo: '', unidad: 'NIU', cantidad: 1, peso_unitario: 0 });
+  };
+
+  const agregarLineaOV = () => {
+    if (!ovLinea.descripcion) return;
+    setOvForm(p => ({ ...p, lineas: [...p.lineas, { ...ovLinea, id: `tmp_${Date.now()}` }] }));
+    setOvLinea({ descripcion: '', codigo: '', unidad: 'NIU', cantidad: 1, precio_unitario: 0, descuento_pct: 0 });
+  };
+
+  const agregarDesdeOV = (ovId) => {
+    const ov = (ordenesVenta || []).find(o => o.id === ovId);
+    if (!ov) return;
+    setGrForm(p => ({
+      ...p,
+      tipo_origen: 'despacho_venta',
+      motivo_traslado: '01',
+      orden_venta_id: ovId,
+      destinatario_ruc_dni: ov.cliente_ruc_dni || '',
+      destinatario_razon_social: ov.cliente_nombre || '',
+      llegada_direccion: ov.cliente_direccion || '',
+      almacen_origen_id: ov.almacen_despacho_id || '',
+      lineas: (ov.lineas || []).map(l => ({
+        id: `tmp_${Date.now()}_${l.id}`,
+        descripcion: l.descripcion,
+        codigo: l.codigo || '',
+        unidad: l.unidad || 'NIU',
+        cantidad: Number(l.cantidad || 1),
+        peso_unitario: 0,
+        peso_total: 0,
+        precio_unitario: Number(l.precio_unitario || 0),
+        valor_total: Number(l.subtotal || 0),
+        moneda: 'PEN',
+        material_id: l.material_id || null,
+      })),
+    }));
+  };
+
+  const guardarGuia = async (emitir = false) => {
+    if (!grForm.lineas.length) { setErrores(['Agrega al menos un ítem a la guía']); return; }
+    setSubmitting(true); setErrores([]);
+    try {
+      const data = await crearGuiaCtx(grForm);
+      if (emitir && data?.id) {
+        try { await emitirGuiaCtx(data.id); } catch (e) { addToast?.('Guía creada pero no emitida: ' + e.message, 'warning'); }
+      }
+      setModalGuia(null);
+      setGrForm(GR_FORM_INIT);
+      setWizardStep(1);
+    } catch (e) {
+      setErrores([e.message]);
+    } finally { setSubmitting(false); }
+  };
+
+  const handleTransicionEstado = async (guia, nuevoEstado) => {
+    setErrores([]);
+    try {
+      if (nuevoEstado === 'emitida') await emitirGuiaCtx(guia.id);
+      else if (nuevoEstado === 'en_transito') await marcarEnTransitoCtx(guia.id);
+      else if (nuevoEstado === 'entregada') await confirmarEntregaCtx(guia.id);
+      setModalGuia(prev => prev && prev.id === guia.id ? { ...prev, estado: nuevoEstado } : prev);
+    } catch (e) { setErrores([e.message]); }
+  };
+
+  const handleAnular = async () => {
+    if (!anularMotivo.trim()) { setErrores(['El motivo es obligatorio']); return; }
+    setSubmitting(true);
+    try {
+      if (modalAnular.tipo === 'guia') await anularGuiaCtx(modalAnular.obj.id, anularMotivo);
+      else if (modalAnular.tipo === 'ov') await anularOVCtx(modalAnular.obj.id, anularMotivo);
+      setModalAnular(null); setAnularMotivo('');
+    } catch (e) { setErrores([e.message]); }
+    finally { setSubmitting(false); }
+  };
+
+  const guardarOV = async () => {
+    if (!ovForm.cliente_nombre) { setErrores(['El cliente es obligatorio']); return; }
+    if (!ovForm.lineas.length) { setErrores(['Agrega al menos un ítem']); return; }
+    setSubmitting(true); setErrores([]);
+    try {
+      await crearOVCtx(ovForm);
+      setModalOV(null); setOvForm(OV_FORM_INIT);
+    } catch (e) { setErrores([e.message]); }
+    finally { setSubmitting(false); }
+  };
+
+  const guardarTransportista = async () => {
+    if (!transForm.ruc || !transForm.razon_social) { setErrores(['RUC y razón social son obligatorios']); return; }
+    setSubmitting(true); setErrores([]);
+    try {
+      if (modalTrans && modalTrans !== 'nuevo') await actualizarTransportistaCtx(modalTrans.id, transForm);
+      else await crearTransportistaCtx(transForm);
+      setModalTrans(null); setTransForm(TRANS_FORM_INIT);
+    } catch (e) { setErrores([e.message]); }
+    finally { setSubmitting(false); }
+  };
+
+  const guardarVehiculo = async (transId) => {
+    if (!vehiculoForm.placa) { setErrores(['La placa es obligatoria']); return; }
+    setSubmitting(true); setErrores([]);
+    try {
+      await crearVehiculoCtx({ ...vehiculoForm, transportista_id: transId });
+      setVehiculoForm({ placa: '', marca: '', modelo: '', tipo: 'camion', nro_certificado_habilitacion: '' });
+      setSubTab('lista');
+    } catch (e) { setErrores([e.message]); }
+    finally { setSubmitting(false); }
+  };
+
+  const guardarConductor = async (transId) => {
+    if (!conductorForm.nombre || !conductorForm.dni) { setErrores(['Nombre y DNI son obligatorios']); return; }
+    setSubmitting(true); setErrores([]);
+    try {
+      await crearConductorCtx({ ...conductorForm, transportista_id: transId });
+      setConductorForm({ nombre: '', dni: '', brevete: '', categoria_brevete: 'A-III', vigencia_brevete: '' });
+      setSubTab('lista');
+    } catch (e) { setErrores([e.message]); }
+    finally { setSubmitting(false); }
+  };
+
+  const vehiculosTransportista = grForm.transportista_id
+    ? (transportistas || []).find(t => t.id === grForm.transportista_id)?.vehiculos || []
+    : [];
+  const conductoresTransportista = grForm.transportista_id
+    ? (transportistas || []).find(t => t.id === grForm.transportista_id)?.conductores || []
+    : [];
+
   return (
     <>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Transporte y Logística</h1>
-          <div className="page-sub">Traslado de materiales, guías de remisión y control de flotas</div>
+          <h1 className="page-title">Transporte y Guías</h1>
+          <div className="page-sub">Guías de remisión, despachos y órdenes de venta de bienes</div>
         </div>
-        <button className="btn btn-primary">{I.plus} Emitir Guía</button>
+        <div style={{display:'flex',gap:8}}>
+          {tab === 'guias' && <button className="btn btn-primary" onClick={() => { setModalGuia('nueva'); setGrForm(GR_FORM_INIT); setWizardStep(1); setErrores([]); }}>{I.plus} Nueva Guía</button>}
+          {tab === 'ov'    && <button className="btn btn-primary" onClick={() => { setModalOV('nueva'); setOvForm(OV_FORM_INIT); setErrores([]); }}>{I.plus} Nueva OV</button>}
+          {tab === 'trans' && <button className="btn btn-primary" onClick={() => { setModalTrans('nuevo'); setTransForm(TRANS_FORM_INIT); setErrores([]); setSubTab('lista'); }}>{I.plus} Nuevo Transportista</button>}
+        </div>
       </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16}}>
+        {[
+          { label: 'Guías emitidas hoy', val: guiasHoy, icon: I.truck, color: 'var(--cyan)' },
+          { label: 'En tránsito', val: enTransito, icon: I.mapPin, color: 'var(--orange)' },
+          { label: 'Entregadas este mes', val: entregadasMes, icon: I.check, color: 'var(--green)' },
+          { label: 'OVs pendientes despacho', val: ovsPendientes, icon: I.package, color: 'var(--purple)' },
+        ].map(k => (
+          <div key={k.label} className="card" style={{padding:'14px 18px',display:'flex',alignItems:'center',gap:12}}>
+            <span style={{color:k.color,width:20}}>{k.icon}</span>
+            <div>
+              <div style={{fontSize:22,fontWeight:700,lineHeight:1}}>{k.val}</div>
+              <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:2}}>{k.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       <div className="tabs">
-        <div className="tab active">Guías de Remisión</div>
-        <div className="tab">Flota y Choferes</div>
-        <div className="tab">Rutas y Programación</div>
+        {[['guias','Guías de Remisión'],['ov','Órdenes de Venta'],['trans','Transportistas']].map(([k,l]) => (
+          <div key={k} className={`tab${tab===k?' active':''}`} onClick={() => setTab(k)}>{l}</div>
+        ))}
       </div>
-      <div className="card mt-6">
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>N° Guía</th>
-                <th>OT Destino</th>
-                <th>Punto de Llegada</th>
-                <th>Transportista / Chofer</th>
-                <th>Fecha Salida</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRemisiones.map(r => (
-                <tr key={r.id} className="hover-row">
-                  <td className="mono" style={{fontWeight:600}}>{r.id}</td>
-                  <td className="mono">{r.ot}</td>
-                  <td>{r.destino}</td>
-                  <td>{r.transportista}</td>
-                  <td className="text-muted">{r.fecha}</td>
-                  <td>
-                    <span className={'badge ' + (r.estado==='entregado'?'badge-green':'badge-cyan')}>
-                      {r.estado.toUpperCase()}
-                    </span>
-                  </td>
-                  <td><button className="icon-btn">{I.chev}</button></td>
+
+      {tab === 'guias' && (
+        <div className="card mt-6">
+          <div style={{display:'flex',gap:8,padding:'12px 16px',borderBottom:'1px solid var(--border)',flexWrap:'wrap'}}>
+            <select className="input" style={{width:160}} value={filtroEstadoGR} onChange={e => setFiltroEstadoGR(e.target.value)}>
+              <option value="">Todos los estados</option>
+              {Object.entries(GR_ESTADO_LABEL).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <select className="input" style={{width:200}} value={filtroTipoGR} onChange={e => setFiltroTipoGR(e.target.value)}>
+              <option value="">Todos los tipos</option>
+              {Object.entries(GR_TIPO_LABEL).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>N° Guía</th><th>Fecha</th><th>Tipo</th><th>Motivo</th>
+                  <th>Destino / Llegada</th><th>Destinatario</th><th>Transportista</th>
+                  <th>Estado</th><th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {guiasFiltradas.length === 0 && (
+                  <tr><td colSpan={9} style={{textAlign:'center',padding:24,color:'var(--fg-muted)'}}>Sin guías para los filtros seleccionados</td></tr>
+                )}
+                {guiasFiltradas.map(g => (
+                  <tr key={g.id} className="hover-row" onClick={() => setModalGuia(g)} style={{cursor:'pointer'}}>
+                    <td className="mono" style={{fontWeight:600}}>{g.numero_completo || g.id}</td>
+                    <td className="text-muted">{g.fecha_emision}</td>
+                    <td style={{fontSize:11}}>{GR_TIPO_LABEL[g.tipo_origen] || g.tipo_origen}</td>
+                    <td style={{fontSize:11}}>{MOTIVOS_GR.find(m => m.codigo === g.motivo_traslado)?.nombre || g.motivo_traslado}</td>
+                    <td style={{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.llegada_direccion || '—'}</td>
+                    <td>{g.destinatario_razon_social || '—'}</td>
+                    <td style={{fontSize:11}}>{g.transportista_razon_social || '—'}</td>
+                    <td><span className={`badge ${GR_ESTADO_BADGE[g.estado] || 'badge-gray'}`}>{GR_ESTADO_LABEL[g.estado] || g.estado}</span></td>
+                    <td><button className="icon-btn" onClick={e => {e.stopPropagation(); setModalGuia(g);}}>{I.eye}</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
+
+      {tab === 'ov' && (
+        <div className="card mt-6">
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr><th>N° OV</th><th>Fecha</th><th>Cliente</th><th>Moneda</th><th>Total</th><th>Estado</th><th></th></tr>
+              </thead>
+              <tbody>
+                {ovsFiltradas.length === 0 && (
+                  <tr><td colSpan={7} style={{textAlign:'center',padding:24,color:'var(--fg-muted)'}}>Sin órdenes de venta</td></tr>
+                )}
+                {ovsFiltradas.map(o => (
+                  <tr key={o.id} className="hover-row" onClick={() => setModalOV(o)} style={{cursor:'pointer'}}>
+                    <td className="mono" style={{fontWeight:600}}>{o.numero}</td>
+                    <td className="text-muted">{o.fecha_emision}</td>
+                    <td>{o.cliente_nombre}</td>
+                    <td style={{fontSize:11}}>{o.moneda}</td>
+                    <td style={{fontWeight:600}}>{o.moneda === 'USD' ? 'US$' : 'S/'} {Number(o.total || 0).toFixed(2)}</td>
+                    <td><span className={`badge ${OV_ESTADO_BADGE[o.estado] || 'badge-gray'}`}>{OV_ESTADO_LABEL[o.estado] || o.estado}</span></td>
+                    <td><button className="icon-btn">{I.eye}</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === 'trans' && (
+        <div className="card mt-6">
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>RUC</th><th>Razón Social</th><th>Reg. MTC</th><th>Vehículos</th><th>Conductores</th><th>Estado</th><th></th></tr></thead>
+              <tbody>
+                {(transportistas || []).length === 0 && (
+                  <tr><td colSpan={7} style={{textAlign:'center',padding:24,color:'var(--fg-muted)'}}>Sin transportistas registrados</td></tr>
+                )}
+                {(transportistas || []).map(t => (
+                  <tr key={t.id} className="hover-row">
+                    <td className="mono">{t.ruc}</td>
+                    <td style={{fontWeight:600}}>{t.razon_social}</td>
+                    <td style={{fontSize:11}}>{t.nro_mtc || '—'}</td>
+                    <td>{(t.vehiculos || []).filter(v => v.activo !== false).length}</td>
+                    <td>{(t.conductores || []).filter(c => c.activo !== false).length}</td>
+                    <td><span className={`badge ${t.activo ? 'badge-green' : 'badge-gray'}`}>{t.activo ? 'Activo' : 'Inactivo'}</span></td>
+                    <td>
+                      <button className="icon-btn" onClick={() => { setModalTrans(t); setTransForm({ ruc:t.ruc, razon_social:t.razon_social, nombre_comercial:t.nombre_comercial||'', nro_mtc:t.nro_mtc||'', direccion:t.direccion||'', telefono:t.telefono||'', email:t.email||'' }); setSubTab('lista'); setErrores([]); }}>{I.edit}</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Nueva Guía wizard */}
+      {modalGuia === 'nueva' && (
+        <div className="modal-overlay" onClick={() => setModalGuia(null)}>
+          <div className="modal" style={{width:720,maxHeight:'90vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Nueva Guía de Remisión {wizardStep === 1 ? '— Paso 1: Origen' : '— Paso 2: Datos'}</h2>
+              <button className="icon-btn" onClick={() => setModalGuia(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body">
+              {errores.length > 0 && <div style={{background:'var(--danger-bg,#fef2f2)',border:'1px solid var(--danger)',borderRadius:6,padding:'8px 12px',marginBottom:12,fontSize:13,color:'var(--danger)'}}>{errores.join(' · ')}</div>}
+
+              {wizardStep === 1 && (
+                <div>
+                  <div style={{marginBottom:16}}>
+                    <label className="form-label">Tipo de origen *</label>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginTop:6}}>
+                      {[
+                        { k:'traslado_interno', label:'Traslado Interno', desc:'Entre almacenes propios, obras o sedes' },
+                        { k:'despacho_venta', label:'Despacho de Venta', desc:'Bienes vendidos a un cliente' },
+                        { k:'despacho_servicio', label:'Despacho de Servicio', desc:'Materiales asociados a una OT' },
+                      ].map(opt => (
+                        <div key={opt.k} onClick={() => { setGr('tipo_origen', opt.k); setGr('motivo_traslado', opt.k === 'traslado_interno' ? '03' : '01'); }}
+                          style={{border:`2px solid ${grForm.tipo_origen === opt.k ? 'var(--primary)' : 'var(--border)'}`,borderRadius:8,padding:'14px 12px',cursor:'pointer',background: grForm.tipo_origen === opt.k ? 'var(--primary-light,#eff6ff)' : ''}}>
+                          <div style={{fontWeight:600,marginBottom:4}}>{opt.label}</div>
+                          <div style={{fontSize:11,color:'var(--fg-muted)'}}>{opt.desc}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {grForm.tipo_origen === 'despacho_venta' && (ordenesVenta || []).filter(o => ['pendiente','confirmada'].includes(o.estado)).length > 0 && (
+                    <div style={{marginBottom:12}}>
+                      <label className="form-label">Vincular a una Orden de Venta (opcional)</label>
+                      <select className="input" value={grForm.orden_venta_id} onChange={e => { setGr('orden_venta_id', e.target.value); if (e.target.value) agregarDesdeOV(e.target.value); }}>
+                        <option value="">— Sin vincular —</option>
+                        {(ordenesVenta || []).filter(o => ['pendiente','confirmada'].includes(o.estado)).map(o => (
+                          <option key={o.id} value={o.id}>{o.numero} — {o.cliente_nombre} — S/ {Number(o.total || 0).toFixed(2)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {grForm.tipo_origen === 'despacho_servicio' && (
+                    <div style={{marginBottom:12}}>
+                      <label className="form-label">N° de OT asociada</label>
+                      <input className="input" value={grForm.ot_id} onChange={e => setGr('ot_id', e.target.value)} placeholder="OT-26-0001" />
+                    </div>
+                  )}
+                  <button className="btn btn-primary" style={{marginTop:16}} onClick={() => setWizardStep(2)}>Continuar →</button>
+                </div>
+              )}
+
+              {wizardStep === 2 && (
+                <div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:12}}>
+                    <div><label className="form-label">Serie *</label><input className="input" value={grForm.serie} onChange={e => setGr('serie', e.target.value)} placeholder="T001" /></div>
+                    <div><label className="form-label">Fecha emisión *</label><input type="date" className="input" value={grForm.fecha_emision} onChange={e => setGr('fecha_emision', e.target.value)} /></div>
+                    <div><label className="form-label">Fecha inicio traslado *</label><input type="date" className="input" value={grForm.fecha_inicio_traslado} onChange={e => setGr('fecha_inicio_traslado', e.target.value)} /></div>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+                    <div>
+                      <label className="form-label">Motivo de traslado *</label>
+                      <select className="input" value={grForm.motivo_traslado} onChange={e => setGr('motivo_traslado', e.target.value)}>
+                        {MOTIVOS_GR.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label">Modalidad de traslado *</label>
+                      <select className="input" value={grForm.modalidad} onChange={e => setGr('modalidad', e.target.value)}>
+                        <option value="remitente">Por cuenta del remitente</option>
+                        <option value="transportista">Por cuenta del transportista</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{marginBottom:12}}>
+                    <label className="form-label">Almacén origen</label>
+                    <select className="input" value={grForm.almacen_origen_id} onChange={e => setGr('almacen_origen_id', e.target.value)}>
+                      <option value="">— Sin almacén —</option>
+                      {(almacenes || []).map(a => <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+                    <div><label className="form-label">Punto de partida (dirección) *</label><input className="input" value={grForm.partida_direccion} onChange={e => setGr('partida_direccion', e.target.value)} placeholder="Av. Industrial 123, Lima" /></div>
+                    <div><label className="form-label">Ubigeo partida</label><input className="input" value={grForm.partida_ubigeo} onChange={e => setGr('partida_ubigeo', e.target.value)} placeholder="150101" maxLength={6} /></div>
+                    <div><label className="form-label">Punto de llegada (dirección) *</label><input className="input" value={grForm.llegada_direccion} onChange={e => setGr('llegada_direccion', e.target.value)} placeholder="Jr. Comercio 456, Arequipa" /></div>
+                    <div><label className="form-label">Ubigeo llegada</label><input className="input" value={grForm.llegada_ubigeo} onChange={e => setGr('llegada_ubigeo', e.target.value)} placeholder="040101" maxLength={6} /></div>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+                    <div><label className="form-label">RUC / DNI destinatario *</label><input className="input" value={grForm.destinatario_ruc_dni} onChange={e => setGr('destinatario_ruc_dni', e.target.value)} maxLength={11} /></div>
+                    <div><label className="form-label">Razón social / nombre destinatario *</label><input className="input" value={grForm.destinatario_razon_social} onChange={e => setGr('destinatario_razon_social', e.target.value)} /></div>
+                    <div><label className="form-label">Peso bruto total *</label><input type="number" className="input" value={grForm.peso_bruto_total} onChange={e => setGr('peso_bruto_total', e.target.value)} min={0} step={0.001} /></div>
+                    <div>
+                      <label className="form-label">Unidad de peso</label>
+                      <select className="input" value={grForm.unidad_peso} onChange={e => setGr('unidad_peso', e.target.value)}>
+                        <option value="KGM">KGM — Kilogramos</option>
+                        <option value="TNE">TNE — Toneladas</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{background:'var(--surface-2,#f8fafc)',borderRadius:6,padding:12,marginBottom:12}}>
+                    <div style={{fontWeight:600,marginBottom:8}}>Datos del transportista</div>
+                    <div style={{marginBottom:8}}>
+                      <label className="form-label">Seleccionar del maestro (opcional)</label>
+                      <select className="input" value={grForm.transportista_id} onChange={e => autocompletarTransportista(e.target.value)}>
+                        <option value="">— Ingresar manualmente —</option>
+                        {(transportistas || []).filter(t => t.activo !== false).map(t => (
+                          <option key={t.id} value={t.id}>{t.razon_social} — {t.ruc}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+                      <div><label className="form-label">RUC *</label><input className="input" value={grForm.transportista_ruc} onChange={e => setGr('transportista_ruc', e.target.value)} maxLength={11} /></div>
+                      <div><label className="form-label">Razón social *</label><input className="input" value={grForm.transportista_razon_social} onChange={e => setGr('transportista_razon_social', e.target.value)} /></div>
+                      <div><label className="form-label">N° MTC {grForm.modalidad === 'transportista' ? '*' : ''}</label><input className="input" value={grForm.transportista_nro_mtc} onChange={e => setGr('transportista_nro_mtc', e.target.value)} /></div>
+                    </div>
+                  </div>
+
+                  {grForm.modalidad === 'remitente' && (
+                    <div style={{background:'var(--surface-2,#f8fafc)',borderRadius:6,padding:12,marginBottom:12}}>
+                      <div style={{fontWeight:600,marginBottom:8}}>Vehículo y conductor</div>
+                      {vehiculosTransportista.length > 0 && (
+                        <div style={{marginBottom:8}}>
+                          <label className="form-label">Vehículo del maestro</label>
+                          <select className="input" value={grForm.vehiculo_id} onChange={e => autocompletarVehiculo(e.target.value)}>
+                            <option value="">— Seleccionar —</option>
+                            {vehiculosTransportista.filter(v => v.activo !== false).map(v => (
+                              <option key={v.id} value={v.id}>{v.placa} — {v.marca} {v.modelo}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+                        <div><label className="form-label">Placa *</label><input className="input" value={grForm.vehiculo_placa} onChange={e => setGr('vehiculo_placa', e.target.value)} /></div>
+                        <div><label className="form-label">Cert. habilitación</label><input className="input" value={grForm.vehiculo_cert_habilitacion} onChange={e => setGr('vehiculo_cert_habilitacion', e.target.value)} /></div>
+                      </div>
+                      {conductoresTransportista.length > 0 && (
+                        <div style={{marginBottom:8}}>
+                          <label className="form-label">Conductor del maestro</label>
+                          <select className="input" value={grForm.conductor_id} onChange={e => autocompletarConductor(e.target.value)}>
+                            <option value="">— Seleccionar —</option>
+                            {conductoresTransportista.filter(c => c.activo !== false).map(c => (
+                              <option key={c.id} value={c.id}>{c.nombre} — DNI {c.dni}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+                        <div><label className="form-label">Nombre conductor *</label><input className="input" value={grForm.conductor_nombre} onChange={e => setGr('conductor_nombre', e.target.value)} /></div>
+                        <div><label className="form-label">DNI *</label><input className="input" value={grForm.conductor_dni} onChange={e => setGr('conductor_dni', e.target.value)} maxLength={8} /></div>
+                        <div><label className="form-label">N° brevete</label><input className="input" value={grForm.conductor_brevete} onChange={e => setGr('conductor_brevete', e.target.value)} /></div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontWeight:600,marginBottom:8}}>Detalle de bienes</div>
+                    {grForm.lineas.length > 0 && (
+                      <table className="tbl" style={{marginBottom:8,fontSize:12}}>
+                        <thead><tr><th>Descripción</th><th>Cód.</th><th>UM</th><th>Cant.</th><th>Peso u.</th><th></th></tr></thead>
+                        <tbody>
+                          {grForm.lineas.map((l, i) => (
+                            <tr key={l.id || i}>
+                              <td>{l.descripcion}</td><td>{l.codigo}</td><td>{l.unidad}</td>
+                              <td>{l.cantidad}</td><td>{l.peso_unitario}</td>
+                              <td><button className="icon-btn" onClick={() => setGrForm(p => ({ ...p, lineas: p.lineas.filter((_, j) => j !== i) }))}>{I.trash}</button></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr auto',gap:6,alignItems:'end'}}>
+                      <div><label className="form-label">Descripción *</label><input className="input" value={grLinea.descripcion} onChange={e => setGrLinea(p => ({...p, descripcion: e.target.value}))} /></div>
+                      <div><label className="form-label">Código</label><input className="input" value={grLinea.codigo} onChange={e => setGrLinea(p => ({...p, codigo: e.target.value}))} /></div>
+                      <div><label className="form-label">UM</label><input className="input" value={grLinea.unidad} onChange={e => setGrLinea(p => ({...p, unidad: e.target.value}))} /></div>
+                      <div><label className="form-label">Cantidad</label><input type="number" className="input" value={grLinea.cantidad} onChange={e => setGrLinea(p => ({...p, cantidad: e.target.value}))} min={0} /></div>
+                      <div><label className="form-label">Peso/u (kg)</label><input type="number" className="input" value={grLinea.peso_unitario} onChange={e => setGrLinea(p => ({...p, peso_unitario: e.target.value}))} min={0} step={0.001} /></div>
+                      <div><label className="form-label">&nbsp;</label><button className="btn btn-secondary btn-sm" onClick={agregarLineaGR}>{I.plus}</button></div>
+                    </div>
+                  </div>
+
+                  <div style={{display:'flex',gap:8,justifyContent:'space-between',marginTop:16}}>
+                    <button className="btn btn-secondary" onClick={() => setWizardStep(1)}>← Atrás</button>
+                    <div style={{display:'flex',gap:8}}>
+                      <button className="btn btn-secondary" onClick={() => guardarGuia(false)} disabled={submitting}>Guardar borrador</button>
+                      <button className="btn btn-primary" onClick={() => guardarGuia(true)} disabled={submitting}>Emitir guía</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Detalle de Guía */}
+      {modalGuia && modalGuia !== 'nueva' && (
+        <div className="modal-overlay" onClick={() => setModalGuia(null)}>
+          <div className="modal" style={{width:680,maxHeight:'90vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Guía {modalGuia.numero_completo}</h2>
+              <button className="icon-btn" onClick={() => setModalGuia(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body">
+              {errores.length > 0 && <div style={{background:'var(--danger-bg,#fef2f2)',border:'1px solid var(--danger)',borderRadius:6,padding:'8px 12px',marginBottom:12,fontSize:13,color:'var(--danger)'}}>{errores.join(' · ')}</div>}
+              <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
+                <span className={`badge ${GR_ESTADO_BADGE[modalGuia.estado] || 'badge-gray'}`}>{GR_ESTADO_LABEL[modalGuia.estado]}</span>
+                <span style={{fontSize:12,color:'var(--fg-muted)'}}>Tipo: {GR_TIPO_LABEL[modalGuia.tipo_origen]}</span>
+                <span style={{fontSize:12,color:'var(--fg-muted)'}}>Modalidad: {modalGuia.modalidad === 'remitente' ? 'Por cuenta del remitente' : 'Por cuenta del transportista'}</span>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+                <div><span style={{fontSize:11,color:'var(--fg-muted)'}}>Emisión</span><div>{modalGuia.fecha_emision}</div></div>
+                <div><span style={{fontSize:11,color:'var(--fg-muted)'}}>Inicio traslado</span><div>{modalGuia.fecha_inicio_traslado}</div></div>
+                <div><span style={{fontSize:11,color:'var(--fg-muted)'}}>Motivo SUNAT</span><div>{MOTIVOS_GR.find(m => m.codigo === modalGuia.motivo_traslado)?.nombre || modalGuia.motivo_traslado}</div></div>
+                <div><span style={{fontSize:11,color:'var(--fg-muted)'}}>Peso total</span><div>{modalGuia.peso_bruto_total} {modalGuia.unidad_peso}</div></div>
+                <div><span style={{fontSize:11,color:'var(--fg-muted)'}}>Punto de partida</span><div style={{fontSize:12}}>{modalGuia.partida_direccion}</div></div>
+                <div><span style={{fontSize:11,color:'var(--fg-muted)'}}>Punto de llegada</span><div style={{fontSize:12}}>{modalGuia.llegada_direccion}</div></div>
+                <div><span style={{fontSize:11,color:'var(--fg-muted)'}}>Destinatario</span><div>{modalGuia.destinatario_razon_social}</div></div>
+                <div><span style={{fontSize:11,color:'var(--fg-muted)'}}>RUC/DNI destino</span><div>{modalGuia.destinatario_ruc_dni}</div></div>
+              </div>
+              <div style={{marginBottom:12}}>
+                <div style={{fontWeight:600,marginBottom:6}}>Transportista</div>
+                <div style={{fontSize:12,display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+                  <div><span style={{color:'var(--fg-muted)'}}>RUC: </span>{modalGuia.transportista_ruc || '—'}</div>
+                  <div><span style={{color:'var(--fg-muted)'}}>Razón social: </span>{modalGuia.transportista_razon_social || '—'}</div>
+                  <div><span style={{color:'var(--fg-muted)'}}>MTC: </span>{modalGuia.transportista_nro_mtc || '—'}</div>
+                  {modalGuia.modalidad === 'remitente' && <>
+                    <div><span style={{color:'var(--fg-muted)'}}>Placa: </span>{modalGuia.vehiculo_placa || '—'}</div>
+                    <div><span style={{color:'var(--fg-muted)'}}>Cert. hab.: </span>{modalGuia.vehiculo_cert_habilitacion || '—'}</div>
+                    <div><span style={{color:'var(--fg-muted)'}}>Conductor: </span>{modalGuia.conductor_nombre || '—'}</div>
+                    <div><span style={{color:'var(--fg-muted)'}}>DNI: </span>{modalGuia.conductor_dni || '—'}</div>
+                    <div><span style={{color:'var(--fg-muted)'}}>Brevete: </span>{modalGuia.conductor_brevete || '—'}</div>
+                  </>}
+                </div>
+              </div>
+              {(modalGuia.lineas || []).length > 0 && (
+                <div style={{marginBottom:12}}>
+                  <div style={{fontWeight:600,marginBottom:6}}>Detalle de bienes</div>
+                  <table className="tbl" style={{fontSize:12}}>
+                    <thead><tr><th>Descripción</th><th>Cód.</th><th>UM</th><th>Cant.</th><th>Peso unit.</th><th>Peso total</th></tr></thead>
+                    <tbody>
+                      {(modalGuia.lineas || []).map((l, i) => (
+                        <tr key={l.id || i}>
+                          <td>{l.descripcion}</td><td>{l.codigo || '—'}</td><td>{l.unidad}</td>
+                          <td>{l.cantidad}</td><td>{l.peso_unitario} kg</td>
+                          <td>{Number(l.peso_total || l.cantidad * l.peso_unitario || 0).toFixed(3)} kg</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {modalGuia.anulado && <div style={{background:'#fff3f3',borderRadius:6,padding:10,fontSize:12,color:'var(--danger)'}}>ANULADA — {modalGuia.anulado_motivo}</div>}
+
+              {!modalGuia.anulado && (
+                <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:16,borderTop:'1px solid var(--border)',paddingTop:16}}>
+                  {modalGuia.estado === 'borrador' && (
+                    <button className="btn btn-primary" onClick={() => handleTransicionEstado(modalGuia, 'emitida')}>
+                      {I.send} Emitir guía
+                    </button>
+                  )}
+                  {modalGuia.estado === 'emitida' && (
+                    <button className="btn btn-secondary" onClick={() => handleTransicionEstado(modalGuia, 'en_transito')}>
+                      {I.truck} Marcar en tránsito
+                    </button>
+                  )}
+                  {['emitida','en_transito'].includes(modalGuia.estado) && (
+                    <button className="btn btn-primary" onClick={() => handleTransicionEstado(modalGuia, 'entregada')}>
+                      {I.check} Confirmar entrega
+                    </button>
+                  )}
+                  {['borrador','emitida','en_transito','entregada'].includes(modalGuia.estado) && (
+                    <button className="btn btn-danger" style={{marginLeft:'auto'}} onClick={() => { setModalAnular({tipo:'guia', obj: modalGuia}); setAnularMotivo(''); setErrores([]); }}>
+                      {I.x} Anular
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Nueva OV */}
+      {modalOV === 'nueva' && (
+        <div className="modal-overlay" onClick={() => setModalOV(null)}>
+          <div className="modal" style={{width:680,maxHeight:'90vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Nueva Orden de Venta</h2>
+              <button className="icon-btn" onClick={() => setModalOV(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body">
+              {errores.length > 0 && <div style={{background:'var(--danger-bg,#fef2f2)',border:'1px solid var(--danger)',borderRadius:6,padding:'8px 12px',marginBottom:12,fontSize:13,color:'var(--danger)'}}>{errores.join(' · ')}</div>}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+                <div><label className="form-label">Cliente *</label><input className="input" value={ovForm.cliente_nombre} onChange={e => setOvForm(p => ({...p, cliente_nombre: e.target.value}))} placeholder="Nombre o razón social" /></div>
+                <div><label className="form-label">RUC / DNI</label><input className="input" value={ovForm.cliente_ruc_dni} onChange={e => setOvForm(p => ({...p, cliente_ruc_dni: e.target.value}))} maxLength={11} /></div>
+                <div style={{gridColumn:'1/-1'}}><label className="form-label">Dirección del cliente</label><input className="input" value={ovForm.cliente_direccion} onChange={e => setOvForm(p => ({...p, cliente_direccion: e.target.value}))} /></div>
+                <div>
+                  <label className="form-label">Moneda</label>
+                  <select className="input" value={ovForm.moneda} onChange={e => setOvForm(p => ({...p, moneda: e.target.value}))}>
+                    <option value="PEN">PEN — Soles</option>
+                    <option value="USD">USD — Dólares</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">Condición de pago</label>
+                  <select className="input" value={ovForm.condicion_pago} onChange={e => setOvForm(p => ({...p, condicion_pago: e.target.value}))}>
+                    <option value="contado">Contado</option>
+                    <option value="15_dias">15 días</option>
+                    <option value="30_dias">30 días</option>
+                    <option value="45_dias">45 días</option>
+                    <option value="60_dias">60 días</option>
+                  </select>
+                </div>
+                <div><label className="form-label">Fecha de emisión</label><input type="date" className="input" value={ovForm.fecha_emision} onChange={e => setOvForm(p => ({...p, fecha_emision: e.target.value}))} /></div>
+                <div><label className="form-label">Fecha de entrega comprometida</label><input type="date" className="input" value={ovForm.fecha_entrega} onChange={e => setOvForm(p => ({...p, fecha_entrega: e.target.value}))} /></div>
+                <div>
+                  <label className="form-label">Almacén de despacho</label>
+                  <select className="input" value={ovForm.almacen_despacho_id} onChange={e => setOvForm(p => ({...p, almacen_despacho_id: e.target.value}))}>
+                    <option value="">— Seleccionar —</option>
+                    {(almacenes || []).map(a => <option key={a.id} value={a.id}>{a.codigo} — {a.nombre}</option>)}
+                  </select>
+                </div>
+                <div><label className="form-label">Observaciones</label><input className="input" value={ovForm.observaciones} onChange={e => setOvForm(p => ({...p, observaciones: e.target.value}))} /></div>
+              </div>
+              <div style={{marginBottom:12}}>
+                <div style={{fontWeight:600,marginBottom:8}}>Líneas de venta</div>
+                {ovForm.lineas.length > 0 && (
+                  <table className="tbl" style={{marginBottom:8,fontSize:12}}>
+                    <thead><tr><th>Descripción</th><th>Cant.</th><th>P. Unit.</th><th>Dto %</th><th>Subtotal</th><th></th></tr></thead>
+                    <tbody>
+                      {ovForm.lineas.map((l, i) => {
+                        const neto = Number(l.precio_unitario || 0) * (1 - Number(l.descuento_pct || 0) / 100);
+                        return (
+                          <tr key={l.id || i}>
+                            <td>{l.descripcion}</td><td>{l.cantidad}</td>
+                            <td>{Number(l.precio_unitario || 0).toFixed(2)}</td>
+                            <td>{l.descuento_pct}%</td>
+                            <td>{(neto * Number(l.cantidad || 1)).toFixed(2)}</td>
+                            <td><button className="icon-btn" onClick={() => setOvForm(p => ({...p, lineas: p.lineas.filter((_, j) => j !== i)}))}>{I.trash}</button></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+                {(catalogoVenta || []).length > 0 && (
+                  <div style={{marginBottom:8}}>
+                    <label className="form-label">Agregar desde catálogo</label>
+                    <select className="input" onChange={e => {
+                      const item = (catalogoVenta || []).find(c => c.id === e.target.value);
+                      if (item) setOvLinea(p => ({...p, descripcion: item.descripcion, codigo: item.codigo, unidad: item.unidad, precio_unitario: item.precio_lista, catalogo_item_id: item.id, material_id: item.material_id || null}));
+                      e.target.value = '';
+                    }}>
+                      <option value="">— Seleccionar producto —</option>
+                      {(catalogoVenta || []).filter(c => c.activo !== false).map(c => (
+                        <option key={c.id} value={c.id}>{c.codigo} — {c.descripcion} — {ovForm.moneda === 'USD' ? 'US$' : 'S/'} {Number(c.precio_lista || 0).toFixed(2)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr auto',gap:6,alignItems:'end'}}>
+                  <div><label className="form-label">Descripción *</label><input className="input" value={ovLinea.descripcion} onChange={e => setOvLinea(p => ({...p, descripcion: e.target.value}))} /></div>
+                  <div><label className="form-label">Cantidad</label><input type="number" className="input" value={ovLinea.cantidad} onChange={e => setOvLinea(p => ({...p, cantidad: e.target.value}))} min={0} step={0.01} /></div>
+                  <div><label className="form-label">Precio unit.</label><input type="number" className="input" value={ovLinea.precio_unitario} onChange={e => setOvLinea(p => ({...p, precio_unitario: e.target.value}))} min={0} step={0.01} /></div>
+                  <div><label className="form-label">Dto %</label><input type="number" className="input" value={ovLinea.descuento_pct} onChange={e => setOvLinea(p => ({...p, descuento_pct: e.target.value}))} min={0} max={100} /></div>
+                  <div><label className="form-label">&nbsp;</label><button className="btn btn-secondary btn-sm" onClick={agregarLineaOV}>{I.plus}</button></div>
+                </div>
+                {ovForm.lineas.length > 0 && (
+                  <div style={{textAlign:'right',marginTop:8,fontSize:13}}>
+                    {(() => {
+                      const sub = ovForm.lineas.reduce((s, l) => s + Number(l.precio_unitario||0)*(1-Number(l.descuento_pct||0)/100)*Number(l.cantidad||1), 0);
+                      const sym = ovForm.moneda === 'USD' ? 'US$' : 'S/';
+                      return <><b>Subtotal:</b> {sym} {sub.toFixed(2)} · <b>IGV (18%):</b> {sym} {(sub*0.18).toFixed(2)} · <b>Total:</b> {sym} {(sub*1.18).toFixed(2)}</>;
+                    })()}
+                  </div>
+                )}
+              </div>
+              <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+                <button className="btn btn-secondary" onClick={() => setModalOV(null)}>Cancelar</button>
+                <button className="btn btn-primary" onClick={guardarOV} disabled={submitting}>Crear OV</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Detalle OV */}
+      {modalOV && modalOV !== 'nueva' && (
+        <div className="modal-overlay" onClick={() => setModalOV(null)}>
+          <div className="modal" style={{width:600,maxHeight:'90vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>OV {modalOV.numero}</h2>
+              <button className="icon-btn" onClick={() => setModalOV(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body">
+              <div style={{display:'flex',gap:8,marginBottom:12}}>
+                <span className={`badge ${OV_ESTADO_BADGE[modalOV.estado] || 'badge-gray'}`}>{OV_ESTADO_LABEL[modalOV.estado]}</span>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12,fontSize:13}}>
+                <div><span style={{color:'var(--fg-muted)'}}>Cliente: </span>{modalOV.cliente_nombre}</div>
+                <div><span style={{color:'var(--fg-muted)'}}>RUC/DNI: </span>{modalOV.cliente_ruc_dni || '—'}</div>
+                <div><span style={{color:'var(--fg-muted)'}}>Emisión: </span>{modalOV.fecha_emision}</div>
+                <div><span style={{color:'var(--fg-muted)'}}>Entrega: </span>{modalOV.fecha_entrega || '—'}</div>
+                <div><span style={{color:'var(--fg-muted)'}}>Moneda: </span>{modalOV.moneda}</div>
+                <div><span style={{color:'var(--fg-muted)'}}>Condición: </span>{modalOV.condicion_pago}</div>
+                <div><span style={{color:'var(--fg-muted)'}}>Subtotal: </span>{modalOV.moneda === 'USD' ? 'US$' : 'S/'} {Number(modalOV.subtotal || 0).toFixed(2)}</div>
+                <div><span style={{color:'var(--fg-muted)'}}>Total (c/IGV): </span><b>{modalOV.moneda === 'USD' ? 'US$' : 'S/'} {Number(modalOV.total || 0).toFixed(2)}</b></div>
+              </div>
+              {(modalOV.lineas || []).length > 0 && (
+                <table className="tbl" style={{fontSize:12,marginBottom:12}}>
+                  <thead><tr><th>Descripción</th><th>Cant.</th><th>P.Unit.</th><th>Dto</th><th>Subtotal</th><th>Desp.</th></tr></thead>
+                  <tbody>
+                    {(modalOV.lineas || []).map((l, i) => (
+                      <tr key={l.id || i}>
+                        <td>{l.descripcion}</td><td>{l.cantidad}</td>
+                        <td>{Number(l.precio_unitario || 0).toFixed(2)}</td>
+                        <td>{l.descuento_pct || 0}%</td>
+                        <td>{Number(l.subtotal || 0).toFixed(2)}</td>
+                        <td>{l.cantidad_despachada || 0}/{l.cantidad}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {!modalOV.anulado && (
+                <div style={{display:'flex',gap:8,marginTop:16,borderTop:'1px solid var(--border)',paddingTop:16,flexWrap:'wrap'}}>
+                  {modalOV.estado === 'pendiente' && (
+                    <button className="btn btn-primary" onClick={async () => { try { await confirmarOVCtx(modalOV.id); setModalOV(p => ({...p, estado:'confirmada'})); } catch(e) { setErrores([e.message]); } }}>
+                      {I.check} Confirmar OV (reserva stock)
+                    </button>
+                  )}
+                  {['pendiente','confirmada'].includes(modalOV.estado) && (
+                    <button className="btn btn-secondary" onClick={() => {
+                      setModalGuia('nueva');
+                      setGrForm({...GR_FORM_INIT, tipo_origen:'despacho_venta', motivo_traslado:'01'});
+                      agregarDesdeOV(modalOV.id);
+                      setModalOV(null);
+                      setWizardStep(2);
+                    }}>
+                      {I.truck} Crear guía de despacho
+                    </button>
+                  )}
+                  {!['despachada','facturada','anulada'].includes(modalOV.estado) && (
+                    <button className="btn btn-danger" style={{marginLeft:'auto'}} onClick={() => { setModalAnular({tipo:'ov', obj: modalOV}); setAnularMotivo(''); setErrores([]); }}>
+                      {I.x} Anular
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Transportista */}
+      {modalTrans && (
+        <div className="modal-overlay" onClick={() => setModalTrans(null)}>
+          <div className="modal" style={{width:640,maxHeight:'90vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{modalTrans === 'nuevo' ? 'Nuevo Transportista' : `Transportista: ${modalTrans.razon_social}`}</h2>
+              <button className="icon-btn" onClick={() => setModalTrans(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body">
+              {errores.length > 0 && <div style={{background:'var(--danger-bg,#fef2f2)',border:'1px solid var(--danger)',borderRadius:6,padding:'8px 12px',marginBottom:12,fontSize:13,color:'var(--danger)'}}>{errores.join(' · ')}</div>}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+                <div><label className="form-label">RUC *</label><input className="input" value={transForm.ruc} onChange={e => setTransForm(p => ({...p, ruc: e.target.value}))} maxLength={11} /></div>
+                <div><label className="form-label">Razón social *</label><input className="input" value={transForm.razon_social} onChange={e => setTransForm(p => ({...p, razon_social: e.target.value}))} /></div>
+                <div><label className="form-label">Nombre comercial</label><input className="input" value={transForm.nombre_comercial} onChange={e => setTransForm(p => ({...p, nombre_comercial: e.target.value}))} /></div>
+                <div><label className="form-label">N° Reg. MTC</label><input className="input" value={transForm.nro_mtc} onChange={e => setTransForm(p => ({...p, nro_mtc: e.target.value}))} /></div>
+                <div style={{gridColumn:'1/-1'}}><label className="form-label">Dirección</label><input className="input" value={transForm.direccion} onChange={e => setTransForm(p => ({...p, direccion: e.target.value}))} /></div>
+                <div><label className="form-label">Teléfono</label><input className="input" value={transForm.telefono} onChange={e => setTransForm(p => ({...p, telefono: e.target.value}))} /></div>
+                <div><label className="form-label">Email</label><input className="input" value={transForm.email} onChange={e => setTransForm(p => ({...p, email: e.target.value}))} /></div>
+              </div>
+              <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginBottom: modalTrans !== 'nuevo' ? 20 : 0}}>
+                <button className="btn btn-secondary" onClick={() => setModalTrans(null)}>Cancelar</button>
+                <button className="btn btn-primary" onClick={guardarTransportista} disabled={submitting}>Guardar</button>
+              </div>
+
+              {modalTrans !== 'nuevo' && (
+                <div style={{borderTop:'1px solid var(--border)',paddingTop:16}}>
+                  <div style={{display:'flex',gap:8,marginBottom:12}}>
+                    <div className={`tab${subTab==='lista'?' active':''}`} onClick={() => setSubTab('lista')}>Vehículos</div>
+                    <div className={`tab${subTab==='conductor'?' active':''}`} onClick={() => setSubTab('conductor')}>Conductores</div>
+                    <div className={`tab${subTab==='vehiculo'?' active':''}`} style={{marginLeft:'auto',fontSize:12,cursor:'pointer'}} onClick={() => setSubTab('vehiculo')}>{I.plus} Nuevo vehículo</div>
+                  </div>
+
+                  {subTab === 'lista' && (
+                    <table className="tbl" style={{fontSize:12}}>
+                      <thead><tr><th>Placa</th><th>Marca/Modelo</th><th>Tipo</th><th>N° Hab.</th></tr></thead>
+                      <tbody>
+                        {(modalTrans.vehiculos || []).length === 0
+                          ? <tr><td colSpan={4} style={{textAlign:'center',color:'var(--fg-muted)'}}>Sin vehículos</td></tr>
+                          : (modalTrans.vehiculos || []).map(v => (
+                              <tr key={v.id}><td>{v.placa}</td><td>{v.marca} {v.modelo}</td><td>{v.tipo}</td><td>{v.nro_certificado_habilitacion || '—'}</td></tr>
+                            ))
+                        }
+                      </tbody>
+                    </table>
+                  )}
+
+                  {subTab === 'conductor' && (
+                    <div>
+                      <table className="tbl" style={{fontSize:12,marginBottom:12}}>
+                        <thead><tr><th>Nombre</th><th>DNI</th><th>Brevete</th><th>Cat.</th><th>Venc.</th></tr></thead>
+                        <tbody>
+                          {(modalTrans.conductores || []).length === 0
+                            ? <tr><td colSpan={5} style={{textAlign:'center',color:'var(--fg-muted)'}}>Sin conductores</td></tr>
+                            : (modalTrans.conductores || []).map(c => (
+                                <tr key={c.id}><td>{c.nombre}</td><td>{c.dni}</td><td>{c.brevete || '—'}</td><td>{c.categoria_brevete || '—'}</td><td>{c.vigencia_brevete || '—'}</td></tr>
+                              ))
+                          }
+                        </tbody>
+                      </table>
+                      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr',gap:8,alignItems:'end'}}>
+                        <div><label className="form-label">Nombre *</label><input className="input" value={conductorForm.nombre} onChange={e => setConductorForm(p => ({...p, nombre: e.target.value}))} /></div>
+                        <div><label className="form-label">DNI *</label><input className="input" value={conductorForm.dni} onChange={e => setConductorForm(p => ({...p, dni: e.target.value}))} maxLength={8} /></div>
+                        <div><label className="form-label">Brevete</label><input className="input" value={conductorForm.brevete} onChange={e => setConductorForm(p => ({...p, brevete: e.target.value}))} /></div>
+                        <div><label className="form-label">Vencimiento</label><input type="date" className="input" value={conductorForm.vigencia_brevete} onChange={e => setConductorForm(p => ({...p, vigencia_brevete: e.target.value}))} /></div>
+                        <div><label className="form-label">&nbsp;</label><button className="btn btn-secondary btn-sm" onClick={() => guardarConductor(modalTrans.id)} disabled={submitting}>{I.plus}</button></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {subTab === 'vehiculo' && (
+                    <div>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
+                        <div><label className="form-label">Placa *</label><input className="input" value={vehiculoForm.placa} onChange={e => setVehiculoForm(p => ({...p, placa: e.target.value}))} /></div>
+                        <div><label className="form-label">Marca</label><input className="input" value={vehiculoForm.marca} onChange={e => setVehiculoForm(p => ({...p, marca: e.target.value}))} /></div>
+                        <div><label className="form-label">Modelo</label><input className="input" value={vehiculoForm.modelo} onChange={e => setVehiculoForm(p => ({...p, modelo: e.target.value}))} /></div>
+                        <div>
+                          <label className="form-label">Tipo</label>
+                          <select className="input" value={vehiculoForm.tipo} onChange={e => setVehiculoForm(p => ({...p, tipo: e.target.value}))}>
+                            <option value="camion">Camión</option><option value="furgon">Furgón</option>
+                            <option value="moto">Moto</option><option value="otro">Otro</option>
+                          </select>
+                        </div>
+                        <div style={{gridColumn:'2/-1'}}><label className="form-label">N° Cert. habilitación MTC</label><input className="input" value={vehiculoForm.nro_certificado_habilitacion} onChange={e => setVehiculoForm(p => ({...p, nro_certificado_habilitacion: e.target.value}))} /></div>
+                      </div>
+                      <button className="btn btn-primary" onClick={() => guardarVehiculo(modalTrans.id)} disabled={submitting}>Agregar vehículo</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Confirmar Anulación */}
+      {modalAnular && (
+        <div className="modal-overlay" onClick={() => setModalAnular(null)}>
+          <div className="modal" style={{width:440}} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Anular {modalAnular.tipo === 'guia' ? 'guía' : 'OV'}: {modalAnular.obj.numero_completo || modalAnular.obj.numero}</h2>
+              <button className="icon-btn" onClick={() => setModalAnular(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body">
+              {errores.length > 0 && <div style={{background:'var(--danger-bg,#fef2f2)',border:'1px solid var(--danger)',borderRadius:6,padding:'8px 12px',marginBottom:12,fontSize:13,color:'var(--danger)'}}>{errores.join(' · ')}</div>}
+              <div style={{background:'#fff8f0',borderRadius:6,padding:10,marginBottom:12,fontSize:13,color:'#92400e'}}>
+                {modalAnular.tipo === 'guia' ? 'La anulación revertirá los movimientos de inventario generados (si aplica).' : 'La anulación liberará las reservas de stock comprometidas.'}
+              </div>
+              <label className="form-label">Motivo de anulación *</label>
+              <textarea className="input" rows={3} value={anularMotivo} onChange={e => setAnularMotivo(e.target.value)} placeholder="Indica el motivo de la anulación..." style={{resize:'vertical'}} />
+              <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+                <button className="btn btn-secondary" onClick={() => setModalAnular(null)}>Cancelar</button>
+                <button className="btn btn-danger" onClick={handleAnular} disabled={submitting}>Confirmar anulación</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
+
 
 const SOLPE_FORM_INIT = { descripcion: '', tipo: 'bien', prioridad: 'normal', solicitante: '', centro_costo_id: '' };
 
@@ -7114,7 +8193,7 @@ function SOLPE() {
       <div className="page-header">
         <div>
           <h1 className="page-title">SOLPE (Pedidos Internos)</h1>
-          <div className="page-sub">Requerimientos de almacén generados por el equipo técnico</div>
+          <div className="page-sub">Requerimientos de almacÃ©n generados por el equipo tÃ©cnico</div>
         </div>
         <button className="btn btn-primary" onClick={() => setShowForm(true)}>{I.plus} Nueva SOLPE</button>
       </div>
@@ -7123,7 +8202,7 @@ function SOLPE() {
           <table className="tbl">
             <thead>
               <tr>
-                <th>N° SOLPE</th>
+                <th>NÂ° SOLPE</th>
                 <th>OT Asociada</th>
                 <th>rea / Solicitante</th>
                 <th>Centro de Costo</th>
@@ -7131,7 +8210,7 @@ function SOLPE() {
                 <th>Urgencia</th>
                 <th>Fecha</th>
                 <th>Estado</th>
-                <th>Acción</th>
+                <th>AcciÃ³n</th>
               </tr>
             </thead>
             <tbody>
@@ -7142,9 +8221,9 @@ function SOLPE() {
                     <td className="mono" style={{fontWeight:600}}>{s.numero}</td>
                     <td className="mono">{getOTNumero(s.ot_id)}</td>
                     <td>{s.solicitante}</td>
-                    <td className="text-muted">{ceco ? `${ceco.codigo} — ${ceco.nombre}` : (s.centro_costo || '—')}</td>
-                    <td>{s.tipo || '—'}</td>
-                    <td>{s.prioridad || '—'}</td>
+                    <td className="text-muted">{ceco ? `${ceco.codigo} â€” ${ceco.nombre}` : (s.centro_costo || 'â€”')}</td>
+                    <td>{s.tipo || 'â€”'}</td>
+                    <td>{s.prioridad || 'â€”'}</td>
                     <td className="text-muted">{s.fecha}</td>
                     <td>
                       <span className={'badge ' + (s.estado==='atendida'?'badge-green':s.estado==='solicitada'?'badge-orange':'badge-gray')}>
@@ -7181,7 +8260,7 @@ function SOLPE() {
           </div>
           <div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:16}}>
             <div className="form-group">
-              <label className="form-label">Descripción de la necesidad *</label>
+              <label className="form-label">DescripciÃ³n de la necesidad *</label>
               <textarea className="input" rows={3} placeholder="Describe el requerimiento..." value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
             </div>
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
@@ -7197,7 +8276,7 @@ function SOLPE() {
                 <select className="select" value={form.prioridad} onChange={e => set('prioridad', e.target.value)}>
                   <option value="normal">Normal</option>
                   <option value="urgente">Urgente</option>
-                  <option value="critica">Crítica</option>
+                  <option value="critica">CrÃ­tica</option>
                 </select>
               </div>
             </div>
@@ -7208,8 +8287,8 @@ function SOLPE() {
             <div className="form-group">
               <label className="form-label">Centro de Costo (CECO) *</label>
               <select className={`select ${errCeco ? 'input-error' : ''}`} value={form.centro_costo_id} onChange={e => set('centro_costo_id', e.target.value)}>
-                <option value="">— Seleccionar CECO —</option>
-                {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                <option value="">â€” Seleccionar CECO â€”</option>
+                {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo} â€” {c.nombre}</option>)}
               </select>
               {errCeco && <div style={{color:'var(--danger, #ef4444)', fontSize:12, marginTop:4}}>El CECO es obligatorio para crear una SOLPE.</div>}
             </div>
@@ -7225,23 +8304,23 @@ function SOLPE() {
 }
 
 
-// ─── Planner v2 helpers ───────────────────────────────────────────────────────
+// â”€â”€â”€ Planner v2 helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function otPriorityColor(prioridad) {
-  const p = (prioridad || 'normal').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const p = (prioridad || 'normal').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   if (p === 'critica') return '#ef4444';
   if (p === 'urgente') return '#f97316';
   return '#0ea5e9';
 }
-const PRIORIDAD_LABEL = { critica:'Crítica', urgente:'Urgente', normal:'Normal' };
+const PRIORIDAD_LABEL = { critica:'CrÃ­tica', urgente:'Urgente', normal:'Normal' };
 const PRIORIDAD_ORDER = { critica:0, urgente:1, normal:2 };
-function prioKey(p) { return (p||'normal').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+function prioKey(p) { return (p||'normal').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
 
 function getSemana(offsetSemanas) {
   const hoy = new Date();
   const dow = hoy.getDay();
   const lunes = new Date(hoy);
   lunes.setDate(hoy.getDate() - (dow === 0 ? 6 : dow - 1) + offsetSemanas * 7);
-  const DIAS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  const DIAS = ['Lun','Mar','MiÃ©','Jue','Vie','SÃ¡b','Dom'];
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(lunes);
     d.setDate(lunes.getDate() + i);
@@ -7262,7 +8341,7 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
   const [saving, setSaving] = useState(false);
   const [turnoAviso, setTurnoAviso] = useState(false);
 
-  // Obtener horas de turno de un técnico
+  // Obtener horas de turno de un tÃ©cnico
   const getTurnoHoras = (t) => {
     if (!t) return { hi: '', hf: '' };
     const turno = (turnos || []).find(x => x.id === t.turno_id);
@@ -7271,7 +8350,7 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
     return { hi: '', hf: '' };
   };
 
-  // Conflictos en tiempo real: técnico seleccionado con asignaciones en el rango
+  // Conflictos en tiempo real: tÃ©cnico seleccionado con asignaciones en el rango
   const conflictosTecs = useMemo(() => {
     if (!fi || !ff) return {};
     const result = {};
@@ -7290,13 +8369,13 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
   const toggleTec = (id) => {
     setSelTecs(prev => {
       const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-      // Auto-fill horas desde el turno del primer técnico seleccionado
+      // Auto-fill horas desde el turno del primer tÃ©cnico seleccionado
       if (!prev.includes(id) && prev.length === 0) {
         const tec = tecnicos.find(t => t.id === id);
         const { hi: h1, hf: h2 } = getTurnoHoras(tec);
         if (h1) { setHi(h1); setHf(h2); }
       }
-      // Advertencia si los técnicos tienen turnos distintos
+      // Advertencia si los tÃ©cnicos tienen turnos distintos
       if (!prev.includes(id) && prev.length > 0) {
         const primerTec = tecnicos.find(t => t.id === prev[0]);
         const nuevoTec = tecnicos.find(t => t.id === id);
@@ -7349,10 +8428,10 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
       <div className="card" style={{width:'min(560px,96vw)',maxHeight:'92vh',overflow:'auto',padding:0}} onClick={e=>e.stopPropagation()}>
         <div className="card-head" style={{padding:'16px 20px'}}>
           <div>
-            <h3 style={{margin:0}}>{paso==='resumen'?'Confirmar asignación':'Asignar OT — Rango de fechas'}</h3>
-            <div style={{fontSize:12,color:'var(--cyan)',marginTop:2,fontWeight:600}}>{ot?.numero} — {ot?.servicio||ot?.descripcion}</div>
+            <h3 style={{margin:0}}>{paso==='resumen'?'Confirmar asignaciÃ³n':'Asignar OT â€” Rango de fechas'}</h3>
+            <div style={{fontSize:12,color:'var(--cyan)',marginTop:2,fontWeight:600}}>{ot?.numero} â€” {ot?.servicio||ot?.descripcion}</div>
           </div>
-          <button className="icon-btn" onClick={onClose} style={{fontSize:18}}>×</button>
+          <button className="icon-btn" onClick={onClose} style={{fontSize:18}}>Ã—</button>
         </div>
 
         <div style={{padding:'16px 20px',display:'flex',flexDirection:'column',gap:14}}>
@@ -7376,7 +8455,7 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
             </div>
             {turnoAviso && (
               <div style={{background:'rgba(245,158,11,0.08)',border:'1px solid var(--orange)',borderRadius:8,padding:'8px 12px',fontSize:12,color:'var(--orange-dk)'}}>
-                ⚠ Los técnicos seleccionados tienen turnos diferentes. Verifica las horas.
+                âš  Los tÃ©cnicos seleccionados tienen turnos diferentes. Verifica las horas.
               </div>
             )}
             {/* Cuadrilla */}
@@ -7384,14 +8463,14 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
               <div className="input-group">
                 <label>Cuadrilla (atajo)</label>
                 <select className="select" value={cuadrilla} onChange={e=>aplicarCuadrilla(e.target.value)}>
-                  <option value="">— Seleccionar técnicos individualmente —</option>
+                  <option value="">â€” Seleccionar tÃ©cnicos individualmente â€”</option>
                   {cuadrillas.map(c=><option key={c.id} value={c.id}>{c.nombre} ({(c.cuadrilla_miembros||[]).length} miembros)</option>)}
                 </select>
               </div>
             )}
-            {/* Lista de técnicos */}
+            {/* Lista de tÃ©cnicos */}
             <div>
-              <div className="label" style={{marginBottom:8}}>Técnicos ({selTecs.length} seleccionados)</div>
+              <div className="label" style={{marginBottom:8}}>TÃ©cnicos ({selTecs.length} seleccionados)</div>
               <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:240,overflowY:'auto'}}>
                 {tecnicos.map(t => {
                   const sel = selTecs.includes(t.id);
@@ -7406,13 +8485,13 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
                           {conflicto && sel && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'var(--danger)',color:'#fff'}}>Conflicto</span>}
                         </div>
                         <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:1}}>
-                          {t.cargo}{(t.tarifa_hora??t.costo_hora_real??t.costo??t.costo_hora)?` · S/${t.tarifa_hora??t.costo_hora_real??t.costo??t.costo_hora}/h`:''}{turno?` · Turno: ${turno.nombre}`:''}
+                          {t.cargo}{(t.tarifa_hora??t.costo_hora_real??t.costo??t.costo_hora)?` Â· S/${t.tarifa_hora??t.costo_hora_real??t.costo??t.costo_hora}/h`:''}{turno?` Â· Turno: ${turno.nombre}`:''}
                         </div>
                         {conflicto && sel && (
                           <div style={{fontSize:11,color:'var(--danger)',marginTop:3}}>
                             {conflicto.map(a=>{
                               const otConf = ots.find(o=>o.id===a.ot_id);
-                              return <div key={a.id}>Asignado a {otConf?.numero||a.ot_id} · {a.fecha}</div>;
+                              return <div key={a.id}>Asignado a {otConf?.numero||a.ot_id} Â· {a.fecha}</div>;
                             })}
                           </div>
                         )}
@@ -7425,11 +8504,11 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
           </>) : (<>
             {/* PASO RESUMEN */}
             <div style={{background:'var(--bg-subtle)',borderRadius:10,padding:'12px 14px',display:'flex',flexDirection:'column',gap:6}}>
-              <div style={{fontSize:11,fontWeight:700,color:'var(--fg-muted)',textTransform:'uppercase',letterSpacing:0.5,marginBottom:4}}>Resumen de asignación</div>
-              <div style={{fontSize:13}}><strong>OT:</strong> {ot?.numero} — {ot?.servicio||ot?.descripcion}</div>
-              <div style={{fontSize:13}}><strong>Rango:</strong> {fi} al {ff} <span style={{color:'var(--fg-muted)'}}>({diasRango} día{diasRango!==1?'s':''})</span></div>
-              {(hi||hf) && <div style={{fontSize:13}}><strong>Horario:</strong> {hi||'--:--'} – {hf||'--:--'}</div>}
-              <div style={{fontSize:13,marginTop:4}}><strong>Técnicos ({selTecs.length}):</strong></div>
+              <div style={{fontSize:11,fontWeight:700,color:'var(--fg-muted)',textTransform:'uppercase',letterSpacing:0.5,marginBottom:4}}>Resumen de asignaciÃ³n</div>
+              <div style={{fontSize:13}}><strong>OT:</strong> {ot?.numero} â€” {ot?.servicio||ot?.descripcion}</div>
+              <div style={{fontSize:13}}><strong>Rango:</strong> {fi} al {ff} <span style={{color:'var(--fg-muted)'}}>({diasRango} dÃ­a{diasRango!==1?'s':''})</span></div>
+              {(hi||hf) && <div style={{fontSize:13}}><strong>Horario:</strong> {hi||'--:--'} â€“ {hf||'--:--'}</div>}
+              <div style={{fontSize:13,marginTop:4}}><strong>TÃ©cnicos ({selTecs.length}):</strong></div>
               <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:2}}>
                 {selTecs.map(tid=>{
                   const tec=tecnicos.find(x=>x.id===tid);
@@ -7446,7 +8525,7 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
             </div>
             {nConflictos > 0 && (
               <div style={{background:'rgba(239,68,68,0.07)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:8,padding:'10px 12px',fontSize:12,color:'var(--danger)'}}>
-                ⚠ {nConflictos} técnico{nConflictos!==1?'s tienen':' tiene'} conflictos de horario. ¿Confirmas la asignación?
+                âš  {nConflictos} tÃ©cnico{nConflictos!==1?'s tienen':' tiene'} conflictos de horario. Â¿Confirmas la asignaciÃ³n?
               </div>
             )}
           </>)}
@@ -7455,11 +8534,11 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
             {paso==='resumen'
               ? <><button className="btn btn-secondary" onClick={()=>setPaso('form')}> Volver</button>
                   <button className="btn btn-primary" data-local-form="true" disabled={saving} onClick={handleConfirm}>
-                    {saving?'Asignando...':'Confirmar asignación'}
+                    {saving?'Asignando...':'Confirmar asignaciÃ³n'}
                   </button></>
               : <><button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
                   <button className="btn btn-primary" data-local-form="true" disabled={!selTecs.length} onClick={()=>setPaso('resumen')}>
-                    Ver resumen →
+                    Ver resumen â†’
                   </button></>
             }
           </div>
@@ -7513,16 +8592,16 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
             <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:2}}>
               <span style={{fontWeight:800, fontSize:15, color:'var(--cyan)'}}>{ot?.numero}</span>
               <button className="btn btn-ghost btn-sm" style={{padding:'2px 8px', fontSize:11, height:24}} onClick={() => { navigate('ot', { detail: otId }); onClose(); }}>
-                Ver Detalle OT →
+                Ver Detalle OT â†’
               </button>
             </div>
             <div style={{fontSize:12,color:'var(--fg-muted)'}}>Equipo asignado para el {fecha}</div>
           </div>
-          <button className="icon-btn" onClick={onClose} style={{fontSize:20}}>×</button>
+          <button className="icon-btn" onClick={onClose} style={{fontSize:20}}>Ã—</button>
         </div>
 
         <div style={{padding:'12px 18px',display:'flex',flexDirection:'column',gap:10,maxHeight:440,overflowY:'auto'}}>
-          {asigDia.length === 0 && <div className="text-muted" style={{fontSize:13,textAlign:'center',padding:20}}>Sin colaboradores asignados este día.</div>}
+          {asigDia.length === 0 && <div className="text-muted" style={{fontSize:13,textAlign:'center',padding:20}}>Sin colaboradores asignados este dÃ­a.</div>}
           {asigDia.map(a => {
             const tec = tecnicos.find(t => t.id === a.tecnico_id) || {};
             const hasParte = !partesPendientesSet.has(`${a.tecnico_id}__${fecha}`);
@@ -7535,7 +8614,7 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
                 <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px'}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,fontSize:13}}>{tec.nombre||a.tecnico_id}</div>
-                    <div style={{fontSize:11,color:'var(--fg-muted)'}}>{tec.cargo||'—'}</div>
+                    <div style={{fontSize:11,color:'var(--fg-muted)'}}>{tec.cargo||'â€”'}</div>
                   </div>
                   <div style={{display:'flex',gap:4,alignItems:'center',flexShrink:0}}>
                     {!esQuitando && !esEdicion && (
@@ -7546,10 +8625,10 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
                         <div style={{display:'flex',gap:6,alignItems:'center'}}>
                           <input className="input" style={{width:100,fontSize:11,height:28}} placeholder="Motivo..." value={motivo} onChange={e=>setMotivo(e.target.value)} autoFocus/>
                           <button className="btn btn-danger btn-sm" style={{height:28,fontSize:11}} onClick={async()=>{await onQuitar(a.id,motivo);setQuitando(null);setMotivo('');}}>OK</button>
-                          <button className="btn btn-ghost btn-sm" style={{height:28}} onClick={()=>setQuitando(null)}>✕</button>
+                          <button className="btn btn-ghost btn-sm" style={{height:28}} onClick={()=>setQuitando(null)}>âœ•</button>
                         </div>
                       ) : (
-                        <button className="icon-btn" style={{fontSize:13,color:'var(--fg-muted)'}} title="Quitar de este día" onClick={()=>{setQuitando(a.id);setEditando(null);}}>✕</button>
+                        <button className="icon-btn" style={{fontSize:13,color:'var(--fg-muted)'}} title="Quitar de este dÃ­a" onClick={()=>{setQuitando(a.id);setEditando(null);}}>âœ•</button>
                       )
                     )}
                   </div>
@@ -7580,12 +8659,12 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
                 ) : (
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 12px 8px',borderTop:'1px solid rgba(255,255,255,0.04)'}}>
                     <div style={{fontSize:11, color:'var(--cyan)', fontWeight:500}}>
-                      {a.fecha !== fecha && <span style={{marginRight:6,color:'var(--orange)'}}>📅 {a.fecha}</span>}
-                      {a.hora_inicio_estimada ? a.hora_inicio_estimada.slice(0,5) : '—'} – {a.hora_fin_estimada ? a.hora_fin_estimada.slice(0,5) : '—'}
+                      {a.fecha !== fecha && <span style={{marginRight:6,color:'var(--orange)'}}>ðŸ“… {a.fecha}</span>}
+                      {a.hora_inicio_estimada ? a.hora_inicio_estimada.slice(0,5) : 'â€”'} â€“ {a.hora_fin_estimada ? a.hora_fin_estimada.slice(0,5) : 'â€”'}
                     </div>
                     {new Date(fecha) < new Date(new Date().toDateString()) && (
                       <span className={`badge ${hasParte?'badge-green':'badge-orange'}`} style={{fontSize:9}}>
-                        {hasParte?'✓ Parte ok':'⚠ Sin parte'}
+                        {hasParte?'âœ“ Parte ok':'âš  Sin parte'}
                       </span>
                     )}
                   </div>
@@ -7600,7 +8679,7 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
                 <label style={{fontSize:11}}>Seleccionar colaborador</label>
                 <select className="select" value={tecAdd} onChange={e=>setTecAdd(e.target.value)}>
                   <option value="">Seleccionar...</option>
-                  {tecnicos.filter(t=>!tecIdsAsig.has(t.id)).map(t=><option key={t.id} value={t.id}>{t.nombre} — {t.cargo||'—'}</option>)}
+                  {tecnicos.filter(t=>!tecIdsAsig.has(t.id)).map(t=><option key={t.id} value={t.id}>{t.nombre} â€” {t.cargo||'â€”'}</option>)}
                 </select>
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
@@ -7617,7 +8696,7 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
 
         {!showAgregar && (
           <div style={{padding:'10px 18px',borderTop:'1px solid var(--border)'}}>
-            <button className="btn btn-secondary btn-sm" onClick={()=>setShowAgregar(true)}>+ Agregar colaborador este día</button>
+            <button className="btn btn-secondary btn-sm" onClick={()=>setShowAgregar(true)}>+ Agregar colaborador este dÃ­a</button>
           </div>
         )}
       </div>
@@ -7688,8 +8767,8 @@ function TabCuadrillas({ cuadrillas, tecnicos, especialidades, crearCuadrillaCtx
               <thead>
                 <tr style={{background:'var(--bg-subtle)', borderBottom:'1px solid var(--border)'}}>
                   <th style={{padding:'10px 14px', textAlign:'left', fontWeight:600, color:'var(--fg-muted)'}}>Nombre</th>
-                  <th style={{padding:'10px 14px', textAlign:'left', fontWeight:600, color:'var(--fg-muted)'}}>Descripción</th>
-                  <th style={{padding:'10px 14px', textAlign:'center', fontWeight:600, color:'var(--fg-muted)'}}>N° Técnicos</th>
+                  <th style={{padding:'10px 14px', textAlign:'left', fontWeight:600, color:'var(--fg-muted)'}}>DescripciÃ³n</th>
+                  <th style={{padding:'10px 14px', textAlign:'center', fontWeight:600, color:'var(--fg-muted)'}}>NÂ° TÃ©cnicos</th>
                   <th style={{padding:'10px 14px', textAlign:'left', fontWeight:600, color:'var(--fg-muted)'}}>Especialidad principal</th>
                   <th style={{padding:'10px 14px', textAlign:'center', fontWeight:600, color:'var(--fg-muted)'}}>Acciones</th>
                 </tr>
@@ -7702,10 +8781,10 @@ function TabCuadrillas({ cuadrillas, tecnicos, especialidades, crearCuadrillaCtx
                     <tr key={c.id} style={{borderBottom: i < cuadrillas.length - 1 ? '1px solid var(--border)' : 'none', background:'var(--surface)'}}>
                       <td style={{padding:'12px 14px'}}>
                         <div style={{fontWeight:700}}>{c.nombre}</div>
-                        {lider && <div style={{fontSize:11, color:'var(--cyan)', marginTop:2}}>Líder: {lider.nombre}</div>}
+                        {lider && <div style={{fontSize:11, color:'var(--cyan)', marginTop:2}}>LÃ­der: {lider.nombre}</div>}
                       </td>
                       <td style={{padding:'12px 14px', color:'var(--fg-muted)', maxWidth:220}}>
-                        {c.descripcion || <span style={{color:'var(--fg-muted)', opacity:0.5}}>—</span>}
+                        {c.descripcion || <span style={{color:'var(--fg-muted)', opacity:0.5}}>â€”</span>}
                       </td>
                       <td style={{padding:'12px 14px', textAlign:'center'}}>
                         <span style={{display:'inline-flex', alignItems:'center', justifyContent:'center', width:28, height:28, borderRadius:'50%', background:'var(--bg-subtle)', fontWeight:700, fontSize:13, border:'1px solid var(--border)'}}>
@@ -7715,12 +8794,12 @@ function TabCuadrillas({ cuadrillas, tecnicos, especialidades, crearCuadrillaCtx
                       <td style={{padding:'12px 14px'}}>
                         {c.especialidad_principal
                           ? <span style={{fontSize:12, padding:'2px 8px', borderRadius:6, background:'rgba(0,188,212,0.08)', color:'var(--cyan)', border:'1px solid rgba(0,188,212,0.2)'}}>{c.especialidad_principal}</span>
-                          : <span style={{color:'var(--fg-muted)', opacity:0.5}}>—</span>}
+                          : <span style={{color:'var(--fg-muted)', opacity:0.5}}>â€”</span>}
                       </td>
                       <td style={{padding:'12px 14px', textAlign:'center'}}>
                         <div style={{display:'flex', gap:4, justifyContent:'center'}}>
                           <button className="icon-btn" style={{fontSize:14}} onClick={() => handleEdit(c)} title="Editar">{I.edit}</button>
-                          <button className="icon-btn" style={{fontSize:14, color:'var(--danger)'}} onClick={() => setConfirmDel(c)} title="Eliminar">✕</button>
+                          <button className="icon-btn" style={{fontSize:14, color:'var(--danger)'}} onClick={() => setConfirmDel(c)} title="Eliminar">âœ•</button>
                         </div>
                       </td>
                     </tr>
@@ -7738,36 +8817,36 @@ function TabCuadrillas({ cuadrillas, tecnicos, especialidades, crearCuadrillaCtx
           <div className="card" style={{width:'min(520px,96vw)', padding:0, maxHeight:'90vh', display:'flex', flexDirection:'column'}} onClick={e => e.stopPropagation()}>
             <div className="card-head" style={{padding:'14px 18px', flexShrink:0}}>
               <h3 style={{margin:0}}>{editId ? 'Editar' : 'Nueva'} cuadrilla</h3>
-              <button className="icon-btn" onClick={handleClose}>×</button>
+              <button className="icon-btn" onClick={handleClose}>Ã—</button>
             </div>
             <div style={{padding:'16px 18px', display:'flex', flexDirection:'column', gap:12, overflowY:'auto'}}>
               <div className="input-group">
                 <label>Nombre *</label>
-                <input className="input" value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej: Cuadrilla Eléctrica A" autoFocus/>
+                <input className="input" value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej: Cuadrilla ElÃ©ctrica A" autoFocus/>
               </div>
               <div className="input-group">
-                <label>Descripción</label>
-                <input className="input" value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej: Equipo de instalaciones eléctricas zona norte"/>
+                <label>DescripciÃ³n</label>
+                <input className="input" value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej: Equipo de instalaciones elÃ©ctricas zona norte"/>
               </div>
               <div className="input-group">
                 <label>Especialidad principal</label>
                 {especialidades?.length > 0
                   ? <select className="select" value={esp} onChange={e => setEsp(e.target.value)}>
-                      <option value="">— Sin especialidad —</option>
+                      <option value="">â€” Sin especialidad â€”</option>
                       {especialidades.filter(e => e.estado !== 'inactivo').map(e => <option key={e.id} value={e.nombre}>{e.nombre}</option>)}
                     </select>
                   : <input className="input" value={esp} onChange={e => setEsp(e.target.value)} placeholder="Ej: Electricidad industrial"/>
                 }
               </div>
               <div>
-                <div className="label" style={{marginBottom:6}}>Técnicos miembros * ({selTecs.length} seleccionados)</div>
+                <div className="label" style={{marginBottom:6}}>TÃ©cnicos miembros * ({selTecs.length} seleccionados)</div>
                 <div style={{maxHeight:180, overflowY:'auto', display:'flex', flexDirection:'column', gap:4, border:'1px solid var(--border)', borderRadius:8, padding:6}}>
                   {tecnicos.map(t => (
                     <label key={t.id} style={{display:'flex', gap:10, alignItems:'center', padding:'6px 8px', borderRadius:6, border:`1px solid ${selTecs.includes(t.id) ? 'var(--cyan)' : 'transparent'}`, cursor:'pointer', background: selTecs.includes(t.id) ? 'rgba(0,188,212,0.06)' : 'transparent'}}>
                       <input type="checkbox" className="checkbox" checked={selTecs.includes(t.id)} onChange={() => toggle(t.id)}/>
                       <div style={{flex:1, minWidth:0}}>
                         <div style={{fontWeight:600, fontSize:13}}>{t.nombre}</div>
-                        <div style={{fontSize:11, color:'var(--fg-muted)'}}>{[t.cargo, t.especialidad].filter(Boolean).join(' · ')}</div>
+                        <div style={{fontSize:11, color:'var(--fg-muted)'}}>{[t.cargo, t.especialidad].filter(Boolean).join(' Â· ')}</div>
                       </div>
                     </label>
                   ))}
@@ -7775,10 +8854,10 @@ function TabCuadrillas({ cuadrillas, tecnicos, especialidades, crearCuadrillaCtx
               </div>
               {selTecs.length > 0 && (
                 <div className="input-group">
-                  <label>Líder de cuadrilla <span style={{color:'var(--fg-muted)', fontWeight:400}}>(opcional)</span></label>
+                  <label>LÃ­der de cuadrilla <span style={{color:'var(--fg-muted)', fontWeight:400}}>(opcional)</span></label>
                   <select className="select" value={liderId} onChange={e => setLiderId(e.target.value)}>
-                    <option value="">— Sin líder asignado —</option>
-                    {liderTecs.map(t => <option key={t.id} value={t.id}>{t.nombre} · {t.cargo}</option>)}
+                    <option value="">â€” Sin lÃ­der asignado â€”</option>
+                    {liderTecs.map(t => <option key={t.id} value={t.id}>{t.nombre} Â· {t.cargo}</option>)}
                   </select>
                 </div>
               )}
@@ -7798,7 +8877,7 @@ function TabCuadrillas({ cuadrillas, tecnicos, especialidades, crearCuadrillaCtx
         <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:1001, display:'flex', alignItems:'center', justifyContent:'center', padding:16}} onClick={() => setConfirmDel(null)}>
           <div className="card" style={{width:'min(360px,96vw)', padding:20}} onClick={e => e.stopPropagation()}>
             <div style={{fontWeight:700, marginBottom:8}}>Eliminar cuadrilla</div>
-            <div style={{fontSize:13, color:'var(--fg-muted)', marginBottom:16}}>¿Seguro que deseas eliminar <strong>{confirmDel.nombre}</strong>? Esta acción no se puede deshacer.</div>
+            <div style={{fontSize:13, color:'var(--fg-muted)', marginBottom:16}}>Â¿Seguro que deseas eliminar <strong>{confirmDel.nombre}</strong>? Esta acciÃ³n no se puede deshacer.</div>
             <div className="row" style={{gap:8, justifyContent:'flex-end'}}>
               <button className="btn btn-secondary" onClick={() => setConfirmDel(null)}>Cancelar</button>
               <button className="btn btn-danger" onClick={() => { eliminarCuadrillaCtx(confirmDel.id); setConfirmDel(null); }}>Eliminar</button>
@@ -7822,7 +8901,7 @@ function OTBandejaCard({ ot, cuentas, dragOtId, setDragOtId, setModalAsig, enCur
       draggable
       onDragStart={e => { e.dataTransfer.setData('otId', ot.id); setDragOtId(ot.id); }}
       onDragEnd={() => setDragOtId(null)}
-      title={enCurso ? 'Arrastra para agregar más días' : 'Arrastra para asignar a un colaborador'}
+      title={enCurso ? 'Arrastra para agregar mÃ¡s dÃ­as' : 'Arrastra para asignar a un colaborador'}
       style={{
         background: enCurso ? 'color-mix(in srgb, var(--cyan) 5%, var(--surface))' : 'var(--surface)',
         border: enCurso ? '1px solid color-mix(in srgb, var(--cyan) 30%, var(--border))' : '1px solid var(--border)',
@@ -7838,7 +8917,7 @@ function OTBandejaCard({ ot, cuentas, dragOtId, setDragOtId, setModalAsig, enCur
       }}>
       <div className="row" style={{justifyContent:'space-between', marginBottom:6, alignItems:'center'}}>
         <div className="row" style={{gap:6, alignItems:'center'}}>
-          <span style={{fontSize:14, color:'var(--fg-muted)', lineHeight:1}}>⠿</span>
+          <span style={{fontSize:14, color:'var(--fg-muted)', lineHeight:1}}>â ¿</span>
           <div style={{fontWeight:800, color: enCurso ? 'var(--cyan)' : 'var(--cyan)', fontSize:13}}>{ot.numero}</div>
         </div>
         <div className="row" style={{gap:4, alignItems:'center'}}>
@@ -7851,7 +8930,7 @@ function OTBandejaCard({ ot, cuentas, dragOtId, setDragOtId, setModalAsig, enCur
       <div style={{fontSize:11, color:'var(--fg-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom: fechaLimite ? 5 : 0}}>{ot.servicio || ot.descripcion}</div>
       {fechaLimite && (
         <div style={{fontSize:10, fontWeight:600, color: vencida ? 'var(--danger)' : 'var(--fg-muted)', display:'flex', alignItems:'center', gap:4}}>
-          <span className="planner-inline-icon">{I.calendar}</span> Límite: {fechaLimite}{vencida ? ' ⚠' : ''}
+          <span className="planner-inline-icon">{I.calendar}</span> LÃ­mite: {fechaLimite}{vencida ? ' âš ' : ''}
         </div>
       )}
     </div>
@@ -8011,7 +9090,7 @@ function construirFilasPorOT({ personalOperativo = [], personalAdmin = [], parte
     const totalHoras = entry.horas_partes + entry.horas_tareos;
     const esAdmin = adminIds.has(entry.personaId);
     const esHon = esModalidadHonorarios(persona);
-    const cliente = (cuentas || []).find(c => c.id === ot?.cuenta_id)?.razon_social || ot?.cliente || '—';
+    const cliente = (cuentas || []).find(c => c.id === ot?.cuenta_id)?.razon_social || ot?.cliente || 'â€”';
     return {
       personaId: persona.id,
       nombre: persona.nombre,
@@ -8217,7 +9296,7 @@ function Planner() {
 
   const tecnicos = useMemo(() => personalOperativo.filter(p => !['inactivo', 'baja'].includes(p.estado)), [personalOperativo]);
 
-  // Agrupar asignaciones por técnico y fecha para renderizar celdas
+  // Agrupar asignaciones por tÃ©cnico y fecha para renderizar celdas
   const asigMap = useMemo(() => {
     const map = {};
     plannerAsignaciones.forEach(a => {
@@ -8238,7 +9317,7 @@ function Planner() {
     return map;
   }, [plannerAsignaciones]);
 
-  // Ausencias aprobadas (vacaciones + licencias) → set de "personal_id__fecha__Tipo"
+  // Ausencias aprobadas (vacaciones + licencias) â†’ set de "personal_id__fecha__Tipo"
   const ausenciasDias = useMemo(() => {
     const set = new Set();
     const addRange = (personalId, fInicio, fFin, tipo) => {
@@ -8262,7 +9341,7 @@ function Planner() {
     return null;
   };
 
-  // Horas asignadas por técnico en la semana visible
+  // Horas asignadas por tÃ©cnico en la semana visible
   const horasAsignadasMap = useMemo(() => {
     const map = {};
     plannerAsignaciones.forEach(a => {
@@ -8324,12 +9403,12 @@ function Planner() {
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Planner de Recursos v2</h1><div className="page-sub">Programación OT × Rango × Cuadrilla</div></div>
+        <div><h1 className="page-title">Planner de Recursos v2</h1><div className="page-sub">ProgramaciÃ³n OT Ã— Rango Ã— Cuadrilla</div></div>
         <div className="row" style={{gap:12}}>
           <div className="row" style={{background:'var(--bg-subtle)', borderRadius:12, padding:'4px 8px', border:'1px solid var(--border)'}}>
             <button className="icon-btn" onClick={() => setOffsetSemanas(s => s - 1)} title="Semana anterior">{I.chevronLeft}</button>
             <div style={{minWidth:180, textAlign:'center', fontWeight:700, fontSize:13}}>
-              {new Date(semana[0].fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} — {new Date(semana[6].fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {new Date(semana[0].fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} â€” {new Date(semana[6].fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
             </div>
             <button className="icon-btn" onClick={() => setOffsetSemanas(s => s + 1)} title="Siguiente semana">{I.chevronRight}</button>
           </div>
@@ -8339,7 +9418,7 @@ function Planner() {
       </div>
 
       <div className="tabs">
-        <div className={'tab '+(plannerTab==='tecnicos'?'active':'')} onClick={()=>setPlannerTab('tecnicos')}>Grilla de Técnicos</div>
+        <div className={'tab '+(plannerTab==='tecnicos'?'active':'')} onClick={()=>setPlannerTab('tecnicos')}>Grilla de TÃ©cnicos</div>
         <div className={'tab '+(plannerTab==='cuadrillas'?'active':'')} onClick={()=>setPlannerTab('cuadrillas')}>Cuadrillas</div>
         <div className={'tab '+(plannerTab==='cs'?'active':'')} onClick={()=>setPlannerTab('cs')}>
           Agenda CS
@@ -8391,7 +9470,7 @@ function Planner() {
                     <tr key={t.id} style={{height:60}}>
                       <td style={{position:'sticky', left:0, background:'var(--surface)', zIndex:4, borderRight:'2px solid var(--border)', padding:'10px 16px'}}>
                         <div style={{fontWeight:700, fontSize:13}}>{t.nombre}</div>
-                        <div style={{fontSize:11, color:'var(--fg-muted)'}}>{t.cargo || 'Técnico'}</div>
+                        <div style={{fontSize:11, color:'var(--fg-muted)'}}>{t.cargo || 'TÃ©cnico'}</div>
                         {(() => {
                           const horasDisp = t.horas_semana || 40;
                           const horasAsig = Math.round((horasAsignadasMap[t.id] || 0) * 10) / 10;
@@ -8431,7 +9510,7 @@ function Planner() {
                                   const cli = cuentas.find(c => c.id === ot.cuenta_id);
                                   const bgColor = otPriorityColor(ot.prioridad);
                                   const horario = (a.hora_inicio_estimada && a.hora_fin_estimada)
-                                    ? `${a.hora_inicio_estimada.slice(0,5)}–${a.hora_fin_estimada.slice(0,5)}`
+                                    ? `${a.hora_inicio_estimada.slice(0,5)}â€“${a.hora_fin_estimada.slice(0,5)}`
                                     : null;
                                   return (
                                     <div key={a.id}
@@ -8464,7 +9543,7 @@ function Planner() {
                   {sinAsignar.length > 0 && <span className="badge badge-orange">{sinAsignar.length} sin asignar</span>}
                   {enEjecucionPlanner.length > 0 && <span className="badge badge-cyan">{enEjecucionPlanner.length} en curso</span>}
                 </div>
-                <span style={{fontSize:11, color:'var(--fg-muted)', marginLeft:8, display:'inline-flex', alignItems:'center', gap:4}}>Arrastra a un técnico o usa <span className="planner-inline-icon">{I.calendar}</span> para asignar rango</span>
+                <span style={{fontSize:11, color:'var(--fg-muted)', marginLeft:8, display:'inline-flex', alignItems:'center', gap:4}}>Arrastra a un tÃ©cnico o usa <span className="planner-inline-icon">{I.calendar}</span> para asignar rango</span>
               </div>
 
               {sinAsignar.length > 0 && (
@@ -8478,7 +9557,7 @@ function Planner() {
 
               {enEjecucionPlanner.length > 0 && (
                 <>
-                  <div style={{padding:'4px 20px 8px', fontSize:11, fontWeight:700, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5, borderTop: sinAsignar.length > 0 ? '1px solid var(--border-subtle)' : 'none', marginTop: sinAsignar.length > 0 ? 4 : 0}}>En curso — agregar más días</div>
+                  <div style={{padding:'4px 20px 8px', fontSize:11, fontWeight:700, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5, borderTop: sinAsignar.length > 0 ? '1px solid var(--border-subtle)' : 'none', marginTop: sinAsignar.length > 0 ? 4 : 0}}>En curso â€” agregar mÃ¡s dÃ­as</div>
                   <div style={{display:'flex', flexWrap:'wrap', gap:10, padding:'0 20px 20px'}}>
                     {enEjecucionPlanner.map(ot => {
                       const diasAsignados = new Set(plannerAsignaciones.filter(a => a.ot_id === ot.id && a.estado !== 'cancelado').map(a => a.fecha)).size;
@@ -8509,13 +9588,13 @@ function Planner() {
           {/* 1. Renovaciones */}
           <div className="card">
             <div className="card-head">
-              <h3>Renovaciones próximas <span style={{fontSize:12,fontWeight:400,color:'var(--fg-muted)'}}>— 90 días</span></h3>
+              <h3>Renovaciones prÃ³ximas <span style={{fontSize:12,fontWeight:400,color:'var(--fg-muted)'}}>â€” 90 dÃ­as</span></h3>
               <span className="badge badge-cyan">{filteredRenovaciones.length}</span>
             </div>
             {filteredRenovaciones.length === 0
-              ? <div style={{padding:'16px 20px', color:'var(--fg-muted)'}}>Sin contratos por vencer en los próximos 90 días</div>
+              ? <div style={{padding:'16px 20px', color:'var(--fg-muted)'}}>Sin contratos por vencer en los prÃ³ximos 90 dÃ­as</div>
               : <table className="tbl">
-                  <thead><tr><th>Cliente</th><th>Servicio</th><th>Vencimiento</th><th>Días</th><th>Responsable CS</th><th>Estado</th></tr></thead>
+                  <thead><tr><th>Cliente</th><th>Servicio</th><th>Vencimiento</th><th>DÃ­as</th><th>Responsable CS</th><th>Estado</th></tr></thead>
                   <tbody>
                     {filteredRenovaciones.map(r => {
                       const d = r.dias_restantes ?? 9999;
@@ -8526,7 +9605,7 @@ function Planner() {
                           <td style={{fontSize:12, color:'var(--fg-muted)', maxWidth:180}}>{r.servicio}</td>
                           <td>{r.fecha_vencimiento}</td>
                           <td><span className={`badge ${badgeClass}`}>{d}d</span></td>
-                          <td>{r.responsable_cs || '—'}</td>
+                          <td>{r.responsable_cs || 'â€”'}</td>
                           <td><span className={'badge '+(r.estado==='renovado'?'badge-green':r.estado==='en_negociacion'?'badge-cyan':r.estado==='en_riesgo'?'badge-red':'badge-gray')}>{r.estado?.replace(/_/g,' ')}</span></td>
                         </tr>
                       );
@@ -8557,7 +9636,7 @@ function Planner() {
                           <td style={{fontWeight:600}}>{getCuentaNombre(o.cuenta_id)}</td>
                           <td>{o.fecha_inicio}</td>
                           <td style={{whiteSpace:'nowrap', fontWeight:600}}>
-                            {total > 0 ? <>{completados} <span style={{color:'var(--fg-muted)', fontWeight:400}}>/ {total}</span></> : '—'}
+                            {total > 0 ? <>{completados} <span style={{color:'var(--fg-muted)', fontWeight:400}}>/ {total}</span></> : 'â€”'}
                           </td>
                           <td style={{minWidth:130}}>
                             <div style={{display:'flex', alignItems:'center', gap:8}}>
@@ -8567,7 +9646,7 @@ function Planner() {
                               <span style={{fontSize:11, fontWeight:700, flexShrink:0, minWidth:28}}>{pct}%</span>
                             </div>
                           </td>
-                          <td>{o.responsable_cs || '—'}</td>
+                          <td>{o.responsable_cs || 'â€”'}</td>
                         </tr>
                       );
                     })}
@@ -8598,7 +9677,7 @@ function Planner() {
                             ))}
                           </div>
                         </td>
-                        <td>{p.responsable_cs || '—'}</td>
+                        <td>{p.responsable_cs || 'â€”'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -8615,13 +9694,13 @@ function Planner() {
             {filteredNps.length === 0
               ? <div style={{padding:'16px 20px', color:'var(--fg-muted)'}}>Sin encuestas NPS pendientes de respuesta</div>
               : <table className="tbl">
-                  <thead><tr><th>Cliente</th><th>Fecha envío</th><th>Responsable CS</th><th>Estado</th></tr></thead>
+                  <thead><tr><th>Cliente</th><th>Fecha envÃ­o</th><th>Responsable CS</th><th>Estado</th></tr></thead>
                   <tbody>
                     {filteredNps.map(n => (
                       <tr key={n.id}>
                         <td style={{fontWeight:600}}>{getCuentaNombre(n.cuenta_id)}</td>
-                        <td>{n.fecha_envio || '—'}</td>
-                        <td>{n.responsable_cs || '—'}</td>
+                        <td>{n.fecha_envio || 'â€”'}</td>
+                        <td>{n.responsable_cs || 'â€”'}</td>
                         <td><span className="badge badge-orange">Sin respuesta</span></td>
                       </tr>
                     ))}
@@ -8729,9 +9808,9 @@ function createTicketDraftId() {
 }
 
 const HILO_TIPO_META = {
-  observacion: { label: 'Observación', icon: I.eye, bg: 'var(--orange-lt)', color: 'var(--orange-dk)' },
+  observacion: { label: 'ObservaciÃ³n', icon: I.eye, bg: 'var(--orange-lt)', color: 'var(--orange-dk)' },
   evidencia: { label: 'Evidencia', icon: I.shield, bg: 'var(--cyan-lt)', color: 'var(--cyan-dk)' },
-  aprobacion: { label: 'Aprobación', icon: I.check, bg: 'var(--green-lt)', color: 'var(--green-dk)' },
+  aprobacion: { label: 'AprobaciÃ³n', icon: I.check, bg: 'var(--green-lt)', color: 'var(--green-dk)' },
   reapertura: { label: 'Reapertura', icon: I.refresh, bg: 'var(--purple-lt)', color: 'var(--purple)' },
 };
 
@@ -9368,7 +10447,7 @@ function Tickets() {
     <div style={{borderTop:'1px solid var(--border-subtle)', paddingTop:10, marginTop:10}}>
       <div className="text-muted" style={{fontSize:11, fontWeight:700, marginBottom:6}}>Sub-estado QC</div>
       <div className="row" style={{gap:6, flexWrap:'wrap'}}>
-        {[['en_revision','En revisión'],['observado','Observado'],['aprobado','Aprobado']].map(([k, label]) => (
+        {[['en_revision','En revisiÃ³n'],['observado','Observado'],['aprobado','Aprobado']].map(([k, label]) => (
           <button
             key={k}
             type="button"
@@ -9496,7 +10575,7 @@ function Tickets() {
   const hiloPanel = selectedTicket ? (
     <div className="card" style={{padding:16, marginBottom:16}}>
       <div className="card-head" style={{padding:0, borderBottom:'none', marginBottom:10}}>
-        <h3>Hilo de resolución</h3>
+        <h3>Hilo de resoluciÃ³n</h3>
         {selectedTicket.veces_reabierto > 0 && (
           <span className="badge" style={{background:'var(--orange)', color:'#fff', fontSize:10}}>
             Reabierto {selectedTicket.veces_reabierto}x
@@ -9520,7 +10599,7 @@ function Tickets() {
                   <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:2}}>
                     <span style={{fontSize:11, fontWeight:700, color:meta.color}}>{meta.label}</span>
                     <span style={{fontSize:10, color:'var(--fg-muted)'}}>{c.usuario_nombre}</span>
-                    <span style={{fontSize:10, color:'var(--fg-muted)'}}>·</span>
+                    <span style={{fontSize:10, color:'var(--fg-muted)'}}>Â·</span>
                     <span style={{fontSize:10, color:'var(--fg-muted)'}}>{c.creado_en ? new Date(c.creado_en).toLocaleString() : ''}</span>
                   </div>
                   <div style={{fontSize:12, color:'var(--fg)', lineHeight:1.5}}>{c.contenido}</div>
@@ -9550,9 +10629,9 @@ function Tickets() {
             value={comentarioForm.tipo}
             onChange={e => setComentarioForm(prev => ({...prev, tipo: e.target.value}))}
           >
-            <option value="observacion">Observación</option>
+            <option value="observacion">ObservaciÃ³n</option>
             <option value="evidencia">Evidencia</option>
-            <option value="aprobacion">Aprobación</option>
+            <option value="aprobacion">AprobaciÃ³n</option>
             <option value="reapertura">Reapertura</option>
           </select>
         </div>
@@ -9560,7 +10639,7 @@ function Tickets() {
           <textarea
             className="input"
             rows="3"
-            placeholder="Descripción..."
+            placeholder="DescripciÃ³n..."
             value={comentarioForm.contenido}
             onChange={e => setComentarioForm(prev => ({...prev, contenido: e.target.value}))}
           />
@@ -9635,7 +10714,7 @@ function Tickets() {
           <button type="button" className="icon-btn" onClick={() => { setReobrirModal(false); setReobrirMotivo(''); }}>{I.x}</button>
         </div>
         <div className="text-muted" style={{fontSize:13, marginBottom:12}}>
-          El ticket volverá a QC en sub-estado "En revisión". El motivo quedará registrado en el hilo.
+          El ticket volverÃ¡ a QC en sub-estado "En revisiÃ³n". El motivo quedarÃ¡ registrado en el hilo.
         </div>
         <div className="input-group" style={{marginBottom:16}}>
           <label>Motivo de reapertura *</label>
@@ -9643,7 +10722,7 @@ function Tickets() {
             className="input"
             rows="3"
             autoFocus
-            placeholder="Explica por qué se reabre este ticket..."
+            placeholder="Explica por quÃ© se reabre este ticket..."
             value={reabrirMotivo}
             onChange={e => setReobrirMotivo(e.target.value)}
           />
@@ -9890,7 +10969,7 @@ function calcularIR5ta(remuneracionBrutaMensual, UIT = 5500, mesesRestantes = 12
   return pendiente / Math.max(1, mesesRestantes);
 }
 
-// Calcular horas extra split: primeras 2h/día al 25%, desde 3ra h/día al 35%
+// Calcular horas extra split: primeras 2h/dÃ­a al 25%, desde 3ra h/dÃ­a al 35%
 function calcularHorasExtra(registros, valorHora) {
   let tramo1Min = 0;
   let tramo2Min = 0;
@@ -9910,12 +10989,12 @@ function calcularHorasExtra(registros, valorHora) {
   return { tramo1Min, tramo2Min, addHorasExtra: addTramo1 + addTramo2, addTramo1, addTramo2 };
 }
 
-// Calcular días computables para régimen minero en un mes
+// Calcular dÃ­as computables para rÃ©gimen minero en un mes
 function calcularDiasComputables(anio, mes, regimen_jornada, fecha_inicio_ciclo, trabajador = {}) {
   if (!fecha_inicio_ciclo || regimen_jornada === 'general') return null;
   let t = Number(trabajador.dias_ciclo_trabajo) || 0;
   let d = Number(trabajador.dias_ciclo_descanso) || 0;
-  // Para ciclos predefinidos, inferir t y d si no están almacenados en el registro del trabajador
+  // Para ciclos predefinidos, inferir t y d si no estÃ¡n almacenados en el registro del trabajador
   if (!t || !d) {
     if (regimen_jornada === 'minero_14x7')       { t = 14; d = 7;  }
     else if (regimen_jornada === 'minero_20x10') { t = 20; d = 10; }
@@ -9935,13 +11014,13 @@ function calcularDiasComputables(anio, mes, regimen_jornada, fecha_inicio_ciclo,
   return diasTrabajo;
 }
 
-// ── Fase 2: Motor multi-tramo por historial de asignaciones de jornada ────────
+// â”€â”€ Fase 2: Motor multi-tramo por historial de asignaciones de jornada â”€â”€â”€â”€â”€â”€â”€â”€
 
 function diasCalendarioEnRango(fechaIni, fechaFin) {
   return Math.round((fechaFin - fechaIni) / 86400000) + 1;
 }
 
-// Días computables de una asignación ciclo_acumulativo dentro de un rango de fechas
+// DÃ­as computables de una asignaciÃ³n ciclo_acumulativo dentro de un rango de fechas
 function diasComputablesEnRango(asignacion, fechaIni, fechaFin) {
   const t = Number(asignacion.dias_ciclo_trabajo) || 0;
   const d = Number(asignacion.dias_ciclo_descanso) || 0;
@@ -9957,11 +11036,14 @@ function diasComputablesEnRango(asignacion, fechaIni, fechaFin) {
   return count;
 }
 
-// Segmenta el mes según las asignaciones de jornada del trabajador.
+// Segmenta el mes segÃºn las asignaciones de jornada del trabajador.
 // Retorna: null (sin asignaciones en el mes), { error, detail } (hueco/solapamiento),
 //          o array de { asignacion, fechaSegIni, fechaSegFin }.
-function segmentarMesPorAsignaciones(asigs, anio, mes) {
-  const primerDia = new Date(anio, mes - 1, 1);
+function segmentarMesPorAsignaciones(asigs, anio, mes, trabajador = {}) {
+  const primerDiaOriginal = new Date(anio, mes - 1, 1);
+  const _ing = trabajador.fecha_inicio_contrato || trabajador.fecha_ingreso || null;
+  const _dtIng = _ing ? new Date(`${_ing}T00:00:00`) : null;
+  const primerDia = (_dtIng && _dtIng > primerDiaOriginal) ? _dtIng : primerDiaOriginal;
   const ultimoDia = new Date(anio, mes, 0);
 
   const solapadas = (asigs || [])
@@ -9978,13 +11060,13 @@ function segmentarMesPorAsignaciones(asigs, anio, mes) {
     const prev = solapadas[i - 1];
     const curr = solapadas[i];
     if (!prev.fecha_fin) {
-      return { error: 'overlap', detail: `La asignación desde ${prev.fecha_inicio} no tiene fecha de fin y se solapa con la del ${curr.fecha_inicio}.` };
+      return { error: 'overlap', detail: `La asignaciÃ³n desde ${prev.fecha_inicio} no tiene fecha de fin y se solapa con la del ${curr.fecha_inicio}.` };
     }
     const prevFin = new Date(prev.fecha_fin + 'T00:00:00');
     const currIni = new Date(curr.fecha_inicio + 'T00:00:00');
     const siguienteDia = new Date(prevFin.getTime() + 86400000);
     if (siguienteDia < currIni) {
-      return { error: 'gap', detail: `Hueco sin asignación: entre ${prev.fecha_fin} y ${curr.fecha_inicio}. Verifica el historial.` };
+      return { error: 'gap', detail: `Hueco sin asignaciÃ³n: entre ${prev.fecha_fin} y ${curr.fecha_inicio}. Verifica el historial.` };
     }
     if (siguienteDia > currIni) {
       return { error: 'overlap', detail: `Solapamiento entre asignaciones del ${prev.fecha_inicio} y ${curr.fecha_inicio}.` };
@@ -10013,7 +11095,7 @@ function esFeriado(fechaDate) {
   return FERIADOS_PERU.includes(_isoDate(fechaDate));
 }
 
-// Calcula remuneración de un tramo (sin AFP/IR/cargas — se aplican sobre el total)
+// Calcula remuneraciÃ³n de un tramo (sin AFP/IR/cargas â€” se aplican sobre el total)
 function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno) {
   const { asignacion, fechaSegIni, fechaSegFin } = seg;
   const iniStr = _isoDate(fechaSegIni);
@@ -10043,7 +11125,7 @@ function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registr
           esperados++;
           const iso = _isoDate(dia);
           const reg = regsTramo.find(r => r.fecha === iso);
-          if (reg && !reg.es_falta) asistidos++;
+          if (!reg || !reg.es_falta) asistidos++;
         }
       }
     }
@@ -10077,7 +11159,7 @@ function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registr
     diasComp    = diasComputablesEnRango(asignacion, fechaSegIni, fechaSegFin);
     sueldoTramo = sueldoBase * (diasComp / 30);
   } else {
-    // General: valor día × días calendario del tramo (divisor canónico 30)
+    // General: valor dÃ­a Ã— dÃ­as calendario del tramo (divisor canÃ³nico 30)
     sueldoTramo = valorDia * diasCal;
   }
 
@@ -10091,7 +11173,7 @@ function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registr
   };
 }
 
-// Orquestador: usa historial si existe; cae en calcularNominaTrabajador (sin regresión) si no.
+// Orquestador: usa historial si existe; cae en calcularNominaTrabajador (sin regresiÃ³n) si no.
 function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno, registros, periodo, empresaCfg) {
   if (!asigsTrabajador || asigsTrabajador.length === 0) {
     return calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg);
@@ -10099,7 +11181,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
 
   const anio = periodo?.anio || new Date().getFullYear();
   const mes  = periodo?.mes  || new Date().getMonth() + 1;
-  const segmentos = segmentarMesPorAsignaciones(asigsTrabajador, anio, mes);
+  const segmentos = segmentarMesPorAsignaciones(asigsTrabajador, anio, mes, trabajador);
 
   if (!segmentos) {
     return calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg);
@@ -10110,7 +11192,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     return { ...base, error_historial: segmentos.error, error_historial_detail: segmentos.detail, tramos: null, multi_tramo: false };
   }
 
-  // Un tramo → adaptar worker desde la asignación y usar motor Fase 1
+  // Un tramo â†’ adaptar worker desde la asignaciÃ³n y usar motor Fase 1
   if (segmentos.length === 1) {
     const { asignacion } = segmentos[0];
     if (asignacion.tipo_tramo === 'suspension_perfecta') {
@@ -10124,7 +11206,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     return { ...result, tramos: [calcularRemuneracionTramo(segmentos[0], sb, result.valor_dia, result.valor_hora, registros, turno)], multi_tramo: false };
   }
 
-  // ── Multi-tramo ───────────────────────────────────────────────────────────────
+  // â”€â”€ Multi-tramo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (esModalidadHonorarios(trabajador)) return null;
 
   const { regimen_laboral_empresa = 'general', uit_vigente = 5500, ram_tope_afp = 12598.91, afp_parametros = [] } = empresaCfg;
@@ -10138,7 +11220,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     const a = seg.asignacion;
     if (a.tipo_tramo === 'normal' && a.regimen_jornada === 'ciclo_acumulativo' &&
         (!a.fecha_inicio_ciclo || !a.dias_ciclo_trabajo || !a.dias_ciclo_descanso)) {
-      return { trabajador_id: trabajador.id, trabajador, datosNomina, turno, periodo, incompleto_historial: true, error_historial: 'datos_ciclo_faltantes', error_historial_detail: `Tramo minero desde ${a.fecha_inicio} sin datos de ciclo completos (fecha inicio, días trabajo/descanso).`, tramos: null, multi_tramo: true, sueldo_base: sueldoBase, sueldo_proporcional: 0, remuneracion_bruta: 0, neto: 0, regimen_jornada: trabajador.regimen_jornada || 'general' };
+      return { trabajador_id: trabajador.id, trabajador, datosNomina, turno, periodo, incompleto_historial: true, error_historial: 'datos_ciclo_faltantes', error_historial_detail: `Tramo minero desde ${a.fecha_inicio} sin datos de ciclo completos (fecha inicio, dÃ­as trabajo/descanso).`, tramos: null, multi_tramo: true, sueldo_base: sueldoBase, sueldo_proporcional: 0, remuneracion_bruta: 0, neto: 0, regimen_jornada: trabajador.regimen_jornada || 'general' };
     }
   }
 
@@ -10189,7 +11271,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   const tieneCts    = !esMicro;
   const tieneGratif = !esMicro;
   const baseComputable      = sueldoProporcional + asignacionFamiliar + bonifAltitud;
-  const gratificacion       = tieneGratif ? baseComputable / (esPequena ? 12 : 6) : 0;
+  const gratificacion       = tieneGratif ? baseComputable / (esPequena ? 24 : 12) : 0;
   const bonifExtraordinaria = tieneGratif ? gratificacion * 0.09 : 0;
   const remComputable       = baseComputable + (tieneGratif ? gratificacion : 0);
   const cts         = tieneCts ? remComputable / (esPequena ? 24 : 12) : 0;
@@ -10202,10 +11284,10 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   const tiposSet = [...new Set(tramosCalc.map(t => t.tipo))];
   let regimenDisplay = trabajador.regimen_jornada || 'general';
   if (segmentos.length > 1) {
-    const nombres = tramosCalc.map(t => t.tipo === 'suspension_perfecta' ? 'Suspensión' : t.tipo === 'ciclo_acumulativo' ? 'Minero' : 'General');
+    const nombres = tramosCalc.map(t => t.tipo === 'suspension_perfecta' ? 'SuspensiÃ³n' : t.tipo === 'ciclo_acumulativo' ? 'Minero' : 'General');
     const displayUnicos = [];
     nombres.forEach(n => { if (displayUnicos[displayUnicos.length - 1] !== n) displayUnicos.push(n); });
-    regimenDisplay = `Mixto (${displayUnicos.join(' → ')})`;
+    regimenDisplay = `Mixto (${displayUnicos.join(' â†’ ')})`;
   } else {
     regimenDisplay = ultimoActivo?.tipo || trabajador.regimen_jornada || 'general';
   }
@@ -10213,7 +11295,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   const esperadosTotal = tramosCalc.reduce((s, t) => s + (t.esperados || 0), 0);
   const asistidosTotal = tramosCalc.reduce((s, t) => s + (t.asistidos || 0), 0);
 
-  let diasComputablesDisplay = '—';
+  let diasComputablesDisplay = 'â€”';
   if (tramosCalc.some(t => t.tipo === 'ciclo_acumulativo')) {
     diasComputablesDisplay = segmentos.length > 1 ? `${diasCompTotal} (mina)` : diasCompTotal;
   }
@@ -10246,7 +11328,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg = {}) {
   if (esModalidadHonorarios(trabajador)) return null;
   const {
@@ -10261,7 +11343,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const horasEfectivas = esMinero ? (Number(datosNomina?.horas_diarias_pactadas || trabajador.horas_diarias_pactadas) || 12) : (Number(turno.horas_efectivas) || 8);
   const sueldoBase = Number(datosNomina?.sueldo_base || trabajador.remuneracion || trabajador.sueldo_base || 3000);
 
-  // Días computables (régimen minero)
+  // DÃ­as computables (rÃ©gimen minero)
   const fechaInicioCiclo = datosNomina?.fecha_inicio_ciclo || trabajador.fecha_inicio_ciclo;
   const diasComputables = esMinero
     ? calcularDiasComputables(periodo?.anio || new Date().getFullYear(), periodo?.mes || new Date().getMonth() + 1, regimenJornada, fechaInicioCiclo, trabajador)
@@ -10300,8 +11382,12 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   
   const _pYear = periodo?.anio || new Date().getFullYear();
   const _pMes  = periodo?.mes  || new Date().getMonth() + 1;
-  const _pIni  = new Date(_pYear, _pMes - 1, 1);
+  const _pIniOriginal = new Date(_pYear, _pMes - 1, 1);
   const _pFin  = new Date(_pYear, _pMes, 0);
+
+  const _fechaIng = trabajador.fecha_inicio_contrato || trabajador.fecha_ingreso || null;
+  const _dtIng = _fechaIng ? new Date(`${_fechaIng}T00:00:00`) : null;
+  const _pIni = (_dtIng && _dtIng > _pIniOriginal) ? _dtIng : _pIniOriginal;
 
   const sinFiscalizacionDiariaLocal = trabajador.cargo_confianza || getTipoFiscalizacion(trabajador) !== 'diaria';
   const registrosNominaLocal = sinFiscalizacionDiariaLocal ? [] : registros;
@@ -10319,7 +11405,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
         if (pos < t) {
           const iso = _isoDate(dia);
           const reg = registrosNominaLocal.find(r => r.fecha === iso);
-          if (reg && !reg.es_falta) asistidos++;
+          if (!reg || !reg.es_falta) asistidos++;
         }
       }
     }
@@ -10337,28 +11423,26 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   
   const diasLaborables = esperados;
   const diasBase = esMinero ? diasComputables : diasLaborables;
-  let diasComputablesDisplay = esMinero ? (diasComputables ?? '—') : '—';
+  let diasComputablesDisplay = esMinero ? (diasComputables ?? 'â€”') : 'â€”';
 
-  // Proporcionalidad por ingreso o cese dentro del período
-  const _fechaIng  = trabajador.fecha_inicio_contrato || trabajador.fecha_ingreso || null;
+  // Proporcionalidad por ingreso o cese dentro del perÃ­odo
   const _fechaCese = trabajador.fecha_fin_contrato    || trabajador.fecha_cese    || null;
-  const _dtIng  = _fechaIng  ? new Date(`${_fechaIng}T00:00:00`)  : null;
   const _dtCese = _fechaCese ? new Date(`${_fechaCese}T00:00:00`) : null;
   let diasEfectivos = 30;
   let esProporcional = false;
-  if (_dtIng  && _dtIng  > _pIni) esProporcional = true;
+  if (_dtIng  && _dtIng  > _pIniOriginal) esProporcional = true;
   if (_dtCese && _dtCese < _pFin) esProporcional = true;
   if (esProporcional) {
-    const desdeEf = (_dtIng && _dtIng > _pIni) ? _dtIng : _pIni;
+    const desdeEf = (_dtIng && _dtIng > _pIniOriginal) ? _dtIng : _pIniOriginal;
     const hastaEf = (_dtCese && _dtCese < _pFin) ? _dtCese : _pFin;
     diasEfectivos = Math.max(0, Math.min(30, hastaEf.getDate()) - Math.max(1, desdeEf.getDate()) + 1);
   }
   const factorProp = esProporcional ? diasEfectivos / 30 : 1;
 
-  // ── Enrutamiento por régimen ─────────────────────────────────────────────────
-  // GENERAL: sueldo base mensual completo; divisor 30 siempre; proporcionalización
-  //          solo si ingresó/cesó en el período (factorProp). Sin proporcionalizar por días.
-  // MINERO:  proporcionalización por diasComputables del ciclo en sueldoProporcional;
+  // â”€â”€ Enrutamiento por rÃ©gimen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GENERAL: sueldo base mensual completo; divisor 30 siempre; proporcionalizaciÃ³n
+  //          solo si ingresÃ³/cesÃ³ en el perÃ­odo (factorProp). Sin proporcionalizar por dÃ­as.
+  // MINERO:  proporcionalizaciÃ³n por diasComputables del ciclo en sueldoProporcional;
   //          valorDia y valorHora usan el mismo divisor 30 (consistente con Liq. por Cese).
   const valorDia = sueldoBase / 30;
   const valorHora = sueldoBase / (30 * horasEfectivas);
@@ -10383,11 +11467,11 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const asignacionFamiliar = asignacionFamiliarBase * factorProp;
   const bonifAltitud = (Number(datosNomina?.bonif_altitud || trabajador.bonif_altitud) || 0) * (esMinero ? (diasBase / 30) : 1) * factorProp;
 
-  // Remuneración proporcional para minero si no completó ciclo
+  // RemuneraciÃ³n proporcional para minero si no completÃ³ ciclo
   const sueldoProporcional = esMinero ? sueldoBase * (diasBase / 30) * factorProp : sueldoBase * factorProp;
   const remuneracionBruta = sueldoProporcional - descFaltas - descTardanzas + addHorasExtra + asignacionFamiliar + bonifAltitud;
 
-  // ── Sistema previsional ──
+  // â”€â”€ Sistema previsional â”€â”€
   const sistema = datosNomina?.sistema_pensionario || trabajador.sistema_pensionario || 'AFP';
   const afpNombre = datosNomina?.afp_nombre || trabajador.afp_nombre || 'Integra';
   const tipoComisionAfp = datosNomina?.tipo_comision_afp || trabajador.tipo_comision_afp || 'mixta';
@@ -10410,19 +11494,19 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const totalDescuentos = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR;
   const neto = remuneracionBruta - totalDescuentos;
 
-  // ── Cargas empresa ──
+  // â”€â”€ Cargas empresa â”€â”€
   const essalud = remuneracionBruta * 0.09;
   const esMicro = regimen_laboral_empresa === 'microempresa';
   const esPequena = regimen_laboral_empresa === 'pequena_empresa';
   const tieneCts = !esMicro;
   const tieneGratif = !esMicro;
-  // ── Base computable unificada ────────────────────────────────────────────────
-  // Incluye bonif_altitud como remunerativa (punto de ajuste contable — confirmar con contador).
-  // Gratificación, CTS y vacaciones calculan sobre la misma baseComputable.
+  // â”€â”€ Base computable unificada â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Incluye bonif_altitud como remunerativa (punto de ajuste contable â€” confirmar con contador).
+  // GratificaciÃ³n, CTS y vacaciones calculan sobre la misma baseComputable.
   const baseComputable = sueldoProporcional + asignacionFamiliar + bonifAltitud;
-  const gratificacion = tieneGratif ? baseComputable / (esPequena ? 12 : 6) : 0;
+  const gratificacion = tieneGratif ? baseComputable / (esPequena ? 24 : 12) : 0;
   const bonifExtraordinaria = tieneGratif ? gratificacion * 0.09 : 0;
-  // CTS: base computable + 1/6 de la gratificación semi-anual (según régimen empresa)
+  // CTS: base computable + 1/6 de la gratificaciÃ³n semi-anual (segÃºn rÃ©gimen empresa)
   const remComputable = baseComputable + (tieneGratif ? gratificacion : 0);
   const cts = tieneCts ? remComputable / (esPequena ? 24 : 12) : 0;
   const diasVacaciones = regimen_laboral_empresa === 'general' ? 30 : 15;
@@ -10504,7 +11588,7 @@ function TurnosHorarios() {
   };
 
   const eliminar = async (t) => {
-    if (!window.confirm(`Eliminar turno "${t.nombre}"? Esta acción se reflejará en la base de datos.`)) return;
+    if (!window.confirm(`Eliminar turno "${t.nombre}"? Esta acciÃ³n se reflejarÃ¡ en la base de datos.`)) return;
     try {
       await eliminarTurnoCtx(t.id);
       addNotificacion('Turno eliminado.');
@@ -10516,7 +11600,7 @@ function TurnosHorarios() {
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Turnos y Horarios</h1><div className="page-sub">Configuracion de jornadas laborales · {turnos.filter(t=>t.estado==='activo').length} activos</div></div>
+        <div><h1 className="page-title">Turnos y Horarios</h1><div className="page-sub">Configuracion de jornadas laborales Â· {turnos.filter(t=>t.estado==='activo').length} activos</div></div>
         <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevo}>{I.plus} Nuevo turno</button>
       </div>
       <div className="card">
@@ -10574,7 +11658,7 @@ function TurnosHorarios() {
 }
 
 function ControlAsistencia() {
-  const { turnos, registrosAsistencia, setRegistrosAsistencia, personalOperativo, personalAdmin, empresa, addNotificacion } = useApp();
+  const { turnos, registrosAsistencia, setRegistrosAsistencia, personalOperativo, personalAdmin, empresa, addNotificacion, asignacionesJornada = [] } = useApp();
   const [tab, setTab] = useState('diaria');
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [panel, setPanel] = useState(false);
@@ -10624,7 +11708,7 @@ function ControlAsistencia() {
   const turnoPersistibleId = turnos.some(t => t.id === turno.id) ? turno.id : null;
   const resultado = calcularResultadoAsistencia(form.hora_entrada, form.hora_salida, turno, form.asistio === 'no', form.justificada, form.refrigerio_tomado_minutos);
   const currentMonth = fecha.substring(0, 7);
-  const registrosPeriodo = registrosAsistencia.filter(r => r.fecha.startsWith(currentMonth) && trabajadoresGenerales.some(t => t.id === r.trabajador_id));
+  const registrosPeriodo = registrosAsistencia.filter(r => r.fecha.startsWith(currentMonth) && trabajadores.some(t => t.id === r.trabajador_id));
 
   const diaRows = trabajadoresGenerales.map(t => {
     const reg = registrosAsistencia.find(r => r.trabajador_id === t.id && r.fecha === fecha);
@@ -10633,11 +11717,18 @@ function ControlAsistencia() {
     return { trabajador:t, turno:trn, registro:reg, calc };
   });
 
+  const periodoFiltro = { anio: parseInt(currentMonth.split('-')[0]), mes: parseInt(currentMonth.split('-')[1]) };
+  const calculosAsistencia = trabajadores.map(t => {
+    const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === t.id);
+    const regs = registrosPeriodo.filter(r => r.trabajador_id === t.id);
+    return calcularNominaConTramos(t, asigsTrabajador, {}, workerTurno(turnos, t), regs, periodoFiltro, empresa?.configuracion || {});
+  }).filter(Boolean);
+
   const kpis = {
-    total: trabajadoresGenerales.length,
-    completos: registrosPeriodo.filter(r => (r.estado === 'completo' || r.estado === 'horas_extra') && r.regimen_jornada !== 'ciclo_acumulativo').length,
-    tardanzas: registrosPeriodo.filter(r => r.estado === 'tardanza' && r.regimen_jornada !== 'ciclo_acumulativo').length,
-    faltas: registrosPeriodo.filter(r => (r.estado === 'falta' || r.estado === 'falta_justificada') && r.regimen_jornada !== 'ciclo_acumulativo').length
+    total: trabajadores.length,
+    completos: calculosAsistencia.reduce((s, c) => s + (c.dias_asistidos || 0), 0),
+    tardanzas: calculosAsistencia.reduce((s, c) => s + (c.tardanzas || 0), 0),
+    faltas: calculosAsistencia.reduce((s, c) => s + (c.faltas_injustificadas + c.faltas_justificadas || 0), 0)
   };
 
   const guardarRegistro = async (e) => {
@@ -10681,13 +11772,13 @@ function ControlAsistencia() {
   const obtenerUbicacion = (e) => {
     e?.preventDefault();
     if (!navigator.geolocation) {
-      setForm(prev => ({...prev, ubicacion_estado: 'Geolocalización no soportada'}));
+      setForm(prev => ({...prev, ubicacion_estado: 'GeolocalizaciÃ³n no soportada'}));
       return;
     }
     setForm(prev => ({...prev, ubicacion_estado: 'Obteniendo...'}));
     navigator.geolocation.getCurrentPosition(
-      (pos) => setForm(prev => ({...prev, latitud: pos.coords.latitude, longitud: pos.coords.longitude, ubicacion_estado: 'Ubicación capturada'})),
-      () => setForm(prev => ({...prev, ubicacion_estado: 'Error al obtener ubicación'}))
+      (pos) => setForm(prev => ({...prev, latitud: pos.coords.latitude, longitud: pos.coords.longitude, ubicacion_estado: 'UbicaciÃ³n capturada'})),
+      () => setForm(prev => ({...prev, ubicacion_estado: 'Error al obtener ubicaciÃ³n'}))
     );
   };
 
@@ -10700,7 +11791,7 @@ function ControlAsistencia() {
     const horaActual = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
     const nuevoRegistro = {
       empresa_id:empresa.id, trabajador_id:form.trabajador_id, trabajador_tipo: trabajador?.trabajador_tipo || 'operativo', fecha:form.fecha, turno_id:turnoPersistibleId,
-      es_falta:false, justificada:false, motivo_falta:null, notas:'Marcación móvil', latitud:form.latitud, longitud:form.longitud,
+      es_falta:false, justificada:false, motivo_falta:null, notas:'MarcaciÃ³n mÃ³vil', latitud:form.latitud, longitud:form.longitud,
       refrigerio_tomado_minutos: form.refrigerio_tomado_minutos ? Number(form.refrigerio_tomado_minutos) : 0,
       regimen_jornada: 'general'
     };
@@ -10737,7 +11828,7 @@ function ControlAsistencia() {
         const data = await rrhhService.registrarAsistencia(empresa.id, nuevoRegistro);
         setRegistrosAsistencia(prev => [data, ...prev.filter(r => !(r.trabajador_id === nuevoRegistro.trabajador_id && r.fecha === nuevoRegistro.fecha))]);
       }
-      addNotificacion(`Marcación de ${tipo} registrada en BD.`);
+      addNotificacion(`MarcaciÃ³n de ${tipo} registrada en BD.`);
     } catch(err) {
       const fb = {...nuevoRegistro, id: existente?.id || `asis_${Date.now()}`};
       setRegistrosAsistencia(prev => [fb, ...prev.filter(r => !(r.trabajador_id === nuevoRegistro.trabajador_id && r.fecha === nuevoRegistro.fecha))]);
@@ -10793,7 +11884,7 @@ function ControlAsistencia() {
     setMasivo(false);
   };
 
-  // ── Funciones Minero ──
+  // â”€â”€ Funciones Minero â”€â”€
   const getCicloDias = (regimen, trabajador = {}) => {
     if (regimen === 'ciclo_acumulativo') {
       return {
@@ -10920,35 +12011,47 @@ function ControlAsistencia() {
 
   // Tabs
   const allTabs = [['diaria','Vista diaria'],['semanal','Vista semanal'],['mensual','Vista mensual'],['resumen','Resumen por trabajador']];
-  if (trabajadoresMineros.length > 0) allTabs.push(['minero','Régimen Minero']);
+  if (trabajadoresMineros.length > 0) allTabs.push(['minero','RÃ©gimen Minero']);
 
   return (
     <>
       <div className="page-header">
         <div><h1 className="page-title">Control de Asistencia</h1><div className="page-sub">Registro manual, tardanzas y horas trabajadas</div></div>
-        <div className="row" style={{gap:10}}><button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}} onClick={() => setKiosk(true)}>{I.clock} Reloj Control (Móvil)</button><button className="btn btn-secondary" onClick={abrirMasivo}>Registro masivo</button><button className="btn btn-secondary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Manual</button></div>
+        <div className="row" style={{gap:10}}><button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}} onClick={() => setKiosk(true)}>{I.clock} Reloj Control (MÃ³vil)</button><button className="btn btn-secondary" onClick={abrirMasivo}>Registro masivo</button><button className="btn btn-secondary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Manual</button></div>
       </div>
       
       {tab !== 'minero' && <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Total Gral.</div><div className="kpi-value">{kpis.total}</div></div><div className="kpi-card"><div className="kpi-label">Dias completos</div><div className="kpi-value">{kpis.completos}</div></div><div className="kpi-card"><div className="kpi-label">Tardanzas</div><div className="kpi-value" style={{color:'var(--orange)'}}>{kpis.tardanzas}</div></div><div className="kpi-card"><div className="kpi-label">Faltas</div><div className="kpi-value" style={{color:'var(--danger)'}}>{kpis.faltas}</div></div></div>}
       
       <div className="tabs">{allTabs.map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
       
-      {tab === 'diaria' && <div className="card"><div className="card-head"><h3>Asistencia del dia (Régimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.map(row=><tr key={row.trabajador.id}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td><td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>abrirEdicion(row)}>Editar</button></td></tr>)}</tbody></table></div></div>}
+      {tab === 'diaria' && <div className="card"><div className="card-head"><h3>Asistencia del dia (RÃ©gimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.map(row=><tr key={row.trabajador.id}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td><td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>abrirEdicion(row)}>Editar</button></td></tr>)}</tbody></table></div></div>}
       
-      {tab === 'semanal' && <div className="card"><div className="card-head"><h3>Vista semanal (Régimen General)</h3><span className="text-muted">{semanaTexto}</span></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.slice(0,8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
+      {tab === 'semanal' && <div className="card"><div className="card-head"><h3>Vista semanal (RÃ©gimen General)</h3><span className="text-muted">{semanaTexto}</span></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.slice(0,8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
       
-      {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head"><h3>Resumen mensual - {mesNombreCap}</h3></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Régimen/Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>{trabajadores.slice(0,8).map(t=>{ 
-        if (getTipoFiscalizacion(t) === 'ciclo') {
-           const ciclos = ciclosMineros.filter(c => c.personal_id === t.id && c.fecha_inicio_ciclo.startsWith(currentMonth));
-           return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td><span className="badge badge-blue">{t.regimen_jornada}</span></td><td>-</td><td>{ciclos.length} ciclos</td><td>-</td><td>-</td><td>{ciclos.reduce((s,c)=>s+Number(c.horas_extra_ciclo||0),0)} h</td><td>-</td></tr>;
-        } else {
-           const regs=registrosPeriodo.filter(r=>r.trabajador_id===t.id); return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{workerTurno(turnos,t).nombre}</td><td>22</td><td>{regs.filter(r=>!r.es_falta).length}</td><td>{regs.filter(r=>r.estado==='tardanza').length}</td><td>{regs.filter(r=>r.estado==='falta'||r.estado==='falta_justificada').length}</td><td>{minutesToLabel(regs.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</td><td>{minutesToLabel(regs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</td></tr>
-        }
-      })}</tbody></table></div>
+      {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head"><h3>Resumen mensual - {mesNombreCap}</h3></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>RÃ©gimen/Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>
+        {calculosAsistencia.slice(0,8).map(c => {
+          const t = c.trabajador;
+          const regs = registrosPeriodo.filter(r => r.trabajador_id === t.id);
+          const faltas = c.faltas_injustificadas + c.faltas_justificadas;
+          const isMinero = c.regimen_jornada !== 'general' && !c.regimen_jornada.startsWith('Mixto');
+          const badgeClass = c.incompleto_ciclo ? 'badge-red' : c.regimen_jornada.startsWith('Mixto') ? 'badge-purple' : isMinero ? 'badge-orange' : 'badge-gray';
+          const regimenLabel = c.incompleto_ciclo ? 'Sin fecha ciclo' : c.regimen_jornada === 'general' ? workerTurno(turnos, t)?.nombre || 'General' : c.regimen_jornada.replace('minero_', 'Minero ').replace('x', 'Ã—');
+          return <tr key={t.id} style={{background: c.incompleto_ciclo ? 'rgba(239,68,68,0.06)' : undefined}}>
+            <td><strong>{t.nombre}</strong></td>
+            <td><span className={`badge ${badgeClass}`}>{regimenLabel}</span></td>
+            <td>{c.incompleto_ciclo ? 'â€”' : c.dias_laborables}</td>
+            <td title={c.dias_computables != null ? "Indicador de dÃ­as trabajados del ciclo" : "Asistencias registradas"}>{c.incompleto_ciclo ? 'â€”' : c.dias_computables != null ? `${c.dias_asistidos} (dÃ­as trab. ciclo)` : c.dias_asistidos}</td>
+            <td>{c.incompleto_ciclo ? 'â€”' : c.tardanzas}</td>
+            <td>{c.incompleto_ciclo ? 'â€”' : (faltas > 0 ? <span style={{color:'var(--danger)'}}>{faltas}</span> : '0')}</td>
+            <td>{c.incompleto_ciclo ? 'â€”' : minutesToLabel(c.horas_extra_total_min)}</td>
+            <td>{c.incompleto_ciclo ? 'â€”' : minutesToLabel(regs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</td>
+          </tr>;
+        })}
+      </tbody></table></div>
       
-      {/* Grilla Mensual para Régimen Minero */}
+      {/* Grilla Mensual para RÃ©gimen Minero */}
       {trabajadoresMineros.length > 0 && <div style={{padding: '0 16px 16px 16px'}}>
-        <h4 style={{marginBottom:10}}>Vista Mensual - Régimen Minero</h4>
+        <h4 style={{marginBottom:10}}>Vista Mensual - RÃ©gimen Minero</h4>
         <div style={{overflowX:'auto'}}>
           <table className="tbl" style={{minWidth:1000}}>
             <thead>
@@ -10994,26 +12097,45 @@ function ControlAsistencia() {
       {tab === 'resumen' && <div className="card" style={{padding:20}}><div className="card-head"><h3>Resumen por trabajador</h3><button className="btn btn-secondary btn-sm">{I.download} Exportar Excel</button></div>
         <div className="input-group" style={{maxWidth:300, marginBottom:20}}><label>Seleccionar Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div>
         {!resumenTrabajador ? <div style={{padding:24, textAlign:'center', color:'var(--fg-muted)'}}>Sin trabajadores registrados.</div> : 
-        getTipoFiscalizacion(resumenTrabajador) === 'ciclo' ? 
-        <div className="grid-2" style={{gap:20}}>
-          <div><p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p><p><strong>Régimen:</strong> <span className="badge badge-blue">{resumenTrabajador.regimen_jornada}</span></p><p><strong>Ciclos registrados:</strong> {ciclosMineros.filter(c => c.personal_id === resumenTrabajador.id).length}</p></div>
-          <div><p><strong>Días de descanso remunerado:</strong> Según ciclos completos</p><p><strong>Total Horas Extra:</strong> {ciclosMineros.filter(c => c.personal_id === resumenTrabajador.id).reduce((s,c)=>s+Number(c.horas_extra_ciclo||0),0)}h</p><p><strong>Impacto nomina:</strong> Días laborables proporcionales por ciclo minero.</p></div>
-        </div> :
-        <div className="grid-2" style={{gap:20}}><div><p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p><p><strong>Turno asignado:</strong> {resumenTurno.nombre} ({resumenTurno.hora_entrada} - {resumenTurno.hora_salida})</p><p><strong>Dias laborables:</strong> 22 dias</p><p><strong>Dias asistidos:</strong> {resumenRegs.filter(r=>!r.es_falta).length}</p><p><strong>Dias con tardanza:</strong> {resumenRegs.filter(r=>r.estado==='tardanza').length}</p><p><strong>Minutos tardanza:</strong> {resumenRegs.reduce((s,r)=>s+(r.tardanza_min||0),0)} minutos</p></div><div><p><strong>Horas esperadas:</strong> 176h</p><p><strong>Horas efectivas:</strong> {minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</p><p><strong>Horas extra:</strong> {minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_extra_min||0),0))}</p><p><strong>Impacto nomina:</strong> descuento referencial por faltas y tardanzas.</p><p className="text-muted">Calculo referencial. Validar con el area de RRHH antes de procesar nomina.</p></div></div>
+        (() => {
+          const calc = calculosAsistencia.find(c => c.trabajador_id === resumenTrabajador.id);
+          if (!calc) return null;
+          const faltas = calc.faltas_injustificadas + calc.faltas_justificadas;
+          return (
+            <div className="grid-2" style={{gap:20}}>
+              <div>
+                <p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p>
+                <p><strong>RÃ©gimen/Turno:</strong> {calc.incompleto_ciclo ? 'Sin fecha ciclo' : calc.regimen_jornada === 'general' ? resumenTurno?.nombre || 'General' : calc.regimen_jornada.replace('minero_', 'Minero ').replace('x', 'Ã—')}</p>
+                <p><strong>Dias esperados (lab.):</strong> {calc.incompleto_ciclo ? 'â€”' : calc.dias_laborables}</p>
+                <p><strong>Dias asistidos:</strong> {calc.incompleto_ciclo ? 'â€”' : calc.dias_computables != null ? `${calc.dias_asistidos} (dÃ­as trab. ciclo)` : calc.dias_asistidos}</p>
+                <p><strong>Dias con tardanza:</strong> {calc.incompleto_ciclo ? 'â€”' : calc.tardanzas}</p>
+                <p><strong>Minutos tardanza:</strong> {calc.incompleto_ciclo ? 'â€”' : calc.minutos_tardanza_total} minutos</p>
+                <p><strong>Dias con falta:</strong> {calc.incompleto_ciclo ? 'â€”' : faltas}</p>
+              </div>
+              <div>
+                <p><strong>Horas esperadas:</strong> {calc.incompleto_ciclo ? 'â€”' : `${calc.dias_laborables * (resumenTurno?.horas_efectivas || 8)}h`}</p>
+                <p><strong>Horas efectivas:</strong> {calc.incompleto_ciclo ? 'â€”' : minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</p>
+                <p><strong>Horas extra:</strong> {calc.incompleto_ciclo ? 'â€”' : minutesToLabel(calc.horas_extra_total_min)}</p>
+                <p><strong>Impacto nomina:</strong> {calc.incompleto_ciclo ? 'Pendiente' : 'DÃ­as laborables y descuentos por faltas/tardanzas.'}</p>
+                <p className="text-muted">CÃ¡lculo sincronizado con la lÃ³gica oficial de NÃ³mina.</p>
+              </div>
+            </div>
+          );
+        })()
         }</div>}
       
       {tab === 'minero' && <div className="card">
-        <div className="card-head"><h3>Régimen Minero</h3><p className="text-muted" style={{margin:0}}>Gestión de ciclos y registro de incidencias</p></div>
+        <div className="card-head"><h3>RÃ©gimen Minero</h3><p className="text-muted" style={{margin:0}}>GestiÃ³n de ciclos y registro de incidencias</p></div>
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Trabajador</th><th>Régimen</th><th>Ciclo Actual</th><th>Estado Ciclo</th><th>Días (T/D)</th><th>Hs Extra</th><th>Acciones</th></tr></thead>
+            <thead><tr><th>Trabajador</th><th>RÃ©gimen</th><th>Ciclo Actual</th><th>Estado Ciclo</th><th>DÃ­as (T/D)</th><th>Hs Extra</th><th>Acciones</th></tr></thead>
             <tbody>
               {trabajadoresMineros.map(t => {
                 const c = ciclosMineros.find(x => x.personal_id === t.id);
                 return <tr key={t.id}>
                   <td><strong>{t.nombre}</strong></td>
                   <td><span className="badge badge-blue">{t.regimen_jornada}</span></td>
-                  <td>{c ? `${c.fecha_inicio_ciclo} → ${c.fecha_fin_ciclo}` : '-'}</td>
+                  <td>{c ? `${c.fecha_inicio_ciclo} â†’ ${c.fecha_fin_ciclo}` : '-'}</td>
                   <td>{c ? <span className={'badge '+(c.estado_ciclo==='completo'?'badge-green':c.estado_ciclo==='incompleto'?'badge-red':'badge-orange')}>{c.estado_ciclo}</span> : '-'}</td>
                   <td>{c ? `${c.dias_ciclo_trabajo}/${c.dias_ciclo_descanso}` : '-'}</td>
                   <td>{c ? `${c.horas_extra_ciclo}h` : '-'}</td>
@@ -11042,7 +12164,7 @@ function ControlAsistencia() {
           
           <div style={{marginTop:24, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
             <label style={{fontWeight:600}}>Incidencias del Ciclo</label>
-            <button type="button" className="btn btn-sm btn-secondary" onClick={agregarIncidenciaMinero}>{I.plus} Añadir</button>
+            <button type="button" className="btn btn-sm btn-secondary" onClick={agregarIncidenciaMinero}>{I.plus} AÃ±adir</button>
           </div>
           
           {formMinero.incidencias.length === 0 ? <div className="text-muted" style={{fontSize:13, padding:12, background:'var(--bg-subtle)', borderRadius:6}}>No hay incidencias registradas en este ciclo.</div> : 
@@ -11054,15 +12176,15 @@ function ControlAsistencia() {
                       <option value="ausencia_injustificada">Ausencia injustificada</option>
                       <option value="ausencia_justificada">Ausencia justificada</option>
                       <option value="feriado_laborado">Feriado laborado</option>
-                      <option value="descanso_medico">Descanso Médico</option>
+                      <option value="descanso_medico">Descanso MÃ©dico</option>
                       <option value="accidente_trabajo">Accidente de Trabajo</option>
                     </select>
                     <input type="date" className="input" style={{width:140}} value={inc.fecha} onChange={e=>actualizarIncidencia(i, 'fecha', e.target.value)}/>
                     <button type="button" className="icon-btn text-danger" onClick={()=>eliminarIncidencia(i)}>{I.x}</button>
                   </div>
-                  <input type="text" className="input" placeholder="Descripción opcional" value={inc.descripcion} onChange={e=>actualizarIncidencia(i, 'descripcion', e.target.value)}/>
+                  <input type="text" className="input" placeholder="DescripciÃ³n opcional" value={inc.descripcion} onChange={e=>actualizarIncidencia(i, 'descripcion', e.target.value)}/>
                   {inc.tipo === 'feriado_laborado' && <div className="row mt-2" style={{gap:10}}><label style={{fontSize:12}}>Horas Extra Adic:</label><input type="number" className="input" style={{width:80}} value={inc.horas_extra} onChange={e=>actualizarIncidencia(i, 'horas_extra', e.target.value)}/></div>}
-                  {(inc.tipo === 'descanso_medico' || inc.tipo === 'accidente_trabajo') && <div className="row mt-2" style={{gap:10}}><label style={{fontSize:12}}>Días subsidio empresa:</label><input type="number" className="input" style={{width:80}} value={inc.dias_subsidio} onChange={e=>actualizarIncidencia(i, 'dias_subsidio', e.target.value)}/></div>}
+                  {(inc.tipo === 'descanso_medico' || inc.tipo === 'accidente_trabajo') && <div className="row mt-2" style={{gap:10}}><label style={{fontSize:12}}>DÃ­as subsidio empresa:</label><input type="number" className="input" style={{width:80}} value={inc.dias_subsidio} onChange={e=>actualizarIncidencia(i, 'dias_subsidio', e.target.value)}/></div>}
                 </div>
               ))}
             </div>
@@ -11072,10 +12194,10 @@ function ControlAsistencia() {
       </div></>}
 
       {/* Modal General */}
-      {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registrar asistencia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{form.fecha}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarRegistro}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={form.fecha} onChange={e=>setForm(v=>({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:12, margin:'12px 0'}}>Turno asignado: <strong>{turno.nombre}</strong> · {turno.hora_entrada} - {turno.hora_salida} · Tolerancia {turno.tolerancia_minutos} min</div><div className="input-group"><label>Asistio</label><select className="select" value={form.asistio} onChange={e=>setForm(v=>({...v,asistio:e.target.value}))}><option value="si">Si</option><option value="no">No - falta</option></select></div>{form.asistio==='si' ? <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Hora entrada</label><input className="input" type="time" value={form.hora_entrada} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div><div className="input-group"><label>Hora salida</label><input className="input" type="time" value={form.hora_salida} onChange={e=>setForm(v=>({...v,hora_salida:e.target.value}))}/></div></div> : <><label className="row" style={{gap:8}}><input type="checkbox" checked={form.justificada} onChange={e=>setForm(v=>({...v,justificada:e.target.checked}))}/> Falta justificada</label>{form.justificada && <div className="input-group"><label>Motivo</label><select className="select" value={form.motivo_falta} onChange={e=>setForm(v=>({...v,motivo_falta:e.target.value}))}><option>Enfermedad con certificado</option><option>Permiso autorizado</option><option>Licencia</option><option>Otro</option></select></div>}</>}<div className="input-group"><label>Minutos de refrigerio tomados</label><input className="input" type="number" min="0" value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación (Opcional)</label><button type="button" className="btn btn-secondary" style={{width:'100%'}} onClick={obtenerUbicacion}>{form.ubicacion_estado || 'Capturar lat/lng'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:12, marginBottom:10}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}<div className="card" style={{padding:12, margin:'14px 0'}}><p><strong>Horas trabajadas:</strong> {minutesToLabel(resultado.horas_trabajadas_min)}</p><p><strong>Tardanza:</strong> {resultado.tardanza_min} min</p><p><strong>Horas extra:</strong> {minutesToLabel(resultado.horas_extra_min)}</p><p><strong>Estado:</strong> <span className={'badge '+asistenciaBadge(resultado.estado)}>{resultado.label}</span></p></div><div className="input-group"><label>Notas adicionales</label><textarea className="input" rows="3" value={form.notas} onChange={e=>setForm(v=>({...v,notas:e.target.value}))}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Guardar registro</button></div></form></div></>}
-      {kiosk && <><div className="side-panel-backdrop" onClick={()=>setKiosk(false)}/><div className="side-panel" style={{width:'min(520px,100vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Reloj Control Móvil</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{new Date().toLocaleDateString()}</div></div><button className="icon-btn" onClick={()=>setKiosk(false)}>{I.x}</button></div><div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:24}}><div className="input-group"><label>Trabajador</label><select className="select" style={{fontSize:16, padding:12}} value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:20, textAlign:'center', background:'var(--bg-subtle)'}}><button className="btn btn-primary" style={{width:'100%', padding:'24px 20px', fontSize:20, marginBottom:20, justifyContent:'center'}} onClick={() => marcarKiosk('entrada')}>Entrada</button><button className="btn btn-secondary" style={{width:'100%', padding:'24px 20px', fontSize:20, justifyContent:'center'}} onClick={() => marcarKiosk('salida')}>Salida</button></div><div className="input-group"><label>Minutos de refrigerio tomados (especificar al marcar salida)</label><input className="input" type="number" min="0" style={{fontSize:16, padding:12}} value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación requerida</label><button className="btn btn-secondary" style={{width:'100%', padding:12, justifyContent:'center'}} onClick={obtenerUbicacion}>{I.mapPin} {form.ubicacion_estado || 'Obtener mi ubicación actual'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:14, textAlign:'center'}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}</div></div></>}
+      {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registrar asistencia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{form.fecha}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarRegistro}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={form.fecha} onChange={e=>setForm(v=>({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:12, margin:'12px 0'}}>Turno asignado: <strong>{turno.nombre}</strong> Â· {turno.hora_entrada} - {turno.hora_salida} Â· Tolerancia {turno.tolerancia_minutos} min</div><div className="input-group"><label>Asistio</label><select className="select" value={form.asistio} onChange={e=>setForm(v=>({...v,asistio:e.target.value}))}><option value="si">Si</option><option value="no">No - falta</option></select></div>{form.asistio==='si' ? <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Hora entrada</label><input className="input" type="time" value={form.hora_entrada} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div><div className="input-group"><label>Hora salida</label><input className="input" type="time" value={form.hora_salida} onChange={e=>setForm(v=>({...v,hora_salida:e.target.value}))}/></div></div> : <><label className="row" style={{gap:8}}><input type="checkbox" checked={form.justificada} onChange={e=>setForm(v=>({...v,justificada:e.target.checked}))}/> Falta justificada</label>{form.justificada && <div className="input-group"><label>Motivo</label><select className="select" value={form.motivo_falta} onChange={e=>setForm(v=>({...v,motivo_falta:e.target.value}))}><option>Enfermedad con certificado</option><option>Permiso autorizado</option><option>Licencia</option><option>Otro</option></select></div>}</>}<div className="input-group"><label>Minutos de refrigerio tomados</label><input className="input" type="number" min="0" value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>UbicaciÃ³n (Opcional)</label><button type="button" className="btn btn-secondary" style={{width:'100%'}} onClick={obtenerUbicacion}>{form.ubicacion_estado || 'Capturar lat/lng'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:12, marginBottom:10}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}<div className="card" style={{padding:12, margin:'14px 0'}}><p><strong>Horas trabajadas:</strong> {minutesToLabel(resultado.horas_trabajadas_min)}</p><p><strong>Tardanza:</strong> {resultado.tardanza_min} min</p><p><strong>Horas extra:</strong> {minutesToLabel(resultado.horas_extra_min)}</p><p><strong>Estado:</strong> <span className={'badge '+asistenciaBadge(resultado.estado)}>{resultado.label}</span></p></div><div className="input-group"><label>Notas adicionales</label><textarea className="input" rows="3" value={form.notas} onChange={e=>setForm(v=>({...v,notas:e.target.value}))}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Guardar registro</button></div></form></div></>}
+      {kiosk && <><div className="side-panel-backdrop" onClick={()=>setKiosk(false)}/><div className="side-panel" style={{width:'min(520px,100vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Reloj Control MÃ³vil</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{new Date().toLocaleDateString()}</div></div><button className="icon-btn" onClick={()=>setKiosk(false)}>{I.x}</button></div><div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:24}}><div className="input-group"><label>Trabajador</label><select className="select" style={{fontSize:16, padding:12}} value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:20, textAlign:'center', background:'var(--bg-subtle)'}}><button className="btn btn-primary" style={{width:'100%', padding:'24px 20px', fontSize:20, marginBottom:20, justifyContent:'center'}} onClick={() => marcarKiosk('entrada')}>Entrada</button><button className="btn btn-secondary" style={{width:'100%', padding:'24px 20px', fontSize:20, justifyContent:'center'}} onClick={() => marcarKiosk('salida')}>Salida</button></div><div className="input-group"><label>Minutos de refrigerio tomados (especificar al marcar salida)</label><input className="input" type="number" min="0" style={{fontSize:16, padding:12}} value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>UbicaciÃ³n requerida</label><button className="btn btn-secondary" style={{width:'100%', padding:12, justifyContent:'center'}} onClick={obtenerUbicacion}>{I.mapPin} {form.ubicacion_estado || 'Obtener mi ubicaciÃ³n actual'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:14, textAlign:'center'}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}</div></div></>}
       {masivo && <><div className="side-panel-backdrop" onClick={()=>setMasivo(false)}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registro masivo</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{fecha}</div></div><button className="icon-btn" onClick={()=>setMasivo(false)}>{I.x}</button></div><div className="side-panel-body"><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead><tbody>{trabajadoresGenerales.map(t=>{const trn=workerTurno(turnos,t);const d=masivoDatos[t.id]||{estado:'completo',hora_entrada:trn.hora_entrada,hora_salida:trn.hora_salida};const esFalta=d.estado==='falta'||d.estado==='falta_justificada';return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{trn.nombre}</td><td><input className="input" type="time" value={d.hora_entrada} disabled={esFalta} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],hora_entrada:e.target.value}}))} /></td><td><input className="input" type="time" value={d.hora_salida} disabled={esFalta} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],hora_salida:e.target.value}}))} /></td><td><select className="select" style={{minWidth:140}} value={d.estado} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],estado:e.target.value}}))}>  <option value="completo">Completo</option><option value="tardanza">Tardanza</option><option value="falta">Falta</option><option value="falta_justificada">Falta Justificada</option></select></td></tr>})}</tbody></table></div>
-      {trabajadoresMineros.length > 0 && <div style={{marginTop:16, padding:16, background:'var(--bg-subtle)', borderRadius:8}}><p style={{margin:0, fontSize:13}}>Los trabajadores del régimen minero han sido excluidos. <a href="#" onClick={(e) => { e.preventDefault(); setMasivo(false); setTab('minero'); }} style={{color:'var(--cyan)', fontWeight:600}}>Ir a registro de ciclos mineros</a></p></div>}
+      {trabajadoresMineros.length > 0 && <div style={{marginTop:16, padding:16, background:'var(--bg-subtle)', borderRadius:8}}><p style={{margin:0, fontSize:13}}>Los trabajadores del rÃ©gimen minero han sido excluidos. <a href="#" onClick={(e) => { e.preventDefault(); setMasivo(false); setTab('minero'); }} style={{color:'var(--cyan)', fontWeight:600}}>Ir a registro de ciclos mineros</a></p></div>}
       <div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setMasivo(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={guardarMasivo}>Guardar todos los registros</button></div></div></div></>}
     </>
   );
@@ -11106,25 +12228,25 @@ function Nomina() {
     pct_quincena_1: Number(empresaConfig?.pct_quincena_1) || 50,
   };
 
-  const regimenLabel = { general: 'General', pequena_empresa: 'Pequeña Empresa', microempresa: 'Microempresa' };
+  const regimenLabel = { general: 'General', pequena_empresa: 'PequeÃ±a Empresa', microempresa: 'Microempresa' };
   const mesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const hoy = new Date();
 
-  // Auto-generar período del mes actual si no existe aún para este mes
+  // Auto-generar perÃ­odo del mes actual si no existe aÃºn para este mes
   useEffect(() => {
     const anio = hoy.getFullYear();
     const mes = hoy.getMonth() + 1;
     if (periodosNomina.some(p => p.anio === anio && p.mes === mes)) return;
     const mesN = mesNombres[mes - 1];
     if (empresaCfg.frecuencia_pago === 'quincenal') {
-      const p1 = { id: `nom_${anio}_${mes}_1`, empresa_id: empresa?.id, anio, mes, quincena: 1, periodo: `${mesN} ${anio} — 1ra quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q1 || 10).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q1 || 15).padStart(2,'0')}` };
-      const p2 = { id: `nom_${anio}_${mes}_2`, empresa_id: empresa?.id, anio, mes, quincena: 2, periodo: `${mesN} ${anio} — 2da quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q2 || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q2 || 30).padStart(2,'0')}` };
+      const p1 = { id: `nom_${anio}_${mes}_1`, empresa_id: empresa?.id, anio, mes, quincena: 1, periodo: `${mesN} ${anio} â€” 1ra quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q1 || 10).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q1 || 15).padStart(2,'0')}` };
+      const p2 = { id: `nom_${anio}_${mes}_2`, empresa_id: empresa?.id, anio, mes, quincena: 2, periodo: `${mesN} ${anio} â€” 2da quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q2 || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q2 || 30).padStart(2,'0')}` };
       setPeriodosNomina(prev => [...prev, p1, p2]);
-      addNotificacion(`Períodos de ${mesN} ${anio} generados automáticamente.`);
+      addNotificacion(`PerÃ­odos de ${mesN} ${anio} generados automÃ¡ticamente.`);
     } else {
       const p = { id: `nom_${anio}_${mes}`, empresa_id: empresa?.id, anio, mes, quincena: null, periodo: `${mesN} ${anio}`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_mensual || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_mensual || 30).padStart(2,'0')}` };
       setPeriodosNomina(prev => [...prev, p]);
-      addNotificacion(`Período de ${mesN} ${anio} generado automáticamente.`);
+      addNotificacion(`PerÃ­odo de ${mesN} ${anio} generado automÃ¡ticamente.`);
     }
   }, [periodosNomina.length]);
 
@@ -11197,7 +12319,7 @@ function Nomina() {
     const addDias30 = d => { const dt = new Date(`${d}T00:00:00`); dt.setDate(dt.getDate() + 30); return dt.toISOString().split('T')[0]; };
     const vence = addDias30(fechaCierre);
 
-    // ── Gastos ER (devengado) ──
+    // â”€â”€ Gastos ER (devengado) â”€â”€
     if (resumen.total_neto > 0) {
       crearGasto({ tipo:'gasto', descripcion:`Planilla ${periodo.periodo}`, categoria:'planilla', monto:resumen.total_neto, fecha:fechaCierre, origen_registro:'nomina', periodo_nomina_id:periodo.id, estado_pago:'pendiente', estado:'registrado' });
     }
@@ -11205,24 +12327,24 @@ function Nomina() {
       crearGasto({ tipo:'gasto', descripcion:`Cargas sociales ${periodo.periodo}`, categoria:'cargas_sociales', monto:resumen.total_cargas_empresa, fecha:fechaCierre, origen_registro:'nomina', periodo_nomina_id:periodo.id, estado_pago:'pendiente', estado:'registrado' });
     }
 
-    // ── CxPs separadas por institución ──
-    // 1. Neto planilla → trabajadores
+    // â”€â”€ CxPs separadas por instituciÃ³n â”€â”€
+    // 1. Neto planilla â†’ trabajadores
     if (resumen.total_neto > 0) {
       await generarCxP({
         tipo_beneficiario: 'colectivo',
-        concepto: `Planilla de trabajadores — ${periodo.periodo}`,
+        concepto: `Planilla de trabajadores â€” ${periodo.periodo}`,
         fecha_emision: fechaCierre, fecha_vencimiento: vence,
         monto_total: resumen.total_neto, moneda: 'PEN',
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'planilla',
         periodo_nomina_id: periodo.id,
       });
     }
-    // 2. EsSalud → SUNAT/EsSalud
+    // 2. EsSalud â†’ SUNAT/EsSalud
     const totalEssalud = calculos.reduce((s, c) => s + (c.essalud || 0), 0);
     if (totalEssalud > 0) {
       await generarCxP({
         tipo_beneficiario: 'colectivo',
-        concepto: `EsSalud — ${periodo.periodo}`,
+        concepto: `EsSalud â€” ${periodo.periodo}`,
         fecha_emision: fechaCierre, fecha_vencimiento: vence,
         monto_total: Math.round(totalEssalud * 100) / 100, moneda: 'PEN',
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'essalud',
@@ -11237,18 +12359,18 @@ function Nomina() {
     if (totalPensiones > 0) {
       await generarCxP({
         tipo_beneficiario: 'colectivo',
-        concepto: `Aportes previsionales ${labelPensiones} — ${periodo.periodo}`,
+        concepto: `Aportes previsionales ${labelPensiones} â€” ${periodo.periodo}`,
         fecha_emision: fechaCierre, fecha_vencimiento: vence,
         monto_total: Math.round(totalPensiones * 100) / 100, moneda: 'PEN',
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'pensiones',
         periodo_nomina_id: periodo.id,
       });
     }
-    // 4. Retenciones IR 5ta → SUNAT
+    // 4. Retenciones IR 5ta â†’ SUNAT
     if (resumen.total_ir > 0) {
       await generarCxP({
         tipo_beneficiario: 'colectivo',
-        concepto: `Retención IR 5ta categoría — ${periodo.periodo}`,
+        concepto: `RetenciÃ³n IR 5ta categorÃ­a â€” ${periodo.periodo}`,
         fecha_emision: fechaCierre, fecha_vencimiento: vence,
         monto_total: Math.round(resumen.total_ir * 100) / 100, moneda: 'PEN',
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'ir_5ta',
@@ -11262,7 +12384,7 @@ function Nomina() {
       setComisiones(prev => prev.map(c => ids.has(c.id) ? { ...c, estado:'pagada', pagado_en:new Date().toISOString() } : c));
     }
 
-    // ── Pagos automáticos de préstamos vinculados a nómina ──
+    // â”€â”€ Pagos automÃ¡ticos de prÃ©stamos vinculados a nÃ³mina â”€â”€
     const trabajadoresConPrestamo = calculos.filter(c => c.desc_prestamo > 0);
     if (trabajadoresConPrestamo.length > 0 && empresa?.id) {
       const prestamosActivos = await rrhhService.getPrestamosPersonal(empresa.id);
@@ -11276,7 +12398,7 @@ function Nomina() {
       }
     }
 
-    addNotificacion(`Nomina ${periodo.periodo} cerrada. CxPs separadas generadas por institución.`);
+    addNotificacion(`Nomina ${periodo.periodo} cerrada. CxPs separadas generadas por instituciÃ³n.`);
     setCierre(false);
   };
 
@@ -11288,7 +12410,7 @@ function Nomina() {
   );
 
   const tabsDisponibles = [
-    ['periodos','Períodos'],
+    ['periodos','PerÃ­odos'],
     ['resumen','Resumen'],
     ['detalle','Detalle'],
     ['cargas','Cargas empresa'],
@@ -11305,9 +12427,9 @@ function Nomina() {
           <h1 className="page-title">Nomina</h1>
           <div className="page-sub" style={{display:'flex', gap:12, flexWrap:'wrap', alignItems:'center'}}>
             <span>Regimen: <strong>{regimenLabel[empresaCfg.regimen_laboral_empresa] || 'General'}</strong></span>
-            <span>·</span>
+            <span>Â·</span>
             <span>Pago: <strong>{empresaCfg.frecuencia_pago === 'quincenal' ? `Quincenal (${empresaCfg.pct_quincena_1}% / ${100-empresaCfg.pct_quincena_1}%)` : 'Mensual'}</strong></span>
-            {proximoCorte?.fecha_pago && <><span>·</span><span>Próximo pago: <strong>{proximoCorte.fecha_pago}</strong></span></>}
+            {proximoCorte?.fecha_pago && <><span>Â·</span><span>PrÃ³ximo pago: <strong>{proximoCorte.fecha_pago}</strong></span></>}
           </div>
         </div>
         {periodo && tab !== 'periodos' && (
@@ -11326,20 +12448,20 @@ function Nomina() {
       <div className="tabs">
         {tabsDisponibles.map(([k,l]) => (
           <div key={k} className={`tab ${tab===k?'active':''}${k==='plame'&&periodo?.estado!=='cerrado'?' text-muted':''}`}
-            title={k==='plame'&&periodo?.estado!=='cerrado'?'Disponible solo para períodos cerrados':''}
+            title={k==='plame'&&periodo?.estado!=='cerrado'?'Disponible solo para perÃ­odos cerrados':''}
             onClick={()=>{ if(k==='plame'&&periodo?.estado!=='cerrado') return; setTab(k); }}>
             {l}
           </div>
         ))}
       </div>
 
-      {/* ── TAB: PERODOS ── */}
+      {/* â”€â”€ TAB: PERODOS â”€â”€ */}
       {tab === 'periodos' && (
         <div>
           <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:20}}>
-            <div className="kpi-card"><div className="kpi-label">Período activo</div><div className="kpi-value" style={{fontSize:18}}>{periodo?.periodo || '—'}</div></div>
-            <div className="kpi-card"><div className="kpi-label">Próxima fecha de corte</div><div className="kpi-value" style={{fontSize:18}}>{proximoCorte?.fecha_corte || '—'}</div></div>
-            <div className="kpi-card"><div className="kpi-label">Próxima fecha de pago</div><div className="kpi-value" style={{fontSize:18, color:'var(--green)'}}>{proximoCorte?.fecha_pago || '—'}</div></div>
+            <div className="kpi-card"><div className="kpi-label">PerÃ­odo activo</div><div className="kpi-value" style={{fontSize:18}}>{periodo?.periodo || 'â€”'}</div></div>
+            <div className="kpi-card"><div className="kpi-label">PrÃ³xima fecha de corte</div><div className="kpi-value" style={{fontSize:18}}>{proximoCorte?.fecha_corte || 'â€”'}</div></div>
+            <div className="kpi-card"><div className="kpi-label">PrÃ³xima fecha de pago</div><div className="kpi-value" style={{fontSize:18, color:'var(--green)'}}>{proximoCorte?.fecha_pago || 'â€”'}</div></div>
           </div>
           <div style={{display:'flex', flexDirection:'column', gap:12}}>
             {periodosNomina.map(p => (
@@ -11349,7 +12471,7 @@ function Nomina() {
                   <div>
                     <div style={{fontWeight:700, fontSize:16}}>{p.periodo}</div>
                     <div className="text-muted" style={{fontSize:12, marginTop:4}}>
-                      {p.fecha_corte && `Corte: ${p.fecha_corte}`}{p.fecha_pago && ` · Pago: ${p.fecha_pago}`}
+                      {p.fecha_corte && `Corte: ${p.fecha_corte}`}{p.fecha_pago && ` Â· Pago: ${p.fecha_pago}`}
                     </div>
                   </div>
                   <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
@@ -11365,7 +12487,7 @@ function Nomina() {
         </div>
       )}
 
-      {/* ── TAB: RESUMEN ── */}
+      {/* â”€â”€ TAB: RESUMEN â”€â”€ */}
       {tab === 'resumen' && periodo && (
         <div className="card">
           <div className="card-head">
@@ -11381,30 +12503,39 @@ function Nomina() {
           </div>
           {calculos.some(c => c.incompleto_ciclo) && (
             <div className="alert alert-warning" style={{margin:'0 16px 12px',fontSize:12}}>
-              <strong>Datos de ciclo incompletos:</strong> {calculos.filter(c=>c.incompleto_ciclo).map(c=>c.trabajador.nombre).join(', ')} — completar fecha de inicio de ciclo en la ficha del trabajador para procesar su pago.
+              <strong>Datos de ciclo incompletos:</strong> {calculos.filter(c=>c.incompleto_ciclo).map(c=>c.trabajador.nombre).join(', ')} â€” completar fecha de inicio de ciclo en la ficha del trabajador para procesar su pago.
             </div>
           )}
           <div className="table-wrap">
             <table className="tbl">
               <thead><tr>
-                <th>Trabajador</th><th>Régimen</th>{hayMineros && <th>Días comp.</th>}<th>Turno</th><th>Asist.</th><th>Faltas</th><th>H. Extra</th><th>Sueldo base</th><th>Comisión</th><th>Bruto</th><th>Desc.</th><th>Neto</th><th></th>
+                <th>Trabajador</th><th>RÃ©gimen</th>{hayMineros && <th>DÃ­as comp.</th>}<th>Turno</th><th>Asist.</th><th>Faltas</th><th>H. Extra</th><th>Sueldo base</th><th>ComisiÃ³n</th><th>Bruto</th><th>Desc.</th><th>Neto</th><th></th>
               </tr></thead>
               <tbody>
                 {calculos.length === 0 && <tr><td colSpan={12} style={{textAlign:'center',color:'var(--fg-muted)',padding:28}}>Sin trabajadores registrados.</td></tr>}
                 {calculos.map(c => (
                   <tr key={c.trabajador_id} style={{cursor:'pointer', background: c.incompleto_ciclo ? 'rgba(239,68,68,0.06)' : undefined}} onClick={()=>setDetallePanel(c)}>
                     <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}{c.es_proporcional && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>{c.dias_efectivos_periodo}d</span>}</div></td>
-                    <td>{c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada.startsWith('Mixto') ? <span className="badge badge-purple">{c.regimen_jornada}</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
-                    {hayMineros && <td>{c.dias_computables_display ?? (c.dias_computables ?? '—')}</td>}
-                    <td style={{fontSize:11}}>{c.turno?.nombre || '—'}</td>
-                    <td>{c.incompleto_ciclo ? '—' : `${c.dias_asistidos}/${c.dias_laborables}`}</td>
-                    <td>{c.incompleto_ciclo ? '—' : (c.faltas_injustificadas > 0 ? <span style={{color:'var(--danger)'}}>{c.faltas_injustificadas}</span> : '0')}</td>
-                    <td>{c.incompleto_ciclo ? '—' : minutesToLabel(c.horas_extra_total_min)}</td>
+                    <td>{c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada.startsWith('Mixto') ? <span className="badge badge-purple">{c.regimen_jornada}</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{c.regimen_jornada.replace('minero_','Minero ').replace('x','Ã—')}</span> : <span className="badge badge-gray">General</span>}</td>
+                    {hayMineros && <td>{c.dias_computables_display ?? (c.dias_computables ?? 'â€”')}</td>}
+                    <td style={{fontSize:11}}>{c.turno?.nombre || 'â€”'}</td>
+                    <td title={c.dias_computables != null ? "Indicador de dÃ­as trabajados del ciclo, independiente de marcaciones fÃ­sicas." : "Asistencias registradas"}>
+                      {c.incompleto_ciclo ? 'â€”' : c.dias_computables != null ? (
+                        <div style={{lineHeight: 1.2}}>
+                          <div>{c.dias_asistidos}/{c.dias_laborables}</div>
+                          <div style={{fontSize: 9, color: 'var(--fg-muted)'}}>dÃ­as trab. ciclo</div>
+                        </div>
+                      ) : (
+                        `${c.dias_asistidos}/${c.dias_laborables}`
+                      )}
+                    </td>
+                    <td>{c.incompleto_ciclo ? 'â€”' : (c.faltas_injustificadas > 0 ? <span style={{color:'var(--danger)'}}>{c.faltas_injustificadas}</span> : '0')}</td>
+                    <td>{c.incompleto_ciclo ? 'â€”' : minutesToLabel(c.horas_extra_total_min)}</td>
                     <td className="num">{money(c.sueldo_base)}</td>
                     <td className="num">{money(comisionPorTrabajador[c.trabajador_id] || 0)}</td>
-                    <td className="num">{c.incompleto_ciclo ? <span style={{color:'var(--danger)'}}>—</span> : money(c.remuneracion_bruta)}</td>
-                    <td className="num">{c.incompleto_ciclo ? '—' : money(c.total_descuentos)}</td>
-                    <td className="num"><strong>{c.incompleto_ciclo ? <span style={{color:'var(--danger)'}}>—</span> : money(c.neto)}</strong></td>
+                    <td className="num">{c.incompleto_ciclo ? <span style={{color:'var(--danger)'}}>â€”</span> : money(c.remuneracion_bruta)}</td>
+                    <td className="num">{c.incompleto_ciclo ? 'â€”' : money(c.total_descuentos)}</td>
+                    <td className="num"><strong>{c.incompleto_ciclo ? <span style={{color:'var(--danger)'}}>â€”</span> : money(c.neto)}</strong></td>
                     <td>{!c.incompleto_ciclo && <button className="btn btn-sm btn-secondary" onClick={e=>{e.stopPropagation();setBoleta(c);}}>Boleta</button>}</td>
                   </tr>
                 ))}
@@ -11412,48 +12543,48 @@ function Nomina() {
             </table>
           </div>
           <div style={{padding:'12px 16px', borderTop:'1px solid var(--border-subtle)', fontSize:13}}>
-            <strong>Total neto:</strong> {money(resumen.total_neto)} · <strong>Descuentos:</strong> {money(resumen.total_descuentos)} · <strong>IR:</strong> {money(resumen.total_ir)}
+            <strong>Total neto:</strong> {money(resumen.total_neto)} Â· <strong>Descuentos:</strong> {money(resumen.total_descuentos)} Â· <strong>IR:</strong> {money(resumen.total_ir)}
           </div>
         </div>
       )}
 
-      {/* ── TAB: DETALLE ── */}
+      {/* â”€â”€ TAB: DETALLE â”€â”€ */}
       {tab === 'detalle' && periodo && detalle && (
         <div className="card" style={{padding:20}}>
           <div className="card-head">
-            <h3>Detalle por trabajador — {periodo.periodo}</h3>
+            <h3>Detalle por trabajador â€” {periodo.periodo}</h3>
             <select className="select" value={trabajadorSel} onChange={e=>setTrabajadorSel(e.target.value)} style={{width:260}}>
               {calculos.map(c => <option key={c.trabajador_id} value={c.trabajador_id}>{c.trabajador.nombre}</option>)}
             </select>
           </div>
           <div className="grid-2" style={{gap:24}}>
             <div>
-              <div style={{fontWeight:700, marginBottom:8}}>{detalle.trabajador.nombre} · {periodo.periodo}</div>
-              <div className="text-muted" style={{fontSize:12, marginBottom:8}}>{detalle.turno?.nombre} · {detalle.regimen_jornada !== 'general' ? `${detalle.dias_computables ?? '?'} días comp.` : `${detalle.dias_laborables} días lab.`}</div>
-              {detalle.error_historial && <div style={{padding:'8px 12px', marginBottom:12, fontSize:12, background:'rgba(239,68,68,0.08)', color:'var(--danger)', borderLeft:'3px solid var(--danger)', borderRadius:4}}><strong>Historial de jornada: {detalle.error_historial === 'gap' ? 'hueco sin asignación' : detalle.error_historial === 'overlap' ? 'solapamiento entre asignaciones' : 'datos de ciclo incompletos'}.</strong> {detalle.error_historial_detail}</div>}
-              {detalle.es_proporcional && <div style={{padding:'6px 10px', marginBottom:12, fontSize:12, background:'rgba(6,182,212,0.08)', color:'var(--cyan)', borderLeft:'3px solid var(--cyan)', borderRadius:4}}>Cálculo proporcional · {detalle.dias_efectivos_periodo} días de 30</div>}
+              <div style={{fontWeight:700, marginBottom:8}}>{detalle.trabajador.nombre} Â· {periodo.periodo}</div>
+              <div className="text-muted" style={{fontSize:12, marginBottom:8}}>{detalle.turno?.nombre} Â· {detalle.regimen_jornada !== 'general' ? `${detalle.dias_computables ?? '?'} dÃ­as comp.` : `${detalle.dias_laborables} dÃ­as lab.`}</div>
+              {detalle.error_historial && <div style={{padding:'8px 12px', marginBottom:12, fontSize:12, background:'rgba(239,68,68,0.08)', color:'var(--danger)', borderLeft:'3px solid var(--danger)', borderRadius:4}}><strong>Historial de jornada: {detalle.error_historial === 'gap' ? 'hueco sin asignaciÃ³n' : detalle.error_historial === 'overlap' ? 'solapamiento entre asignaciones' : 'datos de ciclo incompletos'}.</strong> {detalle.error_historial_detail}</div>}
+              {detalle.es_proporcional && <div style={{padding:'6px 10px', marginBottom:12, fontSize:12, background:'rgba(6,182,212,0.08)', color:'var(--cyan)', borderLeft:'3px solid var(--cyan)', borderRadius:4}}>CÃ¡lculo proporcional Â· {detalle.dias_efectivos_periodo} dÃ­as de 30</div>}
               <div style={{fontWeight:600, marginBottom:6}}>Ingresos</div>
-              <p>(+) Sueldo base: {money(detalle.sueldo_base)}{(detalle.regimen_jornada !== 'general' || detalle.es_proporcional) && ` → prop. ${money(detalle.sueldo_proporcional)}`}</p>
+              <p>(+) Sueldo base: {money(detalle.sueldo_base)}{(detalle.regimen_jornada !== 'general' || detalle.es_proporcional) && ` â†’ prop. ${money(detalle.sueldo_proporcional)}`}</p>
               {detalle.asignacion_familiar > 0 && <p>(+) Asignacion familiar: {money(detalle.asignacion_familiar)}</p>}
-              {detalle.horas_extra_tramo1_min > 0 && <p>(+) Horas extra tramo 1 (25%) · {minutesToLabel(detalle.horas_extra_tramo1_min)}: {money(detalle.add_tramo1)}</p>}
-              {detalle.horas_extra_tramo2_min > 0 && <p>(+) Horas extra tramo 2 (35%) · {minutesToLabel(detalle.horas_extra_tramo2_min)}: {money(detalle.add_tramo2)}</p>}
+              {detalle.horas_extra_tramo1_min > 0 && <p>(+) Horas extra tramo 1 (25%) Â· {minutesToLabel(detalle.horas_extra_tramo1_min)}: {money(detalle.add_tramo1)}</p>}
+              {detalle.horas_extra_tramo2_min > 0 && <p>(+) Horas extra tramo 2 (35%) Â· {minutesToLabel(detalle.horas_extra_tramo2_min)}: {money(detalle.add_tramo2)}</p>}
               {detalle.bonif_altitud > 0 && <p>(+) Bonif. altitud: {money(detalle.bonif_altitud)}</p>}
               {(comisionPorTrabajador[detalle.trabajador_id] || 0) > 0 && <p>(+) Comision planilla: {money(comisionPorTrabajador[detalle.trabajador_id])}</p>}
               {detalle.desc_faltas > 0 && <p style={{color:'var(--danger)'}}>(-) Faltas: {money(detalle.desc_faltas)}</p>}
               {detalle.desc_tardanzas > 0 && <p style={{color:'var(--danger)'}}>(-) Tardanzas: {money(detalle.desc_tardanzas)}</p>}
               <p style={{fontWeight:700, borderTop:'1px solid var(--border-subtle)', paddingTop:8, marginTop:8}}>Total bruto: {money(detalle.remuneracion_bruta)}</p>
               {!detalle.multi_tramo && detalle.regimen_jornada !== 'general' && <div className="card" style={{padding:'8px 12px', marginTop:12, fontSize:12, background:'rgba(251,191,36,0.08)'}}>
-                <p> Días laborados en ciclo: {detalle.dias_computables ?? '—'} · Horas diarias: {detalle.datosNomina?.horas_diarias_pactadas || 12}h</p>
+                <p> DÃ­as laborados en ciclo: {detalle.dias_computables ?? 'â€”'} Â· Horas diarias: {detalle.datosNomina?.horas_diarias_pactadas || 12}h</p>
                 {detalle.datosNomina?.fecha_inicio_ciclo && <p>Inicio ciclo: {detalle.datosNomina.fecha_inicio_ciclo}</p>}
               </div>}
               {detalle.multi_tramo && detalle.tramos?.length > 0 && <div className="card" style={{padding:'8px 12px', marginTop:12, fontSize:12, background:'rgba(139,92,246,0.06)', borderLeft:'2px solid var(--purple, #7c3aed)'}}>
                 <div style={{fontWeight:600, marginBottom:6, color:'var(--purple, #7c3aed)'}}>Desglose por tramos</div>
                 {detalle.tramos.map((t, i) => (
                   <div key={i} style={{marginBottom:6, paddingBottom:6, borderBottom:i < detalle.tramos.length - 1 ? '1px solid var(--border-subtle)' : 'none'}}>
-                    <span className={`badge ${t.tipo === 'suspension_perfecta' ? 'badge-orange' : t.tipo === 'ciclo_acumulativo' ? 'badge-orange' : 'badge-gray'}`} style={{fontSize:10, marginRight:6}}>{t.tipo === 'suspension_perfecta' ? 'Suspensión' : t.tipo === 'ciclo_acumulativo' ? 'Minero' : 'General'}</span>
-                    <span style={{fontWeight:500}}>{t.fechaIni} → {t.fechaFin}</span>
-                    {t.tipo === 'suspension_perfecta' ? <span className="text-muted" style={{marginLeft:8}}>S/ 0.00 (suspensión perfecta)</span>
-                      : <span style={{marginLeft:8}}>{t.diasComp != null ? `${t.diasComp} días comp.` : `${t.diasCal} días cal.`} → <strong>{money(t.sueldoTramo)}</strong>{t.descFaltas > 0 && <span style={{color:'var(--danger)'}}> − {money(t.descFaltas)} faltas</span>}</span>}
+                    <span className={`badge ${t.tipo === 'suspension_perfecta' ? 'badge-orange' : t.tipo === 'ciclo_acumulativo' ? 'badge-orange' : 'badge-gray'}`} style={{fontSize:10, marginRight:6}}>{t.tipo === 'suspension_perfecta' ? 'SuspensiÃ³n' : t.tipo === 'ciclo_acumulativo' ? 'Minero' : 'General'}</span>
+                    <span style={{fontWeight:500}}>{t.fechaIni} â†’ {t.fechaFin}</span>
+                    {t.tipo === 'suspension_perfecta' ? <span className="text-muted" style={{marginLeft:8}}>S/ 0.00 (suspensiÃ³n perfecta)</span>
+                      : <span style={{marginLeft:8}}>{t.diasComp != null ? `${t.diasComp} dÃ­as comp.` : `${t.diasCal} dÃ­as cal.`} â†’ <strong>{money(t.sueldoTramo)}</strong>{t.descFaltas > 0 && <span style={{color:'var(--danger)'}}> âˆ’ {money(t.descFaltas)} faltas</span>}</span>}
                   </div>
                 ))}
               </div>}
@@ -11465,8 +12596,8 @@ function Nomina() {
                 {detalle.tipo_comision_afp === 'flujo' ? <p>Comision flujo AFP: {money(detalle.comision_flujo)}</p> : <p className="text-muted" style={{fontSize:12}}>Comision mixta: S/ 0.00 (se descuenta del fondo)</p>}
                 <p>Prima seguro AFP: {money(detalle.prima_seguro)}</p>
               </> : <p>ONP (13%): {money(detalle.desc_onp)}</p>}
-              {detalle.retencion_ir > 0 && <p>Retención IR 5ta: {money(detalle.retencion_ir)}</p>}
-              {detalle.desc_prestamo > 0 && <p>Préstamo interno: {money(detalle.desc_prestamo)}</p>}
+              {detalle.retencion_ir > 0 && <p>RetenciÃ³n IR 5ta: {money(detalle.retencion_ir)}</p>}
+              {detalle.desc_prestamo > 0 && <p>PrÃ©stamo interno: {money(detalle.desc_prestamo)}</p>}
               {detalle.desc_anticipo > 0 && <p>Anticipo: {money(detalle.desc_anticipo)}</p>}
               {detalle.desc_judicial > 0 && <p>Judicial: {money(detalle.desc_judicial)}</p>}
               <p style={{fontWeight:700, borderTop:'1px solid var(--border-subtle)', paddingTop:8, marginTop:8}}>Total descuentos: {money(detalle.total_descuentos)}</p>
@@ -11487,10 +12618,10 @@ function Nomina() {
         </div>
       )}
 
-      {/* ── TAB: CARGAS ── */}
+      {/* â”€â”€ TAB: CARGAS â”€â”€ */}
       {tab === 'cargas' && periodo && (
         <div className="card" style={{padding:20}}>
-          <div className="card-head"><h3>Cargas empresa — {periodo.periodo}</h3></div>
+          <div className="card-head"><h3>Cargas empresa â€” {periodo.periodo}</h3></div>
           <div className="grid-2" style={{gap:16}}>
             <div className="card" style={{padding:16}}><strong>ESSALUD (9%)</strong><p className="text-muted">Pagar a SUNAT</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.essalud,0))}</div></div>
             <div className="card" style={{padding:16}}><strong>CTS mensualizada</strong><p className="text-muted">Deposito semestral: mayo y noviembre</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.cts_mensualizado,0))}</div></div>
@@ -11502,27 +12633,27 @@ function Nomina() {
         </div>
       )}
 
-      {/* ── TAB: PLAME ── */}
+      {/* â”€â”€ TAB: PLAME â”€â”€ */}
       {tab === 'plame' && periodo && (
         <div className="card" style={{padding:20}}>
           <div className="card-head">
             <div>
-              <h3>Reporte para PLAME — {periodo.periodo}</h3>
+              <h3>Reporte para PLAME â€” {periodo.periodo}</h3>
               <div className="text-muted" style={{fontSize:12}}>Uso interno. El contador debe cargarlo manualmente en el portal SUNAT/T-Registro.</div>
             </div>
-            <span className="badge badge-orange">⚠ No reemplaza la declaración oficial ante SUNAT</span>
+            <span className="badge badge-orange">âš  No reemplaza la declaraciÃ³n oficial ante SUNAT</span>
           </div>
           {periodo.estado !== 'cerrado' ? (
-            <div className="card" style={{padding:20, textAlign:'center', color:'var(--fg-muted)'}}>El reporte PLAME solo está disponible para períodos cerrados.</div>
+            <div className="card" style={{padding:20, textAlign:'center', color:'var(--fg-muted)'}}>El reporte PLAME solo estÃ¡ disponible para perÃ­odos cerrados.</div>
           ) : (<>
             <div className="table-wrap">
               <table className="tbl" style={{fontSize:12}}>
-                <thead><tr><th>Tipo doc</th><th>N° doc</th><th>Apellidos y nombres</th><th>Tipo</th><th>Rem. básica</th><th>Total ingresos</th><th>Sistema prev.</th><th>Aporte AFP/ONP</th><th>Prima seguro</th><th>IR 5ta</th><th>ESSALUD</th><th>Neto</th><th>Período</th></tr></thead>
+                <thead><tr><th>Tipo doc</th><th>NÂ° doc</th><th>Apellidos y nombres</th><th>Tipo</th><th>Rem. bÃ¡sica</th><th>Total ingresos</th><th>Sistema prev.</th><th>Aporte AFP/ONP</th><th>Prima seguro</th><th>IR 5ta</th><th>ESSALUD</th><th>Neto</th><th>PerÃ­odo</th></tr></thead>
                 <tbody>
                   {(plameVerTodos ? calculos : calculos.slice(0, 5)).map(c => (
                     <tr key={c.trabajador_id}>
                       <td>DNI</td>
-                      <td>{c.trabajador.documento || c.trabajador.dni || '—'}</td>
+                      <td>{c.trabajador.documento || c.trabajador.dni || 'â€”'}</td>
                       <td>{c.trabajador.nombre}</td>
                       <td>{c.trabajador.tipo === 'admin' ? 'Empleado' : 'Obrero'}</td>
                       <td className="num">{money(c.sueldo_base)}</td>
@@ -11541,7 +12672,7 @@ function Nomina() {
             </div>
             {!plameVerTodos && calculos.length > 5 && (
               <div style={{padding:'8px 16px', fontSize:12, color:'var(--fg-muted)'}}>
-                ... y {calculos.length - 5} trabajadores más.
+                ... y {calculos.length - 5} trabajadores mÃ¡s.
                 <button className="btn btn-sm btn-secondary" style={{marginLeft:12}} onClick={()=>setPlameVerTodos(true)}>Ver todos</button>
               </div>
             )}
@@ -11549,23 +12680,23 @@ function Nomina() {
               <button className="btn btn-primary" data-local-form="true" onClick={()=>addNotificacion(`PLAME_${empresa?.nombre || 'empresa'}_${periodo.periodo.replace(/\s/g,'_')}.xlsx generado.`)}>
                 {I.download} Descargar Excel PLAME
               </button>
-              <span className="text-muted" style={{fontSize:12}}>Última generación: {new Date().toLocaleString('es-PE')}</span>
+              <span className="text-muted" style={{fontSize:12}}>Ãšltima generaciÃ³n: {new Date().toLocaleString('es-PE')}</span>
             </div>
           </>)}
         </div>
       )}
 
-      {/* ── Panel detalle trabajador (resumen) ── */}
+      {/* â”€â”€ Panel detalle trabajador (resumen) â”€â”€ */}
       {detallePanel && <>
         <div className="side-panel-backdrop" onClick={()=>setDetallePanel(null)}/>
         <div className="side-panel" style={{width:'min(560px,96vw)'}}>
           <div className="side-panel-head">
-            <div><div className="eyebrow">Desglose de nómina</div><div className="font-display" style={{fontSize:20,fontWeight:700}}>{detallePanel.trabajador.nombre}</div></div>
+            <div><div className="eyebrow">Desglose de nÃ³mina</div><div className="font-display" style={{fontSize:20,fontWeight:700}}>{detallePanel.trabajador.nombre}</div></div>
             <button className="icon-btn" onClick={()=>setDetallePanel(null)}>{I.x}</button>
           </div>
           <div className="side-panel-body">
             <div style={{fontWeight:600, marginBottom:8}}>Ingresos</div>
-            <p>Sueldo base: {money(detallePanel.sueldo_base)}{detallePanel.regimen_jornada!=='general'&&` → prop. ${money(detallePanel.sueldo_proporcional)}`}</p>
+            <p>Sueldo base: {money(detallePanel.sueldo_base)}{detallePanel.regimen_jornada!=='general'&&` â†’ prop. ${money(detallePanel.sueldo_proporcional)}`}</p>
             {detallePanel.asignacion_familiar>0&&<p>Asignacion familiar: {money(detallePanel.asignacion_familiar)}</p>}
             {detallePanel.horas_extra_tramo1_min>0&&<p>H. extra tramo 1 (25%): {money(detallePanel.add_tramo1)}</p>}
             {detallePanel.horas_extra_tramo2_min>0&&<p>H. extra tramo 2 (35%): {money(detallePanel.add_tramo2)}</p>}
@@ -11597,16 +12728,16 @@ function Nomina() {
       </>}
 
       {/* Boleta */}
-      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{empresa?.nombre}</strong></p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} · Período: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p><hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={()=>addNotificacion('Boleta PDF lista.')}>{I.download} Descargar boleta PDF</button></div></div></>}
+      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{empresa?.nombre}</strong></p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} Â· PerÃ­odo: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p><hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={()=>addNotificacion('Boleta PDF lista.')}>{I.download} Descargar boleta PDF</button></div></div></>}
 
       {/* Modal cierre */}
-      {cierre && <><div className="side-panel-backdrop" onClick={()=>setCierre(false)}/><div className="modal"><div className="modal-head"><h3>Cerrar período — {periodo?.periodo}</h3><button className="icon-btn" onClick={()=>setCierre(false)}>{I.x}</button></div><div className="modal-body"><p>Al cerrar se registrará un egreso de planilla por <strong>{money(resumen.total_neto)}</strong> y otro de cargas sociales por <strong>{money(resumen.total_cargas_empresa)}</strong> en Compras y Gastos.</p><p>El reporte PLAME quedará disponible.</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setCierre(false)}>Cancelar</button><button className="btn btn-primary" onClick={cerrarPeriodo}>Confirmar cierre</button></div></div></div></>}
+      {cierre && <><div className="side-panel-backdrop" onClick={()=>setCierre(false)}/><div className="modal"><div className="modal-head"><h3>Cerrar perÃ­odo â€” {periodo?.periodo}</h3><button className="icon-btn" onClick={()=>setCierre(false)}>{I.x}</button></div><div className="modal-body"><p>Al cerrar se registrarÃ¡ un egreso de planilla por <strong>{money(resumen.total_neto)}</strong> y otro de cargas sociales por <strong>{money(resumen.total_cargas_empresa)}</strong> en Compras y Gastos.</p><p>El reporte PLAME quedarÃ¡ disponible.</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setCierre(false)}>Cancelar</button><button className="btn btn-primary" onClick={cerrarPeriodo}>Confirmar cierre</button></div></div></div></>}
     </>
   );
 }
 
 function RRHH_Operativo() {
-  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx } = useApp();
+  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, afpParametros = [] } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('personal');
   const personal = personalOperativo;
@@ -11626,6 +12757,11 @@ function RRHH_Operativo() {
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const [showRechazoInput, setShowRechazoInput] = useState(null);
   const [docFiltro, setDocFiltro] = useState('todos');
+  const [docReporteVista, setDocReporteVista] = useState('matriz');
+  const [docAlertaEstado, setDocAlertaEstado] = useState('todos');
+  const [docAlertaBusqueda, setDocAlertaBusqueda] = useState('');
+  const [docAlertaTipo, setDocAlertaTipo] = useState('todos');
+  const [docHighlightTipo, setDocHighlightTipo] = useState('');
   
   // Estado para subida inline
   const [inlineUploadReq, setInlineUploadReq] = useState(null);
@@ -11633,6 +12769,85 @@ function RRHH_Operativo() {
   const [inlineUploadForm, setInlineUploadForm] = useState({ fechaEmision: '', fechaVencimiento: '', notas: '' });
   const [inlineUploading, setInlineUploading] = useState(false);
   const [inlineUploadError, setInlineUploadError] = useState('');
+  const [docPreviewReq, setDocPreviewReq] = useState(null);
+  const [docPreviewPersona, setDocPreviewPersona] = useState(null);
+  const [previewLoadingUrl, setPreviewLoadingUrl] = useState(false);
+
+  // P3 â€” RenovaciÃ³n automÃ¡tica de URL del previsualizador (signed URLs de 10 min)
+  const [visorUrl, setVisorUrl] = useState(null);
+  const visorTimerRef = useRef(null);
+  useEffect(() => {
+    clearInterval(visorTimerRef.current);
+    const doc = docPreviewReq?.doc;
+    if (!doc) { setVisorUrl(null); return; }
+    // Usa la URL actual como punto de partida
+    setVisorUrl(doc.archivo_url || null);
+    const storagePath = doc.storage_path || null;
+    if (!storagePath || !isSupabaseConfigured || !isSupabaseConfigured()) return;
+    setPreviewLoadingUrl(true);
+    personalDocumentosService.renovarUrlDocumento(storagePath)
+      .then(url => setVisorUrl(url))
+      .catch(() => {})
+      .finally(() => setPreviewLoadingUrl(false));
+    // Renovar cada 8 minutos para no llegar al lÃ­mite de 10 min
+    visorTimerRef.current = setInterval(() => {
+      personalDocumentosService.renovarUrlDocumento(storagePath)
+        .then(url => setVisorUrl(url))
+        .catch(() => {});
+    }, 8 * 60 * 1000);
+    return () => clearInterval(visorTimerRef.current);
+  }, [docPreviewReq?.doc?.id]);
+
+  const canGestionarDocsRrhh = Boolean(
+    role?.permisos?.todo ||
+    role?.es_admin_empresa ||
+    role?.permisos?.tenant_admin ||
+    role?.permisos?.aprobar === true ||
+    role?.permisos?.aprobar?.includes?.('rrhh_operativo') ||
+    role?.permisos?.aprobar?.includes?.('rrhh_admin') ||
+    role?.permisos?.editar?.includes?.('rrhh_operativo') ||
+    role?.permisos?.editar?.includes?.('rrhh_admin')
+  );
+
+  const abrirPreviewDocumento = (req, persona) => {
+    if (!req?.doc) return;
+    setDocPreviewReq(req);
+    setDocPreviewPersona(persona || null);
+  };
+
+  const cerrarPreviewDocumento = () => {
+    setDocPreviewReq(null);
+    setDocPreviewPersona(null);
+    setVisorUrl(null);
+    setPreviewLoadingUrl(false);
+  };
+
+  const descargarPreviewDocumento = async () => {
+    const doc = docPreviewReq?.doc;
+    if (!doc) return;
+    try {
+      let url = doc.archivo_url || visorUrl;
+      if (doc.storage_path && isSupabaseConfigured && isSupabaseConfigured()) {
+        url = await personalDocumentosService.renovarUrlDocumento(doc.storage_path);
+      }
+      if (url) window.open(url, '_blank');
+    } catch {
+      if (visorUrl || doc.archivo_url) window.open(visorUrl || doc.archivo_url, '_blank');
+    }
+  };
+
+  const validarPreviewDocumento = async (docId, decision, motivo = null) => {
+    setDocValidandoId(docId);
+    try {
+      const actualizado = await validarDocumentoPersonalCtx(docId, decision, motivo);
+      setDocPreviewReq(prev => prev?.doc?.id === docId ? { ...prev, doc: actualizado } : prev);
+      addNotificacion(`Documento ${decision === 'aprobado' ? 'aprobado' : 'rechazado'}.`);
+    } catch {
+      addNotificacion('Error al validar el documento.');
+    } finally {
+      setDocValidandoId(null);
+    }
+  };
 
   /*
   const turnosBaseOperativo = [
@@ -11643,7 +12858,7 @@ function RRHH_Operativo() {
     ...turnosBaseOperativo,
     ...(turnos || []).filter(t => {
       const nombre = String(t.nombre || '').toLowerCase();
-      return !['turno_manana', 'turno_noche'].includes(t.id) && !['mañana', 'manana', 'noche'].includes(nombre);
+      return !['turno_manana', 'turno_noche'].includes(t.id) && !['maÃ±ana', 'manana', 'noche'].includes(nombre);
     })
   ];
   const defaultTurnoIdLegacyOperativo = turnosOptions[0]?.id || 'turno_manana';
@@ -11652,7 +12867,7 @@ function RRHH_Operativo() {
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const vacacionesSugeridas = diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general');
-  const vacRegimenLabel = { general: 'General', pequena_empresa: 'Pequeña empresa', microempresa: 'Microempresa' }[empresaConfig?.regimen_laboral_empresa || 'general'] || 'General';
+  const vacRegimenLabel = { general: 'General', pequena_empresa: 'PequeÃ±a empresa', microempresa: 'Microempresa' }[empresaConfig?.regimen_laboral_empresa || 'general'] || 'General';
   const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', cargo_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', fecha_fin:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [nuevoCargoTextoOp, setNuevoCargoTextoOp] = useState('');
@@ -11792,6 +13007,8 @@ function RRHH_Operativo() {
       if (tecnicoParam) {
         setSelTecnico(tecnicoParam);
         setTab('personal');
+        setFichaTab(activeParams.tab === 'documentos' ? 'documentos' : 'ficha');
+        setDocHighlightTipo(activeParams.docTipo || activeParams.tipo_documento_id || '');
         paramsHandledRef.current = key;
       }
       return;
@@ -11831,7 +13048,7 @@ function RRHH_Operativo() {
       return;
     }
     if (modalidad === 'honorarios' && (!formAlta.ruc_colaborador || !isValidRuc(formAlta.ruc_colaborador))) {
-      setAltaError('El RUC es obligatorio para colaboradores con modalidad Honorarios (11 dígitos, comenzar con 1 o 2).');
+      setAltaError('El RUC es obligatorio para colaboradores con modalidad Honorarios (11 dÃ­gitos, comenzar con 1 o 2).');
       return;
     }
     if (!formAlta.fecha_ingreso) {
@@ -11854,8 +13071,8 @@ function RRHH_Operativo() {
       dni: formAlta.dni,
       telefono: formAlta.telefono,
       email: formAlta.email,
-      nombre: formAlta.nombre || 'Nuevo técnico',
-      cargo: formAlta.cargo || 'Técnico de Campo',
+      nombre: formAlta.nombre || 'Nuevo tÃ©cnico',
+      cargo: formAlta.cargo || 'TÃ©cnico de Campo',
       cargo_id: formAlta.cargo_id || null,
       especialidad: formAlta.especialidad || 'General',
       especialidad2: formAlta.especialidad2 || '',
@@ -11923,17 +13140,20 @@ function RRHH_Operativo() {
   const countPlanilla = personal.filter(p => !esModalidadHonorarios(p)).length;
   const countHonorarios = personal.filter(p => esModalidadHonorarios(p)).length;
 
-  // ── Motor de estado documentario (espejo JS de la función BD 207) ────────────
-  // Calcula habilitaciones desde los datos ya cargados en contexto.
-  const habilitaciones = useMemo(() => {
-    const today = new Date(); today.setHours(0,0,0,0);
+  // â”€â”€ Motor de estado documentario â€” fuente Ãºnica: motor BD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Se elimina el espejo JS. El frontend llama al RPC `calcular_habilitaciones_personal`
+  // y agrupa las filas planas en la estructura { personal_id, tiene_cargo, estado_global, docs }.
+  const [habilitaciones, setHabilitaciones] = useState([]);
+
+  // Helper para modo mock (Supabase no configurado): calcula sin comparar fechas.
+  // En mock, documentos sin fecha de vencimiento quedan como 'vigente' hasta que el motor BD los evalÃºe.
+  const calcHabilitacionesMock = useCallback(() => {
     const tipoIdx = Object.fromEntries(tiposDocumento.map(t => [t.id, t]));
     const reqPorCargo = {};
     for (const r of requisitosCargo) {
       if (!reqPorCargo[r.cargo_id]) reqPorCargo[r.cargo_id] = [];
       reqPorCargo[r.cargo_id].push(r);
     }
-    // Documento activo por (personal_id, tipo_doc) — mayor versión
     const docIdx = {};
     for (const d of personalDocumentos) {
       if (!d.activo) continue;
@@ -11941,47 +13161,109 @@ function RRHH_Operativo() {
       const prev = docIdx[k];
       if (!prev || (d.version ?? 0) >= (prev.version ?? 0)) docIdx[k] = d;
     }
-
-    const calcEstado = (doc, tipo) => {
+    const calcDiasMock = (fecha) => {
+      if (!fecha) return null;
+      const hoy = new Date();
+      const base = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()));
+      const vence = new Date(`${fecha}T00:00:00Z`);
+      return Math.round((vence - base) / 86400000);
+    };
+    const calcEstMock = (doc, tipo) => {
       if (!doc) return 'falta';
       if (doc.estado_validacion === 'rechazado') return 'rechazado';
       if (doc.estado_validacion === 'pendiente' && tipo?.requiere_validacion) return 'en_revision';
-      if (tipo?.exige_vencimiento) {
-        if (!doc.fecha_vencimiento) return 'sin_fecha_vencimiento';
-        const venc = new Date(doc.fecha_vencimiento + 'T00:00:00');
-        if (venc < today) return 'vencido';
-        const lim = new Date(today); lim.setDate(lim.getDate() + (tipo.dias_alerta ?? 30));
-        if (venc <= lim) return 'por_vencer';
-      }
+      if (tipo?.exige_vencimiento && !doc.fecha_vencimiento) return 'incompleto';
+      const dias = calcDiasMock(doc.fecha_vencimiento);
+      if (dias !== null && dias < 0) return 'vencido';
+      if (dias !== null && dias <= Number(tipo?.dias_alerta || 0)) return 'por_vencer';
       return 'vigente';
     };
-
-    const CRITICOS = new Set(['vencido','rechazado','falta','sin_fecha_vencimiento']);
-    const ADVERTENCIA = new Set(['por_vencer','en_revision']);
-    const calcGlobal = (docRows) => {
-      if (!docRows.length) return 'sin_requisitos';
-      const obs = docRows.filter(d => d.obligatorio).map(d => d.estado);
-      if (obs.some(e => CRITICOS.has(e))) return 'critico';
-      if (obs.some(e => ADVERTENCIA.has(e))) return 'advertencia';
-      return 'en_regla';
-    };
-
     return personal.map(p => {
-      if (!p.cargo_id) return { personal_id: p.id, tiene_cargo: false, estado_global: 'sin_cargo', docs: [] };
+      if (!p.cargo_id) return { personal_id: p.id, tiene_cargo: false, estado_global: 'sin_configurar', docs: [] };
       const requisitos = reqPorCargo[p.cargo_id] || [];
       const docs = requisitos.map(req => {
         const tipo = tipoIdx[req.tipo_documento_id];
         const doc  = docIdx[`${p.id}|${req.tipo_documento_id}`] || null;
-        return { ...req, tipo, doc, estado: calcEstado(doc, tipo) };
+        return { ...req, tipo, doc, es_habilitante: Boolean(tipo?.es_habilitante), estado: calcEstMock(doc, tipo), fecha_vencimiento: doc?.fecha_vencimiento || null, dias_restantes: calcDiasMock(doc?.fecha_vencimiento) };
       });
-      return { personal_id: p.id, tiene_cargo: true, cargo_id: p.cargo_id, estado_global: calcGlobal(docs), docs };
+      if (!docs.length) return { personal_id: p.id, tiene_cargo: true, cargo_id: p.cargo_id, estado_global: 'sin_configurar', docs };
+      const global = habEstadoGlobalDesdeDocs(docs);
+      return { personal_id: p.id, tiene_cargo: true, cargo_id: p.cargo_id, estado_global: global, docs };
     });
   }, [personal, requisitosCargo, tiposDocumento, personalDocumentos]);
 
-  // Índice por personal_id para acceso O(1)
+  // Agrupa las filas planas del motor BD en la estructura que consume el reporte.
+  const agruparFilasMotorBD = useCallback((filas) => {
+    const tipoIdx = Object.fromEntries(tiposDocumento.map(t => [t.id, t]));
+    const mapa = {};
+    for (const fila of filas) {
+      const pid = fila.personal_id;
+      if (!mapa[pid]) {
+        mapa[pid] = { personal_id: pid, personal_tipo: fila.personal_tipo, tiene_cargo: fila.tiene_cargo, cargo_id: fila.cargo_id, docs: [] };
+      }
+      if (fila.estado === 'sin_cargo') {
+        mapa[pid].estado_global = 'sin_configurar';
+        continue;
+      }
+      if (fila.tipo_documento_id) {
+        mapa[pid].docs.push({
+          tipo_documento_id: fila.tipo_documento_id,
+          tipo: tipoIdx[fila.tipo_documento_id] || { nombre: fila.tipo_doc_nombre, id: fila.tipo_documento_id },
+          obligatorio: fila.obligatorio,
+          es_habilitante: fila.es_habilitante,
+          estado: fila.estado,
+          fecha_vencimiento: fila.fecha_vencimiento,
+          dias_restantes: fila.dias_restantes,
+          doc: null, // enriquecido localmente si se necesita el objeto documento completo
+        });
+      }
+    }
+    // Enriquecer con el objeto documento completo para el previsualizador
+    const docIdx = {};
+    for (const d of personalDocumentos) {
+      if (!d.activo) continue;
+      const k = `${d.personal_id}|${d.tipo_documento_id || d.tipo_doc}`;
+      const prev = docIdx[k];
+      if (!prev || (d.version ?? 0) >= (prev.version ?? 0)) docIdx[k] = d;
+    }
+    for (const h of Object.values(mapa)) {
+      for (const d of h.docs) d.doc = docIdx[`${h.personal_id}|${d.tipo_documento_id}`] || null;
+    }
+    // Calcular estado_global desde los docs habilitantes (es_habilitante=true) â€” fuente Ãºnica para el badge
+    for (const h of Object.values(mapa)) {
+      if (h.estado_global === 'sin_configurar') continue;
+      h.estado_global = habEstadoGlobalDesdeDocs(h.docs);
+    }
+    // Asegurar que todo el personal aparece (incluso los sin datos en el motor)
+    for (const p of personal) {
+      if (!mapa[p.id]) mapa[p.id] = { personal_id: p.id, tiene_cargo: !!p.cargo_id, cargo_id: p.cargo_id, estado_global: 'sin_configurar', docs: [] };
+    }
+    return Object.values(mapa);
+  }, [tiposDocumento, personalDocumentos, personal]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !isSupabaseConfigured()) {
+      setHabilitaciones(calcHabilitacionesMock());
+      return;
+    }
+    if (!empresa?.id) return;
+    getSupabaseClient().then(sb =>
+      sb.rpc('calcular_habilitaciones_personal', { p_empresa_id: empresa.id })
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('[Motor BD] Error al cargar habilitaciones:', error.message);
+            setHabilitaciones(calcHabilitacionesMock());
+          } else {
+            setHabilitaciones(agruparFilasMotorBD(data || []));
+          }
+        })
+    );
+  }, [empresa?.id, personalDocumentos, requisitosCargo]);
+
+  // Ãndice por personal_id para acceso O(1)
   const habIdx = useMemo(() => Object.fromEntries(habilitaciones.map(h => [h.personal_id, h])), [habilitaciones]);
 
-  // Columnas habilitantes dinámicas del tenant
+  // Columnas habilitantes dinÃ¡micas del tenant
   const colsHabilitantes = useMemo(() =>
     tiposDocumento.filter(t => t.es_habilitante && t.estado === 'activo')
       .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.nombre.localeCompare(b.nombre)),
@@ -11991,14 +13273,56 @@ function RRHH_Operativo() {
   const kpiDocumental = useMemo(() => {
     let faltan = 0, porVencer = 0, vencidos = 0, enRevision = 0;
     for (const h of habilitaciones) {
-      const obs = h.docs.filter(d => d.obligatorio);
-      if (obs.some(d => d.estado === 'falta' || d.estado === 'sin_fecha_vencimiento')) faltan++;
-      if (obs.some(d => d.estado === 'por_vencer')) porVencer++;
-      if (obs.some(d => d.estado === 'vencido' || d.estado === 'rechazado')) vencidos++;
+      const obs = h.docs.filter(d => d.obligatorio && d.es_habilitante !== false);
+      const tieneFalta = obs.some(d => d.estado === 'falta' || d.estado === 'incompleto');
+      const tieneVencido = obs.some(d => d.estado === 'vencido' || d.estado === 'rechazado');
+      if (tieneFalta) faltan++;
+      if (obs.some(d => d.estado === 'por_vencer') && !tieneFalta && !tieneVencido) porVencer++;
+      if (tieneVencido) vencidos++;
       if (obs.some(d => d.estado === 'en_revision')) enRevision++;
     }
     return { faltan, porVencer, vencidos, enRevision };
   }, [habilitaciones]);
+
+  const alertasDocumentales = useMemo(() =>
+    habilitaciones.flatMap(h => {
+      const persona = personal.find(p => p.id === h.personal_id);
+      if (!persona) return [];
+      return (h.docs || [])
+        .filter(d => ['vencido', 'por_vencer'].includes(d.estado))
+        .map(d => ({
+          id: `${h.personal_id}-${d.tipo_documento_id}`,
+          personal: persona,
+          cargo: persona.cargo || cargos.find(c => c.id === h.cargo_id)?.nombre || 'Sin cargo',
+          req: d,
+          estado: d.estado,
+          dias: d.dias_restantes,
+          tipoNombre: d.tipo?.nombre || d.tipo_doc_nombre || d.tipo_documento_id,
+          fechaVencimiento: d.fecha_vencimiento || d.doc?.fecha_vencimiento || '',
+        }));
+    }).sort((a, b) => {
+      if (a.estado !== b.estado) return a.estado === 'vencido' ? -1 : 1;
+      return (a.dias ?? 9999) - (b.dias ?? 9999);
+    })
+  , [habilitaciones, personal, cargos]);
+
+  const alertasDocumentalesFiltradas = useMemo(() => {
+    const q = docAlertaBusqueda.trim().toLowerCase();
+    return alertasDocumentales.filter(a => {
+      if (docAlertaEstado !== 'todos' && a.estado !== docAlertaEstado) return false;
+      if (docAlertaTipo !== 'todos' && a.req.tipo_documento_id !== docAlertaTipo) return false;
+      if (q && !`${a.personal.nombre} ${a.tipoNombre}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [alertasDocumentales, docAlertaEstado, docAlertaTipo, docAlertaBusqueda]);
+
+  const abrirAlertaDocumental = (alerta) => {
+    setSelTecnico(alerta.personal);
+    setFichaTab('documentos');
+    setDocHighlightTipo(alerta.req.tipo_documento_id);
+    if (alerta.req.doc) abrirPreviewDocumento(alerta.req, alerta.personal);
+    else setInlineUploadReq(alerta.req);
+  };
 
   const porEspecialidad = personal.reduce((acc, p) => { const esp = p.especialidad || 'Sin especialidad'; acc[esp] = (acc[esp] || 0) + 1; return acc; }, {});
   const maxEsp = Math.max(...Object.values(porEspecialidad), 1);
@@ -12010,18 +13334,36 @@ function RRHH_Operativo() {
 
   const estBadge = e => e==='disponible'?'badge-green':e==='ocupado'?'badge-cyan':'badge-gray';
 
-  const dias = ['Lun 28', 'Mar 29', 'Mié 30', 'Jue 1', 'Vie 2'];
+  const dias = ['Lun 28', 'Mar 29', 'MiÃ© 30', 'Jue 1', 'Vie 2'];
   const asignaciones = {
     'Luis Mendoza': [null,'OT-0045','OT-0045',null,null],
     'Carlos Reyes': [null,null,'OT-0046','OT-0046',null],
-    'Ana Torres':   ['Supervisión',null,null,'Supervisión',null],
+    'Ana Torres':   ['SupervisiÃ³n',null,null,'SupervisiÃ³n',null],
     'Jorge Quispe': ['Vacaciones','Vacaciones','Vacaciones','Vacaciones','Vacaciones'],
     'Pedro Condori':[null,null,null,'OT-0048','OT-0048'],
     'Rosa Huanca':  ['OT-0047','OT-0047',null,null,null],
   };
   const asigColor = a => !a?null:a.startsWith('OT')?'var(--cyan)':a==='Vacaciones'?'var(--fg-subtle)':'var(--purple)';
+  const previewDocumentoNode = docPreviewReq ? (
+    <DocumentoPersonalPreview
+      req={docPreviewReq}
+      persona={docPreviewPersona}
+      url={visorUrl}
+      loadingUrl={previewLoadingUrl}
+      canValidate={canGestionarDocsRrhh}
+      validatingId={docValidandoId}
+      onClose={cerrarPreviewDocumento}
+      onReplace={() => {
+        const req = docPreviewReq;
+        cerrarPreviewDocumento();
+        setInlineUploadReq(req);
+      }}
+      onValidate={validarPreviewDocumento}
+      onDownload={descargarPreviewDocumento}
+    />
+  ) : null;
 
-  // ── Ficha de detalle de técnico ───────────────────────────────────────────────
+  // â”€â”€ Ficha de detalle de tÃ©cnico â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (selTecnico) {
     const p = selTecnico;
     const esHon = esModalidadHonorarios(p);
@@ -12032,7 +13374,7 @@ function RRHH_Operativo() {
     const permPersona = solPersona.filter(s => ['permiso_con_goce','permiso_sin_goce','compensacion_horas'].includes(s.tipo));
     const turnoP = turnosOptions.find(t => t.id === p.turno_id);
 
-    // Reembolsos: CxP vinculados a este técnico
+    // Reembolsos: CxP vinculados a este tÃ©cnico
     const reembolsosPersona = (cxp || []).filter(c => c.personal_id === p.id && c.motivo_cxp === 'viaticos_reembolso');
     const reembolsosPendientes = reembolsosPersona.filter(c => c.estado !== 'pagada' && c.estado !== 'anulada');
     const totalReembolsoPend = reembolsosPendientes.reduce((s, c) => s + Number(c.saldo ?? c.monto_total ?? 0), 0);
@@ -12041,7 +13383,7 @@ function RRHH_Operativo() {
     const asigTecnico = (plannerAsignaciones || []).filter(a => a.tecnico_id === p.id).sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
     const asigRecientes = asigTecnico.slice(-14);
 
-    // Tipos de documento: usa el maestro del tenant si hay activos, si no cae al listado estático
+    // Tipos de documento: usa el maestro del tenant si hay activos, si no cae al listado estÃ¡tico
     const tiposDocOp = tiposDocumento.filter(t => t.estado === 'activo' && (t.ambito === 'Operativo' || t.ambito === 'Ambos'));
     const tipoDocOpts = tiposDocOp.length > 0 ? tiposDocOp : personalDocumentosService.TIPOS_DOC_OPERATIVO;
     const usarMaestro = tiposDocOp.length > 0;
@@ -12067,6 +13409,7 @@ function RRHH_Operativo() {
           personalId: p.id,
           personalTipo: 'operativo',
           tipoDoc: docUploadForm.tipoDoc,
+          tipoDocumentoId: usarMaestro ? docUploadForm.tipoDoc : undefined,
           file: docUploadFile,
           fechaEmision: docUploadForm.fechaEmision || null,
           fechaVencimiento: docUploadForm.fechaVencimiento || null,
@@ -12075,7 +13418,7 @@ function RRHH_Operativo() {
         });
         setDocUploadFile(null);
         setDocUploadForm({ tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '' });
-        addNotificacion('Documento subido. Pendiente de aprobación por RRHH.');
+        addNotificacion('Documento subido. Pendiente de aprobaciÃ³n por RRHH.');
       } catch (err) {
         setDocUploadError(err?.message || 'Error al subir el documento.');
       } finally {
@@ -12114,20 +13457,21 @@ function RRHH_Operativo() {
 
     return (
       <>
+        {previewDocumentoNode}
         <div className="page-header">
           <div className="row" style={{gap:12}}>
             <button className="btn btn-ghost btn-sm" onClick={() => { setSelTecnico(null); setFichaTab('ficha'); }}>{I.chev} Volver</button>
             <div>
               <h1 className="page-title">{p.nombre}</h1>
-              <div className="page-sub">{p.cargo} · {p.especialidad} · Ingreso: {p.fecha_ingreso || '—'}</div>
+              <div className="page-sub">{p.cargo} Â· {p.especialidad} Â· Ingreso: {p.fecha_ingreso || 'â€”'}</div>
             </div>
           </div>
           <div className="row">
             <span className={'badge badge-' + contratoColor(p.tipo_contrato)}>{p.tipo_contrato}</span>
             <span className={'badge ' + (p.estado === 'disponible' ? 'badge-green' : 'badge-gray')}>{p.estado?.toUpperCase()}</span>
             {bajaProductividadFicha && <span className="badge badge-red">Baja productividad</span>}
-            <button className="btn btn-ghost btn-sm" title="Editar técnico" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>{I.edit}</button>
-            <button className="btn btn-ghost btn-sm" title="Eliminar técnico" style={{color:'var(--danger)'}} onClick={() => eliminarTecnico(p)}>{I.trash}</button>
+            <button className="btn btn-ghost btn-sm" title="Editar tÃ©cnico" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>{I.edit}</button>
+            <button className="btn btn-ghost btn-sm" title="Eliminar tÃ©cnico" style={{color:'var(--danger)'}} onClick={() => eliminarTecnico(p)}>{I.trash}</button>
           </div>
         </div>
 
@@ -12145,7 +13489,7 @@ function RRHH_Operativo() {
               <div className="grid-2" style={{gap:16}}>
                 {[
                   ['DNI', p.documento || p.dni],
-                  ['Teléfono', p.telefono],
+                  ['TelÃ©fono', p.telefono],
                   ['Email', p.email],
                   ['Cargo', p.cargo],
                   ['Especialidad', p.especialidad],
@@ -12154,12 +13498,12 @@ function RRHH_Operativo() {
                   ['Sede base', p.sede],
                   ['Supervisor', p.supervisor],
                   ['Perfil de campo', p.perfil_campo],
-                  ['Centro de costo', centrosCosto?.find(c => c.id === p.centro_costo_id)?.nombre || p.centro_costo_id || '—'],
-                  ['Turno asignado', turnoP ? `${turnoP.nombre} (${turnoP.hora_entrada} – ${turnoP.hora_salida})` : 'Sin turno'],
+                  ['Centro de costo', centrosCosto?.find(c => c.id === p.centro_costo_id)?.nombre || p.centro_costo_id || 'â€”'],
+                  ['Turno asignado', turnoP ? `${turnoP.nombre} (${turnoP.hora_entrada} â€“ ${turnoP.hora_salida})` : 'Sin turno'],
                 ].map(([label, val]) => (
                   <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
                     <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                    <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
+                    <div style={{fontWeight:500, fontSize:13}}>{val || 'â€”'}</div>
                   </div>
                 ))}
               </div>
@@ -12172,19 +13516,19 @@ function RRHH_Operativo() {
                 {[
                   ['Tipo de contrato', p.tipo_contrato],
                   ['Fecha inicio', p.fecha_inicio_contrato || p.fecha_ingreso],
-                  ['Fecha fin', p.fecha_fin_contrato || (p.tipo_contrato === 'Indefinido' ? 'Sin fecha de fin' : '—')],
-                  ['Régimen laboral', p.regimen_laboral],
-                  ['Régimen de jornada', p.regimen_jornada],
+                  ['Fecha fin', p.fecha_fin_contrato || (p.tipo_contrato === 'Indefinido' ? 'Sin fecha de fin' : 'â€”')],
+                  ['RÃ©gimen laboral', p.regimen_laboral],
+                  ['RÃ©gimen de jornada', p.regimen_jornada],
                   ['Sueldo base', canFinanzas ? `S/ ${Number(p.sueldo_base||0).toLocaleString()}` : '***'],
                   ['Costo/hora', canFinanzas ? money(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0, p.moneda === 'USD' ? 'US$' : 'S/') + '/hr' : '***'],
                   ['Costo hora extra', canFinanzas ? money(p.costo_hora_extra ?? 0, p.moneda === 'USD' ? 'US$' : 'S/') + '/hr' : '***'],
-                  ['Sistema pensionario', esHon ? '—' : p.sistema_pensionario],
-                  ['AFP', esHon ? '—' : (p.afp_nombre || '—')],
-                  ['Vacaciones disponibles', esHon ? '—' : `${p.dias_vacaciones_disponibles ?? 0} días`],
+                  ['Sistema pensionario', esHon ? 'â€”' : p.sistema_pensionario],
+                  ['AFP', esHon ? 'â€”' : (p.afp_nombre || 'â€”')],
+                  ['Vacaciones disponibles', esHon ? 'â€”' : `${p.dias_vacaciones_disponibles ?? 0} dÃ­as`],
                 ].map(([label, val]) => (
                   <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
                     <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                    <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
+                    <div style={{fontWeight:500, fontSize:13}}>{val || 'â€”'}</div>
                   </div>
                 ))}
               </div>
@@ -12194,12 +13538,12 @@ function RRHH_Operativo() {
           {fichaTab === 'jornada' && (() => {
             const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === p.id).sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio));
             const asigActiva = asigsTrabajador.find(a => !a.fecha_fin);
-            const tipoTramoLabel = { normal: 'Normal (pagado)', suspension_perfecta: 'Suspensión perfecta' };
+            const tipoTramoLabel = { normal: 'Normal (pagado)', suspension_perfecta: 'SuspensiÃ³n perfecta' };
             const regimenLabel2 = { general: 'Jornada general', ciclo_acumulativo: 'Ciclo acumulativo' };
             const guardarAsig = async () => {
               if (!formAsig.fecha_inicio) { addNotificacion('La fecha de inicio es obligatoria.', 'error'); return; }
-              if (formAsig.tipo_tramo === 'normal' && !formAsig.regimen_jornada) { addNotificacion('Selecciona el régimen de jornada.', 'error'); return; }
-              if (formAsig.tipo_tramo === 'normal' && formAsig.regimen_jornada === 'ciclo_acumulativo' && (!formAsig.dias_ciclo_trabajo || !formAsig.dias_ciclo_descanso || !formAsig.fecha_inicio_ciclo)) { addNotificacion('Completa los datos del ciclo: días de trabajo, de descanso y fecha de inicio.', 'error'); return; }
+              if (formAsig.tipo_tramo === 'normal' && !formAsig.regimen_jornada) { addNotificacion('Selecciona el rÃ©gimen de jornada.', 'error'); return; }
+              if (formAsig.tipo_tramo === 'normal' && formAsig.regimen_jornada === 'ciclo_acumulativo' && (!formAsig.dias_ciclo_trabajo || !formAsig.dias_ciclo_descanso || !formAsig.fecha_inicio_ciclo)) { addNotificacion('Completa los datos del ciclo: dÃ­as de trabajo, de descanso y fecha de inicio.', 'error'); return; }
               setSavingAsig(true);
               try {
                 const payload = {
@@ -12212,77 +13556,77 @@ function RRHH_Operativo() {
                 await crearAsignacionJornadaCtx(p.id, 'operativo', payload);
                 setShowFormAsig(false);
                 setFormAsig({ tipo_tramo: 'normal', fecha_inicio: '', regimen_jornada: 'general', dias_ciclo_trabajo: '', dias_ciclo_descanso: '', fecha_inicio_ciclo: '', motivo: '' });
-                addNotificacion('Asignación de jornada registrada.');
-              } catch (e) { addNotificacion(e.message || 'Error al guardar asignación.', 'error'); }
+                addNotificacion('AsignaciÃ³n de jornada registrada.');
+              } catch (e) { addNotificacion(e.message || 'Error al guardar asignaciÃ³n.', 'error'); }
               finally { setSavingAsig(false); }
             };
             return (
               <div className="card-body">
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
                   <div>
-                    <div style={{fontWeight:600, marginBottom:4}}>Asignación vigente</div>
+                    <div style={{fontWeight:600, marginBottom:4}}>AsignaciÃ³n vigente</div>
                     {asigActiva
-                      ? <div><span className="badge badge-green">{tipoTramoLabel[asigActiva.tipo_tramo] || asigActiva.tipo_tramo}</span>{' '}<span className="badge badge-blue">{regimenLabel2[asigActiva.regimen_jornada] || asigActiva.regimen_jornada || '—'}</span><span className="text-muted" style={{fontSize:12, marginLeft:8}}>desde {asigActiva.fecha_inicio}</span>{asigActiva.regimen_jornada === 'ciclo_acumulativo' && <span className="text-muted" style={{fontSize:12, marginLeft:8}}>Ciclo {asigActiva.dias_ciclo_trabajo}×{asigActiva.dias_ciclo_descanso} · inicio {asigActiva.fecha_inicio_ciclo}</span>}</div>
-                      : <div className="text-muted" style={{fontSize:13}}>Sin asignación registrada — se usa el régimen de la ficha ({p.regimen_jornada || 'general'}).</div>
+                      ? <div><span className="badge badge-green">{tipoTramoLabel[asigActiva.tipo_tramo] || asigActiva.tipo_tramo}</span>{' '}<span className="badge badge-blue">{regimenLabel2[asigActiva.regimen_jornada] || asigActiva.regimen_jornada || 'â€”'}</span><span className="text-muted" style={{fontSize:12, marginLeft:8}}>desde {asigActiva.fecha_inicio}</span>{asigActiva.regimen_jornada === 'ciclo_acumulativo' && <span className="text-muted" style={{fontSize:12, marginLeft:8}}>Ciclo {asigActiva.dias_ciclo_trabajo}Ã—{asigActiva.dias_ciclo_descanso} Â· inicio {asigActiva.fecha_inicio_ciclo}</span>}</div>
+                      : <div className="text-muted" style={{fontSize:13}}>Sin asignaciÃ³n registrada â€” se usa el rÃ©gimen de la ficha ({p.regimen_jornada || 'general'}).</div>
                     }
                   </div>
-                  <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => { setShowFormAsig(v => !v); setFormAsig(f => ({ ...f, fecha_inicio: '', regimen_jornada: asigActiva?.regimen_jornada || 'general' })); }}>+ Nueva asignación</button>
+                  <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => { setShowFormAsig(v => !v); setFormAsig(f => ({ ...f, fecha_inicio: '', regimen_jornada: asigActiva?.regimen_jornada || 'general' })); }}>+ Nueva asignaciÃ³n</button>
                 </div>
 
                 {showFormAsig && (
                   <div className="card" style={{padding:16, marginBottom:20, background:'rgba(6,182,212,0.04)', border:'1px solid var(--cyan)'}}>
-                    <div style={{fontWeight:600, marginBottom:12}}>Nueva asignación</div>
+                    <div style={{fontWeight:600, marginBottom:12}}>Nueva asignaciÃ³n</div>
                     <div className="grid-2" style={{gap:12}}>
                       <div className="input-group"><label>Tipo de tramo</label>
                         <select className="select" value={formAsig.tipo_tramo} onChange={e => setFormAsig(f => ({ ...f, tipo_tramo: e.target.value }))}>
                           <option value="normal">Normal (pagado)</option>
-                          <option value="suspension_perfecta">Suspensión perfecta</option>
+                          <option value="suspension_perfecta">SuspensiÃ³n perfecta</option>
                         </select>
                       </div>
                       <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsig.fecha_inicio} onChange={e => setFormAsig(f => ({ ...f, fecha_inicio: e.target.value }))}/></div>
                       {formAsig.tipo_tramo === 'normal' && <>
-                        <div className="input-group"><label>Régimen de jornada</label>
+                        <div className="input-group"><label>RÃ©gimen de jornada</label>
                           <select className="select" value={formAsig.regimen_jornada} onChange={e => setFormAsig(f => ({ ...f, regimen_jornada: e.target.value }))}>
                             <option value="general">Jornada general</option>
                             <option value="ciclo_acumulativo">Ciclo acumulativo</option>
                           </select>
                         </div>
                         {formAsig.regimen_jornada === 'ciclo_acumulativo' && <>
-                          <div className="input-group"><label>Días de trabajo en ciclo</label><input className="input" type="number" min="1" value={formAsig.dias_ciclo_trabajo} onChange={e => setFormAsig(f => ({ ...f, dias_ciclo_trabajo: e.target.value }))}/></div>
-                          <div className="input-group"><label>Días de descanso en ciclo</label><input className="input" type="number" min="1" value={formAsig.dias_ciclo_descanso} onChange={e => setFormAsig(f => ({ ...f, dias_ciclo_descanso: e.target.value }))}/></div>
+                          <div className="input-group"><label>DÃ­as de trabajo en ciclo</label><input className="input" type="number" min="1" value={formAsig.dias_ciclo_trabajo} onChange={e => setFormAsig(f => ({ ...f, dias_ciclo_trabajo: e.target.value }))}/></div>
+                          <div className="input-group"><label>DÃ­as de descanso en ciclo</label><input className="input" type="number" min="1" value={formAsig.dias_ciclo_descanso} onChange={e => setFormAsig(f => ({ ...f, dias_ciclo_descanso: e.target.value }))}/></div>
                           <div className="input-group"><label>Fecha inicio de ciclo</label><input className="input" type="date" value={formAsig.fecha_inicio_ciclo} onChange={e => setFormAsig(f => ({ ...f, fecha_inicio_ciclo: e.target.value }))}/></div>
                         </>}
                       </>}
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Motivo (opcional)</label><input className="input" type="text" value={formAsig.motivo} onChange={e => setFormAsig(f => ({ ...f, motivo: e.target.value }))} placeholder="Ej. Fin de proyecto en mina, baja a Lima en espera de nuevo destino"/></div>
                     </div>
-                    {formAsig.tipo_tramo === 'suspension_perfecta' && <div className="alert alert-warning" style={{fontSize:12, marginTop:8}}>Suspensión perfecta: los días de este tramo no generan remuneración. La relación laboral y la antigüedad continúan sin interrupción.</div>}
+                    {formAsig.tipo_tramo === 'suspension_perfecta' && <div className="alert alert-warning" style={{fontSize:12, marginTop:8}}>SuspensiÃ³n perfecta: los dÃ­as de este tramo no generan remuneraciÃ³n. La relaciÃ³n laboral y la antigÃ¼edad continÃºan sin interrupciÃ³n.</div>}
                     <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}>
                       <button className="btn btn-secondary btn-sm" onClick={() => setShowFormAsig(false)}>Cancelar</button>
-                      <button className="btn btn-primary btn-sm" data-local-form="true" onClick={guardarAsig} disabled={savingAsig}>{savingAsig ? 'Guardando...' : 'Guardar asignación'}</button>
+                      <button className="btn btn-primary btn-sm" data-local-form="true" onClick={guardarAsig} disabled={savingAsig}>{savingAsig ? 'Guardando...' : 'Guardar asignaciÃ³n'}</button>
                     </div>
                   </div>
                 )}
 
                 <div style={{fontWeight:600, marginBottom:8}}>Historial</div>
                 {asigsTrabajador.length === 0
-                  ? <div className="text-muted" style={{fontSize:13}}>Sin registros. El régimen actual se toma directamente de la ficha del trabajador.</div>
+                  ? <div className="text-muted" style={{fontSize:13}}>Sin registros. El rÃ©gimen actual se toma directamente de la ficha del trabajador.</div>
                   : <table className="table" style={{fontSize:12}}>
-                      <thead><tr><th>Desde</th><th>Hasta</th><th>Tipo</th><th>Régimen</th><th>Ciclo</th><th>Motivo</th></tr></thead>
+                      <thead><tr><th>Desde</th><th>Hasta</th><th>Tipo</th><th>RÃ©gimen</th><th>Ciclo</th><th>Motivo</th></tr></thead>
                       <tbody>
                         {asigsTrabajador.map(a => (
                           <tr key={a.id}>
                             <td>{a.fecha_inicio}</td>
                             <td>{a.fecha_fin || <span className="badge badge-green" style={{fontSize:10}}>Vigente</span>}</td>
-                            <td>{a.tipo_tramo === 'suspension_perfecta' ? <span className="badge badge-orange">Suspensión</span> : <span className="badge badge-gray">Normal</span>}</td>
-                            <td>{a.regimen_jornada ? (regimenLabel2[a.regimen_jornada] || a.regimen_jornada) : '—'}</td>
-                            <td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} (inicio ${a.fecha_inicio_ciclo})` : '—'}</td>
-                            <td className="text-muted">{a.motivo || '—'}</td>
+                            <td>{a.tipo_tramo === 'suspension_perfecta' ? <span className="badge badge-orange">SuspensiÃ³n</span> : <span className="badge badge-gray">Normal</span>}</td>
+                            <td>{a.regimen_jornada ? (regimenLabel2[a.regimen_jornada] || a.regimen_jornada) : 'â€”'}</td>
+                            <td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}Ã—${a.dias_ciclo_descanso} (inicio ${a.fecha_inicio_ciclo})` : 'â€”'}</td>
+                            <td className="text-muted">{a.motivo || 'â€”'}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                 }
-                <div className="alert alert-info" style={{fontSize:12, marginTop:16}}>La fecha de ingreso del trabajador ({p.fecha_ingreso || '—'}) nunca se modifica al crear asignaciones de jornada.</div>
+                <div className="alert alert-info" style={{fontSize:12, marginTop:16}}>La fecha de ingreso del trabajador ({p.fecha_ingreso || 'â€”'}) nunca se modifica al crear asignaciones de jornada.</div>
               </div>
             );
           })()}
@@ -12299,14 +13643,14 @@ function RRHH_Operativo() {
                 <>
                   <div className="card-body" style={{paddingBottom:0}}>
                     <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:16}}>
-                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">Días disponibles</div><div className="kpi-value" style={{color:'var(--green)'}}>{p.dias_vacaciones_disponibles ?? 0}</div></div>
-                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">Días usados</div><div className="kpi-value">{vacPersona.filter(s => s.estado === 'confirmada_rrhh' || s.estado === 'activa').reduce((acc,s) => acc + (s.dias_habiles||0), 0)}</div></div>
+                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">DÃ­as disponibles</div><div className="kpi-value" style={{color:'var(--green)'}}>{p.dias_vacaciones_disponibles ?? 0}</div></div>
+                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">DÃ­as usados</div><div className="kpi-value">{vacPersona.filter(s => s.estado === 'confirmada_rrhh' || s.estado === 'activa').reduce((acc,s) => acc + (s.dias_habiles||0), 0)}</div></div>
                       <div className="kpi-card" style={{padding:16}}><div className="kpi-label">Solicitudes</div><div className="kpi-value">{vacPersona.length}</div></div>
                     </div>
                   </div>
                   <div className="table-wrap">
                     <table className="tbl">
-                      <thead><tr><th>Desde</th><th>Hasta</th><th>Días hábiles</th><th>Motivo</th><th>Estado</th></tr></thead>
+                      <thead><tr><th>Desde</th><th>Hasta</th><th>DÃ­as hÃ¡biles</th><th>Motivo</th><th>Estado</th></tr></thead>
                       <tbody>
                         {vacPersona.length === 0 && <tr><td colSpan={5} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes de vacaciones.</td></tr>}
                         {vacPersona.map(v => (
@@ -12337,7 +13681,7 @@ function RRHH_Operativo() {
               ) : (
                 <div className="table-wrap">
                   <table className="tbl">
-                    <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Motivo</th><th>Estado</th></tr></thead>
+                    <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>DÃ­as</th><th>Motivo</th><th>Estado</th></tr></thead>
                     <tbody>
                       {licPersona.length === 0 && <tr><td colSpan={6} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin licencias registradas.</td></tr>}
                       {licPersona.map(l => (
@@ -12368,7 +13712,7 @@ function RRHH_Operativo() {
               ) : (
                 <div className="table-wrap">
                   <table className="tbl">
-                    <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Motivo</th><th>Impacto nómina</th><th>Estado</th></tr></thead>
+                    <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>DÃ­as</th><th>Motivo</th><th>Impacto nÃ³mina</th><th>Estado</th></tr></thead>
                     <tbody>
                       {permPersona.length === 0 && <tr><td colSpan={7} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes registradas.</td></tr>}
                       {permPersona.map(s => (
@@ -12390,14 +13734,21 @@ function RRHH_Operativo() {
           )}
 
           {fichaTab === 'documentos' && (() => {
-            // ── Fase 1B: Motor de habilitaciones (Provisional sin cálculo de fechas) ─────────────
-            const DOC_LBL = { vigente:'Cargado / Validado', por_vencer:'Cargado / Validado', vencido:'Cargado / Validado', en_revision:'En revisión', rechazado:'Rechazado', falta:'Falta', sin_fecha_vencimiento:'Cargado / Validado' };
-            const DOC_BDG = { vigente:'badge-green', por_vencer:'badge-green', vencido:'badge-green', en_revision:'badge-cyan', rechazado:'badge-red', falta:'badge-gray', sin_fecha_vencimiento:'badge-green' };
+            // â”€â”€ Fase 1C: El estado viene del motor BD (calcular_habilitaciones_personal) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            const DOC_LBL = HAB_DOC_LABEL;
+            const DOC_BDG = HAB_DOC_BADGE;
             
-            const hab = habIdx[p.id] || { estado_global: 'sin_cargo', docs: [], tiene_cargo: false };
+            const hab = habIdx[p.id] || { estado_global: 'sin_configurar', docs: [], tiene_cargo: false };
             const docReqPorTipo = Object.fromEntries(hab.docs.map(d => [d.tipo_documento_id, d]));
             const tiposCargados = new Set(hab.docs.map(d => d.tipo_documento_id));
             const tiposRestantes = tipoDocOpts.filter(t => !tiposCargados.has(t.id || t.key));
+
+            // â”€â”€ Badge habilitacional â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            const cfgBadge = { cls: HAB_GLOBAL_BADGE[hab.estado_global] || 'badge-gray', txt: HAB_GLOBAL_LABEL[hab.estado_global] || 'Sin configurar' };
+            const docsConProblema = hab.docs.filter(d =>
+              ['vencido','rechazado','incompleto','falta','por_vencer','en_revision'].includes(d.estado) && d.obligatorio
+            );
+            const tooltipBadge = docsConProblema.map(d => d.tipo?.nombre || d.tipo_documento_id).join(', ');
 
             const handleSubirInline = async (e) => {
               e.preventDefault();
@@ -12427,6 +13778,19 @@ function RRHH_Operativo() {
             return (
               <div className="card-body">
 
+                {/* â”€â”€ Badge habilitacional â”€â”€ */}
+                <div style={{marginBottom:20, display:'flex', alignItems:'center', gap:10, padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border-subtle)'}}>
+                  <span className={'badge ' + cfgBadge.cls} style={{fontSize:13, padding:'5px 14px', flexShrink:0}}
+                    title={tooltipBadge || undefined}>
+                    {cfgBadge.txt}
+                  </span>
+                  {tooltipBadge && (
+                    <span style={{fontSize:12, color:'var(--fg-muted)', flex:1}}>
+                      {docsConProblema.map(d => d.tipo?.nombre || d.tipo_documento_id).join(' Â· ')}
+                    </span>
+                  )}
+                </div>
+
                 {/* Documentos requeridos por cargo */}
                 {(!p.cargo_id) ? (
                   <div style={{marginBottom:20, padding:'24px', textAlign:'center', background:'var(--bg-subtle)', borderRadius:8, border:'1px dashed var(--border)'}}>
@@ -12436,7 +13800,7 @@ function RRHH_Operativo() {
                   </div>
                 ) : (!hab.docs || hab.docs.length === 0) ? (
                   <div style={{marginBottom:20, padding:'24px', textAlign:'center', background:'var(--bg-subtle)', borderRadius:8, border:'1px dashed var(--border)'}}>
-                    <div style={{fontWeight:600, marginBottom:8}}>El cargo "{p.cargo}" aún no tiene requisitos documentales</div>
+                    <div style={{fontWeight:600, marginBottom:8}}>El cargo "{p.cargo}" aÃºn no tiene requisitos documentales</div>
                     <div className="text-muted" style={{fontSize:13}}>Ve a Maestros Base para configurar la matriz de requisitos.</div>
                   </div>
                 ) : (
@@ -12446,15 +13810,16 @@ function RRHH_Operativo() {
                       {hab.docs.map(req => {
                         const nombreTipo = req.tipo?.nombre || req.tipo_documento_id;
                         const esActivo = !!req.doc;
+                        const destacado = docHighlightTipo && req.tipo_documento_id === docHighlightTipo;
                         return (
-                          <div key={req.tipo_documento_id} style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6, border:'1px solid var(--border-subtle)'}}>
+                          <div key={req.tipo_documento_id} style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:destacado ? 'rgba(251,191,36,0.12)' : 'var(--bg-subtle)', borderRadius:6, border:destacado ? '1px solid var(--orange)' : '1px solid var(--border-subtle)'}}>
                             <span className={'badge ' + (DOC_BDG[req.estado] || 'badge-gray')} style={{fontSize:10, flexShrink:0}}>{DOC_LBL[req.estado] || req.estado}</span>
                             <span style={{flex:1, fontSize:13, fontWeight:500}}>{nombreTipo}</span>
                             {!req.obligatorio && <span style={{fontSize:10, color:'var(--fg-muted)'}}>Opcional</span>}
                             {req.estado === 'rechazado' && req.doc?.motivo_rechazo && (
                               <span style={{fontSize:10, color:'var(--danger)', marginLeft:8}} title={req.doc.motivo_rechazo}>Motivo: {req.doc.motivo_rechazo}</span>
                             )}
-                            <button className="btn btn-sm btn-ghost" onClick={() => setInlineUploadReq(req)} style={{color: esActivo ? 'var(--fg)' : 'var(--cyan)'}}>
+                            <button className="btn btn-sm btn-ghost" onClick={() => esActivo ? abrirPreviewDocumento(req, p) : setInlineUploadReq(req)} style={{color: esActivo ? 'var(--fg)' : 'var(--cyan)'}}>
                               {esActivo ? 'Ver / Reemplazar' : 'Subir'}
                             </button>
                           </div>
@@ -12473,19 +13838,31 @@ function RRHH_Operativo() {
                         <button className="icon-btn" onClick={() => setInlineUploadReq(null)}>{I.x}</button>
                       </div>
                       <div className="modal-body">
-                        {inlineUploadReq.doc?.archivo_url && (
+                        {/* Documento actual con URL fresca al descargar/ver */}
+                        {visorUrl && (
                           <div style={{marginBottom:16, padding:12, background:'var(--bg-subtle)', borderRadius:6, border:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
                             <div>
-                              <div style={{fontWeight:500, fontSize:13}}>Documento actual (v{inlineUploadReq.doc.version})</div>
-                              <div className="text-muted" style={{fontSize:11}}>{inlineUploadReq.doc.nombre_archivo}</div>
+                              <div style={{fontWeight:500, fontSize:13}}>Documento actual (v{inlineUploadReq.doc?.version})</div>
+                              <div className="text-muted" style={{fontSize:11}}>{inlineUploadReq.doc?.nombre_archivo}</div>
                             </div>
-                            <a href={inlineUploadReq.doc.archivo_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-ghost">{I.file} Ver archivo</a>
+                            <button className="btn btn-sm btn-ghost" onClick={async () => {
+                              try {
+                                const storagePath = inlineUploadReq.doc?.storage_path;
+                                if (storagePath && isSupabaseConfigured && isSupabaseConfigured()) {
+                                  const svc = await import('./services/personalDocumentosService.js');
+                                  const freshUrl = await svc.renovarUrlDocumento(storagePath);
+                                  window.open(freshUrl, '_blank');
+                                } else {
+                                  window.open(visorUrl, '_blank');
+                                }
+                              } catch { window.open(visorUrl, '_blank'); }
+                            }}>{I.file} Ver archivo</button>
                           </div>
                         )}
                         <form onSubmit={handleSubirInline} style={{display:'grid', gap:14}}>
                           {inlineUploadReq.tipo?.requiere_validacion && (
                             <div style={{fontSize:12, color:'var(--orange)', padding:'8px 12px', background:'rgba(255,160,0,0.1)', borderRadius:6, border:'1px solid rgba(255,160,0,0.3)'}}>
-                              Al subir este documento, quedará "En revisión" hasta que sea validado por RRHH.
+                              Al subir este documento, quedarÃ¡ "En revisiÃ³n" hasta que sea validado por RRHH.
                             </div>
                           )}
                           <div className="input-group">
@@ -12495,11 +13872,11 @@ function RRHH_Operativo() {
                           <div className="input-group">
                             <label>Archivo *</label>
                             <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>setInlineUploadFile(e.target.files?.[0]||null)} required />
-                            <div className="text-muted" style={{fontSize:11, marginTop:4}}>PDF, JPG o PNG. Tamaño máximo recomendado 5MB.</div>
+                            <div className="text-muted" style={{fontSize:11, marginTop:4}}>PDF, JPG o PNG. TamaÃ±o mÃ¡ximo recomendado 5MB.</div>
                           </div>
                           <div className="grid-2" style={{gap:12}}>
                             <div className="input-group">
-                              <label>Fecha de emisión {inlineUploadReq.tipo?.exige_emision ? '*' : ''}</label>
+                              <label>Fecha de emisiÃ³n {inlineUploadReq.tipo?.exige_emision ? '*' : ''}</label>
                               <input className="input" type="date" value={inlineUploadForm.fechaEmision} onChange={e=>setInlineUploadForm(f=>({...f,fechaEmision:e.target.value}))} required={inlineUploadReq.tipo?.exige_emision} />
                             </div>
                             {inlineUploadReq.tipo?.exige_vencimiento && (
@@ -12511,7 +13888,7 @@ function RRHH_Operativo() {
                           </div>
                           <div className="input-group">
                             <label>Notas (opcional)</label>
-                            <input className="input" type="text" placeholder="Alguna observación sobre este documento..." value={inlineUploadForm.notas} onChange={e=>setInlineUploadForm(f=>({...f,notas:e.target.value}))} />
+                            <input className="input" type="text" placeholder="Alguna observaciÃ³n sobre este documento..." value={inlineUploadForm.notas} onChange={e=>setInlineUploadForm(f=>({...f,notas:e.target.value}))} />
                           </div>
                           
                           {inlineUploadError && <div style={{fontSize:12, color:'var(--danger)'}}>{inlineUploadError}</div>}
@@ -12519,7 +13896,7 @@ function RRHH_Operativo() {
                           <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
                             <button type="button" className="btn btn-secondary" onClick={() => setInlineUploadReq(null)}>Cancelar</button>
                             <button type="submit" className="btn btn-primary" disabled={inlineUploading}>
-                              {inlineUploading ? 'Subiendo...' : (inlineUploadReq.doc ? 'Subir nueva versión' : 'Subir documento')}
+                              {inlineUploading ? 'Subiendo...' : (inlineUploadReq.doc ? 'Subir nueva versiÃ³n' : 'Subir documento')}
                             </button>
                           </div>
                         </form>
@@ -12535,7 +13912,7 @@ function RRHH_Operativo() {
                     </summary>
                     {tiposRestantes.length === 0 ? (
                       <div className="text-muted" style={{fontSize:12, padding:'12px 0'}}>
-                        No hay más tipos de documentos aplicables fuera de los requeridos.
+                        No hay mÃ¡s tipos de documentos aplicables fuera de los requeridos.
                       </div>
                     ) : (
                       <form onSubmit={handleSubirDoc} style={{display:'grid', gap:12, marginTop:12, padding:16, background:'var(--bg-subtle)', borderRadius:8}}>
@@ -12552,7 +13929,7 @@ function RRHH_Operativo() {
                             <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e => setDocUploadFile(e.target.files?.[0] || null)} required />
                       </div>
                       <div className="input-group">
-                        <label>Fecha de emisión</label>
+                        <label>Fecha de emisiÃ³n</label>
                         <input className="input" type="date" value={docUploadForm.fechaEmision} onChange={e => setDocUploadForm(f => ({...f, fechaEmision: e.target.value}))} />
                       </div>
                       <div className="input-group">
@@ -12583,8 +13960,8 @@ function RRHH_Operativo() {
                 ) : (
                   <div style={{display:'flex', flexDirection:'column', gap:10}}>
                     {docsPersona.map(doc => {
-                      const tipoInfo = tiposDocumento.find(t => t.id === doc.tipo_doc) || personalDocumentosService.TIPOS_DOC_OPERATIVO.find(t => t.key === doc.tipo_doc);
-                      const reqDoc = docReqPorTipo[doc.tipo_doc];
+                      const tipoInfo = tiposDocumento.find(t => t.id === (doc.tipo_documento_id || doc.tipo_doc)) || personalDocumentosService.TIPOS_DOC_OPERATIVO.find(t => t.key === doc.tipo_doc);
+                      const reqDoc = docReqPorTipo[doc.tipo_documento_id || doc.tipo_doc] || { tipo_documento_id: doc.tipo_documento_id || doc.tipo_doc, tipo: tipoInfo, doc, estado: doc.estado_validacion === 'rechazado' ? 'rechazado' : 'vigente', fecha_vencimiento: doc.fecha_vencimiento };
                       const estadoMotor = reqDoc?.estado;
                       return (
                         <div key={doc.id} style={{padding:'14px 16px', border:'1px solid var(--border)', borderRadius:8, display:'flex', flexDirection:'column', gap:8}}>
@@ -12592,9 +13969,9 @@ function RRHH_Operativo() {
                             <div>
                               <div style={{fontWeight:600, fontSize:13}}>{tipoInfo?.nombre || tipoInfo?.label || doc.tipo_doc}</div>
                               <div className="text-muted" style={{fontSize:11}}>
-                                {doc.nombre_archivo || '—'} · v{doc.version}
-                                {doc.fecha_emision && ` · Emitido: ${doc.fecha_emision}`}
-                                {doc.fecha_vencimiento && ` · Vence: ${doc.fecha_vencimiento}`}
+                                {doc.nombre_archivo || 'â€”'} Â· v{doc.version}
+                                {doc.fecha_emision && ` Â· Emitido: ${doc.fecha_emision}`}
+                                {doc.fecha_vencimiento && ` Â· Vence: ${doc.fecha_vencimiento}`}
                               </div>
                             </div>
                             <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
@@ -12606,9 +13983,7 @@ function RRHH_Operativo() {
                               <span className={'badge ' + (personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion] || 'badge-gray')}>
                                 {doc.estado_validacion}
                               </span>
-                              {doc.archivo_url && (
-                                <a href={doc.archivo_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">{I.file} Ver</a>
-                              )}
+                              <button className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento({ ...reqDoc, doc }, p)}>{I.file} Ver</button>
                             </div>
                           </div>
                           {doc.motivo_rechazo && (
@@ -12617,7 +13992,7 @@ function RRHH_Operativo() {
                             </div>
                           )}
                           {doc.notas && <div className="text-muted" style={{fontSize:12}}>Nota: {doc.notas}</div>}
-                          {doc.estado_validacion === 'pendiente' && (
+                          {doc.estado_validacion === 'pendiente' && tipoInfo?.requiere_validacion && canGestionarDocsRrhh && (
                             <div style={{display:'flex', gap:8, alignItems:'flex-start', flexWrap:'wrap'}}>
                               <button className="btn btn-sm btn-primary" disabled={docValidandoId === doc.id} onClick={() => handleValidar(doc.id, 'aprobado')}>
                                 {docValidandoId === doc.id ? '...' : 'Aprobar'}
@@ -12655,7 +14030,7 @@ function RRHH_Operativo() {
                 </div>
               </div>
               {reembolsosPersona.length === 0 ? (
-                <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'32px 0'}}>No hay reembolsos de viáticos registrados para este técnico.</div>
+                <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'32px 0'}}>No hay reembolsos de viÃ¡ticos registrados para este tÃ©cnico.</div>
               ) : (
                 <div className="table-wrap">
                   <table className="tbl">
@@ -12668,7 +14043,7 @@ function RRHH_Operativo() {
                           <tr key={r.id}>
                             <td>{r.fecha_emision}</td>
                             <td style={{fontSize:12}}>{r.concepto}</td>
-                            <td className="mono text-muted" style={{fontSize:11}}>{r.ot_vinc_id || '—'}</td>
+                            <td className="mono text-muted" style={{fontSize:11}}>{r.ot_vinc_id || 'â€”'}</td>
                             <td className="num"><strong>{money(r.monto_total)}</strong></td>
                             <td>
                               <span className={'badge ' + (r.estado === 'pagada' ? 'badge-green' : r.estado === 'anulada' ? 'badge-gray' : 'badge-orange')}>
@@ -12691,7 +14066,7 @@ function RRHH_Operativo() {
               <div style={{fontWeight:600, fontSize:13, marginBottom:12}}>Asignaciones recientes en el Planner</div>
               {asigRecientes.length === 0 ? (
                 <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'24px 0', fontSize:13}}>
-                  Sin asignaciones registradas en el Planner para este técnico.
+                  Sin asignaciones registradas en el Planner para este tÃ©cnico.
                 </div>
               ) : (
                 <div className="table-wrap">
@@ -12701,8 +14076,8 @@ function RRHH_Operativo() {
                       {asigRecientes.map(a => (
                         <tr key={a.id}>
                           <td>{a.fecha}</td>
-                          <td className="mono text-muted" style={{fontSize:12}}>{a.ot_id || '—'}</td>
-                          <td className="num">{a.horas_programadas != null ? `${a.horas_programadas}h` : '—'}</td>
+                          <td className="mono text-muted" style={{fontSize:12}}>{a.ot_id || 'â€”'}</td>
+                          <td className="num">{a.horas_programadas != null ? `${a.horas_programadas}h` : 'â€”'}</td>
                           <td><span className={'badge badge-' + (a.estado === 'completado' ? 'green' : a.estado === 'cancelado' ? 'red' : 'cyan')}>{a.estado || 'asignado'}</span></td>
                         </tr>
                       ))}
@@ -12720,19 +14095,19 @@ function RRHH_Operativo() {
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">RRHH Operativo</h1><div className="page-sub">{personal.length} técnicos · Semana 28 Abr – 2 May 2026</div></div>
+        <div><h1 className="page-title">RRHH Operativo</h1><div className="page-sub">{personal.length} tÃ©cnicos Â· Semana 28 Abr â€“ 2 May 2026</div></div>
         <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4}}>
           <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoTecnico} disabled={!turnosOptions.length}>{I.plus} Nuevo Colaborador</button>
-          {!turnosOptions.length && <span style={{fontSize:11, color:'var(--danger, #e53e3e)'}}>Crea un turno en Turnos y Horarios para habilitar esta opción.</span>}
+          {!turnosOptions.length && <span style={{fontSize:11, color:'var(--danger, #e53e3e)'}}>Crea un turno en Turnos y Horarios para habilitar esta opciÃ³n.</span>}
         </div>
       </div>
 
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(5,1fr)'}}>
         <div className="kpi-card"><div className="kpi-label">Total personal</div><div className="kpi-value">{personal.length}</div><div className="kpi-icon cyan">{I.users}</div></div>
         <div className="kpi-card"><div className="kpi-label">Disponibles hoy</div><div className="kpi-value" style={{color:'var(--green)'}}>{disponibles}</div><div className="kpi-icon green">{I.check}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Habilitación crítica</div><div className="kpi-value" style={{color:kpiDocumental.vencidos>0?'var(--danger)':kpiDocumental.faltan>0?'var(--orange)':'inherit'}}>{kpiDocumental.vencidos + kpiDocumental.faltan}</div><div className={'kpi-icon '+(kpiDocumental.vencidos+kpiDocumental.faltan>0?'red':'green')}>{I.shield}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Técnicos Planilla</div><div className="kpi-value" style={{color:'var(--green)'}}>{countPlanilla}</div><div className="kpi-icon green">{I.check}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Técnicos Honorarios</div><div className="kpi-value" style={{color:'var(--fg-muted)'}}>{countHonorarios}</div><div className="kpi-icon purple">{I.dollar}</div></div>
+        <div className="kpi-card"><div className="kpi-label">HabilitaciÃ³n crÃ­tica</div><div className="kpi-value" style={{color:kpiDocumental.vencidos>0?'var(--danger)':kpiDocumental.faltan>0?'var(--orange)':'inherit'}}>{kpiDocumental.vencidos + kpiDocumental.faltan}</div><div className={'kpi-icon '+(kpiDocumental.vencidos+kpiDocumental.faltan>0?'red':'green')}>{I.shield}</div></div>
+        <div className="kpi-card"><div className="kpi-label">TÃ©cnicos Planilla</div><div className="kpi-value" style={{color:'var(--green)'}}>{countPlanilla}</div><div className="kpi-icon green">{I.check}</div></div>
+        <div className="kpi-card"><div className="kpi-label">TÃ©cnicos Honorarios</div><div className="kpi-value" style={{color:'var(--fg-muted)'}}>{countHonorarios}</div><div className="kpi-icon purple">{I.dollar}</div></div>
       </div>
 
       <div className="tabs">
@@ -12753,7 +14128,7 @@ function RRHH_Operativo() {
                   const esHon = esModalidadHonorarios(p);
                   const turnoNombre = workerTurno(turnosOptions, p).nombre;
                   const contratoTexto = p.fecha_inicio_contrato
-                    ? (p.fecha_fin_contrato ? `${p.fecha_inicio_contrato} – ${p.fecha_fin_contrato}` : `Desde ${p.fecha_inicio_contrato}`)
+                    ? (p.fecha_fin_contrato ? `${p.fecha_inicio_contrato} â€“ ${p.fecha_fin_contrato}` : `Desde ${p.fecha_inicio_contrato}`)
                     : null;
                   return (
                     <tr key={p.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => { setSelTecnico(p); setFichaTab('ficha'); }}>
@@ -12765,13 +14140,13 @@ function RRHH_Operativo() {
                       </td>
                       <td>{p.cargo}</td>
                       <td className="text-muted">{p.especialidad}</td>
-                      <td>{p.area || <span className="text-subtle">—</span>}</td>
-                      <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
+                      <td>{p.area || <span className="text-subtle">â€”</span>}</td>
+                      <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">â€”</span>}</td>
                       <td className="num">{money(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0, p.moneda === 'USD' ? 'US$' : 'S/')}/hr</td>
-                      <td>{esHon ? <span className="text-subtle">—</span> : <span className="mono" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>
-                      <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{contratoTexto || '—'}</span>}</td>
+                      <td>{esHon ? <span className="text-subtle">â€”</span> : <span className="mono" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>
+                      <td>{esHon ? <span className="text-subtle">â€”</span> : <span className="text-muted" style={{fontSize:12}}>{contratoTexto || 'â€”'}</span>}</td>
                       <td><span className={'badge '+(esHon ? 'badge-gray' : 'badge-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></td>
-                      <td className="num">{esHon ? <span className="text-subtle">—</span> : `${p.dias_vacaciones_disponibles} días`}</td>
+                      <td className="num">{esHon ? <span className="text-subtle">â€”</span> : `${p.dias_vacaciones_disponibles} dÃ­as`}</td>
                       <td><span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span></td>
                       <td>
                         <div className="row" style={{gap:6}} onClick={e => e.stopPropagation()}>
@@ -12791,12 +14166,12 @@ function RRHH_Operativo() {
 
       {tab === 'disponibilidad' && (
         <div className="card">
-          <div className="card-head"><h3>Asignaciones — Semana 28 Abr – 2 May</h3><span className="text-muted" style={{fontSize:12}}>{personal.filter(p=>p.estado==='disponible').length} disponibles hoy</span></div>
+          <div className="card-head"><h3>Asignaciones â€” Semana 28 Abr â€“ 2 May</h3><span className="text-muted" style={{fontSize:12}}>{personal.filter(p=>p.estado==='disponible').length} disponibles hoy</span></div>
           <div style={{overflowX:'auto'}}>
             <table className="tbl" style={{minWidth:700}}>
               <thead>
                 <tr>
-                  <th style={{width:180}}>Técnico</th>
+                  <th style={{width:180}}>TÃ©cnico</th>
                   {dias.map(d=><th key={d} style={{textAlign:'center', minWidth:90}}>{d}</th>)}
                 </tr>
               </thead>
@@ -12824,7 +14199,7 @@ function RRHH_Operativo() {
           </div>
           <div style={{padding:'12px 20px', borderTop:'1px solid var(--border-subtle)', display:'flex', gap:20, fontSize:12}}>
             <span style={{display:'flex',gap:6,alignItems:'center'}}><span style={{width:12,height:12,borderRadius:2,background:'var(--cyan)',display:'inline-block'}}/> OT asignada</span>
-            <span style={{display:'flex',gap:6,alignItems:'center'}}><span style={{width:12,height:12,borderRadius:2,background:'var(--purple)',display:'inline-block'}}/> Supervisión</span>
+            <span style={{display:'flex',gap:6,alignItems:'center'}}><span style={{width:12,height:12,borderRadius:2,background:'var(--purple)',display:'inline-block'}}/> SupervisiÃ³n</span>
             <span style={{display:'flex',gap:6,alignItems:'center'}}><span style={{width:12,height:12,borderRadius:2,background:'var(--fg-subtle)',display:'inline-block'}}/> Vacaciones</span>
             <span style={{display:'flex',gap:6,alignItems:'center', color:'var(--green)'}}><strong>libre</strong> = Disponible para asignar</span>
           </div>
@@ -12832,20 +14207,29 @@ function RRHH_Operativo() {
       )}
 
       {tab === 'documentos' && (() => {
-        const DOC_LABEL = { vigente:'Vigente', por_vencer:'Por vencer', vencido:'Vencido', en_revision:'En revisión', rechazado:'Rechazado', falta:'Falta', sin_fecha_vencimiento:'Sin fecha' };
-        const DOC_BADGE = { vigente:'badge-green', por_vencer:'badge-orange', vencido:'badge-red', en_revision:'badge-cyan', rechazado:'badge-red', falta:'badge-gray', sin_fecha_vencimiento:'badge-orange' };
-        const GLOBAL_LABEL = { en_regla:'En regla', advertencia:'Advertencia', critico:'Crítico', sin_cargo:'Sin cargo', sin_requisitos:'Sin requisitos' };
-        const GLOBAL_BADGE = { en_regla:'badge-green', advertencia:'badge-orange', critico:'badge-red', sin_cargo:'badge-gray', sin_requisitos:'badge-gray' };
+        // Estado viene del motor BD â€” fuente Ãºnica (Fase 1C)
+        const DOC_LABEL = HAB_DOC_LABEL;
+        const DOC_BADGE = HAB_DOC_BADGE;
+        const GLOBAL_LABEL = HAB_GLOBAL_LABEL;
+        const GLOBAL_BADGE = HAB_GLOBAL_BADGE;
         const FILTROS = [
-          { key:'todos',      label:'Todos' },
-          { key:'critico',    label:'Críticos' },
-          { key:'advertencia',label:'Advertencia' },
-          { key:'en_regla',   label:'En regla' },
-          { key:'sin_cargo',  label:'Sin cargo' },
+          { key:'todos', label:'Todos' },
+          { key:'no_habilitado', label:'No habilitado' },
+          { key:'alerta', label:'Alerta' },
+          { key:'habilitado', label:'Habilitado' },
+          { key:'sin_configurar', label:'Sin configurar' },
         ];
         const personalFiltrado = personal.filter(p => {
           if (docFiltro === 'todos') return true;
           const h = habIdx[p.id];
+          const obs = (h?.docs || []).filter(d => d.obligatorio && d.es_habilitante !== false);
+          if (docFiltro === 'faltan') return obs.some(d => d.estado === 'falta' || d.estado === 'incompleto');
+          if (docFiltro === 'por_vencer') {
+            const critico = obs.some(d => ['falta','incompleto','vencido','rechazado'].includes(d.estado));
+            return obs.some(d => d.estado === 'por_vencer') && !critico;
+          }
+          if (docFiltro === 'vencidos') return obs.some(d => d.estado === 'vencido' || d.estado === 'rechazado');
+          if (docFiltro === 'en_revision') return obs.some(d => d.estado === 'en_revision');
           return h?.estado_global === docFiltro;
         });
         const noHayTipos = colsHabilitantes.length === 0;
@@ -12854,22 +14238,89 @@ function RRHH_Operativo() {
             {/* KPIs */}
             <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
               {[
-                { label:'Faltan por cargar', val: kpiDocumental.faltan,    badge:'badge-gray',   icon:'⬜' },
-                { label:'Por vencer',        val: kpiDocumental.porVencer,  badge:'badge-orange', icon:'⏰' },
-                { label:'Vencidos / rechazados', val: kpiDocumental.vencidos, badge:'badge-red', icon:'🚫' },
-                { label:'En revisión RRHH',  val: kpiDocumental.enRevision, badge:'badge-cyan',   icon:'🔍' },
+                { key:'faltan', label:'Faltan por cargar', val: kpiDocumental.faltan, badge:'badge-gray' },
+                { key:'por_vencer', label:'Por vencer', val: kpiDocumental.porVencer, badge:'badge-orange' },
+                { key:'vencidos', label:'Vencidos / rechazados', val: kpiDocumental.vencidos, badge:'badge-red' },
+                { key:'en_revision', label:'En revision RRHH', val: kpiDocumental.enRevision, badge:'badge-cyan' },
               ].map(k => (
-                <div key={k.label} className="card" style={{padding:'16px 20px', display:'flex', flexDirection:'column', gap:4}}>
+                <button key={k.key} type="button" className="card" onClick={() => setDocFiltro(docFiltro === k.key ? 'todos' : k.key)} style={{padding:'16px 20px', display:'flex', flexDirection:'column', gap:4, textAlign:'left', cursor:'pointer', borderColor:docFiltro === k.key ? 'var(--primary)' : undefined}}>
                   <div style={{fontSize:11, color:'var(--fg-muted)'}}>{k.label}</div>
                   <div style={{fontSize:28, fontWeight:700, lineHeight:1}}>{k.val}</div>
                   <div style={{fontSize:11}}><span className={'badge ' + k.badge}>{k.val === 0 ? 'ok' : 'colaboradores'}</span></div>
-                </div>
+                </button>
               ))}
             </div>
 
+            <div className="tabs" style={{marginBottom:-4}}>
+              <div className={'tab ' + (docReporteVista === 'matriz' ? 'active' : '')} onClick={() => setDocReporteVista('matriz')}>Matriz de habilitaciones</div>
+              <div className={'tab ' + (docReporteVista === 'alertas' ? 'active' : '')} onClick={() => setDocReporteVista('alertas')}>
+                Alertas documentales · {alertasDocumentales.length}
+              </div>
+            </div>
+
+            {docReporteVista === 'alertas' ? (
+              <div className="card">
+                <div className="card-head" style={{flexWrap:'wrap', gap:10}}>
+                  <h3>Alertas documentales</h3>
+                  <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                    <select className="select" style={{width:150}} value={docAlertaEstado} onChange={e => setDocAlertaEstado(e.target.value)}>
+                      <option value="todos">Todos</option>
+                      <option value="por_vencer">Por vencer</option>
+                      <option value="vencido">Vencidos</option>
+                    </select>
+                    <select className="select" style={{width:220}} value={docAlertaTipo} onChange={e => setDocAlertaTipo(e.target.value)}>
+                      <option value="todos">Todos los documentos</option>
+                      {colsHabilitantes.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                    </select>
+                    <input className="input" style={{width:220}} placeholder="Buscar colaborador o documento" value={docAlertaBusqueda} onChange={e => setDocAlertaBusqueda(e.target.value)} />
+                  </div>
+                </div>
+                {alertasDocumentalesFiltradas.length === 0 ? (
+                  <div style={{padding:'32px 20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>
+                    No hay alertas documentales con los filtros seleccionados.
+                  </div>
+                ) : (
+                  <div className="table-wrap">
+                    <table className="tbl">
+                      <thead>
+                        <tr>
+                          <th>Colaborador</th>
+                          <th>Cargo</th>
+                          <th>Tipo de documento</th>
+                          <th>Estado</th>
+                          <th>Dias</th>
+                          <th>Vencimiento</th>
+                          <th>Accion rapida</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {alertasDocumentalesFiltradas.map(a => (
+                          <tr key={a.id}>
+                            <td>
+                              <div style={{fontWeight:600}}>{a.personal.nombre}</div>
+                              <div className="text-muted" style={{fontSize:11}}>{a.personal.codigo || a.personal.id}</div>
+                            </td>
+                            <td>{a.cargo}</td>
+                            <td>{a.tipoNombre}</td>
+                            <td><span className={'badge ' + (DOC_BADGE[a.estado] || 'badge-gray')}>{DOC_LABEL[a.estado] || a.estado}</span></td>
+                            <td>{habDiasTexto(a.dias)}</td>
+                            <td className="mono text-muted" style={{fontSize:12}}>{a.fechaVencimiento || '-'}</td>
+                            <td>
+                              <button className="btn btn-sm btn-secondary" onClick={() => abrirAlertaDocumental(a)}>
+                                {a.req.doc ? 'Ver documento' : 'Subir documento'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : (
             <div className="card">
               <div className="card-head" style={{flexWrap:'wrap', gap:10}}>
-                <h3>Habilitaciones técnicas</h3>
+                <h3>Habilitaciones tecnicas</h3>
                 <div style={{display:'flex', gap:6, flexWrap:'wrap'}}>
                   {FILTROS.map(f => (
                     <button key={f.key} className={'btn btn-sm ' + (docFiltro === f.key ? 'btn-primary' : 'btn-ghost')}
@@ -12882,7 +14333,7 @@ function RRHH_Operativo() {
               {noHayTipos ? (
                 <div style={{padding:'32px 20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>
                   No hay tipos de documento habilitantes configurados para este tenant.<br/>
-                  <span style={{fontSize:12}}>Ve a Maestros Base › Tipos de Documento para configurar el catálogo.</span>
+                  <span style={{fontSize:12}}>Ve a Maestros Base &gt; Tipos de Documento para configurar el catalogo.</span>
                 </div>
               ) : personalFiltrado.length === 0 ? (
                 <div style={{padding:'32px 20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>
@@ -12896,7 +14347,7 @@ function RRHH_Operativo() {
                         <th>Colaborador</th>
                         {colsHabilitantes.map(t => (
                           <th key={t.id} style={{textAlign:'center', maxWidth:100}}>
-                            <span title={t.nombre}>{t.nombre.length > 12 ? t.nombre.slice(0,12)+'…' : t.nombre}</span>
+                            <span title={t.nombre}>{t.nombre.length > 12 ? t.nombre.slice(0,12)+'...' : t.nombre}</span>
                           </th>
                         ))}
                         <th style={{textAlign:'center'}}>Estado global</th>
@@ -12904,7 +14355,7 @@ function RRHH_Operativo() {
                     </thead>
                     <tbody>
                       {personalFiltrado.map(p => {
-                        const h = habIdx[p.id] || { estado_global: 'sin_cargo', docs: [] };
+                        const h = habIdx[p.id] || { estado_global: 'sin_configurar', docs: [] };
                         const docPorTipo = Object.fromEntries(h.docs.map(d => [d.tipo_documento_id, d]));
                         return (
                           <tr key={p.id} className="hover-row" style={{cursor:'pointer'}}
@@ -12915,13 +14366,20 @@ function RRHH_Operativo() {
                             </td>
                             {colsHabilitantes.map(t => {
                               const d = docPorTipo[t.id];
-                              if (!h.tiene_cargo) return <td key={t.id} style={{textAlign:'center'}}><span style={{color:'var(--fg-subtle)',fontSize:11}}>—</span></td>;
-                              const est = d ? d.estado : (h.docs.find(x=>x.tipo_documento_id===t.id) ? h.docs.find(x=>x.tipo_documento_id===t.id).estado : 'falta');
-                              const isRequerido = h.docs.some(x => x.tipo_documento_id === t.id);
-                              if (!isRequerido) return <td key={t.id} style={{textAlign:'center'}}><span style={{color:'var(--fg-subtle)',fontSize:11}}>—</span></td>;
+                              if (!h.tiene_cargo) return <td key={t.id} title={`${t.nombre}\nNo aplica: colaborador sin cargo`} style={{textAlign:'center'}}><span style={{color:'var(--fg-subtle)',fontSize:11}}>-</span></td>;
+                              const isRequerido = Boolean(d);
+                              if (!isRequerido) return <td key={t.id} title={`${t.nombre}\nNo aplica para el cargo`} style={{textAlign:'center'}}><span style={{color:'var(--fg-subtle)',fontSize:11}}>-</span></td>;
+                              const est = d.estado;
+                              const abrirCelda = (e) => {
+                                e.stopPropagation();
+                                setSelTecnico(p);
+                                setFichaTab('documentos');
+                                if (d.doc) abrirPreviewDocumento(d, p);
+                                else setInlineUploadReq(d);
+                              };
                               return (
-                                <td key={t.id} style={{textAlign:'center'}}>
-                                  <span className={'badge ' + (DOC_BADGE[est] || 'badge-gray')} style={{fontSize:10}}>
+                                <td key={t.id} style={{textAlign:'center'}} title={habTooltip(d)} onClick={abrirCelda}>
+                                  <span className={'badge ' + (DOC_BADGE[est] || 'badge-gray')} style={{fontSize:10, cursor:'pointer', border:d.estado === 'rechazado' ? '1px solid var(--danger)' : undefined}}>
                                     {DOC_LABEL[est] || est}
                                   </span>
                                 </td>
@@ -12945,9 +14403,10 @@ function RRHH_Operativo() {
                     <span className={'badge ' + (DOC_BADGE[k] || 'badge-gray')} style={{fontSize:10}}>{v}</span>
                   </span>
                 ))}
-                <span style={{marginLeft:'auto'}}>Haz clic en una fila para ir a la ficha del colaborador.</span>
+                <span style={{marginLeft:'auto'}}>Haz clic en una celda para ver o cargar el documento.</span>
               </div>
             </div>
+            )}
           </div>
         );
       })()}
@@ -12955,7 +14414,7 @@ function RRHH_Operativo() {
       {tab === 'reportes' && (
         <div style={{display:'grid', gap:24}}>
           <div className="card">
-            <div className="card-head"><h3>Headcount por Especialidad</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Total: {personal.length} técnicos</span></div>
+            <div className="card-head"><h3>Headcount por Especialidad</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Total: {personal.length} tÃ©cnicos</span></div>
             {Object.keys(porEspecialidad).length === 0 ? (
               <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin datos.</div>
             ) : (
@@ -12978,12 +14437,12 @@ function RRHH_Operativo() {
           </div>
 
           <div className="card">
-            <div className="card-head"><h3>Técnicos sin Turno Asignado</h3>{sinTurno.length > 0 && <span className="badge badge-orange">{sinTurno.length}</span>}</div>
+            <div className="card-head"><h3>TÃ©cnicos sin Turno Asignado</h3>{sinTurno.length > 0 && <span className="badge badge-orange">{sinTurno.length}</span>}</div>
             {sinTurno.length === 0 ? (
-              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Todos los técnicos tienen turno asignado.</div>
+              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Todos los tÃ©cnicos tienen turno asignado.</div>
             ) : (
               <table className="tbl">
-                <thead><tr><th>Técnico</th><th>Cargo</th><th>Especialidad</th><th>Modalidad</th></tr></thead>
+                <thead><tr><th>TÃ©cnico</th><th>Cargo</th><th>Especialidad</th><th>Modalidad</th></tr></thead>
                 <tbody>
                   {sinTurno.map(p => (
                     <tr key={p.id}>
@@ -12999,12 +14458,12 @@ function RRHH_Operativo() {
           </div>
 
           <div className="card">
-            <div className="card-head"><h3>Documentos por Vencer (≤30 días)</h3>{docsPorVencer.length > 0 && <span className="badge badge-orange">{docsPorVencer.length} docs</span>}</div>
+            <div className="card-head"><h3>Documentos por Vencer (â‰¤30 dÃ­as)</h3>{docsPorVencer.length > 0 && <span className="badge badge-orange">{docsPorVencer.length} docs</span>}</div>
             {docsPorVencer.length === 0 ? (
-              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin documentos por vencer próximamente.</div>
+              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin documentos por vencer prÃ³ximamente.</div>
             ) : (
               <table className="tbl">
-                <thead><tr><th>Técnico</th><th>Documento</th><th>Estado</th></tr></thead>
+                <thead><tr><th>TÃ©cnico</th><th>Documento</th><th>Estado</th></tr></thead>
                 <tbody>
                   {docsPorVencer.map((d, i) => (
                     <tr key={i}>
@@ -13019,12 +14478,12 @@ function RRHH_Operativo() {
           </div>
 
           <div className="card">
-            <div className="card-head"><h3>Ranking por Costo/Hora — Top técnicos activos</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Partes diarios disponibles en módulo Partes</span></div>
+            <div className="card-head"><h3>Ranking por Costo/Hora â€” Top tÃ©cnicos activos</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Partes diarios disponibles en mÃ³dulo Partes</span></div>
             {personal.filter(p=>p.estado!=='inactivo').length === 0 ? (
               <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin datos de personal activo.</div>
             ) : (
               <table className="tbl">
-                <thead><tr><th>Técnico</th><th>Especialidad</th><th>Costo/Hora</th><th>Modalidad</th><th>Estado</th></tr></thead>
+                <thead><tr><th>TÃ©cnico</th><th>Especialidad</th><th>Costo/Hora</th><th>Modalidad</th><th>Estado</th></tr></thead>
                 <tbody>
                   {[...personal].filter(p=>p.estado!=='inactivo').sort((a,b)=>Number(b.tarifa_hora??b.costo??b.costo_hora_real??0)-Number(a.tarifa_hora??a.costo??a.costo_hora_real??0)).slice(0,10).map(p => (
                     <tr key={p.id}>
@@ -13058,20 +14517,20 @@ function RRHH_Operativo() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre completo *</label><input className="input" required value={formAlta.nombre} onChange={e=>setFormAlta(v=>({...v,nombre:e.target.value}))} placeholder="Nombre completo" autoFocus/></div>
               <div className="input-group"><label>DNI / Documento *</label><input className="input" required value={formAlta.dni} onChange={e=>setFormAlta(v=>({...v,dni:e.target.value}))} placeholder="12345678"/></div>
-              <div className="input-group"><label>Teléfono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
+              <div className="input-group"><label>TelÃ©fono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email</label><input className="input" type="email" value={formAlta.email} onChange={e=>setFormAlta(v=>({...v,email:e.target.value}))} placeholder="tecnico@empresa.pe"/></div>
               {esHonorarios && (
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>RUC <span style={{color:'var(--red)'}}>*</span></label>
                   <input className="input" type="text" inputMode="numeric" maxLength={11} pattern="[0-9]{11}" value={formAlta.ruc_colaborador} onChange={e=>setFormAlta(v=>({...v,ruc_colaborador:e.target.value.replace(/\D/g,'')}))} placeholder="20XXXXXXXXX"/>
-                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>11 dígitos. Requerido para emitir recibos por honorarios (4ta categoría).</div>
+                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>11 dÃ­gitos. Requerido para emitir recibos por honorarios (4ta categorÃ­a).</div>
                 </div>
               )}
             </div>
 
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos laborales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder={`TEC-00${personal.length+1}`}/></div>
+              <div className="input-group"><label>CÃ³digo de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder={`TEC-00${personal.length+1}`}/></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato)}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
               <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorarios} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value,fecha_fin:requiereFechaFinContrato(e.target.value)?v.fecha_fin:''}))}>{CONTRATO_DURACION_OPCIONES.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
@@ -13089,7 +14548,7 @@ function RRHH_Operativo() {
                 {formAlta.cargo_id==='__nuevo__' && <div style={{display:'flex',gap:6,marginTop:6}}>
                   <input className="input" value={nuevoCargoTextoOp} onChange={e=>setNuevoCargoTextoOp(e.target.value)} placeholder="Nombre del nuevo cargo" autoFocus/>
                   <button type="button" className="btn btn-sm" disabled={!nuevoCargoTextoOp.trim()} onClick={async()=>{const c=await crearCargo({nombre:nuevoCargoTextoOp.trim(),tipo:'Operativo',estado:'activo'});setFormAlta(v=>({...v,cargo_id:c.id,cargo:c.nombre}));setNuevoCargoTextoOp('');}}>Crear</button>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setFormAlta(v=>({...v,cargo_id:''}))}>×</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setFormAlta(v=>({...v,cargo_id:''}))}>Ã—</button>
                 </div>}
               </div>
               <div className="input-group"><label>Especialidad principal</label><select className="select" value={formAlta.especialidad} onChange={e=>setFormAlta(v=>({...v,especialidad:e.target.value}))}><option value="">Seleccionar...</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>
@@ -13118,7 +14577,7 @@ function RRHH_Operativo() {
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Tarifa hora referencial ({tarifaSym})</label>
                   <input className="input" type="number" min="0" step="0.01" value={formAlta.tarifa_hora_referencial} onChange={e=>setFormAlta(v=>({...v,tarifa_hora_referencial:e.target.value}))} placeholder="0"/>
-                  <div className="text-muted" style={{fontSize:11,marginTop:4}}>Usado para imputar costo de mano de obra en órdenes de trabajo y partes diarios. No es un dato tributario ni laboral.</div>
+                  <div className="text-muted" style={{fontSize:11,marginTop:4}}>Usado para imputar costo de mano de obra en Ã³rdenes de trabajo y partes diarios. No es un dato tributario ni laboral.</div>
                 </div>
               </> : <>
                 <div className="input-group">
@@ -13136,7 +14595,7 @@ function RRHH_Operativo() {
                 <div className="input-group">
                   <label>Tarifa por hora ({tarifaSym})</label>
                   <input className="input" type="text" readOnly value={tarifaHoraForm.toFixed(2)} style={{background:'var(--bg-subtle)', fontWeight:700}}/>
-                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>Calculado automáticamente</div>
+                  <div className="text-muted" style={{fontSize:11, marginTop:4}}>Calculado automÃ¡ticamente</div>
                 </div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Costo hora extra ({tarifaSym})</label>
@@ -13144,7 +14603,7 @@ function RRHH_Operativo() {
                     <input className="input" type="number" min="0" step="0.01" readOnly={!costoExtraOverride} value={costoExtraOverride ? formAlta.costo_extra : costExtraCalc.toFixed(2)} onChange={e=>setFormAlta(v=>({...v,costo_extra:e.target.value}))} style={{background:costoExtraOverride?undefined:'var(--bg-subtle)',flex:1}}/>
                     <button type="button" className="btn btn-secondary btn-sm" onClick={()=>{ if (costoExtraOverride) setFormAlta(v=>({...v,costo_extra:''})); setCostoExtraOverride(v=>!v); }}>{costoExtraOverride ? 'Usar sugerido' : 'Override manual'}</button>
                   </div>
-                  <div className="text-muted" style={{fontSize:11,marginTop:4}}>{costoExtraOverride ? 'Valor personalizado.' : 'Sugerido: tarifa hora × 1.25 (primer tramo legal).'}</div>
+                  <div className="text-muted" style={{fontSize:11,marginTop:4}}>{costoExtraOverride ? 'Valor personalizado.' : 'Sugerido: tarifa hora Ã— 1.25 (primer tramo legal).'}</div>
                 </div>
               </>}
             </div>
@@ -13154,20 +14613,20 @@ function RRHH_Operativo() {
               {esHonorarios ? (
                 <div className="grid-2" style={{gap:14, marginBottom:20}}>
                   <div className="input-group">
-                    <label>Retención IR (%)</label>
+                    <label>RetenciÃ³n IR (%)</label>
                     <input className="input" readOnly value={retencionIrHonorariosLabel(empresaConfig)} style={{background:'var(--bg-subtle)'}}/>
-                    <div className="text-muted" style={{fontSize:11, marginTop:4}}>Por defecto 8%. Solo aplica si la empresa es Agente de Retención y el honorario supera S/ 1,500.</div>
+                    <div className="text-muted" style={{fontSize:11, marginTop:4}}>Por defecto 8%. Solo aplica si la empresa es Agente de RetenciÃ³n y el honorario supera S/ 1,500.</div>
                   </div>
                   <div style={{display:'flex', flexDirection:'column', gap:8}}>
                     <label className="row" style={{gap:8, alignItems:'center', cursor:'pointer'}}>
                       <input type="checkbox" checked={formAlta.suspension_retenciones} onChange={e=>setFormAlta(v=>({...v,suspension_retenciones:e.target.checked, vencimiento_suspension:''}))}/>
-                      Tiene constancia de suspensión de retenciones
+                      Tiene constancia de suspensiÃ³n de retenciones
                     </label>
                     {formAlta.suspension_retenciones && (
                       <div className="input-group">
                         <label>Vencimiento de la constancia <span className="text-muted">(opcional)</span></label>
                         <input className="input" type="date" value={formAlta.vencimiento_suspension} onChange={e=>setFormAlta(v=>({...v,vencimiento_suspension:e.target.value}))}/>
-                        <div className="text-muted" style={{fontSize:11, marginTop:4}}>Sin fecha = suspensión indefinida.</div>
+                        <div className="text-muted" style={{fontSize:11, marginTop:4}}>Sin fecha = suspensiÃ³n indefinida.</div>
                       </div>
                     )}
                   </div>
@@ -13177,33 +14636,33 @@ function RRHH_Operativo() {
                   <div className="grid-2" style={{gap:14, marginBottom:20}}>
                     <div className="input-group"><label>Sueldo base</label><input className="input" type="number" min="0" value={formAlta.sueldo_base} onChange={e=>setFormAlta(v=>({...v,sueldo_base:e.target.value,monto_mensual:e.target.value}))} placeholder="0"/></div>
                     <div className="input-group"><label>Sistema pensionario</label><select className="select" value={formAlta.sistema_pensionario} onChange={e=>setFormAlta(v=>({...v,sistema_pensionario:e.target.value, afp_nombre:e.target.value === 'ONP' ? 'ONP' : v.afp_nombre}))}><option value="AFP">AFP</option><option value="ONP">ONP</option></select></div>
-                    <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos (asignación familiar S/ {asignacionFamiliar.toFixed(2)})</label>
-                    <label className="params-toggle-row" style={{gridColumn:'1/-1', cursor:'pointer'}}><input type="checkbox" className="checkbox" checked={formAlta.cargo_confianza} onChange={e=>setFormAlta(v=>({...v,cargo_confianza:e.target.checked}))}/><span>Cargo de dirección o confianza (excluido de fiscalización de horario)</span></label>
-                    {formAlta.cargo_confianza && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12}}>Este colaborador no aparecerá en el registro diario de asistencia ni se le calcularán tardanzas u horas extra.</div>}
-                    <div style={{gridColumn:'1/-1'}}><span className="badge badge-gray">Fiscalización: {fiscalizacionLabel(tipoFiscalizacionAlta)}</span></div>
-                    <div style={{gridColumn:'1/-1'}}><span className="badge badge-gray">Vacaciones: {vacacionesSugeridas} días/año (según régimen {vacRegimenLabel})</span></div>
+                    <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={formAlta.tiene_hijos} onChange={e=>setFormAlta(v=>({...v,tiene_hijos:e.target.checked}))}/> Tiene hijos (asignaciÃ³n familiar S/ {asignacionFamiliar.toFixed(2)})</label>
+                    <label className="params-toggle-row" style={{gridColumn:'1/-1', cursor:'pointer'}}><input type="checkbox" className="checkbox" checked={formAlta.cargo_confianza} onChange={e=>setFormAlta(v=>({...v,cargo_confianza:e.target.checked}))}/><span>Cargo de direcciÃ³n o confianza (excluido de fiscalizaciÃ³n de horario)</span></label>
+                    {formAlta.cargo_confianza && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12}}>Este colaborador no aparecerÃ¡ en el registro diario de asistencia ni se le calcularÃ¡n tardanzas u horas extra.</div>}
+                    <div style={{gridColumn:'1/-1'}}><span className="badge badge-gray">FiscalizaciÃ³n: {fiscalizacionLabel(tipoFiscalizacionAlta)}</span></div>
+                    <div style={{gridColumn:'1/-1'}}><span className="badge badge-gray">Vacaciones: {vacacionesSugeridas} dÃ­as/aÃ±o (segÃºn rÃ©gimen {vacRegimenLabel})</span></div>
                     <div className="input-group"><label>Cuota prestamo mes</label><input className="input" type="number" min="0" value={formAlta.cuota_prestamo_mes} onChange={e=>setFormAlta(v=>({...v,cuota_prestamo_mes:e.target.value}))}/></div>
                     <div className="input-group"><label>Descuento judicial</label><input className="input" type="number" min="0" value={formAlta.descuento_judicial} onChange={e=>setFormAlta(v=>({...v,descuento_judicial:e.target.value}))}/></div>
                   </div>
 
-                  <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10}}>Régimen de jornada</div>
+                  <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10}}>RÃ©gimen de jornada</div>
                   <div className="grid-2" style={{gap:14, marginBottom:12}}>
                     <div className="input-group" style={{gridColumn:'1/-1'}}>
-                      <label>Régimen de jornada</label>
+                      <label>RÃ©gimen de jornada</label>
                       <select className="select" value={formAlta.regimen_jornada} onChange={e=>setFormAlta(v=>({...v,regimen_jornada:e.target.value,horas_diarias_pactadas:e.target.value==='general'?'8':'12'}))}>
-                        <option value="general">General (8h/día estándar)</option>
-                        <option value="minero_14x7">Minero 14×7</option>
-                        <option value="minero_20x10">Minero 20×10</option>
-                        <option value="minero_28x14">Minero 28×14</option>
+                        <option value="general">General (8h/dÃ­a estÃ¡ndar)</option>
+                        <option value="minero_14x7">Minero 14Ã—7</option>
+                        <option value="minero_20x10">Minero 20Ã—10</option>
+                        <option value="minero_28x14">Minero 28Ã—14</option>
                       </select>
                     </div>
                     {formAlta.regimen_jornada !== 'general' && <>
                       <div className="input-group"><label>Horas diarias pactadas <span className="text-muted">(D. Leg. 857)</span></label><input className="input" type="number" min="1" max="12" value={formAlta.horas_diarias_pactadas} onChange={e=>setFormAlta(v=>({...v,horas_diarias_pactadas:e.target.value}))}/></div>
                       <div className="input-group"><label>Fecha inicio del ciclo actual</label><input className="input" type="date" value={formAlta.fecha_inicio_ciclo} onChange={e=>setFormAlta(v=>({...v,fecha_inicio_ciclo:e.target.value}))}/></div>
-                      <div className="input-group"><label>Días de trabajo en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_trabajo} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_trabajo:e.target.value}))}/></div>
-                      <div className="input-group"><label>Días de descanso en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_descanso} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_descanso:e.target.value}))}/></div>
-                      <div className="input-group" style={{gridColumn:'1/-1'}}><label>Bonificación por altitud (S/)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.bonif_altitud} onChange={e=>setFormAlta(v=>({...v,bonif_altitud:e.target.value}))} placeholder="0 si no aplica"/></div>
-                      <div className="card" style={{gridColumn:'1/-1',padding:'8px 12px',background:'rgba(6,182,212,0.08)',fontSize:12,color:'var(--cyan)'}}> Cálculo proporcional por días computables en cada período.</div>
+                      <div className="input-group"><label>DÃ­as de trabajo en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_trabajo} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_trabajo:e.target.value}))}/></div>
+                      <div className="input-group"><label>DÃ­as de descanso en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_descanso} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_descanso:e.target.value}))}/></div>
+                      <div className="input-group" style={{gridColumn:'1/-1'}}><label>BonificaciÃ³n por altitud (S/)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.bonif_altitud} onChange={e=>setFormAlta(v=>({...v,bonif_altitud:e.target.value}))} placeholder="0 si no aplica"/></div>
+                      <div className="card" style={{gridColumn:'1/-1',padding:'8px 12px',background:'rgba(6,182,212,0.08)',fontSize:12,color:'var(--cyan)'}}> CÃ¡lculo proporcional por dÃ­as computables en cada perÃ­odo.</div>
                     </>}
                   </div>
 
@@ -13212,21 +14671,21 @@ function RRHH_Operativo() {
                     {formAlta.sistema_pensionario === 'AFP' ? <>
                       <div className="input-group">
                         <label>AFP</label>
-                        <select className="select" value={formAlta.afp_nombre} onChange={e=>{const tasas={Habitat:1.47,Integra:1.55,Prima:1.60,Profuturo:1.69};setFormAlta(v=>({...v,afp_nombre:e.target.value,pct_comision_afp_flujo:String(tasas[e.target.value]??v.pct_comision_afp_flujo)}));}}>
+                        <select className="select" value={formAlta.afp_nombre} onChange={e=>{const afp=e.target.value;const p=afpParametros.find(x=>x.afp_nombre===afp);if(!p && afp!=='ONP'){addNotificacion('Advertencia: No se encontraron parametros para esta AFP.','warning');}setFormAlta(v=>({...v,afp_nombre:afp,pct_comision_afp_flujo:String(p?.pct_comision_flujo??v.pct_comision_afp_flujo)}));}}>
                           <option>Habitat</option><option>Integra</option><option>Prima</option><option>Profuturo</option>
                         </select>
                       </div>
                       <div className="input-group">
-                        <label>Tipo de comisión AFP</label>
+                        <label>Tipo de comisiÃ³n AFP</label>
                         <select className="select" value={formAlta.tipo_comision_afp} onChange={e=>setFormAlta(v=>({...v,tipo_comision_afp:e.target.value}))}>
                           <option value="mixta">Mixta</option><option value="flujo">Por flujo</option>
                         </select>
                       </div>
                       {formAlta.tipo_comision_afp === 'flujo'
-                        ? <div className="input-group"><label>Comisión por flujo (%)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.pct_comision_afp_flujo} onChange={e=>setFormAlta(v=>({...v,pct_comision_afp_flujo:e.target.value}))}/></div>
-                        : <div className="card" style={{padding:'8px 12px',fontSize:12,color:'var(--fg-muted)'}}>Comisión mixta: se descuenta del fondo, no del sueldo mensual.</div>
+                        ? <div className="input-group"><label>ComisiÃ³n por flujo (%)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.pct_comision_afp_flujo} onChange={e=>setFormAlta(v=>({...v,pct_comision_afp_flujo:e.target.value}))}/></div>
+                        : <div className="card" style={{padding:'8px 12px',fontSize:12,color:'var(--fg-muted)'}}>ComisiÃ³n mixta: se descuenta del fondo, no del sueldo mensual.</div>
                       }
-                    </> : <div className="card" style={{gridColumn:'1/-1',padding:'10px 14px',fontSize:13}}>ONP — Tasa: 13% sobre remuneración asegurable.</div>}
+                    </> : <div className="card" style={{gridColumn:'1/-1',padding:'10px 14px',fontSize:13}}>ONP â€” Tasa: 13% sobre remuneraciÃ³n asegurable.</div>}
                   </div>
                 </>
               )}
@@ -13243,18 +14702,18 @@ function RRHH_Operativo() {
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // SOLICITUDES DE RRHH
-// ────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const SOL_TIPO_LABELS = {
   vacaciones: 'Vacaciones',
   permiso_con_goce: 'Permiso con goce',
   permiso_sin_goce: 'Permiso sin goce',
-  licencia_medica: 'Licencia médica',
+  licencia_medica: 'Licencia mÃ©dica',
   licencia_maternidad: 'Licencia maternidad',
   licencia_paternidad: 'Licencia paternidad',
-  compensacion_horas: 'Compensación horas',
+  compensacion_horas: 'CompensaciÃ³n horas',
 };
 
 const SOL_ESTADO_LABELS = {
@@ -13376,7 +14835,7 @@ export function ComprasGastos() {
   const mesMostrar = (fecha) => (fecha || '').slice(0, 7);
   const mesesDisponibles = [...new Set((comprasGastos || []).map(g => mesMostrar(g.fecha)).filter(Boolean))].sort().reverse();
 
-  const cecoNombre = (id) => centrosCosto?.find(c => c.id === id)?.nombre || id || '—';
+  const cecoNombre = (id) => centrosCosto?.find(c => c.id === id)?.nombre || id || 'â€”';
   const otCodigo = (id) => ots?.find(o => o.id === id)?.codigo || id || null;
 
   const rows = (comprasGastos || []).filter(g => {
@@ -13396,7 +14855,7 @@ export function ComprasGastos() {
   const totalMontoDisplay = Object.entries(totalMontoPorMoneda)
     .filter(([, value]) => Math.abs(Number(value || 0)) > 0.009)
     .map(([moneda, value]) => moneyCurrency(value, moneda))
-    .join(' · ') || moneyCurrency(0, empresa?.moneda || 'PEN');
+    .join(' Â· ') || moneyCurrency(0, empresa?.moneda || 'PEN');
   const pendientesRevision = (comprasGastos || []).filter(g => g.estado === 'pendiente_revision').length;
 
   return (
@@ -13404,7 +14863,7 @@ export function ComprasGastos() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Compras / Gastos</h1>
-          <div className="page-sub">Registro de gastos directos — campo y backoffice</div>
+          <div className="page-sub">Registro de gastos directos â€” campo y backoffice</div>
         </div>
         <button className="btn btn-primary" onClick={() => setPanelNuevoEgreso(true)}>{I.plus} Nuevo egreso</button>
       </div>
@@ -13413,11 +14872,11 @@ export function ComprasGastos() {
         <div className="kpi-card"><div className="kpi-label">Total registros</div><div className="kpi-value">{(comprasGastos || []).length}</div></div>
         <div className="kpi-card"><div className="kpi-label">Monto filtrado</div><div className="kpi-value" style={{fontSize:18}}>{totalMontoDisplay}</div></div>
         <div className="kpi-card"><div className="kpi-label">Desde campo</div><div className="kpi-value">{(comprasGastos || []).filter(g => g.origen_registro === 'campo').length}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Pendientes revisión</div><div className="kpi-value" style={{color: pendientesRevision > 0 ? 'var(--orange)' : undefined}}>{pendientesRevision}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Pendientes revisiÃ³n</div><div className="kpi-value" style={{color: pendientesRevision > 0 ? 'var(--orange)' : undefined}}>{pendientesRevision}</div></div>
       </div>
 
       <div className="tabs">
-        {[['todos','Todos'],['campo','Campo'],['backoffice','Backoffice'],['pendientes','Pendientes revisión']].map(([k,l]) => (
+        {[['todos','Todos'],['campo','Campo'],['backoffice','Backoffice'],['pendientes','Pendientes revisiÃ³n']].map(([k,l]) => (
           <div key={k} className={'tab ' + (tab === k ? 'active' : '')} onClick={() => setTab(k)}>{l}{k === 'pendientes' && pendientesRevision > 0 ? ` (${pendientesRevision})` : ''}</div>
         ))}
       </div>
@@ -13452,7 +14911,7 @@ export function ComprasGastos() {
                 <th>Fecha</th>
                 <th>Concepto</th>
                 <th>CECO</th>
-                <th>Categoría</th>
+                <th>CategorÃ­a</th>
                 <th>Monto</th>
                 <th>Estado pago</th>
                 <th>Origen</th>
@@ -13468,12 +14927,12 @@ export function ComprasGastos() {
                   <tr key={g.id} style={esPendRev ? {background:'color-mix(in srgb, var(--orange) 5%, transparent)'} : undefined}>
                     <td className="text-muted" style={{whiteSpace:'nowrap'}}>{g.fecha}</td>
                     <td>
-                      <div style={{fontWeight:600}}>{g.descripcion || g.concepto || '—'}</div>
+                      <div style={{fontWeight:600}}>{g.descripcion || g.concepto || 'â€”'}</div>
                       {g.responsable && <div style={{fontSize:11, color:'var(--fg-muted)'}}>{g.responsable}</div>}
                       {g.ot_vinc_id && <div style={{fontSize:11, color:'var(--fg-muted)'}}>OT: {otCodigo(g.ot_vinc_id)}</div>}
                     </td>
                     <td style={{fontSize:12}}>{cecoNombre(g.centro_costo_id)}</td>
-                    <td style={{fontSize:12}}>{g.categoria || '—'}</td>
+                    <td style={{fontSize:12}}>{g.categoria || 'â€”'}</td>
                     <td className="num"><strong>{moneyCurrency(g.monto, g.moneda || 'PEN')}</strong></td>
                     <td>
                       <span className={'badge ' + (g.estado_pago === 'pagado' ? 'badge-green' : 'badge-orange')}>
@@ -13487,7 +14946,7 @@ export function ComprasGastos() {
                       }
                     </td>
                     <td style={{textAlign:'center'}}>
-                      {g.num_comprobante ? <span title={g.num_comprobante} style={{color:'var(--green)'}}>{I.receipt}</span> : <span className="text-muted">—</span>}
+                      {g.num_comprobante ? <span title={g.num_comprobante} style={{color:'var(--green)'}}>{I.receipt}</span> : <span className="text-muted">â€”</span>}
                     </td>
                     <td>
                       {esCampo && esPendRev && (
@@ -13531,8 +14990,8 @@ export function ComprasGastos() {
                 <input className="input" type="date" value={form.fecha} onChange={e => setF('fecha', e.target.value)} required/>
               </div>
               <div className="form-group">
-                <label className="form-label">Concepto / descripción <span style={{color:'var(--danger)'}}>*</span></label>
-                <input className="input" placeholder="Ej: Materiales ferretería, Viáticos..." value={form.descripcion} onChange={e => setF('descripcion', e.target.value)}/>
+                <label className="form-label">Concepto / descripciÃ³n <span style={{color:'var(--danger)'}}>*</span></label>
+                <input className="input" placeholder="Ej: Materiales ferreterÃ­a, ViÃ¡ticos..." value={form.descripcion} onChange={e => setF('descripcion', e.target.value)}/>
               </div>
               <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:12}}>
                 <div className="form-group">
@@ -13556,11 +15015,11 @@ export function ComprasGastos() {
                 {errCeco && <div style={{color:'var(--danger)',fontSize:12,marginTop:4}}>El CECO es obligatorio para guardar.</div>}
               </div>
               <div className="form-group">
-                <label className="form-label">Categoría ER</label>
+                <label className="form-label">CategorÃ­a ER</label>
                 <select className="select" value={form.categoria} onChange={e => setF('categoria', e.target.value)}>
                   <option value="Materiales">Materiales</option>
                   <option value="Servicios terceros">Servicios terceros</option>
-                  <option value="Logística">Logística</option>
+                  <option value="LogÃ­stica">LogÃ­stica</option>
                   <option value="Administrativos">Administrativos</option>
                   <option value="Comerciales">Comerciales</option>
                   <option value="Gastos financieros">Gastos financieros</option>
@@ -13569,7 +15028,7 @@ export function ComprasGastos() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <div className="form-group">
                   <label className="form-label">Responsable</label>
-                  <input className="input" placeholder="Nombre o área" value={form.responsable} onChange={e => setF('responsable', e.target.value)}/>
+                  <input className="input" placeholder="Nombre o Ã¡rea" value={form.responsable} onChange={e => setF('responsable', e.target.value)}/>
                 </div>
                 <div className="form-group">
                   <label className="form-label">OT vinculada</label>
@@ -13589,7 +15048,7 @@ export function ComprasGastos() {
               {form.estado_pago === 'pagado' && (
                 <div className="form-group">
                   <label className="form-label">Referencia de pago</label>
-                  <input className="input" placeholder="N° transferencia, cheque..." value={form.referencia_pago} onChange={e => setF('referencia_pago', e.target.value)}/>
+                  <input className="input" placeholder="NÂ° transferencia, cheque..." value={form.referencia_pago} onChange={e => setF('referencia_pago', e.target.value)}/>
                 </div>
               )}
               {form.estado_pago === 'pendiente' && (
@@ -13612,7 +15071,7 @@ export function ComprasGastos() {
               )}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <div className="form-group">
-                  <label className="form-label">N° comprobante</label>
+                  <label className="form-label">NÂ° comprobante</label>
                   <input className="input" placeholder="F001-000123" value={form.num_comprobante} onChange={e => setF('num_comprobante', e.target.value)}/>
                 </div>
                 <div className="form-group">
@@ -13654,20 +15113,20 @@ export function ComprasGastos() {
             <div className="side-panel-body">
               <div className="row" style={{marginBottom:16,gap:8}}>
                 <span className="badge badge-cyan">{I.camera} Campo</span>
-                <span className="badge badge-orange">Pendiente revisión</span>
+                <span className="badge badge-orange">Pendiente revisiÃ³n</span>
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
-                <div><div className="eyebrow">Concepto</div><div style={{fontWeight:600}}>{selCampo.descripcion || selCampo.concepto || '—'}</div></div>
+                <div><div className="eyebrow">Concepto</div><div style={{fontWeight:600}}>{selCampo.descripcion || selCampo.concepto || 'â€”'}</div></div>
                 <div><div className="eyebrow">Monto</div><div style={{fontFamily:'Sora',fontSize:22,fontWeight:700}}>{money(selCampo.monto)}</div></div>
                 <div><div className="eyebrow">Fecha</div><div>{selCampo.fecha}</div></div>
                 <div><div className="eyebrow">CECO</div><div>{cecoNombre(selCampo.centro_costo_id)}</div></div>
-                <div><div className="eyebrow">Categoría</div><div>{selCampo.categoria || '—'}</div></div>
-                <div><div className="eyebrow">Comprobante</div><div className="mono">{selCampo.num_comprobante || '—'}</div></div>
+                <div><div className="eyebrow">CategorÃ­a</div><div>{selCampo.categoria || 'â€”'}</div></div>
+                <div><div className="eyebrow">Comprobante</div><div className="mono">{selCampo.num_comprobante || 'â€”'}</div></div>
               </div>
               {selCampo.responsable && <div style={{marginBottom:12}}><div className="eyebrow">Responsable</div><div>{selCampo.responsable}</div></div>}
               <div className="row mt-6" style={{gap:8}}>
                 <button className="btn btn-primary flex-1" disabled={confirmando} onClick={() => confirmarGastoCampo(selCampo)}>
-                  {I.check} Confirmar — marcar revisado
+                  {I.check} Confirmar â€” marcar revisado
                 </button>
                 <button className="btn btn-ghost" onClick={() => setSelCampo(null)}>Cancelar</button>
               </div>
@@ -13702,7 +15161,7 @@ export function SolicitudesRrhh() {
   const [historial, setHistorial] = useState([]);
   const [histLoading, setHistLoading] = useState(false);
 
-  // Panel acción (aprobar/rechazar)
+  // Panel acciÃ³n (aprobar/rechazar)
   const [accionSolId, setAccionSolId] = useState(null);
   const [accionTipo, setAccionTipo] = useState('');
   const [accionComentario, setAccionComentario] = useState('');
@@ -13774,12 +15233,12 @@ export function SolicitudesRrhh() {
   const enviarSolicitud = async (e) => {
     e.preventDefault();
     if (!form.motivo.trim()) { addNotificacion('El motivo es obligatorio.'); return; }
-    if (diasHabiles <= 0) { addNotificacion('El rango de fechas no contiene días hábiles.'); return; }
+    if (diasHabiles <= 0) { addNotificacion('El rango de fechas no contiene dÃ­as hÃ¡biles.'); return; }
     if (form.tipo === 'vacaciones' && diasHabiles > saldoVac.saldo) {
-      addNotificacion(`No tienes suficientes días de vacaciones. Saldo: ${saldoVac.saldo} día(s).`);
+      addNotificacion(`No tienes suficientes dÃ­as de vacaciones. Saldo: ${saldoVac.saldo} dÃ­a(s).`);
       return;
     }
-    if (!empresa?.id || !personalActual) { addNotificacion('No se identificó el colaborador.'); return; }
+    if (!empresa?.id || !personalActual) { addNotificacion('No se identificÃ³ el colaborador.'); return; }
     setSaving(true);
     try {
       const nueva = await solicitudesRrhhService.crearSolicitud(empresa.id, {
@@ -13834,7 +15293,7 @@ export function SolicitudesRrhh() {
       }
       if (updated) {
         setSolicitudes(prev => prev.map(s => s.id === updated.id ? updated : s));
-        addNotificacion('Acción aplicada correctamente.');
+        addNotificacion('AcciÃ³n aplicada correctamente.');
       }
       cerrarPaneles();
     } catch (err) {
@@ -13863,7 +15322,7 @@ export function SolicitudesRrhh() {
     return true;
   }), [solicitudes, filtroTipo, filtroEstado, filtroPersonal]);
 
-  // Calendario de ausencias: agrupar días por colaborador
+  // Calendario de ausencias: agrupar dÃ­as por colaborador
   const hoy = new Date();
   const mesActual = hoy.getMonth();
   const anioActual = hoy.getFullYear();
@@ -13887,7 +15346,7 @@ export function SolicitudesRrhh() {
   const accionSol = solicitudes.find(s => s.id === accionSolId);
   const historialSol = solicitudes.find(s => s.id === historialSolId);
 
-  // ── Filas de tabla compartida ────────────────────────────────────────────────
+  // â”€â”€ Filas de tabla compartida â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function SolFila({ sol, accionesExtra }) {
     return (
       <tr>
@@ -13901,7 +15360,7 @@ export function SolicitudesRrhh() {
             {SOL_TIPO_LABELS[sol.tipo] || sol.tipo}
           </div>
         </td>
-        <td style={{whiteSpace:'nowrap', fontSize:12}}>{sol.fecha_inicio} — {sol.fecha_fin}</td>
+        <td style={{whiteSpace:'nowrap', fontSize:12}}>{sol.fecha_inicio} â€” {sol.fecha_fin}</td>
         <td style={{textAlign:'center'}}>{sol.dias_habiles}</td>
         <td><span className={'badge ' + solEstadoBadge(sol.estado)}>{SOL_ESTADO_LABELS[sol.estado] || sol.estado}</span></td>
         <td>
@@ -13914,14 +15373,14 @@ export function SolicitudesRrhh() {
     );
   }
 
-  // ── Tabla genérica ───────────────────────────────────────────────────────────
+  // â”€â”€ Tabla genÃ©rica â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function TablaBase({ filas }) {
     return (
       <table className="table" style={{width:'100%'}}>
         <thead>
           <tr>
             <th>Colaborador</th><th>Tipo</th><th>Fechas</th>
-            <th style={{textAlign:'center'}}>Días</th><th>Estado</th><th></th>
+            <th style={{textAlign:'center'}}>DÃ­as</th><th>Estado</th><th></th>
           </tr>
         </thead>
         <tbody>{filas}</tbody>
@@ -13931,12 +15390,12 @@ export function SolicitudesRrhh() {
 
   const loadingBlock = <div className="text-muted" style={{padding:40, textAlign:'center'}}>Cargando...</div>;
 
-  // ── Tab Mis solicitudes ──────────────────────────────────────────────────────
+  // â”€â”€ Tab Mis solicitudes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const tabMis = (
     <div>
       <div className="row" style={{gap:12, marginBottom:16, flexWrap:'wrap', alignItems:'center'}}>
         <div className="card" style={{padding:'10px 16px', flex:0}}>
-          <div className="text-muted" style={{fontSize:11}}>Días de vacaciones</div>
+          <div className="text-muted" style={{fontSize:11}}>DÃ­as de vacaciones</div>
           <div style={{fontSize:20, fontWeight:700, color:'var(--green)'}}>{saldoVac.saldo}</div>
           <div className="text-muted" style={{fontSize:11}}>disponibles ({saldoVac.usados} usados de {saldoVac.disponibles})</div>
         </div>
@@ -13959,11 +15418,11 @@ export function SolicitudesRrhh() {
     </div>
   );
 
-  // ── Tab Pendientes de aprobar ────────────────────────────────────────────────
+  // â”€â”€ Tab Pendientes de aprobar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const tabPendientes = (
     <div>
       {pendientesAprobacion.length === 0
-        ? <div className="text-muted" style={{padding:'32px 0', textAlign:'center'}}>No hay solicitudes pendientes de tu aprobación.</div>
+        ? <div className="text-muted" style={{padding:'32px 0', textAlign:'center'}}>No hay solicitudes pendientes de tu aprobaciÃ³n.</div>
         : <TablaBase filas={pendientesAprobacion.map(sol => {
             const solapamiento = ausenciasActivas.some(s =>
               s.personal_id === sol.personal_id && s.id !== sol.id &&
@@ -13976,10 +15435,10 @@ export function SolicitudesRrhh() {
             return (
               <React.Fragment key={sol.id}>
                 {solapamiento && (
-                  <tr><td colSpan={6}><div className="alert" style={{margin:'4px 0', padding:'6px 12px', fontSize:12, background:'rgba(251,191,36,0.12)', borderLeft:'3px solid var(--amber)', color:'var(--amber)'}}>Advertencia: {sol.personal_nombre} ya tiene otra ausencia aprobada en este período.</div></td></tr>
+                  <tr><td colSpan={6}><div className="alert" style={{margin:'4px 0', padding:'6px 12px', fontSize:12, background:'rgba(251,191,36,0.12)', borderLeft:'3px solid var(--amber)', color:'var(--amber)'}}>Advertencia: {sol.personal_nombre} ya tiene otra ausencia aprobada en este perÃ­odo.</div></td></tr>
                 )}
                 {pctAusente >= config.pct_max_equipo_ausente && (
-                  <tr><td colSpan={6}><div className="alert" style={{margin:'4px 0', padding:'6px 12px', fontSize:12, background:'rgba(239,68,68,0.10)', borderLeft:'3px solid var(--red)', color:'var(--red)'}}>Alerta: {pctAusente}% del equipo estará ausente en ese rango (límite: {config.pct_max_equipo_ausente}%).</div></td></tr>
+                  <tr><td colSpan={6}><div className="alert" style={{margin:'4px 0', padding:'6px 12px', fontSize:12, background:'rgba(239,68,68,0.10)', borderLeft:'3px solid var(--red)', color:'var(--red)'}}>Alerta: {pctAusente}% del equipo estarÃ¡ ausente en ese rango (lÃ­mite: {config.pct_max_equipo_ausente}%).</div></td></tr>
                 )}
                 <SolFila sol={sol} accionesExtra={
                   <div className="row" style={{gap:6}}>
@@ -14001,7 +15460,7 @@ export function SolicitudesRrhh() {
     </div>
   );
 
-  // ── Tab Todas las solicitudes ────────────────────────────────────────────────
+  // â”€â”€ Tab Todas las solicitudes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const tabTodas = (
     <div>
       <div className="row" style={{gap:10, marginBottom:14, flexWrap:'wrap'}}>
@@ -14043,7 +15502,7 @@ export function SolicitudesRrhh() {
     </div>
   );
 
-  // ── Tab Calendario ───────────────────────────────────────────────────────────
+  // â”€â”€ Tab Calendario â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const TIPO_COLORES = {
     vacaciones: 'var(--cyan)', permiso_con_goce: 'var(--green)',
     permiso_sin_goce: 'var(--amber)', licencia_medica: 'var(--red)',
@@ -14102,7 +15561,7 @@ export function SolicitudesRrhh() {
     </div>
   );
 
-  // ── Panel nueva solicitud ────────────────────────────────────────────────────
+  // â”€â”€ Panel nueva solicitud â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const tiposOrdenados = Object.entries(SOL_TIPO_LABELS);
   const reqDoc = solicitudesRrhhService.requiereDocumento(form.tipo);
   const excedeSaldo = form.tipo === 'vacaciones' && diasHabiles > saldoVac.saldo && diasHabiles > 0;
@@ -14136,7 +15595,7 @@ export function SolicitudesRrhh() {
 
             {form.tipo === 'vacaciones' && (
               <div className="card" style={{padding:'8px 12px', marginBottom:14, background:'rgba(6,182,212,0.08)', border:'1px solid rgba(6,182,212,0.2)'}}>
-                <div style={{fontSize:12}}>Saldo de vacaciones: <strong style={{color:'var(--cyan)'}}>{saldoVac.saldo} días</strong> disponibles ({saldoVac.usados} usados)</div>
+                <div style={{fontSize:12}}>Saldo de vacaciones: <strong style={{color:'var(--cyan)'}}>{saldoVac.saldo} dÃ­as</strong> disponibles ({saldoVac.usados} usados)</div>
               </div>
             )}
 
@@ -14153,8 +15612,8 @@ export function SolicitudesRrhh() {
               </div>
             </div>
             <div style={{marginBottom:14, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:8, fontSize:13}}>
-              Días hábiles: <strong>{diasHabiles}</strong>
-              {excedeSaldo && <span style={{color:'var(--red)', marginLeft:8}}>— Supera tu saldo ({saldoVac.saldo} días disponibles)</span>}
+              DÃ­as hÃ¡biles: <strong>{diasHabiles}</strong>
+              {excedeSaldo && <span style={{color:'var(--red)', marginLeft:8}}>â€” Supera tu saldo ({saldoVac.saldo} dÃ­as disponibles)</span>}
             </div>
 
             <div className="input-group" style={{marginBottom:14}}>
@@ -14184,7 +15643,7 @@ export function SolicitudesRrhh() {
     </>
   ) : null;
 
-  // ── Panel historial ──────────────────────────────────────────────────────────
+  // â”€â”€ Panel historial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const panelHistorial = historialSolId ? (
     <>
       <div className="side-panel-backdrop" onClick={cerrarPaneles}/>
@@ -14209,7 +15668,7 @@ export function SolicitudesRrhh() {
                       <div style={{position:'absolute', left:-20, top:4, width:10, height:10, borderRadius:'50%', background: solEstadoBadge(h.estado_hasta) === 'badge-green' ? 'var(--green)' : solEstadoBadge(h.estado_hasta) === 'badge-red' ? 'var(--red)' : 'var(--amber)', border:'2px solid var(--bg)'}}/>
                       <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:2}}>{new Date(h.creado_en).toLocaleString('es-PE')}</div>
                       <div style={{fontSize:13, fontWeight:600}}>
-                        {h.estado_desde ? `${SOL_ESTADO_LABELS[h.estado_desde] || h.estado_desde} → ` : ''}
+                        {h.estado_desde ? `${SOL_ESTADO_LABELS[h.estado_desde] || h.estado_desde} â†’ ` : ''}
                         <span className={'badge ' + solEstadoBadge(h.estado_hasta)} style={{fontSize:11}}>{SOL_ESTADO_LABELS[h.estado_hasta] || h.estado_hasta}</span>
                       </div>
                       {h.usuario && <div className="text-muted" style={{fontSize:12}}>por {h.usuario}</div>}
@@ -14224,7 +15683,7 @@ export function SolicitudesRrhh() {
     </>
   ) : null;
 
-  // ── Panel acción ─────────────────────────────────────────────────────────────
+  // â”€â”€ Panel acciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const accionTitulos = {
     aprobar_jefe: 'Aprobar solicitud', rechazar_jefe: 'Rechazar solicitud',
     confirmar_rrhh: 'Confirmar en RRHH', rechazar_rrhh: 'Rechazar en RRHH', anular: 'Anular solicitud',
@@ -14243,8 +15702,8 @@ export function SolicitudesRrhh() {
         </div>
         <div className="side-panel-body">
           <div className="card" style={{padding:12, marginBottom:14, fontSize:13}}>
-            <div>{SOL_TIPO_LABELS[accionSol?.tipo]} · {accionSol?.dias_habiles} días hábiles</div>
-            <div className="text-muted">{accionSol?.fecha_inicio} — {accionSol?.fecha_fin}</div>
+            <div>{SOL_TIPO_LABELS[accionSol?.tipo]} Â· {accionSol?.dias_habiles} dÃ­as hÃ¡biles</div>
+            <div className="text-muted">{accionSol?.fecha_inicio} â€” {accionSol?.fecha_fin}</div>
             <div style={{marginTop:6}}>{accionSol?.motivo}</div>
           </div>
           <div className="input-group" style={{marginBottom:14}}>
@@ -14260,7 +15719,7 @@ export function SolicitudesRrhh() {
             return (
               <div className="card" style={{padding:'8px 12px', marginBottom:14, fontSize:12, background:'rgba(6,182,212,0.08)'}}>
                 <div>Tipo de solicitud: <strong>{SOL_TIPO_LABELS[accionSol.tipo]}</strong></div>
-                <div>Impacto en nómina: al confirmar se calculará automáticamente.</div>
+                <div>Impacto en nÃ³mina: al confirmar se calcularÃ¡ automÃ¡ticamente.</div>
               </div>
             );
           })()}
@@ -14285,7 +15744,7 @@ export function SolicitudesRrhh() {
       <div className="page-head">
         <div>
           <h1 className="font-display">Solicitudes de RRHH</h1>
-          <div className="text-muted" style={{fontSize:13}}>Gestión de vacaciones, permisos, licencias y compensaciones</div>
+          <div className="text-muted" style={{fontSize:13}}>GestiÃ³n de vacaciones, permisos, licencias y compensaciones</div>
         </div>
       </div>
 
@@ -14318,7 +15777,7 @@ export function SolicitudesRrhh() {
 export { Cuentas, OT, Partes, Compras, Proveedores, CotizacionesCompras, OrdenesCompra, OrdenesServicio, Recepciones, ControlAsistencia, Nomina, Backlog, Cierre, Remision, SOLPE, Planner, Tickets, RRHH_Operativo };
 
 // ============================================================
-// TAREO ADMINISTRATIVO — vista desktop (consulta y reporte)
+// TAREO ADMINISTRATIVO â€” vista desktop (consulta y reporte)
 // Registro lo hacen colaboradores desde PWA o desde la OT.
 // ============================================================
 export function TareoAdmin() {
@@ -14380,7 +15839,7 @@ export function TareoAdmin() {
 
   const estadoOTEnTareo = est =>
     est === 'cerrada' ? { label: 'Ejecutada', cls: 'badge-green' } :
-    est === 'ejecucion' ? { label: 'En ejecución', cls: 'badge-cyan' } :
+    est === 'ejecucion' ? { label: 'En ejecuciÃ³n', cls: 'badge-cyan' } :
     { label: 'Programada', cls: 'badge-gray' };
 
   const guardarManual = async (e) => {
@@ -14434,7 +15893,7 @@ export function TareoAdmin() {
 
   if (!canVer) return (
     <div className="page-header"><h1 className="page-title">Tareo Administrativo</h1>
-      <p className="text-muted" style={{marginTop:8}}>Sin permiso para ver este módulo.</p>
+      <p className="text-muted" style={{marginTop:8}}>Sin permiso para ver este mÃ³dulo.</p>
     </div>
   );
 
@@ -14451,7 +15910,7 @@ export function TareoAdmin() {
 
       <div className="card">
         <div style={{display:'flex', gap:4, borderBottom:'1px solid var(--border)', paddingBottom:0, marginBottom:16}}>
-          {[['dia', 'Por día'], ['periodo', 'Por período']].map(([k, l]) => (
+          {[['dia', 'Por dÃ­a'], ['periodo', 'Por perÃ­odo']].map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)}
               style={{padding:'8px 16px', fontSize:13, fontWeight:tab===k?700:400, borderBottom:tab===k?'2px solid var(--cyan)':'2px solid transparent', background:'none', border:'none', cursor:'pointer', color:tab===k?'var(--cyan)':'var(--fg-muted)'}}>
               {l}
@@ -14477,12 +15936,12 @@ export function TareoAdmin() {
               </div>
             </div>
 
-            {/* OTs vinculadas — solo lectura, derivadas de participantes_admin en OTs */}
+            {/* OTs vinculadas â€” solo lectura, derivadas de participantes_admin en OTs */}
             {otVinsActual.length > 0 && (
               <div style={{marginBottom:16}}>
                 <div style={{fontSize:11, fontWeight:700, color:'var(--fg-muted)', letterSpacing:'0.05em', marginBottom:6, display:'flex', alignItems:'center', gap:8}}>
                   OTS VINCULADAS
-                  <span style={{fontWeight:400, fontSize:11}}>Solo lectura — gestionar desde la OT</span>
+                  <span style={{fontWeight:400, fontSize:11}}>Solo lectura â€” gestionar desde la OT</span>
                 </div>
                 <div className="table-wrap">
                   <table className="tbl">
@@ -14495,7 +15954,7 @@ export function TareoAdmin() {
                       return (
                         <tr key={ot.id} style={{background:'var(--bg-subtle)'}}>
                           <td><strong>{ot.numero}</strong></td>
-                          <td className="text-muted">{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</td>
+                          <td className="text-muted">{cuenta?.razon_social || cuenta?.nombre_comercial || 'â€”'}</td>
                           <td className="num">{horas_estimadas}h</td>
                           <td><span className={'badge ' + est.cls}>{est.label}</span></td>
                         </tr>
@@ -14533,8 +15992,8 @@ export function TareoAdmin() {
                         <input className="input" type="number" required min="0.5" max="24" step="0.5" value={formManual.horas} onChange={e => setFormManual(f => ({...f, horas: e.target.value}))} />
                       </div>
                       <div className="input-group">
-                        <label>Descripción</label>
-                        <input className="input" type="text" required placeholder="Reunión, gestión interna..." value={formManual.descripcion} onChange={e => setFormManual(f => ({...f, descripcion: e.target.value}))} />
+                        <label>DescripciÃ³n</label>
+                        <input className="input" type="text" required placeholder="ReuniÃ³n, gestiÃ³n interna..." value={formManual.descripcion} onChange={e => setFormManual(f => ({...f, descripcion: e.target.value}))} />
                       </div>
                     </div>
                     <div style={{display:'flex', gap:8, marginTop:10}}>
@@ -14546,7 +16005,7 @@ export function TareoAdmin() {
               </div>
             )}
 
-            {/* Tareos registrados del día */}
+            {/* Tareos registrados del dÃ­a */}
             {loading
               ? <div className="text-muted" style={{padding:24, textAlign:'center'}}>Cargando...</div>
               : tareosFiltrados.length === 0
@@ -14556,7 +16015,7 @@ export function TareoAdmin() {
                     <table className="tbl">
                       <thead><tr>
                         <th>Colaborador</th><th>Tipo</th><th>OT / CECO</th>
-                        <th>Horas</th><th className="num">Costo calc.</th><th>Descripción</th><th>Estado</th><th>Origen</th>
+                        <th>Horas</th><th className="num">Costo calc.</th><th>DescripciÃ³n</th><th>Estado</th><th>Origen</th>
                       </tr></thead>
                       <tbody>{tareosFiltrados.map(t => (
                         <tr key={t.id}>
@@ -14564,8 +16023,8 @@ export function TareoAdmin() {
                           <td><span className={'badge ' + (t.tipo === 'ot' ? 'badge-cyan' : 'badge-navy')}>{t.tipo === 'ot' ? 'OT' : 'Libre'}</span></td>
                           <td className="text-muted">
                             {t.tipo === 'ot'
-                              ? (getOT(t.ot_id)?.numero || t.ot_id || '—')
-                              : (t.ceco_nombre || getCeco(t.ceco_id)?.nombre || '—')}
+                              ? (getOT(t.ot_id)?.numero || t.ot_id || 'â€”')
+                              : (t.ceco_nombre || getCeco(t.ceco_id)?.nombre || 'â€”')}
                           </td>
                           <td className="num">{t.horas}h</td>
                           <td className="num">{moneyD(Number(t.horas || 0) * tarifaPersonal(t.personal_id), symPersonal(t.personal_id))}</td>
@@ -14603,12 +16062,12 @@ export function TareoAdmin() {
               </div>
             </div>
 
-            {/* OTs vinculadas del colaborador filtrado — solo en vista individual */}
+            {/* OTs vinculadas del colaborador filtrado â€” solo en vista individual */}
             {filtroPersonal && otVinsActual.length > 0 && (
               <div style={{marginBottom:16}}>
                 <div style={{fontSize:11, fontWeight:700, color:'var(--fg-muted)', letterSpacing:'0.05em', marginBottom:6, display:'flex', alignItems:'center', gap:8}}>
                   OTS VINCULADAS
-                  <span style={{fontWeight:400, fontSize:11}}>Solo lectura — gestionar desde la OT</span>
+                  <span style={{fontWeight:400, fontSize:11}}>Solo lectura â€” gestionar desde la OT</span>
                 </div>
                 <div className="table-wrap">
                   <table className="tbl">
@@ -14621,7 +16080,7 @@ export function TareoAdmin() {
                       return (
                         <tr key={ot.id} style={{background:'var(--bg-subtle)'}}>
                           <td><strong>{ot.numero}</strong></td>
-                          <td className="text-muted">{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</td>
+                          <td className="text-muted">{cuenta?.razon_social || cuenta?.nombre_comercial || 'â€”'}</td>
                           <td className="num">{horas_estimadas}h</td>
                           <td><span className={'badge ' + est.cls}>{est.label}</span></td>
                         </tr>
@@ -14635,7 +16094,7 @@ export function TareoAdmin() {
             {loading
               ? <div className="text-muted" style={{padding:24, textAlign:'center'}}>Cargando...</div>
               : resumenPorPeriodo.length === 0
-                ? <div className="text-muted" style={{padding:24, textAlign:'center'}}>Sin registros en el período seleccionado.</div>
+                ? <div className="text-muted" style={{padding:24, textAlign:'center'}}>Sin registros en el perÃ­odo seleccionado.</div>
                 : (
                   <>
                     <div className="table-wrap">
@@ -14765,7 +16224,7 @@ export function ControlHoras() {
           return {
             empresa_id: empresa?.id,
             user_id: userId,
-            texto: `${r.nombre} registro solo ${r.total.toFixed(1)}h en ${label} — por debajo del 50% de su base de ${r.horasBase.toFixed(1)}h`,
+            texto: `${r.nombre} registro solo ${r.total.toFixed(1)}h en ${label} â€” por debajo del 50% de su base de ${r.horasBase.toFixed(1)}h`,
           };
         })
         .filter(Boolean);
@@ -14895,7 +16354,7 @@ export function ControlHoras() {
             <div className="card">
               <div className="card-head">
                 <div>
-                  <h3>Horas por colaborador × OT</h3>
+                  <h3>Horas por colaborador Ã— OT</h3>
                   <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{label}</div>
                 </div>
                 <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
@@ -14954,11 +16413,11 @@ export function ControlHoras() {
                                 {r.otDescripcion && <div className="text-muted" style={{ fontSize: 11 }}>{r.otDescripcion}</div>}
                               </td>
                               <td style={{ fontSize: 13 }}>{r.cliente}</td>
-                              <td className="num">{r.horas_partes > 0 ? `${r.horas_partes.toFixed(1)}h` : '—'}</td>
-                              <td className="num">{r.horas_tareos > 0 ? `${r.horas_tareos.toFixed(1)}h` : '—'}</td>
+                              <td className="num">{r.horas_partes > 0 ? `${r.horas_partes.toFixed(1)}h` : 'â€”'}</td>
+                              <td className="num">{r.horas_tareos > 0 ? `${r.horas_tareos.toFixed(1)}h` : 'â€”'}</td>
                               <td className="num" style={{ fontWeight: 700 }}>{r.total_horas.toFixed(1)}h</td>
-                              <td className="num">{r.tarifa > 0 ? moneyD(r.tarifa, r.moneda) : '—'}</td>
-                              <td className="num">{r.tarifa > 0 ? moneyD(r.costo, r.moneda) : '—'}</td>
+                              <td className="num">{r.tarifa > 0 ? moneyD(r.tarifa, r.moneda) : 'â€”'}</td>
+                              <td className="num">{r.tarifa > 0 ? moneyD(r.costo, r.moneda) : 'â€”'}</td>
                               {i === 0 ? (
                                 <td rowSpan={grupo.filas.length} style={{ verticalAlign: 'top', paddingTop: 10 }}>
                                   {grupo.modalidad === 'Honorarios' ? (
@@ -14970,7 +16429,7 @@ export function ControlHoras() {
                                         </span>
                                       </div>
                                     ) : <span className="text-muted" style={{ fontSize: 12 }}>Sin RHE</span>
-                                  ) : <span className="text-muted" style={{ fontSize: 12 }}>—</span>}
+                                  ) : <span className="text-muted" style={{ fontSize: 12 }}>â€”</span>}
                                 </td>
                               ) : null}
                             </tr>
@@ -14980,7 +16439,7 @@ export function ControlHoras() {
                             <td colSpan={4}></td>
                             <td className="num" style={{ fontWeight: 700 }}>{grupo.totalHoras.toFixed(1)}h</td>
                             <td></td>
-                            <td className="num" style={{ fontWeight: 700 }}>{grupo.totalCosto > 0 ? moneyD(grupo.totalCosto, grupo.moneda) : '—'}</td>
+                            <td className="num" style={{ fontWeight: 700 }}>{grupo.totalCosto > 0 ? moneyD(grupo.totalCosto, grupo.moneda) : 'â€”'}</td>
                             <td></td>
                           </tr>
                         </React.Fragment>

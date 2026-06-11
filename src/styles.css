@@ -1708,6 +1708,7 @@ body {
 .params-page[data-section="sla"] .params-section-sla,
 .params-page[data-section="cuentas"] .params-section-cuentas,
 .params-page[data-section="tipo_cambio"] .params-section-tipo_cambio,
+.params-page[data-section="nomina"] .params-section-nomina,
 .params-page[data-section="evaluaciones"] .params-section-evaluaciones {
   display: block;
 }
@@ -1962,6 +1963,7 @@ body {
 .params-page[data-section="flujos"] .params-section-flujos,
 .params-page[data-section="sla"] .params-section-sla,
 .params-page[data-section="cuentas"] .params-section-cuentas,
+.params-page[data-section="nomina"] .params-section-nomina,
 .params-page[data-section="evaluaciones"] .params-section-evaluaciones {
   display: flex;
   flex-direction: column;

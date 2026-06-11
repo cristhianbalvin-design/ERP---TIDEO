@@ -624,8 +624,9 @@ function TecnicoView({ screen, setScreen }) {
           <div style={{display:'flex', flexDirection:'column', gap:8, marginBottom:20}}>
             {docsActivos.map(doc => {
               const tipoInfo = personalDocumentosService.TIPOS_DOC_OPERATIVO.find(t => t.key === doc.tipo_doc);
-              const badgeVenc = personalDocumentosService.BADGE_VENCIMIENTO[doc.estado_vencimiento] || 'badge-gray';
-              const labelVenc = personalDocumentosService.LABEL_VENCIMIENTO[doc.estado_vencimiento] || doc.estado_vencimiento;
+              // En móvil, el estado lo indica estado_validacion (el motor BD no está disponible en este contexto).
+              const badgeVenc = doc.estado_validacion === 'aprobado' ? 'badge-green' : doc.estado_validacion === 'rechazado' ? 'badge-red' : 'badge-orange';
+              const labelVenc = doc.estado_validacion === 'aprobado' ? 'Vigente' : doc.estado_validacion === 'rechazado' ? 'Rechazado' : 'En revisión';
               return (
                 <div key={doc.id} style={{background:'var(--bg)', borderRadius:8, padding:'12px 14px', display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
                   <div>
@@ -711,7 +712,7 @@ function TecnicoView({ screen, setScreen }) {
     <div className="mobile-nav">
       <div className={'mobile-nav-item '+(screen==='home'?'active':'')} onClick={()=>setScreen('home')}>{I.home}OTs</div>
       <div className="mobile-nav-item">{I.clipboard}{partesTecnico.length} Partes</div>
-      <div className={'mobile-nav-item '+(screen==='documentos'?'active':'')} onClick={()=>setScreen('documentos')}>{I.shield}Docs{docsActivos.filter(d=>d.estado_vencimiento==='vencido'||d.estado_validacion==='rechazado').length > 0 ? <span style={{background:'var(--danger)',color:'#fff',borderRadius:'50%',width:14,height:14,fontSize:9,display:'flex',alignItems:'center',justifyContent:'center'}}>!</span> : null}</div>
+      <div className={'mobile-nav-item '+(screen==='documentos'?'active':'')} onClick={()=>setScreen('documentos')}>{I.shield}Docs{docsActivos.filter(d=>d.estado_validacion==='rechazado').length > 0 ? <span style={{background:'var(--danger)',color:'#fff',borderRadius:'50%',width:14,height:14,fontSize:9,display:'flex',alignItems:'center',justifyContent:'center'}}>!</span> : null}</div>
       <div className="mobile-nav-item">{I.alert}SOS</div>
     </div>
   </>;

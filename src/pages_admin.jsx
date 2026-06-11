@@ -2148,6 +2148,8 @@ function MaterialesMaestro({ onClose }) {
   const [formErr, setFormErr] = useState('');
   const [importando, setImportando] = useState(false);
   const [resultImport, setResultImport] = useState(null);
+  const [pagina, setPagina] = useState(1);
+  const POR_PAGINA = 50;
 
   // Jerarquía state
   const [selGrupoJ, setSelGrupoJ] = useState('');
@@ -2176,6 +2178,9 @@ function MaterialesMaestro({ onClose }) {
   const formSubfamilias = formMat.familia_id ? materialSubfamilias.filter(s => s.familia_id === formMat.familia_id) : [];
   const codigoAuto = formMat.subfamilia_id ? computeNextCodigo(formMat.subfamilia_id, materialGrupos, materialFamilias, materialSubfamilias, materiales, empresa?.id) : '';
 
+  // Resetear página al cambiar filtros
+  useEffect(() => { setPagina(1); }, [filtros]);
+
   // Búsqueda en catálogo
   const materialsFiltrados = materiales.filter(m => {
     if (filtros.grupoId && m.grupo_id !== filtros.grupoId) return false;
@@ -2188,6 +2193,10 @@ function MaterialesMaestro({ onClose }) {
     }
     return true;
   });
+
+  const totalFiltrados = materialsFiltrados.length;
+  const totalPaginas = Math.max(1, Math.ceil(totalFiltrados / POR_PAGINA));
+  const materialsPagina = materialsFiltrados.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
   const grupoNombre = (id) => materialGrupos.find(g => g.id === id)?.nombre || '—';
   const famNombre = (id) => materialFamilias.find(f => f.id === id)?.nombre || '—';
@@ -2476,6 +2485,22 @@ function MaterialesMaestro({ onClose }) {
                 </div>
               </form>
 
+              {/* Indicador y paginación */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+                  {totalFiltrados === 0
+                    ? 'Sin resultados'
+                    : `Mostrando ${(pagina - 1) * POR_PAGINA + 1}–${Math.min(pagina * POR_PAGINA, totalFiltrados)} de ${totalFiltrados}${Object.values(filtros).some(Boolean) ? ' filtrados' : ''} · ${materiales.length} en total`}
+                </span>
+                {totalPaginas > 1 && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button className="btn btn-secondary btn-sm" disabled={pagina === 1} onClick={() => setPagina(p => p - 1)}>← Ant.</button>
+                    <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>Pág. {pagina} / {totalPaginas}</span>
+                    <button className="btn btn-secondary btn-sm" disabled={pagina === totalPaginas} onClick={() => setPagina(p => p + 1)}>Sig. →</button>
+                  </div>
+                )}
+              </div>
+
               {/* Tabla catálogo */}
               <div className="card">
                 <div className="table-wrap">
@@ -2493,10 +2518,10 @@ function MaterialesMaestro({ onClose }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {materialsFiltrados.length === 0 && (
+                      {totalFiltrados === 0 && (
                         <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--fg-muted)', padding: 24 }}>Sin materiales{Object.values(filtros).some(Boolean) ? ' para estos filtros' : '. Agrega uno arriba o importa desde Excel.'}</td></tr>
                       )}
-                      {materialsFiltrados.map(m => (
+                      {materialsPagina.map(m => (
                         <tr key={m.id} style={{ background: editandoId === m.id ? 'var(--bg-subtle)' : '' }}>
                           <td className="mono" style={{ fontSize: 12 }}>{m.codigo || '—'}</td>
                           <td><strong>{m.descripcion}</strong>{m.nro_parte && <div className="text-muted" style={{ fontSize: 11 }}>P/N: {m.nro_parte}</div>}</td>
@@ -2515,6 +2540,17 @@ function MaterialesMaestro({ onClose }) {
                   </table>
                 </div>
               </div>
+
+              {/* Paginación pie */}
+              {totalPaginas > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                  <button className="btn btn-secondary btn-sm" disabled={pagina === 1} onClick={() => setPagina(1)}>«</button>
+                  <button className="btn btn-secondary btn-sm" disabled={pagina === 1} onClick={() => setPagina(p => p - 1)}>← Ant.</button>
+                  <span style={{ fontSize: 12, color: 'var(--fg-muted)', minWidth: 100, textAlign: 'center' }}>Pág. {pagina} / {totalPaginas}</span>
+                  <button className="btn btn-secondary btn-sm" disabled={pagina === totalPaginas} onClick={() => setPagina(p => p + 1)}>Sig. →</button>
+                  <button className="btn btn-secondary btn-sm" disabled={pagina === totalPaginas} onClick={() => setPagina(totalPaginas)}>»</button>
+                </div>
+              )}
             </>
           )}
 
@@ -5009,19 +5045,21 @@ function CuentasBancariasSection() {
 
 // ── Categorías ER por tenant: CRUD + Excel import ────────────────────────────
 const ER_SECCIONES_LABELS = {
-  costo_ventas:       'Costo de Ventas',
-  gastos_operativos:  'Gastos Operativos',
-  gastos_financieros: 'Gastos Financieros',
+  costo_ventas:              'Costo de Ventas',
+  gastos_operativos:         'Gastos Operativos',
+  gastos_financieros:        'Gastos Financieros',
+  depreciacion_amortizacion: 'Depreciación y Amortización',
 };
 const ER_SECCIONES_BADGES = {
-  costo_ventas:       'badge-blue',
-  gastos_operativos:  'badge-cyan',
-  gastos_financieros: 'badge-yellow',
+  costo_ventas:              'badge-blue',
+  gastos_operativos:         'badge-cyan',
+  gastos_financieros:        'badge-yellow',
+  depreciacion_amortizacion: 'badge-purple',
 };
 const ER_REGLA_LABELS = { siempre: 'Siempre', con_ot: 'Con OT', sin_ot: 'Sin OT' };
 const ER_TIPO_SISTEMA_BADGE = tipo => tipo ? (ER_TIPO_SISTEMA_LABELS[tipo] || tipo) : 'Personalizado';
 
-const normCat = s => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const normCat = s => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const SECCION_MAP_IMPORT = {
   'costo de ventas':   'costo_ventas',
   'gastos operativos': 'gastos_operativos',
@@ -5036,7 +5074,7 @@ function ErCategoriasAdmin() {
   const [loading, setLoading]   = useState(true);
   const [panel, setPanel]       = useState(false);
   const [editando, setEditando] = useState(null);
-  const [form, setForm]         = useState({ nombre: '', seccion: 'gastos_operativos', regla_ot: 'siempre', tipo_sistema: '', activo: true, orden: 0 });
+  const [form, setForm]         = useState({ nombre: '', seccion: 'gastos_operativos', regla_ot: 'siempre', tipo_sistema: '', activo: true, orden: 0, es_capitalizacion: false });
   const [guardando, setGuardando] = useState(false);
   const [importando, setImportando] = useState(false);
   const [resultImport, setResultImport] = useState(null);
@@ -5057,12 +5095,12 @@ function ErCategoriasAdmin() {
 
   const abrirNuevo = () => {
     setEditando(null);
-    setForm({ nombre: '', seccion: 'gastos_operativos', regla_ot: 'siempre', tipo_sistema: '', activo: true, orden: cats.length });
+    setForm({ nombre: '', seccion: 'gastos_operativos', regla_ot: 'siempre', tipo_sistema: '', activo: true, orden: cats.length, es_capitalizacion: false });
     setPanel(true);
   };
   const abrirEditar = (c) => {
     setEditando(c);
-    setForm({ nombre: c.nombre, seccion: c.seccion, regla_ot: c.regla_ot, tipo_sistema: c.tipo_sistema || '', activo: c.activo, orden: c.orden });
+    setForm({ nombre: c.nombre, seccion: c.seccion, regla_ot: c.regla_ot, tipo_sistema: c.tipo_sistema || '', activo: c.activo, orden: c.orden, es_capitalizacion: c.es_capitalizacion || false });
     setPanel(true);
   };
 
@@ -5073,14 +5111,14 @@ function ErCategoriasAdmin() {
       const sb = await getSupabaseClient();
       if (editando) {
         const { data, error } = await sb.from('er_categorias')
-          .update({ nombre: form.nombre, seccion: form.seccion, regla_ot: form.regla_ot, tipo_sistema: form.tipo_sistema || null, activo: form.activo, orden: form.orden })
+          .update({ nombre: form.nombre, seccion: form.seccion, regla_ot: form.regla_ot, tipo_sistema: form.tipo_sistema || null, activo: form.activo, orden: form.orden, es_capitalizacion: form.es_capitalizacion })
           .eq('id', editando.id).select().single();
         if (error) throw error;
         setCats(prev => prev.map(c => c.id === editando.id ? data : c));
         addNotificacion('Categoría actualizada.');
       } else {
         const { data, error } = await sb.from('er_categorias')
-          .insert({ nombre: form.nombre, seccion: form.seccion, regla_ot: form.regla_ot, tipo_sistema: form.tipo_sistema || null, activo: form.activo, orden: form.orden, empresa_id: empresaId })
+          .insert({ nombre: form.nombre, seccion: form.seccion, regla_ot: form.regla_ot, tipo_sistema: form.tipo_sistema || null, activo: form.activo, orden: form.orden, empresa_id: empresaId, es_capitalizacion: form.es_capitalizacion || false })
           .select().single();
         if (error) throw error;
         setCats(prev => [...prev, data]);
@@ -5294,10 +5332,20 @@ function ErCategoriasAdmin() {
             <tbody>
               {cats.map(c => (
                 <tr key={c.id} style={{ opacity: c.activo ? 1 : 0.55 }}>
-                  <td style={{ fontWeight: 600 }}>{c.nombre}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    {c.nombre}
+                    {c.es_capitalizacion && (
+                      <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontWeight: 400, marginTop: 2, lineHeight: 1.4 }}>
+                        No aparece como gasto en el ER. Se capitaliza como activo fijo. Solo su depreciación mensual impacta el ER.
+                      </div>
+                    )}
+                  </td>
                   <td><span className={`badge ${ER_SECCIONES_BADGES[c.seccion] || 'badge-gray'}`}>{ER_SECCIONES_LABELS[c.seccion] || c.seccion}</span></td>
                   <td><span className="badge badge-gray">{ER_REGLA_LABELS[c.regla_ot] || c.regla_ot}</span></td>
-                  <td>{c.es_base && <span className="badge badge-yellow">Base</span>}</td>
+                  <td>
+                    {c.es_base && <span className="badge badge-yellow">Base</span>}
+                    {c.es_capitalizacion && <span className="badge badge-orange" style={{ marginLeft: c.es_base ? 4 : 0 }}>Capitalización</span>}
+                  </td>
                   <td><span className={`badge ${c.activo ? 'badge-green' : 'badge-gray'}`}>{c.activo ? 'Activo' : 'Inactivo'}</span></td>
                   <td><span className={`badge ${c.tipo_sistema ? 'badge-cyan' : 'badge-gray'}`}>{ER_TIPO_SISTEMA_BADGE(c.tipo_sistema)}</span></td>
                   <td style={{ textAlign: 'right' }}>
@@ -5355,6 +5403,32 @@ function ErCategoriasAdmin() {
                   El tipo de sistema permite que el ERP identifique esta categoria para reglas automaticas, como el formulario de RHE. Si no aplica ningun tipo estandar, deja Personalizado.
                 </div>
               </div>
+              <label style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, cursor: editando?.es_base ? 'not-allowed' : 'pointer',
+                padding: '10px 14px', borderRadius: 8,
+                background: form.es_capitalizacion
+                  ? 'color-mix(in srgb, var(--orange) 8%, var(--surface))'
+                  : 'var(--bg-subtle)',
+                border: `1px solid ${form.es_capitalizacion ? 'color-mix(in srgb, var(--orange) 30%, var(--border))' : 'var(--border)'}`,
+                opacity: editando?.es_base ? 0.7 : 1,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={!!form.es_capitalizacion}
+                  onChange={e => setF('es_capitalizacion', e.target.checked)}
+                  disabled={!!editando?.es_base}
+                  style={{ width: 16, height: 16, cursor: editando?.es_base ? 'not-allowed' : 'pointer', flexShrink: 0, marginTop: 2 }}
+                />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>
+                    Es capitalización (Activo Fijo)
+                    {editando?.es_base && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>Sistema — no editable</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2, lineHeight: 1.4 }}>
+                    Los egresos de esta categoría no fluyen al ER como gasto del período. Se registran como activo fijo.
+                  </div>
+                </div>
+              </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="input-group">
                   <label>Orden</label>
@@ -5392,16 +5466,17 @@ function EstructuraERView() {
   useEffect(() => {
     if (!empresaId) { setLoading(false); return; }
     getSupabaseClient().then(sb =>
-      sb.from('er_categorias').select('id, nombre, seccion, regla_ot, tipo_sistema, es_base')
+      sb.from('er_categorias').select('id, nombre, seccion, regla_ot, tipo_sistema, es_base, es_capitalizacion')
         .eq('empresa_id', empresaId).eq('activo', true).order('orden')
     ).then(({ data }) => setCats(data || [])).catch(() => {}).finally(() => setLoading(false));
   }, [empresaId]);
 
   const ER_AUTO = [
-    { seccion: 'costo_ventas',       nombre: 'Mano de obra directa (costos OT)' },
-    { seccion: 'gastos_operativos',  nombre: 'Planilla neta' },
-    { seccion: 'gastos_operativos',  nombre: 'Cargas sociales' },
-    { seccion: 'gastos_financieros', nombre: 'Intereses de financiamiento' },
+    { seccion: 'costo_ventas',              nombre: 'Mano de obra directa (costos OT)' },
+    { seccion: 'gastos_operativos',         nombre: 'Planilla neta' },
+    { seccion: 'gastos_operativos',         nombre: 'Cargas sociales' },
+    { seccion: 'gastos_financieros',        nombre: 'Intereses de financiamiento' },
+    { seccion: 'depreciacion_amortizacion', nombre: 'Depreciación de activos fijos' },
   ];
 
   return (
@@ -5414,12 +5489,13 @@ function EstructuraERView() {
         <div style={{ padding: 24, color: 'var(--fg-muted)', fontSize: 13 }}>Cargando...</div>
       ) : (
         <div style={{ padding: '12px 20px' }}>
-          {['costo_ventas', 'gastos_operativos', 'gastos_financieros'].map(sec => {
+          {['costo_ventas', 'gastos_operativos', 'gastos_financieros', 'depreciacion_amortizacion'].map(sec => {
             const autoItems = ER_AUTO.filter(a => a.seccion === sec);
-            const secCats   = cats.filter(c => c.seccion === sec);
+            const secCats   = cats.filter(c => c.seccion === sec && !c.es_capitalizacion);
+            const capCats   = cats.filter(c => c.seccion === sec && c.es_capitalizacion);
             return (
-              <div key={sec} style={{ marginBottom: 20 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, padding: '6px 10px', background: 'var(--bg-alt)', borderRadius: 6 }}>
+              <div key={sec} style={{ marginBottom: 4 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, padding: '6px 10px', background: 'var(--bg-alt)', borderRadius: 6 }}>
                   {ER_SECCIONES_LABELS[sec]}
                 </div>
                 {autoItems.map(a => (
@@ -5436,8 +5512,27 @@ function EstructuraERView() {
                     {c.es_base && <span className="badge badge-yellow" style={{ fontSize: 10 }}>Base</span>}
                   </div>
                 ))}
-                {!autoItems.length && !secCats.length && (
+                {capCats.map(c => (
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', fontSize: 13, color: 'var(--fg-muted)' }}>
+                    <span style={{ flex: 1 }}>{c.nombre}</span>
+                    <span className="badge badge-orange" style={{ fontSize: 10 }}>Capitalización</span>
+                    <span className="badge badge-gray" style={{ fontSize: 10, fontStyle: 'italic' }}>no fluye al ER</span>
+                  </div>
+                ))}
+                {!autoItems.length && !secCats.length && !capCats.length && (
                   <div style={{ padding: '5px 10px', fontSize: 13, color: 'var(--fg-muted)', fontStyle: 'italic' }}>Sin categorías en esta sección</div>
+                )}
+                {sec === 'gastos_financieros' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', marginTop: 4, background: 'var(--bg-subtle)', borderRadius: 6, fontSize: 13, fontWeight: 700 }}>
+                    <span style={{ flex: 1 }}>= EBITDA</span>
+                    <span className="badge badge-gray" style={{ fontSize: 10 }}>Antes de depreciación</span>
+                  </div>
+                )}
+                {sec === 'depreciacion_amortizacion' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', marginTop: 4, background: 'var(--navy)', borderRadius: 6, fontSize: 13, fontWeight: 700, color: '#fff' }}>
+                    <span style={{ flex: 1 }}>= EBIT / Resultado Neto</span>
+                    <span className="badge badge-cyan" style={{ fontSize: 10 }}>Después de depreciación</span>
+                  </div>
                 )}
               </div>
             );
@@ -6336,8 +6431,8 @@ function Parametros() {
             const pct2 = 100 - Number(nominaCfg.pct_quincena_1);
             const mesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
             const mesActual = mesNombres[new Date().getMonth()];
-            const tasasAfp = latestAfpParametros(afpParametros);
-            return (<div style={{overflowY:'auto', paddingBottom:24}}>
+            const tasasAfp = latestAfpParametros(afpParametros || []);
+            return (<div className="params-section params-section-nomina" style={{overflowY:'auto', paddingBottom:24}}>
               {/* Bloque 1 — Régimen laboral */}
               <div className="card params-card mb-6">
                 <div className="card-head"><h3>Régimen laboral de la empresa</h3></div>
@@ -6437,13 +6532,15 @@ function Parametros() {
                   <div className="alert alert-info" style={{marginBottom:14}}>Actualizar al inicio de cada año fiscal según publicación de la SBS.</div>
                   <div className="table-wrap">
                     <table className="tbl" style={{fontSize:12}}>
-                      <thead><tr><th>AFP</th><th>Prima de seguro vigente (%)</th><th>Vigente desde</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+                      <thead><tr><th>AFP</th><th>Prima de seguro vigente (%)</th><th>Comisión Flujo (%)</th><th>Comisión Mixta Saldo (%)</th><th>Vigente desde</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
                       <tbody>{tasasAfp.map(row => {
                         const editing = afpEdit?.afp_nombre === row.afp_nombre;
                         return (
                           <tr key={row.afp_nombre}>
                             <td><strong>{row.afp_nombre}</strong></td>
                             <td>{editing ? <input className="input" type="number" min="0" step="0.01" value={afpEdit.pct_prima_seguro} onChange={e=>setAfpEdit(p=>({...p,pct_prima_seguro:e.target.value}))}/> : `${Number(row.pct_prima_seguro ?? AFP_PRIMA_SEGURO_FALLBACK).toFixed(2)}%`}</td>
+                            <td>{editing ? <input className="input" type="number" min="0" step="0.01" value={afpEdit.pct_comision_flujo} onChange={e=>setAfpEdit(p=>({...p,pct_comision_flujo:e.target.value}))}/> : `${Number(row.pct_comision_flujo ?? 0).toFixed(2)}%`}</td>
+                            <td>{editing ? <input className="input" type="number" min="0" step="0.01" value={afpEdit.pct_comision_mixta_saldo} onChange={e=>setAfpEdit(p=>({...p,pct_comision_mixta_saldo:e.target.value}))}/> : `${Number(row.pct_comision_mixta_saldo ?? 0).toFixed(2)}%`}</td>
                             <td>{editing ? <input className="input" type="date" value={afpEdit.vigente_desde} onChange={e=>setAfpEdit(p=>({...p,vigente_desde:e.target.value}))}/> : (row.vigente_desde || '2026-01-01')}</td>
                             <td style={{textAlign:'right'}}>
                               {editing ? (
@@ -6722,6 +6819,7 @@ function RRHHAdmin() {
       const personaParam = todosPersonal.find(p => p.id === activeParams.detail);
       if (personaParam) {
         setSel(personaParam.id);
+        setTab(activeParams.tab === 'documentos' ? 'documentos' : 'ficha');
         setView('personal');
         paramsHandledRef.current = key;
       }
@@ -7024,9 +7122,9 @@ function RRHHAdmin() {
 
           {tab === 'documentos' && (() => {
             const docsPersona = personalDocumentos.filter(d => d.personal_id === persona.id && d.activo);
-            // ── Motor de habilitaciones (Fase 1B: Provisional sin cálculo de fechas) ─────────────
-            const DOC_LBL = { cargado:'Cargado / Validado', en_revision:'En revisión', rechazado:'Rechazado', falta:'Falta' };
-            const DOC_BDG = { cargado:'badge-green', en_revision:'badge-cyan', rechazado:'badge-red', falta:'badge-gray' };
+            // ── Motor de habilitaciones (Fase 1C: lee estado desde el campo estado_validacion)
+            const DOC_LBL = { vigente:'Cargado / Validado', por_vencer:'Por vencer', vencido:'Vencido', en_revision:'En revisión', rechazado:'Rechazado', falta:'Falta', incompleto:'Sin fecha de vencimiento' };
+            const DOC_BDG = { vigente:'badge-green', por_vencer:'badge-orange', vencido:'badge-red', en_revision:'badge-cyan', rechazado:'badge-red', falta:'badge-gray', incompleto:'badge-orange' };
             const habPersona = (() => {
               if (!persona.cargo_id) return { estado_global: 'sin_cargo', docs: [], tiene_cargo: false };
               const tipoIdx = Object.fromEntries(tiposDocumento.map(t => [t.id, t]));
@@ -7039,15 +7137,20 @@ function RRHHAdmin() {
                 if (!doc) return 'falta';
                 if (doc.estado_validacion === 'rechazado') return 'rechazado';
                 if (doc.estado_validacion === 'pendiente' && tipo?.requiere_validacion) return 'en_revision';
-                return 'cargado';
+                return 'vigente';
               };
               const reqCargo = requisitosCargo.filter(r => r.cargo_id === persona.cargo_id);
+              if (!reqCargo.length) return { estado_global: 'sin_requisitos', docs: [], tiene_cargo: true };
               const docs = reqCargo.map(req => {
                 const tipo = tipoIdx[req.tipo_documento_id];
                 const doc = docIdx[req.tipo_documento_id] || null;
                 return { ...req, tipo, doc, estado: calcEst(doc, tipo) };
               });
-              return { estado_global: 'en_regla', docs, tiene_cargo: true };
+              const CRITICOS = new Set(['vencido','rechazado','falta','incompleto']);
+              const ADV = new Set(['por_vencer','en_revision']);
+              const obs = docs.filter(d => d.obligatorio).map(d => d.estado);
+              const estado_global = obs.some(e => CRITICOS.has(e)) ? 'critico' : obs.some(e => ADV.has(e)) ? 'advertencia' : 'en_regla';
+              return { estado_global, docs, tiene_cargo: true };
             })();
             const docReqPorTipo = Object.fromEntries(habPersona.docs.map(d => [d.tipo_documento_id, d]));
             const reqPendientes = habPersona.docs.filter(r => r.estado === 'falta' && r.obligatorio).length;
@@ -7059,7 +7162,9 @@ function RRHHAdmin() {
               try {
                 await subirDocumentoPersonalCtx({
                   personalId: persona.id, personalTipo: 'administrativo',
-                  tipoDoc: inlineUploadReq.tipo_documento_id, file: inlineUploadFile,
+                  tipoDoc: inlineUploadReq.tipo_documento_id,
+                  tipoDocumentoId: inlineUploadReq.tipo_documento_id,
+                  file: inlineUploadFile,
                   fechaEmision: inlineUploadForm.fechaEmision || null,
                   fechaVencimiento: inlineUploadReq.tipo?.exige_vencimiento ? (inlineUploadForm.fechaVencimiento || null) : null,
                   notas: inlineUploadForm.notas || null, subidoDesde: 'backoffice',
@@ -7105,6 +7210,30 @@ function RRHHAdmin() {
             
             return (
               <div className="card-body">
+                {/* ── Badge habilitacional ── */}
+                {(() => {
+                  const BADGE_HAB = {
+                    en_regla:       { cls: 'badge-green',  txt: 'En regla' },
+                    advertencia:    { cls: 'badge-orange', txt: 'Atención requerida' },
+                    critico:        { cls: 'badge-red',    txt: 'No habilitado para campo' },
+                    sin_cargo:      { cls: 'badge-gray',   txt: 'Sin cargo asignado' },
+                    sin_requisitos: { cls: 'badge-gray',   txt: 'Cargo sin requisitos' },
+                  };
+                  const cfg = BADGE_HAB[habPersona.estado_global] || BADGE_HAB.sin_cargo;
+                  const docsProblema = habPersona.docs.filter(d =>
+                    ['rechazado','falta','incompleto','en_revision'].includes(d.estado) && d.obligatorio
+                  );
+                  const tip = docsProblema.map(d => d.tipo?.nombre || d.tipo_documento_id).join(', ');
+                  return (
+                    <div style={{marginBottom:20, display:'flex', alignItems:'center', gap:10, padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border-subtle)'}}>
+                      <span className={'badge ' + cfg.cls} style={{fontSize:13, padding:'5px 14px', flexShrink:0}} title={tip || undefined}>
+                        {cfg.txt}
+                      </span>
+                      {tip && <span style={{fontSize:12, color:'var(--fg-muted)', flex:1}}>{tip}</span>}
+                    </div>
+                  );
+                })()}
+
                 {/* Requisitos del cargo */}
                 <div style={{marginBottom:32}}>
                   <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:12}}>

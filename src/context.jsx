@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { MOCK } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
-import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
 import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
@@ -11,6 +11,7 @@ import {
 } from './services/finanzasService.js';
 import { maestrosService } from './services/maestrosService.js';
 import { comprasService } from './services/comprasService.js';
+import { registrarEntrada, registrarSalida, registrarTransferencia, registrarAjuste, reservarStock, liberarReserva, getKardex, getStockCompleto, iniciarConteo, listarConteos, guardarAvanceConteo, cerrarConteo, getAnaliticaInventario, getMaterialesBajoReorden, registrarConsumoOT as registrarConsumoOTSvc } from './services/inventarioService.js';
 import { rrhhService } from './services/rrhhService.js';
 import * as plannerSvc from './services/plannerService.js';
 import { auditoriaService } from './services/auditoriaService.js';
@@ -37,6 +38,20 @@ import {
   getMaterialFamilias, crearMaterialFamilia as svcCrearFamilia, actualizarMaterialFamilia as svcActualizarFamilia, eliminarMaterialFamilia as svcEliminarFamilia,
   getMaterialSubfamilias, crearMaterialSubfamilia as svcCrearSubfamilia, actualizarMaterialSubfamilia as svcActualizarSubfamilia, eliminarMaterialSubfamilia as svcEliminarSubfamilia,
 } from './services/materialService.js';
+import { getActivos, crearActivo as svcCrearActivo, actualizarActivo as svcActualizarActivo, darBajaActivo as svcDarBajaActivo, importarActivosMasivo } from './services/activosService.js';
+import {
+  getGuias, crearGuia as svcCrearGuia, actualizarGuia as svcActualizarGuia,
+  emitirGuia as svcEmitirGuia, marcarEnTransito as svcMarcarEnTransito,
+  confirmarEntrega as svcConfirmarEntrega, anularGuia as svcAnularGuia,
+  getTransportistas as svcGetTransportistas, crearTransportista as svcCrearTransportista,
+  actualizarTransportista as svcActualizarTransportista,
+  crearVehiculo as svcCrearVehiculo, crearConductor as svcCrearConductor,
+} from './services/guiasService.js';
+import {
+  getOrdenesVenta, crearOrdenVenta as svcCrearOV, actualizarOrdenVenta as svcActualizarOV,
+  confirmarOrdenVenta as svcConfirmarOV, anularOrdenVenta as svcAnularOV,
+  getCatalogoVenta, crearProductoCatalogo as svcCrearProductoCatalogo,
+} from './services/ventasService.js';
 const AppContext = createContext();
 const PLATFORM_SUPERADMIN_EMAIL = 'cristhianbalvin@gmail.com';
 const isPlatformSuperadminEmail = email =>
@@ -299,6 +314,7 @@ export function AppProvider({ children }) {
   const [partes, setPartes] = useState(useSupabase ? [] : (MOCK.partes || []));
   const [backlog, setBacklog] = useState(useSupabase ? [] : (MOCK.backlog || []));
   const [inventario, setInventario] = useState(useSupabase ? [] : (MOCK.inventario || []));
+  const [inventarioConteos, setInventarioConteos] = useState([]);
   const [solpes, setSolpes] = useState(useSupabase ? [] : (MOCK.solpes || []));
   const [cierresTecnicos, setCierresTecnicos] = useState(useSupabase ? [] : (MOCK.cierresTecnicos || []));
   const [valorizaciones, setValorizaciones] = useState(useSupabase ? [] : (MOCK.valorizaciones || []));
@@ -333,6 +349,13 @@ export function AppProvider({ children }) {
   const [materialFamilias, setMaterialFamilias] = useState([]);
   const [materialSubfamilias, setMaterialSubfamilias] = useState([]);
   const [materiales, setMateriales] = useState([]);
+  const [activos, setActivos] = useState([]);
+
+  // Módulo Transporte y Guías (Fase 4)
+  const [guiasRemision, setGuiasRemision] = useState(useSupabase ? [] : (MOCK.remisiones || []));
+  const [ordenesVenta, setOrdenesVenta] = useState(useSupabase ? [] : (MOCK.ordenesVentaMock || []));
+  const [transportistas, setTransportistas] = useState(useSupabase ? [] : (MOCK.transportistasMock || []));
+  const [catalogoVenta, setCatalogoVenta] = useState(useSupabase ? [] : (MOCK.catalogoVentaMock || []));
 
   // Personal Operativo (separado del admin, estado propio)
   const [personalOperativo, setPersonalOperativo] = useState(useSupabase ? [] : (MOCK.personalOperativo || []));
@@ -417,14 +440,25 @@ export function AppProvider({ children }) {
     { id: 'f3_5', text: 'Nuevo lead referido por Logística Altiplano SAC en proceso de calificación.', read: true, time: 'Ayer' },
     { id: 'f3_6', text: 'Bienvenido al ERP TIDEO Fase 3 — Customer Success, BI Financiero e IA Copiloto activos.', read: true, time: 'Hace 2 días' },
     { id: 'notif_fin_001', tipo: 'alerta', modulo: 'financiamiento', text: 'BCP Préstamo — Cuota N°2 vence en 7 días · S/ 2,354.17', read: false, time: 'Hoy' },
+    {
+      id: 'notif_doc_mock_001',
+      tipo: 'doc_por_vencer',
+      title: 'Documento por vencer',
+      text: 'Carlos Reyes · SCTR vence en 15 dias. Solicita la renovacion.',
+      read: false,
+      time: 'Hoy',
+      priority: 'media',
+      referenceType: 'personal_documento',
+      referencePayload: { personal_id: 'pop_002', personal_tipo: 'operativo', tipo_documento_id: 'tdoc_m001' },
+    },
   ]);
 
   const addNotificacion = (msg) => {
     const id = generateId('not');
     setNotificaciones(prev => [{ id, text: msg, read: false, time: 'Justo ahora' }, ...prev]);
-    if (isSupabaseConfigured() && authUser?.id) {
+    if (isSupabaseConfigured() && authUser?.id && empresa?.id) {
       getSupabaseClient().then(sb =>
-        sb.from('notificaciones_sistema').insert({ id, user_id: authUser.id, texto: msg, leida: false })
+        sb.from('notificaciones_sistema').insert({ empresa_id: empresa.id, user_id: authUser.id, texto: msg, leida: false })
       ).catch(() => {});
     }
   };
@@ -446,8 +480,19 @@ export function AppProvider({ children }) {
     usuariosLoadedAt: '',
     rolesLoadedAt: '',
   });
-  const markNotificacionesRead = () => {
-    setNotificaciones(prev => prev.map(n => ({ ...n, read: true })));
+  const markNotificacionesRead = (id = null) => {
+    let idsDb = [];
+    setNotificaciones(prev => prev.map(n => {
+      const shouldMark = id ? n.id === id : !n.read;
+      if (shouldMark && n._db) idsDb.push(n.id);
+      return shouldMark ? { ...n, read: true } : n;
+    }));
+    if (isSupabaseConfigured() && authUser?.id) {
+      getSupabaseClient().then(sb => {
+        if (id) return marcarNotificacionLeida(sb, id);
+        return marcarNotificacionesLeidas(sb, authUser.id, idsDb);
+      }).catch(() => {});
+    }
   };
 
   useEffect(() => {
@@ -806,6 +851,7 @@ export function AppProvider({ children }) {
         setOrdenesServicio([]);
         setRecepciones([]);
         setInventario([]);
+        setInventarioConteos([]);
         setPersonalOperativo([]);
         setPersonalAdmin([]);
         setTurnos([]);
@@ -880,6 +926,11 @@ export function AppProvider({ children }) {
         } catch (_err) { /* keep mock */ }
 
         try {
+          const conteosData = await listarConteos(empresa.id);
+          if (mounted) setInventarioConteos(conteosData || []);
+        } catch (_err) { /* tabla WMS pendiente */ }
+
+        try {
           const [mg, mf, ms, mat] = await Promise.all([
             getMaterialGrupos(empresa.id),
             getMaterialFamilias(empresa.id),
@@ -892,7 +943,27 @@ export function AppProvider({ children }) {
             setMaterialSubfamilias(ms || []);
             setMateriales(mat || []);
           }
-        } catch (_err) { /* tabla aÃºn no existe */ }
+        } catch (_err) { /* tabla aún no existe */ }
+
+        try {
+          const act = await getActivos(empresa.id);
+          if (mounted) setActivos(act || []);
+        } catch (_err) { /* tabla activos aún no aplicada */ }
+
+        try {
+          const [guias, ovs, trans, cat] = await Promise.all([
+            getGuias(empresa.id),
+            getOrdenesVenta(empresa.id),
+            svcGetTransportistas(empresa.id),
+            getCatalogoVenta(empresa.id),
+          ]);
+          if (mounted) {
+            setGuiasRemision(guias || []);
+            setOrdenesVenta(ovs || []);
+            setTransportistas(trans || []);
+            setCatalogoVenta(cat || []);
+          }
+        } catch (_err) { /* migración 211 pendiente */ }
 
         try {
           const { data: cfgData } = await supabase.from('empresa_config').select('*').eq('empresa_id', empresa.id).maybeSingle();
@@ -1161,7 +1232,20 @@ export function AppProvider({ children }) {
     ).then(rows => {
       if (!rows?.length) return;
       setNotificaciones(prev => [
-        ...rows.map(r => ({ id: r.id, text: r.texto, read: r.leida, time: new Date(r.created_at).toLocaleDateString('es-PE'), _db: true })),
+        ...rows.map(r => ({
+          id: r.id,
+          text: r.mensaje || r.texto,
+          title: r.titulo || '',
+          message: r.mensaje || r.texto,
+          read: r.leida,
+          time: new Date(r.created_at || r.creada_en).toLocaleDateString('es-PE'),
+          tipo: r.tipo,
+          priority: r.prioridad || 'media',
+          referenceType: r.referencia_tipo,
+          referenceId: r.referencia_id,
+          referencePayload: r.referencia_payload || {},
+          _db: true,
+        })),
         ...prev,
       ]);
     }).catch(() => {});
@@ -3262,7 +3346,14 @@ export function AppProvider({ children }) {
         }
         return i;
       }));
-      opsSync(sb => consumirInventario(sb, empresa.id, itemsADescontar, otId));
+      // Consumo OT: usa el motor WMS (costo promedio vigente, created_by, saldo)
+      if (isSupabaseConfigured()) {
+        getSupabaseClient().then(sb => registrarConsumoOTSvc(sb, empresa.id, itemsADescontar, otId, authUser?.id))
+          .then(() => getStockCompleto(empresa.id).then(inv => { if (inv?.length) setInventario(inv); }))
+          .catch(err => console.error('consumo OT inventario:', err));
+      } else {
+        opsSync(sb => consumirInventario(sb, empresa.id, itemsADescontar, otId));
+      }
     }
 
     addNotificacion(`Cierre TÃ©cnico registrado para la OT. Inventario consumido.`);
@@ -4949,7 +5040,7 @@ export function AppProvider({ children }) {
     const path = `${empresa.id}/rhe/${reciboId}/${tipo}.${ext}`;
     const { error: upErr } = await sb.storage.from('documentos-privados').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: true });
     if (upErr) throw new Error(`Error subiendo ${tipo}: ${upErr.message}`);
-    const { data: signed, error: signErr } = await sb.storage.from('documentos-privados').createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
+    const { data: signed, error: signErr } = await sb.storage.from('documentos-privados').createSignedUrl(path, 600);
     if (signErr) throw new Error(`Error obteniendo URL de ${tipo}: ${signErr.message}`);
     return signed.signedUrl;
   };
@@ -6695,6 +6786,236 @@ export function AppProvider({ children }) {
     setMateriales(prev => prev.filter(x => x.id !== id));
   };
 
+  // ─── Activos ──────────────────────────────────────────────────────────────────
+  const recargarActivos = async () => {
+    if (!empresa?.id) return;
+    const act = await getActivos(empresa.id);
+    setActivos(act || []);
+  };
+
+  const crearActivoCtx = async (datos) => {
+    const data = await svcCrearActivo(empresa.id, datos, authUser?.id);
+    setActivos(prev => [...prev, data]);
+    return data;
+  };
+
+  const actualizarActivoCtx = async (id, datos) => {
+    const data = await svcActualizarActivo(id, datos);
+    setActivos(prev => prev.map(x => x.id === id ? data : x));
+    return data;
+  };
+
+  const bajaActivoCtx = async (id, motivo) => {
+    const data = await svcDarBajaActivo(id, motivo, authUser?.id);
+    setActivos(prev => prev.map(x => x.id === id ? data : x));
+    return data;
+  };
+
+  const importarActivosCtx = async (filas) => {
+    const res = await importarActivosMasivo(empresa.id, filas);
+    await recargarActivos();
+    return res;
+  };
+
+  // ─── Guías de Remisión ────────────────────────────────────────────────────────
+  const recargarGuias = async () => {
+    if (!empresa?.id || !isSupabaseConfigured()) return;
+    const data = await getGuias(empresa.id);
+    setGuiasRemision(data || []);
+  };
+
+  const crearGuiaCtx = async (form) => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) {
+      const data = await svcCrearGuia(empresa.id, form, authUser?.id);
+      setGuiasRemision(prev => [data, ...prev]);
+      return data;
+    }
+    const nuevo = {
+      ...form,
+      id: generateId('gr'),
+      empresa_id: empresa.id,
+      serie: form.serie || 'T001',
+      numero: (guiasRemision.length || 0) + 1,
+      numero_completo: `${form.serie || 'T001'}-${String((guiasRemision.length || 0) + 1).padStart(8, '0')}`,
+      estado: 'borrador',
+      kardex_salida_ids: [],
+      anulado: false,
+      created_at: new Date().toISOString(),
+    };
+    setGuiasRemision(prev => [nuevo, ...prev]);
+    return nuevo;
+  };
+
+  const actualizarGuiaCtx = async (id, cambios) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcActualizarGuia(id, cambios, authUser?.id);
+      setGuiasRemision(prev => prev.map(g => g.id === id ? data : g));
+      return data;
+    }
+    const actualizado = { ...cambios, id, updated_at: new Date().toISOString() };
+    setGuiasRemision(prev => prev.map(g => g.id === id ? { ...g, ...actualizado } : g));
+    return actualizado;
+  };
+
+  const emitirGuiaCtx = async (id) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcEmitirGuia(id, authUser?.id);
+      setGuiasRemision(prev => prev.map(g => g.id === id ? data : g));
+      return data;
+    }
+    return actualizarGuiaCtx(id, { estado: 'emitida' });
+  };
+
+  const marcarEnTransitoCtx = async (id) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcMarcarEnTransito(id, authUser?.id);
+      setGuiasRemision(prev => prev.map(g => g.id === id ? data : g));
+      return data;
+    }
+    return actualizarGuiaCtx(id, { estado: 'en_transito' });
+  };
+
+  const confirmarEntregaCtx = async (id) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcConfirmarEntrega(id, authUser?.id);
+      setGuiasRemision(prev => prev.map(g => g.id === id ? data : g));
+      return data;
+    }
+    return actualizarGuiaCtx(id, { estado: 'entregada' });
+  };
+
+  const anularGuiaCtx = async (id, motivo) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcAnularGuia(id, motivo, authUser?.id);
+      setGuiasRemision(prev => prev.map(g => g.id === id ? data : g));
+      return data;
+    }
+    return actualizarGuiaCtx(id, { estado: 'anulada', anulado: true, anulado_motivo: motivo });
+  };
+
+  // ─── Transportistas ───────────────────────────────────────────────────────────
+  const crearTransportistaCtx = async (form) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await svcCrearTransportista(empresa.id, form);
+      setTransportistas(prev => [...prev, { ...data, vehiculos: [], conductores: [] }]);
+      return data;
+    }
+    const nuevo = { ...form, id: generateId('tra'), empresa_id: empresa?.id, activo: true, vehiculos: [], conductores: [], created_at: new Date().toISOString() };
+    setTransportistas(prev => [...prev, nuevo]);
+    return nuevo;
+  };
+
+  const actualizarTransportistaCtx = async (id, cambios) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcActualizarTransportista(id, cambios);
+      setTransportistas(prev => prev.map(t => t.id === id ? { ...t, ...data } : t));
+      return data;
+    }
+    setTransportistas(prev => prev.map(t => t.id === id ? { ...t, ...cambios } : t));
+    return { ...cambios, id };
+  };
+
+  const crearVehiculoCtx = async (form) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await svcCrearVehiculo(empresa.id, form);
+      setTransportistas(prev => prev.map(t =>
+        t.id === form.transportista_id ? { ...t, vehiculos: [...(t.vehiculos || []), data] } : t
+      ));
+      return data;
+    }
+    const nuevo = { ...form, id: generateId('veh'), empresa_id: empresa?.id, activo: true, created_at: new Date().toISOString() };
+    setTransportistas(prev => prev.map(t =>
+      t.id === form.transportista_id ? { ...t, vehiculos: [...(t.vehiculos || []), nuevo] } : t
+    ));
+    return nuevo;
+  };
+
+  const crearConductorCtx = async (form) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await svcCrearConductor(empresa.id, form);
+      setTransportistas(prev => prev.map(t =>
+        t.id === form.transportista_id ? { ...t, conductores: [...(t.conductores || []), data] } : t
+      ));
+      return data;
+    }
+    const nuevo = { ...form, id: generateId('con'), empresa_id: empresa?.id, activo: true, created_at: new Date().toISOString() };
+    setTransportistas(prev => prev.map(t =>
+      t.id === form.transportista_id ? { ...t, conductores: [...(t.conductores || []), nuevo] } : t
+    ));
+    return nuevo;
+  };
+
+  // ─── Órdenes de Venta ─────────────────────────────────────────────────────────
+  const recargarOrdenesVenta = async () => {
+    if (!empresa?.id || !isSupabaseConfigured()) return;
+    const data = await getOrdenesVenta(empresa.id);
+    setOrdenesVenta(data || []);
+  };
+
+  const crearOVCtx = async (form) => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) {
+      const data = await svcCrearOV(empresa.id, form, authUser?.id);
+      setOrdenesVenta(prev => [data, ...prev]);
+      return data;
+    }
+    const n = (ordenesVenta.length || 0) + 1;
+    const nuevo = {
+      ...form,
+      id: generateId('ov'),
+      empresa_id: empresa.id,
+      numero: `OV-${new Date().getFullYear()}-${String(n).padStart(4, '0')}`,
+      estado: 'pendiente',
+      anulado: false,
+      created_at: new Date().toISOString(),
+    };
+    setOrdenesVenta(prev => [nuevo, ...prev]);
+    return nuevo;
+  };
+
+  const actualizarOVCtx = async (id, cambios) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcActualizarOV(id, cambios, authUser?.id);
+      setOrdenesVenta(prev => prev.map(o => o.id === id ? data : o));
+      return data;
+    }
+    setOrdenesVenta(prev => prev.map(o => o.id === id ? { ...o, ...cambios } : o));
+    return { ...cambios, id };
+  };
+
+  const confirmarOVCtx = async (id) => {
+    if (isSupabaseConfigured()) {
+      const res = await svcConfirmarOV(id, authUser?.id);
+      await recargarOrdenesVenta();
+      return res;
+    }
+    setOrdenesVenta(prev => prev.map(o => o.id === id ? { ...o, estado: 'confirmada' } : o));
+    return { ok: true, erroresReserva: [] };
+  };
+
+  const anularOVCtx = async (id, motivo) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcAnularOV(id, motivo, authUser?.id);
+      setOrdenesVenta(prev => prev.map(o => o.id === id ? data : o));
+      return data;
+    }
+    setOrdenesVenta(prev => prev.map(o => o.id === id ? { ...o, estado: 'anulada', anulado: true } : o));
+    return { ok: true };
+  };
+
+  // ─── Catálogo de Venta ────────────────────────────────────────────────────────
+  const crearProductoCatalogoCtx = async (form) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await svcCrearProductoCatalogo(empresa.id, form);
+      setCatalogoVenta(prev => [...prev, data]);
+      return data;
+    }
+    const nuevo = { ...form, id: generateId('cat'), empresa_id: empresa?.id, activo: true, created_at: new Date().toISOString() };
+    setCatalogoVenta(prev => [...prev, nuevo]);
+    return nuevo;
+  };
+
   const registrarProveedor = async (proveedor) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await comprasService.crearProveedor(empresa.id, proveedor);
@@ -6841,6 +7162,8 @@ export function AppProvider({ children }) {
     })();
     const itemsRecibidos = isOC
       ? (base.items || []).map(item => ({
+        codigo: item.codigo || null,
+        material_id: item.material_id || null,
         descripcion: item.descripcion,
         pedido: item.cantidad,
         recibido: item.cantidad,
@@ -6893,34 +7216,46 @@ export function AppProvider({ children }) {
       setOrdenesCompra(prev => prev.map(o => o.id === base.id ? { ...o, ...cambios } : o));
       if (isSupabaseConfigured()) comprasService.actualizarOrdenCompra(base.id, cambios).catch(error => addNotificacion(`Compras no persistio en Supabase: ${error.message}`));
       if (itemsRecibidos.length) {
-        setInventario(prev => [...prev, ...itemsRecibidos.map((item, idx) => ({
-          id: generateId('inv'),
-          empresa_id: empresa.id,
-          sku: `CMP-${Date.now()}-${idx}`,
-          nombre: item.descripcion,
-          categoria: 'Compras',
-          almacen: 'ALM-001',
-          unidad: item.unidad,
-          stock_actual: item.recibido,
-          costo_promedio: item.precio_unitario || 0
-        }))]);
         if (isSupabaseConfigured() && !observaciones) {
-          Promise.all(itemsRecibidos.map((item, idx) => comprasService.registrarEntradaInventario(empresa.id, {
-            codigo: item.codigo || `CMP-${String(idx + 1).padStart(3, '0')}-${base.codigo || base.id}`,
+          // Motor WMS: registra entradas reales, busca materiales en catálogo, actualiza costo promedio
+          Promise.all(itemsRecibidos.map(item => comprasService.registrarEntradaInventario(empresa.id, {
+            codigo: item.codigo || null,
             descripcion: item.descripcion,
             unidad: item.unidad,
             cantidad: item.recibido,
-            precio_unitario: item.precio_unitario || 0,
+            costo_unitario: item.precio_unitario || 0,
             moneda: base.moneda || 'PEN',
-            almacen_codigo: 'ALM-001'
+            almacen_codigo: 'ALM-001',
+            proveedor_id: base.proveedor_id || null,
           }, {
             tipo: 'recepcion',
             id: recepcion.id,
+            proveedor_id: base.proveedor_id || null,
             observacion: `Entrada por recepcion ${recepcion.codigo}`
-          }))).then(async () => {
-            const invData = await comprasService.getInventario(empresa.id);
+          }, authUser?.id))).then(async () => {
+            const invData = await getStockCompleto(empresa.id);
             if (invData?.length) setInventario(invData);
           }).catch(error => addNotificacion(`Inventario no persistio en Supabase: ${error.message}`));
+        } else if (!isSupabaseConfigured()) {
+          // Mock: agrega entradas locales para demo
+          setInventario(prev => [...prev, ...itemsRecibidos.map((item, idx) => ({
+            id: generateId('inv'),
+            empresa_id: empresa.id,
+            material_id: generateId('mat'),
+            almacen_id: 'ALM-001',
+            sku: item.codigo || `CMP-${Date.now()}-${idx}`,
+            nombre: item.descripcion,
+            categoria: 'Compras',
+            almacen: 'Almacén Principal',
+            unidad: item.unidad,
+            fisico: item.recibido,
+            disponible: item.recibido,
+            reservado: 0,
+            stock_actual: item.recibido,
+            costo_promedio: item.precio_unitario || 0,
+            stock_minimo: 0,
+            punto_reorden: 0,
+          }))]);
         }
       }
     } else {
@@ -6970,6 +7305,176 @@ export function AppProvider({ children }) {
 
     addNotificacion(`Recepcion registrada. ${observaciones ? 'Quedo observada.' : 'CxP generada.'}`);
     return recepcionLocal;
+  };
+
+  // ─── Acciones WMS ────────────────────────────────────────────────────────────
+  const recargarInventario = async () => {
+    if (!empresa?.id || !isSupabaseConfigured()) return;
+    const inv = await getStockCompleto(empresa.id);
+    if (inv) setInventario(inv);
+  };
+
+  const registrarEntradaManualCtx = async (form) => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) {
+      const res = await registrarEntrada(empresa.id, form, authUser?.id);
+      await recargarInventario();
+      return res;
+    }
+    // Mock
+    setInventario(prev => {
+      const idx = prev.findIndex(i => i.material_id === form.material_id && i.almacen_id === form.almacen_id);
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], disponible: updated[idx].disponible + Number(form.cantidad), stock_actual: updated[idx].stock_actual + Number(form.cantidad) };
+        return updated;
+      }
+      return [...prev, { id: generateId('inv'), empresa_id: empresa.id, material_id: form.material_id, almacen_id: form.almacen_id, sku: form.sku || form.material_id, nombre: form.nombre || form.material_id, disponible: Number(form.cantidad), reservado: 0, fisico: Number(form.cantidad), stock_actual: Number(form.cantidad), costo_promedio: Number(form.costo_unitario || 0), almacen: form.almacen || 'Principal', unidad: form.unidad || 'und', categoria: form.categoria || 'General', stock_minimo: 0, punto_reorden: 0 }];
+    });
+    return { ok: true };
+  };
+
+  const registrarTransferenciaCtx = async (form) => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) {
+      const res = await registrarTransferencia(empresa.id, form, authUser?.id);
+      await recargarInventario();
+      return res;
+    }
+    return { ok: true };
+  };
+
+  const registrarAjusteCtx = async (form) => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) {
+      const res = await registrarAjuste(empresa.id, form, authUser?.id);
+      await recargarInventario();
+      return res;
+    }
+    return { ok: true };
+  };
+
+  const reservarStockCtx = async (material_id, almacen_id, cantidad, otId) => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) {
+      await reservarStock(empresa.id, material_id, almacen_id, cantidad, otId);
+      await recargarInventario();
+    }
+  };
+
+  const getKardexMaterialCtx = async (materialId, almacenId) => {
+    if (!empresa?.id || !isSupabaseConfigured()) return [];
+    return getKardex(empresa.id, materialId, almacenId);
+  };
+
+  const iniciarConteoCtx = async (form) => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) {
+      const conteo = await iniciarConteo(empresa.id, form, authUser?.id);
+      setInventarioConteos(prev => [conteo, ...prev.filter(c => c.id !== conteo.id)]);
+      return conteo;
+    }
+    const rows = inventario
+      .filter(i => !form.almacen_id || i.almacen_id === form.almacen_id)
+      .map(i => ({
+        material_id: i.material_id,
+        almacen_id: i.almacen_id,
+        sku: i.sku,
+        nombre: i.nombre,
+        categoria: i.categoria,
+        unidad: i.unidad,
+        almacen: i.almacen,
+        tipo_control: i.tipo_control || 'sin_control',
+        teorico: Number(i.fisico ?? i.disponible ?? 0),
+        fisico: null,
+        diferencia: null,
+        lote: i.lote || null,
+        serie: i.serie || null,
+        vencimiento: i.vencimiento || null,
+      }));
+    const conteo = {
+      id: generateId('cnt'),
+      codigo: `CNT-MOCK-${String(inventarioConteos.length + 1).padStart(3, '0')}`,
+      empresa_id: empresa.id,
+      estado: 'en_proceso',
+      tipo: form.tipo || 'total',
+      nombre: form.nombre || 'Conteo fisico',
+      almacen_id: form.almacen_id || null,
+      zona: form.zona || null,
+      items: rows,
+      ajustes_generados: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setInventarioConteos(prev => [conteo, ...prev]);
+    return conteo;
+  };
+
+  const recargarConteosInventarioCtx = async () => {
+    if (!empresa?.id || !isSupabaseConfigured()) return inventarioConteos;
+    const data = await listarConteos(empresa.id);
+    setInventarioConteos(data || []);
+    return data || [];
+  };
+
+  const guardarAvanceConteoCtx = async (conteoId, items) => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) {
+      const data = await guardarAvanceConteo(empresa.id, conteoId, items, authUser?.id);
+      setInventarioConteos(prev => prev.map(c => c.id === conteoId ? data : c));
+      return data;
+    }
+    const data = { ...(inventarioConteos.find(c => c.id === conteoId) || {}), estado: 'en_proceso', items, updated_at: new Date().toISOString() };
+    setInventarioConteos(prev => prev.map(c => c.id === conteoId ? data : c));
+    return data;
+  };
+
+  const cerrarConteoCtx = async (conteoId, items) => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) {
+      const res = await cerrarConteo(empresa.id, conteoId, items, authUser?.id);
+      await recargarInventario();
+      await recargarConteosInventarioCtx();
+      return res;
+    }
+    const itemsConDif = (items || []).map(it => ({ ...it, diferencia: Number(it.fisico || 0) - Number(it.teorico || 0) }));
+    setInventarioConteos(prev => prev.map(c => c.id === conteoId ? { ...c, estado: 'cerrado', items: itemsConDif, ajustes_generados: true, cerrado_at: new Date().toISOString(), updated_at: new Date().toISOString() } : c));
+    return [];
+  };
+
+  const getAnaliticaInventarioCtx = async (filtros) => {
+    if (!empresa?.id) return { abc: [], rotacion: [], stockMuerto: [], meta: { movimientosPeriodo: 0 } };
+    if (isSupabaseConfigured()) return getAnaliticaInventario(empresa.id, filtros);
+    const stockMuerto = inventario
+      .filter(i => !filtros?.almacen_id || i.almacen_id === filtros.almacen_id)
+      .map(i => ({
+        material_id: i.material_id,
+        almacen_id: i.almacen_id,
+        sku: i.sku,
+        nombre: i.nombre,
+        categoria: i.categoria,
+        unidad: i.unidad,
+        almacen: i.almacen,
+        stock_actual: Number(i.fisico ?? i.disponible ?? 0),
+        costo_promedio: Number(i.costo_promedio || 0),
+        ultima_salida: null,
+        dias_sin_actividad: null,
+        valor_inmovilizado: Number(i.fisico ?? i.disponible ?? 0) * Number(i.costo_promedio || 0),
+      }))
+      .filter(i => i.stock_actual > 0);
+    return {
+      abc: [],
+      rotacion: [],
+      stockMuerto,
+      meta: {
+        periodo: filtros?.periodo || 'trimestre',
+        movimientosPeriodo: 0,
+        salidasPeriodo: 0,
+        totalSalidasValor: 0,
+        dias_sin_actividad: Number(filtros?.dias_sin_actividad || 90),
+        valorInmovilizado: stockMuerto.reduce((s, r) => s + Number(r.valor_inmovilizado || 0), 0),
+      },
+    };
   };
 
   const crearTecnicoCtx = async (persona) => {
@@ -7936,6 +8441,7 @@ export function AppProvider({ children }) {
     backlog, setBacklog,
     cierresTecnicos,
     inventario, setInventario,
+    inventarioConteos, setInventarioConteos,
     solpes, setSolpes,
     valorizaciones, setValorizaciones,
     proveedores, setProveedores,
@@ -7966,6 +8472,12 @@ export function AppProvider({ children }) {
     crearMatFamilia, actualizarMatFamilia, eliminarMatFamilia,
     crearMatSubfamilia, actualizarMatSubfamilia, eliminarMatSubfamilia,
     crearMaterialCtx, actualizarMaterialCtx, eliminarMaterialCtx, recargarMateriales,
+    activos, setActivos, crearActivoCtx, actualizarActivoCtx, bajaActivoCtx, importarActivosCtx, recargarActivos,
+    // Transporte y Guías
+    guiasRemision, setGuiasRemision, crearGuiaCtx, actualizarGuiaCtx, emitirGuiaCtx, marcarEnTransitoCtx, confirmarEntregaCtx, anularGuiaCtx, recargarGuias,
+    transportistas, setTransportistas, crearTransportistaCtx, actualizarTransportistaCtx, crearVehiculoCtx, crearConductorCtx,
+    ordenesVenta, setOrdenesVenta, crearOVCtx, actualizarOVCtx, confirmarOVCtx, anularOVCtx, recargarOrdenesVenta,
+    catalogoVenta, setCatalogoVenta, crearProductoCatalogoCtx,
 
     // Actions
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,
@@ -7996,6 +8508,9 @@ export function AppProvider({ children }) {
     registrarProveedor, actualizarProveedorCtx,
     crearProcesoCompraCtx, actualizarProcesoCompraCtx,
     crearOrdenCompraCtx, crearOrdenServicioCtx, crearRecepcionCtx, registrarRecepcionConCxP, registrarEvaluacionProveedorCtx,
+    // WMS Actions
+    recargarInventario, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx,
+    reservarStockCtx, getKardexMaterialCtx, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, getAnaliticaInventarioCtx,
     // Fase 3 Data
     personalOperativo, setPersonalOperativo,
     personalAdmin, setPersonalAdmin,

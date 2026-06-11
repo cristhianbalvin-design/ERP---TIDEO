@@ -1,24 +1,21 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 
 const BUCKET = 'documentos-privados';
+// Signed URLs para documentos privados: 10 minutos (600s).
+// La renovación automática ocurre en el previsualizador del frontend.
+const SIGNED_URL_TTL = 600;
 
-// Calcula el estado de vencimiento en el cliente (mismo criterio que la función SQL)
-export function calcularEstadoVencimiento(fechaVencimiento) {
-  if (!fechaVencimiento) return 'sin_vencimiento';
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  const venc = new Date(fechaVencimiento + 'T00:00:00');
-  const diff = Math.ceil((venc - hoy) / (1000 * 60 * 60 * 24));
-  if (diff < 0) return 'vencido';
-  if (diff <= 30) return 'por_vencer';
-  return 'vigente';
+// STUB — el estado de vencimiento lo calcula el motor BD (calcular_habilitaciones_personal).
+// Esta función se mantiene para no romper posibles importaciones externas,
+// pero NO debe usarse para tomar decisiones de estado en el frontend.
+export function calcularEstadoVencimiento(_fechaVencimiento) {
+  // Intencionalmente vacío: usar el campo `estado` que devuelve el motor BD.
+  return null;
 }
 
 export function normalizar(doc = {}) {
-  return {
-    ...doc,
-    estado_vencimiento: calcularEstadoVencimiento(doc.fecha_vencimiento),
-  };
+  // Preserva los campos del documento; el campo estado viene del motor BD, no se recalcula aquí.
+  return { ...doc };
 }
 
 // ── Consultas ─────────────────────────────────────────────────────────────────
@@ -73,6 +70,7 @@ export async function subirDocumento({
   personalId,
   personalTipo,
   tipoDoc,
+  tipoDocumentoId,
   file,
   fechaEmision,
   fechaVencimiento,
@@ -91,10 +89,10 @@ export async function subirDocumento({
 
   if (uploadError) throw uploadError;
 
-  // 2. Obtener URL firmada (válida 1 año — renovable al mostrar)
+  // 2. Obtener URL firmada (válida 10 minutos — se renueva en el previsualizador)
   const { data: urlData, error: urlError } = await supabase.storage
     .from(BUCKET)
-    .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+    .createSignedUrl(storagePath, SIGNED_URL_TTL);
 
   if (urlError) throw urlError;
 
@@ -110,6 +108,7 @@ export async function subirDocumento({
     p_fecha_vencimiento: fechaVencimiento || null,
     p_notas:             notas || null,
     p_subido_desde:      subidoDesde,
+    p_tipo_documento_id: tipoDocumentoId || null,
   });
 
   if (rpcError) throw rpcError;
@@ -135,7 +134,7 @@ export async function renovarUrlDocumento(storagePath) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase.storage
     .from(BUCKET)
-    .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+    .createSignedUrl(storagePath, SIGNED_URL_TTL);
   if (error) throw error;
   return data.signedUrl;
 }

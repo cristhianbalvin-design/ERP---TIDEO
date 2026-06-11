@@ -693,6 +693,28 @@ export async function insertarNotificacionesSistema(supabase, rows) {
 
 export async function cargarNotificacionesSistema(supabase, userId) {
   if (!isSupabaseMode() || !supabase || !userId) return [];
+  const selectExtendido = [
+    'id',
+    'texto',
+    'leida',
+    'created_at',
+    'tipo',
+    'titulo',
+    'mensaje',
+    'referencia_tipo',
+    'referencia_id',
+    'referencia_payload',
+    'prioridad',
+    'creada_en',
+  ].join(', ');
+  const res = await supabase
+    .from('notificaciones_sistema')
+    .select(selectExtendido)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (!res.error) return res.data || [];
+
   const { data } = await supabase
     .from('notificaciones_sistema')
     .select('id, texto, leida, created_at')
@@ -705,6 +727,13 @@ export async function cargarNotificacionesSistema(supabase, userId) {
 export async function marcarNotificacionLeida(supabase, id) {
   if (!isSupabaseMode() || !supabase) return;
   return supabase.from('notificaciones_sistema').update({ leida: true }).eq('id', id);
+}
+
+export async function marcarNotificacionesLeidas(supabase, userId, ids = null) {
+  if (!isSupabaseMode() || !supabase || !userId) return;
+  let q = supabase.from('notificaciones_sistema').update({ leida: true }).eq('user_id', userId);
+  if (Array.isArray(ids) && ids.length) q = q.in('id', ids);
+  return q;
 }
 
 export async function insertarHistorialAcuerdo(supabase, fila) {

@@ -251,7 +251,7 @@ async function cargarAdjuntoPorId(adjuntoId) {
   return data;
 }
 
-export async function obtenerUrlAdjunto(adjunto, expiresIn = 3600) {
+export async function obtenerUrlAdjunto(adjunto, expiresIn = 600) {
   if (!adjunto) return '';
   if (!isSupabaseMode()) return adjunto.url || '';
 

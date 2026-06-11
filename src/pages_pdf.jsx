@@ -492,3 +492,253 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
     </Document>
   );
 }
+
+// ─── Guía de Remisión PDF ─────────────────────────────────────────────────────
+// Formato SUNAT Res. 000020-2023/SUNAT — campos obligatorios marcados *SUNAT*
+// OSE_FUTURE: agregar QR de firma electrónica cuando se integre el OSE
+export function GuiaRemisionPDF({ guia, cfg }) {
+  const primary = cfg?.color_primario || '#1A2B4A';
+  const secondary = cfg?.color_secundario || '#607D8B';
+  const S = makeStyles(primary, secondary);
+
+  const grStyles = StyleSheet.create({
+    badge: { borderRadius: 3, paddingHorizontal: 8, paddingVertical: 3, fontSize: 8, fontFamily: 'Helvetica-Bold', alignSelf: 'flex-start' },
+    badgeCyan: { backgroundColor: '#e0f7fa', color: '#006064' },
+    badgeGreen: { backgroundColor: '#e8f5e9', color: '#1b5e20' },
+    badgeOrange: { backgroundColor: '#fff3e0', color: '#e65100' },
+    badgeGray: { backgroundColor: '#f0f0f0', color: '#555' },
+    sectionBox: { borderWidth: 1, borderColor: '#e4eaf0', borderRadius: 4, padding: 10, marginBottom: 10 },
+    sectionTitle: { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: primary, letterSpacing: 0.8, marginBottom: 6 },
+    grid2: { flexDirection: 'row', gap: 12 },
+    gridCell: { flex: 1 },
+    fieldLabel: { fontSize: 7, color: secondary, marginBottom: 2 },
+    fieldVal: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', marginBottom: 6 },
+    fieldValMono: { fontSize: 8.5, fontFamily: 'Helvetica', marginBottom: 6 },
+    anulBanner: { backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fca5a5', borderRadius: 4, padding: 10, marginBottom: 10, textAlign: 'center' },
+    anulText: { color: '#991b1b', fontFamily: 'Helvetica-Bold', fontSize: 11, letterSpacing: 1 },
+    oseNote: { fontSize: 7, color: '#9ca3af', marginTop: 4, textAlign: 'center' },
+  });
+
+  const estadoBadge = {
+    borrador: grStyles.badgeGray, emitida: grStyles.badgeCyan,
+    en_transito: grStyles.badgeOrange, entregada: grStyles.badgeGreen,
+    anulada: { backgroundColor: '#fef2f2', color: '#991b1b' },
+  };
+  const estadoLabel = {
+    borrador: 'BORRADOR', emitida: 'EMITIDA', en_transito: 'EN TRÁNSITO',
+    entregada: 'ENTREGADA', anulada: 'ANULADA',
+  };
+  const motivoNombre = {
+    '01': 'Venta', '03': 'Traslado entre establecimientos',
+    '04': 'Traslado en consignación', '05': 'Devolución',
+    '17': 'Distribución de bienes', '99': 'Otros',
+  };
+
+  const lineas = guia.lineas || [];
+  const pesoTotal = lineas.reduce((s, l) => s + Number(l.peso_total || (l.cantidad * (l.peso_unitario || 0)) || 0), 0);
+
+  return (
+    <Document>
+      <Page size="A4" style={S.page}>
+        {/* Encabezado empresa */}
+        <View style={S.header}>
+          <View>
+            {cfg?.logo_url ? <Image style={S.logo} src={cfg.logo_url} /> : null}
+            <Text style={[S.companyMetaLine, { fontFamily: 'Helvetica-Bold', fontSize: 10, marginTop: 4 }]}>{cfg?.razon_social || ''}</Text>
+            <Text style={S.companyMetaLine}>RUC: {cfg?.ruc || ''}</Text>
+            {cfg?.direccion ? <Text style={S.companyMetaLine}>{cfg.direccion}</Text> : null}
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            {/* *SUNAT* Correlativo */}
+            <View style={{ borderWidth: 1, borderColor: primary, borderRadius: 4, padding: 8, alignItems: 'center', minWidth: 140 }}>
+              <Text style={{ fontSize: 8, color: secondary, marginBottom: 2 }}>GUÍA DE REMISIÓN</Text>
+              <Text style={{ fontSize: 14, fontFamily: 'Helvetica-Bold', color: primary, letterSpacing: 1 }}>{guia.numero_completo || '—'}</Text>
+              <View style={[grStyles.badge, estadoBadge[guia.estado] || grStyles.badgeGray, { marginTop: 6 }]}>
+                <Text>{estadoLabel[guia.estado] || guia.estado?.toUpperCase()}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {guia.anulado && (
+          <View style={grStyles.anulBanner}>
+            <Text style={grStyles.anulText}>⬛ GUÍA ANULADA</Text>
+            {guia.anulado_motivo ? <Text style={{ fontSize: 8, color: '#991b1b', marginTop: 4 }}>Motivo: {guia.anulado_motivo}</Text> : null}
+          </View>
+        )}
+
+        <View style={S.sep} />
+
+        {/* Fechas y clasificación */}
+        <View style={grStyles.sectionBox}>
+          <Text style={grStyles.sectionTitle}>DATOS DEL TRASLADO</Text>
+          <View style={grStyles.grid2}>
+            <View style={grStyles.gridCell}>
+              {/* *SUNAT* Fecha emisión */}
+              <Text style={grStyles.fieldLabel}>Fecha de emisión *</Text>
+              <Text style={grStyles.fieldVal}>{guia.fecha_emision}</Text>
+              {/* *SUNAT* Fecha inicio traslado */}
+              <Text style={grStyles.fieldLabel}>Fecha inicio traslado *</Text>
+              <Text style={grStyles.fieldVal}>{guia.fecha_inicio_traslado}</Text>
+            </View>
+            <View style={grStyles.gridCell}>
+              {/* *SUNAT* Motivo de traslado */}
+              <Text style={grStyles.fieldLabel}>Motivo de traslado *</Text>
+              <Text style={grStyles.fieldVal}>{guia.motivo_traslado} — {motivoNombre[guia.motivo_traslado] || guia.motivo_traslado}</Text>
+              {/* *SUNAT* Modalidad */}
+              <Text style={grStyles.fieldLabel}>Modalidad de traslado *</Text>
+              <Text style={grStyles.fieldVal}>{guia.modalidad === 'remitente' ? 'Por cuenta del remitente' : 'Por cuenta del transportista'}</Text>
+            </View>
+            <View style={grStyles.gridCell}>
+              {/* *SUNAT* Peso bruto */}
+              <Text style={grStyles.fieldLabel}>Peso bruto total *</Text>
+              <Text style={grStyles.fieldVal}>{guia.peso_bruto_total || pesoTotal.toFixed(3)} {guia.unidad_peso || 'KGM'}</Text>
+              {guia.orden_venta_id || guia.ot_id ? (
+                <>
+                  <Text style={grStyles.fieldLabel}>Documento origen</Text>
+                  <Text style={grStyles.fieldVal}>{guia.orden_venta_id ? `OV: ${guia.orden_venta_id}` : `OT: ${guia.ot_id}`}</Text>
+                </>
+              ) : null}
+            </View>
+          </View>
+        </View>
+
+        {/* Puntos de partida y llegada */}
+        <View style={grStyles.grid2}>
+          <View style={[grStyles.sectionBox, { flex: 1 }]}>
+            <Text style={grStyles.sectionTitle}>PUNTO DE PARTIDA</Text>
+            {/* *SUNAT* Dirección partida */}
+            <Text style={grStyles.fieldLabel}>Dirección *</Text>
+            <Text style={grStyles.fieldVal}>{guia.partida_direccion || '—'}</Text>
+            {/* *SUNAT* Ubigeo partida */}
+            {guia.partida_ubigeo ? (
+              <>
+                <Text style={grStyles.fieldLabel}>Ubigeo *</Text>
+                <Text style={grStyles.fieldValMono}>{guia.partida_ubigeo}</Text>
+              </>
+            ) : null}
+          </View>
+          <View style={[grStyles.sectionBox, { flex: 1 }]}>
+            <Text style={grStyles.sectionTitle}>PUNTO DE LLEGADA</Text>
+            {/* *SUNAT* Dirección llegada */}
+            <Text style={grStyles.fieldLabel}>Dirección *</Text>
+            <Text style={grStyles.fieldVal}>{guia.llegada_direccion || '—'}</Text>
+            {/* *SUNAT* Ubigeo llegada */}
+            {guia.llegada_ubigeo ? (
+              <>
+                <Text style={grStyles.fieldLabel}>Ubigeo *</Text>
+                <Text style={grStyles.fieldValMono}>{guia.llegada_ubigeo}</Text>
+              </>
+            ) : null}
+          </View>
+        </View>
+
+        {/* Destinatario */}
+        <View style={grStyles.sectionBox}>
+          <Text style={grStyles.sectionTitle}>DESTINATARIO</Text>
+          <View style={grStyles.grid2}>
+            <View style={grStyles.gridCell}>
+              {/* *SUNAT* RUC/DNI destinatario */}
+              <Text style={grStyles.fieldLabel}>RUC / DNI *</Text>
+              <Text style={grStyles.fieldVal}>{guia.destinatario_ruc_dni || '—'}</Text>
+            </View>
+            <View style={[grStyles.gridCell, { flex: 2 }]}>
+              {/* *SUNAT* Razón social destinatario */}
+              <Text style={grStyles.fieldLabel}>Razón social / Nombre *</Text>
+              <Text style={grStyles.fieldVal}>{guia.destinatario_razon_social || '—'}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Transportista */}
+        <View style={grStyles.sectionBox}>
+          <Text style={grStyles.sectionTitle}>TRANSPORTISTA</Text>
+          <View style={grStyles.grid2}>
+            <View style={grStyles.gridCell}>
+              {/* *SUNAT* RUC transportista */}
+              <Text style={grStyles.fieldLabel}>RUC *</Text>
+              <Text style={grStyles.fieldValMono}>{guia.transportista_ruc || '—'}</Text>
+              {/* *SUNAT* N° MTC (cuando modalidad=transportista) */}
+              <Text style={grStyles.fieldLabel}>N° Reg. MTC {guia.modalidad === 'transportista' ? '*' : ''}</Text>
+              <Text style={grStyles.fieldVal}>{guia.transportista_nro_mtc || '—'}</Text>
+            </View>
+            <View style={[grStyles.gridCell, { flex: 2 }]}>
+              {/* *SUNAT* Razón social transportista */}
+              <Text style={grStyles.fieldLabel}>Razón social *</Text>
+              <Text style={grStyles.fieldVal}>{guia.transportista_razon_social || '—'}</Text>
+            </View>
+          </View>
+          {guia.modalidad === 'remitente' && (
+            <>
+              <View style={S.sep} />
+              <View style={grStyles.grid2}>
+                <View style={grStyles.gridCell}>
+                  {/* *SUNAT* Placa */}
+                  <Text style={grStyles.fieldLabel}>Placa del vehículo *</Text>
+                  <Text style={grStyles.fieldVal}>{guia.vehiculo_placa || '—'}</Text>
+                  <Text style={grStyles.fieldLabel}>N° Cert. habilitación</Text>
+                  <Text style={grStyles.fieldVal}>{guia.vehiculo_cert_habilitacion || '—'}</Text>
+                </View>
+                <View style={grStyles.gridCell}>
+                  {/* *SUNAT* Conductor */}
+                  <Text style={grStyles.fieldLabel}>Conductor *</Text>
+                  <Text style={grStyles.fieldVal}>{guia.conductor_nombre || '—'}</Text>
+                  {/* *SUNAT* DNI conductor */}
+                  <Text style={grStyles.fieldLabel}>DNI conductor *</Text>
+                  <Text style={grStyles.fieldValMono}>{guia.conductor_dni || '—'}</Text>
+                  <Text style={grStyles.fieldLabel}>N° brevete</Text>
+                  <Text style={grStyles.fieldVal}>{guia.conductor_brevete || '—'}</Text>
+                </View>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Detalle de bienes */}
+        <View style={S.tableWrap}>
+          <Text style={[S.secLabel, { marginBottom: 8 }]}>DETALLE DE BIENES</Text>
+          <View style={S.tHead}>
+            <Text style={[S.tHeadCell, { flex: 3 }]}>Descripción</Text>
+            <Text style={[S.tHeadCell, { flex: 1 }]}>Código</Text>
+            <Text style={[S.tHeadCell, { width: 36 }]}>UM</Text>
+            <Text style={[S.tHeadCell, { width: 40, textAlign: 'right' }]}>Cant.</Text>
+            <Text style={[S.tHeadCell, { width: 50, textAlign: 'right' }]}>Peso u.</Text>
+            <Text style={[S.tHeadCell, { width: 50, textAlign: 'right' }]}>Peso tot.</Text>
+          </View>
+          {lineas.map((l, i) => (
+            <View key={l.id || i} style={[S.tRow, i % 2 === 1 ? S.tRowAlt : {}]}>
+              <Text style={[S.tCell, { flex: 3 }]}>{l.descripcion}</Text>
+              <Text style={[S.tCell, { flex: 1, color: '#555' }]}>{l.codigo || '—'}</Text>
+              <Text style={[S.tCell, { width: 36 }]}>{l.unidad || 'NIU'}</Text>
+              <Text style={[S.tCell, S.tNum, { width: 40 }]}>{Number(l.cantidad || 0).toFixed(2)}</Text>
+              <Text style={[S.tCell, S.tNum, { width: 50 }]}>{Number(l.peso_unitario || 0).toFixed(3)}</Text>
+              <Text style={[S.tCellBold, S.tNum, { width: 50 }]}>{Number(l.peso_total || l.cantidad * (l.peso_unitario || 0) || 0).toFixed(3)}</Text>
+            </View>
+          ))}
+          {lineas.length === 0 && (
+            <View style={S.tRow}><Text style={[S.tCell, { color: '#999' }]}>Sin ítems</Text></View>
+          )}
+          {/* Fila total peso */}
+          <View style={[S.tRow, { borderTopWidth: 1, borderColor: '#dde3ea', backgroundColor: '#f5f8fc' }]}>
+            <Text style={[S.tCellBold, { flex: 3 }]}>TOTAL</Text>
+            <Text style={[S.tCell, { flex: 1 }]}></Text>
+            <Text style={[S.tCell, { width: 36 }]}>{guia.unidad_peso || 'KGM'}</Text>
+            <Text style={[S.tCell, { width: 40 }]}></Text>
+            <Text style={[S.tCell, { width: 50 }]}></Text>
+            <Text style={[S.tCellBold, S.tNum, { width: 50, color: primary }]}>{(guia.peso_bruto_total || pesoTotal).toFixed(3)}</Text>
+          </View>
+        </View>
+
+        {/* Nota OSE (campo reservado) */}
+        <View style={{ marginTop: 16, padding: 8, backgroundColor: '#f9fafb', borderRadius: 3 }}>
+          <Text style={grStyles.oseNote}>
+            {/* OSE_FUTURE: Espacio reservado para código QR de firma electrónica (xml_hash / cdr_url) */}
+            Documento pendiente de firma electrónica (OSE)
+          </Text>
+        </View>
+
+        <Footer S={S} cfg={cfg} />
+      </Page>
+    </Document>
+  );
+}
