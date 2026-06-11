@@ -9082,13 +9082,16 @@ function Remision() {
 
 const SOLPE_FORM_INIT = { descripcion: '', tipo: 'bien', prioridad: 'normal', solicitante: '', centro_costo_id: '' };
 
+const SOLPE_ESTADO_BADGE = { borrador: 'badge-gray', solicitada: 'badge-orange', aprobada: 'badge-blue', atendida: 'badge-green' };
+
 function SOLPE() {
-  const { solpes, ots, searchQuery, crearSOLPE, centrosCosto } = useApp();
+  const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(SOLPE_FORM_INIT);
   const [errCeco, setErrCeco] = useState(false);
+  const [solpeSeleccionada, setSolpeSeleccionada] = useState(null);
 
-  const getOTNumero = (id) => ots.find(o => o.id === id)?.numero || id;
+  const getOTNumero = (id) => ots.find(o => o.id === id)?.numero || id || '—';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
 
   const query = searchQuery.toLowerCase();
@@ -9109,116 +9112,204 @@ function SOLPE() {
 
   const set = (k, v) => { setForm(p => ({ ...p, [k]: v })); if (k === 'centro_costo_id') setErrCeco(false); };
 
+  const handleEnviar = (e, s) => {
+    e.stopPropagation();
+    enviarSOLPE(s.id);
+    addToast?.(`SOLPE ${s.numero || s.codigo} enviada. Pendiente de atención.`, 'success');
+  };
+
+  const handleAtender = (e, s) => {
+    e.stopPropagation();
+    atenderSOLPE(s.id);
+    addToast?.(`SOLPE ${s.numero || s.codigo} aprobada. Ya está disponible en Compras.`, 'success');
+  };
+
+  const abrirDetalle = (s) => { setSolpeSeleccionada(s); };
+
   return (
     <>
-      <div className="page-header">
+      <div className=”page-header”>
         <div>
-          <h1 className="page-title">SOLPE (Pedidos Internos)</h1>
-          <div className="page-sub">Requerimientos de almacÃ©n generados por el equipo tÃ©cnico</div>
+          <h1 className=”page-title”>SOLPE (Pedidos Internos)</h1>
+          <div className=”page-sub”>Requerimientos de almacén generados por el equipo técnico</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowForm(true)}>{I.plus} Nueva SOLPE</button>
+        <button className=”btn btn-primary” onClick={() => setShowForm(true)}>{I.plus} Nueva SOLPE</button>
       </div>
-      <div className="card mt-6">
-        <div className="table-wrap">
-          <table className="tbl">
+      <div className=”card mt-6”>
+        <div className=”table-wrap”>
+          <table className=”tbl”>
             <thead>
               <tr>
-                <th>NÂ° SOLPE</th>
+                <th>N° SOLPE</th>
                 <th>OT Asociada</th>
-                <th>rea / Solicitante</th>
+                <th>Área / Solicitante</th>
                 <th>Centro de Costo</th>
                 <th>Tipo</th>
                 <th>Urgencia</th>
                 <th>Fecha</th>
                 <th>Estado</th>
-                <th>AcciÃ³n</th>
+                <th>Acción</th>
               </tr>
             </thead>
             <tbody>
               {filteredSolpes.map(s => {
                 const ceco = cecosActivos.find(c => c.id === s.centro_costo_id);
+                const liveSolpe = solpes.find(x => x.id === s.id) || s;
                 return (
-                  <tr key={s.id} className="hover-row">
-                    <td className="mono" style={{fontWeight:600}}>
-                      {s.numero || s.codigo}
-                      {s.origen === 'automatico' && <span className="badge badge-cyan" style={{fontSize:10, marginLeft:8}}>🤖 Automático</span>}
+                  <tr key={s.id} className=”hover-row” style={{cursor:'pointer'}} onClick={() => abrirDetalle(liveSolpe)}>
+                    <td className=”mono” style={{fontWeight:600}}>
+                      <span
+                        style={{color:'var(--primary)', textDecoration:'underline', cursor:'pointer'}}
+                        onClick={e => { e.stopPropagation(); abrirDetalle(liveSolpe); }}
+                      >
+                        {s.numero || s.codigo}
+                      </span>
+                      {s.origen === 'automatico' && <span className=”badge badge-cyan” style={{fontSize:10, marginLeft:8}}>🤖 Auto</span>}
                     </td>
-                    <td className="mono">{getOTNumero(s.ot_id)}</td>
-                    <td>{s.solicitante}</td>
-                    <td className="text-muted">{ceco ? `${ceco.codigo} â€” ${ceco.nombre}` : (s.centro_costo || 'â€”')}</td>
-                    <td>{s.tipo || 'â€”'}</td>
-                    <td>{s.prioridad || 'â€”'}</td>
-                    <td className="text-muted">{s.fecha}</td>
+                    <td className=”mono”>{getOTNumero(s.ot_id)}</td>
+                    <td>{s.solicitante || s.area || '—'}</td>
+                    <td className=”text-muted”>{ceco ? `${ceco.codigo} – ${ceco.nombre}` : (s.centro_costo || '—')}</td>
+                    <td>{s.tipo || '—'}</td>
+                    <td>{s.prioridad || s.urgencia || '—'}</td>
+                    <td className=”text-muted”>{s.fecha}</td>
                     <td>
-                      <span className={'badge ' + (s.estado==='atendida'?'badge-green':s.estado==='solicitada'?'badge-orange':'badge-gray')}>
-                        {(s.estado || '').toUpperCase()}
+                      <span className={`badge ${SOLPE_ESTADO_BADGE[liveSolpe.estado] || 'badge-gray'}`}>
+                        {(liveSolpe.estado || '').toUpperCase()}
                       </span>
                     </td>
-                    <td>
-                      {s.estado === 'solicitada' ? (
-                        <button className="btn btn-sm btn-primary">Atender</button>
-                      ) : (
-                        <button className="btn btn-sm btn-ghost">Ver detalles</button>
+                    <td onClick={e => e.stopPropagation()}>
+                      {liveSolpe.estado === 'borrador' && (
+                        <button className=”btn btn-sm btn-primary” onClick={e => handleEnviar(e, liveSolpe)}>Enviar</button>
+                      )}
+                      {liveSolpe.estado === 'solicitada' && (
+                        <button className=”btn btn-sm btn-primary” style={{background:'var(--success,#22c55e)', borderColor:'var(--success,#22c55e)'}} onClick={e => handleAtender(e, liveSolpe)}>Atender</button>
+                      )}
+                      {liveSolpe.estado === 'aprobada' && (
+                        <span className=”badge badge-gray”>En proceso</span>
                       )}
                     </td>
                   </tr>
                 );
               })}
               {filteredSolpes.length === 0 && (
-                <tr><td colSpan="9" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>No hay SOLPEs registradas.</td></tr>
+                <tr><td colSpan=”9” style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>No hay SOLPEs registradas.</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {showForm && <>
-        <div className="side-panel-backdrop" onClick={() => setShowForm(false)} />
-        <div className="side-panel">
-          <div className="side-panel-head">
-            <div>
-              <div className="eyebrow">Nueva solicitud</div>
-              <div className="font-display" style={{fontSize:18, fontWeight:700, marginTop:2}}>Nueva SOLPE</div>
+      {solpeSeleccionada && (() => {
+        const s = solpes.find(x => x.id === solpeSeleccionada.id) || solpeSeleccionada;
+        const ceco = cecosActivos.find(c => c.id === s.centro_costo_id);
+        return <>
+          <div className=”side-panel-backdrop” onClick={() => setSolpeSeleccionada(null)} />
+          <div className=”side-panel”>
+            <div className=”side-panel-head”>
+              <div>
+                <div className=”eyebrow”>Detalle SOLPE</div>
+                <div className=”font-display” style={{fontSize:18, fontWeight:700, marginTop:2}}>{s.numero || s.codigo}</div>
+                <span className={`badge ${SOLPE_ESTADO_BADGE[s.estado] || 'badge-gray'}`} style={{marginTop:6, display:'inline-block'}}>
+                  {(s.estado || '').toUpperCase()}
+                </span>
+              </div>
+              <button className=”icon-btn” onClick={() => setSolpeSeleccionada(null)}>{I.x}</button>
             </div>
-            <button className="icon-btn" onClick={() => setShowForm(false)}>{I.x}</button>
+            <div className=”side-panel-body” style={{display:'flex', flexDirection:'column', gap:20}}>
+              <div>
+                <div className=”form-label” style={{fontWeight:600, marginBottom:8}}>Datos generales</div>
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, fontSize:14}}>
+                  <div><div className=”text-muted” style={{fontSize:12}}>OT asociada</div><div className=”mono”>{getOTNumero(s.ot_id)}</div></div>
+                  <div><div className=”text-muted” style={{fontSize:12}}>Solicitante</div><div>{s.solicitante || s.area || '—'}</div></div>
+                  <div><div className=”text-muted” style={{fontSize:12}}>Tipo</div><div>{s.tipo || '—'}</div></div>
+                  <div><div className=”text-muted” style={{fontSize:12}}>Urgencia</div><div>{s.prioridad || s.urgencia || '—'}</div></div>
+                  <div><div className=”text-muted” style={{fontSize:12}}>Fecha</div><div>{s.fecha || '—'}</div></div>
+                  <div><div className=”text-muted” style={{fontSize:12}}>CECO</div><div>{ceco ? `${ceco.codigo} – ${ceco.nombre}` : (s.centro_costo || '—')}</div></div>
+                </div>
+              </div>
+              <div>
+                <div className=”form-label” style={{fontWeight:600, marginBottom:8}}>Descripción / Ítems</div>
+                {s.descripcion && <p style={{fontSize:14, margin:0, marginBottom:8}}>{s.descripcion}</p>}
+                {s.items && s.items.length > 0 && (
+                  <ul style={{margin:0, paddingLeft:16, fontSize:14}}>
+                    {s.items.map((it, i) => (
+                      <li key={i}>{it.nombre}{it.cantidad ? ` × ${it.cantidad}` : ''}</li>
+                    ))}
+                  </ul>
+                )}
+                {!s.descripcion && (!s.items || s.items.length === 0) && (
+                  <span className=”text-muted” style={{fontSize:14}}>Sin descripción registrada.</span>
+                )}
+              </div>
+              <div style={{borderTop:'1px solid var(--border)', paddingTop:16}}>
+                <div className=”form-label” style={{fontWeight:600, marginBottom:8}}>Acciones</div>
+                <div className=”row” style={{gap:8, flexWrap:'wrap'}}>
+                  {s.estado === 'borrador' && (
+                    <button className=”btn btn-primary” onClick={e => { handleEnviar(e, s); setSolpeSeleccionada(null); }}>Enviar solicitud</button>
+                  )}
+                  {s.estado === 'solicitada' && (
+                    <button className=”btn btn-primary” style={{background:'var(--success,#22c55e)', borderColor:'var(--success,#22c55e)'}} onClick={e => { handleAtender(e, s); setSolpeSeleccionada(null); }}>Atender SOLPE</button>
+                  )}
+                  {s.estado === 'aprobada' && (
+                    <span className=”badge badge-blue” style={{padding:'6px 12px'}}>En proceso en Compras</span>
+                  )}
+                  {s.estado === 'atendida' && (
+                    <span className=”badge badge-green” style={{padding:'6px 12px'}}>Atendida</span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:16}}>
-            <div className="form-group">
-              <label className="form-label">DescripciÃ³n de la necesidad *</label>
-              <textarea className="input" rows={3} placeholder="Describe el requerimiento..." value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
+        </>;
+      })()}
+
+      {showForm && <>
+        <div className=”side-panel-backdrop” onClick={() => setShowForm(false)} />
+        <div className=”side-panel”>
+          <div className=”side-panel-head”>
+            <div>
+              <div className=”eyebrow”>Nueva solicitud</div>
+              <div className=”font-display” style={{fontSize:18, fontWeight:700, marginTop:2}}>Nueva SOLPE</div>
+            </div>
+            <button className=”icon-btn” onClick={() => setShowForm(false)}>{I.x}</button>
+          </div>
+          <div className=”side-panel-body” style={{display:'flex', flexDirection:'column', gap:16}}>
+            <div className=”form-group”>
+              <label className=”form-label”>Descripción de la necesidad *</label>
+              <textarea className=”input” rows={3} placeholder=”Describe el requerimiento...” value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
             </div>
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
-              <div className="form-group">
-                <label className="form-label">Tipo *</label>
-                <select className="select" value={form.tipo} onChange={e => set('tipo', e.target.value)}>
-                  <option value="bien">Bien</option>
-                  <option value="servicio">Servicio</option>
+              <div className=”form-group”>
+                <label className=”form-label”>Tipo *</label>
+                <select className=”select” value={form.tipo} onChange={e => set('tipo', e.target.value)}>
+                  <option value=”bien”>Bien</option>
+                  <option value=”servicio”>Servicio</option>
                 </select>
               </div>
-              <div className="form-group">
-                <label className="form-label">Urgencia *</label>
-                <select className="select" value={form.prioridad} onChange={e => set('prioridad', e.target.value)}>
-                  <option value="normal">Normal</option>
-                  <option value="urgente">Urgente</option>
-                  <option value="critica">CrÃ­tica</option>
+              <div className=”form-group”>
+                <label className=”form-label”>Urgencia *</label>
+                <select className=”select” value={form.prioridad} onChange={e => set('prioridad', e.target.value)}>
+                  <option value=”normal”>Normal</option>
+                  <option value=”urgente”>Urgente</option>
+                  <option value=”critica”>Crítica</option>
                 </select>
               </div>
             </div>
-            <div className="form-group">
-              <label className="form-label">rea solicitante *</label>
-              <input className="input" placeholder="Ej: Mantenimiento, Operaciones..." value={form.solicitante} onChange={e => set('solicitante', e.target.value)} />
+            <div className=”form-group”>
+              <label className=”form-label”>Área solicitante *</label>
+              <input className=”input” placeholder=”Ej: Mantenimiento, Operaciones...” value={form.solicitante} onChange={e => set('solicitante', e.target.value)} />
             </div>
-            <div className="form-group">
-              <label className="form-label">Centro de Costo (CECO) *</label>
+            <div className=”form-group”>
+              <label className=”form-label”>Centro de Costo (CECO) *</label>
               <select className={`select ${errCeco ? 'input-error' : ''}`} value={form.centro_costo_id} onChange={e => set('centro_costo_id', e.target.value)}>
-                <option value="">â€” Seleccionar CECO â€”</option>
-                {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo} â€” {c.nombre}</option>)}
+                <option value=””>— Seleccionar CECO —</option>
+                {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo} – {c.nombre}</option>)}
               </select>
               {errCeco && <div style={{color:'var(--danger, #ef4444)', fontSize:12, marginTop:4}}>El CECO es obligatorio para crear una SOLPE.</div>}
             </div>
-            <div className="row" style={{gap:8, marginTop:8}}>
-              <button className="btn btn-primary flex-1" onClick={handleSubmit}>{I.check} Crear SOLPE</button>
-              <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancelar</button>
+            <div className=”row” style={{gap:8, marginTop:8}}>
+              <button className=”btn btn-primary flex-1” onClick={handleSubmit}>{I.check} Crear SOLPE</button>
+              <button className=”btn btn-ghost” onClick={() => setShowForm(false)}>Cancelar</button>
             </div>
           </div>
         </div>

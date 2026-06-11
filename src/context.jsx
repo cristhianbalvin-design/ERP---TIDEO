@@ -3407,6 +3407,16 @@ export function AppProvider({ children }) {
     }]));
   };
 
+  const enviarSOLPE = (solpeId) => {
+    setSolpes(prev => prev.map(s => s.id === solpeId ? { ...s, estado: 'solicitada' } : s));
+    opsSync(sb => sb.from('solpe_interna').update({ estado: 'solicitada' }).eq('id', solpeId));
+  };
+
+  const atenderSOLPE = (solpeId) => {
+    setSolpes(prev => prev.map(s => s.id === solpeId ? { ...s, estado: 'aprobada' } : s));
+    opsSync(sb => sb.from('solpe_interna').update({ estado: 'aprobada', aprobada_por: authUser?.id || null, aprobada_at: new Date().toISOString() }).eq('id', solpeId));
+  };
+
   const compraGastoPayload = (gasto) => ({
     id: gasto.id,
     empresa_id: empresa.id,
@@ -8678,7 +8688,7 @@ export function AppProvider({ children }) {
     registrarActividad,
     actualizarActividad,
     // Fase 2 Actions
-    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
+    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, enviarSOLPE, atenderSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT,
     // Finanzas Actions
     emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual,
