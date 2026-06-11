@@ -110,7 +110,8 @@ export const eliminarMaterialSubfamilia = async (id) => {
 const MAT_FIELDS = [
   'codigo', 'descripcion', 'unidad', 'grupo_id', 'familia_id', 'subfamilia_id',
   'nro_parte', 'unidades_contenidas', 'almacen_id', 'ubicacion', 'observacion',
-  'precio_unitario', 'estado',
+  'precio_unitario', 'stock_minimo', 'stock_maximo', 'punto_reorden', 'stock_seguridad',
+  'estado', 'creado_por',
 ];
 
 export const getMateriales = async (empresaId) => {

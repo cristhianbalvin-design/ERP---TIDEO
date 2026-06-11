@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
@@ -3202,6 +3203,7 @@ function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSol
   const [kardex, setKardex] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('kardex');
+  const [selectedLote, setSelectedLote] = useState('');
 
   useEffect(() => {
     if (!isSupabaseConfigured()) { setLoading(false); return; }
@@ -3233,8 +3235,11 @@ function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSol
     return labels[tipo] || tipo.toUpperCase();
   };
 
-  const disponibleColor = sku.disponible === 0 ? 'var(--danger)' : sku.disponible <= (sku.punto_reorden || sku.stock_minimo || 5) ? 'var(--orange)' : 'var(--cyan)';
-  const bajoPuntReorden = sku.disponible <= (sku.punto_reorden || sku.stock_minimo || 0) && (sku.punto_reorden || sku.stock_minimo || 0) > 0;
+  const puntoReordenBase = Number(sku.punto_reorden || sku.stock_minimo || 0);
+  const stockSeguridad = Number(sku.stock_seguridad || 0);
+  const puntoReordenEfectivo = puntoReordenBase + stockSeguridad;
+  const disponibleColor = sku.disponible === 0 ? 'var(--danger)' : sku.disponible <= (puntoReordenEfectivo || 5) ? 'var(--orange)' : 'var(--cyan)';
+  const bajoPuntReorden = sku.disponible <= puntoReordenEfectivo && puntoReordenEfectivo > 0;
 
   return (
     <>
@@ -3254,8 +3259,8 @@ function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSol
             <div>
               <div className="eyebrow">Stock Físico / Disponible / Reservado</div>
               <div style={{fontSize:22,fontWeight:700,color:disponibleColor}}>{sku.disponible} <span style={{fontSize:13,fontWeight:400}}>{sku.unidad}</span></div>
-              <div style={{fontSize:11,color:'var(--fg-muted)'}}>Físico: {sku.fisico ?? sku.disponible} · Reservado: {sku.reservado ?? 0} · Min: {sku.stock_minimo} · Reorden: {sku.punto_reorden}</div>
-              {bajoPuntReorden && <div style={{fontSize:11,color:'var(--orange)',fontWeight:600,marginTop:4}}>⚠ Por debajo del punto de reorden</div>}
+              <div style={{fontSize:11,color:'var(--fg-muted)'}}>Fisico: {sku.fisico ?? sku.disponible} - Reservado: {sku.reservado ?? 0} - Min: {sku.stock_minimo} - Reorden: {sku.punto_reorden} - Seguridad: {sku.stock_seguridad || 0}</div>
+              {bajoPuntReorden && <div style={{fontSize:11,color:'var(--orange)',fontWeight:600,marginTop:4}}>Por debajo del punto de reorden efectivo ({puntoReordenEfectivo} {sku.unidad})</div>}
             </div>
             <div><div className="eyebrow">Costo Promedio</div><div style={{fontSize:22,fontWeight:700}}>{money(sku.costo_promedio)}</div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Valor total: {money(sku.disponible * sku.costo_promedio)}</div></div>
           </div>
@@ -3267,7 +3272,9 @@ function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSol
           </div>
 
           <div className="tabs" style={{marginBottom:12}}>
-            {['kardex','detalles'].map(t => <button key={t} className={`tab${tab===t?' active':''}`} onClick={() => setTab(t)}>{t === 'kardex' ? 'Movimientos KARDEX' : 'Detalles'}</button>)}
+            {[['kardex','Movimientos KARDEX'],['trazabilidad','Trazabilidad por Lote'],['detalles','Detalles']].map(([t,label]) => (
+              <button key={t} className={`tab${tab===t?' active':''}`} onClick={() => setTab(t)}>{label}</button>
+            ))}
           </div>
 
           {tab === 'kardex' && (
@@ -3301,6 +3308,59 @@ function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSol
             )
           )}
 
+          {tab === 'trazabilidad' && (() => {
+            const lotesKardex = [...new Set(kardex.map(k => k.lote).filter(Boolean))];
+            const kardexLote = selectedLote ? kardex.filter(k => k.lote === selectedLote) : [];
+            return (
+              <div className="col" style={{gap:12}}>
+                <div>
+                  <div className="eyebrow" style={{marginBottom:6}}>Seleccionar lote / serie</div>
+                  {loading ? (
+                    <div style={{color:'var(--fg-muted)',fontSize:13}}>Cargando...</div>
+                  ) : lotesKardex.length === 0 ? (
+                    <div style={{color:'var(--fg-muted)',fontSize:13}}>Sin movimientos con lote registrado para este material.</div>
+                  ) : (
+                    <select className="input" value={selectedLote} onChange={e => setSelectedLote(e.target.value)}>
+                      <option value="">-- Seleccionar lote --</option>
+                      {lotesKardex.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                  )}
+                </div>
+                {selectedLote && (
+                  <div className="col" style={{gap:8}}>
+                    <div className="eyebrow">Cadena de trazabilidad - {selectedLote}</div>
+                    {kardexLote.length === 0 ? (
+                      <div style={{color:'var(--fg-muted)',fontSize:13}}>Sin movimientos para este lote.</div>
+                    ) : (
+                      <div className="table-wrap">
+                        <table className="tbl">
+                          <thead>
+                            <tr><th>Fecha</th><th>Tipo</th><th>Motivo</th><th>Referencia</th><th className="num">Cant.</th></tr>
+                          </thead>
+                          <tbody>
+                            {kardexLote.map(k => (
+                              <tr key={k.id} style={{opacity: k.anulado ? 0.4 : 1}}>
+                                <td className="text-muted" style={{whiteSpace:'nowrap'}}>{fmtFecha(k.created_at)}</td>
+                                <td><span className={`badge ${badgeTipo(k.tipo)}`}>{labelTipo(k.tipo, k.motivo)}</span></td>
+                                <td style={{fontSize:12,color:'var(--fg-muted)'}}>{k.motivo || '-'}</td>
+                                <td className="mono" style={{fontSize:11}}>
+                                  {k.referencia_tipo ? `${k.referencia_tipo}: ` : ''}{k.referencia_id ? k.referencia_id.slice(0,14) + '...' : '-'}
+                                </td>
+                                <td className="num" style={{color:(k.tipo==='entrada'||k.tipo==='transferencia_entrada')?'var(--green)':'var(--danger)',fontWeight:600}}>
+                                  {(k.tipo==='entrada'||k.tipo==='transferencia_entrada')?'+':'-'}{k.cantidad}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {tab === 'detalles' && (
             <div className="col" style={{gap:12}}>
               <div className="grid-2" style={{gap:12}}>
@@ -3312,6 +3372,12 @@ function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSol
                 </div>
                 <div style={{padding:'10px 14px',background:'var(--bg-subtle)',borderRadius:8}}>
                   <div className="eyebrow">Punto de Reorden</div><div style={{fontWeight:600}}>{sku.punto_reorden || '—'} {sku.unidad}</div>
+                </div>
+                <div style={{padding:'10px 14px',background:'var(--bg-subtle)',borderRadius:8}}>
+                  <div className="eyebrow">Stock de Seguridad</div><div style={{fontWeight:600}}>{sku.stock_seguridad || 0} {sku.unidad}</div>
+                </div>
+                <div style={{padding:'10px 14px',background:'var(--bg-subtle)',borderRadius:8}}>
+                  <div className="eyebrow">Reorden Efectivo</div><div style={{fontWeight:600}}>{puntoReordenEfectivo || '-'} {sku.unidad}</div>
                 </div>
                 <div style={{padding:'10px 14px',background:'var(--bg-subtle)',borderRadius:8}}>
                   <div className="eyebrow">Código de Barras</div><div style={{fontWeight:600,fontFamily:'monospace'}}>{sku.codigo_barras || '—'}</div>
@@ -3396,6 +3462,8 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
   const [items, setItems] = useState([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const inputRefs = useRef(new Map());
 
   const invMap = new Map(inventario.map(i => [`${i.material_id}::${i.almacen_id}::${i.lote || ''}::${i.serie || ''}`, i]));
   const conteoSel = conteos.find(c => c.id === selectedId) || conteos.find(c => c.estado !== 'cerrado') || conteos[0] || null;
@@ -3405,7 +3473,7 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
     if (selectedId !== conteoSel.id) setSelectedId(conteoSel.id);
     setItems((conteoSel.items || []).map(it => {
       const inv = invMap.get(`${it.material_id}::${it.almacen_id}::${it.lote || ''}::${it.serie || ''}`) || {};
-      return { ...it, sku: it.sku || inv.sku, nombre: it.nombre || inv.nombre, categoria: it.categoria || inv.categoria, unidad: it.unidad || inv.unidad, almacen: it.almacen || inv.almacen, tipo_control: it.tipo_control || inv.tipo_control || 'sin_control', vencimiento: it.vencimiento || inv.vencimiento || null };
+      return { ...it, sku: it.sku || inv.sku, nombre: it.nombre || inv.nombre, categoria: it.categoria || inv.categoria, unidad: it.unidad || inv.unidad, almacen: it.almacen || inv.almacen, tipo_control: it.tipo_control || inv.tipo_control || 'sin_control', vencimiento: it.vencimiento || inv.vencimiento || null, codigo_barras: it.codigo_barras || inv.codigo_barras || null };
     }));
   }, [conteoSel?.id, conteos.length, inventario.length]);
 
@@ -3428,6 +3496,17 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
     const nuevo = await iniciarConteoCtx(form);
     setSelectedId(nuevo.id);
     mostrarToast('Conteo iniciado');
+  };
+
+  const handleScanConteo = (codigo) => {
+    setScannerOpen(false);
+    const idx = items.findIndex(it => it.codigo_barras && it.codigo_barras === codigo);
+    if (idx === -1) {
+      mostrarToast(`Codigo ${codigo} no encontrado en este conteo`);
+      return;
+    }
+    const input = inputRefs.current.get(idx);
+    if (input) { input.scrollIntoView({ block: 'center', behavior: 'smooth' }); input.focus(); input.select(); }
   };
 
   const handleGuardar = async () => {
@@ -3486,6 +3565,11 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
                 <div style={{height:'100%', width:`${total ? Math.round((contados / total) * 100) : 0}%`, background:'var(--cyan)', transition:'width .2s'}} />
               </div>
               {err && <div className="alert alert-danger" style={{marginBottom:12}}>{err}</div>}
+              {scannerOpen && !cerrado && (
+                <div style={{marginBottom:12}}>
+                  <BarcodeScanner onScan={handleScanConteo} onClose={() => setScannerOpen(false)} />
+                </div>
+              )}
               <div className="table-wrap">
                 <table className="tbl">
                   <thead><tr><th>SKU</th><th>Descripción</th><th>Almacén</th><th>Lote/Serie</th><th className="num">Teórico</th><th className="num">Físico</th><th className="num">Dif.</th></tr></thead>
@@ -3501,7 +3585,7 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
                           <td className="mono" style={{fontSize:11}}>{it.serie ? `Serie ${it.serie}` : it.lote ? `Lote ${it.lote}` : '—'}</td>
                           <td className="num">{qtyText(it.teorico)}</td>
                           <td className="num" style={{minWidth:110}}>
-                            {cerrado ? qtyText(it.fisico) : <input className="input num" type="number" min="0" max={it.tipo_control === 'serie' ? 1 : undefined} step={it.tipo_control === 'serie' ? 1 : 'any'} value={it.fisico ?? ''} onChange={e => updateFisico(idx, e.target.value)} style={{height:32, maxWidth:96}} />}
+                            {cerrado ? qtyText(it.fisico) : <input className="input num" type="number" min="0" max={it.tipo_control === 'serie' ? 1 : undefined} step={it.tipo_control === 'serie' ? 1 : 'any'} value={it.fisico ?? ''} onChange={e => updateFisico(idx, e.target.value)} style={{height:32, maxWidth:96}} ref={el => { if (el) inputRefs.current.set(idx, el); else inputRefs.current.delete(idx); }} />}
                           </td>
                           <td className="num" style={{fontWeight:700, color:dif > 0 ? 'var(--green)' : dif < 0 ? 'var(--danger)' : 'var(--fg-muted)'}}>{dif == null ? '—' : `${dif > 0 ? '+' : ''}${qtyText(dif)}`}</td>
                         </tr>
@@ -3513,6 +3597,7 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
               </div>
               {!cerrado && (
                 <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:14}}>
+                  <button className="btn btn-secondary" onClick={() => setScannerOpen(v => !v)}>{I.camera} Escanear</button>
                   <button className="btn btn-secondary" onClick={handleGuardar} disabled={saving}>{I.save} Guardar avance</button>
                   <button className="btn btn-primary" onClick={handleCerrar} disabled={saving || !allCounted}>{I.check} Cerrar Conteo</button>
                 </div>
@@ -3678,7 +3763,7 @@ function Inventario() {
   const stockCritico = filteredInv.filter(i => (i.disponible ?? i.stock_actual ?? 0) === 0).length;
   const stockBajo = filteredInv.filter(i => {
     const disp = i.disponible ?? i.stock_actual ?? 0;
-    const umbral = i.punto_reorden || i.stock_minimo || 0;
+    const umbral = Number(i.punto_reorden || i.stock_minimo || 0) + Number(i.stock_seguridad || 0);
     return disp > 0 && umbral > 0 && disp <= umbral;
   }).length;
 
@@ -3701,7 +3786,18 @@ function Inventario() {
 
   const handleSolpe = () => {
     if (selSku && crearSOLPE) {
-      crearSOLPE({ descripcion: `Reposición de ${selSku.nombre} (${selSku.sku})`, tipo: 'bien', prioridad: 'alta', origen_tipo: 'inventario', origen_id: selSku.material_id });
+      const puntoReordenEfectivo = Number(selSku.punto_reorden || selSku.stock_minimo || 0) + Number(selSku.stock_seguridad || 0);
+      crearSOLPE({
+        descripcion: `Reposicion de ${selSku.nombre} (${selSku.sku})`,
+        tipo: 'bien',
+        prioridad: 'alta',
+        origen: 'manual',
+        origen_tipo: 'inventario',
+        origen_id: selSku.material_id,
+        material_id: selSku.material_id,
+        cantidad_solicitada: selSku.stock_maximo ? Math.max(Number(selSku.stock_maximo || 0) - Number(selSku.disponible || 0), 0) : Math.max(puntoReordenEfectivo * 2, 0),
+        items: [{ nombre: selSku.nombre, material_id: selSku.material_id, cantidad: selSku.stock_maximo ? Math.max(Number(selSku.stock_maximo || 0) - Number(selSku.disponible || 0), 0) : Math.max(puntoReordenEfectivo * 2, 0), unidad: selSku.unidad }]
+      });
       mostrarToast('SOLPE generada y enviada a Compras');
     }
     setSelSku(null);
@@ -3709,7 +3805,7 @@ function Inventario() {
 
   const coloresFila = (r) => {
     const disp = r.disponible ?? r.stock_actual ?? 0;
-    const umbral = r.punto_reorden || r.stock_minimo || 0;
+    const umbral = Number(r.punto_reorden || r.stock_minimo || 0) + Number(r.stock_seguridad || 0);
     if (disp === 0) return 'var(--danger)';
     if (umbral > 0 && disp <= umbral) return 'var(--orange)';
     return 'var(--fg)';

@@ -2142,7 +2142,7 @@ function MaterialesMaestro({ onClose }) {
   const [tab, setTab] = useState('catalogo');
   const [filtros, setFiltros] = useState({ grupoId: '', familiaId: '', subfamiliaId: '', estado: '', texto: '' });
   const [editandoId, setEditandoId] = useState(null);
-  const matBase = { descripcion: '', unidad: '', grupo_id: '', familia_id: '', subfamilia_id: '', nro_parte: '', unidades_contenidas: 1, almacen_id: '', ubicacion: '', observacion: '', precio_unitario: 0, estado: 'activo' };
+  const matBase = { descripcion: '', unidad: '', grupo_id: '', familia_id: '', subfamilia_id: '', nro_parte: '', unidades_contenidas: 1, almacen_id: '', ubicacion: '', observacion: '', precio_unitario: 0, stock_minimo: 0, punto_reorden: 0, stock_maximo: 0, stock_seguridad: 0, estado: 'activo' };
   const [formMat, setFormMat] = useState(matBase);
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState('');
@@ -2204,7 +2204,7 @@ function MaterialesMaestro({ onClose }) {
   const almNombre = (id) => almacenes.find(a => a.id === id)?.nombre || '—';
 
   const editarMaterial = (m) => {
-    setFormMat({ descripcion: m.descripcion || '', unidad: m.unidad || '', grupo_id: m.grupo_id || '', familia_id: m.familia_id || '', subfamilia_id: m.subfamilia_id || '', nro_parte: m.nro_parte || '', unidades_contenidas: m.unidades_contenidas ?? 1, almacen_id: m.almacen_id || '', ubicacion: m.ubicacion || '', observacion: m.observacion || '', precio_unitario: m.precio_unitario ?? 0, estado: m.estado || 'activo' });
+    setFormMat({ descripcion: m.descripcion || '', unidad: m.unidad || '', grupo_id: m.grupo_id || '', familia_id: m.familia_id || '', subfamilia_id: m.subfamilia_id || '', nro_parte: m.nro_parte || '', unidades_contenidas: m.unidades_contenidas ?? 1, almacen_id: m.almacen_id || '', ubicacion: m.ubicacion || '', observacion: m.observacion || '', precio_unitario: m.precio_unitario ?? 0, stock_minimo: m.stock_minimo ?? 0, punto_reorden: m.punto_reorden ?? 0, stock_maximo: m.stock_maximo ?? 0, stock_seguridad: m.stock_seguridad ?? 0, estado: m.estado || 'activo' });
     setEditandoId(m.id);
     setFormErr('');
   };
@@ -2466,6 +2466,22 @@ function MaterialesMaestro({ onClose }) {
                   <div className="input-group">
                     <label>Precio unitario S/</label>
                     <input className="input" type="number" min="0" step="0.01" value={formMat.precio_unitario} onChange={e => setFormMat(p => ({ ...p, precio_unitario: e.target.value }))} />
+                  </div>
+                  <div className="input-group">
+                    <label>Stock mÃ­nimo</label>
+                    <input className="input" type="number" min="0" step="0.01" value={formMat.stock_minimo} onChange={e => setFormMat(p => ({ ...p, stock_minimo: e.target.value }))} />
+                  </div>
+                  <div className="input-group">
+                    <label>Punto de reorden</label>
+                    <input className="input" type="number" min="0" step="0.01" value={formMat.punto_reorden} onChange={e => setFormMat(p => ({ ...p, punto_reorden: e.target.value }))} />
+                  </div>
+                  <div className="input-group">
+                    <label>Stock mÃ¡ximo</label>
+                    <input className="input" type="number" min="0" step="0.01" value={formMat.stock_maximo} onChange={e => setFormMat(p => ({ ...p, stock_maximo: e.target.value }))} />
+                  </div>
+                  <div className="input-group">
+                    <label title="Cantidad reservada como buffer ante retrasos del proveedor">Stock de seguridad</label>
+                    <input className="input" title="Cantidad reservada como buffer ante retrasos del proveedor" type="number" min="0" step="0.01" value={formMat.stock_seguridad} onChange={e => setFormMat(p => ({ ...p, stock_seguridad: e.target.value }))} />
                   </div>
                   <div className="input-group" style={{ gridColumn: 'span 2' }}>
                     <label>Observación</label>

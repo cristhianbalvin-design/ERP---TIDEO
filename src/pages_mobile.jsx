@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
@@ -465,9 +466,10 @@ function AsistenciaMobileView({ screen, setScreen }) {
 }
 
 function TecnicoView({ screen, setScreen }) {
-  const { ots, cuentas, partes, personalOperativo, registrarParteDiario, authUser, usuarios, personalDocumentos = [], subirDocumentoPersonalCtx, empresa } = useApp();
+  const { ots, cuentas, partes, personalOperativo, registrarParteDiario, authUser, usuarios, personalDocumentos = [], subirDocumentoPersonalCtx, empresa, materiales } = useApp();
   const [selectedOt, setSelectedOt] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [escaneadoMaterial, setEscaneadoMaterial] = useState(null);
   const today = new Date().toISOString().split('T')[0];
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const tecnico =
@@ -601,14 +603,30 @@ function TecnicoView({ screen, setScreen }) {
         <button className="btn btn-primary btn-lg" style={{width:'100%'}} onClick={()=>setScreen('home')}>Firmar y Completar</button>
       </>}
       {screen === 'escaner' && <>
-        <div onClick={()=>setScreen('home')} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← Volver</div>
+        <div onClick={()=>{ setScreen('home'); setEscaneadoMaterial(null); }} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← Volver</div>
         <div className="eyebrow">Almacén Móvil</div>
         <div className="font-display" style={{fontSize:18,fontWeight:700,margin:'4px 0 16px'}}>Escanear Código de Barras</div>
-        <div style={{height:200, background:'linear-gradient(135deg, #1A2B4A, #0F1B30)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', position:'relative', marginBottom:20}}>
-          <div style={{width:'60%', height:2, background:'var(--cyan)', position:'absolute', boxShadow:'0 0 10px var(--cyan)'}}></div>
-          <div style={{color:'rgba(255,255,255,0.5)'}}>[ Simulador de Cámara ]</div>
-        </div>
-        <p className="text-muted" style={{fontSize:12, textAlign:'center'}}>Apunta la cámara al código del repuesto para registrarlo en tu consumo diario automáticamente.</p>
+        <BarcodeScanner
+          onScan={(codigo) => {
+            const mat = (materiales || []).find(m => m.codigo_barras === codigo);
+            setEscaneadoMaterial(mat ? { ...mat, codigoEscaneado: codigo } : { codigoEscaneado: codigo, noEncontrado: true });
+          }}
+          onClose={() => { setScreen('home'); setEscaneadoMaterial(null); }}
+        />
+        {escaneadoMaterial && (
+          <div style={{marginTop:12, padding:12, borderRadius:8, border:'1px solid var(--border)', background:'var(--bg-2)'}}>
+            {escaneadoMaterial.noEncontrado ? (
+              <div style={{color:'var(--orange)',fontSize:13}}>Código <span style={{fontFamily:'monospace'}}>{escaneadoMaterial.codigoEscaneado}</span> no encontrado en el catálogo.</div>
+            ) : (
+              <>
+                <div style={{fontWeight:700,fontSize:15}}>{escaneadoMaterial.descripcion}</div>
+                <div className="text-muted" style={{fontSize:12}}>{escaneadoMaterial.codigo} · {escaneadoMaterial.unidad || 'und'}</div>
+                <div style={{fontSize:11,fontFamily:'monospace',marginTop:4,color:'var(--cyan)'}}>{escaneadoMaterial.codigoEscaneado}</div>
+              </>
+            )}
+          </div>
+        )}
+        <p className="text-muted" style={{fontSize:12, textAlign:'center', marginTop:12}}>Apunta la cámara al código del repuesto para registrarlo en tu consumo diario automáticamente.</p>
       </>}
       {screen === 'documentos' && <>
         <div onClick={()=>setScreen('home')} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← Volver</div>

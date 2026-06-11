@@ -10,7 +10,7 @@ import {
   resolverCondicionPagoCxC,
 } from './services/finanzasService.js';
 import { maestrosService } from './services/maestrosService.js';
-import { comprasService } from './services/comprasService.js';
+import { comprasService, devolucionesService } from './services/comprasService.js';
 import { registrarEntrada, registrarSalida, registrarTransferencia, registrarAjuste, reservarStock, liberarReserva, getKardex, getStockCompleto, iniciarConteo, listarConteos, guardarAvanceConteo, cerrarConteo, getAnaliticaInventario, getMaterialesBajoReorden, registrarConsumoOT as registrarConsumoOTSvc } from './services/inventarioService.js';
 import { rrhhService } from './services/rrhhService.js';
 import * as plannerSvc from './services/plannerService.js';
@@ -325,6 +325,7 @@ export function AppProvider({ children }) {
   const [ordenesCompra, setOrdenesCompra] = useState(useSupabase ? [] : (MOCK.ordenesCompra || []));
   const [ordenesServicio, setOrdenesServicio] = useState(useSupabase ? [] : (MOCK.ordenesServicio || []));
   const [recepciones, setRecepciones] = useState(useSupabase ? [] : (MOCK.recepciones || []));
+  const [devolucionesProveedor, setDevolucionesProveedor] = useState([]);
 
   // ConfiguraciÃ³n de empresa
   const [empresaConfig, setEmpresaConfig] = useState({});
@@ -850,6 +851,7 @@ export function AppProvider({ children }) {
         setOrdenesCompra([]);
         setOrdenesServicio([]);
         setRecepciones([]);
+        setDevolucionesProveedor([]);
         setInventario([]);
         setInventarioConteos([]);
         setPersonalOperativo([]);
@@ -1000,7 +1002,7 @@ export function AppProvider({ children }) {
         } catch (_err) { /* tabla aÃºn no existe, ignorar */ }
 
         try {
-          const [prvData, evalData, slpData, pcData, ocData, osData, recData, invData] = await Promise.all([
+          const [prvData, evalData, slpData, pcData, ocData, osData, recData, invData, devData] = await Promise.all([
             comprasService.getProveedores(empresa.id),
             comprasService.getEvaluacionesProveedor(empresa.id),
             comprasService.getSolpes(empresa.id),
@@ -1009,6 +1011,7 @@ export function AppProvider({ children }) {
             comprasService.getOrdenesServicio(empresa.id),
             comprasService.getRecepciones(empresa.id),
             comprasService.getInventario(empresa.id),
+            devolucionesService.getDevolucionesProveedor(empresa.id),
           ]);
           if (mounted) {
             setProveedores(prvData || []);
@@ -1019,6 +1022,7 @@ export function AppProvider({ children }) {
             setOrdenesServicio(osData || []);
             setRecepciones(recData || []);
             setInventario(invData || []);
+            setDevolucionesProveedor(devData || []);
           }
         } catch (_err) { /* keep mock */ }
 
@@ -3316,37 +3320,46 @@ export function AppProvider({ children }) {
     setCierresTecnicos(prev => [...prev, { ...cierre, ot_id: otId, empresa_id: empresa.id }]);
     opsSync(sb => persistirCierreTecnico(sb, empresa.id, cierre));
     auditSync({ modulo: 'operaciones', entidad: 'ordenes_trabajo', entidad_id: otId, accion: 'cierre_tecnico', valor_anterior: anterior, valor_nuevo: cierre });
-    return { cierreId, tokenConformidad };
 
     // Descontar inventario de los partes aprobados de esta OT
     const partesAprobados = partes.filter(p => p.ot_id === otId && p.estado === 'aprobado');
     const itemsADescontar = [];
     partesAprobados.forEach(p => {
-      if (p.materiales_usados) {
-        p.materiales_usados.forEach(mu => {
-          const itemInv = inventario.find(i => i.sku === mu.sku);
-          if (itemInv) {
-            // Buscamos si ya esta en itemsADescontar
-            const existente = itemsADescontar.find(i => i.material_id === itemInv.id);
-            if (existente) {
-              existente.cantidad += mu.cantidad;
-            } else {
-              itemsADescontar.push({ material_id: itemInv.id, cantidad: mu.cantidad, almacen_id: itemInv?.['almacen_id'] || null });
-            }
-          }
-        });
-      }
+      (p.materiales_usados || []).forEach(mu => {
+        if (!mu.material_id || !Number(mu.cantidad)) return;
+        const existente = itemsADescontar.find(i =>
+          i.material_id === mu.material_id &&
+          i.lote === (mu.lote || null) &&
+          i.serie === (mu.serie || null)
+        );
+        if (existente) {
+          existente.cantidad += Number(mu.cantidad);
+        } else {
+          const stockRow = inventario.find(i =>
+            i.material_id === mu.material_id && (!mu.lote || i.lote === mu.lote)
+          );
+          itemsADescontar.push({
+            material_id: mu.material_id,
+            cantidad: Number(mu.cantidad),
+            almacen_id: mu.almacen_id || stockRow?.almacen_id || null,
+            lote: mu.lote || null,
+            serie: mu.serie || null,
+            vencimiento: mu.vencimiento || null,
+          });
+        }
+      });
     });
 
     if (itemsADescontar.length > 0) {
       setInventario(prev => prev.map(i => {
-        const desc = itemsADescontar.find(d => d.material_id === i.id);
-        if (desc) {
-          return { ...i, stock_actual: Math.max(0, i.stock_actual - desc.cantidad) };
-        }
+        const desc = itemsADescontar.find(d =>
+          d.material_id === i.material_id &&
+          d.lote === (i.lote || null) &&
+          d.serie === (i.serie || null)
+        );
+        if (desc) return { ...i, stock_actual: Math.max(0, i.stock_actual - desc.cantidad) };
         return i;
       }));
-      // Consumo OT: usa el motor WMS (costo promedio vigente, created_by, saldo)
       if (isSupabaseConfigured()) {
         getSupabaseClient().then(sb => registrarConsumoOTSvc(sb, empresa.id, itemsADescontar, otId, authUser?.id))
           .then(() => getStockCompleto(empresa.id).then(inv => { if (inv?.length) setInventario(inv); }))
@@ -3356,7 +3369,8 @@ export function AppProvider({ children }) {
       }
     }
 
-    addNotificacion(`Cierre TÃ©cnico registrado para la OT. Inventario consumido.`);
+    addNotificacion(`Cierre Técnico registrado para la OT. Inventario consumido.`);
+    return { cierreId, tokenConformidad };
   };
 
   const actualizarCierreTecnico = async (cierreId, datos) => {
@@ -3382,8 +3396,14 @@ export function AppProvider({ children }) {
       descripcion: slp.descripcion,
       tipo: slp.tipo || 'bien',
       prioridad: slp.prioridad || 'normal',
+      urgencia: slp.urgencia || slp.prioridad || 'normal',
       centro_costo_id: slp.centro_costo_id || null,
+      origen: slp.origen || slp.origen_tipo || 'manual',
+      material_id: slp.material_id || (slp.origen_tipo === 'inventario' ? slp.origen_id : null),
+      cantidad_solicitada: slp.cantidad_solicitada || null,
+      items: slp.items || [],
       estado: 'solicitada',
+      creado_por: authUser?.id || null,
     }]));
   };
 
@@ -6772,7 +6792,7 @@ export function AppProvider({ children }) {
   };
 
   const crearMaterialCtx = async (datos) => {
-    const data = await svcCrearMaterial(empresa.id, datos);
+    const data = await svcCrearMaterial(empresa.id, { ...datos, creado_por: datos.creado_por || authUser?.id || null });
     setMateriales(prev => [...prev, data]);
     return data;
   };
@@ -7103,6 +7123,77 @@ export function AppProvider({ children }) {
     }
   };
 
+  // ─── Devoluciones Proveedor ─────────────────────────────────────────────────
+  const crearDevolucionCtx = async (datos) => {
+    if (!empresa?.id) throw new Error('Empresa no seleccionada');
+    if (isSupabaseConfigured()) {
+      const data = await devolucionesService.crearDevolucion(empresa.id, datos, authUser?.id);
+      setDevolucionesProveedor(prev => [data, ...prev]);
+      return data;
+    }
+    const mock = {
+      ...datos,
+      id: generateId('dev'),
+      empresa_id: empresa.id,
+      numero_devolucion: `DEV-${String(devolucionesProveedor.length + 1).padStart(4, '0')}`,
+      estado: 'borrador',
+      kardex_salida_ids: [],
+      creado_en: new Date().toISOString(),
+      actualizado_en: new Date().toISOString(),
+      devoluciones_proveedor_lineas: datos.lineas || [],
+    };
+    setDevolucionesProveedor(prev => [mock, ...prev]);
+    return mock;
+  };
+
+  const enviarDevolucionCtx = async (devolucionId) => {
+    if (!empresa?.id) throw new Error('Empresa no seleccionada');
+    if (isSupabaseConfigured()) {
+      const data = await devolucionesService.enviarDevolucion(empresa.id, devolucionId, authUser?.id);
+      setDevolucionesProveedor(prev => prev.map(d => d.id === devolucionId ? { ...d, ...data } : d));
+      return data;
+    }
+    setDevolucionesProveedor(prev => prev.map(d => d.id === devolucionId ? { ...d, estado: 'enviada' } : d));
+  };
+
+  const aceptarDevolucionCtx = async (devolucionId) => {
+    if (!empresa?.id) throw new Error('Empresa no seleccionada');
+    if (isSupabaseConfigured()) {
+      const data = await devolucionesService.aceptarDevolucion(empresa.id, devolucionId);
+      setDevolucionesProveedor(prev => prev.map(d => d.id === devolucionId ? { ...d, ...data } : d));
+      return data;
+    }
+    setDevolucionesProveedor(prev => prev.map(d => d.id === devolucionId ? { ...d, estado: 'aceptada' } : d));
+  };
+
+  const registrarNCDevolucionCtx = async (devolucionId, datosNC) => {
+    if (!empresa?.id) throw new Error('Empresa no seleccionada');
+    if (isSupabaseConfigured()) {
+      const result = await devolucionesService.registrarNotaCredito(empresa.id, devolucionId, datosNC, authUser?.id);
+      setDevolucionesProveedor(prev => prev.map(d => d.id === devolucionId ? { ...d, ...result.devolucion } : d));
+      if (datosNC.cxp_origen_id) {
+        const montoAjuste = Math.abs(Number(datosNC.monto_nc));
+        setCxp(prev => prev.map(c => {
+          if (c.id !== datosNC.cxp_origen_id) return c;
+          const nuevoSaldo = Math.max(0, Number(c.saldo) - montoAjuste);
+          return { ...c, saldo: nuevoSaldo, monto_pagado: Number(c.monto_pagado || 0) + montoAjuste, estado: nuevoSaldo <= 0 ? 'pagada' : c.estado };
+        }));
+      }
+      return result;
+    }
+    setDevolucionesProveedor(prev => prev.map(d => d.id === devolucionId ? { ...d, estado: 'nota_credito_recibida' } : d));
+  };
+
+  const anularDevolucionCtx = async (devolucionId, motivo_anulacion) => {
+    if (!empresa?.id) throw new Error('Empresa no seleccionada');
+    if (isSupabaseConfigured()) {
+      const data = await devolucionesService.anularDevolucion(empresa.id, devolucionId, motivo_anulacion, authUser?.id);
+      setDevolucionesProveedor(prev => prev.map(d => d.id === devolucionId ? { ...d, ...data } : d));
+      return data;
+    }
+    setDevolucionesProveedor(prev => prev.map(d => d.id === devolucionId ? { ...d, estado: 'anulada', motivo_anulacion } : d));
+  };
+
   // â”€â”€â”€ RRHH Mutators â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const registrarEvaluacionProveedorCtx = async ({ proveedor_id, origen_tipo, origen_id, puntaje, detalle = {}, resultado = 'conforme' }) => {
     if (!proveedor_id || !empresa?.id) return null;
@@ -7144,7 +7235,7 @@ export function AppProvider({ children }) {
     return guardada;
   };
 
-  const registrarRecepcionConCxP = async ({ origenTipo, origenId, observaciones = '', facturaNumero = '', fechaEmision: fechaEmisionParam = '', fechaVencimiento: fechaVencimientoParam = '', archivoFacturaUrl = '' }) => {
+  const registrarRecepcionConCxP = async ({ origenTipo, origenId, observaciones = '', facturaNumero = '', fechaEmision: fechaEmisionParam = '', fechaVencimiento: fechaVencimientoParam = '', archivoFacturaUrl = '', facturaProvNumero = '', facturaProvFecha = '', facturaProvMonto = null, forzarConfirmacion = false }) => {
     const isOC = origenTipo === 'oc';
     const base = isOC
       ? ordenesCompra.find(o => o.id === origenId)
@@ -7153,6 +7244,72 @@ export function AppProvider({ children }) {
       addNotificacion('Selecciona una orden valida para recepcionar.');
       return null;
     }
+
+    // === Validaciones 3 vías (solo para OC) ===
+    const toleranciaPct = Number(empresaConfig?.tolerancia_precio_compras ?? 5);
+    const tolerancia = toleranciaPct / 100;
+    const validacionErrores = [];
+    const validacionAdvertencias = [];
+    let precioDiferente = false;
+    let cantidadDiferente = false;
+
+    if (isOC) {
+      const recepcionesAnteriores = (recepciones || []).filter(r =>
+        String(r.orden_compra_id || r.oc_id || '') === String(base.id)
+      );
+
+      for (const item of (base.items || [])) {
+        const cantidadPedida = Number(item.cantidad || 0);
+        const cantidadYaRecibida = recepcionesAnteriores.reduce((sum, r) => {
+          const itemRec = (r.items_recibidos || []).find(i =>
+            (item.material_id && i.material_id === item.material_id) ||
+            i.descripcion === item.descripcion
+          );
+          return sum + Number(itemRec?.recibido || 0);
+        }, 0);
+        const cantidadPendiente = Math.max(0, cantidadPedida - cantidadYaRecibida);
+        const cantidadARecibir = cantidadPedida;
+        if (cantidadARecibir > cantidadPendiente + 0.0001) {
+          cantidadDiferente = true;
+          validacionErrores.push(
+            `No puedes recibir más unidades de las pendientes para "${item.descripcion}": ` +
+            `intentas recibir ${cantidadARecibir} ${item.unidad || ''} pero solo quedan ${cantidadPendiente.toFixed(2)} pendientes.`
+          );
+        }
+      }
+
+      if (facturaProvMonto != null && Number(facturaProvMonto) > 0) {
+        const itemsOC = base.items || [];
+        const totalOC = Number(base.total || 0) ||
+          itemsOC.reduce((s, i) => s + Number(i.precio_unitario || 0) * Number(i.cantidad || 0), 0);
+        const montoFactura = Number(facturaProvMonto);
+        if (totalOC > 0) {
+          const diffAbs = Math.abs(montoFactura - totalOC);
+          const diffPct = diffAbs / totalOC;
+          if (diffPct > tolerancia) {
+            precioDiferente = true;
+            for (const item of itemsOC) {
+              const precioOC = Number(item.precio_unitario || 0);
+              const precioFactura = totalOC > 0 ? (montoFactura / totalOC) * precioOC : 0;
+              const diffItem = precioOC > 0 ? Math.abs(precioFactura - precioOC) / precioOC : 0;
+              if (diffItem > tolerancia) {
+                validacionAdvertencias.push(
+                  `Ítem ${item.descripcion}: precio OC S/ ${precioOC.toFixed(2)} vs precio factura S/ ${precioFactura.toFixed(2)} (diferencia ${(diffItem * 100).toFixed(1)}%)`
+                );
+              }
+            }
+            if (!validacionAdvertencias.length) {
+              validacionAdvertencias.push(
+                `Total OC S/ ${totalOC.toFixed(2)} vs total factura S/ ${montoFactura.toFixed(2)} (diferencia ${(diffPct * 100).toFixed(1)}%)`
+              );
+            }
+          }
+        }
+      }
+    }
+
+    if (validacionErrores.length > 0) return { errors: validacionErrores };
+    if (validacionAdvertencias.length > 0 && !forzarConfirmacion) return { warnings: validacionAdvertencias };
 
     const fecha = new Date().toISOString().split('T')[0];
     const fechaVencimientoAuto = (() => {
@@ -7185,7 +7342,13 @@ export function AppProvider({ children }) {
       estado: observaciones ? 'observada' : 'confirmada',
       recibido_por: authUser?.id || null,
       proveedor_id: base.proveedor_id,
-      cxp_generada: !observaciones
+      cxp_generada: !observaciones,
+      factura_proveedor_numero: facturaProvNumero || facturaNumero || null,
+      factura_proveedor_fecha: facturaProvFecha || fechaEmisionParam || null,
+      factura_proveedor_monto: facturaProvMonto != null ? Number(facturaProvMonto) : null,
+      archivo_factura_url: archivoFacturaUrl || null,
+      precio_diferente: precioDiferente,
+      cantidad_diferente: cantidadDiferente,
     };
 
     let recepcionGuardada = recepcion;
@@ -7200,7 +7363,13 @@ export function AppProvider({ children }) {
           items_recibidos: recepcion.items_recibidos,
           observaciones: recepcion.observaciones,
           estado: recepcion.estado,
-          recibido_por: recepcion.recibido_por
+          recibido_por: recepcion.recibido_por,
+          factura_proveedor_numero: recepcion.factura_proveedor_numero,
+          factura_proveedor_fecha: recepcion.factura_proveedor_fecha,
+          factura_proveedor_monto: recepcion.factura_proveedor_monto,
+          archivo_factura_url: recepcion.archivo_factura_url,
+          precio_diferente: recepcion.precio_diferente,
+          cantidad_diferente: recepcion.cantidad_diferente,
         });
       } catch (error) {
         addNotificacion(`Compras no persistio en Supabase: ${error.message}`);
@@ -7212,9 +7381,20 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'compras', entidad: 'recepciones', entidad_id: recepcionLocal.id, accion: 'registrar', valor_nuevo: recepcionLocal });
 
     if (isOC) {
-      const cambios = { estado: 'cerrada', porcentaje_recibido: 100 };
+      const cambios = {
+        estado: 'cerrada',
+        porcentaje_recibido: 100,
+        fecha_recepcion_real: fecha,
+        lead_time_dias: comprasService.calcularLeadTimeDias(base.fecha_emision, fecha)
+      };
       setOrdenesCompra(prev => prev.map(o => o.id === base.id ? { ...o, ...cambios } : o));
-      if (isSupabaseConfigured()) comprasService.actualizarOrdenCompra(base.id, cambios).catch(error => addNotificacion(`Compras no persistio en Supabase: ${error.message}`));
+      if (isSupabaseConfigured()) {
+        comprasService.cerrarOrdenCompraPorRecepcion(base.id, { fechaRecepcion: fecha, fechaEmision: base.fecha_emision })
+          .then(data => {
+            if (data) setOrdenesCompra(prev => prev.map(o => o.id === base.id ? { ...o, ...data } : o));
+          })
+          .catch(error => addNotificacion(`Compras no persistio en Supabase: ${error.message}`));
+      }
       if (itemsRecibidos.length) {
         if (isSupabaseConfigured() && !observaciones) {
           // Motor WMS: registra entradas reales, busca materiales en catálogo, actualiza costo promedio
@@ -8451,6 +8631,9 @@ export function AppProvider({ children }) {
     ordenesCompra, setOrdenesCompra,
     ordenesServicio, setOrdenesServicio,
     recepciones, setRecepciones,
+    devolucionesProveedor, setDevolucionesProveedor,
+    crearDevolucionCtx, enviarDevolucionCtx, aceptarDevolucionCtx,
+    registrarNCDevolucionCtx, anularDevolucionCtx,
     ocAnticipos, setOcAnticipos, registrarAnticipoOC,
     
     // Maestros Base Data

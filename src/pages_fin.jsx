@@ -6763,7 +6763,12 @@ function CxP() {
                           <strong>{cxpTributoTipoLabel(c)}</strong>
                           <div className="text-muted" style={{fontSize:11}}>{c.motivo_cxp || 'tributo'}</div>
                         </>
-                      ) : (c.factura_numero || c.concepto || '-')}
+                      ) : (
+                        <span style={{display:'flex',alignItems:'center',gap:6}}>
+                          {c.factura_numero || c.concepto || '-'}
+                          {c.origen === 'nc_devolucion' && <span className="badge badge-cyan" style={{fontSize:9,padding:'1px 5px'}}>NC Prov.</span>}
+                        </span>
+                      )}
                     </td>
                     <td className="text-muted">{c.fecha_emision}</td>
                     <td style={{color: sem.badgeCls === 'badge-red' || sem.badgeCls === 'badge-orange' ? sem.bg : undefined, fontWeight: sem.badgeCls === 'badge-red' ? 600 : undefined}}>
@@ -7479,12 +7484,18 @@ function CxP() {
 }
 
 const ACTIVO_TIPOS = [
-  { value: 'equipo',     label: 'Equipo' },
-  { value: 'vehiculo',   label: 'Vehículo' },
-  { value: 'mueble',     label: 'Mueble' },
-  { value: 'inmueble',   label: 'Inmueble' },
-  { value: 'intangible', label: 'Intangible' },
-  { value: 'otro',       label: 'Otro' },
+  { value: 'MAQUINARIA PESADA',     label: 'MAQUINARIA PESADA' },
+  { value: 'COMPONENTES',           label: 'COMPONENTES' },
+  { value: 'VEHICULOS',             label: 'VEHICULOS' },
+  { value: 'INSTRUMENTO',           label: 'INSTRUMENTO' },
+  { value: 'HERRAMIENTA',           label: 'HERRAMIENTA' },
+  { value: 'INFORMATICA',           label: 'INFORMATICA' },
+  { value: 'MOBILIARIO',            label: 'MOBILIARIO' },
+  { value: 'ACTIVO INTANGIBLE',     label: 'ACTIVO INTANGIBLE' },
+  { value: 'ACTIVO NO DEPRECIABLE', label: 'ACTIVO NO DEPRECIABLE' },
+  { value: 'equipo',                label: 'EQUIPO' },
+  { value: 'inmueble',              label: 'INMUEBLE' },
+  { value: 'otro',                  label: 'OTRO' },
 ];
 
 const DOC_TIPOS_ACTIVO = ['SOAT', 'Póliza todo riesgo', 'Revisión técnica', 'Inspección interna', 'Seguro carga', 'Otro'];

@@ -823,7 +823,56 @@ export const ordenesCompra = [
     subtotal: 500, igv: 90, total: 590, condicion_pago: 'Contado', moneda: 'PEN',
     fecha_emision: '2025-04-18', fecha_entrega_esperada: '2025-04-21', almacen_destino: 'ALM-001',
     estado: 'cerrada', porcentaje_recibido: 100, notas_proveedor: '', notas_internas: ''
-  }
+  },
+  {
+    id: 'oc_004', empresa_id: 'emp_001', codigo: 'OC-2025-0102', proveedor_id: 'prv_001',
+    descripcion: 'Materiales electricos octubre', items: [{ descripcion: 'Cable AWG 4mm', cantidad: 80, unidad: 'm', precio_unitario: 4.50, subtotal: 360 }, { descripcion: 'Breaker 2x20A', cantidad: 3, unidad: 'Und', precio_unitario: 120, subtotal: 360 }],
+    subtotal: 720, igv: 129.60, total: 849.60, condicion_pago: '30 dias', moneda: 'PEN',
+    fecha_emision: '2025-10-15', fecha_entrega_esperada: '2025-10-18', almacen_destino: 'ALM-001',
+    estado: 'recibida_total', porcentaje_recibido: 100, notas_proveedor: '', notas_internas: ''
+  },
+  {
+    id: 'oc_005', empresa_id: 'emp_001', codigo: 'OC-2025-0115', proveedor_id: 'prv_003',
+    descripcion: 'Transporte Lima-Ilo noviembre', items: [{ descripcion: 'Servicio transporte', cantidad: 1, unidad: 'Servicio', precio_unitario: 950, subtotal: 950 }],
+    subtotal: 950, igv: 171, total: 1121, condicion_pago: '15 dias', moneda: 'PEN',
+    fecha_emision: '2025-11-08', fecha_entrega_esperada: '2025-11-12', almacen_destino: 'ALM-001',
+    estado: 'cerrada', porcentaje_recibido: 100, notas_proveedor: '', notas_internas: ''
+  },
+  {
+    id: 'oc_006', empresa_id: 'emp_001', codigo: 'OC-2025-0131', proveedor_id: 'prv_002',
+    descripcion: 'Conductores y tableros diciembre', items: [{ descripcion: 'Conductor THW 6mm', cantidad: 150, unidad: 'm', precio_unitario: 6.80, subtotal: 1020 }, { descripcion: 'Tablero modular 24 polos', cantidad: 1, unidad: 'Und', precio_unitario: 540, subtotal: 540 }],
+    subtotal: 1560, igv: 280.80, total: 1840.80, condicion_pago: 'Contado', moneda: 'PEN',
+    fecha_emision: '2025-12-03', fecha_entrega_esperada: '2025-12-06', almacen_destino: 'ALM-001',
+    estado: 'cerrada', porcentaje_recibido: 100, notas_proveedor: '', notas_internas: ''
+  },
+  {
+    id: 'oc_007', empresa_id: 'emp_001', codigo: 'OC-2026-0018', proveedor_id: 'prv_001',
+    descripcion: 'Materiales inicio proyecto 2026 Q1', items: [{ descripcion: 'Cable NHX 4mm', cantidad: 120, unidad: 'm', precio_unitario: 5.20, subtotal: 624 }, { descripcion: 'Terminales hidraulicas', cantidad: 100, unidad: 'Und', precio_unitario: 2.80, subtotal: 280 }, { descripcion: 'Canaleta 60x40', cantidad: 30, unidad: 'm', precio_unitario: 11, subtotal: 330 }],
+    subtotal: 1234, igv: 222.12, total: 1456.12, condicion_pago: '30 dias', moneda: 'PEN',
+    fecha_emision: '2026-01-10', fecha_entrega_esperada: '2026-01-14', almacen_destino: 'ALM-001',
+    estado: 'recibida_total', porcentaje_recibido: 100, notas_proveedor: '', notas_internas: ''
+  },
+  {
+    id: 'oc_008', empresa_id: 'emp_001', codigo: 'OC-2026-0045', proveedor_id: 'prv_003',
+    descripcion: 'Flete interregional marzo 2026', items: [{ descripcion: 'Transporte carga completa Lima-Arequipa', cantidad: 1, unidad: 'Viaje', precio_unitario: 1050, subtotal: 1050 }],
+    subtotal: 1050, igv: 189, total: 1239, condicion_pago: '15 dias', moneda: 'PEN',
+    fecha_emision: '2026-03-12', fecha_entrega_esperada: '2026-03-16', almacen_destino: 'ALM-002',
+    estado: 'cerrada', porcentaje_recibido: 100, notas_proveedor: '', notas_internas: ''
+  },
+  {
+    id: 'oc_009', empresa_id: 'emp_001', codigo: 'OC-2026-0071', proveedor_id: 'prv_001',
+    descripcion: 'Materiales electricos Q2 2026', items: [{ descripcion: 'Breaker 3x25A', cantidad: 4, unidad: 'Und', precio_unitario: 175, subtotal: 700 }, { descripcion: 'Bornera modular 4mm', cantidad: 50, unidad: 'Und', precio_unitario: 3.60, subtotal: 180 }],
+    subtotal: 880, igv: 158.40, total: 1038.40, condicion_pago: '30 dias', moneda: 'PEN',
+    fecha_emision: '2026-04-20', fecha_entrega_esperada: '2026-04-23', almacen_destino: 'ALM-001',
+    estado: 'recibida_total', porcentaje_recibido: 100, notas_proveedor: '', notas_internas: ''
+  },
+  {
+    id: 'oc_010', empresa_id: 'emp_001', codigo: 'OC-2026-0099', proveedor_id: 'prv_001',
+    descripcion: 'Materiales electricos junio 2026', items: [{ descripcion: 'Cable NHX-90 2.5mm', cantidad: 200, unidad: 'm', precio_unitario: 3.10, subtotal: 620 }, { descripcion: 'Caja estanca IP67', cantidad: 5, unidad: 'Und', precio_unitario: 140, subtotal: 700 }],
+    subtotal: 1320, igv: 237.60, total: 1557.60, condicion_pago: '30 dias', moneda: 'PEN',
+    fecha_emision: '2026-06-04', fecha_entrega_esperada: '2026-06-07', almacen_destino: 'ALM-001',
+    estado: 'recibida_total', porcentaje_recibido: 100, notas_proveedor: '', notas_internas: ''
+  },
 ];
 
 export const ordenesServicio = [
@@ -853,6 +902,33 @@ export const recepciones = [
     cxp_generada: true, cxp_id: 'cxp_005'
   }
 ];
+export const comprasGastos = [
+  { id: 'cg_001', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Cable NHX 2.5mm y terminales electricas', categoria: 'Materiales', monto: 880, moneda: 'PEN', fecha: '2025-07-10', proveedor_id: 'prv_001', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_002', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Transporte planta Toquepala julio', categoria: 'Transporte', monto: 800, moneda: 'PEN', fecha: '2025-07-22', proveedor_id: 'prv_003', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_003', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'EPP cascos y lentes agosto', categoria: 'EPP', monto: 607, moneda: 'PEN', fecha: '2025-08-05', proveedor_id: 'prv_001', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_004', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Servicio subcontrato tecnico agosto', categoria: 'Servicios', monto: 1200, moneda: 'PEN', fecha: '2025-08-18', proveedor_id: 'prv_004', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_005', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Tablero electrico 12 polos', categoria: 'Materiales', monto: 590, moneda: 'PEN', fecha: '2025-09-03', proveedor_id: 'prv_002', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_006', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Flete Lima-Arequipa septiembre', categoria: 'Transporte', monto: 650, moneda: 'PEN', fecha: '2025-09-14', proveedor_id: 'prv_003', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_007', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Repuestos rodillos transportadora oct', categoria: 'Equipos', monto: 2100, moneda: 'PEN', fecha: '2025-10-07', proveedor_id: 'prv_005', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_008', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Materiales electricos OT-25-0038', categoria: 'Materiales', monto: 1450, moneda: 'PEN', fecha: '2025-10-20', proveedor_id: 'prv_001', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_009', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Suministros EPP noviembre', categoria: 'EPP', monto: 830, moneda: 'PEN', fecha: '2025-11-10', proveedor_id: 'prv_001', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_010', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Transporte equipos pesados nov', categoria: 'Transporte', monto: 1100, moneda: 'PEN', fecha: '2025-11-25', proveedor_id: 'prv_003', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_011', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Materiales cierre anio OT final', categoria: 'Materiales', monto: 1890, moneda: 'PEN', fecha: '2025-12-08', proveedor_id: 'prv_001', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_012', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Servicio mantenimiento diciembre', categoria: 'Servicios', monto: 950, moneda: 'PEN', fecha: '2025-12-20', proveedor_id: 'prv_004', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_013', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Materiales inicio proyecto 2026', categoria: 'Materiales', monto: 2200, moneda: 'PEN', fecha: '2026-01-12', proveedor_id: 'prv_001', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_014', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Alquiler equipo liviano enero', categoria: 'Equipos', monto: 600, moneda: 'PEN', fecha: '2026-01-28', proveedor_id: 'prv_005', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_015', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Conductores AWG febrero', categoria: 'Materiales', monto: 1560, moneda: 'PEN', fecha: '2026-02-10', proveedor_id: 'prv_002', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_016', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'EPP guantes y arneses febrero', categoria: 'EPP', monto: 720, moneda: 'PEN', fecha: '2026-02-24', proveedor_id: 'prv_001', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_017', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Flete interregional marzo', categoria: 'Transporte', monto: 1250, moneda: 'PEN', fecha: '2026-03-15', proveedor_id: 'prv_003', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_018', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Repuestos bomba centrifuga', categoria: 'Equipos', monto: 1800, moneda: 'PEN', fecha: '2026-03-28', proveedor_id: 'prv_005', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_019', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Materiales electricos abril', categoria: 'Materiales', monto: 1038, moneda: 'PEN', fecha: '2026-04-18', proveedor_id: 'prv_001', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_020', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Servicio tecnico subcontratado abril', categoria: 'Servicios', monto: 1500, moneda: 'PEN', fecha: '2026-04-25', proveedor_id: 'prv_004', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_021', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'EPP mayo reposicion stock', categoria: 'EPP', monto: 540, moneda: 'PEN', fecha: '2026-05-08', proveedor_id: 'prv_001', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_022', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Transporte materiales mayo', categoria: 'Transporte', monto: 980, moneda: 'PEN', fecha: '2026-05-20', proveedor_id: 'prv_003', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_023', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Materiales electricos junio', categoria: 'Materiales', monto: 1320, moneda: 'PEN', fecha: '2026-06-05', proveedor_id: 'prv_001', estado: 'registrado', estado_pago: 'pagado' },
+  { id: 'cg_024', empresa_id: 'emp_001', tipo: 'gasto', descripcion: 'Equipo alquiler junio proyecto', categoria: 'Equipos', monto: 750, moneda: 'PEN', fecha: '2026-06-10', proveedor_id: 'prv_005', estado: 'registrado', estado_pago: 'pagado' },
+];
+
 export const cxc = [
   { id: 'cxc_001', cliente: 'Minera Andes SAC', factura: 'F001-0512', emision: '2026-04-20', vence: '2026-05-20', total: 95000, pagado: 0, saldo: 95000, mora: 0, estado: 'vigente', promesa_pago: null },
   { id: 'cxc_002', cliente: 'Planta Industrial Norte SRL', factura: 'F001-0498', emision: '2026-04-01', vence: '2026-04-16', total: 18500, pagado: 0, saldo: 18500, mora: 11, estado: 'vencida', promesa_pago: '2026-04-30' },
@@ -2035,7 +2111,7 @@ export const MOCK = {
   transportistasMock, catalogoVentaMock, ordenesVentaMock,
   prestamos, financiamientos, movimientosTesoreria, cuentasBancarias, cxp, inventario, valorizaciones, proveedores, documentosProveedor,
   evaluacionesProveedor, contactosProveedor, procesosCompra, respuestasCompra,
-  ordenesCompra, ordenesServicio, recepciones,
+  ordenesCompra, ordenesServicio, recepciones, comprasGastos,
   // Fase 3 — RRHH
   personalOperativo, personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH,
   tiposDocumento, requisitosCargo, personalDocumentos,

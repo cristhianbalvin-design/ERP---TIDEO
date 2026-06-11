@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
@@ -25,6 +26,7 @@ import { getPrimaSeguroAfp } from './services/nominaService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { FileUpload } from './components/FileUpload.jsx';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
+import { comprasService, getSpendAnalysis } from './services/comprasService.js';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
@@ -2037,7 +2039,7 @@ function OT({ role }) {
       actividades_adicionales: parte.actividades_adicionales || [],
       avance_global: parte.avance_global || parte.avance_reportado || 0,
       avance_ajustado_manual: parte.avance_ajustado_manual || (!parte.tareas_trabajadas?.length && !parte.actividades_adicionales?.length && (parte.avance_reportado || 0) > 0),
-      materiales_lineas: (parte.materiales_usados || []).map(m => ({ inv_id: m.inv_id || m.sku || '', cantidad: m.cantidad || 0, almacen_id: m.almacen_id || '' })),
+      materiales_lineas: (parte.materiales_usados || []).map(m => ({ mat_id: m.material_id || '', inv_id: m.inv_id || m.sku || '', cantidad: m.cantidad || 0, almacen_id: m.almacen_id || '', lote: m.lote || null, serie: m.serie || null, vencimiento: m.vencimiento || null })),
       terceros_lineas: (parte.terceros_lineas || []).map(l => ({ descripcion: l.descripcion || '', monto: l.monto ?? '' })),
       logistica_lineas: (parte.logistica_lineas || []).map(l => ({ descripcion: l.descripcion || '', monto: l.monto ?? '' })),
       evidencias: parte.evidencias || [],
@@ -2103,8 +2105,8 @@ function OT({ role }) {
       : tareasActivas.reduce((s, t) => s + (Number(t.avance_hoy) || 0), 0) + parteFormOT.actividades_adicionales.reduce((s, a) => s + (Number(a.avance_estimado) || 0), 0);
     const materialesUsados = parteFormOT.materiales_lineas.filter(m => m.mat_id && Number(m.cantidad) > 0).map(m => {
       const cat = (catalogoMateriales || []).find(x => x.id === m.mat_id);
-      const inv = (inventario || []).find(x => x.material_id === m.mat_id);
-      return { material_id: m.mat_id, sku: cat?.codigo || inv?.sku || m.mat_id, nombre: cat?.descripcion || inv?.nombre || '', unidad: cat?.unidad || inv?.unidad || '', cantidad: Number(m.cantidad), costo_unitario: Number(cat?.costo_promedio || inv?.costo_promedio || 0) };
+      const inv = (inventario || []).find(x => x.material_id === m.mat_id && (!m.lote || x.lote === m.lote));
+      return { material_id: m.mat_id, sku: cat?.codigo || inv?.sku || m.mat_id, nombre: cat?.descripcion || inv?.nombre || '', unidad: cat?.unidad || inv?.unidad || '', cantidad: Number(m.cantidad), costo_unitario: Number(cat?.costo_promedio || inv?.costo_promedio || 0), lote: m.lote || null, serie: m.serie || null, vencimiento: m.vencimiento || null };
     });
     const estadoParte = modo === 'borrador' ? 'borrador' : parteFormOT.es_restriccion ? 'con_restriccion' : 'en_revision';
     return {
@@ -3229,42 +3231,67 @@ function OT({ role }) {
                                 ? (catalogoMateriales || []).filter(x => `${x.codigo} ${x.descripcion}`.toLowerCase().includes(m.query.toLowerCase())).slice(0, 8)
                                 : [];
                               const updLine = (patch) => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.map((x, i) => i === idx ? {...x, ...patch} : x) }));
+                              const tipoControl = m.mat_id ? ((inventario || []).find(i => i.material_id === m.mat_id)?.tipo_control || 'sin_control') : 'sin_control';
+                              const lotesDisponibles = m.mat_id && (tipoControl === 'lote' || tipoControl === 'serie')
+                                ? (inventario || []).filter(i => i.material_id === m.mat_id && i.disponible > 0)
+                                    .sort((a, b) => (!a.vencimiento && !b.vencimiento) ? 0 : !a.vencimiento ? 1 : !b.vencimiento ? -1 : new Date(a.vencimiento) - new Date(b.vencimiento))
+                                : [];
                               return (
-                                <div key={idx} style={{display:'grid', gridTemplateColumns:'2fr 1fr auto', gap:8, alignItems:'start'}}>
-                                  <div style={{position:'relative'}}>
-                                    <input
+                                <div key={idx} style={{display:'flex', flexDirection:'column', gap:4}}>
+                                  <div style={{display:'grid', gridTemplateColumns:'2fr 1fr auto', gap:8, alignItems:'start'}}>
+                                    <div style={{position:'relative'}}>
+                                      <input
+                                        className="input"
+                                        placeholder="Buscar material por código o nombre..."
+                                        value={m.mat_id ? `${cat?.codigo} – ${cat?.descripcion}` : (m.query || '')}
+                                        onChange={e => updLine({ query: e.target.value, mat_id: '', lote: null, serie: null, vencimiento: null })}
+                                        onFocus={e => { if (!m.mat_id) updLine({ query: e.target.value }); }}
+                                        autoComplete="off"
+                                      />
+                                      {filtrados.length > 0 && (
+                                        <div className="autocomplete-menu autocomplete-menu-inline" style={{maxHeight:200}}>
+                                          {filtrados.map(it => (
+                                            <div key={it.id}
+                                              onMouseDown={e => { e.preventDefault(); updLine({ mat_id: it.id, query: '', lote: null, serie: null, vencimiento: null }); }}
+                                              className="autocomplete-option"
+                                            >
+                                              <div className="autocomplete-option-title"><span className="mono autocomplete-code">{it.codigo}</span>{it.descripcion}</div>
+                                              <div className="autocomplete-option-meta">{it.unidad || 'Sin unidad'}</div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div style={{display:'flex', alignItems:'center', gap:4}}>
+                                      <input className="input" type="number" min="0.01" step="0.01" placeholder="Cant." value={m.cantidad} onChange={e => updLine({ cantidad: e.target.value })} />
+                                      {cat && <span style={{fontSize:11, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>{cat.unidad}</span>}
+                                    </div>
+                                    <button type="button" className="icon-btn" style={{marginTop:6}} onClick={() => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.filter((_, i) => i !== idx) }))}>{I.x}</button>
+                                  </div>
+                                  {lotesDisponibles.length > 0 && (
+                                    <select
                                       className="input"
-                                      placeholder="Buscar material por cÃ³digo o nombre..."
-                                      value={m.mat_id ? `${cat?.codigo} â€” ${cat?.descripcion}` : (m.query || '')}
-                                      onChange={e => updLine({ query: e.target.value, mat_id: '' })}
-                                      onFocus={e => { if (!m.mat_id) updLine({ query: e.target.value }); }}
-                                      autoComplete="off"
-                                    />
-                                    {filtrados.length > 0 && (
-                                      <div className="autocomplete-menu autocomplete-menu-inline" style={{maxHeight:200}}>
-                                        {filtrados.map(it => (
-                                          <div key={it.id}
-                                            onMouseDown={e => { e.preventDefault(); updLine({ mat_id: it.id, query: '' }); }}
-                                            className="autocomplete-option"
-                                          >
-                                            <div className="autocomplete-option-title"><span className="mono autocomplete-code">{it.codigo}</span>{it.descripcion}</div>
-                                            <div className="autocomplete-option-meta">{it.unidad || 'Sin unidad'}</div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div style={{display:'flex', alignItems:'center', gap:4}}>
-                                    <input className="input" type="number" min="0.01" step="0.01" placeholder="Cant." value={m.cantidad} onChange={e => updLine({ cantidad: e.target.value })} />
-                                    {cat && <span style={{fontSize:11, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>{cat.unidad}</span>}
-                                  </div>
-                                  <button type="button" className="icon-btn" style={{marginTop:6}} onClick={() => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.filter((_, i) => i !== idx) }))}>{I.x}</button>
+                                      style={{fontSize:12}}
+                                      value={tipoControl === 'lote' ? (m.lote || '') : (m.serie || '')}
+                                      onChange={e => {
+                                        const row = lotesDisponibles.find(l => (tipoControl === 'lote' ? l.lote : l.serie) === e.target.value);
+                                        updLine({ lote: row?.lote || null, serie: row?.serie || null, vencimiento: row?.vencimiento || null });
+                                      }}
+                                    >
+                                      <option value="">— Seleccionar {tipoControl === 'lote' ? 'lote' : 'serie'} (FEFO) —</option>
+                                      {lotesDisponibles.map((l, li) => {
+                                        const val = tipoControl === 'lote' ? l.lote : l.serie;
+                                        const exp = l.vencimiento ? ` · Vence: ${new Date(l.vencimiento).toLocaleDateString('es-PE')}` : '';
+                                        return <option key={li} value={val}>{val} (Stock: {l.disponible}{exp})</option>;
+                                      })}
+                                    </select>
+                                  )}
                                 </div>
                               );
                             })}
                           </div>
                         )}
-                        <button type="button" className="btn btn-ghost" style={{fontSize:12}} onClick={() => setParteFormOT(s => ({ ...s, materiales_lineas: [...s.materiales_lineas, { mat_id: '', query: '', cantidad: '' }] }))}>
+                        <button type="button" className="btn btn-ghost" style={{fontSize:12}} onClick={() => setParteFormOT(s => ({ ...s, materiales_lineas: [...s.materiales_lineas, { mat_id: '', query: '', cantidad: '', lote: null, serie: null, vencimiento: null }] }))}>
                           {I.plus} Agregar material
                         </button>
                       </div>
@@ -5336,6 +5363,40 @@ function ratingText(value) {
   return `${value.toFixed(1)} / 5`;
 }
 
+function diffDays(fechaInicio, fechaFin) {
+  if (!fechaInicio || !fechaFin) return null;
+  const inicio = new Date(`${String(fechaInicio).slice(0, 10)}T00:00:00`);
+  const fin = new Date(`${String(fechaFin).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) return null;
+  return Math.round((fin - inicio) / 86400000);
+}
+
+function leadTimeDiasOC(oc, fechaRecepcion) {
+  const valor = oc?.lead_time_dias;
+  if (valor !== null && valor !== undefined && valor !== '') return Number(valor);
+  return diffDays(oc?.fecha_emision, fechaRecepcion || oc?.fecha_recepcion_real);
+}
+
+function formatLeadTimeDias(dias) {
+  return Number.isFinite(dias) ? `${dias} dias` : '-';
+}
+
+function diasDesdeFecha(fecha) {
+  if (!fecha) return null;
+  const inicio = new Date(`${String(fecha).slice(0, 10)}T00:00:00`);
+  const hoy = new Date();
+  const fin = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  if (Number.isNaN(inicio.getTime())) return null;
+  return Math.max(0, Math.round((fin - inicio) / 86400000));
+}
+
+function formatoPrecioHistorico(row) {
+  if (!row) return 'Sin historial de precio con este proveedor';
+  const dias = diasDesdeFecha(row.fecha_emision);
+  const hace = Number.isFinite(dias) ? `hace ${dias} días` : 'fecha no disponible';
+  return `Último precio con este proveedor: S/ ${Number(row.precio_unitario || 0).toFixed(2)} (${hace} · OC #${row.numero_oc || row.orden_compra_id || '-'})`;
+}
+
 export function PlaceholderCompras({ titulo }) {
   return (
     <div style={{ padding:'40px' }}>
@@ -5348,7 +5409,7 @@ export function PlaceholderCompras({ titulo }) {
 }
 
 function Proveedores() {
-  const { proveedores, setProveedores, evaluacionesProveedor, usuarios, roles, empresa, role, addNotificacion, registrarProveedor, actualizarProveedorCtx } = useApp();
+  const { proveedores, setProveedores, evaluacionesProveedor, ordenesCompra, recepciones, usuarios, roles, empresa, role, addNotificacion, registrarProveedor, actualizarProveedorCtx } = useApp();
   const [tab, setTab] = useState('todos');
   const [panel, setPanel] = useState(false);
   const [sel, setSel] = useState(null);
@@ -5428,11 +5489,28 @@ function Proveedores() {
     const postOc = proveedorEvals.filter(ev => ev.tipo === 'post_oc' || ev.tipo === 'post_os');
     const contactos = contactosProv.filter(c => c.proveedor_id === sel.id);
     const vencidos = proveedorDocs.filter(d => d.estado === 'vencido');
-    const ocRows = [
-      { id:'OC-2025-0089', tipo:'Compra', concepto:'Materiales electricos', monto:4200, estado:'Recibida', emision:'15/04', recepcion:'20/04' },
-      { id:'OC-2025-0071', tipo:'Compra', concepto:'EPP y herramientas', monto:1850, estado:'Recibida', emision:'01/04', recepcion:'05/04' },
-      { id:'OS-2025-0012', tipo:'Servicio', concepto:'Transporte de materiales', monto:800, estado:'Cerrada', emision:'20/03', recepcion:'22/03' }
-    ];
+    const recepcionPorOc = new Map((recepciones || []).map(r => [String(r.orden_compra_id || r.oc_id || ''), r]));
+    const ocRows = ((ordenesCompra?.length ? ordenesCompra : (MOCK.ordenesCompra || [])) || [])
+      .filter(oc => oc.proveedor_id === sel.id)
+      .map(oc => {
+        const recepcion = recepcionPorOc.get(String(oc.id));
+        const fechaRecepcion = oc.fecha_recepcion_real || recepcion?.fecha || null;
+        const leadTimeDias = leadTimeDiasOC(oc, fechaRecepcion);
+        return {
+          id: oc.codigo || oc.id,
+          tipo: 'Compra',
+          concepto: oc.descripcion || '-',
+          monto: Number(oc.total || 0),
+          estado: oc.estado || '-',
+          emision: oc.fecha_emision || '-',
+          recepcion: fechaRecepcion || '-',
+          leadTimeDias
+        };
+      });
+    const leadTimesProveedor = ocRows.map(r => r.leadTimeDias).filter(n => Number.isFinite(n));
+    const leadTimePromedio = leadTimesProveedor.length
+      ? leadTimesProveedor.reduce((sum, n) => sum + n, 0) / leadTimesProveedor.length
+      : null;
     const tabLabels = {
       resumen:'Resumen', finanzas:'Condiciones financieras', documentos:'Documentos',
       evaluaciones:'Evaluaciones', historial:'Historial OC', contactos:'Contactos'
@@ -5513,7 +5591,7 @@ function Proveedores() {
             <div className="card" style={{padding:20}}><div className="card-head"><h3>Evaluacion de homologacion</h3></div>
               {hom ? <><p className="text-muted">Realizada: {hom.fecha} - Responsable: {hom.evaluador}</p>{Object.entries(hom.criterios).map(([k,v]) => <div key={k} className="row" style={{justifyContent:'space-between', padding:'7px 0', borderBottom:'1px solid var(--border-subtle)'}}><span>{k.replaceAll('_',' ')}</span><strong>{v}/5</strong></div>)}<h3 style={{marginTop:14}}>Score total {hom.score_homologacion}/5</h3><p>{hom.comentario}</p></> : <p className="text-muted">Sin evaluacion de homologacion registrada.</p>}
             </div>
-            <div className="card"><div className="card-head"><h3>Evaluaciones post-OC/OS</h3><button className="btn btn-secondary btn-sm">{I.plus} Nueva evaluacion</button></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Documento</th><th>Fecha</th><th>Plazo</th><th>Calidad</th><th>Score</th><th>Resultado</th></tr></thead><tbody>{postOc.map(ev => {
+            <div className="card"><div className="card-head"><h3>Evaluaciones post-OC/OS</h3><span className="badge badge-cyan">Lead time promedio: {leadTimePromedio !== null ? `${leadTimePromedio.toFixed(1)} dias` : 'Sin datos'}</span><button className="btn btn-secondary btn-sm">{I.plus} Nueva evaluacion</button></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Documento</th><th>Fecha</th><th>Plazo</th><th>Calidad</th><th>Score</th><th>Resultado</th></tr></thead><tbody>{postOc.map(ev => {
               const detalle = ev.detalle || {};
               const score = ev.puntaje ?? ev.score ?? 0;
               const calidad = detalle.calidad ?? ev.calidad ?? '-';
@@ -5523,7 +5601,7 @@ function Proveedores() {
           </div>
         )}
         {detailTab === 'historial' && (
-          <div className="card"><div className="card-head"><h3>Historial OC</h3><strong>Total comprado: {money(sel.monto_total_comprado || 0)}</strong></div><div className="table-wrap"><table className="tbl"><thead><tr><th>N OC</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th>Estado</th><th>Emision</th><th>Recepcion</th></tr></thead><tbody>{ocRows.map(r => <tr key={r.id}><td className="mono">{r.id}</td><td>{r.tipo}</td><td>{r.concepto}</td><td>{money(r.monto)}</td><td><span className="badge badge-green">{r.estado}</span></td><td>{r.emision}</td><td>{r.recepcion}</td></tr>)}</tbody></table></div></div>
+          <div className="card"><div className="card-head"><h3>Historial OC</h3><strong>Total comprado: {money(sel.monto_total_comprado || 0)}</strong></div><div className="table-wrap"><table className="tbl"><thead><tr><th>N OC</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th>Estado</th><th>Emision</th><th>Recepcion</th><th>Lead time</th></tr></thead><tbody>{ocRows.map(r => <tr key={r.id}><td className="mono">{r.id}</td><td>{r.tipo}</td><td>{r.concepto}</td><td>{money(r.monto)}</td><td><span className="badge badge-green">{String(r.estado).replace('_',' ')}</span></td><td>{r.emision}</td><td>{r.recepcion}</td><td>{formatLeadTimeDias(r.leadTimeDias)}</td></tr>)}</tbody></table></div></div>
         )}
         {detailTab === 'contactos' && (
           <div className="card"><div className="card-head"><h3>Contactos</h3><button className="btn btn-secondary btn-sm">{I.plus} Agregar contacto</button></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Nombre</th><th>Cargo</th><th>Telefono</th><th>Email</th><th>Principal</th></tr></thead><tbody>{contactos.map(c => <tr key={c.id}><td><strong>{c.nombre}</strong></td><td>{c.cargo}</td><td>{c.telefono}</td><td>{c.email}</td><td>{c.principal ? 'Si' : 'No'}</td></tr>)}</tbody></table></div></div>
@@ -5765,20 +5843,41 @@ function CotizacionesCompras() {
 }
 
 function OrdenesCompra() {
-  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, addNotificacion, navigate, centrosCosto } = useApp();
+  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, authUser, addNotificacion, navigate, centrosCosto, materiales, crearOrdenCompraCtx } = useApp();
   const [tab, setTab] = useState('todas');
   const [panel, setPanel] = useState(false);
   const [sel, setSel] = useState(null);
-  const [form, setForm] = useState({ proveedor_id:'prv_001', proceso_compra_id:'', ot_id:'', centro_costo_id:'', descripcion:'', total:1000, fecha_entrega_esperada:'2025-04-30' });
+  const [form, setForm] = useState({ proveedor_id:'prv_001', proceso_compra_id:'', ot_id:'', centro_costo_id:'', descripcion:'', fecha_entrega_esperada:'2025-04-30', items:[{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:1000 }] });
   const list = ordenesCompra.filter(o => tab === 'todas' || o.estado === tab);
   const homologados = proveedores.filter(p => p.estado === 'homologado' || p.estado === 'observado');
   const kpi = { emitidas: ordenesCompra.length, pendientes: ordenesCompra.filter(o=>o.porcentaje_recibido<100).length, parcial: ordenesCompra.filter(o=>o.estado==='recibida_parcial').length, total: ordenesCompra.reduce((s,o)=>s+(o.total||0),0) };
-  const crear = (emitir=true) => {
+  const crear = async (emitir=true) => {
     if (!form.centro_costo_id) { addNotificacion('Este campo es obligatorio. Selecciona un CECO antes de continuar.'); return; }
-    const subtotal = Number(form.total) || 0;
+    const items = (form.items || []).map(item => {
+      const mat = (materiales || []).find(m => m.id === item.material_id);
+      const cantidad = Number(item.cantidad || 0);
+      const precio = Number(item.precio_unitario || 0);
+      return {
+        material_id: item.material_id || null,
+        codigo: mat?.codigo || item.codigo || null,
+        descripcion: item.descripcion || mat?.descripcion || 'Item de compra',
+        cantidad,
+        unidad: item.unidad || mat?.unidad || 'Und',
+        precio_unitario: precio,
+        subtotal: Math.round(cantidad * precio * 100) / 100
+      };
+    }).filter(item => item.descripcion && item.cantidad > 0);
+    if (!items.length) { addNotificacion('Agrega al menos un item con cantidad mayor a cero.'); return; }
+    const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
     const p = proveedorById(proveedores, form.proveedor_id);
-    const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, proveedor_id:form.proveedor_id, ot_id:form.ot_id, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || 'Compra directa', items:[{descripcion:form.descripcion || 'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:subtotal, subtotal}], subtotal, igv:subtotal*0.18, total:subtotal*1.18, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, almacen_destino:'ALM-001', estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:'' };
-    setOrdenesCompra(prev=>[oc,...prev]); addNotificacion(`${oc.codigo} ${emitir?'emitida':'guardada como borrador'}.`); setPanel(false);
+    const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, proveedor_id:form.proveedor_id, ot_id:form.ot_id, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:subtotal*0.18, total:subtotal*1.18, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, almacen_destino:'ALM-001', estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:'', creado_por: authUser?.id || null };
+    try {
+      await crearOrdenCompraCtx(oc);
+      addNotificacion(`${oc.codigo} ${emitir?'emitida':'guardada como borrador'}.`);
+      setPanel(false);
+    } catch (error) {
+      addNotificacion(`No se pudo guardar la OC: ${error.message}`);
+    }
   };
   if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} onBack={()=>setSel(null)} onConfirmar={()=>setOrdenesCompra(prev=>prev.map(o=>o.id===sel.id?{...o,estado:'confirmada'}:o))} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
   return (
@@ -5787,7 +5886,7 @@ function OrdenesCompra() {
       <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas este mes</div><div className="kpi-value">{kpi.emitidas}</div></div><div className="kpi-card"><div className="kpi-label">Pendientes recepcion</div><div className="kpi-value">{kpi.pendientes}</div></div><div className="kpi-card"><div className="kpi-label">Recibidas parcial</div><div className="kpi-value">{kpi.parcial}</div></div><div className="kpi-card"><div className="kpi-label">Valor total mes</div><div className="kpi-value">{money(kpi.total)}</div></div></div>
       <div className="tabs">{['todas','emitida','confirmada','en_transito','recibida_parcial','cerrada','anulada'].map(t=><div key={t} className={'tab '+(tab===t?'active':'')} onClick={()=>setTab(t)}>{t.replace('_',' ')}</div>)}</div>
       <OrdenesTable list={list} proveedores={proveedores} onSel={setSel} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>
-      {panel && <PanelOC form={form} setForm={setForm} proveedores={homologados} procesos={procesosCompra} ots={ots} centrosCosto={centrosCosto} onClose={()=>setPanel(false)} onCrear={crear}/>}
+      {panel && <PanelOC form={form} setForm={setForm} proveedores={homologados} procesos={procesosCompra} ots={ots} centrosCosto={centrosCosto} materiales={materiales} empresaId={empresa?.id} onClose={()=>setPanel(false)} onCrear={crear}/>}
     </>
   );
 }
@@ -5796,9 +5895,76 @@ function OrdenesTable({ list, proveedores, onSel, onRecepcion }) {
   return <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>N OC</th><th>Proveedor</th><th>Concepto</th><th>Monto total</th><th>OT</th><th>Estado</th><th>Emision</th><th>Entrega esperada</th><th>Recibido</th><th>Acciones</th></tr></thead><tbody>{list.map(o=>{ const p=proveedorById(proveedores,o.proveedor_id); return <tr key={o.id}><td className="mono">{o.codigo}</td><td><strong>{p.razon_social}</strong><div className="text-muted" style={{fontSize:11}}>{ratingText(p.calificacion_promedio)}</div></td><td>{o.descripcion}</td><td>{money(o.total||0)}</td><td className="mono">{o.ot_id||'-'}</td><td><span className={'badge '+estadoOcBadge(o.estado)}>{o.estado.replace('_',' ')}</span></td><td>{o.fecha_emision}</td><td>{o.fecha_entrega_esperada}</td><td><div style={{width:80,height:6,background:'var(--bg-subtle)',borderRadius:99}}><div style={{width:`${o.porcentaje_recibido||0}%`,height:6,background:'var(--green)',borderRadius:99}}/></div><span className="text-muted" style={{fontSize:11}}>{o.porcentaje_recibido||0}%</span></td><td><button className="btn btn-sm btn-secondary" onClick={()=>onSel(o)}>Ver detalle</button> <button className="btn btn-sm btn-ghost" onClick={()=>onRecepcion(o)}>Registrar recepcion</button></td></tr>})}</tbody></table></div></div>;
 }
 
-function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [], onClose, onCrear }) {
+function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [], materiales = [], empresaId, onClose, onCrear }) {
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  return <><div className="side-panel-backdrop" onClick={onClose}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de compra</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OC</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}><div className="input-group"><label>Proceso de cotizacion</label><select className="select" value={form.proceso_compra_id} onChange={e=>setForm(v=>({...v,proceso_compra_id:e.target.value}))}><option value="">Compra directa</option>{procesos.map(p=><option key={p.id} value={p.id}>{p.codigo}</option>)}</select></div><div className="input-group"><label>Proveedor</label><select className="select" value={form.proveedor_id} onChange={e=>setForm(v=>({...v,proveedor_id:e.target.value}))}>{proveedores.map(p=><option key={p.id} value={p.id}>{p.razon_social}{p.estado==='observado'?' - observado':''}</option>)}</select></div><div className="input-group"><label>CECO *</label><select className="select" value={form.centro_costo_id} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div><div className="input-group"><label>OT vinculada</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero || o.id}</option>)}</select></div><div className="input-group"><label>Fecha entrega esperada</label><input className="input" type="date" value={form.fecha_entrega_esperada} onChange={e=>setForm(v=>({...v,fecha_entrega_esperada:e.target.value}))}/></div><div className="input-group" style={{gridColumn:'1/-1'}}><label>Descripcion</label><textarea className="input" rows="3" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div><div className="input-group"><label>Monto subtotal</label><input className="input" type="number" value={form.total} onChange={e=>setForm(v=>({...v,total:e.target.value}))}/></div></div><div className="card mt-6" style={{padding:14}}><p><strong>Subtotal:</strong> {money(Number(form.total)||0)}</p><p><strong>IGV 18%:</strong> {money((Number(form.total)||0)*0.18)}</p><p><strong>Total:</strong> {money((Number(form.total)||0)*1.18)}</p></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>onCrear(false)}>Guardar borrador</button><button className="btn btn-primary" data-local-form="true" onClick={()=>onCrear(true)}>Emitir OC</button></div></div></div></>;
+  const lineas = form.items?.length ? form.items : [{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:0 }];
+  const materialKey = lineas.map(i => i.material_id || '').join('|');
+  const [precioHistorico, setPrecioHistorico] = useState({});
+  const subtotal = lineas.reduce((sum, item) => sum + (Number(item.cantidad || 0) * Number(item.precio_unitario || 0)), 0);
+  const setLinea = (idx, patch) => setForm(v => ({
+    ...v,
+    items: lineas.map((item, i) => i === idx ? { ...item, ...patch } : item)
+  }));
+  const addLinea = () => setForm(v => ({
+    ...v,
+    items: [...lineas, { material_id:'', descripcion:'', cantidad:1, unidad:'Und', precio_unitario:'' }]
+  }));
+  const removeLinea = idx => setForm(v => ({
+    ...v,
+    items: lineas.length > 1 ? lineas.filter((_, i) => i !== idx) : lineas
+  }));
+
+  useEffect(() => {
+    let alive = true;
+    setPrecioHistorico({});
+    lineas.forEach((item, idx) => {
+      if (!form.proveedor_id || !item.material_id) return;
+      setPrecioHistorico(prev => ({ ...prev, [idx]: { loading: true, data: null } }));
+      if (!isSupabaseConfigured()) {
+        setPrecioHistorico(prev => ({ ...prev, [idx]: { loading: false, data: null } }));
+        return;
+      }
+      comprasService.getPrecioHistoricoProveedor(empresaId, form.proveedor_id, item.material_id)
+        .then(data => {
+          if (alive) setPrecioHistorico(prev => ({ ...prev, [idx]: { loading: false, data } }));
+        })
+        .catch(() => {
+          if (alive) setPrecioHistorico(prev => ({ ...prev, [idx]: { loading: false, data: null } }));
+        });
+    });
+    return () => { alive = false; };
+  }, [empresaId, form.proveedor_id, materialKey]);
+
+  return <><div className="side-panel-backdrop" onClick={onClose}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de compra</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OC</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}><div className="input-group"><label>Proceso de cotizacion</label><select className="select" value={form.proceso_compra_id} onChange={e=>setForm(v=>({...v,proceso_compra_id:e.target.value}))}><option value="">Compra directa</option>{procesos.map(p=><option key={p.id} value={p.id}>{p.codigo}</option>)}</select></div><div className="input-group"><label>Proveedor</label><select className="select" value={form.proveedor_id} onChange={e=>setForm(v=>({...v,proveedor_id:e.target.value}))}>{proveedores.map(p=><option key={p.id} value={p.id}>{p.razon_social}{p.estado==='observado'?' - observado':''}</option>)}</select></div><div className="input-group"><label>CECO *</label><select className="select" value={form.centro_costo_id} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div><div className="input-group"><label>OT vinculada</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero || o.id}</option>)}</select></div><div className="input-group"><label>Fecha entrega esperada</label><input className="input" type="date" value={form.fecha_entrega_esperada} onChange={e=>setForm(v=>({...v,fecha_entrega_esperada:e.target.value}))}/></div><div className="input-group" style={{gridColumn:'1/-1'}}><label>Descripcion</label><textarea className="input" rows="3" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div></div>
+    <div className="mt-6">
+      <div className="card-head"><h3>Items</h3><button type="button" className="btn btn-secondary btn-sm" onClick={addLinea}>{I.plus} Agregar item</button></div>
+      <div className="col" style={{gap:10}}>
+        {lineas.map((item, idx) => {
+          const mat = (materiales || []).find(m => m.id === item.material_id);
+          const hist = precioHistorico[idx];
+          const referencia = item.material_id
+            ? (hist?.loading ? 'Consultando historial de precio...' : formatoPrecioHistorico(hist?.data || null))
+            : '';
+          return <div key={idx} className="card" style={{padding:12}}>
+            <div className="grid-2" style={{gap:10}}>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Material</label><select className="select" value={item.material_id || ''} onChange={e => {
+                const nextMat = (materiales || []).find(m => m.id === e.target.value);
+                setLinea(idx, { material_id: e.target.value, codigo: nextMat?.codigo || '', descripcion: nextMat?.descripcion || item.descripcion, unidad: nextMat?.unidad || item.unidad || 'Und' });
+              }}><option value="">Seleccionar material...</option>{(materiales || []).map(m => <option key={m.id} value={m.id}>{m.codigo ? `${m.codigo} - ` : ''}{m.descripcion || m.nombre}</option>)}</select></div>
+              <div className="input-group"><label>Descripcion</label><input className="input" value={item.descripcion || mat?.descripcion || ''} onChange={e=>setLinea(idx, { descripcion:e.target.value })}/></div>
+              <div className="input-group"><label>Unidad</label><input className="input" value={item.unidad || mat?.unidad || ''} onChange={e=>setLinea(idx, { unidad:e.target.value })}/></div>
+              <div className="input-group"><label>Cantidad</label><input className="input" type="number" min="0" step="0.01" value={item.cantidad} onChange={e=>setLinea(idx, { cantidad:e.target.value })}/></div>
+              <div className="input-group"><label>Precio unitario</label><input className="input" type="number" min="0" step="0.01" value={item.precio_unitario} onChange={e=>setLinea(idx, { precio_unitario:e.target.value })}/>{referencia && <div className="text-muted" style={{fontSize:12, marginTop:4}}>{referencia}</div>}</div>
+            </div>
+            <div className="row mt-4" style={{justifyContent:'space-between'}}>
+              <span className="text-muted">Subtotal linea: {money(Number(item.cantidad || 0) * Number(item.precio_unitario || 0))}</span>
+              {lineas.length > 1 && <button type="button" className="btn btn-ghost btn-sm" onClick={()=>removeLinea(idx)}>{I.x} Quitar</button>}
+            </div>
+          </div>;
+        })}
+      </div>
+    </div>
+    <div className="card mt-6" style={{padding:14}}><p><strong>Subtotal:</strong> {money(subtotal)}</p><p><strong>IGV 18%:</strong> {money(subtotal*0.18)}</p><p><strong>Total:</strong> {money(subtotal*1.18)}</p></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>onCrear(false)}>Guardar borrador</button><button className="btn btn-primary" data-local-form="true" onClick={()=>onCrear(true)}>Emitir OC</button></div></div></div></>;
 }
 
 function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
@@ -6005,20 +6171,322 @@ function OrdenesServicio() {
   return <><div className="page-header"><div><h1 className="page-title">Ordenes de Servicio</h1><div className="page-sub">Servicios tercerizados, conformidad y cierre</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>setPanel(true)}>{I.plus} Nueva OS</button></div><div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas</div><div className="kpi-value">{ordenesServicio.length}</div></div><div className="kpi-card"><div className="kpi-label">En ejecucion</div><div className="kpi-value">{ordenesServicio.filter(o=>o.estado==='en_ejecucion').length}</div></div><div className="kpi-card"><div className="kpi-label">Pendiente conformidad</div><div className="kpi-value">{ordenesServicio.filter(o=>o.estado==='pendiente_conformidad').length}</div></div><div className="kpi-card"><div className="kpi-label">Valor total</div><div className="kpi-value">{money(ordenesServicio.reduce((s,o)=>s+(o.total||0),0))}</div></div></div><div className="tabs">{['todas','emitida','confirmada','en_ejecucion','pendiente_conformidad','cerrada','observada'].map(t=><div key={t} className={'tab '+(tab===t?'active':'')} onClick={()=>setTab(t)}>{t.replace('_',' ')}</div>)}</div><div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>OS</th><th>Proveedor</th><th>Servicio</th><th>Monto</th><th>OT</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Validador</th><th>Acciones</th></tr></thead><tbody>{list.map(o=>{const p=proveedorById(proveedores,o.proveedor_id);return <tr key={o.id}><td className="mono">{o.codigo}</td><td><strong>{p.razon_social}</strong></td><td>{o.descripcion}</td><td>{money(o.total)}</td><td className="mono">{o.ot_id||'-'}</td><td><span className={'badge '+estadoOcBadge(o.estado)}>{o.estado.replace('_',' ')}</span></td><td>{o.fecha_inicio}</td><td>{o.fecha_fin}</td><td>{o.responsable_validacion}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>navigate('recepciones',{osId:o.id})}>Conformidad</button></td></tr>})}</tbody></table></div></div>{panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de servicio</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OS</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}><div className="input-group"><label>Proveedor</label><select className="select" value={form.proveedor_id} onChange={e=>setForm(v=>({...v,proveedor_id:e.target.value}))}>{provs.map(p=><option key={p.id} value={p.id}>{p.razon_social}</option>)}</select></div><div className="input-group"><label>OT</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero||o.id}</option>)}</select></div><div className="input-group" style={{gridColumn:'1/-1'}}><label>Servicio / alcance</label><textarea className="input" rows="4" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div><div className="input-group"><label>Fecha inicio</label><input className="input" type="date" value={form.fecha_inicio} onChange={e=>setForm(v=>({...v,fecha_inicio:e.target.value}))}/></div><div className="input-group"><label>Fecha fin</label><input className="input" type="date" value={form.fecha_fin} onChange={e=>setForm(v=>({...v,fecha_fin:e.target.value}))}/></div><div className="input-group"><label>Total</label><input className="input" type="number" value={form.total} onChange={e=>setForm(v=>({...v,total:e.target.value}))}/></div><div className="input-group"><label>Responsable validacion</label><input className="input" value={form.responsable_validacion} onChange={e=>setForm(v=>({...v,responsable_validacion:e.target.value}))}/></div></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={crear}>Emitir OS</button></div></div></div></>}</>;
 }
 
+const MOTIVO_DEV_LABEL = { defecto_calidad: 'Defecto de calidad', error_envio: 'Error de envío', exceso_cantidad: 'Exceso de cantidad', vencido: 'Vencido', otro: 'Otro' };
+const ESTADO_DEV_BADGE = { borrador: 'badge-gray', enviada: 'badge-orange', aceptada: 'badge-cyan', nota_credito_recibida: 'badge-green', anulada: 'badge-red' };
+const ESTADO_DEV_LABEL = { borrador: 'Borrador', enviada: 'Enviada', aceptada: 'Aceptada', nota_credito_recibida: 'NC Recibida', anulada: 'Anulada' };
+
+function ModalDevolucion({ recepcion, onClose, onCrear }) {
+  const items = recepcion?.items_recibidos || recepcion?.items || [];
+  const [seleccionados, setSeleccionados] = useState(
+    items.map(it => ({ checked: false, cantidad_devuelta: Number(it.cantidad || it.recibido || 0), motivo_linea: '' }))
+  );
+  const [motivo, setMotivo] = useState('defecto_calidad');
+  const [descripcion, setDescripcion] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const toggleItem = idx => setSeleccionados(prev => prev.map((s, i) => i === idx ? { ...s, checked: !s.checked } : s));
+  const setCant = (idx, val) => setSeleccionados(prev => prev.map((s, i) => {
+    if (i !== idx) return s;
+    const max = Number(items[i]?.cantidad || items[i]?.recibido || 0);
+    return { ...s, cantidad_devuelta: Math.min(Math.max(0.001, Number(val) || 0), max) };
+  }));
+
+  const handleCrear = async () => {
+    const lineas = items
+      .map((it, i) => ({ ...it, ...seleccionados[i] }))
+      .filter(l => l.checked && l.cantidad_devuelta > 0)
+      .map(l => ({
+        material_id: l.material_id || null,
+        descripcion: l.descripcion || l.nombre || 'Item',
+        cantidad_devuelta: Number(l.cantidad_devuelta),
+        precio_unitario: Number(l.precio_unitario || l.costo_unitario || 0),
+        lote: l.lote || null,
+        serie: l.serie || null,
+        motivo_linea: l.motivo_linea || null,
+        almacen_id: l.almacen_id || null,
+      }));
+    if (!lineas.length) { setErr('Selecciona al menos un ítem con cantidad > 0'); return; }
+    const ocId = recepcion.orden_compra_id || recepcion.oc_id || null;
+    setSaving(true);
+    setErr('');
+    try {
+      await onCrear({
+        recepcion_id: recepcion.id,
+        proveedor_id: recepcion.proveedor_id,
+        oc_id: ocId,
+        fecha: new Date().toISOString().split('T')[0],
+        motivo,
+        descripcion_motivo: descripcion.trim() || null,
+        lineas,
+      });
+      onClose();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(680px,96vw)' }}>
+        <div className="modal-head">
+          <div><h3>Iniciar devolución a proveedor</h3><div className="text-muted" style={{ fontSize: 12 }}>Recepción {recepcion?.codigo || recepcion?.id}</div></div>
+          <button className="icon-btn" onClick={onClose}>{I.x}</button>
+        </div>
+        <div className="modal-body" style={{ display: 'grid', gap: 16 }}>
+          <div className="input-group">
+            <label>Motivo global</label>
+            <select className="select" value={motivo} onChange={e => setMotivo(e.target.value)}>
+              {Object.entries(MOTIVO_DEV_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div className="input-group">
+            <label>Descripción del motivo</label>
+            <textarea className="input" rows={2} value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Detalle adicional..." />
+          </div>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+            <div style={{ background: 'var(--bg-2)', padding: '8px 12px', fontWeight: 600, fontSize: 12 }}>Ítems a devolver</div>
+            <table className="tbl" style={{ fontSize: 12 }}>
+              <thead><tr><th></th><th>Descripción</th><th style={{ textAlign: 'right' }}>Cant. recibida</th><th style={{ textAlign: 'right' }}>Cant. a devolver</th></tr></thead>
+              <tbody>{items.length ? items.map((it, i) => (
+                <tr key={i} style={seleccionados[i]?.checked ? { background: 'rgba(0,229,255,0.05)' } : {}}>
+                  <td><input type="checkbox" checked={seleccionados[i]?.checked || false} onChange={() => toggleItem(i)} /></td>
+                  <td>{it.descripcion || it.nombre || '-'}</td>
+                  <td style={{ textAlign: 'right' }}>{Number(it.cantidad || it.recibido || 0)} {it.unidad || ''}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    {seleccionados[i]?.checked ? (
+                      <input type="number" className="input" style={{ width: 80, textAlign: 'right' }} min={0.001} max={Number(it.cantidad || it.recibido || 0)} step="any" value={seleccionados[i].cantidad_devuelta} onChange={e => setCant(i, e.target.value)} />
+                    ) : '-'}
+                  </td>
+                </tr>
+              )) : <tr><td colSpan={4} className="text-muted" style={{ textAlign: 'center', padding: 16 }}>No hay ítems</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          {err && <div style={{ color: 'var(--danger)', fontSize: 13 }}>⚠ {err}</div>}
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleCrear} disabled={saving}>{saving ? 'Guardando...' : 'Crear devolución en borrador'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModalNotaCredito({ devolucion, recepcionId, onClose, onRegistrar }) {
+  const { cxp: cxpList } = useApp();
+  const cxpOrigen = cxpList.find(c => c.recepcion_id === recepcionId) || null;
+  const totalLineas = (devolucion?.devoluciones_proveedor_lineas || []).reduce((s, l) => s + Number(l.subtotal || (l.cantidad_devuelta * l.precio_unitario) || 0), 0);
+  const [montoNC, setMontoNC] = useState(String(totalLineas.toFixed(2)));
+  const [numeroNC, setNumeroNC] = useState('');
+  const [fechaNC, setFechaNC] = useState(new Date().toISOString().split('T')[0]);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleRegistrar = async () => {
+    if (!montoNC || Number(montoNC) <= 0) { setErr('Monto de NC requerido'); return; }
+    setSaving(true);
+    setErr('');
+    try {
+      await onRegistrar(devolucion.id, {
+        cxp_origen_id: cxpOrigen?.id || null,
+        monto_nc: Number(montoNC),
+        moneda: cxpOrigen?.moneda || 'PEN',
+        numero_nc: numeroNC.trim() || null,
+        fecha_nc: fechaNC,
+      });
+      onClose();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(480px,96vw)' }}>
+        <div className="modal-head">
+          <div><h3>Registrar nota de crédito</h3><div className="text-muted" style={{ fontSize: 12 }}>{devolucion?.numero_devolucion}</div></div>
+          <button className="icon-btn" onClick={onClose}>{I.x}</button>
+        </div>
+        <div className="modal-body" style={{ display: 'grid', gap: 14 }}>
+          {cxpOrigen && <div style={{ fontSize: 12, background: 'var(--bg-2)', padding: '8px 12px', borderRadius: 6 }}>CxP vinculada: <strong>{cxpOrigen.numero_comprobante || cxpOrigen.id}</strong> — Saldo: S/ {Number(cxpOrigen.saldo || 0).toFixed(2)}</div>}
+          <div className="input-group"><label>N° Nota de crédito</label><input className="input" value={numeroNC} onChange={e => setNumeroNC(e.target.value)} placeholder="NC-001" /></div>
+          <div className="input-group"><label>Fecha NC</label><input className="input" type="date" value={fechaNC} onChange={e => setFechaNC(e.target.value)} /></div>
+          <div className="input-group"><label>Monto NC <span style={{ color: 'var(--danger)' }}>*</span></label><input className="input" type="number" min="0.01" step="0.01" value={montoNC} onChange={e => setMontoNC(e.target.value)} /></div>
+          {err && <div style={{ color: 'var(--danger)', fontSize: 13 }}>⚠ {err}</div>}
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleRegistrar} disabled={saving}>{saving ? 'Guardando...' : 'Registrar NC'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, proveedores, devolucionesProveedor, canDev, onClose, onIniciarDev, onEnviar, onAceptar, onNC, onAnular }) {
+  const [anulando, setAnulando] = useState(null);
+  const [motivoAnulacion, setMotivoAnulacion] = useState('');
+  const [modalNC, setModalNC] = useState(null);
+  const { registrarNCDevolucionCtx } = useApp();
+  if (!recepcion) return null;
+
+  const ocId = recepcion.orden_compra_id || recepcion.oc_id;
+  const osId = recepcion.orden_servicio_id || recepcion.os_id;
+  const oc = ordenesCompra.find(o => o.id === ocId);
+  const os = ordenesServicio.find(o => o.id === osId);
+  const proveedor = proveedores.find(p => p.id === recepcion.proveedor_id || p.id === oc?.proveedor_id || p.id === os?.proveedor_id);
+  const devoluciones = devolucionesProveedor.filter(d => d.recepcion_id === recepcion.id);
+  const estadoRec = recepcion.estado || '';
+  const puedeIniciarDev = canDev && ['confirmada', 'conforme', 'total', 'parcial'].includes(estadoRec);
+  const items = recepcion.items_recibidos || recepcion.items || [];
+
+  return (
+    <>
+      <div className="side-panel-backdrop" onClick={onClose} />
+      <div className="side-panel" style={{ width: 'min(700px,96vw)' }}>
+        <div className="side-panel-head">
+          <div>
+            <div className="eyebrow">Detalle recepción</div>
+            <div className="font-display" style={{ fontSize: 20, fontWeight: 700 }}>{recepcion.codigo || recepcion.id}</div>
+          </div>
+          <button className="icon-btn" onClick={onClose}>{I.x}</button>
+        </div>
+        <div className="side-panel-body" style={{ display: 'grid', gap: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 13 }}>
+            <div><span className="text-muted">Proveedor</span><div>{proveedor?.razon_social || '-'}</div></div>
+            <div><span className="text-muted">Origen</span><div>{oc?.codigo || os?.codigo || '-'}</div></div>
+            <div><span className="text-muted">Fecha</span><div>{recepcion.fecha || '-'}</div></div>
+            <div><span className="text-muted">Estado</span><div><span className={'badge ' + (estadoRec === 'observada' ? 'badge-orange' : 'badge-green')}>{estadoRec}</span></div></div>
+          </div>
+
+          {items.length > 0 && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+              <div style={{ background: 'var(--bg-2)', padding: '8px 12px', fontWeight: 600, fontSize: 12 }}>Ítems recibidos</div>
+              <table className="tbl" style={{ fontSize: 12 }}>
+                <thead><tr><th>Descripción</th><th style={{ textAlign: 'right' }}>Cant.</th><th style={{ textAlign: 'right' }}>P. Unit.</th></tr></thead>
+                <tbody>{items.map((it, i) => (
+                  <tr key={i}><td>{it.descripcion || it.nombre || '-'}</td><td style={{ textAlign: 'right' }}>{it.cantidad || it.recibido || 0} {it.unidad || ''}</td><td style={{ textAlign: 'right' }}>{money(it.precio_unitario || it.costo_unitario || 0)}</td></tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+
+          {puedeIniciarDev && (
+            <button className="btn btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={onIniciarDev}>
+              {I.package} Iniciar devolución a proveedor
+            </button>
+          )}
+
+          {devoluciones.length > 0 && (
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>Devoluciones ({devoluciones.length})</div>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {devoluciones.map(dev => (
+                  <div key={dev.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{dev.numero_devolucion}</div>
+                      <span className={'badge ' + (ESTADO_DEV_BADGE[dev.estado] || 'badge-gray')}>{ESTADO_DEV_LABEL[dev.estado] || dev.estado}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 8 }}>{MOTIVO_DEV_LABEL[dev.motivo] || dev.motivo}{dev.descripcion_motivo ? ` — ${dev.descripcion_motivo}` : ''}</div>
+                    {(dev.devoluciones_proveedor_lineas || []).length > 0 && (
+                      <table className="tbl" style={{ fontSize: 11, marginBottom: 8 }}>
+                        <thead><tr><th>Ítem</th><th style={{ textAlign: 'right' }}>Cant.</th><th style={{ textAlign: 'right' }}>Subtotal</th></tr></thead>
+                        <tbody>{(dev.devoluciones_proveedor_lineas || []).map((l, i) => (
+                          <tr key={i}><td>{l.descripcion}</td><td style={{ textAlign: 'right' }}>{l.cantidad_devuelta}</td><td style={{ textAlign: 'right' }}>{money(l.subtotal || (l.cantidad_devuelta * l.precio_unitario) || 0)}</td></tr>
+                        ))}</tbody>
+                      </table>
+                    )}
+                    <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                      {dev.estado === 'borrador' && canDev && (
+                        <>
+                          <button className="btn btn-sm btn-primary" onClick={() => onEnviar(dev.id)}>Enviar al proveedor</button>
+                          <button className="btn btn-sm btn-ghost" style={{ color: 'var(--danger)' }} onClick={() => setAnulando(dev.id)}>Anular</button>
+                        </>
+                      )}
+                      {dev.estado === 'enviada' && canDev && (
+                        <>
+                          <button className="btn btn-sm btn-secondary" onClick={() => onAceptar(dev.id)}>Marcar aceptada</button>
+                          <button className="btn btn-sm btn-ghost" style={{ color: 'var(--danger)' }} onClick={() => setAnulando(dev.id)}>Anular (revierte stock)</button>
+                        </>
+                      )}
+                      {dev.estado === 'aceptada' && canDev && (
+                        <button className="btn btn-sm btn-primary" onClick={() => setModalNC(dev)}>Registrar nota de crédito</button>
+                      )}
+                      {dev.estado === 'nota_credito_recibida' && dev.cxp_ajuste_id && (
+                        <span style={{ fontSize: 11, color: 'var(--green)' }}>✓ NC vinculada al ajuste CxP</span>
+                      )}
+                    </div>
+                    {anulando === dev.id && (
+                      <div style={{ marginTop: 10, padding: 10, background: 'rgba(239,68,68,0.07)', borderRadius: 6, display: 'grid', gap: 8 }}>
+                        <input className="input" style={{ fontSize: 12 }} placeholder="Motivo de anulación *" value={motivoAnulacion} onChange={e => setMotivoAnulacion(e.target.value)} />
+                        <div className="row" style={{ gap: 6 }}>
+                          <button className="btn btn-sm btn-danger" disabled={!motivoAnulacion.trim()} onClick={() => { onAnular(dev.id, motivoAnulacion); setAnulando(null); setMotivoAnulacion(''); }}>Confirmar anulación</button>
+                          <button className="btn btn-sm btn-ghost" onClick={() => { setAnulando(null); setMotivoAnulacion(''); }}>Cancelar</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      {modalNC && (
+        <ModalNotaCredito
+          devolucion={modalNC}
+          recepcionId={recepcion.id}
+          onClose={() => setModalNC(null)}
+          onRegistrar={registrarNCDevolucionCtx}
+        />
+      )}
+    </>
+  );
+}
+
 function Recepciones() {
   const {
     ordenesCompra, ordenesServicio, recepciones, proveedores, cxp,
-    registrarRecepcionConCxP
+    registrarRecepcionConCxP, empresa, authUser, materiales,
+    devolucionesProveedor, crearDevolucionCtx, enviarDevolucionCtx,
+    aceptarDevolucionCtx, anularDevolucionCtx, role,
   } = useApp();
   const [panel, setPanel] = useState(false);
+  const [detalleRec, setDetalleRec] = useState(null);
+  const [modalDevOpen, setModalDevOpen] = useState(false);
   const [origen, setOrigen] = useState('');
   const [obs, setObs] = useState('');
   const [tab, setTab] = useState('todos');
+  const canDev = !!(role?.permisos?.todo || role?.permisos?.crear?.includes('compras') || role?.permisos?.crear?.includes('recepciones') || role?.permisos?.anular?.includes('compras'));
   const [facturaNum, setFacturaNum] = useState('');
   const [facturaEmision, setFacturaEmision] = useState(new Date().toISOString().split('T')[0]);
   const [facturaVencimiento, setFacturaVencimiento] = useState('');
   const [facturaArchivoUrl, setFacturaArchivoUrl] = useState('');
-  const cerrarPanel = () => { setPanel(false); setOrigen(''); setObs(''); setFacturaNum(''); setFacturaEmision(new Date().toISOString().split('T')[0]); setFacturaVencimiento(''); setFacturaArchivoUrl(''); };
+  const [facturaProvNumero, setFacturaProvNumero] = useState('');
+  const [facturaProvFecha, setFacturaProvFecha] = useState('');
+  const [facturaProvMonto, setFacturaProvMonto] = useState('');
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [validacionErrors, setValidacionErrors] = useState([]);
+  const [validacionWarnings, setValidacionWarnings] = useState([]);
+  const [scannerOCOpen, setScannerOCOpen] = useState(false);
+  const [highlightedItemIdx, setHighlightedItemIdx] = useState(null);
+  const [scanMsg, setScanMsg] = useState('');
+
+  const cerrarPanel = () => {
+    setPanel(false); setOrigen(''); setObs('');
+    setFacturaNum(''); setFacturaEmision(new Date().toISOString().split('T')[0]);
+    setFacturaVencimiento(''); setFacturaArchivoUrl('');
+    setFacturaProvNumero(''); setFacturaProvFecha(''); setFacturaProvMonto('');
+    setValidacionErrors([]); setValidacionWarnings([]);
+    setScannerOCOpen(false); setHighlightedItemIdx(null); setScanMsg('');
+  };
+
   const proveedorNombre = id => proveedores.find(p => p.id === id)?.razon_social || id || '-';
   const origenInfo = r => {
     const ocId = r.orden_compra_id || r.oc_id;
@@ -6032,16 +6500,68 @@ function Recepciones() {
     ...ordenesServicio.filter(o => o.estado !== 'cerrada').map(o => ({ tipo:'os', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total }))
   ];
   const rows = recepciones.filter(r => tab === 'todos' || (tab === 'conforme' ? ['confirmada','conforme','total'].includes(r.estado) : r.estado === 'observada'));
-  const guardar = async event => {
+
+  const handleProvFile = async e => {
+    const file = e.target.files[0];
+    if (!file) { setFacturaArchivoUrl(''); return; }
+    if (!isSupabaseConfigured() || !empresa?.id) {
+      setFacturaArchivoUrl(URL.createObjectURL(file));
+      return;
+    }
+    setUploadingFile(true);
+    try {
+      const adjunto = await storageService.subirAdjunto({
+        empresaId: empresa.id,
+        entidadTipo: 'recepciones',
+        entidadId: `pre_${Date.now()}`,
+        file,
+        categoria: 'factura_proveedor',
+        bucket: storageService.STORAGE_BUCKETS.DOCUMENTOS_PRIVADOS,
+        subidoPor: authUser?.id || null,
+      });
+      setFacturaArchivoUrl(adjunto.storage_path || adjunto.url || '');
+    } catch (_err) {
+      setFacturaArchivoUrl(URL.createObjectURL(file));
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const guardar = async (event, forzar = false) => {
     event.preventDefault();
     const [tipo, id] = origen.split(':');
     if (!tipo || !id) return;
-    const creada = await registrarRecepcionConCxP({
+    setValidacionErrors([]);
+    setValidacionWarnings([]);
+    const resultado = await registrarRecepcionConCxP({
       origenTipo: tipo, origenId: id, observaciones: obs.trim(),
       facturaNumero: facturaNum.trim(), fechaEmision: facturaEmision,
-      fechaVencimiento: facturaVencimiento, archivoFacturaUrl: facturaArchivoUrl
+      fechaVencimiento: facturaVencimiento, archivoFacturaUrl: facturaArchivoUrl,
+      facturaProvNumero: facturaProvNumero.trim(),
+      facturaProvFecha: facturaProvFecha || null,
+      facturaProvMonto: facturaProvMonto ? Number(facturaProvMonto) : null,
+      forzarConfirmacion: forzar,
     });
-    if (creada) cerrarPanel();
+    if (!resultado) return;
+    if (resultado.errors) { setValidacionErrors(resultado.errors); return; }
+    if (resultado.warnings) { setValidacionWarnings(resultado.warnings); return; }
+    cerrarPanel();
+  };
+
+  const ocSeleccionada = (() => {
+    const [tipo, id] = (origen || '').split(':');
+    if (tipo !== 'oc' || !id) return null;
+    return ordenesCompra.find(o => o.id === id) || null;
+  })();
+
+  const handleScanOC = (codigo) => {
+    setScannerOCOpen(false);
+    const mat = (materiales || []).find(m => m.codigo_barras === codigo);
+    if (!mat) { setScanMsg(`Código "${codigo}" no corresponde a ningún material registrado.`); return; }
+    const idx = (ocSeleccionada?.items || []).findIndex(it => it.material_id === mat.id);
+    if (idx === -1) { setScanMsg(`"${mat.descripcion || mat.codigo}" no está en esta OC.`); return; }
+    setHighlightedItemIdx(idx);
+    setScanMsg('');
   };
 
   return (
@@ -6055,45 +6575,86 @@ function Recepciones() {
         <div className="kpi-card"><div className="kpi-label">Recepciones</div><div className="kpi-value">{recepciones.length}</div></div>
         <div className="kpi-card"><div className="kpi-label">Observadas</div><div className="kpi-value">{recepciones.filter(r => r.estado === 'observada').length}</div></div>
         <div className="kpi-card"><div className="kpi-label">CxP abiertas</div><div className="kpi-value">{cxp.filter(c => c.estado !== 'pagada').length}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Devoluciones activas</div><div className="kpi-value">{devolucionesProveedor.filter(d => !['anulada','nota_credito_recibida'].includes(d.estado)).length}</div></div>
       </div>
       <div className="tabs">{[['todos','Todos'],['conforme','Conforme'],['observada','Observada']].map(([k,l]) => <div key={k} className={'tab '+(tab===k?'active':'')} onClick={() => setTab(k)}>{l}</div>)}</div>
       <div className="card">
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Recepcion</th><th>Origen</th><th>Proveedor</th><th>Descripcion</th><th>Fecha</th><th>Estado</th><th>CxP</th></tr></thead>
+            <thead><tr><th>Recepcion</th><th>Origen</th><th>Proveedor</th><th>Descripcion</th><th>Fecha</th><th>Estado</th><th>CxP</th><th>Dev.</th><th></th></tr></thead>
             <tbody>{rows.length ? rows.map(r => {
               const info = origenInfo(r);
-              return <tr key={r.id}><td className="mono">{r.codigo || r.id}</td><td className="mono">{info.codigo}</td><td>{proveedorNombre(info.proveedor_id)}</td><td>{info.descripcion}</td><td>{r.fecha}</td><td><span className={'badge '+(r.estado==='observada'?'badge-orange':'badge-green')}>{r.estado}</span></td><td>{r.cxp_generada ? 'Si' : '-'}</td></tr>;
-            }) : <tr><td colSpan="7" className="text-center text-muted" style={{padding:32}}>No hay recepciones registradas.</td></tr>}</tbody>
+              const nDev = devolucionesProveedor.filter(d => d.recepcion_id === r.id).length;
+              return (
+                <tr key={r.id}>
+                  <td className="mono">{r.codigo || r.id}</td>
+                  <td className="mono">{info.codigo}</td>
+                  <td>{proveedorNombre(info.proveedor_id)}</td>
+                  <td>{info.descripcion}</td>
+                  <td>{r.fecha}</td>
+                  <td><span className={'badge '+(r.estado==='observada'?'badge-orange':'badge-green')}>{r.estado}</span></td>
+                  <td>{r.cxp_generada ? 'Si' : '-'}</td>
+                  <td>{nDev > 0 ? <span className="badge badge-cyan">{nDev}</span> : '-'}</td>
+                  <td><button className="btn btn-sm btn-ghost" onClick={() => setDetalleRec(r)}>Ver</button></td>
+                </tr>
+              );
+            }) : <tr><td colSpan="9" className="text-center text-muted" style={{padding:32}}>No hay recepciones registradas.</td></tr>}</tbody>
           </table>
         </div>
       </div>
       {panel && (
         <>
           <div className="side-panel-backdrop" onClick={cerrarPanel}/>
-          <div className="side-panel" style={{width:'min(600px,96vw)'}}>
+          <div className="side-panel" style={{width:'min(640px,96vw)'}}>
             <div className="side-panel-head"><div><div className="eyebrow">Registro de recepcion</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Conformidad proveedor</div></div><button className="icon-btn" onClick={cerrarPanel}>{I.x}</button></div>
             <form className="side-panel-body" onSubmit={guardar}>
               <div className="input-group">
                 <label>OC/OS origen</label>
-                <select className="select" value={origen} onChange={e => setOrigen(e.target.value)}>
+                <select className="select" value={origen} onChange={e => { setOrigen(e.target.value); setValidacionErrors([]); setValidacionWarnings([]); }}>
                   <option value="">Seleccionar...</option>
                   {origenes.map(o => <option key={`${o.tipo}:${o.id}`} value={`${o.tipo}:${o.id}`}>{o.codigo} - {proveedorNombre(o.proveedor_id)} - {money(o.total || 0)}</option>)}
                 </select>
               </div>
+
+              {ocSeleccionada && (ocSeleccionada.items || []).length > 0 && (
+                <div style={{marginTop:16,border:'1px solid var(--border)',borderRadius:6,overflow:'hidden'}}>
+                  <div style={{background:'var(--bg-2)',padding:'8px 12px',fontWeight:600,fontSize:12,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <span>Items de la OC</span>
+                    <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setScannerOCOpen(v => !v); setScanMsg(''); setHighlightedItemIdx(null); }}>{I.camera}</button>
+                  </div>
+                  {scannerOCOpen && (
+                    <div style={{padding:12,borderBottom:'1px solid var(--border)'}}>
+                      <BarcodeScanner onScan={handleScanOC} onClose={() => setScannerOCOpen(false)} />
+                    </div>
+                  )}
+                  {scanMsg && (
+                    <div style={{padding:'6px 12px',fontSize:12,color:'var(--orange)',background:'rgba(245,158,11,0.08)',borderBottom:'1px solid var(--border)'}}>
+                      {scanMsg}
+                    </div>
+                  )}
+                  <table className="tbl" style={{fontSize:12}}>
+                    <thead><tr><th>Descripcion</th><th style={{textAlign:'right'}}>Cant.</th><th style={{textAlign:'right'}}>P. Unit. OC</th></tr></thead>
+                    <tbody>{(ocSeleccionada.items || []).map((item, idx) => (
+                      <tr key={idx} style={highlightedItemIdx === idx ? {background:'rgba(0,229,255,0.1)',outline:'2px solid var(--cyan)'} : {}}><td>{item.descripcion}</td><td style={{textAlign:'right'}}>{item.cantidad} {item.unidad || ''}</td><td style={{textAlign:'right'}}>{money(item.precio_unitario || 0)}</td></tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+
               <div className="input-group mt-4">
                 <label>Observaciones</label>
                 <textarea className="input" rows="3" value={obs} onChange={e => setObs(e.target.value)} placeholder="Dejar vacio para registrar conforme y generar CxP"/>
               </div>
+
               <div style={{borderTop:'1px solid var(--border)',marginTop:20,paddingTop:16}}>
-                <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>Datos de la factura del proveedor</div>
+                <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>Datos CxP (condiciones de pago)</div>
                 <div className="input-group">
-                  <label>NÂ° Factura <span style={{color:'var(--danger)'}}>*</span></label>
+                  <label>N° Factura CxP <span style={{color:'var(--danger)'}}>*</span></label>
                   <input className="input" value={facturaNum} onChange={e => setFacturaNum(e.target.value)} placeholder="E001-000123" required/>
                 </div>
                 <div className="grid-2 mt-4" style={{gap:12,gridTemplateColumns:'1fr 1fr'}}>
                   <div className="input-group">
-                    <label>Fecha de emisiÃ³n <span style={{color:'var(--danger)'}}>*</span></label>
+                    <label>Fecha de emision <span style={{color:'var(--danger)'}}>*</span></label>
                     <input className="input" type="date" value={facturaEmision} onChange={e => setFacturaEmision(e.target.value)} required/>
                   </div>
                   <div className="input-group">
@@ -6101,22 +6662,85 @@ function Recepciones() {
                     <input className="input" type="date" value={facturaVencimiento} onChange={e => setFacturaVencimiento(e.target.value)} required/>
                   </div>
                 </div>
+              </div>
+
+              <div style={{borderTop:'1px solid var(--border)',marginTop:20,paddingTop:16}}>
+                <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>Factura fisica del proveedor</div>
+                <div style={{fontSize:12,color:'var(--muted)',marginBottom:12}}>Datos del documento fisico entregado al momento de la entrega</div>
+                <div className="input-group">
+                  <label>N° Factura proveedor</label>
+                  <input className="input" value={facturaProvNumero} onChange={e => setFacturaProvNumero(e.target.value)} placeholder="001-001234"/>
+                </div>
+                <div className="grid-2 mt-4" style={{gap:12,gridTemplateColumns:'1fr 1fr'}}>
+                  <div className="input-group">
+                    <label>Fecha emision factura</label>
+                    <input className="input" type="date" value={facturaProvFecha} onChange={e => setFacturaProvFecha(e.target.value)}/>
+                  </div>
+                  <div className="input-group">
+                    <label>Monto total factura</label>
+                    <input className="input" type="number" step="0.01" min="0" value={facturaProvMonto} onChange={e => { setFacturaProvMonto(e.target.value); setValidacionWarnings([]); }} placeholder="0.00"/>
+                  </div>
+                </div>
                 <div className="input-group mt-4">
-                  <label>Adjuntar factura (foto o PDF)</label>
-                  <input className="input" type="file" accept="image/*,.pdf" onChange={e => {
-                    const file = e.target.files[0];
-                    setFacturaArchivoUrl(file ? URL.createObjectURL(file) : '');
-                  }}/>
-                  {facturaArchivoUrl && <div style={{fontSize:12,color:'var(--green)',marginTop:4}}>Archivo adjunto listo.</div>}
+                  <label>Archivo factura (foto o PDF)</label>
+                  <input className="input" type="file" accept="image/*,.pdf" disabled={uploadingFile} onChange={handleProvFile}/>
+                  {uploadingFile && <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>Subiendo archivo...</div>}
+                  {!uploadingFile && facturaArchivoUrl && <div style={{fontSize:12,color:'var(--green)',marginTop:4}}>Archivo listo.</div>}
                 </div>
               </div>
-              <div className="row mt-6" style={{justifyContent:'flex-end'}}>
+
+              {validacionErrors.length > 0 && (
+                <div style={{marginTop:16,background:'rgba(239,68,68,0.08)',border:'1px solid var(--danger)',borderRadius:6,padding:12}}>
+                  <div style={{fontWeight:700,fontSize:13,color:'var(--danger)',marginBottom:6}}>Error — no se puede confirmar la recepcion</div>
+                  {validacionErrors.map((e, i) => <div key={i} style={{fontSize:12,color:'var(--danger)',marginTop:2}}>• {e}</div>)}
+                </div>
+              )}
+
+              {validacionWarnings.length > 0 && (
+                <div style={{marginTop:16,background:'rgba(245,158,11,0.08)',border:'1px solid #f59e0b',borderRadius:6,padding:12}}>
+                  <div style={{fontWeight:700,fontSize:13,color:'#b45309',marginBottom:6}}>Advertencia de precio — diferencia detectada</div>
+                  {validacionWarnings.map((w, i) => <div key={i} style={{fontSize:12,color:'#b45309',marginTop:2}}>• {w}</div>)}
+                  <div style={{fontSize:12,color:'var(--muted)',marginTop:8}}>Puedes confirmar igualmente o revisar los datos.</div>
+                </div>
+              )}
+
+              <div className="row mt-6" style={{justifyContent:'flex-end',gap:8}}>
                 <button type="button" className="btn btn-secondary" onClick={cerrarPanel}>Cancelar</button>
-                <button className="btn btn-primary" type="submit" disabled={!origen || !facturaNum.trim() || !facturaEmision || !facturaVencimiento}>Confirmar recepcion</button>
+                {validacionWarnings.length > 0 && (
+                  <button type="button" className="btn btn-primary" style={{background:'#f59e0b',border:'none'}} onClick={e => guardar(e, true)}>Confirmar igualmente</button>
+                )}
+                {validacionWarnings.length === 0 && (
+                  <button className="btn btn-primary" type="submit" disabled={!origen || !facturaNum.trim() || !facturaEmision || !facturaVencimiento || uploadingFile}>
+                    Confirmar recepcion
+                  </button>
+                )}
               </div>
             </form>
           </div>
         </>
+      )}
+      {detalleRec && !modalDevOpen && (
+        <PanelDetalleRecepcion
+          recepcion={detalleRec}
+          ordenesCompra={ordenesCompra}
+          ordenesServicio={ordenesServicio}
+          proveedores={proveedores}
+          devolucionesProveedor={devolucionesProveedor}
+          canDev={canDev}
+          onClose={() => setDetalleRec(null)}
+          onIniciarDev={() => setModalDevOpen(true)}
+          onEnviar={async (devId) => { try { await enviarDevolucionCtx(devId); } catch (e) { alert(e.message); } }}
+          onAceptar={async (devId) => { try { await aceptarDevolucionCtx(devId); } catch (e) { alert(e.message); } }}
+          onNC={() => {}}
+          onAnular={async (devId, motivo) => { try { await anularDevolucionCtx(devId, motivo); } catch (e) { alert(e.message); } }}
+        />
+      )}
+      {detalleRec && modalDevOpen && (
+        <ModalDevolucion
+          recepcion={detalleRec}
+          onClose={() => setModalDevOpen(false)}
+          onCrear={async (datos) => { await crearDevolucionCtx(datos); setModalDevOpen(false); }}
+        />
       )}
     </>
   );
@@ -6124,8 +6748,297 @@ function Recepciones() {
 
 const GASTO_FORM_INIT = { descripcion: '', categoria: 'Materiales', monto: '', moneda: 'PEN', fecha: new Date().toISOString().split('T')[0], num_comprobante: '', tipo_comprobante: 'Factura', centro_costo_id: '' };
 
+// ─── Análisis de Gasto ────────────────────────────────────────────────────────
+
+function SpendMultiSelect({ opts, sel, onSel, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const allSel = sel.length === 0;
+  return (
+    <div style={{ position: 'relative' }}>
+      <button type="button" className="select" style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, minWidth: 180 }} onClick={() => setOpen(o => !o)}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+          {allSel ? placeholder : `${sel.length} seleccionado${sel.length > 1 ? 's' : ''}`}
+        </span>
+        <span style={{ color: 'var(--fg-muted)', fontSize: 10 }}>▾</span>
+      </button>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
+          <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, minWidth: 220, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.15)', zIndex: 100, maxHeight: 240, overflowY: 'auto' }}>
+            <div onClick={() => { onSel([]); setOpen(false); }} style={{ padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: allSel ? 700 : 400, background: allSel ? 'var(--bg-subtle)' : 'transparent', borderBottom: '1px solid var(--border-subtle)' }}>Todos</div>
+            {opts.map(o => {
+              const on = sel.includes(o.id);
+              return (
+                <div key={o.id} onClick={() => onSel(on ? sel.filter(x => x !== o.id) : [...sel, o.id])} style={{ padding: '8px 14px', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, background: on ? 'var(--bg-subtle)' : 'transparent' }}>
+                  <span style={{ width: 14, height: 14, border: '2px solid ' + (on ? 'var(--cyan)' : 'var(--border)'), borderRadius: 3, background: on ? 'var(--cyan)' : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fff', fontSize: 9 }}>{on ? '✓' : ''}</span>
+                  {o.nombre}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SpendLineChart({ data }) {
+  const maxVal = Math.max(1, ...data.map(d => d.monto));
+  const W = 560, H = 110, padL = 8, padR = 8, padT = 20, padB = 28;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  const pts = data.map((d, i) => ({
+    x: padL + (data.length > 1 ? (i / (data.length - 1)) * innerW : innerW / 2),
+    y: padT + innerH - (maxVal > 0 ? (d.monto / maxVal) * innerH : 0),
+    ...d,
+  }));
+  const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, overflow: 'visible' }}>
+      <path d={pathD} fill="none" stroke="var(--cyan)" strokeWidth={2} strokeLinejoin="round" />
+      {pts.map((p, i) => (
+        <g key={i}>
+          <circle cx={p.x} cy={p.y} r={4} fill="var(--cyan)" />
+          {p.monto > 0 && (
+            <text x={p.x} y={p.y - 8} textAnchor="middle" fontSize={9} fill="var(--fg-subtle)">
+              {money(p.monto)}
+            </text>
+          )}
+          <text x={p.x} y={H - 4} textAnchor="middle" fontSize={9} fill="var(--fg-muted)">{p.label}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+function TabAnalisisGasto({ ocsSource, gastosSource, provSource }) {
+  const [periodo, setPeriodo] = useState('anio');
+  const [rango, setRango] = useState({ desde: '', hasta: '' });
+  const [filtroProveedores, setFiltroProveedores] = useState([]);
+  const [filtroCategorias, setFiltroCategorias] = useState([]);
+  const [sortProv, setSortProv] = useState({ col: 'monto', dir: -1 });
+  const [showTodos, setShowTodos] = useState(false);
+
+  const { periodoDesde, periodoHasta } = useMemo(() => {
+    const hoy = new Date();
+    const anio = hoy.getFullYear();
+    const mes = hoy.getMonth();
+    if (periodo === 'mes') {
+      const m = String(mes + 1).padStart(2, '0');
+      return { periodoDesde: `${anio}-${m}-01`, periodoHasta: `${anio}-${m}-31` };
+    }
+    if (periodo === 'trimestre') {
+      const trimStart = new Date(anio, Math.floor(mes / 3) * 3, 1);
+      return { periodoDesde: trimStart.toISOString().slice(0, 10), periodoHasta: hoy.toISOString().slice(0, 10) };
+    }
+    if (periodo === 'anio') return { periodoDesde: `${anio}-01-01`, periodoHasta: `${anio}-12-31` };
+    return { periodoDesde: rango.desde || null, periodoHasta: rango.hasta || null };
+  }, [periodo, rango]);
+
+  const { periodoDesdeAnterior, periodoHastaAnterior } = useMemo(() => {
+    if (!periodoDesde || !periodoHasta) return {};
+    const d1 = new Date(periodoDesde + 'T00:00:00');
+    const d2 = new Date(periodoHasta + 'T00:00:00');
+    const dias = Math.max(1, Math.round((d2 - d1) / 86400000));
+    const hastaAnterior = new Date(d1);
+    hastaAnterior.setDate(hastaAnterior.getDate() - 1);
+    const desdeAnterior = new Date(hastaAnterior);
+    desdeAnterior.setDate(desdeAnterior.getDate() - dias + 1);
+    return {
+      periodoDesdeAnterior: desdeAnterior.toISOString().slice(0, 10),
+      periodoHastaAnterior: hastaAnterior.toISOString().slice(0, 10),
+    };
+  }, [periodoDesde, periodoHasta]);
+
+  const analysis = useMemo(() => getSpendAnalysis({
+    ordenesCompra: ocsSource, comprasGastos: gastosSource, proveedores: provSource,
+    periodoDesde, periodoHasta, proveedoresFiltro: filtroProveedores, categoriasFiltro: filtroCategorias,
+  }), [ocsSource, gastosSource, provSource, periodoDesde, periodoHasta, filtroProveedores, filtroCategorias]);
+
+  const analysisPrev = useMemo(() => getSpendAnalysis({
+    ordenesCompra: ocsSource, comprasGastos: gastosSource, proveedores: provSource,
+    periodoDesde: periodoDesdeAnterior, periodoHasta: periodoHastaAnterior,
+    proveedoresFiltro: filtroProveedores, categoriasFiltro: filtroCategorias,
+  }), [ocsSource, gastosSource, provSource, periodoDesdeAnterior, periodoHastaAnterior, filtroProveedores, filtroCategorias]);
+
+  const provRows = useMemo(() => {
+    const rows = [...(analysis.gastoPorProveedor || [])];
+    rows.sort((a, b) => {
+      const va = a[sortProv.col] ?? 0;
+      const vb = b[sortProv.col] ?? 0;
+      return sortProv.dir * (typeof va === 'string' ? va.localeCompare(vb) : va - vb);
+    });
+    return showTodos ? rows : rows.slice(0, 10);
+  }, [analysis.gastoPorProveedor, sortProv, showTodos]);
+
+  const maxCat = Math.max(1, ...(analysis.gastoPorCategoria || []).map(c => c.monto));
+
+  const provOpts = useMemo(() => provSource.map(p => ({ id: p.id, nombre: p.razon_social || p.nombre_comercial || p.id })), [provSource]);
+  const catOpts = useMemo(() => {
+    const cats = [...new Set(gastosSource.map(g => g.categoria).filter(Boolean))];
+    return cats.map(c => ({ id: c, nombre: c }));
+  }, [gastosSource]);
+
+  const sortTh = (col) => (
+    <th style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} onClick={() => setSortProv(s => ({ col, dir: s.col === col ? -s.dir : -1 }))}>
+      {col === 'nombre' ? 'Proveedor' : col === 'nOCs' ? 'N° OCs' : col === 'monto' ? 'Monto total' : col === 'pct' ? '% del total' : col}
+      {sortProv.col === col ? (sortProv.dir === -1 ? ' ↓' : ' ↑') : ''}
+    </th>
+  );
+
+  return (
+    <div style={{ display: 'grid', gap: 20 }}>
+
+      {/* Filtros globales */}
+      <div className="card" style={{ padding: '14px 18px' }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>Período</label>
+            <select className="select" value={periodo} onChange={e => setPeriodo(e.target.value)} style={{ minWidth: 160 }}>
+              <option value="mes">Mes actual</option>
+              <option value="trimestre">Trimestre actual</option>
+              <option value="anio">Año actual</option>
+              <option value="personalizado">Rango personalizado</option>
+            </select>
+          </div>
+          {periodo === 'personalizado' && (
+            <>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>Desde</label>
+                <input className="input" type="date" value={rango.desde} onChange={e => setRango(r => ({ ...r, desde: e.target.value }))} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>Hasta</label>
+                <input className="input" type="date" value={rango.hasta} onChange={e => setRango(r => ({ ...r, hasta: e.target.value }))} />
+              </div>
+            </>
+          )}
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>Proveedor</label>
+            <SpendMultiSelect opts={provOpts} sel={filtroProveedores} onSel={setFiltroProveedores} placeholder="Todos los proveedores" />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--fg-muted)', display: 'block', marginBottom: 4 }}>Categoría</label>
+            <SpendMultiSelect opts={catOpts} sel={filtroCategorias} onSel={setFiltroCategorias} placeholder="Todas las categorías" />
+          </div>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div className="kpi-grid">
+        <div className="kpi-card">
+          <div className="kpi-label">Gasto total del período</div>
+          <div className="kpi-value">{money(analysis.gastoTotal)}</div>
+          <div className="kpi-sub" style={{ color: 'var(--fg-muted)' }}>OCs cerradas / recibidas</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Proveedores activos</div>
+          <div className="kpi-value">{analysis.nProveedoresActivos}</div>
+          <div className="kpi-sub" style={{ color: 'var(--fg-muted)' }}>Con OCs en el período</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Categoría mayor gasto</div>
+          <div className="kpi-value" style={{ fontSize: 18 }}>{analysis.categoriaMayor.nombre}</div>
+          <div className="kpi-sub" style={{ color: 'var(--fg-muted)' }}>{money(analysis.categoriaMayor.monto)}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Proveedor mayor gasto</div>
+          <div className="kpi-value" style={{ fontSize: 16 }}>{analysis.proveedorMayor.nombre}</div>
+          <div className="kpi-sub" style={{ color: 'var(--fg-muted)' }}>{money(analysis.proveedorMayor.monto)}</div>
+        </div>
+      </div>
+
+      {/* Gasto por proveedor */}
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Gasto por Proveedor</span>
+          <span style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>Ordenar por columna · Click en encabezado</span>
+        </div>
+        {provRows.length === 0 ? (
+          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>Sin OCs cerradas en el período seleccionado</div>
+        ) : (
+          <>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  {sortTh('nombre')}
+                  {sortTh('nOCs')}
+                  {sortTh('monto')}
+                  {sortTh('pct')}
+                  <th>Var. período ant.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {provRows.map(row => {
+                  const prev = (analysisPrev.gastoPorProveedor || []).find(p => p.id === row.id);
+                  const prevMonto = prev?.monto || 0;
+                  const varPct = prevMonto === 0 ? null : ((row.monto - prevMonto) / prevMonto) * 100;
+                  const varLabel = prevMonto === 0 ? 'Nuevo' : (varPct >= 0 ? `▲ ${varPct.toFixed(1)}%` : `▼ ${Math.abs(varPct).toFixed(1)}%`);
+                  const varColor = prevMonto === 0 ? 'var(--fg-muted)' : varPct >= 0 ? 'var(--danger)' : 'var(--green)';
+                  return (
+                    <tr key={row.id}>
+                      <td><strong>{row.nombre}</strong></td>
+                      <td className="num">{row.nOCs}</td>
+                      <td className="num"><strong>{money(row.monto)}</strong></td>
+                      <td className="num">{row.pct.toFixed(1)}%</td>
+                      <td style={{ color: varColor, fontWeight: 600, fontSize: 13 }}>{varLabel}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {(analysis.gastoPorProveedor || []).length > 10 && (
+              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border-subtle)' }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowTodos(v => !v)}>
+                  {showTodos ? 'Ver top 10' : `Ver todos (${analysis.gastoPorProveedor.length})`}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Gasto por categoría */}
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Gasto por Categoría</span>
+          <span style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>Desde compras y gastos registrados</span>
+        </div>
+        {(analysis.gastoPorCategoria || []).length === 0 ? (
+          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>Sin gastos registrados en el período</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '4px 0' }}>
+            {analysis.gastoPorCategoria.map((cat, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '160px 1fr 110px 64px', gap: 12, alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 500 }}>{cat.nombre}</span>
+                <div style={{ background: 'var(--bg-subtle)', borderRadius: 4, height: 8 }}>
+                  <div style={{ width: Math.min(100, Math.round((cat.monto / maxCat) * 100)) + '%', height: '100%', background: 'var(--cyan)', borderRadius: 4, transition: 'width .3s' }} />
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--fg-subtle)', textAlign: 'right' }}>{money(cat.monto)}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-muted)', textAlign: 'right' }}>{cat.pct?.toFixed(1) ?? '—'}%</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Evolución mensual */}
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Evolución Mensual de Gasto</span>
+          <span style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>Últimos 12 meses · desde gastos registrados</span>
+        </div>
+        <div style={{ padding: '8px 4px 0' }}>
+          <SpendLineChart data={analysis.evolucionMensual || []} />
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 function Compras() {
-  const { comprasGastos, proveedores, ordenesCompra, ordenesServicio, recepciones, crearGasto, generarCxP, centrosCosto } = useApp();
+  const { comprasGastos, proveedores, ordenesCompra, ordenesServicio, recepciones, crearGasto, generarCxP, centrosCosto, role } = useApp();
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Compras en Campo');
   const [showGastoForm, setShowGastoForm] = useState(false);
@@ -6141,6 +7054,10 @@ function Compras() {
   const comprasRows = comprasGastos.length ? comprasGastos : MOCK.compras;
   const activosFijos = comprasGastos.filter(g => g.es_activo_fijo);
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const puedeVerAnalisis = role?.permisos?.todo || (Array.isArray(role?.permisos?.ver) && (role.permisos.ver.includes('compras_gastos') || role.permisos.ver.includes('ordenes_compra')));
+  const ocsSource = ordenesCompra.length ? ordenesCompra : MOCK.ordenesCompra;
+  const gastosSource = (isSupabaseConfigured() && comprasGastos.length) ? comprasGastos : MOCK.comprasGastos;
+  const provSource = proveedores.length ? proveedores : MOCK.proveedores;
 
   const setG = (k, v) => { setGastoForm(p => ({ ...p, [k]: v })); if (k === 'centro_costo_id') setErrCecoGasto(false); };
 
@@ -6193,13 +7110,16 @@ function Compras() {
         <button className="btn btn-primary" onClick={() => setShowGastoForm(true)}>{I.plus} Nuevo Registro</button>
       </div>
       <div className="tabs">
-        {['Compras en Campo', 'Activos fijos', 'Proveedores', 'Ã“rdenes de Compra (OC)', 'Ã“rdenes de Servicio (OSI)', 'RecepciÃ³n y Conformidad'].map(t => (
+        {['Compras en Campo', 'Activos fijos', 'Proveedores', 'Órdenes de Compra (OC)', 'Órdenes de Servicio (OSI)', 'Recepción y Conformidad', ...(puedeVerAnalisis ? ['Análisis de gasto'] : [])].map(t => (
           <div key={t} className={`tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
             {t === 'Activos fijos' ? `Activos fijos (${activosFijos.length})` : t}
           </div>
         ))}
       </div>
-      <div className="card">
+      {activeTab === 'Análisis de gasto' && puedeVerAnalisis ? (
+        <TabAnalisisGasto ocsSource={ocsSource} gastosSource={gastosSource} provSource={provSource} />
+      ) : (
+        <div className="card">
         <div className="table-wrap">
           <table className="tbl">
             {activeTab === 'Compras en Campo' && (
@@ -6302,6 +7222,7 @@ function Compras() {
           </table>
         </div>
       </div>
+      )}
 
       {sel && <>
         <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
@@ -8172,7 +9093,7 @@ function SOLPE() {
 
   const query = searchQuery.toLowerCase();
   const filteredSolpes = solpes.filter(s =>
-    (s.numero || '').toLowerCase().includes(query) ||
+    (s.numero || s.codigo || '').toLowerCase().includes(query) ||
     getOTNumero(s.ot_id).toLowerCase().includes(query) ||
     (s.solicitante || '').toLowerCase().includes(query) ||
     (s.centro_costo || '').toLowerCase().includes(query)
@@ -8218,7 +9139,10 @@ function SOLPE() {
                 const ceco = cecosActivos.find(c => c.id === s.centro_costo_id);
                 return (
                   <tr key={s.id} className="hover-row">
-                    <td className="mono" style={{fontWeight:600}}>{s.numero}</td>
+                    <td className="mono" style={{fontWeight:600}}>
+                      {s.numero || s.codigo}
+                      {s.origen === 'automatico' && <span className="badge badge-cyan" style={{fontSize:10, marginLeft:8}}>🤖 Automático</span>}
+                    </td>
                     <td className="mono">{getOTNumero(s.ot_id)}</td>
                     <td>{s.solicitante}</td>
                     <td className="text-muted">{ceco ? `${ceco.codigo} â€” ${ceco.nombre}` : (s.centro_costo || 'â€”')}</td>

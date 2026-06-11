@@ -211,6 +211,26 @@ export async function registrarEntrada(empresaId, form, usuarioId) {
   });
 }
 
+// ─── Salida por devolución a proveedor ────────────────────────────────────────
+// Wrapper semántico: fija motivo = 'devolucion_proveedor' y referencia_tipo correcto.
+export async function registrarSalidaDevolucion(empresaId, form, usuarioId) {
+  return registrarMovimiento(empresaId, {
+    tipo: 'salida',
+    motivo: 'devolucion_proveedor',
+    material_id: form.material_id,
+    almacen_id: form.almacen_id,
+    cantidad: Number(form.cantidad),
+    lote: form.lote || null,
+    serie: form.serie || null,
+    referencia_tipo: 'devolucion_proveedor',
+    referencia_id: form.referencia_id || null,
+    nro_documento: form.nro_documento || null,
+    proveedor_id: form.proveedor_id || null,
+    observacion: form.observacion || null,
+    usuario_id: usuarioId,
+  });
+}
+
 // ─── Salida / consumo ─────────────────────────────────────────────────────────
 // motivos: 'consumo_ot' | 'despacho' | 'merma' | 'devolucion_proveedor'
 export async function registrarSalida(empresaId, form, usuarioId) {
@@ -672,8 +692,8 @@ export async function getStockCompleto(empresaId) {
 
   // Try full select (requires migration 009). Fall back to base columns if not yet applied.
   let data;
-  const fullSelect = `*, materiales(id, codigo, descripcion, unidad, familia, costo_promedio, costo_promedio_usd, stock_minimo, stock_maximo, punto_reorden, tipo_control, codigo_barras), almacenes(id, codigo, nombre)`;
-  const baseSelect = `*, materiales(id, codigo, descripcion, unidad, familia, costo_promedio, stock_minimo), almacenes(id, codigo, nombre)`;
+  const fullSelect = `*, materiales(id, codigo, descripcion, unidad, familia, costo_promedio, costo_promedio_usd, stock_minimo, stock_maximo, punto_reorden, stock_seguridad, tipo_control, codigo_barras), almacenes(id, codigo, nombre)`;
+  const baseSelect = `*, materiales(id, codigo, descripcion, unidad, familia, costo_promedio, stock_minimo, stock_seguridad), almacenes(id, codigo, nombre)`;
 
   const full = await supabase.from('stock').select(fullSelect).eq('empresa_id', empresaId).order('updated_at', { ascending: false });
   if (full.error) {
@@ -705,6 +725,8 @@ export async function getStockCompleto(empresaId) {
     stock_minimo: Number(row.materiales?.stock_minimo ?? 0),
     stock_maximo: Number(row.materiales?.stock_maximo ?? 0),
     punto_reorden: Number(row.materiales?.punto_reorden ?? 0),
+    stock_seguridad: Number(row.materiales?.stock_seguridad ?? 0),
+    punto_reorden_efectivo: Number(row.materiales?.punto_reorden ?? 0) + Number(row.materiales?.stock_seguridad ?? 0),
     almacen: row.almacenes?.nombre || row.almacenes?.codigo || row.almacen_id,
     lote: row.lote,
     serie: row.serie,
@@ -716,11 +738,13 @@ export async function getStockCompleto(empresaId) {
 export async function getMaterialesBajoReorden(empresaId) {
   const supabase = await getSupabaseClient();
   const { data } = await supabase.from('stock')
-    .select('*, materiales(codigo, descripcion, unidad, punto_reorden, stock_minimo), almacenes(nombre)')
+    .select('*, materiales(codigo, descripcion, unidad, punto_reorden, stock_minimo, stock_seguridad), almacenes(nombre)')
     .eq('empresa_id', empresaId);
   return (data || []).filter(s => {
-    const reorden = Number(s.materiales?.punto_reorden ?? s.materiales?.stock_minimo ?? 0);
-    return reorden > 0 && Number(s.disponible ?? 0) <= reorden;
+    const puntoReorden = Number(s.materiales?.punto_reorden ?? s.materiales?.stock_minimo ?? 0);
+    const stockSeguridad = Number(s.materiales?.stock_seguridad ?? 0);
+    const reordenEfectivo = puntoReorden + stockSeguridad;
+    return reordenEfectivo > 0 && Number(s.disponible ?? 0) <= reordenEfectivo;
   });
 }
 
@@ -806,19 +830,20 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
   for (const item of itemsADescontar) {
     if (!item.material_id) continue;
     try {
-      // Obtener costo promedio vigente del material
       const { data: mat } = await supabase.from('materiales')
         .select('costo_promedio').eq('id', item.material_id).maybeSingle();
       const costoPromedio = Number(mat?.costo_promedio ?? 0);
 
-      const { data: stocks } = await supabase.from('stock').select('id, disponible, fisico, reservado')
+      let stockQ = supabase.from('stock').select('id, disponible, fisico, reservado, almacen_id')
         .eq('empresa_id', empresaId).eq('material_id', item.material_id);
+      if (item.lote != null) stockQ = stockQ.eq('lote', item.lote);
+      if (item.serie != null) stockQ = stockQ.eq('serie', item.serie);
+      const { data: stocks } = await stockQ;
       if (!stocks?.length) continue;
 
       const stock = stocks[0];
       const cantidadADescontar = Math.min(Number(item.cantidad), Number(stock.disponible));
 
-      // Kardex de salida
       await supabase.from('kardex').insert({
         id: mkId('kdx'),
         empresa_id: empresaId,
@@ -830,6 +855,9 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
         costo_unitario: costoPromedio,
         costo_total: costoPromedio * cantidadADescontar,
         moneda: 'PEN',
+        lote: item.lote || null,
+        serie: item.serie || null,
+        vencimiento: item.vencimiento || null,
         referencia_tipo: 'ot',
         referencia_id: otId,
         observacion: `Consumo OT ${otId}`,
@@ -838,7 +866,6 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
         saldo_cantidad: Math.max(0, Number(stock.fisico ?? stock.disponible) - cantidadADescontar),
       });
 
-      // Actualizar stock
       await supabase.from('stock').update({
         fisico: Math.max(0, Number(stock.fisico ?? stock.disponible) - cantidadADescontar),
         disponible: Math.max(0, Number(stock.disponible) - cantidadADescontar),
