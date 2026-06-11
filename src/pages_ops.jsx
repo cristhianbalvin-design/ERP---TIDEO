@@ -343,7 +343,7 @@ function Cuentas() {
 
     // OTs
     ots.filter(o => o.cuenta_id===cId || osIds.has(o.os_cliente_id)).forEach(o => {
-      eventos.push({ id:`ot-ini-${o.id}`, tipo:'ot', fecha:o.fecha_inicio, titulo:`OT abierta: ${o.numero}`, descripcion:`${o.tipo} â€” ${o.descripcion||''}`, usuario:o.responsable, nav:'ot', navParams:{ detail:o.id } });
+      eventos.push({ id:`ot-ini-${o.id}`, tipo:'ot', fecha:o.fecha_inicio, titulo:`OT abierta: ${o.numero}`, descripcion:`${o.tipo} â€" ${o.descripcion||''}`, usuario:o.responsable, nav:'ot', navParams:{ detail:o.id } });
       if (['cerrada','completada'].includes(o.estado) && o.fecha_fin) eventos.push({ id:`ot-fin-${o.id}`, tipo:'ot', fecha:o.fecha_fin, titulo:`OT cerrada: ${o.numero}`, descripcion:`Costo real: ${money(o.costoReal||0)}`, usuario:o.responsable, nav:'ot', navParams:{ detail:o.id } });
     });
 
@@ -630,7 +630,7 @@ function Cuentas() {
         <button className="btn btn-ghost btn-sm" style={{marginLeft:12}} onClick={()=>navigate('leads')}>Ir a Leads</button>
       </div>
 
-      {/* â”€â”€ Barra de filtros â”€â”€ */}
+      {/* â"€â"€ Barra de filtros â"€â"€ */}
       <div style={{display:'flex', flexWrap:'wrap', gap:8, marginBottom:16, alignItems:'center'}}>
         <input
           className="input"
@@ -701,7 +701,7 @@ function Cuentas() {
                   <div><span>Tipo</span><strong className={'badge ' + getTipoBadge(c.tipo)}>{c.tipo.replace('_', ' ')}</strong></div>
                   <div><span>Industria</span><strong>{c.industria || 'Por definir'}</strong></div>
                   <div><span>Responsable</span><strong>{c.responsable_comercial || 'Sin asignar'}</strong></div>
-                  <div><span>Ãšltima compra</span><strong>{c.fecha_ultima_compra || 'â€”'}</strong></div>
+                  <div><span>Ãšltima compra</span><strong>{c.fecha_ultima_compra || 'â€"'}</strong></div>
                 </div>
                 <div className="account-footer">
                   <div className="row" style={{gap:8}}>
@@ -882,7 +882,7 @@ function Cuentas() {
                       ))}
                     </select>
                     <input type="date" className="input" style={{height:32, fontSize:12, padding:'0 8px', width:'auto'}} value={tlDesde} onChange={e=>setTlDesde(e.target.value)} />
-                    <span style={{fontSize:12, color:'var(--fg-muted)'}}>â€“</span>
+                    <span style={{fontSize:12, color:'var(--fg-muted)'}}>â€"</span>
                     <input type="date" className="input" style={{height:32, fontSize:12, padding:'0 8px', width:'auto'}} value={tlHasta} onChange={e=>setTlHasta(e.target.value)} />
                     {(tlFiltro!=='todos'||tlDesde||tlHasta) && (
                       <button className="btn btn-ghost btn-sm" onClick={()=>{setTlFiltro('todos');setTlDesde('');setTlHasta('');}}>
@@ -939,7 +939,7 @@ function Cuentas() {
                   <div><span>Health score</span><strong><span className={'health-dot health-'+getHealthColor(cuentaHealthScore)}/>{cuentaHealthScore}</strong></div>
                   <div><span>Saldo CxC</span><strong>{money(sel.saldo_cxc)}</strong></div>
                   <div><span>DÃ­as mora</span><strong className={(sel.dias_mora||0)>30?'danger':(sel.dias_mora||0)>0?'warning':'success'}>{sel.dias_mora || 0}d</strong></div>
-                  <div><span>Ãšltima compra</span><strong>{sel.fecha_ultima_compra || 'â€”'}</strong></div>
+                  <div><span>Ãšltima compra</span><strong>{sel.fecha_ultima_compra || 'â€"'}</strong></div>
                 </div>
                 <div className="account-profile-grid">
                   <div className="account-info-card">
@@ -1054,12 +1054,12 @@ function Cuentas() {
                         <tbody>
                           {facturasCliente.map(f => (
                             <tr key={f.id}>
-                              <td className="mono">{f.numero || 'â€”'}</td>
-                              <td style={{fontSize:12, color:'var(--fg-muted)'}}>{f.fecha_emision || 'â€”'}</td>
+                              <td className="mono">{f.numero || 'â€"'}</td>
+                              <td style={{fontSize:12, color:'var(--fg-muted)'}}>{f.fecha_emision || 'â€"'}</td>
                               <td className="num">{money(f.total || 0)}</td>
                               {tieneRetencion && (
                                 <td className="num" style={{color: f.aplica_retencion ? 'var(--cyan)' : 'var(--fg-muted)'}}>
-                                  {f.aplica_retencion ? money(f.monto_neto_cobrable ?? (f.total - (f.monto_retencion || 0))) : 'â€”'}
+                                  {f.aplica_retencion ? money(f.monto_neto_cobrable ?? (f.total - (f.monto_retencion || 0))) : 'â€"'}
                                 </td>
                               )}
                               <td><span className={'badge ' + (f.estado === 'pagada' ? 'badge-green' : f.estado === 'anulada' ? 'badge-gray' : 'badge-cyan')}>{f.estado}</span></td>
@@ -1144,7 +1144,7 @@ function Cuentas() {
 
             {activeTab === 'Customer Success' && (
               <div className="col" style={{gap:14}}>
-                {/* â”€â”€ Health Score â”€â”€ */}
+                {/* â"€â"€ Health Score â"€â"€ */}
                 {csHealth ? (
                   <div className="card p-4">
                     <div className="row" style={{justifyContent:'space-between', marginBottom:10}}>
@@ -1173,14 +1173,14 @@ function Cuentas() {
                   <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin health score registrado para este cliente.</div>
                 )}
 
-                {/* â”€â”€ Onboarding â”€â”€ */}
+                {/* â"€â"€ Onboarding â"€â"€ */}
                 {csOb ? (
                   <div className="card p-4">
                     <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
                       <div className="eyebrow">Onboarding</div>
                       <span className={'badge ' + (csOb.estado==='completado'?'badge-green':csOb.estado==='en_progreso'?'badge-cyan':'badge-gray')}>{csOb.estado}</span>
                     </div>
-                    <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>{csOb.tipo_servicio || csOb.nombre || 'â€”'}</div>
+                    <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>{csOb.tipo_servicio || csOb.nombre || 'â€"'}</div>
                     {csOb.checklist?.length > 0 && (
                       <>
                         <div style={{fontSize:12, color:'var(--fg-subtle)', marginBottom:6}}>
@@ -1196,11 +1196,11 @@ function Cuentas() {
                   <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin onboarding registrado para este cliente.</div>
                 )}
 
-                {/* â”€â”€ Plan de Ã‰xito â”€â”€ */}
+                {/* â"€â"€ Plan de Ã‰xito â"€â"€ */}
                 {csPlan ? (
                   <div className="card p-4">
                     <div className="eyebrow" style={{marginBottom:8}}>Plan de Ã‰xito</div>
-                    <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>{csPlan.objetivo || csPlan.nombre || 'â€”'}</div>
+                    <div style={{fontSize:13, fontWeight:600, marginBottom:6}}>{csPlan.objetivo || csPlan.nombre || 'â€"'}</div>
                     <div className="row" style={{gap:16, fontSize:12, color:'var(--fg-subtle)'}}>
                       {csPlan.adopcion_pct != null && <span>AdopciÃ³n: <strong style={{color:'var(--cyan)'}}>{csPlan.adopcion_pct}%</strong></span>}
                       {csPlan.reuniones?.length > 0 && <span>Reuniones: {csPlan.reuniones.length}</span>}
@@ -1215,21 +1215,21 @@ function Cuentas() {
                   <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin plan de Ã©xito registrado para este cliente.</div>
                 )}
 
-                {/* â”€â”€ RenovaciÃ³n â”€â”€ */}
+                {/* â"€â"€ RenovaciÃ³n â"€â"€ */}
                 {csRenov ? (
                   <div className="card p-4">
                     <div className="eyebrow" style={{marginBottom:8}}>RenovaciÃ³n</div>
                     <div className="row" style={{justifyContent:'space-between', marginBottom:4}}>
-                      <span style={{fontSize:13, fontWeight:600}}>{csRenov.servicio || csRenov.nombre || 'â€”'}</span>
+                      <span style={{fontSize:13, fontWeight:600}}>{csRenov.servicio || csRenov.nombre || 'â€"'}</span>
                       {csRenov.dias_restantes != null && <span className={'badge ' + (csRenov.dias_restantes<=30?'badge-red':csRenov.dias_restantes<=60?'badge-yellow':'badge-green')}>{csRenov.dias_restantes}d restantes</span>}
                     </div>
-                    <div style={{fontSize:12, color:'var(--fg-subtle)'}}>Vence: {csRenov.fecha_vencimiento || 'â€”'}{csRenov.monto_contrato ? ` Â· ${money(csRenov.monto_contrato)}` : ''}</div>
+                    <div style={{fontSize:12, color:'var(--fg-subtle)'}}>Vence: {csRenov.fecha_vencimiento || 'â€"'}{csRenov.monto_contrato ? ` Â· ${money(csRenov.monto_contrato)}` : ''}</div>
                   </div>
                 ) : (
                   <div className="card p-4 text-center text-muted" style={{fontSize:13}}>Sin renovaciÃ³n registrada para este cliente.</div>
                 )}
 
-                {/* â”€â”€ Ãšltimo NPS â”€â”€ */}
+                {/* â"€â"€ Ãšltimo NPS â"€â"€ */}
                 {csNps ? (
                   <div className="card p-4">
                     <div className="eyebrow" style={{marginBottom:8}}>Ãšltimo NPS</div>
@@ -1733,9 +1733,9 @@ function OT({ role }) {
 
   const osVinculada = sel?.os_cliente_id ? osClientes.find(o => o.id === sel.os_cliente_id) : null;
   const responsableNombre = sel
-    ? (personalOperativo.find(p => p.id === sel.tecnico_responsable_id)?.nombre || usuarios.find(u => u.id === sel.tecnico_responsable_id)?.nombre || sel.responsable || 'â€”')
-    : 'â€”';
-  const supervisorNombre = sel?.supervisor || 'â€”';
+    ? (personalOperativo.find(p => p.id === sel.tecnico_responsable_id)?.nombre || usuarios.find(u => u.id === sel.tecnico_responsable_id)?.nombre || sel.responsable || 'â€"')
+    : 'â€"';
+  const supervisorNombre = sel?.supervisor || 'â€"';
   const prioridadMeta = { normal: ['badge-gray','Normal'], urgente: ['badge-orange','Urgente'], critica: ['badge-red','CrÃ­tica'] };
   const asignacionesOT = sel ? plannerAsignaciones.filter(a => a.ot_id === sel.id && a.estado !== 'cancelado') : [];
   const tecnicosDeOT = [...new Set(asignacionesOT.map(a => a.tecnico_id))]
@@ -2164,9 +2164,9 @@ function OT({ role }) {
   };
 
   const historialOT = sel ? [
-    { id: 'create', fecha: sel.created_at || sel.fecha_inicio || '', usuario: 'â€”', evento: `OT ${sel.numero} creada`, tipo: 'creacion' },
+    { id: 'create', fecha: sel.created_at || sel.fecha_inicio || '', usuario: 'â€"', evento: `OT ${sel.numero} creada`, tipo: 'creacion' },
     ...partesOT.map(p => ({ id: p.id, fecha: p.fecha, usuario: p.tecnico, evento: `Parte diario registrado Â· ${p.horas}h Â· +${p.avance_reportado}% avance`, tipo: 'parte' })),
-    ...(['cerrada','valorizada','facturada'].includes(sel.estado) ? [{ id: 'close', fecha: sel.fecha_fin || '', usuario: 'â€”', evento: 'OT cerrada tÃ©cnicamente', tipo: 'cierre' }] : []),
+    ...(['cerrada','valorizada','facturada'].includes(sel.estado) ? [{ id: 'close', fecha: sel.fecha_fin || '', usuario: 'â€"', evento: 'OT cerrada tÃ©cnicamente', tipo: 'cierre' }] : []),
   ].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')) : [];
 
   useEffect(() => {
@@ -2212,7 +2212,7 @@ function OT({ role }) {
     <>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Ã“rdenes de Trabajo</h1>
+          <h1 className="page-title">Ã"rdenes de Trabajo</h1>
           <div className="page-sub">{ots.length} OTs totales</div>
         </div>
         <div className="row">
@@ -2391,7 +2391,7 @@ function OT({ role }) {
                   <span style={{color:'var(--fg)', fontWeight:600}}>{sel.numero}</span>
                 </>
               ) : (
-                <span style={{color:'var(--fg-muted)'}}>Ã“rdenes de Trabajo â€º {sel.numero}</span>
+                <span style={{color:'var(--fg-muted)'}}>Ã"rdenes de Trabajo â€º {sel.numero}</span>
               )}
             </div>
 
@@ -2502,7 +2502,7 @@ function OT({ role }) {
                 {criteriosOT.map((c, i) => (
                   <div key={i} style={{display:'flex', alignItems:'center', gap:6}}>
                     <span style={{width:14, height:14, flex:'0 0 14px', display:'inline-flex', alignItems:'center', justifyContent:'center', color:c.ok ? 'var(--green)' : c.warn ? 'var(--orange)' : 'var(--fg-muted)'}}>
-                      {c.ok ? I.check : <span style={{fontSize:14, lineHeight:1}}>â€“</span>}
+                      {c.ok ? I.check : <span style={{fontSize:14, lineHeight:1}}>â€"</span>}
                     </span>
                     <span style={{fontSize:10.5, lineHeight:1.3, color:c.ok || c.warn ? 'var(--fg)' : 'var(--fg-muted)'}}>{c.text}</span>
                   </div>
@@ -2518,7 +2518,7 @@ function OT({ role }) {
             </div>
             <div className="ficha-detail-content">
 
-            {/* â”€â”€ TAB RESUMEN â”€â”€ */}
+            {/* â"€â"€ TAB RESUMEN â"€â"€ */}
             {activeTab === 'Resumen' && (
               <div className="col" style={{gap:16, padding:22}}>
                 <div style={{display:'grid', gridTemplateColumns:'1.35fr 1fr', gap:16, alignItems:'stretch'}}>
@@ -2554,13 +2554,13 @@ function OT({ role }) {
                           <label>CECO</label>
                           <select className="select" value={formDatos.centro_costo_id} onChange={e => setFormDatos(p => ({...p, centro_costo_id: e.target.value}))}>
                             <option value="">Sin CECO</option>
-                            {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} â€” ${c.nombre}` : c.nombre}</option>)}
+                            {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} â€" ${c.nombre}` : c.nombre}</option>)}
                           </select>
                         </div>
                         <div className="input-group">
                           <label>Tipo</label>
                           <select className="select" value={formDatos.tipo} onChange={e => setFormDatos(p => ({...p, tipo: e.target.value}))}>
-                            <option value="">â€”</option>
+                            <option value="">â€"</option>
                             {(() => {
                               const opts = tiposActivos.length > 0
                                 ? tiposActivos.map(t => t.nombre)
@@ -2676,7 +2676,7 @@ function OT({ role }) {
                             >
                               <option value="">Seleccionar colaborador...</option>
                               {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
-                                <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` â€” ${p.cargo}` : ''}</option>
+                                <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` â€" ${p.cargo}` : ''}</option>
                               ))}
                               </select>
                             </div>
@@ -2726,12 +2726,12 @@ function OT({ role }) {
                                 onClick={() => { setSel(null); navigate('os_cliente', { detail: osVinculada.id }); }}>
                                 {osVinculada.numero}
                               </button>
-                            : <span className="text-muted">â€”</span>
+                            : <span className="text-muted">â€"</span>
                           }
                         </div>
-                        <div><div className="eyebrow">Cliente</div><div>{getCuenta(sel.cuenta_id) || sel.cliente || 'â€”'}</div></div>
-                        <div><div className="eyebrow">Sede</div><div>{sel.sede || 'â€”'}</div></div>
-                        <div><div className="eyebrow">Tipo</div><div>{sel.tipo || 'â€”'}</div></div>
+                        <div><div className="eyebrow">Cliente</div><div>{getCuenta(sel.cuenta_id) || sel.cliente || 'â€"'}</div></div>
+                        <div><div className="eyebrow">Sede</div><div>{sel.sede || 'â€"'}</div></div>
+                        <div><div className="eyebrow">Tipo</div><div>{sel.tipo || 'â€"'}</div></div>
                         <div>
                           <div className="eyebrow">Prioridad</div>
                           <span className={`badge ${prioridadMeta[sel.prioridad || 'normal']?.[0] || 'badge-gray'}`}>
@@ -2746,9 +2746,9 @@ function OT({ role }) {
                         </div>
                         <div><div className="eyebrow">Responsable</div><div>{responsableNombre}</div></div>
                         <div><div className="eyebrow">Supervisor</div><div>{supervisorNombre}</div></div>
-                        <div><div className="eyebrow">Fecha comprometida</div><div>{sel.fecha_programada || 'â€”'}</div></div>
-                        <div><div className="eyebrow">Inicio real</div><div>{partesOT.some(p => p.estado === 'aprobado') ? (sel.fecha_inicio || 'â€”') : <span style={{fontSize:11,color:'var(--fg-muted)'}}>Pendiente primer parte</span>}</div></div>
-                        <div><div className="eyebrow">Fin real</div><div>{partesOT.some(p => p.estado === 'aprobado') ? (sel.fecha_fin || 'â€”') : <span style={{fontSize:11,color:'var(--fg-muted)'}}>En ejecuciÃ³n</span>}</div></div>
+                        <div><div className="eyebrow">Fecha comprometida</div><div>{sel.fecha_programada || 'â€"'}</div></div>
+                        <div><div className="eyebrow">Inicio real</div><div>{partesOT.some(p => p.estado === 'aprobado') ? (sel.fecha_inicio || 'â€"') : <span style={{fontSize:11,color:'var(--fg-muted)'}}>Pendiente primer parte</span>}</div></div>
+                        <div><div className="eyebrow">Fin real</div><div>{partesOT.some(p => p.estado === 'aprobado') ? (sel.fecha_fin || 'â€"') : <span style={{fontSize:11,color:'var(--fg-muted)'}}>En ejecuciÃ³n</span>}</div></div>
                       </div>
                       <div style={{background:'var(--bg-subtle)', padding:16, borderRadius:8, marginTop:14}}>
                         <div className="eyebrow" style={{marginBottom:8}}>DescripciÃ³n / Alcance</div>
@@ -2760,7 +2760,7 @@ function OT({ role }) {
               </div>
             )}
 
-            {/* â”€â”€ TAB TAREAS â”€â”€ */}
+            {/* â"€â"€ TAB TAREAS â"€â"€ */}
             {activeTab === 'Resumen' && (
               <div className="card" style={{margin:'0 22px 22px', padding:16}}>
                 <div className="card-head" style={{padding:0, border:0, marginBottom:12}}>
@@ -2862,7 +2862,7 @@ function OT({ role }) {
                             <div style={{textDecoration: completado?'line-through':'none', color: completado?'var(--fg-muted)':'var(--fg)', fontWeight:500}}>{t.descripcion}</div>
                             <div className="row" style={{gap:12, marginTop:5, fontSize:11, color:'var(--fg-muted)'}}>
                               {resp && <span>ðŸ‘¤ {resp.nombre}</span>}
-                              {t.fecha_limite && <span>ðŸ“… {t.fecha_limite}</span>}
+                              {t.fecha_limite && <span>ðŸ"… {t.fecha_limite}</span>}
                               <span>â± {t.horas_estimadas ? `${t.horas_estimadas}h est.` : '--'} | {t.horas_reales ? `${t.horas_reales}h reales` : '0h'}</span>
                               <div style={{display:'flex', alignItems:'center', gap:4}}>
                                 <div style={{width: 60, height: 4, background:'var(--border)', borderRadius: 2, overflow: 'hidden'}}>
@@ -2886,7 +2886,7 @@ function OT({ role }) {
               </div>
             )}
 
-            {/* â”€â”€ TAB CHECKLISTS â”€â”€ */}
+            {/* â"€â"€ TAB CHECKLISTS â"€â"€ */}
             {activeTab === 'Checklists y Calidad' && (
               <div className="col" style={{gap:20, padding:22}}>
                 <div className="card">
@@ -2920,7 +2920,7 @@ function OT({ role }) {
               </div>
             )}
 
-            {/* â”€â”€ TAB PERSONAL Y RECURSOS â”€â”€ */}
+            {/* â"€â"€ TAB PERSONAL Y RECURSOS â"€â"€ */}
             {activeTab === 'Personal y Recursos' && (
               <div style={{padding:22}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
@@ -3001,7 +3001,7 @@ function OT({ role }) {
                               {sorted.map(a => (
                                 <div key={a.id} style={{fontSize:11, display:'flex', justifyContent:'space-between', padding:'3px 8px', background:'var(--bg-subtle)', borderRadius:4}}>
                                   <span style={{fontWeight:600}}>{a.fecha}</span>
-                                  <span style={{color:'var(--cyan)'}}>{a.hora_inicio_estimada?.slice(0,5)||'--'} â€“ {a.hora_fin_estimada?.slice(0,5)||'--'}</span>
+                                  <span style={{color:'var(--cyan)'}}>{a.hora_inicio_estimada?.slice(0,5)||'--'} â€" {a.hora_fin_estimada?.slice(0,5)||'--'}</span>
                                 </div>
                               ))}
                             </div>
@@ -3014,7 +3014,7 @@ function OT({ role }) {
               </div>
             )}
 
-            {/* â”€â”€ TAB PARTES â”€â”€ */}
+            {/* â"€â"€ TAB PARTES â"€â"€ */}
             {activeTab === 'Partes' && (
               <div style={{padding:22}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
@@ -3051,7 +3051,7 @@ function OT({ role }) {
                         {avancePreview > 0 && <span style={{fontSize:12, color:'var(--fg-muted)'}}>Avance total reportado: <strong style={{color:'var(--cyan)'}}>{avancePreview}%</strong></span>}
                       </div>
 
-                      {/* â€” Encabezado â€” */}
+                      {/* â€" Encabezado â€" */}
                       <div style={{background:'var(--bg-subtle)', padding:14, borderRadius:8, marginBottom:16}}>
                         <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:12}}>
                           <div className="input-group">
@@ -3072,7 +3072,7 @@ function OT({ role }) {
                           {tecnicosDeOT.length > 0 ? (
                             <select className="select" value={parteFormOT.tecnico_id} onChange={e => updParteHorasTecnico(e.target.value)} required>
                               <option value="">Seleccionar...</option>
-                              {tecnicosDeOT.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.cargo ? ` â€” ${t.cargo}` : ''}</option>)}
+                              {tecnicosDeOT.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.cargo ? ` â€" ${t.cargo}` : ''}</option>)}
                             </select>
                           ) : (
                             <div style={{fontSize:12, color:'var(--fg-muted)', padding:'6px 0'}}>No hay tecnicos operativos asignados. Asigna tecnicos desde el Planner antes de registrar partes diarios.</div>
@@ -3080,14 +3080,14 @@ function OT({ role }) {
                           {parteFormOT.tecnico_id && (() => {
                             const tec = [...(personalOperativo || []), ...(personalAdmin || [])].find(p => p.id === parteFormOT.tecnico_id);
                             if (esModalidadHonorarios(tec) && !(Number(tec?.tarifa_hora_referencial) > 0)) {
-                              return <div className="alert alert-warning" style={{fontSize:12, marginTop:6}}>Este colaborador no tiene tarifa hora referencial configurada â€” el costo de MO quedarÃ¡ en S/ 0. ConfigÃºralo en su ficha de personal.</div>;
+                              return <div className="alert alert-warning" style={{fontSize:12, marginTop:6}}>Este colaborador no tiene tarifa hora referencial configurada â€" el costo de MO quedarÃ¡ en S/ 0. ConfigÃºralo en su ficha de personal.</div>;
                             }
                             return null;
                           })()}
                         </div>
                       </div>
 
-                      {/* â€” SecciÃ³n 1: Tareas de la OT â€” */}
+                      {/* â€" SecciÃ³n 1: Tareas de la OT â€" */}
                       {tareasAbiertasOT.length > 0 && (
                         <div style={{marginBottom:16, padding:14, background:'var(--bg-subtle)', borderRadius:8}}>
                           <div className="input-group">
@@ -3161,7 +3161,7 @@ function OT({ role }) {
                         </div>
                       )}
 
-                      {/* â€” SecciÃ³n 2: Actividades adicionales â€” */}
+                      {/* â€" SecciÃ³n 2: Actividades adicionales â€" */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
                           Actividades adicionales
@@ -3184,7 +3184,7 @@ function OT({ role }) {
                         </button>
                       </div>
 
-                      {/* â€” SecciÃ³n 3: Avance global del dÃ­a â€” */}
+                      {/* â€" SecciÃ³n 3: Avance global del dÃ­a â€" */}
                       {!parteFormOT.tarea_id && <div style={{marginBottom:16, padding:14, background:'var(--bg-subtle)', borderRadius:8}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Avance global del dÃ­a</div>
                         <div style={{display:'flex', alignItems:'center', gap:12}}>
@@ -3217,11 +3217,11 @@ function OT({ role }) {
                         </div>
                       </div>}
 
-                      {/* â€” SecciÃ³n 4: Materiales usados â€” */}
+                      {/* â€" SecciÃ³n 4: Materiales usados â€" */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
                           Materiales usados
-                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional â€” solo si se consumieron materiales</span>
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional â€" solo si se consumieron materiales</span>
                         </div>
                         {parteFormOT.materiales_lineas.length > 0 && (
                           <div className="col" style={{gap:8, marginBottom:8}}>
@@ -3296,11 +3296,11 @@ function OT({ role }) {
                         </button>
                       </div>
 
-                      {/* â€” SecciÃ³n 5: Servicios de terceros â€” */}
+                      {/* â€" SecciÃ³n 5: Servicios de terceros â€" */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
                           Servicios de terceros
-                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional â€” subcontratistas, alquileres, servicios externos</span>
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional â€" subcontratistas, alquileres, servicios externos</span>
                         </div>
                         {(parteFormOT.terceros_lineas || []).length > 0 && (
                           <div className="col" style={{gap:8, marginBottom:8}}>
@@ -3318,11 +3318,11 @@ function OT({ role }) {
                         </button>
                       </div>
 
-                      {/* â€” SecciÃ³n 6: LogÃ­stica y viÃ¡ticos â€” */}
+                      {/* â€" SecciÃ³n 6: LogÃ­stica y viÃ¡ticos â€" */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
                           LogÃ­stica y viÃ¡ticos
-                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional â€” transporte, hospedaje, alimentaciÃ³n, combustible</span>
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional â€" transporte, hospedaje, alimentaciÃ³n, combustible</span>
                         </div>
                         {(parteFormOT.logistica_lineas || []).length > 0 && (
                           <div className="col" style={{gap:8, marginBottom:8}}>
@@ -3340,11 +3340,11 @@ function OT({ role }) {
                         </button>
                       </div>
 
-                      {/* â€” SecciÃ³n 7: Evidencias â€” */}
+                      {/* â€" SecciÃ³n 7: Evidencias â€" */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
                           Evidencias
-                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional â€” fotos o documentos del trabajo ejecutado hoy</span>
+                          <span style={{fontSize:11, color:'var(--fg-muted)', fontWeight:400}}>Opcional â€" fotos o documentos del trabajo ejecutado hoy</span>
                         </div>
                         {parteFormOT.evidencias.length > 0 && (
                           <div style={{display:'flex', flexWrap:'wrap', gap:8, marginBottom:8}}>
@@ -3354,7 +3354,7 @@ function OT({ role }) {
                                   <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} />
                                 ) : (
                                   <div style={{width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4}}>
-                                    <span style={{fontSize:22}}>ðŸ“„</span>
+                                    <span style={{fontSize:22}}>ðŸ"„</span>
                                     <span style={{fontSize:9, color:'var(--fg-muted)', textAlign:'center', padding:'0 4px', lineHeight:1.2, overflow:'hidden', textOverflow:'ellipsis', maxWidth:'100%'}}>{ev.nombre}</span>
                                   </div>
                                 )}
@@ -3364,7 +3364,7 @@ function OT({ role }) {
                           </div>
                         )}
                         <label className="btn btn-ghost" style={{fontSize:12, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6}}>
-                          ðŸ“Ž Adjuntar archivo (imagen, PDF, Word)
+                          ðŸ"Ž Adjuntar archivo (imagen, PDF, Word)
                           <input type="file" accept="image/*,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple style={{display:'none'}} onChange={e => {
                             const files = Array.from(e.target.files || []);
                             const nuevas = files.map(f => ({ nombre: f.name, tipo: f.type, tamanio: f.size, url: URL.createObjectURL(f) }));
@@ -3374,7 +3374,7 @@ function OT({ role }) {
                         </label>
                       </div>
 
-                      {/* â€” SecciÃ³n 8: Observaciones / Restricciones â€” */}
+                      {/* â€" SecciÃ³n 8: Observaciones / Restricciones â€" */}
                       <div style={{marginBottom:16}}>
                         <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Observaciones o restricciones</div>
                         <textarea
@@ -3472,7 +3472,7 @@ function OT({ role }) {
               </div>
             )}
 
-            {/* â”€â”€ TAB COSTOS â”€â”€ */}
+            {/* â"€â"€ TAB COSTOS â"€â"€ */}
             {activeTab === 'Costos' && canCost && (() => {
               const cierreOT = (cierresTecnicos || []).find(ct => ct.ot_id === sel.id);
               const partesAprobados = partesOT.filter(p => p.estado === 'aprobado');
@@ -3655,7 +3655,7 @@ function OT({ role }) {
                   const estado = String(p.estado || '').toLowerCase();
                   const aprobado = estado === 'aprobado';
                   const esHon = persona ? esModalidadHonorarios(persona) : false;
-                  return { nombre: persona?.nombre || p.tecnico_nombre || p.tecnico || 'â€”', tipo: 'Operativo', esHon, fecha: p.fecha || 'â€”', horas, tarifa, aprobado, estadoLabel: aprobado ? 'Aprobado' : estado === 'en_revision' ? 'En revision' : estado };
+                  return { nombre: persona?.nombre || p.tecnico_nombre || p.tecnico || 'â€"', tipo: 'Operativo', esHon, fecha: p.fecha || 'â€"', horas, tarifa, aprobado, estadoLabel: aprobado ? 'Aprobado' : estado === 'en_revision' ? 'En revision' : estado };
                 }),
                 ...(tareosAdminOT || []).map(t => {
                   const persona = (personalAdmin || []).find(x => x.id === t.personal_id);
@@ -3664,7 +3664,7 @@ function OT({ role }) {
                   const estado = String(t.estado || '').toLowerCase();
                   const aprobado = estado === 'enviado';
                   const esHon = persona ? esModalidadHonorarios(persona) : false;
-                  return { nombre: persona?.nombre || t.personal_nombre || 'â€”', tipo: 'Administrativo', esHon, fecha: t.fecha || 'â€”', horas, tarifa, aprobado, estadoLabel: aprobado ? 'Enviado' : estado === 'borrador' ? 'Borrador' : estado };
+                  return { nombre: persona?.nombre || t.personal_nombre || 'â€"', tipo: 'Administrativo', esHon, fecha: t.fecha || 'â€"', horas, tarifa, aprobado, estadoLabel: aprobado ? 'Enviado' : estado === 'borrador' ? 'Borrador' : estado };
                 }),
               ].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es') || a.fecha.localeCompare(b.fecha));
               const totalHorasDesgloseAprobadas = filasDesgloseOT.filter(f => f.aprobado).reduce((s, f) => s + f.horas, 0);
@@ -3706,12 +3706,12 @@ function OT({ role }) {
                     </div>
                   </div>
 
-                  {/* â”€â”€ MEJORA 2: Referencia HC â”€â”€ */}
+                  {/* â"€â"€ MEJORA 2: Referencia HC â"€â"€ */}
                   {hcVinculadaCostos && (
                     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                       <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'space-between', padding: '10px 16px', borderRadius: 0, fontSize: 13 }}
                         onClick={() => setShowHCRefCostos(v => !v)}>
-                        <span>ðŸ“‹ Referencia Hoja de Costeo</span>
+                        <span>ðŸ"‹ Referencia Hoja de Costeo</span>
                         <span style={{ fontSize: 10, color: 'var(--fg-muted)' }}>{showHCRefCostos ? 'â–² ocultar' : 'â–¼ ver'}</span>
                       </button>
                       {showHCRefCostos && (
@@ -3732,7 +3732,7 @@ function OT({ role }) {
                               ].map(([lbl, val]) => (
                                 <tr key={lbl} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                                   <td style={{ padding: '5px 0' }}>{lbl}</td>
-                                  <td style={{ textAlign: 'right', padding: '5px 0', fontWeight: 600 }}>{val != null ? money(val, monSym) : 'â€”'}</td>
+                                  <td style={{ textAlign: 'right', padding: '5px 0', fontWeight: 600 }}>{val != null ? money(val, monSym) : 'â€"'}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -3742,7 +3742,7 @@ function OT({ role }) {
                     </div>
                   )}
 
-                  {/* â”€â”€ MEJORA 1: Tabla comparativa con desglose expandible â”€â”€ */}
+                  {/* â"€â"€ MEJORA 1: Tabla comparativa con desglose expandible â"€â"€ */}
                   <div className="table-wrap">
                     <table className="tbl">
                       <thead>
@@ -3770,10 +3770,10 @@ function OT({ role }) {
                                   {label}
                                   {items.length > 0 && <span style={{ fontSize: 11, color: 'var(--cyan)', marginLeft: 6 }}>{items.length} Ã­tem{items.length !== 1 ? 's' : ''}</span>}
                                 </td>
-                                <td className="num">{est != null ? money(est, monSym) : 'â€”'}</td>
-                                <td className="num">{real != null ? money(real, monSym) : 'â€”'}</td>
+                                <td className="num">{est != null ? money(est, monSym) : 'â€"'}</td>
+                                <td className="num">{real != null ? money(real, monSym) : 'â€"'}</td>
                                 <td className="num" style={{ color: varColor(pct), fontWeight: 600 }}>
-                                  {pct !== null ? `${pct > 0 ? '+' : ''}${pct}%` : 'â€”'}
+                                  {pct !== null ? `${pct > 0 ? '+' : ''}${pct}%` : 'â€"'}
                                 </td>
                               </tr>
                               {expanded && (
@@ -3822,9 +3822,9 @@ function OT({ role }) {
                                               const sub = (m.cantidad || 0) * (m.costo_unitario || 0);
                                               if (!sub) return null;
                                               return <tr key={`${p.id}-${i}`} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                                                {td(m.nombre || m.sku || 'â€”')}
+                                                {td(m.nombre || m.sku || 'â€"')}
                                                 {td(m.cantidad, { right: true, muted: true, w: 60 })}
-                                                {td(m.unidad || 'â€”', { muted: true, w: 52 })}
+                                                {td(m.unidad || 'â€"', { muted: true, w: 52 })}
                                                 {td(money(m.costo_unitario || 0, monSym), { right: true, muted: true, w: 90 })}
                                                 {td(money(sub, monSym), { right: true, bold: true, w: 82 })}
                                                 <td style={{ width: 28 }} />
@@ -3948,7 +3948,7 @@ function OT({ role }) {
                                                         value={item.horas_dia} onChange={e => updItem('mano_obra', idx, 'horas_dia', e.target.value)} />
                                                     </td>
                                                     <td style={{ padding: '3px 4px', textAlign: 'right', color: 'var(--fg-muted)' }}>
-                                                      {item.costo_hora > 0 ? money(item.costo_hora, monSym) : 'â€”'}
+                                                      {item.costo_hora > 0 ? money(item.costo_hora, monSym) : 'â€"'}
                                                     </td>
                                                   </>
                                                 ) : key === 'materiales' ? (
@@ -3970,7 +3970,7 @@ function OT({ role }) {
                                                         }}>
                                                         <option value="">Material...</option>
                                                         {(inventario || []).map(inv => (
-                                                          <option key={inv.id} value={inv.id}>{inv.sku} â€” {inv.nombre}</option>
+                                                          <option key={inv.id} value={inv.id}>{inv.sku} â€" {inv.nombre}</option>
                                                         ))}
                                                       </select>
                                                     </td>
@@ -3978,7 +3978,7 @@ function OT({ role }) {
                                                       <input className="input" type="number" min="0" step="0.01" style={{ ...inputSt, width: '100%', textAlign: 'right' }}
                                                         value={item.cantidad} onChange={e => updItem('materiales', idx, 'cantidad', e.target.value)} />
                                                     </td>
-                                                    <td style={{ padding: '3px 4px', fontSize: 11, color: 'var(--fg-muted)' }}>{item.unidad || 'â€”'}</td>
+                                                    <td style={{ padding: '3px 4px', fontSize: 11, color: 'var(--fg-muted)' }}>{item.unidad || 'â€"'}</td>
                                                     <td style={{ padding: '3px 4px' }}>
                                                       <input className="input" type="number" min="0" step="0.01" style={{ ...inputSt, width: '100%', textAlign: 'right' }}
                                                         value={item.costo_unit} onChange={e => updItem('materiales', idx, 'costo_unit', e.target.value)} />
@@ -4005,7 +4005,7 @@ function OT({ role }) {
                                                   </>
                                                 )}
                                                 <td style={{ padding: '3px 4px', textAlign: 'right', fontWeight: 600 }}>
-                                                  {item.subtotal > 0 ? money(item.subtotal, monSym) : 'â€”'}
+                                                  {item.subtotal > 0 ? money(item.subtotal, monSym) : 'â€"'}
                                                 </td>
                                                 <td style={{ padding: '3px 4px', textAlign: 'center' }}>
                                                   <button type="button" className="icon-btn" style={{ fontSize: 11 }} onClick={() => removeItem(key, idx)}>{I.x}</button>
@@ -4028,8 +4028,8 @@ function OT({ role }) {
                         <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, background: 'var(--bg-subtle)' }}>
                           <td />
                           <td>Total</td>
-                          <td className="num">{costoEstTotal > 0 ? money(costoEstTotal, monSym) : 'â€”'}</td>
-                          <td className="num">{costoRealTotal > 0 ? money(costoRealTotal, monSym) : 'â€”'}</td>
+                          <td className="num">{costoEstTotal > 0 ? money(costoEstTotal, monSym) : 'â€"'}</td>
+                          <td className="num">{costoRealTotal > 0 ? money(costoRealTotal, monSym) : 'â€"'}</td>
                           <td className="num" style={{ color: varColor(variacionTotalPct, costoEstTotal, costoRealTotal), fontWeight: 700 }}>
                             {variacionTotalPct !== null ? `${variacionTotalPct > 0 ? '+' : ''}${variacionTotalPct}%` : '-'}
                           </td>
@@ -4106,8 +4106,8 @@ function OT({ role }) {
                                 <td><span className={`badge ${f.esHon ? 'badge-orange' : 'badge-green'}`} style={{ fontSize: 11 }}>{f.esHon ? 'Honorarios' : 'Planilla'}</span></td>
                                 <td className="text-muted" style={{ fontSize: 12 }}>{f.fecha}</td>
                                 <td className="num">{f.horas.toFixed(1)}h</td>
-                                <td className="num">{f.tarifa > 0 ? money(f.tarifa, monSym) : 'â€”'}</td>
-                                <td className="num">{f.tarifa > 0 ? money(f.horas * f.tarifa, monSym) : 'â€”'}</td>
+                                <td className="num">{f.tarifa > 0 ? money(f.tarifa, monSym) : 'â€"'}</td>
+                                <td className="num">{f.tarifa > 0 ? money(f.horas * f.tarifa, monSym) : 'â€"'}</td>
                                 <td>
                                   <span className={`badge ${f.aprobado ? 'badge-green' : 'badge-orange'}`} style={{ fontSize: 11 }}>
                                     {f.estadoLabel}
@@ -4156,7 +4156,7 @@ function OT({ role }) {
               );
             })()}
 
-            {/* â”€â”€ TAB EVIDENCIAS â”€â”€ */}
+            {/* â"€â"€ TAB EVIDENCIAS â"€â"€ */}
             {activeTab === 'Evidencias' && (() => {
               const evidenciasOT = partesOT.flatMap(p =>
                 (p.evidencias || []).map(ev => ({ ...ev, parte_numero: p.id, parte_fecha: p.fecha, tecnico: p.tecnico }))
@@ -4171,7 +4171,7 @@ function OT({ role }) {
                   </div>
                   {evidenciasOT.length === 0 ? (
                     <div style={{padding:48, textAlign:'center', color:'var(--fg-muted)', border:'2px dashed var(--border)', borderRadius:8}}>
-                      <div style={{fontSize:36, marginBottom:8}}>ðŸ“Ž</div>
+                      <div style={{fontSize:36, marginBottom:8}}>ðŸ"Ž</div>
                       <div style={{fontWeight:600, marginBottom:6}}>Sin evidencias registradas</div>
                       <div style={{fontSize:12}}>Las fotos y documentos adjuntos al registrar partes diarios aparecerÃ¡n aquÃ­ automÃ¡ticamente.</div>
                     </div>
@@ -4183,7 +4183,7 @@ function OT({ role }) {
                             {ev.tipo?.startsWith('image/') && ev.url ? (
                               <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} />
                             ) : (
-                              <span style={{fontSize:32}}>ðŸ“„</span>
+                              <span style={{fontSize:32}}>ðŸ"„</span>
                             )}
                           </div>
                           <div style={{padding:'6px 8px'}}>
@@ -4198,7 +4198,7 @@ function OT({ role }) {
               );
             })()}
 
-            {/* â”€â”€ TAB HISTORIAL â”€â”€ */}
+            {/* â"€â"€ TAB HISTORIAL â"€â"€ */}
             {activeTab === 'Historial' && (
               <div style={{padding:22}}>
                 <h3 style={{marginBottom:16}}>Historial de eventos</h3>
@@ -4218,7 +4218,7 @@ function OT({ role }) {
                               <div style={{fontSize:13, fontWeight:600}}>{ev.evento}</div>
                               <div style={{fontSize:11, color:'var(--fg-muted)', flexShrink:0}}>{ev.fecha}</div>
                             </div>
-                            {ev.usuario !== 'â€”' && <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:3}}>{ev.usuario}</div>}
+                            {ev.usuario !== 'â€"' && <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:3}}>{ev.usuario}</div>}
                           </div>
                         </div>
                       ))}
@@ -4277,7 +4277,7 @@ function OT({ role }) {
               </div>
 
               <div style={{flex:1, overflowY:'auto', minHeight:0}}>
-              {/* â”€â”€ SecciÃ³n 1: Resumen de ejecuciÃ³n â”€â”€ */}
+              {/* â"€â"€ SecciÃ³n 1: Resumen de ejecuciÃ³n â"€â"€ */}
               <div style={{padding:'20px 24px', borderBottom:'1px solid var(--border)'}}>
                 <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>1. Resumen de ejecuciÃ³n</div>
                 <div className="input-group" style={{marginBottom:12}}>
@@ -4306,7 +4306,7 @@ function OT({ role }) {
                 </div>
               </div>
 
-              {/* â”€â”€ SecciÃ³n 2: Costos (solo con permiso) â”€â”€ */}
+              {/* â"€â"€ SecciÃ³n 2: Costos (solo con permiso) â"€â"€ */}
               {canCost && (
                 <div style={{padding:'20px 24px', borderBottom:'1px solid var(--border)'}}>
                   <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>2. Resumen de costos</div>
@@ -4325,23 +4325,23 @@ function OT({ role }) {
                       ].map(([label, est, real]) => (
                         <tr key={label} style={{borderBottom:'1px solid var(--border-subtle)'}}>
                           <td style={{padding:'8px 0'}}>{label}</td>
-                          <td style={{textAlign:'right', padding:'8px 0', color:'var(--fg-muted)'}}>{est != null ? money(est, sym) : 'â€”'}</td>
-                          <td style={{textAlign:'right', padding:'8px 0', fontWeight: real > 0 ? 600 : 400, color:'var(--fg-muted)', fontSize:12}}>{real > 0 ? money(real, sym) : 'â€”'} <span style={{fontSize:10, color:'var(--fg-muted)'}}>auto</span></td>
+                          <td style={{textAlign:'right', padding:'8px 0', color:'var(--fg-muted)'}}>{est != null ? money(est, sym) : 'â€"'}</td>
+                          <td style={{textAlign:'right', padding:'8px 0', fontWeight: real > 0 ? 600 : 400, color:'var(--fg-muted)', fontSize:12}}>{real > 0 ? money(real, sym) : 'â€"'} <span style={{fontSize:10, color:'var(--fg-muted)'}}>auto</span></td>
                         </tr>
                       ))}
                       <tr style={{borderBottom:'1px solid var(--border-subtle)'}}>
                         <td style={{padding:'6px 0'}}>Servicios terceros</td>
-                        <td style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)'}}>{sel.est_terceros != null ? money(sel.est_terceros, sym) : 'â€”'}</td>
+                        <td style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)'}}>{sel.est_terceros != null ? money(sel.est_terceros, sym) : 'â€"'}</td>
                         <td style={{textAlign:'right', padding:'4px 0'}}><input className="input" type="number" min="0" step="0.01" value={cierreForm.costo_terceros} onChange={e => setCierreForm(v => ({...v, costo_terceros: e.target.value}))} style={{width:110, textAlign:'right', padding:'4px 8px', fontSize:13}}/></td>
                       </tr>
                       <tr style={{borderBottom:'1px solid var(--border-subtle)'}}>
                         <td style={{padding:'6px 0'}}>LogÃ­stica y viÃ¡ticos</td>
-                        <td style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)'}}>{sel.est_logistica != null ? money(sel.est_logistica, sym) : 'â€”'}</td>
+                        <td style={{textAlign:'right', padding:'6px 0', color:'var(--fg-muted)'}}>{sel.est_logistica != null ? money(sel.est_logistica, sym) : 'â€"'}</td>
                         <td style={{textAlign:'right', padding:'4px 0'}}><input className="input" type="number" min="0" step="0.01" value={cierreForm.costo_logistica} onChange={e => setCierreForm(v => ({...v, costo_logistica: e.target.value}))} style={{width:110, textAlign:'right', padding:'4px 8px', fontSize:13}}/></td>
                       </tr>
                       <tr style={{borderTop:'2px solid var(--border)'}}>
                         <td style={{padding:'8px 0', fontWeight:700}}>Total</td>
-                        <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color:'var(--fg-muted)'}}>{costoEst > 0 ? money(costoEst, sym) : 'â€”'}</td>
+                        <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color:'var(--fg-muted)'}}>{costoEst > 0 ? money(costoEst, sym) : 'â€"'}</td>
                         <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color: costoReal > costoEst && costoEst > 0 ? 'var(--danger)' : 'var(--green)'}}>{money(costoReal, sym)}</td>
                       </tr>
                       {margen !== null && (
@@ -4356,14 +4356,14 @@ function OT({ role }) {
                 </div>
               )}
 
-              {/* â”€â”€ SecciÃ³n 3: Conformidad del cliente â”€â”€ */}
+              {/* â"€â"€ SecciÃ³n 3: Conformidad del cliente â"€â"€ */}
               <div style={{padding:'20px 24px', borderBottom:'1px solid var(--border)'}}>
                 <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>3. Conformidad del cliente</div>
                 <div className="col" style={{gap:10}}>
                   {[
-                    { val: 'digital', label: 'SÃ­ â€” firma digital', desc: 'Se genera un link Ãºnico para que el cliente firme en lÃ­nea con nombre y DNI.' },
-                    { val: 'fisico', label: 'SÃ­ â€” documento fÃ­sico', desc: 'Adjunta el documento de conformidad firmado (PDF o imagen).' },
-                    { val: 'pendiente', label: 'No â€” pendiente', desc: 'La OT se cierra tÃ©cnicamente. La conformidad queda pendiente.' },
+                    { val: 'digital', label: 'SÃ­ â€" firma digital', desc: 'Se genera un link Ãºnico para que el cliente firme en lÃ­nea con nombre y DNI.' },
+                    { val: 'fisico', label: 'SÃ­ â€" documento fÃ­sico', desc: 'Adjunta el documento de conformidad firmado (PDF o imagen).' },
+                    { val: 'pendiente', label: 'No â€" pendiente', desc: 'La OT se cierra tÃ©cnicamente. La conformidad queda pendiente.' },
                   ].map(opt => (
                     <label key={opt.val} style={{display:'flex', gap:12, padding:'12px 14px', borderRadius:8, border:`1.5px solid ${cierreForm.conformidad === opt.val ? 'var(--cyan)' : 'var(--border)'}`, background: cierreForm.conformidad === opt.val ? 'color-mix(in srgb, var(--cyan) 6%, transparent)' : 'var(--bg)', cursor:'pointer'}}>
                       <input type="radio" name="conformidad" value={opt.val} checked={cierreForm.conformidad === opt.val} onChange={() => setCierreForm(v => ({...v, conformidad: opt.val, conformidad_archivo: null}))} style={{marginTop:2, flexShrink:0}}/>
@@ -4380,7 +4380,7 @@ function OT({ role }) {
                             />
                             {cierreForm.conformidad_archivo ? (
                               <div style={{display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'var(--bg-subtle)', borderRadius:6, fontSize:12}}>
-                                <span>ðŸ“„</span>
+                                <span>ðŸ"„</span>
                                 <span style={{flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{cierreForm.conformidad_archivo.name}</span>
                                 <button type="button" className="btn btn-ghost" style={{fontSize:11, padding:'2px 6px'}} onClick={() => setCierreForm(v => ({...v, conformidad_archivo: null}))}>Quitar</button>
                               </div>
@@ -4402,7 +4402,7 @@ function OT({ role }) {
                 </div>
               </div>
 
-              {/* â”€â”€ SecciÃ³n 4: Observaciones finales â”€â”€ */}
+              {/* â"€â"€ SecciÃ³n 4: Observaciones finales â"€â"€ */}
               <div style={{padding:'20px 24px'}}>
                 <div style={{fontWeight:700, fontSize:13, marginBottom:14, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5}}>4. Observaciones finales</div>
                 <div className="input-group">
@@ -4412,7 +4412,7 @@ function OT({ role }) {
               </div>
               </div>{/* fin scroll */}
 
-              {/* â”€â”€ Pie â”€â”€ */}
+              {/* â"€â"€ Pie â"€â"€ */}
               <div style={{padding:'16px 24px', borderTop:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0, background:'var(--bg-card)'}}>
                 <button className="btn btn-ghost" onClick={() => setShowCierreForm(false)}>Cancelar</button>
                 <button className="btn btn-primary" disabled={!cierreForm.fecha_fin_real} onClick={confirmarCierreOT}>
@@ -4568,7 +4568,7 @@ function OT({ role }) {
                     <div style={{display:'flex', flexWrap:'wrap', gap:8}}>
                       {p.evidencias.map((ev, i) => (
                         <div key={i} style={{width:72, height:72, borderRadius:6, overflow:'hidden', border:'1px solid var(--border)', background:'var(--bg-subtle)', display:'flex', alignItems:'center', justifyContent:'center'}} title={ev.nombre}>
-                          {ev.tipo?.startsWith('image/') && ev.url ? <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <span style={{fontSize:24}}>ðŸ“„</span>}
+                          {ev.tipo?.startsWith('image/') && ev.url ? <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <span style={{fontSize:24}}>ðŸ"„</span>}
                         </div>
                       ))}
                     </div>
@@ -4717,7 +4717,7 @@ function OT({ role }) {
                     <select className="select" value={formNuevaOT.os_cliente_id} onChange={e => updNuevaOT('os_cliente_id', e.target.value)}>
                       <option value="">{debeTenerOSCliente ? 'Seleccionar OS Cliente...' : 'Sin OS Cliente vinculada'}</option>
                       {osClientes.filter(o => !['cerrada','anulada'].includes(o.estado)).map(o => (
-                        <option key={o.id} value={o.id}>{o.numero} â€” {cuentas.find(c => c.id === o.cuenta_id)?.razon_social || o.cuenta_id}</option>
+                        <option key={o.id} value={o.id}>{o.numero} â€" {cuentas.find(c => c.id === o.cuenta_id)?.razon_social || o.cuenta_id}</option>
                       ))}
                     </select>
                   </div>
@@ -4729,7 +4729,7 @@ function OT({ role }) {
                 <div className="input-group">
                   <label>CECO <span style={{color:'var(--danger)'}}>*</span></label>
                   <select className="select" value={formNuevaOT.centro_costo_id} onChange={e => updNuevaOT('centro_costo_id', e.target.value)}>
-                    <option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'Sin CECOs activos â€” crea uno en Maestros Base'}</option>
+                    <option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'Sin CECOs activos â€" crea uno en Maestros Base'}</option>
                     {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
                   </select>
                 </div>
@@ -4738,11 +4738,11 @@ function OT({ role }) {
                   {formNuevaOT.os_cliente_id ? (
                     <input className="input" readOnly style={{opacity:0.75}}
                       value={cebeHeredado ? `${cebeHeredado.codigo ? cebeHeredado.codigo + ' - ' : ''}${cebeHeredado.nombre}` : ''}
-                      placeholder={formNuevaOT.os_cliente_id ? 'Sin CEBE en la OS â€” asÃ­gnalo primero' : 'Se hereda de la OS Cliente'}
+                      placeholder={formNuevaOT.os_cliente_id ? 'Sin CEBE en la OS â€" asÃ­gnalo primero' : 'Se hereda de la OS Cliente'}
                     />
                   ) : (
                     <select className="select" value={formNuevaOT.centro_beneficio_id} onChange={e => updNuevaOT('centro_beneficio_id', e.target.value)}>
-                      <option value="">{cebesActivos.length ? 'Seleccionar CEBE...' : 'Sin CEBEs activos â€” crea uno en Maestros Base'}</option>
+                      <option value="">{cebesActivos.length ? 'Seleccionar CEBE...' : 'Sin CEBEs activos â€" crea uno en Maestros Base'}</option>
                       {cebesActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}
                     </select>
                   )}
@@ -4787,7 +4787,7 @@ function OT({ role }) {
                 </div>
               </div>
 
-              <div className="eyebrow" style={{marginBottom:12}}>Estimado de costos <span style={{fontSize:11, fontWeight:400, color:'var(--fg-muted)'}}>â€” opcional</span></div>
+              <div className="eyebrow" style={{marginBottom:12}}>Estimado de costos <span style={{fontSize:11, fontWeight:400, color:'var(--fg-muted)'}}>â€" opcional</span></div>
               {formNuevaOT.os_cliente_id && !hcReferencia && (
                 <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:12, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:6}}>
                   Sin hoja de costeo vinculada. El estimado es referencial.
@@ -4861,7 +4861,7 @@ function OT({ role }) {
                         >
                           <option value="">Seleccionar colaborador...</option>
                           {(personalAdmin || []).filter(p => p.estado === 'activo').map(p => (
-                            <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` â€” ${p.cargo}` : ''}</option>
+                            <option key={p.id} value={p.id}>{p.nombre}{p.cargo ? ` â€" ${p.cargo}` : ''}</option>
                           ))}
                           </select>
                         </div>
@@ -4929,10 +4929,10 @@ function Partes() {
 
   const hoy = new Date().toISOString().split('T')[0];
   const getOT = id => ots.find(o => o.id === id);
-  const getOTNumero = id => getOT(id)?.numero || 'â€”';
+  const getOTNumero = id => getOT(id)?.numero || 'â€"';
   const getCuenta = otId => {
     const ot = getOT(otId);
-    return (cuentas || []).find(c => c.id === ot?.cuenta_id)?.razon_social || 'â€”';
+    return (cuentas || []).find(c => c.id === ot?.cuenta_id)?.razon_social || 'â€"';
   };
 
   // NÃºmero de parte legible: PD-YYYY-NNNN basado en orden de creaciÃ³n por aÃ±o
@@ -5218,7 +5218,7 @@ function Partes() {
                     <div style={{display:'flex', flexWrap:'wrap', gap:8}}>
                       {sel.evidencias.map((ev, i) => (
                         <div key={i} style={{width:72, height:72, borderRadius:6, overflow:'hidden', border:'1px solid var(--border)', background:'var(--bg-subtle)', display:'flex', alignItems:'center', justifyContent:'center'}} title={ev.nombre}>
-                          {ev.tipo?.startsWith('image/') && ev.url ? <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <span style={{fontSize:24}}>ðŸ“„</span>}
+                          {ev.tipo?.startsWith('image/') && ev.url ? <img src={ev.url} alt={ev.nombre} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <span style={{fontSize:24}}>ðŸ"„</span>}
                         </div>
                       ))}
                     </div>
@@ -5250,7 +5250,7 @@ function Partes() {
                   </div>
                 )}
 
-                {/* â”€â”€ Reabrir parte aprobado â”€â”€ */}
+                {/* â"€â"€ Reabrir parte aprobado â"€â"€ */}
                 {sel.estado === 'aprobado' && (
                   <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
                     <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>CorrecciÃ³n</div>
@@ -5281,7 +5281,7 @@ function Partes() {
                   </div>
                 )}
 
-                {/* â”€â”€ Bloque de aprobaciÃ³n â”€â”€ */}
+                {/* â"€â"€ Bloque de aprobaciÃ³n â"€â"€ */}
                 {revisable && (
                   <div style={{border:'1px solid var(--border)', borderRadius:10, overflow:'hidden'}}>
                     <div style={{padding:'12px 16px', background:'var(--bg-subtle)', fontWeight:600, fontSize:13, borderBottom:'1px solid var(--border)'}}>DecisiÃ³n del supervisor</div>
@@ -5317,7 +5317,7 @@ function Partes() {
                     {/* Modo: Observar */}
                     {modoAccion === 'observar' && (
                       <div style={{padding:16, gap:12}} className="col">
-                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverÃ¡ al tÃ©cnico para correcciÃ³n. Escribe el motivo â€” serÃ¡ visible para el tÃ©cnico.</div>
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte volverÃ¡ al tÃ©cnico para correcciÃ³n. Escribe el motivo â€" serÃ¡ visible para el tÃ©cnico.</div>
                         <textarea className="input" rows={3} placeholder="Motivo de la observaciÃ³n (obligatorio)..." value={motivoAccion} onChange={e => setMotivoAccion(e.target.value)} autoFocus style={{resize:'vertical'}} />
                         <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
                           <button className="btn btn-secondary btn-sm" onClick={() => { setModoAccion(null); setMotivoAccion(''); }}>Cancelar</button>
@@ -5329,7 +5329,7 @@ function Partes() {
                     {/* Modo: Rechazar */}
                     {modoAccion === 'rechazar' && (
                       <div style={{padding:16, gap:12}} className="col">
-                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte quedarÃ¡ <strong>rechazado definitivamente</strong>. Las horas y materiales no se imputarÃ¡n a la OT. Escribe el motivo â€” serÃ¡ visible para el tÃ©cnico.</div>
+                        <div style={{fontSize:13, color:'var(--fg-muted)'}}>El parte quedarÃ¡ <strong>rechazado definitivamente</strong>. Las horas y materiales no se imputarÃ¡n a la OT. Escribe el motivo â€" serÃ¡ visible para el tÃ©cnico.</div>
                         <textarea className="input" rows={3} placeholder="Motivo del rechazo (obligatorio)..." value={motivoAccion} onChange={e => setMotivoAccion(e.target.value)} autoFocus style={{resize:'vertical', borderColor:'var(--danger)'}} />
                         <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
                           <button className="btn btn-secondary btn-sm" onClick={() => { setModoAccion(null); setMotivoAccion(''); }}>Cancelar</button>
@@ -6001,7 +6001,7 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
         <div>
           <button className="btn btn-ghost btn-sm" onClick={onBack}>Volver</button>
           <h1 className="page-title">{orden.codigo}</h1>
-          <div className="page-sub">{proveedor.razon_social} â€” {money(totalOC)}</div>
+          <div className="page-sub">{proveedor.razon_social} â€" {money(totalOC)}</div>
         </div>
         <div className="row">
           {orden.estado === 'emitida' && <button className="btn btn-secondary" onClick={onConfirmar}>Marcar confirmada</button>}
@@ -6072,8 +6072,8 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
                         <tr key={a.id}>
                           <td>{a.fecha}</td>
                           <td className="num"><strong>{money(a.monto)}</strong></td>
-                          <td className="mono text-muted">{a.referencia || 'â€”'}</td>
-                          <td style={{fontSize:12, color:'var(--fg-muted)'}}>{a.notas || 'â€”'}</td>
+                          <td className="mono text-muted">{a.referencia || 'â€"'}</td>
+                          <td style={{fontSize:12, color:'var(--fg-muted)'}}>{a.notas || 'â€"'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -7146,12 +7146,12 @@ function Compras() {
                 <tbody>{activosFijos.length ? activosFijos.map(g => (
                   <tr key={g.id}>
                     <td><strong>{g.descripcion}</strong></td>
-                    <td>{g.activo_tipo || <span className="text-muted">â€”</span>}</td>
-                    <td className="num">{g.vida_util_anos ? `${g.vida_util_anos} aÃ±os` : <span className="text-muted">â€”</span>}</td>
+                    <td>{g.activo_tipo || <span className="text-muted">â€"</span>}</td>
+                    <td className="num">{g.vida_util_anos ? `${g.vida_util_anos} aÃ±os` : <span className="text-muted">â€"</span>}</td>
                     <td className="num"><strong>{money(g.monto)}</strong></td>
                     <td className="text-muted">{g.fecha}</td>
-                    <td className="text-muted" style={{fontSize:11}}>{g.centro_costo_id || 'â€”'}</td>
-                    <td className="mono text-muted">{g.num_comprobante || 'â€”'}</td>
+                    <td className="text-muted" style={{fontSize:11}}>{g.centro_costo_id || 'â€"'}</td>
+                    <td className="mono text-muted">{g.num_comprobante || 'â€"'}</td>
                   </tr>
                 )) : (
                   <tr><td colSpan="7" style={{textAlign:'center', padding:32, color:'var(--fg-muted)'}}>No hay activos fijos registrados. Usa "Nuevo Registro" y marca "Es activo fijo".</td></tr>
@@ -7173,7 +7173,7 @@ function Compras() {
                 ))}</tbody>
               </>
             )}
-            {activeTab === 'Ã“rdenes de Compra (OC)' && (
+            {activeTab === 'Ã"rdenes de Compra (OC)' && (
               <>
                 <thead><tr><th>OC</th><th>Proveedor</th><th>Fecha</th><th>Monto</th><th>OT</th><th>Entrega</th><th>Estado</th></tr></thead>
                 <tbody>{(ordenesCompra.length ? ordenesCompra : MOCK.ordenesCompra).map(oc => (
@@ -7189,7 +7189,7 @@ function Compras() {
                 ))}</tbody>
               </>
             )}
-            {activeTab === 'Ã“rdenes de Servicio (OSI)' && (
+            {activeTab === 'Ã"rdenes de Servicio (OSI)' && (
               <>
                 <thead><tr><th>OSI</th><th>Proveedor</th><th>Servicio</th><th>Monto</th><th>OT</th><th>Estado</th></tr></thead>
                 <tbody>{(ordenesServicio.length ? ordenesServicio : MOCK.ordenesServicio).map(os => (
@@ -7370,8 +7370,8 @@ function Compras() {
             <div className="form-group">
               <label className="form-label">Centro de Costo (CECO) *</label>
               <select className={`select ${errCecoGasto ? 'input-error' : ''}`} value={gastoForm.centro_costo_id} onChange={e => setG('centro_costo_id', e.target.value)}>
-                <option value="">â€” Seleccionar CECO â€”</option>
-                {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo} â€” {c.nombre}</option>)}
+                <option value="">â€" Seleccionar CECO â€"</option>
+                {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo} â€" {c.nombre}</option>)}
               </select>
               {errCecoGasto && <div style={{color:'var(--danger, #ef4444)', fontSize:12, marginTop:4}}>El CECO es obligatorio para registrar un gasto.</div>}
             </div>
@@ -7401,7 +7401,7 @@ function Compras() {
                     <div className="form-group" style={{margin:0}}>
                       <label className="form-label">Proveedor (opcional)</label>
                       <select className="select" value={gastoCxpProvId} onChange={e => setGastoCxpProvId(e.target.value)}>
-                        <option value="">â€” De la lista â€”</option>
+                        <option value="">â€" De la lista â€"</option>
                         {(proveedores || []).filter(p => p.estado !== 'inactivo').map(p => (
                           <option key={p.id} value={p.id}>{p.razon_social}</option>
                         ))}
@@ -7675,8 +7675,8 @@ function Cierre() {
   const hoy = new Date().toISOString().split('T')[0];
   const mesActual = hoy.slice(0, 7);
 
-  const getCuenta = (id) => { const c = cuentas.find(x => x.id === id); return c?.razon_social || c?.nombre_comercial || id || 'â€”'; };
-  const getTecnico = (id) => { const p = (personalOperativo || []).find(x => x.id === id); return p?.nombre || id || 'â€”'; };
+  const getCuenta = (id) => { const c = cuentas.find(x => x.id === id); return c?.razon_social || c?.nombre_comercial || id || 'â€"'; };
+  const getTecnico = (id) => { const p = (personalOperativo || []).find(x => x.id === id); return p?.nombre || id || 'â€"'; };
   const getOS = (id) => osClientes.find(o => o.id === id);
 
   const otsCerradas = ots.filter(o => ['pendiente_cierre', 'cerrada', 'valorizada', 'facturada'].includes(o.estado));
@@ -7838,12 +7838,12 @@ function Cierre() {
                 return (
                   <tr key={o.id} className="hover-row" onClick={() => abrirFicha(o)} style={{cursor:'pointer'}}>
                     <td className="mono" style={{fontWeight:600}}>{o.numero}</td>
-                    <td style={{fontWeight:500}}>{getCuenta(o.cuenta_id) || o.cliente || 'â€”'}</td>
-                    <td>{os ? <span style={{fontSize:12}}>{os.numero}</span> : <span className="text-muted">â€”</span>}</td>
-                    <td className="text-muted" style={{fontSize:12}}>{c?.fecha || 'â€”'}</td>
+                    <td style={{fontWeight:500}}>{getCuenta(o.cuenta_id) || o.cliente || 'â€"'}</td>
+                    <td>{os ? <span style={{fontSize:12}}>{os.numero}</span> : <span className="text-muted">â€"</span>}</td>
+                    <td className="text-muted" style={{fontSize:12}}>{c?.fecha || 'â€"'}</td>
                     <td style={{fontWeight:600, color:'var(--green)'}}>{c?.avance_final ?? o.avance ?? 0}%</td>
-                    <td style={{fontSize:12}}>{horasReal > 0 ? `${horasReal}h` : 'â€”'}</td>
-                    {canCost && <td className="num" style={{fontSize:12}}>{costoReal > 0 ? money(costoReal) : 'â€”'}</td>}
+                    <td style={{fontSize:12}}>{horasReal > 0 ? `${horasReal}h` : 'â€"'}</td>
+                    {canCost && <td className="num" style={{fontSize:12}}>{costoReal > 0 ? money(costoReal) : 'â€"'}</td>}
                     <td>{conformidadBadge(confTipo)}</td>
                     <td>{valorizBadge(o)}</td>
                     <td onClick={e => e.stopPropagation()}>
@@ -7868,7 +7868,7 @@ function Cierre() {
         </div>
       </div>
 
-      {/* Ficha de cierre â€” panel lateral de solo lectura */}
+      {/* Ficha de cierre â€" panel lateral de solo lectura */}
       {sel && (() => {
         const c = cierreDeOT(sel);
         const os = getOS(sel.os_cliente_id);
@@ -7906,10 +7906,10 @@ function Cierre() {
                   <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
                 </div>
                 <div className="cierre-detail-meta">
-                  <span>Cliente: <strong>{getCuenta(sel.cuenta_id) || sel.cliente || 'â€”'}</strong></span>
-                  <span>OS Cliente: <strong>{os?.numero || 'â€”'}</strong></span>
-                  <span>Responsable: <strong>{sel.responsable || 'â€”'}</strong></span>
-                  <span>Fecha cierre: <strong>{c?.fecha || 'â€”'}</strong></span>
+                  <span>Cliente: <strong>{getCuenta(sel.cuenta_id) || sel.cliente || 'â€"'}</strong></span>
+                  <span>OS Cliente: <strong>{os?.numero || 'â€"'}</strong></span>
+                  <span>Responsable: <strong>{sel.responsable || 'â€"'}</strong></span>
+                  <span>Fecha cierre: <strong>{c?.fecha || 'â€"'}</strong></span>
                   <span className="cierre-detail-badge">Conformidad: {conformidadBadge(confTipo)}</span>
                 </div>
               </div>
@@ -7918,7 +7918,7 @@ function Cierre() {
                 <div className="cierre-detail-score" style={{color:cierreHealthColor}}>{avanceFinal}%</div>
                 <div className="cierre-detail-health-copy">
                   <div><span style={{borderColor:cierreHealthColor, color:cierreHealthColor}}>{cierreHealthLabel}</span></div>
-                  <div className="text-muted">Horas: {horasReal > 0 ? `${horasReal}h` : 'â€”'} - Partes aprobados: {partesAp.length}</div>
+                  <div className="text-muted">Horas: {horasReal > 0 ? `${horasReal}h` : 'â€"'} - Partes aprobados: {partesAp.length}</div>
                 </div>
                 <div className="cierre-detail-progress">
                   <div style={{width:`${Math.min(100, Math.max(0, avanceFinal))}%`, background:cierreHealthColor}}/>
@@ -7938,12 +7938,12 @@ function Cierre() {
                   <div className="col" style={{gap:16}}>
                     <div className="input-group">
                       <label>DescripciÃ³n del trabajo ejecutado</label>
-                      <div style={{padding:'10px 12px', background:'var(--bg-subtle)', borderRadius:6, fontSize:13, lineHeight:1.6, whiteSpace:'pre-wrap', minHeight:80}}>{c?.descripcion_trabajo || 'â€”'}</div>
+                      <div style={{padding:'10px 12px', background:'var(--bg-subtle)', borderRadius:6, fontSize:13, lineHeight:1.6, whiteSpace:'pre-wrap', minHeight:80}}>{c?.descripcion_trabajo || 'â€"'}</div>
                     </div>
                     <div className="grid-2" style={{gap:12}}>
-                      <div><span className="text-muted" style={{fontSize:12}}>Fecha real de inicio</span><div style={{fontWeight:600}}>{c?.fecha_inicio_real || 'â€”'}</div></div>
-                      <div><span className="text-muted" style={{fontSize:12}}>Fecha real de fin</span><div style={{fontWeight:600}}>{c?.fecha || c?.fecha_fin_real || 'â€”'}</div></div>
-                      <div><span className="text-muted" style={{fontSize:12}}>Total horas trabajadas</span><div style={{fontWeight:600}}>{horasReal > 0 ? `${horasReal}h` : 'â€”'}</div></div>
+                      <div><span className="text-muted" style={{fontSize:12}}>Fecha real de inicio</span><div style={{fontWeight:600}}>{c?.fecha_inicio_real || 'â€"'}</div></div>
+                      <div><span className="text-muted" style={{fontSize:12}}>Fecha real de fin</span><div style={{fontWeight:600}}>{c?.fecha || c?.fecha_fin_real || 'â€"'}</div></div>
+                      <div><span className="text-muted" style={{fontSize:12}}>Total horas trabajadas</span><div style={{fontWeight:600}}>{horasReal > 0 ? `${horasReal}h` : 'â€"'}</div></div>
                       <div><span className="text-muted" style={{fontSize:12}}>Avance final</span><div style={{fontWeight:700, fontSize:18, color:'var(--green)'}}>{avanceFinal}%</div></div>
                     </div>
                   </div>
@@ -7968,13 +7968,13 @@ function Cierre() {
                       ].map(([label, est, real]) => (
                         <tr key={label} style={{borderBottom:'1px solid var(--border-subtle)'}}>
                           <td style={{padding:'8px 0'}}>{label}</td>
-                          <td style={{textAlign:'right', padding:'8px 0', color:'var(--fg-muted)'}}>{est != null ? money(est) : 'â€”'}</td>
-                          <td style={{textAlign:'right', padding:'8px 0', fontWeight: real > 0 ? 600 : 400}}>{real > 0 ? money(real) : 'â€”'}</td>
+                          <td style={{textAlign:'right', padding:'8px 0', color:'var(--fg-muted)'}}>{est != null ? money(est) : 'â€"'}</td>
+                          <td style={{textAlign:'right', padding:'8px 0', fontWeight: real > 0 ? 600 : 400}}>{real > 0 ? money(real) : 'â€"'}</td>
                         </tr>
                       ))}
                       <tr style={{borderTop:'2px solid var(--border)'}}>
                         <td style={{padding:'8px 0', fontWeight:700}}>Total</td>
-                        <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color:'var(--fg-muted)'}}>{costoEst > 0 ? money(costoEst) : 'â€”'}</td>
+                        <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color:'var(--fg-muted)'}}>{costoEst > 0 ? money(costoEst) : 'â€"'}</td>
                         <td style={{textAlign:'right', padding:'8px 0', fontWeight:700, color: costoReal > costoEst && costoEst > 0 ? 'var(--danger)' : 'var(--green)'}}>{money(costoReal)}</td>
                       </tr>
                       {margen !== null && (
@@ -7997,10 +7997,10 @@ function Cierre() {
                     </div>
                     {confTipo === 'digital' && c?.conformidad_cliente && (
                       <div className="grid-2" style={{gap:12}}>
-                        <div><span className="text-muted" style={{fontSize:12}}>Firmante</span><div style={{fontWeight:600}}>{c.conformidad_cliente.nombre || 'â€”'}</div></div>
-                        <div><span className="text-muted" style={{fontSize:12}}>DNI</span><div style={{fontWeight:600}}>{c.conformidad_cliente.dni || 'â€”'}</div></div>
-                        <div><span className="text-muted" style={{fontSize:12}}>Fecha y hora</span><div style={{fontWeight:600}}>{c.conformidad_cliente.firmado_at || 'â€”'}</div></div>
-                        <div><span className="text-muted" style={{fontSize:12}}>IP</span><div style={{fontWeight:600, fontFamily:'monospace', fontSize:12}}>{c.conformidad_cliente.ip || 'â€”'}</div></div>
+                        <div><span className="text-muted" style={{fontSize:12}}>Firmante</span><div style={{fontWeight:600}}>{c.conformidad_cliente.nombre || 'â€"'}</div></div>
+                        <div><span className="text-muted" style={{fontSize:12}}>DNI</span><div style={{fontWeight:600}}>{c.conformidad_cliente.dni || 'â€"'}</div></div>
+                        <div><span className="text-muted" style={{fontSize:12}}>Fecha y hora</span><div style={{fontWeight:600}}>{c.conformidad_cliente.firmado_at || 'â€"'}</div></div>
+                        <div><span className="text-muted" style={{fontSize:12}}>IP</span><div style={{fontWeight:600, fontFamily:'monospace', fontSize:12}}>{c.conformidad_cliente.ip || 'â€"'}</div></div>
                       </div>
                     )}
                     {confTipo === 'fisico' && (
@@ -9128,16 +9128,16 @@ function SOLPE() {
 
   return (
     <>
-      <div className=”page-header”>
+      <div className="page-header">
         <div>
-          <h1 className=”page-title”>SOLPE (Pedidos Internos)</h1>
-          <div className=”page-sub”>Requerimientos de almacén generados por el equipo técnico</div>
+          <h1 className="page-title">SOLPE (Pedidos Internos)</h1>
+          <div className="page-sub">Requerimientos de almacén generados por el equipo técnico</div>
         </div>
-        <button className=”btn btn-primary” onClick={() => setShowForm(true)}>{I.plus} Nueva SOLPE</button>
+        <button className="btn btn-primary" onClick={() => setShowForm(true)}>{I.plus} Nueva SOLPE</button>
       </div>
-      <div className=”card mt-6”>
-        <div className=”table-wrap”>
-          <table className=”tbl”>
+      <div className="card mt-6">
+        <div className="table-wrap">
+          <table className="tbl">
             <thead>
               <tr>
                 <th>N° SOLPE</th>
@@ -9156,22 +9156,22 @@ function SOLPE() {
                 const ceco = cecosActivos.find(c => c.id === s.centro_costo_id);
                 const liveSolpe = solpes.find(x => x.id === s.id) || s;
                 return (
-                  <tr key={s.id} className=”hover-row” style={{cursor:'pointer'}} onClick={() => abrirDetalle(liveSolpe)}>
-                    <td className=”mono” style={{fontWeight:600}}>
+                  <tr key={s.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => abrirDetalle(liveSolpe)}>
+                    <td className="mono" style={{fontWeight:600}}>
                       <span
                         style={{color:'var(--primary)', textDecoration:'underline', cursor:'pointer'}}
                         onClick={e => { e.stopPropagation(); abrirDetalle(liveSolpe); }}
                       >
                         {s.numero || s.codigo}
                       </span>
-                      {s.origen === 'automatico' && <span className=”badge badge-cyan” style={{fontSize:10, marginLeft:8}}>🤖 Auto</span>}
+                      {s.origen === 'automatico' && <span className="badge badge-cyan" style={{fontSize:10, marginLeft:8}}>🤖 Auto</span>}
                     </td>
-                    <td className=”mono”>{getOTNumero(s.ot_id)}</td>
+                    <td className="mono">{getOTNumero(s.ot_id)}</td>
                     <td>{s.solicitante || s.area || '—'}</td>
-                    <td className=”text-muted”>{ceco ? `${ceco.codigo} – ${ceco.nombre}` : (s.centro_costo || '—')}</td>
+                    <td className="text-muted">{ceco ? `${ceco.codigo} – ${ceco.nombre}` : (s.centro_costo || '—')}</td>
                     <td>{s.tipo || '—'}</td>
                     <td>{s.prioridad || s.urgencia || '—'}</td>
-                    <td className=”text-muted”>{s.fecha}</td>
+                    <td className="text-muted">{s.fecha}</td>
                     <td>
                       <span className={`badge ${SOLPE_ESTADO_BADGE[liveSolpe.estado] || 'badge-gray'}`}>
                         {(liveSolpe.estado || '').toUpperCase()}
@@ -9179,20 +9179,20 @@ function SOLPE() {
                     </td>
                     <td onClick={e => e.stopPropagation()}>
                       {liveSolpe.estado === 'borrador' && (
-                        <button className=”btn btn-sm btn-primary” onClick={e => handleEnviar(e, liveSolpe)}>Enviar</button>
+                        <button className="btn btn-sm btn-primary" onClick={e => handleEnviar(e, liveSolpe)}>Enviar</button>
                       )}
                       {liveSolpe.estado === 'solicitada' && (
-                        <button className=”btn btn-sm btn-primary” style={{background:'var(--success,#22c55e)', borderColor:'var(--success,#22c55e)'}} onClick={e => handleAtender(e, liveSolpe)}>Atender</button>
+                        <button className="btn btn-sm btn-primary" style={{background:'var(--success,#22c55e)', borderColor:'var(--success,#22c55e)'}} onClick={e => handleAtender(e, liveSolpe)}>Atender</button>
                       )}
                       {liveSolpe.estado === 'aprobada' && (
-                        <span className=”badge badge-gray”>En proceso</span>
+                        <span className="badge badge-gray">En proceso</span>
                       )}
                     </td>
                   </tr>
                 );
               })}
               {filteredSolpes.length === 0 && (
-                <tr><td colSpan=”9” style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>No hay SOLPEs registradas.</td></tr>
+                <tr><td colSpan="9" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>No hay SOLPEs registradas.</td></tr>
               )}
             </tbody>
           </table>
@@ -9203,32 +9203,32 @@ function SOLPE() {
         const s = solpes.find(x => x.id === solpeSeleccionada.id) || solpeSeleccionada;
         const ceco = cecosActivos.find(c => c.id === s.centro_costo_id);
         return <>
-          <div className=”side-panel-backdrop” onClick={() => setSolpeSeleccionada(null)} />
-          <div className=”side-panel”>
-            <div className=”side-panel-head”>
+          <div className="side-panel-backdrop" onClick={() => setSolpeSeleccionada(null)} />
+          <div className="side-panel">
+            <div className="side-panel-head">
               <div>
-                <div className=”eyebrow”>Detalle SOLPE</div>
-                <div className=”font-display” style={{fontSize:18, fontWeight:700, marginTop:2}}>{s.numero || s.codigo}</div>
+                <div className="eyebrow">Detalle SOLPE</div>
+                <div className="font-display" style={{fontSize:18, fontWeight:700, marginTop:2}}>{s.numero || s.codigo}</div>
                 <span className={`badge ${SOLPE_ESTADO_BADGE[s.estado] || 'badge-gray'}`} style={{marginTop:6, display:'inline-block'}}>
                   {(s.estado || '').toUpperCase()}
                 </span>
               </div>
-              <button className=”icon-btn” onClick={() => setSolpeSeleccionada(null)}>{I.x}</button>
+              <button className="icon-btn" onClick={() => setSolpeSeleccionada(null)}>{I.x}</button>
             </div>
-            <div className=”side-panel-body” style={{display:'flex', flexDirection:'column', gap:20}}>
+            <div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:20}}>
               <div>
-                <div className=”form-label” style={{fontWeight:600, marginBottom:8}}>Datos generales</div>
+                <div className="form-label" style={{fontWeight:600, marginBottom:8}}>Datos generales</div>
                 <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, fontSize:14}}>
-                  <div><div className=”text-muted” style={{fontSize:12}}>OT asociada</div><div className=”mono”>{getOTNumero(s.ot_id)}</div></div>
-                  <div><div className=”text-muted” style={{fontSize:12}}>Solicitante</div><div>{s.solicitante || s.area || '—'}</div></div>
-                  <div><div className=”text-muted” style={{fontSize:12}}>Tipo</div><div>{s.tipo || '—'}</div></div>
-                  <div><div className=”text-muted” style={{fontSize:12}}>Urgencia</div><div>{s.prioridad || s.urgencia || '—'}</div></div>
-                  <div><div className=”text-muted” style={{fontSize:12}}>Fecha</div><div>{s.fecha || '—'}</div></div>
-                  <div><div className=”text-muted” style={{fontSize:12}}>CECO</div><div>{ceco ? `${ceco.codigo} – ${ceco.nombre}` : (s.centro_costo || '—')}</div></div>
+                  <div><div className="text-muted" style={{fontSize:12}}>OT asociada</div><div className="mono">{getOTNumero(s.ot_id)}</div></div>
+                  <div><div className="text-muted" style={{fontSize:12}}>Solicitante</div><div>{s.solicitante || s.area || '—'}</div></div>
+                  <div><div className="text-muted" style={{fontSize:12}}>Tipo</div><div>{s.tipo || '—'}</div></div>
+                  <div><div className="text-muted" style={{fontSize:12}}>Urgencia</div><div>{s.prioridad || s.urgencia || '—'}</div></div>
+                  <div><div className="text-muted" style={{fontSize:12}}>Fecha</div><div>{s.fecha || '—'}</div></div>
+                  <div><div className="text-muted" style={{fontSize:12}}>CECO</div><div>{ceco ? `${ceco.codigo} – ${ceco.nombre}` : (s.centro_costo || '—')}</div></div>
                 </div>
               </div>
               <div>
-                <div className=”form-label” style={{fontWeight:600, marginBottom:8}}>Descripción / Ítems</div>
+                <div className="form-label" style={{fontWeight:600, marginBottom:8}}>Descripción / Ítems</div>
                 {s.descripcion && <p style={{fontSize:14, margin:0, marginBottom:8}}>{s.descripcion}</p>}
                 {s.items && s.items.length > 0 && (
                   <ul style={{margin:0, paddingLeft:16, fontSize:14}}>
@@ -9238,23 +9238,23 @@ function SOLPE() {
                   </ul>
                 )}
                 {!s.descripcion && (!s.items || s.items.length === 0) && (
-                  <span className=”text-muted” style={{fontSize:14}}>Sin descripción registrada.</span>
+                  <span className="text-muted" style={{fontSize:14}}>Sin descripción registrada.</span>
                 )}
               </div>
               <div style={{borderTop:'1px solid var(--border)', paddingTop:16}}>
-                <div className=”form-label” style={{fontWeight:600, marginBottom:8}}>Acciones</div>
-                <div className=”row” style={{gap:8, flexWrap:'wrap'}}>
+                <div className="form-label" style={{fontWeight:600, marginBottom:8}}>Acciones</div>
+                <div className="row" style={{gap:8, flexWrap:'wrap'}}>
                   {s.estado === 'borrador' && (
-                    <button className=”btn btn-primary” onClick={e => { handleEnviar(e, s); setSolpeSeleccionada(null); }}>Enviar solicitud</button>
+                    <button className="btn btn-primary" onClick={e => { handleEnviar(e, s); setSolpeSeleccionada(null); }}>Enviar solicitud</button>
                   )}
                   {s.estado === 'solicitada' && (
-                    <button className=”btn btn-primary” style={{background:'var(--success,#22c55e)', borderColor:'var(--success,#22c55e)'}} onClick={e => { handleAtender(e, s); setSolpeSeleccionada(null); }}>Atender SOLPE</button>
+                    <button className="btn btn-primary" style={{background:'var(--success,#22c55e)', borderColor:'var(--success,#22c55e)'}} onClick={e => { handleAtender(e, s); setSolpeSeleccionada(null); }}>Atender SOLPE</button>
                   )}
                   {s.estado === 'aprobada' && (
-                    <span className=”badge badge-blue” style={{padding:'6px 12px'}}>En proceso en Compras</span>
+                    <span className="badge badge-blue" style={{padding:'6px 12px'}}>En proceso en Compras</span>
                   )}
                   {s.estado === 'atendida' && (
-                    <span className=”badge badge-green” style={{padding:'6px 12px'}}>Atendida</span>
+                    <span className="badge badge-green" style={{padding:'6px 12px'}}>Atendida</span>
                   )}
                 </div>
               </div>
@@ -9264,52 +9264,52 @@ function SOLPE() {
       })()}
 
       {showForm && <>
-        <div className=”side-panel-backdrop” onClick={() => setShowForm(false)} />
-        <div className=”side-panel”>
-          <div className=”side-panel-head”>
+        <div className="side-panel-backdrop" onClick={() => setShowForm(false)} />
+        <div className="side-panel">
+          <div className="side-panel-head">
             <div>
-              <div className=”eyebrow”>Nueva solicitud</div>
-              <div className=”font-display” style={{fontSize:18, fontWeight:700, marginTop:2}}>Nueva SOLPE</div>
+              <div className="eyebrow">Nueva solicitud</div>
+              <div className="font-display" style={{fontSize:18, fontWeight:700, marginTop:2}}>Nueva SOLPE</div>
             </div>
-            <button className=”icon-btn” onClick={() => setShowForm(false)}>{I.x}</button>
+            <button className="icon-btn" onClick={() => setShowForm(false)}>{I.x}</button>
           </div>
-          <div className=”side-panel-body” style={{display:'flex', flexDirection:'column', gap:16}}>
-            <div className=”form-group”>
-              <label className=”form-label”>Descripción de la necesidad *</label>
-              <textarea className=”input” rows={3} placeholder=”Describe el requerimiento...” value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
+          <div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:16}}>
+            <div className="form-group">
+              <label className="form-label">Descripción de la necesidad *</label>
+              <textarea className="input" rows={3} placeholder="Describe el requerimiento..." value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
             </div>
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
-              <div className=”form-group”>
-                <label className=”form-label”>Tipo *</label>
-                <select className=”select” value={form.tipo} onChange={e => set('tipo', e.target.value)}>
-                  <option value=”bien”>Bien</option>
-                  <option value=”servicio”>Servicio</option>
+              <div className="form-group">
+                <label className="form-label">Tipo *</label>
+                <select className="select" value={form.tipo} onChange={e => set('tipo', e.target.value)}>
+                  <option value="bien">Bien</option>
+                  <option value="servicio">Servicio</option>
                 </select>
               </div>
-              <div className=”form-group”>
-                <label className=”form-label”>Urgencia *</label>
-                <select className=”select” value={form.prioridad} onChange={e => set('prioridad', e.target.value)}>
-                  <option value=”normal”>Normal</option>
-                  <option value=”urgente”>Urgente</option>
-                  <option value=”critica”>Crítica</option>
+              <div className="form-group">
+                <label className="form-label">Urgencia *</label>
+                <select className="select" value={form.prioridad} onChange={e => set('prioridad', e.target.value)}>
+                  <option value="normal">Normal</option>
+                  <option value="urgente">Urgente</option>
+                  <option value="critica">Crítica</option>
                 </select>
               </div>
             </div>
-            <div className=”form-group”>
-              <label className=”form-label”>Área solicitante *</label>
-              <input className=”input” placeholder=”Ej: Mantenimiento, Operaciones...” value={form.solicitante} onChange={e => set('solicitante', e.target.value)} />
+            <div className="form-group">
+              <label className="form-label">Área solicitante *</label>
+              <input className="input" placeholder="Ej: Mantenimiento, Operaciones..." value={form.solicitante} onChange={e => set('solicitante', e.target.value)} />
             </div>
-            <div className=”form-group”>
-              <label className=”form-label”>Centro de Costo (CECO) *</label>
+            <div className="form-group">
+              <label className="form-label">Centro de Costo (CECO) *</label>
               <select className={`select ${errCeco ? 'input-error' : ''}`} value={form.centro_costo_id} onChange={e => set('centro_costo_id', e.target.value)}>
-                <option value=””>— Seleccionar CECO —</option>
+                <option value="">— Seleccionar CECO —</option>
                 {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo} – {c.nombre}</option>)}
               </select>
               {errCeco && <div style={{color:'var(--danger, #ef4444)', fontSize:12, marginTop:4}}>El CECO es obligatorio para crear una SOLPE.</div>}
             </div>
-            <div className=”row” style={{gap:8, marginTop:8}}>
-              <button className=”btn btn-primary flex-1” onClick={handleSubmit}>{I.check} Crear SOLPE</button>
-              <button className=”btn btn-ghost” onClick={() => setShowForm(false)}>Cancelar</button>
+            <div className="row" style={{gap:8, marginTop:8}}>
+              <button className="btn btn-primary flex-1" onClick={handleSubmit}>{I.check} Crear SOLPE</button>
+              <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -9319,7 +9319,7 @@ function SOLPE() {
 }
 
 
-// â”€â”€â”€ Planner v2 helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Planner v2 helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function otPriorityColor(prioridad) {
   const p = (prioridad || 'normal').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   if (p === 'critica') return '#ef4444';
@@ -9443,8 +9443,8 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
       <div className="card" style={{width:'min(560px,96vw)',maxHeight:'92vh',overflow:'auto',padding:0}} onClick={e=>e.stopPropagation()}>
         <div className="card-head" style={{padding:'16px 20px'}}>
           <div>
-            <h3 style={{margin:0}}>{paso==='resumen'?'Confirmar asignaciÃ³n':'Asignar OT â€” Rango de fechas'}</h3>
-            <div style={{fontSize:12,color:'var(--cyan)',marginTop:2,fontWeight:600}}>{ot?.numero} â€” {ot?.servicio||ot?.descripcion}</div>
+            <h3 style={{margin:0}}>{paso==='resumen'?'Confirmar asignaciÃ³n':'Asignar OT â€" Rango de fechas'}</h3>
+            <div style={{fontSize:12,color:'var(--cyan)',marginTop:2,fontWeight:600}}>{ot?.numero} â€" {ot?.servicio||ot?.descripcion}</div>
           </div>
           <button className="icon-btn" onClick={onClose} style={{fontSize:18}}>Ã—</button>
         </div>
@@ -9478,7 +9478,7 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
               <div className="input-group">
                 <label>Cuadrilla (atajo)</label>
                 <select className="select" value={cuadrilla} onChange={e=>aplicarCuadrilla(e.target.value)}>
-                  <option value="">â€” Seleccionar tÃ©cnicos individualmente â€”</option>
+                  <option value="">â€" Seleccionar tÃ©cnicos individualmente â€"</option>
                   {cuadrillas.map(c=><option key={c.id} value={c.id}>{c.nombre} ({(c.cuadrilla_miembros||[]).length} miembros)</option>)}
                 </select>
               </div>
@@ -9520,9 +9520,9 @@ function ModalAsignacionRango({ otId, onClose, tecnicos, cuadrillas, onConfirm, 
             {/* PASO RESUMEN */}
             <div style={{background:'var(--bg-subtle)',borderRadius:10,padding:'12px 14px',display:'flex',flexDirection:'column',gap:6}}>
               <div style={{fontSize:11,fontWeight:700,color:'var(--fg-muted)',textTransform:'uppercase',letterSpacing:0.5,marginBottom:4}}>Resumen de asignaciÃ³n</div>
-              <div style={{fontSize:13}}><strong>OT:</strong> {ot?.numero} â€” {ot?.servicio||ot?.descripcion}</div>
+              <div style={{fontSize:13}}><strong>OT:</strong> {ot?.numero} â€" {ot?.servicio||ot?.descripcion}</div>
               <div style={{fontSize:13}}><strong>Rango:</strong> {fi} al {ff} <span style={{color:'var(--fg-muted)'}}>({diasRango} dÃ­a{diasRango!==1?'s':''})</span></div>
-              {(hi||hf) && <div style={{fontSize:13}}><strong>Horario:</strong> {hi||'--:--'} â€“ {hf||'--:--'}</div>}
+              {(hi||hf) && <div style={{fontSize:13}}><strong>Horario:</strong> {hi||'--:--'} â€" {hf||'--:--'}</div>}
               <div style={{fontSize:13,marginTop:4}}><strong>TÃ©cnicos ({selTecs.length}):</strong></div>
               <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:2}}>
                 {selTecs.map(tid=>{
@@ -9629,7 +9629,7 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
                 <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px'}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,fontSize:13}}>{tec.nombre||a.tecnico_id}</div>
-                    <div style={{fontSize:11,color:'var(--fg-muted)'}}>{tec.cargo||'â€”'}</div>
+                    <div style={{fontSize:11,color:'var(--fg-muted)'}}>{tec.cargo||'â€"'}</div>
                   </div>
                   <div style={{display:'flex',gap:4,alignItems:'center',flexShrink:0}}>
                     {!esQuitando && !esEdicion && (
@@ -9674,12 +9674,12 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
                 ) : (
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 12px 8px',borderTop:'1px solid rgba(255,255,255,0.04)'}}>
                     <div style={{fontSize:11, color:'var(--cyan)', fontWeight:500}}>
-                      {a.fecha !== fecha && <span style={{marginRight:6,color:'var(--orange)'}}>ðŸ“… {a.fecha}</span>}
-                      {a.hora_inicio_estimada ? a.hora_inicio_estimada.slice(0,5) : 'â€”'} â€“ {a.hora_fin_estimada ? a.hora_fin_estimada.slice(0,5) : 'â€”'}
+                      {a.fecha !== fecha && <span style={{marginRight:6,color:'var(--orange)'}}>ðŸ"… {a.fecha}</span>}
+                      {a.hora_inicio_estimada ? a.hora_inicio_estimada.slice(0,5) : 'â€"'} â€" {a.hora_fin_estimada ? a.hora_fin_estimada.slice(0,5) : 'â€"'}
                     </div>
                     {new Date(fecha) < new Date(new Date().toDateString()) && (
                       <span className={`badge ${hasParte?'badge-green':'badge-orange'}`} style={{fontSize:9}}>
-                        {hasParte?'âœ“ Parte ok':'âš  Sin parte'}
+                        {hasParte?'âœ" Parte ok':'âš  Sin parte'}
                       </span>
                     )}
                   </div>
@@ -9694,7 +9694,7 @@ function PopupDetalleDia({ otId, fecha, asignaciones, tecnicos, partesPendientes
                 <label style={{fontSize:11}}>Seleccionar colaborador</label>
                 <select className="select" value={tecAdd} onChange={e=>setTecAdd(e.target.value)}>
                   <option value="">Seleccionar...</option>
-                  {tecnicos.filter(t=>!tecIdsAsig.has(t.id)).map(t=><option key={t.id} value={t.id}>{t.nombre} â€” {t.cargo||'â€”'}</option>)}
+                  {tecnicos.filter(t=>!tecIdsAsig.has(t.id)).map(t=><option key={t.id} value={t.id}>{t.nombre} â€" {t.cargo||'â€"'}</option>)}
                 </select>
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
@@ -9799,7 +9799,7 @@ function TabCuadrillas({ cuadrillas, tecnicos, especialidades, crearCuadrillaCtx
                         {lider && <div style={{fontSize:11, color:'var(--cyan)', marginTop:2}}>LÃ­der: {lider.nombre}</div>}
                       </td>
                       <td style={{padding:'12px 14px', color:'var(--fg-muted)', maxWidth:220}}>
-                        {c.descripcion || <span style={{color:'var(--fg-muted)', opacity:0.5}}>â€”</span>}
+                        {c.descripcion || <span style={{color:'var(--fg-muted)', opacity:0.5}}>â€"</span>}
                       </td>
                       <td style={{padding:'12px 14px', textAlign:'center'}}>
                         <span style={{display:'inline-flex', alignItems:'center', justifyContent:'center', width:28, height:28, borderRadius:'50%', background:'var(--bg-subtle)', fontWeight:700, fontSize:13, border:'1px solid var(--border)'}}>
@@ -9809,7 +9809,7 @@ function TabCuadrillas({ cuadrillas, tecnicos, especialidades, crearCuadrillaCtx
                       <td style={{padding:'12px 14px'}}>
                         {c.especialidad_principal
                           ? <span style={{fontSize:12, padding:'2px 8px', borderRadius:6, background:'rgba(0,188,212,0.08)', color:'var(--cyan)', border:'1px solid rgba(0,188,212,0.2)'}}>{c.especialidad_principal}</span>
-                          : <span style={{color:'var(--fg-muted)', opacity:0.5}}>â€”</span>}
+                          : <span style={{color:'var(--fg-muted)', opacity:0.5}}>â€"</span>}
                       </td>
                       <td style={{padding:'12px 14px', textAlign:'center'}}>
                         <div style={{display:'flex', gap:4, justifyContent:'center'}}>
@@ -9847,7 +9847,7 @@ function TabCuadrillas({ cuadrillas, tecnicos, especialidades, crearCuadrillaCtx
                 <label>Especialidad principal</label>
                 {especialidades?.length > 0
                   ? <select className="select" value={esp} onChange={e => setEsp(e.target.value)}>
-                      <option value="">â€” Sin especialidad â€”</option>
+                      <option value="">â€" Sin especialidad â€"</option>
                       {especialidades.filter(e => e.estado !== 'inactivo').map(e => <option key={e.id} value={e.nombre}>{e.nombre}</option>)}
                     </select>
                   : <input className="input" value={esp} onChange={e => setEsp(e.target.value)} placeholder="Ej: Electricidad industrial"/>
@@ -9871,7 +9871,7 @@ function TabCuadrillas({ cuadrillas, tecnicos, especialidades, crearCuadrillaCtx
                 <div className="input-group">
                   <label>LÃ­der de cuadrilla <span style={{color:'var(--fg-muted)', fontWeight:400}}>(opcional)</span></label>
                   <select className="select" value={liderId} onChange={e => setLiderId(e.target.value)}>
-                    <option value="">â€” Sin lÃ­der asignado â€”</option>
+                    <option value="">â€" Sin lÃ­der asignado â€"</option>
                     {liderTecs.map(t => <option key={t.id} value={t.id}>{t.nombre} Â· {t.cargo}</option>)}
                   </select>
                 </div>
@@ -10105,7 +10105,7 @@ function construirFilasPorOT({ personalOperativo = [], personalAdmin = [], parte
     const totalHoras = entry.horas_partes + entry.horas_tareos;
     const esAdmin = adminIds.has(entry.personaId);
     const esHon = esModalidadHonorarios(persona);
-    const cliente = (cuentas || []).find(c => c.id === ot?.cuenta_id)?.razon_social || ot?.cliente || 'â€”';
+    const cliente = (cuentas || []).find(c => c.id === ot?.cuenta_id)?.razon_social || ot?.cliente || 'â€"';
     return {
       personaId: persona.id,
       nombre: persona.nombre,
@@ -10423,7 +10423,7 @@ function Planner() {
           <div className="row" style={{background:'var(--bg-subtle)', borderRadius:12, padding:'4px 8px', border:'1px solid var(--border)'}}>
             <button className="icon-btn" onClick={() => setOffsetSemanas(s => s - 1)} title="Semana anterior">{I.chevronLeft}</button>
             <div style={{minWidth:180, textAlign:'center', fontWeight:700, fontSize:13}}>
-              {new Date(semana[0].fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} â€” {new Date(semana[6].fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {new Date(semana[0].fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} â€" {new Date(semana[6].fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
             </div>
             <button className="icon-btn" onClick={() => setOffsetSemanas(s => s + 1)} title="Siguiente semana">{I.chevronRight}</button>
           </div>
@@ -10525,7 +10525,7 @@ function Planner() {
                                   const cli = cuentas.find(c => c.id === ot.cuenta_id);
                                   const bgColor = otPriorityColor(ot.prioridad);
                                   const horario = (a.hora_inicio_estimada && a.hora_fin_estimada)
-                                    ? `${a.hora_inicio_estimada.slice(0,5)}â€“${a.hora_fin_estimada.slice(0,5)}`
+                                    ? `${a.hora_inicio_estimada.slice(0,5)}â€"${a.hora_fin_estimada.slice(0,5)}`
                                     : null;
                                   return (
                                     <div key={a.id}
@@ -10572,7 +10572,7 @@ function Planner() {
 
               {enEjecucionPlanner.length > 0 && (
                 <>
-                  <div style={{padding:'4px 20px 8px', fontSize:11, fontWeight:700, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5, borderTop: sinAsignar.length > 0 ? '1px solid var(--border-subtle)' : 'none', marginTop: sinAsignar.length > 0 ? 4 : 0}}>En curso â€” agregar mÃ¡s dÃ­as</div>
+                  <div style={{padding:'4px 20px 8px', fontSize:11, fontWeight:700, color:'var(--cyan)', textTransform:'uppercase', letterSpacing:.5, borderTop: sinAsignar.length > 0 ? '1px solid var(--border-subtle)' : 'none', marginTop: sinAsignar.length > 0 ? 4 : 0}}>En curso â€" agregar mÃ¡s dÃ­as</div>
                   <div style={{display:'flex', flexWrap:'wrap', gap:10, padding:'0 20px 20px'}}>
                     {enEjecucionPlanner.map(ot => {
                       const diasAsignados = new Set(plannerAsignaciones.filter(a => a.ot_id === ot.id && a.estado !== 'cancelado').map(a => a.fecha)).size;
@@ -10603,7 +10603,7 @@ function Planner() {
           {/* 1. Renovaciones */}
           <div className="card">
             <div className="card-head">
-              <h3>Renovaciones prÃ³ximas <span style={{fontSize:12,fontWeight:400,color:'var(--fg-muted)'}}>â€” 90 dÃ­as</span></h3>
+              <h3>Renovaciones prÃ³ximas <span style={{fontSize:12,fontWeight:400,color:'var(--fg-muted)'}}>â€" 90 dÃ­as</span></h3>
               <span className="badge badge-cyan">{filteredRenovaciones.length}</span>
             </div>
             {filteredRenovaciones.length === 0
@@ -10620,7 +10620,7 @@ function Planner() {
                           <td style={{fontSize:12, color:'var(--fg-muted)', maxWidth:180}}>{r.servicio}</td>
                           <td>{r.fecha_vencimiento}</td>
                           <td><span className={`badge ${badgeClass}`}>{d}d</span></td>
-                          <td>{r.responsable_cs || 'â€”'}</td>
+                          <td>{r.responsable_cs || 'â€"'}</td>
                           <td><span className={'badge '+(r.estado==='renovado'?'badge-green':r.estado==='en_negociacion'?'badge-cyan':r.estado==='en_riesgo'?'badge-red':'badge-gray')}>{r.estado?.replace(/_/g,' ')}</span></td>
                         </tr>
                       );
@@ -10651,7 +10651,7 @@ function Planner() {
                           <td style={{fontWeight:600}}>{getCuentaNombre(o.cuenta_id)}</td>
                           <td>{o.fecha_inicio}</td>
                           <td style={{whiteSpace:'nowrap', fontWeight:600}}>
-                            {total > 0 ? <>{completados} <span style={{color:'var(--fg-muted)', fontWeight:400}}>/ {total}</span></> : 'â€”'}
+                            {total > 0 ? <>{completados} <span style={{color:'var(--fg-muted)', fontWeight:400}}>/ {total}</span></> : 'â€"'}
                           </td>
                           <td style={{minWidth:130}}>
                             <div style={{display:'flex', alignItems:'center', gap:8}}>
@@ -10661,7 +10661,7 @@ function Planner() {
                               <span style={{fontSize:11, fontWeight:700, flexShrink:0, minWidth:28}}>{pct}%</span>
                             </div>
                           </td>
-                          <td>{o.responsable_cs || 'â€”'}</td>
+                          <td>{o.responsable_cs || 'â€"'}</td>
                         </tr>
                       );
                     })}
@@ -10692,7 +10692,7 @@ function Planner() {
                             ))}
                           </div>
                         </td>
-                        <td>{p.responsable_cs || 'â€”'}</td>
+                        <td>{p.responsable_cs || 'â€"'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -10714,8 +10714,8 @@ function Planner() {
                     {filteredNps.map(n => (
                       <tr key={n.id}>
                         <td style={{fontWeight:600}}>{getCuentaNombre(n.cuenta_id)}</td>
-                        <td>{n.fecha_envio || 'â€”'}</td>
-                        <td>{n.responsable_cs || 'â€”'}</td>
+                        <td>{n.fecha_envio || 'â€"'}</td>
+                        <td>{n.responsable_cs || 'â€"'}</td>
                         <td><span className="badge badge-orange">Sin respuesta</span></td>
                       </tr>
                     ))}
@@ -12029,7 +12029,7 @@ function calcularDiasComputables(anio, mes, regimen_jornada, fecha_inicio_ciclo,
   return diasTrabajo;
 }
 
-// â”€â”€ Fase 2: Motor multi-tramo por historial de asignaciones de jornada â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Fase 2: Motor multi-tramo por historial de asignaciones de jornada â"€â"€â"€â"€â"€â"€â"€â"€
 
 function diasCalendarioEnRango(fechaIni, fechaFin) {
   return Math.round((fechaFin - fechaIni) / 86400000) + 1;
@@ -12110,7 +12110,7 @@ function esFeriado(fechaDate) {
   return FERIADOS_PERU.includes(_isoDate(fechaDate));
 }
 
-// Calcula remuneraciÃ³n de un tramo (sin AFP/IR/cargas â€” se aplican sobre el total)
+// Calcula remuneraciÃ³n de un tramo (sin AFP/IR/cargas â€" se aplican sobre el total)
 function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno) {
   const { asignacion, fechaSegIni, fechaSegFin } = seg;
   const iniStr = _isoDate(fechaSegIni);
@@ -12221,7 +12221,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     return { ...result, tramos: [calcularRemuneracionTramo(segmentos[0], sb, result.valor_dia, result.valor_hora, registros, turno)], multi_tramo: false };
   }
 
-  // â”€â”€ Multi-tramo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Multi-tramo â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (esModalidadHonorarios(trabajador)) return null;
 
   const { regimen_laboral_empresa = 'general', uit_vigente = 5500, ram_tope_afp = 12598.91, afp_parametros = [] } = empresaCfg;
@@ -12310,7 +12310,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   const esperadosTotal = tramosCalc.reduce((s, t) => s + (t.esperados || 0), 0);
   const asistidosTotal = tramosCalc.reduce((s, t) => s + (t.asistidos || 0), 0);
 
-  let diasComputablesDisplay = 'â€”';
+  let diasComputablesDisplay = 'â€"';
   if (tramosCalc.some(t => t.tipo === 'ciclo_acumulativo')) {
     diasComputablesDisplay = segmentos.length > 1 ? `${diasCompTotal} (mina)` : diasCompTotal;
   }
@@ -12343,7 +12343,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   };
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg = {}) {
   if (esModalidadHonorarios(trabajador)) return null;
   const {
@@ -12438,7 +12438,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   
   const diasLaborables = esperados;
   const diasBase = esMinero ? diasComputables : diasLaborables;
-  let diasComputablesDisplay = esMinero ? (diasComputables ?? 'â€”') : 'â€”';
+  let diasComputablesDisplay = esMinero ? (diasComputables ?? 'â€"') : 'â€"';
 
   // Proporcionalidad por ingreso o cese dentro del perÃ­odo
   const _fechaCese = trabajador.fecha_fin_contrato    || trabajador.fecha_cese    || null;
@@ -12454,7 +12454,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   }
   const factorProp = esProporcional ? diasEfectivos / 30 : 1;
 
-  // â”€â”€ Enrutamiento por rÃ©gimen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Enrutamiento por rÃ©gimen â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   // GENERAL: sueldo base mensual completo; divisor 30 siempre; proporcionalizaciÃ³n
   //          solo si ingresÃ³/cesÃ³ en el perÃ­odo (factorProp). Sin proporcionalizar por dÃ­as.
   // MINERO:  proporcionalizaciÃ³n por diasComputables del ciclo en sueldoProporcional;
@@ -12486,7 +12486,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const sueldoProporcional = esMinero ? sueldoBase * (diasBase / 30) * factorProp : sueldoBase * factorProp;
   const remuneracionBruta = sueldoProporcional - descFaltas - descTardanzas + addHorasExtra + asignacionFamiliar + bonifAltitud;
 
-  // â”€â”€ Sistema previsional â”€â”€
+  // â"€â"€ Sistema previsional â"€â"€
   const sistema = datosNomina?.sistema_pensionario || trabajador.sistema_pensionario || 'AFP';
   const afpNombre = datosNomina?.afp_nombre || trabajador.afp_nombre || 'Integra';
   const tipoComisionAfp = datosNomina?.tipo_comision_afp || trabajador.tipo_comision_afp || 'mixta';
@@ -12509,14 +12509,14 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const totalDescuentos = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR;
   const neto = remuneracionBruta - totalDescuentos;
 
-  // â”€â”€ Cargas empresa â”€â”€
+  // â"€â"€ Cargas empresa â"€â"€
   const essalud = remuneracionBruta * 0.09;
   const esMicro = regimen_laboral_empresa === 'microempresa';
   const esPequena = regimen_laboral_empresa === 'pequena_empresa';
   const tieneCts = !esMicro;
   const tieneGratif = !esMicro;
-  // â”€â”€ Base computable unificada â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Incluye bonif_altitud como remunerativa (punto de ajuste contable â€” confirmar con contador).
+  // â"€â"€ Base computable unificada â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // Incluye bonif_altitud como remunerativa (punto de ajuste contable â€" confirmar con contador).
   // GratificaciÃ³n, CTS y vacaciones calculan sobre la misma baseComputable.
   const baseComputable = sueldoProporcional + asignacionFamiliar + bonifAltitud;
   const gratificacion = tieneGratif ? baseComputable / (esPequena ? 24 : 12) : 0;
@@ -12899,7 +12899,7 @@ function ControlAsistencia() {
     setMasivo(false);
   };
 
-  // â”€â”€ Funciones Minero â”€â”€
+  // â"€â"€ Funciones Minero â"€â"€
   const getCicloDias = (regimen, trabajador = {}) => {
     if (regimen === 'ciclo_acumulativo') {
       return {
@@ -13054,12 +13054,12 @@ function ControlAsistencia() {
           return <tr key={t.id} style={{background: c.incompleto_ciclo ? 'rgba(239,68,68,0.06)' : undefined}}>
             <td><strong>{t.nombre}</strong></td>
             <td><span className={`badge ${badgeClass}`}>{regimenLabel}</span></td>
-            <td>{c.incompleto_ciclo ? 'â€”' : c.dias_laborables}</td>
-            <td title={c.dias_computables != null ? "Indicador de dÃ­as trabajados del ciclo" : "Asistencias registradas"}>{c.incompleto_ciclo ? 'â€”' : c.dias_computables != null ? `${c.dias_asistidos} (dÃ­as trab. ciclo)` : c.dias_asistidos}</td>
-            <td>{c.incompleto_ciclo ? 'â€”' : c.tardanzas}</td>
-            <td>{c.incompleto_ciclo ? 'â€”' : (faltas > 0 ? <span style={{color:'var(--danger)'}}>{faltas}</span> : '0')}</td>
-            <td>{c.incompleto_ciclo ? 'â€”' : minutesToLabel(c.horas_extra_total_min)}</td>
-            <td>{c.incompleto_ciclo ? 'â€”' : minutesToLabel(regs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</td>
+            <td>{c.incompleto_ciclo ? 'â€"' : c.dias_laborables}</td>
+            <td title={c.dias_computables != null ? "Indicador de dÃ­as trabajados del ciclo" : "Asistencias registradas"}>{c.incompleto_ciclo ? 'â€"' : c.dias_computables != null ? `${c.dias_asistidos} (dÃ­as trab. ciclo)` : c.dias_asistidos}</td>
+            <td>{c.incompleto_ciclo ? 'â€"' : c.tardanzas}</td>
+            <td>{c.incompleto_ciclo ? 'â€"' : (faltas > 0 ? <span style={{color:'var(--danger)'}}>{faltas}</span> : '0')}</td>
+            <td>{c.incompleto_ciclo ? 'â€"' : minutesToLabel(c.horas_extra_total_min)}</td>
+            <td>{c.incompleto_ciclo ? 'â€"' : minutesToLabel(regs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</td>
           </tr>;
         })}
       </tbody></table></div>
@@ -13121,16 +13121,16 @@ function ControlAsistencia() {
               <div>
                 <p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p>
                 <p><strong>RÃ©gimen/Turno:</strong> {calc.incompleto_ciclo ? 'Sin fecha ciclo' : calc.regimen_jornada === 'general' ? resumenTurno?.nombre || 'General' : calc.regimen_jornada.replace('minero_', 'Minero ').replace('x', 'Ã—')}</p>
-                <p><strong>Dias esperados (lab.):</strong> {calc.incompleto_ciclo ? 'â€”' : calc.dias_laborables}</p>
-                <p><strong>Dias asistidos:</strong> {calc.incompleto_ciclo ? 'â€”' : calc.dias_computables != null ? `${calc.dias_asistidos} (dÃ­as trab. ciclo)` : calc.dias_asistidos}</p>
-                <p><strong>Dias con tardanza:</strong> {calc.incompleto_ciclo ? 'â€”' : calc.tardanzas}</p>
-                <p><strong>Minutos tardanza:</strong> {calc.incompleto_ciclo ? 'â€”' : calc.minutos_tardanza_total} minutos</p>
-                <p><strong>Dias con falta:</strong> {calc.incompleto_ciclo ? 'â€”' : faltas}</p>
+                <p><strong>Dias esperados (lab.):</strong> {calc.incompleto_ciclo ? 'â€"' : calc.dias_laborables}</p>
+                <p><strong>Dias asistidos:</strong> {calc.incompleto_ciclo ? 'â€"' : calc.dias_computables != null ? `${calc.dias_asistidos} (dÃ­as trab. ciclo)` : calc.dias_asistidos}</p>
+                <p><strong>Dias con tardanza:</strong> {calc.incompleto_ciclo ? 'â€"' : calc.tardanzas}</p>
+                <p><strong>Minutos tardanza:</strong> {calc.incompleto_ciclo ? 'â€"' : calc.minutos_tardanza_total} minutos</p>
+                <p><strong>Dias con falta:</strong> {calc.incompleto_ciclo ? 'â€"' : faltas}</p>
               </div>
               <div>
-                <p><strong>Horas esperadas:</strong> {calc.incompleto_ciclo ? 'â€”' : `${calc.dias_laborables * (resumenTurno?.horas_efectivas || 8)}h`}</p>
-                <p><strong>Horas efectivas:</strong> {calc.incompleto_ciclo ? 'â€”' : minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</p>
-                <p><strong>Horas extra:</strong> {calc.incompleto_ciclo ? 'â€”' : minutesToLabel(calc.horas_extra_total_min)}</p>
+                <p><strong>Horas esperadas:</strong> {calc.incompleto_ciclo ? 'â€"' : `${calc.dias_laborables * (resumenTurno?.horas_efectivas || 8)}h`}</p>
+                <p><strong>Horas efectivas:</strong> {calc.incompleto_ciclo ? 'â€"' : minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</p>
+                <p><strong>Horas extra:</strong> {calc.incompleto_ciclo ? 'â€"' : minutesToLabel(calc.horas_extra_total_min)}</p>
                 <p><strong>Impacto nomina:</strong> {calc.incompleto_ciclo ? 'Pendiente' : 'DÃ­as laborables y descuentos por faltas/tardanzas.'}</p>
                 <p className="text-muted">CÃ¡lculo sincronizado con la lÃ³gica oficial de NÃ³mina.</p>
               </div>
@@ -13254,8 +13254,8 @@ function Nomina() {
     if (periodosNomina.some(p => p.anio === anio && p.mes === mes)) return;
     const mesN = mesNombres[mes - 1];
     if (empresaCfg.frecuencia_pago === 'quincenal') {
-      const p1 = { id: `nom_${anio}_${mes}_1`, empresa_id: empresa?.id, anio, mes, quincena: 1, periodo: `${mesN} ${anio} â€” 1ra quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q1 || 10).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q1 || 15).padStart(2,'0')}` };
-      const p2 = { id: `nom_${anio}_${mes}_2`, empresa_id: empresa?.id, anio, mes, quincena: 2, periodo: `${mesN} ${anio} â€” 2da quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q2 || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q2 || 30).padStart(2,'0')}` };
+      const p1 = { id: `nom_${anio}_${mes}_1`, empresa_id: empresa?.id, anio, mes, quincena: 1, periodo: `${mesN} ${anio} â€" 1ra quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q1 || 10).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q1 || 15).padStart(2,'0')}` };
+      const p2 = { id: `nom_${anio}_${mes}_2`, empresa_id: empresa?.id, anio, mes, quincena: 2, periodo: `${mesN} ${anio} â€" 2da quincena`, estado: 'abierto', fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q2 || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q2 || 30).padStart(2,'0')}` };
       setPeriodosNomina(prev => [...prev, p1, p2]);
       addNotificacion(`PerÃ­odos de ${mesN} ${anio} generados automÃ¡ticamente.`);
     } else {
@@ -13334,7 +13334,7 @@ function Nomina() {
     const addDias30 = d => { const dt = new Date(`${d}T00:00:00`); dt.setDate(dt.getDate() + 30); return dt.toISOString().split('T')[0]; };
     const vence = addDias30(fechaCierre);
 
-    // â”€â”€ Gastos ER (devengado) â”€â”€
+    // â"€â"€ Gastos ER (devengado) â"€â"€
     if (resumen.total_neto > 0) {
       crearGasto({ tipo:'gasto', descripcion:`Planilla ${periodo.periodo}`, categoria:'planilla', monto:resumen.total_neto, fecha:fechaCierre, origen_registro:'nomina', periodo_nomina_id:periodo.id, estado_pago:'pendiente', estado:'registrado' });
     }
@@ -13342,12 +13342,12 @@ function Nomina() {
       crearGasto({ tipo:'gasto', descripcion:`Cargas sociales ${periodo.periodo}`, categoria:'cargas_sociales', monto:resumen.total_cargas_empresa, fecha:fechaCierre, origen_registro:'nomina', periodo_nomina_id:periodo.id, estado_pago:'pendiente', estado:'registrado' });
     }
 
-    // â”€â”€ CxPs separadas por instituciÃ³n â”€â”€
+    // â"€â"€ CxPs separadas por instituciÃ³n â"€â"€
     // 1. Neto planilla â†’ trabajadores
     if (resumen.total_neto > 0) {
       await generarCxP({
         tipo_beneficiario: 'colectivo',
-        concepto: `Planilla de trabajadores â€” ${periodo.periodo}`,
+        concepto: `Planilla de trabajadores â€" ${periodo.periodo}`,
         fecha_emision: fechaCierre, fecha_vencimiento: vence,
         monto_total: resumen.total_neto, moneda: 'PEN',
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'planilla',
@@ -13359,7 +13359,7 @@ function Nomina() {
     if (totalEssalud > 0) {
       await generarCxP({
         tipo_beneficiario: 'colectivo',
-        concepto: `EsSalud â€” ${periodo.periodo}`,
+        concepto: `EsSalud â€" ${periodo.periodo}`,
         fecha_emision: fechaCierre, fecha_vencimiento: vence,
         monto_total: Math.round(totalEssalud * 100) / 100, moneda: 'PEN',
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'essalud',
@@ -13374,7 +13374,7 @@ function Nomina() {
     if (totalPensiones > 0) {
       await generarCxP({
         tipo_beneficiario: 'colectivo',
-        concepto: `Aportes previsionales ${labelPensiones} â€” ${periodo.periodo}`,
+        concepto: `Aportes previsionales ${labelPensiones} â€" ${periodo.periodo}`,
         fecha_emision: fechaCierre, fecha_vencimiento: vence,
         monto_total: Math.round(totalPensiones * 100) / 100, moneda: 'PEN',
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'pensiones',
@@ -13385,7 +13385,7 @@ function Nomina() {
     if (resumen.total_ir > 0) {
       await generarCxP({
         tipo_beneficiario: 'colectivo',
-        concepto: `RetenciÃ³n IR 5ta categorÃ­a â€” ${periodo.periodo}`,
+        concepto: `RetenciÃ³n IR 5ta categorÃ­a â€" ${periodo.periodo}`,
         fecha_emision: fechaCierre, fecha_vencimiento: vence,
         monto_total: Math.round(resumen.total_ir * 100) / 100, moneda: 'PEN',
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'ir_5ta',
@@ -13399,7 +13399,7 @@ function Nomina() {
       setComisiones(prev => prev.map(c => ids.has(c.id) ? { ...c, estado:'pagada', pagado_en:new Date().toISOString() } : c));
     }
 
-    // â”€â”€ Pagos automÃ¡ticos de prÃ©stamos vinculados a nÃ³mina â”€â”€
+    // â"€â"€ Pagos automÃ¡ticos de prÃ©stamos vinculados a nÃ³mina â"€â"€
     const trabajadoresConPrestamo = calculos.filter(c => c.desc_prestamo > 0);
     if (trabajadoresConPrestamo.length > 0 && empresa?.id) {
       const prestamosActivos = await rrhhService.getPrestamosPersonal(empresa.id);
@@ -13470,13 +13470,13 @@ function Nomina() {
         ))}
       </div>
 
-      {/* â”€â”€ TAB: PERODOS â”€â”€ */}
+      {/* â"€â"€ TAB: PERODOS â"€â"€ */}
       {tab === 'periodos' && (
         <div>
           <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:20}}>
-            <div className="kpi-card"><div className="kpi-label">PerÃ­odo activo</div><div className="kpi-value" style={{fontSize:18}}>{periodo?.periodo || 'â€”'}</div></div>
-            <div className="kpi-card"><div className="kpi-label">PrÃ³xima fecha de corte</div><div className="kpi-value" style={{fontSize:18}}>{proximoCorte?.fecha_corte || 'â€”'}</div></div>
-            <div className="kpi-card"><div className="kpi-label">PrÃ³xima fecha de pago</div><div className="kpi-value" style={{fontSize:18, color:'var(--green)'}}>{proximoCorte?.fecha_pago || 'â€”'}</div></div>
+            <div className="kpi-card"><div className="kpi-label">PerÃ­odo activo</div><div className="kpi-value" style={{fontSize:18}}>{periodo?.periodo || 'â€"'}</div></div>
+            <div className="kpi-card"><div className="kpi-label">PrÃ³xima fecha de corte</div><div className="kpi-value" style={{fontSize:18}}>{proximoCorte?.fecha_corte || 'â€"'}</div></div>
+            <div className="kpi-card"><div className="kpi-label">PrÃ³xima fecha de pago</div><div className="kpi-value" style={{fontSize:18, color:'var(--green)'}}>{proximoCorte?.fecha_pago || 'â€"'}</div></div>
           </div>
           <div style={{display:'flex', flexDirection:'column', gap:12}}>
             {periodosNomina.map(p => (
@@ -13502,7 +13502,7 @@ function Nomina() {
         </div>
       )}
 
-      {/* â”€â”€ TAB: RESUMEN â”€â”€ */}
+      {/* â"€â"€ TAB: RESUMEN â"€â"€ */}
       {tab === 'resumen' && periodo && (
         <div className="card">
           <div className="card-head">
@@ -13518,7 +13518,7 @@ function Nomina() {
           </div>
           {calculos.some(c => c.incompleto_ciclo) && (
             <div className="alert alert-warning" style={{margin:'0 16px 12px',fontSize:12}}>
-              <strong>Datos de ciclo incompletos:</strong> {calculos.filter(c=>c.incompleto_ciclo).map(c=>c.trabajador.nombre).join(', ')} â€” completar fecha de inicio de ciclo en la ficha del trabajador para procesar su pago.
+              <strong>Datos de ciclo incompletos:</strong> {calculos.filter(c=>c.incompleto_ciclo).map(c=>c.trabajador.nombre).join(', ')} â€" completar fecha de inicio de ciclo en la ficha del trabajador para procesar su pago.
             </div>
           )}
           <div className="table-wrap">
@@ -13532,10 +13532,10 @@ function Nomina() {
                   <tr key={c.trabajador_id} style={{cursor:'pointer', background: c.incompleto_ciclo ? 'rgba(239,68,68,0.06)' : undefined}} onClick={()=>setDetallePanel(c)}>
                     <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}{c.es_proporcional && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>{c.dias_efectivos_periodo}d</span>}</div></td>
                     <td>{c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada.startsWith('Mixto') ? <span className="badge badge-purple">{c.regimen_jornada}</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{c.regimen_jornada.replace('minero_','Minero ').replace('x','Ã—')}</span> : <span className="badge badge-gray">General</span>}</td>
-                    {hayMineros && <td>{c.dias_computables_display ?? (c.dias_computables ?? 'â€”')}</td>}
-                    <td style={{fontSize:11}}>{c.turno?.nombre || 'â€”'}</td>
+                    {hayMineros && <td>{c.dias_computables_display ?? (c.dias_computables ?? 'â€"')}</td>}
+                    <td style={{fontSize:11}}>{c.turno?.nombre || 'â€"'}</td>
                     <td title={c.dias_computables != null ? "Indicador de dÃ­as trabajados del ciclo, independiente de marcaciones fÃ­sicas." : "Asistencias registradas"}>
-                      {c.incompleto_ciclo ? 'â€”' : c.dias_computables != null ? (
+                      {c.incompleto_ciclo ? 'â€"' : c.dias_computables != null ? (
                         <div style={{lineHeight: 1.2}}>
                           <div>{c.dias_asistidos}/{c.dias_laborables}</div>
                           <div style={{fontSize: 9, color: 'var(--fg-muted)'}}>dÃ­as trab. ciclo</div>
@@ -13544,13 +13544,13 @@ function Nomina() {
                         `${c.dias_asistidos}/${c.dias_laborables}`
                       )}
                     </td>
-                    <td>{c.incompleto_ciclo ? 'â€”' : (c.faltas_injustificadas > 0 ? <span style={{color:'var(--danger)'}}>{c.faltas_injustificadas}</span> : '0')}</td>
-                    <td>{c.incompleto_ciclo ? 'â€”' : minutesToLabel(c.horas_extra_total_min)}</td>
+                    <td>{c.incompleto_ciclo ? 'â€"' : (c.faltas_injustificadas > 0 ? <span style={{color:'var(--danger)'}}>{c.faltas_injustificadas}</span> : '0')}</td>
+                    <td>{c.incompleto_ciclo ? 'â€"' : minutesToLabel(c.horas_extra_total_min)}</td>
                     <td className="num">{money(c.sueldo_base)}</td>
                     <td className="num">{money(comisionPorTrabajador[c.trabajador_id] || 0)}</td>
-                    <td className="num">{c.incompleto_ciclo ? <span style={{color:'var(--danger)'}}>â€”</span> : money(c.remuneracion_bruta)}</td>
-                    <td className="num">{c.incompleto_ciclo ? 'â€”' : money(c.total_descuentos)}</td>
-                    <td className="num"><strong>{c.incompleto_ciclo ? <span style={{color:'var(--danger)'}}>â€”</span> : money(c.neto)}</strong></td>
+                    <td className="num">{c.incompleto_ciclo ? <span style={{color:'var(--danger)'}}>â€"</span> : money(c.remuneracion_bruta)}</td>
+                    <td className="num">{c.incompleto_ciclo ? 'â€"' : money(c.total_descuentos)}</td>
+                    <td className="num"><strong>{c.incompleto_ciclo ? <span style={{color:'var(--danger)'}}>â€"</span> : money(c.neto)}</strong></td>
                     <td>{!c.incompleto_ciclo && <button className="btn btn-sm btn-secondary" onClick={e=>{e.stopPropagation();setBoleta(c);}}>Boleta</button>}</td>
                   </tr>
                 ))}
@@ -13563,11 +13563,11 @@ function Nomina() {
         </div>
       )}
 
-      {/* â”€â”€ TAB: DETALLE â”€â”€ */}
+      {/* â"€â"€ TAB: DETALLE â"€â"€ */}
       {tab === 'detalle' && periodo && detalle && (
         <div className="card" style={{padding:20}}>
           <div className="card-head">
-            <h3>Detalle por trabajador â€” {periodo.periodo}</h3>
+            <h3>Detalle por trabajador â€" {periodo.periodo}</h3>
             <select className="select" value={trabajadorSel} onChange={e=>setTrabajadorSel(e.target.value)} style={{width:260}}>
               {calculos.map(c => <option key={c.trabajador_id} value={c.trabajador_id}>{c.trabajador.nombre}</option>)}
             </select>
@@ -13589,7 +13589,7 @@ function Nomina() {
               {detalle.desc_tardanzas > 0 && <p style={{color:'var(--danger)'}}>(-) Tardanzas: {money(detalle.desc_tardanzas)}</p>}
               <p style={{fontWeight:700, borderTop:'1px solid var(--border-subtle)', paddingTop:8, marginTop:8}}>Total bruto: {money(detalle.remuneracion_bruta)}</p>
               {!detalle.multi_tramo && detalle.regimen_jornada !== 'general' && <div className="card" style={{padding:'8px 12px', marginTop:12, fontSize:12, background:'rgba(251,191,36,0.08)'}}>
-                <p> DÃ­as laborados en ciclo: {detalle.dias_computables ?? 'â€”'} Â· Horas diarias: {detalle.datosNomina?.horas_diarias_pactadas || 12}h</p>
+                <p> DÃ­as laborados en ciclo: {detalle.dias_computables ?? 'â€"'} Â· Horas diarias: {detalle.datosNomina?.horas_diarias_pactadas || 12}h</p>
                 {detalle.datosNomina?.fecha_inicio_ciclo && <p>Inicio ciclo: {detalle.datosNomina.fecha_inicio_ciclo}</p>}
               </div>}
               {detalle.multi_tramo && detalle.tramos?.length > 0 && <div className="card" style={{padding:'8px 12px', marginTop:12, fontSize:12, background:'rgba(139,92,246,0.06)', borderLeft:'2px solid var(--purple, #7c3aed)'}}>
@@ -13633,10 +13633,10 @@ function Nomina() {
         </div>
       )}
 
-      {/* â”€â”€ TAB: CARGAS â”€â”€ */}
+      {/* â"€â"€ TAB: CARGAS â"€â"€ */}
       {tab === 'cargas' && periodo && (
         <div className="card" style={{padding:20}}>
-          <div className="card-head"><h3>Cargas empresa â€” {periodo.periodo}</h3></div>
+          <div className="card-head"><h3>Cargas empresa â€" {periodo.periodo}</h3></div>
           <div className="grid-2" style={{gap:16}}>
             <div className="card" style={{padding:16}}><strong>ESSALUD (9%)</strong><p className="text-muted">Pagar a SUNAT</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.essalud,0))}</div></div>
             <div className="card" style={{padding:16}}><strong>CTS mensualizada</strong><p className="text-muted">Deposito semestral: mayo y noviembre</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.cts_mensualizado,0))}</div></div>
@@ -13648,12 +13648,12 @@ function Nomina() {
         </div>
       )}
 
-      {/* â”€â”€ TAB: PLAME â”€â”€ */}
+      {/* â"€â"€ TAB: PLAME â"€â"€ */}
       {tab === 'plame' && periodo && (
         <div className="card" style={{padding:20}}>
           <div className="card-head">
             <div>
-              <h3>Reporte para PLAME â€” {periodo.periodo}</h3>
+              <h3>Reporte para PLAME â€" {periodo.periodo}</h3>
               <div className="text-muted" style={{fontSize:12}}>Uso interno. El contador debe cargarlo manualmente en el portal SUNAT/T-Registro.</div>
             </div>
             <span className="badge badge-orange">âš  No reemplaza la declaraciÃ³n oficial ante SUNAT</span>
@@ -13668,7 +13668,7 @@ function Nomina() {
                   {(plameVerTodos ? calculos : calculos.slice(0, 5)).map(c => (
                     <tr key={c.trabajador_id}>
                       <td>DNI</td>
-                      <td>{c.trabajador.documento || c.trabajador.dni || 'â€”'}</td>
+                      <td>{c.trabajador.documento || c.trabajador.dni || 'â€"'}</td>
                       <td>{c.trabajador.nombre}</td>
                       <td>{c.trabajador.tipo === 'admin' ? 'Empleado' : 'Obrero'}</td>
                       <td className="num">{money(c.sueldo_base)}</td>
@@ -13701,7 +13701,7 @@ function Nomina() {
         </div>
       )}
 
-      {/* â”€â”€ Panel detalle trabajador (resumen) â”€â”€ */}
+      {/* â"€â"€ Panel detalle trabajador (resumen) â"€â"€ */}
       {detallePanel && <>
         <div className="side-panel-backdrop" onClick={()=>setDetallePanel(null)}/>
         <div className="side-panel" style={{width:'min(560px,96vw)'}}>
@@ -13746,7 +13746,7 @@ function Nomina() {
       {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{empresa?.nombre}</strong></p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} Â· PerÃ­odo: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p><hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={()=>addNotificacion('Boleta PDF lista.')}>{I.download} Descargar boleta PDF</button></div></div></>}
 
       {/* Modal cierre */}
-      {cierre && <><div className="side-panel-backdrop" onClick={()=>setCierre(false)}/><div className="modal"><div className="modal-head"><h3>Cerrar perÃ­odo â€” {periodo?.periodo}</h3><button className="icon-btn" onClick={()=>setCierre(false)}>{I.x}</button></div><div className="modal-body"><p>Al cerrar se registrarÃ¡ un egreso de planilla por <strong>{money(resumen.total_neto)}</strong> y otro de cargas sociales por <strong>{money(resumen.total_cargas_empresa)}</strong> en Compras y Gastos.</p><p>El reporte PLAME quedarÃ¡ disponible.</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setCierre(false)}>Cancelar</button><button className="btn btn-primary" onClick={cerrarPeriodo}>Confirmar cierre</button></div></div></div></>}
+      {cierre && <><div className="side-panel-backdrop" onClick={()=>setCierre(false)}/><div className="modal"><div className="modal-head"><h3>Cerrar perÃ­odo â€" {periodo?.periodo}</h3><button className="icon-btn" onClick={()=>setCierre(false)}>{I.x}</button></div><div className="modal-body"><p>Al cerrar se registrarÃ¡ un egreso de planilla por <strong>{money(resumen.total_neto)}</strong> y otro de cargas sociales por <strong>{money(resumen.total_cargas_empresa)}</strong> en Compras y Gastos.</p><p>El reporte PLAME quedarÃ¡ disponible.</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setCierre(false)}>Cancelar</button><button className="btn btn-primary" onClick={cerrarPeriodo}>Confirmar cierre</button></div></div></div></>}
     </>
   );
 }
@@ -13788,7 +13788,7 @@ function RRHH_Operativo() {
   const [docPreviewPersona, setDocPreviewPersona] = useState(null);
   const [previewLoadingUrl, setPreviewLoadingUrl] = useState(false);
 
-  // P3 â€” RenovaciÃ³n automÃ¡tica de URL del previsualizador (signed URLs de 10 min)
+  // P3 â€" RenovaciÃ³n automÃ¡tica de URL del previsualizador (signed URLs de 10 min)
   const [visorUrl, setVisorUrl] = useState(null);
   const visorTimerRef = useRef(null);
   useEffect(() => {
@@ -14155,7 +14155,7 @@ function RRHH_Operativo() {
   const countPlanilla = personal.filter(p => !esModalidadHonorarios(p)).length;
   const countHonorarios = personal.filter(p => esModalidadHonorarios(p)).length;
 
-  // â”€â”€ Motor de estado documentario â€” fuente Ãºnica: motor BD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Motor de estado documentario â€" fuente Ãºnica: motor BD â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   // Se elimina el espejo JS. El frontend llama al RPC `calcular_habilitaciones_personal`
   // y agrupa las filas planas en la estructura { personal_id, tiene_cargo, estado_global, docs }.
   const [habilitaciones, setHabilitaciones] = useState([]);
@@ -14244,7 +14244,7 @@ function RRHH_Operativo() {
     for (const h of Object.values(mapa)) {
       for (const d of h.docs) d.doc = docIdx[`${h.personal_id}|${d.tipo_documento_id}`] || null;
     }
-    // Calcular estado_global desde los docs habilitantes (es_habilitante=true) â€” fuente Ãºnica para el badge
+    // Calcular estado_global desde los docs habilitantes (es_habilitante=true) â€" fuente Ãºnica para el badge
     for (const h of Object.values(mapa)) {
       if (h.estado_global === 'sin_configurar') continue;
       h.estado_global = habEstadoGlobalDesdeDocs(h.docs);
@@ -14378,7 +14378,7 @@ function RRHH_Operativo() {
     />
   ) : null;
 
-  // â”€â”€ Ficha de detalle de tÃ©cnico â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Ficha de detalle de tÃ©cnico â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (selTecnico) {
     const p = selTecnico;
     const esHon = esModalidadHonorarios(p);
@@ -14478,7 +14478,7 @@ function RRHH_Operativo() {
             <button className="btn btn-ghost btn-sm" onClick={() => { setSelTecnico(null); setFichaTab('ficha'); }}>{I.chev} Volver</button>
             <div>
               <h1 className="page-title">{p.nombre}</h1>
-              <div className="page-sub">{p.cargo} Â· {p.especialidad} Â· Ingreso: {p.fecha_ingreso || 'â€”'}</div>
+              <div className="page-sub">{p.cargo} Â· {p.especialidad} Â· Ingreso: {p.fecha_ingreso || 'â€"'}</div>
             </div>
           </div>
           <div className="row">
@@ -14513,12 +14513,12 @@ function RRHH_Operativo() {
                   ['Sede base', p.sede],
                   ['Supervisor', p.supervisor],
                   ['Perfil de campo', p.perfil_campo],
-                  ['Centro de costo', centrosCosto?.find(c => c.id === p.centro_costo_id)?.nombre || p.centro_costo_id || 'â€”'],
-                  ['Turno asignado', turnoP ? `${turnoP.nombre} (${turnoP.hora_entrada} â€“ ${turnoP.hora_salida})` : 'Sin turno'],
+                  ['Centro de costo', centrosCosto?.find(c => c.id === p.centro_costo_id)?.nombre || p.centro_costo_id || 'â€"'],
+                  ['Turno asignado', turnoP ? `${turnoP.nombre} (${turnoP.hora_entrada} â€" ${turnoP.hora_salida})` : 'Sin turno'],
                 ].map(([label, val]) => (
                   <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
                     <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                    <div style={{fontWeight:500, fontSize:13}}>{val || 'â€”'}</div>
+                    <div style={{fontWeight:500, fontSize:13}}>{val || 'â€"'}</div>
                   </div>
                 ))}
               </div>
@@ -14531,19 +14531,19 @@ function RRHH_Operativo() {
                 {[
                   ['Tipo de contrato', p.tipo_contrato],
                   ['Fecha inicio', p.fecha_inicio_contrato || p.fecha_ingreso],
-                  ['Fecha fin', p.fecha_fin_contrato || (p.tipo_contrato === 'Indefinido' ? 'Sin fecha de fin' : 'â€”')],
+                  ['Fecha fin', p.fecha_fin_contrato || (p.tipo_contrato === 'Indefinido' ? 'Sin fecha de fin' : 'â€"')],
                   ['RÃ©gimen laboral', p.regimen_laboral],
                   ['RÃ©gimen de jornada', p.regimen_jornada],
                   ['Sueldo base', canFinanzas ? `S/ ${Number(p.sueldo_base||0).toLocaleString()}` : '***'],
                   ['Costo/hora', canFinanzas ? money(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0, p.moneda === 'USD' ? 'US$' : 'S/') + '/hr' : '***'],
                   ['Costo hora extra', canFinanzas ? money(p.costo_hora_extra ?? 0, p.moneda === 'USD' ? 'US$' : 'S/') + '/hr' : '***'],
-                  ['Sistema pensionario', esHon ? 'â€”' : p.sistema_pensionario],
-                  ['AFP', esHon ? 'â€”' : (p.afp_nombre || 'â€”')],
-                  ['Vacaciones disponibles', esHon ? 'â€”' : `${p.dias_vacaciones_disponibles ?? 0} dÃ­as`],
+                  ['Sistema pensionario', esHon ? 'â€"' : p.sistema_pensionario],
+                  ['AFP', esHon ? 'â€"' : (p.afp_nombre || 'â€"')],
+                  ['Vacaciones disponibles', esHon ? 'â€"' : `${p.dias_vacaciones_disponibles ?? 0} dÃ­as`],
                 ].map(([label, val]) => (
                   <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
                     <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                    <div style={{fontWeight:500, fontSize:13}}>{val || 'â€”'}</div>
+                    <div style={{fontWeight:500, fontSize:13}}>{val || 'â€"'}</div>
                   </div>
                 ))}
               </div>
@@ -14581,8 +14581,8 @@ function RRHH_Operativo() {
                   <div>
                     <div style={{fontWeight:600, marginBottom:4}}>AsignaciÃ³n vigente</div>
                     {asigActiva
-                      ? <div><span className="badge badge-green">{tipoTramoLabel[asigActiva.tipo_tramo] || asigActiva.tipo_tramo}</span>{' '}<span className="badge badge-blue">{regimenLabel2[asigActiva.regimen_jornada] || asigActiva.regimen_jornada || 'â€”'}</span><span className="text-muted" style={{fontSize:12, marginLeft:8}}>desde {asigActiva.fecha_inicio}</span>{asigActiva.regimen_jornada === 'ciclo_acumulativo' && <span className="text-muted" style={{fontSize:12, marginLeft:8}}>Ciclo {asigActiva.dias_ciclo_trabajo}Ã—{asigActiva.dias_ciclo_descanso} Â· inicio {asigActiva.fecha_inicio_ciclo}</span>}</div>
-                      : <div className="text-muted" style={{fontSize:13}}>Sin asignaciÃ³n registrada â€” se usa el rÃ©gimen de la ficha ({p.regimen_jornada || 'general'}).</div>
+                      ? <div><span className="badge badge-green">{tipoTramoLabel[asigActiva.tipo_tramo] || asigActiva.tipo_tramo}</span>{' '}<span className="badge badge-blue">{regimenLabel2[asigActiva.regimen_jornada] || asigActiva.regimen_jornada || 'â€"'}</span><span className="text-muted" style={{fontSize:12, marginLeft:8}}>desde {asigActiva.fecha_inicio}</span>{asigActiva.regimen_jornada === 'ciclo_acumulativo' && <span className="text-muted" style={{fontSize:12, marginLeft:8}}>Ciclo {asigActiva.dias_ciclo_trabajo}Ã—{asigActiva.dias_ciclo_descanso} Â· inicio {asigActiva.fecha_inicio_ciclo}</span>}</div>
+                      : <div className="text-muted" style={{fontSize:13}}>Sin asignaciÃ³n registrada â€" se usa el rÃ©gimen de la ficha ({p.regimen_jornada || 'general'}).</div>
                     }
                   </div>
                   <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => { setShowFormAsig(v => !v); setFormAsig(f => ({ ...f, fecha_inicio: '', regimen_jornada: asigActiva?.regimen_jornada || 'general' })); }}>+ Nueva asignaciÃ³n</button>
@@ -14633,15 +14633,15 @@ function RRHH_Operativo() {
                             <td>{a.fecha_inicio}</td>
                             <td>{a.fecha_fin || <span className="badge badge-green" style={{fontSize:10}}>Vigente</span>}</td>
                             <td>{a.tipo_tramo === 'suspension_perfecta' ? <span className="badge badge-orange">SuspensiÃ³n</span> : <span className="badge badge-gray">Normal</span>}</td>
-                            <td>{a.regimen_jornada ? (regimenLabel2[a.regimen_jornada] || a.regimen_jornada) : 'â€”'}</td>
-                            <td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}Ã—${a.dias_ciclo_descanso} (inicio ${a.fecha_inicio_ciclo})` : 'â€”'}</td>
-                            <td className="text-muted">{a.motivo || 'â€”'}</td>
+                            <td>{a.regimen_jornada ? (regimenLabel2[a.regimen_jornada] || a.regimen_jornada) : 'â€"'}</td>
+                            <td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}Ã—${a.dias_ciclo_descanso} (inicio ${a.fecha_inicio_ciclo})` : 'â€"'}</td>
+                            <td className="text-muted">{a.motivo || 'â€"'}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                 }
-                <div className="alert alert-info" style={{fontSize:12, marginTop:16}}>La fecha de ingreso del trabajador ({p.fecha_ingreso || 'â€”'}) nunca se modifica al crear asignaciones de jornada.</div>
+                <div className="alert alert-info" style={{fontSize:12, marginTop:16}}>La fecha de ingreso del trabajador ({p.fecha_ingreso || 'â€"'}) nunca se modifica al crear asignaciones de jornada.</div>
               </div>
             );
           })()}
@@ -14749,7 +14749,7 @@ function RRHH_Operativo() {
           )}
 
           {fichaTab === 'documentos' && (() => {
-            // â”€â”€ Fase 1C: El estado viene del motor BD (calcular_habilitaciones_personal) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // â"€â"€ Fase 1C: El estado viene del motor BD (calcular_habilitaciones_personal) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             const DOC_LBL = HAB_DOC_LABEL;
             const DOC_BDG = HAB_DOC_BADGE;
             
@@ -14758,7 +14758,7 @@ function RRHH_Operativo() {
             const tiposCargados = new Set(hab.docs.map(d => d.tipo_documento_id));
             const tiposRestantes = tipoDocOpts.filter(t => !tiposCargados.has(t.id || t.key));
 
-            // â”€â”€ Badge habilitacional â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // â"€â"€ Badge habilitacional â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             const cfgBadge = { cls: HAB_GLOBAL_BADGE[hab.estado_global] || 'badge-gray', txt: HAB_GLOBAL_LABEL[hab.estado_global] || 'Sin configurar' };
             const docsConProblema = hab.docs.filter(d =>
               ['vencido','rechazado','incompleto','falta','por_vencer','en_revision'].includes(d.estado) && d.obligatorio
@@ -14793,7 +14793,7 @@ function RRHH_Operativo() {
             return (
               <div className="card-body">
 
-                {/* â”€â”€ Badge habilitacional â”€â”€ */}
+                {/* â"€â"€ Badge habilitacional â"€â"€ */}
                 <div style={{marginBottom:20, display:'flex', alignItems:'center', gap:10, padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border-subtle)'}}>
                   <span className={'badge ' + cfgBadge.cls} style={{fontSize:13, padding:'5px 14px', flexShrink:0}}
                     title={tooltipBadge || undefined}>
@@ -14984,7 +14984,7 @@ function RRHH_Operativo() {
                             <div>
                               <div style={{fontWeight:600, fontSize:13}}>{tipoInfo?.nombre || tipoInfo?.label || doc.tipo_doc}</div>
                               <div className="text-muted" style={{fontSize:11}}>
-                                {doc.nombre_archivo || 'â€”'} Â· v{doc.version}
+                                {doc.nombre_archivo || 'â€"'} Â· v{doc.version}
                                 {doc.fecha_emision && ` Â· Emitido: ${doc.fecha_emision}`}
                                 {doc.fecha_vencimiento && ` Â· Vence: ${doc.fecha_vencimiento}`}
                               </div>
@@ -15058,7 +15058,7 @@ function RRHH_Operativo() {
                           <tr key={r.id}>
                             <td>{r.fecha_emision}</td>
                             <td style={{fontSize:12}}>{r.concepto}</td>
-                            <td className="mono text-muted" style={{fontSize:11}}>{r.ot_vinc_id || 'â€”'}</td>
+                            <td className="mono text-muted" style={{fontSize:11}}>{r.ot_vinc_id || 'â€"'}</td>
                             <td className="num"><strong>{money(r.monto_total)}</strong></td>
                             <td>
                               <span className={'badge ' + (r.estado === 'pagada' ? 'badge-green' : r.estado === 'anulada' ? 'badge-gray' : 'badge-orange')}>
@@ -15091,8 +15091,8 @@ function RRHH_Operativo() {
                       {asigRecientes.map(a => (
                         <tr key={a.id}>
                           <td>{a.fecha}</td>
-                          <td className="mono text-muted" style={{fontSize:12}}>{a.ot_id || 'â€”'}</td>
-                          <td className="num">{a.horas_programadas != null ? `${a.horas_programadas}h` : 'â€”'}</td>
+                          <td className="mono text-muted" style={{fontSize:12}}>{a.ot_id || 'â€"'}</td>
+                          <td className="num">{a.horas_programadas != null ? `${a.horas_programadas}h` : 'â€"'}</td>
                           <td><span className={'badge badge-' + (a.estado === 'completado' ? 'green' : a.estado === 'cancelado' ? 'red' : 'cyan')}>{a.estado || 'asignado'}</span></td>
                         </tr>
                       ))}
@@ -15110,7 +15110,7 @@ function RRHH_Operativo() {
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">RRHH Operativo</h1><div className="page-sub">{personal.length} tÃ©cnicos Â· Semana 28 Abr â€“ 2 May 2026</div></div>
+        <div><h1 className="page-title">RRHH Operativo</h1><div className="page-sub">{personal.length} tÃ©cnicos Â· Semana 28 Abr â€" 2 May 2026</div></div>
         <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4}}>
           <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoTecnico} disabled={!turnosOptions.length}>{I.plus} Nuevo Colaborador</button>
           {!turnosOptions.length && <span style={{fontSize:11, color:'var(--danger, #e53e3e)'}}>Crea un turno en Turnos y Horarios para habilitar esta opciÃ³n.</span>}
@@ -15143,7 +15143,7 @@ function RRHH_Operativo() {
                   const esHon = esModalidadHonorarios(p);
                   const turnoNombre = workerTurno(turnosOptions, p).nombre;
                   const contratoTexto = p.fecha_inicio_contrato
-                    ? (p.fecha_fin_contrato ? `${p.fecha_inicio_contrato} â€“ ${p.fecha_fin_contrato}` : `Desde ${p.fecha_inicio_contrato}`)
+                    ? (p.fecha_fin_contrato ? `${p.fecha_inicio_contrato} â€" ${p.fecha_fin_contrato}` : `Desde ${p.fecha_inicio_contrato}`)
                     : null;
                   return (
                     <tr key={p.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => { setSelTecnico(p); setFichaTab('ficha'); }}>
@@ -15155,13 +15155,13 @@ function RRHH_Operativo() {
                       </td>
                       <td>{p.cargo}</td>
                       <td className="text-muted">{p.especialidad}</td>
-                      <td>{p.area || <span className="text-subtle">â€”</span>}</td>
-                      <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">â€”</span>}</td>
+                      <td>{p.area || <span className="text-subtle">â€"</span>}</td>
+                      <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">â€"</span>}</td>
                       <td className="num">{money(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0, p.moneda === 'USD' ? 'US$' : 'S/')}/hr</td>
-                      <td>{esHon ? <span className="text-subtle">â€”</span> : <span className="mono" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>
-                      <td>{esHon ? <span className="text-subtle">â€”</span> : <span className="text-muted" style={{fontSize:12}}>{contratoTexto || 'â€”'}</span>}</td>
+                      <td>{esHon ? <span className="text-subtle">â€"</span> : <span className="mono" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>
+                      <td>{esHon ? <span className="text-subtle">â€"</span> : <span className="text-muted" style={{fontSize:12}}>{contratoTexto || 'â€"'}</span>}</td>
                       <td><span className={'badge '+(esHon ? 'badge-gray' : 'badge-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></td>
-                      <td className="num">{esHon ? <span className="text-subtle">â€”</span> : `${p.dias_vacaciones_disponibles} dÃ­as`}</td>
+                      <td className="num">{esHon ? <span className="text-subtle">â€"</span> : `${p.dias_vacaciones_disponibles} dÃ­as`}</td>
                       <td><span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span></td>
                       <td>
                         <div className="row" style={{gap:6}} onClick={e => e.stopPropagation()}>
@@ -15181,7 +15181,7 @@ function RRHH_Operativo() {
 
       {tab === 'disponibilidad' && (
         <div className="card">
-          <div className="card-head"><h3>Asignaciones â€” Semana 28 Abr â€“ 2 May</h3><span className="text-muted" style={{fontSize:12}}>{personal.filter(p=>p.estado==='disponible').length} disponibles hoy</span></div>
+          <div className="card-head"><h3>Asignaciones â€" Semana 28 Abr â€" 2 May</h3><span className="text-muted" style={{fontSize:12}}>{personal.filter(p=>p.estado==='disponible').length} disponibles hoy</span></div>
           <div style={{overflowX:'auto'}}>
             <table className="tbl" style={{minWidth:700}}>
               <thead>
@@ -15222,7 +15222,7 @@ function RRHH_Operativo() {
       )}
 
       {tab === 'documentos' && (() => {
-        // Estado viene del motor BD â€” fuente Ãºnica (Fase 1C)
+        // Estado viene del motor BD â€" fuente Ãºnica (Fase 1C)
         const DOC_LABEL = HAB_DOC_LABEL;
         const DOC_BADGE = HAB_DOC_BADGE;
         const GLOBAL_LABEL = HAB_GLOBAL_LABEL;
@@ -15493,7 +15493,7 @@ function RRHH_Operativo() {
           </div>
 
           <div className="card">
-            <div className="card-head"><h3>Ranking por Costo/Hora â€” Top tÃ©cnicos activos</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Partes diarios disponibles en mÃ³dulo Partes</span></div>
+            <div className="card-head"><h3>Ranking por Costo/Hora â€" Top tÃ©cnicos activos</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Partes diarios disponibles en mÃ³dulo Partes</span></div>
             {personal.filter(p=>p.estado!=='inactivo').length === 0 ? (
               <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin datos de personal activo.</div>
             ) : (
@@ -15700,7 +15700,7 @@ function RRHH_Operativo() {
                         ? <div className="input-group"><label>ComisiÃ³n por flujo (%)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.pct_comision_afp_flujo} onChange={e=>setFormAlta(v=>({...v,pct_comision_afp_flujo:e.target.value}))}/></div>
                         : <div className="card" style={{padding:'8px 12px',fontSize:12,color:'var(--fg-muted)'}}>ComisiÃ³n mixta: se descuenta del fondo, no del sueldo mensual.</div>
                       }
-                    </> : <div className="card" style={{gridColumn:'1/-1',padding:'10px 14px',fontSize:13}}>ONP â€” Tasa: 13% sobre remuneraciÃ³n asegurable.</div>}
+                    </> : <div className="card" style={{gridColumn:'1/-1',padding:'10px 14px',fontSize:13}}>ONP â€" Tasa: 13% sobre remuneraciÃ³n asegurable.</div>}
                   </div>
                 </>
               )}
@@ -15717,9 +15717,9 @@ function RRHH_Operativo() {
   );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 // SOLICITUDES DE RRHH
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 const SOL_TIPO_LABELS = {
   vacaciones: 'Vacaciones',
@@ -15850,7 +15850,7 @@ export function ComprasGastos() {
   const mesMostrar = (fecha) => (fecha || '').slice(0, 7);
   const mesesDisponibles = [...new Set((comprasGastos || []).map(g => mesMostrar(g.fecha)).filter(Boolean))].sort().reverse();
 
-  const cecoNombre = (id) => centrosCosto?.find(c => c.id === id)?.nombre || id || 'â€”';
+  const cecoNombre = (id) => centrosCosto?.find(c => c.id === id)?.nombre || id || 'â€"';
   const otCodigo = (id) => ots?.find(o => o.id === id)?.codigo || id || null;
 
   const rows = (comprasGastos || []).filter(g => {
@@ -15878,7 +15878,7 @@ export function ComprasGastos() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Compras / Gastos</h1>
-          <div className="page-sub">Registro de gastos directos â€” campo y backoffice</div>
+          <div className="page-sub">Registro de gastos directos â€" campo y backoffice</div>
         </div>
         <button className="btn btn-primary" onClick={() => setPanelNuevoEgreso(true)}>{I.plus} Nuevo egreso</button>
       </div>
@@ -15942,12 +15942,12 @@ export function ComprasGastos() {
                   <tr key={g.id} style={esPendRev ? {background:'color-mix(in srgb, var(--orange) 5%, transparent)'} : undefined}>
                     <td className="text-muted" style={{whiteSpace:'nowrap'}}>{g.fecha}</td>
                     <td>
-                      <div style={{fontWeight:600}}>{g.descripcion || g.concepto || 'â€”'}</div>
+                      <div style={{fontWeight:600}}>{g.descripcion || g.concepto || 'â€"'}</div>
                       {g.responsable && <div style={{fontSize:11, color:'var(--fg-muted)'}}>{g.responsable}</div>}
                       {g.ot_vinc_id && <div style={{fontSize:11, color:'var(--fg-muted)'}}>OT: {otCodigo(g.ot_vinc_id)}</div>}
                     </td>
                     <td style={{fontSize:12}}>{cecoNombre(g.centro_costo_id)}</td>
-                    <td style={{fontSize:12}}>{g.categoria || 'â€”'}</td>
+                    <td style={{fontSize:12}}>{g.categoria || 'â€"'}</td>
                     <td className="num"><strong>{moneyCurrency(g.monto, g.moneda || 'PEN')}</strong></td>
                     <td>
                       <span className={'badge ' + (g.estado_pago === 'pagado' ? 'badge-green' : 'badge-orange')}>
@@ -15961,7 +15961,7 @@ export function ComprasGastos() {
                       }
                     </td>
                     <td style={{textAlign:'center'}}>
-                      {g.num_comprobante ? <span title={g.num_comprobante} style={{color:'var(--green)'}}>{I.receipt}</span> : <span className="text-muted">â€”</span>}
+                      {g.num_comprobante ? <span title={g.num_comprobante} style={{color:'var(--green)'}}>{I.receipt}</span> : <span className="text-muted">â€"</span>}
                     </td>
                     <td>
                       {esCampo && esPendRev && (
@@ -16131,17 +16131,17 @@ export function ComprasGastos() {
                 <span className="badge badge-orange">Pendiente revisiÃ³n</span>
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
-                <div><div className="eyebrow">Concepto</div><div style={{fontWeight:600}}>{selCampo.descripcion || selCampo.concepto || 'â€”'}</div></div>
+                <div><div className="eyebrow">Concepto</div><div style={{fontWeight:600}}>{selCampo.descripcion || selCampo.concepto || 'â€"'}</div></div>
                 <div><div className="eyebrow">Monto</div><div style={{fontFamily:'Sora',fontSize:22,fontWeight:700}}>{money(selCampo.monto)}</div></div>
                 <div><div className="eyebrow">Fecha</div><div>{selCampo.fecha}</div></div>
                 <div><div className="eyebrow">CECO</div><div>{cecoNombre(selCampo.centro_costo_id)}</div></div>
-                <div><div className="eyebrow">CategorÃ­a</div><div>{selCampo.categoria || 'â€”'}</div></div>
-                <div><div className="eyebrow">Comprobante</div><div className="mono">{selCampo.num_comprobante || 'â€”'}</div></div>
+                <div><div className="eyebrow">CategorÃ­a</div><div>{selCampo.categoria || 'â€"'}</div></div>
+                <div><div className="eyebrow">Comprobante</div><div className="mono">{selCampo.num_comprobante || 'â€"'}</div></div>
               </div>
               {selCampo.responsable && <div style={{marginBottom:12}}><div className="eyebrow">Responsable</div><div>{selCampo.responsable}</div></div>}
               <div className="row mt-6" style={{gap:8}}>
                 <button className="btn btn-primary flex-1" disabled={confirmando} onClick={() => confirmarGastoCampo(selCampo)}>
-                  {I.check} Confirmar â€” marcar revisado
+                  {I.check} Confirmar â€" marcar revisado
                 </button>
                 <button className="btn btn-ghost" onClick={() => setSelCampo(null)}>Cancelar</button>
               </div>
@@ -16361,7 +16361,7 @@ export function SolicitudesRrhh() {
   const accionSol = solicitudes.find(s => s.id === accionSolId);
   const historialSol = solicitudes.find(s => s.id === historialSolId);
 
-  // â”€â”€ Filas de tabla compartida â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Filas de tabla compartida â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   function SolFila({ sol, accionesExtra }) {
     return (
       <tr>
@@ -16375,7 +16375,7 @@ export function SolicitudesRrhh() {
             {SOL_TIPO_LABELS[sol.tipo] || sol.tipo}
           </div>
         </td>
-        <td style={{whiteSpace:'nowrap', fontSize:12}}>{sol.fecha_inicio} â€” {sol.fecha_fin}</td>
+        <td style={{whiteSpace:'nowrap', fontSize:12}}>{sol.fecha_inicio} â€" {sol.fecha_fin}</td>
         <td style={{textAlign:'center'}}>{sol.dias_habiles}</td>
         <td><span className={'badge ' + solEstadoBadge(sol.estado)}>{SOL_ESTADO_LABELS[sol.estado] || sol.estado}</span></td>
         <td>
@@ -16388,7 +16388,7 @@ export function SolicitudesRrhh() {
     );
   }
 
-  // â”€â”€ Tabla genÃ©rica â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Tabla genÃ©rica â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   function TablaBase({ filas }) {
     return (
       <table className="table" style={{width:'100%'}}>
@@ -16405,7 +16405,7 @@ export function SolicitudesRrhh() {
 
   const loadingBlock = <div className="text-muted" style={{padding:40, textAlign:'center'}}>Cargando...</div>;
 
-  // â”€â”€ Tab Mis solicitudes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Tab Mis solicitudes â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const tabMis = (
     <div>
       <div className="row" style={{gap:12, marginBottom:16, flexWrap:'wrap', alignItems:'center'}}>
@@ -16433,7 +16433,7 @@ export function SolicitudesRrhh() {
     </div>
   );
 
-  // â”€â”€ Tab Pendientes de aprobar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Tab Pendientes de aprobar â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const tabPendientes = (
     <div>
       {pendientesAprobacion.length === 0
@@ -16475,7 +16475,7 @@ export function SolicitudesRrhh() {
     </div>
   );
 
-  // â”€â”€ Tab Todas las solicitudes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Tab Todas las solicitudes â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const tabTodas = (
     <div>
       <div className="row" style={{gap:10, marginBottom:14, flexWrap:'wrap'}}>
@@ -16517,7 +16517,7 @@ export function SolicitudesRrhh() {
     </div>
   );
 
-  // â”€â”€ Tab Calendario â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Tab Calendario â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const TIPO_COLORES = {
     vacaciones: 'var(--cyan)', permiso_con_goce: 'var(--green)',
     permiso_sin_goce: 'var(--amber)', licencia_medica: 'var(--red)',
@@ -16576,7 +16576,7 @@ export function SolicitudesRrhh() {
     </div>
   );
 
-  // â”€â”€ Panel nueva solicitud â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Panel nueva solicitud â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const tiposOrdenados = Object.entries(SOL_TIPO_LABELS);
   const reqDoc = solicitudesRrhhService.requiereDocumento(form.tipo);
   const excedeSaldo = form.tipo === 'vacaciones' && diasHabiles > saldoVac.saldo && diasHabiles > 0;
@@ -16628,7 +16628,7 @@ export function SolicitudesRrhh() {
             </div>
             <div style={{marginBottom:14, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:8, fontSize:13}}>
               DÃ­as hÃ¡biles: <strong>{diasHabiles}</strong>
-              {excedeSaldo && <span style={{color:'var(--red)', marginLeft:8}}>â€” Supera tu saldo ({saldoVac.saldo} dÃ­as disponibles)</span>}
+              {excedeSaldo && <span style={{color:'var(--red)', marginLeft:8}}>â€" Supera tu saldo ({saldoVac.saldo} dÃ­as disponibles)</span>}
             </div>
 
             <div className="input-group" style={{marginBottom:14}}>
@@ -16658,7 +16658,7 @@ export function SolicitudesRrhh() {
     </>
   ) : null;
 
-  // â”€â”€ Panel historial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Panel historial â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const panelHistorial = historialSolId ? (
     <>
       <div className="side-panel-backdrop" onClick={cerrarPaneles}/>
@@ -16698,7 +16698,7 @@ export function SolicitudesRrhh() {
     </>
   ) : null;
 
-  // â”€â”€ Panel acciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Panel acciÃ³n â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const accionTitulos = {
     aprobar_jefe: 'Aprobar solicitud', rechazar_jefe: 'Rechazar solicitud',
     confirmar_rrhh: 'Confirmar en RRHH', rechazar_rrhh: 'Rechazar en RRHH', anular: 'Anular solicitud',
@@ -16718,7 +16718,7 @@ export function SolicitudesRrhh() {
         <div className="side-panel-body">
           <div className="card" style={{padding:12, marginBottom:14, fontSize:13}}>
             <div>{SOL_TIPO_LABELS[accionSol?.tipo]} Â· {accionSol?.dias_habiles} dÃ­as hÃ¡biles</div>
-            <div className="text-muted">{accionSol?.fecha_inicio} â€” {accionSol?.fecha_fin}</div>
+            <div className="text-muted">{accionSol?.fecha_inicio} â€" {accionSol?.fecha_fin}</div>
             <div style={{marginTop:6}}>{accionSol?.motivo}</div>
           </div>
           <div className="input-group" style={{marginBottom:14}}>
@@ -16792,7 +16792,7 @@ export function SolicitudesRrhh() {
 export { Cuentas, OT, Partes, Compras, Proveedores, CotizacionesCompras, OrdenesCompra, OrdenesServicio, Recepciones, ControlAsistencia, Nomina, Backlog, Cierre, Remision, SOLPE, Planner, Tickets, RRHH_Operativo };
 
 // ============================================================
-// TAREO ADMINISTRATIVO â€” vista desktop (consulta y reporte)
+// TAREO ADMINISTRATIVO â€" vista desktop (consulta y reporte)
 // Registro lo hacen colaboradores desde PWA o desde la OT.
 // ============================================================
 export function TareoAdmin() {
@@ -16951,12 +16951,12 @@ export function TareoAdmin() {
               </div>
             </div>
 
-            {/* OTs vinculadas â€” solo lectura, derivadas de participantes_admin en OTs */}
+            {/* OTs vinculadas â€" solo lectura, derivadas de participantes_admin en OTs */}
             {otVinsActual.length > 0 && (
               <div style={{marginBottom:16}}>
                 <div style={{fontSize:11, fontWeight:700, color:'var(--fg-muted)', letterSpacing:'0.05em', marginBottom:6, display:'flex', alignItems:'center', gap:8}}>
                   OTS VINCULADAS
-                  <span style={{fontWeight:400, fontSize:11}}>Solo lectura â€” gestionar desde la OT</span>
+                  <span style={{fontWeight:400, fontSize:11}}>Solo lectura â€" gestionar desde la OT</span>
                 </div>
                 <div className="table-wrap">
                   <table className="tbl">
@@ -16969,7 +16969,7 @@ export function TareoAdmin() {
                       return (
                         <tr key={ot.id} style={{background:'var(--bg-subtle)'}}>
                           <td><strong>{ot.numero}</strong></td>
-                          <td className="text-muted">{cuenta?.razon_social || cuenta?.nombre_comercial || 'â€”'}</td>
+                          <td className="text-muted">{cuenta?.razon_social || cuenta?.nombre_comercial || 'â€"'}</td>
                           <td className="num">{horas_estimadas}h</td>
                           <td><span className={'badge ' + est.cls}>{est.label}</span></td>
                         </tr>
@@ -17038,8 +17038,8 @@ export function TareoAdmin() {
                           <td><span className={'badge ' + (t.tipo === 'ot' ? 'badge-cyan' : 'badge-navy')}>{t.tipo === 'ot' ? 'OT' : 'Libre'}</span></td>
                           <td className="text-muted">
                             {t.tipo === 'ot'
-                              ? (getOT(t.ot_id)?.numero || t.ot_id || 'â€”')
-                              : (t.ceco_nombre || getCeco(t.ceco_id)?.nombre || 'â€”')}
+                              ? (getOT(t.ot_id)?.numero || t.ot_id || 'â€"')
+                              : (t.ceco_nombre || getCeco(t.ceco_id)?.nombre || 'â€"')}
                           </td>
                           <td className="num">{t.horas}h</td>
                           <td className="num">{moneyD(Number(t.horas || 0) * tarifaPersonal(t.personal_id), symPersonal(t.personal_id))}</td>
@@ -17077,12 +17077,12 @@ export function TareoAdmin() {
               </div>
             </div>
 
-            {/* OTs vinculadas del colaborador filtrado â€” solo en vista individual */}
+            {/* OTs vinculadas del colaborador filtrado â€" solo en vista individual */}
             {filtroPersonal && otVinsActual.length > 0 && (
               <div style={{marginBottom:16}}>
                 <div style={{fontSize:11, fontWeight:700, color:'var(--fg-muted)', letterSpacing:'0.05em', marginBottom:6, display:'flex', alignItems:'center', gap:8}}>
                   OTS VINCULADAS
-                  <span style={{fontWeight:400, fontSize:11}}>Solo lectura â€” gestionar desde la OT</span>
+                  <span style={{fontWeight:400, fontSize:11}}>Solo lectura â€" gestionar desde la OT</span>
                 </div>
                 <div className="table-wrap">
                   <table className="tbl">
@@ -17095,7 +17095,7 @@ export function TareoAdmin() {
                       return (
                         <tr key={ot.id} style={{background:'var(--bg-subtle)'}}>
                           <td><strong>{ot.numero}</strong></td>
-                          <td className="text-muted">{cuenta?.razon_social || cuenta?.nombre_comercial || 'â€”'}</td>
+                          <td className="text-muted">{cuenta?.razon_social || cuenta?.nombre_comercial || 'â€"'}</td>
                           <td className="num">{horas_estimadas}h</td>
                           <td><span className={'badge ' + est.cls}>{est.label}</span></td>
                         </tr>
@@ -17239,7 +17239,7 @@ export function ControlHoras() {
           return {
             empresa_id: empresa?.id,
             user_id: userId,
-            texto: `${r.nombre} registro solo ${r.total.toFixed(1)}h en ${label} â€” por debajo del 50% de su base de ${r.horasBase.toFixed(1)}h`,
+            texto: `${r.nombre} registro solo ${r.total.toFixed(1)}h en ${label} â€" por debajo del 50% de su base de ${r.horasBase.toFixed(1)}h`,
           };
         })
         .filter(Boolean);
@@ -17428,11 +17428,11 @@ export function ControlHoras() {
                                 {r.otDescripcion && <div className="text-muted" style={{ fontSize: 11 }}>{r.otDescripcion}</div>}
                               </td>
                               <td style={{ fontSize: 13 }}>{r.cliente}</td>
-                              <td className="num">{r.horas_partes > 0 ? `${r.horas_partes.toFixed(1)}h` : 'â€”'}</td>
-                              <td className="num">{r.horas_tareos > 0 ? `${r.horas_tareos.toFixed(1)}h` : 'â€”'}</td>
+                              <td className="num">{r.horas_partes > 0 ? `${r.horas_partes.toFixed(1)}h` : 'â€"'}</td>
+                              <td className="num">{r.horas_tareos > 0 ? `${r.horas_tareos.toFixed(1)}h` : 'â€"'}</td>
                               <td className="num" style={{ fontWeight: 700 }}>{r.total_horas.toFixed(1)}h</td>
-                              <td className="num">{r.tarifa > 0 ? moneyD(r.tarifa, r.moneda) : 'â€”'}</td>
-                              <td className="num">{r.tarifa > 0 ? moneyD(r.costo, r.moneda) : 'â€”'}</td>
+                              <td className="num">{r.tarifa > 0 ? moneyD(r.tarifa, r.moneda) : 'â€"'}</td>
+                              <td className="num">{r.tarifa > 0 ? moneyD(r.costo, r.moneda) : 'â€"'}</td>
                               {i === 0 ? (
                                 <td rowSpan={grupo.filas.length} style={{ verticalAlign: 'top', paddingTop: 10 }}>
                                   {grupo.modalidad === 'Honorarios' ? (
@@ -17444,7 +17444,7 @@ export function ControlHoras() {
                                         </span>
                                       </div>
                                     ) : <span className="text-muted" style={{ fontSize: 12 }}>Sin RHE</span>
-                                  ) : <span className="text-muted" style={{ fontSize: 12 }}>â€”</span>}
+                                  ) : <span className="text-muted" style={{ fontSize: 12 }}>â€"</span>}
                                 </td>
                               ) : null}
                             </tr>
@@ -17454,7 +17454,7 @@ export function ControlHoras() {
                             <td colSpan={4}></td>
                             <td className="num" style={{ fontWeight: 700 }}>{grupo.totalHoras.toFixed(1)}h</td>
                             <td></td>
-                            <td className="num" style={{ fontWeight: 700 }}>{grupo.totalCosto > 0 ? moneyD(grupo.totalCosto, grupo.moneda) : 'â€”'}</td>
+                            <td className="num" style={{ fontWeight: 700 }}>{grupo.totalCosto > 0 ? moneyD(grupo.totalCosto, grupo.moneda) : 'â€"'}</td>
                             <td></td>
                           </tr>
                         </React.Fragment>
