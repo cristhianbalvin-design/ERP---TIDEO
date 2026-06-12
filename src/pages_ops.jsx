@@ -5713,7 +5713,8 @@ function proveedorById(proveedores, id) {
   return proveedores.find(p => p.id === id) || { razon_social:'Proveedor no encontrado', nombre_comercial:'', calificacion_promedio:null, condicion_pago:'', estado:'inactivo' };
 }
 
-const OC_FORM_INIT = { proveedor_id:'prv_001', origen_compra:'directa', proceso_compra_id:'', solpe_id:'', solpe_codigo:'', ot_id:'', centro_costo_id:'', descripcion:'', fecha_entrega_esperada:'2025-04-30', items:[{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:1000 }] };
+const OC_FORM_INIT = { proveedor_id:'', origen_compra:'directa', proceso_compra_id:'', solpe_id:'', solpe_codigo:'', ot_id:'', centro_costo_id:'', descripcion:'', fecha_entrega_esperada:'2025-04-30', items:[{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:1000 }] };
+const nuevaOCForm = (proveedorId = '') => ({ ...OC_FORM_INIT, proveedor_id: proveedorId || '' });
 const OC_COLUMNAS_OPCIONALES_INSERT = new Set(['condicion_pago', 'solpe_id', 'solpe_codigo', 'origen_tipo', 'notas_proveedor', 'notas_internas', 'creado_por']);
 const schemaCacheMissingColumn = (error, tableName = 'ordenes_compra') => {
   const message = [error?.message, error?.details, error?.hint].filter(Boolean).join(' ');
@@ -5899,8 +5900,14 @@ function OrdenesCompra() {
   const handledSolpeParamRef = useRef('');
   const list = ordenesCompra.filter(o => tab === 'todas' || o.estado === tab);
   const homologados = proveedores.filter(p => p.estado === 'homologado' || p.estado === 'observado');
+  const proveedoresOC = homologados.length ? homologados : proveedores;
   const solpesDisponibles = (solpes || []).filter(s => solpeDisponibleParaOC(s, ordenesCompra, procesosCompra));
   const kpi = { emitidas: ordenesCompra.length, pendientes: ordenesCompra.filter(o=>o.porcentaje_recibido<100).length, parcial: ordenesCompra.filter(o=>o.estado==='recibida_parcial').length, total: ordenesCompra.reduce((s,o)=>s+(o.total||0),0) };
+
+  useEffect(() => {
+    if (!panel || form.proveedor_id || !proveedoresOC.length) return;
+    setForm(v => ({ ...v, proveedor_id: proveedoresOC[0].id }));
+  }, [panel, form.proveedor_id, proveedoresOC]);
 
   useEffect(() => {
     const solpeId = activeParams?.solpeId;
@@ -5924,6 +5931,8 @@ function OrdenesCompra() {
 
   const crear = async (emitir=true) => {
     if (!form.centro_costo_id) { addToast('Selecciona un Centro de Costo (CECO) antes de continuar.'); return; }
+    const proveedorSeleccionado = proveedores.find(p => p.id === form.proveedor_id);
+    if (!proveedorSeleccionado) { addToast('Selecciona un proveedor valido antes de emitir la OC.'); return; }
     const selectedSolpe = form.solpe_id ? (solpes || []).find(s => s.id === form.solpe_id) : null;
     const items = (form.items || []).map(item => {
       const mat = (materiales || []).find(m => m.id === item.material_id);
@@ -5941,7 +5950,7 @@ function OrdenesCompra() {
     }).filter(item => item.descripcion && item.cantidad > 0);
     if (!items.length) { addToast('Agrega al menos un item con cantidad mayor a cero.'); return; }
     const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
-    const p = proveedorById(proveedores, form.proveedor_id);
+    const p = proveedorSeleccionado;
     const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:subtotal*0.18, total:subtotal*1.18, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:form.solpe_id ? `SOLPE origen: ${form.solpe_codigo || form.solpe_id}` : '', creado_por: authUser?.id || null };
     const crearOCCompatible = async (payloadBase) => {
       let payload = { ...payloadBase };
@@ -5962,7 +5971,7 @@ function OrdenesCompra() {
       if (form.solpe_id && (!('solpe_id' in payloadUsado) || !('solpe_codigo' in payloadUsado) || !('origen_tipo' in payloadUsado))) setOrdenesCompra(prev => prev.map(o => o.id === ocGuardada.id ? { ...o, solpe_id:form.solpe_id, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo, origen_tipo:'solpe' } : o));
       if (form.solpe_id) await marcarSolpeOCGenerada(form.solpe_id, ocGuardada);
       addNotificacion(`${oc.codigo} ${emitir?'emitida':'guardada como borrador'}.`);
-      setForm(OC_FORM_INIT);
+      setForm(nuevaOCForm(proveedoresOC[0]?.id));
       setPanel(false);
     } catch (error) {
       addToast(`No se pudo guardar la OC: ${error.message}`);
@@ -5971,11 +5980,11 @@ function OrdenesCompra() {
   if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} onBack={()=>setSel(null)} onConfirmar={()=>setOrdenesCompra(prev=>prev.map(o=>o.id===sel.id?{...o,estado:'confirmada'}:o))} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
   return (
     <>
-      <div className="page-header"><div><h1 className="page-title">Ordenes de Compra</h1><div className="page-sub">Bienes, materiales e ingreso a inventario</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>{ setForm(OC_FORM_INIT); setPanel(true); }}>{I.plus} Nueva OC</button></div>
+      <div className="page-header"><div><h1 className="page-title">Ordenes de Compra</h1><div className="page-sub">Bienes, materiales e ingreso a inventario</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>{ setForm(nuevaOCForm(proveedoresOC[0]?.id)); setPanel(true); }}>{I.plus} Nueva OC</button></div>
       <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas este mes</div><div className="kpi-value">{kpi.emitidas}</div></div><div className="kpi-card"><div className="kpi-label">Pendientes recepcion</div><div className="kpi-value">{kpi.pendientes}</div></div><div className="kpi-card"><div className="kpi-label">Recibidas parcial</div><div className="kpi-value">{kpi.parcial}</div></div><div className="kpi-card"><div className="kpi-label">Valor total mes</div><div className="kpi-value">{money(kpi.total)}</div></div></div>
       <div className="tabs">{['todas','emitida','confirmada','en_transito','recibida_parcial','cerrada','anulada'].map(t=><div key={t} className={'tab '+(tab===t?'active':'')} onClick={()=>setTab(t)}>{t.replace('_',' ')}</div>)}</div>
       <OrdenesTable list={list} proveedores={proveedores} onSel={setSel} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>
-      {panel && <PanelOC form={form} setForm={setForm} proveedores={homologados} procesos={procesosCompra} solpes={solpesDisponibles} ots={ots} centrosCosto={centrosCosto} materiales={materiales} empresaId={empresa?.id} onClose={()=>setPanel(false)} onCrear={crear}/>}
+      {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} solpes={solpesDisponibles} ots={ots} centrosCosto={centrosCosto} materiales={materiales} empresaId={empresa?.id} onClose={()=>setPanel(false)} onCrear={crear}/>}
     </>
   );
 }
