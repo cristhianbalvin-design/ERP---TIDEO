@@ -5,6 +5,7 @@ const round2 = v => Math.round((Number(v) || 0) * 100) / 100;
 export const TIPOS_CESE_LABELS = {
   renuncia_voluntaria:  'Renuncia Voluntaria',
   despido_arbitrario:   'Despido Arbitrario',
+  despido_falta_grave:  'Despido justificado por falta grave',
   mutuo_acuerdo:        'Mutuo Acuerdo',
   vencimiento_contrato: 'Vencimiento de Contrato',
   fallecimiento:        'Fallecimiento',
@@ -171,7 +172,7 @@ export function calcularConceptos(params) {
   const mesesCompSem = Math.min(6, Math.max(0, Math.floor(msMesSem / (30.44 * 86400000))));
 
   const aplicaGrat = !esMicro && (
-    ['despido_arbitrario','mutuo_acuerdo','vencimiento_contrato','fallecimiento'].includes(tipoCese) ||
+    ['despido_arbitrario','despido_falta_grave','mutuo_acuerdo','vencimiento_contrato','fallecimiento'].includes(tipoCese) ||
     (tipoCese === 'renuncia_voluntaria' && mesesCompSem >= 1)
   );
   const montoGrat  = aplicaGrat ? round2(remComputable * (mesesCompSem / 6) * (esMype ? 0.5 : 1)) : 0;
@@ -220,6 +221,9 @@ export function calcularConceptos(params) {
       descIndem  = `Régimen general: 1.5 rem. mensual × (${anios}a ${meses}m ${dias}d) (tope 12 rem.) = S/ ${montoIndem.toFixed(2)}`;
     }
   }
+  const motivoIndemNoAplica = tipoCese === 'despido_falta_grave'
+    ? 'Despido justificado por falta grave - no corresponde indemnizacion'
+    : 'Solo aplica para despido arbitrario';
 
   conceptos.push({
     concepto: 'indemnizacion',
@@ -229,7 +233,7 @@ export function calcularConceptos(params) {
       : 'No aplica — tipo de cese no genera indemnización',
     monto: montoIndem,
     aplica: aplicaIndem,
-    motivo_no_aplica: aplicaIndem ? null : 'Solo aplica para despido arbitrario',
+    motivo_no_aplica: aplicaIndem ? null : motivoIndemNoAplica,
     es_descuento: false,
     orden: 5,
   });
@@ -360,6 +364,8 @@ export async function crearLiquidacion(empresaId, payload, creadoPor = null) {
     estado:                 'calculada',
     beneficiario_nombre:    payload.beneficiario_nombre || null,
     beneficiario_dni:       payload.beneficiario_dni    || null,
+    motivo_falta_grave:     payload.motivo_falta_grave  || null,
+    evidencia_url:          payload.evidencia_url       || null,
     parametros_calculo:     payload.parametros          || {},
     creado_por:             creadoPor,
   };
@@ -448,14 +454,19 @@ export async function confirmarLiquidacion(liquidacionId, params = {}, confirmed
 
   // Marcar colaborador como cesado
   const tablaPersonal = liq.personal_tipo === 'operativo' ? 'personal_operativo' : 'personal_administrativo';
+  const cambiosPersonal = {
+    estado_laboral: 'cesado',
+    fecha_cese:     liq.fecha_cese,
+    tipo_cese:      liq.tipo_cese,
+    estado:         'inactivo',
+  };
+  if (liq.tipo_cese === 'despido_falta_grave') {
+    cambiosPersonal.no_recontratar = true;
+    cambiosPersonal.no_recontratar_motivo = liq.motivo_falta_grave || 'Despido justificado por falta grave';
+  }
   await supabase
     .from(tablaPersonal)
-    .update({
-      estado_laboral: 'cesado',
-      fecha_cese:     liq.fecha_cese,
-      tipo_cese:      liq.tipo_cese,
-      estado:         'inactivo',
-    })
+    .update(cambiosPersonal)
     .eq('id', liq.personal_id);
 
   const { data: conceptos } = await supabase
@@ -487,7 +498,7 @@ export async function anularLiquidacion(liquidacionId, motivo, anuladoPor = null
     const tablaPersonal = liq.personal_tipo === 'operativo' ? 'personal_operativo' : 'personal_administrativo';
     await supabase
       .from(tablaPersonal)
-      .update({ estado_laboral: 'activo', fecha_cese: null, tipo_cese: null, estado: 'activo' })
+      .update({ estado_laboral: 'activo', fecha_cese: null, tipo_cese: null, estado: 'activo', no_recontratar: false, no_recontratar_motivo: null })
       .eq('id', liq.personal_id);
 
     if (liq.cxp_id) {

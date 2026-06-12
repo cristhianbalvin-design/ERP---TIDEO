@@ -742,3 +742,218 @@ export function GuiaRemisionPDF({ guia, cfg }) {
     </Document>
   );
 }
+
+// ── Papeleta de Movimiento DI-FG-48 ──────────────────────────────────────────
+
+const papStyles = StyleSheet.create({
+  page: { fontFamily: 'Helvetica', fontSize: 9, color: '#1a1a1a', padding: 32 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  logo: { width: 90, height: 36, objectFit: 'contain' },
+  titleBlock: { textAlign: 'center', flex: 1 },
+  titleMain: { fontSize: 13, fontFamily: 'Helvetica-Bold', letterSpacing: 1 },
+  titleSub: { fontSize: 8, color: '#555', marginTop: 2 },
+  codeLabel: { fontSize: 7.5, color: '#888', marginTop: 1 },
+  correlativo: { fontSize: 10, fontFamily: 'Helvetica-Bold', textAlign: 'right', color: '#1a5fa8' },
+  sep: { borderBottomWidth: 1, borderColor: '#dde3ea', marginVertical: 8 },
+  sectionLabel: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#1a5fa8', letterSpacing: 0.8, marginBottom: 5, textTransform: 'uppercase' },
+  row2: { flexDirection: 'row', gap: 12, marginBottom: 10 },
+  infoBox: { flex: 1, borderWidth: 1, borderColor: '#e0e7ef', borderRadius: 3, padding: 8 },
+  fieldLabel: { fontSize: 6.5, color: '#888', marginBottom: 2 },
+  fieldVal: { fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
+  checkGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
+  checkItem: { flexDirection: 'row', alignItems: 'center', gap: 4, width: '30%' },
+  checkbox: { width: 10, height: 10, borderWidth: 1, borderColor: '#555', borderRadius: 2, alignItems: 'center', justifyContent: 'center' },
+  checkMark: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#1a5fa8' },
+  checkLabel: { fontSize: 8 },
+  motivoBox: { borderWidth: 1, borderColor: '#e0e7ef', borderRadius: 3, padding: 8, marginBottom: 10, minHeight: 40 },
+  motivoText: { fontSize: 8.5 },
+  fechasRow: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+  fechaBox: { flex: 1, borderWidth: 1, borderColor: '#e0e7ef', borderRadius: 3, padding: 8, alignItems: 'center' },
+  fechaLabel: { fontSize: 6.5, color: '#888', marginBottom: 3 },
+  fechaVal: { fontSize: 9, fontFamily: 'Helvetica-Bold' },
+  firmasRow: { flexDirection: 'row', gap: 16, marginTop: 24 },
+  firmaBox: { flex: 1, alignItems: 'center' },
+  firmaLine: { borderBottomWidth: 1, borderColor: '#555', width: '100%', marginVertical: 6 },
+  firmaName: { fontSize: 8, fontFamily: 'Helvetica-Bold' },
+  firmaRole: { fontSize: 7, color: '#666' },
+  firmaFecha: { fontSize: 7, color: '#999', marginTop: 2 },
+  firmaImg: { height: 36, objectFit: 'contain', marginBottom: 2, maxWidth: 100 },
+  papFooter: { position: 'absolute', bottom: 20, left: 32, right: 32, borderTopWidth: 1, borderColor: '#dde3ea', paddingTop: 4, textAlign: 'center', fontSize: 7, color: '#aaa' },
+});
+
+const CONCEPTOS_PAPELETA = [
+  ['vacaciones', 'Vacaciones'],
+  ['permiso_con_goce', 'Permiso con goce'],
+  ['permiso_sin_goce', 'Permiso sin goce'],
+  ['licencia_medica', 'Descanso médico'],
+  ['licencia_maternidad', 'Lic. maternidad'],
+  ['licencia_paternidad', 'Lic. paternidad'],
+  ['compensacion_horas', 'Comp. de horas'],
+  ['bajada', 'Bajada de mina'],
+  ['comision_trabajo', 'Comisión de trabajo'],
+];
+
+const CLASIF_LABELS = [
+  ['remunerado', 'Remunerado'],
+  ['no_remunerado', 'No remunerado'],
+  ['recuperacion_horas', 'Recuperación de horas'],
+];
+
+function PapCheckBox({ checked }) {
+  return (
+    <View style={papStyles.checkbox}>
+      {checked && <Text style={papStyles.checkMark}>X</Text>}
+    </View>
+  );
+}
+
+export function PapeletaMovimientoPDF({ solicitud, empresa, historial = [] }) {
+  const cfg = empresa?.configuracion || {};
+
+  const aprobJefe = historial.find(h => h.estado_hasta === 'aprobada_jefe');
+  const confirmRrhh = historial.find(h => h.estado_hasta === 'confirmada_rrhh');
+
+  const fechaConfirmStr = solicitud.fecha_confirmacion
+    ? new Date(solicitud.fecha_confirmacion).toLocaleDateString('es-PE')
+    : (confirmRrhh?.creado_en ? new Date(confirmRrhh.creado_en).toLocaleDateString('es-PE') : '—');
+  const fechaAprobStr = solicitud.fecha_aprobacion_jefe
+    ? new Date(solicitud.fecha_aprobacion_jefe).toLocaleDateString('es-PE')
+    : (aprobJefe?.creado_en ? new Date(aprobJefe.creado_en).toLocaleDateString('es-PE') : '—');
+
+  const cantidadLabel = solicitud.unidad === 'horas'
+    ? `${solicitud.cantidad_horas || 0} horas`
+    : `${solicitud.dias_habiles || 0} días hábiles`;
+
+  return (
+    <Document>
+      <Page size="A4" style={papStyles.page}>
+        {/* Encabezado */}
+        <View style={papStyles.header}>
+          {cfg.logo_url
+            ? <Image src={cfg.logo_url} style={papStyles.logo} />
+            : <View style={[papStyles.logo, { backgroundColor: '#f0f4f8', borderRadius: 4 }]} />
+          }
+          <View style={papStyles.titleBlock}>
+            <Text style={papStyles.titleMain}>PAPELETA DE MOVIMIENTO</Text>
+            <Text style={papStyles.titleSub}>{cfg.razon_social || empresa?.nombre || ''}</Text>
+            <Text style={papStyles.codeLabel}>Código: DI-FG-48</Text>
+          </View>
+          <View>
+            {solicitud.numero_correlativo && (
+              <Text style={papStyles.correlativo}>{solicitud.numero_correlativo}</Text>
+            )}
+          </View>
+        </View>
+
+        <View style={papStyles.sep} />
+
+        {/* Datos del colaborador */}
+        <Text style={papStyles.sectionLabel}>Datos del colaborador</Text>
+        <View style={papStyles.row2}>
+          <View style={papStyles.infoBox}>
+            <Text style={papStyles.fieldLabel}>NOMBRE COMPLETO</Text>
+            <Text style={papStyles.fieldVal}>{solicitud.personal_nombre || '—'}</Text>
+          </View>
+          <View style={[papStyles.infoBox, { flex: 0.5 }]}>
+            <Text style={papStyles.fieldLabel}>DNI</Text>
+            <Text style={papStyles.fieldVal}>{solicitud.personal_dni || '—'}</Text>
+          </View>
+          <View style={[papStyles.infoBox, { flex: 0.5 }]}>
+            <Text style={papStyles.fieldLabel}>ÁREA</Text>
+            <Text style={papStyles.fieldVal}>{solicitud.personal_area || '—'}</Text>
+          </View>
+        </View>
+        <View style={papStyles.row2}>
+          <View style={papStyles.infoBox}>
+            <Text style={papStyles.fieldLabel}>CARGO</Text>
+            <Text style={papStyles.fieldVal}>{solicitud.personal_cargo || '—'}</Text>
+          </View>
+        </View>
+
+        <View style={papStyles.sep} />
+
+        {/* Tipo de movimiento */}
+        <Text style={papStyles.sectionLabel}>Tipo de movimiento</Text>
+        <View style={papStyles.checkGrid}>
+          {CONCEPTOS_PAPELETA.map(([key, label]) => (
+            <View key={key} style={papStyles.checkItem}>
+              <PapCheckBox checked={solicitud.tipo === key} />
+              <Text style={papStyles.checkLabel}>{label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Clasificación de pago */}
+        <Text style={[papStyles.sectionLabel, { marginTop: 4 }]}>Clasificación</Text>
+        <View style={[papStyles.checkGrid, { marginBottom: 8 }]}>
+          {CLASIF_LABELS.map(([key, label]) => (
+            <View key={key} style={papStyles.checkItem}>
+              <PapCheckBox checked={solicitud.clasificacion_pago === key} />
+              <Text style={papStyles.checkLabel}>{label}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={papStyles.sep} />
+
+        {/* Motivo */}
+        <Text style={papStyles.sectionLabel}>Motivo / Sustento</Text>
+        <View style={papStyles.motivoBox}>
+          <Text style={papStyles.motivoText}>{solicitud.motivo || '—'}</Text>
+        </View>
+
+        {/* Fechas y duración */}
+        <View style={papStyles.fechasRow}>
+          <View style={papStyles.fechaBox}>
+            <Text style={papStyles.fechaLabel}>FECHA DE INICIO</Text>
+            <Text style={papStyles.fechaVal}>{solicitud.fecha_inicio || '—'}</Text>
+          </View>
+          <View style={papStyles.fechaBox}>
+            <Text style={papStyles.fechaLabel}>FECHA DE FIN</Text>
+            <Text style={papStyles.fechaVal}>{solicitud.fecha_fin || '—'}</Text>
+          </View>
+          {solicitud.fecha_retorno && (
+            <View style={papStyles.fechaBox}>
+              <Text style={papStyles.fechaLabel}>RETORNO PROGRAMADO</Text>
+              <Text style={papStyles.fechaVal}>{solicitud.fecha_retorno}</Text>
+            </View>
+          )}
+          <View style={papStyles.fechaBox}>
+            <Text style={papStyles.fechaLabel}>DURACIÓN</Text>
+            <Text style={papStyles.fechaVal}>{cantidadLabel}</Text>
+          </View>
+        </View>
+
+        {/* Firmas */}
+        <View style={papStyles.firmasRow}>
+          <View style={papStyles.firmaBox}>
+            <View style={papStyles.firmaLine} />
+            <Text style={papStyles.firmaName}>{solicitud.personal_nombre || '—'}</Text>
+            <Text style={papStyles.firmaRole}>Trabajador</Text>
+            <Text style={papStyles.firmaFecha}>Solicitud: {solicitud.creado_en ? new Date(solicitud.creado_en).toLocaleDateString('es-PE') : '—'}</Text>
+          </View>
+          <View style={papStyles.firmaBox}>
+            <View style={papStyles.firmaLine} />
+            <Text style={papStyles.firmaName}>{solicitud.aprobador_nombre || aprobJefe?.usuario || '—'}</Text>
+            <Text style={papStyles.firmaRole}>Jefe de área</Text>
+            <Text style={papStyles.firmaFecha}>Aprobación: {fechaAprobStr}</Text>
+          </View>
+          <View style={papStyles.firmaBox}>
+            {cfg.firma_url
+              ? <Image src={cfg.firma_url} style={papStyles.firmaImg} />
+              : <View style={{ height: 36 }} />
+            }
+            <View style={papStyles.firmaLine} />
+            <Text style={papStyles.firmaName}>{solicitud.confirmado_por || confirmRrhh?.usuario || '—'}</Text>
+            <Text style={papStyles.firmaRole}>Administrador / RRHH</Text>
+            <Text style={papStyles.firmaFecha}>Confirmación: {fechaConfirmStr}</Text>
+          </View>
+        </View>
+
+        <View style={papStyles.papFooter} fixed>
+          <Text>{[cfg.razon_social, 'DI-FG-48', solicitud.numero_correlativo].filter(Boolean).join('  ·  ')}</Text>
+        </View>
+      </Page>
+    </Document>
+  );
+}

@@ -49,6 +49,8 @@ const Servicios    = lazy(() => import('./pages_admin.jsx').then(m => ({ default
 const Tarifarios   = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Tarifarios })));
 const Parametros   = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Parametros })));
 const RRHHAdmin    = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.RRHHAdmin })));
+const Reclutamiento = lazy(() => import('./pages_reclutamiento.jsx').then(m => ({ default: m.Reclutamiento })));
+const MiPortal      = lazy(() => import('./pages_mi_portal.jsx').then(m => ({ default: m.MiPortal })));
 const MetricasSaaS = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.MetricasSaaS })));
 const Organigrama  = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Organigrama })));
 const Comisiones         = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Comisiones })));
@@ -95,6 +97,7 @@ const ApiKeys           = lazy(() => import('./pages_api_keys.jsx').then(m => ({
 // Páginas públicas (acceso directo por hash URL, sin autenticación)
 const PaginaAceptacion    = lazy(() => import('./pages_aceptar.jsx').then(m => ({ default: m.PaginaAceptacion })));
 const PaginaConformidadOT = lazy(() => import('./pages_aceptar.jsx').then(m => ({ default: m.PaginaConformidadOT })));
+const PostulacionPublica  = lazy(() => import('./pages_reclutamiento.jsx').then(m => ({ default: m.PostulacionPublica })));
 
 // ─── iOS Install Banner ───────────────────────────────────────────────────────
 
@@ -282,7 +285,7 @@ function MainLayout() {
       navigate('dashboard');
       return;
     }
-    if (allowed && !allowed.has(active)) {
+    if (allowed && active !== 'mi_portal' && !allowed.has(active)) {
       navigate('dashboard');
     }
   }, [roleKey, active, isSuperadmin]);
@@ -302,7 +305,9 @@ function MainLayout() {
       case 'bi_operativo':     return <BIOperativo />;
       case 'marketing':        return <Marketing />;
       case 'planner':          return <Planner />;
+      case 'mi_portal':        return <MiPortal />;
       case 'rrhh_operativo':   return <RRHH_Operativo />;
+      case 'reclutamiento':    return <Reclutamiento />;
       case 'asistencia':       return <ControlAsistencia />;
       case 'turnos':           return <TurnosHorarios />;
       case 'nomina':           return <Nomina />;
@@ -423,6 +428,17 @@ export default function App() {
       <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
           <PaginaConformidadOT token={token} />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (hash.startsWith('#postular/')) {
+    const token = hash.slice('#postular/'.length).split('?')[0];
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <PostulacionPublica token={token} />
         </Suspense>
       </ErrorBoundary>
     );

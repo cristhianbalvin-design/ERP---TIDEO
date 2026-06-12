@@ -10,6 +10,7 @@ import * as tareosAdminService from './services/tareosAdminService.js';
 import { PHONE_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { getSupabaseClient } from './lib/supabaseClient.js';
 import { porcentajeBaseComision, resolverVendedorComision } from './lib/comisiones.js';
+import { construirAutoservicioLocal } from './services/autoservicioEmpleadoService.js';
 
 // Mobile field views - all field profiles
 
@@ -41,6 +42,7 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
     { k: 'supervisor', l: 'Supervisor', icon: I.shield },
     { k: 'gerencia', l: 'Gerencia', icon: I.trend },
     { k: 'asistencia', l: 'Asistencia', icon: I.clock, requiereAsistencia: true },
+    { k: 'mi_espacio', l: 'Mi espacio', icon: I.userCheck },
     { k: 'solicitudes', l: 'Solicitudes', icon: I.userCheck },
     { k: 'administrativo', l: 'Tareo', icon: I.users },
   ].filter(p => modulosUsuario.includes(p.k) && (!p.requiereAsistencia || puedeVerAsistencia)), [modulosUsuarioKey, puedeVerAsistencia]);
@@ -99,6 +101,7 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
                   {profile === 'supervisor' && <SupervisorView screen={screen} setScreen={setScreen}/>}
                   {profile === 'gerencia' && <GerenciaView screen={screen} setScreen={setScreen}/>}
                   {profile === 'asistencia' && <AsistenciaMobileView screen={screen} setScreen={setScreen}/>}
+                  {profile === 'mi_espacio' && <MiEspacioMobileView screen={screen} setScreen={setScreen} setProfile={setProfile}/>}
                   {profile === 'solicitudes' && <SolicitudesMovilView screen={screen} setScreen={setScreen}/>}
                   {profile === 'administrativo' && <AdministrativoView screen={screen} setScreen={setScreen}/>}
                 </>
@@ -224,6 +227,7 @@ function getUsuarioCampoModulos(authUser, usuarios = []) {
   if (perfil.includes('supervisor')) return ['supervisor'];
   if (perfil.includes('gerencia')) return ['gerencia'];
   if (perfil.includes('admin')) return ['administrativo', 'solicitudes'];
+  if (perfil.includes('empleado')) return ['mi_espacio', 'solicitudes'];
   return ['tecnico'];
 }
 
@@ -2935,6 +2939,106 @@ function solEstadoBadgeM(estado) {
   if (['rechazada_jefe', 'rechazada_rrhh', 'anulada'].includes(estado)) return 'badge-red';
   if (estado === 'enviada') return 'badge-orange';
   return 'badge-gray';
+}
+
+function MiEspacioMobileView({ setScreen, setProfile }) {
+  const app = useApp();
+  const {
+    authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos,
+    solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina,
+    amonestacionesPersonal, empresaConfig = {},
+  } = app;
+  const data = useMemo(() => construirAutoservicioLocal({
+    authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos,
+    solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina,
+    amonestaciones: amonestacionesPersonal, notificaciones: app.notificaciones,
+  }), [authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos, solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina, amonestacionesPersonal, app.notificaciones]);
+  const ficha = data.ficha;
+  const marcarActivo = Boolean(empresaConfig?.habilitar_marcacion_mobile_autoservicio);
+  const contrato = data.resumen?.contrato;
+
+  if (!ficha) {
+    return (
+      <div style={{ padding: 18, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        <div>
+          <div style={{ width: 42, height: 42, margin: '0 auto 12px', color: 'var(--orange)' }}>{I.alert}</div>
+          <div style={{ fontWeight: 800 }}>Sin ficha vinculada</div>
+          <div className="text-muted" style={{ fontSize: 12, marginTop: 6 }}>RRHH debe asociar tu usuario a una ficha de personal.</div>
+        </div>
+      </div>
+    );
+  }
+
+  const cards = [
+    ['Contrato', contrato?.estado === 'por_vencer' ? `${contrato.dias} dias` : (contrato?.estado || 'vigente')],
+    ['Ultima boleta', data.resumen?.ultima_boleta?.periodo || 'Sin boleta'],
+    ['Vacaciones', `${data.resumen?.vacaciones || 0} dias`],
+    ['HE pendiente', `${Math.round(Number(data.resumen?.he_pendiente_minutos || 0) / 60 * 10) / 10} h`],
+  ];
+
+  return (
+    <div style={{ padding: '16px 14px', overflowY: 'auto', height: '100%' }}>
+      <div className="mobile-header" style={{ padding: 0, marginBottom: 14 }}>
+        <div><div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Mi espacio</div><div className="font-display" style={{ fontWeight: 800, fontSize: 17 }}>{ficha.nombre}</div></div>
+        <div className="avatar" style={{ width: 34, height: 34 }}>{inicialesDe(ficha.nombre)}</div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+        {cards.map(([label, value]) => (
+          <div key={label} className="card" style={{ padding: 12, minHeight: 78 }}>
+            <div className="text-muted" style={{ fontSize: 11 }}>{label}</div>
+            <div style={{ fontWeight: 800, fontSize: 16, marginTop: 6 }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {data.resumen?.ciclo_minero && (
+        <div className="card" style={{ padding: 12, marginBottom: 12, borderColor: 'var(--cyan)' }}>
+          <div style={{ fontWeight: 800 }}>Ciclo minero {data.resumen.ciclo_minero.regimen}</div>
+          <div className="text-muted" style={{ fontSize: 12 }}>Proxima bajada: {data.resumen.ciclo_minero.proxima_bajada || '-'}</div>
+        </div>
+      )}
+
+      {marcarActivo && (
+        <button className="btn btn-primary" style={{ width: '100%', marginBottom: 12 }} onClick={() => setScreen('home')}>
+          {I.clock} Marcar entrada/salida
+        </button>
+      )}
+
+      <div className="card" style={{ padding: 12, marginBottom: 10 }}>
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>Boletas</div>
+        {data.boletas.slice(0, 3).map(b => <div key={b.id} className="row" style={{ justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)' }}><span>{b.periodo}</span><button className="btn btn-secondary btn-sm">Descargar</button></div>)}
+        {!data.boletas.length && <div className="text-muted" style={{ fontSize: 12 }}>Sin boletas disponibles.</div>}
+      </div>
+
+      <div className="card" style={{ padding: 12, marginBottom: 10 }}>
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>Contratos y documentos</div>
+        <label className="btn btn-secondary btn-sm" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}>
+          {I.upload} Cargar contrato firmado
+          <input type="file" accept="application/pdf,image/*" capture="environment" style={{ display: 'none' }} />
+        </label>
+        <div className="text-muted" style={{ fontSize: 12 }}>{data.documentos.length} documentos personales registrados.</div>
+      </div>
+
+      <div className="card" style={{ padding: 12, marginBottom: 10 }}>
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>Asistencia del mes</div>
+        <div className="row" style={{ gap: 8 }}>
+          <span className="badge badge-cyan">{data.asistencia.length} registros</span>
+          <span className="badge badge-orange">{data.asistencia.reduce((s, r) => s + Number(r.tardanza_min || r.tardanza_minutos || 0), 0)} min tardanza</span>
+        </div>
+      </div>
+
+      <button className="btn btn-primary" style={{ width: '100%', marginBottom: 10 }} onClick={() => { setProfile('solicitudes'); setScreen('home'); }}>
+        {I.clipboard} Solicitudes
+      </button>
+
+      <div className="card" style={{ padding: 12 }}>
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>Amonestaciones</div>
+        {data.amonestaciones.slice(0, 2).map(a => <div key={a.id} style={{ fontSize: 12, padding: '7px 0', borderBottom: '1px solid var(--border)' }}>{a.descripcion || a.motivo}</div>)}
+        {!data.amonestaciones.length && <div className="text-muted" style={{ fontSize: 12 }}>Sin amonestaciones activas.</div>}
+      </div>
+    </div>
+  );
 }
 
 function SolicitudesMovilView({ screen, setScreen }) {

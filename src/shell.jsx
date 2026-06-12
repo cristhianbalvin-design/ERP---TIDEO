@@ -43,6 +43,8 @@ const SIDEBAR = [
     { key: 'tickets', label: 'Soporte y Tickets', icon: I.alert },
   ]},
   { section: 'RRHH', items: [
+    { key: 'mi_portal', label: 'Mi portal', icon: I.userCheck },
+    { key: 'reclutamiento', label: 'Reclutamiento', icon: I.target },
     { key: 'rrhh_operativo', label: 'Personal Operativo', icon: I.wrench },
     { key: 'rrhh_admin', label: 'Personal Administrativo', icon: I.users },
     { key: 'asistencia', label: 'Control de Asistencia', icon: I.clock },
@@ -240,7 +242,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
   const visibleGroups = useMemo(() => SIDEBAR.map(group => {
     if (group.plataforma && !isSuperadmin) return null;
     const visibleItems = group.items
-      .filter(it => !allowed || allowed.has(it.key))
+      .filter(it => it.key === 'mi_portal' || !allowed || allowed.has(it.key))
       .map(it => ({ ...it, badge: capBadge(badges[it.key]) }));
     if (visibleItems.length === 0) return null;
     const key = sectionKey(group.section);

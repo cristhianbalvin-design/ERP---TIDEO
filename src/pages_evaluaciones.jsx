@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { I } from './icons.jsx';
 import { useApp } from './context.jsx';
@@ -7,6 +7,7 @@ import {
   calcularPorcentajeObjetivo,
   clasificarScore,
 } from './services/evaluacionesDesempenoService.js';
+import { getAmonestacionesActivas } from './services/amonestacionesService.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const today = () => new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00');
@@ -839,8 +840,23 @@ function EvaluacionForm({ model, evaluacionId, modo, onBack }) {
 function ResultadoIndividual({ model, evaluacionId, onBack }) {
   const { app, plantillaById, competenciasByPlantilla, objetivosByPlantilla, isOwnEval, canManage } = model;
   const e = (app.evaluacionEvaluaciones || []).find(x => x.id === evaluacionId);
+  const [amonDelPeriodo, setAmonDelPeriodo] = useState([]);
+  const plantilla = e ? plantillaById.get(String(e.plantilla_id)) : null;
+
+  useEffect(() => {
+    if (!e || !app?.empresa?.id || !canManage) return;
+    const periodoStr = plantilla?.periodo || '';
+    // Intentar extraer rango del string de período (ej: "Enero 2026" → mes/año)
+    const match = periodoStr.match(/(\d{4})/);
+    const anio = match ? match[1] : String(new Date().getFullYear());
+    const desde = `${anio}-01-01`;
+    const hasta = `${anio}-12-31`;
+    getAmonestacionesActivas(app.empresa.id, e.evaluado_id, desde, hasta)
+      .then(setAmonDelPeriodo)
+      .catch(() => setAmonDelPeriodo([]));
+  }, [e?.id, app?.empresa?.id, canManage]);
+
   if (!e) return <div className="card" style={{ padding: 24 }}>Resultado no encontrado.</div>;
-  const plantilla = plantillaById.get(String(e.plantilla_id));
   const visible = canManage || (isOwnEval(e) && isClosed(plantilla));
   if (!visible) return <div className="alert alert-warning">Los resultados seran visibles para el colaborador cuando RRHH cierre la plantilla.</div>;
   const competencias = competenciasByPlantilla.get(String(plantilla?.id)) || [];
@@ -893,6 +909,33 @@ function ResultadoIndividual({ model, evaluacionId, onBack }) {
           </table>
         </div>
       </div>
+
+      {canManage && (
+        <div className="card" style={{ borderLeft: '4px solid var(--orange)' }}>
+          <div className="card-head">
+            <h3 style={{ margin: 0 }}>Amonestaciones en el período evaluado</h3>
+            <span className="text-muted" style={{ fontSize: 12 }}>Solo lectura — contexto para el evaluador. No afecta el score.</span>
+          </div>
+          <div style={{ padding: '0 20px 16px' }}>
+            {amonDelPeriodo.length === 0 ? (
+              <div className="text-muted" style={{ fontSize: 13 }}>Sin amonestaciones activas en el período de esta evaluación.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {amonDelPeriodo.map(a => (
+                  <div key={a.id} style={{ padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 6, borderLeft: `3px solid ${a.tipo === 'suspension' ? 'var(--danger)' : a.tipo === 'escrita' ? 'var(--orange)' : 'var(--fg-muted)'}` }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 2 }}>
+                      <span className={`badge ${a.tipo === 'suspension' ? 'badge-gray' : a.tipo === 'escrita' ? 'badge-red' : 'badge-orange'}`} style={{ fontSize: 10 }}>{a.tipo}</span>
+                      <span className="text-muted" style={{ fontSize: 11 }}>{a.fecha}</span>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{a.motivo}</div>
+                    {a.descripcion && <div className="text-muted" style={{ fontSize: 12 }}>{a.descripcion}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }

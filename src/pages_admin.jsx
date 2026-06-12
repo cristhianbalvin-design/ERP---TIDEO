@@ -12,6 +12,7 @@ import { maestrosService } from './services/maestrosService.js';
 import { importarMaterialesMasivo } from './services/materialService.js';
 import { ER_TIPO_SISTEMA_LABELS, ER_TIPO_SISTEMA_OPTIONS } from './services/estadoResultadosService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
+import * as amonestacionesService from './services/amonestacionesService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { AFP_PARAMETROS_DEFAULT, AFP_PRIMA_SEGURO_FALLBACK, latestAfpParametros } from './services/nominaService.js';
 import {
@@ -24,6 +25,7 @@ import {
   normalizarModalidadContrato,
   normalizarTipoContratoDuracion,
   requiereFechaFinContrato,
+  rrhhService,
   retencionIrHonorariosLabel,
 } from './services/rrhhService.js';
 import * as XLSX from 'xlsx';
@@ -359,6 +361,7 @@ function Roles() {
                   <option value="Supervisor">Supervisor — Aprobaciones y monitoreo</option>
                   <option value="Gerencia">Gerencia — Dashboard ejecutivo</option>
                   <option value="administrativo">Administrativo — Registro diario de horas por OT o actividad</option>
+                  <option value="Empleado">Empleado - Mi espacio y solicitudes</option>
                 </select>
               </div>
             </div>
@@ -513,6 +516,8 @@ function Usuarios() {
     { id: 'supervisor', label: 'Supervisor' },
     { id: 'gerencia', label: 'Gerencia' },
     { id: 'asistencia', label: 'Control de asistencia' },
+    { id: 'mi_espacio', label: 'Mi espacio' },
+    { id: 'empleado', label: 'Empleado' },
   ];
   const legacyModuloCampo = (perfil) => {
     const value = String(perfil || '').toLowerCase();
@@ -520,6 +525,7 @@ function Usuarios() {
     if (value.includes('compra')) return 'compras';
     if (value.includes('supervisor')) return 'supervisor';
     if (value.includes('gerencia')) return 'gerencia';
+    if (value.includes('empleado')) return 'mi_espacio';
     return 'tecnico';
   };
   const getCampoModulos = (usuario) => {
@@ -832,6 +838,9 @@ function Usuarios() {
       <div className="page-header">
         <div><h1 className="page-title">Usuarios</h1><div className="page-sub">{usuarios.length} usuarios · Acceso centralizado</div></div>
         <button className="btn btn-primary" data-local-form="true" onClick={() => { setMostrarPasswordNuevo(false); setCreando(true); }}>{I.plus} Nuevo usuario</button>
+      </div>
+      <div className="alert alert-info" style={{marginBottom:16, fontSize:13}}>
+        Los usuarios del sistema son colaboradores con acceso activo al ERP. Para gestionar la ficha laboral de un colaborador sin acceso al sistema, ir a <strong>RRHH → Personal Operativo</strong> o <strong>Personal Administrativo</strong>.
       </div>
       {(accessDebug?.usuariosLoading || accessDebug?.usuariosError || accessDebug?.usuariosLoadedAt) && (
         <div className={accessDebug?.usuariosError ? 'alert alert-danger' : 'alert alert-info'} style={{marginBottom:16}}>
@@ -6669,8 +6678,65 @@ function Parametros() {
 // ============================================================
 // RRHH ADMINISTRATIVO — Fase 3
 // ============================================================
+
+const BANCOS_PERU_ADMIN = ['BCP','BBVA','Interbank','Scotiabank','BanBif','Banco de la Nación','Mibanco','Caja Cusco','Caja Piura','Caja Arequipa','Caja Huancayo','Caja Sullana','Otro'];
+
+function DatosBancariosAdmin({ cuentas = [], onChange, readOnly = false }) {
+  const [showForm, setShowForm] = React.useState(false);
+  const [editId, setEditId] = React.useState(null);
+  const [form, setForm] = React.useState({ banco:'BCP', numero_cuenta:'', cci:'', tipo_cuenta:'Ahorros', moneda:'Soles', es_principal:false });
+  const [cciError, setCciError] = React.useState('');
+
+  const resetForm = () => { setForm({ banco:'BCP', numero_cuenta:'', cci:'', tipo_cuenta:'Ahorros', moneda:'Soles', es_principal:false }); setCciError(''); setEditId(null); setShowForm(false); };
+
+  const guardar = () => {
+    if (!/^\d{20}$/.test(form.cci)) { setCciError('El CCI debe tener exactamente 20 dígitos numéricos.'); return; }
+    setCciError('');
+    const newId = editId || (globalThis.crypto?.randomUUID?.() || `bk_${Date.now()}`);
+    let nuevas = editId ? cuentas.map(c => c.id === editId ? { ...form, id: editId } : c) : [...cuentas, { ...form, id: newId }];
+    if (form.es_principal) nuevas = nuevas.map(c => ({ ...c, es_principal: c.id === newId || c.id === editId }));
+    onChange(nuevas);
+    resetForm();
+  };
+
+  const abrirEditar = (c) => { setForm({ banco:c.banco, numero_cuenta:c.numero_cuenta, cci:c.cci, tipo_cuenta:c.tipo_cuenta, moneda:c.moneda, es_principal:c.es_principal }); setEditId(c.id); setShowForm(true); };
+
+  return (
+    <div>
+      <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos bancarios</div>
+      {cuentas.length === 0 && <div style={{color:'var(--fg-muted)', fontSize:13, marginBottom:12}}>Sin cuentas bancarias registradas.</div>}
+      {cuentas.map(c => (
+        <div key={c.id} className="card" style={{padding:'10px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10}}>
+          <div>
+            <div style={{fontWeight:600, fontSize:13}}>{c.banco} — •••• {String(c.numero_cuenta||'').slice(-4)}</div>
+            <div className="text-muted" style={{fontSize:12}}>{c.tipo_cuenta} · {c.moneda}{c.es_principal && <span className="badge badge-green" style={{marginLeft:6, fontSize:10}}>Principal</span>}</div>
+          </div>
+          {!readOnly && <div style={{display:'flex', gap:4}}><button type="button" className="icon-btn" onClick={() => abrirEditar(c)}>{I.edit}</button><button type="button" className="icon-btn" style={{color:'var(--danger)'}} onClick={() => onChange(cuentas.filter(x => x.id !== c.id))}>{I.trash}</button></div>}
+        </div>
+      ))}
+      {!readOnly && !showForm && <button type="button" className="btn btn-secondary btn-sm" style={{marginTop:4}} onClick={() => setShowForm(true)}>{I.plus} Agregar cuenta</button>}
+      {!readOnly && showForm && (
+        <div className="card" style={{padding:16, marginTop:8, border:'1px solid var(--border)'}}>
+          <div className="grid-2" style={{gap:12}}>
+            <div className="input-group"><label>Banco</label><select className="select" value={form.banco} onChange={e=>setForm(v=>({...v,banco:e.target.value}))}>{BANCOS_PERU_ADMIN.map(b=><option key={b}>{b}</option>)}</select></div>
+            <div className="input-group"><label>Número de cuenta</label><input className="input" value={form.numero_cuenta} onChange={e=>setForm(v=>({...v,numero_cuenta:e.target.value}))} placeholder="Número de cuenta"/></div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}><label>CCI <span className="text-muted">(20 dígitos)</span></label><input className="input" value={form.cci} maxLength={20} onChange={e=>setForm(v=>({...v,cci:e.target.value.replace(/\D/g,'').slice(0,20)}))} placeholder="00000000000000000000"/>{cciError && <div style={{color:'var(--danger)', fontSize:11, marginTop:4}}>{cciError}</div>}</div>
+            <div className="input-group"><label>Tipo de cuenta</label><select className="select" value={form.tipo_cuenta} onChange={e=>setForm(v=>({...v,tipo_cuenta:e.target.value}))}><option>Ahorros</option><option>Corriente</option></select></div>
+            <div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e=>setForm(v=>({...v,moneda:e.target.value}))}><option>Soles</option><option>Dólares</option></select></div>
+            <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={form.es_principal} onChange={e=>setForm(v=>({...v,es_principal:e.target.checked}))}/>Marcar como cuenta principal</label>
+          </div>
+          <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={resetForm}>Cancelar</button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={guardar}>{I.save} {editId ? 'Actualizar' : 'Agregar'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RRHHAdmin() {
-  const { personalAdmin, partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, cxc = [], facturas = [], activeParams, crearCargo } = useApp();
+  const { personalAdmin, partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {} } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -6681,6 +6747,10 @@ function RRHHAdmin() {
   const [altaSaving, setAltaSaving] = useState(false);
   const [altaError, setAltaError] = useState('');
   const paramsHandledRef = useRef('');
+  const canFinanzasAdmin = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
+  const [formDatosBancariosAdmin, setFormDatosBancariosAdmin] = useState([]);
+  const [crearUsuarioSistemaAdmin, setCrearUsuarioSistemaAdmin] = useState(false);
+  const [usuarioSistemaFormAdmin, setUsuarioSistemaFormAdmin] = useState({ email:'', rol:'', acceso_campo:false, perfil_campo:'administrativo' });
   // Estados para subida de documentos en tab Documentos
   const [docUploadForm, setDocUploadForm] = useState({ tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '' });
   const [docUploadFile, setDocUploadFile] = useState(null);
@@ -6697,6 +6767,16 @@ function RRHHAdmin() {
   const [inlineUploadError, setInlineUploadError] = useState('');
   const periodoAlertaHoras = useMemo(() => rrhhDesplazarPeriodoMes(rrhhPeriodoMesActual(), -1), []);
   const [tareosAlertaHoras, setTareosAlertaHoras] = useState([]);
+  // Estados para tab de amonestaciones (GAP-19)
+  const [amonestaciones, setAmonestaciones] = useState([]);
+  const [amonLoading, setAmonLoading] = useState(false);
+  const amonFormBase = { tipo:'verbal', motivo:'', descripcion:'', fecha:new Date().toISOString().split('T')[0], dias_suspension:'', fecha_inicio_suspension:'', fecha_fin_suspension:'', evidencia_url:'', impactar_asistencia:true };
+  const [amonForm, setAmonForm] = useState(amonFormBase);
+  const [amonPanel, setAmonPanel] = useState(false);
+  const [amonSaving, setAmonSaving] = useState(false);
+  const [amonError, setAmonError] = useState('');
+  const [amonAnularId, setAmonAnularId] = useState(null);
+  const [amonMotivoAnulacion, setAmonMotivoAnulacion] = useState('');
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
@@ -6705,6 +6785,7 @@ function RRHHAdmin() {
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [nuevoCargoTextoAdmin, setNuevoCargoTextoAdmin] = useState('');
+  const [historialDniAlta, setHistorialDniAlta] = useState(null);
   const [horasBaseOverride, setHorasBaseOverride] = useState(false);
   const horasBaseForm = Number(formAlta.horas_base_mes || 0);
   const tarifaHoraForm = Math.round((horasBaseForm > 0 ? Number(formAlta.monto_mensual || 0) / horasBaseForm : 0) * 100) / 100;
@@ -6729,6 +6810,16 @@ function RRHHAdmin() {
   const areasOptions = areasEmpresa.length
     ? areasEmpresa.filter(a => a.tipo !== 'Operativa').map(a => a.nombre).filter(Boolean)
     : [];
+  const verificarDniAlta = async (dni) => {
+    const clean = String(dni || '').trim();
+    if (clean.length < 8 || !empresa?.id) { setHistorialDniAlta(null); return; }
+    try {
+      const info = await rrhhService.verificarHistorialDni(clean, empresa.id);
+      setHistorialDniAlta(info?.encontrado ? info : null);
+    } catch {
+      setHistorialDniAlta(null);
+    }
+  };
   const todosPersonal = personalAdmin;
   const persona = sel ? todosPersonal.find(p => p.id === sel) : null;
 
@@ -6740,12 +6831,24 @@ function RRHHAdmin() {
       .catch(() => setTareosAlertaHoras([]));
   }, [empresa?.id, periodoAlertaHoras]);
 
+  useEffect(() => {
+    if (!sel || !empresa?.id || tab !== 'amonestaciones') return;
+    setAmonLoading(true);
+    amonestacionesService.cargarAmonestaciones(empresa.id, sel)
+      .then(setAmonestaciones)
+      .catch(() => setAmonestaciones([]))
+      .finally(() => setAmonLoading(false));
+  }, [sel, empresa?.id, tab]);
+
   const cerrarPanelColaborador = () => {
     setPanelAlta(false);
     setEditandoId(null);
     setFormAlta(formAltaBase);
     setHorasBaseOverride(false);
     setAltaError('');
+    setFormDatosBancariosAdmin([]);
+    setCrearUsuarioSistemaAdmin(false);
+    setUsuarioSistemaFormAdmin({ email:'', rol:'', acceso_campo:false, perfil_campo:'administrativo' });
   };
   const horasBaseParaTurno = (turnoId) => {
     const turno = turnosOptions.find(t => t.id === turnoId);
@@ -6764,6 +6867,9 @@ function RRHHAdmin() {
     setEditandoId(null);
     setHorasBaseOverride(false);
     setFormAlta({ ...formAltaBase, codigo: codigoSugeridoAdmin(), turno_id: '', horas_base_mes: '', dias_vacaciones: vacacionesSugeridas });
+    setFormDatosBancariosAdmin([]);
+    setCrearUsuarioSistemaAdmin(false);
+    setUsuarioSistemaFormAdmin({ email:'', rol:'', acceso_campo:false, perfil_campo:'administrativo' });
     setPanelAlta(true);
   };
   const abrirEditarColaborador = (p) => {
@@ -6826,6 +6932,9 @@ function RRHHAdmin() {
       pct_comision_afp_flujo: String(p.pct_comision_afp_flujo ?? '0'),
       tarifa_hora_referencial: p.tarifa_hora_referencial != null ? String(p.tarifa_hora_referencial) : '',
     });
+    setFormDatosBancariosAdmin(Array.isArray(p.datos_bancarios) ? p.datos_bancarios : []);
+    setCrearUsuarioSistemaAdmin(false);
+    setUsuarioSistemaFormAdmin({ email:'', rol:'', acceso_campo:false, perfil_campo:'administrativo' });
     setPanelAlta(true);
   };
   useEffect(() => {
@@ -6950,6 +7059,7 @@ function RRHHAdmin() {
       tipo_comision_afp: formAlta.tipo_comision_afp || 'mixta',
       pct_comision_afp_flujo: Number(formAlta.pct_comision_afp_flujo || 0),
       tarifa_hora_referencial: modalidad === 'honorarios' && formAlta.tarifa_hora_referencial !== '' ? Number(formAlta.tarifa_hora_referencial) : null,
+      datos_bancarios: formDatosBancariosAdmin,
     };
     try {
       if (editandoId) {
@@ -6958,6 +7068,15 @@ function RRHHAdmin() {
       } else {
         await crearAdminPersonalCtx(nuevo);
         addNotificacion('Colaborador creado.');
+        if (crearUsuarioSistemaAdmin && usuarioSistemaFormAdmin.email && crearUsuarioConAcceso) {
+          try {
+            const rolId = Object.keys(rolesCtx).find(k => rolesCtx[k]?.nombre === usuarioSistemaFormAdmin.rol) || usuarioSistemaFormAdmin.rol;
+            await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaFormAdmin.email, rol: rolId, campo: usuarioSistemaFormAdmin.acceso_campo, campoModulos: usuarioSistemaFormAdmin.acceso_campo ? [usuarioSistemaFormAdmin.perfil_campo] : [] });
+            addNotificacion('Usuario de sistema creado.');
+          } catch (userErr) {
+            addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
+          }
+        }
       }
       cerrarPanelColaborador();
     } catch (err) {
@@ -6991,6 +7110,13 @@ function RRHHAdmin() {
             <span className={'badge badge-' + contratoColor(persona.tipo_contrato)}>{persona.tipo_contrato}</span>
             <span className="badge badge-green">{persona.estado}</span>
             {bajaProductividadFicha && <span className="badge badge-red">Baja productividad</span>}
+            {persona.usuario_bloqueado_en ? (
+              <span className="badge badge-red" title={`Bloqueado el ${persona.usuario_bloqueado_en?.slice(0,10)} por ${persona.usuario_bloqueado_por || '—'}`}>Acceso bloqueado</span>
+            ) : persona.auth_user_id ? (
+              <span className="badge badge-green">Tiene acceso al ERP</span>
+            ) : (
+              <span className="badge badge-gray">Sin acceso al ERP</span>
+            )}
             <button className="btn btn-ghost btn-sm" title="Editar colaborador" onClick={() => { abrirEditarColaborador(persona); setSel(null); }}>{I.edit}</button>
             <button className="btn btn-ghost btn-sm" title="Eliminar colaborador" style={{color:'var(--danger)'}} onClick={() => eliminarColaborador(persona)}>{I.trash}</button>
           </div>
@@ -6999,7 +7125,7 @@ function RRHHAdmin() {
         <div className="card">
           <div style={{padding:'0 20px'}}>
             <div className="tabs">
-              {[...['ficha','contrato','vacaciones','licencias','solicitudes','documentos','reembolsos'], ...(persona.tiene_comisiones ? ['comisiones'] : [])].map(t => (
+              {[...['ficha','contrato','vacaciones','licencias','solicitudes','documentos','reembolsos','amonestaciones'], ...(persona.tiene_comisiones ? ['comisiones'] : []), ...(canFinanzasAdmin ? ['bancarios'] : [])].map(t => (
                 <div key={t} className={'tab '+(tab===t?'active':'')} onClick={() => setTab(t)} style={{textTransform:'capitalize'}}>{t}</div>
               ))}
             </div>
@@ -7519,6 +7645,180 @@ function RRHHAdmin() {
             );
           })()}
 
+          {tab === 'amonestaciones' && (() => {
+            const canRegister = Boolean(role?.permisos?.todo || role?.permisos?.rrhh || role?.permisos?.jefatura);
+            const activas = amonestaciones.filter(a => a.estado === 'activo');
+            const tipoLabel = { verbal:'Verbal', escrita:'Escrita', suspension:'Suspensión' };
+            const tipoBadge = { verbal:'badge-orange', escrita:'badge-red', suspension:'badge-gray' };
+
+            const guardarAmon = async () => {
+              setAmonError('');
+              setAmonSaving(true);
+              try {
+                const nueva = await amonestacionesService.registrarAmonestacion(empresa.id, {
+                  personal_id: persona.id, personal_tipo: 'administrativo',
+                  personal_nombre: persona.nombre,
+                  tipo: amonForm.tipo, motivo: amonForm.motivo,
+                  descripcion: amonForm.descripcion, fecha: amonForm.fecha,
+                  dias_suspension: amonForm.tipo === 'suspension' ? Number(amonForm.dias_suspension) : null,
+                  fecha_inicio_suspension: amonForm.tipo === 'suspension' ? amonForm.fecha_inicio_suspension : null,
+                  fecha_fin_suspension: amonForm.tipo === 'suspension' ? amonForm.fecha_fin_suspension : null,
+                  evidencia_url: amonForm.evidencia_url || null,
+                  registrado_por: role?.nombre || 'RRHH',
+                  impactar_asistencia: amonForm.tipo === 'suspension' ? Boolean(amonForm.impactar_asistencia) : false,
+                });
+                setAmonestaciones(prev => [nueva, ...prev]);
+                setAmonPanel(false);
+                setAmonForm(amonFormBase);
+                addNotificacion('Amonestación registrada correctamente.');
+                if (!persona.auth_user_id) {
+                  addNotificacion('El colaborador no tiene usuario de sistema. Notifícale por medios físicos y adjunta el cargo firmado como evidencia.');
+                }
+              } catch (err) {
+                setAmonError(err.message || 'Error al registrar.');
+              } finally {
+                setAmonSaving(false);
+              }
+            };
+
+            const anular = async () => {
+              if (!amonMotivoAnulacion.trim()) { addNotificacion('El motivo de anulación es obligatorio.'); return; }
+              try {
+                const updated = await amonestacionesService.anularAmonestacion(amonAnularId, empresa.id, amonMotivoAnulacion, role?.nombre || 'RRHH');
+                setAmonestaciones(prev => prev.map(a => a.id === amonAnularId ? updated : a));
+                setAmonAnularId(null);
+                setAmonMotivoAnulacion('');
+                addNotificacion('Amonestación anulada.');
+              } catch (err) {
+                addNotificacion(err.message || 'Error al anular.');
+              }
+            };
+
+            return (
+              <div className="card-body">
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
+                  <div>
+                    <span className="badge badge-red" style={{fontSize:12, marginRight:8}}>{activas.length} activa{activas.length !== 1 ? 's' : ''}</span>
+                    <span className="text-muted" style={{fontSize:12}}>{amonestaciones.length} total en historial</span>
+                  </div>
+                  {canRegister && (
+                    <button className="btn btn-sm btn-secondary" onClick={() => { setAmonForm(amonFormBase); setAmonPanel(true); setAmonError(''); }}>
+                      {I.plus} Registrar amonestación
+                    </button>
+                  )}
+                </div>
+
+                {amonLoading && <div className="text-muted" style={{padding:20}}>Cargando...</div>}
+
+                {!amonLoading && amonestaciones.length === 0 && (
+                  <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'32px 0'}}>
+                    No hay amonestaciones registradas para este colaborador.
+                  </div>
+                )}
+
+                {!amonLoading && amonestaciones.length > 0 && (
+                  <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                    {amonestaciones.map(a => (
+                      <div key={a.id} className="card" style={{padding:'12px 16px', opacity: a.estado === 'anulado' ? 0.6 : 1, borderLeft: `3px solid ${a.estado === 'anulado' ? 'var(--border)' : a.tipo === 'suspension' ? 'var(--danger)' : a.tipo === 'escrita' ? 'var(--orange)' : 'var(--fg-muted)'}` }}>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8}}>
+                          <div>
+                            <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:4}}>
+                              <span className={`badge ${tipoBadge[a.tipo] || 'badge-gray'}`}>{tipoLabel[a.tipo] || a.tipo}</span>
+                              {a.estado === 'anulado' && <span className="badge badge-gray" style={{fontSize:10}}>Anulada</span>}
+                              <span className="text-muted" style={{fontSize:12}}>{a.fecha}</span>
+                            </div>
+                            <div style={{fontWeight:600, fontSize:14}}>{a.motivo}</div>
+                            {a.descripcion && <div className="text-muted" style={{fontSize:12, marginTop:2}}>{a.descripcion}</div>}
+                            {a.tipo === 'suspension' && <div style={{fontSize:12, marginTop:4, color:'var(--danger)'}}>
+                              Suspensión: {a.dias_suspension} días ({a.fecha_inicio_suspension} → {a.fecha_fin_suspension})
+                              {a.impactar_asistencia && <span className="badge badge-red" style={{marginLeft:6, fontSize:10}}>Impacto en asistencia</span>}
+                            </div>}
+                            {a.evidencia_url && <a href={a.evidencia_url} target="_blank" rel="noopener noreferrer" className="text-muted" style={{fontSize:11, marginTop:4, display:'block'}}>Ver evidencia</a>}
+                            {a.estado === 'anulado' && a.motivo_anulacion && <div style={{fontSize:11, marginTop:4, color:'var(--fg-muted)'}}>Anulada por {a.anulado_por}: {a.motivo_anulacion}</div>}
+                          </div>
+                          {canRegister && a.estado === 'activo' && (
+                            <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} onClick={() => { setAmonAnularId(a.id); setAmonMotivoAnulacion(''); }}>
+                              Anular
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Panel registrar */}
+                {amonPanel && <>
+                  <div className="side-panel-backdrop" onClick={() => setAmonPanel(false)} />
+                  <div className="side-panel" style={{width:'min(520px,96vw)', zIndex:70}}>
+                    <div className="side-panel-head">
+                      <div><div className="eyebrow">RRHH</div><div style={{fontWeight:700, fontSize:18}}>Nueva amonestación — {persona?.nombre}</div></div>
+                      <button className="icon-btn" onClick={() => setAmonPanel(false)}>{I.x}</button>
+                    </div>
+                    <div className="side-panel-body">
+                      <div className="input-group"><label>Tipo *</label>
+                        <select className="select" value={amonForm.tipo} onChange={e => setAmonForm(v => ({...v, tipo: e.target.value}))}>
+                          <option value="verbal">Verbal</option>
+                          <option value="escrita">Escrita (requiere evidencia)</option>
+                          <option value="suspension">Suspensión sin goce (requiere evidencia)</option>
+                        </select>
+                      </div>
+                      <div className="grid-2" style={{gap:12, marginTop:12}}>
+                        <div className="input-group"><label>Fecha *</label><input type="date" className="input" value={amonForm.fecha} onChange={e => setAmonForm(v => ({...v, fecha: e.target.value}))} /></div>
+                      </div>
+                      <div className="input-group" style={{marginTop:12}}><label>Motivo *</label><input type="text" className="input" value={amonForm.motivo} onChange={e => setAmonForm(v => ({...v, motivo: e.target.value}))} placeholder="Breve descripción del motivo" /></div>
+                      <div className="input-group" style={{marginTop:12}}><label>Descripción detallada</label><textarea className="input" rows={3} value={amonForm.descripcion} onChange={e => setAmonForm(v => ({...v, descripcion: e.target.value}))} /></div>
+                      {amonForm.tipo === 'suspension' && <>
+                        <div className="grid-2" style={{gap:12, marginTop:12}}>
+                          <div className="input-group"><label>Días de suspensión *</label><input type="number" min="1" className="input" value={amonForm.dias_suspension} onChange={e => setAmonForm(v => ({...v, dias_suspension: e.target.value}))} /></div>
+                        </div>
+                        <div className="grid-2" style={{gap:12, marginTop:12}}>
+                          <div className="input-group"><label>Fecha inicio *</label><input type="date" className="input" value={amonForm.fecha_inicio_suspension} onChange={e => setAmonForm(v => ({...v, fecha_inicio_suspension: e.target.value}))} /></div>
+                          <div className="input-group"><label>Fecha fin *</label><input type="date" className="input" value={amonForm.fecha_fin_suspension} onChange={e => setAmonForm(v => ({...v, fecha_fin_suspension: e.target.value}))} /></div>
+                        </div>
+                        <label style={{display:'flex', alignItems:'center', gap:8, marginTop:12, fontSize:13, cursor:'pointer'}}>
+                          <input type="checkbox" checked={!!amonForm.impactar_asistencia} onChange={e => setAmonForm(v => ({...v, impactar_asistencia: e.target.checked}))} />
+                          Impactar asistencia automáticamente (descuento en nómina)
+                        </label>
+                      </>}
+                      <div className="input-group" style={{marginTop:12}}>
+                        <label>URL de evidencia {['escrita','suspension'].includes(amonForm.tipo) && <span style={{color:'var(--danger)'}}>*</span>}</label>
+                        <input type="url" className="input" value={amonForm.evidencia_url} onChange={e => setAmonForm(v => ({...v, evidencia_url: e.target.value}))} placeholder="https://..." />
+                        {['escrita','suspension'].includes(amonForm.tipo) && <div className="text-muted" style={{fontSize:11, marginTop:3}}>Obligatoria para amonestaciones escritas y suspensiones.</div>}
+                      </div>
+                      {amonError && <div style={{color:'var(--danger)', fontSize:12, marginTop:8}}>{amonError}</div>}
+                      <div className="row" style={{justifyContent:'flex-end', gap:10, marginTop:20}}>
+                        <button type="button" className="btn btn-secondary" onClick={() => setAmonPanel(false)}>Cancelar</button>
+                        <button type="button" className="btn btn-primary" disabled={amonSaving} onClick={guardarAmon}>
+                          {amonSaving ? 'Guardando...' : 'Registrar'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>}
+
+                {/* Modal anulación */}
+                {amonAnularId && <>
+                  <div className="side-panel-backdrop" onClick={() => setAmonAnularId(null)} />
+                  <div className="modal" style={{zIndex:80}}>
+                    <div className="modal-head"><h3>Anular amonestación</h3><button className="icon-btn" onClick={() => setAmonAnularId(null)}>{I.x}</button></div>
+                    <div className="modal-body">
+                      <p>Esta acción no se puede deshacer. La amonestación quedará en el historial como anulada.</p>
+                      <div className="input-group" style={{marginTop:12}}>
+                        <label>Motivo de anulación *</label>
+                        <textarea className="input" rows={3} value={amonMotivoAnulacion} onChange={e => setAmonMotivoAnulacion(e.target.value)} placeholder="Explica por qué se anula esta amonestación..." />
+                      </div>
+                      <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:16}}>
+                        <button className="btn btn-secondary" onClick={() => setAmonAnularId(null)}>Cancelar</button>
+                        <button className="btn btn-primary" style={{background:'var(--danger)', borderColor:'var(--danger)'}} onClick={anular} disabled={!amonMotivoAnulacion.trim()}>Confirmar anulación</button>
+                      </div>
+                    </div>
+                  </div>
+                </>}
+              </div>
+            );
+          })()}
+
           {tab === 'comisiones' && (() => {
             const isIntRef = v => /^(osc|fac|cxc|com|rec|cob|opp)_/i.test(String(v||'').trim()) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v||'').trim());
             const getOsLabel = id => { const r = osClientes.find(o => o.id === id); return r?.numero && !isIntRef(r.numero) ? r.numero : null; };
@@ -7692,6 +7992,20 @@ function RRHHAdmin() {
               </div>
             );
           })()}
+
+          {tab === 'bancarios' && canFinanzasAdmin && (
+            <div className="card-body">
+              <DatosBancariosAdmin
+                cuentas={persona.datos_bancarios ?? []}
+                onChange={async (nuevas) => {
+                  try {
+                    await actualizarAdminPersonalCtx(persona.id, { datos_bancarios: nuevas });
+                    addNotificacion('Datos bancarios actualizados.');
+                  } catch (e) { addNotificacion('Error al guardar datos bancarios.', 'error'); }
+                }}
+              />
+            </div>
+          )}
         </div>
       </>
     );
@@ -7903,7 +8217,10 @@ function RRHHAdmin() {
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos personales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre completo *</label><input className="input" required value={formAlta.nombre} onChange={e=>setFormAlta(v=>({...v,nombre:e.target.value}))} placeholder="Nombre completo" autoFocus/></div>
-              <div className="input-group"><label>DNI / Documento *</label><input className="input" required value={formAlta.dni} onChange={e=>setFormAlta(v=>({...v,dni:e.target.value}))} placeholder="12345678"/></div>
+              <div className="input-group"><label>DNI / Documento *</label><input className="input" required value={formAlta.dni} onBlur={e=>verificarDniAlta(e.target.value)} onChange={e=>{ const val=e.target.value; setFormAlta(v=>({...v,dni:val})); if (String(val).trim().length >= 8) verificarDniAlta(val); }} placeholder="12345678"/></div>
+              {historialDniAlta?.no_recontratar && <div className="alert alert-danger" style={{gridColumn:'1/-1', fontSize:12}}><strong>ALERTA - Personal no recontratable.</strong><br/>{historialDniAlta.nombre} (DNI {historialDniAlta.dni}) fue cesado el {historialDniAlta.fecha_cese || '-'} por: {historialDniAlta.no_recontratar_motivo || historialDniAlta.tipo_cese || '-'}. Este colaborador esta marcado como NO RECONTRATABLE. Verifique con la jefatura de RRHH antes de continuar.</div>}
+              {historialDniAlta && !historialDniAlta.no_recontratar && String(historialDniAlta.estado_laboral || '').toLowerCase() === 'cesado' && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12}}><strong>Historial de cese encontrado.</strong> {historialDniAlta.nombre} fue cesado el {historialDniAlta.fecha_cese || '-'} por {historialDniAlta.tipo_cese || '-'}.</div>}
+              {historialDniAlta && !historialDniAlta.no_recontratar && String(historialDniAlta.estado_laboral || '').toLowerCase() !== 'cesado' && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12}}><strong>Posible duplicado.</strong> Ya existe una ficha activa para {historialDniAlta.nombre} con este DNI.</div>}
               <div className="input-group"><label>Fecha de nacimiento</label><input className="input" type="date" value={formAlta.fecha_nacimiento} onChange={e=>setFormAlta(v=>({...v,fecha_nacimiento:e.target.value}))}/></div>
               <div className="input-group"><label>Teléfono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group"><label>Email corporativo</label><input className="input" type="email" value={formAlta.email} onChange={e=>setFormAlta(v=>({...v,email:e.target.value}))} placeholder="nombre@empresa.pe"/></div>
@@ -8160,16 +8477,40 @@ function RRHHAdmin() {
               );
             })()}
 
+            {canFinanzasAdmin && (
+              <div style={{marginBottom:20}}>
+                <DatosBancariosAdmin cuentas={formDatosBancariosAdmin} onChange={setFormDatosBancariosAdmin}/>
+              </div>
+            )}
+
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Acceso al sistema</div>
             <div style={{marginBottom:24}}>
-              <div className="input-group">
-                <label>Cuenta de usuario <span className="text-muted">(opcional — para aislamiento de datos)</span></label>
-                <select className="select" value={formAlta.auth_user_id} onChange={e=>setFormAlta(v=>({...v,auth_user_id:e.target.value}))}>
-                  <option value="">Sin cuenta vinculada</option>
-                  {usuariosEmpresa.map(u=><option key={u.id} value={u.id}>{u.nombre || u.email} — {u.email}</option>)}
-                </select>
-                <div className="text-muted" style={{fontSize:11, marginTop:5}}>Vincula este colaborador a su cuenta de inicio de sesión para que las políticas de visibilidad se apliquen correctamente.</div>
-              </div>
+              {editandoId ? (
+                <div className="input-group">
+                  <label>Cuenta de usuario <span className="text-muted">(opcional — para aislamiento de datos)</span></label>
+                  <select className="select" value={formAlta.auth_user_id} onChange={e=>setFormAlta(v=>({...v,auth_user_id:e.target.value}))}>
+                    <option value="">Sin cuenta vinculada</option>
+                    {usuariosEmpresa.map(u=><option key={u.id} value={u.id}>{u.nombre || u.email} — {u.email}</option>)}
+                  </select>
+                  <div className="text-muted" style={{fontSize:11, marginTop:5}}>Vincula este colaborador a su cuenta de inicio de sesión para que las políticas de visibilidad se apliquen correctamente.</div>
+                </div>
+              ) : (
+                <>
+                  <label className="row" style={{gap:8, alignItems:'center', marginBottom:8}}>
+                    <input type="checkbox" checked={crearUsuarioSistemaAdmin} onChange={e=>setCrearUsuarioSistemaAdmin(e.target.checked)}/>
+                    ¿Crear usuario de sistema?
+                  </label>
+                  <div className="text-muted" style={{fontSize:12, marginBottom:crearUsuarioSistemaAdmin?12:0}}>Activa esto solo si este colaborador necesita acceder al ERP. No todo el personal administrativo requiere acceso al sistema.</div>
+                  {crearUsuarioSistemaAdmin && (
+                    <div className="grid-2" style={{gap:12}}>
+                      <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" value={usuarioSistemaFormAdmin.email} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
+                      <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaFormAdmin.rol} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>
+                      <div className="input-group"><label>Perfil de campo</label><select className="select" value={usuarioSistemaFormAdmin.perfil_campo} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,perfil_campo:e.target.value}))}><option value="administrativo">Administrativo</option><option value="supervisor">Supervisor</option><option value="gerencia">Gerencia</option><option value="vendedor">Vendedor</option><option value="comprador">Comprador</option></select></div>
+                      <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaFormAdmin.acceso_campo} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,acceso_campo:e.target.checked}))}/>Acceso a app de campo</label>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {altaError && <div className="alert alert-danger" style={{marginBottom:12}}>{altaError}</div>}

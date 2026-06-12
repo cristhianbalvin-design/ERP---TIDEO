@@ -16,8 +16,15 @@ function diasHabilesLocal(inicio, fin) {
   return count;
 }
 
-function calcularImpactoNomina(tipo, diasHabiles, diasLicenciaEmpresa = 20) {
-  if (['vacaciones', 'permiso_con_goce'].includes(tipo)) {
+function calcularImpactoNomina(tipo, diasHabiles, diasLicenciaEmpresa = 20, clasificacionPago = null) {
+  // La clasificacion_pago manual del RRHH tiene precedencia sobre el default del tipo
+  if (clasificacionPago === 'no_remunerado') {
+    return { impacto_nomina: 'descuento_total', dias_a_descontar: diasHabiles };
+  }
+  if (clasificacionPago === 'remunerado') {
+    return { impacto_nomina: 'sin_descuento', dias_a_descontar: 0 };
+  }
+  if (['vacaciones', 'permiso_con_goce', 'comision_trabajo'].includes(tipo)) {
     return { impacto_nomina: 'sin_descuento', dias_a_descontar: 0 };
   }
   if (tipo === 'permiso_sin_goce') {
@@ -26,11 +33,60 @@ function calcularImpactoNomina(tipo, diasHabiles, diasLicenciaEmpresa = 20) {
   if (tipo === 'licencia_medica') {
     return { impacto_nomina: 'descuento_parcial', dias_a_descontar: Math.max(0, diasHabiles - diasLicenciaEmpresa) };
   }
+  // bajada: el descanso ya está contemplado en el régimen minero
+  if (tipo === 'bajada') {
+    return { impacto_nomina: 'sin_impacto', dias_a_descontar: 0 };
+  }
   return { impacto_nomina: 'sin_impacto', dias_a_descontar: 0 };
+}
+
+// Clasificacion de pago por defecto según el tipo de solicitud
+export function defaultClasificacionPago(tipo) {
+  if (['vacaciones', 'permiso_con_goce', 'licencia_maternidad', 'licencia_paternidad', 'comision_trabajo', 'bajada'].includes(tipo)) return 'remunerado';
+  if (['permiso_sin_goce'].includes(tipo)) return 'no_remunerado';
+  if (['compensacion_horas'].includes(tipo)) return 'recuperacion_horas';
+  return 'remunerado';
 }
 
 function requiereDocumento(tipo) {
   return ['licencia_medica', 'licencia_maternidad', 'licencia_paternidad'].includes(tipo);
+}
+
+// ── Correlativo PM-XXXX ───────────────────────────────────────────────────────
+
+let _mockPmCorrelativo = 3;
+const _mockPmMap = new Map();
+
+async function siguienteCorrelativoPM(supabase, empresaId) {
+  const { data: existing } = await supabase
+    .from('correlativos_documentos')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .eq('tipo_documento', 'papeleta_movimiento')
+    .eq('serie', 'PM')
+    .maybeSingle();
+  const siguiente = Number(existing?.ultimo_numero ?? 0) + 1;
+  const r = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const corId = `cor_${String(r).replace(/-/g, '').slice(0, 18)}`;
+  if (existing) {
+    await supabase.from('correlativos_documentos')
+      .update({ ultimo_numero: siguiente, updated_at: new Date().toISOString() })
+      .eq('id', existing.id);
+  } else {
+    await supabase.from('correlativos_documentos').insert({
+      id: corId, empresa_id: empresaId,
+      tipo_documento: 'papeleta_movimiento', serie: 'PM',
+      ultimo_numero: siguiente,
+      updated_at: new Date().toISOString(),
+    });
+  }
+  return `PM-${String(siguiente).padStart(4, '0')}`;
+}
+
+function mockCorrelativoPM(empresaId) {
+  const curr = _mockPmMap.get(empresaId) ?? _mockPmCorrelativo;
+  _mockPmMap.set(empresaId, curr + 1);
+  return `PM-${String(curr + 1).padStart(4, '0')}`;
 }
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
@@ -94,7 +150,13 @@ export async function crearSolicitud(empresaId, payload) {
     aprobador_id = null, aprobador_nombre = null,
     tipo, fecha_inicio, fecha_fin, motivo,
     documento_url = null, registrado_desde = 'backoffice',
+    clasificacion_pago = null,
+    fecha_retorno = null,
+    unidad = 'dias',
+    cantidad_horas = null,
   } = payload;
+
+  const clasifEfectiva = clasificacion_pago || defaultClasificacionPago(tipo);
 
   if (getDataMode() !== 'supabase') {
     const dias = diasHabilesLocal(fecha_inicio, fecha_fin);
@@ -107,6 +169,11 @@ export async function crearSolicitud(empresaId, payload) {
       estado: 'enviada', comentario_jefe: null, comentario_rrhh: null, motivo_anulacion: null,
       fecha_aprobacion_jefe: null, fecha_confirmacion: null, confirmado_por: null,
       impacto_nomina: 'sin_impacto', dias_a_descontar: 0,
+      clasificacion_pago: clasifEfectiva,
+      fecha_retorno: fecha_retorno || null,
+      unidad: unidad || 'dias',
+      cantidad_horas: cantidad_horas || null,
+      numero_correlativo: null,
       registrado_desde, creado_en: new Date().toISOString(), actualizado_en: new Date().toISOString(),
     };
     mockSolicitudes.unshift(nueva);
@@ -115,14 +182,25 @@ export async function crearSolicitud(empresaId, payload) {
   }
 
   const supabase = await getSupabaseClient();
-  const { data, error } = await supabase.rpc('crear_solicitud_rrhh', {
-    p_empresa_id: empresaId, p_personal_id: personal_id,
-    p_personal_nombre: personal_nombre, p_personal_tipo: personal_tipo,
-    p_aprobador_id: aprobador_id, p_aprobador_nombre: aprobador_nombre,
-    p_tipo: tipo, p_fecha_inicio: fecha_inicio, p_fecha_fin: fecha_fin,
-    p_motivo: motivo, p_documento_url: documento_url,
-    p_registrado_desde: registrado_desde,
-  });
+  // Usar insert directo para soportar los nuevos campos sin modificar la RPC
+  const { data, error } = await supabase
+    .from('solicitudes_rrhh')
+    .insert({
+      empresa_id: empresaId, personal_id, personal_nombre, personal_tipo,
+      aprobador_id, aprobador_nombre, tipo,
+      fecha_inicio, fecha_fin,
+      dias_habiles: diasHabilesLocal(fecha_inicio, fecha_fin),
+      motivo, documento_url,
+      requiere_documento: requiereDocumento(tipo),
+      estado: 'enviada',
+      clasificacion_pago: clasifEfectiva,
+      fecha_retorno: fecha_retorno || null,
+      unidad: unidad || 'dias',
+      cantidad_horas: cantidad_horas || null,
+      registrado_desde,
+    })
+    .select()
+    .single();
   if (error) throw error;
   return data;
 }
@@ -171,18 +249,35 @@ export async function rechazarJefe(solicitudId, empresaId, comentario, usuario) 
 }
 
 export async function confirmarRrhh(solicitudId, empresaId, opts = {}) {
-  const solicitud = getDataMode() !== 'supabase'
-    ? mockSolicitudes.find(s => s.id === solicitudId)
-    : null;
+  const isMock = getDataMode() !== 'supabase';
+  const solicitud = isMock ? mockSolicitudes.find(s => s.id === solicitudId) : null;
   const tipo = opts.tipo || solicitud?.tipo;
   const dias = opts.diasHabiles || solicitud?.dias_habiles || 0;
   const diasLicEmpresa = opts.diasLicenciaEmpresa ?? mockConfig.dias_licencia_empresa;
-  const impacto = calcularImpactoNomina(tipo, dias, diasLicEmpresa);
+  const clasifPago = opts.clasificacion_pago || solicitud?.clasificacion_pago || null;
+  const impacto = calcularImpactoNomina(tipo, dias, diasLicEmpresa, clasifPago);
+
+  // Asignar correlativo PM si aún no tiene uno
+  let numero_correlativo = solicitud?.numero_correlativo || null;
+  if (!numero_correlativo) {
+    if (isMock) {
+      numero_correlativo = mockCorrelativoPM(empresaId);
+    } else {
+      try {
+        const supabase = await getSupabaseClient();
+        numero_correlativo = await siguienteCorrelativoPM(supabase, empresaId);
+      } catch (err) {
+        console.warn('[solicitudesRrhh] No se pudo asignar correlativo:', err?.message);
+      }
+    }
+  }
+
   return cambiarEstado(solicitudId, empresaId, 'confirmada_rrhh', {
     ...impacto,
     fecha_confirmacion: new Date().toISOString(),
     confirmado_por: opts.confirmadoPor || null,
     comentario_rrhh: opts.comentario || null,
+    numero_correlativo,
     _usuario: opts.usuario,
   });
 }

@@ -15,10 +15,10 @@ const tenantAdminScreens = [
   'ventas','caja','activos_fijos','financiamiento','prestamos_personal','cxc','cxp','facturacion','tesoreria','resultados','valorizacion','presupuestos',
   'cs_onboarding','cs_planes','cs_health','cs_renovaciones','cs_fidelizacion','bi_cs',
   'ia_comercial','ia_operativa','ia_financiera',
-  'campo','usuarios','rrhh_operativo','rrhh_admin','asistencia','turnos','nomina','tareo_admin','control_horas','evaluaciones_desempeno','liquidaciones_cese','roles','maestros','parametros','servicios','tarifarios'
+  'campo','mi_portal','usuarios','rrhh_operativo','rrhh_admin','reclutamiento','asistencia','turnos','nomina','tareo_admin','control_horas','evaluaciones_desempeno','liquidaciones_cese','roles','maestros','parametros','servicios','tarifarios'
 ];
 
-const platformScreens = ['dashboard','tenants','planes','metricas_saas','usuarios','roles'];
+const platformScreens = ['dashboard','mi_portal','tenants','planes','metricas_saas','usuarios','roles'];
 
 export const roles = {
   plataforma: { nombre: 'Superadmin TIDEO', color: 'navy', categoria: 'admin', nivel_jerarquico: 'direccion', descripcion: 'Administra la plataforma SaaS, tenants, planes, metricas y soporte TIDEO', permisos: { ver: platformScreens, plataforma: true, soporte_tenant: true, ver_costos: true, ver_finanzas: true } },
@@ -27,6 +27,7 @@ export const roles = {
   vendedor: { nombre: 'Vendedor', color: 'blue', categoria: 'comercial', nivel_jerarquico: 'asesor', descripcion: 'Gestión de sus propias ventas y agenda', permisos: { ver: ['dashboard','cuentas','leads','pipeline','actividades','agenda_comercial','cotizaciones','evaluaciones_desempeno'], crear: true, acceso_campo: true, perfil_campo: 'Vendedor' } },
   tecnico: { nombre: 'Técnico de Campo', color: 'orange', categoria: 'operaciones', nivel_jerarquico: 'operativo', descripcion: 'Ejecución de OTs', permisos: { ver: ['ot','partes','evaluaciones_desempeno'], acceso_campo: true } },
   finanzas: { nombre: 'Finanzas', color: 'green', categoria: 'finanzas', nivel_jerarquico: 'jefatura', descripcion: 'Control de cajas y facturación', permisos: { ver: ['dashboard','bi_financiero','presupuestos','cxc','cxp','tesoreria','resultados','facturacion','caja','activos_fijos','financiamiento','prestamos_personal','ventas','valorizacion','nomina','evaluaciones_desempeno'], ver_finanzas: true } },
+  empleado: { nombre: 'Empleado', color: 'cyan', categoria: 'rrhh', nivel_jerarquico: 'operativo', descripcion: 'Autoservicio de colaborador sin modulos operacionales', permisos: { ver: ['mi_portal','campo'], acceso_campo: true, perfil_campo: 'Empleado', campo_modulos: ['mi_espacio','solicitudes'] } },
 };
 
 export const usuarios = [
@@ -996,6 +997,8 @@ export const pantallasPermisos = [
   { key: 'ordenes_servicio', modulo: 'Compras', pantalla: 'Ordenes de Servicio', acciones: ['ver','crear','editar','aprobar','exportar','costos','finanzas'] },
   { key: 'recepciones', modulo: 'Compras', pantalla: 'Recepciones', acciones: ['ver','crear','editar','aprobar','exportar','costos'] },
   { key: 'compras_gastos', modulo: 'Compras', pantalla: 'Compras / Gastos', acciones: ['ver','crear','editar','anular'] },
+  { key: 'mi_portal', modulo: 'RRHH', pantalla: 'Mi portal', acciones: ['ver'] },
+  { key: 'reclutamiento', modulo: 'RRHH', pantalla: 'Reclutamiento', acciones: ['ver','crear','editar','anular','exportar'] },
   { key: 'rrhh_operativo', modulo: 'RRHH', pantalla: 'Personal Operativo', acciones: ['ver','crear','editar','exportar','costos','finanzas'] },
   { key: 'rrhh_admin', modulo: 'RRHH', pantalla: 'Personal Administrativo', acciones: ['ver','crear','editar','exportar','costos','finanzas'] },
   { key: 'asistencia', modulo: 'RRHH', pantalla: 'Control de Asistencia', acciones: ['ver','crear','editar','exportar'] },
@@ -2103,6 +2106,21 @@ export const campanas = [
   }
 ];
 
+export const reclutamientoVacantes = [
+  { id: 'vac_001', empresa_id: 'emp_001', cargo: 'Tecnico mecanico de mina', cargo_id: null, area: 'Operaciones', sede: 'Arequipa', descripcion: 'Experiencia en mantenimiento de equipos de planta concentradora, regimen 14x7.', posiciones: 2, posiciones_cubiertas: 0, fecha_apertura: '2026-06-01', estado: 'abierta', public_token: 'postula_vac_001_demo' },
+  { id: 'vac_002', empresa_id: 'emp_001', cargo: 'Analista de compras', cargo_id: null, area: 'Compras', sede: 'Lima', descripcion: 'Compras industriales, homologacion de proveedores y seguimiento de OC.', posiciones: 1, posiciones_cubiertas: 0, fecha_apertura: '2026-05-20', estado: 'en_proceso', public_token: 'postula_vac_002_demo' },
+];
+
+export const reclutamientoCandidaturas = [
+  { id: 'candit_001', empresa_id: 'emp_001', vacante_id: 'vac_001', candidato_id: 'cand_001', etapa: 'postulado', fuente: 'referido', notas_evaluacion: 'CV completo. Pendiente entrevista.', candidato: { id: 'cand_001', empresa_id: 'emp_001', nombre: 'Ruben Quispe', dni: '44556677', telefono: '987654321', email: 'ruben.quispe@mail.com', cv_url: '#', alerta_historial: {} }, historial: [{ etapa_hasta: 'postulado', fecha: '2026-06-02T10:00:00Z', usuario: 'RRHH Demo' }] },
+  { id: 'candit_002', empresa_id: 'emp_001', vacante_id: 'vac_001', candidato_id: 'cand_002', etapa: 'entrevista', fuente: 'banco_talentos', notas_evaluacion: 'Buen dominio tecnico.', candidato: { id: 'cand_002', empresa_id: 'emp_001', nombre: 'Mario Flores', dni: '11223344', telefono: '955123456', email: 'mario.flores@mail.com', cv_url: '#', alerta_historial: {} }, historial: [{ etapa_hasta: 'postulado', fecha: '2026-05-10T09:00:00Z', usuario: 'RRHH Demo' }, { etapa_desde: 'postulado', etapa_hasta: 'entrevista', fecha: '2026-06-05T09:00:00Z', usuario: 'RRHH Demo' }] },
+  { id: 'candit_003', empresa_id: 'emp_001', vacante_id: 'vac_002', candidato_id: 'cand_003', etapa: 'descartado', fuente: 'portal_publico', notas_evaluacion: 'No cumple experiencia minima.', descarte_motivo: 'Experiencia insuficiente en compras industriales', candidato: { id: 'cand_003', empresa_id: 'emp_001', nombre: 'Cesar Paredes', dni: '77889900', telefono: '944222111', email: 'cesar.paredes@mail.com', cv_url: '#', alerta_historial: { encontrado: true, no_recontratar: true, no_recontratar_motivo: 'Cese por falta grave registrado en Ola 2' } }, historial: [{ etapa_hasta: 'postulado', fecha: '2026-05-22T11:00:00Z', usuario: 'RRHH Demo' }, { etapa_desde: 'postulado', etapa_hasta: 'descartado', motivo: 'Experiencia insuficiente', fecha: '2026-05-25T11:00:00Z', usuario: 'RRHH Demo' }] },
+];
+
+export const amonestacionesPersonal = [
+  { id: 'amo_001', empresa_id: 'emp_001', personal_id: 'tec_001', personal_tipo: 'operativo', fecha: '2026-06-04', tipo: 'tardanza', gravedad: 'leve', descripcion: 'Tardanza reiterada en ingreso a turno.', estado: 'activa', acusado_en: null },
+];
+
 export const MOCK = {
   empresas, roles, usuarios, leads, cuentas, contactos, oportunidades, campanas,
   actividades, hojasCosteo, cotizaciones, osClientes, ots, partes, compras, cxc,
@@ -2115,6 +2133,7 @@ export const MOCK = {
   // Fase 3 — RRHH
   personalOperativo, personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH,
   tiposDocumento, requisitosCargo, personalDocumentos,
+  reclutamientoVacantes, reclutamientoCandidaturas, amonestacionesPersonal,
   onboardings, planesExito, healthScoresDetalle, churnPlanes,
   renovaciones, npsEncuestas, referidos, casosExito, iaLogs,
   biFinanciero, metricasSaaS,

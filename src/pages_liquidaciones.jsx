@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { I } from './icons.jsx';
 import { useApp } from './context.jsx';
+import { FileUpload } from './components/FileUpload.jsx';
 import {
   calcularConceptos,
   sugerirFechaUltimoDepositoCTS,
@@ -28,6 +29,7 @@ const ESTADO_LABEL = {
 const TIPOS_CESE_DESC = {
   renuncia_voluntaria:  'El trabajador decide retirarse',
   despido_arbitrario:   'La empresa decide sin causa justificada — genera indemnización',
+  despido_falta_grave:  'Despido justificado por falta grave - no genera indemnizacion',
   mutuo_acuerdo:        'Ambas partes acuerdan el cese',
   vencimiento_contrato: 'Fin del plazo pactado en el contrato',
   fallecimiento:        'Se liquida a los herederos o beneficiarios',
@@ -171,6 +173,9 @@ function WizardLiquidacion({ onClose, onCreated }) {
   const [fechaCese, setFechaCese] = useState('');
   const [benefNombre, setBenefNombre] = useState('');
   const [benefDni,    setBenefDni]    = useState('');
+  const [motivoFaltaGrave, setMotivoFaltaGrave] = useState('');
+  const evidenciaRef = useRef(null);
+  const evidenciaEntityId = useRef(`liq_cese_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
 
   // Paso 2 — parámetros ajustables
   const [asigFam,   setAsigFam]   = useState(0);
@@ -198,6 +203,7 @@ function WizardLiquidacion({ onClose, onCreated }) {
     if (fechaIngreso && fechaCese < fechaIngreso) return setError('La fecha de cese no puede ser anterior a la fecha de ingreso.');
     if (!fechaIngreso) return setError('El colaborador no tiene fecha de ingreso registrada. Actualiza su ficha en RRHH primero.');
     if (tipoCese === 'fallecimiento' && (!benefNombre.trim() || !benefDni.trim())) return setError('Ingresa nombre y DNI del beneficiario.');
+    if (tipoCese === 'despido_falta_grave' && !motivoFaltaGrave.trim()) return setError('Ingresa el motivo especifico de la falta grave.');
 
     const fdep = sugerirFechaUltimoDepositoCTS(fechaCese);
     setFechaDep(fdep);
@@ -229,6 +235,10 @@ function WizardLiquidacion({ onClose, onCreated }) {
     setLoading(true);
     setError('');
     try {
+      const evidenciaAdjuntos = tipoCese === 'despido_falta_grave'
+        ? await (evidenciaRef.current?.uploadPendingFiles?.() || Promise.resolve([]))
+        : [];
+      const evidenciaUrl = evidenciaAdjuntos[0]?.url || evidenciaAdjuntos[0]?.storage_path || evidenciaAdjuntos[0]?.path || null;
       const payload = {
         personal_id:      persona.id,
         personal_nombre:  persona.nombre,
@@ -238,6 +248,8 @@ function WizardLiquidacion({ onClose, onCreated }) {
         fecha_ingreso:    fechaIngreso,
         beneficiario_nombre: benefNombre || null,
         beneficiario_dni:    benefDni    || null,
+        motivo_falta_grave:  tipoCese === 'despido_falta_grave' ? motivoFaltaGrave.trim() : null,
+        evidencia_url:       evidenciaUrl,
         parametros: {
           fechaIngreso, fechaCese, sueldoBase,
           asignacionFamiliar: Number(asigFam) || 0,
@@ -322,13 +334,18 @@ function WizardLiquidacion({ onClose, onCreated }) {
               </div>
 
               {persona && (
-                <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: '12px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', fontSize: 12 }}>
-                  <span className="text-muted">Cargo</span>         <strong>{persona.cargo || '—'}</strong>
-                  <span className="text-muted">Área</span>          <strong>{persona.area || '—'}</strong>
-                  <span className="text-muted">Fecha de ingreso</span> <strong>{fmtDate(fechaIngreso) || <span style={{color:'var(--danger)'}}>No registrada</span>}</strong>
-                  <span className="text-muted">Sueldo base</span>   <strong>{fmtMoney(sueldoBase)}</strong>
-                  <span className="text-muted">Tipo</span>          <strong>{persona._tipo === 'operativo' ? 'Operativo' : 'Administrativo'}</strong>
-                </div>
+                <>
+                  <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: '12px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', fontSize: 12 }}>
+                    <span className="text-muted">Cargo</span>         <strong>{persona.cargo || '—'}</strong>
+                    <span className="text-muted">Área</span>          <strong>{persona.area || '—'}</strong>
+                    <span className="text-muted">Fecha de ingreso</span> <strong>{fmtDate(fechaIngreso) || <span style={{color:'var(--danger)'}}>No registrada</span>}</strong>
+                    <span className="text-muted">Sueldo base</span>   <strong>{fmtMoney(sueldoBase)}</strong>
+                    <span className="text-muted">Tipo</span>          <strong>{persona._tipo === 'operativo' ? 'Operativo' : 'Administrativo'}</strong>
+                  </div>
+                  <div className="alert alert-warning" style={{ fontSize: 13 }}>
+                    ⚠️ Al crear esta liquidación, el acceso del colaborador al sistema será bloqueado automáticamente. Esta acción es reversible solo si la liquidación es anulada.
+                  </div>
+                </>
               )}
 
               <div>
@@ -371,6 +388,38 @@ function WizardLiquidacion({ onClose, onCreated }) {
                   <div>
                     <label className="label">DNI del beneficiario</label>
                     <input className="input" value={benefDni} onChange={e => setBenefDni(e.target.value)} placeholder="00000000" maxLength={8} />
+                  </div>
+                </div>
+              )}
+
+              {tipoCese === 'despido_falta_grave' && (
+                <div style={{ background: 'var(--bg-subtle)', padding: 16, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div className="alert alert-warning" style={{fontSize:13}}>
+                    Este tipo de cese activara automaticamente el flag "No recontratar" en la ficha del colaborador.
+                  </div>
+                  <div>
+                    <label className="label">Motivo especifico *</label>
+                    <textarea
+                      className="input"
+                      rows={4}
+                      value={motivoFaltaGrave}
+                      onChange={e => setMotivoFaltaGrave(e.target.value)}
+                      placeholder="Ej: robo de materiales, inasistencias reiteradas, incumplimiento del reglamento interno..."
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Evidencia documental</label>
+                    <div className="text-muted" style={{fontSize:12, marginBottom:8}}>Opcional pero recomendado para sustentar el cese.</div>
+                    <FileUpload
+                      ref={evidenciaRef}
+                      entidadTipo="liquidaciones_cese"
+                      entidadId={evidenciaEntityId.current}
+                      empresaId={empresa?.id}
+                      categoria="evidencia_falta_grave"
+                      deferUpload
+                      descripcion="Evidencia documental de despido por falta grave"
+                      subidoPor={authUser?.id || null}
+                    />
                   </div>
                 </div>
               )}
@@ -642,6 +691,8 @@ function DetalleLiquidacion({ liquidacion, conceptos, onClose }) {
                 <span className="text-muted">Creado</span>          <strong>{fmtDate(liquidacion.created_at)}</strong>
                 {liquidacion.confirmado_en && <><span className="text-muted">Confirmado</span> <strong>{fmtDate(liquidacion.confirmado_en)}</strong></>}
                 {liquidacion.anulado_en    && <><span className="text-muted">Anulado</span>    <strong>{fmtDate(liquidacion.anulado_en)}</strong></>}
+                {liquidacion.motivo_falta_grave && <><span className="text-muted">Motivo falta grave</span> <strong style={{ whiteSpace: 'pre-wrap' }}>{liquidacion.motivo_falta_grave}</strong></>}
+                {liquidacion.evidencia_url && <><span className="text-muted">Evidencia</span> <strong><a href={liquidacion.evidencia_url} target="_blank" rel="noreferrer">Ver evidencia</a></strong></>}
                 {liquidacion.observaciones && <><span className="text-muted">Observaciones</span> <strong style={{ whiteSpace: 'pre-wrap' }}>{liquidacion.observaciones}</strong></>}
                 {liquidacion.motivo_anulacion && <><span className="text-muted">Motivo anulación</span> <strong style={{ color: 'var(--danger)' }}>{liquidacion.motivo_anulacion}</strong></>}
               </div>

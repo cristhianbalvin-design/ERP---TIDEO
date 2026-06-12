@@ -31,6 +31,9 @@ import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import * as XLSX from 'xlsx';
+import { calcularEstadoCicloMinero, calcularYGuardarRoster, getSnapshotsRoster, cerrarRosterPeriodo, calcularRosterPeriodo } from './services/rosterMineroService.js';
+import * as amonestacionesService from './services/amonestacionesService.js';
+import { defaultClasificacionPago } from './services/solicitudesRrhhService.js';
 
 // Operations: OT, Partes, Valorization & Cuentas
 const symOf = m => String(m || 'PEN').trim().toUpperCase() === 'USD' ? 'US$' : 'S/';
@@ -6032,8 +6035,8 @@ function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centr
   return <><div className="side-panel-backdrop" onClick={onClose}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de compra</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OC</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}>
       <div className="input-group"><label>Proceso de cotizacion</label><select className="select" value={form.origen_compra === 'solpe' ? '__solpe__' : (form.proceso_compra_id || '')} onChange={e=>cambiarProcesoCotizacion(e.target.value)}><option value="">Compra directa</option><option value="__solpe__">Desde SOLPE</option>{procesos.map(p=><option key={p.id} value={p.id}>{p.codigo}</option>)}</select></div>
       <div className="input-group"><label>Proveedor</label><select className="select" value={form.proveedor_id} onChange={e=>setForm(v=>({...v,proveedor_id:e.target.value}))}>{proveedores.map(p=><option key={p.id} value={p.id}>{p.razon_social}{p.estado==='observado'?' - observado':''}</option>)}</select></div>
-      {form.origen_compra === 'solpe' && <div className="input-group" style={{gridColumn:'1/-1'}}><label>Buscar SOLPE aprobada</label><input className="input" value={solpeQuery} onChange={e=>setSolpeQuery(e.target.value)} placeholder="Numero, descripcion o solicitante"/><select className="select" style={{marginTop:8}} value={form.solpe_id || ''} onChange={e=>aplicarSolpe(e.target.value)}><option value="">Seleccionar SOLPE...</option>{solpesFiltradas.map(s=><option key={s.id} value={s.id}>{solpeOCLabel(s)}</option>)}</select>{solpesFiltradas.length === 0 && <div className="text-muted" style={{fontSize:12, marginTop:4}}>No hay SOLPEs aprobadas sin OC generada.</div>}{selectedSolpe && <div className="input-group" style={{marginTop:8}}><label>SOLPE origen</label><input className="input" readOnly value={solpeOCLabel(selectedSolpe)}/></div>}</div>}
-      <div className="input-group"><label>CECO *</label><select className="select" value={form.centro_costo_id} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
+      {form.origen_compra === 'solpe' && <div className="input-group" style={{gridColumn:'1/-1'}}><label>Buscar SOLPE aprobada</label><input className="input" value={solpeQuery} onChange={e=>setSolpeQuery(e.target.value)} placeholder="Numero, descripcion o solicitante"/><select className="select" style={{marginTop:8}} value={form.solpe_id || ''} onChange={e=>aplicarSolpe(e.target.value)}><option value="">Seleccionar SOLPE...</option>{solpesFiltradas.map(s=><option key={s.id} value={s.id}>{solpeOCLabel(s)}</option>)}</select>{solpesFiltradas.length === 0 && <div className="text-muted" style={{fontSize:12, marginTop:4}}>No hay SOLPEs aprobadas sin OC generada.</div>}</div>}
+      <div className="input-group"><label>CECO *</label>{form.origen_compra === 'directa' ? <SearchSelect value={form.centro_costo_id} placeholder={cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos'} options={cecos.map(c=>({ id: c.id, label: `${c.codigo ? c.codigo + ' - ' : ''}${c.nombre}` }))} onChange={id=>setForm(v=>({...v,centro_costo_id:id}))}/> : <select className="select" value={form.centro_costo_id} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select>}</div>
       <div className="input-group"><label>OT vinculada</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero || o.id}</option>)}</select></div>
       <div className="input-group"><label>Fecha entrega esperada</label><input className="input" type="date" value={form.fecha_entrega_esperada} onChange={e=>setForm(v=>({...v,fecha_entrega_esperada:e.target.value}))}/></div>
       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Descripcion</label><textarea className="input" rows="3" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div>
@@ -6049,10 +6052,7 @@ function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centr
             : '';
           return <div key={idx} className="card" style={{padding:12}}>
             <div className="grid-2" style={{gap:10}}>
-              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Material</label><select className="select" value={item.material_id || ''} onChange={e => {
-                const nextMat = (materiales || []).find(m => m.id === e.target.value);
-                setLinea(idx, { material_id: e.target.value, codigo: nextMat?.codigo || '', descripcion: nextMat?.descripcion || item.descripcion, unidad: nextMat?.unidad || item.unidad || 'Und' });
-              }}><option value="">Seleccionar material...</option>{(materiales || []).map(m => <option key={m.id} value={m.id}>{m.codigo ? `${m.codigo} - ` : ''}{m.descripcion || m.nombre}</option>)}</select></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Material</label>{form.origen_compra === 'directa' ? <SearchSelect value={item.material_id || ''} placeholder="Seleccionar material..." options={(materiales || []).map(m => ({ id: m.id, label: `${m.codigo ? m.codigo + ' - ' : ''}${m.descripcion || m.nombre}${m.nro_parte ? ' · ' + m.nro_parte : ''}` }))} onChange={id => { const nextMat = (materiales || []).find(m => m.id === id); setLinea(idx, { material_id: id, codigo: nextMat?.codigo || '', descripcion: nextMat?.descripcion || item.descripcion, unidad: nextMat?.unidad || item.unidad || 'Und' }); }}/> : <select className="select" value={item.material_id || ''} onChange={e => { const nextMat = (materiales || []).find(m => m.id === e.target.value); setLinea(idx, { material_id: e.target.value, codigo: nextMat?.codigo || '', descripcion: nextMat?.descripcion || item.descripcion, unidad: nextMat?.unidad || item.unidad || 'Und' }); }}><option value="">Seleccionar material...</option>{(materiales || []).map(m => <option key={m.id} value={m.id}>{m.codigo ? `${m.codigo} - ` : ''}{m.descripcion || m.nombre}</option>)}</select>}</div>
               <div className="input-group"><label>Descripcion</label><input className="input" value={item.descripcion || mat?.descripcion || ''} onChange={e=>setLinea(idx, { descripcion:e.target.value })}/></div>
               <div className="input-group"><label>Unidad</label><input className="input" value={item.unidad || mat?.unidad || ''} onChange={e=>setLinea(idx, { unidad:e.target.value })}/></div>
               <div className="input-group"><label>Cantidad</label><input className="input" type="number" min="0" step="0.01" value={item.cantidad} onChange={e=>setLinea(idx, { cantidad:e.target.value })}/></div>
@@ -9183,12 +9183,67 @@ function Remision() {
 }
 
 
-const SOLPE_FORM_INIT = { descripcion: '', tipo: 'bien', prioridad: 'normal', solicitante: '', centro_costo_id: '' };
+function SearchSelect({ value, onChange, options, placeholder = 'Seleccionar...', staticOption = null, className = '', style = {} }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef(null);
+  const inputRef = useRef(null);
+  const selected = value && value !== '' ? (staticOption?.id === value ? staticOption : options.find(o => o.id === value)) : null;
+  const q = query.trim().toLowerCase();
+  const filtered = q ? options.filter(o => o.label.toLowerCase().includes(q)) : options;
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setQuery(''); } };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+  useEffect(() => { if (open && inputRef.current) inputRef.current.focus(); }, [open]);
+  const pick = id => { onChange(id); setOpen(false); setQuery(''); };
+  return (
+    <div ref={ref} style={{ position: 'relative', ...style }}>
+      <div
+        className={`select ${className}`}
+        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', userSelect: 'none' }}
+        onClick={() => setOpen(v => !v)}
+      >
+        <span style={{ color: selected ? 'inherit' : 'var(--fg-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+          {selected ? selected.label : placeholder}
+        </span>
+        <span style={{ color: 'var(--fg-muted)', fontSize: 10, marginLeft: 6, flexShrink: 0 }}>▾</span>
+      </div>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,.2)', marginTop: 2 }}>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+            <input ref={inputRef} className="input" style={{ fontSize: 13, padding: '4px 8px' }} placeholder="Escribir para filtrar..." value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { setOpen(false); setQuery(''); } }} onClick={e => e.stopPropagation()} />
+          </div>
+          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {filtered.length === 0 && !staticOption && <div style={{ padding: '8px 12px', color: 'var(--fg-muted)', fontSize: 13 }}>Sin resultados</div>}
+            {filtered.map(o => (
+              <div key={o.id} style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 13, background: o.id === value ? 'color-mix(in srgb, var(--primary) 10%, transparent)' : 'transparent' }}
+                onMouseDown={e => { e.preventDefault(); pick(o.id); }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-subtle)'}
+                onMouseLeave={e => e.currentTarget.style.background = o.id === value ? 'color-mix(in srgb, var(--primary) 10%, transparent)' : 'transparent'}
+              >{o.label}</div>
+            ))}
+            {staticOption && (
+              <div style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 13, borderTop: filtered.length > 0 ? '1px solid var(--border)' : 'none', color: 'var(--fg-muted)', background: staticOption.id === value ? 'color-mix(in srgb, var(--primary) 10%, transparent)' : 'transparent' }}
+                onMouseDown={e => { e.preventDefault(); pick(staticOption.id); }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-subtle)'}
+                onMouseLeave={e => e.currentTarget.style.background = staticOption.id === value ? 'color-mix(in srgb, var(--primary) 10%, transparent)' : 'transparent'}
+              >{staticOption.label}</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const SOLPE_FORM_INIT = { descripcion: '', tipo: 'bien', prioridad: 'normal', solicitante: '', centro_costo_id: '', ot_id: '' };
 
 const SOLPE_ESTADO_BADGE = { borrador: 'badge-gray', solicitada: 'badge-orange', aprobada: 'badge-blue', atendida: 'badge-green', oc_generada: 'badge-green', 'oc generada': 'badge-green' };
 
 function SOLPE() {
-  const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast, materiales, navigate } = useApp();
+  const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast, materiales, navigate, areasEmpresa } = useApp();
   const newItem = () => ({ id: `itm_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, material_id: '', descripcion: '', cantidad: '', unidad: 'und', observacion: '' });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(SOLPE_FORM_INIT);
@@ -9448,15 +9503,18 @@ function SOLPE() {
                 {items.map((item, idx) => (
                   <div key={item.id} style={{border:'1px solid var(--border)', borderRadius:6, padding:'10px 10px 8px', background:'var(--surface)'}}>
                     <div style={{display:'grid', gridTemplateColumns:'1fr auto', gap:8, marginBottom:6}}>
-                      <select className="select" style={{fontSize:13}} value={item.material_id} onChange={e => {
-                        const mat = (materiales || []).find(m => m.id === e.target.value);
-                        setItems(p => p.map((x, i) => i === idx ? { ...x, material_id: e.target.value, descripcion: mat ? (mat.descripcion || mat.nombre || '') : x.descripcion, unidad: mat?.unidad || x.unidad } : x));
-                        if (errItems) setErrItems(false);
-                      }}>
-                        <option value="">— Seleccionar del catálogo —</option>
-                        {(materiales || []).map(m => <option key={m.id} value={m.id}>{m.codigo ? `${m.codigo} – ` : ''}{m.descripcion || m.nombre}</option>)}
-                        <option value="__manual__">✏ Ingresar manualmente</option>
-                      </select>
+                      <SearchSelect
+                        style={{fontSize:13}}
+                        value={item.material_id}
+                        placeholder="— Seleccionar del catálogo —"
+                        staticOption={{ id: '__manual__', label: '✏ Ingresar manualmente' }}
+                        options={(materiales || []).map(m => ({ id: m.id, label: `${m.codigo ? m.codigo + ' – ' : ''}${m.descripcion || m.nombre}${m.nro_parte ? ' · ' + m.nro_parte : ''}` }))}
+                        onChange={id => {
+                          const mat = (materiales || []).find(m => m.id === id);
+                          setItems(p => p.map((x, i) => i === idx ? { ...x, material_id: id, descripcion: mat ? (mat.descripcion || mat.nombre || '') : x.descripcion, unidad: mat?.unidad || x.unidad } : x));
+                          if (errItems) setErrItems(false);
+                        }}
+                      />
                       <button type="button" className="btn btn-sm" style={{background:'var(--danger-light,#fee2e2)', color:'var(--danger,#ef4444)', border:'none', minWidth:28}} onClick={() => setItems(p => p.filter((_, i) => i !== idx))} title="Eliminar ítem">×</button>
                     </div>
                     {item.material_id === '__manual__' && (
@@ -9492,14 +9550,27 @@ function SOLPE() {
             </div>
             <div className="form-group">
               <label className="form-label">Área solicitante *</label>
-              <input className="input" placeholder="Ej: Mantenimiento, Operaciones..." value={form.solicitante} onChange={e => set('solicitante', e.target.value)} />
+              <select className="select" value={form.solicitante} onChange={e => set('solicitante', e.target.value)}>
+                <option value="">— Seleccionar área —</option>
+                {(areasEmpresa || []).filter(a => a.estado === 'activo').map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">OT asociada <span className="text-muted" style={{fontSize:11}}>(opcional)</span></label>
+              <select className="select" value={form.ot_id} onChange={e => set('ot_id', e.target.value)}>
+                <option value="">Sin OT</option>
+                {(ots || []).filter(o => o.estado !== 'cerrada' && o.estado !== 'cancelada').map(o => <option key={o.id} value={o.id}>{o.numero || o.id}</option>)}
+              </select>
             </div>
             <div className="form-group">
               <label className="form-label">Centro de Costo (CECO) *</label>
-              <select className={`select ${errCeco ? 'input-error' : ''}`} value={form.centro_costo_id} onChange={e => set('centro_costo_id', e.target.value)}>
-                <option value="">— Seleccionar CECO —</option>
-                {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.codigo} – {c.nombre}</option>)}
-              </select>
+              <SearchSelect
+                className={errCeco ? 'input-error' : ''}
+                value={form.centro_costo_id}
+                placeholder="— Seleccionar CECO —"
+                options={cecosActivos.map(c => ({ id: c.id, label: `${c.codigo} – ${c.nombre}` }))}
+                onChange={id => set('centro_costo_id', id)}
+              />
               {errCeco && <div style={{color:'var(--danger, #ef4444)', fontSize:12, marginTop:4}}>El CECO es obligatorio para crear una SOLPE.</div>}
             </div>
             <div className="row" style={{gap:8, marginTop:8}}>
@@ -12209,6 +12280,8 @@ function calcularDiasComputables(anio, mes, regimen_jornada, fecha_inicio_ciclo,
     if (regimen_jornada === 'minero_14x7')       { t = 14; d = 7;  }
     else if (regimen_jornada === 'minero_20x10') { t = 20; d = 10; }
     else if (regimen_jornada === 'minero_28x14') { t = 28; d = 14; }
+    else if (regimen_jornada === 'minero_2x1')   { t = 2;  d = 1;  }
+    // ciclo_acumulativo usa los días del registro del trabajador (ya leídos arriba)
   }
   if (!t || !d) return null;
   const duracionCiclo = t + d;
@@ -12310,7 +12383,9 @@ function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registr
   const { asignacion, fechaSegIni, fechaSegFin } = seg;
   const iniStr = _isoDate(fechaSegIni);
   const finStr = _isoDate(fechaSegFin);
-  const regsTramo  = registros.filter(r => r.fecha >= iniStr && r.fecha <= finStr);
+  const regsTramo  = registros
+    .filter(r => r.fecha >= iniStr && r.fecha <= finStr)
+    .map(r => r.es_dia_compensado ? { ...r, estado:'dia_compensado', es_falta:false, horas_extra_min:0 } : (r.he_autorizada === false ? { ...r, horas_extra_min:0, horas_extra:0 } : r));
   const valorMinuto = valorHora / 60;
   const diasCal = diasCalendarioEnRango(fechaSegIni, fechaSegFin);
 
@@ -12659,7 +12734,12 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const valorMinuto = valorHora / 60;
 
   const sinFiscalizacionDiaria = trabajador.cargo_confianza || getTipoFiscalizacion(trabajador) !== 'diaria';
-  const registrosNomina = sinFiscalizacionDiaria ? [] : registros;
+  const requiereAutHe = Boolean(empresaCfg?.requiere_autorizacion_he);
+  const registrosNomina = sinFiscalizacionDiaria ? [] : registros.map(r => {
+    if (r.es_dia_compensado) return { ...r, estado: 'dia_compensado', es_falta: false, horas_extra_min: 0 };
+    if (requiereAutHe && Number(r.horas_extra_min || 0) > 0 && !r.he_autorizada) return { ...r, horas_extra_min: 0, horas_extra: 0 };
+    return r;
+  });
   const asistencias = asistidos;
   const faltasInjustificadas = registrosNomina.filter(r => r.estado === 'falta').length;
   const faltasJustificadas = registrosNomina.filter(r => r.estado === 'falta_justificada').length;
@@ -12868,19 +12948,25 @@ function TurnosHorarios() {
 }
 
 function ControlAsistencia() {
-  const { turnos, registrosAsistencia, setRegistrosAsistencia, personalOperativo, personalAdmin, empresa, addNotificacion, asignacionesJornada = [] } = useApp();
+  const { turnos, registrosAsistencia, setRegistrosAsistencia, personalOperativo, personalAdmin, empresa, addNotificacion, asignacionesJornada = [], role } = useApp();
   const [tab, setTab] = useState('diaria');
+  const [poblacion, setPoblacion] = useState('planilla'); // 'planilla' | 'honorarios'
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [panel, setPanel] = useState(false);
   const [masivo, setMasivo] = useState(false);
   const [masivoDatos, setMasivoDatos] = useState({});
   const [kiosk, setKiosk] = useState(false);
+  const [autHeRows, setAutHeRows] = useState([]);
+  const [autHeForm, setAutHeForm] = useState({ personal_id:'', fecha:new Date().toISOString().split('T')[0], horas:'1', motivo:'' });
+  const [autHeComentario, setAutHeComentario] = useState('');
+  const [validacionesHon, setValidacionesHon] = useState([]);
 
   // Estados Mineros
   const [ciclosMineros, setCiclosMineros] = useState([]);
   const [panelMinero, setPanelMinero] = useState(false);
-  const formMineroBase = { id:'', personal_id:'', regimen_jornada:'', fecha_inicio_ciclo:'', horas_extra_ciclo:0, estado_ciclo:'completo', incidencias:[] };
+  const formMineroBase = { id:'', personal_id:'', regimen_jornada:'', fecha_inicio_ciclo:'', horas_extra_ciclo:0, estado_ciclo:'completo', incidencias:[], tiene_induccion:false, dias_induccion:'', fecha_fin_induccion:'' };
   const [formMinero, setFormMinero] = useState(formMineroBase);
+  const [detalleMineroId, setDetalleMineroId] = useState(null);
 
   // Trabajadores
   const trabajadores = [
@@ -12888,8 +12974,11 @@ function ControlAsistencia() {
     ...personalAdmin.map(p => ({ ...p, trabajador_tipo:'administrativo', id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:p.turno_id || 'tur_005', remuneracion:p.remuneracion || 3000, regimen_jornada: p.regimen_jornada || 'general', horas_diarias_pactadas: p.horas_diarias_pactadas || 12 }))
   ];
 
-  const trabajadoresGenerales = trabajadores.filter(t => getTipoFiscalizacion(t) === 'diaria' && (!t.modalidad_contrato || t.modalidad_contrato === 'planilla'));
-  const trabajadoresMineros = trabajadores.filter(t => getTipoFiscalizacion(t) === 'ciclo');
+  const esHonorarios = t => normalizarModalidadContrato(t.modalidad_contrato) === 'honorarios';
+  const trabajadoresPlanilla = trabajadores.filter(t => getTipoFiscalizacion(t) === 'diaria' && !esHonorarios(t));
+  const trabajadoresHonorarios = trabajadores.filter(t => esHonorarios(t));
+  const trabajadoresGenerales = poblacion === 'honorarios' ? trabajadoresHonorarios : trabajadoresPlanilla;
+  const trabajadoresMineros = trabajadores.filter(t => getTipoFiscalizacion(t) === 'ciclo' && !esHonorarios(t));
 
   useEffect(() => {
     if (trabajadoresMineros.length > 0) {
@@ -12897,12 +12986,23 @@ function ControlAsistencia() {
     }
   }, [empresa.id, trabajadoresMineros.length]);
 
+  useEffect(() => {
+    if (!empresa?.id) return;
+    rrhhService.getAutorizacionesHorasExtra(empresa.id).then(setAutHeRows).catch(() => {});
+  }, [empresa?.id]);
+
   const [form, setForm] = useState({ trabajador_id:trabajadoresGenerales[0]?.id || '', fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'', latitud:'', longitud:'', refrigerio_tomado_minutos:0, ubicacion_estado:'' });
   useEffect(() => {
     if (!form.trabajador_id && trabajadoresGenerales[0]?.id) {
       setForm(prev => ({ ...prev, trabajador_id: trabajadoresGenerales[0].id }));
     }
   }, [form.trabajador_id, trabajadoresGenerales[0]?.id]);
+
+  useEffect(() => {
+    if (!autHeForm.personal_id && trabajadoresGenerales[0]?.id) {
+      setAutHeForm(prev => ({ ...prev, personal_id: trabajadoresGenerales[0].id }));
+    }
+  }, [autHeForm.personal_id, trabajadoresGenerales[0]?.id]);
 
   useEffect(() => {
     if (!empresa?.id || !fecha) return;
@@ -12914,6 +13014,7 @@ function ControlAsistencia() {
   }, [fecha, empresa?.id]);
 
   const trabajador = trabajadoresGenerales.find(t => t.id === form.trabajador_id) || trabajadoresGenerales[0];
+  const trabajadorBloqueado = Boolean(trabajador?.asistencia_bloqueada);
   const turno = workerTurno(turnos, trabajador || {});
   const turnoPersistibleId = turnos.some(t => t.id === turno.id) ? turno.id : null;
   const resultado = calcularResultadoAsistencia(form.hora_entrada, form.hora_salida, turno, form.asistio === 'no', form.justificada, form.refrigerio_tomado_minutos);
@@ -12945,6 +13046,10 @@ function ControlAsistencia() {
     e?.preventDefault?.();
     if (!turnoPersistibleId) {
       addNotificacion('El colaborador no tiene un turno real asignado. Crea un turno y asignalo en Personal antes de registrar asistencia.');
+      return;
+    }
+    if (trabajadorBloqueado) {
+      addNotificacion(`No se puede registrar asistencia: el contrato de ${trabajador?.nombre || 'el colaborador'} esta vencido. Regularice el contrato en Documentos.`);
       return;
     }
     if (getTipoFiscalizacion(trabajador) !== 'diaria') return;
@@ -13071,7 +13176,9 @@ function ControlAsistencia() {
   };
 
   const guardarMasivo = async () => {
-    const ops = trabajadoresGenerales.map(t => {
+    const bloqueados = trabajadoresGenerales.filter(t => t.asistencia_bloqueada);
+    if (bloqueados.length) addNotificacion(`${bloqueados.length} colaborador(es) con contrato vencido fueron omitidos del registro masivo.`);
+    const ops = trabajadoresGenerales.filter(t => !t.asistencia_bloqueada).map(t => {
       const trn = workerTurno(turnos, t);
       const d = masivoDatos[t.id] || { estado: 'completo', hora_entrada: trn.hora_entrada, hora_salida: trn.hora_salida };
       const esFalta = d.estado === 'falta' || d.estado === 'falta_justificada';
@@ -13105,6 +13212,7 @@ function ControlAsistencia() {
     if (regimen === 'minero_14x7') return { t: 14, d: 7 };
     if (regimen === 'minero_20x10') return { t: 20, d: 10 };
     if (regimen === 'minero_28x14') return { t: 28, d: 14 };
+    if (regimen === 'minero_2x1') return { t: 2, d: 1 };
     return { t: 14, d: 7 };
   };
 
@@ -13137,7 +13245,10 @@ function ControlAsistencia() {
       regimen_jornada: t.regimen_jornada, fecha_inicio_ciclo: formMinero.fecha_inicio_ciclo,
       fecha_fin_ciclo: fecha_fin, dias_ciclo_trabajo: diasT, dias_ciclo_descanso: diasD,
       estado_ciclo: formMinero.estado_ciclo, incidencias: formMinero.incidencias,
-      horas_extra_ciclo: Number(formMinero.horas_extra_ciclo || 0)
+      horas_extra_ciclo: Number(formMinero.horas_extra_ciclo || 0),
+      tiene_induccion: Boolean(formMinero.tiene_induccion),
+      dias_induccion: formMinero.tiene_induccion ? (Number(formMinero.dias_induccion) || null) : null,
+      fecha_fin_induccion: formMinero.tiene_induccion && formMinero.fecha_fin_induccion ? formMinero.fecha_fin_induccion : null,
     };
 
     // Generar registros diarios
@@ -13200,6 +13311,46 @@ function ControlAsistencia() {
     setFormMinero(prev => ({...prev, incidencias: incs}));
   };
 
+  const canGestionarHE = Boolean(role?.permisos?.todo || role?.es_admin_empresa || role?.permisos?.ver_finanzas || role?.permisos?.editar);
+  const crearSolicitudHE = async (e) => {
+    e?.preventDefault?.();
+    const persona = trabajadores.find(t => t.id === autHeForm.personal_id);
+    if (!persona) return;
+    const minutos = Math.round(Number(autHeForm.horas || 0) * 60);
+    if (!autHeForm.fecha || minutos <= 0 || !autHeForm.motivo.trim()) {
+      addNotificacion('Completa fecha, horas y motivo para solicitar horas extra.');
+      return;
+    }
+    const payload = {
+      personal_id: persona.id,
+      personal_tipo: persona.trabajador_tipo || persona.tipo || 'operativo',
+      personal_nombre: persona.nombre,
+      fecha: autHeForm.fecha,
+      minutos_autorizados: minutos,
+      motivo: autHeForm.motivo.trim(),
+      estado: 'pendiente',
+    };
+    try {
+      const data = await rrhhService.crearAutorizacionHorasExtra(empresa.id, payload);
+      setAutHeRows(prev => [data, ...prev]);
+      setAutHeForm({ personal_id: persona.id, fecha: new Date().toISOString().split('T')[0], horas:'1', motivo:'' });
+      addNotificacion('Solicitud de horas extra registrada para aprobacion.');
+    } catch (err) {
+      addNotificacion(`Error registrando solicitud HE: ${err.message || 'BD'}`);
+    }
+  };
+
+  const resolverSolicitudHE = async (row, estado) => {
+    try {
+      const data = await rrhhService.resolverAutorizacionHorasExtra(row.id, estado, { comentario_resolucion: autHeComentario || null, resuelto_por: role?.nombre || null });
+      setAutHeRows(prev => prev.map(r => r.id === row.id ? data : r));
+      setAutHeComentario('');
+      addNotificacion(`Solicitud HE ${estado === 'aprobada' ? 'aprobada' : 'rechazada'}.`);
+    } catch (err) {
+      addNotificacion(`Error resolviendo HE: ${err.message || 'BD'}`);
+    }
+  };
+
 
   const resumenTrabajador = (trabajadoresGenerales.find(t => t.id === form.trabajador_id) || trabajadoresMineros.find(t => t.id === form.trabajador_id)) || trabajadores[0];
   const resumenRegs = registrosPeriodo.filter(r => r.trabajador_id === resumenTrabajador?.id);
@@ -13220,13 +13371,30 @@ function ControlAsistencia() {
   const semanaTexto = `Semana del ${startOfWeek.getDate()} al ${endOfWeek.getDate()} de ${mesNombreCap}`;
 
   // Tabs
-  const allTabs = [['diaria','Vista diaria'],['semanal','Vista semanal'],['mensual','Vista mensual'],['resumen','Resumen por trabajador']];
+  const allTabs = [['diaria','Vista diaria'],['semanal','Vista semanal'],['mensual','Vista mensual'],['resumen','Resumen por trabajador'],['aut_he','Autorizaciones HE']];
   if (trabajadoresMineros.length > 0) allTabs.push(['minero','Régimen Minero']);
 
   return (
     <>
       <div className="page-header">
-        <div><h1 className="page-title">Control de Asistencia</h1><div className="page-sub">Registro manual, tardanzas y horas trabajadas</div></div>
+        <div>
+          <h1 className="page-title">Control de Asistencia</h1>
+          <div className="page-sub" style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
+            Registro manual, tardanzas y horas trabajadas
+            <span style={{marginLeft:8, display:'inline-flex', border:'1px solid var(--border)', borderRadius:6, overflow:'hidden', fontSize:12}}>
+              <button
+                className={`btn btn-sm ${poblacion === 'planilla' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{borderRadius:0, border:'none', padding:'3px 12px'}}
+                onClick={() => { setPoblacion('planilla'); if (tab === 'honorarios') setTab('diaria'); }}
+              >Planilla</button>
+              <button
+                className={`btn btn-sm ${poblacion === 'honorarios' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{borderRadius:0, border:'none', padding:'3px 12px'}}
+                onClick={() => { setPoblacion('honorarios'); if (tab === 'minero') setTab('diaria'); }}
+              >Honorarios</button>
+            </span>
+          </div>
+        </div>
         <div className="row" style={{gap:10}}><button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}} onClick={() => setKiosk(true)}>{I.clock} Reloj Control (Móvil)</button><button className="btn btn-secondary" onClick={abrirMasivo}>Registro masivo</button><button className="btn btn-secondary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Manual</button></div>
       </div>
       
@@ -13333,30 +13501,151 @@ function ControlAsistencia() {
           );
         })()
         }</div>}
-      
-      {tab === 'minero' && <div className="card">
-        <div className="card-head"><h3>Régimen Minero</h3><p className="text-muted" style={{margin:0}}>Gestión de ciclos y registro de incidencias</p></div>
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead><tr><th>Trabajador</th><th>Régimen</th><th>Ciclo Actual</th><th>Estado Ciclo</th><th>Días (T/D)</th><th>Hs Extra</th><th>Acciones</th></tr></thead>
-            <tbody>
-              {trabajadoresMineros.map(t => {
-                const c = ciclosMineros.find(x => x.personal_id === t.id);
-                return <tr key={t.id}>
-                  <td><strong>{t.nombre}</strong></td>
-                  <td><span className="badge badge-blue">{t.regimen_jornada}</span></td>
-                  <td>{c ? `${c.fecha_inicio_ciclo} → ${c.fecha_fin_ciclo}` : '-'}</td>
-                  <td>{c ? <span className={'badge '+(c.estado_ciclo==='completo'?'badge-green':c.estado_ciclo==='incompleto'?'badge-red':'badge-orange')}>{c.estado_ciclo}</span> : '-'}</td>
-                  <td>{c ? `${c.dias_ciclo_trabajo}/${c.dias_ciclo_descanso}` : '-'}</td>
-                  <td>{c ? `${c.horas_extra_ciclo}h` : '-'}</td>
-                  <td>
-                    <button className="btn btn-sm btn-secondary" onClick={()=>abrirRegistroMinero(t, c)}>{c ? 'Editar ciclo' : 'Registrar ciclo'}</button>
-                  </td>
-                </tr>;
-              })}
-            </tbody>
-          </table>
+
+      {tab === 'aut_he' && <div className="grid-2" style={{gap:16, alignItems:'flex-start'}}>
+        <div className="card" style={{padding:20}}>
+          <div className="card-head"><h3>Solicitar autorizacion HE</h3></div>
+          <form onSubmit={crearSolicitudHE} style={{display:'flex', flexDirection:'column', gap:12}}>
+            <div className="input-group"><label>Trabajador</label><select className="select" value={autHeForm.personal_id} onChange={e=>setAutHeForm(v=>({...v, personal_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div>
+            <div className="grid-2" style={{gap:12}}>
+              <div className="input-group"><label>Fecha</label><input className="input" type="date" value={autHeForm.fecha} onChange={e=>setAutHeForm(v=>({...v, fecha:e.target.value}))}/></div>
+              <div className="input-group"><label>Horas</label><input className="input" type="number" min="0.5" step="0.5" value={autHeForm.horas} onChange={e=>setAutHeForm(v=>({...v, horas:e.target.value}))}/></div>
+            </div>
+            <div className="input-group"><label>Motivo</label><textarea className="input" rows="3" value={autHeForm.motivo} onChange={e=>setAutHeForm(v=>({...v, motivo:e.target.value}))}/></div>
+            <div className="alert alert-warning" style={{fontSize:12}}>Si la empresa exige autorizacion previa, la nomina solo tomara las HE aprobadas.</div>
+            <div className="row" style={{justifyContent:'flex-end'}}><button className="btn btn-primary" type="submit">Enviar solicitud</button></div>
+          </form>
         </div>
+        <div className="card">
+          <div className="card-head"><h3>Solicitudes HE</h3><span className="badge badge-orange">{autHeRows.filter(r=>r.estado==='pendiente').length} pendientes</span></div>
+          <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Fecha</th><th>Horas</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+            {autHeRows.length === 0 && <tr><td colSpan={5} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes registradas.</td></tr>}
+            {autHeRows.map(r => <tr key={r.id}>
+              <td><strong>{r.personal_nombre || trabajadores.find(t=>t.id===r.personal_id)?.nombre || r.personal_id}</strong><div className="text-muted" style={{fontSize:11}}>{r.motivo}</div></td>
+              <td>{r.fecha}</td>
+              <td>{minutesToLabel(Number(r.minutos_autorizados || 0))}</td>
+              <td><span className={'badge '+(r.estado==='aprobada'?'badge-green':r.estado==='rechazada'?'badge-red':'badge-orange')}>{r.estado}</span></td>
+              <td>{r.estado === 'pendiente' && canGestionarHE ? <div className="row" style={{gap:6}}><button className="btn btn-sm btn-secondary" onClick={()=>resolverSolicitudHE(r, 'aprobada')}>Aprobar</button><button className="btn btn-sm btn-secondary" onClick={()=>resolverSolicitudHE(r, 'rechazada')}>Rechazar</button></div> : <span className="text-muted">-</span>}</td>
+            </tr>)}
+          </tbody></table></div>
+          {canGestionarHE && <div style={{padding:16, borderTop:'1px solid var(--border-subtle)'}}><div className="input-group"><label>Comentario de resolucion</label><input className="input" value={autHeComentario} onChange={e=>setAutHeComentario(e.target.value)} placeholder="Opcional"/></div></div>}
+        </div>
+      </div>}
+      
+      {tab === 'minero' && <div>
+        <div className="card" style={{marginBottom:12}}>
+          <div className="card-head"><h3>Régimen Minero — Estado de Ciclos</h3><p className="text-muted" style={{margin:0}}>Día actual del ciclo, próxima bajada y balance del mes</p></div>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Trabajador</th><th>Régimen</th><th>Estado</th><th>Día del ciclo</th><th>Progreso</th><th>Próxima bajada</th><th>Días mina/mes</th><th>Acciones</th></tr></thead>
+              <tbody>
+                {trabajadoresMineros.map(t => {
+                  const c = ciclosMineros.find(x => x.personal_id === t.id);
+                  const { t: diasT, d: diasD } = getCicloDias(t.regimen_jornada, t);
+                  const estadoCiclo = c ? calcularEstadoCicloMinero({
+                    fechaInicioCiclo: c.fecha_inicio_ciclo,
+                    diasTrabajo: diasT, diasDescanso: diasD,
+                    tieneInduccion: c.tiene_induccion || false,
+                    diasInduccion: c.dias_induccion || 0,
+                    fechaFinInduccion: c.fecha_fin_induccion || null,
+                  }) : null;
+                  const estadoBadge = !estadoCiclo ? 'badge-gray'
+                    : estadoCiclo.estaEnInduccion ? 'badge-purple'
+                    : estadoCiclo.estado === 'en_mina' ? 'badge-orange'
+                    : 'badge-cyan';
+                  const estadoLabel = !estadoCiclo ? 'Sin ciclo'
+                    : estadoCiclo.estaEnInduccion ? 'Inducción'
+                    : estadoCiclo.estado === 'en_mina' ? 'En mina'
+                    : 'En descanso';
+                  const regimenDisplay = t.regimen_jornada === 'minero_2x1' ? 'Minero 2×1'
+                    : t.regimen_jornada.replace('minero_', 'Minero ').replace('x', '×');
+                  return <tr key={t.id}>
+                    <td>
+                      <strong>{t.nombre}</strong>
+                      {t.usuario_bloqueado_en && <span className="badge badge-red" style={{fontSize:10, marginLeft:6}}>Bloqueado</span>}
+                    </td>
+                    <td><span className="badge badge-blue" style={{fontSize:11}}>{regimenDisplay}</span></td>
+                    <td><span className={`badge ${estadoBadge}`}>{estadoLabel}</span></td>
+                    <td>{estadoCiclo ? `Día ${estadoCiclo.diaCiclo} de ${estadoCiclo.totalDiasCiclo}` : '—'}</td>
+                    <td style={{width:120}}>
+                      {estadoCiclo ? <div style={{background:'var(--bg-subtle)', borderRadius:4, height:8, width:100, overflow:'hidden'}}>
+                        <div style={{background: estadoCiclo.estaEnInduccion ? 'var(--purple)' : estadoCiclo.estado === 'en_mina' ? 'var(--orange)' : 'var(--cyan)', height:'100%', width:`${estadoCiclo.progresoPct}%`, transition:'width 0.3s'}}></div>
+                      </div> : '—'}
+                    </td>
+                    <td className="text-muted">{estadoCiclo?.proximaBajada || (estadoCiclo?.estado === 'en_descanso' ? 'En descanso' : '—')}</td>
+                    <td>{estadoCiclo ? `${estadoCiclo.diasEnMinaMes} días` : '—'}</td>
+                    <td style={{display:'flex', gap:6, flexWrap:'wrap'}}>
+                      <button className="btn btn-sm btn-secondary" onClick={()=>abrirRegistroMinero(t, c)}>{c ? 'Editar ciclo' : 'Registrar ciclo'}</button>
+                      {c && <button className="btn btn-sm btn-ghost" onClick={()=>setDetalleMineroId(t.id)}>Detalle</button>}
+                    </td>
+                  </tr>;
+                })}
+                {trabajadoresMineros.length === 0 && <tr><td colSpan={8} className="text-muted" style={{padding:20, textAlign:'center'}}>No hay trabajadores con régimen minero activos.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Panel detalle del ciclo */}
+        {detalleMineroId && (() => {
+          const t = trabajadoresMineros.find(x => x.id === detalleMineroId);
+          const c = ciclosMineros.find(x => x.personal_id === detalleMineroId);
+          if (!t) return null;
+          const { t: diasT, d: diasD } = getCicloDias(t.regimen_jornada, t);
+          const regsT = registrosPeriodo.filter(r => r.trabajador_id === t.id);
+          const diasDelMes = new Date(parseInt(currentMonth.split('-')[0]), parseInt(currentMonth.split('-')[1]), 0).getDate();
+          const ESTADO_COLORS = { completo:'#e6f4ea', descanso:'var(--bg-muted)', falta:'#fce8e6', falta_justificada:'#fef7e0', induccion:'#ede7f6', bajada:'#e3f2fd' };
+          const ESTADO_BORDER = { completo:'var(--green)', descanso:'var(--slate)', falta:'var(--danger)', falta_justificada:'var(--orange)', induccion:'var(--purple)', bajada:'var(--cyan)' };
+          return <>
+            <div className="side-panel-backdrop" onClick={()=>setDetalleMineroId(null)} />
+            <div className="side-panel" style={{width:'min(520px,96vw)'}}>
+              <div className="side-panel-head">
+                <div><div className="eyebrow">Detalle del ciclo</div><div style={{fontWeight:700, fontSize:18}}>{t.nombre}</div><div className="text-muted" style={{fontSize:12}}>{t.regimen_jornada.replace('minero_','Minero ').replace('x','×')} · {diasT}×{diasD}</div></div>
+                <button className="icon-btn" onClick={()=>setDetalleMineroId(null)}>{I.x}</button>
+              </div>
+              <div className="side-panel-body">
+                {/* Calendario del mes */}
+                <div style={{marginBottom:20}}>
+                  <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Calendario — {mesNombreCap}</div>
+                  <div style={{display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:4}}>
+                    {['D','L','M','X','J','V','S'].map(d => <div key={d} style={{textAlign:'center', fontSize:10, color:'var(--fg-muted)', fontWeight:600}}>{d}</div>)}
+                    {Array.from({length: new Date(parseInt(currentMonth.split('-')[0]), parseInt(currentMonth.split('-')[1])-1, 1).getDay()}).map((_,i) => <div key={`e${i}`}/>)}
+                    {Array.from({length: diasDelMes}).map((_,i) => {
+                      const diaStr = String(i+1).padStart(2,'0');
+                      const fechaDia = `${currentMonth}-${diaStr}`;
+                      const r = regsT.find(x => x.fecha === fechaDia);
+                      const bg = r ? (ESTADO_COLORS[r.estado] || 'var(--bg-subtle)') : 'var(--bg-subtle)';
+                      const border = r ? (ESTADO_BORDER[r.estado] || 'var(--border)') : 'var(--border)';
+                      return <div key={i} style={{textAlign:'center', padding:'4px 2px', background:bg, borderRadius:4, border:`1px solid ${border}`, fontSize:11, fontWeight:r?600:400}} title={r?.estado || ''}>{i+1}</div>;
+                    })}
+                  </div>
+                  <div style={{display:'flex', gap:8, marginTop:8, flexWrap:'wrap', fontSize:11}}>
+                    <span style={{display:'flex', alignItems:'center', gap:4}}><span style={{width:12, height:12, background:'#e6f4ea', border:'1px solid var(--green)', borderRadius:2, display:'inline-block'}}></span>Mina</span>
+                    <span style={{display:'flex', alignItems:'center', gap:4}}><span style={{width:12, height:12, background:'var(--bg-muted)', border:'1px solid var(--slate)', borderRadius:2, display:'inline-block'}}></span>Descanso</span>
+                    <span style={{display:'flex', alignItems:'center', gap:4}}><span style={{width:12, height:12, background:'#e3f2fd', border:'1px solid var(--cyan)', borderRadius:2, display:'inline-block'}}></span>Bajada</span>
+                    <span style={{display:'flex', alignItems:'center', gap:4}}><span style={{width:12, height:12, background:'#ede7f6', border:'1px solid var(--purple)', borderRadius:2, display:'inline-block'}}></span>Inducción</span>
+                    <span style={{display:'flex', alignItems:'center', gap:4}}><span style={{width:12, height:12, background:'#fce8e6', border:'1px solid var(--danger)', borderRadius:2, display:'inline-block'}}></span>Falta</span>
+                  </div>
+                </div>
+                {/* Datos del ciclo */}
+                {c && <div className="grid-2" style={{gap:10}}>
+                  {[['Inicio ciclo', c.fecha_inicio_ciclo], ['Fin ciclo', c.fecha_fin_ciclo], ['Estado', c.estado_ciclo], ['HE ciclo', `${c.horas_extra_ciclo}h`]].map(([label, val]) => (
+                    <div key={label} style={{padding:'10px 12px', background:'var(--bg-subtle)', borderRadius:6}}>
+                      <div className="text-muted" style={{fontSize:10, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:3}}>{label}</div>
+                      <div style={{fontWeight:600, fontSize:13}}>{val || '—'}</div>
+                    </div>
+                  ))}
+                </div>}
+                {c?.tiene_induccion && <div style={{marginTop:12, padding:'10px 14px', background:'rgba(103,58,183,0.07)', borderRadius:6, borderLeft:'3px solid var(--purple)', fontSize:12}}>
+                  <strong>Período de inducción:</strong> {c.dias_induccion || 0} días · fin: {c.fecha_fin_induccion || '—'}
+                </div>}
+                {c && <div style={{marginTop:16}}>
+                  <button className="btn btn-sm btn-secondary" onClick={()=>{ abrirRegistroMinero(t, c); setDetalleMineroId(null); }}>Editar ciclo / incidencias</button>
+                </div>}
+              </div>
+            </div>
+          </>;
+        })()}
       </div>}
 
       {/* Modal Minero */}
@@ -13371,6 +13660,19 @@ function ControlAsistencia() {
             <option value="completo">Completo</option><option value="incompleto">Incompleto</option><option value="con_incidencias">Con incidencias</option>
           </select></div>
           <div className="input-group" style={{marginTop:12}}><label>Horas Extra del Ciclo Totales</label><input type="number" step="0.5" className="input" value={formMinero.horas_extra_ciclo} onChange={e=>setFormMinero(v=>({...v, horas_extra_ciclo:e.target.value}))}/></div>
+
+          {/* Inducción inicial */}
+          <div style={{marginTop:16, padding:'12px 14px', background:'rgba(103,58,183,0.06)', borderRadius:8, borderLeft:'3px solid var(--purple)'}}>
+            <label style={{display:'flex', alignItems:'center', gap:8, fontWeight:600, fontSize:13, cursor:'pointer'}}>
+              <input type="checkbox" checked={!!formMinero.tiene_induccion} onChange={e=>setFormMinero(v=>({...v, tiene_induccion:e.target.checked}))} />
+              Tiene período de inducción inicial
+            </label>
+            {formMinero.tiene_induccion && <div className="grid-2" style={{gap:10, marginTop:10}}>
+              <div className="input-group"><label>Días de inducción</label><input type="number" min="1" className="input" value={formMinero.dias_induccion} onChange={e=>setFormMinero(v=>({...v, dias_induccion:e.target.value}))}/></div>
+              <div className="input-group"><label>Fecha fin inducción</label><input type="date" className="input" value={formMinero.fecha_fin_induccion} onChange={e=>setFormMinero(v=>({...v, fecha_fin_induccion:e.target.value}))}/></div>
+            </div>}
+            <div className="text-muted" style={{fontSize:11, marginTop:6}}>Los días de inducción se pagan como días normales pero no acumulan descanso en el Roster minero.</div>
+          </div>
           
           <div style={{marginTop:24, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
             <label style={{fontWeight:600}}>Incidencias del Ciclo</label>
@@ -13404,9 +13706,9 @@ function ControlAsistencia() {
       </div></>}
 
       {/* Modal General */}
-      {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registrar asistencia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{form.fecha}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarRegistro}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={form.fecha} onChange={e=>setForm(v=>({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:12, margin:'12px 0'}}>Turno asignado: <strong>{turno.nombre}</strong> · {turno.hora_entrada} - {turno.hora_salida} · Tolerancia {turno.tolerancia_minutos} min</div><div className="input-group"><label>Asistio</label><select className="select" value={form.asistio} onChange={e=>setForm(v=>({...v,asistio:e.target.value}))}><option value="si">Si</option><option value="no">No - falta</option></select></div>{form.asistio==='si' ? <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Hora entrada</label><input className="input" type="time" value={form.hora_entrada} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div><div className="input-group"><label>Hora salida</label><input className="input" type="time" value={form.hora_salida} onChange={e=>setForm(v=>({...v,hora_salida:e.target.value}))}/></div></div> : <><label className="row" style={{gap:8}}><input type="checkbox" checked={form.justificada} onChange={e=>setForm(v=>({...v,justificada:e.target.checked}))}/> Falta justificada</label>{form.justificada && <div className="input-group"><label>Motivo</label><select className="select" value={form.motivo_falta} onChange={e=>setForm(v=>({...v,motivo_falta:e.target.value}))}><option>Enfermedad con certificado</option><option>Permiso autorizado</option><option>Licencia</option><option>Otro</option></select></div>}</>}<div className="input-group"><label>Minutos de refrigerio tomados</label><input className="input" type="number" min="0" value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación (Opcional)</label><button type="button" className="btn btn-secondary" style={{width:'100%'}} onClick={obtenerUbicacion}>{form.ubicacion_estado || 'Capturar lat/lng'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:12, marginBottom:10}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}<div className="card" style={{padding:12, margin:'14px 0'}}><p><strong>Horas trabajadas:</strong> {minutesToLabel(resultado.horas_trabajadas_min)}</p><p><strong>Tardanza:</strong> {resultado.tardanza_min} min</p><p><strong>Horas extra:</strong> {minutesToLabel(resultado.horas_extra_min)}</p><p><strong>Estado:</strong> <span className={'badge '+asistenciaBadge(resultado.estado)}>{resultado.label}</span></p></div><div className="input-group"><label>Notas adicionales</label><textarea className="input" rows="3" value={form.notas} onChange={e=>setForm(v=>({...v,notas:e.target.value}))}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Guardar registro</button></div></form></div></>}
+      {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registrar asistencia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{form.fecha}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarRegistro}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={form.fecha} onChange={e=>setForm(v=>({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}{t.asistencia_bloqueada?' - Contrato vencido':''}</option>)}</select></div>{trabajadorBloqueado && <div className="alert alert-danger" style={{fontSize:12}}>Contrato vencido - asistencia bloqueada. Regularice el contrato en Documentos.</div>}<div className="card" style={{padding:12, margin:'12px 0'}}>Turno asignado: <strong>{turno.nombre}</strong> · {turno.hora_entrada} - {turno.hora_salida} · Tolerancia {turno.tolerancia_minutos} min</div><div className="input-group"><label>Asistio</label><select className="select" value={form.asistio} onChange={e=>setForm(v=>({...v,asistio:e.target.value}))} disabled={trabajadorBloqueado}><option value="si">Si</option><option value="no">No - falta</option></select></div>{form.asistio==='si' ? <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Hora entrada</label><input className="input" type="time" value={form.hora_entrada} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div><div className="input-group"><label>Hora salida</label><input className="input" type="time" value={form.hora_salida} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v,hora_salida:e.target.value}))}/></div></div> : <><label className="row" style={{gap:8}}><input type="checkbox" checked={form.justificada} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v,justificada:e.target.checked}))}/> Falta justificada</label>{form.justificada && <div className="input-group"><label>Motivo</label><select className="select" value={form.motivo_falta} onChange={e=>setForm(v=>({...v,motivo_falta:e.target.value}))}><option>Enfermedad con certificado</option><option>Permiso autorizado</option><option>Licencia</option><option>Otro</option></select></div>}</>}<div className="input-group"><label>Minutos de refrigerio tomados</label><input className="input" type="number" min="0" value={form.refrigerio_tomado_minutos} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación (Opcional)</label><button type="button" className="btn btn-secondary" style={{width:'100%'}} onClick={obtenerUbicacion} disabled={trabajadorBloqueado}>{form.ubicacion_estado || 'Capturar lat/lng'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:12, marginBottom:10}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}<div className="card" style={{padding:12, margin:'14px 0'}}><p><strong>Horas trabajadas:</strong> {minutesToLabel(resultado.horas_trabajadas_min)}</p><p><strong>Tardanza:</strong> {resultado.tardanza_min} min</p><p><strong>Horas extra:</strong> {minutesToLabel(resultado.horas_extra_min)}</p><p><strong>Estado:</strong> <span className={'badge '+asistenciaBadge(resultado.estado)}>{resultado.label}</span></p></div><div className="input-group"><label>Notas adicionales</label><textarea className="input" rows="3" value={form.notas} onChange={e=>setForm(v=>({...v,notas:e.target.value}))}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit" disabled={trabajadorBloqueado}>Guardar registro</button></div></form></div></>}
       {kiosk && <><div className="side-panel-backdrop" onClick={()=>setKiosk(false)}/><div className="side-panel" style={{width:'min(520px,100vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Reloj Control Móvil</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{new Date().toLocaleDateString()}</div></div><button className="icon-btn" onClick={()=>setKiosk(false)}>{I.x}</button></div><div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:24}}><div className="input-group"><label>Trabajador</label><select className="select" style={{fontSize:16, padding:12}} value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:20, textAlign:'center', background:'var(--bg-subtle)'}}><button className="btn btn-primary" style={{width:'100%', padding:'24px 20px', fontSize:20, marginBottom:20, justifyContent:'center'}} onClick={() => marcarKiosk('entrada')}>Entrada</button><button className="btn btn-secondary" style={{width:'100%', padding:'24px 20px', fontSize:20, justifyContent:'center'}} onClick={() => marcarKiosk('salida')}>Salida</button></div><div className="input-group"><label>Minutos de refrigerio tomados (especificar al marcar salida)</label><input className="input" type="number" min="0" style={{fontSize:16, padding:12}} value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación requerida</label><button className="btn btn-secondary" style={{width:'100%', padding:12, justifyContent:'center'}} onClick={obtenerUbicacion}>{I.mapPin} {form.ubicacion_estado || 'Obtener mi ubicación actual'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:14, textAlign:'center'}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}</div></div></>}
-      {masivo && <><div className="side-panel-backdrop" onClick={()=>setMasivo(false)}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registro masivo</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{fecha}</div></div><button className="icon-btn" onClick={()=>setMasivo(false)}>{I.x}</button></div><div className="side-panel-body"><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead><tbody>{trabajadoresGenerales.map(t=>{const trn=workerTurno(turnos,t);const d=masivoDatos[t.id]||{estado:'completo',hora_entrada:trn.hora_entrada,hora_salida:trn.hora_salida};const esFalta=d.estado==='falta'||d.estado==='falta_justificada';return <tr key={t.id}><td><strong>{t.nombre}</strong></td><td>{trn.nombre}</td><td><input className="input" type="time" value={d.hora_entrada} disabled={esFalta} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],hora_entrada:e.target.value}}))} /></td><td><input className="input" type="time" value={d.hora_salida} disabled={esFalta} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],hora_salida:e.target.value}}))} /></td><td><select className="select" style={{minWidth:140}} value={d.estado} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],estado:e.target.value}}))}>  <option value="completo">Completo</option><option value="tardanza">Tardanza</option><option value="falta">Falta</option><option value="falta_justificada">Falta Justificada</option></select></td></tr>})}</tbody></table></div>
+      {masivo && <><div className="side-panel-backdrop" onClick={()=>setMasivo(false)}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registro masivo</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{fecha}</div></div><button className="icon-btn" onClick={()=>setMasivo(false)}>{I.x}</button></div><div className="side-panel-body"><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead><tbody>{trabajadoresGenerales.map(t=>{const trn=workerTurno(turnos,t);const d=masivoDatos[t.id]||{estado:'completo',hora_entrada:trn.hora_entrada,hora_salida:trn.hora_salida};const esFalta=d.estado==='falta'||d.estado==='falta_justificada';const bloqueado=Boolean(t.asistencia_bloqueada);return <tr key={t.id}><td><strong>{t.nombre}</strong>{bloqueado&&<div><span className="badge badge-red" style={{fontSize:10}}>Contrato vencido</span></div>}</td><td>{trn.nombre}</td><td><input className="input" type="time" value={d.hora_entrada} disabled={esFalta||bloqueado} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],hora_entrada:e.target.value}}))} /></td><td><input className="input" type="time" value={d.hora_salida} disabled={esFalta||bloqueado} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],hora_salida:e.target.value}}))} /></td><td><select className="select" style={{minWidth:140}} value={d.estado} disabled={bloqueado} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],estado:e.target.value}}))}>  <option value="completo">Completo</option><option value="tardanza">Tardanza</option><option value="falta">Falta</option><option value="falta_justificada">Falta Justificada</option></select></td></tr>})}</tbody></table></div>
       {trabajadoresMineros.length > 0 && <div style={{marginTop:16, padding:16, background:'var(--bg-subtle)', borderRadius:8}}><p style={{margin:0, fontSize:13}}>Los trabajadores del régimen minero han sido excluidos. <a href="#" onClick={(e) => { e.preventDefault(); setMasivo(false); setTab('minero'); }} style={{color:'var(--cyan)', fontWeight:600}}>Ir a registro de ciclos mineros</a></p></div>}
       <div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setMasivo(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={guardarMasivo}>Guardar todos los registros</button></div></div></div></>}
     </>
@@ -13428,6 +13730,13 @@ function Nomina() {
   const [boleta, setBoleta] = useState(null);
   const [cierre, setCierre] = useState(false);
   const [plameVerTodos, setPlameVerTodos] = useState(false);
+  const [heCompRows, setHeCompRows] = useState([]);
+  const [descRows, setDescRows] = useState([]);
+  const [descPanel, setDescPanel] = useState(false);
+  const [descForm, setDescForm] = useState({ personal_id:'', tipo:'otro', descripcion:'', monto:'', evidencia_url:'' });
+  const [descComentario, setDescComentario] = useState('');
+  const descUploadRef = useRef(null);
+  const [descEntityId, setDescEntityId] = useState(`desc_${Date.now()}`);
 
   const empresaCfg = {
     regimen_laboral_empresa: empresaConfig?.regimen_laboral_empresa || 'general',
@@ -13436,6 +13745,7 @@ function Nomina() {
     afp_parametros: afpParametros,
     frecuencia_pago: empresaConfig?.frecuencia_pago || 'mensual',
     pct_quincena_1: Number(empresaConfig?.pct_quincena_1) || 50,
+    requiere_autorizacion_he: Boolean(empresaConfig?.requiere_autorizacion_he),
   };
 
   const regimenLabel = { general: 'General', pequena_empresa: 'Pequeña Empresa', microempresa: 'Microempresa' };
@@ -13490,16 +13800,53 @@ function Nomina() {
     if (!trabajadorSel && trabajadores[0]?.id) setTrabajadorSel(trabajadores[0].id);
   }, [trabajadorSel, trabajadores.length]);
 
+  useEffect(() => {
+    if (!descForm.personal_id && trabajadores[0]?.id) {
+      setDescForm(prev => ({ ...prev, personal_id: trabajadores[0].id }));
+    }
+  }, [descForm.personal_id, trabajadores.length]);
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+    rrhhService.getHorasExtraCompensacion(empresa.id).then(setHeCompRows).catch(() => {});
+    rrhhService.getDescuentosExtraordinarios(empresa.id).then(setDescRows).catch(() => {});
+  }, [empresa?.id]);
+
+  const descExtraPorTrabajador = useMemo(() => {
+    if (!periodo) return {};
+    const map = {};
+    descRows
+      .filter(d => d.estado === 'aprobado' && (!d.periodo_id || d.periodo_id === periodo.id))
+      .forEach(d => { map[d.personal_id] = (map[d.personal_id] || 0) + Number(d.monto || 0); });
+    return map;
+  }, [descRows, periodo?.id]);
+
   const calculos = useMemo(() => {
     if (!periodo) return [];
     return trabajadores.map(t => {
       const turno = workerTurno(turnos, t);
       const datos = trabajadoresDatosNomina[t.id] || {};
-      const regs = registrosAsistencia.filter(r => r.trabajador_id === t.id && r.fecha.startsWith(periodoKey));
+      const heNoPago = heCompRows.filter(h => h.personal_id === t.id && (h.estado === 'pendiente' || h.estado === 'compensar'));
+      const heNoPagoAsistencia = new Set(heNoPago.map(h => h.registro_asistencia_id || h.asistencia_id).filter(Boolean));
+      const heNoPagoFechas = new Set(heNoPago.map(h => h.fecha_he).filter(Boolean));
+      const regs = registrosAsistencia
+        .filter(r => r.trabajador_id === t.id && r.fecha.startsWith(periodoKey))
+        .map(r => (Number(r.horas_extra_min || 0) > 0 && (heNoPagoAsistencia.has(r.id) || heNoPagoFechas.has(r.fecha)))
+          ? { ...r, horas_extra_min: 0, horas_extra: 0 }
+          : r
+        );
       const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === t.id);
-      return calcularNominaConTramos(t, asigsTrabajador, datos, turno, regs, periodo, empresaCfg);
+      const base = calcularNominaConTramos(t, asigsTrabajador, datos, turno, regs, periodo, empresaCfg);
+      const descExtra = Number(descExtraPorTrabajador[t.id] || 0);
+      if (!base || descExtra <= 0) return base;
+      return {
+        ...base,
+        desc_extraordinario: descExtra,
+        total_descuentos: Math.round((Number(base.total_descuentos || 0) + descExtra) * 100) / 100,
+        neto: Math.round((Number(base.neto || 0) - descExtra) * 100) / 100,
+      };
     }).filter(Boolean);
-  }, [periodo?.id, trabajadores.length, registrosAsistencia.length, asignacionesJornada.length, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, afpParametros]);
+  }, [periodo?.id, trabajadores.length, registrosAsistencia.length, asignacionesJornada.length, heCompRows, descExtraPorTrabajador, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, empresaCfg.requiere_autorizacion_he, afpParametros]);
 
   const hayMineros = calculos.some(c => c.regimen_jornada !== 'general');
 
@@ -13612,6 +13959,66 @@ function Nomina() {
     setCierre(false);
   };
 
+  const decidirHE = async (row, estado) => {
+    const cambios = { estado };
+    if (estado === 'compensar') {
+      const fechaLibre = window.prompt('Fecha del dia libre compensatorio (YYYY-MM-DD):', row.fecha_dia_libre || '');
+      if (!fechaLibre) return;
+      cambios.fecha_dia_libre = fechaLibre;
+    }
+    if (estado === 'pagar' && periodo?.id) cambios.periodo_pago_id = periodo.id;
+    try {
+      const data = await rrhhService.decidirHorasExtraCompensacion(row.id, cambios);
+      setHeCompRows(prev => prev.map(r => r.id === row.id ? data : r));
+      addNotificacion(estado === 'compensar' ? 'HE compensada con dia libre.' : 'HE marcada para pago en nomina.');
+    } catch (err) {
+      addNotificacion(`Error resolviendo HE: ${err.message || 'BD'}`);
+    }
+  };
+
+  const guardarDescuento = async (e) => {
+    e?.preventDefault?.();
+    const persona = trabajadores.find(t => t.id === descForm.personal_id);
+    if (!persona) return;
+    const monto = Number(descForm.monto || 0);
+    if (!descForm.descripcion.trim() || monto <= 0) {
+      addNotificacion('Completa descripcion y monto del descuento.');
+      return;
+    }
+    try {
+      const adjuntos = await (descUploadRef.current?.uploadPendingFiles?.() || Promise.resolve([]));
+      const evidenciaUrl = descForm.evidencia_url || adjuntos[0]?.url || adjuntos[0]?.storage_path || adjuntos[0]?.path || null;
+      const data = await rrhhService.crearDescuentoExtraordinario(empresa.id, {
+        personal_id: persona.id,
+        personal_tipo: persona.tipo === 'admin' ? 'administrativo' : 'operativo',
+        personal_nombre: persona.nombre,
+        tipo: descForm.tipo,
+        descripcion: descForm.descripcion.trim(),
+        monto,
+        evidencia_url: evidenciaUrl,
+        estado: 'pendiente',
+      });
+      setDescRows(prev => [data, ...prev]);
+      setDescPanel(false);
+      setDescForm({ personal_id: persona.id, tipo:'otro', descripcion:'', monto:'', evidencia_url:'' });
+      setDescEntityId(`desc_${Date.now()}`);
+      addNotificacion('Descuento extraordinario registrado con evidencia.');
+    } catch (err) {
+      addNotificacion(`Error registrando descuento: ${err.message || 'BD'}`);
+    }
+  };
+
+  const resolverDescuento = async (row, estado) => {
+    try {
+      const data = await rrhhService.resolverDescuentoExtraordinario(row.id, estado, { comentario_resolucion: descComentario || null, resuelto_por: role?.nombre || null });
+      setDescRows(prev => prev.map(r => r.id === row.id ? data : r));
+      setDescComentario('');
+      addNotificacion(`Descuento ${estado === 'aprobado' ? 'aprobado' : 'rechazado'}.`);
+    } catch (err) {
+      addNotificacion(`Error resolviendo descuento: ${err.message || 'BD'}`);
+    }
+  };
+
   if (!canFinanzas) return (
     <div className="card" style={{padding:24}}>
       <div className="card-head"><h3>Nomina</h3></div>
@@ -13619,12 +14026,67 @@ function Nomina() {
     </div>
   );
 
+  // GAP-16: Roster minero
+  const trabajadoresRoster = [
+    ...personalOperativo.map(p => ({ ...p, trabajador_tipo:'operativo', regimen_jornada: p.regimen_jornada || 'general' })),
+    ...personalAdmin.map(p => ({ ...p, trabajador_tipo:'administrativo', regimen_jornada: p.regimen_jornada || 'general' })),
+  ];
+  const hayMinerosRoster = trabajadoresRoster.some(t => t.regimen_jornada === 'ciclo_acumulativo' || t.regimen_jornada.startsWith('minero_'));
+  const [rosterRows, setRosterRows] = useState([]);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterPeriodo, setRosterPeriodo] = useState(null);
+
+  useEffect(() => {
+    if (!empresa?.id || !hayMinerosRoster) return;
+    const p = periodo;
+    if (!p) return;
+    setRosterPeriodo(p);
+    getSnapshotsRoster(empresa.id, p.anio, p.mes).then(setRosterRows).catch(() => {});
+  }, [empresa?.id, periodo?.id, hayMinerosRoster]);
+
+  const recalcularRoster = async () => {
+    if (!empresa?.id || !rosterPeriodo) return;
+    if (rosterPeriodo.estado === 'cerrado') {
+      addNotificacion('No se puede recalcular un período con nómina cerrada.'); return;
+    }
+    setRosterLoading(true);
+    try {
+      const regsDelPeriodo = registrosAsistencia.filter(r => r.fecha?.startsWith(`${rosterPeriodo.anio}-${String(rosterPeriodo.mes).padStart(2,'0')}`));
+      const ciclos = await rrhhService.getCiclosMineros(empresa.id);
+      const rows = await calcularYGuardarRoster(empresa.id, rosterPeriodo.anio, rosterPeriodo.mes, trabajadoresRoster, regsDelPeriodo, ciclos, role?.nombre || 'RRHH', rosterPeriodo.id);
+      setRosterRows(rows);
+      addNotificacion('Roster minero calculado correctamente.');
+    } catch (err) {
+      addNotificacion('Error al calcular roster: ' + (err.message || ''));
+    } finally {
+      setRosterLoading(false);
+    }
+  };
+
+  const exportarRosterXlsx = () => {
+    if (!rosterRows.length) return;
+    const data = rosterRows.map(r => ({
+      Trabajador: r.personal_nombre, Tipo: r.personal_tipo,
+      Régimen: `${r.dias_ciclo_trabajo}×${r.dias_ciclo_descanso}`,
+      'Días en mina': r.dias_en_mina, 'Días inducción': r.dias_induccion,
+      'Días efectivos': r.dias_efectivos_descanso,
+      'Descanso ganado': r.dias_descanso_ganados, 'Descanso gozado': r.dias_descanso_gozados,
+      'Balance período': r.balance_periodo, 'Balance acumulado': r.balance_acumulado,
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Roster Minero');
+    XLSX.writeFile(wb, `roster_minero_${rosterPeriodo?.anio}_${rosterPeriodo?.mes}.xlsx`);
+  };
+
   const tabsDisponibles = [
     ['periodos','Períodos'],
     ['resumen','Resumen'],
     ['detalle','Detalle'],
+    ['he_pendientes','HE pendientes'],
+    ['descuentos','Descuentos'],
     ['cargas','Cargas empresa'],
     ['plame', periodo?.estado === 'cerrado' ? 'Reporte PLAME' : 'PLAME'],
+    ...(hayMineros ? [['roster','Roster minero']] : []),
   ];
 
   const proximoCorte = periodo;
@@ -13810,6 +14272,7 @@ function Nomina() {
               {detalle.desc_prestamo > 0 && <p>Préstamo interno: {money(detalle.desc_prestamo)}</p>}
               {detalle.desc_anticipo > 0 && <p>Anticipo: {money(detalle.desc_anticipo)}</p>}
               {detalle.desc_judicial > 0 && <p>Judicial: {money(detalle.desc_judicial)}</p>}
+              {detalle.desc_extraordinario > 0 && <p>Extraordinario aprobado: {money(detalle.desc_extraordinario)}</p>}
               <p style={{fontWeight:700, borderTop:'1px solid var(--border-subtle)', paddingTop:8, marginTop:8}}>Total descuentos: {money(detalle.total_descuentos)}</p>
               <p style={{fontWeight:700, color:'var(--green)', fontSize:16, marginTop:4}}>Neto a pagar: {money(detalle.neto)}</p>
 
@@ -13825,6 +14288,48 @@ function Nomina() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {tab === 'he_pendientes' && periodo && (
+        <div className="card">
+          <div className="card-head">
+            <div><h3>Horas extra pendientes</h3><div className="text-muted" style={{fontSize:12}}>Pago en nomina o compensacion con dia libre.</div></div>
+            <span className="badge badge-orange">{heCompRows.filter(r=>r.estado==='pendiente').length} pendientes</span>
+          </div>
+          <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Fecha HE</th><th>Horas</th><th>Origen</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+            {heCompRows.length === 0 && <tr><td colSpan={6} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin horas extra pendientes.</td></tr>}
+            {heCompRows.map(r => <tr key={r.id}>
+              <td><strong>{r.personal_nombre || trabajadores.find(t=>t.id===r.personal_id)?.nombre || r.personal_id}</strong></td>
+              <td>{r.fecha_he}</td>
+              <td>{minutesToLabel(Number(r.minutos || 0))}</td>
+              <td>{(r.registro_asistencia_id || r.asistencia_id) ? <span className="badge badge-gray">Asistencia</span> : <span className="badge badge-gray">Manual</span>}</td>
+              <td><span className={'badge '+(r.estado==='compensar'?'badge-cyan':r.estado==='pagar'?'badge-green':r.estado==='pagada'?'badge-green':'badge-orange')}>{r.estado}</span>{r.fecha_dia_libre && <div className="text-muted" style={{fontSize:11}}>Libre: {r.fecha_dia_libre}</div>}</td>
+              <td>{r.estado === 'pendiente' ? <div className="row" style={{gap:6}}><button className="btn btn-sm btn-secondary" onClick={()=>decidirHE(r, 'pagar')}>Pagar</button><button className="btn btn-sm btn-secondary" onClick={()=>decidirHE(r, 'compensar')}>Compensar</button></div> : <span className="text-muted">-</span>}</td>
+            </tr>)}
+          </tbody></table></div>
+        </div>
+      )}
+
+      {tab === 'descuentos' && periodo && (
+        <div className="card">
+          <div className="card-head">
+            <div><h3>Descuentos extraordinarios</h3><div className="text-muted" style={{fontSize:12}}>Requieren evidencia y aprobacion antes de impactar nomina.</div></div>
+            <button className="btn btn-primary" data-local-form="true" onClick={()=>setDescPanel(true)}>{I.plus} Nuevo descuento</button>
+          </div>
+          <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Tipo</th><th>Descripcion</th><th>Monto</th><th>Evidencia</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+            {descRows.length === 0 && <tr><td colSpan={7} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin descuentos extraordinarios.</td></tr>}
+            {descRows.map(d => <tr key={d.id}>
+              <td><strong>{d.personal_nombre || trabajadores.find(t=>t.id===d.personal_id)?.nombre || d.personal_id}</strong></td>
+              <td><span className="badge badge-gray">{d.tipo}</span></td>
+              <td>{d.descripcion}</td>
+              <td className="num">{money(d.monto)}</td>
+              <td>{d.evidencia_url ? <a href={d.evidencia_url} target="_blank" rel="noreferrer">Ver evidencia</a> : <span className="badge badge-red">Sin evidencia</span>}</td>
+              <td><span className={'badge '+(d.estado==='aprobado'?'badge-green':d.estado==='rechazado'?'badge-red':d.estado==='aplicado'?'badge-cyan':'badge-orange')}>{d.estado}</span></td>
+              <td>{d.estado === 'pendiente' ? <div className="row" style={{gap:6}}><button className="btn btn-sm btn-secondary" onClick={()=>resolverDescuento(d, 'aprobado')}>Aprobar</button><button className="btn btn-sm btn-secondary" onClick={()=>resolverDescuento(d, 'rechazado')}>Rechazar</button></div> : <span className="text-muted">-</span>}</td>
+            </tr>)}
+          </tbody></table></div>
+          <div style={{padding:16, borderTop:'1px solid var(--border-subtle)'}}><div className="input-group"><label>Comentario de resolucion</label><input className="input" value={descComentario} onChange={e=>setDescComentario(e.target.value)} placeholder="Opcional"/></div></div>
         </div>
       )}
 
@@ -13923,6 +14428,7 @@ function Nomina() {
             </>:<p>ONP (13%): {money(detallePanel.desc_onp)}</p>}
             {detallePanel.retencion_ir>0&&<p>IR 5ta: {money(detallePanel.retencion_ir)}</p>}
             {detallePanel.desc_prestamo>0&&<p>Prestamo: {money(detallePanel.desc_prestamo)}</p>}
+            {detallePanel.desc_extraordinario>0&&<p>Extraordinario: {money(detallePanel.desc_extraordinario)}</p>}
             <p style={{fontWeight:700, color:'var(--green)', fontSize:16, margin:'12px 0'}}>Neto a pagar: {money(detallePanel.neto)}</p>
             <hr style={{margin:'12px 0'}}/>
             <div style={{fontWeight:600, marginBottom:8, color:'var(--fg-muted)'}}>Cargas empleador</div>
@@ -13937,8 +14443,92 @@ function Nomina() {
         </div>
       </>}
 
+      {/* GAP-16: Tab Roster minero */}
+      {tab === 'roster' && hayMineros && (
+        <div>
+          <div className="card" style={{padding:16, marginBottom:12, borderLeft:'3px solid var(--orange)'}}>
+            <strong>Los cálculos son referenciales.</strong> Valida con tu contador antes de procesar pagos.
+          </div>
+          <div className="page-header" style={{marginBottom:16}}>
+            <div>
+              <h3 style={{margin:0}}>Roster minero — {rosterPeriodo?.periodo || 'Sin período'}</h3>
+              <div className="text-muted" style={{fontSize:12}}>Balance de días trabajados vs descansados por trabajador</div>
+            </div>
+            <div className="row" style={{gap:8}}>
+              <button className="btn btn-secondary" disabled={!rosterRows.length} onClick={exportarRosterXlsx}>{I.download} Excel</button>
+              <button className="btn btn-primary" disabled={rosterLoading || rosterPeriodo?.estado === 'cerrado'} onClick={recalcularRoster}>
+                {rosterLoading ? 'Calculando...' : 'Calcular / Recalcular'}
+              </button>
+            </div>
+          </div>
+          {rosterPeriodo?.estado === 'cerrado' && <div className="alert alert-warning" style={{marginBottom:12}}>Este período está cerrado. No se puede recalcular.</div>}
+
+          {/* KPIs del roster */}
+          {rosterRows.length > 0 && <div className="kpi-grid" style={{marginBottom:16}}>
+            <div className="kpi-card"><div className="kpi-label">Trabajadores en mina</div><div className="kpi-value">{rosterRows.filter(r => r.dias_en_mina > 0).length}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Deuda total de descanso</div><div className="kpi-value" style={{color:'var(--green)'}}>{rosterRows.reduce((s,r) => s + Math.max(0, r.balance_acumulado), 0).toFixed(1)} días</div></div>
+            <div className="kpi-card"><div className="kpi-label">Con balance negativo</div><div className="kpi-value" style={{color:'var(--danger)'}}>{rosterRows.filter(r => r.balance_acumulado < 0).length}</div></div>
+          </div>}
+
+          <div className="card">
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Trabajador</th>
+                    <th>Régimen</th>
+                    <th title="Días trabajados en mina (excluye inducción)">En mina</th>
+                    <th title="Días de inducción (pagados, no generan descanso)">Inducción</th>
+                    <th title="Días efectivos para calcular descanso">Efectivos</th>
+                    <th title="Días de descanso ganados por días en mina">Ganados</th>
+                    <th title="Días de descanso o bajada gozados">Gozados</th>
+                    <th title="Balance del período: ganados - gozados">Bal. período</th>
+                    <th title="Balance acumulado incluyendo períodos anteriores">Bal. acumulado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rosterRows.length === 0 && <tr><td colSpan={9} className="text-muted" style={{padding:20, textAlign:'center'}}>Sin datos. Presiona "Calcular" para generar el roster.</td></tr>}
+                  {rosterRows.map(r => {
+                    const balPColor = r.balance_periodo >= 0 ? 'var(--green)' : 'var(--danger)';
+                    const balAColor = r.balance_acumulado >= 0 ? 'var(--green)' : 'var(--danger)';
+                    return (
+                      <tr key={r.personal_id}>
+                        <td><strong>{r.personal_nombre}</strong><div className="text-muted" style={{fontSize:11}}>{r.personal_tipo}</div></td>
+                        <td><span className="badge badge-orange" style={{fontSize:11}}>{r.dias_ciclo_trabajo}×{r.dias_ciclo_descanso}</span></td>
+                        <td>{r.dias_en_mina}</td>
+                        <td>{r.dias_induccion > 0 ? <span className="badge badge-purple" style={{fontSize:11}}>{r.dias_induccion}</span> : '—'}</td>
+                        <td>{r.dias_efectivos_descanso}</td>
+                        <td>{Number(r.dias_descanso_ganados).toFixed(1)}</td>
+                        <td>{r.dias_descanso_gozados}</td>
+                        <td style={{fontWeight:700, color:balPColor}}>{Number(r.balance_periodo) >= 0 ? '+' : ''}{Number(r.balance_periodo).toFixed(1)}</td>
+                        <td style={{fontWeight:700, color:balAColor}}>{Number(r.balance_acumulado) >= 0 ? '+' : ''}{Number(r.balance_acumulado).toFixed(1)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Boleta */}
-      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{empresa?.nombre}</strong></p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} · Período: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p><hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={()=>addNotificacion('Boleta PDF lista.')}>{I.download} Descargar boleta PDF</button></div></div></>}
+      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{empresa?.nombre}</strong></p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} · Período: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p><hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}{boleta.desc_extraordinario>0&&<p>Extraordinario: -{money(boleta.desc_extraordinario)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={()=>addNotificacion('Boleta PDF lista.')}>{I.download} Descargar boleta PDF</button></div></div></>}
+
+      {descPanel && <><div className="side-panel-backdrop" onClick={()=>setDescPanel(false)}/><div className="side-panel" style={{width:'min(560px,96vw)'}}>
+        <div className="side-panel-head"><div><div className="eyebrow">Nomina</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nuevo descuento</div></div><button className="icon-btn" onClick={()=>setDescPanel(false)}>{I.x}</button></div>
+        <form className="side-panel-body" onSubmit={guardarDescuento}>
+          <div className="input-group"><label>Trabajador</label><select className="select" value={descForm.personal_id} onChange={e=>setDescForm(v=>({...v, personal_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div>
+          <div className="grid-2" style={{gap:12}}>
+            <div className="input-group"><label>Tipo</label><select className="select" value={descForm.tipo} onChange={e=>setDescForm(v=>({...v, tipo:e.target.value}))}><option value="prestamo">Prestamo no registrado</option><option value="danio">Danio o perdida</option><option value="judicial">Judicial</option><option value="otro">Otro</option></select></div>
+            <div className="input-group"><label>Monto</label><input className="input" type="number" min="0" step="0.01" value={descForm.monto} onChange={e=>setDescForm(v=>({...v, monto:e.target.value}))}/></div>
+          </div>
+          <div className="input-group"><label>Descripcion</label><textarea className="input" rows="3" value={descForm.descripcion} onChange={e=>setDescForm(v=>({...v, descripcion:e.target.value}))}/></div>
+          <div className="input-group"><label>URL de evidencia externa</label><input className="input" value={descForm.evidencia_url} onChange={e=>setDescForm(v=>({...v, evidencia_url:e.target.value}))} placeholder="Opcional si adjuntas archivo"/></div>
+          <FileUpload ref={descUploadRef} entidadTipo="descuentos_extraordinarios" entidadId={descEntityId} empresaId={empresa?.id} categoria="evidencia_descuento" multiple={false} deferUpload subidoPor={role?.id || role?.nombre}/>
+          <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setDescPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Registrar</button></div>
+        </form>
+      </div></>}
 
       {/* Modal cierre */}
       {cierre && <><div className="side-panel-backdrop" onClick={()=>setCierre(false)}/><div className="modal"><div className="modal-head"><h3>Cerrar período — {periodo?.periodo}</h3><button className="icon-btn" onClick={()=>setCierre(false)}>{I.x}</button></div><div className="modal-body"><p>Al cerrar se registrará un egreso de planilla por <strong>{money(resumen.total_neto)}</strong> y otro de cargas sociales por <strong>{money(resumen.total_cargas_empresa)}</strong> en Compras y Gastos.</p><p>El reporte PLAME quedará disponible.</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setCierre(false)}>Cancelar</button><button className="btn btn-primary" onClick={cerrarPeriodo}>Confirmar cierre</button></div></div></div></>}
@@ -13998,6 +14588,144 @@ function DatosBancariosSection({ cuentas = [], onChange, readOnly = false }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function AmonestacionesTab({ personalId, personalNombre, personalTipo, empresaId, role, addNotificacion }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const formBase = { tipo:'verbal', motivo:'', descripcion:'', fecha:new Date().toISOString().split('T')[0], dias_suspension:'', fecha_inicio_suspension:'', fecha_fin_suspension:'', evidencia_url:'', impactar_asistencia:true };
+  const [form, setForm] = useState(formBase);
+  const [panel, setPanel] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [anularId, setAnularId] = useState(null);
+  const [motivoAnulacion, setMotivoAnulacion] = useState('');
+  const canRegister = Boolean(role?.permisos?.todo || role?.permisos?.rrhh || role?.permisos?.jefatura);
+  const tipoLabel = { verbal:'Verbal', escrita:'Escrita', suspension:'Suspensión' };
+  const tipoBadge = { verbal:'badge-orange', escrita:'badge-red', suspension:'badge-gray' };
+
+  useEffect(() => {
+    if (!personalId || !empresaId) return;
+    setLoading(true);
+    amonestacionesService.cargarAmonestaciones(empresaId, personalId)
+      .then(setRows).catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }, [personalId, empresaId]);
+
+  const guardar = async () => {
+    setErr('');
+    setSaving(true);
+    try {
+      const nueva = await amonestacionesService.registrarAmonestacion(empresaId, {
+        personal_id: personalId, personal_tipo: personalTipo, personal_nombre: personalNombre,
+        tipo: form.tipo, motivo: form.motivo, descripcion: form.descripcion, fecha: form.fecha,
+        dias_suspension: form.tipo === 'suspension' ? Number(form.dias_suspension) : null,
+        fecha_inicio_suspension: form.tipo === 'suspension' ? form.fecha_inicio_suspension : null,
+        fecha_fin_suspension: form.tipo === 'suspension' ? form.fecha_fin_suspension : null,
+        evidencia_url: form.evidencia_url || null, registrado_por: role?.nombre || 'RRHH',
+        impactar_asistencia: form.tipo === 'suspension' ? Boolean(form.impactar_asistencia) : false,
+      });
+      setRows(prev => [nueva, ...prev]);
+      setPanel(false); setForm(formBase);
+      addNotificacion('Amonestación registrada correctamente.');
+    } catch (e) { setErr(e.message || 'Error.'); }
+    finally { setSaving(false); }
+  };
+
+  const anular = async () => {
+    if (!motivoAnulacion.trim()) { addNotificacion('El motivo es obligatorio.'); return; }
+    try {
+      const upd = await amonestacionesService.anularAmonestacion(anularId, empresaId, motivoAnulacion, role?.nombre || 'RRHH');
+      setRows(prev => prev.map(a => a.id === anularId ? upd : a));
+      setAnularId(null); setMotivoAnulacion('');
+      addNotificacion('Amonestación anulada.');
+    } catch (e) { addNotificacion(e.message || 'Error.'); }
+  };
+
+  const activas = rows.filter(a => a.estado === 'activo');
+  return (
+    <div className="card-body">
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:8}}>
+        <div>
+          <span className="badge badge-red" style={{fontSize:12, marginRight:8}}>{activas.length} activa{activas.length !== 1 ? 's' : ''}</span>
+          <span className="text-muted" style={{fontSize:12}}>{rows.length} total</span>
+        </div>
+        {canRegister && <button className="btn btn-sm btn-secondary" onClick={() => { setForm(formBase); setPanel(true); setErr(''); }}>{I.plus} Registrar</button>}
+      </div>
+      {loading && <div className="text-muted" style={{padding:20}}>Cargando...</div>}
+      {!loading && rows.length === 0 && <div className="text-muted" style={{textAlign:'center', padding:'24px 0'}}>Sin amonestaciones registradas.</div>}
+      {!loading && rows.map(a => (
+        <div key={a.id} className="card" style={{padding:'10px 14px', marginBottom:8, opacity: a.estado === 'anulado' ? 0.6 : 1, borderLeft:`3px solid ${a.estado === 'anulado' ? 'var(--border)' : a.tipo === 'suspension' ? 'var(--danger)' : a.tipo === 'escrita' ? 'var(--orange)' : 'var(--fg-muted)'}` }}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8}}>
+            <div style={{flex:1}}>
+              <div style={{display:'flex', gap:6, flexWrap:'wrap', marginBottom:3}}>
+                <span className={`badge ${tipoBadge[a.tipo] || 'badge-gray'}`} style={{fontSize:11}}>{tipoLabel[a.tipo] || a.tipo}</span>
+                {a.estado === 'anulado' && <span className="badge badge-gray" style={{fontSize:10}}>Anulada</span>}
+                <span className="text-muted" style={{fontSize:11}}>{a.fecha}</span>
+              </div>
+              <div style={{fontWeight:600, fontSize:13}}>{a.motivo}</div>
+              {a.descripcion && <div className="text-muted" style={{fontSize:12}}>{a.descripcion}</div>}
+              {a.tipo === 'suspension' && <div style={{fontSize:12, color:'var(--danger)', marginTop:3}}>Suspensión {a.dias_suspension} días · {a.fecha_inicio_suspension} → {a.fecha_fin_suspension}</div>}
+              {a.evidencia_url && <a href={a.evidencia_url} target="_blank" rel="noopener noreferrer" className="text-muted" style={{fontSize:11}}>Evidencia</a>}
+            </div>
+            {canRegister && a.estado === 'activo' && (
+              <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)', flexShrink:0}} onClick={() => { setAnularId(a.id); setMotivoAnulacion(''); }}>Anular</button>
+            )}
+          </div>
+        </div>
+      ))}
+      {panel && <>
+        <div className="side-panel-backdrop" onClick={() => setPanel(false)} />
+        <div className="side-panel" style={{width:'min(480px,96vw)', zIndex:70}}>
+          <div className="side-panel-head"><div><div className="eyebrow">RRHH</div><div style={{fontWeight:700, fontSize:18}}>Nueva amonestación</div></div><button className="icon-btn" onClick={() => setPanel(false)}>{I.x}</button></div>
+          <div className="side-panel-body">
+            <div className="input-group"><label>Tipo *</label><select className="select" value={form.tipo} onChange={e => setForm(v => ({...v, tipo: e.target.value}))}>
+              <option value="verbal">Verbal</option><option value="escrita">Escrita (requiere evidencia)</option><option value="suspension">Suspensión (requiere evidencia)</option>
+            </select></div>
+            <div className="input-group" style={{marginTop:10}}><label>Fecha *</label><input type="date" className="input" value={form.fecha} onChange={e => setForm(v => ({...v, fecha: e.target.value}))} /></div>
+            <div className="input-group" style={{marginTop:10}}><label>Motivo *</label><input type="text" className="input" value={form.motivo} onChange={e => setForm(v => ({...v, motivo: e.target.value}))} /></div>
+            <div className="input-group" style={{marginTop:10}}><label>Descripción</label><textarea className="input" rows={2} value={form.descripcion} onChange={e => setForm(v => ({...v, descripcion: e.target.value}))} /></div>
+            {form.tipo === 'suspension' && <>
+              <div className="grid-2" style={{gap:10, marginTop:10}}>
+                <div className="input-group"><label>Días *</label><input type="number" min="1" className="input" value={form.dias_suspension} onChange={e => setForm(v => ({...v, dias_suspension: e.target.value}))} /></div>
+              </div>
+              <div className="grid-2" style={{gap:10, marginTop:10}}>
+                <div className="input-group"><label>Inicio *</label><input type="date" className="input" value={form.fecha_inicio_suspension} onChange={e => setForm(v => ({...v, fecha_inicio_suspension: e.target.value}))} /></div>
+                <div className="input-group"><label>Fin *</label><input type="date" className="input" value={form.fecha_fin_suspension} onChange={e => setForm(v => ({...v, fecha_fin_suspension: e.target.value}))} /></div>
+              </div>
+              <label style={{display:'flex', alignItems:'center', gap:8, marginTop:10, fontSize:12, cursor:'pointer'}}>
+                <input type="checkbox" checked={!!form.impactar_asistencia} onChange={e => setForm(v => ({...v, impactar_asistencia: e.target.checked}))} />
+                Impactar asistencia (descuento en nómina)
+              </label>
+            </>}
+            <div className="input-group" style={{marginTop:10}}>
+              <label>Evidencia URL {['escrita','suspension'].includes(form.tipo) && <span style={{color:'var(--danger)'}}>*</span>}</label>
+              <input type="url" className="input" value={form.evidencia_url} onChange={e => setForm(v => ({...v, evidencia_url: e.target.value}))} placeholder="https://..." />
+            </div>
+            {err && <div style={{color:'var(--danger)', fontSize:12, marginTop:8}}>{err}</div>}
+            <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:16}}>
+              <button type="button" className="btn btn-secondary" onClick={() => setPanel(false)}>Cancelar</button>
+              <button type="button" className="btn btn-primary" disabled={saving} onClick={guardar}>{saving ? 'Guardando...' : 'Registrar'}</button>
+            </div>
+          </div>
+        </div>
+      </>}
+      {anularId && <>
+        <div className="side-panel-backdrop" onClick={() => setAnularId(null)} />
+        <div className="modal" style={{zIndex:80}}>
+          <div className="modal-head"><h3>Anular amonestación</h3><button className="icon-btn" onClick={() => setAnularId(null)}>{I.x}</button></div>
+          <div className="modal-body">
+            <p>La amonestación permanecerá en el historial como anulada.</p>
+            <div className="input-group" style={{marginTop:8}}><label>Motivo *</label><textarea className="input" rows={3} value={motivoAnulacion} onChange={e => setMotivoAnulacion(e.target.value)} /></div>
+            <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:14}}>
+              <button className="btn btn-secondary" onClick={() => setAnularId(null)}>Cancelar</button>
+              <button className="btn btn-primary" style={{background:'var(--danger)', borderColor:'var(--danger)'}} onClick={anular} disabled={!motivoAnulacion.trim()}>Confirmar</button>
+            </div>
+          </div>
+        </div>
+      </>}
     </div>
   );
 }
@@ -14144,6 +14872,7 @@ function RRHH_Operativo() {
   const [costoExtraOverride, setCostoExtraOverride] = useState(false);
   const [altaError, setAltaError] = useState('');
   const [altaSaving, setAltaSaving] = useState(false);
+  const [historialDniAlta, setHistorialDniAlta] = useState(null);
   const paramsHandledRef = useRef('');
   const modalidadAlta = normalizarModalidadContrato(formAlta.modalidad);
   const esHonorarios = modalidadAlta === 'honorarios';
@@ -14163,6 +14892,17 @@ function RRHH_Operativo() {
   const cargosOperativosOptions = cargos
     .filter(c => c.estado !== 'inactivo' && c.tipo !== 'Administrativa' && c.tipo !== 'Administrativo' && c.nombre)
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+  const verificarDniAlta = async (dni) => {
+    const clean = String(dni || '').trim();
+    if (clean.length < 8 || !empresa?.id) { setHistorialDniAlta(null); return; }
+    try {
+      const info = await rrhhService.verificarHistorialDni(clean, empresa.id);
+      setHistorialDniAlta(info?.encontrado ? info : null);
+    } catch {
+      setHistorialDniAlta(null);
+    }
+  };
   const especialidadesOptions = especialidades
     .filter(e => e.estado !== 'inactivo')
     .map(e => e.nombre)
@@ -14734,7 +15474,7 @@ function RRHH_Operativo() {
     };
 
     const contratoColor = tipo => tipo === 'Indefinido' ? 'green' : tipo === 'Plazo fijo' ? 'orange' : 'cyan';
-    const tabs = ['ficha', 'contrato', 'jornada', 'vacaciones', 'licencias', 'solicitudes', 'documentos', 'reembolsos', 'disponibilidad', ...(canFinanzas ? ['bancarios'] : [])];
+    const tabs = ['ficha', 'contrato', 'jornada', 'vacaciones', 'licencias', 'solicitudes', 'documentos', 'reembolsos', 'disponibilidad', 'amonestaciones', ...(canFinanzas ? ['bancarios'] : [])];
     const bajaProductividadFicha = construirFilasControlHoras({
       personal: [p],
       partes,
@@ -15397,6 +16137,17 @@ function RRHH_Operativo() {
               />
             </div>
           )}
+
+          {fichaTab === 'amonestaciones' && (
+            <AmonestacionesTab
+              personalId={p.id}
+              personalNombre={p.nombre}
+              personalTipo="operativo"
+              empresaId={empresa?.id}
+              role={role}
+              addNotificacion={addNotificacion}
+            />
+          )}
         </div>
       </>
     );
@@ -15826,7 +16577,10 @@ function RRHH_Operativo() {
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos personales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre completo *</label><input className="input" required value={formAlta.nombre} onChange={e=>setFormAlta(v=>({...v,nombre:e.target.value}))} placeholder="Nombre completo" autoFocus/></div>
-              <div className="input-group"><label>DNI / Documento *</label><input className="input" required value={formAlta.dni} onChange={e=>setFormAlta(v=>({...v,dni:e.target.value}))} placeholder="12345678"/></div>
+              <div className="input-group"><label>DNI / Documento *</label><input className="input" required value={formAlta.dni} onBlur={e=>verificarDniAlta(e.target.value)} onChange={e=>{ const val=e.target.value; setFormAlta(v=>({...v,dni:val})); if (String(val).trim().length >= 8) verificarDniAlta(val); }} placeholder="12345678"/></div>
+              {historialDniAlta?.no_recontratar && <div className="alert alert-danger" style={{gridColumn:'1/-1', fontSize:12}}><strong>ALERTA - Personal no recontratable.</strong><br/>{historialDniAlta.nombre} (DNI {historialDniAlta.dni}) fue cesado el {historialDniAlta.fecha_cese || '-'} por: {historialDniAlta.no_recontratar_motivo || historialDniAlta.tipo_cese || '-'}. Este colaborador esta marcado como NO RECONTRATABLE. Verifique con la jefatura de RRHH antes de continuar.</div>}
+              {historialDniAlta && !historialDniAlta.no_recontratar && String(historialDniAlta.estado_laboral || '').toLowerCase() === 'cesado' && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12}}><strong>Historial de cese encontrado.</strong> {historialDniAlta.nombre} fue cesado el {historialDniAlta.fecha_cese || '-'} por {historialDniAlta.tipo_cese || '-'}.</div>}
+              {historialDniAlta && !historialDniAlta.no_recontratar && String(historialDniAlta.estado_laboral || '').toLowerCase() !== 'cesado' && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12}}><strong>Posible duplicado.</strong> Ya existe una ficha activa para {historialDniAlta.nombre} con este DNI.</div>}
               <div className="input-group"><label>Teléfono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email</label><input className="input" type="email" value={formAlta.email} onChange={e=>setFormAlta(v=>({...v,email:e.target.value}))} placeholder="tecnico@empresa.pe"/></div>
               {esHonorarios && (
@@ -15964,6 +16718,7 @@ function RRHH_Operativo() {
                         <option value="minero_14x7">Minero 14×7</option>
                         <option value="minero_20x10">Minero 20×10</option>
                         <option value="minero_28x14">Minero 28×14</option>
+                        <option value="minero_2x1">Minero 2×1</option>
                       </select>
                     </div>
                     {formAlta.regimen_jornada !== 'general' && <>
@@ -16001,6 +16756,31 @@ function RRHH_Operativo() {
               )}
             </>}
 
+            {canFinanzas && (
+              <div style={{marginBottom:20}}>
+                <DatosBancariosSection cuentas={formDatosBancarios} onChange={setFormDatosBancarios}/>
+              </div>
+            )}
+
+            {!editandoId && (
+              <div style={{marginBottom:20}}>
+                <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10}}>Acceso al sistema</div>
+                <label className="row" style={{gap:8, alignItems:'center', marginBottom:8}}>
+                  <input type="checkbox" checked={crearUsuarioSistema} onChange={e=>setCrearUsuarioSistema(e.target.checked)}/>
+                  ¿Crear usuario de sistema?
+                </label>
+                <div className="text-muted" style={{fontSize:12, marginBottom:crearUsuarioSistema?12:0}}>Activa esto solo si este colaborador necesita acceder al ERP. No todo el personal operativo requiere acceso al sistema.</div>
+                {crearUsuarioSistema && (
+                  <div className="grid-2" style={{gap:12}}>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" value={usuarioSistemaForm.email} onChange={e=>setUsuarioSistemaForm(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
+                    <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaForm.rol} onChange={e=>setUsuarioSistemaForm(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>
+                    <div className="input-group"><label>Perfil de campo</label><select className="select" value={usuarioSistemaForm.perfil_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v,perfil_campo:e.target.value}))}><option value="tecnico">Técnico</option><option value="comprador">Comprador</option><option value="vendedor">Vendedor</option><option value="supervisor">Supervisor</option><option value="gerencia">Gerencia</option><option value="administrativo">Administrativo</option></select></div>
+                    <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaForm.acceso_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v,acceso_campo:e.target.checked}))}/>Acceso a app de campo</label>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
               <button type="button" className="btn btn-secondary" onClick={cerrarPanelTecnico}>Cancelar</button>
               <button type="submit" className="btn btn-primary" disabled={altaSaving}>{I.save} {altaSaving ? 'Guardando...' : editandoId ? 'Actualizar tecnico' : 'Guardar tecnico'}</button>
@@ -16024,6 +16804,14 @@ const SOL_TIPO_LABELS = {
   licencia_maternidad: 'Licencia maternidad',
   licencia_paternidad: 'Licencia paternidad',
   compensacion_horas: 'Compensación horas',
+  bajada: 'Bajada',
+  comision_trabajo: 'Comisión de trabajo',
+};
+
+const SOL_CLASIF_LABELS = {
+  remunerado: 'Remunerado',
+  no_remunerado: 'No remunerado',
+  recuperacion_horas: 'Recuperación de horas',
 };
 
 const SOL_ESTADO_LABELS = {
@@ -16054,9 +16842,19 @@ function solEstadoBadge(estado) {
   return 'badge-gray';
 }
 
-function emptySolForm() {
+function emptySolForm(tipo = 'vacaciones') {
   const today = new Date().toISOString().slice(0, 10);
-  return { tipo: 'vacaciones', fecha_inicio: today, fecha_fin: today, motivo: '', documento_url: '' };
+  return {
+    tipo,
+    fecha_inicio: today,
+    fecha_fin: today,
+    motivo: '',
+    documento_url: '',
+    clasificacion_pago: defaultClasificacionPago(tipo),
+    fecha_retorno: '',
+    unidad: 'dias',
+    cantidad_horas: '',
+  };
 }
 
 const CG_FORM_INIT = {
@@ -16676,8 +17474,14 @@ export function SolicitudesRrhh() {
         <td>
           <div className="row" style={{gap:6, justifyContent:'flex-end'}}>
             <button type="button" className="btn btn-sm btn-secondary" onClick={() => abrirHistorial(sol.id)}>Historial</button>
+            {sol.estado === 'confirmada_rrhh' && (
+              <button type="button" className="btn btn-sm btn-ghost" title={`Papeleta ${sol.numero_correlativo || ''}`} onClick={() => descargarPapeleta(sol)}>
+                {I.download} PDF
+              </button>
+            )}
             {accionesExtra}
           </div>
+          {sol.numero_correlativo && <div className="text-muted" style={{fontSize:10, textAlign:'right', marginTop:2}}>{sol.numero_correlativo}</div>}
         </td>
       </tr>
     );
@@ -16812,6 +17616,27 @@ export function SolicitudesRrhh() {
     </div>
   );
 
+  const descargarPapeleta = async (sol) => {
+    try {
+      const hist = await solicitudesRrhhService.cargarHistorial(sol.id);
+      const { pdf } = await import('@react-pdf/renderer');
+      const { PapeletaMovimientoPDF } = await import('./pages_pdf.jsx');
+      const blob = await pdf(
+        <PapeletaMovimientoPDF solicitud={sol} empresa={empresa} historial={hist} />
+      ).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `papeleta_${sol.numero_correlativo || sol.id.slice(0,8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      addNotificacion('Error generando PDF: ' + (err?.message || ''));
+    }
+  };
+
   // â"€â"€ Tab Calendario â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const TIPO_COLORES = {
     vacaciones: 'var(--cyan)', permiso_con_goce: 'var(--green)',
@@ -16894,7 +17719,7 @@ export function SolicitudesRrhh() {
                     key={k} type="button"
                     className={'btn ' + (form.tipo === k ? 'btn-primary' : 'btn-secondary')}
                     style={{display:'flex', flexDirection:'column', alignItems:'center', gap:6, padding:'12px 8px', height:'auto'}}
-                    onClick={() => setForm(f => ({...f, tipo: k}))}
+                    onClick={() => setForm(f => ({...f, tipo: k, clasificacion_pago: defaultClasificacionPago(k)}))}
                   >
                     <span style={{width:20, height:20}}>{SOL_TIPO_ICONS[k]}</span>
                     <span style={{fontSize:12, textAlign:'center', lineHeight:1.3}}>{v}</span>
@@ -16908,6 +17733,22 @@ export function SolicitudesRrhh() {
                 <div style={{fontSize:12}}>Saldo de vacaciones: <strong style={{color:'var(--cyan)'}}>{saldoVac.saldo} días</strong> disponibles ({saldoVac.usados} usados)</div>
               </div>
             )}
+
+            {/* Clasificación de pago */}
+            <div className="input-group" style={{marginBottom:14}}>
+              <label>Clasificación de pago</label>
+              <select className="select" value={form.clasificacion_pago || defaultClasificacionPago(form.tipo)}
+                onChange={e => setForm(f => ({...f, clasificacion_pago: e.target.value}))}>
+                <option value="remunerado">Remunerado (con goce)</option>
+                <option value="no_remunerado">No remunerado (sin goce)</option>
+                <option value="recuperacion_horas">Recuperación de horas</option>
+              </select>
+              {form.clasificacion_pago === 'no_remunerado' && defaultClasificacionPago(form.tipo) !== 'no_remunerado' && (
+                <div style={{marginTop:4, padding:'6px 10px', background:'#fff8e1', borderRadius:4, fontSize:11, color:'#5d4037', border:'1px solid #f9a825'}}>
+                  Este tipo normalmente es con goce. Al marcar "No remunerado" el sistema descontará los días en nómina.
+                </div>
+              )}
+            </div>
 
             <div className="grid-2" style={{gap:12, marginBottom:14}}>
               <div className="input-group">
@@ -16925,6 +17766,29 @@ export function SolicitudesRrhh() {
               Días hábiles: <strong>{diasHabiles}</strong>
               {excedeSaldo && <span style={{color:'var(--red)', marginLeft:8}}>— Supera tu saldo ({saldoVac.saldo} días disponibles)</span>}
             </div>
+
+            {/* Fecha de retorno y unidad */}
+            <div className="grid-2" style={{gap:12, marginBottom:14}}>
+              <div className="input-group">
+                <label>Fecha de retorno <span className="text-muted">(opcional)</span></label>
+                <input className="input" type="date" value={form.fecha_retorno || ''}
+                  onChange={e => setForm(f => ({...f, fecha_retorno: e.target.value}))}/>
+              </div>
+              <div className="input-group">
+                <label>Unidad</label>
+                <select className="select" value={form.unidad || 'dias'} onChange={e => setForm(f => ({...f, unidad: e.target.value}))}>
+                  <option value="dias">Días</option>
+                  <option value="horas">Horas</option>
+                </select>
+              </div>
+            </div>
+            {form.unidad === 'horas' && (
+              <div className="input-group" style={{marginBottom:14}}>
+                <label>Cantidad de horas *</label>
+                <input className="input" type="number" min="0.5" step="0.5" value={form.cantidad_horas || ''}
+                  onChange={e => setForm(f => ({...f, cantidad_horas: e.target.value}))}/>
+              </div>
+            )}
 
             <div className="input-group" style={{marginBottom:14}}>
               <label>Motivo *</label>

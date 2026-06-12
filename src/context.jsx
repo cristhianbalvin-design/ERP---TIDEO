@@ -13,6 +13,7 @@ import { maestrosService } from './services/maestrosService.js';
 import { comprasService, devolucionesService } from './services/comprasService.js';
 import { registrarEntrada, registrarSalida, registrarTransferencia, registrarAjuste, reservarStock, liberarReserva, getKardex, getStockCompleto, iniciarConteo, listarConteos, guardarAvanceConteo, cerrarConteo, getAnaliticaInventario, getMaterialesBajoReorden, registrarConsumoOT as registrarConsumoOTSvc } from './services/inventarioService.js';
 import { rrhhService } from './services/rrhhService.js';
+import { reclutamientoService } from './services/reclutamientoService.js';
 import * as plannerSvc from './services/plannerService.js';
 import { auditoriaService } from './services/auditoriaService.js';
 import { plataformaService } from './services/plataformaService.js';
@@ -367,6 +368,9 @@ export function AppProvider({ children }) {
   const [licencias, setLicencias] = useState([]);
   const [solicitudesRRHH, setSolicitudesRRHH] = useState(useSupabase ? [] : (MOCK.solicitudesRRHH || []));
   const [personalDocumentos, setPersonalDocumentos] = useState(useSupabase ? [] : (MOCK.personalDocumentos || []));
+  const [reclutamientoVacantes, setReclutamientoVacantes] = useState(useSupabase ? [] : (MOCK.reclutamientoVacantes || []));
+  const [reclutamientoCandidaturas, setReclutamientoCandidaturas] = useState(useSupabase ? [] : (MOCK.reclutamientoCandidaturas || []));
+  const [amonestacionesPersonal, setAmonestacionesPersonal] = useState(useSupabase ? [] : (MOCK.amonestacionesPersonal || []));
   const [asignacionesJornada, setAsignacionesJornada] = useState([]);
   const [evaluacionPlantillas, setEvaluacionPlantillas] = useState([]);
   const [evaluacionCompetencias, setEvaluacionCompetencias] = useState([]);
@@ -1060,6 +1064,27 @@ export function AppProvider({ children }) {
             setPersonalDocumentos(pdocsData || []);
           }
         } catch (_err) { /* módulo documental puede no estar migrado aún */ }
+
+        try {
+          const [vacData, candData] = await Promise.all([
+            reclutamientoService.getVacantes(empresa.id),
+            reclutamientoService.getCandidaturas(empresa.id),
+          ]);
+          if (mounted) {
+            setReclutamientoVacantes(vacData || []);
+            setReclutamientoCandidaturas(candData || []);
+          }
+        } catch (_err) { /* modulo reclutamiento puede no estar migrado */ }
+
+        try {
+          const supabase = await getSupabaseClient();
+          const { data: amonData } = await supabase
+            .from('amonestaciones_personal')
+            .select('*')
+            .eq('empresa_id', empresa.id)
+            .order('fecha', { ascending: false });
+          if (mounted) setAmonestacionesPersonal(amonData || []);
+        } catch (_err) { /* modulo amonestaciones puede no estar migrado */ }
 
         try {
           const [tdocsData, reqData] = await Promise.all([
@@ -3402,6 +3427,8 @@ export function AppProvider({ children }) {
       material_id: slp.material_id || (slp.origen_tipo === 'inventario' ? slp.origen_id : null),
       cantidad_solicitada: slp.cantidad_solicitada || null,
       items: slp.items || [],
+      solicitante: slp.solicitante || null,
+      ot_id: slp.ot_id || null,
       estado: 'solicitada',
       creado_por: authUser?.id || null,
     }]));
@@ -3990,7 +4017,7 @@ export function AppProvider({ children }) {
       if (campo && campoModulos.length > 0) {
         try {
           const mods = [...new Set(campoModulos.filter(Boolean))];
-          const perfilLegacy = ({ tecnico: 'Tecnico', vendedor: 'Vendedor', compras: 'Compras', supervisor: 'Supervisor', gerencia: 'Gerencia', asistencia: 'Asistencia', logistica: 'Logistica' }[mods[0]] || 'Tecnico');
+          const perfilLegacy = ({ tecnico: 'Tecnico', vendedor: 'Vendedor', compras: 'Compras', supervisor: 'Supervisor', gerencia: 'Gerencia', asistencia: 'Asistencia', logistica: 'Logistica', mi_espacio: 'Empleado', empleado: 'Empleado' }[mods[0]] || 'Tecnico');
           const saved = await usuariosService.actualizarUsuarioAcceso({
             user_id: uid,
             empresa_id: empresa.id,
@@ -4067,6 +4094,7 @@ export function AppProvider({ children }) {
       if (value.includes('supervisor')) return ['supervisor'];
       if (value.includes('gerencia')) return ['gerencia'];
       if (value.includes('admin')) return ['administrativo', 'solicitudes'];
+      if (value.includes('empleado')) return ['mi_espacio', 'solicitudes'];
       return ['tecnico'];
     };
     const campoModulos = datos.campo ? normalizarCampoModulos(datos.campoModulos || datos.campo_modulos, datos.campoPerfil || datos.perfil_campo) : [];
@@ -8072,11 +8100,11 @@ export function AppProvider({ children }) {
       const liq = data.liquidacion;
       if (liq.personal_tipo === 'operativo') {
         setPersonalOperativo(prev => prev.map(p => p.id === liq.personal_id
-          ? { ...p, estado_laboral: 'cesado', estado: 'inactivo', fecha_cese: liq.fecha_cese, tipo_cese: liq.tipo_cese }
+          ? { ...p, estado_laboral: 'cesado', estado: 'inactivo', fecha_cese: liq.fecha_cese, tipo_cese: liq.tipo_cese, no_recontratar: liq.tipo_cese === 'despido_falta_grave' ? true : p.no_recontratar, no_recontratar_motivo: liq.tipo_cese === 'despido_falta_grave' ? (liq.motivo_falta_grave || 'Despido justificado por falta grave') : p.no_recontratar_motivo }
           : p));
       } else {
         setPersonalAdmin(prev => prev.map(p => p.id === liq.personal_id
-          ? { ...p, estado_laboral: 'cesado', estado: 'inactivo', fecha_cese: liq.fecha_cese, tipo_cese: liq.tipo_cese }
+          ? { ...p, estado_laboral: 'cesado', estado: 'inactivo', fecha_cese: liq.fecha_cese, tipo_cese: liq.tipo_cese, no_recontratar: liq.tipo_cese === 'despido_falta_grave' ? true : p.no_recontratar, no_recontratar_motivo: liq.tipo_cese === 'despido_falta_grave' ? (liq.motivo_falta_grave || 'Despido justificado por falta grave') : p.no_recontratar_motivo }
           : p));
       }
       return data;
@@ -8100,11 +8128,11 @@ export function AppProvider({ children }) {
       if (liq.estado === 'anulada' && liq.confirmado_en) {
         if (liq.personal_tipo === 'operativo') {
           setPersonalOperativo(prev => prev.map(p => p.id === liq.personal_id
-            ? { ...p, estado_laboral: 'activo', estado: 'activo', fecha_cese: null, tipo_cese: null }
+            ? { ...p, estado_laboral: 'activo', estado: 'activo', fecha_cese: null, tipo_cese: null, no_recontratar: false, no_recontratar_motivo: null }
             : p));
         } else {
           setPersonalAdmin(prev => prev.map(p => p.id === liq.personal_id
-            ? { ...p, estado_laboral: 'activo', estado: 'activo', fecha_cese: null, tipo_cese: null }
+            ? { ...p, estado_laboral: 'activo', estado: 'activo', fecha_cese: null, tipo_cese: null, no_recontratar: false, no_recontratar_motivo: null }
             : p));
         }
       }
@@ -8566,6 +8594,107 @@ export function AppProvider({ children }) {
       ? todasMembresias.some(m => m.rol?.es_superadmin && m.empresa?.es_plataforma)
       : role?.permisos?.todo
   );
+  const crearVacanteReclutamientoCtx = async (payload) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await reclutamientoService.crearVacante(empresa.id, payload);
+      setReclutamientoVacantes(prev => [data, ...prev]);
+      return data;
+    }
+    const nuevo = {
+      ...payload,
+      id: generateId('vac'),
+      empresa_id: empresa?.id || 'emp_001',
+      posiciones: Number(payload.posiciones || 1),
+      posiciones_cubiertas: 0,
+      estado: 'abierta',
+      public_token: `postula_${Date.now()}`,
+      fecha_apertura: payload.fecha_apertura || new Date().toISOString().slice(0, 10),
+    };
+    setReclutamientoVacantes(prev => [nuevo, ...prev]);
+    return nuevo;
+  };
+
+  const crearCandidaturaReclutamientoCtx = async (payload) => {
+    const empresaId = empresa?.id || 'emp_001';
+    const alerta = payload.alerta_historial || null;
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await reclutamientoService.crearCandidatoYCandidatura(empresa.id, { ...payload, alerta_historial: alerta });
+      setReclutamientoCandidaturas(prev => [data, ...prev]);
+      return data;
+    }
+    const candidatoId = payload.candidato_id || generateId('cand');
+    const nuevo = {
+      id: generateId('candit'),
+      empresa_id: empresaId,
+      vacante_id: payload.vacante_id,
+      candidato_id: candidatoId,
+      etapa: payload.etapa || 'postulado',
+      fuente: payload.fuente || 'interno',
+      notas_evaluacion: payload.notas_evaluacion || '',
+      candidato: {
+        id: candidatoId,
+        empresa_id: empresaId,
+        nombre: payload.nombre,
+        dni: payload.dni,
+        telefono: payload.telefono || '',
+        email: payload.email || '',
+        cv_url: payload.cv_url || '#',
+        alerta_historial: alerta || {},
+      },
+      historial: [{ etapa_hasta: payload.etapa || 'postulado', fecha: new Date().toISOString(), usuario: authUser?.email || 'Demo' }],
+    };
+    setReclutamientoCandidaturas(prev => [nuevo, ...prev]);
+    return nuevo;
+  };
+
+  const moverCandidaturaReclutamientoCtx = async (candidaturaId, etapa, params = {}) => {
+    if (isSupabaseConfigured()) {
+      const data = await reclutamientoService.moverCandidatura(candidaturaId, etapa, params);
+      setReclutamientoCandidaturas(prev => prev.map(c => c.id === candidaturaId ? { ...c, ...data } : c));
+      if (etapa === 'contratado') {
+        setReclutamientoVacantes(prev => prev.map(v => v.id === data.vacante_id ? { ...v, posiciones_cubiertas: Math.min(Number(v.posiciones || 1), Number(v.posiciones_cubiertas || 0) + 1), estado: Number(v.posiciones_cubiertas || 0) + 1 >= Number(v.posiciones || 1) ? 'cerrada' : v.estado } : v));
+      }
+      return data;
+    }
+    if (etapa === 'descartado' && !String(params.descarte_motivo || '').trim()) throw new Error('El descarte requiere motivo.');
+    let actualizado = null;
+    setReclutamientoCandidaturas(prev => prev.map(c => {
+      if (c.id !== candidaturaId) return c;
+      actualizado = {
+        ...c,
+        etapa,
+        descarte_motivo: etapa === 'descartado' ? params.descarte_motivo : c.descarte_motivo,
+        notas_evaluacion: params.notas_evaluacion ?? c.notas_evaluacion,
+        personal_id: params.personal_id || c.personal_id,
+        personal_tipo: params.personal_tipo || c.personal_tipo,
+        historial: [...(c.historial || []), { etapa_desde: c.etapa, etapa_hasta: etapa, motivo: params.descarte_motivo || params.motivo || '', fecha: new Date().toISOString(), usuario: authUser?.email || 'Demo' }],
+      };
+      return actualizado;
+    }));
+    if (etapa === 'contratado' && actualizado?.vacante_id) {
+      setReclutamientoVacantes(prev => prev.map(v => v.id === actualizado.vacante_id ? { ...v, posiciones_cubiertas: Math.min(Number(v.posiciones || 1), Number(v.posiciones_cubiertas || 0) + 1), estado: Number(v.posiciones_cubiertas || 0) + 1 >= Number(v.posiciones || 1) ? 'cerrada' : v.estado } : v));
+    }
+    return actualizado;
+  };
+
+  const invitarCandidatoReclutamientoCtx = async (candidato, vacanteId) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await reclutamientoService.invitarCandidato(empresa.id, candidato.id || candidato.candidato_id, vacanteId);
+      setReclutamientoCandidaturas(prev => [data, ...prev]);
+      return data;
+    }
+    return crearCandidaturaReclutamientoCtx({
+      vacante_id: vacanteId,
+      candidato_id: candidato.id || candidato.candidato_id,
+      nombre: candidato.nombre,
+      dni: candidato.dni,
+      telefono: candidato.telefono,
+      email: candidato.email,
+      fuente: 'banco_talentos',
+      alerta_historial: candidato.alerta_historial,
+    });
+  };
+
   const authUserConAcceso = authUser ? {
     ...authUser,
     ...usuarioActual,
@@ -8711,6 +8840,9 @@ export function AppProvider({ children }) {
     licencias, setLicencias,
     solicitudesRRHH, setSolicitudesRRHH,
     personalDocumentos, setPersonalDocumentos,
+    reclutamientoVacantes, setReclutamientoVacantes,
+    reclutamientoCandidaturas, setReclutamientoCandidaturas,
+    amonestacionesPersonal, setAmonestacionesPersonal,
     evaluacionPlantillas, setEvaluacionPlantillas,
     evaluacionCompetencias, setEvaluacionCompetencias,
     evaluacionObjetivos, setEvaluacionObjetivos,
@@ -8739,6 +8871,8 @@ export function AppProvider({ children }) {
     // RRHH Actions
     crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx,
     crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx,
+    crearVacanteReclutamientoCtx, crearCandidaturaReclutamientoCtx,
+    moverCandidaturaReclutamientoCtx, invitarCandidatoReclutamientoCtx,
     crearTurnoCtx, actualizarTurnoCtx, eliminarTurnoCtx, registrarAsistenciaCtx, crearPeriodoNominaCtx,
     crearPlantillaEvaluacionCtx, actualizarPlantillaEvaluacionCtx, cerrarPlantillaEvaluacionCtx,
     reasignarJefeEvaluacionCtx, guardarAutoevaluacionCtx, guardarEvaluacionJefeCtx,
