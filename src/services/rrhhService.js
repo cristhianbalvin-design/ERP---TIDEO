@@ -255,6 +255,10 @@ const normalizarPersonalOperativo = (p = {}) => ({
   dias_vacaciones_disponibles: Number(p.dias_vacaciones_disponibles ?? 0),
   fecha_inicio_contrato: p.fecha_inicio_contrato || p.fecha_ingreso || null,
   fecha_fin_contrato: p.fecha_fin_contrato || null,
+  codigo_biometrico: p.codigo_biometrico || null,
+  celular_whatsapp: p.celular_whatsapp || p.telefono_personal || null,
+  whatsapp_opt_in: Boolean(p.whatsapp_opt_in),
+  whatsapp_opt_in_en: p.whatsapp_opt_in_en || null,
   datos_bancarios: p.datos_bancarios ?? [],
   usuario_bloqueado_en: p.usuario_bloqueado_en || null,
   usuario_bloqueado_por: p.usuario_bloqueado_por || null,
@@ -319,6 +323,10 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   vencimiento_suspension: persona.vencimiento_suspension || null,
   acceso_campo: persona.acceso_campo ?? false,
   perfil_campo: persona.perfil_campo || null,
+  codigo_biometrico: persona.codigo_biometrico || null,
+  celular_whatsapp: persona.celular_whatsapp || persona.telefono_personal || null,
+  whatsapp_opt_in: Boolean(persona.whatsapp_opt_in),
+  whatsapp_opt_in_en: persona.whatsapp_opt_in_en || null,
   docs: persona.docs || { sctr: 'pendiente', medico: 'pendiente', epp: 'pendiente', licencia: 'pendiente' },
   centro_costo_id: persona.centro_costo_id || null,
   estado: persona.estado || 'disponible',
@@ -343,6 +351,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
     'costo_hora_real', 'costo_hora_extra',
     'ruc_colaborador', 'retencion_ir', 'suspension_retenciones', 'vencimiento_suspension',
     'acceso_campo', 'perfil_campo',
+    'codigo_biometrico', 'celular_whatsapp', 'whatsapp_opt_in', 'whatsapp_opt_in_en',
     'docs', 'estado', 'centro_costo_id', 'tarifa_hora_referencial',
     'datos_bancarios', 'usuario_bloqueado_en', 'usuario_bloqueado_por'
   ]);
@@ -408,6 +417,10 @@ const normalizarPersonalAdmin = (p = {}) => ({
   retencion_ir: p.retencion_ir != null ? Number(p.retencion_ir) : 8,
   suspension_retenciones: Boolean(p.suspension_retenciones),
   vencimiento_suspension: p.vencimiento_suspension || null,
+  codigo_biometrico: p.codigo_biometrico || null,
+  celular_whatsapp: p.celular_whatsapp || p.telefono_personal || null,
+  whatsapp_opt_in: Boolean(p.whatsapp_opt_in),
+  whatsapp_opt_in_en: p.whatsapp_opt_in_en || null,
   datos_bancarios: p.datos_bancarios ?? [],
   usuario_bloqueado_en: p.usuario_bloqueado_en || null,
   usuario_bloqueado_por: p.usuario_bloqueado_por || null,
@@ -482,6 +495,10 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   retencion_ir: persona.retencion_ir != null ? Number(persona.retencion_ir) : 8,
   suspension_retenciones: Boolean(persona.suspension_retenciones),
   vencimiento_suspension: persona.vencimiento_suspension || null,
+  codigo_biometrico: persona.codigo_biometrico || null,
+  celular_whatsapp: persona.celular_whatsapp || persona.telefono_personal || null,
+  whatsapp_opt_in: Boolean(persona.whatsapp_opt_in),
+  whatsapp_opt_in_en: persona.whatsapp_opt_in_en || null,
   tarifa_hora_referencial: persona.tarifa_hora_referencial != null ? Number(persona.tarifa_hora_referencial) : null,
 });
 
@@ -507,6 +524,7 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     'auth_user_id', 'tiene_comisiones', 'porcentaje_comision',
     'modalidad_comision', 'ruc_vendedor', 'ruc_colaborador', 'retencion_ir_comision', 'retencion_ir',
     'suspension_retenciones', 'vencimiento_suspension', 'tarifa_hora_referencial',
+    'codigo_biometrico', 'celular_whatsapp', 'whatsapp_opt_in', 'whatsapp_opt_in_en',
     'datos_bancarios', 'usuario_bloqueado_en', 'usuario_bloqueado_por'
   ]);
 

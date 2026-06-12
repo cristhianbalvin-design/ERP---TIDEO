@@ -80,7 +80,7 @@ const estadoToProfile = (estado: string) => {
   return labels[value] || "Activo";
 };
 
-const allowedCampoModulos = new Set(["tecnico", "logistica", "vendedor", "compras", "supervisor", "gerencia", "asistencia", "administrativo"]);
+const allowedCampoModulos = new Set(["tecnico", "logistica", "vendedor", "compras", "supervisor", "gerencia", "asistencia", "administrativo", "mi_espacio", "empleado"]);
 const legacyPerfilToModulo = (perfil: string | null) => {
   const value = String(perfil || "").toLowerCase();
   if (value.includes("vendedor")) return "vendedor";
@@ -102,6 +102,8 @@ const moduloToPerfil = (modulo: string | null) => {
     gerencia: "Gerencia",
     asistencia: "Asistencia",
     administrativo: "Administrativo",
+    mi_espacio: "Mi espacio",
+    empleado: "Empleado",
   };
   return modulo ? (map[modulo] || "Tecnico") : null;
 };

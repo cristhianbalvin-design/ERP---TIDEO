@@ -1356,13 +1356,13 @@ export const cxp = [
 export const personalOperativo = [
   { id: 'pop_001', empresa_id: 'emp_001', nombre: 'Luis Mendoza', dni: '45678901', codigo: 'TEC-001',
     cargo_id: 'car_011', cargo: 'Técnico Mecánico', especialidad: 'Mecánica', turno_id: 'tur_001',
-    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 35, moneda: 'PEN' },
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 35, moneda: 'PEN', codigo_biometrico: 'BIO001', celular_whatsapp: '51999111222', whatsapp_opt_in: true },
   { id: 'pop_002', empresa_id: 'emp_001', nombre: 'Carlos Reyes', dni: '34567890', codigo: 'TEC-002',
     cargo_id: 'car_011', cargo: 'Técnico Mecánico', especialidad: 'Mecánica', turno_id: 'tur_001',
-    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 32, moneda: 'PEN' },
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 32, moneda: 'PEN', codigo_biometrico: 'BIO002', celular_whatsapp: '51999111333', whatsapp_opt_in: false },
   { id: 'pop_003', empresa_id: 'emp_001', nombre: 'Ana Torres', dni: '23456789', codigo: 'TEC-003',
     cargo_id: 'car_015', cargo: 'Electricista Industrial', especialidad: 'Eléctrica', turno_id: 'tur_001',
-    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 38, moneda: 'PEN' },
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 38, moneda: 'PEN', codigo_biometrico: 'BIO003', celular_whatsapp: '51999111444', whatsapp_opt_in: true },
   { id: 'pop_004', empresa_id: 'emp_001', nombre: 'Jorge Quispe', dni: '12345678', codigo: 'TEC-004',
     cargo_id: 'car_011', cargo: 'Técnico Mecánico', especialidad: 'Mecánica', turno_id: 'tur_004',
     estado: 'disponible', modalidad_contrato: 'honorarios', tarifa_hora: 42, moneda: 'PEN' },
@@ -2143,6 +2143,42 @@ export const portalBoletaVisualizaciones = [];
 export const portalFirmaRegistros = [];
 export const portalFirmaOtpIntentos = [];
 
+export const biometricoPerfiles = [
+  {
+    id: 'bio_perfil_mock_001', empresa_id: 'emp_001', nombre: 'Reloj generico por DNI',
+    separador: ',', tiene_encabezado: true, encoding: 'utf-8',
+    formato_fecha: 'DD/MM/YYYY', formato_hora: 'HH:mm', identificador_tipo: 'dni',
+    columna_identificador: 'dni', columna_fecha: 'fecha', columna_hora: 'hora', columna_tipo: 'tipo',
+    entrada_valores: 'entrada,in,checkin,0', salida_valores: 'salida,out,checkout,1',
+    solo_marcas: false, estado: 'activo',
+  },
+  {
+    id: 'bio_perfil_mock_002', empresa_id: 'emp_001', nombre: 'Solo marcas por codigo biometrico',
+    separador: ';', tiene_encabezado: true, encoding: 'utf-8',
+    formato_fecha: 'auto', formato_hora: 'HH:mm', identificador_tipo: 'codigo_biometrico',
+    columna_identificador: 'codigo', columna_fecha: 'fecha', columna_hora: 'hora', columna_tipo: '',
+    entrada_valores: '', salida_valores: '', solo_marcas: true, estado: 'activo',
+  },
+];
+
+export const biometricoLotes = [];
+
+export const whatsappPlantillas = [
+  { id: 'tpl_contrato_vencimiento', empresa_id: 'emp_001', tipo_alerta: 'contrato_por_vencer', proveedor_template: 'contrato_vencimiento', variables: ['colaborador','documento','fecha_vencimiento','dias_restantes'], texto_sugerido: 'Hola {{colaborador}}, tu contrato vence el {{fecha_vencimiento}}.', estado: 'activo' },
+  { id: 'tpl_dni_vencimiento', empresa_id: 'emp_001', tipo_alerta: 'doc_dni_por_vencer', proveedor_template: 'dni_vencimiento', variables: ['colaborador','documento','fecha_vencimiento','dias_restantes'], texto_sugerido: 'Hola {{colaborador}}, tu DNI vence el {{fecha_vencimiento}}.', estado: 'activo' },
+  { id: 'tpl_sctr_vencimiento', empresa_id: 'emp_001', tipo_alerta: 'doc_sctr_por_vencer', proveedor_template: 'sctr_vencimiento', variables: ['colaborador','documento','fecha_vencimiento','dias_restantes'], texto_sugerido: 'Alerta: SCTR de {{colaborador}} vence el {{fecha_vencimiento}}.', estado: 'activo' },
+  { id: 'tpl_licencia_vencimiento', empresa_id: 'emp_001', tipo_alerta: 'doc_licencia_por_vencer', proveedor_template: 'licencia_vencimiento', variables: ['colaborador','documento','fecha_vencimiento','dias_restantes'], texto_sugerido: 'La licencia {{documento}} de {{colaborador}} vence el {{fecha_vencimiento}}.', estado: 'activo' },
+];
+
+export const whatsappMatriz = [
+  { id: 'wmr_contrato', empresa_id: 'emp_001', tipo_alerta: 'contrato_por_vencer', enviar_colaborador: true, enviar_jefe_area: true, enviar_rrhh: true, enviar_admin: false, requiere_opt_in_colaborador: true, internos_consentimiento_implicito: true, estado: 'activo' },
+  { id: 'wmr_dni', empresa_id: 'emp_001', tipo_alerta: 'doc_dni_por_vencer', enviar_colaborador: true, enviar_jefe_area: false, enviar_rrhh: true, enviar_admin: false, requiere_opt_in_colaborador: true, internos_consentimiento_implicito: true, estado: 'activo' },
+  { id: 'wmr_sctr', empresa_id: 'emp_001', tipo_alerta: 'doc_sctr_por_vencer', enviar_colaborador: true, enviar_jefe_area: true, enviar_rrhh: true, enviar_admin: false, requiere_opt_in_colaborador: true, internos_consentimiento_implicito: true, estado: 'activo' },
+  { id: 'wmr_licencia', empresa_id: 'emp_001', tipo_alerta: 'doc_licencia_por_vencer', enviar_colaborador: true, enviar_jefe_area: true, enviar_rrhh: true, enviar_admin: false, requiere_opt_in_colaborador: true, internos_consentimiento_implicito: true, estado: 'activo' },
+];
+
+export const whatsappEnvios = [];
+
 export const MOCK = {
   empresas, roles, usuarios, leads, cuentas, contactos, oportunidades, campanas,
   actividades, hojasCosteo, cotizaciones, osClientes, ots, partes, compras, cxc,
@@ -2158,6 +2194,8 @@ export const MOCK = {
   reclutamientoVacantes, reclutamientoCandidaturas, amonestacionesPersonal,
   portalDatosSolicitudes, portalConstanciasTrabajo, portalBoletaAcuses, portalBoletaVisualizaciones,
   portalFirmaRegistros, portalFirmaOtpIntentos,
+  biometricoPerfiles, biometricoLotes,
+  whatsappPlantillas, whatsappMatriz, whatsappEnvios,
   onboardings, planesExito, healthScoresDetalle, churnPlanes,
   renovaciones, npsEncuestas, referidos, casosExito, iaLogs,
   biFinanciero, metricasSaaS,

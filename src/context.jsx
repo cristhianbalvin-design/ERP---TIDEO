@@ -26,6 +26,8 @@ import * as liquidacionesCeseService from './services/liquidacionesCeseService.j
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { portalFase2Service, sha256Text, plantillaConstanciaHtml } from './services/portalFase2Service.js';
+import { biometricoService } from './services/biometricoService.js';
+import { whatsappService } from './services/whatsappService.js';
 import { tiposDocumentoService } from './services/tiposDocumentoService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { AFP_PARAMETROS_DEFAULT, latestAfpParametros, nominaService } from './services/nominaService.js';
@@ -378,6 +380,11 @@ export function AppProvider({ children }) {
   const [portalBoletaVisualizaciones, setPortalBoletaVisualizaciones] = useState(useSupabase ? [] : (MOCK.portalBoletaVisualizaciones || []));
   const [portalFirmaRegistros, setPortalFirmaRegistros] = useState(useSupabase ? [] : (MOCK.portalFirmaRegistros || []));
   const [portalFirmaOtpIntentos, setPortalFirmaOtpIntentos] = useState(useSupabase ? [] : (MOCK.portalFirmaOtpIntentos || []));
+  const [biometricoPerfiles, setBiometricoPerfiles] = useState(useSupabase ? [] : (MOCK.biometricoPerfiles || []));
+  const [biometricoLotes, setBiometricoLotes] = useState(useSupabase ? [] : (MOCK.biometricoLotes || []));
+  const [whatsappPlantillas, setWhatsappPlantillas] = useState(useSupabase ? [] : (MOCK.whatsappPlantillas || []));
+  const [whatsappMatriz, setWhatsappMatriz] = useState(useSupabase ? [] : (MOCK.whatsappMatriz || []));
+  const [whatsappEnvios, setWhatsappEnvios] = useState(useSupabase ? [] : (MOCK.whatsappEnvios || []));
   const [asignacionesJornada, setAsignacionesJornada] = useState([]);
   const [evaluacionPlantillas, setEvaluacionPlantillas] = useState([]);
   const [evaluacionCompetencias, setEvaluacionCompetencias] = useState([]);
@@ -1104,6 +1111,20 @@ export function AppProvider({ children }) {
             setPortalFirmaOtpIntentos(portalData.firmaOtpIntentos || []);
           }
         } catch (_err) { /* fase 2 portal empleado puede no estar migrada */ }
+
+        try {
+          const [bioData, waData] = await Promise.all([
+            biometricoService.listar(empresa.id),
+            whatsappService.listar(empresa.id),
+          ]);
+          if (mounted) {
+            setBiometricoPerfiles(bioData.perfiles || []);
+            setBiometricoLotes(bioData.lotes || []);
+            setWhatsappPlantillas(waData.templates || []);
+            setWhatsappMatriz(waData.rutas || []);
+            setWhatsappEnvios(waData.logs || []);
+          }
+        } catch (_err) { /* ola 5A integraciones puede no estar migrada */ }
 
         try {
           const [tdocsData, reqData] = await Promise.all([
@@ -8938,6 +8959,53 @@ export function AppProvider({ children }) {
     return { ...ficha, ...cambios };
   };
 
+  const guardarPerfilBiometricoCtx = async (perfil) => {
+    const data = await biometricoService.guardarPerfil(empresa?.id || perfil.empresa_id || 'emp_001', perfil);
+    setBiometricoPerfiles(prev => data.id && prev.some(p => p.id === data.id)
+      ? prev.map(p => p.id === data.id ? data : p)
+      : [data, ...prev]
+    );
+    addNotificacion('Perfil biometrico guardado.');
+    return data;
+  };
+
+  const registrarLoteBiometricoCtx = async (lote) => {
+    const data = await biometricoService.crearLote(empresa?.id || lote.empresa_id || 'emp_001', lote);
+    setBiometricoLotes(prev => [data, ...prev]);
+    return data;
+  };
+
+  const anularLoteBiometricoCtx = async (loteId, motivo) => {
+    const data = await biometricoService.anularLote(loteId, motivo);
+    setBiometricoLotes(prev => prev.map(l => l.id === loteId ? { ...l, ...data, estado: 'anulado', motivo_anulacion: motivo, anulado_en: data.anulado_en || new Date().toISOString() } : l));
+    setRegistrosAsistencia(prev => prev.map(r => r.importacion_biometrica_lote_id === loteId
+      ? { ...r, estado: 'anulado', anulado_por_lote_id: loteId, motivo_anulacion: motivo, anulado_en: new Date().toISOString() }
+      : r
+    ));
+    addNotificacion('Lote biometrico anulado y registros revertidos.');
+    return data;
+  };
+
+  const guardarWhatsappPlantillaCtx = async (plantilla) => {
+    const data = await whatsappService.guardarPlantilla(empresa?.id || plantilla.empresa_id || 'emp_001', plantilla);
+    setWhatsappPlantillas(prev => data.id && prev.some(t => t.id === data.id) ? prev.map(t => t.id === data.id ? data : t) : [data, ...prev]);
+    addNotificacion('Plantilla WhatsApp guardada.');
+    return data;
+  };
+
+  const guardarWhatsappRutaCtx = async (ruta) => {
+    const data = await whatsappService.guardarRuta(empresa?.id || ruta.empresa_id || 'emp_001', ruta);
+    setWhatsappMatriz(prev => data.id && prev.some(r => r.id === data.id) ? prev.map(r => r.id === data.id ? data : r) : [data, ...prev]);
+    addNotificacion('Matriz WhatsApp actualizada.');
+    return data;
+  };
+
+  const registrarWhatsappSimuladoCtx = async (envio) => {
+    const data = await whatsappService.encolarSimulado(empresa?.id || envio.empresa_id || 'emp_001', envio);
+    setWhatsappEnvios(prev => [data, ...prev]);
+    return data;
+  };
+
   const authUserConAcceso = authUser ? {
     ...authUser,
     ...usuarioActual,
@@ -9092,6 +9160,11 @@ export function AppProvider({ children }) {
     portalBoletaVisualizaciones, setPortalBoletaVisualizaciones,
     portalFirmaRegistros, setPortalFirmaRegistros,
     portalFirmaOtpIntentos, setPortalFirmaOtpIntentos,
+    biometricoPerfiles, setBiometricoPerfiles,
+    biometricoLotes, setBiometricoLotes,
+    whatsappPlantillas, setWhatsappPlantillas,
+    whatsappMatriz, setWhatsappMatriz,
+    whatsappEnvios, setWhatsappEnvios,
     evaluacionPlantillas, setEvaluacionPlantillas,
     evaluacionCompetencias, setEvaluacionCompetencias,
     evaluacionObjetivos, setEvaluacionObjetivos,
@@ -9126,6 +9199,8 @@ export function AppProvider({ children }) {
     crearConstanciaPortalCtx, resolverConstanciaPortalCtx,
     registrarAcuseBoletaPortalCtx, registrarVisualizacionBoletaPortalCtx,
     iniciarOtpFirmaPortalCtx, validarOtpFirmaPortalCtx, guardarOnboardingFirmaPortalCtx,
+    guardarPerfilBiometricoCtx, registrarLoteBiometricoCtx, anularLoteBiometricoCtx,
+    guardarWhatsappPlantillaCtx, guardarWhatsappRutaCtx, registrarWhatsappSimuladoCtx,
     crearTurnoCtx, actualizarTurnoCtx, eliminarTurnoCtx, registrarAsistenciaCtx, crearPeriodoNominaCtx,
     crearPlantillaEvaluacionCtx, actualizarPlantillaEvaluacionCtx, cerrarPlantillaEvaluacionCtx,
     reasignarJefeEvaluacionCtx, guardarAutoevaluacionCtx, guardarEvaluacionJefeCtx,

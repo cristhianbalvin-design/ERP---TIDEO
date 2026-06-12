@@ -24,6 +24,7 @@ import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { getPrimaSeguroAfp } from './services/nominaService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
+import { BIOMETRICO_PERFIL_DEFAULT, previsualizarImportacionBiometrica } from './services/biometricoService.js';
 import { FileUpload } from './components/FileUpload.jsx';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
 import { comprasService, getSpendAnalysis } from './services/comprasService.js';
@@ -5940,10 +5941,10 @@ function OrdenesCompra() {
       try {
         ocGuardada = await crearOrdenCompraCtx(oc);
       } catch (error) {
-        if (!form.solpe_id || !/solpe_id|solpe_codigo|origen_tipo/i.test(error?.message || '')) throw error;
+        if (!/solpe_id|solpe_codigo|origen_tipo/i.test(error?.message || '')) throw error;
         const { solpe_id, solpe_codigo, origen_tipo, ...ocSinSolpe } = oc;
         ocGuardada = await crearOrdenCompraCtx(ocSinSolpe);
-        setOrdenesCompra(prev => prev.map(o => o.id === ocGuardada.id ? { ...o, solpe_id:form.solpe_id, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo, origen_tipo:'solpe' } : o));
+        if (form.solpe_id) setOrdenesCompra(prev => prev.map(o => o.id === ocGuardada.id ? { ...o, solpe_id:form.solpe_id, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo, origen_tipo:'solpe' } : o));
       }
       if (form.solpe_id) await marcarSolpeOCGenerada(form.solpe_id, ocGuardada);
       addNotificacion(`${oc.codigo} ${emitir?'emitida':'guardada como borrador'}.`);
@@ -12948,7 +12949,10 @@ function TurnosHorarios() {
 }
 
 function ControlAsistencia() {
-  const { turnos, registrosAsistencia, setRegistrosAsistencia, personalOperativo, personalAdmin, empresa, addNotificacion, asignacionesJornada = [], role } = useApp();
+  const {
+    turnos, registrosAsistencia, setRegistrosAsistencia, personalOperativo, personalAdmin, empresa, addNotificacion, asignacionesJornada = [], role,
+    biometricoPerfiles = [], biometricoLotes = [], guardarPerfilBiometricoCtx, registrarLoteBiometricoCtx, anularLoteBiometricoCtx,
+  } = useApp();
   const [tab, setTab] = useState('diaria');
   const [poblacion, setPoblacion] = useState('planilla'); // 'planilla' | 'honorarios'
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
@@ -12960,6 +12964,13 @@ function ControlAsistencia() {
   const [autHeForm, setAutHeForm] = useState({ personal_id:'', fecha:new Date().toISOString().split('T')[0], horas:'1', motivo:'' });
   const [autHeComentario, setAutHeComentario] = useState('');
   const [validacionesHon, setValidacionesHon] = useState([]);
+  const [bioPanel, setBioPanel] = useState(false);
+  const [bioPreview, setBioPreview] = useState(null);
+  const [bioFile, setBioFile] = useState(null);
+  const [bioPerfilId, setBioPerfilId] = useState('');
+  const [bioOverwrite, setBioOverwrite] = useState(false);
+  const [bioPerfilForm, setBioPerfilForm] = useState({ ...BIOMETRICO_PERFIL_DEFAULT });
+  const [bioSaving, setBioSaving] = useState(false);
 
   // Estados Mineros
   const [ciclosMineros, setCiclosMineros] = useState([]);
@@ -13012,6 +13023,10 @@ function ControlAsistencia() {
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [fecha, empresa?.id]);
+
+  useEffect(() => {
+    if (!bioPerfilId && biometricoPerfiles[0]?.id) setBioPerfilId(biometricoPerfiles[0].id);
+  }, [bioPerfilId, biometricoPerfiles]);
 
   const trabajador = trabajadoresGenerales.find(t => t.id === form.trabajador_id) || trabajadoresGenerales[0];
   const trabajadorBloqueado = Boolean(trabajador?.asistencia_bloqueada);
@@ -13199,6 +13214,113 @@ function ControlAsistencia() {
     setRegistrosAsistencia(prev => [...guardados, ...prev.filter(r => !(r.fecha === fecha && ids.has(r.trabajador_id)))]);
     addNotificacion('Registro masivo guardado correctamente.');
     setMasivo(false);
+  };
+
+  const bioPerfilActual = biometricoPerfiles.find(p => p.id === bioPerfilId) || biometricoPerfiles[0] || bioPerfilForm;
+
+  const guardarPerfilBio = async (e) => {
+    e?.preventDefault?.();
+    setBioSaving(true);
+    try {
+      const data = await guardarPerfilBiometricoCtx({
+        ...bioPerfilForm,
+        empresa_id: empresa?.id,
+        tiene_encabezado: Boolean(bioPerfilForm.tiene_encabezado),
+        solo_marcas: Boolean(bioPerfilForm.solo_marcas),
+      });
+      setBioPerfilId(data.id);
+      addNotificacion('Perfil de importacion biometrica listo.');
+    } catch (err) {
+      addNotificacion(`No se pudo guardar el perfil: ${err.message || 'error'}`);
+    } finally {
+      setBioSaving(false);
+    }
+  };
+
+  const previsualizarBio = async () => {
+    if (!bioFile) {
+      addNotificacion('Selecciona un archivo CSV, TXT o Excel.');
+      return;
+    }
+    try {
+      const preview = await previsualizarImportacionBiometrica({
+        file: bioFile,
+        perfil: bioPerfilActual,
+        trabajadores,
+        registrosAsistencia,
+      });
+      setBioPreview(preview);
+      addNotificacion(`Previsualizacion lista: ${preview.resumen.listos} registros importables.`);
+    } catch (err) {
+      addNotificacion(`No se pudo leer el archivo: ${err.message || 'formato no soportado'}`);
+    }
+  };
+
+  const confirmarImportacionBio = async () => {
+    if (!bioPreview) return;
+    const importables = [
+      ...(bioPreview.ready || []),
+      ...(bioOverwrite ? (bioPreview.duplicates || []) : []),
+    ];
+    if (!importables.length) {
+      addNotificacion('No hay registros listos para importar.');
+      return;
+    }
+    const lote = await registrarLoteBiometricoCtx({
+      perfil_id: bioPerfilActual?.id || null,
+      archivo_nombre: bioPreview.fileName,
+      archivo_hash: `${bioPreview.fileName}:${bioPreview.total}`,
+      estado: 'confirmado',
+      totales: { ...bioPreview.resumen, importados: importables.length },
+      detalle: { regla_inferencia: 'sin tipo: primera marca del dia = entrada, ultima = salida; intermedias quedan como detalle' },
+      sobrescribio_duplicados: Boolean(bioOverwrite),
+    });
+    const guardados = [];
+    for (const row of importables) {
+      const trn = workerTurno(turnos, row.trabajador);
+      const calc = calcularResultadoAsistencia(row.hora_entrada, row.hora_salida, trn, false, false);
+      const registro = {
+        empresa_id: empresa.id,
+        trabajador_id: row.trabajador.id,
+        trabajador_tipo: row.trabajador.trabajador_tipo || 'operativo',
+        fecha: row.fecha,
+        turno_id: turnos.some(t => t.id === trn.id) ? trn.id : null,
+        hora_entrada: row.hora_entrada,
+        hora_salida: row.hora_salida,
+        horas_trabajadas_min: calc.horas_trabajadas_min,
+        tardanza_min: calc.tardanza_min || 0,
+        horas_extra_min: calc.horas_extra_min || 0,
+        estado: calc.estado,
+        es_falta: false,
+        justificada: false,
+        notas: `Importacion biometrica ${bioPreview.fileName}`,
+        regimen_jornada: 'general',
+        origen_registro: 'biometrico_importacion',
+        importacion_biometrica_lote_id: lote.id,
+        marcas_biometricas: row.marcas,
+      };
+      try {
+        const existente = row.existente || registrosAsistencia.find(r => r.trabajador_id === row.trabajador.id && r.fecha === row.fecha);
+        const data = existente?.id && bioOverwrite
+          ? await rrhhService.actualizarAsistencia(existente.id, registro)
+          : await rrhhService.registrarAsistencia(empresa.id, registro);
+        guardados.push({ ...data, importacion_biometrica_lote_id: lote.id, marcas_biometricas: row.marcas });
+      } catch {
+        guardados.push({ ...registro, id: `asis_bio_${Date.now()}_${row.trabajador.id}` });
+      }
+    }
+    const keys = new Set(guardados.map(r => `${r.trabajador_id}:${r.fecha}`));
+    setRegistrosAsistencia(prev => [...guardados, ...prev.filter(r => !keys.has(`${r.trabajador_id}:${r.fecha}`))]);
+    addNotificacion(`Importacion biometrica confirmada: ${guardados.length} registros.`);
+    setBioPreview(null);
+    setBioFile(null);
+    setBioPanel(false);
+  };
+
+  const anularBio = async (lote) => {
+    const motivo = window.prompt('Motivo de anulacion del lote:');
+    if (!motivo) return;
+    await anularLoteBiometricoCtx(lote.id, motivo);
   };
 
   // â"€â"€ Funciones Minero â"€â"€
