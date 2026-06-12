@@ -5463,6 +5463,7 @@ function Proveedores() {
       id: `prv_${String(next).padStart(3,'0')}`,
       empresa_id: empresa.id,
       codigo: `PRV-${String(next).padStart(3,'0')}`,
+      rubro: form.categoria,
       calificacion_promedio: null,
       total_evaluaciones: 0,
       condicion_pago: '',
@@ -5478,8 +5479,9 @@ function Proveedores() {
     };
     try {
       await registrarProveedor(payload);
-    } catch (_) {
-      setProveedores(prev => [...prev, payload]);
+    } catch (error) {
+      addNotificacion(`No se pudo guardar el proveedor: ${error.message || error}`);
+      return;
     }
     addNotificacion(`Proveedor ${payload.codigo} registrado.`);
     resetForm();
