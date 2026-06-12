@@ -27,6 +27,8 @@ export default defineConfig({
       },
 
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
         // Precachea todos los assets del build (JS, CSS, HTML, imágenes, fuentes)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2,webmanifest}'],
         // El bundle principal del ERP supera el límite por defecto de 2 MiB

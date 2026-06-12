@@ -5714,6 +5714,13 @@ function proveedorById(proveedores, id) {
 }
 
 const OC_FORM_INIT = { proveedor_id:'prv_001', origen_compra:'directa', proceso_compra_id:'', solpe_id:'', solpe_codigo:'', ot_id:'', centro_costo_id:'', descripcion:'', fecha_entrega_esperada:'2025-04-30', items:[{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:1000 }] };
+const OC_COLUMNAS_OPCIONALES_INSERT = new Set(['condicion_pago', 'solpe_id', 'solpe_codigo', 'origen_tipo', 'notas_proveedor', 'notas_internas', 'creado_por']);
+const schemaCacheMissingColumn = (error, tableName = 'ordenes_compra') => {
+  const message = [error?.message, error?.details, error?.hint].filter(Boolean).join(' ');
+  const match = message.match(/Could not find the '([^']+)' column of '([^']+)' in the schema cache/i);
+  if (!match) return null;
+  return match[2] === tableName ? match[1] : null;
+};
 const normEstadoSolpe = s => String(s?.estado || '').trim().toLowerCase();
 const solpeTieneOC = (s, ordenesCompra = [], procesosCompra = []) => {
   const sid = s?.id;
@@ -5936,16 +5943,23 @@ function OrdenesCompra() {
     const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
     const p = proveedorById(proveedores, form.proveedor_id);
     const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:subtotal*0.18, total:subtotal*1.18, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:form.solpe_id ? `SOLPE origen: ${form.solpe_codigo || form.solpe_id}` : '', creado_por: authUser?.id || null };
-    try {
-      let ocGuardada;
-      try {
-        ocGuardada = await crearOrdenCompraCtx(oc);
-      } catch (error) {
-        if (!/solpe_id|solpe_codigo|origen_tipo/i.test(error?.message || '')) throw error;
-        const { solpe_id, solpe_codigo, origen_tipo, ...ocSinSolpe } = oc;
-        ocGuardada = await crearOrdenCompraCtx(ocSinSolpe);
-        if (form.solpe_id) setOrdenesCompra(prev => prev.map(o => o.id === ocGuardada.id ? { ...o, solpe_id:form.solpe_id, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo, origen_tipo:'solpe' } : o));
+    const crearOCCompatible = async (payloadBase) => {
+      let payload = { ...payloadBase };
+      for (let intento = 0; intento <= OC_COLUMNAS_OPCIONALES_INSERT.size; intento += 1) {
+        try {
+          return { ocGuardada: await crearOrdenCompraCtx(payload), payloadUsado: payload };
+        } catch (error) {
+          const columna = schemaCacheMissingColumn(error);
+          if (!columna || !OC_COLUMNAS_OPCIONALES_INSERT.has(columna) || !(columna in payload)) throw error;
+          const { [columna]: _omitida, ...payloadSinColumna } = payload;
+          payload = payloadSinColumna;
+        }
       }
+      throw new Error('No se pudo guardar la OC por columnas opcionales no sincronizadas.');
+    };
+    try {
+      const { ocGuardada, payloadUsado } = await crearOCCompatible(oc);
+      if (form.solpe_id && (!('solpe_id' in payloadUsado) || !('solpe_codigo' in payloadUsado) || !('origen_tipo' in payloadUsado))) setOrdenesCompra(prev => prev.map(o => o.id === ocGuardada.id ? { ...o, solpe_id:form.solpe_id, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo, origen_tipo:'solpe' } : o));
       if (form.solpe_id) await marcarSolpeOCGenerada(form.solpe_id, ocGuardada);
       addNotificacion(`${oc.codigo} ${emitir?'emitida':'guardada como borrador'}.`);
       setForm(OC_FORM_INIT);
