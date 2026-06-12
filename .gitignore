@@ -8,3 +8,5 @@ API OCR - ANTROPHIC.txt
 
 .vercel
 .env*.local
+vite-dev.err.log
+vite-dev.out.log

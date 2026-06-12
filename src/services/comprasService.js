@@ -3,6 +3,42 @@ import { registrarEntradaDesdeRecepcion, getStockCompleto, registrarSalidaDevolu
 
 const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const ESTADOS_COMPLETADOS = new Set(['cerrada', 'recibida_total', 'aprobada']);
+const SCHEMA_CACHE_MISSING_COLUMN_RE = /Could not find the '([^']+)' column of '([^']+)' in the schema cache/i;
+const ORDENES_COMPRA_OPTIONAL_COLUMNS = new Set(['condicion_pago', 'notas_proveedor', 'notas_internas', 'creado_por']);
+const ORDENES_SERVICIO_OPTIONAL_COLUMNS = new Set(['condicion_pago', 'notas']);
+
+function getSchemaCacheMissingColumn(error, tableName) {
+  const message = [error?.message, error?.details, error?.hint].filter(Boolean).join(' ');
+  const match = message.match(SCHEMA_CACHE_MISSING_COLUMN_RE);
+  if (!match) return null;
+  const [, column, table] = match;
+  return table === tableName ? column : null;
+}
+
+async function insertWithOptionalColumnFallback(supabase, tableName, row, optionalColumns) {
+  let payload = { ...row };
+
+  for (let attempt = 0; attempt <= optionalColumns.size; attempt++) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .insert([payload])
+      .select()
+      .single();
+
+    if (!error) return data;
+
+    const missingColumn = getSchemaCacheMissingColumn(error, tableName);
+    if (!missingColumn || !optionalColumns.has(missingColumn) || !(missingColumn in payload)) {
+      throw error;
+    }
+
+    const { [missingColumn]: _removed, ...nextPayload } = payload;
+    payload = nextPayload;
+    console.warn(`Retrying ${tableName} insert without optional column "${missingColumn}" because Supabase schema cache rejected it.`);
+  }
+
+  throw new Error(`No se pudo guardar ${tableName}: demasiadas columnas opcionales faltantes.`);
+}
 
 function _evolucion12Meses(gastos) {
   const now = new Date();
@@ -229,10 +265,12 @@ export const comprasService = {
   },
   crearOrdenCompra: async (empresaId, oc) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('ordenes_compra').insert([{ ...oc, empresa_id: empresaId }]).select().single();
-    if (error) throw error;
-    return data;
+    return insertWithOptionalColumnFallback(
+      supabase,
+      'ordenes_compra',
+      { ...oc, empresa_id: empresaId },
+      ORDENES_COMPRA_OPTIONAL_COLUMNS
+    );
   },
   actualizarOrdenCompra: async (id, cambios) => {
     const supabase = await getSupabaseClient();
@@ -271,10 +309,12 @@ export const comprasService = {
   },
   crearOrdenServicio: async (empresaId, os) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('ordenes_servicio_interna').insert([{ ...os, empresa_id: empresaId }]).select().single();
-    if (error) throw error;
-    return data;
+    return insertWithOptionalColumnFallback(
+      supabase,
+      'ordenes_servicio_interna',
+      { ...os, empresa_id: empresaId },
+      ORDENES_SERVICIO_OPTIONAL_COLUMNS
+    );
   },
   actualizarOrdenServicio: async (id, cambios) => {
     const supabase = await getSupabaseClient();
