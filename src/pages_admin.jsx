@@ -15,6 +15,7 @@ import * as personalDocumentosService from './services/personalDocumentosService
 import * as amonestacionesService from './services/amonestacionesService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { AFP_PARAMETROS_DEFAULT, AFP_PRIMA_SEGURO_FALLBACK, latestAfpParametros } from './services/nominaService.js';
+import { WHATSAPP_TIPOS_ALERTA, WHATSAPP_TEMPLATES_DEFAULT, WHATSAPP_RUTAS_DEFAULT, whatsappProviderStatus } from './services/whatsappService.js';
 import {
   CONTRATO_DURACION_OPCIONES,
   asignacionFamiliarMonto,
@@ -5611,6 +5612,8 @@ function Parametros() {
     crearSerieDocumentaria, actualizarSerieDocumentaria, eliminarSerieDocumentaria,
     crearSlaPlantilla, actualizarSlaPlantilla, eliminarSlaPlantilla,
     crearDiccionarioComercial, actualizarDiccionarioComercial, eliminarDiccionarioComercial,
+    whatsappPlantillas = [], whatsappMatriz = [], whatsappEnvios = [],
+    guardarWhatsappPlantillaCtx, guardarWhatsappRutaCtx, registrarWhatsappSimuladoCtx,
     tipoCambioHoy,
   } = useApp();
   const [saving, setSaving] = useState(false);
@@ -5687,6 +5690,16 @@ function Parametros() {
   };
   const [evalCfg, setEvalCfg] = useState(evaluacionBase);
   const [savingEvalCfg, setSavingEvalCfg] = useState(false);
+  const [whatsappCfg, setWhatsappCfg] = useState({
+    whatsapp_habilitado: false,
+    whatsapp_provider: 'simulado',
+    whatsapp_base_url: '',
+    whatsapp_phone_number_id: '',
+    whatsapp_api_key_ref: 'WHATSAPP_API_KEY',
+    whatsapp_internos_consentimiento_implicito: true,
+    whatsapp_reintentos_max: 3,
+  });
+  const [savingWhatsapp, setSavingWhatsapp] = useState(false);
 
   useEffect(() => {
     setDatos({ razon_social: empresaConfig.razon_social||'', ruc: empresaConfig.ruc||'', email_comercial: empresaConfig.email_comercial||'', sitio_web: empresaConfig.sitio_web||'', direccion: empresaConfig.direccion||'', firmante: empresaConfig.firmante||'', cargo_firmante: empresaConfig.cargo_firmante||'' });
@@ -5728,6 +5741,15 @@ function Parametros() {
       eval_escala_min: empresaConfig.eval_escala_min ?? 1,
       eval_escala_max: empresaConfig.eval_escala_max ?? 5,
       eval_escala_labels: empresaConfig.eval_escala_labels || evaluacionBase.eval_escala_labels,
+    });
+    setWhatsappCfg({
+      whatsapp_habilitado: Boolean(empresaConfig.whatsapp_habilitado),
+      whatsapp_provider: empresaConfig.whatsapp_provider || 'simulado',
+      whatsapp_base_url: empresaConfig.whatsapp_base_url || '',
+      whatsapp_phone_number_id: empresaConfig.whatsapp_phone_number_id || '',
+      whatsapp_api_key_ref: empresaConfig.whatsapp_api_key_ref || 'WHATSAPP_API_KEY',
+      whatsapp_internos_consentimiento_implicito: empresaConfig.whatsapp_internos_consentimiento_implicito ?? true,
+      whatsapp_reintentos_max: empresaConfig.whatsapp_reintentos_max ?? 3,
     });
   }, [empresaConfig]);
 
@@ -5836,6 +5858,50 @@ function Parametros() {
     } finally {
       setSavingEvalCfg(false);
     }
+  };
+
+  const guardarWhatsappCfg = async () => {
+    setSavingWhatsapp(true);
+    try {
+      await guardarEmpresaConfig({ ...whatsappCfg });
+      addNotificacion('Configuracion WhatsApp guardada.');
+    } catch (err) {
+      addNotificacion(`Error al guardar WhatsApp: ${err?.message || 'error'}`);
+    } finally {
+      setSavingWhatsapp(false);
+    }
+  };
+
+  const sembrarWhatsappDefaults = async () => {
+    for (const tpl of WHATSAPP_TEMPLATES_DEFAULT) {
+      const existente = whatsappPlantillas.find(t => t.tipo_alerta === tpl.tipo_alerta);
+      await guardarWhatsappPlantillaCtx({ ...tpl, id: existente?.id || tpl.id });
+    }
+    for (const ruta of WHATSAPP_RUTAS_DEFAULT) {
+      const existente = whatsappMatriz.find(r => r.tipo_alerta === ruta.tipo_alerta);
+      await guardarWhatsappRutaCtx({ ...ruta, id: existente?.id || ruta.id });
+    }
+    addNotificacion('Plantillas y matriz WhatsApp inicializadas.');
+  };
+
+  const toggleWhatsappRuta = async (ruta, field) => {
+    await guardarWhatsappRutaCtx({ ...ruta, [field]: !ruta[field] });
+  };
+
+  const simularWhatsapp = async () => {
+    const plantilla = whatsappPlantillas[0] || WHATSAPP_TEMPLATES_DEFAULT[0];
+    await registrarWhatsappSimuladoCtx({
+      tipo_alerta: plantilla.tipo_alerta,
+      destinatario_tipo: 'rrhh',
+      telefono: '51999999999',
+      plantilla_id: plantilla.id,
+      proveedor_template: plantilla.proveedor_template,
+      variables: { colaborador: 'Demo DIFESMAQ', documento: 'SCTR', fecha_vencimiento: new Date().toISOString().slice(0, 10), dias_restantes: 7 },
+      referencia_tipo: 'simulacion',
+      referencia_id: `sim_${Date.now()}`,
+      estado: whatsappCfg.whatsapp_provider === 'simulado' ? 'simulado' : 'encolado',
+    });
+    addNotificacion('Envio WhatsApp simulado registrado en el log.');
   };
 
   const confirmarCambioRegimen = (nuevoRegimen) => {
@@ -6002,6 +6068,7 @@ function Parametros() {
     { key: 'flujos', title: 'Flujos', description: 'Estados por documento, transiciones y reglas de alerta para cada modulo.' },
     { key: 'sla', title: 'SLA', description: 'Plantillas de respuesta y resolucion para contratos de servicio.' },
     { key: 'cuentas', title: 'Cuentas', description: 'Cuentas bancarias, bancos y saldos base para tesoreria y pagos.' },
+    { key: 'whatsapp', title: 'WhatsApp', description: 'Proveedor, plantillas, matriz de destinatarios y log de envios.' },
     { key: 'tipo_cambio', title: 'Tipos de Cambio', description: 'Historial diario de tipos de cambio. Fuente: open.er-api.com con ingreso manual como respaldo.' },
     { key: 'nomina', title: 'Nomina', description: 'Regimen laboral, frecuencia de pago, quincenas y valores fiscales vigentes.' },
     { key: 'evaluaciones', title: 'Evaluaciones', description: 'Ponderaciones, escala y labels para evaluaciones de desempeno.' },
@@ -6312,6 +6379,129 @@ function Parametros() {
       </div>
       <div className="params-section params-section-cuentas">
         <CuentasBancariasSection />
+      </div>
+
+      <div className="params-section params-section-whatsapp">
+        {(() => {
+          const plantillasUi = WHATSAPP_TEMPLATES_DEFAULT.map(base => ({
+            ...base,
+            ...(whatsappPlantillas.find(item => item.tipo_alerta === base.tipo_alerta) || {}),
+          }));
+          const rutasUi = WHATSAPP_RUTAS_DEFAULT.map(base => ({
+            ...base,
+            ...(whatsappMatriz.find(item => item.tipo_alerta === base.tipo_alerta) || {}),
+          }));
+          const labelTipo = tipo => WHATSAPP_TIPOS_ALERTA.find(([key]) => key === tipo)?.[1] || tipo;
+          return (
+            <>
+              <div className="card params-card mb-6">
+                <div className="card-head">
+                  <div>
+                    <h3>WhatsApp Business</h3>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Proveedor agnostico. El token real se lee desde secrets de Edge Function.</div>
+                  </div>
+                  <span className="badge badge-cyan">{whatsappProviderStatus(whatsappCfg)}</span>
+                </div>
+                <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                  <label className="params-toggle-row" style={{ gridColumn: '1 / -1' }}>
+                    <input type="checkbox" className="checkbox" checked={Boolean(whatsappCfg.whatsapp_habilitado)} onChange={e => setWhatsappCfg(v => ({ ...v, whatsapp_habilitado: e.target.checked }))} />
+                    <span>Activar cola WhatsApp</span>
+                  </label>
+                  <label>
+                    <span className="label">Proveedor</span>
+                    <select className="input" value={whatsappCfg.whatsapp_provider || 'simulado'} onChange={e => setWhatsappCfg(v => ({ ...v, whatsapp_provider: e.target.value }))}>
+                      <option value="simulado">Simulado</option>
+                      <option value="meta">Meta Cloud API</option>
+                      <option value="generic">HTTP generico</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span className="label">Endpoint proveedor</span>
+                    <input className="input" value={whatsappCfg.whatsapp_base_url || ''} onChange={e => setWhatsappCfg(v => ({ ...v, whatsapp_base_url: e.target.value }))} placeholder="https://graph.facebook.com/v20.0/..." />
+                  </label>
+                  <label>
+                    <span className="label">Phone number ID</span>
+                    <input className="input" value={whatsappCfg.whatsapp_phone_number_id || ''} onChange={e => setWhatsappCfg(v => ({ ...v, whatsapp_phone_number_id: e.target.value }))} placeholder="ID de WhatsApp Business" />
+                  </label>
+                  <label>
+                    <span className="label">Secret token</span>
+                    <input className="input" value={whatsappCfg.whatsapp_api_key_ref || ''} onChange={e => setWhatsappCfg(v => ({ ...v, whatsapp_api_key_ref: e.target.value }))} placeholder="WHATSAPP_ACCESS_TOKEN" />
+                  </label>
+                  <label>
+                    <span className="label">Reintentos maximos</span>
+                    <input className="input" type="number" min="0" max="10" value={whatsappCfg.whatsapp_reintentos_max ?? 3} onChange={e => setWhatsappCfg(v => ({ ...v, whatsapp_reintentos_max: Number(e.target.value || 0) }))} />
+                  </label>
+                  <label className="params-toggle-row">
+                    <input type="checkbox" className="checkbox" checked={Boolean(whatsappCfg.whatsapp_internos_consentimiento_implicito)} onChange={e => setWhatsappCfg(v => ({ ...v, whatsapp_internos_consentimiento_implicito: e.target.checked }))} />
+                    <span>Consentimiento implicito para internos</span>
+                  </label>
+                  <div className="row" style={{ gridColumn: '1 / -1', justifyContent: 'flex-end', gap: 8 }}>
+                    <button className="btn btn-secondary" onClick={sembrarWhatsappDefaults}>Inicializar plantillas</button>
+                    <button className="btn btn-secondary" onClick={simularWhatsapp}>Simular envio</button>
+                    <button className="btn btn-primary" onClick={guardarWhatsappCfg} disabled={savingWhatsapp}>{savingWhatsapp ? 'Guardando...' : 'Guardar WhatsApp'}</button>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+                <div className="card params-card">
+                  <div className="card-head"><h3>Plantillas por alerta</h3><span className="badge badge-gray">{plantillasUi.length}</span></div>
+                  <div className="table-wrap">
+                    <table className="data-table">
+                      <thead><tr><th>Alerta</th><th>Template</th><th>Texto</th><th>Estado</th></tr></thead>
+                      <tbody>{plantillasUi.map(tpl => (
+                        <tr key={tpl.tipo_alerta}>
+                          <td><strong>{labelTipo(tpl.tipo_alerta)}</strong></td>
+                          <td>{tpl.proveedor_template}</td>
+                          <td className="truncate" title={tpl.texto_sugerido}>{tpl.texto_sugerido}</td>
+                          <td><span className={'badge ' + (tpl.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{tpl.estado}</span></td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="card params-card">
+                  <div className="card-head"><h3>Matriz de destinatarios</h3><span className="badge badge-gray">{rutasUi.length}</span></div>
+                  <div className="table-wrap">
+                    <table className="data-table">
+                      <thead><tr><th>Alerta</th><th>Colab.</th><th>Jefe</th><th>RRHH</th><th>Admin</th><th>Opt-in</th></tr></thead>
+                      <tbody>{rutasUi.map(ruta => (
+                        <tr key={ruta.tipo_alerta}>
+                          <td><strong>{labelTipo(ruta.tipo_alerta)}</strong></td>
+                          {['enviar_colaborador', 'enviar_jefe_area', 'enviar_rrhh', 'enviar_admin', 'requiere_opt_in_colaborador'].map(field => (
+                            <td key={field}><input type="checkbox" className="checkbox" checked={Boolean(ruta[field])} onChange={() => toggleWhatsappRuta(ruta, field)} /></td>
+                          ))}
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card params-card mt-6">
+                <div className="card-head"><h3>Bitacora de envios</h3><span className="badge badge-gray">{whatsappEnvios.length}</span></div>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead><tr><th>Fecha</th><th>Tipo</th><th>Destinatario</th><th>Telefono</th><th>Estado</th></tr></thead>
+                    <tbody>
+                      {whatsappEnvios.slice(0, 12).map(envio => (
+                        <tr key={envio.id}>
+                          <td>{envio.created_at ? new Date(envio.created_at).toLocaleString('es-PE') : '-'}</td>
+                          <td>{labelTipo(envio.tipo_alerta)}</td>
+                          <td>{envio.destinatario_tipo}</td>
+                          <td>{envio.telefono || '-'}</td>
+                          <td><span className="badge badge-cyan">{envio.estado}</span></td>
+                        </tr>
+                      ))}
+                      {!whatsappEnvios.length && <tr><td colSpan="5" className="text-muted">Sin envios registrados.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {/* ── Tipos de Cambio ── */}

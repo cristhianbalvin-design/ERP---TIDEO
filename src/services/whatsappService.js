@@ -82,11 +82,17 @@ export const whatsappService = {
   async guardarPlantilla(empresaId, plantilla) {
     if (!isSupabaseConfigured()) return { ...plantilla, id: plantilla.id || generateId('wpt'), empresa_id: empresaId };
     const supabase = await getSupabaseClient();
-    const payload = { ...plantilla, empresa_id: empresaId, updated_at: new Date().toISOString() };
-    const query = plantilla.id
-      ? supabase.from('whatsapp_plantillas').update(payload).eq('id', plantilla.id)
-      : supabase.from('whatsapp_plantillas').insert(payload);
-    const { data, error } = await query.select('*').single();
+    const payload = {
+      ...plantilla,
+      id: plantilla.id?.startsWith('tpl_') ? undefined : plantilla.id,
+      empresa_id: empresaId,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase
+      .from('whatsapp_plantillas')
+      .upsert(payload, { onConflict: 'empresa_id,tipo_alerta' })
+      .select('*')
+      .single();
     if (error) throw error;
     return data;
   },
@@ -94,11 +100,17 @@ export const whatsappService = {
   async guardarRuta(empresaId, ruta) {
     if (!isSupabaseConfigured()) return { ...ruta, id: ruta.id || generateId('wmr'), empresa_id: empresaId };
     const supabase = await getSupabaseClient();
-    const payload = { ...ruta, empresa_id: empresaId, updated_at: new Date().toISOString() };
-    const query = ruta.id
-      ? supabase.from('whatsapp_matriz_destinatarios').update(payload).eq('id', ruta.id)
-      : supabase.from('whatsapp_matriz_destinatarios').insert(payload);
-    const { data, error } = await query.select('*').single();
+    const payload = {
+      ...ruta,
+      id: ruta.id?.startsWith('ruta_') ? undefined : ruta.id,
+      empresa_id: empresaId,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase
+      .from('whatsapp_matriz_destinatarios')
+      .upsert(payload, { onConflict: 'empresa_id,tipo_alerta' })
+      .select('*')
+      .single();
     if (error) throw error;
     return data;
   },

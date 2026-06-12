@@ -169,6 +169,39 @@ create policy whatsapp_matriz_tenant on public.whatsapp_matriz_destinatarios
 for all using (public.usuario_tiene_empresa(empresa_id))
 with check (public.usuario_tiene_empresa(empresa_id));
 
+insert into public.whatsapp_plantillas (
+  empresa_id, tipo_alerta, proveedor_template, variables, texto_sugerido, estado
+)
+select
+  e.id,
+  v.tipo_alerta,
+  v.proveedor_template,
+  array(select jsonb_array_elements_text(v.variables::jsonb))::text[],
+  v.texto_sugerido,
+  'activo'
+from public.empresas e
+cross join (values
+  ('contrato_por_vencer', 'contrato_vencimiento', '["colaborador","documento","fecha_vencimiento","dias_restantes"]', 'Hola {{colaborador}}, tu contrato vence el {{fecha_vencimiento}} (faltan {{dias_restantes}} dias). Coordina con RRHH.'),
+  ('doc_dni_por_vencer', 'dni_vencimiento', '["colaborador","documento","fecha_vencimiento","dias_restantes"]', 'Hola {{colaborador}}, tu DNI vence el {{fecha_vencimiento}}. Regulariza el documento con RRHH.'),
+  ('doc_sctr_por_vencer', 'sctr_vencimiento', '["colaborador","documento","fecha_vencimiento","dias_restantes"]', 'Alerta DIFESMAQ: el SCTR de {{colaborador}} vence el {{fecha_vencimiento}}.'),
+  ('doc_licencia_por_vencer', 'licencia_vencimiento', '["colaborador","documento","fecha_vencimiento","dias_restantes"]', 'La licencia {{documento}} de {{colaborador}} vence el {{fecha_vencimiento}}.')
+) as v(tipo_alerta, proveedor_template, variables, texto_sugerido)
+on conflict (empresa_id, tipo_alerta) do nothing;
+
+insert into public.whatsapp_matriz_destinatarios (
+  empresa_id, tipo_alerta, enviar_colaborador, enviar_jefe_area, enviar_rrhh, enviar_admin,
+  requiere_opt_in_colaborador, internos_consentimiento_implicito, estado
+)
+select e.id, v.tipo_alerta, true, true, true, false, true, true, 'activo'
+from public.empresas e
+cross join (values
+  ('contrato_por_vencer'),
+  ('doc_dni_por_vencer'),
+  ('doc_sctr_por_vencer'),
+  ('doc_licencia_por_vencer')
+) as v(tipo_alerta)
+on conflict (empresa_id, tipo_alerta) do nothing;
+
 create table if not exists public.whatsapp_envios (
   id text primary key default ('wen_' || substr(md5(random()::text || clock_timestamp()::text), 1, 12)),
   empresa_id text not null,
@@ -316,7 +349,7 @@ begin
       new.empresa_id, v_tipo_alerta,
       case when coalesce(r.es_admin_empresa, false) then 'admin' else 'rrhh' end,
       ue.user_id,
-      regexp_replace(coalesce(u.telefono, u.celular, ''), '[^0-9+]', '', 'g'),
+      regexp_replace(coalesce(u.telefono, ''), '[^0-9+]', '', 'g'),
       v_tpl.id, v_tpl.proveedor_template, v_vars, new.referencia_tipo, new.referencia_id,
       case when coalesce(v_cfg.whatsapp_provider, 'simulado') = 'simulado' then 'simulado' else 'encolado' end,
       coalesce(v_cfg.whatsapp_provider, 'simulado')
@@ -325,7 +358,7 @@ begin
     left join public.usuarios u on u.id = ue.user_id::text
     where ue.empresa_id = new.empresa_id
       and ue.estado = 'activo'
-      and regexp_replace(coalesce(u.telefono, u.celular, ''), '[^0-9+]', '', 'g') <> ''
+      and regexp_replace(coalesce(u.telefono, ''), '[^0-9+]', '', 'g') <> ''
       and (
         (coalesce(v_matriz.enviar_admin, false) and coalesce(r.es_admin_empresa, false))
         or

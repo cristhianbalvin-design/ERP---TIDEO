@@ -16,7 +16,7 @@ function diasHabilesLocal(inicio, fin) {
   return count;
 }
 
-function calcularImpactoNomina(tipo, diasHabiles, diasLicenciaEmpresa = 20, clasificacionPago = null) {
+export function calcularImpactoNomina(tipo, diasHabiles, diasLicenciaEmpresa = 20, clasificacionPago = null) {
   // La clasificacion_pago manual del RRHH tiene precedencia sobre el default del tipo
   if (clasificacionPago === 'no_remunerado') {
     return { impacto_nomina: 'descuento_total', dias_a_descontar: diasHabiles };

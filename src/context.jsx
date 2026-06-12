@@ -9136,7 +9136,7 @@ export function AppProvider({ children }) {
     recibosHonorarios, setRecibosHonorarios,
     aprobarComision, rechazarComision, corregirMontoComision, corregirBonificacionComision, generarReciboHonorarios, confirmarReciboHonorarios,
     // Maestros Base Actions
-    crearCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria, crearTipoDocumento,
+    crearCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria,
     // Compras Actions
     registrarProveedor, actualizarProveedorCtx,
     crearProcesoCompraCtx, actualizarProcesoCompraCtx,

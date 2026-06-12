@@ -13028,6 +13028,11 @@ function ControlAsistencia() {
     if (!bioPerfilId && biometricoPerfiles[0]?.id) setBioPerfilId(biometricoPerfiles[0].id);
   }, [bioPerfilId, biometricoPerfiles]);
 
+  useEffect(() => {
+    const perfil = biometricoPerfiles.find(p => p.id === bioPerfilId);
+    if (perfil) setBioPerfilForm({ ...BIOMETRICO_PERFIL_DEFAULT, ...perfil });
+  }, [bioPerfilId, biometricoPerfiles]);
+
   const trabajador = trabajadoresGenerales.find(t => t.id === form.trabajador_id) || trabajadoresGenerales[0];
   const trabajadorBloqueado = Boolean(trabajador?.asistencia_bloqueada);
   const turno = workerTurno(turnos, trabajador || {});
@@ -13493,7 +13498,7 @@ function ControlAsistencia() {
   const semanaTexto = `Semana del ${startOfWeek.getDate()} al ${endOfWeek.getDate()} de ${mesNombreCap}`;
 
   // Tabs
-  const allTabs = [['diaria','Vista diaria'],['semanal','Vista semanal'],['mensual','Vista mensual'],['resumen','Resumen por trabajador'],['aut_he','Autorizaciones HE']];
+  const allTabs = [['diaria','Vista diaria'],['semanal','Vista semanal'],['mensual','Vista mensual'],['resumen','Resumen por trabajador'],['aut_he','Autorizaciones HE'],['biometrico','Biometrico']];
   if (trabajadoresMineros.length > 0) allTabs.push(['minero','Régimen Minero']);
 
   return (
@@ -13517,7 +13522,7 @@ function ControlAsistencia() {
             </span>
           </div>
         </div>
-        <div className="row" style={{gap:10}}><button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}} onClick={() => setKiosk(true)}>{I.clock} Reloj Control (Móvil)</button><button className="btn btn-secondary" onClick={abrirMasivo}>Registro masivo</button><button className="btn btn-secondary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Manual</button></div>
+        <div className="row" style={{gap:10}}><button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}} onClick={() => setKiosk(true)}>{I.clock} Reloj Control (Móvil)</button><button className="btn btn-secondary" onClick={() => setBioPanel(true)}>Importar marcaciones</button><button className="btn btn-secondary" onClick={abrirMasivo}>Registro masivo</button><button className="btn btn-secondary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Manual</button></div>
       </div>
       
       {tab !== 'minero' && <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Total Gral.</div><div className="kpi-value">{kpis.total}</div></div><div className="kpi-card"><div className="kpi-label">Dias completos</div><div className="kpi-value">{kpis.completos}</div></div><div className="kpi-card"><div className="kpi-label">Tardanzas</div><div className="kpi-value" style={{color:'var(--orange)'}}>{kpis.tardanzas}</div></div><div className="kpi-card"><div className="kpi-label">Faltas</div><div className="kpi-value" style={{color:'var(--danger)'}}>{kpis.faltas}</div></div></div>}
@@ -13651,6 +13656,27 @@ function ControlAsistencia() {
             </tr>)}
           </tbody></table></div>
           {canGestionarHE && <div style={{padding:16, borderTop:'1px solid var(--border-subtle)'}}><div className="input-group"><label>Comentario de resolucion</label><input className="input" value={autHeComentario} onChange={e=>setAutHeComentario(e.target.value)} placeholder="Opcional"/></div></div>}
+        </div>
+      </div>}
+
+      {tab === 'biometrico' && <div className="grid-2" style={{gap:16}}>
+        <div className="card">
+          <div className="card-head"><h3>Perfiles de importacion</h3><button className="btn btn-secondary btn-sm" onClick={() => setBioPanel(true)}>Importar archivo</button></div>
+          <div className="table-wrap">
+            <table className="tbl"><thead><tr><th>Perfil</th><th>Identificador</th><th>Formato</th><th>Estado</th></tr></thead><tbody>
+              {biometricoPerfiles.map(p => <tr key={p.id}><td><strong>{p.nombre}</strong></td><td>{p.identificador_tipo}</td><td>{p.tiene_encabezado ? 'Con encabezado' : 'Sin encabezado'} · {p.separador === '\\t' ? 'TAB' : p.separador}</td><td><span className={'badge '+(p.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{p.estado}</span></td></tr>)}
+              {!biometricoPerfiles.length && <tr><td colSpan={4} className="text-muted" style={{padding:16}}>Sin perfiles guardados.</td></tr>}
+            </tbody></table>
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-head"><h3>Historial de lotes</h3></div>
+          <div className="table-wrap">
+            <table className="tbl"><thead><tr><th>Archivo</th><th>Totales</th><th>Estado</th><th></th></tr></thead><tbody>
+              {biometricoLotes.map(l => <tr key={l.id}><td><strong>{l.archivo_nombre || l.id}</strong><div className="text-muted" style={{fontSize:11}}>{(l.created_at || '').slice(0, 10)}</div></td><td>{l.totales?.importados ?? l.totales?.listos ?? 0} importados</td><td><span className={'badge '+(l.estado === 'anulado' ? 'badge-red' : 'badge-green')}>{l.estado}</span></td><td>{l.estado !== 'anulado' && <button className="btn btn-sm btn-secondary" onClick={() => anularBio(l)}>Anular</button>}</td></tr>)}
+              {!biometricoLotes.length && <tr><td colSpan={4} className="text-muted" style={{padding:16}}>Sin lotes importados.</td></tr>}
+            </tbody></table>
+          </div>
         </div>
       </div>}
       
@@ -13825,6 +13851,49 @@ function ControlAsistencia() {
           }
           <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanelMinero(false)}>Cancelar</button><button className="btn btn-primary" type="submit">Guardar Ciclo</button></div>
         </form>
+      </div></>}
+
+      {bioPanel && <><div className="side-panel-backdrop" onClick={()=>setBioPanel(false)}/><div className="side-panel" style={{width:'min(860px,96vw)'}}>
+        <div className="side-panel-head"><div><div className="eyebrow">GAP-14</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Importar marcaciones</div></div><button className="icon-btn" onClick={()=>setBioPanel(false)}>{I.x}</button></div>
+        <div className="side-panel-body">
+          <div className="grid-2" style={{gap:16, alignItems:'flex-start'}}>
+            <form className="card" style={{padding:16}} onSubmit={guardarPerfilBio}>
+              <div className="card-head"><h3>Perfil de importacion</h3></div>
+              <div className="grid-2" style={{gap:10}}>
+                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Perfil guardado</label><select className="select" value={bioPerfilId} onChange={e=>setBioPerfilId(e.target.value)}><option value="">Nuevo perfil</option>{biometricoPerfiles.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}</select></div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre</label><input className="input" value={bioPerfilForm.nombre} onChange={e=>setBioPerfilForm(v=>({...v,nombre:e.target.value}))}/></div>
+                <div className="input-group"><label>Separador CSV/TXT</label><select className="select" value={bioPerfilForm.separador} onChange={e=>setBioPerfilForm(v=>({...v,separador:e.target.value}))}><option value=",">Coma</option><option value=";">Punto y coma</option><option value="|">Pipe</option><option value="\t">Tab</option></select></div>
+                <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={bioPerfilForm.tiene_encabezado} onChange={e=>setBioPerfilForm(v=>({...v,tiene_encabezado:e.target.checked}))}/> Tiene encabezado</label>
+                <div className="input-group"><label>Identificador</label><select className="select" value={bioPerfilForm.identificador_tipo} onChange={e=>setBioPerfilForm(v=>({...v,identificador_tipo:e.target.value}))}><option value="dni">DNI</option><option value="codigo_biometrico">Codigo biometrico</option></select></div>
+                <div className="input-group"><label>Col. identificador</label><input className="input" value={bioPerfilForm.columna_identificador} onChange={e=>setBioPerfilForm(v=>({...v,columna_identificador:e.target.value}))}/></div>
+                <div className="input-group"><label>Col. fecha</label><input className="input" value={bioPerfilForm.columna_fecha} onChange={e=>setBioPerfilForm(v=>({...v,columna_fecha:e.target.value}))}/></div>
+                <div className="input-group"><label>Col. hora</label><input className="input" value={bioPerfilForm.columna_hora} onChange={e=>setBioPerfilForm(v=>({...v,columna_hora:e.target.value}))}/></div>
+                <div className="input-group"><label>Col. tipo</label><input className="input" value={bioPerfilForm.columna_tipo} disabled={bioPerfilForm.solo_marcas} onChange={e=>setBioPerfilForm(v=>({...v,columna_tipo:e.target.value}))}/></div>
+                <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={bioPerfilForm.solo_marcas} onChange={e=>setBioPerfilForm(v=>({...v,solo_marcas:e.target.checked}))}/> Archivo solo trae marcas</label>
+              </div>
+              <div className="alert alert-warning" style={{fontSize:12, marginTop:12}}>Si el archivo no trae tipo, se infiere: primera marca del dia = entrada, ultima = salida. Las marcas intermedias quedan en el detalle.</div>
+              <div className="row" style={{justifyContent:'flex-end', marginTop:12}}><button className="btn btn-secondary" disabled={bioSaving}>{bioSaving ? 'Guardando...' : 'Guardar perfil'}</button></div>
+            </form>
+            <div className="card" style={{padding:16}}>
+              <div className="card-head"><h3>Archivo y previsualizacion</h3></div>
+              <div className="input-group"><label>Archivo CSV, TXT o Excel</label><input className="input" type="file" accept=".csv,.txt,.xlsx,.xls" onChange={e=>setBioFile(e.target.files?.[0] || null)}/></div>
+              <div className="row" style={{gap:8, marginTop:12}}><button className="btn btn-secondary" onClick={previsualizarBio}>Previsualizar</button><label className="row" style={{gap:6}}><input type="checkbox" checked={bioOverwrite} onChange={e=>setBioOverwrite(e.target.checked)}/> Sobrescribir duplicados</label></div>
+              {bioPreview && <div style={{marginTop:14}}>
+                <div className="kpi-grid" style={{gridTemplateColumns:'repeat(5,1fr)', marginBottom:12}}>
+                  <div className="kpi-card"><div className="kpi-label">Listos</div><div className="kpi-value">{bioPreview.resumen.listos}</div></div>
+                  <div className="kpi-card"><div className="kpi-label">Duplicados</div><div className="kpi-value">{bioPreview.resumen.duplicados}</div></div>
+                  <div className="kpi-card"><div className="kpi-label">No resueltos</div><div className="kpi-value">{bioPreview.resumen.no_resueltos}</div></div>
+                  <div className="kpi-card"><div className="kpi-label">Errores</div><div className="kpi-value">{bioPreview.resumen.errores}</div></div>
+                  <div className="kpi-card"><div className="kpi-label">Bloqueados</div><div className="kpi-value">{bioPreview.resumen.bloqueados}</div></div>
+                </div>
+                <div className="table-wrap" style={{maxHeight:260, overflow:'auto'}}><table className="tbl"><thead><tr><th>Trabajador/ID</th><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead><tbody>
+                  {[...bioPreview.ready, ...bioPreview.duplicates, ...bioPreview.unresolved, ...bioPreview.errors, ...bioPreview.blocked].slice(0, 40).map((r, idx)=><tr key={r.id || idx}><td><strong>{r.trabajador?.nombre || r.identificador || '-'}</strong></td><td>{r.fecha || '-'}</td><td>{r.hora_entrada || r.hora || '-'}</td><td>{r.hora_salida || '-'}</td><td><span className={'badge '+(r.clasificacion === 'listo' ? 'badge-green' : r.clasificacion === 'duplicado' ? 'badge-orange' : 'badge-red')}>{r.clasificacion}</span></td></tr>)}
+                </tbody></table></div>
+                <div className="row" style={{justifyContent:'flex-end', marginTop:12}}><button className="btn btn-primary" onClick={confirmarImportacionBio}>Confirmar importacion</button></div>
+              </div>}
+            </div>
+          </div>
+        </div>
       </div></>}
 
       {/* Modal General */}
