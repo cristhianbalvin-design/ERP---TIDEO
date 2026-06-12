@@ -2946,13 +2946,17 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
   const {
     authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos,
     solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina,
-    amonestacionesPersonal, empresaConfig = {},
+    amonestacionesPersonal, empresaConfig = {}, evaluacionPlantillas = [], evaluacionEvaluaciones = [],
+    portalDatosSolicitudes = [], portalConstanciasTrabajo = [], portalBoletaAcuses = [], portalBoletaVisualizaciones = [], portalFirmaRegistros = [],
+    crearConstanciaPortalCtx, registrarVisualizacionBoletaPortalCtx,
   } = app;
   const data = useMemo(() => construirAutoservicioLocal({
     authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos,
     solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina,
     amonestaciones: amonestacionesPersonal, notificaciones: app.notificaciones,
-  }), [authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos, solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina, amonestacionesPersonal, app.notificaciones]);
+    evaluacionPlantillas, evaluacionEvaluaciones, portalDatosSolicitudes, portalConstanciasTrabajo,
+    portalBoletaAcuses, portalBoletaVisualizaciones, portalFirmaRegistros,
+  }), [authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos, solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina, amonestacionesPersonal, app.notificaciones, evaluacionPlantillas, evaluacionEvaluaciones, portalDatosSolicitudes, portalConstanciasTrabajo, portalBoletaAcuses, portalBoletaVisualizaciones, portalFirmaRegistros]);
   const ficha = data.ficha;
   const marcarActivo = Boolean(empresaConfig?.habilitar_marcacion_mobile_autoservicio);
   const contrato = data.resumen?.contrato;
@@ -2999,6 +3003,14 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
         </div>
       )}
 
+      {data.evaluacionesPendientes.length > 0 && (
+        <div className="card" style={{ padding: 12, marginBottom: 12, borderColor: 'var(--orange)' }}>
+          <div style={{ fontWeight: 800 }}>Autoevaluacion pendiente</div>
+          <div className="text-muted" style={{ fontSize: 12 }}>{data.evaluacionesPendientes[0].plantilla?.nombre || 'Evaluacion de desempeno'}</div>
+          <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={() => app.navigate('evaluaciones_desempeno', { auto: data.evaluacionesPendientes[0].id })}>Responder</button>
+        </div>
+      )}
+
       {marcarActivo && (
         <button className="btn btn-primary" style={{ width: '100%', marginBottom: 12 }} onClick={() => setScreen('home')}>
           {I.clock} Marcar entrada/salida
@@ -3007,8 +3019,18 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
 
       <div className="card" style={{ padding: 12, marginBottom: 10 }}>
         <div style={{ fontWeight: 800, marginBottom: 8 }}>Boletas</div>
-        {data.boletas.slice(0, 3).map(b => <div key={b.id} className="row" style={{ justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)' }}><span>{b.periodo}</span><button className="btn btn-secondary btn-sm">Descargar</button></div>)}
+        {!data.misDatos?.consentimiento_entrega_electronica && <div className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>Activa el consentimiento electronico desde Mi portal para abrir boletas.</div>}
+        {data.boletas.slice(0, 3).map(b => <div key={b.id} className="row" style={{ justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)' }}><span>{b.periodo}</span><button className="btn btn-secondary btn-sm" onClick={() => registrarVisualizacionBoletaPortalCtx?.({ boleta_id: b.id, periodo_id: b.periodo_id, personal_id: ficha.id, personal_tipo: ficha.personal_tipo, detalle: b.detalle || b })}>{b.acuse ? 'Abrir' : 'Pendiente'}</button></div>)}
         {!data.boletas.length && <div className="text-muted" style={{ fontSize: 12 }}>Sin boletas disponibles.</div>}
+      </div>
+
+      <div className="card" style={{ padding: 12, marginBottom: 10 }}>
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>Datos y constancias</div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <span className="badge badge-gray">{data.datosSolicitudes.filter(s => s.estado === 'pendiente').length} datos pendientes</span>
+          <span className="badge badge-gray">{data.constancias.length} constancias</span>
+        </div>
+        <button className="btn btn-secondary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={() => crearConstanciaPortalCtx?.({ ficha, personal_id: ficha.id, personal_tipo: ficha.personal_tipo, proposito: 'Solicitud mobile' })}>Solicitar constancia</button>
       </div>
 
       <div className="card" style={{ padding: 12, marginBottom: 10 }}>

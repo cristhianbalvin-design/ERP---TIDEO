@@ -60,11 +60,18 @@ export function construirAutoservicioLocal({
   amonestaciones = [],
   horasExtraCompensacion = [],
   notificaciones = [],
+  evaluacionPlantillas = [],
+  evaluacionEvaluaciones = [],
+  portalDatosSolicitudes = [],
+  portalConstanciasTrabajo = [],
+  portalBoletaAcuses = [],
+  portalBoletaVisualizaciones = [],
+  portalFirmaRegistros = [],
   periodo = new Date().toISOString().slice(0, 7),
 }) {
   const ficha = resolverFichaEmpleadoLocal({ authUser, usuarios, personalAdmin, personalOperativo });
   if (!ficha) {
-    return { ficha: null, resumen: null, boletas: [], contratos: [], documentos: [], solicitudes: [], asistencia: [], prestamos: [], amonestaciones: [], notificaciones: [] };
+    return { ficha: null, resumen: null, boletas: [], contratos: [], documentos: [], solicitudes: [], asistencia: [], prestamos: [], amonestaciones: [], notificaciones: [], evaluacionesPendientes: [], evaluacionesCerradas: [], datosSolicitudes: [], constancias: [], boletaAcuses: [], boletaVisualizaciones: [], firmaRegistros: [] };
   }
   const personalTipo = ficha.personal_tipo;
   const personalId = ficha.id;
@@ -80,14 +87,29 @@ export function construirAutoservicioLocal({
   const prestamosPropios = (prestamos || []).filter(p => String(p.trabajador_id || p.personal_id) === String(personalId));
   const amonestacionesPropias = (amonestaciones || []).filter(a => String(a.personal_id) === String(personalId) && a.estado !== 'anulada');
   const hePendienteMin = (horasExtraCompensacion || []).filter(h => String(h.personal_id) === String(personalId) && h.estado === 'pendiente').reduce((sum, h) => sum + Number(h.minutos || 0), 0);
+  const acusesPropios = (portalBoletaAcuses || []).filter(a => String(a.personal_id) === String(personalId));
+  const visualizacionesPropias = (portalBoletaVisualizaciones || []).filter(v => String(v.personal_id) === String(personalId));
   const boletas = (periodosNomina || [])
     .filter(p => p.estado === 'cerrado')
     .map(p => {
       const detalle = trabajadoresDatosNomina?.[p.id]?.[personalId] || trabajadoresDatosNomina?.[personalId] || null;
-      return { id: `bol_${p.id}_${personalId}`, periodo_id: p.id, periodo: p.periodo || p.nombre || p.fecha_inicio?.slice(0, 7), estado: 'disponible', detalle, archivo_url: detalle?.boleta_url || null };
+      const acuse = acusesPropios.find(a => String(a.periodo_id) === String(p.id));
+      const vistas = visualizacionesPropias.filter(v => String(v.periodo_id) === String(p.id));
+      return { id: `bol_${p.id}_${personalId}`, periodo_id: p.id, periodo: p.periodo || p.nombre || p.fecha_inicio?.slice(0, 7), estado: acuse ? 'acusada' : 'disponible', detalle, archivo_url: detalle?.boleta_url || null, acuse, visualizaciones: vistas };
     });
   const cEstado = contratoEstado(ficha, contratos);
   const notificacionesPropias = (notificaciones || []).filter(n => !n.user_id || String(n.user_id) === String(authUser?.id || ''));
+  const plantillaPorId = new Map((evaluacionPlantillas || []).map(p => [p.id, p]));
+  const evaluacionesPropias = (evaluacionEvaluaciones || []).filter(e => String(e.evaluado_id || e.personal_id) === String(personalId));
+  const evaluacionesPendientes = evaluacionesPropias
+    .filter(e => e.estado === 'pendiente' && plantillaPorId.get(e.plantilla_id)?.estado !== 'cerrada')
+    .map(e => ({ ...e, plantilla: plantillaPorId.get(e.plantilla_id) || null }));
+  const evaluacionesCerradas = evaluacionesPropias
+    .filter(e => e.estado === 'completada' && plantillaPorId.get(e.plantilla_id)?.estado === 'cerrada')
+    .map(e => ({ ...e, plantilla: plantillaPorId.get(e.plantilla_id) || null }));
+  const datosSolicitudes = (portalDatosSolicitudes || []).filter(s => String(s.personal_id) === String(personalId));
+  const constancias = (portalConstanciasTrabajo || []).filter(c => String(c.personal_id) === String(personalId));
+  const firmaRegistros = (portalFirmaRegistros || []).filter(f => String(f.personal_id) === String(personalId));
   return {
     ficha,
     resumen: {
@@ -109,6 +131,26 @@ export function construirAutoservicioLocal({
     prestamos: prestamosPropios,
     amonestaciones: amonestacionesPropias,
     notificaciones: notificacionesPropias,
+    evaluacionesPendientes,
+    evaluacionesCerradas,
+    datosSolicitudes,
+    constancias,
+    boletaAcuses: acusesPropios,
+    boletaVisualizaciones: visualizacionesPropias,
+    firmaRegistros,
+    misDatos: {
+      documento: ficha.documento || ficha.dni || '',
+      email: ficha.email || '',
+      telefono: ficha.telefono || '',
+      telefono_personal: ficha.telefono_personal || ficha.telefono || '',
+      email_personal: ficha.email_personal || ficha.email || '',
+      direccion: ficha.direccion || '',
+      contacto_emergencia: ficha.contacto_emergencia || '',
+      relacion_emergencia: ficha.relacion_emergencia || '',
+      datos_bancarios: ficha.datos_bancarios || '',
+      consentimiento_entrega_electronica: Boolean(ficha.consentimiento_entrega_electronica),
+      firma_onboarding_completo: Boolean(ficha.firma_onboarding_completo),
+    },
   };
 }
 

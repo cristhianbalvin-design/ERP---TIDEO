@@ -2121,6 +2121,28 @@ export const amonestacionesPersonal = [
   { id: 'amo_001', empresa_id: 'emp_001', personal_id: 'tec_001', personal_tipo: 'operativo', fecha: '2026-06-04', tipo: 'tardanza', gravedad: 'leve', descripcion: 'Tardanza reiterada en ingreso a turno.', estado: 'activa', acusado_en: null },
 ];
 
+export const portalDatosSolicitudes = [
+  {
+    id: 'pds_001', empresa_id: 'emp_001', personal_id: 'tec_001', personal_tipo: 'operativo',
+    campo: 'telefono_personal', valor_anterior: { telefono_personal: '999111222' },
+    valor_propuesto: { telefono_personal: '999333444' }, campo_critico: false,
+    estado: 'pendiente', created_at: '2026-06-10T10:00:00Z',
+  },
+];
+
+export const portalConstanciasTrabajo = [
+  {
+    id: 'pct_001', empresa_id: 'emp_001', personal_id: 'tec_001', personal_tipo: 'operativo',
+    proposito: 'Tramite bancario', estado: 'emitida', documento_hash: 'mock_constancia_001',
+    emitida_en: '2026-06-09T12:00:00Z', created_at: '2026-06-09T11:55:00Z',
+  },
+];
+
+export const portalBoletaAcuses = [];
+export const portalBoletaVisualizaciones = [];
+export const portalFirmaRegistros = [];
+export const portalFirmaOtpIntentos = [];
+
 export const MOCK = {
   empresas, roles, usuarios, leads, cuentas, contactos, oportunidades, campanas,
   actividades, hojasCosteo, cotizaciones, osClientes, ots, partes, compras, cxc,
@@ -2134,6 +2156,8 @@ export const MOCK = {
   personalOperativo, personalAdmin, vacacionesSolicitudes, licencias, solicitudesRRHH,
   tiposDocumento, requisitosCargo, personalDocumentos,
   reclutamientoVacantes, reclutamientoCandidaturas, amonestacionesPersonal,
+  portalDatosSolicitudes, portalConstanciasTrabajo, portalBoletaAcuses, portalBoletaVisualizaciones,
+  portalFirmaRegistros, portalFirmaOtpIntentos,
   onboardings, planesExito, healthScoresDetalle, churnPlanes,
   renovaciones, npsEncuestas, referidos, casosExito, iaLogs,
   biFinanciero, metricasSaaS,

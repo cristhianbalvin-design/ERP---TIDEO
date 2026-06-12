@@ -25,6 +25,7 @@ import * as evaluacionesDesempenoService from './services/evaluacionesDesempenoS
 import * as liquidacionesCeseService from './services/liquidacionesCeseService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
+import { portalFase2Service, sha256Text, plantillaConstanciaHtml } from './services/portalFase2Service.js';
 import { tiposDocumentoService } from './services/tiposDocumentoService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { AFP_PARAMETROS_DEFAULT, latestAfpParametros, nominaService } from './services/nominaService.js';
@@ -371,6 +372,12 @@ export function AppProvider({ children }) {
   const [reclutamientoVacantes, setReclutamientoVacantes] = useState(useSupabase ? [] : (MOCK.reclutamientoVacantes || []));
   const [reclutamientoCandidaturas, setReclutamientoCandidaturas] = useState(useSupabase ? [] : (MOCK.reclutamientoCandidaturas || []));
   const [amonestacionesPersonal, setAmonestacionesPersonal] = useState(useSupabase ? [] : (MOCK.amonestacionesPersonal || []));
+  const [portalDatosSolicitudes, setPortalDatosSolicitudes] = useState(useSupabase ? [] : (MOCK.portalDatosSolicitudes || []));
+  const [portalConstanciasTrabajo, setPortalConstanciasTrabajo] = useState(useSupabase ? [] : (MOCK.portalConstanciasTrabajo || []));
+  const [portalBoletaAcuses, setPortalBoletaAcuses] = useState(useSupabase ? [] : (MOCK.portalBoletaAcuses || []));
+  const [portalBoletaVisualizaciones, setPortalBoletaVisualizaciones] = useState(useSupabase ? [] : (MOCK.portalBoletaVisualizaciones || []));
+  const [portalFirmaRegistros, setPortalFirmaRegistros] = useState(useSupabase ? [] : (MOCK.portalFirmaRegistros || []));
+  const [portalFirmaOtpIntentos, setPortalFirmaOtpIntentos] = useState(useSupabase ? [] : (MOCK.portalFirmaOtpIntentos || []));
   const [asignacionesJornada, setAsignacionesJornada] = useState([]);
   const [evaluacionPlantillas, setEvaluacionPlantillas] = useState([]);
   const [evaluacionCompetencias, setEvaluacionCompetencias] = useState([]);
@@ -1085,6 +1092,18 @@ export function AppProvider({ children }) {
             .order('fecha', { ascending: false });
           if (mounted) setAmonestacionesPersonal(amonData || []);
         } catch (_err) { /* modulo amonestaciones puede no estar migrado */ }
+
+        try {
+          const portalData = await portalFase2Service.listar(empresa.id);
+          if (mounted) {
+            setPortalDatosSolicitudes(portalData.datosSolicitudes || []);
+            setPortalConstanciasTrabajo(portalData.constancias || []);
+            setPortalBoletaAcuses(portalData.boletaAcuses || []);
+            setPortalBoletaVisualizaciones(portalData.boletaVisualizaciones || []);
+            setPortalFirmaRegistros(portalData.firmaRegistros || []);
+            setPortalFirmaOtpIntentos(portalData.firmaOtpIntentos || []);
+          }
+        } catch (_err) { /* fase 2 portal empleado puede no estar migrada */ }
 
         try {
           const [tdocsData, reqData] = await Promise.all([
@@ -8695,6 +8714,230 @@ export function AppProvider({ children }) {
     });
   };
 
+  const aplicarCambioDatosPortal = async (row) => {
+    const cambios = row?.valor_propuesto || {};
+    if (!row?.personal_id || !Object.keys(cambios).length) return;
+    if (isSupabaseConfigured() && empresa?.id) {
+      if (row.personal_tipo === 'administrativo') {
+        const data = await rrhhService.actualizarPersonalAdmin(row.personal_id, cambios);
+        setPersonalAdmin(prev => prev.map(p => p.id === row.personal_id ? data : p));
+      } else {
+        const data = await rrhhService.actualizarPersonalOperativo(row.personal_id, cambios);
+        setPersonalOperativo(prev => prev.map(p => p.id === row.personal_id ? data : p));
+      }
+      return;
+    }
+    const patch = { ...cambios, updated_at: new Date().toISOString() };
+    if (row.personal_tipo === 'administrativo') {
+      setPersonalAdmin(prev => prev.map(p => p.id === row.personal_id ? { ...p, ...patch } : p));
+    } else {
+      setPersonalOperativo(prev => prev.map(p => p.id === row.personal_id ? { ...p, ...patch } : p));
+    }
+  };
+
+  const crearSolicitudDatosPortalCtx = async (payload) => {
+    const base = {
+      ...payload,
+      empresa_id: empresa?.id || payload.empresa_id || 'emp_001',
+      estado: 'pendiente',
+      solicitado_por: authUser?.id || null,
+      created_at: new Date().toISOString(),
+    };
+    const data = isSupabaseConfigured() && empresa?.id
+      ? await portalFase2Service.crearSolicitudDatos(empresa.id, base)
+      : { ...base, id: generateId('pds') };
+    setPortalDatosSolicitudes(prev => [data, ...prev]);
+    addNotificacion('Solicitud de actualizacion enviada a RRHH.');
+    return data;
+  };
+
+  const resolverSolicitudDatosPortalCtx = async (solicitudId, decision, comentario = '') => {
+    const row = portalDatosSolicitudes.find(s => s.id === solicitudId);
+    if (!row) throw new Error('Solicitud no encontrada.');
+    const patch = {
+      estado: decision,
+      comentario_resolucion: comentario || null,
+      resuelto_por: authUser?.id || null,
+      resuelto_en: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const data = isSupabaseConfigured()
+      ? await portalFase2Service.resolverSolicitudDatos(solicitudId, patch)
+      : { ...row, ...patch };
+    if (decision === 'aprobado') await aplicarCambioDatosPortal(data);
+    setPortalDatosSolicitudes(prev => prev.map(s => s.id === solicitudId ? data : s));
+    addNotificacion(decision === 'aprobado' ? 'Cambio de datos aprobado y aplicado.' : 'Solicitud de datos rechazada.');
+    return data;
+  };
+
+  const crearConstanciaPortalCtx = async (payload) => {
+    const emitidaDirecta = Boolean(empresaConfig?.portal_constancia_emision_directa);
+    const emitidaEn = emitidaDirecta ? new Date().toISOString() : null;
+    const html = emitidaDirecta ? plantillaConstanciaHtml({ empresa, ficha: payload.ficha, proposito: payload.proposito, emitidaEn }) : null;
+    const documentoHash = html ? await sha256Text(html) : null;
+    const base = {
+      empresa_id: empresa?.id || payload.empresa_id || 'emp_001',
+      personal_id: payload.personal_id,
+      personal_tipo: payload.personal_tipo,
+      proposito: payload.proposito || '',
+      estado: emitidaDirecta ? 'emitida' : 'solicitada',
+      plantilla_html: html,
+      documento_hash: documentoHash,
+      solicitado_por: authUser?.id || null,
+      created_at: new Date().toISOString(),
+      emitida_en: emitidaEn,
+    };
+    const data = isSupabaseConfigured() && empresa?.id
+      ? await portalFase2Service.crearConstancia(empresa.id, base)
+      : { ...base, id: generateId('pct') };
+    setPortalConstanciasTrabajo(prev => [data, ...prev]);
+    addNotificacion(emitidaDirecta ? 'Constancia emitida.' : 'Constancia solicitada para aprobacion de RRHH.');
+    return data;
+  };
+
+  const resolverConstanciaPortalCtx = async (constanciaId, decision, comentario = '') => {
+    const row = portalConstanciasTrabajo.find(c => c.id === constanciaId);
+    if (!row) throw new Error('Constancia no encontrada.');
+    const ficha = [...personalOperativo, ...personalAdmin].find(p => p.id === row.personal_id) || {};
+    const emitida = decision === 'emitida' || decision === 'aprobada';
+    const emitidaEn = emitida ? new Date().toISOString() : null;
+    const html = emitida ? plantillaConstanciaHtml({ empresa, ficha, proposito: row.proposito, emitidaEn }) : row.plantilla_html;
+    const patch = {
+      estado: emitida ? 'emitida' : 'rechazada',
+      comentario_resolucion: comentario || null,
+      resuelto_por: authUser?.id || null,
+      resuelto_en: new Date().toISOString(),
+      emitida_en: emitidaEn,
+      plantilla_html: html,
+      documento_hash: emitida ? await sha256Text(html) : row.documento_hash,
+    };
+    const data = isSupabaseConfigured()
+      ? await portalFase2Service.resolverConstancia(constanciaId, patch)
+      : { ...row, ...patch };
+    setPortalConstanciasTrabajo(prev => prev.map(c => c.id === constanciaId ? data : c));
+    addNotificacion(emitida ? 'Constancia aprobada y emitida.' : 'Constancia rechazada.');
+    return data;
+  };
+
+  const registrarVisualizacionBoletaPortalCtx = async (payload) => {
+    const hash = payload.documento_hash || await sha256Text(payload.detalle || payload);
+    const base = {
+      ...payload,
+      empresa_id: empresa?.id || payload.empresa_id || 'emp_001',
+      usuario_id: authUser?.id || null,
+      user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+      documento_hash: hash,
+      created_at: new Date().toISOString(),
+    };
+    const data = isSupabaseConfigured() && empresa?.id
+      ? await portalFase2Service.registrarVisualizacionBoleta(empresa.id, base)
+      : { ...base, id: generateId('pbv') };
+    setPortalBoletaVisualizaciones(prev => [data, ...prev]);
+    return data;
+  };
+
+  const registrarAcuseBoletaPortalCtx = async (payload) => {
+    const hash = payload.documento_hash || await sha256Text(payload.detalle || payload);
+    const base = {
+      ...payload,
+      empresa_id: empresa?.id || payload.empresa_id || 'emp_001',
+      usuario_id: authUser?.id || null,
+      user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+      documento_hash: hash,
+      metadata: { ...(payload.metadata || {}), disclaimer: 'acuse_no_implica_aceptacion_contenido' },
+      created_at: new Date().toISOString(),
+    };
+    const data = isSupabaseConfigured() && empresa?.id
+      ? await portalFase2Service.registrarAcuseBoleta(empresa.id, base)
+      : { ...base, id: generateId('pba') };
+    setPortalBoletaAcuses(prev => [data, ...prev]);
+    addNotificacion('Acuse de boleta registrado con evidencia.');
+    return data;
+  };
+
+  const iniciarOtpFirmaPortalCtx = async (payload) => {
+    const destino = payload.destino || '';
+    const base = {
+      ...payload,
+      empresa_id: empresa?.id || payload.empresa_id || 'emp_001',
+      destino_mask: destino ? destino.replace(/^(.{2}).+(@.+|.{2})$/, '$1***$2') : null,
+      estado: 'enviado',
+      created_at: new Date().toISOString(),
+    };
+    const data = isSupabaseConfigured() && empresa?.id
+      ? await portalFase2Service.crearOtpFirma(empresa.id, base)
+      : { ...base, id: generateId('pfo'), codigo_mock: '123456' };
+    setPortalFirmaOtpIntentos(prev => [data, ...prev]);
+    addNotificacion('OTP de firma enviado al canal personal.');
+    return data;
+  };
+
+  const validarOtpFirmaPortalCtx = async (otpId, codigo, payload = {}) => {
+    const otp = portalFirmaOtpIntentos.find(o => o.id === otpId);
+    if (!otp) throw new Error('OTP no encontrado.');
+    if (String(codigo || '').trim().length < 4) throw new Error('Codigo OTP invalido.');
+    const now = new Date().toISOString();
+    const validado = { ...otp, estado: 'validado', evidencia: { ...(otp.evidencia || {}), validado_en: now } };
+    setPortalFirmaOtpIntentos(prev => prev.map(o => o.id === otpId ? validado : o));
+    const hashOriginal = await sha256Text(payload.contrato || payload);
+    const registro = {
+      empresa_id: empresa?.id || otp.empresa_id,
+      contrato_documento_id: payload.contrato_documento_id || null,
+      personal_id: otp.personal_id,
+      personal_tipo: otp.personal_tipo,
+      usuario_id: authUser?.id || null,
+      otp_intento_id: otpId,
+      canal_otp: otp.canal,
+      rubrica_url: payload.rubrica_url || null,
+      autorizacion_documento_id: payload.autorizacion_documento_id || null,
+      hash_original: hashOriginal,
+      hash_firmado: await sha256Text(`${hashOriginal}:${otpId}:${now}`),
+      tsa_url: empresaConfig?.portal_firma_tsa_url || null,
+      tsa_estado: empresaConfig?.portal_firma_tsa_url ? 'pendiente' : 'no_configurado',
+      evidencia: { user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null, validado_en: now },
+      created_at: now,
+    };
+    const data = isSupabaseConfigured() && empresa?.id
+      ? await portalFase2Service.registrarFirmaContrato(empresa.id, registro)
+      : { ...registro, id: generateId('pcf') };
+    setPortalFirmaRegistros(prev => [data, ...prev]);
+    addNotificacion('Firma electronica registrada con evidencia.');
+    return data;
+  };
+
+  const guardarOnboardingFirmaPortalCtx = async (ficha, payload) => {
+    if (!ficha?.id) throw new Error('Ficha no encontrada.');
+    const cambios = {
+      telefono_personal: payload.telefono_personal || ficha.telefono_personal || ficha.telefono || '',
+      email_personal: payload.email_personal || ficha.email_personal || ficha.email || '',
+      consentimiento_entrega_electronica: Boolean(payload.consentimiento_entrega_electronica),
+      consentimiento_entrega_electronica_en: payload.consentimiento_entrega_electronica ? new Date().toISOString() : ficha.consentimiento_entrega_electronica_en || null,
+      firma_rubrica_url: payload.firma_rubrica_url || ficha.firma_rubrica_url || null,
+      firma_rubrica_path: payload.firma_rubrica_path || ficha.firma_rubrica_path || null,
+      firma_otp_canal: payload.firma_otp_canal || empresaConfig?.portal_firma_otp_canal_default || 'email_personal',
+      firma_otp_verificado_en: payload.firma_otp_verificado_en || ficha.firma_otp_verificado_en || null,
+      firma_autorizacion_doc_id: payload.firma_autorizacion_doc_id || ficha.firma_autorizacion_doc_id || null,
+      firma_onboarding_completo: Boolean(payload.firma_onboarding_completo),
+    };
+    if (ficha.personal_tipo === 'administrativo') {
+      if (isSupabaseConfigured()) {
+        const data = await rrhhService.actualizarPersonalAdmin(ficha.id, cambios);
+        setPersonalAdmin(prev => prev.map(p => p.id === ficha.id ? data : p));
+        return data;
+      }
+      setPersonalAdmin(prev => prev.map(p => p.id === ficha.id ? { ...p, ...cambios } : p));
+    } else {
+      if (isSupabaseConfigured()) {
+        const data = await rrhhService.actualizarPersonalOperativo(ficha.id, cambios);
+        setPersonalOperativo(prev => prev.map(p => p.id === ficha.id ? data : p));
+        return data;
+      }
+      setPersonalOperativo(prev => prev.map(p => p.id === ficha.id ? { ...p, ...cambios } : p));
+    }
+    addNotificacion('Configuracion de firma actualizada.');
+    return { ...ficha, ...cambios };
+  };
+
   const authUserConAcceso = authUser ? {
     ...authUser,
     ...usuarioActual,
@@ -8843,6 +9086,12 @@ export function AppProvider({ children }) {
     reclutamientoVacantes, setReclutamientoVacantes,
     reclutamientoCandidaturas, setReclutamientoCandidaturas,
     amonestacionesPersonal, setAmonestacionesPersonal,
+    portalDatosSolicitudes, setPortalDatosSolicitudes,
+    portalConstanciasTrabajo, setPortalConstanciasTrabajo,
+    portalBoletaAcuses, setPortalBoletaAcuses,
+    portalBoletaVisualizaciones, setPortalBoletaVisualizaciones,
+    portalFirmaRegistros, setPortalFirmaRegistros,
+    portalFirmaOtpIntentos, setPortalFirmaOtpIntentos,
     evaluacionPlantillas, setEvaluacionPlantillas,
     evaluacionCompetencias, setEvaluacionCompetencias,
     evaluacionObjetivos, setEvaluacionObjetivos,
@@ -8873,6 +9122,10 @@ export function AppProvider({ children }) {
     crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx,
     crearVacanteReclutamientoCtx, crearCandidaturaReclutamientoCtx,
     moverCandidaturaReclutamientoCtx, invitarCandidatoReclutamientoCtx,
+    crearSolicitudDatosPortalCtx, resolverSolicitudDatosPortalCtx,
+    crearConstanciaPortalCtx, resolverConstanciaPortalCtx,
+    registrarAcuseBoletaPortalCtx, registrarVisualizacionBoletaPortalCtx,
+    iniciarOtpFirmaPortalCtx, validarOtpFirmaPortalCtx, guardarOnboardingFirmaPortalCtx,
     crearTurnoCtx, actualizarTurnoCtx, eliminarTurnoCtx, registrarAsistenciaCtx, crearPeriodoNominaCtx,
     crearPlantillaEvaluacionCtx, actualizarPlantillaEvaluacionCtx, cerrarPlantillaEvaluacionCtx,
     reasignarJefeEvaluacionCtx, guardarAutoevaluacionCtx, guardarEvaluacionJefeCtx,

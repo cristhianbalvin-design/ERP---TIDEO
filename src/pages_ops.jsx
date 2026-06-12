@@ -5883,7 +5883,7 @@ function CotizacionesCompras() {
 }
 
 function OrdenesCompra() {
-  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, authUser, addNotificacion, navigate, activeParams, centrosCosto, materiales, solpes, setSolpes, crearOrdenCompraCtx } = useApp();
+  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, solpes, setSolpes, crearOrdenCompraCtx } = useApp();
   const [tab, setTab] = useState('todas');
   const [panel, setPanel] = useState(false);
   const [sel, setSel] = useState(null);
@@ -5915,7 +5915,7 @@ function OrdenesCompra() {
   };
 
   const crear = async (emitir=true) => {
-    if (!form.centro_costo_id) { addNotificacion('Este campo es obligatorio. Selecciona un CECO antes de continuar.'); return; }
+    if (!form.centro_costo_id) { addToast('Selecciona un Centro de Costo (CECO) antes de continuar.'); return; }
     const selectedSolpe = form.solpe_id ? (solpes || []).find(s => s.id === form.solpe_id) : null;
     const items = (form.items || []).map(item => {
       const mat = (materiales || []).find(m => m.id === item.material_id);
@@ -5931,7 +5931,7 @@ function OrdenesCompra() {
         subtotal: Math.round(cantidad * precio * 100) / 100
       };
     }).filter(item => item.descripcion && item.cantidad > 0);
-    if (!items.length) { addNotificacion('Agrega al menos un item con cantidad mayor a cero.'); return; }
+    if (!items.length) { addToast('Agrega al menos un item con cantidad mayor a cero.'); return; }
     const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
     const p = proveedorById(proveedores, form.proveedor_id);
     const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:subtotal*0.18, total:subtotal*1.18, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, almacen_destino:'ALM-001', estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:form.solpe_id ? `SOLPE origen: ${form.solpe_codigo || form.solpe_id}` : '', creado_por: authUser?.id || null };
@@ -5950,7 +5950,7 @@ function OrdenesCompra() {
       setForm(OC_FORM_INIT);
       setPanel(false);
     } catch (error) {
-      addNotificacion(`No se pudo guardar la OC: ${error.message}`);
+      addToast(`No se pudo guardar la OC: ${error.message}`);
     }
   };
   if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} onBack={()=>setSel(null)} onConfirmar={()=>setOrdenesCompra(prev=>prev.map(o=>o.id===sel.id?{...o,estado:'confirmada'}:o))} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
@@ -13721,6 +13721,7 @@ function Nomina() {
     periodosNomina, setPeriodosNomina, crearGasto, generarCxP, role, empresa, addNotificacion, empresaConfig,
     comisiones = [], setComisiones, afpParametros = [],
     asignacionesJornada = [],
+    portalBoletaAcuses = [],
   } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('periodos');
@@ -14085,6 +14086,7 @@ function Nomina() {
     ['he_pendientes','HE pendientes'],
     ['descuentos','Descuentos'],
     ['cargas','Cargas empresa'],
+    ['entrega_boletas','Entrega boletas'],
     ['plame', periodo?.estado === 'cerrado' ? 'Reporte PLAME' : 'PLAME'],
     ...(hayMineros ? [['roster','Roster minero']] : []),
   ];
@@ -14344,6 +14346,41 @@ function Nomina() {
             <div className="card" style={{padding:16}}><strong>Bonif. extraordinaria (9%)</strong><p className="text-muted">Sobre gratificacion</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.bonif_extraordinaria,0))}</div></div>
             <div className="card" style={{padding:16}}><strong>Vacaciones</strong><p className="text-muted">Provision mensual</p><div className="kpi-value" style={{fontSize:22}}>{money(calculos.reduce((s,c)=>s+c.vacaciones_mensualizadas,0))}</div></div>
             <div className="card" style={{padding:16, background:'var(--bg-subtle)'}}><strong>Total cargas</strong><div className="kpi-value" style={{fontSize:22}}>{money(resumen.total_cargas_empresa)}</div><p className="text-muted" style={{fontSize:12}}>Costo laboral total: {money(resumen.costo_laboral_total)}</p></div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'entrega_boletas' && periodo && (
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <h3>Entrega electronica de boletas — {periodo.periodo}</h3>
+              <div className="text-muted" style={{fontSize:12}}>Reporte de acuses inmutables registrados desde Mi portal.</div>
+            </div>
+            <span className="badge badge-cyan">{portalBoletaAcuses.filter(a => a.periodo_id === periodo.id).length}/{calculos.length} acusadas</span>
+          </div>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Trabajador</th><th>Estado</th><th>Acuse</th><th>Hash SHA-256</th><th>User agent</th></tr></thead>
+              <tbody>
+                {calculos.map(c => {
+                  const acuse = portalBoletaAcuses.find(a => String(a.periodo_id) === String(periodo.id) && String(a.personal_id) === String(c.trabajador_id));
+                  return (
+                    <tr key={c.trabajador_id}>
+                      <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo || c.trabajador.area}</div></td>
+                      <td>{acuse ? <span className="badge badge-green">Acusada</span> : <span className="badge badge-orange">Pendiente</span>}</td>
+                      <td>{acuse?.created_at ? new Date(acuse.created_at).toLocaleString('es-PE') : '-'}</td>
+                      <td className="mono" style={{fontSize:11, maxWidth:260, overflow:'hidden', textOverflow:'ellipsis'}}>{acuse?.documento_hash || '-'}</td>
+                      <td className="text-muted" style={{fontSize:11, maxWidth:280, overflow:'hidden', textOverflow:'ellipsis'}}>{acuse?.user_agent || '-'}</td>
+                    </tr>
+                  );
+                })}
+                {!calculos.length && <tr><td colSpan={5} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin trabajadores calculados para el periodo.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div style={{padding:'12px 16px', borderTop:'1px solid var(--border-subtle)', fontSize:12}} className="text-muted">
+            La firma digital de PDF se activa con el parametro portal_boletas_firma_digital_activa; el reporte conserva hash, fecha, usuario e identificadores tecnicos.
           </div>
         </div>
       )}
@@ -14731,7 +14768,7 @@ function AmonestacionesTab({ personalId, personalNombre, personalTipo, empresaId
 }
 
 function RRHH_Operativo() {
-  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, roles: rolesCtx = {} } = useApp();
+  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('personal');
   const personal = personalOperativo;
@@ -15362,6 +15399,21 @@ function RRHH_Operativo() {
   });
 
   const estBadge = e => e==='disponible'?'badge-green':e==='ocupado'?'badge-cyan':'badge-gray';
+  const portalDatosPendientes = portalDatosSolicitudes.filter(s => s.estado === 'pendiente');
+  const portalConstanciasPendientes = portalConstanciasTrabajo.filter(c => c.estado === 'solicitada');
+  const portalPersonaNombre = id => personal.find(p => p.id === id)?.nombre || id;
+  const portalCampoLabel = campo => ({
+    telefono_personal: 'Telefono personal',
+    email_personal: 'Email personal',
+    direccion: 'Direccion',
+    contacto_emergencia: 'Contacto emergencia',
+    datos_bancarios: 'Datos bancarios',
+  }[campo] || campo);
+  const portalValor = value => {
+    if (value == null || value === '') return '-';
+    if (typeof value === 'object') return Object.entries(value).map(([k, v]) => `${k}: ${v}`).join(' · ');
+    return String(value);
+  };
 
   const dias = ['Lun 28', 'Mar 29', 'Mié 30', 'Jue 1', 'Vie 2'];
   const asignaciones = {
@@ -16170,6 +16222,34 @@ function RRHH_Operativo() {
         <div className="kpi-card"><div className="kpi-label">Técnicos Planilla</div><div className="kpi-value" style={{color:'var(--green)'}}>{countPlanilla}</div><div className="kpi-icon green">{I.check}</div></div>
         <div className="kpi-card"><div className="kpi-label">Técnicos Honorarios</div><div className="kpi-value" style={{color:'var(--fg-muted)'}}>{countHonorarios}</div><div className="kpi-icon purple">{I.dollar}</div></div>
       </div>
+
+      {(portalDatosPendientes.length > 0 || portalConstanciasPendientes.length > 0) && (
+        <div className="card" style={{padding:16, marginTop:12}}>
+          <div className="card-head"><h3>Portal empleado</h3><span className="badge badge-orange">{portalDatosPendientes.length + portalConstanciasPendientes.length} pendientes</span></div>
+          <div className="grid-2" style={{gap:16}}>
+            <div>
+              <div style={{fontWeight:700, marginBottom:8}}>Actualizacion de datos</div>
+              {portalDatosPendientes.slice(0, 5).map(s => (
+                <div key={s.id} className="row" style={{justifyContent:'space-between', gap:12, padding:'8px 0', borderBottom:'1px solid var(--border)'}}>
+                  <div><strong>{portalPersonaNombre(s.personal_id)}</strong><div className="text-muted" style={{fontSize:12}}>{portalCampoLabel(s.campo)} · {portalValor(s.valor_propuesto)}</div>{s.campo_critico && <span className="badge badge-orange" style={{fontSize:10}}>Sensible</span>}</div>
+                  <div className="row" style={{gap:6}}><button className="btn btn-sm btn-secondary" onClick={() => resolverSolicitudDatosPortalCtx(s.id, 'aprobado')}>Aprobar</button><button className="btn btn-sm btn-secondary" onClick={() => resolverSolicitudDatosPortalCtx(s.id, 'rechazado')}>Rechazar</button></div>
+                </div>
+              ))}
+              {!portalDatosPendientes.length && <div className="text-muted" style={{fontSize:12}}>Sin cambios de datos pendientes.</div>}
+            </div>
+            <div>
+              <div style={{fontWeight:700, marginBottom:8}}>Constancias de trabajo</div>
+              {portalConstanciasPendientes.slice(0, 5).map(c => (
+                <div key={c.id} className="row" style={{justifyContent:'space-between', gap:12, padding:'8px 0', borderBottom:'1px solid var(--border)'}}>
+                  <div><strong>{portalPersonaNombre(c.personal_id)}</strong><div className="text-muted" style={{fontSize:12}}>{c.proposito || 'Sin proposito declarado'}</div></div>
+                  <div className="row" style={{gap:6}}><button className="btn btn-sm btn-secondary" onClick={() => resolverConstanciaPortalCtx(c.id, 'aprobada')}>Emitir</button><button className="btn btn-sm btn-secondary" onClick={() => resolverConstanciaPortalCtx(c.id, 'rechazada')}>Rechazar</button></div>
+                </div>
+              ))}
+              {!portalConstanciasPendientes.length && <div className="text-muted" style={{fontSize:12}}>Sin constancias pendientes.</div>}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="tabs">
         <div className={'tab '+(tab==='personal'?'active':'')} onClick={()=>setTab('personal')}>Personal</div>
