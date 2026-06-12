@@ -60,6 +60,16 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. UTF-8 Encoding — Never Corrupt Spanish Characters
+
+**This project uses Spanish. Encoding corruption has happened before and must never recur.**
+
+- All source files are UTF-8. Never write Mojibake sequences like `Ã©`, `Ã³`, `Â·`, `â€"` instead of `é`, `ó`, `·`, `—`.
+- **Never rewrite an entire file in a single operation.** Large rewrites (hundreds or thousands of lines at once) are the primary cause of encoding corruption in this codebase. Use surgical edits (Edit tool) instead.
+- If you must generate a large block of code with Spanish strings, output it in small chunks and verify encoding after each.
+- Valid Spanish characters to use directly: `á é í ó ú ü ñ Á É Í Ó Ú Ü Ñ ¿ ¡ — – · ×`.
+- If you see Mojibake in the codebase, stop and report it before making any other change.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

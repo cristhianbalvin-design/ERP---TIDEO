@@ -243,6 +243,68 @@ export function calcularConceptos(params) {
   return { anios, meses, dias, totalDias, remComputable, conceptos, montoTotal };
 }
 
+// ─── GAP-12: Bloqueo / reactivación de acceso al sistema por cese ────────────
+
+export async function bloquearAccesoColaborador(personalId, personalTipo, empresaId, bloqueadoPor) {
+  if (!personalId || !empresaId) return { ok: true };
+
+  const supabase = await getSupabaseClient();
+  const tabla = personalTipo === 'operativo' ? 'personal_operativo' : 'personal_administrativo';
+
+  const { data: personal } = await supabase
+    .from(tabla)
+    .select('auth_user_id, nombre')
+    .eq('id', personalId)
+    .eq('empresa_id', empresaId)
+    .single();
+
+  if (!personal?.auth_user_id) return { ok: true, sinUsuario: true };
+
+  await supabase
+    .from('usuarios_empresas')
+    .update({ activo: false })
+    .eq('user_id', personal.auth_user_id)
+    .eq('empresa_id', empresaId);
+
+  await supabase
+    .from(tabla)
+    .update({ usuario_bloqueado_en: new Date().toISOString(), usuario_bloqueado_por: bloqueadoPor })
+    .eq('id', personalId)
+    .eq('empresa_id', empresaId);
+
+  return { ok: true };
+}
+
+export async function reactivarAccesoColaborador(personalId, personalTipo, empresaId) {
+  if (!personalId || !empresaId) return { ok: true };
+
+  const supabase = await getSupabaseClient();
+  const tabla = personalTipo === 'operativo' ? 'personal_operativo' : 'personal_administrativo';
+
+  const { data: personal } = await supabase
+    .from(tabla)
+    .select('auth_user_id')
+    .eq('id', personalId)
+    .eq('empresa_id', empresaId)
+    .single();
+
+  if (!personal?.auth_user_id) return { ok: true, sinUsuario: true };
+
+  await supabase
+    .from('usuarios_empresas')
+    .update({ activo: true })
+    .eq('user_id', personal.auth_user_id)
+    .eq('empresa_id', empresaId);
+
+  await supabase
+    .from(tabla)
+    .update({ usuario_bloqueado_en: null, usuario_bloqueado_por: null })
+    .eq('id', personalId)
+    .eq('empresa_id', empresaId);
+
+  return { ok: true };
+}
+
 // ─── CRUD Supabase ────────────────────────────────────────────────────────────
 
 async function selectAll(table, empresaId, order = 'created_at') {
@@ -320,6 +382,9 @@ export async function crearLiquidacion(empresaId, payload, creadoPor = null) {
     .insert(conceptosRows)
     .select('*');
   if (concErr) throw concErr;
+
+  // GAP-12: bloquear acceso al sistema al iniciar el proceso de cese
+  await bloquearAccesoColaborador(payload.personal_id, payload.personal_tipo, empresaId, creadoPor).catch(() => {});
 
   return { liquidacion, conceptos: concData || [] };
 }
@@ -435,6 +500,9 @@ export async function anularLiquidacion(liquidacionId, motivo, anuladoPor = null
       cxp = cxpAnu;
     }
   }
+
+  // GAP-12: reactivar acceso al sistema si la liquidación se anula
+  await reactivarAccesoColaborador(liq.personal_id, liq.personal_tipo, liq.empresa_id).catch(() => {});
 
   const { data: liqActual } = await supabase
     .from('liquidaciones_cese')

@@ -2468,7 +2468,7 @@ function MaterialesMaestro({ onClose }) {
                     <input className="input" type="number" min="0" step="0.01" value={formMat.precio_unitario} onChange={e => setFormMat(p => ({ ...p, precio_unitario: e.target.value }))} />
                   </div>
                   <div className="input-group">
-                    <label>Stock mÃ­nimo</label>
+                    <label>Stock mínimo</label>
                     <input className="input" type="number" min="0" step="0.01" value={formMat.stock_minimo} onChange={e => setFormMat(p => ({ ...p, stock_minimo: e.target.value }))} />
                   </div>
                   <div className="input-group">
@@ -2476,7 +2476,7 @@ function MaterialesMaestro({ onClose }) {
                     <input className="input" type="number" min="0" step="0.01" value={formMat.punto_reorden} onChange={e => setFormMat(p => ({ ...p, punto_reorden: e.target.value }))} />
                   </div>
                   <div className="input-group">
-                    <label>Stock mÃ¡ximo</label>
+                    <label>Stock máximo</label>
                     <input className="input" type="number" min="0" step="0.01" value={formMat.stock_maximo} onChange={e => setFormMat(p => ({ ...p, stock_maximo: e.target.value }))} />
                   </div>
                   <div className="input-group">

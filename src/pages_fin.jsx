@@ -2626,7 +2626,7 @@ function Tesoreria() {
 
               {requiereTcMatch && (
                 <div style={{marginTop:12, padding:10, background:'rgba(0,180,216,0.08)', borderRadius:8, border:'1px solid rgba(0,180,216,0.25)', fontSize:12}}>
-                  <strong>ConversiÃ³n a moneda de cuenta:</strong>{' '}
+                  <strong>Conversión a moneda de cuenta:</strong>{' '}
                   TC {tcPreviewMatch ? Number(tcPreviewMatch).toFixed(4) : 'por fecha del movimiento'} · equivalente {moneyCurrency(equivalentePreviewMatch || 0, cuentaBancoMovSel.moneda)}
                 </div>
               )}

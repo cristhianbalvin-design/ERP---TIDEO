@@ -252,13 +252,13 @@ export function AppProvider({ children }) {
     } catch { /* limpieza best-effort de estado mock local */ }
   }, []);
 
-  // Auto-seleccionar solo si hay exactamente 1 empresa â€” con mÃºltiples siempre muestra el selector
+  // Auto-seleccionar solo si hay exactamente 1 empresa â€” con múltiples siempre muestra el selector
   useEffect(() => {
     if (!authUser || membresiaActiva || todasMembresias.length !== 1) return;
     seleccionarEmpresa(todasMembresias[0].empresa_id);
   }, [authUser, todasMembresias, membresiaActiva]);
 
-  // Guardar la Ãºltima empresa seleccionada
+  // Guardar la última empresa seleccionada
   useEffect(() => {
     if (isSupabaseConfigured()) return;
     if (empresa?.id) {
@@ -327,7 +327,7 @@ export function AppProvider({ children }) {
   const [recepciones, setRecepciones] = useState(useSupabase ? [] : (MOCK.recepciones || []));
   const [devolucionesProveedor, setDevolucionesProveedor] = useState([]);
 
-  // ConfiguraciÃ³n de empresa
+  // Configuración de empresa
   const [empresaConfig, setEmpresaConfig] = useState({});
   const [seriesDocumentarias, setSeriesDocumentarias] = useState(isSupabaseConfigured() ? [] : SERIES_DOCUMENTARIAS_DEFAULT);
   const [slaPlantillas, setSlaPlantillas] = useState(isSupabaseConfigured() ? [] : SLA_PLANTILLAS_DEFAULT);
@@ -821,7 +821,7 @@ export function AppProvider({ children }) {
     if (!membresiaActiva?.empresa?.id || membresiaActiva.empresa.id !== empresa.id) return;
     
     // Limpiar listas actuales para evitar datos "pegados" de otro tenant
-    // usuarios se limpia despuÃ©s del merge con localStorage
+    // usuarios se limpia después del merge con localStorage
     // Usuarios y roles cargan en un efecto dedicado para responder mas rapido.
     setLeads([]);
     setCuentas([]);
@@ -982,7 +982,7 @@ export function AppProvider({ children }) {
             setSlaPlantillas(slaData || []);
             setDiccionarioComercial(diccionarioData || []);
           }
-        } catch (_err) { /* tabla aÃºn no existe, ignorar */ }
+        } catch (_err) { /* tabla aún no existe, ignorar */ }
 
         try {
           const [cobrosData, gestionesData, cuentasBanData, comisionesData, recibosData] = await Promise.all([
@@ -999,7 +999,7 @@ export function AppProvider({ children }) {
             if (comisionesData) setComisiones(comisionesData);
             if (recibosData) setRecibosHonorarios(recibosData);
           }
-        } catch (_err) { /* tabla aÃºn no existe, ignorar */ }
+        } catch (_err) { /* tabla aún no existe, ignorar */ }
 
         try {
           const [prvData, evalData, slpData, pcData, ocData, osData, recData, invData, devData] = await Promise.all([
@@ -1103,7 +1103,7 @@ export function AppProvider({ children }) {
           }
         } catch (_err) { /* keep mock */ }
 
-        // Tipo de cambio del dÃ­a
+        // Tipo de cambio del día
         try {
           const tc = await getTipoCambioHoy(supabase);
           if (mounted) setTipoCambioHoy(tc
@@ -1228,7 +1228,7 @@ export function AppProvider({ children }) {
     return () => { mounted = false; };
   }, [authUser?.id]);
 
-  // Carga notificaciones persistentes del sistema al iniciar sesiÃ³n
+  // Carga notificaciones persistentes del sistema al iniciar sesión
   useEffect(() => {
     if (!isSupabaseConfigured() || !authUser?.id) return;
     getSupabaseClient().then(sb =>
@@ -1337,8 +1337,8 @@ export function AppProvider({ children }) {
     : (MOCK.roles[roleKey] || MOCK.roles['admin']);
   const condicionPagoFallbackCxC = empresaConfig?.condicion_pago_defecto || CONDICION_PAGO_DEFECTO_CXC;
   const mensajeFallbackCondicionPagoCxC = condicionPagoFallbackCxC === CONDICION_PAGO_DEFECTO_CXC
-    ? 'Cliente sin condiciÃ³n de pago configurada. Se aplicÃ³ 30 dÃ­as por defecto.'
-    : `Cliente sin condiciÃ³n de pago configurada. Se aplicÃ³ ${condicionPagoFallbackCxC} por defecto.`;
+    ? 'Cliente sin condición de pago configurada. Se aplicó 30 días por defecto.'
+    : `Cliente sin condición de pago configurada. Se aplicó ${condicionPagoFallbackCxC} por defecto.`;
   const resolverVencimientoCxC = (datos = {}) => {
     const fechaEmision = datos.fecha_emision || new Date().toISOString().split('T')[0];
     const cuenta = (cuentas || []).find(c => c.id === datos.cuenta_id);
@@ -1362,7 +1362,7 @@ export function AppProvider({ children }) {
     };
   };
   // Superadmin de plataforma solo aplica cuando el tenant activo es emp_tideo.
-  // En cualquier otro tenant el usuario actÃºa como admin de ese tenant, sin acceso a mÃ³dulos de plataforma.
+  // En cualquier otro tenant el usuario actúa como admin de ese tenant, sin acceso a módulos de plataforma.
   const isSuperadmin = Boolean(role.permisos?.plataforma) &&
     (!isSupabaseConfigured() || Boolean(membresiaActiva?.empresa?.es_plataforma));
 
@@ -1449,7 +1449,7 @@ export function AppProvider({ children }) {
       await campanasService.crear(empresa.id, datos);
       await recargarCampanas();
     } catch (err) {
-      addNotificacion(`Error al crear campaÃ±a: ${err.message}`);
+      addNotificacion(`Error al crear campaña: ${err.message}`);
       throw err;
     }
   };
@@ -1463,7 +1463,7 @@ export function AppProvider({ children }) {
       await campanasService.actualizar(id, datos);
       await recargarCampanas();
     } catch (err) {
-      addNotificacion(`Error al actualizar campaÃ±a: ${err.message}`);
+      addNotificacion(`Error al actualizar campaña: ${err.message}`);
       throw err;
     }
   };
@@ -1477,7 +1477,7 @@ export function AppProvider({ children }) {
       await campanasService.cambiarEstado(id, estado);
       await recargarCampanas();
     } catch (err) {
-      addNotificacion(`Error al cambiar estado de campaÃ±a: ${err.message}`);
+      addNotificacion(`Error al cambiar estado de campaña: ${err.message}`);
       throw err;
     }
   };
@@ -1491,7 +1491,7 @@ export function AppProvider({ children }) {
       await campanasService.eliminar(id);
       await recargarCampanas();
     } catch (err) {
-      addNotificacion(`Error al eliminar campaÃ±a: ${err.message}`);
+      addNotificacion(`Error al eliminar campaña: ${err.message}`);
       throw err;
     }
   };
@@ -1926,7 +1926,7 @@ export function AppProvider({ children }) {
         c => c.oportunidad_id === oppId && ['enviada', 'aprobada', 'ganada', 'convertida'].includes(c.estado)
       );
       if (!tieneCotEnviada) {
-        addNotificacion('Para pasar a Propuesta debes tener al menos una cotizaciÃ³n enviada al cliente.');
+        addNotificacion('Para pasar a Propuesta debes tener al menos una cotización enviada al cliente.');
         return false;
       }
     }
@@ -2026,7 +2026,7 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'crm', entidad: 'oportunidades', entidad_id: oppId, accion: 'perder', valor_anterior: anterior, valor_nuevo: { motivo } });
   };
 
-  // â”€â”€â”€ Acuerdo de comisiÃ³n por oportunidad â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â”€â”€â”€ Acuerdo de comisión por oportunidad â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const _acuerdoPatch = (opp, extra) => {
     const patch = { ...extra };
     setOportunidades(prev => prev.map(o => o.id === opp.id ? { ...o, ...patch } : o));
@@ -2090,7 +2090,7 @@ export function AppProvider({ children }) {
     const pct = opp.acuerdo_pct ?? 0;
     const bon = opp.acuerdo_bonificacion ?? 0;
     const moneda = opp.moneda === 'USD' ? 'US$' : 'S/';
-    const texto = `${opp.responsable || 'Vendedor'} propone acuerdo de comisiÃ³n especial para "${opp.nombre}". % propuesto: ${pct}%. BonificaciÃ³n: ${moneda} ${Number(bon).toFixed(2)}. Requiere aprobaciÃ³n.`;
+    const texto = `${opp.responsable || 'Vendedor'} propone acuerdo de comisión especial para "${opp.nombre}". % propuesto: ${pct}%. Bonificación: ${moneda} ${Number(bon).toFixed(2)}. Requiere aprobación.`;
     _acuerdoPatch(opp, { acuerdo_estado: 'pendiente', acuerdo_motivo_rechazo: null });
     _registrarHistorialAcuerdo(opp, 'envio');
     await _notificarSistema(_getGerentes(), texto);
@@ -2123,8 +2123,8 @@ export function AppProvider({ children }) {
     _registrarHistorialAcuerdo(opp, huboAjuste ? 'ajuste_gerente' : 'aprobacion', { pct: pctFinal, bonificacion: bonFinal });
     const vendedor = usuarios.find(u => u.id === opp.responsable_id || u.auth_user_id === opp.responsable_id || u.nombre === opp.responsable);
     const textoVend = huboAjuste
-      ? `Tu acuerdo de comisiÃ³n para "${opp.nombre}" fue aprobado por ${aprobadoPor} con ajustes: ${pctFinal}% Â· S/ ${Number(bonFinal||0).toFixed(2)} bonificaciÃ³n.`
-      : `Tu acuerdo de comisiÃ³n para "${opp.nombre}" fue aprobado por ${aprobadoPor}.`;
+      ? `Tu acuerdo de comisión para "${opp.nombre}" fue aprobado por ${aprobadoPor} con ajustes: ${pctFinal}% · S/ ${Number(bonFinal||0).toFixed(2)} bonificación.`
+      : `Tu acuerdo de comisión para "${opp.nombre}" fue aprobado por ${aprobadoPor}.`;
     await _notificarSistema(vendedor ? [vendedor] : [], textoVend);
     addNotificacion(`Acuerdo aprobado para "${opp.nombre}".`);
     return patch;
@@ -2137,7 +2137,7 @@ export function AppProvider({ children }) {
     _acuerdoPatch(opp, { acuerdo_estado: 'rechazado', acuerdo_motivo_rechazo: motivo });
     _registrarHistorialAcuerdo(opp, 'rechazo', { motivo });
     const vendedor = usuarios.find(u => u.id === opp.responsable_id || u.auth_user_id === opp.responsable_id || u.nombre === opp.responsable);
-    const textoVend = `Tu acuerdo de comisiÃ³n para "${opp.nombre}" fue rechazado por ${rechazadoPor}. Motivo: ${motivo}`;
+    const textoVend = `Tu acuerdo de comisión para "${opp.nombre}" fue rechazado por ${rechazadoPor}. Motivo: ${motivo}`;
     await _notificarSistema(vendedor ? [vendedor] : [], textoVend);
     addNotificacion(`Acuerdo rechazado para "${opp.nombre}".`);
   };
@@ -2326,7 +2326,7 @@ export function AppProvider({ children }) {
           );
         }
         auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hcId, accion: 'aprobar', valor_anterior: hc, valor_nuevo: { estado: 'aprobada', cotizacion_id: cotFinal.id } });
-        addNotificacion('HC aprobada. CotizaciÃ³n borrador generada.');
+        addNotificacion('HC aprobada. Cotización borrador generada.');
         navigate('cotizaciones', { detail: cotFinal.id });
         return;
       } catch (error) {
@@ -2341,7 +2341,7 @@ export function AppProvider({ children }) {
       oportunidad_id: hc.oportunidad_id,
       cuenta_id: hc.cuenta_id,
       moneda: monedaHC,
-      validez: '30 dÃ­as',
+      validez: '30 días',
       subtotal: hc.precio_sugerido_sin_igv,
       base_imponible: hc.precio_sugerido_sin_igv,
       igv_pct: 18,
@@ -2362,13 +2362,13 @@ export function AppProvider({ children }) {
     }
     setHojasCosteo(prev => prev.map(h => h.id === hcId ? { ...h, estado: 'aprobada', cotizacion_id: cotId } : h));
     auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hcId, accion: 'aprobar', valor_anterior: hc, valor_nuevo: { estado: 'aprobada', cotizacion_id: cotId } });
-    addNotificacion(`HC aprobada. CotizaciÃ³n borrador generada.`);
+    addNotificacion(`HC aprobada. Cotización borrador generada.`);
     navigate('cotizaciones', { detail: cotId });
   };
 
   const crearCotizacion = async (datos) => {
-    // Generar nÃºmero server-side cuando Supabase estÃ¡ disponible para evitar
-    // duplicados cuando el estado local estÃ¡ desactualizado (ej. permisos RLS reciÃ©n aplicados).
+    // Generar número server-side cuando Supabase está disponible para evitar
+    // duplicados cuando el estado local está desactualizado (ej. permisos RLS recién aplicados).
     let numeroCot;
     if (isSupabaseConfigured()) {
       const sb = await getSupabaseClient();
@@ -2432,7 +2432,7 @@ export function AppProvider({ children }) {
       }
     }
     auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cot.id, accion: 'crear', valor_nuevo: cot });
-    addNotificacion(`CotizaciÃ³n ${cot.numero} generada con Ã©xito.`);
+    addNotificacion(`Cotización ${cot.numero} generada con éxito.`);
     return cot.id;
   };
   
@@ -2479,7 +2479,7 @@ export function AppProvider({ children }) {
     setCotizaciones(prev => prev.map(c => c.id === cotId ? { ...c, ...datosAprobacion } : c));
     crmSync(sb => svcActualizarCotizacion(sb, cotId, datosAprobacion));
     auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotId, accion: 'aprobar', valor_anterior: anterior, valor_nuevo: datosAprobacion });
-    addNotificacion(`CotizaciÃ³n aprobada por el cliente.`);
+    addNotificacion(`Cotización aprobada por el cliente.`);
     marcarGanadaPorCotizacion({ ...anterior, ...datosAprobacion }, {
       origen_aprobacion: 'digital',
       canal_aprobacion: 'link_publico',
@@ -2504,7 +2504,7 @@ export function AppProvider({ children }) {
     }
     setCotizaciones(prev => prev.map(c => c.id === cotId ? { ...c, ...patch } : c));
     auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotId, accion: 'aprobar_interna', valor_nuevo: patch });
-    addNotificacion(`CotizaciÃ³n aprobada para envÃ­o al cliente.`);
+    addNotificacion(`Cotización aprobada para envío al cliente.`);
   };
 
   const registrarAprobacionManual = async (cotId, datos) => {
@@ -2568,7 +2568,7 @@ export function AppProvider({ children }) {
 
   const subirVersionCotizacion = async (cotId) => {
     const cotAnterior = cotizaciones.find(c => c.id === cotId);
-    if (!cotAnterior) throw new Error('CotizaciÃ³n no encontrada');
+    if (!cotAnterior) throw new Error('Cotización no encontrada');
     const nuevaVersion = (cotAnterior.version || 1) + 1;
     const nuevoId = generateId('cot');
     const historialEntry = {
@@ -2591,17 +2591,17 @@ export function AppProvider({ children }) {
       aceptacion_fecha: null,
       aceptacion_ip: null,
     };
-    // Desactivar token de la versiÃ³n anterior
+    // Desactivar token de la versión anterior
     crmSync(sb => svcActualizarCotizacion(sb, cotId, { token_activo: false }));
     try {
       await crmPersist(sb => persistirCotizacion(sb, empresa.id, nuevaCot));
     } catch (error) {
-      addNotificacion('Error al crear nueva versiÃ³n: ' + (error?.message || error));
+      addNotificacion('Error al crear nueva versión: ' + (error?.message || error));
       throw error;
     }
     setCotizaciones(prev => [...prev, nuevaCot]);
     auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: nuevoId, accion: 'nueva_version', valor_anterior: { id: cotId, version: cotAnterior.version }, valor_nuevo: { id: nuevoId, version: nuevaVersion } });
-    addNotificacion(`Nueva versiÃ³n v${nuevaVersion} creada para ${cotAnterior.numero}.`);
+    addNotificacion(`Nueva versión v${nuevaVersion} creada para ${cotAnterior.numero}.`);
     if (nuevaVersion >= 2 && cotAnterior.oportunidad_id) avanzarEtapaOpp(cotAnterior.oportunidad_id, 'negociacion');
     navigate('cotizaciones', { detail: nuevoId, edit: true });
     return nuevoId;
@@ -2714,7 +2714,7 @@ export function AppProvider({ children }) {
   const vincularCotizacionOS = async (cotizacionId, osId) => {
     setOsClientes(prev => prev.map(o => o.id === osId ? { ...o, cotizacion_id: cotizacionId } : o));
     crmSync(sb => svcActualizarOSCliente(sb, osId, { cotizacion_id: cotizacionId }));
-    addNotificacion('CotizaciÃ³n vinculada a la OS.');
+    addNotificacion('Cotización vinculada a la OS.');
   };
 
   const registrarActividad = (datos) => {
@@ -2804,7 +2804,7 @@ export function AppProvider({ children }) {
 
     const montoPlanificado = Number(datos.costo_estimado_ot ?? datos.costo_estimado ?? datos.costoEst ?? 0);
 
-    // Heredar desglose de HC si la OS viene de una cotizaciÃ³n con HC vinculada
+    // Heredar desglose de HC si la OS viene de una cotización con HC vinculada
     let hcDesglose = { est_mo: null, est_materiales: null, est_terceros: null, est_logistica: null };
     if (os.cotizacion_id) {
       const cot = cotizaciones.find(c => c.id === os.cotizacion_id);
@@ -2942,7 +2942,7 @@ export function AppProvider({ children }) {
   };
 
   const registrarParteDiario = async (datos) => {
-    // Generar nÃºmero de serie desde Supabase o fallback local
+    // Generar número de serie desde Supabase o fallback local
     let numero = null;
     if (isSupabaseConfigured() && empresa?.id) {
       try {
@@ -2972,7 +2972,7 @@ export function AppProvider({ children }) {
       setOts(prev => prev.map(o => o.id === p.ot_id ? { ...o, estado: 'ejecucion' } : o));
       opsSync(sb => svcActualizarOT(sb, p.ot_id, { estado: 'ejecucion' }));
     }
-    addNotificacion(`Parte diario registrado y enviado a revisiÃ³n.`);
+    addNotificacion(`Parte diario registrado y enviado a revisión.`);
   };
 
   const actualizarBorradorParteDiario = (parteId, datos) => {
@@ -3020,10 +3020,10 @@ export function AppProvider({ children }) {
     setOts(prev => prev.map(o => {
       if (o.id !== parte.ot_id) return o;
 
-      // Partes aprobados incluyendo el reciÃ©n aprobado
+      // Partes aprobados incluyendo el recién aprobado
       const partesAprobadosOT = [...partes.filter(p => p.ot_id === o.id && p.id !== parteId && p.estado === 'aprobado'), parteAprobado];
 
-      // Calcular avance segÃºn si la OT tiene tareas con peso
+      // Calcular avance según si la OT tiene tareas con peso
       const tareas = o.tareas || [];
       const tareasConPeso = tareas.filter(t => Number(t.peso) > 0);
       let nuevoAvance;
@@ -3078,7 +3078,7 @@ export function AppProvider({ children }) {
     if (!motivo.trim()) return;
     setPartes(prev => prev.map(p => p.id === parteId ? { ...p, estado: 'observado', motivo_observacion: motivo } : p));
     opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'observado' }));
-    addNotificacion('Parte diario observado. El tÃ©cnico puede corregirlo y reenviarlo.');
+    addNotificacion('Parte diario observado. El técnico puede corregirlo y reenviarlo.');
   };
 
   const rechazarParteDiario = (parteId, motivo = '') => {
@@ -3093,7 +3093,7 @@ export function AppProvider({ children }) {
     if (!parte || !['borrador', 'rechazado', 'observado'].includes(parte.estado)) return;
     setPartes(prev => prev.map(p => p.id === parteId ? { ...p, estado: 'en_revision' } : p));
     opsSync(sb => svcActualizarParteDiario(sb, parteId, { estado: 'en_revision' }));
-    addNotificacion('Parte enviado a revisiÃ³n.');
+    addNotificacion('Parte enviado a revisión.');
   };
 
   const reabrirParteDiario = (parteId, motivo = '') => {
@@ -3156,7 +3156,7 @@ export function AppProvider({ children }) {
       return { ...o, ...nuevosDatos };
     }));
 
-    addNotificacion('Parte reabierto como borrador. Ya puede ser editado por el tÃ©cnico.');
+    addNotificacion('Parte reabierto como borrador. Ya puede ser editado por el técnico.');
   };
 
   const recalcularCostoRealOT = async (otId) => {
@@ -3558,7 +3558,7 @@ export function AppProvider({ children }) {
     }));
     setPresupuestos(prev => prev.map(p => p.id === id ? { ...p, estado: 'en_aprobacion' } : p));
     setPresupuestoAprobaciones(prev => [...prev.filter(p => p.presupuesto_id !== id), ...aprs]);
-    addNotificacion('Presupuesto enviado a aprobaciÃ³n.');
+    addNotificacion('Presupuesto enviado a aprobación.');
     if (isSupabaseConfigured()) {
       try {
         await presupuestosService.actualizarPresupuesto(id, { estado: 'en_aprobacion' });
@@ -3589,7 +3589,7 @@ export function AppProvider({ children }) {
         presupuestosService.actualizarPresupuesto(presupuestoId, { estado: 'borrador' }).catch(() => {});
       }
     } else {
-      // verificar si era el Ãºltimo aprobador
+      // verificar si era el último aprobador
       setPresupuestoAprobaciones(prev => {
         const cadena = prev.filter(a => a.presupuesto_id === presupuestoId);
         const actualizado = cadena.map(a => a.id === aprobacionId ? { ...a, estado: 'aprobado', fecha_accion: now, comentario: comentario || null } : a);
@@ -3674,9 +3674,9 @@ export function AppProvider({ children }) {
 
   const mensajeValorizacionAprobada = (numero, otsMovidas = 0) => {
     if (otsMovidas > 0) {
-      return `ValorizaciÃ³n ${numero} aprobada. ${otsMovidas} OT${otsMovidas === 1 ? '' : 's'} movida${otsMovidas === 1 ? '' : 's'} a Pendiente cierre.`;
+      return `Valorización ${numero} aprobada. ${otsMovidas} OT${otsMovidas === 1 ? '' : 's'} movida${otsMovidas === 1 ? '' : 's'} a Pendiente cierre.`;
     }
-    return `ValorizaciÃ³n ${numero} aprobada.`;
+    return `Valorización ${numero} aprobada.`;
   };
 
   const generarValorizacion = (osClienteId, subtotal, igv, total, periodo, meta = {}) => {
@@ -3755,7 +3755,7 @@ export function AppProvider({ children }) {
     }
 
     addNotificacion(estadoFinal === 'borrador'
-      ? `ValorizaciÃ³n ${val.numero} guardada como borrador.`
+      ? `Valorización ${val.numero} guardada como borrador.`
       : mensajeValorizacionAprobada(val.numero, otsMovidasPendienteCierre));
   };
 
@@ -3852,7 +3852,7 @@ export function AppProvider({ children }) {
       }));
     }
 
-    addNotificacion(`ValorizaciÃ³n ${val.numero} anulada.`);
+    addNotificacion(`Valorización ${val.numero} anulada.`);
   };
 
   const actualizarDatosValorizacion = (valId, datos) => {
@@ -3914,7 +3914,7 @@ export function AppProvider({ children }) {
 
     addNotificacion(estadoFinal === 'aprobada'
       ? mensajeValorizacionAprobada(val.numero, otsMovidasPendienteCierre)
-      : `ValorizaciÃ³n ${val.numero} actualizada.`);
+      : `Valorización ${val.numero} actualizada.`);
   };
 
   const registrarUsuario = async (u) => {
@@ -3938,8 +3938,8 @@ export function AppProvider({ children }) {
         await usuariosService.registrarUsuario(u);
         addNotificacion(`Usuario ${u.nombre} guardado en la nube.`);
       } catch (err) {
-        console.error('>>> Error crÃ­tico Supabase:', err);
-        addNotificacion('Error de conexiÃ³n: ' + (err.message || 'Error desconocido'), 'error');
+        console.error('>>> Error crítico Supabase:', err);
+        addNotificacion('Error de conexión: ' + (err.message || 'Error desconocido'), 'error');
       }
     } else {
       console.log('>>> Supabase no configurado, modo local');
@@ -4305,10 +4305,10 @@ export function AppProvider({ children }) {
 
   const emitirFacturaDesdeValorizacion = async (valorizacionId, datos = {}) => {
     const valorizacion = valorizaciones.find(v => v.id === valorizacionId);
-    if (!valorizacion) { addNotificacion('No se encontrÃ³ la valorizaciÃ³n seleccionada.'); return null; }
+    if (!valorizacion) { addNotificacion('No se encontró la valorización seleccionada.'); return null; }
     const osCliente = osClientes.find(os => os.id === valorizacion.os_cliente_id);
     const cuentaId = datos.cuenta_id || osCliente?.cuenta_id;
-    if (!cuentaId) { addNotificacion('La valorizaciÃ³n no tiene cliente asociado.'); return null; }
+    if (!cuentaId) { addNotificacion('La valorización no tiene cliente asociado.'); return null; }
 
     return emitirFacturaConCxC({
       tipo_documento: 'factura',
@@ -4412,14 +4412,14 @@ export function AppProvider({ children }) {
           valor_nuevo: { campo: 'fecha_emision', valor: fechaEmision, factura_id: facturaId },
         });
       }
-      addNotificacion('Fecha de emisiÃ³n de factura actualizada.');
+      addNotificacion('Fecha de emisión de factura actualizada.');
       return facturaActualizada;
     } catch (error) {
       setFacturas(prev => prev.map(f => f.id === facturaId ? factura : f));
       if (cxcVinculada) {
         setCxc(prev => prev.map(c => c.id === cxcVinculada.id ? cxcVinculada : c));
       }
-      addNotificacion(`No se pudo actualizar la fecha de emisiÃ³n: ${error?.message || 'error desconocido'}`, 'error');
+      addNotificacion(`No se pudo actualizar la fecha de emisión: ${error?.message || 'error desconocido'}`, 'error');
       throw error;
     }
   };
@@ -4900,9 +4900,9 @@ export function AppProvider({ children }) {
       });
     }
     if (datos.fecha_proxima_accion) {
-      addNotificacion(`GestiÃ³n registrada. PrÃ³xima acciÃ³n: ${datos.fecha_proxima_accion}.`);
+      addNotificacion(`Gestión registrada. Próxima acción: ${datos.fecha_proxima_accion}.`);
     } else {
-      addNotificacion('GestiÃ³n de cobranza registrada.');
+      addNotificacion('Gestión de cobranza registrada.');
     }
   };
 
@@ -4929,7 +4929,7 @@ export function AppProvider({ children }) {
         aprobado_en: new Date().toISOString(),
       }));
     }
-    addNotificacion('ComisiÃ³n aprobada.');
+    addNotificacion('Comisión aprobada.');
   };
 
   const rechazarComision = async (comisionId, motivo) => {
@@ -4938,7 +4938,7 @@ export function AppProvider({ children }) {
     if (isSupabaseConfigured()) {
       finSync(() => finanzasService.actualizarComision(comisionId, { estado: 'rechazada', motivo_rechazo: motivo }));
     }
-    addNotificacion('ComisiÃ³n rechazada.');
+    addNotificacion('Comisión rechazada.');
   };
 
   const corregirMontoComision = async (comisionId, nuevaBase) => {
@@ -5323,7 +5323,7 @@ export function AppProvider({ children }) {
         }
       }
     }
-    // Anular CxC vinculada si estÃ¡ por cobrar
+    // Anular CxC vinculada si está por cobrar
     const cxcVinculada = cxc.find(c => c.factura_id === facturaId && c.estado !== 'cobrada');
     if (cxcVinculada) {
       setCxc(prev => prev.map(c => c.id === cxcVinculada.id ? { ...c, estado: 'anulada' } : c));
@@ -5515,7 +5515,7 @@ export function AppProvider({ children }) {
 
     const totalFactura = Number(facOrigen.total || 0);
     if (totalAcreditar >= totalFactura) {
-      // AnulaciÃ³n total
+      // Anulación total
       setFacturas(prev => prev.map(f => f.id === facturaOrigenId
         ? { ...f, estado: 'anulada', motivo_anulacion: `NC emitida: ${numero}` } : f));
       if (cxcVinc) setCxc(prev => prev.map(c => c.id === cxcVinc.id ? { ...c, estado: 'cancelada', saldo: 0 } : c));
@@ -5536,7 +5536,7 @@ export function AppProvider({ children }) {
         });
       }
     } else if (cxcVinc) {
-      // ReducciÃ³n parcial de CxC
+      // Reducción parcial de CxC
       const nuevoTotal = Math.max(0, Number(cxcVinc.monto_total || 0) - totalAcreditar);
       const nuevoSaldo = Math.max(0, Number(cxcVinc.saldo || 0) - totalAcreditar);
       const nuevoEstado = nuevoSaldo <= 0 ? 'cancelada' : cxcVinc.estado;
@@ -5562,7 +5562,7 @@ export function AppProvider({ children }) {
 
     if (isSupabaseConfigured()) finSync(async () => { await finanzasService.emitirFactura(ncFac); });
     auditSync({ modulo: 'finanzas', entidad: 'facturas', entidad_id: ncFac.id, accion: 'emitir_nc', valor_nuevo: ncFac });
-    addNotificacion(`Nota de CrÃ©dito ${numero} emitida.`);
+    addNotificacion(`Nota de Crédito ${numero} emitida.`);
     return ncFac.id;
   };
 
@@ -5610,7 +5610,7 @@ export function AppProvider({ children }) {
 
     if (isSupabaseConfigured()) finSync(async () => { await finanzasService.emitirFactura(ndFac); });
     auditSync({ modulo: 'finanzas', entidad: 'facturas', entidad_id: ndFac.id, accion: 'emitir_nd', valor_nuevo: ndFac });
-    addNotificacion(`Nota de DÃ©bito ${numero} emitida.`);
+    addNotificacion(`Nota de Débito ${numero} emitida.`);
     return ndFac.id;
   };
 
@@ -5976,9 +5976,9 @@ export function AppProvider({ children }) {
   const conciliarMovimientoBancoConDocumento = async (movId, vinculadoTipo, vinculadoId) => {
     const mov = movimientosBanco.find(m => m.id === movId);
     if (!mov || !vinculadoId) return;
-    // Part 8: bloquear doble conciliaciÃ³n
+    // Part 8: bloquear doble conciliación
     if (mov.conciliado) {
-      addNotificacion('Este movimiento bancario ya estÃ¡ conciliado y no puede vincularse nuevamente.');
+      addNotificacion('Este movimiento bancario ya está conciliado y no puede vincularse nuevamente.');
       return;
     }
 
@@ -6134,19 +6134,19 @@ export function AppProvider({ children }) {
       id: generateId('opp'),
       empresa_id: empresa.id,
       cuenta_id: ren.cuenta_id,
-      nombre: `RenovaciÃ³n â€” ${ren.servicio}`,
+      nombre: `Renovación â€” ${ren.servicio}`,
       servicio_interes: ren.servicio,
       etapa: 'negociacion',
       monto_estimado: ren.monto_contrato,
       probabilidad: 70,
       forecast_ponderado: ren.monto_contrato * 0.7,
-      fuente: 'RenovaciÃ³n',
+      fuente: 'Renovación',
       responsable: ren.responsable_cs,
       estado: 'abierta',
       fecha_creacion: new Date().toISOString().split('T')[0]
     };
     setOportunidades(prev => [...prev, opp]);
-    addNotificacion(`Oportunidad de renovaciÃ³n generada en pipeline.`);
+    addNotificacion(`Oportunidad de renovación generada en pipeline.`);
   };
 
   const crearPlanRetencion = (datos) => {
@@ -6159,7 +6159,7 @@ export function AppProvider({ children }) {
       ...datos
     };
     setChurnPlanes(prev => [...prev, plan]);
-    addNotificacion('Plan de retenciÃ³n creado.');
+    addNotificacion('Plan de retención creado.');
   };
 
   const registrarIaLog = (tipo, recomendacion, accion_tomada) => {
@@ -7479,7 +7479,7 @@ export function AppProvider({ children }) {
         tipo_beneficiario: 'proveedor',
         proveedor_id: base.proveedor_id,
         factura_numero: facturaNumero || `PROV-${base.codigo || base.id}`,
-        concepto: `RecepciÃ³n ${base.codigo || base.id}${totalAnticipado > 0 ? ` (anticipo descontado: S/ ${totalAnticipado.toFixed(2)})` : ''}`,
+        concepto: `Recepción ${base.codigo || base.id}${totalAnticipado > 0 ? ` (anticipo descontado: S/ ${totalAnticipado.toFixed(2)})` : ''}`,
         fecha_emision: fechaEmisionParam || fecha,
         fecha_vencimiento: fechaVencimientoParam || fechaVencimientoAuto,
         monto_total: saldoCxP,
@@ -8158,7 +8158,7 @@ export function AppProvider({ children }) {
   // â”€â”€â”€ PLANNER V2 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   /**
    * Carga las asignaciones del planner para la semana (o rango) indicado.
-   * Guarda tambiÃ©n el rango cargado para saber quÃ© semana estÃ¡ en vista.
+   * Guarda también el rango cargado para saber qué semana está en vista.
    */
   const loadPlannerSemana = async (fechaInicio, fechaFin) => {
     if (!empresa?.id) return;
@@ -8186,13 +8186,13 @@ export function AppProvider({ children }) {
   };
 
   /**
-   * Crea asignaciones en lote (tecnicoÃ—dÃ­a) para un rango.
+   * Crea asignaciones en lote (tecnico×día) para un rango.
    * Detecta conflictos antes de persistir y los retorna para que el UI muestre el warning.
    */
   const crearAsignacionesRango = async ({ otId, tecnicoIds, fechaInicio, fechaFin, horaInicio = null, horaFin = null, cuadrillaOrigenId = null, forzar = false }) => {
     if (!empresa?.id || !otId || !tecnicoIds?.length) return { conflictos: {}, creadas: [] };
 
-    // Generar lista de dÃ­as del rango
+    // Generar lista de días del rango
     const dias = [];
     const inicio = new Date(fechaInicio);
     const fin = new Date(fechaFin);
@@ -8241,7 +8241,7 @@ export function AppProvider({ children }) {
   };
 
   /**
-   * Agrega un solo tÃ©cnico a una OT en un dÃ­a especÃ­fico.
+   * Agrega un solo técnico a una OT en un día específico.
    */
   const agregarTecnicoADia = async ({ otId, tecnicoId, fecha, horaInicio = null, horaFin = null, cuadrillaOrigenId = null }) => {
     if (!empresa?.id) return null;
@@ -8254,7 +8254,7 @@ export function AppProvider({ children }) {
           cuadrillaOrigenId, createdBy: authUser?.id || null 
         });
         if (semanaPlanner) await loadPlannerSemana(semanaPlanner.inicio, semanaPlanner.fin);
-        addNotificacion('AsignaciÃ³n guardada');
+        addNotificacion('Asignación guardada');
       } else {
         nueva = { 
           id: generateId('pa'), empresa_id: empresa.id, ot_id: otId, tecnico_id: tecnicoId, 
@@ -8265,14 +8265,14 @@ export function AppProvider({ children }) {
       }
       return nueva;
     } catch (err) {
-      console.error('Error al agregar tÃ©cnico:', err);
+      console.error('Error al agregar técnico:', err);
       addNotificacion('Error al asignar: ' + (err.message || 'Error desconocido'), 'error');
       return null;
     }
   };
 
   /**
-   * Cancela una asignaciÃ³n especÃ­fica con motivo.
+   * Cancela una asignación específica con motivo.
    */
   const quitarTecnicoDeDia = async (asignacionId, motivo = '') => {
     if (isSupabaseConfigured()) {
@@ -8285,7 +8285,7 @@ export function AppProvider({ children }) {
   };
 
   /**
-   * Actualiza fecha y/o horario de una asignaciÃ³n existente.
+   * Actualiza fecha y/o horario de una asignación existente.
    */
   const actualizarAsignacionCtx = async (asignacionId, { fecha, horaInicio, horaFin }) => {
     if (isSupabaseConfigured()) {
@@ -8300,7 +8300,7 @@ export function AppProvider({ children }) {
   };
 
   /**
-   * Detecta tÃ©cnicos con parte pendiente en los Ãºltimos 14 dÃ­as.
+   * Detecta técnicos con parte pendiente en los últimos 14 días.
    * Retorna un Set de "tecnicoId__fecha" con partes pendientes.
    */
   const partesPendientesSet = React.useMemo(() => {

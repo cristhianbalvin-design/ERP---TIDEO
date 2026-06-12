@@ -247,6 +247,9 @@ const normalizarPersonalOperativo = (p = {}) => ({
   dias_vacaciones_disponibles: Number(p.dias_vacaciones_disponibles ?? 0),
   fecha_inicio_contrato: p.fecha_inicio_contrato || p.fecha_ingreso || null,
   fecha_fin_contrato: p.fecha_fin_contrato || null,
+  datos_bancarios: p.datos_bancarios ?? [],
+  usuario_bloqueado_en: p.usuario_bloqueado_en || null,
+  usuario_bloqueado_por: p.usuario_bloqueado_por || null,
 });
 
 const calcularTarifaHora = (montoMensual, horasBaseMes) => {
@@ -332,7 +335,8 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
     'costo_hora_real', 'costo_hora_extra',
     'ruc_colaborador', 'retencion_ir', 'suspension_retenciones', 'vencimiento_suspension',
     'acceso_campo', 'perfil_campo',
-    'docs', 'estado', 'centro_costo_id', 'tarifa_hora_referencial'
+    'docs', 'estado', 'centro_costo_id', 'tarifa_hora_referencial',
+    'datos_bancarios', 'usuario_bloqueado_en', 'usuario_bloqueado_por'
   ]);
 
   return Object.entries(cambios).reduce((row, [key, value]) => {
@@ -396,6 +400,9 @@ const normalizarPersonalAdmin = (p = {}) => ({
   retencion_ir: p.retencion_ir != null ? Number(p.retencion_ir) : 8,
   suspension_retenciones: Boolean(p.suspension_retenciones),
   vencimiento_suspension: p.vencimiento_suspension || null,
+  datos_bancarios: p.datos_bancarios ?? [],
+  usuario_bloqueado_en: p.usuario_bloqueado_en || null,
+  usuario_bloqueado_por: p.usuario_bloqueado_por || null,
 });
 
 const toPersonalAdminRow = (empresaId, persona = {}) => ({
@@ -491,7 +498,8 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     'documentos', 'estado', 'centro_costo_id',
     'auth_user_id', 'tiene_comisiones', 'porcentaje_comision',
     'modalidad_comision', 'ruc_vendedor', 'ruc_colaborador', 'retencion_ir_comision', 'retencion_ir',
-    'suspension_retenciones', 'vencimiento_suspension', 'tarifa_hora_referencial'
+    'suspension_retenciones', 'vencimiento_suspension', 'tarifa_hora_referencial',
+    'datos_bancarios', 'usuario_bloqueado_en', 'usuario_bloqueado_por'
   ]);
 
   return Object.entries(cambios).reduce((row, [key, value]) => {
