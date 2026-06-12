@@ -5731,7 +5731,7 @@ function CotizacionesCompras() {
   const [form, setForm] = useState({
     origen_solpe:'si', solpe_id: solpes[0]?.id || '', descripcion: solpes[0]?.items?.[0]?.nombre || '',
     tipo:'bien', fecha_limite:'2025-04-30', responsable: responsablesCompra[0]?.nombre || usuarios[0]?.nombre || '',
-    proveedores:[]
+    proveedores:[], items: solpes[0]?.items || []
   });
   const filtrados = procesosCompra.filter(p => {
     if (tab === 'pendiente') return p.estado === 'pendiente_cotizar';
@@ -5833,7 +5833,7 @@ function CotizacionesCompras() {
       <div className="tabs">{[['todas','Todas'],['pendiente','Pendiente de cotizar'],['esperando','Esperando respuesta'],['listo','Comparativo listo'],['generada','OC/OS generada']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
       <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>N proceso</th><th>SOLPE origen</th><th>OT</th><th>Tipo</th><th>Descripcion</th><th>Monto ref.</th><th>Proveedores</th><th>Estado</th><th>Fecha limite</th><th>Responsable</th><th>Acciones</th></tr></thead><tbody>{filtrados.map(p => { const resps = respuestasCompra.filter(r=>r.proceso_id===p.id); const responded = resps.filter(r=>r.estado==='respondida').length; return <tr key={p.id}><td className="mono">{p.codigo}</td><td className="mono text-muted">{p.solpe_id || 'Libre'}</td><td className="mono">{p.ot_id || '-'}</td><td>{p.tipo === 'bien' ? 'Bien' : 'Servicio'}</td><td>{p.descripcion}</td><td>{money(p.monto_referencial)}</td><td>{responded} de {p.proveedores_consultados.length} respondieron</td><td><span className={'badge '+compraBadge(p.estado)}>{p.estado.replace('_',' ')}</span></td><td>{p.fecha_limite}</td><td>{p.responsable}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>setSel(p)}>Ver proceso</button></td></tr>})}</tbody></table></div></div>
       {wizard && <><div className="side-panel-backdrop" onClick={()=>setWizard(false)}/><div className="side-panel" style={{width:'min(680px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Paso {step} de 3</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nuevo proceso de cotizacion</div></div><button className="icon-btn" onClick={()=>setWizard(false)}>{I.x}</button></div><div className="side-panel-body">
-        {step===1 && <><div className="input-group"><label>Origen</label><select className="select" value={form.origen_solpe} onChange={e=>update('origen_solpe', e.target.value)}><option value="si">Si - seleccionar SOLPE aprobada</option><option value="no">No - descripcion libre</option></select></div>{form.origen_solpe==='si' && <div className="input-group"><label>SOLPE aprobada</label><select className="select" value={form.solpe_id} onChange={e=>update('solpe_id', e.target.value)}>{solpes.map(s=><option key={s.id} value={s.id}>{s.numero || s.id} - {s.items?.[0]?.nombre || s.estado}</option>)}</select></div>}<div className="input-group"><label>Descripcion detallada</label><textarea className="input" rows="4" value={form.descripcion} onChange={e=>update('descripcion', e.target.value)}/></div><div className="grid-2" style={{gap:12}}><div className="input-group"><label>Tipo</label><select className="select" value={form.tipo} onChange={e=>update('tipo', e.target.value)}><option value="bien">Bien - genera OC</option><option value="servicio">Servicio - genera OS</option></select></div><div className="input-group"><label>Fecha limite</label><input className="input" type="date" value={form.fecha_limite} onChange={e=>update('fecha_limite', e.target.value)}/></div></div><div className="input-group"><label>Responsable de compras</label><select className="select" value={form.responsable} onChange={e=>update('responsable', e.target.value)}>{responsablesCompra.map(u=><option key={u.id}>{u.nombre}</option>)}</select></div></>}
+        {step===1 && <><div className="input-group"><label>Origen</label><select className="select" value={form.origen_solpe} onChange={e=>update('origen_solpe', e.target.value)}><option value="si">Si - seleccionar SOLPE aprobada</option><option value="no">No - descripcion libre</option></select></div>{form.origen_solpe==='si' && <div className="input-group"><label>SOLPE aprobada</label><select className="select" value={form.solpe_id} onChange={e=>{ const slp=solpes.find(x=>x.id===e.target.value); update('solpe_id',e.target.value); update('items',slp?.items||[]); }}>{solpes.map(s=><option key={s.id} value={s.id}>{s.numero || s.id} - {s.items?.[0]?.descripcion || s.items?.[0]?.nombre || s.estado}</option>)}</select>{form.items && form.items.length > 0 && <div style={{marginTop:8,border:'1px solid var(--border)',borderRadius:6,overflow:'hidden'}}><table className="tbl" style={{fontSize:12}}><thead><tr><th>Ítem</th><th style={{width:60}}>Cant.</th><th style={{width:55}}>Unid.</th></tr></thead><tbody>{form.items.map((it,i)=><tr key={i}><td>{it.material_codigo ? <span className="mono text-muted" style={{marginRight:4,fontSize:11}}>{it.material_codigo}</span> : null}{it.descripcion}</td><td className="mono">{it.cantidad}</td><td className="text-muted">{it.unidad}</td></tr>)}</tbody></table></div>}</div>}<div className="input-group"><label>Descripcion detallada</label><textarea className="input" rows="4" value={form.descripcion} onChange={e=>update('descripcion', e.target.value)}/></div><div className="grid-2" style={{gap:12}}><div className="input-group"><label>Tipo</label><select className="select" value={form.tipo} onChange={e=>update('tipo', e.target.value)}><option value="bien">Bien - genera OC</option><option value="servicio">Servicio - genera OS</option></select></div><div className="input-group"><label>Fecha limite</label><input className="input" type="date" value={form.fecha_limite} onChange={e=>update('fecha_limite', e.target.value)}/></div></div><div className="input-group"><label>Responsable de compras</label><select className="select" value={form.responsable} onChange={e=>update('responsable', e.target.value)}>{responsablesCompra.map(u=><option key={u.id}>{u.nombre}</option>)}</select></div></>}
         {step===2 && <><p className="text-muted">Selecciona proveedores homologados. Observados o con documentos vencidos se muestran con advertencia.</p>{proveedoresCompatibles.map(p=><label key={p.id} className="card" style={{padding:12,display:'block',marginBottom:10,cursor:'pointer'}}><input type="checkbox" checked={form.proveedores.includes(p.id)} onChange={()=>toggleProveedor(p.id)} style={{marginRight:8}}/><strong>{p.codigo} {p.razon_social}</strong><div className="text-muted" style={{fontSize:12,marginLeft:24}}>{p.categoria} - {ratingText(p.calificacion_promedio)} - {p.condicion_pago || 'Sin condicion'} {p.estado==='observado' ? ' - Observado' : ''} {docsVencidosProveedor(p.id) ? ' - Documento vencido' : ''}</div></label>)}</>}
         {step===3 && <div className="card" style={{padding:16}}><p><strong>Origen:</strong> {form.origen_solpe==='si' ? form.solpe_id : 'Libre'}</p><p><strong>Tipo:</strong> {form.tipo === 'bien' ? 'Bien - Orden de Compra' : 'Servicio - Orden de Servicio'}</p><p><strong>Descripcion:</strong> {form.descripcion}</p><p><strong>Proveedores:</strong> {form.proveedores.map(id=>proveedorById(proveedores,id).razon_social).join(', ')}</p><p><strong>Fecha limite:</strong> {form.fecha_limite}</p><p><strong>Responsable:</strong> {form.responsable}</p></div>}
         <div className="row mt-6" style={{justifyContent:'space-between'}}><button className="btn btn-secondary" onClick={()=> step===1 ? setWizard(false) : setStep(s=>s-1)}>{step===1?'Cancelar':'Anterior'}</button><button className="btn btn-primary" data-local-form="true" disabled={step===2 && form.proveedores.length<1} onClick={()=> step===3 ? createProceso() : setStep(s=>s+1)}>{step===3?'Confirmar y crear proceso':'Siguiente'}</button></div>
@@ -9085,10 +9085,13 @@ const SOLPE_FORM_INIT = { descripcion: '', tipo: 'bien', prioridad: 'normal', so
 const SOLPE_ESTADO_BADGE = { borrador: 'badge-gray', solicitada: 'badge-orange', aprobada: 'badge-blue', atendida: 'badge-green' };
 
 function SOLPE() {
-  const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast } = useApp();
+  const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast, materiales } = useApp();
+  const newItem = () => ({ id: `itm_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, material_id: '', descripcion: '', cantidad: '', unidad: 'und', observacion: '' });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(SOLPE_FORM_INIT);
+  const [items, setItems] = useState([newItem()]);
   const [errCeco, setErrCeco] = useState(false);
+  const [errItems, setErrItems] = useState(false);
   const [solpeSeleccionada, setSolpeSeleccionada] = useState(null);
 
   const getOTNumero = (id) => ots.find(o => o.id === id)?.numero || id || '—';
@@ -9102,11 +9105,32 @@ function SOLPE() {
     (s.centro_costo || '').toLowerCase().includes(query)
   );
 
+  const closeForm = () => { setShowForm(false); setItems([newItem()]); setErrCeco(false); setErrItems(false); };
   const handleSubmit = () => {
     if (!form.centro_costo_id) { setErrCeco(true); return; }
-    crearSOLPE({ ...form, fecha: new Date().toISOString().split('T')[0] });
+    if (form.tipo === 'bien') {
+      const hasValid = items.some(it => (it.material_id && it.material_id !== '__manual__' ? true : it.descripcion.trim() !== '') && String(it.cantidad).trim() !== '');
+      if (!hasValid) { setErrItems(true); return; }
+    }
+    const cleanItems = items
+      .filter(it => (it.material_id && it.material_id !== '__manual__') || it.descripcion.trim())
+      .map(it => {
+        const mat = (materiales || []).find(m => m.id === it.material_id);
+        return {
+          id: it.id,
+          material_id: it.material_id && it.material_id !== '__manual__' ? it.material_id : null,
+          material_codigo: mat?.codigo || null,
+          descripcion: mat ? (mat.descripcion || mat.nombre || it.descripcion) : it.descripcion,
+          cantidad: parseFloat(it.cantidad) || 0,
+          unidad: it.unidad,
+          observacion: it.observacion || ''
+        };
+      });
+    crearSOLPE({ ...form, fecha: new Date().toISOString().split('T')[0], items: cleanItems });
     setForm(SOLPE_FORM_INIT);
+    setItems([newItem()]);
     setErrCeco(false);
+    setErrItems(false);
     setShowForm(false);
   };
 
@@ -9228,17 +9252,36 @@ function SOLPE() {
                 </div>
               </div>
               <div>
-                <div className="form-label" style={{fontWeight:600, marginBottom:8}}>Descripción / Ítems</div>
+                <div className="form-label" style={{fontWeight:600, marginBottom:8}}>Descripción / Ítems solicitados</div>
                 {s.descripcion && <p style={{fontSize:14, margin:0, marginBottom:8}}>{s.descripcion}</p>}
-                {s.items && s.items.length > 0 && (
-                  <ul style={{margin:0, paddingLeft:16, fontSize:14}}>
-                    {s.items.map((it, i) => (
-                      <li key={i}>{it.nombre}{it.cantidad ? ` × ${it.cantidad}` : ''}</li>
-                    ))}
-                  </ul>
-                )}
-                {!s.descripcion && (!s.items || s.items.length === 0) && (
-                  <span className="text-muted" style={{fontSize:14}}>Sin descripción registrada.</span>
+                {s.items && s.items.length > 0 ? (
+                  <div className="table-wrap" style={{marginTop:4}}>
+                    <table className="tbl" style={{fontSize:13}}>
+                      <thead>
+                        <tr>
+                          <th>Material / Descripción</th>
+                          <th style={{width:70}}>Cant.</th>
+                          <th style={{width:60}}>Unid.</th>
+                          <th>Observación</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {s.items.map((it, i) => (
+                          <tr key={i}>
+                            <td>
+                              {it.material_codigo && <span className="mono text-muted" style={{marginRight:6, fontSize:11}}>{it.material_codigo}</span>}
+                              {it.descripcion || '—'}
+                            </td>
+                            <td className="mono">{it.cantidad}</td>
+                            <td className="text-muted">{it.unidad || '—'}</td>
+                            <td className="text-muted">{it.observacion || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  !s.descripcion && <span className="text-muted" style={{fontSize:14}}>Sin descripción registrada.</span>
                 )}
               </div>
               <div style={{borderTop:'1px solid var(--border)', paddingTop:16}}>
@@ -9264,24 +9307,61 @@ function SOLPE() {
       })()}
 
       {showForm && <>
-        <div className="side-panel-backdrop" onClick={() => setShowForm(false)} />
+        <div className="side-panel-backdrop" onClick={closeForm} />
         <div className="side-panel">
           <div className="side-panel-head">
             <div>
               <div className="eyebrow">Nueva solicitud</div>
               <div className="font-display" style={{fontSize:18, fontWeight:700, marginTop:2}}>Nueva SOLPE</div>
             </div>
-            <button className="icon-btn" onClick={() => setShowForm(false)}>{I.x}</button>
+            <button className="icon-btn" onClick={closeForm}>{I.x}</button>
           </div>
           <div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:16}}>
             <div className="form-group">
               <label className="form-label">Descripción de la necesidad *</label>
               <textarea className="input" rows={3} placeholder="Describe el requerimiento..." value={form.descripcion} onChange={e => set('descripcion', e.target.value)} />
             </div>
+            <div className="form-group">
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
+                <label className="form-label" style={{marginBottom:0}}>
+                  Ítems solicitados {form.tipo === 'bien' ? <span style={{color:'var(--danger,#ef4444)'}}>*</span> : <span className="text-muted" style={{fontSize:11}}>(opcional)</span>}
+                </label>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => setItems(p => [...p, newItem()])}>+ Agregar ítem</button>
+              </div>
+              {errItems && <div style={{color:'var(--danger,#ef4444)', fontSize:12, marginBottom:6}}>Agrega al menos un ítem con material/descripción y cantidad.</div>}
+              <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                {items.map((item, idx) => (
+                  <div key={item.id} style={{border:'1px solid var(--border)', borderRadius:6, padding:'10px 10px 8px', background:'var(--surface)'}}>
+                    <div style={{display:'grid', gridTemplateColumns:'1fr auto', gap:8, marginBottom:6}}>
+                      <select className="select" style={{fontSize:13}} value={item.material_id} onChange={e => {
+                        const mat = (materiales || []).find(m => m.id === e.target.value);
+                        setItems(p => p.map((x, i) => i === idx ? { ...x, material_id: e.target.value, descripcion: mat ? (mat.descripcion || mat.nombre || '') : x.descripcion, unidad: mat?.unidad || x.unidad } : x));
+                        if (errItems) setErrItems(false);
+                      }}>
+                        <option value="">— Seleccionar del catálogo —</option>
+                        {(materiales || []).map(m => <option key={m.id} value={m.id}>{m.codigo ? `${m.codigo} – ` : ''}{m.descripcion || m.nombre}</option>)}
+                        <option value="__manual__">✏ Ingresar manualmente</option>
+                      </select>
+                      <button type="button" className="btn btn-sm" style={{background:'var(--danger-light,#fee2e2)', color:'var(--danger,#ef4444)', border:'none', minWidth:28}} onClick={() => setItems(p => p.filter((_, i) => i !== idx))} title="Eliminar ítem">×</button>
+                    </div>
+                    {item.material_id === '__manual__' && (
+                      <input className="input" style={{marginBottom:6, fontSize:13}} placeholder="Descripción del material o servicio..." value={item.descripcion} onChange={e => setItems(p => p.map((x, i) => i === idx ? { ...x, descripcion: e.target.value } : x))} />
+                    )}
+                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 2fr', gap:6}}>
+                      <input className="input" type="number" min="0" step="any" style={{fontSize:13}} placeholder="Cantidad *" value={item.cantidad} onChange={e => { setItems(p => p.map((x, i) => i === idx ? { ...x, cantidad: e.target.value } : x)); if (errItems) setErrItems(false); }} />
+                      <select className="select" style={{fontSize:13}} value={item.unidad} onChange={e => setItems(p => p.map((x, i) => i === idx ? { ...x, unidad: e.target.value } : x))}>
+                        {['und','kg','m','m²','lt','gl','caja','rollo','hr','glb'].map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                      <input className="input" style={{fontSize:13}} placeholder="Observación (opcional)" value={item.observacion} onChange={e => setItems(p => p.map((x, i) => i === idx ? { ...x, observacion: e.target.value } : x))} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
               <div className="form-group">
                 <label className="form-label">Tipo *</label>
-                <select className="select" value={form.tipo} onChange={e => set('tipo', e.target.value)}>
+                <select className="select" value={form.tipo} onChange={e => { set('tipo', e.target.value); setErrItems(false); }}>
                   <option value="bien">Bien</option>
                   <option value="servicio">Servicio</option>
                 </select>
@@ -9309,7 +9389,7 @@ function SOLPE() {
             </div>
             <div className="row" style={{gap:8, marginTop:8}}>
               <button className="btn btn-primary flex-1" onClick={handleSubmit}>{I.check} Crear SOLPE</button>
-              <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancelar</button>
+              <button className="btn btn-ghost" onClick={closeForm}>Cancelar</button>
             </div>
           </div>
         </div>
