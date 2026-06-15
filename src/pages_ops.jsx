@@ -6173,7 +6173,7 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
               <tbody>{orden.items?.map((i, idx) => (
                 <tr key={idx}>
                   <td>{i.descripcion}</td><td>{i.cantidad}</td><td>{i.unidad}</td>
-                  <td>{money(i.precio_unitario)}</td><td>{money(i.subtotal)}</td>
+                  <td>{moneyD(i.precio_unitario)}</td><td>{moneyD(i.subtotal)}</td>
                 </tr>
               ))}</tbody>
             </table>
