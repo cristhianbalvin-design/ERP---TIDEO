@@ -328,6 +328,7 @@ export function AppProvider({ children }) {
   const [procesosCompra, setProcesosCompra] = useState(useSupabase ? [] : (MOCK.procesosCompra || []));
   const [respuestasCompra, setRespuestasCompra] = useState(useSupabase ? [] : (MOCK.respuestasCompra || []));
   const [ordenesCompra, setOrdenesCompra] = useState(useSupabase ? [] : (MOCK.ordenesCompra || []));
+  const [ocTransitos, setOcTransitos] = useState(useSupabase ? [] : (MOCK.ocTransitos || []));
   const [ordenesServicio, setOrdenesServicio] = useState(useSupabase ? [] : (MOCK.ordenesServicio || []));
   const [recepciones, setRecepciones] = useState(useSupabase ? [] : (MOCK.recepciones || []));
   const [devolucionesProveedor, setDevolucionesProveedor] = useState([]);
@@ -871,6 +872,7 @@ export function AppProvider({ children }) {
         setSolpes([]);
         setProcesosCompra([]);
         setOrdenesCompra([]);
+        setOcTransitos([]);
         setOrdenesServicio([]);
         setRecepciones([]);
         setDevolucionesProveedor([]);
@@ -1024,12 +1026,13 @@ export function AppProvider({ children }) {
         } catch (_err) { /* tabla aún no existe, ignorar */ }
 
         try {
-          const [prvData, evalData, slpData, pcData, ocData, osData, recData, invData, devData] = await Promise.all([
+          const [prvData, evalData, slpData, pcData, ocData, transData, osData, recData, invData, devData] = await Promise.all([
             comprasService.getProveedores(empresa.id),
             comprasService.getEvaluacionesProveedor(empresa.id),
             comprasService.getSolpes(empresa.id),
             comprasService.getProcesosCompra(empresa.id),
             comprasService.getOrdenesCompra(empresa.id),
+            comprasService.getOrdenCompraTransitos(empresa.id),
             comprasService.getOrdenesServicio(empresa.id),
             comprasService.getRecepciones(empresa.id),
             comprasService.getInventario(empresa.id),
@@ -1041,6 +1044,7 @@ export function AppProvider({ children }) {
             setSolpes(slpData || []);
             setProcesosCompra(pcData || []);
             setOrdenesCompra(ocData || []);
+            setOcTransitos(transData || []);
             setOrdenesServicio(osData || []);
             setRecepciones(recData || []);
             setInventario(invData || []);
@@ -7012,7 +7016,7 @@ export function AppProvider({ children }) {
       setTransportistas(prev => [...prev, { ...data, vehiculos: [], conductores: [] }]);
       return data;
     }
-    const nuevo = { ...form, id: generateId('tra'), empresa_id: empresa?.id, activo: true, vehiculos: [], conductores: [], created_at: new Date().toISOString() };
+    const nuevo = { ...form, tipo_operador: form.tipo_operador || 'tercero', id: generateId('tra'), empresa_id: empresa?.id, activo: true, vehiculos: [], conductores: [], created_at: new Date().toISOString() };
     setTransportistas(prev => [...prev, nuevo]);
     return nuevo;
   };
@@ -7197,6 +7201,58 @@ export function AppProvider({ children }) {
     } else {
       setOrdenesCompra(prev => prev.map(o => o.id === id ? { ...o, ...cambios } : o));
     }
+  };
+  const registrarTransitoOCCtx = async (datos) => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    const orden = ordenesCompra.find(o => o.id === datos.orden_compra_id);
+    if (!orden) throw new Error('Orden de compra no encontrada');
+    const estadoActual = String(orden.estado || '').toLowerCase();
+    if (datos.estado === 'en_transito' && !['emitida', 'confirmada', 'en_transito'].includes(estadoActual)) {
+      throw new Error(`No se puede marcar en transito una OC en estado "${orden.estado}"`);
+    }
+
+    const fechaTransito = datos.fecha_salida || new Date().toISOString().slice(0, 10);
+    let guardado;
+    if (isSupabaseConfigured() && empresa?.id) {
+      guardado = await comprasService.crearOrdenCompraTransito(empresa.id, {
+        ...datos,
+        creado_por: authUser?.id || null,
+      });
+    } else {
+      guardado = {
+        ...datos,
+        id: datos.id || generateId('oct'),
+        empresa_id: empresa.id,
+        creado_por: authUser?.id || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (datos.estado === 'en_transito' && !notificaciones.some(n => n.referenceType === 'orden_compra' && n.referenceId === orden.id && n.tipo === 'oc_en_transito')) {
+        const tipoMsg = datos.tipo === 'recojo_propio' ? 'recojo propio' : 'despacho del proveedor';
+        setNotificaciones(prev => [{
+          id: generateId('not'),
+          tipo: 'oc_en_transito',
+          referenceType: 'orden_compra',
+          referenceId: orden.id,
+          text: `${orden.codigo || orden.id} esta en transito por ${tipoMsg}.`,
+          read: false,
+          time: 'Justo ahora',
+          priority: 'media',
+        }, ...prev]);
+      }
+    }
+
+    setOcTransitos(prev => [guardado, ...prev.filter(t => t.id !== guardado.id)]);
+    if (datos.estado === 'en_transito' && ['emitida', 'confirmada'].includes(estadoActual)) {
+      setOrdenesCompra(prev => prev.map(o => o.id === orden.id ? {
+        ...o,
+        estado: 'en_transito',
+        fecha_en_transito: o.fecha_en_transito || fechaTransito,
+        updated_at: guardado.updated_at || new Date().toISOString(),
+      } : o));
+    }
+    auditSync({ modulo: 'compras', entidad: 'orden_compra_transitos', entidad_id: guardado.id, accion: 'crear', valor_nuevo: guardado });
+    return guardado;
   };
   const crearOrdenServicioCtx = async (os) => {
     if (isSupabaseConfigured() && empresa?.id) {
@@ -7490,6 +7546,11 @@ export function AppProvider({ children }) {
         lead_time_dias: comprasService.calcularLeadTimeDias(base.fecha_emision, fecha)
       };
       setOrdenesCompra(prev => prev.map(o => o.id === base.id ? { ...o, ...cambios } : o));
+      setOcTransitos(prev => prev.map(t =>
+        t.orden_compra_id === base.id && ['registrado', 'en_transito'].includes(t.estado)
+          ? { ...t, estado: 'recibido', updated_at: new Date().toISOString() }
+          : t
+      ));
       if (isSupabaseConfigured()) {
         comprasService.cerrarOrdenCompraPorRecepcion(base.id, { fechaRecepcion: fecha, fechaEmision: base.fecha_emision })
           .then(data => {
@@ -9130,6 +9191,7 @@ export function AppProvider({ children }) {
     procesosCompra, setProcesosCompra,
     respuestasCompra, setRespuestasCompra,
     ordenesCompra, setOrdenesCompra,
+    ocTransitos, setOcTransitos,
     ordenesServicio, setOrdenesServicio,
     recepciones, setRecepciones,
     devolucionesProveedor, setDevolucionesProveedor,
@@ -9191,7 +9253,7 @@ export function AppProvider({ children }) {
     // Compras Actions
     registrarProveedor, actualizarProveedorCtx,
     crearProcesoCompraCtx, actualizarProcesoCompraCtx,
-    crearOrdenCompraCtx, actualizarOrdenCompraCtx, crearOrdenServicioCtx, crearRecepcionCtx, registrarRecepcionConCxP, registrarEvaluacionProveedorCtx,
+    crearOrdenCompraCtx, actualizarOrdenCompraCtx, registrarTransitoOCCtx, crearOrdenServicioCtx, crearRecepcionCtx, registrarRecepcionConCxP, registrarEvaluacionProveedorCtx,
     // WMS Actions
     recargarInventario, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx,
     reservarStockCtx, getKardexMaterialCtx, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, getAnaliticaInventarioCtx,

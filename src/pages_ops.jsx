@@ -5719,6 +5719,34 @@ function proveedorById(proveedores, id) {
 const OC_FORM_INIT = { proveedor_id:'', origen_compra:'directa', proceso_compra_id:'', solpe_id:'', solpe_codigo:'', ot_id:'', centro_costo_id:'', descripcion:'', fecha_entrega_esperada:'2025-04-30', items:[{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:1000 }] };
 const nuevaOCForm = (proveedorId = '') => ({ ...OC_FORM_INIT, proveedor_id: proveedorId || '' });
 const OC_COLUMNAS_OPCIONALES_INSERT = new Set(['condicion_pago', 'solpe_id', 'solpe_codigo', 'origen_tipo', 'notas_proveedor', 'notas_internas', 'creado_por']);
+const OC_TRANSITO_TIPO_LABEL = { recojo_propio: 'Recojo propio', despacho_proveedor: 'Despacho proveedor' };
+const OC_TRANSITO_ESTADO_BADGE = { registrado: 'badge-gray', en_transito: 'badge-orange', recibido: 'badge-green', cancelado: 'badge-red' };
+const nuevaTransitoOCForm = () => ({
+  id: `oct_${Date.now()}`,
+  tipo: 'recojo_propio',
+  estado: 'en_transito',
+  fecha_salida: new Date().toISOString().slice(0, 10),
+  fecha_estimada_llegada: '',
+  observaciones: '',
+  archivo_url: '',
+  transportista_id: '',
+  vehiculo_id: '',
+  conductor_id: '',
+  guia_proveedor_numero: '',
+  guia_proveedor_fecha: '',
+  proveedor_transportista_nombre: '',
+  proveedor_transportista_ruc: '',
+  proveedor_vehiculo_placa: '',
+  proveedor_conductor_nombre: '',
+});
+const transitoPrincipalOC = (transitos = []) =>
+  transitos.find(t => t.estado === 'en_transito') ||
+  transitos.find(t => t.estado === 'recibido') ||
+  transitos[0] ||
+  null;
+const limpiarTransitoPayload = payload => Object.fromEntries(
+  Object.entries(payload).map(([k, v]) => [k, v === '' ? null : v])
+);
 const schemaCacheMissingColumn = (error, tableName = 'ordenes_compra') => {
   const message = [error?.message, error?.details, error?.hint].filter(Boolean).join(' ');
   const match = message.match(/Could not find the '([^']+)' column of '([^']+)' in the schema cache/i);
@@ -5985,7 +6013,7 @@ function OrdenesCompra() {
     if (confirmando) return;
     setConfirmando(true);
     try {
-      const actualizada = await actualizarOrdenCompraCtx(sel.id, { estado: 'confirmada' });
+      const actualizada = await actualizarOrdenCompraCtx(sel.id, { estado: 'confirmada', fecha_confirmada: new Date().toISOString().slice(0, 10) });
       setSel(prev => ({ ...prev, ...(actualizada || {}), estado: 'confirmada' }));
       addNotificacion(`${sel.codigo} confirmada correctamente.`);
     } catch (e) {
@@ -6111,16 +6139,20 @@ function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centr
 }
 
 function DetalleOrden({ orden, proveedor, onBack, onConfirmar, confirmando, onRecepcion }) {
-  const { ocAnticipos, registrarAnticipoOC } = useApp();
+  const { ordenesCompra, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, addToast } = useApp();
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('detalle');
   const [panelAnticipo, setPanelAnticipo] = useState(false);
   const [formAnticipo, setFormAnticipo] = useState({ fecha: today, monto: '', referencia: '', notas: '' });
   const [savingAnticipo, setSavingAnticipo] = useState(false);
 
-  const anticiposOC = (ocAnticipos || []).filter(a => a.orden_compra_id === orden.id);
+  const ordenActual = ordenesCompra.find(o => o.id === orden.id) || orden;
+  const transitosOC = (ocTransitos || []).filter(t => t.orden_compra_id === ordenActual.id)
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+  const transitoActual = transitoPrincipalOC(transitosOC);
+  const anticiposOC = (ocAnticipos || []).filter(a => a.orden_compra_id === ordenActual.id);
   const totalAnticipado = anticiposOC.reduce((s, a) => s + Number(a.monto || 0), 0);
-  const totalOC = Number(orden.total || 0);
+  const totalOC = Number(ordenActual.total || 0);
   const saldoPendiente = Math.max(0, totalOC - totalAnticipado);
   const pctAnticipado = totalOC > 0 ? Math.round(totalAnticipado / totalOC * 100) : 0;
 
@@ -6130,7 +6162,7 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, confirmando, onRe
     if (monto <= 0 || monto > saldoPendiente) return;
     setSavingAnticipo(true);
     try {
-      await registrarAnticipoOC({ ordenCompraId: orden.id, ...formAnticipo, monto });
+      await registrarAnticipoOC({ ordenCompraId: ordenActual.id, ...formAnticipo, monto });
       setPanelAnticipo(false);
       setFormAnticipo({ fecha: today, monto: '', referencia: '', notas: '' });
     } finally {
@@ -6143,12 +6175,12 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, confirmando, onRe
       <div className="page-header">
         <div>
           <button className="btn btn-ghost btn-sm" onClick={onBack}>Volver</button>
-          <h1 className="page-title">{orden.codigo}</h1>
+          <h1 className="page-title">{ordenActual.codigo}</h1>
           <div className="page-sub">{proveedor.razon_social} — {moneyD(totalOC)}</div>
         </div>
         <div className="row">
-          {orden.estado === 'emitida' && <button className="btn btn-secondary" onClick={onConfirmar} disabled={confirmando}>{confirmando ? 'Confirmando...' : 'Marcar confirmada'}</button>}
-          {orden.estado === 'confirmada' && <span className="badge badge-green" style={{padding:'6px 12px'}}>OC Confirmada</span>}
+          {ordenActual.estado === 'emitida' && <button className="btn btn-secondary" onClick={onConfirmar} disabled={confirmando}>{confirmando ? 'Confirmando...' : 'Marcar confirmada'}</button>}
+          {ordenActual.estado === 'confirmada' && <span className="badge badge-green" style={{padding:'6px 12px'}}>OC Confirmada</span>}
           <button className="btn btn-secondary" data-local-form="true" onClick={() => setPanelAnticipo(true)}>{I.plus} Registrar anticipo</button>
           <button className="btn btn-primary" data-local-form="true" onClick={onRecepcion}>Registrar recepcion</button>
         </div>
@@ -6163,20 +6195,20 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, confirmando, onRe
       )}
 
       <div className="tabs">
-        {['detalle','items','anticipos','seguimiento','documentos'].map(t => (
+        {['detalle','items','anticipos','transito','seguimiento','documentos'].map(t => (
           <div key={t} className={'tab '+(tab===t?'active':'')} onClick={() => setTab(t)}>
-            {t === 'anticipos' ? `Anticipos (${anticiposOC.length})` : t}
+            {t === 'anticipos' ? `Anticipos (${anticiposOC.length})` : t === 'transito' ? `Transito (${transitosOC.length})` : t}
           </div>
         ))}
       </div>
 
       {tab === 'detalle' && (
         <div className="card" style={{padding:20}}>
-          <p><strong>SOLPE origen:</strong> {orden.solpe_codigo || orden.solpe_id || '-'}</p>
-          <p><strong>Descripcion:</strong> {orden.descripcion}</p>
-          <p><strong>Condicion pago:</strong> {orden.condicion_pago}</p>
-          <p><strong>Entrega esperada:</strong> {orden.fecha_entrega_esperada}</p>
-          <p><strong>Notas:</strong> {orden.notas_internas || '-'}</p>
+          <p><strong>SOLPE origen:</strong> {ordenActual.solpe_codigo || ordenActual.solpe_id || '-'}</p>
+          <p><strong>Descripcion:</strong> {ordenActual.descripcion}</p>
+          <p><strong>Condicion pago:</strong> {ordenActual.condicion_pago}</p>
+          <p><strong>Entrega esperada:</strong> {ordenActual.fecha_entrega_esperada}</p>
+          <p><strong>Notas:</strong> {ordenActual.notas_internas || '-'}</p>
         </div>
       )}
 
@@ -6185,7 +6217,7 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, confirmando, onRe
           <div className="table-wrap">
             <table className="tbl">
               <thead><tr><th>Item</th><th>Cantidad</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th></tr></thead>
-              <tbody>{orden.items?.map((i, idx) => (
+              <tbody>{ordenActual.items?.map((i, idx) => (
                 <tr key={idx}>
                   <td>{i.descripcion}</td><td>{i.cantidad}</td><td>{i.unidad}</td>
                   <td>{moneyD(i.precio_unitario)}</td><td>{moneyD(i.subtotal)}</td>
@@ -6240,16 +6272,54 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, confirmando, onRe
         </div>
       )}
 
-      {tab === 'seguimiento' && (
-        <div className="card" style={{padding:20}}>
-          {['Emitida','Confirmada','En transito','Recibida'].map((s, i) => (
-            <div key={s} style={{padding:'10px 0', borderBottom:'1px solid var(--border-subtle)'}}>
-              <strong>{i===0 || orden.estado!=='emitida' ? '' : '○'} {s}</strong>
-              <span className="text-muted" style={{marginLeft:12}}>{i===0 ? orden.fecha_emision : '-'}</span>
-            </div>
-          ))}
-        </div>
+      {tab === 'transito' && (
+        <TransitoOCPanel
+          orden={ordenActual}
+          transitos={transitosOC}
+          transportistas={transportistas}
+          empresa={empresa}
+          authUser={authUser}
+          onGuardar={registrarTransitoOCCtx}
+          addToast={addToast}
+        />
       )}
+
+      {tab === 'seguimiento' && (() => {
+        const ORDEN_ESTADOS = ['emitida','confirmada','en_transito','recibida_parcial','cerrada','recibida_total'];
+        const estadoIdx = ORDEN_ESTADOS.indexOf(ordenActual.estado);
+        const pasos = [
+          { label: 'Emitida',     fecha: ordenActual.fecha_emision,       estadoMin: 0 },
+          { label: 'Confirmada',  fecha: ordenActual.fecha_confirmada || (estadoIdx >= 1 ? ordenActual.updated_at?.slice(0,10) : null), estadoMin: 1 },
+          { label: 'En transito', fecha: ordenActual.fecha_en_transito || (estadoIdx >= 2 ? ordenActual.updated_at?.slice(0,10) : null), estadoMin: 2 },
+          { label: 'Recibida',    fecha: ordenActual.fecha_recepcion_real, estadoMin: 3 },
+        ];
+        return (
+          <div className="card" style={{padding:20}}>
+            {pasos.map(({ label, fecha, estadoMin }) => {
+              const completado = estadoIdx >= estadoMin;
+              return (
+                <div key={label} style={{padding:'10px 0', borderBottom:'1px solid var(--border-subtle)', display:'flex', alignItems:'center', gap:12}}>
+                  <strong style={{minWidth:120, color: completado ? 'var(--fg)' : 'var(--fg-muted)'}}>{label}</strong>
+                  <span className={completado ? '' : 'text-muted'}>{fecha || (completado ? 'Sin fecha registrada' : '-')}</span>
+                  {completado && <span className="badge badge-green" style={{fontSize:10}}>✓</span>}
+                </div>
+              );
+            })}
+            {transitoActual && (
+              <div style={{marginTop:14, padding:12, border:'1px solid var(--border)', borderRadius:8, background:'var(--bg-subtle)'}}>
+                <div className="row" style={{justifyContent:'space-between', gap:10}}>
+                  <strong>{OC_TRANSITO_TIPO_LABEL[transitoActual.tipo] || transitoActual.tipo}</strong>
+                  <span className={`badge ${OC_TRANSITO_ESTADO_BADGE[transitoActual.estado] || 'badge-gray'}`}>{String(transitoActual.estado || '').replace('_', ' ')}</span>
+                </div>
+                <div className="text-muted" style={{fontSize:12, marginTop:6}}>
+                  Salida: {transitoActual.fecha_salida || '-'} · Llegada estimada: {transitoActual.fecha_estimada_llegada || '-'}
+                  {transitoActual.tipo === 'despacho_proveedor' && transitoActual.guia_proveedor_numero ? ` · Guia proveedor: ${transitoActual.guia_proveedor_numero}` : ''}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {tab === 'documentos' && (
         <div className="card" style={{padding:20}}>
@@ -6263,7 +6333,7 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, confirmando, onRe
           <div className="side-panel" style={{width:'min(480px, 96vw)'}}>
             <div className="side-panel-head">
               <div>
-                <div className="eyebrow">Orden de Compra {orden.codigo}</div>
+                <div className="eyebrow">Orden de Compra {ordenActual.codigo}</div>
                 <div style={{fontWeight:700, fontSize:20}}>Registrar anticipo</div>
                 <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
                   Total OC: {money(totalOC)} · Ya anticipado: {money(totalAnticipado)} · Saldo: {money(saldoPendiente)}
@@ -6301,6 +6371,207 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, confirmando, onRe
         </>
       )}
     </>
+  );
+}
+
+function TransitoOCPanel({ orden, transitos = [], transportistas = [], empresa, authUser, onGuardar, addToast }) {
+  const [form, setForm] = useState(nuevaTransitoOCForm);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const uploadRef = useRef(null);
+  const transitoActual = transitoPrincipalOC(transitos);
+  const puedeRegistrar = ['emitida', 'confirmada'].includes(String(orden.estado || '').toLowerCase());
+  const transportistasPropios = (transportistas || []).filter(t => (t.tipo_operador || 'tercero') === 'propio' && t.activo !== false);
+  const transportistaSel = transportistasPropios.find(t => t.id === form.transportista_id);
+  const vehiculos = (transportistaSel?.vehiculos || []).filter(v => v.activo !== false);
+  const conductores = (transportistaSel?.conductores || []).filter(c => c.activo !== false);
+  const transitoTransportista = (transportistas || []).find(t => t.id === transitoActual?.transportista_id);
+  const transitoVehiculo = (transitoTransportista?.vehiculos || []).find(v => v.id === transitoActual?.vehiculo_id);
+  const transitoConductor = (transitoTransportista?.conductores || []).find(c => c.id === transitoActual?.conductor_id);
+  const setF = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+
+  useEffect(() => {
+    setForm(nuevaTransitoOCForm());
+    setErr('');
+  }, [orden.id]);
+
+  useEffect(() => {
+    if (form.tipo !== 'recojo_propio') return;
+    if (form.transportista_id && !transportistasPropios.some(t => t.id === form.transportista_id)) {
+      setForm(prev => ({ ...prev, transportista_id: '', vehiculo_id: '', conductor_id: '' }));
+    }
+  }, [form.tipo, form.transportista_id, transportistasPropios]);
+
+  const guardar = async event => {
+    event.preventDefault();
+    setErr('');
+    if (!puedeRegistrar) {
+      setErr(`No se puede registrar transito para una OC en estado "${orden.estado}".`);
+      return;
+    }
+    if (!form.fecha_salida) {
+      setErr('La fecha de salida es obligatoria.');
+      return;
+    }
+    if (form.tipo === 'recojo_propio') {
+      if (!form.transportista_id || !form.vehiculo_id || !form.conductor_id) {
+        setErr('Selecciona transportista propio, vehiculo y conductor.');
+        return;
+      }
+    } else if (!form.guia_proveedor_numero?.trim()) {
+      setErr('Registra el numero de guia del proveedor.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      let archivoUrl = null;
+      if (form.tipo === 'despacho_proveedor' && isSupabaseConfigured() && uploadRef.current) {
+        const uploaded = await uploadRef.current.uploadPendingFiles();
+        archivoUrl = uploaded?.[0]?.storage_path || uploaded?.[0]?.url || null;
+      }
+      const payload = limpiarTransitoPayload({
+        ...form,
+        archivo_url: archivoUrl || form.archivo_url || null,
+        orden_compra_id: orden.id,
+        estado: 'en_transito',
+      });
+      await onGuardar(payload);
+      setForm(nuevaTransitoOCForm());
+      addToast?.('Transito de OC registrado.', 'success');
+    } catch (error) {
+      setErr(error.message || 'No se pudo registrar el transito.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{display:'flex', flexDirection:'column', gap:12}}>
+      {transitoActual && (
+        <div className="card" style={{padding:16}}>
+          <div className="card-head" style={{padding:0, marginBottom:8}}>
+            <h3>Transito registrado</h3>
+            <span className={`badge ${OC_TRANSITO_ESTADO_BADGE[transitoActual.estado] || 'badge-gray'}`}>{String(transitoActual.estado || '').replace('_', ' ')}</span>
+          </div>
+          <div className="grid-2" style={{gap:10, fontSize:13}}>
+            <div><strong>Tipo:</strong> {OC_TRANSITO_TIPO_LABEL[transitoActual.tipo] || transitoActual.tipo}</div>
+            <div><strong>Salida:</strong> {transitoActual.fecha_salida || '-'}</div>
+            <div><strong>Llegada estimada:</strong> {transitoActual.fecha_estimada_llegada || '-'}</div>
+            {transitoActual.tipo === 'despacho_proveedor' && <div><strong>Guia proveedor:</strong> {transitoActual.guia_proveedor_numero || '-'}</div>}
+            {transitoActual.tipo === 'recojo_propio' && <div><strong>Transportista:</strong> {transitoTransportista?.razon_social || transitoActual.transportista_id || '-'}</div>}
+            {transitoActual.tipo === 'recojo_propio' && <div><strong>Vehiculo:</strong> {transitoVehiculo?.placa || transitoActual.vehiculo_id || '-'}</div>}
+            {transitoActual.tipo === 'recojo_propio' && <div><strong>Conductor:</strong> {transitoConductor?.nombre || transitoActual.conductor_id || '-'}</div>}
+          </div>
+          {transitoActual.observaciones && <div className="text-muted" style={{fontSize:12, marginTop:8}}>{transitoActual.observaciones}</div>}
+        </div>
+      )}
+
+      {!puedeRegistrar ? (
+        <div className="card" style={{padding:20}}>
+          <p className="text-muted">El transito solo puede registrarse cuando la OC esta emitida o confirmada.</p>
+        </div>
+      ) : (
+        <form className="card" style={{padding:20}} onSubmit={guardar} data-local-form="true">
+          <div className="card-head" style={{padding:0, marginBottom:14}}>
+            <h3>Registrar transito</h3>
+            <span className="badge badge-orange">Actualiza la OC</span>
+          </div>
+          {err && <div className="alert alert-danger" style={{marginBottom:12}}>{err}</div>}
+          <div className="grid-2" style={{gap:12}}>
+            <div className="input-group">
+              <label>Escenario</label>
+              <select className="select" value={form.tipo} onChange={e => setF('tipo', e.target.value)}>
+                <option value="recojo_propio">Recojo propio</option>
+                <option value="despacho_proveedor">El proveedor despacha</option>
+              </select>
+            </div>
+            <div className="input-group">
+              <label>Fecha de salida *</label>
+              <input className="input" type="date" value={form.fecha_salida} onChange={e => setF('fecha_salida', e.target.value)} required />
+            </div>
+            <div className="input-group">
+              <label>Fecha estimada de llegada</label>
+              <input className="input" type="date" value={form.fecha_estimada_llegada} onChange={e => setF('fecha_estimada_llegada', e.target.value)} />
+            </div>
+
+            {form.tipo === 'recojo_propio' ? (
+              <>
+                <div className="input-group">
+                  <label>Transportista propio *</label>
+                  <select className="select" value={form.transportista_id} onChange={e => setForm(prev => ({ ...prev, transportista_id: e.target.value, vehiculo_id: '', conductor_id: '' }))}>
+                    <option value="">Seleccionar...</option>
+                    {transportistasPropios.map(t => <option key={t.id} value={t.id}>{t.razon_social} - {t.ruc}</option>)}
+                  </select>
+                  {transportistasPropios.length === 0 && <div className="text-muted" style={{fontSize:12, marginTop:4}}>Crea un transportista con tipo operador "Propio" en Remision &gt; Transportistas.</div>}
+                </div>
+                <div className="input-group">
+                  <label>Vehiculo *</label>
+                  <select className="select" value={form.vehiculo_id} onChange={e => setF('vehiculo_id', e.target.value)} disabled={!form.transportista_id}>
+                    <option value="">Seleccionar...</option>
+                    {vehiculos.map(v => <option key={v.id} value={v.id}>{v.placa} {v.marca ? `- ${v.marca}` : ''}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Conductor *</label>
+                  <select className="select" value={form.conductor_id} onChange={e => setF('conductor_id', e.target.value)} disabled={!form.transportista_id}>
+                    <option value="">Seleccionar...</option>
+                    {conductores.map(c => <option key={c.id} value={c.id}>{c.nombre} - DNI {c.dni}</option>)}
+                  </select>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="input-group">
+                  <label>Numero guia proveedor *</label>
+                  <input className="input" value={form.guia_proveedor_numero} onChange={e => setF('guia_proveedor_numero', e.target.value)} />
+                </div>
+                <div className="input-group">
+                  <label>Fecha guia proveedor</label>
+                  <input className="input" type="date" value={form.guia_proveedor_fecha} onChange={e => setF('guia_proveedor_fecha', e.target.value)} />
+                </div>
+                <div className="input-group">
+                  <label>Transportista proveedor</label>
+                  <input className="input" value={form.proveedor_transportista_nombre} onChange={e => setF('proveedor_transportista_nombre', e.target.value)} />
+                </div>
+                <div className="input-group">
+                  <label>RUC transportista</label>
+                  <input className="input" value={form.proveedor_transportista_ruc} onChange={e => setF('proveedor_transportista_ruc', e.target.value)} maxLength={11} />
+                </div>
+                <div className="input-group">
+                  <label>Placa</label>
+                  <input className="input" value={form.proveedor_vehiculo_placa} onChange={e => setF('proveedor_vehiculo_placa', e.target.value)} />
+                </div>
+                <div className="input-group">
+                  <label>Conductor</label>
+                  <input className="input" value={form.proveedor_conductor_nombre} onChange={e => setF('proveedor_conductor_nombre', e.target.value)} />
+                </div>
+                <div style={{gridColumn:'1/-1'}}>
+                  <FileUpload
+                    ref={uploadRef}
+                    entidadTipo="orden_compra_transitos"
+                    entidadId={form.id}
+                    empresaId={empresa?.id}
+                    categoria="guia_proveedor"
+                    subidoPor={authUser?.id || null}
+                    deferUpload
+                    disabled={saving}
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="input-group" style={{gridColumn:'1/-1'}}>
+              <label>Observaciones</label>
+              <textarea className="input" rows={2} value={form.observaciones} onChange={e => setF('observaciones', e.target.value)} />
+            </div>
+          </div>
+          <div className="row mt-6" style={{justifyContent:'flex-end'}}>
+            <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Registrando...' : 'Registrar en transito'}</button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }
 
@@ -8296,7 +8567,7 @@ const OV_FORM_INIT = {
   fecha_emision: new Date().toISOString().slice(0,10), fecha_entrega: '',
   almacen_despacho_id: '', observaciones: '', lineas: [],
 };
-const TRANS_FORM_INIT = { ruc: '', razon_social: '', nombre_comercial: '', nro_mtc: '', direccion: '', telefono: '', email: '' };
+const TRANS_FORM_INIT = { ruc: '', razon_social: '', nombre_comercial: '', tipo_operador: 'tercero', nro_mtc: '', direccion: '', telefono: '', email: '' };
 
 function Remision() {
   const {
@@ -8488,7 +8759,10 @@ function Remision() {
     if (!vehiculoForm.placa) { setErrores(['La placa es obligatoria']); return; }
     setSubmitting(true); setErrores([]);
     try {
-      await crearVehiculoCtx({ ...vehiculoForm, transportista_id: transId });
+      const data = await crearVehiculoCtx({ ...vehiculoForm, transportista_id: transId });
+      setModalTrans(prev => prev && prev !== 'nuevo' && prev.id === transId
+        ? { ...prev, vehiculos: [...(prev.vehiculos || []), data] }
+        : prev);
       setVehiculoForm({ placa: '', marca: '', modelo: '', tipo: 'camion', nro_certificado_habilitacion: '' });
       setSubTab('lista');
     } catch (e) { setErrores([e.message]); }
@@ -8499,7 +8773,10 @@ function Remision() {
     if (!conductorForm.nombre || !conductorForm.dni) { setErrores(['Nombre y DNI son obligatorios']); return; }
     setSubmitting(true); setErrores([]);
     try {
-      await crearConductorCtx({ ...conductorForm, transportista_id: transId });
+      const data = await crearConductorCtx({ ...conductorForm, transportista_id: transId });
+      setModalTrans(prev => prev && prev !== 'nuevo' && prev.id === transId
+        ? { ...prev, conductores: [...(prev.conductores || []), data] }
+        : prev);
       setConductorForm({ nombre: '', dni: '', brevete: '', categoria_brevete: 'A-III', vigencia_brevete: '' });
       setSubTab('lista');
     } catch (e) { setErrores([e.message]); }
@@ -8626,21 +8903,22 @@ function Remision() {
         <div className="card mt-6">
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>RUC</th><th>Razón Social</th><th>Reg. MTC</th><th>Vehículos</th><th>Conductores</th><th>Estado</th><th></th></tr></thead>
+              <thead><tr><th>RUC</th><th>Razón Social</th><th>Tipo</th><th>Reg. MTC</th><th>Vehículos</th><th>Conductores</th><th>Estado</th><th></th></tr></thead>
               <tbody>
                 {(transportistas || []).length === 0 && (
-                  <tr><td colSpan={7} style={{textAlign:'center',padding:24,color:'var(--fg-muted)'}}>Sin transportistas registrados</td></tr>
+                  <tr><td colSpan={8} style={{textAlign:'center',padding:24,color:'var(--fg-muted)'}}>Sin transportistas registrados</td></tr>
                 )}
                 {(transportistas || []).map(t => (
                   <tr key={t.id} className="hover-row">
                     <td className="mono">{t.ruc}</td>
                     <td style={{fontWeight:600}}>{t.razon_social}</td>
+                    <td><span className={`badge ${(t.tipo_operador || 'tercero') === 'propio' ? 'badge-cyan' : 'badge-gray'}`}>{(t.tipo_operador || 'tercero') === 'propio' ? 'Propio' : 'Tercero'}</span></td>
                     <td style={{fontSize:11}}>{t.nro_mtc || '—'}</td>
                     <td>{(t.vehiculos || []).filter(v => v.activo !== false).length}</td>
                     <td>{(t.conductores || []).filter(c => c.activo !== false).length}</td>
                     <td><span className={`badge ${t.activo ? 'badge-green' : 'badge-gray'}`}>{t.activo ? 'Activo' : 'Inactivo'}</span></td>
                     <td>
-                      <button className="icon-btn" onClick={() => { setModalTrans(t); setTransForm({ ruc:t.ruc, razon_social:t.razon_social, nombre_comercial:t.nombre_comercial||'', nro_mtc:t.nro_mtc||'', direccion:t.direccion||'', telefono:t.telefono||'', email:t.email||'' }); setSubTab('lista'); setErrores([]); }}>{I.edit}</button>
+                      <button className="icon-btn" onClick={() => { setModalTrans(t); setTransForm({ ruc:t.ruc, razon_social:t.razon_social, nombre_comercial:t.nombre_comercial||'', tipo_operador:t.tipo_operador||'tercero', nro_mtc:t.nro_mtc||'', direccion:t.direccion||'', telefono:t.telefono||'', email:t.email||'' }); setSubTab('lista'); setErrores([]); }}>{I.edit}</button>
                     </td>
                   </tr>
                 ))}
@@ -9117,6 +9395,13 @@ function Remision() {
                 <div><label className="form-label">RUC *</label><input className="input" value={transForm.ruc} onChange={e => setTransForm(p => ({...p, ruc: e.target.value}))} maxLength={11} /></div>
                 <div><label className="form-label">Razón social *</label><input className="input" value={transForm.razon_social} onChange={e => setTransForm(p => ({...p, razon_social: e.target.value}))} /></div>
                 <div><label className="form-label">Nombre comercial</label><input className="input" value={transForm.nombre_comercial} onChange={e => setTransForm(p => ({...p, nombre_comercial: e.target.value}))} /></div>
+                <div>
+                  <label className="form-label">Tipo operador</label>
+                  <select className="input" value={transForm.tipo_operador || 'tercero'} onChange={e => setTransForm(p => ({...p, tipo_operador: e.target.value}))}>
+                    <option value="tercero">Tercero contratado</option>
+                    <option value="propio">Propio de la empresa</option>
+                  </select>
+                </div>
                 <div><label className="form-label">N° Reg. MTC</label><input className="input" value={transForm.nro_mtc} onChange={e => setTransForm(p => ({...p, nro_mtc: e.target.value}))} /></div>
                 <div style={{gridColumn:'1/-1'}}><label className="form-label">Dirección</label><input className="input" value={transForm.direccion} onChange={e => setTransForm(p => ({...p, direccion: e.target.value}))} /></div>
                 <div><label className="form-label">Teléfono</label><input className="input" value={transForm.telefono} onChange={e => setTransForm(p => ({...p, telefono: e.target.value}))} /></div>

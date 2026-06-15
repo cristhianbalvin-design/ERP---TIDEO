@@ -3003,10 +3003,11 @@ function ModalEntradaManual({ materiales, almacenes, onClose, onSave }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{maxWidth:520}} onClick={e => e.stopPropagation()}>
-        <div className="modal-head"><h2>Registrar Entrada</h2><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
-        <div className="modal-body" style={{display:'flex',flexDirection:'column',gap:14}}>
+    <>
+      <div className="side-panel-backdrop" onClick={onClose}/>
+      <div className="side-panel" style={{width:'min(520px,96vw)'}}>
+        <div className="side-panel-head"><h2>Registrar Entrada</h2><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
+        <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
           <div>
             <label className="label">Motivo *</label>
             <select className="select" value={form.motivo} onChange={e => setF('motivo', e.target.value)}>
@@ -3062,13 +3063,13 @@ function ModalEntradaManual({ materiales, almacenes, onClose, onSave }) {
           )}
           <div><label className="label">Observación</label><input className="input" value={form.observacion} onChange={e => setF('observacion', e.target.value)} /></div>
           {err && <div className="alert alert-danger">{err}</div>}
-        </div>
-        <div className="modal-foot">
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : <>{I.plus} Registrar Entrada</>}</button>
+          <div className="row mt-6" style={{justifyContent:'flex-end',gap:8}}>
+            <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : <>{I.plus} Registrar Entrada</>}</button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -3092,10 +3093,11 @@ function ModalTransferencia({ sku, almacenes, onClose, onSave }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{maxWidth:460}} onClick={e => e.stopPropagation()}>
-        <div className="modal-head"><h2>Transferencia Interna</h2><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
-        <div className="modal-body" style={{display:'flex',flexDirection:'column',gap:14}}>
+    <>
+      <div className="side-panel-backdrop" onClick={onClose}/>
+      <div className="side-panel" style={{width:'min(480px,96vw)'}}>
+        <div className="side-panel-head"><h2>Transferencia Interna</h2><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
+        <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
           <div style={{padding:'10px 14px',background:'var(--bg-subtle)',borderRadius:8}}>
             <div className="eyebrow">Material</div>
             <div style={{fontWeight:600}}>{sku.sku} · {sku.nombre}</div>
@@ -3122,13 +3124,13 @@ function ModalTransferencia({ sku, almacenes, onClose, onSave }) {
           </div>
           <div><label className="label">Observación</label><input className="input" value={form.observacion} onChange={e => setF('observacion', e.target.value)} /></div>
           {err && <div className="alert alert-danger">{err}</div>}
-        </div>
-        <div className="modal-foot">
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Transferir'}</button>
+          <div className="row mt-6" style={{justifyContent:'flex-end',gap:8}}>
+            <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Transferir'}</button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -3163,10 +3165,11 @@ function ModalAjuste({ sku, onClose, onSave }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{maxWidth:440}} onClick={e => e.stopPropagation()}>
-        <div className="modal-head"><h2>Ajuste de Inventario</h2><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
-        <div className="modal-body" style={{display:'flex',flexDirection:'column',gap:14}}>
+    <>
+      <div className="side-panel-backdrop" onClick={onClose}/>
+      <div className="side-panel" style={{width:'min(480px,96vw)'}}>
+        <div className="side-panel-head"><h2>Ajuste de Inventario</h2><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
+        <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
           <div style={{padding:'10px 14px',background:'var(--bg-subtle)',borderRadius:8}}>
             <div style={{fontWeight:600}}>{sku.sku} · {sku.nombre}</div>
             <div style={{fontSize:12,color:'var(--fg-muted)'}}>Físico actual: {sku.fisico ?? sku.disponible} {sku.unidad}</div>
@@ -3188,13 +3191,13 @@ function ModalAjuste({ sku, onClose, onSave }) {
           </div>
           <div><label className="label">Observación / Descripción *</label><textarea className="input" rows={2} value={form.observacion} onChange={e => setF('observacion', e.target.value)} /></div>
           {err && <div className="alert alert-danger">{err}</div>}
-        </div>
-        <div className="modal-foot">
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Registrar Ajuste'}</button>
+          <div className="row mt-6" style={{justifyContent:'flex-end',gap:8}}>
+            <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Registrar Ajuste'}</button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -3946,6 +3949,7 @@ function Inventario() {
           onSave={handleAjuste}
         />
       )}
+
     </>
   );
 }

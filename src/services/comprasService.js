@@ -6,6 +6,7 @@ const ESTADOS_COMPLETADOS = new Set(['cerrada', 'recibida_total', 'aprobada']);
 const SCHEMA_CACHE_MISSING_COLUMN_RE = /Could not find the '([^']+)' column of '([^']+)' in the schema cache/i;
 const ORDENES_COMPRA_OPTIONAL_COLUMNS = new Set(['condicion_pago', 'notas_proveedor', 'notas_internas', 'creado_por']);
 const ORDENES_SERVICIO_OPTIONAL_COLUMNS = new Set(['condicion_pago', 'notas']);
+const TABLA_NO_EXISTE_RE = /(does not exist|schema cache|Could not find the table|relation .* does not exist)/i;
 
 function getSchemaCacheMissingColumn(error, tableName) {
   const message = [error?.message, error?.details, error?.hint].filter(Boolean).join(' ');
@@ -337,6 +338,44 @@ export const comprasService = {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('recepciones').insert([{ ...recepcion, empresa_id: empresaId }]).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  // ─── Tránsitos de OC ─────────────────────────────────────────
+  getOrdenCompraTransitos: async (empresaId) => {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('orden_compra_transitos')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (TABLA_NO_EXISTE_RE.test([error.message, error.details, error.hint].filter(Boolean).join(' '))) return [];
+      console.error('Error fetching orden_compra_transitos:', error);
+      return [];
+    }
+    return data || [];
+  },
+  crearOrdenCompraTransito: async (empresaId, transito) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('orden_compra_transitos')
+      .insert([{ ...transito, empresa_id: empresaId }])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+  actualizarOrdenCompraTransito: async (id, cambios) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('orden_compra_transitos')
+      .update({ ...cambios, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
     if (error) throw error;
     return data;
   },

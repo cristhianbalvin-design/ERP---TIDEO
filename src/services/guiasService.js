@@ -391,6 +391,7 @@ export async function crearTransportista(empresaId, form) {
     ruc: form.ruc,
     razon_social: form.razon_social,
     nombre_comercial: form.nombre_comercial || null,
+    tipo_operador: form.tipo_operador || 'tercero',
     nro_mtc: form.nro_mtc || null,
     direccion: form.direccion || null,
     telefono: form.telefono || null,
