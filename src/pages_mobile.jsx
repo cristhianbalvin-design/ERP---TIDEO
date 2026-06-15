@@ -11,6 +11,7 @@ import { PHONE_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } f
 import { getSupabaseClient } from './lib/supabaseClient.js';
 import { porcentajeBaseComision, resolverVendedorComision } from './lib/comisiones.js';
 import { construirAutoservicioLocal } from './services/autoservicioEmpleadoService.js';
+import { GEO_CONFIG_DEFAULT, GEO_CONSENT_VERSION, enqueueGeoMark, evaluarGeofenceLocal, getGeoQueue, setGeoQueue, syncGeoQueue } from './services/geofencingService.js';
 
 // Mobile field views - all field profiles
 
@@ -276,9 +277,14 @@ function cargarImagen(src) {
 }
 
 function AsistenciaMobileView({ screen, setScreen }) {
-  const { authUser, usuarios, addNotificacion, registrosAsistencia, setRegistrosAsistencia, empresa, personalAdmin, personalOperativo, turnos } = useApp();
+  const {
+    authUser, usuarios, addNotificacion, registrosAsistencia, setRegistrosAsistencia, empresa, personalAdmin, personalOperativo, turnos,
+    empresaConfig = {}, geocercas = [], geocercaAsignaciones = [], ubicacionConsentimientos = [], registrarConsentimientoUbicacionCtx,
+  } = useApp();
   const [loading, setLoading] = useState(false);
   const [geoEstado, setGeoEstado] = useState('');
+  const [showConsent, setShowConsent] = useState(false);
+  const [offlinePendientes, setOfflinePendientes] = useState(() => getGeoQueue().length);
   
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const trabajadorActual = getTrabajadorAsistenciaMovil({ authUser, usuarios, personalAdmin, personalOperativo });
@@ -287,6 +293,10 @@ function AsistenciaMobileView({ screen, setScreen }) {
   const today = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
   const trabajadorId = trabajadorActual?.id || '';
   const turnoIdPersistible = turnos?.some(t => t.id === trabajadorActual?.turno_id) ? trabajadorActual.turno_id : null;
+  const geoCfg = { ...GEO_CONFIG_DEFAULT, ...(empresaConfig || {}) };
+  const geoActivo = Boolean(geoCfg.asistencia_movil_ubicacion_habilitada);
+  const consentimientoActual = ubicacionConsentimientos.find(c => c.personal_id === trabajadorId && c.version === GEO_CONSENT_VERSION);
+  const necesitaConsentimiento = geoActivo && Boolean(geoCfg.asistencia_movil_consentimiento_requerido) && !consentimientoActual;
   
   // Estado local para gobernar el flujo: entrada -> salida -> completado
   const [modo, setModo] = useState('entrada');
@@ -301,10 +311,67 @@ function AsistenciaMobileView({ screen, setScreen }) {
       setModo('salida');
     } else if (rh.length > 0) {
       setModo('completado');
-    } else {
+    } else if (geoActivo) {
       setModo('entrada');
     }
   }, [registrosAsistencia, trabajadorId, today]);
+
+  useEffect(() => {
+    const sincronizar = () => {
+      syncGeoQueue({
+        onSynced: saved => setRegistrosAsistencia(prev => [saved, ...prev.filter(r => r.id !== saved.id && !(r.trabajador_id === saved.trabajador_id && r.fecha === saved.fecha && r.offline_marcacion))]),
+      }).then(res => {
+        setOfflinePendientes(getGeoQueue().length);
+        if (res.synced) addNotificacion(`${res.synced} marcacion(es) offline sincronizadas.`);
+      }).catch(() => {});
+    };
+    window.addEventListener('online', sincronizar);
+    if (navigator.onLine) sincronizar();
+    return () => window.removeEventListener('online', sincronizar);
+  }, [addNotificacion, setRegistrosAsistencia]);
+
+  const aceptarConsentimiento = async () => {
+    if (!trabajadorActual) return;
+    try {
+      await registrarConsentimientoUbicacionCtx?.({
+        personal_id: trabajadorActual.id,
+        personal_tipo: trabajadorActual.personal_tipo || trabajadorActual.trabajador_tipo || 'operativo',
+        auth_user_id: authUser?.id || null,
+        texto: geoCfg.asistencia_movil_consentimiento_texto,
+        version: GEO_CONSENT_VERSION,
+        origen: 'mobile_pwa',
+      });
+    } catch {
+      addNotificacion('No se pudo guardar el consentimiento. Intenta nuevamente con conexion.');
+      return;
+    }
+    setShowConsent(false);
+  };
+
+  const capturarFixGps = async () => {
+    if (!geoActivo) return { fix: null, motivo: 'geofencing_inactivo' };
+    if (!navigator.geolocation) return { fix: null, motivo: 'geolocalizacion_no_soportada' };
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+      });
+      return {
+        fix: {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          precision_m: Math.round(pos.coords.accuracy || 0),
+          fix_at: new Date(pos.timestamp || Date.now()).toISOString(),
+          enviado_at: new Date().toISOString(),
+          simulated: false,
+          fuente: 'navigator.geolocation',
+        },
+        motivo: null,
+      };
+    } catch (error) {
+      const motivo = error?.code === 1 ? 'permiso_denegado' : error?.code === 3 ? 'timeout' : 'sin_senal';
+      return { fix: null, motivo };
+    }
+  };
 
   const manejarMarcacion = async () => {
     if (modo === 'completado') return;
@@ -316,22 +383,46 @@ function AsistenciaMobileView({ screen, setScreen }) {
       addNotificacion('Tu ficha no tiene un turno real asignado. Pide a RRHH asignarte un turno creado en Supabase.');
       return;
     }
+    if (necesitaConsentimiento) {
+      setShowConsent(true);
+      return;
+    }
     setLoading(true);
     setGeoEstado('Obteniendo ubicación...');
     
-    let lat = null, lng = null;
-    if (navigator.geolocation) {
+    let lat = null, lng = null, accuracy = null, fixAt = null;
+    if (geoActivo && navigator.geolocation) {
       try {
         const pos = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
         });
         lat = pos.coords.latitude;
         lng = pos.coords.longitude;
+        accuracy = Math.round(pos.coords.accuracy || 0);
+        fixAt = new Date(pos.timestamp || Date.now()).toISOString();
       } catch (error) {
         addNotificacion('No se pudo obtener la ubicación exacta. Asegúrate de dar permisos.');
       }
     } else {
       addNotificacion('Geolocalización no soportada en este dispositivo.');
+    }
+
+    const fix = lat != null && lng != null
+      ? { lat, lng, precision_m: accuracy, fix_at: fixAt || new Date().toISOString(), enviado_at: new Date().toISOString(), simulated: false, fuente: 'navigator.geolocation' }
+      : null;
+    const motivo = fix ? null : (geoActivo ? 'gps_no_disponible' : 'geofencing_inactivo');
+    if (!fix && geoActivo && !geoCfg.geofencing_permitir_sin_gps) {
+      addNotificacion('No se pudo marcar: la politica exige ubicacion GPS.');
+      setLoading(false);
+      setGeoEstado('');
+      return;
+    }
+    const geoLocal = evaluarGeofenceLocal({ trabajador: trabajadorActual, geocercas, asignaciones: geocercaAsignaciones, fix: fix || { motivo }, fecha: today, config: geoCfg });
+    if (geoLocal.estado === 'rechazable') {
+      addNotificacion(`Fuera de perimetro (${geoLocal.distancia_m} m). Politica estricta activa.`);
+      setLoading(false);
+      setGeoEstado('');
+      return;
     }
 
     const ahora = new Date();
@@ -348,6 +439,16 @@ function AsistenciaMobileView({ screen, setScreen }) {
         hora_salida: null,
         latitud: lat,
         longitud: lng,
+        ubicacion_entrada: fix,
+        geofence_entrada_estado: geoLocal.estado === 'rechazable' ? 'fuera' : geoLocal.estado,
+        geocerca_entrada_id: geoLocal.geocerca_id || null,
+        distancia_entrada_m: geoLocal.distancia_m ?? null,
+        precision_entrada_m: fix?.precision_m ?? null,
+        ubicacion_fix_entrada_at: fix?.fix_at || null,
+        ubicacion_enviado_at: fix?.enviado_at || new Date().toISOString(),
+        ubicacion_motivo: motivo || null,
+        ubicacion_simulada: Boolean(fix?.simulated),
+        offline_marcacion: !navigator.onLine,
         refrigerio_tomado_minutos: 0,
         estado: 'incompleto',
         es_falta: false,
@@ -357,19 +458,45 @@ function AsistenciaMobileView({ screen, setScreen }) {
       };
       
       try {
+        if (!navigator.onLine) throw new Error('offline');
         const data = await rrhhService.registrarAsistencia(empresa?.id || 'emp_001', nuevoRegistro);
         setRegistrosAsistencia(prev => [data, ...prev]);
         addNotificacion(`Entrada registrada a las ${horaActual}`);
       } catch (e) {
-        setRegistrosAsistencia(prev => [{...nuevoRegistro, id: `asis_${Date.now()}`}, ...prev]);
-        addNotificacion(`Error BD (Entrada): ${e.message || JSON.stringify(e)}`);
+        const local = {...nuevoRegistro, id: `asis_off_${Date.now()}`, offline_marcacion: true};
+        if (!navigator.onLine || e.message === 'offline') {
+          enqueueGeoMark({ empresaId: empresa?.id || 'emp_001', registro: local });
+          setOfflinePendientes(getGeoQueue().length);
+          addNotificacion(`Entrada guardada offline a las ${horaActual}. Se sincronizara al recuperar senal.`);
+          setRegistrosAsistencia(prev => [local, ...prev]);
+        } else {
+          addNotificacion(`Error BD (Entrada): ${e.message || JSON.stringify(e)}`);
+        }
       }
       setModo('salida');
     } else if (modo === 'salida') {
       const abierto = registrosAsistencia.find(r => r.trabajador_id === trabajadorId && r.fecha === today && !r.hora_salida);
       if (abierto) {
-        const cambios = { ...abierto, hora_salida: horaActual, estado: 'completo', latitud_salida: lat, longitud_salida: lng, origen_registro: 'mobile_pwa' };
+        const cambios = {
+          ...abierto,
+          hora_salida: horaActual,
+          estado: 'completo',
+          latitud_salida: lat,
+          longitud_salida: lng,
+          ubicacion_salida: fix,
+          geofence_salida_estado: geoLocal.estado === 'rechazable' ? 'fuera' : geoLocal.estado,
+          geocerca_salida_id: geoLocal.geocerca_id || null,
+          distancia_salida_m: geoLocal.distancia_m ?? null,
+          precision_salida_m: fix?.precision_m ?? null,
+          ubicacion_fix_salida_at: fix?.fix_at || null,
+          ubicacion_enviado_at: fix?.enviado_at || new Date().toISOString(),
+          ubicacion_motivo: motivo || abierto.ubicacion_motivo || null,
+          ubicacion_simulada: Boolean(fix?.simulated || abierto.ubicacion_simulada),
+          offline_marcacion: Boolean(abierto.offline_marcacion || !navigator.onLine),
+          origen_registro: 'mobile_pwa',
+        };
         try {
+          if (!navigator.onLine) throw new Error('offline');
           if (abierto.id) {
              const data = await rrhhService.actualizarAsistencia(abierto.id, cambios);
              setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? data : r));
@@ -380,8 +507,21 @@ function AsistenciaMobileView({ screen, setScreen }) {
           addNotificacion(`Salida registrada a las ${horaActual}`);
         } catch (e) {
           const updated = { ...abierto, ...cambios };
-          setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? updated : r));
-          addNotificacion(`Error BD (Salida): ${e.message || JSON.stringify(e)}`);
+          if (!navigator.onLine || e.message === 'offline') {
+            const queue = getGeoQueue();
+            const idx = queue.findIndex(item => item.payload?.registro?.id === abierto.id || item.payload?.registro?.trabajador_id === abierto.trabajador_id && item.payload?.registro?.fecha === abierto.fecha);
+            if (idx >= 0) {
+              queue[idx].payload.registro = updated;
+              setGeoQueue(queue);
+            } else {
+              enqueueGeoMark({ empresaId: empresa?.id || 'emp_001', registro: updated, updateId: abierto.id?.startsWith?.('asis_off_') ? null : abierto.id });
+            }
+            setOfflinePendientes(getGeoQueue().length);
+            addNotificacion(`Salida guardada offline a las ${horaActual}. Se sincronizara al recuperar senal.`);
+            setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? updated : r));
+          } else {
+            addNotificacion(`Error BD (Salida): ${e.message || JSON.stringify(e)}`);
+          }
         }
       }
       setModo('completado');
@@ -438,6 +578,17 @@ function AsistenciaMobileView({ screen, setScreen }) {
       </div>
       
       {loading && <div className="text-muted" style={{fontSize:14, fontWeight:600, marginBottom:20}}>{I.mapPin} {geoEstado}</div>}
+      {geoActivo && !loading && (
+        <div className="card" style={{width:'100%', padding:12, marginBottom:14}}>
+          <div style={{fontWeight:800, fontSize:13}}>Ubicacion puntual</div>
+          <div className="text-muted" style={{fontSize:12, marginTop:4}}>Solo se captura al marcar entrada/salida. No hay rastreo continuo ni en segundo plano.</div>
+          <div className="row" style={{gap:6, marginTop:8, flexWrap:'wrap'}}>
+            <span className="badge badge-cyan">{geoCfg.geofencing_modo === 'estricto' ? 'Modo estricto' : 'Modo flexible'}</span>
+            {offlinePendientes > 0 && <span className="badge badge-orange">{offlinePendientes} offline</span>}
+            {necesitaConsentimiento && <span className="badge badge-red">Consentimiento pendiente</span>}
+          </div>
+        </div>
+      )}
       
       {modo === 'completado' && !loading && (
         <div className="badge badge-green" style={{fontSize:14, padding:'10px 20px', borderRadius:20, marginBottom:20}}>{I.check} Turno registrado exitosamente</div>
@@ -453,6 +604,11 @@ function AsistenciaMobileView({ screen, setScreen }) {
             </div>
             <div className="text-muted" style={{fontSize:14, marginBottom:4}}>Entrada: <strong style={{color:'var(--fg)'}}>{r.hora_entrada || '--:--'}</strong></div>
             <div className="text-muted" style={{fontSize:14, marginBottom:10}}>Salida: <strong style={{color:'var(--fg)'}}>{r.hora_salida || '--:--'}</strong></div>
+            {(r.geofence_entrada_estado || r.geofence_salida_estado) && <div className="row" style={{gap:6, marginBottom:8}}>
+              {r.geofence_entrada_estado && <span className={'badge ' + (r.geofence_entrada_estado === 'dentro' ? 'badge-green' : r.geofence_entrada_estado === 'fuera' ? 'badge-orange' : 'badge-gray')}>Entrada {r.geofence_entrada_estado}</span>}
+              {r.geofence_salida_estado && <span className={'badge ' + (r.geofence_salida_estado === 'dentro' ? 'badge-green' : r.geofence_salida_estado === 'fuera' ? 'badge-orange' : 'badge-gray')}>Salida {r.geofence_salida_estado}</span>}
+              {Number(r.precision_entrada_m || 0) > Number(geoCfg.geofencing_precision_baja_m || 80) && <span className="badge badge-orange">precision baja</span>}
+            </div>}
             {r.latitud && <div style={{fontSize:12, color:'var(--fg-muted)', background:'var(--bg)', padding:8, borderRadius:6}}>{I.mapPin} Ingreso: {r.latitud}, {r.longitud}</div>}
             {r.latitud_salida && <div style={{fontSize:12, color:'var(--fg-muted)', background:'var(--bg)', padding:8, borderRadius:6, marginTop:4}}>{I.mapPin} Salida: {r.latitud_salida}, {r.longitud_salida}</div>}
           </div>
@@ -466,6 +622,19 @@ function AsistenciaMobileView({ screen, setScreen }) {
       <div className="mobile-nav-item active">{I.clock}Asistencia</div>
       <div className="mobile-nav-item">{I.settings}Ajustes</div>
     </div>
+    {showConsent && (
+      <div className="modal-backdrop" style={{position:'fixed', inset:0, zIndex:80, background:'rgba(0,0,0,.45)', display:'grid', placeItems:'center', padding:16}}>
+        <div className="card" style={{padding:18, maxWidth:420, width:'100%'}}>
+          <div style={{fontWeight:900, fontSize:18, marginBottom:8}}>Consentimiento de ubicacion</div>
+          <p className="text-muted" style={{fontSize:13, lineHeight:1.5}}>{geoCfg.asistencia_movil_consentimiento_texto}</p>
+          <div className="alert alert-warning" style={{fontSize:12}}>La ubicacion se captura solo al marcar asistencia o al iniciar una OT. La PWA no realiza rastreo continuo.</div>
+          <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}>
+            <button className="btn btn-secondary" onClick={()=>setShowConsent(false)}>Cancelar</button>
+            <button className="btn btn-primary" onClick={aceptarConsentimiento}>Acepto</button>
+          </div>
+        </div>
+      </div>
+    )}
   </>;
 }
 

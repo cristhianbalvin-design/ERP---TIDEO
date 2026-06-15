@@ -28,6 +28,7 @@ import * as personalDocumentosService from './services/personalDocumentosService
 import { portalFase2Service, sha256Text, plantillaConstanciaHtml } from './services/portalFase2Service.js';
 import { biometricoService } from './services/biometricoService.js';
 import { whatsappService } from './services/whatsappService.js';
+import { geofencingService } from './services/geofencingService.js';
 import { tiposDocumentoService } from './services/tiposDocumentoService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { AFP_PARAMETROS_DEFAULT, latestAfpParametros, nominaService } from './services/nominaService.js';
@@ -385,6 +386,9 @@ export function AppProvider({ children }) {
   const [whatsappPlantillas, setWhatsappPlantillas] = useState(useSupabase ? [] : (MOCK.whatsappPlantillas || []));
   const [whatsappMatriz, setWhatsappMatriz] = useState(useSupabase ? [] : (MOCK.whatsappMatriz || []));
   const [whatsappEnvios, setWhatsappEnvios] = useState(useSupabase ? [] : (MOCK.whatsappEnvios || []));
+  const [geocercas, setGeocercas] = useState(useSupabase ? [] : (MOCK.geocercas || []));
+  const [geocercaAsignaciones, setGeocercaAsignaciones] = useState(useSupabase ? [] : (MOCK.geocercaAsignaciones || []));
+  const [ubicacionConsentimientos, setUbicacionConsentimientos] = useState(useSupabase ? [] : (MOCK.ubicacionConsentimientos || []));
   const [asignacionesJornada, setAsignacionesJornada] = useState([]);
   const [evaluacionPlantillas, setEvaluacionPlantillas] = useState([]);
   const [evaluacionCompetencias, setEvaluacionCompetencias] = useState([]);
@@ -1125,6 +1129,15 @@ export function AppProvider({ children }) {
             setWhatsappEnvios(waData.logs || []);
           }
         } catch (_err) { /* ola 5A integraciones puede no estar migrada */ }
+
+        try {
+          const geoData = await geofencingService.listar(empresa.id);
+          if (mounted) {
+            setGeocercas(geoData.geocercas || []);
+            setGeocercaAsignaciones(geoData.asignaciones || []);
+            setUbicacionConsentimientos(geoData.consentimientos || []);
+          }
+        } catch (_err) { /* ola 5B geofencing puede no estar migrada */ }
 
         try {
           const [tdocsData, reqData] = await Promise.all([
@@ -9006,6 +9019,33 @@ export function AppProvider({ children }) {
     return data;
   };
 
+  const guardarGeocercaCtx = async (geocerca) => {
+    const data = await geofencingService.guardarGeocerca(empresa?.id || geocerca.empresa_id || 'emp_001', geocerca);
+    setGeocercas(prev => data.id && prev.some(g => g.id === data.id) ? prev.map(g => g.id === data.id ? data : g) : [data, ...prev]);
+    addNotificacion('Geocerca guardada.');
+    return data;
+  };
+
+  const guardarGeocercaAsignacionCtx = async (asignacion) => {
+    const data = await geofencingService.guardarAsignacion(empresa?.id || asignacion.empresa_id || 'emp_001', asignacion);
+    setGeocercaAsignaciones(prev => data.id && prev.some(a => a.id === data.id) ? prev.map(a => a.id === data.id ? data : a) : [data, ...prev]);
+    addNotificacion('Asignacion de geocerca actualizada.');
+    return data;
+  };
+
+  const registrarConsentimientoUbicacionCtx = async (payload) => {
+    const data = await geofencingService.registrarConsentimiento(empresa?.id || payload.empresa_id || 'emp_001', payload);
+    setUbicacionConsentimientos(prev => data.id && prev.some(c => c.id === data.id) ? prev.map(c => c.id === data.id ? data : c) : [data, ...prev]);
+    addNotificacion('Consentimiento de ubicacion registrado.');
+    return data;
+  };
+
+  const evaluarSarNoLlegadaCtx = async (fecha) => {
+    const total = await geofencingService.evaluarSar(empresa?.id || 'emp_001', fecha);
+    addNotificacion(`SAR evaluado: ${total} alerta(s) generadas.`);
+    return total;
+  };
+
   const authUserConAcceso = authUser ? {
     ...authUser,
     ...usuarioActual,
@@ -9165,6 +9205,9 @@ export function AppProvider({ children }) {
     whatsappPlantillas, setWhatsappPlantillas,
     whatsappMatriz, setWhatsappMatriz,
     whatsappEnvios, setWhatsappEnvios,
+    geocercas, setGeocercas,
+    geocercaAsignaciones, setGeocercaAsignaciones,
+    ubicacionConsentimientos, setUbicacionConsentimientos,
     evaluacionPlantillas, setEvaluacionPlantillas,
     evaluacionCompetencias, setEvaluacionCompetencias,
     evaluacionObjetivos, setEvaluacionObjetivos,
@@ -9201,6 +9244,7 @@ export function AppProvider({ children }) {
     iniciarOtpFirmaPortalCtx, validarOtpFirmaPortalCtx, guardarOnboardingFirmaPortalCtx,
     guardarPerfilBiometricoCtx, registrarLoteBiometricoCtx, anularLoteBiometricoCtx,
     guardarWhatsappPlantillaCtx, guardarWhatsappRutaCtx, registrarWhatsappSimuladoCtx,
+    guardarGeocercaCtx, guardarGeocercaAsignacionCtx, registrarConsentimientoUbicacionCtx, evaluarSarNoLlegadaCtx,
     crearTurnoCtx, actualizarTurnoCtx, eliminarTurnoCtx, registrarAsistenciaCtx, crearPeriodoNominaCtx,
     crearPlantillaEvaluacionCtx, actualizarPlantillaEvaluacionCtx, cerrarPlantillaEvaluacionCtx,
     reasignarJefeEvaluacionCtx, guardarAutoevaluacionCtx, guardarEvaluacionJefeCtx,

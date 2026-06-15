@@ -25,6 +25,7 @@ import * as personalDocumentosService from './services/personalDocumentosService
 import { getPrimaSeguroAfp } from './services/nominaService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { BIOMETRICO_PERFIL_DEFAULT, previsualizarImportacionBiometrica } from './services/biometricoService.js';
+import { GEO_CONFIG_DEFAULT, evaluarGeofenceLocal, parseGps } from './services/geofencingService.js';
 import { FileUpload } from './components/FileUpload.jsx';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
 import { comprasService, getSpendAnalysis } from './services/comprasService.js';
@@ -5953,7 +5954,7 @@ function OrdenesCompra() {
     if (!items.length) { addToast('Agrega al menos un item con cantidad mayor a cero.'); return; }
     const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
     const p = proveedorSeleccionado;
-    const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:subtotal*0.18, total:subtotal*1.18, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:form.solpe_id ? `SOLPE origen: ${form.solpe_codigo || form.solpe_id}` : '', creado_por: authUser?.id || null };
+    const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id || null, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:subtotal*0.18, total:subtotal*1.18, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:form.solpe_id ? `SOLPE origen: ${form.solpe_codigo || form.solpe_id}` : '', creado_por: authUser?.id || null };
     const crearOCCompatible = async (payloadBase) => {
       let payload = { ...payloadBase };
       for (let intento = 0; intento <= OC_COLUMNAS_OPCIONALES_INSERT.size; intento += 1) {
@@ -12973,10 +12974,34 @@ function TurnosHorarios() {
   );
 }
 
+function GeoMiniMapa({ lat, lng, radio = 250, puntos = [] }) {
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+  if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+    return <div className="card" style={{ padding: 16, minHeight: 180, display: 'grid', placeItems: 'center' }}><span className="text-muted">Ingresa coordenadas para ver el mapa.</span></div>;
+  }
+  const delta = Math.max(0.004, Number(radio || 250) / 80000);
+  const bbox = [lngNum - delta, latNum - delta, lngNum + delta, latNum + delta].join(',');
+  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${latNum},${lngNum}`;
+  return (
+    <div style={{ position: 'relative', height: 220, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'var(--bg-subtle)' }}>
+      <iframe title="Mapa geocerca" src={src} style={{ border: 0, width: '100%', height: '100%' }} loading="lazy" />
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', display: 'grid', placeItems: 'center' }}>
+        <div style={{ width: 116, height: 116, borderRadius: '50%', border: '2px solid var(--cyan)', background: 'rgba(6,182,212,.12)' }} />
+      </div>
+      {puntos.slice(0, 12).map((p, i) => (
+        <div key={p.id || i} title={p.nombre || p.estado} style={{ position: 'absolute', left: `${50 + Math.max(-42, Math.min(42, (Number(p.lng) - lngNum) / delta * 50))}%`, top: `${50 - Math.max(-42, Math.min(42, (Number(p.lat) - latNum) / delta * 50))}%`, width: 10, height: 10, borderRadius: '50%', background: p.estado === 'fuera' ? 'var(--orange)' : p.estado === 'sin_ubicacion' ? 'var(--gray)' : 'var(--green)', border: '2px solid white', transform: 'translate(-50%, -50%)', boxShadow: '0 1px 6px rgba(0,0,0,.35)' }} />
+      ))}
+      <div className="badge badge-cyan" style={{ position: 'absolute', left: 10, bottom: 10 }}>Radio {radio} m</div>
+    </div>
+  );
+}
+
 function ControlAsistencia() {
   const {
     turnos, registrosAsistencia, setRegistrosAsistencia, personalOperativo, personalAdmin, empresa, addNotificacion, asignacionesJornada = [], role,
     biometricoPerfiles = [], biometricoLotes = [], guardarPerfilBiometricoCtx, registrarLoteBiometricoCtx, anularLoteBiometricoCtx,
+    sedes = [], empresaConfig = {}, guardarEmpresaConfig, geocercas = [], geocercaAsignaciones = [], guardarGeocercaCtx, guardarGeocercaAsignacionCtx, evaluarSarNoLlegadaCtx,
   } = useApp();
   const [tab, setTab] = useState('diaria');
   const [poblacion, setPoblacion] = useState('planilla'); // 'planilla' | 'honorarios'
@@ -12996,6 +13021,12 @@ function ControlAsistencia() {
   const [bioOverwrite, setBioOverwrite] = useState(false);
   const [bioPerfilForm, setBioPerfilForm] = useState({ ...BIOMETRICO_PERFIL_DEFAULT });
   const [bioSaving, setBioSaving] = useState(false);
+  const [geoForm, setGeoForm] = useState({ nombre:'', sede_id:'', sede_nombre:'', latitud:'', longitud:'', radio_m:600, estado:'activo', vigencia_desde:'', vigencia_hasta:'', notas:'' });
+  const [geoAsignacionForm, setGeoAsignacionForm] = useState({ geocerca_id:'', personal_id:'', personal_tipo:'operativo', grupo_tipo:'individual', estado:'activo' });
+  const [geoSaving, setGeoSaving] = useState(false);
+  const [sarFecha, setSarFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [sarEvaluando, setSarEvaluando] = useState(false);
+  const [geoCfg, setGeoCfg] = useState({ ...GEO_CONFIG_DEFAULT });
 
   // Estados Mineros
   const [ciclosMineros, setCiclosMineros] = useState([]);
@@ -13057,6 +13088,10 @@ function ControlAsistencia() {
     const perfil = biometricoPerfiles.find(p => p.id === bioPerfilId);
     if (perfil) setBioPerfilForm({ ...BIOMETRICO_PERFIL_DEFAULT, ...perfil });
   }, [bioPerfilId, biometricoPerfiles]);
+
+  useEffect(() => {
+    setGeoCfg({ ...GEO_CONFIG_DEFAULT, ...(empresaConfig || {}) });
+  }, [empresaConfig]);
 
   const trabajador = trabajadoresGenerales.find(t => t.id === form.trabajador_id) || trabajadoresGenerales[0];
   const trabajadorBloqueado = Boolean(trabajador?.asistencia_bloqueada);
@@ -13353,6 +13388,104 @@ function ControlAsistencia() {
     await anularLoteBiometricoCtx(lote.id, motivo);
   };
 
+  const seleccionarSedeGeo = (sedeId) => {
+    const sede = sedes.find(s => s.id === sedeId);
+    const gps = parseGps(sede?.gps);
+    setGeoForm(v => ({
+      ...v,
+      sede_id: sedeId,
+      sede_nombre: sede?.nombre || '',
+      latitud: gps?.lat ?? v.latitud,
+      longitud: gps?.lng ?? v.longitud,
+    }));
+  };
+
+  const guardarGeo = async (e) => {
+    e?.preventDefault?.();
+    if (!geoForm.nombre || !geoForm.latitud || !geoForm.longitud) {
+      addNotificacion('Completa nombre, latitud y longitud de la geocerca.');
+      return;
+    }
+    setGeoSaving(true);
+    try {
+      const data = await guardarGeocercaCtx({
+        ...geoForm,
+        latitud: Number(geoForm.latitud),
+        longitud: Number(geoForm.longitud),
+        radio_m: Number(geoForm.radio_m || 250),
+        vigencia_desde: geoForm.vigencia_desde || null,
+        vigencia_hasta: geoForm.vigencia_hasta || null,
+      });
+      setGeoAsignacionForm(v => ({ ...v, geocerca_id: data.id }));
+      setGeoForm({ nombre:'', sede_id:'', sede_nombre:'', latitud:'', longitud:'', radio_m:600, estado:'activo', vigencia_desde:'', vigencia_hasta:'', notas:'' });
+    } finally {
+      setGeoSaving(false);
+    }
+  };
+
+  const guardarAsignacionGeo = async (e) => {
+    e?.preventDefault?.();
+    if (!geoAsignacionForm.geocerca_id || !geoAsignacionForm.personal_id) {
+      addNotificacion('Selecciona geocerca y trabajador.');
+      return;
+    }
+    const persona = trabajadores.find(t => t.id === geoAsignacionForm.personal_id);
+    await guardarGeocercaAsignacionCtx({
+      ...geoAsignacionForm,
+      personal_tipo: persona?.trabajador_tipo || geoAsignacionForm.personal_tipo,
+      grupo_tipo: 'individual',
+    });
+    setGeoAsignacionForm(v => ({ ...v, personal_id:'' }));
+  };
+
+  const guardarGeoCfg = async () => {
+    await guardarEmpresaConfig({
+      asistencia_movil_ubicacion_habilitada: Boolean(geoCfg.asistencia_movil_ubicacion_habilitada),
+      asistencia_movil_consentimiento_requerido: Boolean(geoCfg.asistencia_movil_consentimiento_requerido),
+      asistencia_movil_consentimiento_texto: geoCfg.asistencia_movil_consentimiento_texto,
+      geofencing_modo: geoCfg.geofencing_modo || 'flexible',
+      geofencing_permitir_sin_gps: Boolean(geoCfg.geofencing_permitir_sin_gps),
+      geofencing_precision_baja_m: Number(geoCfg.geofencing_precision_baja_m || 80),
+      sar_habilitado: Boolean(geoCfg.sar_habilitado),
+      sar_hora_limite: geoCfg.sar_hora_limite || '09:00',
+      sar_gracia_minutos: Number(geoCfg.sar_gracia_minutos || 15),
+      acceso_asistencia_movil: Boolean(geoCfg.asistencia_movil_ubicacion_habilitada),
+    });
+  };
+
+  const ejecutarSar = async () => {
+    setSarEvaluando(true);
+    try {
+      await evaluarSarNoLlegadaCtx(sarFecha);
+    } finally {
+      setSarEvaluando(false);
+    }
+  };
+
+  const sarRows = useMemo(() => {
+    const asignadas = geocercaAsignaciones.filter(a => a.estado !== 'inactivo' && a.personal_id);
+    const rows = asignadas.map(a => {
+      const persona = trabajadores.find(t => t.id === a.personal_id);
+      const geo = geocercas.find(g => g.id === a.geocerca_id);
+      const reg = registrosAsistencia.find(r => r.trabajador_id === a.personal_id && r.fecha === sarFecha);
+      const estadoRegistro = reg?.geofence_entrada_estado || (reg?.ubicacion_motivo === 'gps_no_disponible' ? 'sin_ubicacion' : '');
+      const estado = !reg ? 'no_marcado'
+        : estadoRegistro ? estadoRegistro
+        : reg.latitud ? evaluarGeofenceLocal({ trabajador: persona, geocercas, asignaciones: geocercaAsignaciones, fix: { lat: reg.latitud, lng: reg.longitud, precision_m: reg.precision_entrada_m }, fecha: sarFecha, config: geoCfg }).estado
+        : 'sin_ubicacion';
+      return { asignacion: a, persona, geocerca: geo, registro: reg, estado };
+    });
+    return rows.filter(r => r.persona && r.geocerca);
+  }, [geocercaAsignaciones, geocercas, registrosAsistencia, sarFecha, trabajadores, geoCfg]);
+
+  const sarPuntosMapa = sarRows
+    .map(r => {
+      const reg = r.registro;
+      if (!reg?.latitud || !reg?.longitud) return null;
+      return { id: reg.id, lat: reg.latitud, lng: reg.longitud, estado: r.estado, nombre: r.persona?.nombre };
+    })
+    .filter(Boolean);
+
   // â"€â"€ Funciones Minero â"€â"€
   const getCicloDias = (regimen, trabajador = {}) => {
     if (regimen === 'ciclo_acumulativo') {
@@ -13523,7 +13656,7 @@ function ControlAsistencia() {
   const semanaTexto = `Semana del ${startOfWeek.getDate()} al ${endOfWeek.getDate()} de ${mesNombreCap}`;
 
   // Tabs
-  const allTabs = [['diaria','Vista diaria'],['semanal','Vista semanal'],['mensual','Vista mensual'],['resumen','Resumen por trabajador'],['aut_he','Autorizaciones HE'],['biometrico','Biometrico']];
+  const allTabs = [['diaria','Vista diaria'],['semanal','Vista semanal'],['mensual','Vista mensual'],['resumen','Resumen por trabajador'],['aut_he','Autorizaciones HE'],['biometrico','Biometrico'],['sar','SAR / Geocercas']];
   if (trabajadoresMineros.length > 0) allTabs.push(['minero','Régimen Minero']);
 
   return (
@@ -13701,6 +13834,68 @@ function ControlAsistencia() {
               {biometricoLotes.map(l => <tr key={l.id}><td><strong>{l.archivo_nombre || l.id}</strong><div className="text-muted" style={{fontSize:11}}>{(l.created_at || '').slice(0, 10)}</div></td><td>{l.totales?.importados ?? l.totales?.listos ?? 0} importados</td><td><span className={'badge '+(l.estado === 'anulado' ? 'badge-red' : 'badge-green')}>{l.estado}</span></td><td>{l.estado !== 'anulado' && <button className="btn btn-sm btn-secondary" onClick={() => anularBio(l)}>Anular</button>}</td></tr>)}
               {!biometricoLotes.length && <tr><td colSpan={4} className="text-muted" style={{padding:16}}>Sin lotes importados.</td></tr>}
             </tbody></table>
+          </div>
+        </div>
+      </div>}
+
+      {tab === 'sar' && <div style={{display:'grid', gap:16}}>
+        <div className="card" style={{padding:16}}>
+          <div className="card-head"><h3>Politica GPS y SAR</h3><span className="badge badge-gray">Captura puntual, no rastreo continuo</span></div>
+          <div className="grid-2" style={{gap:12}}>
+            <label className="row" style={{gap:8}}><input type="checkbox" checked={Boolean(geoCfg.asistencia_movil_ubicacion_habilitada)} onChange={e=>setGeoCfg(v=>({...v, asistencia_movil_ubicacion_habilitada:e.target.checked}))}/> Habilitar ubicacion en asistencia movil</label>
+            <label className="row" style={{gap:8}}><input type="checkbox" checked={Boolean(geoCfg.asistencia_movil_consentimiento_requerido)} onChange={e=>setGeoCfg(v=>({...v, asistencia_movil_consentimiento_requerido:e.target.checked}))}/> Requerir consentimiento informado</label>
+            <div className="input-group"><label>Politica fuera de perimetro</label><select className="select" value={geoCfg.geofencing_modo || 'flexible'} onChange={e=>setGeoCfg(v=>({...v, geofencing_modo:e.target.value}))}><option value="flexible">Flexible: registra y etiqueta</option><option value="estricto">Estricto: rechaza</option></select></div>
+            <label className="row" style={{gap:8}}><input type="checkbox" checked={Boolean(geoCfg.geofencing_permitir_sin_gps)} onChange={e=>setGeoCfg(v=>({...v, geofencing_permitir_sin_gps:e.target.checked}))}/> Permitir marcacion sin GPS</label>
+            <div className="input-group"><label>Precision baja desde (m)</label><input className="input" type="number" min="10" value={geoCfg.geofencing_precision_baja_m || 80} onChange={e=>setGeoCfg(v=>({...v, geofencing_precision_baja_m:e.target.value}))}/></div>
+            <div className="input-group"><label>Hora limite SAR</label><input className="input" type="time" value={String(geoCfg.sar_hora_limite || '09:00').slice(0,5)} onChange={e=>setGeoCfg(v=>({...v, sar_hora_limite:e.target.value}))}/></div>
+            <label className="row" style={{gap:8}}><input type="checkbox" checked={Boolean(geoCfg.sar_habilitado)} onChange={e=>setGeoCfg(v=>({...v, sar_habilitado:e.target.checked}))}/> Activar alerta SAR no-llegada</label>
+            <div className="input-group" style={{gridColumn:'1/-1'}}><label>Texto de consentimiento</label><textarea className="input" rows="3" value={geoCfg.asistencia_movil_consentimiento_texto || ''} onChange={e=>setGeoCfg(v=>({...v, asistencia_movil_consentimiento_texto:e.target.value}))}/></div>
+          </div>
+          <div className="row" style={{justifyContent:'flex-end', marginTop:12}}><button className="btn btn-primary" onClick={guardarGeoCfg}>Guardar politica</button></div>
+        </div>
+
+        <div className="grid-2" style={{gap:16, alignItems:'flex-start'}}>
+          <form className="card" style={{padding:16}} onSubmit={guardarGeo}>
+            <div className="card-head"><h3>Geocerca</h3><span className="badge badge-cyan">Centro + radio</span></div>
+            <div className="grid-2" style={{gap:10}}>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre</label><input className="input" value={geoForm.nombre} onChange={e=>setGeoForm(v=>({...v,nombre:e.target.value}))} placeholder="Operacion Mina Norte"/></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Precargar desde sede</label><select className="select" value={geoForm.sede_id} onChange={e=>seleccionarSedeGeo(e.target.value)}><option value="">Sin sede</option>{sedes.map(s=><option key={s.id} value={s.id}>{s.nombre} {s.gps ? `(${s.gps})` : ''}</option>)}</select></div>
+              <div className="input-group"><label>Latitud</label><input className="input" value={geoForm.latitud} onChange={e=>setGeoForm(v=>({...v,latitud:e.target.value}))}/></div>
+              <div className="input-group"><label>Longitud</label><input className="input" value={geoForm.longitud} onChange={e=>setGeoForm(v=>({...v,longitud:e.target.value}))}/></div>
+              <div className="input-group"><label>Radio (m)</label><input className="input" type="number" min="25" value={geoForm.radio_m} onChange={e=>setGeoForm(v=>({...v,radio_m:e.target.value}))}/></div>
+              <div className="input-group"><label>Estado</label><select className="select" value={geoForm.estado} onChange={e=>setGeoForm(v=>({...v,estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
+              <div className="input-group"><label>Vigente desde</label><input className="input" type="date" value={geoForm.vigencia_desde} onChange={e=>setGeoForm(v=>({...v,vigencia_desde:e.target.value}))}/></div>
+              <div className="input-group"><label>Vigente hasta</label><input className="input" type="date" value={geoForm.vigencia_hasta} onChange={e=>setGeoForm(v=>({...v,vigencia_hasta:e.target.value}))}/></div>
+            </div>
+            <div style={{marginTop:12}}><GeoMiniMapa lat={geoForm.latitud} lng={geoForm.longitud} radio={geoForm.radio_m}/></div>
+            <div className="row" style={{justifyContent:'flex-end', marginTop:12}}><button className="btn btn-primary" disabled={geoSaving}>{geoSaving ? 'Guardando...' : 'Guardar geocerca'}</button></div>
+          </form>
+
+          <div className="card" style={{padding:16}}>
+            <div className="card-head"><h3>Asignacion y catalogo</h3><span className="badge badge-gray">{geocercas.length} geocercas</span></div>
+            <form onSubmit={guardarAsignacionGeo} className="grid-2" style={{gap:10, marginBottom:12}}>
+              <div className="input-group"><label>Geocerca</label><select className="select" value={geoAsignacionForm.geocerca_id} onChange={e=>setGeoAsignacionForm(v=>({...v,geocerca_id:e.target.value}))}><option value="">Seleccionar</option>{geocercas.map(g=><option key={g.id} value={g.id}>{g.nombre}</option>)}</select></div>
+              <div className="input-group"><label>Trabajador</label><select className="select" value={geoAsignacionForm.personal_id} onChange={e=>setGeoAsignacionForm(v=>({...v,personal_id:e.target.value}))}><option value="">Seleccionar</option>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div>
+              <div style={{gridColumn:'1/-1'}} className="row"><button className="btn btn-secondary">Asignar trabajador</button></div>
+            </form>
+            <div className="table-wrap" style={{maxHeight:260, overflow:'auto'}}><table className="tbl"><thead><tr><th>Geocerca</th><th>Centro</th><th>Radio</th><th>Asignados</th></tr></thead><tbody>
+              {geocercas.map(g => <tr key={g.id}><td><strong>{g.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{g.sede_nombre || g.sede_id || '-'}</div></td><td className="mono" style={{fontSize:11}}>{g.latitud}, {g.longitud}</td><td>{g.radio_m} m</td><td>{geocercaAsignaciones.filter(a=>a.geocerca_id===g.id && a.estado!=='inactivo').length}</td></tr>)}
+              {!geocercas.length && <tr><td colSpan={4} className="text-muted" style={{padding:16}}>Sin geocercas registradas.</td></tr>}
+            </tbody></table></div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-head">
+            <div><h3>Panel SAR</h3><p className="text-muted" style={{margin:0}}>Verificacion puntual de llegada por operacion/geocerca.</p></div>
+            <div className="row" style={{gap:8}}><input className="input" type="date" value={sarFecha} onChange={e=>setSarFecha(e.target.value)} style={{width:150}}/><button className="btn btn-secondary btn-sm" onClick={ejecutarSar} disabled={sarEvaluando}>{sarEvaluando ? 'Evaluando...' : 'Generar alertas'}</button></div>
+          </div>
+          <div className="grid-2" style={{gap:16, padding:16}}>
+            <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Operacion</th><th>Estado</th><th>Hora</th></tr></thead><tbody>
+              {sarRows.map(r => <tr key={`${r.asignacion.id}_${sarFecha}`}><td><strong>{r.persona.nombre}</strong></td><td>{r.geocerca.nombre}</td><td><span className={'badge '+(r.estado==='dentro'?'badge-green':r.estado==='no_marcado'?'badge-red':r.estado==='fuera'?'badge-orange':'badge-gray')}>{r.estado}</span></td><td>{r.registro?.hora_entrada || '-'}</td></tr>)}
+              {!sarRows.length && <tr><td colSpan={4} className="text-muted" style={{padding:16}}>Asigna geocercas a trabajadores para ver el SAR.</td></tr>}
+            </tbody></table></div>
+            <GeoMiniMapa lat={geocercas[0]?.latitud} lng={geocercas[0]?.longitud} radio={geocercas[0]?.radio_m || 600} puntos={sarPuntosMapa}/>
           </div>
         </div>
       </div>}

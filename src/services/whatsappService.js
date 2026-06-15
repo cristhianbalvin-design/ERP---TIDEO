@@ -5,6 +5,7 @@ export const WHATSAPP_TIPOS_ALERTA = [
   ['doc_dni_por_vencer', 'Vencimiento de DNI'],
   ['doc_sctr_por_vencer', 'Vencimiento de SCTR'],
   ['doc_licencia_por_vencer', 'Vencimiento de licencia especializada'],
+  ['sar_no_llegada', 'SAR no-llegada'],
 ];
 
 export const WHATSAPP_TEMPLATES_DEFAULT = [
@@ -38,6 +39,14 @@ export const WHATSAPP_TEMPLATES_DEFAULT = [
     proveedor_template: 'licencia_vencimiento',
     variables: ['colaborador', 'documento', 'fecha_vencimiento', 'dias_restantes'],
     texto_sugerido: 'La licencia {{documento}} de {{colaborador}} vence el {{fecha_vencimiento}}.',
+    estado: 'activo',
+  },
+  {
+    id: 'tpl_sar_no_llegada',
+    tipo_alerta: 'sar_no_llegada',
+    proveedor_template: 'sar_no_llegada',
+    variables: ['colaborador', 'operacion', 'hora_limite', 'estado'],
+    texto_sugerido: 'SAR: {{colaborador}} no registra llegada dentro de perimetro en {{operacion}} antes de {{hora_limite}}.',
     estado: 'activo',
   },
 ];

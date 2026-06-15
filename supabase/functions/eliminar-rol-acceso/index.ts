@@ -128,9 +128,18 @@ serve(async (req) => {
   const { count: membershipCount, error: membershipCountError } = await adminClient
     .from("usuarios_empresas")
     .select("id", { count: "exact", head: true })
-    .eq("rol_id", rolId);
+    .eq("rol_id", rolId)
+    .eq("estado", "activo");
 
   if (membershipCountError) return jsonResponse({ success: false, error: membershipCountError.message }, 500);
+
+  const { count: asignacionesCount, error: asignacionesCountError } = await adminClient
+    .from("usuarios_asignaciones")
+    .select("id", { count: "exact", head: true })
+    .eq("rol_id", rolId)
+    .eq("activo", true);
+
+  if (asignacionesCountError) return jsonResponse({ success: false, error: asignacionesCountError.message }, 500);
 
   const { count: profileCount, error: profileCountError } = await adminClient
     .from("usuarios")
@@ -139,12 +148,16 @@ serve(async (req) => {
 
   if (profileCountError) return jsonResponse({ success: false, error: profileCountError.message }, 500);
 
-  if ((membershipCount || 0) > 0 || (profileCount || 0) > 0) {
+  if ((membershipCount || 0) > 0 || (asignacionesCount || 0) > 0 || (profileCount || 0) > 0) {
     return jsonResponse({
       success: false,
       error: "No puedes eliminar este rol porque tiene usuarios asignados. Reasignalos primero.",
     }, 409);
   }
+
+  // Limpiar registros inactivos de ambas tablas para evitar que los FK bloqueen la eliminación
+  await adminClient.from("usuarios_empresas").delete().eq("rol_id", rolId);
+  await adminClient.from("usuarios_asignaciones").delete().eq("rol_id", rolId);
 
   const { error: permisosError } = await adminClient.from("permisos_roles").delete().eq("rol_id", rolId);
   if (permisosError) return jsonResponse({ success: false, error: permisosError.message }, 500);

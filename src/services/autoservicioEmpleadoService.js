@@ -214,7 +214,13 @@ export const autoservicioEmpleadoService = {
   },
 
   async marcarAsistenciaMobile(empresaId, ficha, registro) {
-    // GAP-15: los parametros de ubicacion/geofencing entran aqui cuando se active la validacion GPS.
-    return rrhhService.registrarAsistencia(empresaId, { ...registro, trabajador_id: ficha.id, trabajador_tipo: ficha.personal_tipo || ficha.trabajador_tipo, origen_registro: 'mobile_pwa' });
+    // GAP-15: captura puntual de ubicacion. La PWA adjunta fix/precision/timestamps;
+    // la validacion definitiva de geofence corre en Supabase. No hay rastreo continuo.
+    return rrhhService.registrarAsistencia(empresaId, {
+      ...registro,
+      trabajador_id: ficha.id,
+      trabajador_tipo: ficha.personal_tipo || ficha.trabajador_tipo,
+      origen_registro: 'mobile_pwa',
+    });
   },
 };

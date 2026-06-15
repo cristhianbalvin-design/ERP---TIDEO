@@ -2179,6 +2179,23 @@ export const whatsappMatriz = [
 
 export const whatsappEnvios = [];
 
+export const geocercas = [
+  {
+    id: 'geo_mock_mina_001', empresa_id: 'emp_001', nombre: 'Operacion Mina Norte',
+    sede_id: 'sed_mock_mina', sede_nombre: 'Mina Norte', latitud: -12.0464, longitud: -77.0428,
+    radio_m: 600, estado: 'activo', vigencia_desde: '2026-01-01', vigencia_hasta: null,
+    notas: 'Mock GAP-15: geocerca circular centro+radio para asistencia movil y SAR.',
+  },
+];
+
+export const geocercaAsignaciones = [
+  { id: 'gea_mock_001', empresa_id: 'emp_001', geocerca_id: 'geo_mock_mina_001', personal_id: 'pop_001', personal_tipo: 'operativo', grupo_tipo: 'individual', estado: 'activo' },
+  { id: 'gea_mock_002', empresa_id: 'emp_001', geocerca_id: 'geo_mock_mina_001', personal_id: 'pop_002', personal_tipo: 'operativo', grupo_tipo: 'individual', estado: 'activo' },
+  { id: 'gea_mock_003', empresa_id: 'emp_001', geocerca_id: 'geo_mock_mina_001', personal_id: 'pop_003', personal_tipo: 'operativo', grupo_tipo: 'individual', estado: 'activo' },
+];
+
+export const ubicacionConsentimientos = [];
+
 export const MOCK = {
   empresas, roles, usuarios, leads, cuentas, contactos, oportunidades, campanas,
   actividades, hojasCosteo, cotizaciones, osClientes, ots, partes, compras, cxc,
@@ -2196,6 +2213,7 @@ export const MOCK = {
   portalFirmaRegistros, portalFirmaOtpIntentos,
   biometricoPerfiles, biometricoLotes,
   whatsappPlantillas, whatsappMatriz, whatsappEnvios,
+  geocercas, geocercaAsignaciones, ubicacionConsentimientos,
   onboardings, planesExito, healthScoresDetalle, churnPlanes,
   renovaciones, npsEncuestas, referidos, casosExito, iaLogs,
   biFinanciero, metricasSaaS,
