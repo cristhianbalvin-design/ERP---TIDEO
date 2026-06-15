@@ -5923,7 +5923,7 @@ function CotizacionesCompras() {
 }
 
 function OrdenesCompra() {
-  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, solpes, setSolpes, crearOrdenCompraCtx, actualizarOrdenCompraCtx } = useApp();
+  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, solpes, setSolpes, crearOrdenCompraCtx, actualizarOrdenCompraCtx, recepciones } = useApp();
   const [tab, setTab] = useState('todas');
   const [panel, setPanel] = useState(false);
   const [sel, setSel] = useState(null);
@@ -5935,6 +5935,7 @@ function OrdenesCompra() {
   const proveedoresOC = homologados.length ? homologados : proveedores;
   const solpesDisponibles = (solpes || []).filter(s => solpeDisponibleParaOC(s, ordenesCompra, procesosCompra));
   const kpi = { emitidas: ordenesCompra.length, pendientes: ordenesCompra.filter(o=>o.porcentaje_recibido<100).length, parcial: ordenesCompra.filter(o=>o.estado==='recibida_parcial').length, total: ordenesCompra.reduce((s,o)=>s+(o.total||0),0) };
+  const ocsPendientesRecepcion = ordenesCompra.filter(o => ['recibida_parcial','confirmada','en_transito'].includes(o.estado));
 
   useEffect(() => {
     if (!panel || form.proveedor_id || !proveedoresOC.length) return;
@@ -6027,8 +6028,9 @@ function OrdenesCompra() {
     <>
       <div className="page-header"><div><h1 className="page-title">Ordenes de Compra</h1><div className="page-sub">Bienes, materiales e ingreso a inventario</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>{ setForm(nuevaOCForm(proveedoresOC[0]?.id)); setPanel(true); }}>{I.plus} Nueva OC</button></div>
       <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas este mes</div><div className="kpi-value">{kpi.emitidas}</div></div><div className="kpi-card"><div className="kpi-label">Pendientes recepcion</div><div className="kpi-value">{kpi.pendientes}</div></div><div className="kpi-card"><div className="kpi-label">Recibidas parcial</div><div className="kpi-value">{kpi.parcial}</div></div><div className="kpi-card"><div className="kpi-label">Valor total mes</div><div className="kpi-value">{moneyD(kpi.total)}</div></div></div>
-      <div className="tabs">{['todas','emitida','confirmada','en_transito','recibida_parcial','cerrada','anulada'].map(t=><div key={t} className={'tab '+(tab===t?'active':'')} onClick={()=>setTab(t)}>{t.replace('_',' ')}</div>)}</div>
-      <OrdenesTable list={list} proveedores={proveedores} onSel={setSel} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>
+      <div className="tabs">{[['todas','Todas'],['emitida','Emitida'],['confirmada','Confirmada'],['en_transito','En tránsito'],['recibida_parcial','Recibida parcial'],['cerrada','Cerrada'],['anulada','Anulada'],['pendientes_recepcion','Pendientes de recepción']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
+      {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} onSel={setSel} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>}
+      {tab === 'pendientes_recepcion' && <PendientesRecepcionOC ocs={ocsPendientesRecepcion} proveedores={proveedores} recepciones={recepciones} onSel={setSel}/>}
       {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} solpes={solpesDisponibles} ots={ots} centrosCosto={centrosCosto} materiales={materiales} empresaId={empresa?.id} onClose={()=>setPanel(false)} onCrear={crear}/>}
     </>
   );
@@ -6036,6 +6038,93 @@ function OrdenesCompra() {
 
 function OrdenesTable({ list, proveedores, onSel, onRecepcion }) {
   return <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>N OC</th><th>Proveedor</th><th>Concepto</th><th>Monto total</th><th>OT</th><th>Estado</th><th>Emision</th><th>Entrega esperada</th><th>Recibido</th><th>Acciones</th></tr></thead><tbody>{list.map(o=>{ const p=proveedorById(proveedores,o.proveedor_id); return <tr key={o.id}><td className="mono">{o.codigo}</td><td><strong>{p.razon_social}</strong><div className="text-muted" style={{fontSize:11}}>{ratingText(p.calificacion_promedio)}</div></td><td>{o.descripcion}</td><td>{moneyD(o.total||0)}</td><td className="mono">{o.ot_id||'-'}</td><td><span className={'badge '+estadoOcBadge(o.estado)}>{o.estado.replace('_',' ')}</span></td><td>{o.fecha_emision}</td><td>{o.fecha_entrega_esperada}</td><td><div style={{width:80,height:6,background:'var(--bg-subtle)',borderRadius:99}}><div style={{width:`${o.porcentaje_recibido||0}%`,height:6,background:'var(--green)',borderRadius:99}}/></div><span className="text-muted" style={{fontSize:11}}>{o.porcentaje_recibido||0}%</span></td><td><button className="btn btn-sm btn-secondary" onClick={()=>onSel(o)}>Ver detalle</button> <button className="btn btn-sm btn-ghost" onClick={()=>onRecepcion(o)}>Registrar recepcion</button></td></tr>})}</tbody></table></div></div>;
+}
+
+function PendientesRecepcionOC({ ocs, proveedores, recepciones, onSel }) {
+  const [filtroPrv, setFiltroPrv] = useState('');
+  const [filtroEst, setFiltroEst] = useState('todas');
+  const filtradas = ocs.filter(o =>
+    (filtroEst === 'todas' || o.estado === filtroEst) &&
+    (!filtroPrv || o.proveedor_id === filtroPrv)
+  );
+  const calcLineas = (oc) => {
+    const recs = (recepciones || []).filter(r => r.oc_id === oc.id);
+    return (oc.items || []).map(item => {
+      const pedido = Number(item.cantidad || 0);
+      const recibido = recs.reduce((sum, r) => {
+        const ir = (r.items_recibidos || []).find(ir => ir.descripcion === item.descripcion);
+        return sum + Number(ir?.recibido || 0);
+      }, 0);
+      return { descripcion: item.descripcion, unidad: item.unidad, pedido, recibido, pendiente: pedido - recibido };
+    });
+  };
+  const prvConOCs = proveedores.filter(p => ocs.some(o => o.proveedor_id === p.id));
+  return (
+    <div>
+      <div className="row" style={{gap:10, marginBottom:16, flexWrap:'wrap'}}>
+        <select className="select" style={{width:'auto'}} value={filtroPrv} onChange={e=>setFiltroPrv(e.target.value)}>
+          <option value="">Todos los proveedores</option>
+          {prvConOCs.map(p=><option key={p.id} value={p.id}>{p.razon_social}</option>)}
+        </select>
+        <select className="select" style={{width:'auto'}} value={filtroEst} onChange={e=>setFiltroEst(e.target.value)}>
+          <option value="todas">Todos los estados</option>
+          <option value="recibida_parcial">Recibida parcial</option>
+          <option value="confirmada">Confirmada</option>
+          <option value="en_transito">En tránsito</option>
+        </select>
+      </div>
+      {filtradas.length === 0 ? (
+        <div className="card" style={{padding:32, textAlign:'center', color:'var(--fg-muted)'}}>No hay OCs con recepciones pendientes.</div>
+      ) : filtradas.map(oc => {
+        const prov = proveedorById(proveedores, oc.proveedor_id);
+        const lineas = calcLineas(oc);
+        return (
+          <div key={oc.id} className="card" style={{marginBottom:16}}>
+            <div className="card-head" style={{cursor:'pointer'}} onClick={()=>onSel(oc)}>
+              <div className="row" style={{gap:10, alignItems:'center'}}>
+                <span className="mono" style={{fontWeight:700}}>{oc.codigo}</span>
+                <span className={'badge '+estadoOcBadge(oc.estado)}>{oc.estado.replace('_',' ')}</span>
+                <span className="text-muted" style={{fontSize:13}}>{prov.razon_social}</span>
+              </div>
+              <span className="text-muted" style={{fontSize:12}}>Entrega esperada: {oc.fecha_entrega_esperada}</span>
+            </div>
+            <div className="table-wrap">
+              <table className="tbl" style={{fontSize:13}}>
+                <thead>
+                  <tr>
+                    <th>Ítem</th>
+                    <th style={{textAlign:'right', width:80}}>Pedido</th>
+                    <th style={{textAlign:'right', width:90}}>Recibido</th>
+                    <th style={{textAlign:'right', width:90}}>Diferencia</th>
+                    <th style={{width:70}}>Unidad</th>
+                    <th style={{width:140}}>Estado línea</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lineas.map((l, i) => (
+                    <tr key={i}>
+                      <td>{l.descripcion}</td>
+                      <td className="mono" style={{textAlign:'right'}}>{l.pedido}</td>
+                      <td className="mono" style={{textAlign:'right'}}>{l.recibido}</td>
+                      <td className="mono" style={{textAlign:'right'}}>{Math.abs(l.pendiente)}</td>
+                      <td className="text-muted">{l.unidad}</td>
+                      <td>
+                        {l.pendiente < 0
+                          ? <span className="badge badge-purple">Sobrante +{Math.abs(l.pendiente)}</span>
+                          : l.pendiente === 0
+                          ? <span className="badge badge-green">Completo</span>
+                          : <span className="badge badge-orange">Falta {l.pendiente}</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centrosCosto = [], materiales = [], empresaId, onClose, onCrear }) {
@@ -9740,7 +9829,7 @@ const SOLPE_FORM_INIT = { descripcion: '', tipo: 'bien', prioridad: 'normal', so
 const SOLPE_ESTADO_BADGE = { borrador: 'badge-gray', solicitada: 'badge-orange', aprobada: 'badge-blue', atendida: 'badge-green', oc_generada: 'badge-green', 'oc generada': 'badge-green' };
 
 function SOLPE() {
-  const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast, materiales, navigate, areasEmpresa } = useApp();
+  const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast, materiales, navigate, areasEmpresa, ordenesCompra, procesosCompra, recepciones } = useApp();
   const newItem = () => ({ id: `itm_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, material_id: '', descripcion: '', cantidad: '', unidad: 'und', observacion: '' });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(SOLPE_FORM_INIT);
@@ -9890,6 +9979,23 @@ function SOLPE() {
       {solpeSeleccionada && (() => {
         const s = solpes.find(x => x.id === solpeSeleccionada.id) || solpeSeleccionada;
         const ceco = cecosActivos.find(c => c.id === s.centro_costo_id);
+        const ocsSolpe = [...(ordenesCompra||[]).filter(oc => oc.solpe_id === s.id)];
+        (procesosCompra||[]).filter(p => p.solpe_id === s.id).forEach(pc => {
+          (ordenesCompra||[]).filter(oc => oc.proceso_compra_id === pc.id && !ocsSolpe.find(x => x.id === oc.id)).forEach(oc => ocsSolpe.push(oc));
+        });
+        const itemsSeg = (s.items||[]).map(item => {
+          const nom = item.descripcion || item.nombre || '';
+          const oc = ocsSolpe.find(o => (o.items||[]).some(oi =>
+            (oi.descripcion||'').toLowerCase() === nom.toLowerCase() ||
+            (item.material_id && oi.material_id === item.material_id)
+          ));
+          let recibido = 0;
+          if (oc) (recepciones||[]).filter(r => r.oc_id === oc.id).forEach(r => {
+            const ir = (r.items_recibidos||[]).find(ir => (ir.descripcion||'').toLowerCase() === nom.toLowerCase());
+            if (ir) recibido += Number(ir.recibido || 0);
+          });
+          return { nom, oc, recibido, cant: Number(item.cantidad || 0) };
+        });
         return <>
           <div className="side-panel-backdrop" onClick={() => setSolpeSeleccionada(null)} />
           <div className="side-panel">
@@ -9948,6 +10054,47 @@ function SOLPE() {
                   !s.descripcion && <span className="text-muted" style={{fontSize:14}}>Sin descripción registrada.</span>
                 )}
               </div>
+              {(ocsSolpe.length > 0 || itemsSeg.length > 0) && (
+                <div style={{borderTop:'1px solid var(--border)', paddingTop:16}}>
+                  <div className="form-label" style={{fontWeight:600, marginBottom:8}}>Seguimiento de compra</div>
+                  <div className="table-wrap">
+                    <table className="tbl" style={{fontSize:13}}>
+                      <thead>
+                        <tr>
+                          <th>Ítem solicitado</th>
+                          <th>OC vinculada</th>
+                          <th style={{textAlign:'right', width:80}}>Cant. pedida</th>
+                          <th style={{textAlign:'right', width:90}}>Cant. recibida</th>
+                          <th style={{width:140}}>Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {itemsSeg.length > 0 ? itemsSeg.map((it, i) => (
+                          <tr key={i}>
+                            <td>{it.nom || '—'}</td>
+                            <td>{it.oc
+                              ? <span className="mono" style={{fontSize:12}}>{it.oc.codigo}</span>
+                              : <span className="badge badge-gray" style={{fontSize:11}}>Pendiente de generar OC</span>}
+                            </td>
+                            <td className="mono" style={{textAlign:'right'}}>{it.cant || '—'}</td>
+                            <td className="mono" style={{textAlign:'right'}}>{it.oc ? it.recibido : '—'}</td>
+                            <td>{it.oc
+                              ? (it.recibido === 0
+                                ? <span className="badge badge-gray">No recibido</span>
+                                : it.recibido >= it.cant
+                                ? <span className="badge badge-green">Disponible</span>
+                                : <span className="badge badge-orange">Parcial ({it.recibido}/{it.cant})</span>)
+                              : <span className="badge badge-gray">Sin OC</span>}
+                            </td>
+                          </tr>
+                        )) : (
+                          <tr><td colSpan="5" style={{textAlign:'center', padding:16, color:'var(--fg-muted)'}}>Sin ítems registrados en esta SOLPE.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
               <div style={{borderTop:'1px solid var(--border)', paddingTop:16}}>
                 <div className="form-label" style={{fontWeight:600, marginBottom:8}}>Acciones</div>
                 <div className="row" style={{gap:8, flexWrap:'wrap'}}>
@@ -15783,7 +15930,7 @@ function RRHH_Operativo() {
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const vacacionesSugeridas = diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general');
   const vacRegimenLabel = { general: 'General', pequena_empresa: 'Pequeña empresa', microempresa: 'Microempresa' }[empresaConfig?.regimen_laboral_empresa || 'general'] || 'General';
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', codigo:'', cargo:'', cargo_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', fecha_fin:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'' };
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', email_personal:'', celular_personal:'', codigo:'', cargo:'', cargo_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', fecha_fin:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [nuevoCargoTextoOp, setNuevoCargoTextoOp] = useState('');
   const [horasBaseOverride, setHorasBaseOverride] = useState(false);
@@ -15886,6 +16033,8 @@ function RRHH_Operativo() {
       dni: p.documento || p.dni || '',
       telefono: sanitizePhone(p.telefono || ''),
       email: p.email || '',
+      email_personal: p.email_personal || '',
+      celular_personal: sanitizePhone(p.celular_personal || ''),
       codigo: p.codigo || p.id || '',
       cargo: p.cargo || '',
       cargo_id: p.cargo_id || '',
@@ -16007,6 +16156,8 @@ function RRHH_Operativo() {
       dni: formAlta.dni,
       telefono: formAlta.telefono,
       email: formAlta.email,
+      email_personal: formAlta.email_personal || null,
+      celular_personal: formAlta.celular_personal || null,
       nombre: formAlta.nombre || 'Nuevo técnico',
       cargo: formAlta.cargo || 'Técnico de Campo',
       cargo_id: formAlta.cargo_id || null,
@@ -16285,6 +16436,7 @@ function RRHH_Operativo() {
   const portalPersonaNombre = id => personal.find(p => p.id === id)?.nombre || id;
   const portalCampoLabel = campo => ({
     telefono_personal: 'Telefono personal',
+    celular_personal: 'Celular personal (WhatsApp)',
     email_personal: 'Email personal',
     direccion: 'Direccion',
     contacto_emergencia: 'Contacto emergencia',
@@ -16460,6 +16612,8 @@ function RRHH_Operativo() {
                   ['DNI', p.documento || p.dni],
                   ['Teléfono', p.telefono],
                   ['Email', p.email],
+                  ['Correo personal', p.email_personal],
+                  ['Celular personal (WhatsApp)', p.celular_personal],
                   ['Cargo', p.cargo],
                   ['Especialidad', p.especialidad],
                   ['Especialidad 2', p.especialidad2],
@@ -17544,6 +17698,8 @@ function RRHH_Operativo() {
               {historialDniAlta && !historialDniAlta.no_recontratar && String(historialDniAlta.estado_laboral || '').toLowerCase() !== 'cesado' && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12}}><strong>Posible duplicado.</strong> Ya existe una ficha activa para {historialDniAlta.nombre} con este DNI.</div>}
               <div className="input-group"><label>Teléfono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email</label><input className="input" type="email" value={formAlta.email} onChange={e=>setFormAlta(v=>({...v,email:e.target.value}))} placeholder="tecnico@empresa.pe"/></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Correo personal</label><input className="input" type="email" value={formAlta.email_personal} onChange={e=>setFormAlta(v=>({...v,email_personal:e.target.value}))} placeholder="correo@personal.com"/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Usado como canal de verificación para firma electrónica y notificaciones. Debe ser un correo de uso personal, no corporativo.</div></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Celular personal (WhatsApp)</label><input className="input" type="text" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.celular_personal} onChange={e=>setFormAlta(v=>({...v,celular_personal:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Usado para notificaciones por WhatsApp y verificación. Debe ser un número personal, no asignado por la empresa.</div></div>
               {esHonorarios && (
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>RUC <span style={{color:'var(--red)'}}>*</span></label>
@@ -19590,4 +19746,3 @@ export function ControlHoras() {
     </>
   );
 }
-

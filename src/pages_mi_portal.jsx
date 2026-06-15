@@ -10,6 +10,7 @@ const estadoContratoLabel = c => c?.estado === 'por_vencer' ? `Por vencer (${c.d
 const money = n => `S/ ${Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const campoLabels = {
   telefono_personal: 'Telefono personal',
+  celular_personal: 'Celular personal (WhatsApp)',
   email_personal: 'Email personal',
   direccion: 'Direccion',
   contacto_emergencia: 'Contacto de emergencia',
@@ -98,7 +99,7 @@ export function MiPortal() {
   const [uploading, setUploading] = useState('');
   const [datoForm, setDatoForm] = useState({ campo: 'telefono_personal', valor: '' });
   const [constanciaProposito, setConstanciaProposito] = useState('');
-  const [firmaForm, setFirmaForm] = useState({ telefono_personal: '', email_personal: '', firma_otp_canal: 'email_personal', consentimiento_entrega_electronica: false });
+  const [firmaForm, setFirmaForm] = useState({ telefono_personal: '', celular_personal: '', email_personal: '', firma_otp_canal: 'email_personal', consentimiento_entrega_electronica: false });
   const [otpActivo, setOtpActivo] = useState(null);
   const [otpCodigo, setOtpCodigo] = useState('');
 
@@ -110,7 +111,7 @@ export function MiPortal() {
   }), [authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos, solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina, amonestacionesPersonal, app.notificaciones, periodo, evaluacionPlantillas, evaluacionEvaluaciones, portalDatosSolicitudes, portalConstanciasTrabajo, portalBoletaAcuses, portalBoletaVisualizaciones, portalFirmaRegistros]);
 
   const ficha = data.ficha;
-  const camposPermitidos = empresaConfig?.portal_datos_campos_permitidos || ['telefono_personal', 'email_personal', 'direccion', 'contacto_emergencia', 'datos_bancarios'];
+  const camposPermitidos = empresaConfig?.portal_datos_campos_permitidos || ['telefono_personal', 'celular_personal', 'email_personal', 'direccion', 'contacto_emergencia', 'datos_bancarios'];
   const puedeRRHH = Boolean(app.role?.permisos?.todo || app.role?.permisos?.rrhh || app.role?.permisos?.rrhh_operativo || app.role?.permisos?.ver_rrhh);
   const solicitudesDatosPendientes = portalDatosSolicitudes.filter(s => s.estado === 'pendiente');
   const constanciasPendientes = portalConstanciasTrabajo.filter(c => c.estado === 'solicitada');
@@ -205,6 +206,7 @@ export function MiPortal() {
     await guardarOnboardingFirmaPortalCtx(ficha, {
       ...firmaForm,
       telefono_personal: firmaForm.telefono_personal || ficha.telefono_personal || ficha.telefono,
+      celular_personal: firmaForm.celular_personal || ficha.celular_personal || firmaForm.telefono_personal || ficha.telefono_personal || ficha.telefono,
       email_personal: firmaForm.email_personal || ficha.email_personal || ficha.email,
       firma_onboarding_completo: Boolean(firmaForm.consentimiento_entrega_electronica),
     });
@@ -213,7 +215,7 @@ export function MiPortal() {
   const enviarOtpFirma = async () => {
     const canal = firmaForm.firma_otp_canal || empresaConfig?.portal_firma_otp_canal_default || 'email_personal';
     const destino = canal === 'telefono_personal'
-      ? (firmaForm.telefono_personal || ficha.telefono_personal || ficha.telefono)
+      ? (firmaForm.celular_personal || ficha.celular_personal || firmaForm.telefono_personal || ficha.telefono_personal || ficha.telefono)
       : (firmaForm.email_personal || ficha.email_personal || ficha.email);
     const otp = await iniciarOtpFirmaPortalCtx({
       personal_id: ficha.id,
@@ -396,6 +398,7 @@ export function MiPortal() {
                 {!empresaConfig?.portal_firma_contratos_activa && <div className="alert alert-warning" style={{ fontSize: 12, marginBottom: 12 }}>La firma de contratos esta apagada por parametro del tenant.</div>}
                 <div className="grid-2" style={{ gap: 12 }}>
                   <div className="input-group"><label>Telefono personal</label><input className="input" value={firmaForm.telefono_personal} placeholder={ficha.telefono_personal || ficha.telefono || ''} onChange={e => setFirmaForm(v => ({ ...v, telefono_personal: e.target.value }))} /></div>
+                  <div className="input-group"><label>Celular personal (WhatsApp)</label><input className="input" value={firmaForm.celular_personal} placeholder={ficha.celular_personal || ficha.telefono_personal || ficha.telefono || ''} onChange={e => setFirmaForm(v => ({ ...v, celular_personal: e.target.value }))} /></div>
                   <div className="input-group"><label>Email personal</label><input className="input" value={firmaForm.email_personal} placeholder={ficha.email_personal || ficha.email || ''} onChange={e => setFirmaForm(v => ({ ...v, email_personal: e.target.value }))} /></div>
                   <div className="input-group"><label>Canal OTP</label><select className="select" value={firmaForm.firma_otp_canal} onChange={e => setFirmaForm(v => ({ ...v, firma_otp_canal: e.target.value }))}><option value="email_personal">Email personal</option><option value="telefono_personal">SMS/WhatsApp</option></select></div>
                 </div>

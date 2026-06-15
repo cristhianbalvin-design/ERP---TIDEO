@@ -144,6 +144,7 @@ export function construirAutoservicioLocal({
       telefono: ficha.telefono || '',
       telefono_personal: ficha.telefono_personal || ficha.telefono || '',
       email_personal: ficha.email_personal || ficha.email || '',
+      celular_personal: ficha.celular_personal || ficha.telefono_personal || ficha.telefono || '',
       direccion: ficha.direccion || '',
       contacto_emergencia: ficha.contacto_emergencia || '',
       relacion_emergencia: ficha.relacion_emergencia || '',

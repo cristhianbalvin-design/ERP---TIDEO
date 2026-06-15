@@ -6971,7 +6971,7 @@ function RRHHAdmin() {
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const vacacionesSugeridas = String(diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general'));
-  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', direccion:'', codigo:'', cargo:'', cargo_id:'', area:'', sede:'', turno_id:'', centro_costo_id:'', modalidad:'planilla', tipo_contrato:'indefinido', fecha_inicio:'', fecha_fin:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', dias_vacaciones:vacacionesSugeridas, estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', tarifa_hora_referencial:'' };
+  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', email_personal:'', celular_personal:'', direccion:'', codigo:'', cargo:'', cargo_id:'', area:'', sede:'', turno_id:'', centro_costo_id:'', modalidad:'planilla', tipo_contrato:'indefinido', fecha_inicio:'', fecha_fin:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', dias_vacaciones:vacacionesSugeridas, estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', tarifa_hora_referencial:'' };
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [nuevoCargoTextoAdmin, setNuevoCargoTextoAdmin] = useState('');
@@ -7075,6 +7075,8 @@ function RRHHAdmin() {
       fecha_nacimiento: p.fecha_nacimiento || '',
       telefono: sanitizePhone(p.telefono || ''),
       email: p.email || '',
+      email_personal: p.email_personal || '',
+      celular_personal: sanitizePhone(p.celular_personal || ''),
       direccion: p.direccion || '',
       codigo: p.codigo || p.id || '',
       cargo: p.cargo || '',
@@ -7196,6 +7198,8 @@ function RRHHAdmin() {
       fecha_nacimiento: formAlta.fecha_nacimiento || '',
       telefono: formAlta.telefono || '',
       email: formAlta.email || '',
+      email_personal: formAlta.email_personal || null,
+      celular_personal: formAlta.celular_personal || null,
       direccion: formAlta.direccion || '',
       cargo: formAlta.cargo || 'Por definir',
       cargo_id: formAlta.cargo_id || null,
@@ -7326,6 +7330,7 @@ function RRHHAdmin() {
               <div className="grid-2" style={{gap:16}}>
                 {[
                   ['DNI', persona.dni], ['Fecha de nacimiento', persona.fecha_nacimiento],
+                  ['Correo personal', persona.email_personal], ['Celular personal (WhatsApp)', persona.celular_personal],
                   ['Dirección', persona.direccion], ['Nivel de estudios', persona.nivel_estudios],
                   ['Especialidad', persona.especialidad], ['Institución', persona.institucion],
                   ['Cargo', persona.cargo], ['Área', persona.area],
@@ -8414,6 +8419,8 @@ function RRHHAdmin() {
               <div className="input-group"><label>Fecha de nacimiento</label><input className="input" type="date" value={formAlta.fecha_nacimiento} onChange={e=>setFormAlta(v=>({...v,fecha_nacimiento:e.target.value}))}/></div>
               <div className="input-group"><label>Teléfono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group"><label>Email corporativo</label><input className="input" type="email" value={formAlta.email} onChange={e=>setFormAlta(v=>({...v,email:e.target.value}))} placeholder="nombre@empresa.pe"/></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Correo personal</label><input className="input" type="email" value={formAlta.email_personal} onChange={e=>setFormAlta(v=>({...v,email_personal:e.target.value}))} placeholder="correo@personal.com"/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Usado como canal de verificación para firma electrónica y notificaciones. Debe ser un correo de uso personal, no corporativo.</div></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Celular personal (WhatsApp)</label><input className="input" type="text" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.celular_personal} onChange={e=>setFormAlta(v=>({...v,celular_personal:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Usado para notificaciones por WhatsApp y verificación. Debe ser un número personal, no asignado por la empresa.</div></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Dirección personal</label><input className="input" value={formAlta.direccion} onChange={e=>setFormAlta(v=>({...v,direccion:e.target.value}))} placeholder="Dirección completa"/></div>
               {esHonorariosAlta && (
                 <div className="input-group">

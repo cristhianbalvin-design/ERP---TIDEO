@@ -678,7 +678,7 @@ export const tickets = [
 ];
 
 export const solpes = [
-  { id: 'slp_001', empresa_id: 'emp_001', ot_id: 'ot_001', numero: 'SLP-2025-001', solicitante: 'J. Quispe', fecha: '2025-01-21', estado: 'atendida', urgencia: 'alta', centro_costo: 'Mantenimiento', items: [{ nombre: 'Rodamiento 6205', cantidad: 4 }] },
+  { id: 'slp_001', empresa_id: 'emp_001', ot_id: 'ot_001', numero: 'SLP-2025-001', solicitante: 'J. Quispe', fecha: '2025-01-21', estado: 'oc_generada', urgencia: 'alta', centro_costo: 'Mantenimiento', orden_compra_id: 'oc_011', orden_compra_codigo: 'OC-2025-0077', items: [{ descripcion: 'Rodamiento 6205', nombre: 'Rodamiento 6205', cantidad: 4, unidad: 'Und' }, { descripcion: 'Aceite lubricante SAE 40', nombre: 'Aceite lubricante SAE 40', cantidad: 10, unidad: 'Lt' }, { descripcion: 'Empaque de goma NBR', nombre: 'Empaque de goma NBR', cantidad: 20, unidad: 'Und' }] },
   { id: 'slp_002', empresa_id: 'emp_001', ot_id: 'ot_002', numero: 'SLP-2025-002', solicitante: 'A. Gómez', fecha: '2025-01-26', estado: 'solicitada', urgencia: 'media', centro_costo: 'Servicios', items: [{ nombre: 'Contactores 220V', cantidad: 2 }] }
 ];
 
@@ -874,6 +874,19 @@ export const ordenesCompra = [
     fecha_emision: '2026-06-04', fecha_entrega_esperada: '2026-06-07', almacen_destino: 'ALM-001',
     estado: 'recibida_total', porcentaje_recibido: 100, notas_proveedor: '', notas_internas: ''
   },
+  {
+    id: 'oc_011', empresa_id: 'emp_001', codigo: 'OC-2025-0077', proveedor_id: 'prv_005', ot_id: 'ot_001',
+    solpe_id: 'slp_001', solpe_codigo: 'SLP-2025-001', origen_tipo: 'solpe',
+    descripcion: 'Rodamientos y repuestos mantenimiento preventivo',
+    items: [
+      { descripcion: 'Rodamiento 6205', cantidad: 4, unidad: 'Und', precio_unitario: 45, subtotal: 180 },
+      { descripcion: 'Aceite lubricante SAE 40', cantidad: 10, unidad: 'Lt', precio_unitario: 22, subtotal: 220 },
+      { descripcion: 'Empaque de goma NBR', cantidad: 20, unidad: 'Und', precio_unitario: 8.50, subtotal: 170 }
+    ],
+    subtotal: 570, igv: 102.60, total: 672.60, condicion_pago: '30 dias', moneda: 'PEN',
+    fecha_emision: '2025-01-28', fecha_entrega_esperada: '2025-02-05', almacen_destino: 'ALM-001',
+    estado: 'recibida_parcial', porcentaje_recibido: 40, notas_proveedor: '', notas_internas: 'SOLPE origen: SLP-2025-001'
+  },
 ];
 
 export const ordenesServicio = [
@@ -901,6 +914,28 @@ export const recepciones = [
     ],
     tipo: 'total', estado: 'conforme', observaciones: '', archivo_guia: 'guia_ferreteria_20250425.pdf',
     cxp_generada: true, cxp_id: 'cxp_005'
+  },
+  {
+    id: 'rec_002', empresa_id: 'emp_001', codigo: 'REC-2025-0012', oc_id: 'oc_011', proveedor_id: 'prv_005',
+    fecha: '2025-02-03', responsable: 'Roberto Quispe', almacen: 'ALM-001',
+    items_recibidos: [
+      { descripcion: 'Rodamiento 6205', pedido: 4, recibido: 2, unidad: 'Und', conforme: true },
+      { descripcion: 'Aceite lubricante SAE 40', pedido: 10, recibido: 8, unidad: 'Lt', conforme: true },
+      { descripcion: 'Empaque de goma NBR', pedido: 20, recibido: 0, unidad: 'Und', conforme: false }
+    ],
+    tipo: 'parcial', estado: 'conforme', observaciones: 'Primera entrega parcial. Rodamientos y aceite. Empaques pendientes.',
+    archivo_guia: 'guia_repuestos_20250203.pdf', cxp_generada: false, cxp_id: null
+  },
+  {
+    id: 'rec_003', empresa_id: 'emp_001', codigo: 'REC-2025-0015', oc_id: 'oc_011', proveedor_id: 'prv_005',
+    fecha: '2025-02-10', responsable: 'Roberto Quispe', almacen: 'ALM-001',
+    items_recibidos: [
+      { descripcion: 'Rodamiento 6205', pedido: 4, recibido: 2, unidad: 'Und', conforme: true },
+      { descripcion: 'Aceite lubricante SAE 40', pedido: 10, recibido: 4, unidad: 'Lt', conforme: true },
+      { descripcion: 'Empaque de goma NBR', pedido: 20, recibido: 0, unidad: 'Und', conforme: false }
+    ],
+    tipo: 'parcial', estado: 'observada', observaciones: 'Segunda entrega. Aceite acumulado supera cantidad pedida. Empaques sin entrega.',
+    archivo_guia: 'guia_repuestos_20250210.pdf', cxp_generada: false, cxp_id: null
   }
 ];
 export const comprasGastos = [
@@ -1356,22 +1391,22 @@ export const cxp = [
 export const personalOperativo = [
   { id: 'pop_001', empresa_id: 'emp_001', nombre: 'Luis Mendoza', dni: '45678901', codigo: 'TEC-001',
     cargo_id: 'car_011', cargo: 'Técnico Mecánico', especialidad: 'Mecánica', turno_id: 'tur_001',
-    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 35, moneda: 'PEN', codigo_biometrico: 'BIO001', celular_whatsapp: '51999111222', whatsapp_opt_in: true },
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 35, moneda: 'PEN', email_personal: null, celular_personal: null, codigo_biometrico: 'BIO001', celular_whatsapp: '51999111222', whatsapp_opt_in: true },
   { id: 'pop_002', empresa_id: 'emp_001', nombre: 'Carlos Reyes', dni: '34567890', codigo: 'TEC-002',
     cargo_id: 'car_011', cargo: 'Técnico Mecánico', especialidad: 'Mecánica', turno_id: 'tur_001',
-    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 32, moneda: 'PEN', codigo_biometrico: 'BIO002', celular_whatsapp: '51999111333', whatsapp_opt_in: false },
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 32, moneda: 'PEN', email_personal: null, celular_personal: null, codigo_biometrico: 'BIO002', celular_whatsapp: '51999111333', whatsapp_opt_in: false },
   { id: 'pop_003', empresa_id: 'emp_001', nombre: 'Ana Torres', dni: '23456789', codigo: 'TEC-003',
     cargo_id: 'car_015', cargo: 'Electricista Industrial', especialidad: 'Eléctrica', turno_id: 'tur_001',
-    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 38, moneda: 'PEN', codigo_biometrico: 'BIO003', celular_whatsapp: '51999111444', whatsapp_opt_in: true },
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 38, moneda: 'PEN', email_personal: null, celular_personal: null, codigo_biometrico: 'BIO003', celular_whatsapp: '51999111444', whatsapp_opt_in: true },
   { id: 'pop_004', empresa_id: 'emp_001', nombre: 'Jorge Quispe', dni: '12345678', codigo: 'TEC-004',
     cargo_id: 'car_011', cargo: 'Técnico Mecánico', especialidad: 'Mecánica', turno_id: 'tur_004',
-    estado: 'disponible', modalidad_contrato: 'honorarios', tarifa_hora: 42, moneda: 'PEN' },
+    estado: 'disponible', modalidad_contrato: 'honorarios', tarifa_hora: 42, moneda: 'PEN', email_personal: null, celular_personal: null },
   { id: 'pop_005', empresa_id: 'emp_001', nombre: 'Pedro Condori', dni: '56789012', codigo: 'TEC-005',
     cargo_id: 'car_015', cargo: 'Electricista Industrial', especialidad: 'Eléctrica', turno_id: 'tur_002',
-    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 36, moneda: 'PEN' },
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 36, moneda: 'PEN', email_personal: null, celular_personal: null },
   { id: 'pop_006', empresa_id: 'emp_001', nombre: 'Rosa Huanca', dni: '67890123', codigo: 'TEC-006',
     cargo_id: null, cargo: '', especialidad: 'General', turno_id: null,
-    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 28, moneda: 'PEN' },
+    estado: 'disponible', modalidad_contrato: 'planilla', tarifa_hora: 28, moneda: 'PEN', email_personal: null, celular_personal: null },
 ];
 
 // Tipos de documento (maestro del tenant — mock)

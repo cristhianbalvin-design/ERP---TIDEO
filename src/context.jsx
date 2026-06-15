@@ -9126,6 +9126,7 @@ export function AppProvider({ children }) {
     const cambios = {
       telefono_personal: payload.telefono_personal || ficha.telefono_personal || ficha.telefono || '',
       email_personal: payload.email_personal || ficha.email_personal || ficha.email || '',
+      celular_personal: payload.celular_personal || payload.telefono_personal || ficha.celular_personal || ficha.telefono_personal || ficha.telefono || '',
       consentimiento_entrega_electronica: Boolean(payload.consentimiento_entrega_electronica),
       consentimiento_entrega_electronica_en: payload.consentimiento_entrega_electronica ? new Date().toISOString() : ficha.consentimiento_entrega_electronica_en || null,
       firma_rubrica_url: payload.firma_rubrica_url || ficha.firma_rubrica_url || null,
