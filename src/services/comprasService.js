@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
-import { registrarEntradaDesdeRecepcion, getStockCompleto, registrarSalidaDevolucion, anularMovimiento } from './inventarioService.js';
+import { registrarEntradaDesdeRecepcion, getStockCompleto, registrarSalidaDevolucion, anularMovimiento, ajustarValorizacionOcPendiente, listarEntradasOcPendientesValorizacion } from './inventarioService.js';
 
 const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const ESTADOS_COMPLETADOS = new Set(['cerrada', 'recibida_total', 'aprobada']);
@@ -387,6 +387,14 @@ export const comprasService = {
   // Delega al motor WMS. Mantiene la firma para compatibilidad con context.jsx.
   registrarEntradaInventario: async (empresaId, item, referencia, usuarioId) => {
     return registrarEntradaDesdeRecepcion(empresaId, item, referencia, usuarioId);
+  },
+
+  listarEntradasOcPendientesValorizacion: async (empresaId, ordenCompraId = null) => {
+    return listarEntradasOcPendientesValorizacion(empresaId, ordenCompraId);
+  },
+
+  ajustarValorizacionOcPendiente: async (empresaId, payload) => {
+    return ajustarValorizacionOcPendiente(empresaId, payload);
   },
 
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
@@ -2966,12 +2966,13 @@ function Valorizacion({ role }) {
 }
 
 // ─── Modal Entrada Manual ──────────────────────────────────────────────────────
-function ModalEntradaManual({ materiales, almacenes, onClose, onSave }) {
+function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepciones = [], entradasOcPendientes = [], onClose, onSave }) {
   // '' = auto-crear ALM-001 (cuando la empresa no tiene almacenes aún)
   const [form, setForm] = useState({ motivo: 'saldo_inicial', cantidad: '', costo_unitario: '', moneda: 'PEN', material_id: '', almacen_id: almacenes[0]?.id || '', lote: '', serie: '', vencimiento: '', nro_documento: '', observacion: '' });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const mat = materiales.find(m => m.id === form.material_id);
+  const esLlegadaOC = form.motivo === 'oc_pendiente_factura';
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const sinAlmacenes = almacenes.length === 0;
 
@@ -2980,10 +2981,84 @@ function ModalEntradaManual({ materiales, almacenes, onClose, onSave }) {
     { value: 'ajuste_positivo', label: 'Ajuste Positivo' },
     { value: 'devolucion_ot', label: 'Devolución desde OT' },
     { value: 'compra_directa_sin_oc', label: 'Compra Directa sin OC' },
+    { value: 'oc_pendiente_factura', label: 'Llegada de OC pendiente factura' },
   ];
+
+  const ocElegibles = useMemo(() => {
+    return (ordenesCompra || []).filter(oc =>
+      ['confirmada', 'en_transito', 'emitida', 'recibida_parcial'].includes(oc.estado) &&
+      (oc.items || []).some((item, idx) => {
+        const recibidoRecepciones = (recepciones || [])
+          .filter(r => String(r.orden_compra_id || r.oc_id || '') === String(oc.id))
+          .reduce((sum, r) => {
+            const rec = (r.items_recibidos || []).find(i =>
+              (item.material_id && i.material_id === item.material_id) || i.descripcion === item.descripcion
+            );
+            return sum + Number(rec?.recibido || 0);
+          }, 0);
+        const recibidoAlmacen = (entradasOcPendientes || [])
+          .filter(e => String(e.orden_compra_id || e.referencia_id || '') === String(oc.id))
+          .filter(e => (e.orden_compra_item_idx !== null && e.orden_compra_item_idx !== undefined) ? Number(e.orden_compra_item_idx) === idx : (item.material_id && e.material_id === item.material_id))
+          .reduce((sum, e) => sum + Number(e.cantidad || 0), 0);
+        return Number(item.cantidad || 0) - recibidoRecepciones - recibidoAlmacen > 0;
+      })
+    );
+  }, [ordenesCompra, recepciones, entradasOcPendientes]);
+
+  const ocSeleccionada = ocElegibles.find(oc => oc.id === form.orden_compra_id) || null;
+
+  const lineasOc = useMemo(() => {
+    if (!ocSeleccionada) return [];
+    return (ocSeleccionada.items || []).map((item, idx) => {
+      const recibidoRecepciones = (recepciones || [])
+        .filter(r => String(r.orden_compra_id || r.oc_id || '') === String(ocSeleccionada.id))
+        .reduce((sum, r) => {
+          const rec = (r.items_recibidos || []).find(i =>
+            (item.material_id && i.material_id === item.material_id) || i.descripcion === item.descripcion
+          );
+          return sum + Number(rec?.recibido || 0);
+        }, 0);
+      const recibidoAlmacen = (entradasOcPendientes || [])
+        .filter(e => String(e.orden_compra_id || e.referencia_id || '') === String(ocSeleccionada.id))
+        .filter(e => (e.orden_compra_item_idx !== null && e.orden_compra_item_idx !== undefined) ? Number(e.orden_compra_item_idx) === idx : (item.material_id && e.material_id === item.material_id))
+        .reduce((sum, e) => sum + Number(e.cantidad || 0), 0);
+      const pendiente = Math.max(0, Number(item.cantidad || 0) - recibidoRecepciones - recibidoAlmacen);
+      return { ...item, index: idx, pendiente };
+    }).filter(item => item.pendiente > 0);
+  }, [ocSeleccionada, recepciones, entradasOcPendientes]);
+
+  useEffect(() => {
+    if (!esLlegadaOC || !ocSeleccionada) return;
+    setForm(p => ({
+      ...p,
+      lineas: lineasOc.map(item => ({
+        index: item.index,
+        material_id: item.material_id || null,
+        codigo: item.codigo || null,
+        descripcion: item.descripcion,
+        unidad: item.unidad,
+        cantidad_pedida: item.cantidad,
+        cantidad_pendiente: item.pendiente,
+        cantidad_recibida: String(item.pendiente),
+        precio_unitario_oc: Number(item.precio_unitario || 0),
+        oc_codigo: ocSeleccionada.codigo || ocSeleccionada.id,
+      })),
+    }));
+  }, [esLlegadaOC, ocSeleccionada?.id, lineasOc]);
 
   const handleSave = async () => {
     setErr('');
+    if (esLlegadaOC) {
+      if (!form.orden_compra_id) { setErr('Selecciona una OC'); return; }
+      if (!form.almacen_id && !sinAlmacenes) { setErr('Selecciona un almacén'); return; }
+      const lineas = (form.lineas || []).filter(l => Number(l.cantidad_recibida || 0) > 0);
+      if (!lineas.length) { setErr('Ingresa al menos una cantidad fisica recibida'); return; }
+      setSaving(true);
+      try { await onSave({ ...form, lineas, proveedor_id: ocSeleccionada?.proveedor_id || null, moneda: ocSeleccionada?.moneda || 'PEN' }); onClose(); }
+      catch (e) { setErr(e.message); }
+      finally { setSaving(false); }
+      return;
+    }
     if (!form.material_id) { setErr('Selecciona un material'); return; }
     // almacen_id vacío = auto ALM-001 via resolverAlmacen; solo bloqueamos si hay lista y no se eligió
     if (!form.almacen_id && !sinAlmacenes) { setErr('Selecciona un almacén'); return; }
@@ -3010,11 +3085,47 @@ function ModalEntradaManual({ materiales, almacenes, onClose, onSave }) {
         <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
           <div>
             <label className="label">Motivo *</label>
-            <select className="select" value={form.motivo} onChange={e => setF('motivo', e.target.value)}>
+            <select className="select" value={form.motivo} onChange={e => setForm(p => ({ ...p, motivo: e.target.value, orden_compra_id: '', lineas: [] }))}>
               {MOTIVOS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </div>
-          <div className="grid-2" style={{gap:12}}>
+          {esLlegadaOC && (
+            <>
+              <div>
+                <label className="label">OC *</label>
+                <select className="select" value={form.orden_compra_id || ''} onChange={e => setF('orden_compra_id', e.target.value)}>
+                  <option value="">Seleccionar OC...</option>
+                  {ocElegibles.map(oc => <option key={oc.id} value={oc.id}>{oc.codigo || oc.id}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Almacen *</label>
+                <select className="select" value={form.almacen_id} onChange={e => setF('almacen_id', e.target.value)}>
+                  {sinAlmacenes
+                    ? <option value="">Almacen Principal (se creara automaticamente)</option>
+                    : <>{almacenes.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</>
+                  }
+                </select>
+              </div>
+              {ocSeleccionada && (
+                <div className="table-wrap">
+                  <table className="tbl" style={{fontSize:12}}>
+                    <thead><tr><th>Item</th><th className="num">Pendiente</th><th className="num">Cantidad fisica</th></tr></thead>
+                    <tbody>{(form.lineas || []).map((linea, idx) => (
+                      <tr key={`${linea.index}-${linea.descripcion}`}>
+                        <td>{linea.descripcion}<div className="text-muted" style={{fontSize:11}}>{linea.unidad || ''}</div></td>
+                        <td className="num">{linea.cantidad_pendiente}</td>
+                        <td className="num" style={{width:140}}>
+                          <input className="input" type="number" min="0" step="any" value={linea.cantidad_recibida} onChange={e => setForm(p => ({ ...p, lineas: (p.lineas || []).map((l, i) => i === idx ? { ...l, cantidad_recibida: e.target.value } : l) }))} style={{textAlign:'right'}} />
+                        </td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+          {!esLlegadaOC && <div className="grid-2" style={{gap:12}}>
             <div>
               <label className="label">Material *</label>
               <select className="select" value={form.material_id} onChange={e => setF('material_id', e.target.value)}>
@@ -3031,8 +3142,8 @@ function ModalEntradaManual({ materiales, almacenes, onClose, onSave }) {
                 }
               </select>
             </div>
-          </div>
-          <div className="grid-2" style={{gap:12}}>
+          </div>}
+          {!esLlegadaOC && <div className="grid-2" style={{gap:12}}>
             <div>
               <label className="label">Cantidad *{mat?.tipo_control === 'serie' ? ' (máx. 1)' : ''}</label>
               <input className="input" type="number" min="0.001" step="any" value={form.cantidad} onChange={e => setF('cantidad', e.target.value)} placeholder="0" />
@@ -3046,8 +3157,8 @@ function ModalEntradaManual({ materiales, almacenes, onClose, onSave }) {
                 <input className="input" type="number" min="0" step="any" value={form.costo_unitario} onChange={e => setF('costo_unitario', e.target.value)} placeholder="0.00" />
               </div>
             </div>
-          </div>
-          {mat?.tipo_control !== 'sin_control' && (
+          </div>}
+          {!esLlegadaOC && mat?.tipo_control !== 'sin_control' && (
             <div className="grid-2" style={{gap:12}}>
               {mat?.tipo_control === 'lote' && <>
                 <div><label className="label">Número de Lote *</label><input className="input" value={form.lote} onChange={e => setF('lote', e.target.value)} /></div>
@@ -3736,7 +3847,7 @@ function AnaliticaInventarioTab({ almacenes, getAnaliticaInventarioCtx }) {
 }
 
 function Inventario() {
-  const { inventario, inventarioConteos = [], almacenes, materiales: catalogoMateriales = [], searchQuery, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx, getKardexMaterialCtx, crearSOLPE, recargarInventario, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, getAnaliticaInventarioCtx } = useApp();
+  const { inventario, inventarioConteos = [], almacenes, materiales: catalogoMateriales = [], ordenesCompra = [], recepciones = [], entradasOcPendientes = [], searchQuery, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx, getKardexMaterialCtx, crearSOLPE, recargarInventario, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, getAnaliticaInventarioCtx } = useApp();
   const [selSku, setSelSku] = useState(null);
   const [modalEntrada, setModalEntrada] = useState(false);
   const [modalTransf, setModalTransf] = useState(false);
@@ -3916,6 +4027,9 @@ function Inventario() {
         <ModalEntradaManual
           materiales={catalogoMateriales.filter(m => m.estado !== 'inactivo')}
           almacenes={almacenes.filter(a => !a.estado || a.estado === 'activo')}
+          ordenesCompra={ordenesCompra}
+          recepciones={recepciones}
+          entradasOcPendientes={entradasOcPendientes}
           onClose={() => setModalEntrada(false)}
           onSave={handleEntrada}
         />
@@ -4304,7 +4418,7 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
           </div>
           <aside className="cost-sidebar">
             <ResumenCostos hc={{ ...hc, ...form, costo_total: (calcSub(form.mano_obra)+calcSub(form.materiales)+calcSub(form.servicios_terceros)+calcSub(form.logistica)), precio_sugerido_sin_igv: calcPrecio(form), precio_sugerido_total: calcPrecio(form)*1.18 }} moneda={hcMoneda} />
-            
+
             <div className="card mt-6" style={{padding:20}}>
               <div className="eyebrow" style={{marginBottom:16}}>Configuración y Notas</div>
               <div className="input-group">

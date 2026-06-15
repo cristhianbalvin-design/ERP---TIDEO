@@ -11,7 +11,7 @@ import {
 } from './services/finanzasService.js';
 import { maestrosService } from './services/maestrosService.js';
 import { comprasService, devolucionesService } from './services/comprasService.js';
-import { registrarEntrada, registrarSalida, registrarTransferencia, registrarAjuste, reservarStock, liberarReserva, getKardex, getStockCompleto, iniciarConteo, listarConteos, guardarAvanceConteo, cerrarConteo, getAnaliticaInventario, getMaterialesBajoReorden, registrarConsumoOT as registrarConsumoOTSvc } from './services/inventarioService.js';
+import { registrarEntrada, registrarEntradaOcPendienteFactura, registrarSalida, registrarTransferencia, registrarAjuste, reservarStock, liberarReserva, getKardex, getStockCompleto, iniciarConteo, listarConteos, guardarAvanceConteo, cerrarConteo, getAnaliticaInventario, getMaterialesBajoReorden, listarEntradasOcPendientesValorizacion, registrarConsumoOT as registrarConsumoOTSvc } from './services/inventarioService.js';
 import { rrhhService } from './services/rrhhService.js';
 import { reclutamientoService } from './services/reclutamientoService.js';
 import * as plannerSvc from './services/plannerService.js';
@@ -257,7 +257,7 @@ export function AppProvider({ children }) {
     } catch { /* limpieza best-effort de estado mock local */ }
   }, []);
 
-  // Auto-seleccionar solo si hay exactamente 1 empresa â€” con múltiples siempre muestra el selector
+  // Auto-seleccionar solo si hay exactamente 1 empresa — con múltiples siempre muestra el selector
   useEffect(() => {
     if (!authUser || membresiaActiva || todasMembresias.length !== 1) return;
     seleccionarEmpresa(todasMembresias[0].empresa_id);
@@ -332,6 +332,7 @@ export function AppProvider({ children }) {
   const [ordenesServicio, setOrdenesServicio] = useState(useSupabase ? [] : (MOCK.ordenesServicio || []));
   const [recepciones, setRecepciones] = useState(useSupabase ? [] : (MOCK.recepciones || []));
   const [devolucionesProveedor, setDevolucionesProveedor] = useState([]);
+  const [entradasOcPendientes, setEntradasOcPendientes] = useState([]);
 
   // Configuración de empresa
   const [empresaConfig, setEmpresaConfig] = useState({});
@@ -842,7 +843,7 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!isSupabaseConfigured() || !authSession?.user || !empresa?.id) return;
     if (!membresiaActiva?.empresa?.id || membresiaActiva.empresa.id !== empresa.id) return;
-    
+
     // Limpiar listas actuales para evitar datos "pegados" de otro tenant
     // usuarios se limpia después del merge con localStorage
     // Usuarios y roles cargan en un efecto dedicado para responder mas rapido.
@@ -916,7 +917,7 @@ export function AppProvider({ children }) {
           const campanasData = await campanasService.listar(empresa.id);
           if (mounted) setCampanas(campanasData || []);
         } catch (_err) { /* keep empty list if campaign table is not available */ }
-        
+
         const opsData = await loadOpsFromSupabase(supabase, empresa.id);
         if (opsData && mounted) {
           setOts(opsData.ots || []);
@@ -925,7 +926,7 @@ export function AppProvider({ children }) {
           setPlannerAsignaciones(opsData.plannerAsignaciones || []);
           setCierresTecnicos(opsData.cierresTecnicos || []);
         }
-        
+
         try {
           const ar = await maestrosService.getAreas(empresa.id);
           const cg = await maestrosService.getCargos(empresa.id);
@@ -1026,7 +1027,7 @@ export function AppProvider({ children }) {
         } catch (_err) { /* tabla aún no existe, ignorar */ }
 
         try {
-          const [prvData, evalData, slpData, pcData, ocData, transData, osData, recData, invData, devData] = await Promise.all([
+          const [prvData, evalData, slpData, pcData, ocData, transData, osData, recData, invData, devData, grniData] = await Promise.all([
             comprasService.getProveedores(empresa.id),
             comprasService.getEvaluacionesProveedor(empresa.id),
             comprasService.getSolpes(empresa.id),
@@ -1037,6 +1038,7 @@ export function AppProvider({ children }) {
             comprasService.getRecepciones(empresa.id),
             comprasService.getInventario(empresa.id),
             devolucionesService.getDevolucionesProveedor(empresa.id),
+            comprasService.listarEntradasOcPendientesValorizacion(empresa.id),
           ]);
           if (mounted) {
             setProveedores(prvData || []);
@@ -1049,6 +1051,7 @@ export function AppProvider({ children }) {
             setRecepciones(recData || []);
             setInventario(invData || []);
             setDevolucionesProveedor(devData || []);
+            setEntradasOcPendientes(grniData || []);
           }
         } catch (_err) { /* keep mock */ }
 
@@ -1974,7 +1977,7 @@ export function AppProvider({ children }) {
       reactivado_por: authUser?.id,
       veces_reactivado: (l.veces_reactivado || 0) + 1
     } : l));
-    // El trigger DB gestiona reactivado_* â€” solo enviamos el cambio de estado
+    // El trigger DB gestiona reactivado_* — solo enviamos el cambio de estado
     crmSync(sb => actualizarLead(sb, leadId, { estado: 'en_contacto', motivo_descarte: null }));
     pushHistorial(leadId, 'descartado', 'en_contacto', motivo);
     auditSync({ modulo: 'crm', entidad: 'leads', entidad_id: leadId, accion: 'reactivar', valor_anterior: anterior, valor_nuevo: { motivo } });
@@ -2108,7 +2111,7 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'crm', entidad: 'oportunidades', entidad_id: oppId, accion: 'perder', valor_anterior: anterior, valor_nuevo: { motivo } });
   };
 
-  // â”€â”€â”€ Acuerdo de comisión por oportunidad â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Acuerdo de comisión por oportunidad ─────────────────────────────────
   const _acuerdoPatch = (opp, extra) => {
     const patch = { ...extra };
     setOportunidades(prev => prev.map(o => o.id === opp.id ? { ...o, ...patch } : o));
@@ -2229,7 +2232,7 @@ export function AppProvider({ children }) {
     const sb = await getSupabaseClient();
     return cargarHistorialAcuerdo(sb, oppId);
   };
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────
 
   const calcularHojaCosteo = (base) => {
     const calcTotales = (items) => (items || []).reduce((s, i) => s + (Number(i.cantidad) * Number(i.costo_unitario)), 0);
@@ -2517,7 +2520,7 @@ export function AppProvider({ children }) {
     addNotificacion(`Cotización ${cot.numero} generada con éxito.`);
     return cot.id;
   };
-  
+
   const ETAPA_ORDER = ['calificacion', 'propuesta', 'negociacion', 'ganada'];
   const avanzarEtapaOpp = (oppId, targetEtapa) => {
     const opp = oportunidades.find(o => o.id === oppId);
@@ -2946,7 +2949,7 @@ export function AppProvider({ children }) {
         const data = result?.data || {};
         const localEst = { est_mo: ot.est_mo, est_materiales: ot.est_materiales, est_terceros: ot.est_terceros, est_logistica: ot.est_logistica };
         Object.assign(ot, data.orden_trabajo || {});
-        // RPC insert doesn't include est breakdown columns â€” restore locally-computed values
+        // RPC insert doesn't include est breakdown columns — restore locally-computed values
         if (ot.est_mo == null && localEst.est_mo != null) ot.est_mo = localEst.est_mo;
         if (ot.est_materiales == null && localEst.est_materiales != null) ot.est_materiales = localEst.est_materiales;
         if (ot.est_terceros == null && localEst.est_terceros != null) ot.est_terceros = localEst.est_terceros;
@@ -3561,7 +3564,7 @@ export function AppProvider({ children }) {
     return gasto;
   };
 
-  // â”€â”€ Presupuestos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Presupuestos ─────────────────────────────────────────────────────────────
   const crearPresupuesto = async (datos, partidas) => {
     const pre = {
       id: generateId('pre'),
@@ -3668,7 +3671,7 @@ export function AppProvider({ children }) {
     }
     if (accion === 'rechazar') {
       setPresupuestos(prev => prev.map(p => p.id === presupuestoId ? { ...p, estado: 'borrador' } : p));
-      addNotificacion('Presupuesto rechazado â€” vuelve a borrador.');
+      addNotificacion('Presupuesto rechazado — vuelve a borrador.');
       if (isSupabaseConfigured()) {
         presupuestosService.actualizarPresupuesto(presupuestoId, { estado: 'borrador' }).catch(() => {});
       }
@@ -4004,7 +4007,7 @@ export function AppProvider({ children }) {
   const registrarUsuario = async (u) => {
     // Validar que tenga empresa_id
     if (!u.empresa_id && empresa?.id) u.empresa_id = empresa.id;
-    
+
     if (!u.empresa_id) {
       addNotificacion('No se pudo crear el usuario: Falta ID de empresa', 'error');
       return;
@@ -4248,9 +4251,9 @@ export function AppProvider({ children }) {
   };
 
   // ============================================================
-  // FINANZAS â€” Mutaciones
+  // FINANZAS — Mutaciones
   // ============================================================
-  
+
   const emitirFactura = async (datos) => {
     const fac = {
       id: generateId('fac'),
@@ -4259,7 +4262,7 @@ export function AppProvider({ children }) {
       ...datos
     };
     setFacturas(prev => [...prev, fac]);
-    
+
     if (datos.valorizacion_id) {
       setValorizaciones(prev => prev.map(v => v.id === datos.valorizacion_id ? { ...v, estado: 'facturada' } : v));
     }
@@ -4270,7 +4273,7 @@ export function AppProvider({ children }) {
       });
     }
     auditSync({ modulo: 'finanzas', entidad: 'facturas', entidad_id: fac.id, accion: 'emitir', valor_nuevo: fac });
-    
+
     addNotificacion(`Factura ${fac.numero || 'emitida'} exitosamente.`);
     return fac.id;
   };
@@ -5901,7 +5904,7 @@ export function AppProvider({ children }) {
       id: generateId('tes'),
       empresa_id: empresa.id,
       tipo: 'egreso',
-      descripcion: `Anticipo OC ${ordenCompraId}${referencia ? ' â€” ' + referencia : ''}`,
+      descripcion: `Anticipo OC ${ordenCompraId}${referencia ? ' — ' + referencia : ''}`,
       monto: Number(monto),
       moneda,
       fecha,
@@ -6115,7 +6118,7 @@ export function AppProvider({ children }) {
   };
 
   const conciliarMovimientoBanco = async (movId, vinculadoTipo, vinculadoId, extra = {}) => {
-    setMovimientosBanco(prev => prev.map(m => 
+    setMovimientosBanco(prev => prev.map(m =>
       m.id === movId ? { ...m, conciliado: true, vinculado_tipo: vinculadoTipo, vinculado_id: vinculadoId, ...extra } : m
     ));
 
@@ -6153,7 +6156,7 @@ export function AppProvider({ children }) {
   };
 
   // ============================================================
-  // FASE 3 â€” Mutaciones
+  // FASE 3 — Mutaciones
   // ============================================================
 
   const calcularHealthScore = (cuentaId) => {
@@ -6206,7 +6209,7 @@ export function AppProvider({ children }) {
       ...datos
     };
     setNpsEncuestas(prev => [...prev, enc]);
-    addNotificacion(`NPS registrado â€” score ${datos.score} (${enc.clasificacion}).`);
+    addNotificacion(`NPS registrado — score ${datos.score} (${enc.clasificacion}).`);
   };
 
   const generarRenovacion = (renovacionId) => {
@@ -6219,7 +6222,7 @@ export function AppProvider({ children }) {
       id: generateId('opp'),
       empresa_id: empresa.id,
       cuenta_id: ren.cuenta_id,
-      nombre: `Renovación â€” ${ren.servicio}`,
+      nombre: `Renovación — ${ren.servicio}`,
       servicio_interes: ren.servicio,
       etapa: 'negociacion',
       monto_estimado: ren.monto_contrato,
@@ -6697,7 +6700,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  // â”€â”€â”€ Compras Mutators â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Compras Mutators ─────────────────────────────────────────
   const crearIndustria = async (industria) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await maestrosService.crearIndustria(empresa.id, industria);
@@ -6828,7 +6831,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  // â”€â”€â”€ Materiales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Materiales ─────────────────────────────────────────────────────────────
   const recargarMateriales = async () => {
     if (!empresa?.id) return;
     const [mg, mf, ms, mat] = await Promise.all([
@@ -7352,7 +7355,7 @@ export function AppProvider({ children }) {
     setDevolucionesProveedor(prev => prev.map(d => d.id === devolucionId ? { ...d, estado: 'anulada', motivo_anulacion } : d));
   };
 
-  // â”€â”€â”€ RRHH Mutators â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── RRHH Mutators ────────────────────────────────────────────
   const registrarEvaluacionProveedorCtx = async ({ proveedor_id, origen_tipo, origen_id, puntaje, detalle = {}, resultado = 'conforme' }) => {
     if (!proveedor_id || !empresa?.id) return null;
     const fecha = new Date().toISOString().split('T')[0];
@@ -7393,7 +7396,7 @@ export function AppProvider({ children }) {
     return guardada;
   };
 
-  const registrarRecepcionConCxP = async ({ origenTipo, origenId, observaciones = '', facturaNumero = '', fechaEmision: fechaEmisionParam = '', fechaVencimiento: fechaVencimientoParam = '', archivoFacturaUrl = '', facturaProvNumero = '', facturaProvFecha = '', facturaProvMonto = null, forzarConfirmacion = false }) => {
+  const registrarRecepcionConCxP = async ({ origenTipo, origenId, observaciones = '', facturaNumero = '', fechaEmision: fechaEmisionParam = '', fechaVencimiento: fechaVencimientoParam = '', archivoFacturaUrl = '', facturaProvNumero = '', facturaProvFecha = '', facturaProvMonto = null, itemsFactura = [], forzarConfirmacion = false }) => {
     const isOC = origenTipo === 'oc';
     const base = isOC
       ? ordenesCompra.find(o => o.id === origenId)
@@ -7410,6 +7413,32 @@ export function AppProvider({ children }) {
     const validacionAdvertencias = [];
     let precioDiferente = false;
     let cantidadDiferente = false;
+    const itemsFacturaList = Array.isArray(itemsFactura) ? itemsFactura : [];
+    const precioFacturaPorLinea = (item, idx) => {
+      const linea = itemsFacturaList[idx];
+      const precio = Number(linea?.precio_unitario_factura ?? linea?.precio_unitario ?? item.precio_unitario ?? 0);
+      return Number.isFinite(precio) ? precio : 0;
+    };
+    const factorTotalFactura = () => {
+      const itemsOC = base.items || [];
+      const subtotalOC = Number(base.subtotal || 0) ||
+        itemsOC.reduce((sum, item) => sum + Number(item.cantidad || 0) * Number(item.precio_unitario || 0), 0);
+      const totalOC = Number(base.total || 0);
+      if (subtotalOC > 0 && totalOC > 0) return totalOC / subtotalOC;
+      return 1 + (Number(base.igv_pct ?? 18) / 100);
+    };
+    const entradasPendientesOC = isOC
+      ? (entradasOcPendientes || []).filter(e => String(e.orden_compra_id || e.referencia_id || '') === String(base.id))
+      : [];
+    const tieneEntradaFisicaPendiente = entradasPendientesOC.length > 0;
+    const cantidadFisicaPorLinea = (item, idx) => {
+      const cantidadDesdeUi = Number(itemsFacturaList[idx]?.cantidad_recibida ?? itemsFacturaList[idx]?.recibido ?? NaN);
+      if (Number.isFinite(cantidadDesdeUi) && cantidadDesdeUi >= 0) return cantidadDesdeUi;
+      const porIdx = entradasPendientesOC.filter(e => e.orden_compra_item_idx !== null && e.orden_compra_item_idx !== undefined && Number(e.orden_compra_item_idx) === Number(idx));
+      const matches = porIdx.length ? porIdx : entradasPendientesOC.filter(e => item.material_id && e.material_id === item.material_id);
+      if (!matches.length) return Number(item.cantidad || 0);
+      return matches.reduce((sum, e) => sum + Number(e.cantidad || 0), 0);
+    };
 
     if (isOC) {
       const recepcionesAnteriores = (recepciones || []).filter(r =>
@@ -7426,8 +7455,9 @@ export function AppProvider({ children }) {
           return sum + Number(itemRec?.recibido || 0);
         }, 0);
         const cantidadPendiente = Math.max(0, cantidadPedida - cantidadYaRecibida);
-        const cantidadARecibir = cantidadPedida;
-        if (cantidadARecibir > cantidadPendiente + 0.0001) {
+        const idx = (base.items || []).indexOf(item);
+        const cantidadARecibir = tieneEntradaFisicaPendiente ? cantidadFisicaPorLinea(item, idx) : cantidadPedida;
+        if (!tieneEntradaFisicaPendiente && cantidadARecibir > cantidadPendiente + 0.0001) {
           cantidadDiferente = true;
           validacionErrores.push(
             `No puedes recibir más unidades de las pendientes para "${item.descripcion}": ` +
@@ -7436,34 +7466,44 @@ export function AppProvider({ children }) {
         }
       }
 
+      const itemsOC = base.items || [];
+      for (const [idx, item] of itemsOC.entries()) {
+        const precioOC = Number(item.precio_unitario || 0);
+        const precioFactura = precioFacturaPorLinea(item, idx);
+        if (precioOC <= 0 && precioFactura > 0) {
+          precioDiferente = true;
+          validacionAdvertencias.push(
+            `Item ${item.descripcion}: precio OC S/ 0.00 vs precio factura S/ ${precioFactura.toFixed(2)}`
+          );
+          continue;
+        }
+        if (precioOC <= 0) continue;
+        const diffItem = Math.abs(precioFactura - precioOC) / precioOC;
+        if (diffItem > tolerancia) {
+          precioDiferente = true;
+          validacionAdvertencias.push(
+            `Item ${item.descripcion}: precio OC S/ ${precioOC.toFixed(2)} vs precio factura S/ ${precioFactura.toFixed(2)} (diferencia ${(diffItem * 100).toFixed(1)}%)`
+          );
+        }
+      }
+
       if (facturaProvMonto != null && Number(facturaProvMonto) > 0) {
-        const itemsOC = base.items || [];
-        const totalOC = Number(base.total || 0) ||
-          itemsOC.reduce((s, i) => s + Number(i.precio_unitario || 0) * Number(i.cantidad || 0), 0);
+        const subtotalLineasFactura = itemsOC.reduce((s, item, idx) =>
+          s + Number(tieneEntradaFisicaPendiente ? cantidadFisicaPorLinea(item, idx) : item.cantidad || 0) * precioFacturaPorLinea(item, idx), 0);
+        const totalLineasFactura = subtotalLineasFactura * factorTotalFactura();
         const montoFactura = Number(facturaProvMonto);
-        if (totalOC > 0) {
-          const diffAbs = Math.abs(montoFactura - totalOC);
-          const diffPct = diffAbs / totalOC;
+        if (totalLineasFactura > 0) {
+          const diffAbs = Math.abs(montoFactura - totalLineasFactura);
+          const diffPct = diffAbs / totalLineasFactura;
           if (diffPct > tolerancia) {
             precioDiferente = true;
-            for (const item of itemsOC) {
-              const precioOC = Number(item.precio_unitario || 0);
-              const precioFactura = totalOC > 0 ? (montoFactura / totalOC) * precioOC : 0;
-              const diffItem = precioOC > 0 ? Math.abs(precioFactura - precioOC) / precioOC : 0;
-              if (diffItem > tolerancia) {
-                validacionAdvertencias.push(
-                  `Ítem ${item.descripcion}: precio OC S/ ${precioOC.toFixed(2)} vs precio factura S/ ${precioFactura.toFixed(2)} (diferencia ${(diffItem * 100).toFixed(1)}%)`
-                );
-              }
-            }
-            if (!validacionAdvertencias.length) {
-              validacionAdvertencias.push(
-                `Total OC S/ ${totalOC.toFixed(2)} vs total factura S/ ${montoFactura.toFixed(2)} (diferencia ${(diffPct * 100).toFixed(1)}%)`
-              );
-            }
+            validacionAdvertencias.push(
+              `Monto factura cabecera S/ ${montoFactura.toFixed(2)} vs total lineas c/IGV S/ ${totalLineasFactura.toFixed(2)} (diferencia S/ ${diffAbs.toFixed(2)}, ${(diffPct * 100).toFixed(1)}%)`
+            );
           }
         }
       }
+
     }
 
     if (validacionErrores.length > 0) return { errors: validacionErrores };
@@ -7476,15 +7516,16 @@ export function AppProvider({ children }) {
       return d.toISOString().split('T')[0];
     })();
     const itemsRecibidos = isOC
-      ? (base.items || []).map(item => ({
+      ? (base.items || []).map((item, idx) => ({
         codigo: item.codigo || null,
         material_id: item.material_id || null,
         descripcion: item.descripcion,
         pedido: item.cantidad,
-        recibido: item.cantidad,
+        recibido: tieneEntradaFisicaPendiente ? cantidadFisicaPorLinea(item, idx) : item.cantidad,
         unidad: item.unidad,
         conforme: !observaciones,
-        precio_unitario: item.precio_unitario || 0
+        precio_unitario: precioFacturaPorLinea(item, idx),
+        precio_unitario_oc: Number(item.precio_unitario || 0)
       }))
       : [];
     const recepcion = {
@@ -7559,7 +7600,20 @@ export function AppProvider({ children }) {
           .catch(error => addNotificacion(`Compras no persistio en Supabase: ${error.message}`));
       }
       if (itemsRecibidos.length) {
-        if (isSupabaseConfigured() && !observaciones) {
+        if (isSupabaseConfigured() && !observaciones && tieneEntradaFisicaPendiente) {
+          comprasService.ajustarValorizacionOcPendiente(empresa.id, {
+            orden_compra_id: base.id,
+            recepcion_id: recepcionLocal.id,
+            items: itemsRecibidos.map((item, idx) => ({
+              index: idx,
+              material_id: item.material_id,
+              precio_unitario: item.precio_unitario,
+            })),
+          }).then(async () => {
+            await recargarInventario();
+            await recargarEntradasOcPendientes();
+          }).catch(error => addNotificacion(`Ajuste GRNI no persistio en Supabase: ${error.message}`));
+        } else if (isSupabaseConfigured() && !observaciones) {
           // Motor WMS: registra entradas reales, busca materiales en catálogo, actualiza costo promedio
           Promise.all(itemsRecibidos.map(item => comprasService.registrarEntradaInventario(empresa.id, {
             codigo: item.codigo || null,
@@ -7579,6 +7633,8 @@ export function AppProvider({ children }) {
             const invData = await getStockCompleto(empresa.id);
             if (invData?.length) setInventario(invData);
           }).catch(error => addNotificacion(`Inventario no persistio en Supabase: ${error.message}`));
+        } else if (!isSupabaseConfigured() && tieneEntradaFisicaPendiente) {
+          setEntradasOcPendientes(prev => prev.filter(e => String(e.orden_compra_id || '') !== String(base.id)));
         } else if (!isSupabaseConfigured()) {
           // Mock: agrega entradas locales para demo
           setInventario(prev => [...prev, ...itemsRecibidos.map((item, idx) => ({
@@ -7657,8 +7713,62 @@ export function AppProvider({ children }) {
     if (inv) setInventario(inv);
   };
 
+  const recargarEntradasOcPendientes = async () => {
+    if (!empresa?.id || !isSupabaseConfigured()) return entradasOcPendientes;
+    const data = await listarEntradasOcPendientesValorizacion(empresa.id);
+    setEntradasOcPendientes(data || []);
+    return data || [];
+  };
+
   const registrarEntradaManualCtx = async (form) => {
     if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (form?.motivo === 'oc_pendiente_factura') {
+      if (isSupabaseConfigured()) {
+        const res = await registrarEntradaOcPendienteFactura(empresa.id, form, authUser?.id);
+        await recargarInventario();
+        await recargarEntradasOcPendientes();
+        return res;
+      }
+      const entradasMock = (form.lineas || [])
+        .filter(l => Number(l.cantidad_recibida || 0) > 0)
+        .map((linea, idx) => ({
+          id: generateId('kdx'),
+          empresa_id: empresa.id,
+          material_id: linea.material_id || null,
+          orden_compra_id: form.orden_compra_id,
+          orden_compra_item_idx: linea.index ?? idx,
+          cantidad: Number(linea.cantidad_recibida || 0),
+          costo_unitario: Number(linea.precio_unitario_oc || linea.precio_unitario || 0),
+          precio_unitario_provisional: Number(linea.precio_unitario_oc || linea.precio_unitario || 0),
+          valorizacion_estado: 'pendiente_factura',
+          anulado: false,
+          created_at: new Date().toISOString(),
+        }));
+      setEntradasOcPendientes(prev => [...entradasMock, ...prev]);
+      setInventario(prev => [
+        ...prev,
+        ...entradasMock.map((e, idx) => {
+          const linea = (form.lineas || [])[idx] || {};
+          return {
+            id: generateId('inv'),
+            empresa_id: empresa.id,
+            material_id: e.material_id || generateId('mat'),
+            almacen_id: form.almacen_id || 'ALM-001',
+            sku: linea.codigo || e.material_id || `OC-${idx + 1}`,
+            nombre: linea.descripcion || 'Material OC',
+            disponible: e.cantidad,
+            fisico: e.cantidad,
+            stock_actual: e.cantidad,
+            reservado: 0,
+            costo_promedio: e.costo_unitario,
+            almacen: 'Principal',
+            unidad: linea.unidad || 'und',
+            categoria: 'Compras',
+          };
+        })
+      ]);
+      return entradasMock;
+    }
     if (isSupabaseConfigured()) {
       const res = await registrarEntrada(empresa.id, form, authUser?.id);
       await recargarInventario();
@@ -7925,7 +8035,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  // â”€â”€ Documentos del personal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Documentos del personal ──────────────────────────────────────────────────
   const subirDocumentoPersonalCtx = async (params) => {
     const data = await personalDocumentosService.subirDocumento({ ...params, empresaId: empresa?.id });
     setPersonalDocumentos(prev => {
@@ -8187,7 +8297,7 @@ export function AppProvider({ children }) {
     return evalData;
   };
 
-  // â”€â”€ Liquidaciones por cese â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Liquidaciones por cese ────────────────────────────────────────────────
 
   const crearLiquidacionCtx = async (payload) => {
     if (!empresa?.id) throw new Error('No hay empresa activa.');
@@ -8308,7 +8418,7 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'crm', entidad: 'agenda_comercial', entidad_id: id, accion: 'editar', valor_anterior: anterior, valor_nuevo: datos });
   };
 
-  // â”€â”€â”€ PLANNER V2 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── PLANNER V2 ────────────────────────────────────────────────────────────
   /**
    * Carga las asignaciones del planner para la semana (o rango) indicado.
    * Guarda también el rango cargado para saber qué semana está en vista.
@@ -8326,7 +8436,7 @@ export function AppProvider({ children }) {
       setPlannerAsignaciones(data || []);
       setSemanaPlanner({ inicio: fechaInicio, fin: fechaFin });
     } catch (err) {
-      addNotificacion(`Planner: no se pudo cargar la semana â€” ${err?.message || err}`);
+      addNotificacion(`Planner: no se pudo cargar la semana — ${err?.message || err}`);
     }
   };
 
@@ -8401,18 +8511,18 @@ export function AppProvider({ children }) {
     try {
       let nueva;
       if (isSupabaseConfigured()) {
-        nueva = await plannerSvc.agregarTecnicoDia({ 
-          otId, tecnicoId, fecha, empresaId: empresa.id, 
+        nueva = await plannerSvc.agregarTecnicoDia({
+          otId, tecnicoId, fecha, empresaId: empresa.id,
           horaInicio, horaFin,
-          cuadrillaOrigenId, createdBy: authUser?.id || null 
+          cuadrillaOrigenId, createdBy: authUser?.id || null
         });
         if (semanaPlanner) await loadPlannerSemana(semanaPlanner.inicio, semanaPlanner.fin);
         addNotificacion('Asignación guardada');
       } else {
-        nueva = { 
-          id: generateId('pa'), empresa_id: empresa.id, ot_id: otId, tecnico_id: tecnicoId, 
-          fecha, hora_inicio_estimada: horaInicio, hora_fin_estimada: horaFin, 
-          estado: 'programado' 
+        nueva = {
+          id: generateId('pa'), empresa_id: empresa.id, ot_id: otId, tecnico_id: tecnicoId,
+          fecha, hora_inicio_estimada: horaInicio, hora_fin_estimada: horaFin,
+          estado: 'programado'
         };
         setPlannerAsignaciones(prev => [...prev, nueva]);
       }
@@ -9194,11 +9304,12 @@ export function AppProvider({ children }) {
     ocTransitos, setOcTransitos,
     ordenesServicio, setOrdenesServicio,
     recepciones, setRecepciones,
+    entradasOcPendientes, setEntradasOcPendientes,
     devolucionesProveedor, setDevolucionesProveedor,
     crearDevolucionCtx, enviarDevolucionCtx, aceptarDevolucionCtx,
     registrarNCDevolucionCtx, anularDevolucionCtx,
     ocAnticipos, setOcAnticipos, registrarAnticipoOC,
-    
+
     // Maestros Base Data
     areasEmpresa, setAreasEmpresa, crearArea, actualizarArea, eliminarArea,
     cargos, setCargos, actualizarCargo, eliminarCargo, fusionarCargos,
@@ -9255,7 +9366,7 @@ export function AppProvider({ children }) {
     crearProcesoCompraCtx, actualizarProcesoCompraCtx,
     crearOrdenCompraCtx, actualizarOrdenCompraCtx, registrarTransitoOCCtx, crearOrdenServicioCtx, crearRecepcionCtx, registrarRecepcionConCxP, registrarEvaluacionProveedorCtx,
     // WMS Actions
-    recargarInventario, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx,
+    recargarInventario, recargarEntradasOcPendientes, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx,
     reservarStockCtx, getKardexMaterialCtx, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, getAnaliticaInventarioCtx,
     // Fase 3 Data
     personalOperativo, setPersonalOperativo,

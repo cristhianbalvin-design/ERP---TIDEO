@@ -54,6 +54,12 @@ export async function registrarMovimiento(empresaId, {
   proveedor_id = null,
   observacion = null,
   usuario_id = null,
+  valorizacion_estado = null,
+  orden_compra_id = null,
+  orden_compra_item_idx = null,
+  precio_unitario_provisional = null,
+  precio_unitario_real = null,
+  recepcion_id = null,
 }, { skipCostoPromedio = false } = {}) {
   const supabase = await getSupabaseClient();
   if (!empresaId || !material_id || !almacen_id || !cantidad || cantidad <= 0) {
@@ -105,7 +111,7 @@ export async function registrarMovimiento(empresaId, {
 
   // 5. Insertar kardex
   const kardexId = mkId('kdx');
-  const { error: kdxErr } = await supabase.from('kardex').insert({
+  const kardexRow = {
     id: kardexId,
     empresa_id: empresaId,
     material_id,
@@ -129,7 +135,15 @@ export async function registrarMovimiento(empresaId, {
     observacion,
     created_by: usuario_id || null,
     anulado: false,
-  });
+  };
+  if (valorizacion_estado) kardexRow.valorizacion_estado = valorizacion_estado;
+  if (orden_compra_id) kardexRow.orden_compra_id = orden_compra_id;
+  if (orden_compra_item_idx !== null && orden_compra_item_idx !== undefined) kardexRow.orden_compra_item_idx = orden_compra_item_idx;
+  if (precio_unitario_provisional !== null && precio_unitario_provisional !== undefined) kardexRow.precio_unitario_provisional = Number(precio_unitario_provisional) || 0;
+  if (precio_unitario_real !== null && precio_unitario_real !== undefined) kardexRow.precio_unitario_real = Number(precio_unitario_real) || 0;
+  if (recepcion_id) kardexRow.recepcion_id = recepcion_id;
+
+  const { error: kdxErr } = await supabase.from('kardex').insert(kardexRow);
   if (kdxErr) {
     // PostgREST error when migration 009 hasn't been applied yet
     if (kdxErr.message?.includes('column') || kdxErr.code === 'PGRST204') {
@@ -770,6 +784,7 @@ export async function getStockEnTransito(empresaId) {
 // ─── Entrada de recepción (wired desde Compras) ───────────────────────────────
 // Busca el material en el catálogo por código. Si no existe, lo crea.
 // Actualiza costo_promedio ponderado correctamente.
+// El costo_unitario recibido desde Compras representa valor del bien sin IGV.
 export async function registrarEntradaDesdeRecepcion(empresaId, item, referencia, usuarioId) {
   const supabase = await getSupabaseClient();
 
@@ -805,7 +820,7 @@ export async function registrarEntradaDesdeRecepcion(empresaId, item, referencia
 
   return registrarMovimiento(empresaId, {
     tipo: 'entrada',
-    motivo: referencia?.tipo === 'recepcion' ? 'recepcion_oc' : 'recepcion',
+    motivo: referencia?.tipo === 'recepcion' ? 'recepcion_oc' : (referencia?.tipo || 'recepcion'),
     material_id: materialId,
     almacen_id: almacen.id,
     cantidad: Number(item.cantidad || item.recibido || 0),
@@ -821,11 +836,122 @@ export async function registrarEntradaDesdeRecepcion(empresaId, item, referencia
     referencia_id: referencia?.id || null,
     observacion: referencia?.observacion || null,
     usuario_id: usuarioId,
+    valorizacion_estado: referencia?.valorizacion_estado || null,
+    orden_compra_id: referencia?.orden_compra_id || referencia?.oc_id || null,
+    orden_compra_item_idx: referencia?.orden_compra_item_idx ?? null,
+    precio_unitario_provisional: referencia?.precio_unitario_provisional ?? null,
+    precio_unitario_real: referencia?.precio_unitario_real ?? null,
+    recepcion_id: referencia?.recepcion_id || null,
   });
 }
 
 // ─── Consumo desde OT (wired desde Operaciones) ───────────────────────────────
 // Descuenta stock al costo promedio vigente y registra en kardex con created_by
+export async function registrarEntradaOcPendienteFactura(empresaId, { orden_compra_id, proveedor_id = null, moneda = 'PEN', almacen_id = null, almacen_codigo = 'ALM-001', lineas = [] }, usuarioId) {
+  if (!empresaId || !orden_compra_id) throw new Error('Empresa y OC son requeridas');
+  const entradas = [];
+  for (const linea of lineas || []) {
+    const cantidad = Number(linea.cantidad_recibida ?? linea.cantidad ?? 0);
+    if (!cantidad || cantidad <= 0) continue;
+    const precioOC = Number(linea.precio_unitario_oc ?? linea.precio_unitario ?? linea.costo_unitario ?? 0);
+    const entrada = await registrarEntradaDesdeRecepcion(empresaId, {
+      codigo: linea.codigo || null,
+      material_id: linea.material_id || null,
+      descripcion: linea.descripcion,
+      unidad: linea.unidad || 'und',
+      cantidad,
+      costo_unitario: precioOC,
+      precio_unitario: precioOC,
+      moneda,
+      almacen_id,
+      almacen_codigo,
+    }, {
+      tipo: 'oc_pendiente_factura',
+      id: orden_compra_id,
+      orden_compra_id,
+      orden_compra_item_idx: linea.index ?? linea.orden_compra_item_idx ?? null,
+      proveedor_id,
+      valorizacion_estado: 'pendiente_factura',
+      precio_unitario_provisional: precioOC,
+      observacion: `Llegada fisica OC ${linea.oc_codigo || orden_compra_id} pendiente factura`,
+    }, usuarioId);
+    entradas.push({ ...entrada, orden_compra_id, orden_compra_item_idx: linea.index ?? linea.orden_compra_item_idx ?? null, cantidad, precio_unitario_provisional: precioOC });
+  }
+  if (!entradas.length) throw new Error('Ingresa al menos una cantidad recibida mayor a cero');
+  return entradas;
+}
+
+export async function listarEntradasOcPendientesValorizacion(empresaId, ordenCompraId = null) {
+  if (!empresaId) return [];
+  const supabase = await getSupabaseClient();
+  let q = supabase.from('kardex')
+    .select('id, empresa_id, material_id, almacen_id, tipo, motivo, cantidad, costo_unitario, costo_total, moneda, referencia_tipo, referencia_id, orden_compra_id, orden_compra_item_idx, valorizacion_estado, precio_unitario_provisional, precio_unitario_real, recepcion_id, anulado, created_at')
+    .eq('empresa_id', empresaId)
+    .eq('anulado', false)
+    .eq('valorizacion_estado', 'pendiente_factura')
+    .order('created_at', { ascending: false });
+  if (ordenCompraId) q = q.eq('orden_compra_id', ordenCompraId);
+  const { data, error } = await q;
+  if (error) {
+    if (error.message?.includes('column') || error.code === 'PGRST204') return [];
+    throw error;
+  }
+  return data || [];
+}
+
+export async function ajustarValorizacionOcPendiente(empresaId, { orden_compra_id, recepcion_id = null, items = [] } = {}) {
+  if (!empresaId || !orden_compra_id) return [];
+  const supabase = await getSupabaseClient();
+  const pendientes = await listarEntradasOcPendientesValorizacion(empresaId, orden_compra_id);
+  if (!pendientes.length) return [];
+
+  const ajustes = [];
+  for (const item of items || []) {
+    const idx = item.index ?? item.orden_compra_item_idx ?? null;
+    const precioReal = Number(item.precio_unitario_factura ?? item.precio_unitario ?? 0);
+    const matches = pendientes.filter(k => {
+      if (idx !== null && idx !== undefined && k.orden_compra_item_idx !== null && k.orden_compra_item_idx !== undefined) {
+        return Number(k.orden_compra_item_idx) === Number(idx);
+      }
+      return item.material_id && k.material_id === item.material_id;
+    });
+    for (const kdx of matches) {
+      const cantidad = Number(kdx.cantidad || 0);
+      const precioAnterior = Number(kdx.costo_unitario || kdx.precio_unitario_provisional || 0);
+      if (!cantidad || !Number.isFinite(precioReal) || precioReal < 0) continue;
+
+      const { error: updErr } = await supabase.from('kardex').update({
+        costo_unitario: precioReal,
+        costo_total: precioReal * cantidad,
+        precio_unitario_real: precioReal,
+        valorizacion_estado: 'definitivo',
+        recepcion_id: recepcion_id || null,
+        valorizado_at: new Date().toISOString(),
+      }).eq('id', kdx.id);
+      if (updErr) throw updErr;
+
+      const { data: stocks, error: stockErr } = await supabase.from('stock')
+        .select('fisico, disponible')
+        .eq('empresa_id', empresaId)
+        .eq('material_id', kdx.material_id);
+      if (stockErr) throw stockErr;
+      const stockFisico = (stocks || []).reduce((sum, row) => sum + Number(row.fisico ?? row.disponible ?? 0), 0);
+      const { data: mat } = await supabase.from('materiales').select('costo_promedio').eq('id', kdx.material_id).maybeSingle();
+      const costoActual = Number(mat?.costo_promedio ?? 0);
+      const valorActual = stockFisico * costoActual;
+      const deltaValor = cantidad * (precioReal - precioAnterior);
+      const nuevoCostoPromedio = stockFisico > 0 ? Math.max(0, (valorActual + deltaValor) / stockFisico) : precioReal;
+      await supabase.from('materiales').update({
+        costo_promedio: nuevoCostoPromedio,
+        updated_at: new Date().toISOString(),
+      }).eq('id', kdx.material_id);
+
+      ajustes.push({ kardex_id: kdx.id, material_id: kdx.material_id, cantidad, precio_anterior: precioAnterior, precio_real: precioReal, costo_promedio: nuevoCostoPromedio });
+    }
+  }
+  return ajustes;
+}
+
 export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, otId, usuarioId) {
   for (const item of itemsADescontar) {
     if (!item.material_id) continue;
