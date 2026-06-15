@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
-import { I, money } from './icons.jsx';
+import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { getAssignableUsers, canUserSeeOwner, canUserApproveOwner } from './lib/hierarchy.js';
@@ -3262,7 +3262,7 @@ function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSol
               <div style={{fontSize:11,color:'var(--fg-muted)'}}>Fisico: {sku.fisico ?? sku.disponible} - Reservado: {sku.reservado ?? 0} - Min: {sku.stock_minimo} - Reorden: {sku.punto_reorden} - Seguridad: {sku.stock_seguridad || 0}</div>
               {bajoPuntReorden && <div style={{fontSize:11,color:'var(--orange)',fontWeight:600,marginTop:4}}>Por debajo del punto de reorden efectivo ({puntoReordenEfectivo} {sku.unidad})</div>}
             </div>
-            <div><div className="eyebrow">Costo Promedio</div><div style={{fontSize:22,fontWeight:700}}>{money(sku.costo_promedio)}</div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Valor total: {money(sku.disponible * sku.costo_promedio)}</div></div>
+            <div><div className="eyebrow">Costo Promedio</div><div style={{fontSize:22,fontWeight:700}}>{moneyD(sku.costo_promedio)}</div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Valor total: {moneyD(sku.disponible * sku.costo_promedio)}</div></div>
           </div>
 
           <div className="row" style={{marginBottom:20,gap:8,flexWrap:'wrap'}}>
@@ -3836,7 +3836,7 @@ function Inventario() {
       </div>
 
       {mainTab === 'stock' && <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
-          <div className="kpi-card"><div className="kpi-label">Valor inventario</div><div className="kpi-value">{money(totalValor)}</div><div className="kpi-icon cyan">{I.package}</div></div>
+          <div className="kpi-card"><div className="kpi-label">Valor inventario</div><div className="kpi-value">{moneyD(totalValor)}</div><div className="kpi-icon cyan">{I.package}</div></div>
           <div className="kpi-card"><div className="kpi-label">SKUs activos</div><div className="kpi-value">{filteredInv.length}</div><div className="kpi-icon purple">{I.warehouse}</div></div>
           <div className="kpi-card"><div className="kpi-label">Bajo reorden</div><div className="kpi-value" style={{color:'var(--orange)'}}>{stockBajo}</div><div className="kpi-icon orange">{I.alert}</div></div>
           <div className="kpi-card"><div className="kpi-label">Stock agotado</div><div className="kpi-value" style={{color:'var(--danger)'}}>{stockCritico}</div><div className="kpi-icon danger">{I.alert}</div></div>
@@ -3872,8 +3872,8 @@ function Inventario() {
                     <td className="num">{r.fisico ?? r.disponible ?? 0}</td>
                     <td className="num" style={{fontWeight:600,color:coloresFila(r)}}>{r.disponible ?? r.stock_actual ?? 0}</td>
                     <td className="num" style={{color:'var(--fg-muted)'}}>{r.reservado ?? 0}</td>
-                    <td className="num">{money(r.costo_promedio)}</td>
-                    <td className="num">{money((r.disponible ?? r.stock_actual ?? 0) * (r.costo_promedio ?? 0))}</td>
+                    <td className="num">{moneyD(r.costo_promedio)}</td>
+                    <td className="num">{moneyD((r.disponible ?? r.stock_actual ?? 0) * (r.costo_promedio ?? 0))}</td>
                     <td><span className="badge badge-gray" style={{fontSize:10}}>{r.tipo_control === 'lote' ? 'LOTE' : r.tipo_control === 'serie' ? 'SERIE' : '—'}</span></td>
                   </tr>
                 ))}
