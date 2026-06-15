@@ -7187,6 +7187,17 @@ export function AppProvider({ children }) {
       return nuevo;
     }
   };
+  const actualizarOrdenCompraCtx = async (id, cambios) => {
+    const anterior = ordenesCompra.find(o => o.id === id) || null;
+    if (isSupabaseConfigured()) {
+      const data = await comprasService.actualizarOrdenCompra(id, cambios);
+      setOrdenesCompra(prev => prev.map(o => o.id === id ? data : o));
+      auditSync({ modulo: 'compras', entidad: 'ordenes_compra', entidad_id: id, accion: 'editar', valor_anterior: anterior, valor_nuevo: data });
+      return data;
+    } else {
+      setOrdenesCompra(prev => prev.map(o => o.id === id ? { ...o, ...cambios } : o));
+    }
+  };
   const crearOrdenServicioCtx = async (os) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await comprasService.crearOrdenServicio(empresa.id, os);
@@ -9180,7 +9191,7 @@ export function AppProvider({ children }) {
     // Compras Actions
     registrarProveedor, actualizarProveedorCtx,
     crearProcesoCompraCtx, actualizarProcesoCompraCtx,
-    crearOrdenCompraCtx, crearOrdenServicioCtx, crearRecepcionCtx, registrarRecepcionConCxP, registrarEvaluacionProveedorCtx,
+    crearOrdenCompraCtx, actualizarOrdenCompraCtx, crearOrdenServicioCtx, crearRecepcionCtx, registrarRecepcionConCxP, registrarEvaluacionProveedorCtx,
     // WMS Actions
     recargarInventario, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx,
     reservarStockCtx, getKardexMaterialCtx, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, getAnaliticaInventarioCtx,

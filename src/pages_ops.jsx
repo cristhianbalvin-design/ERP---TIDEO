@@ -5895,10 +5895,11 @@ function CotizacionesCompras() {
 }
 
 function OrdenesCompra() {
-  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, solpes, setSolpes, crearOrdenCompraCtx } = useApp();
+  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, solpes, setSolpes, crearOrdenCompraCtx, actualizarOrdenCompraCtx } = useApp();
   const [tab, setTab] = useState('todas');
   const [panel, setPanel] = useState(false);
   const [sel, setSel] = useState(null);
+  const [confirmando, setConfirmando] = useState(false);
   const [form, setForm] = useState(OC_FORM_INIT);
   const handledSolpeParamRef = useRef('');
   const list = ordenesCompra.filter(o => tab === 'todas' || o.estado === tab);
@@ -5981,16 +5982,19 @@ function OrdenesCompra() {
     }
   };
   const confirmarOC = async () => {
+    if (confirmando) return;
+    setConfirmando(true);
     try {
-      const actualizada = await comprasService.actualizarOrdenCompra(sel.id, { estado: 'confirmada' });
-      setOrdenesCompra(prev => prev.map(o => o.id === sel.id ? { ...o, ...actualizada } : o));
-      setSel(prev => ({ ...prev, estado: 'confirmada' }));
-      addNotificacion(`${sel.codigo} marcada como confirmada.`);
+      const actualizada = await actualizarOrdenCompraCtx(sel.id, { estado: 'confirmada' });
+      setSel(prev => ({ ...prev, ...(actualizada || {}), estado: 'confirmada' }));
+      addNotificacion(`${sel.codigo} confirmada correctamente.`);
     } catch (e) {
       addToast(`No se pudo confirmar la OC: ${e.message}`);
+    } finally {
+      setConfirmando(false);
     }
   };
-  if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} onBack={()=>setSel(null)} onConfirmar={confirmarOC} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
+  if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} onBack={()=>setSel(null)} onConfirmar={confirmarOC} confirmando={confirmando} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
   return (
     <>
       <div className="page-header"><div><h1 className="page-title">Ordenes de Compra</h1><div className="page-sub">Bienes, materiales e ingreso a inventario</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>{ setForm(nuevaOCForm(proveedoresOC[0]?.id)); setPanel(true); }}>{I.plus} Nueva OC</button></div>
@@ -6106,7 +6110,7 @@ function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centr
     <div className="card mt-6" style={{padding:14}}><p><strong>Subtotal:</strong> {moneyD(subtotal)}</p><p><strong>IGV 18%:</strong> {moneyD(subtotal*0.18)}</p><p><strong>Total:</strong> {moneyD(subtotal*1.18)}</p></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>onCrear(false)}>Guardar borrador</button><button className="btn btn-primary" data-local-form="true" onClick={()=>onCrear(true)}>Emitir OC</button></div></div></div></>;
 }
 
-function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
+function DetalleOrden({ orden, proveedor, onBack, onConfirmar, confirmando, onRecepcion }) {
   const { ocAnticipos, registrarAnticipoOC } = useApp();
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('detalle');
@@ -6143,7 +6147,8 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
           <div className="page-sub">{proveedor.razon_social} — {moneyD(totalOC)}</div>
         </div>
         <div className="row">
-          {orden.estado === 'emitida' && <button className="btn btn-secondary" onClick={onConfirmar}>Marcar confirmada</button>}
+          {orden.estado === 'emitida' && <button className="btn btn-secondary" onClick={onConfirmar} disabled={confirmando}>{confirmando ? 'Confirmando...' : 'Marcar confirmada'}</button>}
+          {orden.estado === 'confirmada' && <span className="badge badge-green" style={{padding:'6px 12px'}}>OC Confirmada</span>}
           <button className="btn btn-secondary" data-local-form="true" onClick={() => setPanelAnticipo(true)}>{I.plus} Registrar anticipo</button>
           <button className="btn btn-primary" data-local-form="true" onClick={onRecepcion}>Registrar recepcion</button>
         </div>
