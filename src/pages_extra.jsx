@@ -3298,7 +3298,7 @@ function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSol
                         <td className="num" style={{color: (k.tipo === 'entrada' || k.tipo === 'transferencia_entrada') ? 'var(--green)' : 'var(--danger)', fontWeight:600}}>
                           {(k.tipo === 'entrada' || k.tipo === 'transferencia_entrada') ? '+' : '-'}{k.cantidad}
                         </td>
-                        <td className="num">{money(k.costo_unitario)}</td>
+                        <td className="num">{moneyD(k.costo_unitario)}</td>
                         <td className="num">{k.saldo_cantidad ?? '—'}</td>
                       </tr>
                     ))}

@@ -5954,7 +5954,7 @@ function OrdenesCompra() {
     if (!items.length) { addToast('Agrega al menos un item con cantidad mayor a cero.'); return; }
     const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
     const p = proveedorSeleccionado;
-    const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id || null, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:subtotal*0.18, total:subtotal*1.18, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:form.solpe_id ? `SOLPE origen: ${form.solpe_codigo || form.solpe_id}` : '', creado_por: authUser?.id || null };
+    const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id || null, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:Math.round(subtotal*0.18*100)/100, total:Math.round(subtotal*1.18*100)/100, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:form.solpe_id ? `SOLPE origen: ${form.solpe_codigo || form.solpe_id}` : '', creado_por: authUser?.id || null };
     const crearOCCompatible = async (payloadBase) => {
       let payload = { ...payloadBase };
       for (let intento = 0; intento <= OC_COLUMNAS_OPCIONALES_INSERT.size; intento += 1) {
@@ -5980,7 +5980,17 @@ function OrdenesCompra() {
       addToast(`No se pudo guardar la OC: ${error.message}`);
     }
   };
-  if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} onBack={()=>setSel(null)} onConfirmar={()=>setOrdenesCompra(prev=>prev.map(o=>o.id===sel.id?{...o,estado:'confirmada'}:o))} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
+  const confirmarOC = async () => {
+    try {
+      const actualizada = await comprasService.actualizarOrdenCompra(sel.id, { estado: 'confirmada' });
+      setOrdenesCompra(prev => prev.map(o => o.id === sel.id ? { ...o, ...actualizada } : o));
+      setSel(prev => ({ ...prev, estado: 'confirmada' }));
+      addNotificacion(`${sel.codigo} marcada como confirmada.`);
+    } catch (e) {
+      addToast(`No se pudo confirmar la OC: ${e.message}`);
+    }
+  };
+  if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} onBack={()=>setSel(null)} onConfirmar={confirmarOC} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
   return (
     <>
       <div className="page-header"><div><h1 className="page-title">Ordenes de Compra</h1><div className="page-sub">Bienes, materiales e ingreso a inventario</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>{ setForm(nuevaOCForm(proveedoresOC[0]?.id)); setPanel(true); }}>{I.plus} Nueva OC</button></div>
@@ -6086,14 +6096,14 @@ function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centr
               <div className="input-group"><label>Precio unitario</label><input className="input" type="number" min="0" step="0.01" value={item.precio_unitario} onChange={e=>setLinea(idx, { precio_unitario:e.target.value })}/>{referencia && <div className="text-muted" style={{fontSize:12, marginTop:4}}>{referencia}</div>}</div>
             </div>
             <div className="row mt-4" style={{justifyContent:'space-between'}}>
-              <span className="text-muted">Subtotal linea: {money(Number(item.cantidad || 0) * Number(item.precio_unitario || 0))}</span>
+              <span className="text-muted">Subtotal linea: {moneyD(Number(item.cantidad || 0) * Number(item.precio_unitario || 0))}</span>
               {lineas.length > 1 && <button type="button" className="btn btn-ghost btn-sm" onClick={()=>removeLinea(idx)}>{I.x} Quitar</button>}
             </div>
           </div>;
         })}
       </div>
     </div>
-    <div className="card mt-6" style={{padding:14}}><p><strong>Subtotal:</strong> {money(subtotal)}</p><p><strong>IGV 18%:</strong> {money(subtotal*0.18)}</p><p><strong>Total:</strong> {money(subtotal*1.18)}</p></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>onCrear(false)}>Guardar borrador</button><button className="btn btn-primary" data-local-form="true" onClick={()=>onCrear(true)}>Emitir OC</button></div></div></div></>;
+    <div className="card mt-6" style={{padding:14}}><p><strong>Subtotal:</strong> {moneyD(subtotal)}</p><p><strong>IGV 18%:</strong> {moneyD(subtotal*0.18)}</p><p><strong>Total:</strong> {moneyD(subtotal*1.18)}</p></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>onCrear(false)}>Guardar borrador</button><button className="btn btn-primary" data-local-form="true" onClick={()=>onCrear(true)}>Emitir OC</button></div></div></div></>;
 }
 
 function DetalleOrden({ orden, proveedor, onBack, onConfirmar, onRecepcion }) {
