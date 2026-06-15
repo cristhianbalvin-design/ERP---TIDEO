@@ -6890,6 +6890,10 @@ function Recepciones() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [validacionErrors, setValidacionErrors] = useState([]);
   const [validacionWarnings, setValidacionWarnings] = useState([]);
+  const [cxpNumManual, setCxpNumManual] = useState(false);
+  const [cxpFechaManual, setCxpFechaManual] = useState(false);
+  const [cxpVencManual, setCxpVencManual] = useState(false);
+  const [cxpOpen, setCxpOpen] = useState(false);
   const [scannerOCOpen, setScannerOCOpen] = useState(false);
   const [highlightedItemIdx, setHighlightedItemIdx] = useState(null);
   const [scanMsg, setScanMsg] = useState('');
@@ -6899,6 +6903,7 @@ function Recepciones() {
     setFacturaNum(''); setFacturaEmision(new Date().toISOString().split('T')[0]);
     setFacturaVencimiento(''); setFacturaArchivoUrl('');
     setFacturaProvNumero(''); setFacturaProvFecha(''); setFacturaProvMonto('');
+    setCxpNumManual(false); setCxpFechaManual(false); setCxpVencManual(false); setCxpOpen(false);
     setValidacionErrors([]); setValidacionWarnings([]);
     setScannerOCOpen(false); setHighlightedItemIdx(null); setScanMsg('');
   };
@@ -6980,6 +6985,28 @@ function Recepciones() {
     setScanMsg('');
   };
 
+  // Auto-sincroniza numero de factura CxP desde el documento fisico
+  useEffect(() => {
+    if (!cxpNumManual) setFacturaNum(facturaProvNumero);
+  }, [facturaProvNumero, cxpNumManual]);
+
+  // Auto-sincroniza fecha de emision CxP desde el documento fisico
+  useEffect(() => {
+    if (!cxpFechaManual) setFacturaEmision(facturaProvFecha || new Date().toISOString().split('T')[0]);
+  }, [facturaProvFecha, cxpFechaManual]);
+
+  // Calcula fecha de vencimiento segun condicion de pago de la OC
+  useEffect(() => {
+    if (cxpVencManual) return;
+    if (!facturaEmision) { setFacturaVencimiento(''); return; }
+    const d = new Date(`${facturaEmision}T00:00:00`);
+    const cp = String(ocSeleccionada?.condicion_pago || '').toLowerCase();
+    if (cp.includes('contado') || cp === '0') { setFacturaVencimiento(facturaEmision); return; }
+    const m = cp.match(/(\d+)/);
+    d.setDate(d.getDate() + (m ? Number(m[1]) : 30));
+    setFacturaVencimiento(d.toISOString().split('T')[0]);
+  }, [facturaEmision, ocSeleccionada?.condicion_pago, cxpVencManual]);
+
   return (
     <>
       <div className="page-header">
@@ -7028,7 +7055,7 @@ function Recepciones() {
                 <label>OC/OS origen</label>
                 <select className="select" value={origen} onChange={e => { setOrigen(e.target.value); setValidacionErrors([]); setValidacionWarnings([]); }}>
                   <option value="">Seleccionar...</option>
-                  {origenes.map(o => <option key={`${o.tipo}:${o.id}`} value={`${o.tipo}:${o.id}`}>{o.codigo} - {proveedorNombre(o.proveedor_id)} - {money(o.total || 0)}</option>)}
+                  {origenes.map(o => <option key={`${o.tipo}:${o.id}`} value={`${o.tipo}:${o.id}`}>{o.codigo} - {proveedorNombre(o.proveedor_id)} - {moneyD(o.total || 0)}</option>)}
                 </select>
               </div>
 
@@ -7051,7 +7078,7 @@ function Recepciones() {
                   <table className="tbl" style={{fontSize:12}}>
                     <thead><tr><th>Descripcion</th><th style={{textAlign:'right'}}>Cant.</th><th style={{textAlign:'right'}}>P. Unit. OC</th></tr></thead>
                     <tbody>{(ocSeleccionada.items || []).map((item, idx) => (
-                      <tr key={idx} style={highlightedItemIdx === idx ? {background:'rgba(0,229,255,0.1)',outline:'2px solid var(--cyan)'} : {}}><td>{item.descripcion}</td><td style={{textAlign:'right'}}>{item.cantidad} {item.unidad || ''}</td><td style={{textAlign:'right'}}>{money(item.precio_unitario || 0)}</td></tr>
+                      <tr key={idx} style={highlightedItemIdx === idx ? {background:'rgba(0,229,255,0.1)',outline:'2px solid var(--cyan)'} : {}}><td>{item.descripcion}</td><td style={{textAlign:'right'}}>{item.cantidad} {item.unidad || ''}</td><td style={{textAlign:'right'}}>{moneyD(item.precio_unitario || 0)}</td></tr>
                     ))}</tbody>
                   </table>
                 </div>
@@ -7063,37 +7090,19 @@ function Recepciones() {
               </div>
 
               <div style={{borderTop:'1px solid var(--border)',marginTop:20,paddingTop:16}}>
-                <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>Datos CxP (condiciones de pago)</div>
+                <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>Factura del proveedor</div>
+                <div style={{fontSize:12,color:'var(--muted)',marginBottom:12}}>Documento fisico recibido del proveedor</div>
                 <div className="input-group">
-                  <label>N° Factura CxP <span style={{color:'var(--danger)'}}>*</span></label>
-                  <input className="input" value={facturaNum} onChange={e => setFacturaNum(e.target.value)} placeholder="E001-000123" required/>
+                  <label>N° de factura <span style={{color:'var(--danger)'}}>*</span></label>
+                  <input className="input" value={facturaProvNumero} onChange={e => setFacturaProvNumero(e.target.value)} placeholder="001-001234" required/>
                 </div>
                 <div className="grid-2 mt-4" style={{gap:12,gridTemplateColumns:'1fr 1fr'}}>
                   <div className="input-group">
-                    <label>Fecha de emision <span style={{color:'var(--danger)'}}>*</span></label>
-                    <input className="input" type="date" value={facturaEmision} onChange={e => setFacturaEmision(e.target.value)} required/>
-                  </div>
-                  <div className="input-group">
-                    <label>Fecha de vencimiento <span style={{color:'var(--danger)'}}>*</span></label>
-                    <input className="input" type="date" value={facturaVencimiento} onChange={e => setFacturaVencimiento(e.target.value)} required/>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{borderTop:'1px solid var(--border)',marginTop:20,paddingTop:16}}>
-                <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>Factura fisica del proveedor</div>
-                <div style={{fontSize:12,color:'var(--muted)',marginBottom:12}}>Datos del documento fisico entregado al momento de la entrega</div>
-                <div className="input-group">
-                  <label>N° Factura proveedor</label>
-                  <input className="input" value={facturaProvNumero} onChange={e => setFacturaProvNumero(e.target.value)} placeholder="001-001234"/>
-                </div>
-                <div className="grid-2 mt-4" style={{gap:12,gridTemplateColumns:'1fr 1fr'}}>
-                  <div className="input-group">
-                    <label>Fecha emision factura</label>
+                    <label>Fecha de emision</label>
                     <input className="input" type="date" value={facturaProvFecha} onChange={e => setFacturaProvFecha(e.target.value)}/>
                   </div>
                   <div className="input-group">
-                    <label>Monto total factura</label>
+                    <label>Monto total</label>
                     <input className="input" type="number" step="0.01" min="0" value={facturaProvMonto} onChange={e => { setFacturaProvMonto(e.target.value); setValidacionWarnings([]); }} placeholder="0.00"/>
                   </div>
                 </div>
@@ -7103,6 +7112,31 @@ function Recepciones() {
                   {uploadingFile && <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>Subiendo archivo...</div>}
                   {!uploadingFile && facturaArchivoUrl && <div style={{fontSize:12,color:'var(--green)',marginTop:4}}>Archivo listo.</div>}
                 </div>
+              </div>
+
+              <div style={{borderTop:'1px solid var(--border)',marginTop:16,paddingTop:12}}>
+                <button type="button" style={{background:'none',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--muted)',padding:0,marginBottom:cxpOpen?12:0}} onClick={() => setCxpOpen(v => !v)}>
+                  <span style={{fontSize:9}}>{cxpOpen ? '▼' : '►'}</span>
+                  {cxpOpen ? 'Datos de la CxP a generar' : 'Ver datos de la CxP a generar (prellenado automaticamente)'}
+                </button>
+                {cxpOpen && (
+                  <>
+                    <div className="input-group">
+                      <label>N° Factura CxP</label>
+                      <input className="input" value={facturaNum} onChange={e => { setFacturaNum(e.target.value); setCxpNumManual(true); }} placeholder="E001-000123"/>
+                    </div>
+                    <div className="grid-2 mt-4" style={{gap:12,gridTemplateColumns:'1fr 1fr'}}>
+                      <div className="input-group">
+                        <label>Fecha de emision CxP</label>
+                        <input className="input" type="date" value={facturaEmision} onChange={e => { setFacturaEmision(e.target.value); setCxpFechaManual(true); }}/>
+                      </div>
+                      <div className="input-group">
+                        <label>Fecha de vencimiento</label>
+                        <input className="input" type="date" value={facturaVencimiento} onChange={e => { setFacturaVencimiento(e.target.value); setCxpVencManual(true); }}/>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {validacionErrors.length > 0 && (
@@ -7126,7 +7160,7 @@ function Recepciones() {
                   <button type="button" className="btn btn-primary" style={{background:'#f59e0b',border:'none'}} onClick={e => guardar(e, true)}>Confirmar igualmente</button>
                 )}
                 {validacionWarnings.length === 0 && (
-                  <button className="btn btn-primary" type="submit" disabled={!origen || !facturaNum.trim() || !facturaEmision || !facturaVencimiento || uploadingFile}>
+                  <button className="btn btn-primary" type="submit" disabled={!origen || !facturaProvNumero.trim() || !facturaEmision || !facturaVencimiento || uploadingFile}>
                     Confirmar recepcion
                   </button>
                 )}
