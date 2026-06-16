@@ -76,6 +76,11 @@ export async function subirDocumento({
   fechaVencimiento,
   notas,
   subidoDesde = 'backoffice',
+  condicionesLaborales,
+  contratoReferenciaId,
+  adendaCambios,
+  fechaVigenciaCambio,
+  seccionDocumental,
 }) {
   const supabase = await getSupabaseClient();
 
@@ -109,6 +114,11 @@ export async function subirDocumento({
     p_notas:             notas || null,
     p_subido_desde:      subidoDesde,
     p_tipo_documento_id: tipoDocumentoId || null,
+    p_condiciones_laborales: condicionesLaborales || {},
+    p_contrato_referencia_id: contratoReferenciaId || null,
+    p_adenda_cambios: adendaCambios || {},
+    p_fecha_vigencia_cambio: fechaVigenciaCambio || null,
+    p_seccion_documental: seccionDocumental || null,
   });
 
   if (rpcError) throw rpcError;
@@ -150,12 +160,14 @@ export const TIPOS_DOC_OPERATIVO = [
   { key: 'cert_altura',       label: 'Cert. Trabajo en Altura',requiereVencimiento: true  },
   { key: 'dni',               label: 'DNI',                    requiereVencimiento: false },
   { key: 'contrato',          label: 'Contrato',               requiereVencimiento: true  },
+  { key: 'adenda',            label: 'Adenda',                 requiereVencimiento: false },
   { key: 'otro',              label: 'Otro',                   requiereVencimiento: false },
 ];
 
 export const TIPOS_DOC_ADMIN = [
   { key: 'dni',      label: 'DNI',        requiereVencimiento: false },
   { key: 'contrato', label: 'Contrato',   requiereVencimiento: true  },
+  { key: 'adenda',   label: 'Adenda',     requiereVencimiento: false },
   { key: 'sctr',     label: 'SCTR',       requiereVencimiento: true  },
   { key: 'medico',   label: 'Examen Médico', requiereVencimiento: true },
   { key: 'otro',     label: 'Otro',       requiereVencimiento: false },

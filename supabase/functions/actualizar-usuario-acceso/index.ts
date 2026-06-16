@@ -102,7 +102,7 @@ const moduloToPerfil = (modulo: string | null) => {
     gerencia: "Gerencia",
     asistencia: "Asistencia",
     administrativo: "Administrativo",
-    mi_espacio: "Mi espacio",
+    mi_espacio: "Empleado",
     empleado: "Empleado",
   };
   return modulo ? (map[modulo] || "Tecnico") : null;

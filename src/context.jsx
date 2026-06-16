@@ -8036,11 +8036,50 @@ export function AppProvider({ children }) {
   };
 
   // ── Documentos del personal ──────────────────────────────────────────────────
+  const aplicarSnapshotDocumentoPersonal = (doc) => {
+    if (!doc || doc.estado_validacion !== 'aprobado') return;
+    const tipo = String(`${doc.tipo_doc || ''} ${doc.tipo_doc_codigo || ''} ${doc.tipo_documento_codigo || ''} ${doc.tipo_documento_id || ''}`).toLowerCase();
+    if (!tipo.includes('contrato') && !tipo.includes('adenda')) return;
+    if (doc.fecha_vigencia_cambio && doc.fecha_vigencia_cambio > new Date().toISOString().slice(0, 10)) {
+      addNotificacion('Adenda aprobada con vigencia futura. Queda registrada para aplicacion manual en la fecha indicada.', 'warning');
+      return;
+    }
+    const cond = doc.condiciones_laborales || {};
+    const cambios = doc.adenda_cambios || {};
+    const aplicar = (persona) => {
+      if (!persona) return persona;
+      const patch = {};
+      const esAdenda = tipo.includes('adenda');
+      const usar = (key) => !esAdenda || Boolean(cambios[key]);
+      if (usar('cargo') && cond.cargo) patch.cargo = cond.cargo;
+      if (usar('cargo') && cond.cargo_id) patch.cargo_id = cond.cargo_id;
+      if (usar('remuneracion') && cond.remuneracion_base !== undefined && cond.remuneracion_base !== '') {
+        const monto = Number(cond.remuneracion_base || 0);
+        patch.sueldo_base = monto;
+        patch.remuneracion = monto;
+        patch.monto_mensual = monto;
+      }
+      if (usar('modalidad') && cond.modalidad) patch.modalidad = cond.modalidad;
+      if (usar('sede') && cond.sede) patch.sede = cond.sede;
+      if (usar('sede') && cond.sede_id) patch.sede_id = cond.sede_id;
+      if (!esAdenda && cond.tipo_contrato) patch.tipo_contrato = cond.tipo_contrato;
+      return { ...persona, ...patch };
+    };
+    if (doc.personal_tipo === 'administrativo') {
+      setPersonalAdmin(prev => prev.map(p => p.id === doc.personal_id ? aplicar(p) : p));
+    } else {
+      setPersonalOperativo(prev => prev.map(p => p.id === doc.personal_id ? aplicar(p) : p));
+    }
+  };
+
   const subirDocumentoPersonalCtx = async (params) => {
     const data = await personalDocumentosService.subirDocumento({ ...params, empresaId: empresa?.id });
     setPersonalDocumentos(prev => {
       const sinVersionAnterior = prev.filter(
-        d => !(d.personal_id === params.personalId && d.tipo_doc === params.tipoDoc && d.activo)
+        d => !(d.personal_id === params.personalId && d.activo && (
+          (params.tipoDocumentoId && d.tipo_documento_id === params.tipoDocumentoId) ||
+          d.tipo_doc === params.tipoDoc
+        ))
       );
       return [...sinVersionAnterior, data];
     });
@@ -8049,6 +8088,7 @@ export function AppProvider({ children }) {
   const validarDocumentoPersonalCtx = async (documentoId, decision, motivoRechazo = null) => {
     const data = await personalDocumentosService.validarDocumento(documentoId, decision, motivoRechazo);
     setPersonalDocumentos(prev => prev.map(d => d.id === documentoId ? data : d));
+    aplicarSnapshotDocumentoPersonal(data);
     return data;
   };
 
