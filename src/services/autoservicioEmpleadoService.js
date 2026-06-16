@@ -30,10 +30,11 @@ export function resolverFichaEmpleadoLocal({ authUser, usuarios = [], personalAd
 
 const contratoEstado = (ficha = {}, docs = []) => {
   const contratos = docs
-    .filter(d => d.tipo_doc === 'contrato' || d.tipo_documento_codigo === 'contrato')
+    .filter(d => d.tipo_doc === 'contrato' || d.tipo_doc_codigo === 'contrato' || d.tipo_documento_codigo === 'contrato')
     .sort((a, b) => String(b.fecha_vencimiento || '').localeCompare(String(a.fecha_vencimiento || '')));
   const vigente = contratos.find(d => d.activo !== false) || contratos[0] || null;
-  const fechaFin = vigente?.fecha_vencimiento || ficha.fecha_fin_contrato || ficha.fecha_fin || null;
+  const fechaFin = vigente?.fecha_vencimiento || null;
+  if (!vigente) return { estado: 'sin_contrato', dias: null, contrato: null };
   if (!fechaFin) return { estado: 'vigente', dias: null, contrato: vigente };
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -45,6 +46,22 @@ const contratoEstado = (ficha = {}, docs = []) => {
     contrato: vigente,
   };
 };
+
+function calcSaldoVacaciones(ficha, solicitudesDelPersonal, configAusencias) {
+  const diasAnio = configAusencias?.dias_vacaciones_anio ?? ficha.dias_vacaciones_total ?? 30;
+  const fechaIngreso = ficha.fecha_ingreso || null;
+  if (!fechaIngreso) return 0;
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const ingreso = new Date(`${fechaIngreso}T00:00:00`);
+  if (ingreso > hoy) return 0;
+  const diasTranscurridos = (hoy.getTime() - ingreso.getTime()) / 86400000;
+  const devengados = Math.round((diasTranscurridos / 365 * diasAnio) * 10) / 10;
+  const gozados = solicitudesDelPersonal
+    .filter(s => s.tipo === 'vacaciones' && ['confirmada_rrhh', 'activa'].includes(s.estado))
+    .reduce((acc, s) => acc + (s.dias_habiles || 0), 0);
+  return Math.max(0, Math.round((devengados - gozados) * 10) / 10);
+}
 
 export function construirAutoservicioLocal({
   authUser,
@@ -68,6 +85,7 @@ export function construirAutoservicioLocal({
   portalBoletaVisualizaciones = [],
   portalFirmaRegistros = [],
   periodo = new Date().toISOString().slice(0, 7),
+  configAusencias = {},
 }) {
   const ficha = resolverFichaEmpleadoLocal({ authUser, usuarios, personalAdmin, personalOperativo });
   if (!ficha) {
@@ -115,7 +133,7 @@ export function construirAutoservicioLocal({
     resumen: {
       contrato: cEstado,
       ultima_boleta: boletas[0] || null,
-      vacaciones: Number(ficha.dias_vacaciones_disponibles ?? ficha.vacaciones_pendientes ?? 0),
+      vacaciones: calcSaldoVacaciones(ficha, solicitudes, configAusencias),
       he_pendiente_minutos: hePendienteMin,
       ciclo_minero: ficha.regimen_jornada === 'ciclo_acumulativo' ? {
         dia: ficha.dia_ciclo_actual || null,
@@ -170,7 +188,7 @@ export const autoservicioEmpleadoService = {
     const ficha = await this.resolverMiFicha();
     if (!ficha?.personal_id) return { ficha: null };
     const { desde, hasta } = monthRange(periodo);
-    const [docsRes, solRes, asisRes, periodosRes, prestamosRes, amonRes, notRes, heRes] = await Promise.all([
+    const [docsRes, solRes, asisRes, periodosRes, prestamosRes, amonRes, notRes, heRes, configAusRes] = await Promise.all([
       supabase.from('personal_documentos').select('*').eq('personal_id', ficha.personal_id).eq('empresa_id', ficha.empresa_id).order('created_at', { ascending: false }),
       supabase.from('solicitudes_rrhh').select('*').eq('personal_id', ficha.personal_id).eq('empresa_id', ficha.empresa_id).order('created_at', { ascending: false }),
       supabase.from('registros_asistencia').select('*').eq('trabajador_id', ficha.personal_id).eq('empresa_id', ficha.empresa_id).gte('fecha', desde).lte('fecha', hasta).order('fecha', { ascending: false }),
@@ -179,6 +197,7 @@ export const autoservicioEmpleadoService = {
       supabase.from('amonestaciones_personal').select('*').eq('empresa_id', ficha.empresa_id).eq('personal_id', ficha.personal_id).order('fecha', { ascending: false }),
       supabase.from('notificaciones_sistema').select('*').eq('empresa_id', ficha.empresa_id).order('created_at', { ascending: false }).limit(30),
       supabase.from('horas_extra_compensacion').select('*').eq('empresa_id', ficha.empresa_id).eq('personal_id', ficha.personal_id),
+      supabase.from('rrhh_config_ausencias').select('dias_vacaciones_anio').eq('empresa_id', ficha.empresa_id).maybeSingle(),
     ]);
     const auth = await supabase.auth.getUser();
     return construirAutoservicioLocal({
@@ -194,6 +213,7 @@ export const autoservicioEmpleadoService = {
       horasExtraCompensacion: heRes.data || [],
       notificaciones: notRes.data || [],
       periodo,
+      configAusencias: configAusRes.data || {},
     });
   },
 

@@ -276,8 +276,6 @@ const normalizarPersonalOperativo = (p = {}) => ({
   docs: p.docs || { sctr: 'pendiente', medico: 'pendiente', epp: 'pendiente', licencia: 'pendiente' },
   centro_costo_id: p.centro_costo_id || null,
   dias_vacaciones_disponibles: Number(p.dias_vacaciones_disponibles ?? 0),
-  fecha_inicio_contrato: p.fecha_inicio_contrato || p.fecha_ingreso || null,
-  fecha_fin_contrato: p.fecha_fin_contrato || null,
   codigo_biometrico: p.codigo_biometrico || null,
   email_personal: p.email_personal ?? null,
   celular_personal: p.celular_personal ?? null,
@@ -313,9 +311,7 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   sede: persona.sede || null,
   supervisor_id: persona.supervisor_id || null,
   supervisor: persona.supervisor || null,
-  fecha_ingreso: persona.fecha_ingreso || persona.fecha_inicio_contrato || null,
-  fecha_inicio_contrato: persona.fecha_inicio_contrato || persona.fecha_ingreso || null,
-  fecha_fin_contrato: persona.fecha_fin_contrato || persona.fecha_fin || null,
+  fecha_ingreso: persona.fecha_ingreso || null,
   sueldo_base: Number(persona.sueldo_base || 0),
   moneda: persona.moneda || 'PEN',
   sistema_pensionario: persona.sistema_pensionario || null,
@@ -370,7 +366,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
   const allowed = new Set([
     'codigo', 'nombre', 'documento', 'cargo', 'cargo_id', 'especialidad', 'especialidad2',
     'area', 'turno_id', 'telefono', 'email', 'sede', 'supervisor_id', 'supervisor',
-    'fecha_ingreso', 'fecha_inicio_contrato', 'fecha_fin_contrato', 'sueldo_base', 'moneda', 'sistema_pensionario',
+    'fecha_ingreso', 'sueldo_base', 'moneda', 'sistema_pensionario',
     'metodo_pago', 'monto_mensual', 'horas_base_mes', 'tarifa_hora',
     'modalidad_contrato', 'tipo_contrato', 'afp_nombre', 'tiene_hijos', 'regimen_laboral',
     'cuota_prestamo_mes', 'descuento_judicial',
@@ -407,7 +403,6 @@ const normalizarPersonalAdmin = (p = {}) => ({
   ...p,
   dni: p.dni || p.documento || '',
   documento: p.documento || p.dni || '',
-  fecha_inicio_contrato: p.fecha_inicio_contrato || p.fecha_ingreso || '',
   remuneracion: Number(p.remuneracion ?? p.sueldo_base ?? 0),
   sueldo_base: Number(p.sueldo_base ?? p.remuneracion ?? 0),
   metodo_pago: p.metodo_pago || 'mensual',
@@ -481,9 +476,7 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   turno_id: persona.turno_id || null,
   modalidad_contrato: normalizarModalidadContrato(persona.modalidad_contrato || persona.tipo_contrato || persona.modalidad),
   tipo_contrato: normalizarTipoContratoDuracion(persona.tipo_contrato, persona.modalidad_contrato || persona.tipo_contrato || persona.modalidad),
-  fecha_ingreso: persona.fecha_ingreso || persona.fecha_inicio || persona.fecha_inicio_contrato || null,
-  fecha_inicio_contrato: persona.fecha_inicio_contrato || persona.fecha_inicio || persona.fecha_ingreso || null,
-  fecha_fin_contrato: persona.fecha_fin_contrato || persona.fecha_fin || null,
+  fecha_ingreso: persona.fecha_ingreso || persona.fecha_inicio || null,
   sueldo_base: Number(persona.sueldo_base ?? persona.remuneracion ?? 0),
   remuneracion: Number(persona.remuneracion ?? persona.sueldo_base ?? 0),
   moneda: persona.moneda || 'PEN',
@@ -543,13 +536,11 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
 
 const toPersonalAdminUpdate = (cambios = {}) => {
   const map = {
-    fecha_inicio: 'fecha_inicio_contrato',
-    fecha_fin: 'fecha_fin_contrato',
   };
   const allowed = new Set([
     'codigo', 'nombre', 'documento', 'dni', 'fecha_nacimiento', 'direccion',
     'cargo', 'cargo_id', 'area', 'telefono', 'email', 'supervisor', 'sede', 'turno_id',
-    'modalidad_contrato', 'tipo_contrato', 'fecha_ingreso', 'fecha_inicio_contrato', 'fecha_fin_contrato',
+    'modalidad_contrato', 'tipo_contrato', 'fecha_ingreso',
     'sueldo_base', 'remuneracion', 'moneda', 'metodo_pago', 'monto_mensual',
     'horas_base_mes', 'tarifa_hora', 'sistema_pensionario', 'modalidad',
     'afp_nombre', 'tiene_hijos', 'regimen_laboral', 'cuota_prestamo_mes',
@@ -574,7 +565,7 @@ const toPersonalAdminUpdate = (cambios = {}) => {
   return Object.entries(cambios).reduce((row, [key, value]) => {
     const target = map[key] || key;
     if (!allowed.has(target)) return row;
-    if (['fecha_nacimiento', 'fecha_ingreso', 'fecha_inicio_contrato', 'fecha_fin_contrato'].includes(target)) {
+    if (['fecha_nacimiento', 'fecha_ingreso'].includes(target)) {
       row[target] = value || null;
       return row;
     }

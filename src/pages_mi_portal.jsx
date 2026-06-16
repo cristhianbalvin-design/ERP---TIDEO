@@ -6,7 +6,8 @@ import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { autoservicioEmpleadoService } from './services/autoservicioEmpleadoService.js';
 
 const minToHours = min => `${Math.round(Number(min || 0) / 60 * 10) / 10} h`;
-const estadoContratoLabel = c => c?.estado === 'por_vencer' ? `Por vencer (${c.dias} dias)` : c?.estado || 'Sin contrato';
+const estadoContratoLabel = c => c?.estado === 'por_vencer' ? `Por vencer (${c.dias} dias)` : c?.estado === 'sin_contrato' ? 'Sin contrato' : c?.estado || 'Sin contrato';
+const estadoContratoBadge = estado => estado === 'vencido' ? 'badge-red' : estado === 'por_vencer' ? 'badge-orange' : estado === 'sin_contrato' ? 'badge-gray' : 'badge-green';
 const money = n => `S/ ${Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const campoLabels = {
   telefono_personal: 'Telefono personal',
@@ -61,7 +62,7 @@ function PortalResumen({ data, onEvaluaciones }) {
               <span style={{ width: 18, height: 18, color: 'var(--cyan)' }}>{c.icon}</span>
             </div>
             <div className="font-display" style={{ fontWeight: 800, fontSize: 20, marginTop: 8 }}>{c.value}</div>
-            {c.badge && <span className={'badge ' + (c.badge === 'vencido' ? 'badge-red' : c.badge === 'por_vencer' ? 'badge-orange' : 'badge-green')} style={{ marginTop: 8 }}>{c.badge}</span>}
+            {c.badge && <span className={'badge ' + estadoContratoBadge(c.badge)} style={{ marginTop: 8 }}>{estadoContratoLabel({ estado: c.badge, dias: data.resumen?.contrato?.dias })}</span>}
           </div>
         ))}
         {data.resumen?.ciclo_minero && (
@@ -125,7 +126,7 @@ export function MiPortal() {
         personalTipo: ficha.personal_tipo,
         tipoDoc,
         file,
-        fechaVencimiento: ficha.fecha_fin_contrato || null,
+        fechaVencimiento: null,
         notas: tipoDoc === 'contrato' ? 'Contrato firmado cargado desde Mi portal' : 'Renovacion cargada desde Mi portal',
       });
       addNotificacion('Documento cargado para validacion de RRHH.');

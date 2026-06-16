@@ -14,7 +14,6 @@ import {
   getTipoFiscalizacion,
   normalizarModalidadContrato,
   normalizarTipoContratoDuracion,
-  requiereFechaFinContrato,
   retencionIrHonorariosLabel,
 } from './services/rrhhService.js';
 import * as ticketsService from './services/ticketsService.js';
@@ -12968,7 +12967,7 @@ function diasComputablesEnRango(asignacion, fechaIni, fechaFin) {
 //          o array de { asignacion, fechaSegIni, fechaSegFin }.
 function segmentarMesPorAsignaciones(asigs, anio, mes, trabajador = {}) {
   const primerDiaOriginal = new Date(anio, mes - 1, 1);
-  const _ing = trabajador.fecha_inicio_contrato || trabajador.fecha_ingreso || null;
+  const _ing = trabajador.fecha_ingreso || null;
   const _dtIng = _ing ? new Date(`${_ing}T00:00:00`) : null;
   const primerDia = (_dtIng && _dtIng > primerDiaOriginal) ? _dtIng : primerDiaOriginal;
   const ultimoDia = new Date(anio, mes, 0);
@@ -13314,7 +13313,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const _pIniOriginal = new Date(_pYear, _pMes - 1, 1);
   const _pFin  = new Date(_pYear, _pMes, 0);
 
-  const _fechaIng = trabajador.fecha_inicio_contrato || trabajador.fecha_ingreso || null;
+  const _fechaIng = trabajador.fecha_ingreso || null;
   const _dtIng = _fechaIng ? new Date(`${_fechaIng}T00:00:00`) : null;
   const _pIni = (_dtIng && _dtIng > _pIniOriginal) ? _dtIng : _pIniOriginal;
 
@@ -13355,7 +13354,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   let diasComputablesDisplay = esMinero ? (diasComputables ?? '—') : '—';
 
   // Proporcionalidad por ingreso o cese dentro del período
-  const _fechaCese = trabajador.fecha_fin_contrato    || trabajador.fecha_cese    || null;
+  const _fechaCese = trabajador.fecha_cese || null;
   const _dtCese = _fechaCese ? new Date(`${_fechaCese}T00:00:00`) : null;
   let diasEfectivos = 30;
   let esProporcional = false;
@@ -14816,7 +14815,7 @@ function Nomina() {
   const periodoFin = periodo ? new Date(periodo.anio, periodo.mes, 0) : null;
   const estaActivoEnPeriodo = (p) => {
     if (!periodoFin) return true;
-    const ing = p.fecha_inicio_contrato || p.fecha_ingreso || null;
+    const ing = p.fecha_ingreso || null;
     if (ing && new Date(`${ing}T00:00:00`) > periodoFin) return false;
     return true;
   };
@@ -15795,6 +15794,41 @@ function AmonestacionesTab({ personalId, personalNombre, personalTipo, empresaId
   );
 }
 
+const rrhhContratoDocTexto = (valor) => String(valor || '').trim().toLowerCase();
+const rrhhEsDocContrato = (doc = {}) => {
+  const valores = [
+    doc.tipo_doc,
+    doc.tipo_doc_codigo,
+    doc.tipo_documento_codigo,
+    doc.tipo_documento_id,
+    doc.tipo_doc_nombre,
+    doc.nombre,
+    doc.tipo?.nombre,
+    doc.tipo?.codigo,
+  ].map(rrhhContratoDocTexto);
+  return valores.some(v => v === 'contrato' || v.includes('contrato'));
+};
+const rrhhContratoActivoPersonal = (docs = [], personalId) =>
+  (docs || [])
+    .filter(d => d.personal_id === personalId && d.activo !== false && rrhhEsDocContrato(d))
+    .sort((a, b) => String(b.fecha_vencimiento || b.fecha_emision || b.created_at || '').localeCompare(String(a.fecha_vencimiento || a.fecha_emision || a.created_at || '')))[0] || null;
+const rrhhContratoVencimientoInfo = (doc) => {
+  if (!doc) return { estado: 'sin_contrato', badge: 'badge-gray', texto: 'Sin contrato digital', dias: null };
+  if (!doc.fecha_vencimiento) return { estado: 'sin_vencimiento', badge: 'badge-gray', texto: 'Sin vencimiento', dias: null };
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const vencimiento = new Date(`${doc.fecha_vencimiento}T00:00:00`);
+  const dias = Math.ceil((vencimiento - hoy) / 86400000);
+  if (dias < 0) return { estado: 'vencido', badge: 'badge-red', texto: `Vencido hace ${Math.abs(dias)} d`, dias };
+  if (dias <= 7) return { estado: 'critico', badge: 'badge-red', texto: `Vence en ${dias} d`, dias };
+  if (dias <= 14) return { estado: 'advertencia', badge: 'badge-orange', texto: `Vence en ${dias} d`, dias };
+  return { estado: 'vigente', badge: 'badge-green', texto: `Vence en ${dias} d`, dias };
+};
+const rrhhContratoTipoDocValue = (tipos = []) => {
+  const tipo = (tipos || []).find(t => [t.id, t.key, t.codigo, t.nombre].some(v => rrhhContratoDocTexto(v).includes('contrato')));
+  return tipo?.id || tipo?.key || 'contrato';
+};
+
 function RRHH_Operativo() {
   const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
@@ -15930,7 +15964,7 @@ function RRHH_Operativo() {
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const vacacionesSugeridas = diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general');
   const vacRegimenLabel = { general: 'General', pequena_empresa: 'Pequeña empresa', microempresa: 'Microempresa' }[empresaConfig?.regimen_laboral_empresa || 'general'] || 'General';
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', email_personal:'', celular_personal:'', codigo:'', cargo:'', cargo_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', fecha_fin:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'' };
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', email_personal:'', celular_personal:'', codigo:'', cargo:'', cargo_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [nuevoCargoTextoOp, setNuevoCargoTextoOp] = useState('');
   const [horasBaseOverride, setHorasBaseOverride] = useState(false);
@@ -15942,7 +15976,6 @@ function RRHH_Operativo() {
   const modalidadAlta = normalizarModalidadContrato(formAlta.modalidad);
   const esHonorarios = modalidadAlta === 'honorarios';
   const tipoContratoAlta = normalizarTipoContratoDuracion(formAlta.tipo_contrato, modalidadAlta);
-  const mostrarFechaFinAlta = requiereFechaFinContrato(tipoContratoAlta);
   const horasBaseForm = Number(formAlta.horas_base_mes || 0);
   const tarifaHoraForm = Math.round((horasBaseForm > 0 ? Number(formAlta.monto_mensual || 0) / horasBaseForm : 0) * 100) / 100;
   const costExtraCalc = Math.round(tarifaHoraForm * 125) / 100;
@@ -16045,8 +16078,7 @@ function RRHH_Operativo() {
       sede: p.sede || '',
       turno_id: turnoActualId,
       centro_costo_id: p.centro_costo_id || '',
-      fecha_ingreso: p.fecha_inicio_contrato || p.fecha_ingreso || '',
-      fecha_fin: p.fecha_fin_contrato || '',
+      fecha_ingreso: p.fecha_ingreso || '',
       modalidad: normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato),
       tipo_contrato: normalizarTipoContratoDuracion(p.tipo_contrato, p.modalidad_contrato || p.tipo_contrato),
       moneda: p.moneda || 'PEN',
@@ -16123,7 +16155,6 @@ function RRHH_Operativo() {
     if (altaSaving) return;
     const modalidad = normalizarModalidadContrato(formAlta.modalidad);
     const tipoContrato = normalizarTipoContratoDuracion(formAlta.tipo_contrato, modalidad);
-    const requiereFin = requiereFechaFinContrato(tipoContrato);
     if (modalidad !== 'honorarios' && !turnosOptions.some(t => t.id === formAlta.turno_id)) {
       setAltaError('Selecciona un turno real creado en Supabase antes de guardar el tecnico.');
       return;
@@ -16138,10 +16169,6 @@ function RRHH_Operativo() {
     }
     if (!formAlta.fecha_ingreso) {
       setAltaError('La fecha de ingreso es obligatoria.');
-      return;
-    }
-    if (requiereFin && !formAlta.fecha_fin) {
-      setAltaError('La fecha fin es obligatoria para este tipo de contrato o encargo.');
       return;
     }
     setAltaSaving(true);
@@ -16175,8 +16202,6 @@ function RRHH_Operativo() {
       costo_hora_real: tarifaHoraForm,
       costo_hora_extra: costoExtraOverride ? (Number(formAlta.costo_extra) || 0) : costExtraCalc,
       fecha_ingreso: formAlta.fecha_ingreso || null,
-      fecha_inicio_contrato: formAlta.fecha_ingreso || null,
-      fecha_fin_contrato: requiereFin ? (formAlta.fecha_fin || null) : null,
       modalidad_contrato: modalidad,
       tipo_contrato: tipoContrato,
       sueldo_base: modalidad === 'honorarios' ? 0 : Number(formAlta.sueldo_base || formAlta.monto_mensual) || 0,
@@ -16208,13 +16233,12 @@ function RRHH_Operativo() {
       datos_bancarios: formDatosBancarios,
     };
     try {
-      let personalCreado;
       if (editandoId) {
-        personalCreado = await actualizarTecnicoCtx(editandoId, { ...nuevo, id: editandoId, empresa_id: empresa?.id });
+        await actualizarTecnicoCtx(editandoId, { ...nuevo, id: editandoId, empresa_id: empresa?.id });
         addNotificacion('Tecnico actualizado.');
       } else {
-        personalCreado = await crearTecnicoCtx({ ...nuevo, empresa_id: empresa?.id });
-        addNotificacion('Tecnico creado.');
+        await crearTecnicoCtx({ ...nuevo, empresa_id: empresa?.id });
+        addNotificacion('Tecnico creado. Sube el contrato firmado en Documentos para activar alertas de vencimiento.');
       }
       if (!editandoId && crearUsuarioSistema && usuarioSistemaForm.email && crearUsuarioConAcceso) {
         try {
@@ -16500,6 +16524,14 @@ function RRHH_Operativo() {
     // Tipos de documento: usa el maestro del tenant si hay activos, si no cae al listado estático
     const tiposDocOp = tiposDocumento.filter(t => t.estado === 'activo' && (t.ambito === 'Operativo' || t.ambito === 'Ambos'));
     const tipoDocOpts = tiposDocOp.length > 0 ? tiposDocOp : personalDocumentosService.TIPOS_DOC_OPERATIVO;
+    const contratoDoc = rrhhContratoActivoPersonal(personalDocumentos, p.id);
+    const contratoInfo = rrhhContratoVencimientoInfo(contratoDoc);
+    const contratoTipoDoc = rrhhContratoTipoDocValue(tipoDocOpts);
+    const irADocumentoContrato = () => {
+      setFichaTab('documentos');
+      setDocHighlightTipo(contratoDoc?.tipo_doc || contratoDoc?.tipo_documento_id || contratoTipoDoc);
+      setDocUploadForm(prev => ({ ...prev, tipoDoc: contratoTipoDoc }));
+    };
     const usarMaestro = tiposDocOp.length > 0;
     const tipoDocSelecInfo = usarMaestro
       ? tiposDocOp.find(t => t.id === docUploadForm.tipoDoc)
@@ -16638,8 +16670,9 @@ function RRHH_Operativo() {
               <div className="grid-2" style={{gap:16}}>
                 {[
                   ['Tipo de contrato', p.tipo_contrato],
-                  ['Fecha inicio', p.fecha_inicio_contrato || p.fecha_ingreso],
-                  ['Fecha fin', p.fecha_fin_contrato || (p.tipo_contrato === 'Indefinido' ? 'Sin fecha de fin' : '—')],
+                  ['Fecha de ingreso', p.fecha_ingreso],
+                  ['Contrato digital', contratoDoc ? (contratoDoc.nombre || contratoDoc.tipo_doc_nombre || contratoDoc.tipo_doc || 'Contrato') : 'Sin contrato digital'],
+                  ['Vencimiento contrato', contratoDoc?.fecha_vencimiento || 'Sin vencimiento registrado'],
                   ['Régimen laboral', p.regimen_laboral],
                   ['Régimen de jornada', p.regimen_jornada],
                   ['Sueldo base', canFinanzas ? `S/ ${Number(p.sueldo_base||0).toLocaleString()}` : '***'],
@@ -16654,6 +16687,12 @@ function RRHH_Operativo() {
                     <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
                   </div>
                 ))}
+              </div>
+              <div style={{marginTop:16, padding:14, background:'var(--bg-subtle)', border:'1px solid var(--border)', borderRadius:8}} className="row">
+                <span className={`badge ${contratoInfo.badge}`}>{contratoInfo.texto}</span>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={irADocumentoContrato}>
+                  {contratoDoc ? 'Ver documento' : 'Subir contrato'}
+                </button>
               </div>
             </div>
           )}
@@ -17303,9 +17342,8 @@ function RRHH_Operativo() {
                 {personal.map(p => {
                   const esHon = esModalidadHonorarios(p);
                   const turnoNombre = workerTurno(turnosOptions, p).nombre;
-                  const contratoTexto = p.fecha_inicio_contrato
-                    ? (p.fecha_fin_contrato ? `${p.fecha_inicio_contrato} — ${p.fecha_fin_contrato}` : `Desde ${p.fecha_inicio_contrato}`)
-                    : null;
+                  const contratoDocFila = rrhhContratoActivoPersonal(personalDocumentos, p.id);
+                  const contratoInfoFila = rrhhContratoVencimientoInfo(contratoDocFila);
                   return (
                     <tr key={p.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => { setSelTecnico(p); setFichaTab('ficha'); }}>
                       <td>
@@ -17320,7 +17358,7 @@ function RRHH_Operativo() {
                       <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
                       <td className="num">{money(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0, p.moneda === 'USD' ? 'US$' : 'S/')}/hr</td>
                       <td>{esHon ? <span className="text-subtle">—</span> : <span className="mono" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>
-                      <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{contratoTexto || '—'}</span>}</td>
+                      <td>{esHon ? <span className="text-subtle">—</span> : <span className={`badge ${contratoInfoFila.badge}`} style={{fontSize:11}}>{contratoInfoFila.texto}</span>}</td>
                       <td><span className={'badge '+(esHon ? 'badge-gray' : 'badge-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></td>
                       <td className="num">{esHon ? <span className="text-subtle">—</span> : `${p.dias_vacaciones_disponibles} días`}</td>
                       <td><span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span></td>
@@ -17714,7 +17752,7 @@ function RRHH_Operativo() {
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder={`TEC-00${personal.length+1}`}/></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato)}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
-              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorarios} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value,fecha_fin:requiereFechaFinContrato(e.target.value)?v.fecha_fin:''}))}>{CONTRATO_DURACION_OPCIONES.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
+              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorarios} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{CONTRATO_DURACION_OPCIONES.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
               {!esHonorarios && <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>}
               <div className="input-group"><label>Cargo</label>
                 <select className="select" value={formAlta.cargo_id} onChange={e=>{
@@ -17737,7 +17775,6 @@ function RRHH_Operativo() {
               <div className="input-group"><label>Sede base</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
               <div className="input-group"><label>Supervisor directo</label><select className="select" value={formAlta.supervisor_id} onChange={e=>setFormAlta(v=>({...v,supervisor_id:e.target.value}))}><option value="">Sin supervisor asignado</option>{supervisorOptions.map(p=><option key={p.id} value={p.id}>{p.nombre} - {p.cargo}</option>)}</select>{!supervisorOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Crea o edita un colaborador con perfil de campo Supervisor.</div>}</div>
               <div className="input-group"><label>Fecha de ingreso *</label><input className="input" type="date" required value={formAlta.fecha_ingreso} onChange={e=>setFormAlta(v=>({...v,fecha_ingreso:e.target.value}))}/></div>
-              {mostrarFechaFinAlta && <div className="input-group"><label>{esHonorarios ? 'Fin del encargo *' : 'Fecha fin contrato *'}</label><input className="input" type="date" required value={formAlta.fecha_fin} onChange={e=>setFormAlta(v=>({...v,fecha_fin:e.target.value}))}/></div>}
               <div className="input-group"><label>Estado inicial</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="disponible">Disponible</option><option value="inactivo">Inactivo</option></select></div>
             </div>
 
