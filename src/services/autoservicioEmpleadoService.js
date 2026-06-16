@@ -1,5 +1,6 @@
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { rrhhService } from './rrhhService.js';
+import { computarSaldoVacaciones } from './solicitudesRrhhService.js';
 
 const norm = value => String(value || '').trim().toLowerCase();
 const monthRange = (periodo = new Date().toISOString().slice(0, 7)) => {
@@ -49,18 +50,7 @@ const contratoEstado = (ficha = {}, docs = []) => {
 
 function calcSaldoVacaciones(ficha, solicitudesDelPersonal, configAusencias) {
   const diasAnio = configAusencias?.dias_vacaciones_anio ?? ficha.dias_vacaciones_total ?? 30;
-  const fechaIngreso = ficha.fecha_ingreso || null;
-  if (!fechaIngreso) return 0;
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  const ingreso = new Date(`${fechaIngreso}T00:00:00`);
-  if (ingreso > hoy) return 0;
-  const diasTranscurridos = (hoy.getTime() - ingreso.getTime()) / 86400000;
-  const devengados = Math.round((diasTranscurridos / 365 * diasAnio) * 10) / 10;
-  const gozados = solicitudesDelPersonal
-    .filter(s => s.tipo === 'vacaciones' && ['confirmada_rrhh', 'activa'].includes(s.estado))
-    .reduce((acc, s) => acc + (s.dias_habiles || 0), 0);
-  return Math.max(0, Math.round((devengados - gozados) * 10) / 10);
+  return computarSaldoVacaciones(ficha.fecha_ingreso || null, diasAnio, solicitudesDelPersonal).saldo;
 }
 
 export function construirAutoservicioLocal({
@@ -94,7 +84,7 @@ export function construirAutoservicioLocal({
   }
   const personalTipo = ficha.personal_tipo;
   const personalId = ficha.id;
-  const docs = (personalDocumentos || []).filter(d => d.personal_id === personalId && (!d.personal_tipo || d.personal_tipo === personalTipo));
+  const docs = (personalDocumentos || []).filter(d => d.personal_id === personalId && (!d.personal_tipo || d.personal_tipo === personalTipo) && d.activo !== false);
   const esContratoDoc = d =>
     d.tipo_doc === 'contrato' || d.tipo_doc_codigo === 'contrato' || d.tipo_documento_codigo === 'contrato' ||
     (tiposDocumentoContratoIds.length > 0 && (tiposDocumentoContratoIds.includes(d.tipo_doc) || tiposDocumentoContratoIds.includes(d.tipo_documento_id)));

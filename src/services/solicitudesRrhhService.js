@@ -52,6 +52,24 @@ function requiereDocumento(tipo) {
   return ['licencia_medica', 'licencia_maternidad', 'licencia_paternidad'].includes(tipo);
 }
 
+// ── Saldo vacacional canónico ─────────────────────────────────────────────────
+
+export const ESTADOS_VACACIONES_DESCUENTA = ['aprobada_jefe', 'confirmada_rrhh', 'activa'];
+
+// Función síncrona canónica. Recibe las solicitudes ya filtradas al colaborador.
+export function computarSaldoVacaciones(fechaIngreso, diasAnio, solicitudes) {
+  if (!fechaIngreso) return { disponibles: 0, usados: 0, saldo: 0 };
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const ingreso = new Date(`${fechaIngreso}T00:00:00`);
+  if (ingreso > hoy) return { disponibles: 0, usados: 0, saldo: 0 };
+  const diasTranscurridos = (hoy.getTime() - ingreso.getTime()) / 86400000;
+  const disponibles = Math.round((diasTranscurridos / 365 * diasAnio) * 10) / 10;
+  const usados = (solicitudes || [])
+    .filter(s => s.tipo === 'vacaciones' && ESTADOS_VACACIONES_DESCUENTA.includes(s.estado))
+    .reduce((acc, s) => acc + (s.dias_habiles || 0), 0);
+  return { disponibles, usados, saldo: Math.max(0, Math.round((disponibles - usados) * 10) / 10) };
+}
+
 // ── Correlativo PM-XXXX ───────────────────────────────────────────────────────
 
 let _mockPmCorrelativo = 3;
@@ -312,40 +330,23 @@ export async function cargarConfigAusencias(empresaId) {
 }
 
 export async function calcularSaldoVacaciones(empresaId, personalId, anio, fechaIngreso) {
-  function calcDevengados(diasAnio, fi) {
-    if (!fi) return diasAnio;
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-    const ingreso = new Date(`${fi}T00:00:00`);
-    if (ingreso > hoy) return 0;
-    const dias = (hoy.getTime() - ingreso.getTime()) / 86400000;
-    return Math.round((dias / 365 * diasAnio) * 10) / 10;
-  }
   if (getDataMode() !== 'supabase') {
-    const config = { ...mockConfig };
-    const usados = mockSolicitudes
-      .filter(s => s.empresa_id === empresaId && s.personal_id === personalId
-        && s.tipo === 'vacaciones'
-        && ['confirmada_rrhh', 'activa'].includes(s.estado))
-      .reduce((acc, s) => acc + (s.dias_habiles || 0), 0);
-    const disponibles = calcDevengados(config.dias_vacaciones_anio, fechaIngreso);
-    return { disponibles, usados, saldo: Math.max(0, Math.round((disponibles - usados) * 10) / 10) };
+    const sols = mockSolicitudes.filter(s => s.empresa_id === empresaId && s.personal_id === personalId);
+    return computarSaldoVacaciones(fechaIngreso, mockConfig.dias_vacaciones_anio, sols);
   }
   const supabase = await getSupabaseClient();
-  const [configRes, usadosRes] = await Promise.all([
+  const [configRes, solsRes] = await Promise.all([
     supabase.from('rrhh_config_ausencias').select('dias_vacaciones_anio').eq('empresa_id', empresaId).maybeSingle(),
     supabase.from('solicitudes_rrhh')
-      .select('dias_habiles')
+      .select('dias_habiles, tipo, estado')
       .eq('empresa_id', empresaId)
       .eq('personal_id', personalId)
-      .eq('tipo', 'vacaciones')
-      .in('estado', ['confirmada_rrhh', 'activa']),
+      .in('estado', ESTADOS_VACACIONES_DESCUENTA),
   ]);
   if (configRes.error) throw configRes.error;
-  if (usadosRes.error) throw usadosRes.error;
+  if (solsRes.error) throw solsRes.error;
   const diasAnio = configRes.data?.dias_vacaciones_anio ?? 30;
-  const disponibles = calcDevengados(diasAnio, fechaIngreso);
-  const usados = (usadosRes.data || []).reduce((acc, r) => acc + (r.dias_habiles || 0), 0);
-  return { disponibles, usados, saldo: Math.max(0, Math.round((disponibles - usados) * 10) / 10) };
+  return computarSaldoVacaciones(fechaIngreso, diasAnio, solsRes.data || []);
 }
 
 export async function cargarHistorial(solicitudId) {

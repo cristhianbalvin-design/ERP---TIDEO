@@ -3117,8 +3117,11 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
     amonestacionesPersonal, empresaConfig = {}, evaluacionPlantillas = [], evaluacionEvaluaciones = [],
     portalDatosSolicitudes = [], portalConstanciasTrabajo = [], portalBoletaAcuses = [], portalBoletaVisualizaciones = [], portalFirmaRegistros = [],
     crearConstanciaPortalCtx, registrarVisualizacionBoletaPortalCtx,
-    tiposDocumento = [],
+    tiposDocumento = [], subirDocumentoFirmadoPortalCtx, subirContratoFirmadoAprobadoCtx, addNotificacion,
   } = app;
+  const [uploading, setUploading] = useState('');
+  const [modalSubirContrato, setModalSubirContrato] = useState(null);
+  const [fileSubir, setFileSubir] = useState(null);
   const tiposDocumentoContratoIds = useMemo(() => (tiposDocumento || []).filter(t => t.captura_snapshot_laboral).map(t => t.id), [tiposDocumento]);
   const data = useMemo(() => construirAutoservicioLocal({
     authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos,
@@ -3131,6 +3134,63 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
   const ficha = data.ficha;
   const marcarActivo = Boolean(empresaConfig?.habilitar_marcacion_mobile_autoservicio);
   const contrato = data.resumen?.contrato;
+
+  const getNombreDoc = (d) => {
+    if (!d) return 'Documento';
+    const tInfo = (tiposDocumento || []).find(t => t.id === d.tipo_documento_id || t.id === d.tipo_doc);
+    return tInfo?.nombre || d.tipo_documento_nombre || d.tipo_doc || 'Documento';
+  };
+
+  const abrirDoc = async (doc) => {
+    try {
+      const ref = doc.storage_path || doc.archivo_url;
+      if (!ref) return;
+      const url = await personalDocumentosService.renovarUrlDocumento(ref);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      if (doc.archivo_url) window.open(doc.archivo_url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const confirmarSubidaContrato = async () => {
+    if (!fileSubir || !modalSubirContrato || !ficha) return;
+    if (fileSubir.size === 0) {
+      addNotificacion('El archivo no puede estar vacío.', 'error');
+      return;
+    }
+    setUploading('contrato');
+    try {
+      await subirContratoFirmadoAprobadoCtx({ file: fileSubir, docOriginal: modalSubirContrato });
+      addNotificacion('Contrato firmado subido con éxito. Queda en revisión por RRHH.');
+      setModalSubirContrato(null);
+      setFileSubir(null);
+    } catch (err) {
+      addNotificacion(`Error al subir contrato: ${err?.message || err}`, 'error');
+    } finally {
+      setUploading('');
+    }
+  };
+
+  const subirDocumentoFirmado = async (file, docOriginal) => {
+    if (!file || !ficha) return;
+    setUploading(docOriginal.id);
+    try {
+      await subirDocumentoFirmadoPortalCtx({
+        personalId: ficha.id,
+        personalTipo: ficha.personal_tipo,
+        tipoDoc: docOriginal.tipo_doc || docOriginal.tipo_documento_id || 'contrato',
+        tipoDocumentoId: docOriginal.tipo_documento_id || null,
+        file,
+        documentoEnviadoAFirmaId: docOriginal.id,
+        nombreColaborador: ficha.nombre,
+      });
+      addNotificacion('Documento firmado subido con éxito. RRHH lo validará pronto.');
+    } catch (err) {
+      addNotificacion(`Error al subir el documento: ${err?.message || err}`, 'error');
+    } finally {
+      setUploading('');
+    }
+  };
 
   if (!ficha) {
     return (
@@ -3145,7 +3205,7 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
   }
 
   const cards = [
-    ['Contrato', contrato?.estado === 'por_vencer' ? `${contrato.dias} dias` : (contrato?.estado || 'vigente')],
+    ['Vencimiento contrato', contrato?.estado === 'por_vencer' ? `En ${contrato.dias} dias` : (contrato?.estado || 'vigente')],
     ['Ultima boleta', data.resumen?.ultima_boleta?.periodo || 'Sin boleta'],
     ['Vacaciones', `${data.resumen?.vacaciones || 0} dias`],
     ['HE pendiente', `${Math.round(Number(data.resumen?.he_pendiente_minutos || 0) / 60 * 10) / 10} h`],
@@ -3206,11 +3266,83 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
 
       <div className="card" style={{ padding: 12, marginBottom: 10 }}>
         <div style={{ fontWeight: 800, marginBottom: 8 }}>Contratos y documentos</div>
-        <label className="btn btn-secondary btn-sm" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}>
-          {I.upload} Cargar contrato firmado
-          <input type="file" accept="application/pdf,image/*" capture="environment" style={{ display: 'none' }} />
-        </label>
-        <div className="text-muted" style={{ fontSize: 12 }}>{data.documentos.length} documentos personales registrados.</div>
+        {(() => {
+          const allDocs = [...(data.contratos || []), ...(data.documentos || [])];
+          const docsPendMobile = allDocs.filter(d => d.estado_validacion === 'pendiente_firma' || d.estado_firma === 'pendiente_trabajador');
+          
+          if (allDocs.length === 0) {
+            return (
+              <>
+                <label className="btn btn-secondary btn-sm" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}>
+                  {I.upload} Cargar contrato firmado
+                  <input type="file" accept="application/pdf,image/*" capture="environment" style={{ display: 'none' }} />
+                </label>
+                <div className="text-muted" style={{ fontSize: 12 }}>0 documentos personales registrados.</div>
+              </>
+            );
+          }
+          
+          return (
+            <div style={{ padding: '8px 0', marginBottom: 8 }}>
+              {docsPendMobile.length > 0 && (
+                <span className="badge badge-orange" style={{ marginBottom: 12, display: 'inline-block' }}>
+                  Tienes {docsPendMobile.length} documento{docsPendMobile.length !== 1 ? 's' : ''} pendiente{docsPendMobile.length !== 1 ? 's' : ''} de firma
+                </span>
+              )}
+              {allDocs.map(d => {
+                const isPendiente = d.estado_validacion === 'pendiente_firma' || d.estado_firma === 'pendiente_trabajador';
+                const isEnRevision = d.estado_validacion === 'en_revision' || d.estado_validacion === 'pendiente';
+                const isAprobado = d.estado_validacion === 'aprobado' || d.estado_validacion === 'vigente';
+                const isRechazado = d.estado_validacion === 'rechazado';
+                
+                let subtext = '';
+                if (isPendiente) subtext = d.enviado_a_firma_en ? `Enviado el ${d.enviado_a_firma_en.slice(0, 10)}` : 'Enviado por RRHH';
+                else if (isEnRevision) subtext = 'En revisión por RRHH';
+                else if (isAprobado) subtext = `Vigente ${d.fecha_vencimiento ? `· Vence: ${d.fecha_vencimiento}` : ''}`;
+                else if (isRechazado) subtext = 'Documento rechazado — sube una nueva versión';
+                else subtext = d.estado_validacion || 'Registrado';
+
+                return (
+                  <div key={d.id} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border-subtle)' }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{getNombreDoc(d)}</div>
+                    <div className="text-muted" style={{ fontSize: 11, marginBottom: 8 }}>
+                      {subtext}
+                    </div>
+                    <div className="row" style={{ gap: 8 }}>
+                      <button className="btn btn-sm btn-secondary flex-1" onClick={() => abrirDoc(d)}>{I.file} Ver</button>
+                      
+                      {isPendiente && (
+                        ficha.firma_onboarding_completo ? (
+                          <button className="btn btn-sm btn-ghost flex-1" style={{ color: 'var(--fg-muted)', cursor: 'default' }} disabled title="Próximamente">Firma electrónica</button>
+                        ) : (
+                          <label className="btn btn-sm btn-primary flex-1" style={{ justifyContent: 'center' }}>
+                            {uploading === d.id ? 'Subiendo...' : 'Subir firmado'}
+                            <input type="file" accept="application/pdf,image/*" capture="environment" style={{ display: 'none' }}
+                              onClick={e => { e.target.value = null; }}
+                              onChange={e => subirDocumentoFirmado(e.target.files?.[0], d)} />
+                          </label>
+                        )
+                      )}
+                      
+                      {isAprobado && (
+                        <button className="btn btn-sm btn-primary flex-1" onClick={() => setModalSubirContrato(d)}>Subir contrato firmado</button>
+                      )}
+                      
+                      {isRechazado && (
+                        <label className="btn btn-sm btn-primary flex-1" style={{ justifyContent: 'center' }}>
+                          {uploading === d.id ? 'Subiendo...' : 'Subir nueva versión'}
+                          <input type="file" accept="application/pdf,image/*" capture="environment" style={{ display: 'none' }}
+                            onClick={e => { e.target.value = null; }}
+                            onChange={e => subirDocumentoFirmado(e.target.files?.[0], d)} />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       <div className="card" style={{ padding: 12, marginBottom: 10 }}>
@@ -3230,6 +3362,31 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
         {data.amonestaciones.slice(0, 2).map(a => <div key={a.id} style={{ fontSize: 12, padding: '7px 0', borderBottom: '1px solid var(--border)' }}>{a.descripcion || a.motivo}</div>)}
         {!data.amonestaciones.length && <div className="text-muted" style={{ fontSize: 12 }}>Sin amonestaciones activas.</div>}
       </div>
+
+      {modalSubirContrato && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => { setModalSubirContrato(null); setFileSubir(null); }}>
+          <div style={{ backgroundColor: 'var(--bg)', width: '100%', maxWidth: 500, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 24, paddingBottom: 40 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>Subir contrato firmado</div>
+            <div className="text-muted" style={{ fontSize: 13, marginBottom: 20 }}>Por favor, sube una copia escaneada o foto legible de tu contrato firmado ({getNombreDoc(modalSubirContrato)}).</div>
+            
+            <label className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', marginBottom: 12, padding: 14 }}>
+              {fileSubir ? fileSubir.name : 'Seleccionar archivo (PDF, JPG, PNG)'}
+              <input type="file" accept="application/pdf,image/*" capture="environment" style={{ display: 'none' }}
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f && f.size > 20 * 1024 * 1024) { addNotificacion('El archivo excede los 20MB', 'error'); return; }
+                  setFileSubir(f);
+                }} />
+            </label>
+            
+            <div className="row" style={{ gap: 12, marginTop: 24 }}>
+              <button className="btn btn-ghost flex-1" onClick={() => { setModalSubirContrato(null); setFileSubir(null); }}>Cancelar</button>
+              <button className="btn btn-primary flex-1" onClick={confirmarSubidaContrato} disabled={!fileSubir || uploading === 'contrato'}>{uploading === 'contrato' ? 'Subiendo...' : 'Confirmar subida'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

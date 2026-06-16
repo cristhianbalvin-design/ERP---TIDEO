@@ -42,7 +42,7 @@ export async function getDocumentosActivos(empresaId) {
     .from('personal_documentos')
     .select('*')
     .eq('empresa_id', empresaId)
-    .eq('activo', true)
+    .or('activo.eq.true,estado_validacion.eq.pendiente')
     .order('fecha_vencimiento', { ascending: true });
   if (error) { console.error('Error getDocumentosActivos:', error); return []; }
   return (data || []).map(normalizar);
@@ -56,7 +56,6 @@ export async function getDocumentosPendientes(empresaId) {
     .from('personal_documentos')
     .select('*')
     .eq('empresa_id', empresaId)
-    .eq('activo', true)
     .eq('estado_validacion', 'pendiente')
     .order('creado_en', { ascending: false });
   if (error) { console.error('Error getDocumentosPendientes:', error); return []; }
@@ -81,6 +80,7 @@ export async function subirDocumento({
   adendaCambios,
   fechaVigenciaCambio,
   seccionDocumental,
+  contratoPeriodoId,
 }) {
   const supabase = await getSupabaseClient();
 
@@ -119,6 +119,7 @@ export async function subirDocumento({
     p_adenda_cambios: adendaCambios || {},
     p_fecha_vigencia_cambio: fechaVigenciaCambio || null,
     p_seccion_documental: seccionDocumental || null,
+    p_contrato_periodo_id: contratoPeriodoId || null,
   });
 
   if (rpcError) throw rpcError;
@@ -180,6 +181,51 @@ export async function corregirDocumento({
     p_notas:                 notas || null,
     p_archivo_url:           archivoUrl,
     p_nombre_archivo:        nombreArchivo,
+  });
+  if (error) throw error;
+  return normalizar(data);
+}
+
+// ── Nuevo período contractual ─────────────────────────────────────────────────
+
+export async function nuevoContrato({
+  empresaId, personalId, personalTipo, tipoDoc, tipoDocumentoId,
+  file, fechaEmision, fechaVencimiento, notas, condicionesLaborales,
+  periodoIdAnterior,
+}) {
+  const supabase = await getSupabaseClient();
+
+  let archivoUrl = null;
+  let nombreArchivo = null;
+
+  if (file) {
+    const ext = file.name.split('.').pop();
+    const storagePath = `${empresaId}/personal/${personalTipo}/${personalId}/${tipoDocumentoId || tipoDoc}_${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET)
+      .upload(storagePath, file, { upsert: false, contentType: file.type });
+    if (uploadError) throw uploadError;
+    const { data: urlData, error: urlError } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(storagePath, SIGNED_URL_TTL);
+    if (urlError) throw urlError;
+    archivoUrl = urlData.signedUrl;
+    nombreArchivo = file.name;
+  }
+
+  const { data, error } = await supabase.rpc('nuevo_contrato_periodo', {
+    p_empresa_id:            empresaId,
+    p_personal_id:           personalId,
+    p_personal_tipo:         personalTipo,
+    p_tipo_doc:              tipoDoc,
+    p_nombre_archivo:        nombreArchivo,
+    p_archivo_url:           archivoUrl,
+    p_fecha_emision:         fechaEmision || null,
+    p_fecha_vencimiento:     fechaVencimiento || null,
+    p_notas:                 notas || null,
+    p_condiciones_laborales: condicionesLaborales || null,
+    p_tipo_documento_id:     tipoDocumentoId || null,
+    p_periodo_id_anterior:   periodoIdAnterior || null,
   });
   if (error) throw error;
   return normalizar(data);
@@ -256,3 +302,95 @@ export const BADGE_VALIDACION = {
   aprobado:  'badge-green',
   rechazado: 'badge-red',
 };
+
+// ── Firma del trabajador ──────────────────────────────────────────────────────
+
+export const BADGE_FIRMA = {
+  no_requiere:          '',
+  pendiente_trabajador: 'badge-orange',
+  firmado_trabajador:   'badge-cyan',
+  no_aplica:            'badge-gray',
+};
+
+export const LABEL_FIRMA = {
+  no_requiere:          '',
+  pendiente_trabajador: 'Esperando firma del trabajador',
+  firmado_trabajador:   'Firmado por trabajador',
+  no_aplica:            '',
+};
+
+export async function enviarDocumentoAFirma({ documentoId, empresaId, workerAuthUserId, mensaje }) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('personal_documentos')
+    .update({
+      estado_firma: 'pendiente_trabajador',
+      enviado_a_firma_en: new Date().toISOString(),
+      enviado_a_firma_mensaje: mensaje || null,
+    })
+    .eq('id', documentoId)
+    .select()
+    .single();
+  if (error) throw error;
+  if (workerAuthUserId) {
+    await supabase.from('notificaciones_sistema').insert({
+      empresa_id: empresaId,
+      user_id: workerAuthUserId,
+      tipo: 'documento_pendiente_firma',
+      title: 'Documento pendiente de firma',
+      texto: mensaje || 'RRHH ha enviado un documento para tu firma. Revisa el tab "Firma y consentimiento" en Mi portal.',
+      prioridad: 'alta',
+      leida: false,
+    });
+  }
+  return normalizar(data);
+}
+
+export async function cancelarEnvioFirma({ documentoId }) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('personal_documentos')
+    .update({ estado_firma: 'no_requiere', enviado_a_firma_en: null, enviado_a_firma_mensaje: null })
+    .eq('id', documentoId)
+    .select()
+    .single();
+  if (error) throw error;
+  return normalizar(data);
+}
+
+export async function reenviarNotificacionFirma({ documentoId, empresaId, workerAuthUserId }) {
+  const supabase = await getSupabaseClient();
+  if (workerAuthUserId) {
+    await supabase.from('notificaciones_sistema').insert({
+      empresa_id: empresaId,
+      user_id: workerAuthUserId,
+      tipo: 'documento_pendiente_firma',
+      title: 'Recordatorio: Documento pendiente de firma',
+      texto: 'Tienes un documento pendiente de firma en Mi portal, tab "Firma y consentimiento".',
+      prioridad: 'alta',
+      leida: false,
+    });
+  }
+}
+
+export async function vincularDocumentoFirmado({ nuevoDocId, documentoEnviadoAFirmaId, empresaId, nombreColaborador }) {
+  const supabase = await getSupabaseClient();
+  if (nuevoDocId) {
+    await supabase.from('personal_documentos')
+      .update({ estado_firma: 'firmado_trabajador', documento_enviado_a_firma_id: documentoEnviadoAFirmaId || null })
+      .eq('id', nuevoDocId);
+  }
+  if (documentoEnviadoAFirmaId) {
+    await supabase.from('personal_documentos')
+      .update({ estado_firma: 'firmado_trabajador' })
+      .eq('id', documentoEnviadoAFirmaId);
+  }
+  await supabase.from('notificaciones_sistema').insert({
+    empresa_id: empresaId,
+    tipo: 'documento_firmado_trabajador',
+    title: 'Documento firmado cargado',
+    texto: `${nombreColaborador || 'El colaborador'} ha cargado su documento firmado. Pendiente de validacion RRHH.`,
+    prioridad: 'media',
+    leida: false,
+  });
+}

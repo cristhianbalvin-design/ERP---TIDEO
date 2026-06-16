@@ -4,6 +4,7 @@ import { useApp } from './context.jsx';
 import { construirAutoservicioLocal } from './services/autoservicioEmpleadoService.js';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { autoservicioEmpleadoService } from './services/autoservicioEmpleadoService.js';
+import * as personalDocumentosService from './services/personalDocumentosService.js';
 
 const minToHours = min => `${Math.round(Number(min || 0) / 60 * 10) / 10} h`;
 const estadoContratoLabel = c => c?.estado === 'por_vencer' ? `Por vencer (${c.dias} dias)` : c?.estado === 'sin_contrato' ? 'Sin contrato digital' : c?.estado || 'Sin contrato digital';
@@ -99,7 +100,7 @@ export function MiPortal() {
   const {
     authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos, solicitudesRRHH,
     registrosAsistencia, periodosNomina, trabajadoresDatosNomina, amonestacionesPersonal,
-    setAmonestacionesPersonal, subirDocumentoPersonalCtx, navigate, addNotificacion,
+    setAmonestacionesPersonal, subirDocumentoPersonalCtx, subirDocumentoFirmadoPortalCtx, subirContratoFirmadoAprobadoCtx, navigate, addNotificacion,
     evaluacionPlantillas, evaluacionEvaluaciones, empresaConfig = {}, portalDatosSolicitudes = [],
     portalConstanciasTrabajo = [], portalBoletaAcuses = [], portalBoletaVisualizaciones = [], portalFirmaRegistros = [],
     crearSolicitudDatosPortalCtx, crearConstanciaPortalCtx,
@@ -115,10 +116,12 @@ export function MiPortal() {
   const [firmaForm, setFirmaForm] = useState({ telefono_personal: '', celular_personal: '', email_personal: '', firma_otp_canal: 'email_personal', consentimiento_entrega_electronica: false });
   const [otpActivo, setOtpActivo] = useState(null);
   const [otpCodigo, setOtpCodigo] = useState('');
+  const [modalSubirContrato, setModalSubirContrato] = useState(null);
+  const [fileSubir, setFileSubir] = useState(null);
 
   const tiposDocumentoContratoIds = useMemo(() => (tiposDocumento || []).filter(t => t.captura_snapshot_laboral).map(t => t.id), [tiposDocumento]);
 
-const data = useMemo(() => construirAutoservicioLocal({
+  const data = useMemo(() => construirAutoservicioLocal({
     authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos, solicitudesRRHH,
     registrosAsistencia, periodosNomina, trabajadoresDatosNomina, amonestaciones: amonestacionesPersonal,
     notificaciones: app.notificaciones, periodo, evaluacionPlantillas, evaluacionEvaluaciones,
@@ -128,6 +131,67 @@ const data = useMemo(() => construirAutoservicioLocal({
 
   const ficha = data.ficha;
   const camposPermitidos = empresaConfig?.portal_datos_campos_permitidos || ['telefono_personal', 'celular_personal', 'email_personal', 'direccion', 'contacto_emergencia', 'datos_bancarios'];
+
+  const docsPendientesFirma = useMemo(() =>
+    [...(data.contratos || []), ...(data.documentos || [])].filter(d => d.estado_firma === 'pendiente_trabajador')
+  , [data.contratos, data.documentos]);
+
+  const getNombreDoc = (d) => {
+    if (!d) return 'Documento';
+    const tInfo = (tiposDocumento || []).find(t => t.id === d.tipo_documento_id || t.id === d.tipo_doc);
+    return tInfo?.nombre || d.tipo_documento_nombre || d.tipo_doc || 'Documento';
+  };
+
+  const abrirDoc = async (doc) => {
+    try {
+      const ref = doc.storage_path || doc.archivo_url;
+      if (!ref) return;
+      const url = await personalDocumentosService.renovarUrlDocumento(ref);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      if (doc.archivo_url) window.open(doc.archivo_url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const confirmarSubidaContrato = async () => {
+    if (!fileSubir || !modalSubirContrato || !ficha) return;
+    if (fileSubir.size === 0) {
+      addNotificacion('El archivo no puede estar vacío.', 'error');
+      return;
+    }
+    setUploading('contrato');
+    try {
+      await subirContratoFirmadoAprobadoCtx({ file: fileSubir, docOriginal: modalSubirContrato });
+      addNotificacion('Contrato firmado subido con éxito. Queda en revisión por RRHH.');
+      setModalSubirContrato(null);
+      setFileSubir(null);
+    } catch (err) {
+      addNotificacion(`Error al subir contrato: ${err?.message || err}`, 'error');
+    } finally {
+      setUploading('');
+    }
+  };
+
+  const subirDocumentoFirmado = async (file, docOriginal) => {
+    if (!file || !ficha) return;
+    setUploading(docOriginal.id);
+    try {
+      await subirDocumentoFirmadoPortalCtx({
+        personalId: ficha.id,
+        personalTipo: ficha.personal_tipo,
+        tipoDoc: docOriginal.tipo_doc || docOriginal.tipo_documento_id || 'contrato',
+        tipoDocumentoId: docOriginal.tipo_documento_id || null,
+        file,
+        documentoEnviadoAFirmaId: docOriginal.id,
+        nombreColaborador: ficha.nombre,
+      });
+      addNotificacion('Documento firmado cargado. RRHH lo validara pronto.');
+    } catch (err) {
+      addNotificacion(err?.message || 'No se pudo cargar el documento.');
+    } finally {
+      setUploading('');
+    }
+  };
 
   const subirDocumento = async (file, tipoDoc = 'contrato') => {
     if (!file || !ficha) return;
@@ -284,6 +348,17 @@ const data = useMemo(() => construirAutoservicioLocal({
 
           {tab === 'resumen' && (
             <>
+              {docsPendientesFirma.length > 0 && (
+                <div className="card" style={{ padding: 16, marginBottom: 14, borderColor: 'var(--orange)', borderWidth: 2 }}>
+                  <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
+                    <div>
+                      <strong>Tienes {docsPendientesFirma.length === 1 ? 'un documento pendiente de firma' : `${docsPendientesFirma.length} documentos pendientes de firma`}</strong>
+                      <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{getNombreDoc(docsPendientesFirma[0])} — enviado por RRHH. Revisa el tab "Firma y consentimiento".</div>
+                    </div>
+                    <button className="btn btn-primary btn-sm" onClick={() => setTab('firma')}>Revisar y firmar →</button>
+                  </div>
+                </div>
+              )}
               <PortalResumen data={data} onEvaluaciones={() => setTab('evaluaciones')} onContratos={() => setTab('contratos')} />
               <div className="card" style={{ marginTop: 14 }}>
                 <div className="card-head"><h3>Notificaciones laborales</h3></div>
@@ -439,25 +514,40 @@ const data = useMemo(() => construirAutoservicioLocal({
                   <div className="alert alert-danger" style={{ fontSize: 12, marginBottom: 12, padding: '10px 14px' }}>Tu asistencia está bloqueada hasta que RRHH registre tu contrato digital. Consulta con RRHH.</div>
                 )}
                 <div className="text-muted" style={{ fontSize: 12, marginBottom: 16 }}>La firma electrónica avanzada queda disponible cuando RRHH active el parámetro del tenant y exista contrato pendiente.</div>
-                <div className="row">
-                  <label className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                    {uploading === 'contrato' ? 'Subiendo...' : <span style={{display:'flex',gap:6,alignItems:'center'}}><span style={{width:16,height:16}}>{I.upload}</span> Cargar contrato firmado</span>}
-                    <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={e => subirDocumento(e.target.files?.[0], 'contrato')} />
-                  </label>
-                </div>
+                {docsPendientesFirma.length > 0 ? (
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>Tienes documentos pendientes de firma enviados por RRHH.</div>
+                    <button className="btn btn-primary" onClick={() => setTab('firma')}>Ir a Firma y consentimiento →</button>
+                  </div>
+                ) : (
+                  <div className="row">
+                    <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                      {uploading === 'contrato' ? 'Subiendo...' : <span style={{display:'flex',gap:6,alignItems:'center'}}><span style={{width:16,height:16}}>{I.upload}</span> Cargar contrato firmado</span>}
+                      <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={e => subirDocumento(e.target.files?.[0], 'contrato')} />
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div className="card-head" style={{ borderTop: '1px solid var(--border)' }}><h3>Historial de contratos</h3></div>
               <div className="table-wrap">
                 <table className="tbl">
-                  <thead><tr><th>Documento</th><th>Fecha de vencimiento</th><th>Estado validación</th></tr></thead>
+                  <thead><tr><th>Documento</th><th>Fecha de vencimiento</th><th>Estado validación</th><th style={{ textAlign: 'right' }}>Acción</th></tr></thead>
                   <tbody>
                     {data.contratos.map(d => <tr key={d.id}>
-                      <td style={{ fontWeight: 600 }}>{d.tipo_doc || 'Contrato'}</td>
+                      <td style={{ fontWeight: 600 }}>{getNombreDoc(d)}</td>
                       <td>{d.fecha_vencimiento || 'Sin vencimiento'}</td>
                       <td><span className="badge badge-gray">{d.estado_validacion || 'registrado'}</span></td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => abrirDoc(d)}>Ver</button>
+                          {(d.estado_validacion === 'aprobado' || d.estado_validacion === 'vigente') && (
+                            <button className="btn btn-primary btn-sm" onClick={() => setModalSubirContrato(d)}>Subir firmado</button>
+                          )}
+                        </div>
+                      </td>
                     </tr>)}
-                    {!data.contratos.length && <tr><td colSpan="3" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin contratos registrados.</td></tr>}
+                    {!data.contratos.length && <tr><td colSpan="4" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin contratos registrados.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -465,6 +555,43 @@ const data = useMemo(() => construirAutoservicioLocal({
           )}
 
           {tab === 'firma' && (
+            <>
+            {docsPendientesFirma.length > 0 && (
+              <div className="card" style={{ marginBottom: 14 }}>
+                <div className="card-head"><h3>Documentos pendientes de firma</h3><span className="badge badge-orange">{docsPendientesFirma.length} pendiente{docsPendientesFirma.length !== 1 ? 's' : ''}</span></div>
+                <div className="card-body" style={{ padding: '0 16px 16px' }}>
+                  <div className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+                    RRHH ha enviado estos documentos para tu firma. Descarga el PDF, firmalo fisicamente, escanea o fotografía y cargalo con el boton "Subir firmado".
+                  </div>
+                  {docsPendientesFirma.map(d => (
+                    <div key={d.id} style={{ padding: '12px 0', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ flex: 1, minWidth: 160 }}>
+                        <div style={{ fontWeight: 600 }}>{getNombreDoc(d)}</div>
+                        <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>
+                          {d.enviado_a_firma_en ? `Enviado el ${d.enviado_a_firma_en.slice(0, 10)}` : 'Enviado por RRHH'}
+                          {d.enviado_a_firma_mensaje ? ` · "${d.enviado_a_firma_mensaje}"` : ''}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
+                        {d.archivo_url && (
+                          <button onClick={() => abrirDoc(d)} className="btn btn-sm btn-secondary">Ver documento</button>
+                        )}
+                        {ficha.firma_onboarding_completo
+                          ? <button className="btn btn-sm btn-ghost" style={{ color: 'var(--fg-muted)', cursor: 'default' }} disabled title="La firma electronica avanzada se habilitara en una proxima version">Firma electronica (proximamente)</button>
+                          : (
+                            <label className="btn btn-sm btn-primary" style={{ cursor: 'pointer' }}>
+                              {uploading === d.id ? 'Subiendo...' : 'Subir firmado'}
+                              <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }}
+                                onChange={e => subirDocumentoFirmado(e.target.files?.[0], d)} />
+                            </label>
+                          )
+                        }
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="card">
               <div className="card-head"><h3>Consentimiento y canal OTP</h3><span className={'badge ' + (ficha.firma_onboarding_completo ? 'badge-green' : 'badge-orange')}>{ficha.firma_onboarding_completo ? 'Completo' : 'Pendiente'}</span></div>
               <div className="card-body">
@@ -507,6 +634,7 @@ const data = useMemo(() => construirAutoservicioLocal({
                 </table>
               </div>
             </div>
+            </>
           )}
 
           {tab === 'asistencia' && (
@@ -575,7 +703,7 @@ const data = useMemo(() => construirAutoservicioLocal({
                   <thead><tr><th>Documento</th><th>Vencimiento</th><th>Estado validación</th><th style={{ textAlign: 'right' }}>Acción</th></tr></thead>
                   <tbody>
                     {data.documentos.map(d => <tr key={d.id}>
-                      <td style={{ fontWeight: 600 }}>{d.tipo_doc || d.tipo_documento_nombre || 'Documento'}</td>
+                      <td style={{ fontWeight: 600 }}>{getNombreDoc(d)}</td>
                       <td>{d.fecha_vencimiento || 'No aplica'}</td>
                       <td><span className="badge badge-gray">{d.estado_validacion || 'registrado'}</span></td>
                       <td style={{ textAlign: 'right' }}>
@@ -639,6 +767,31 @@ const data = useMemo(() => construirAutoservicioLocal({
           )}
         </>
       )}
+
+      {modalSubirContrato && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => { setModalSubirContrato(null); setFileSubir(null); }}>
+          <div className="card" style={{ width: '100%', maxWidth: 450, padding: 24, margin: 16 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>Subir contrato firmado</div>
+            <div className="text-muted" style={{ fontSize: 13, marginBottom: 20 }}>Por favor, sube una copia escaneada o foto legible de tu contrato firmado ({getNombreDoc(modalSubirContrato)}).</div>
+            
+            <label className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', marginBottom: 12, padding: 14 }}>
+              {fileSubir ? fileSubir.name : 'Seleccionar archivo (PDF, JPG, PNG)'}
+              <input type="file" accept="application/pdf,image/*" capture="environment" style={{ display: 'none' }}
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f && f.size > 20 * 1024 * 1024) { addNotificacion('El archivo excede los 20MB', 'error'); return; }
+                  setFileSubir(f);
+                }} />
+            </label>
+            
+            <div className="row" style={{ gap: 12, marginTop: 24 }}>
+              <button className="btn btn-ghost flex-1" onClick={() => { setModalSubirContrato(null); setFileSubir(null); }}>Cancelar</button>
+              <button className="btn btn-primary flex-1" onClick={confirmarSubidaContrato} disabled={!fileSubir || uploading === 'contrato'}>{uploading === 'contrato' ? 'Subiendo...' : 'Confirmar subida'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

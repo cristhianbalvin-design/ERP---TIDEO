@@ -1,6 +1,6 @@
 # ERP Modular Estándar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado — TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS · Última actualización: 14/06/2026
+### Arquitectura Multitenant SaaS · Última actualización: 16/06/2026
 
 ---
 
@@ -33,10 +33,10 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Módulos en prompt pendiente de implementar | 0 |
 | Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase |
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
-| Migraciones SQL registradas en el repositorio | 242 archivos SQL locales, hasta `237_ola5b_geo_sar.sql` |
-| Migración local más reciente | `237_ola5b_geo_sar.sql`: geocercas RRHH, consentimientos de ubicación, validación GPS de asistencia móvil, SAR/no llegada y extensión de alertas WhatsApp. |
-| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior: 215–237 (lead time OC, precio histórico proveedor, matching 3 vías, stock seguridad/SOLPE automática, RLS activos, trazabilidad de lotes OT, devoluciones proveedor, SOLPE items, datos bancarios y bloqueo por cese, olas RRHH 2–5, reclutamiento/autoservicio, portal empleado, biométrico, WhatsApp, compras avanzadas y geo/SAR). |
-| Bugs/ajustes corregidos en sesiones 11–12/06/2026 | **Fix CMP-{timestamp}:** eliminado `RecepcionesLegacy`; `context.jsx` agrega `codigo` y `material_id` al mapeo de `itemsRecibidos`; `guiasService.js` sincroniza `cantidad_despachada` y estado OV al confirmar/anular guía. **Hardening posterior:** `pages_ops.jsx`, `pages_admin.jsx`, `pages_mobile.jsx`, `context.jsx` y servicios nuevos conectan RRHH olas 2–5, reclutamiento, portal empleado, biométrico/WhatsApp y geofencing/SAR. |
+| Migraciones SQL registradas en el repositorio | 253 archivos SQL locales, hasta `248_versioning_contrato_periodos.sql` |
+| Migración local más reciente | `248_versioning_contrato_periodos.sql`: versionado avanzado de contratos por periodos y soporte de firmas. |
+| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior: 238–248 (seguimiento OC, tránsitos, GRNI, kardex valorización, contacto personal, contratos como fuente única, snapshot de adendas, versionado, contrato digital obligatorio y firmas PWA). |
+| Bugs/ajustes corregidos en sesiones 13–16/06/2026 | **Hardening posterior:** Implementación de carga masiva de personal por Excel; Alineación UI RRHH; Auditoría de flujo de firma PWA; **Fix persistencia documentos:** corrección en `personalDocumentosService.js` (getDocumentosActivos/Pendientes) para cargar correctamente documentos con `estado_validacion = pendiente` (activo = false); Correcciones críticas y mejoras de integración. |
 
 ### 3.2 Inventario completo de módulos
 
@@ -77,11 +77,11 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 |--------|--------|-------|
 | Mi portal | ✔ Implementado | `pages_mi_portal.jsx`. Autoservicio del colaborador: ficha propia, documentos, solicitudes, boletas/acuses, constancias y amonestaciones con acuse. |
 | Reclutamiento | ✔ Implementado | `pages_reclutamiento.jsx` + ruta pública `PostulacionPublica`. Vacantes, candidatos, candidaturas, historial por etapa e invitación/postulación pública. |
-| Personal Operativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales y datos de nómina/honorarios. |
-| Personal Administrativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales, reportes, comisiones y datos de honorarios. |
+| Personal Operativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales, datos de nómina/honorarios, carga masiva vía Excel y gestión de adendas. |
+| Personal Administrativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales, reportes, comisiones, datos de honorarios, carga masiva vía Excel y gestión de adendas. |
 | Control de Asistencia | ✔ Implementado | Tabs diaria, semanal, mensual, resumen, autorizaciones HE, biométrico y SAR/geocercas. Tardanzas, horas extra, importación biométrica, GPS móvil y validación de geocerca. |
 | Turnos y Horarios | ✔ Implementado | Módulo standalone `pages_turnos.jsx`. CRUD completo: crear/editar/eliminar con side-panel. Campos: nombre, entrada/salida, tolerancia, cruza medianoche, días laborables (o variables), refrigerio. Preview de horas efectivas en tiempo real. |
-| Nómina Básica | ✔ Implementado | AFP 3 componentes (tabla multitenant completa), IR 5ta con UIT dinámica, horas extra 25%/35%, CTS computable, bonif. extraordinaria. Régimen MYPE. Régimen minero 14×7/20×10/28×14. Pago quincenal configurable. PLAME. Cierre → egresos en finanzas. **Fase 1 (10/06):** motor corregido. **Fase 2 (10/06):** historial de asignaciones de jornada con vigencia (`personal_asignaciones_jornada`). **Fase 3 (11/06):** `afp_parametros` con comisiones por flujo/mixta. **Ola 2 (12/06):** contratos, cese por falta grave, datos bancarios, autorización HE, compensación y descuentos extraordinarios. |
+| Nómina Básica | ✔ Implementado | AFP 3 componentes (tabla multitenant completa), IR 5ta con UIT dinámica, horas extra 25%/35%, CTS computable, bonif. extraordinaria. Régimen MYPE. Régimen minero 14×7/20×10/28×14. Pago quincenal configurable. PLAME. Cierre → egresos en finanzas. **Fase 1 (10/06):** motor corregido. **Fase 2 (10/06):** historial de asignaciones de jornada con vigencia (`personal_asignaciones_jornada`). **Fase 3 (11/06):** `afp_parametros` con comisiones por flujo/mixta. **Ola 2 (12/06):** contratos, cese por falta grave, datos bancarios, autorización HE, compensación y descuentos extraordinarios. **Contratos avanzados (16/06):** flujos de adendas y versionado de contratos. |
 | Comisiones | ✔ Implementado | Liquidación, aprobaciones (acuerdos especiales, +48h sin respuesta), retenciones IR de 4ta categoría según suspensión y tipo de cambio, generación de RHE y CxP asociada. |
 | Solicitudes de RRHH | ✔ Implementado | Flujo multietapa: enviada → aprobada_jefe → confirmada_rrhh → activa. Tipos: vacaciones, permisos, licencias, compensación horas y papeletas. Saldo de vacaciones automático. Calendario de ausencias mensual. Vista mobile con formulario paso a paso. |
 | Tareo Administrativo | ✔ Implementado | Registro de horas de personal administrativo contra OT o CECO libre, backoffice y PWA, integrado a Control de Horas. |
@@ -310,6 +310,9 @@ Se han identificado las siguientes discrepancias tras la auditoría cruzada entr
 | **RRHH Asistencia** / `biometricoService.js`, `geofencingService.js`, `whatsappService.js` | **Biométrico, WhatsApp, geocercas y SAR no estaban documentados** | Alto | Tabs y servicios activos para perfiles/lotes biométricos, cola WhatsApp, consentimiento de ubicación, validación geofence y alerta SAR/no llegada. |
 | **Compras** / `comprasService.js` | **Devoluciones proveedor no estaba documentado** | Medio | `devolucionesService` permite crear/enviar/aceptar devoluciones, registrar nota de crédito y anular. |
 | **Operaciones Mobile** / `BarcodeScanner.jsx`, `pages_mobile.jsx` | **Checklist SSOMA y escáner ya existían pero el documento los mantenía como pendientes** | Medio | Vista `checklist` móvil y componente `BarcodeScanner` están importados y usados. |
+| **RRHH** / `pages_ops.jsx`, `pages_admin.jsx` | **Carga Masiva de Personal (Operativo y Administrativo)** | Alto | Implementación de modales de carga masiva (`CargaMasivaPersonalModal`, `CargaMasivaAdminModal`) para importar trabajadores desde plantillas Excel. |
+| **RRHH** / `pages_ops.jsx`, `pages_admin.jsx`, `personalDocumentosService.js` | **Motor de Adendas a Contratos** | Alto | Lógica integrada para detectar advertencias `advAdendaManual` al modificar cargos/salarios y requerir subida de adendas vinculadas al contrato original (`adenda_cambios`). |
+| **Compras** / `comprasService.js`, `context.jsx` | **Seguimiento OC, Tránsitos y GRNI** | Medio | Lógica base implementada para soportar seguimiento de Órdenes de Compra en tránsito y valorización GRNI (Goods Received Not Invoiced). |
 
 **b) Documentado pero NO implementado o aún parcial**
 
@@ -323,14 +326,14 @@ Se han identificado las siguientes discrepancias tras la auditoría cruzada entr
 
 | Rango | Estado | Detalle Técnico |
 |-------|--------|-----------------|
-| `215`–`237` | Registradas localmente | Lead time OC, precio histórico proveedor, matching 3 vías, stock seguridad/SOLPE automática, RLS activos, trazabilidad lotes OT, devoluciones proveedor, SOLPE items, bloqueo cese/datos bancarios, RRHH olas 2–5, portal empleado, biométrico/WhatsApp, compras avanzadas y geo/SAR. Aplicación remota pendiente de confirmar contra Supabase real. |
+| `238`–`248` | Registradas localmente | Seguimiento OC y tránsitos, GRNI kardex valorización, contacto de emergencia RRHH, contratos como fuente única documental, snapshot adendas, versionado, contrato digital obligatorio y firma documental. |
 
 **d) Inconsistencias corregidas**
 
 | Sección | Inconsistencia | Corrección |
 |---------|----------------|------------|
-| 3.1 | Migraciones marcadas solo hasta 214 | Actualizado a 242 archivos locales, hasta `237_ola5b_geo_sar.sql`. |
-| 3.2 / 6 | Sidebar documental omitía `mi_portal`, `reclutamiento`, `compras_gastos`, `activos_fijos` y `organigrama` | Agregados al inventario y a la estructura del sidebar. |
+| 3.1 | Migraciones marcadas solo hasta 237 | Actualizado a 253 archivos locales, hasta `248_versioning_contrato_periodos.sql`. |
+| 3.2 | Sidebar y detalle omitían funcionalidades nuevas de RRHH | Agregados: carga masiva de personal por Excel y soporte para flujos de adendas a contratos. |
 | 3.2 CRM | Leads mantenía nota pendiente de Razón Social/RUC/Industria | El formulario y servicio ya manejan `razon_social`, `ruc` e `industria`; nota corregida. |
 | 3.7 anterior | Checklist SSOMA marcado ausente | Corregido: existe en `pages_mobile.jsx`; quedan pendientes otros flujos F2. |
 
@@ -1725,6 +1728,7 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 - ERP personalizado para rubros específicos (producto separado de TIDEO).
 
 ---
+| 16/06/2026 | **Auditoría técnica Documento Maestro vs repositorio (Corte 16/06):** Revisión del repositorio posterior a múltiples sesiones. Actualización del corte a 253 migraciones locales hasta `248_versioning_contrato_periodos.sql`. Se identificaron nuevas implementaciones en código no documentadas: Carga Masiva de Personal (Operativo y Administrativo) por Excel, soporte de Motor de Adendas en fichas RRHH (`advAdendaManual`), lógicas base de tránsitos OC/GRNI, y **corrección en persistencia de visualización** de documentos subidos pendientes de validación (`personalDocumentosService.js`). Se actualizaron los GAPS, el resumen de progreso y la sección de RRHH del inventario de módulos. |
 | 14/06/2026 | **Auditoría técnica Documento Maestro vs repositorio:** revisión cruzada de `src/pages_*.jsx`, `src/context.jsx`, `src/services/*.js` y `supabase/migrations`. Se actualiza el corte a 242 migraciones locales hasta `237_ola5b_geo_sar.sql`, 74 ítems activos de sidebar/ruta, estructura real de archivos, GAPS categorizados y modelo de datos. Se corrigen inconsistencias: `Leads` ya tiene razón social/RUC/industria; SSOMA y `BarcodeScanner` ya existen en PWA; sidebar documental omitía `mi_portal`, `reclutamiento`, `compras_gastos`, `activos_fijos` y `organigrama`. |
 | 14/06/2026 | **RRHH Olas 2–5 documentadas:** migraciones `222`–`234_ola5a` y `237` registran datos bancarios/bloqueo por cese, falta grave, contratos y vencimientos, horas extra/compensación/descuentos, amonestaciones, papeletas, asistencia honorarios, régimen/roster minero, reclutamiento/autoservicio, portal empleado Fase 2, biométrico, WhatsApp, geocercas y SAR. Archivos afectados: `pages_ops.jsx`, `pages_admin.jsx`, `pages_mobile.jsx`, `pages_mi_portal.jsx`, `pages_reclutamiento.jsx`, `context.jsx`, `rrhhService.js`, `reclutamientoService.js`, `portalFase2Service.js`, `biometricoService.js`, `geofencingService.js`, `whatsappService.js`, `amonestacionesService.js`, `rosterMineroService.js`. |
 | 14/06/2026 | **Compras/Inventario posteriores al corte 214 documentados:** migraciones `215`–`221`, `232`, `234_oc`, `235` y `236` incorporan lead time OC, vista de precio histórico proveedor, matching 3 vías, stock seguridad/SOLPE automática, RLS activos, trazabilidad de lotes OT, devoluciones proveedor, items SOLPE, origen SOLPE en OC, condición de pago OC/OSI y ficha completa de proveedores. Servicios afectados: `comprasService.js`, `inventarioService.js`, `materialService.js`, `ventasService.js`, `guiasService.js`; UI principal: `pages_ops.jsx`, `pages_admin.jsx`, `pages_extra.jsx`. |

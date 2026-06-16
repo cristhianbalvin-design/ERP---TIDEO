@@ -8154,6 +8154,93 @@ export function AppProvider({ children }) {
     return data;
   };
 
+  const nuevoContratoPeriodoCtx = async (params) => {
+    const data = await personalDocumentosService.nuevoContrato({ ...params, empresaId: empresa?.id });
+    setPersonalDocumentos(prev => [
+      ...prev.map(d => d.contrato_periodo_id === params.periodoIdAnterior
+        ? { ...d, periodo_estado: 'archivado' }
+        : d),
+      data,
+    ]);
+    return data;
+  };
+
+  const enviarDocumentoAFirmaCtx = async ({ documentoId, workerAuthUserId, mensaje }) => {
+    const data = await personalDocumentosService.enviarDocumentoAFirma({
+      documentoId, empresaId: empresa?.id, workerAuthUserId, mensaje,
+    });
+    setPersonalDocumentos(prev => prev.map(d => d.id === documentoId ? data : d));
+    return data;
+  };
+  const cancelarEnvioFirmaCtx = async ({ documentoId }) => {
+    const data = await personalDocumentosService.cancelarEnvioFirma({ documentoId });
+    setPersonalDocumentos(prev => prev.map(d => d.id === documentoId ? data : d));
+    return data;
+  };
+  const reenviarNotificacionFirmaCtx = async ({ documentoId, workerAuthUserId }) => {
+    await personalDocumentosService.reenviarNotificacionFirma({ documentoId, empresaId: empresa?.id, workerAuthUserId });
+  };
+  const subirDocumentoFirmadoPortalCtx = async ({ file, tipoDoc, tipoDocumentoId, personalId, personalTipo, documentoEnviadoAFirmaId, nombreColaborador }) => {
+    const nuevoDoc = await subirDocumentoPersonalCtx({
+      personalId, personalTipo, tipoDoc, tipoDocumentoId, file,
+      fechaVencimiento: null,
+      notas: 'Documento firmado cargado desde Mi portal',
+      subidoDesde: 'mobile',
+    });
+    if (isSupabaseConfigured() && nuevoDoc?.id) {
+      await personalDocumentosService.vincularDocumentoFirmado({
+        nuevoDocId: nuevoDoc.id, documentoEnviadoAFirmaId, empresaId: empresa?.id, nombreColaborador,
+      });
+      setPersonalDocumentos(prev => prev.map(d =>
+        d.id === nuevoDoc.id ? { ...d, estado_firma: 'firmado_trabajador', documento_enviado_a_firma_id: documentoEnviadoAFirmaId || null }
+        : d.id === documentoEnviadoAFirmaId ? { ...d, estado_firma: 'firmado_trabajador' }
+        : d
+      ));
+    }
+    return nuevoDoc;
+  };
+
+  const subirContratoFirmadoAprobadoCtx = async ({ file, docOriginal }) => {
+    if (!docOriginal || !file || !empresa?.id) throw new Error('Parámetros inválidos para subir contrato firmado.');
+    const nuevoDoc = await subirDocumentoPersonalCtx({
+      personalId: docOriginal.personal_id,
+      personalTipo: docOriginal.personal_tipo,
+      tipoDoc: docOriginal.tipo_doc || docOriginal.tipo_documento_id || 'contrato',
+      tipoDocumentoId: docOriginal.tipo_documento_id || null,
+      file,
+      fechaEmision: docOriginal.fecha_emision || null,
+      fechaVencimiento: docOriginal.fecha_vencimiento || null,
+      contratoPeriodoId: docOriginal.contrato_periodo_id || null,
+      notas: 'Contrato firmado cargado desde portal empleado',
+      subidoDesde: 'mobile',
+    });
+
+    if (isSupabaseConfigured() && nuevoDoc?.id) {
+      try {
+        await portalFase2Service.registrarFirmaContrato(empresa.id, {
+          personal_id: docOriginal.personal_id,
+          documento_id: nuevoDoc.id,
+          tipo_evento: 'subida_firmado',
+          creado_en: new Date().toISOString(),
+        });
+        const supabase = await getSupabaseClient();
+        await supabase.from('notificaciones_sistema').insert({
+          empresa_id: empresa.id,
+          tipo: 'contrato_firmado_pendiente',
+          title: 'Contrato firmado pendiente de revisión',
+          texto: `${authUser?.email || 'El colaborador'} subió su contrato firmado.`,
+          referencia_tipo: 'personal_documento',
+          referencia_id: nuevoDoc.id,
+          prioridad: 'media',
+          leida: false,
+        });
+      } catch (err) {
+        console.error('Error al registrar auditoria/notificación de firma de contrato:', err);
+      }
+    }
+    return nuevoDoc;
+  };
+
   const crearAsignacionJornadaCtx = async (personalId, personalTipo, params) => {
     const data = await rrhhService.crearAsignacionJornada(empresa?.id, personalId, personalTipo, params);
     // La RPC cierra la anterior y retorna la nueva; recargar historial del trabajador
@@ -9536,7 +9623,8 @@ export function AppProvider({ children }) {
     crearPlantillaEvaluacionCtx, actualizarPlantillaEvaluacionCtx, cerrarPlantillaEvaluacionCtx,
     reasignarJefeEvaluacionCtx, guardarAutoevaluacionCtx, guardarEvaluacionJefeCtx,
     aprobarVacacion, rechazarVacacion,
-    subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx,
+    subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx,
+    enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, subirDocumentoFirmadoPortalCtx, subirContratoFirmadoAprobadoCtx,
     asignacionesJornada, setAsignacionesJornada, crearAsignacionJornadaCtx,
     crearOnboarding, registrarNPS,
     generarRenovacion, crearPlanRetencion,
