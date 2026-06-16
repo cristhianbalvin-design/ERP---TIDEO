@@ -6,8 +6,8 @@ import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { autoservicioEmpleadoService } from './services/autoservicioEmpleadoService.js';
 
 const minToHours = min => `${Math.round(Number(min || 0) / 60 * 10) / 10} h`;
-const estadoContratoLabel = c => c?.estado === 'por_vencer' ? `Por vencer (${c.dias} dias)` : c?.estado === 'sin_contrato' ? 'Sin contrato' : c?.estado || 'Sin contrato';
-const estadoContratoBadge = estado => estado === 'vencido' ? 'badge-red' : estado === 'por_vencer' ? 'badge-orange' : estado === 'sin_contrato' ? 'badge-gray' : 'badge-green';
+const estadoContratoLabel = c => c?.estado === 'por_vencer' ? `Por vencer (${c.dias} dias)` : c?.estado === 'sin_contrato' ? 'Sin contrato digital' : c?.estado || 'Sin contrato digital';
+const estadoContratoBadge = (estado, ficha) => estado === 'vencido' ? 'badge-red' : estado === 'por_vencer' ? 'badge-orange' : estado === 'sin_contrato' ? (ficha?.cargo_confianza ? 'badge-gray' : 'badge-red') : 'badge-green';
 const money = n => `S/ ${Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const campoLabels = {
   telefono_personal: 'Telefono personal',
@@ -34,9 +34,18 @@ function EmptyPortal() {
   );
 }
 
-function PortalResumen({ data, onEvaluaciones }) {
+function PortalResumen({ data, onEvaluaciones, onContratos }) {
+  const contratoEstado = data.resumen?.contrato?.estado;
+  const contratoFecha = data.resumen?.contrato?.contrato?.fecha_vencimiento;
   const cards = [
-    { label: 'Contrato', value: estadoContratoLabel(data.resumen?.contrato), icon: I.file, badge: data.resumen?.contrato?.estado },
+    {
+      label: 'Contrato',
+      value: contratoFecha ? `Vence ${contratoFecha}` : (contratoEstado === 'sin_contrato' ? 'Sin contrato' : 'Sin fecha de vencimiento'),
+      icon: I.file,
+      badge: contratoEstado,
+      onCta: onContratos,
+      ctaLabel: ['por_vencer', 'vencido'].includes(contratoEstado) ? 'Cargar contrato firmado →' : 'Ver en Mis contratos →',
+    },
     { label: 'Ultima boleta', value: data.resumen?.ultima_boleta?.periodo || 'Sin boletas', icon: I.receipt },
     { label: 'Vacaciones', value: `${data.resumen?.vacaciones || 0} dias`, icon: I.calendar },
     { label: 'HE pendiente', value: minToHours(data.resumen?.he_pendiente_minutos), icon: I.clock },
@@ -62,7 +71,9 @@ function PortalResumen({ data, onEvaluaciones }) {
               <span style={{ width: 18, height: 18, color: 'var(--cyan)' }}>{c.icon}</span>
             </div>
             <div className="font-display" style={{ fontWeight: 800, fontSize: 20, marginTop: 8 }}>{c.value}</div>
-            {c.badge && <span className={'badge ' + estadoContratoBadge(c.badge)} style={{ marginTop: 8 }}>{estadoContratoLabel({ estado: c.badge, dias: data.resumen?.contrato?.dias })}</span>}
+            {c.badge && <span className={'badge ' + estadoContratoBadge(c.badge, data.ficha)} style={{ marginTop: 8 }}>{estadoContratoLabel({ estado: c.badge, dias: data.resumen?.contrato?.dias })}</span>}
+            {c.badge === 'sin_contrato' && !data.ficha?.cargo_confianza && <div style={{fontSize:11, color:'var(--danger)', marginTop:4}}>Tu asistencia está bloqueada. Consulta con RRHH.</div>}
+            {c.onCta && <button onClick={c.onCta} style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: 'var(--cyan)', cursor: 'pointer', marginTop: 8, display: 'block' }}>{c.ctaLabel}</button>}
           </div>
         ))}
         {data.resumen?.ciclo_minero && (
@@ -91,9 +102,10 @@ export function MiPortal() {
     setAmonestacionesPersonal, subirDocumentoPersonalCtx, navigate, addNotificacion,
     evaluacionPlantillas, evaluacionEvaluaciones, empresaConfig = {}, portalDatosSolicitudes = [],
     portalConstanciasTrabajo = [], portalBoletaAcuses = [], portalBoletaVisualizaciones = [], portalFirmaRegistros = [],
-    crearSolicitudDatosPortalCtx, resolverSolicitudDatosPortalCtx, crearConstanciaPortalCtx, resolverConstanciaPortalCtx,
+    crearSolicitudDatosPortalCtx, crearConstanciaPortalCtx,
     registrarAcuseBoletaPortalCtx, registrarVisualizacionBoletaPortalCtx, iniciarOtpFirmaPortalCtx,
     validarOtpFirmaPortalCtx, guardarOnboardingFirmaPortalCtx,
+    tiposDocumento = [],
   } = app;
   const [tab, setTab] = useState('resumen');
   const [periodo, setPeriodo] = useState(new Date().toISOString().slice(0, 7));
@@ -104,18 +116,18 @@ export function MiPortal() {
   const [otpActivo, setOtpActivo] = useState(null);
   const [otpCodigo, setOtpCodigo] = useState('');
 
-  const data = useMemo(() => construirAutoservicioLocal({
+  const tiposDocumentoContratoIds = useMemo(() => (tiposDocumento || []).filter(t => t.captura_snapshot_laboral).map(t => t.id), [tiposDocumento]);
+
+const data = useMemo(() => construirAutoservicioLocal({
     authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos, solicitudesRRHH,
     registrosAsistencia, periodosNomina, trabajadoresDatosNomina, amonestaciones: amonestacionesPersonal,
     notificaciones: app.notificaciones, periodo, evaluacionPlantillas, evaluacionEvaluaciones,
     portalDatosSolicitudes, portalConstanciasTrabajo, portalBoletaAcuses, portalBoletaVisualizaciones, portalFirmaRegistros,
-  }), [authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos, solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina, amonestacionesPersonal, app.notificaciones, periodo, evaluacionPlantillas, evaluacionEvaluaciones, portalDatosSolicitudes, portalConstanciasTrabajo, portalBoletaAcuses, portalBoletaVisualizaciones, portalFirmaRegistros]);
+    tiposDocumentoContratoIds,
+  }), [authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos, solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina, amonestacionesPersonal, app.notificaciones, periodo, evaluacionPlantillas, evaluacionEvaluaciones, portalDatosSolicitudes, portalConstanciasTrabajo, portalBoletaAcuses, portalBoletaVisualizaciones, portalFirmaRegistros, tiposDocumentoContratoIds]);
 
   const ficha = data.ficha;
   const camposPermitidos = empresaConfig?.portal_datos_campos_permitidos || ['telefono_personal', 'celular_personal', 'email_personal', 'direccion', 'contacto_emergencia', 'datos_bancarios'];
-  const puedeRRHH = Boolean(app.role?.permisos?.todo || app.role?.permisos?.rrhh || app.role?.permisos?.rrhh_operativo || app.role?.permisos?.ver_rrhh);
-  const solicitudesDatosPendientes = portalDatosSolicitudes.filter(s => s.estado === 'pendiente');
-  const constanciasPendientes = portalConstanciasTrabajo.filter(c => c.estado === 'solicitada');
 
   const subirDocumento = async (file, tipoDoc = 'contrato') => {
     if (!file || !ficha) return;
@@ -262,220 +274,367 @@ export function MiPortal() {
           <h1 className="page-title">Mi portal</h1>
           <div className="page-sub">{ficha ? `${ficha.nombre} · ${ficha.cargo || ficha.area || ''}` : 'Informacion laboral propia'}</div>
         </div>
-        <button className="btn btn-secondary" onClick={() => navigate('solicitudes_rrhh')}>{I.plus} Nueva solicitud</button>
       </div>
 
       {!ficha ? <EmptyPortal /> : (
         <>
-          {puedeRRHH && (solicitudesDatosPendientes.length > 0 || constanciasPendientes.length > 0) && (
-            <div className="card" style={{ padding: 16, marginBottom: 14 }}>
-              <div className="card-head"><h3>Bandeja RRHH portal</h3><span className="badge badge-orange">{solicitudesDatosPendientes.length + constanciasPendientes.length} pendientes</span></div>
-              {solicitudesDatosPendientes.slice(0, 4).map(s => <div key={s.id} className="row" style={{ justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                <div><strong>{campoLabels[s.campo] || s.campo}</strong><div className="text-muted" style={{ fontSize: 12 }}>{campoValor(s.valor_anterior)} → {campoValor(s.valor_propuesto)}</div></div>
-                <div className="row" style={{ gap: 6 }}><button className="btn btn-secondary btn-sm" onClick={() => resolverSolicitudDatosPortalCtx(s.id, 'aprobado')}>Aprobar</button><button className="btn btn-secondary btn-sm" onClick={() => resolverSolicitudDatosPortalCtx(s.id, 'rechazado')}>Rechazar</button></div>
-              </div>)}
-              {constanciasPendientes.slice(0, 4).map(c => <div key={c.id} className="row" style={{ justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                <div><strong>Constancia de trabajo</strong><div className="text-muted" style={{ fontSize: 12 }}>{c.proposito || 'Sin proposito declarado'}</div></div>
-                <div className="row" style={{ gap: 6 }}><button className="btn btn-secondary btn-sm" onClick={() => resolverConstanciaPortalCtx(c.id, 'aprobada')}>Emitir</button><button className="btn btn-secondary btn-sm" onClick={() => resolverConstanciaPortalCtx(c.id, 'rechazada')}>Rechazar</button></div>
-              </div>)}
-            </div>
-          )}
-
-          <div className="tabs" style={{ flexWrap: 'wrap' }}>
+          <div className="tabs" style={{ overflowX: 'auto', flexWrap: 'nowrap' }}>
             {tabs.map(([k, label, icon]) => <button key={k} className={'tab ' + (tab === k ? 'active' : '')} onClick={() => setTab(k)}>{icon} {label}</button>)}
           </div>
 
           {tab === 'resumen' && (
             <>
-              <PortalResumen data={data} onEvaluaciones={() => setTab('evaluaciones')} />
-              <div className="card" style={{ padding: 16, marginTop: 14 }}>
+              <PortalResumen data={data} onEvaluaciones={() => setTab('evaluaciones')} onContratos={() => setTab('contratos')} />
+              <div className="card" style={{ marginTop: 14 }}>
                 <div className="card-head"><h3>Notificaciones laborales</h3></div>
-                {(data.notificaciones || []).slice(0, 5).map(n => <div key={n.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>{n.title && <strong>{n.title}: </strong>}{n.text}</div>)}
-                {!data.notificaciones?.length && <div className="text-muted">Sin notificaciones activas.</div>}
+                <div className="card-body" style={{ padding: '0 16px 16px' }}>
+                  {(data.notificaciones || []).filter(n => n.tipo).slice(0, 5).map(n => <div key={n.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>{n.title && <strong>{n.title}: </strong>}{n.text}</div>)}
+                  {!(data.notificaciones || []).filter(n => n.tipo).length && <div className="text-muted" style={{ padding: '16px 0' }}>Sin notificaciones activas.</div>}
+                </div>
+              </div>
+              <div className="card" style={{ marginTop: 14 }}>
+                <div className="card-head"><h3>Acciones rápidas</h3></div>
+                <div className="card-body" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', paddingTop: 12, paddingBottom: 16 }}>
+                  <button className="btn btn-secondary" onClick={() => navigate('solicitudes_rrhh')}>Pedir vacaciones</button>
+                  <button className="btn btn-secondary" onClick={() => navigate('solicitudes_rrhh')}>Pedir permiso</button>
+                  <button className="btn btn-secondary" onClick={() => setTab('constancias')}>Solicitar constancia</button>
+                </div>
               </div>
             </>
           )}
 
           {tab === 'evaluaciones' && (
-            <div className="grid cols-2">
-              <div className="card" style={{ padding: 16 }}>
-                <div className="card-head"><h3>Autoevaluaciones pendientes</h3><span className="badge badge-orange">{data.evaluacionesPendientes.length}</span></div>
-                {data.evaluacionesPendientes.map(e => <div key={e.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                  <strong>{e.plantilla?.nombre || 'Evaluacion'}</strong>
-                  <div className="text-muted" style={{ fontSize: 12 }}>Limite: {e.plantilla?.fecha_limite_autoevaluacion || '-'}</div>
-                  <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => navigate('evaluaciones_desempeno', { auto: e.id })}>Responder</button>
-                </div>)}
-                {!data.evaluacionesPendientes.length && <div className="text-muted">No tienes autoevaluaciones pendientes.</div>}
+            <div className="card">
+              <div className="card-head"><h3>Autoevaluaciones pendientes</h3><span className="badge badge-orange">{data.evaluacionesPendientes.length} pendientes</span></div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Evaluación</th><th>Fecha Límite</th><th style={{ textAlign: 'right' }}>Acción</th></tr></thead>
+                  <tbody>
+                    {data.evaluacionesPendientes.map(e => <tr key={e.id}>
+                      <td style={{ fontWeight: 600 }}>{e.plantilla?.nombre || 'Evaluación'}</td>
+                      <td>{e.plantilla?.fecha_limite_autoevaluacion || '-'}</td>
+                      <td style={{ textAlign: 'right' }}><button className="btn btn-primary btn-sm" onClick={() => navigate('evaluaciones_desempeno', { auto: e.id })}>Responder</button></td>
+                    </tr>)}
+                    {!data.evaluacionesPendientes.length && <tr><td colSpan="3" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>No tienes autoevaluaciones pendientes.</td></tr>}
+                  </tbody>
+                </table>
               </div>
-              <div className="card" style={{ padding: 16 }}>
-                <div className="card-head"><h3>Resultados cerrados</h3></div>
-                {data.evaluacionesCerradas.map(e => <div key={e.id} className="row" style={{ justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                  <div><strong>{e.plantilla?.nombre || 'Evaluacion'}</strong><div className="text-muted" style={{ fontSize: 12 }}>Score final: {e.score_final ?? '-'}</div></div>
-                  <button className="btn btn-secondary btn-sm" onClick={() => navigate('evaluaciones_desempeno', { resultado: e.id })}>Ver</button>
-                </div>)}
-                {!data.evaluacionesCerradas.length && <div className="text-muted">Sin resultados cerrados publicados.</div>}
+
+              <div className="card-head" style={{ borderTop: '1px solid var(--border)' }}><h3>Resultados cerrados</h3></div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Evaluación</th><th>Score Final</th><th style={{ textAlign: 'right' }}>Acción</th></tr></thead>
+                  <tbody>
+                    {data.evaluacionesCerradas.map(e => <tr key={e.id}>
+                      <td style={{ fontWeight: 600 }}>{e.plantilla?.nombre || 'Evaluación'}</td>
+                      <td><span className="badge badge-cyan">{e.score_final ?? '-'}</span></td>
+                      <td style={{ textAlign: 'right' }}><button className="btn btn-secondary btn-sm" onClick={() => navigate('evaluaciones_desempeno', { resultado: e.id })}>Ver resultados</button></td>
+                    </tr>)}
+                    {!data.evaluacionesCerradas.length && <tr><td colSpan="3" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin resultados cerrados publicados.</td></tr>}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
 
           {tab === 'datos' && (
-            <div className="grid cols-2">
-              <div className="card" style={{ padding: 16 }}>
-                <div className="card-head"><h3>Datos registrados</h3></div>
-                {Object.entries(campoLabels).map(([k, label]) => <div key={k} className="row" style={{ justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}><span>{label}</span><strong style={{ textAlign: 'right' }}>{campoValor(data.misDatos?.[k])}</strong></div>)}
-                <div className="text-muted" style={{ fontSize: 12, marginTop: 12 }}>Los cambios sensibles, como datos bancarios, quedan sujetos a aprobacion de RRHH.</div>
+            <div className="card">
+              <div className="card-head"><h3>Datos registrados</h3></div>
+              <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
+                {Object.entries(campoLabels).map(([k, label]) => (
+                  <div key={k} className="input-group">
+                    <label>{label}</label>
+                    <div style={{ fontWeight: 600, fontSize: 14, minHeight: 34, display: 'flex', alignItems: 'center' }}>{campoValor(data.misDatos?.[k])}</div>
+                  </div>
+                ))}
               </div>
-              <div className="card" style={{ padding: 16 }}>
-                <div className="card-head"><h3>Proponer actualizacion</h3></div>
-                <div className="grid-2" style={{ gap: 12 }}>
-                  <div className="input-group"><label>Campo</label><select className="select" value={datoForm.campo} onChange={e => setDatoForm(v => ({ ...v, campo: e.target.value }))}>{camposPermitidos.map(c => <option key={c} value={c}>{campoLabels[c] || c}</option>)}</select></div>
-                  <div className="input-group"><label>Nuevo valor</label><input className="input" value={datoForm.valor} onChange={e => setDatoForm(v => ({ ...v, valor: e.target.value }))} /></div>
-                </div>
-                {datoForm.campo === 'datos_bancarios' && <div className="alert alert-warning" style={{ marginTop: 12, fontSize: 12 }}>Campo sensible: RRHH debe validar la evidencia antes de aplicar el cambio.</div>}
-                <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={enviarDato}>Enviar a RRHH</button>
-                <div style={{ marginTop: 18 }}>
-                  <strong>Mis solicitudes</strong>
-                  {data.datosSolicitudes.slice(0, 5).map(s => <div key={s.id} className="row" style={{ justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}><span>{campoLabels[s.campo] || s.campo}</span><span className={'badge ' + (s.estado === 'aprobado' ? 'badge-green' : s.estado === 'rechazado' ? 'badge-red' : 'badge-orange')}>{s.estado}</span></div>)}
-                </div>
+              <div className="card-body" style={{ paddingTop: 0 }}>
+                <div className="text-muted" style={{ fontSize: 12 }}>Los cambios sensibles, como datos bancarios, quedan sujetos a aprobación de RRHH.</div>
+              </div>
+
+              <div className="card-head" style={{ borderTop: '1px solid var(--border)' }}><h3>Proponer actualización</h3></div>
+              <div className="card-body" style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div className="input-group" style={{ flex: 1, minWidth: 200 }}><label>Campo</label><select className="select" value={datoForm.campo} onChange={e => setDatoForm(v => ({ ...v, campo: e.target.value }))}>{camposPermitidos.map(c => <option key={c} value={c}>{campoLabels[c] || c}</option>)}</select></div>
+                <div className="input-group" style={{ flex: 2, minWidth: 240 }}><label>Nuevo valor</label><input className="input" value={datoForm.valor} onChange={e => setDatoForm(v => ({ ...v, valor: e.target.value }))} /></div>
+                <div className="input-group"><button className="btn btn-primary" style={{ height: 36 }} onClick={enviarDato}>Enviar a RRHH</button></div>
+              </div>
+              {datoForm.campo === 'datos_bancarios' && <div style={{ padding: '0 16px 16px' }}><div className="alert alert-warning" style={{ fontSize: 12, margin: 0 }}>Campo sensible: RRHH debe validar la evidencia antes de aplicar el cambio.</div></div>}
+
+              <div className="card-head" style={{ borderTop: '1px solid var(--border)' }}><h3>Mis solicitudes de actualización</h3></div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Campo</th><th>Valor anterior</th><th>Valor propuesto</th><th>Estado</th></tr></thead>
+                  <tbody>
+                    {data.datosSolicitudes.map(s => <tr key={s.id}>
+                      <td style={{ fontWeight: 600 }}>{campoLabels[s.campo] || s.campo}</td>
+                      <td className="text-muted">{campoValor(s.valor_anterior)}</td>
+                      <td>{campoValor(s.valor_propuesto)}</td>
+                      <td><span className={'badge ' + (s.estado === 'aprobado' ? 'badge-green' : s.estado === 'rechazado' ? 'badge-red' : 'badge-orange')}>{s.estado}</span></td>
+                    </tr>)}
+                    {!data.datosSolicitudes.length && <tr><td colSpan="4" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin solicitudes enviadas.</td></tr>}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
 
           {tab === 'constancias' && (
-            <div className="grid cols-2">
-              <div className="card" style={{ padding: 16 }}>
-                <div className="card-head"><h3>Solicitar constancia</h3><span className="badge badge-gray">{empresaConfig?.portal_constancia_emision_directa ? 'Emision directa' : 'Con aprobacion'}</span></div>
-                <div className="input-group"><label>Proposito opcional</label><input className="input" value={constanciaProposito} onChange={e => setConstanciaProposito(e.target.value)} placeholder="Banco, alquiler, tramite interno" /></div>
-                <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={solicitarConstancia}>Solicitar</button>
+            <div className="card">
+              <div className="card-head"><h3>Solicitar constancia</h3><span className="badge badge-gray">{empresaConfig?.portal_constancia_emision_directa ? 'Emisión directa' : 'Con aprobación'}</span></div>
+              <div className="card-body" style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div className="input-group" style={{ flex: 1 }}><label>Propósito opcional (ej: Banco, alquiler, trámite interno)</label><input className="input" value={constanciaProposito} onChange={e => setConstanciaProposito(e.target.value)} placeholder="Escribe el propósito..." /></div>
+                <div className="input-group"><button className="btn btn-primary" style={{ height: 36 }} onClick={solicitarConstancia}>Solicitar constancia</button></div>
               </div>
-              <div className="card" style={{ padding: 16 }}>
-                <div className="card-head"><h3>Historial</h3></div>
-                {data.constancias.map(c => {
-                  const href = constanciaHref(c);
-                  return <div key={c.id} className="row" style={{ justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                    <div><strong>{c.proposito || 'Constancia de trabajo'}</strong><div className="text-muted" style={{ fontSize: 12 }}>Hash: {c.documento_hash || '-'}</div></div>
-                    {href ? <a className="btn btn-secondary btn-sm" href={href} target="_blank" rel="noreferrer">Abrir</a> : <span className="badge badge-orange">{c.estado}</span>}
-                  </div>;
-                })}
-                {!data.constancias.length && <div className="text-muted">Sin constancias solicitadas.</div>}
+
+              <div className="card-head" style={{ borderTop: '1px solid var(--border)' }}><h3>Historial de constancias</h3></div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Propósito</th><th>Hash del Documento</th><th>Estado</th><th style={{ textAlign: 'right' }}>Acción</th></tr></thead>
+                  <tbody>
+                    {data.constancias.map(c => {
+                      const href = constanciaHref(c);
+                      return <tr key={c.id}>
+                        <td style={{ fontWeight: 600 }}>{c.proposito || 'Constancia de trabajo'}</td>
+                        <td className="mono text-muted">{c.documento_hash || '-'}</td>
+                        <td><span className={'badge ' + (c.estado === 'emitida' ? 'badge-green' : c.estado === 'rechazada' ? 'badge-red' : 'badge-orange')}>{c.estado}</span></td>
+                        <td style={{ textAlign: 'right' }}>{href ? <a className="btn btn-secondary btn-sm" href={href} target="_blank" rel="noreferrer">Abrir</a> : '-'}</td>
+                      </tr>;
+                    })}
+                    {!data.constancias.length && <tr><td colSpan="4" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin constancias solicitadas.</td></tr>}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
 
           {tab === 'boletas' && (
-            <div className="card p-0">
-              <div style={{ padding: 14, borderBottom: '1px solid var(--border)' }} className="text-muted">
-                La confirmacion de recepcion deja constancia de entrega electronica y no implica aceptacion del contenido de la boleta.
+            <div className="card">
+              <div className="card-head"><h3>Mis boletas</h3></div>
+              <div className="card-body" style={{ padding: '0 16px 16px' }}>
+                <div className="text-muted" style={{ fontSize: 12 }}>La confirmación de recepción deja constancia de entrega electrónica y no implica aceptación del contenido de la boleta.</div>
               </div>
-              <table className="table"><thead><tr><th>Periodo</th><th>Estado</th><th>Acuse</th><th>Neto</th><th>Accion</th></tr></thead><tbody>
-                {data.boletas.map(b => <tr key={b.id}><td>{b.periodo}</td><td><span className="badge badge-green">Cerrado</span></td><td>{b.acuse ? <span className="badge badge-green">Acusada</span> : <span className="badge badge-orange">Pendiente</span>}</td><td>{money(b.detalle?.neto)}</td><td><button className="btn btn-secondary btn-sm" onClick={() => abrirBoleta(b)}>{b.acuse ? 'Abrir' : 'Reautenticar y abrir'}</button></td></tr>)}
-                {!data.boletas.length && <tr><td colSpan={5} className="text-muted" style={{ padding: 16 }}>Sin boletas disponibles.</td></tr>}
-              </tbody></table>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Periodo</th><th>Estado</th><th>Acuse</th><th>Neto</th><th style={{ textAlign: 'right' }}>Acción</th></tr></thead>
+                  <tbody>
+                    {data.boletas.map(b => <tr key={b.id}>
+                      <td style={{ fontWeight: 600 }}>{b.periodo}</td>
+                      <td><span className="badge badge-green">Cerrado</span></td>
+                      <td>{b.acuse ? <span className="badge badge-green">Acusada</span> : <span className="badge badge-orange">Pendiente</span>}</td>
+                      <td className="mono">{money(b.detalle?.neto)}</td>
+                      <td style={{ textAlign: 'right' }}><button className="btn btn-secondary btn-sm" onClick={() => abrirBoleta(b)}>{b.acuse ? 'Abrir' : 'Reautenticar y abrir'}</button></td>
+                    </tr>)}
+                    {!data.boletas.length && <tr><td colSpan="5" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin boletas disponibles.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {tab === 'contratos' && (
-            <div className="grid cols-2">
-              <div className="card" style={{ padding: 16 }}>
-                <div className="card-head"><h3>Contrato vigente</h3><span className="badge badge-cyan">{estadoContratoLabel(data.resumen?.contrato)}</span></div>
-                <div className="text-muted">La firma electronica avanzada queda disponible cuando RRHH active el parametro del tenant y exista contrato pendiente.</div>
-                <label className="btn btn-primary" style={{ marginTop: 14, display: 'inline-flex' }}>
-                  {uploading === 'contrato' ? 'Subiendo...' : <>{I.upload} Cargar contrato firmado</>}
-                  <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={e => subirDocumento(e.target.files?.[0], 'contrato')} />
-                </label>
+            <div className="card">
+              <div className="card-head"><h3>Contrato vigente</h3><span className={`badge ${estadoContratoBadge(data.resumen?.contrato?.estado, data.ficha)}`}>{estadoContratoLabel(data.resumen?.contrato)}</span></div>
+              <div className="card-body">
+                {data.resumen?.contrato?.estado === 'sin_contrato' && !data.ficha?.cargo_confianza && (
+                  <div className="alert alert-danger" style={{ fontSize: 12, marginBottom: 12, padding: '10px 14px' }}>Tu asistencia está bloqueada hasta que RRHH registre tu contrato digital. Consulta con RRHH.</div>
+                )}
+                <div className="text-muted" style={{ fontSize: 12, marginBottom: 16 }}>La firma electrónica avanzada queda disponible cuando RRHH active el parámetro del tenant y exista contrato pendiente.</div>
+                <div className="row">
+                  <label className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                    {uploading === 'contrato' ? 'Subiendo...' : <span style={{display:'flex',gap:6,alignItems:'center'}}><span style={{width:16,height:16}}>{I.upload}</span> Cargar contrato firmado</span>}
+                    <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={e => subirDocumento(e.target.files?.[0], 'contrato')} />
+                  </label>
+                </div>
               </div>
-              <div className="card" style={{ padding: 16 }}>
-                <div className="card-head"><h3>Historial</h3></div>
-                {data.contratos.map(d => <div key={d.id} style={{ padding: '9px 0', borderBottom: '1px solid var(--border)' }}>{d.tipo_doc || 'Contrato'} · {d.fecha_vencimiento || 'Sin vencimiento'} · <span className="badge badge-gray">{d.estado_validacion || 'registrado'}</span></div>)}
-                {!data.contratos.length && <div className="text-muted">Sin contratos registrados.</div>}
+
+              <div className="card-head" style={{ borderTop: '1px solid var(--border)' }}><h3>Historial de contratos</h3></div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Documento</th><th>Fecha de vencimiento</th><th>Estado validación</th></tr></thead>
+                  <tbody>
+                    {data.contratos.map(d => <tr key={d.id}>
+                      <td style={{ fontWeight: 600 }}>{d.tipo_doc || 'Contrato'}</td>
+                      <td>{d.fecha_vencimiento || 'Sin vencimiento'}</td>
+                      <td><span className="badge badge-gray">{d.estado_validacion || 'registrado'}</span></td>
+                    </tr>)}
+                    {!data.contratos.length && <tr><td colSpan="3" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin contratos registrados.</td></tr>}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
 
           {tab === 'firma' && (
-            <div className="grid cols-2">
-              <div className="card" style={{ padding: 16 }}>
-                <div className="card-head"><h3>Consentimiento y canal OTP</h3><span className={'badge ' + (ficha.firma_onboarding_completo ? 'badge-green' : 'badge-orange')}>{ficha.firma_onboarding_completo ? 'Completo' : 'Pendiente'}</span></div>
-                {!empresaConfig?.portal_firma_contratos_activa && <div className="alert alert-warning" style={{ fontSize: 12, marginBottom: 12 }}>La firma de contratos esta apagada por parametro del tenant.</div>}
-                <div className="grid-2" style={{ gap: 12 }}>
-                  <div className="input-group"><label>Telefono personal</label><input className="input" value={firmaForm.telefono_personal} placeholder={ficha.telefono_personal || ficha.telefono || ''} onChange={e => setFirmaForm(v => ({ ...v, telefono_personal: e.target.value }))} /></div>
+            <div className="card">
+              <div className="card-head"><h3>Consentimiento y canal OTP</h3><span className={'badge ' + (ficha.firma_onboarding_completo ? 'badge-green' : 'badge-orange')}>{ficha.firma_onboarding_completo ? 'Completo' : 'Pendiente'}</span></div>
+              <div className="card-body">
+                {!empresaConfig?.portal_firma_contratos_activa && <div className="alert alert-warning" style={{ fontSize: 12, marginBottom: 16, padding: '10px 14px' }}>La firma de contratos está apagada por parámetro del tenant.</div>}
+                <div className="grid-2" style={{ gap: 16, marginBottom: 16 }}>
+                  <div className="input-group"><label>Teléfono personal</label><input className="input" value={firmaForm.telefono_personal} placeholder={ficha.telefono_personal || ficha.telefono || ''} onChange={e => setFirmaForm(v => ({ ...v, telefono_personal: e.target.value }))} /></div>
                   <div className="input-group"><label>Celular personal (WhatsApp)</label><input className="input" value={firmaForm.celular_personal} placeholder={ficha.celular_personal || ficha.telefono_personal || ficha.telefono || ''} onChange={e => setFirmaForm(v => ({ ...v, celular_personal: e.target.value }))} /></div>
                   <div className="input-group"><label>Email personal</label><input className="input" value={firmaForm.email_personal} placeholder={ficha.email_personal || ficha.email || ''} onChange={e => setFirmaForm(v => ({ ...v, email_personal: e.target.value }))} /></div>
                   <div className="input-group"><label>Canal OTP</label><select className="select" value={firmaForm.firma_otp_canal} onChange={e => setFirmaForm(v => ({ ...v, firma_otp_canal: e.target.value }))}><option value="email_personal">Email personal</option><option value="telefono_personal">SMS/WhatsApp</option></select></div>
                 </div>
-                <label className="row" style={{ gap: 8, marginTop: 12 }}><input type="checkbox" checked={firmaForm.consentimiento_entrega_electronica} onChange={e => setFirmaForm(v => ({ ...v, consentimiento_entrega_electronica: e.target.checked }))} /> Acepto entrega electronica de boletas y uso de evidencias de firma.</label>
-                <div className="row" style={{ gap: 8, marginTop: 12 }}><button className="btn btn-secondary" onClick={guardarFirma}>Guardar</button><button className="btn btn-primary" onClick={enviarOtpFirma}>Enviar OTP</button></div>
-                {otpActivo && <div className="row" style={{ gap: 8, marginTop: 12 }}><input className="input" value={otpCodigo} onChange={e => setOtpCodigo(e.target.value)} placeholder="Codigo OTP" style={{ maxWidth: 180 }} /><button className="btn btn-primary" onClick={validarOtp}>Validar</button></div>}
+                <label className="row" style={{ gap: 10, marginTop: 12, fontSize: 13, cursor: 'pointer', background: 'var(--bg-subtle)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <input type="checkbox" checked={firmaForm.consentimiento_entrega_electronica} onChange={e => setFirmaForm(v => ({ ...v, consentimiento_entrega_electronica: e.target.checked }))} style={{ width: 16, height: 16 }} /> 
+                  <strong>Acepto entrega electrónica de boletas y uso de evidencias de firma.</strong>
+                </label>
+                <div className="row" style={{ gap: 8, marginTop: 16 }}>
+                  <button className="btn btn-secondary" onClick={guardarFirma}>Guardar</button>
+                  <button className="btn btn-primary" onClick={enviarOtpFirma}>Enviar OTP</button>
+                </div>
+                {otpActivo && <div className="row" style={{ gap: 8, marginTop: 16, background: 'var(--cyan-lt)', padding: 12, borderRadius: 8, border: '1px solid rgba(0,178,198,0.22)' }}>
+                  <input className="input" value={otpCodigo} onChange={e => setOtpCodigo(e.target.value)} placeholder="Código OTP" style={{ maxWidth: 180, background: '#fff' }} />
+                  <button className="btn btn-primary" onClick={validarOtp}>Validar OTP</button>
+                </div>}
               </div>
-              <div className="card" style={{ padding: 16 }}>
-                <div className="card-head"><h3>Evidencias</h3></div>
+
+              <div className="card-head" style={{ borderTop: '1px solid var(--border)' }}><h3>Evidencias de firma</h3></div>
+              <div className="card-body" style={{ padding: '0 16px 16px' }}>
                 <div className="text-muted" style={{ fontSize: 12 }}>Los registros de firma son append-only e incluyen hash original, hash firmado, canal OTP y estado TSA.</div>
-                {data.firmaRegistros.map(f => <div key={f.id} style={{ padding: '9px 0', borderBottom: '1px solid var(--border)' }}><strong>{f.contrato_documento_id || 'Autorizacion/firma'}</strong><div className="text-muted" style={{ fontSize: 12 }}>Hash firmado: {f.hash_firmado || '-'} · TSA: {f.tsa_estado || '-'}</div></div>)}
-                {!data.firmaRegistros.length && <div className="text-muted" style={{ marginTop: 12 }}>Sin evidencias de firma registradas.</div>}
+              </div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Documento / Autorización</th><th>Hash firmado</th><th>TSA Estado</th></tr></thead>
+                  <tbody>
+                    {data.firmaRegistros.map(f => <tr key={f.id}>
+                      <td style={{ fontWeight: 600 }}>{f.contrato_documento_id || 'Autorización/firma'}</td>
+                      <td className="mono text-muted">{f.hash_firmado || '-'}</td>
+                      <td><span className="badge badge-gray">{f.tsa_estado || '-'}</span></td>
+                    </tr>)}
+                    {!data.firmaRegistros.length && <tr><td colSpan="3" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin evidencias de firma registradas.</td></tr>}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
 
           {tab === 'asistencia' && (
-            <div className="card" style={{ padding: 16 }}>
-              <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
-                <h3 style={{ margin: 0 }}>Asistencia mensual</h3>
+            <div className="card">
+              <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0 }}>Mi asistencia mensual</h3>
                 <input className="input" type="month" value={periodo} onChange={e => setPeriodo(e.target.value)} style={{ maxWidth: 180 }} />
               </div>
-              <table className="table"><thead><tr><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Tardanza</th><th>HE</th><th>Estado</th></tr></thead><tbody>
-                {data.asistencia.map(r => <tr key={r.id}><td>{r.fecha}</td><td>{r.hora_entrada || '-'}</td><td>{r.hora_salida || '-'}</td><td>{r.tardanza_min || r.tardanza_minutos || 0} min</td><td>{minToHours(r.horas_extra_min || Number(r.horas_extra || 0) * 60)} {r.he_autorizada ? <span className="badge badge-green">Aut.</span> : ''}</td><td>{r.estado || '-'}</td></tr>)}
-              </tbody></table>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Tardanza</th><th>HE</th><th>Estado</th></tr></thead>
+                  <tbody>
+                    {data.asistencia.map(r => <tr key={r.id}>
+                      <td style={{ fontWeight: 600 }}>{r.fecha}</td>
+                      <td>{r.hora_entrada || '-'}</td>
+                      <td>{r.hora_salida || '-'}</td>
+                      <td>{r.tardanza_min || r.tardanza_minutos || 0} min</td>
+                      <td>{minToHours(r.horas_extra_min || Number(r.horas_extra || 0) * 60)} {r.he_autorizada ? <span className="badge badge-green">Aut.</span> : ''}</td>
+                      <td>{r.estado || '-'}</td>
+                    </tr>)}
+                    {!data.asistencia.length && <tr><td colSpan="6" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin registros de asistencia para este periodo.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {tab === 'solicitudes' && (
-            <div className="card p-0">
-              <table className="table"><thead><tr><th>Tipo</th><th>Fechas</th><th>Dias</th><th>Estado</th></tr></thead><tbody>
-                {data.solicitudes.map(s => <tr key={s.id}><td>{s.tipo}</td><td>{s.fecha_inicio} - {s.fecha_fin}</td><td>{s.dias_habiles || '-'}</td><td><span className="badge badge-cyan">{String(s.estado || '').replace(/_/g, ' ')}</span></td></tr>)}
-              </tbody></table>
+            <div className="card">
+              <div className="card-head">
+                <h3>Mis solicitudes</h3>
+                <button className="btn btn-primary btn-sm" onClick={() => navigate('solicitudes_rrhh')}>Nueva solicitud</button>
+              </div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Tipo</th><th>Fechas</th><th>Días hábiles</th><th>Estado</th></tr></thead>
+                  <tbody>
+                    {data.solicitudes.map(s => <tr key={s.id}>
+                      <td style={{ fontWeight: 600 }}>{s.tipo}</td>
+                      <td>{s.fecha_inicio} al {s.fecha_fin}</td>
+                      <td>{s.dias_habiles || '-'}</td>
+                      <td><span className="badge badge-cyan" style={{ textTransform: 'capitalize' }}>{String(s.estado || '').replace(/_/g, ' ')}</span></td>
+                    </tr>)}
+                    {!data.solicitudes.length && <tr><td colSpan="4" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin solicitudes registradas.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {tab === 'he' && (
-            <div className="card" style={{ padding: 16 }}>
-              <div className="font-display" style={{ fontSize: 28, fontWeight: 800 }}>{minToHours(data.resumen?.he_pendiente_minutos)}</div>
-              <div className="text-muted">Saldo pendiente desde la misma fuente de nomina.</div>
+            <div className="card">
+              <div className="card-head"><h3>Mis horas extra</h3></div>
+              <div className="card-body" style={{ textAlign: 'center', padding: '40px 20px' }}>
+                <div className="font-display" style={{ fontSize: 48, fontWeight: 900, color: 'var(--navy)' }}>{minToHours(data.resumen?.he_pendiente_minutos)}</div>
+                <div className="text-muted" style={{ marginTop: 8 }}>Saldo pendiente de compensación desde la misma fuente de nómina.</div>
+              </div>
             </div>
           )}
 
           {tab === 'documentos' && (
-            <div className="grid cols-3">
-              {data.documentos.map(d => <div className="card" key={d.id} style={{ padding: 14 }}>
-                <div style={{ fontWeight: 700 }}>{d.tipo_doc || d.tipo_documento_nombre || 'Documento'}</div>
-                <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>Vence: {d.fecha_vencimiento || 'No aplica'}</div>
-                <span className="badge badge-gray" style={{ marginTop: 8 }}>{d.estado_validacion || 'registrado'}</span>
-                <label className="btn btn-secondary btn-sm" style={{ marginTop: 12, width: '100%', justifyContent: 'center' }}>
-                  Renovar
-                  <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }} onChange={e => subirDocumento(e.target.files?.[0], d.tipo_doc || 'documento')} />
-                </label>
-              </div>)}
-              {!data.documentos.length && <div className="text-muted">Sin documentos personales registrados.</div>}
+            <div className="card">
+              <div className="card-head"><h3>Mis documentos personales</h3></div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Documento</th><th>Vencimiento</th><th>Estado validación</th><th style={{ textAlign: 'right' }}>Acción</th></tr></thead>
+                  <tbody>
+                    {data.documentos.map(d => <tr key={d.id}>
+                      <td style={{ fontWeight: 600 }}>{d.tipo_doc || d.tipo_documento_nombre || 'Documento'}</td>
+                      <td>{d.fecha_vencimiento || 'No aplica'}</td>
+                      <td><span className="badge badge-gray">{d.estado_validacion || 'registrado'}</span></td>
+                      <td style={{ textAlign: 'right' }}>
+                        <label className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', margin: 0, cursor: 'pointer' }}>
+                          Renovar
+                          <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }} onChange={e => subirDocumento(e.target.files?.[0], d.tipo_doc || 'documento')} />
+                        </label>
+                      </td>
+                    </tr>)}
+                    {!data.documentos.length && <tr><td colSpan="4" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin documentos personales registrados.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {tab === 'prestamos' && (
-            <div className="card p-0">
-              <table className="table"><thead><tr><th>Concepto</th><th>Saldo</th><th>Cuotas</th><th>Estado</th></tr></thead><tbody>
-                {data.prestamos.map(p => <tr key={p.id}><td>{p.concepto || p.motivo}</td><td>{p.saldo || 0}</td><td>{p.cuotas_pagadas || 0}/{p.cuotas || '-'}</td><td>{p.estado}</td></tr>)}
-              </tbody></table>
-              {!data.prestamos.length && <div className="text-muted" style={{ padding: 16 }}>Sin prestamos registrados.</div>}
+            <div className="card">
+              <div className="card-head"><h3>Mis préstamos y adelantos</h3></div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Concepto</th><th>Saldo</th><th>Cuotas Pagadas</th><th>Estado</th></tr></thead>
+                  <tbody>
+                    {data.prestamos.map(p => <tr key={p.id}>
+                      <td style={{ fontWeight: 600 }}>{p.concepto || p.motivo}</td>
+                      <td className="mono">{money(p.saldo || 0)}</td>
+                      <td>{p.cuotas_pagadas || 0} / {p.cuotas || '-'}</td>
+                      <td><span className="badge badge-cyan" style={{ textTransform: 'capitalize' }}>{p.estado}</span></td>
+                    </tr>)}
+                    {!data.prestamos.length && <tr><td colSpan="4" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin préstamos registrados.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {tab === 'amonestaciones' && (
-            <div className="grid cols-2">
-              {data.amonestaciones.map(a => <div className="card" key={a.id} style={{ padding: 16 }}>
-                <div className="row" style={{ justifyContent: 'space-between' }}><strong>{a.tipo || 'Amonestacion'}</strong><span className="badge badge-orange">{a.gravedad || 'activa'}</span></div>
-                <p style={{ marginTop: 10 }}>{a.descripcion || a.motivo}</p>
-                <div className="text-muted" style={{ fontSize: 12 }}>El acuse deja constancia de notificacion; no implica aceptacion del contenido.</div>
-                {a.acusado_en ? <span className="badge badge-green" style={{ marginTop: 12 }}>Notificado y acusado {(a.acusado_en || '').slice(0, 10)}</span> : <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => acusarAmonestacion(a)}>Me doy por enterado</button>}
-              </div>)}
-              {!data.amonestaciones.length && <div className="text-muted">Sin amonestaciones activas.</div>}
+            <div className="card">
+              <div className="card-head"><h3>Mis amonestaciones</h3></div>
+              <div className="card-body" style={{ padding: '0 16px 16px' }}>
+                <div className="text-muted" style={{ fontSize: 12 }}>El acuse deja constancia de notificación en el sistema; no implica aceptación del contenido de la amonestación.</div>
+              </div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Tipo</th><th>Gravedad</th><th>Descripción / Motivo</th><th>Acuse de Recibo</th><th style={{ textAlign: 'right' }}>Acción</th></tr></thead>
+                  <tbody>
+                    {data.amonestaciones.map(a => <tr key={a.id}>
+                      <td style={{ fontWeight: 600 }}>{a.tipo || 'Amonestación'}</td>
+                      <td><span className="badge badge-orange">{a.gravedad || 'Activa'}</span></td>
+                      <td style={{ maxWidth: 300, whiteSpace: 'normal', lineHeight: 1.4 }}>{a.descripcion || a.motivo}</td>
+                      <td>{a.acusado_en ? <span className="badge badge-green">Acusado el {(a.acusado_en || '').slice(0, 10)}</span> : <span className="badge badge-orange">Pendiente</span>}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {!a.acusado_en ? <button className="btn btn-primary btn-sm" onClick={() => acusarAmonestacion(a)}>Me doy por enterado</button> : '-'}
+                      </td>
+                    </tr>)}
+                    {!data.amonestaciones.length && <tr><td colSpan="5" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin amonestaciones activas.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </>

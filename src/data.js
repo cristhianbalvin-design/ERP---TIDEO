@@ -27,7 +27,6 @@ export const roles = {
   vendedor: { nombre: 'Vendedor', color: 'blue', categoria: 'comercial', nivel_jerarquico: 'asesor', descripcion: 'Gestión de sus propias ventas y agenda', permisos: { ver: ['dashboard','cuentas','leads','pipeline','actividades','agenda_comercial','cotizaciones','evaluaciones_desempeno'], crear: true, acceso_campo: true, perfil_campo: 'Vendedor' } },
   tecnico: { nombre: 'Técnico de Campo', color: 'orange', categoria: 'operaciones', nivel_jerarquico: 'operativo', descripcion: 'Ejecución de OTs', permisos: { ver: ['ot','partes','evaluaciones_desempeno'], acceso_campo: true } },
   finanzas: { nombre: 'Finanzas', color: 'green', categoria: 'finanzas', nivel_jerarquico: 'jefatura', descripcion: 'Control de cajas y facturación', permisos: { ver: ['dashboard','bi_financiero','presupuestos','cxc','cxp','tesoreria','resultados','facturacion','caja','activos_fijos','financiamiento','prestamos_personal','ventas','valorizacion','nomina','evaluaciones_desempeno'], ver_finanzas: true } },
-  empleado: { nombre: 'Empleado', color: 'cyan', categoria: 'rrhh', nivel_jerarquico: 'operativo', descripcion: 'Autoservicio de colaborador sin modulos operacionales', permisos: { ver: ['mi_portal','campo'], acceso_campo: true, perfil_campo: 'Empleado', campo_modulos: ['mi_espacio','solicitudes'] } },
 };
 
 export const usuarios = [

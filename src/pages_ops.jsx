@@ -15836,22 +15836,40 @@ const rrhhEsTipoAdenda = (tipo, fallback = '') => rrhhTipoDocumentoTexto(tipo, f
 const rrhhSnapshotLaboral = (p = {}, extra = {}) => ({
   cargo: extra.cargo ?? p.cargo ?? '',
   cargo_id: extra.cargo_id ?? p.cargo_id ?? '',
+  cargo_nombre: extra.cargo_nombre ?? extra.cargo ?? p.cargo ?? '',
   remuneracion_base: extra.remuneracion_base ?? p.sueldo_base ?? p.monto_mensual ?? 0,
-  modalidad: extra.modalidad ?? p.modalidad ?? p.modalidad_trabajo ?? 'Presencial',
+  modalidad: extra.modalidad ?? p.modalidad ?? p.modalidad_trabajo ?? '',
   sede: extra.sede ?? p.sede ?? '',
   sede_id: extra.sede_id ?? p.sede_id ?? '',
+  sede_nombre: extra.sede_nombre ?? extra.sede ?? p.sede ?? '',
+  area_id: extra.area_id ?? p.area_id ?? '',
+  area_nombre: extra.area_nombre ?? p.area ?? '',
+  regimen_jornada: extra.regimen_jornada ?? p.regimen_jornada ?? 'general',
   tipo_contrato: extra.tipo_contrato ?? p.tipo_contrato ?? '',
 });
 const rrhhContratoResumen = (doc = {}) => {
   const c = doc.condiciones_laborales || {};
   const cambios = doc.adenda_cambios || {};
-  if (rrhhEsDocContrato(doc)) return `${c.cargo || 'Cargo no registrado'} · S/ ${Number(c.remuneracion_base || 0).toLocaleString()} · ${c.sede || 'Sin sede'}`;
+  if (rrhhEsDocContrato(doc)) {
+    const snapVacio = !c.cargo && !c.cargo_nombre && !c.remuneracion_base && !c.sede && !c.sede_nombre;
+    if (snapVacio) return 'Condiciones no registradas — contrato previo al sistema actual';
+    const partes = [
+      c.cargo_nombre || c.cargo || null,
+      c.remuneracion_base !== undefined && c.remuneracion_base !== '' ? `S/ ${Number(c.remuneracion_base).toLocaleString()}` : null,
+      c.regimen_jornada && c.regimen_jornada !== 'general' ? c.regimen_jornada.replace(/_/g, ' ') : (c.regimen_jornada === 'general' ? 'General' : null),
+      c.tipo_contrato ? c.tipo_contrato.replace(/_/g, ' ') : null,
+      c.modalidad || null,
+      c.sede_nombre || c.sede || null,
+      c.area_nombre || null,
+    ].filter(Boolean);
+    return partes.join(' · ') || 'Cargo no registrado';
+  }
   if (rrhhEsTipoAdenda(doc, doc.tipo_doc)) {
     const partes = [];
-    if (cambios.cargo) partes.push(`Cargo: ${c.cargo || '-'}`);
+    if (cambios.cargo) partes.push(`Cargo: ${c.cargo_nombre || c.cargo || '-'}`);
     if (cambios.remuneracion) partes.push(`Sueldo: S/ ${Number(c.remuneracion_base || 0).toLocaleString()}`);
     if (cambios.modalidad) partes.push(`Modalidad: ${c.modalidad || '-'}`);
-    if (cambios.sede) partes.push(`Sede: ${c.sede || '-'}`);
+    if (cambios.sede) partes.push(`Sede: ${c.sede_nombre || c.sede || '-'}`);
     if (cambios.otro && c.descripcion_cambio) partes.push(c.descripcion_cambio);
     return partes.join(' · ') || 'Adenda contractual';
   }
@@ -15859,7 +15877,7 @@ const rrhhContratoResumen = (doc = {}) => {
 };
 
 function RRHH_Operativo() {
-  const { turnos, cargos = [], especialidades = [], sedes = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx } = useApp();
+  const { turnos, cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('personal');
   const personal = personalOperativo;
@@ -15874,7 +15892,8 @@ function RRHH_Operativo() {
   const [formAsig, setFormAsig] = useState({ tipo_tramo: 'normal', fecha_inicio: '', regimen_jornada: 'general', dias_ciclo_trabajo: '', dias_ciclo_descanso: '', fecha_inicio_ciclo: '', motivo: '' });
   const [savingAsig, setSavingAsig] = useState(false);
   // Estado para subir documentos en ficha
-  const [docUploadForm, setDocUploadForm] = useState({ tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '' });
+  const docUploadFormBase = { tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '' };
+  const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
   const [docUploadFile, setDocUploadFile] = useState(null);
   const [docUploading, setDocUploading] = useState(false);
   const [docUploadError, setDocUploadError] = useState('');
@@ -15889,9 +15908,10 @@ function RRHH_Operativo() {
   const [docHighlightTipo, setDocHighlightTipo] = useState('');
 
   // Estado para subida inline
+  const inlineUploadFormBase = { fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', modoSubida: 'nueva_version' };
   const [inlineUploadReq, setInlineUploadReq] = useState(null);
   const [inlineUploadFile, setInlineUploadFile] = useState(null);
-  const [inlineUploadForm, setInlineUploadForm] = useState({ fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '' });
+  const [inlineUploadForm, setInlineUploadForm] = useState(inlineUploadFormBase);
   const [inlineUploading, setInlineUploading] = useState(false);
   const [inlineUploadError, setInlineUploadError] = useState('');
   const [docPreviewReq, setDocPreviewReq] = useState(null);
@@ -15907,16 +15927,16 @@ function RRHH_Operativo() {
     if (!doc) { setVisorUrl(null); return; }
     // Usa la URL actual como punto de partida
     setVisorUrl(doc.archivo_url || null);
-    const storagePath = doc.storage_path || null;
-    if (!storagePath || !isSupabaseConfigured || !isSupabaseConfigured()) return;
+    const storageRef = doc.storage_path || doc.archivo_url || null;
+    if (!storageRef || !isSupabaseConfigured || !isSupabaseConfigured()) return;
     setPreviewLoadingUrl(true);
-    personalDocumentosService.renovarUrlDocumento(storagePath)
+    personalDocumentosService.renovarUrlDocumento(storageRef)
       .then(url => setVisorUrl(url))
       .catch(() => {})
       .finally(() => setPreviewLoadingUrl(false));
     // Renovar cada 8 minutos para no llegar al límite de 10 min
     visorTimerRef.current = setInterval(() => {
-      personalDocumentosService.renovarUrlDocumento(storagePath)
+      personalDocumentosService.renovarUrlDocumento(storageRef)
         .then(url => setVisorUrl(url))
         .catch(() => {});
     }, 8 * 60 * 1000);
@@ -15951,10 +15971,10 @@ function RRHH_Operativo() {
     const doc = docPreviewReq?.doc;
     if (!doc) return;
     try {
-      let url = doc.archivo_url || visorUrl;
-      if (doc.storage_path && isSupabaseConfigured && isSupabaseConfigured()) {
-        url = await personalDocumentosService.renovarUrlDocumento(doc.storage_path);
-      }
+      const ref = doc.storage_path || doc.archivo_url;
+      const url = (ref && isSupabaseConfigured && isSupabaseConfigured())
+        ? await personalDocumentosService.renovarUrlDocumento(ref)
+        : doc.archivo_url || visorUrl;
       if (url) window.open(url, '_blank');
     } catch {
       if (visorUrl || doc.archivo_url) window.open(visorUrl || doc.archivo_url, '_blank');
@@ -16529,6 +16549,28 @@ function RRHH_Operativo() {
         const req = docPreviewReq;
         cerrarPreviewDocumento();
         setInlineUploadReq(req);
+        const c = req.doc?.condiciones_laborales || {};
+        setInlineUploadForm({
+          ...inlineUploadFormBase,
+          fechaEmision: req.doc?.fecha_emision || '',
+          fechaVencimiento: req.doc?.fecha_vencimiento || '',
+          notas: req.doc?.notas || '',
+          cargoIdFirma: c.cargo_id || '',
+          cargoFirma: c.cargo_nombre || c.cargo || '',
+          remuneracionFirma: c.remuneracion_base !== undefined && c.remuneracion_base !== '' ? String(c.remuneracion_base) : '',
+          modalidadFirma: c.modalidad || '',
+          sedeIdFirma: c.sede_id || '',
+          sedeFirma: c.sede_nombre || c.sede || '',
+          areaIdFirma: c.area_id || '',
+          areaNombreFirma: c.area_nombre || '',
+          regimenJornadaFirma: c.regimen_jornada || '',
+          tipoContratoFirma: c.tipo_contrato || '',
+          contratoReferenciaId: req.doc?.contrato_referencia_id || '',
+          descripcionCambio: c.descripcion_cambio || '',
+          fechaVigenciaCambio: req.doc?.fecha_vigencia_cambio || '',
+          modoSubida: req.doc ? 'nueva_version' : 'nueva_version',
+        });
+        setInlineUploadFile(null);
       }}
       onValidate={validarPreviewDocumento}
       onDownload={descargarPreviewDocumento}
@@ -16539,7 +16581,7 @@ function RRHH_Operativo() {
   if (selTecnico) {
     const p = selTecnico;
     const esHon = esModalidadHonorarios(p);
-    const docsPersona = personalDocumentos.filter(d => d.personal_id === p.id && d.activo);
+    const docsPersona = personalDocumentos.filter(d => d.personal_id === p.id && (d.activo || d.estado_validacion === 'pendiente'));
     const solPersona = solicitudesRRHH.filter(s => s.personal_id === p.id);
     const vacPersona = solPersona.filter(s => s.tipo === 'vacaciones');
     const licPersona = solPersona.filter(s => ['licencia_medica','licencia_maternidad','licencia_paternidad'].includes(s.tipo));
@@ -16565,6 +16607,7 @@ function RRHH_Operativo() {
       .filter(d => d.activo !== false && esDocContratoLocal(d))
       .sort((a, b) => String(b.fecha_vencimiento || b.fecha_emision || b.created_at || '').localeCompare(String(a.fecha_vencimiento || a.fecha_emision || a.created_at || '')))[0] || null;
     const contratoInfo = rrhhContratoVencimientoInfo(contratoDoc);
+    const tieneContratoAprobado = docsPersona.some(d => d.activo === true && d.estado_validacion === 'aprobado' && esDocContratoLocal(d));
     const contratoTipoDoc = rrhhContratoTipoDocValue(tipoDocOpts);
     const docsContractuales = docsPersona
       .filter(d => esDocContratoLocal(d) || esDocAdendaLocal(d))
@@ -16600,11 +16643,22 @@ function RRHH_Operativo() {
       setDocUploading(true);
       setDocUploadError('');
       try {
+        const cargoSelDoc = cargos.find(c => c.id === docUploadForm.cargoIdFirma);
+        const sedeSelDoc = sedes.find(s => s.id === docUploadForm.sedeIdFirma);
+        const areaSelDoc = areasEmpresa.find(a => a.id === docUploadForm.areaIdFirma);
         const condicionesLaborales = (docUploadEsContrato || docUploadEsAdenda) ? rrhhSnapshotLaboral(p, {
-          cargo: docUploadForm.cargoFirma || p.cargo,
-          remuneracion_base: docUploadForm.remuneracionFirma || p.sueldo_base || p.monto_mensual || 0,
-          modalidad: docUploadForm.modalidadFirma || p.modalidad || 'Presencial',
-          sede: docUploadForm.sedeFirma || p.sede,
+          cargo: cargoSelDoc?.nombre || docUploadForm.cargoFirma || p.cargo,
+          cargo_id: docUploadForm.cargoIdFirma || p.cargo_id,
+          cargo_nombre: cargoSelDoc?.nombre || docUploadForm.cargoFirma || p.cargo,
+          remuneracion_base: Number(docUploadForm.remuneracionFirma) || p.sueldo_base || p.monto_mensual || 0,
+          modalidad: docUploadForm.modalidadFirma || '',
+          sede: sedeSelDoc?.nombre || docUploadForm.sedeFirma || p.sede,
+          sede_id: docUploadForm.sedeIdFirma || p.sede_id,
+          sede_nombre: sedeSelDoc?.nombre || docUploadForm.sedeFirma || p.sede,
+          area_id: docUploadForm.areaIdFirma || p.area_id || '',
+          area_nombre: areaSelDoc?.nombre || docUploadForm.areaNombreFirma || p.area || '',
+          regimen_jornada: docUploadForm.regimenJornadaFirma || p.regimen_jornada || 'general',
+          tipo_contrato: docUploadForm.tipoContratoFirma || p.tipo_contrato || '',
           descripcion_cambio: docUploadForm.descripcionCambio || '',
         }) : {};
         await subirDocumentoPersonalCtx({
@@ -16630,7 +16684,7 @@ function RRHH_Operativo() {
           seccionDocumental: 'adicional',
         });
         setDocUploadFile(null);
-        setDocUploadForm({ tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '' });
+        setDocUploadForm(docUploadFormBase);
         addNotificacion('Documento subido. Pendiente de aprobación por RRHH.');
       } catch (err) {
         setDocUploadError(err?.message || 'Error al subir el documento.');
@@ -16705,48 +16759,156 @@ function RRHH_Operativo() {
           </div>
 
           {fichaTab === 'ficha' && (
-            <div className="card-body">
-              <div className="grid-2" style={{gap:16}}>
-                {[
-                  ['DNI', p.documento || p.dni],
-                  ['Teléfono', p.telefono],
-                  ['Email', p.email],
-                  ['Correo personal', p.email_personal],
-                  ['Celular personal (WhatsApp)', p.celular_personal],
-                  ['Cargo', p.cargo],
-                  ['Especialidad', p.especialidad],
-                  ['Especialidad 2', p.especialidad2],
-                  ['rea', p.area],
-                  ['Sede base', p.sede],
-                  ['Supervisor', p.supervisor],
-                  ['Perfil de campo', p.perfil_campo],
-                  ['Centro de costo', centrosCosto?.find(c => c.id === p.centro_costo_id)?.nombre || p.centro_costo_id || '—'],
-                  ['Turno asignado', turnoP ? `${turnoP.nombre} (${turnoP.hora_entrada} — ${turnoP.hora_salida})` : 'Sin turno'],
-                ].map(([label, val]) => (
-                  <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                    <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                    <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
-                  </div>
-                ))}
+            <div className="card-body" style={{display:'flex', flexDirection:'column', gap:24}}>
+
+              {/* Sección 1 — Datos personales */}
+              <div>
+                <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Datos personales</div>
+                <div className="grid-2" style={{gap:12}}>
+                  {[
+                    ['DNI', p.documento || p.dni],
+                    ['Teléfono celular', p.telefono],
+                    ['Email corporativo', p.email],
+                    ['Correo personal', p.email_personal],
+                    ['Celular / WhatsApp', p.celular_personal],
+                    p.especialidad ? ['Especialidad principal', p.especialidad] : null,
+                    p.especialidad2 ? ['Especialidad secundaria', p.especialidad2] : null,
+                    p.perfil_campo ? ['Perfil de campo', p.perfil_campo] : null,
+                  ].filter(Boolean).map(([label, val]) => (
+                    <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
+                      <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
+                      <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
+
+              {/* Sección 2 — Datos laborales */}
+              <div>
+                <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Datos laborales</div>
+                <div className="grid-2" style={{gap:12}}>
+                  <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
+                    <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>Código de empleado</div>
+                    <div style={{fontWeight:500, fontSize:13}}>{p.codigo || '—'}</div>
+                  </div>
+                  <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
+                    <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>Estado</div>
+                    <span className={`badge ${p.estado === 'disponible' || p.estado === 'activo' ? 'badge-green' : 'badge-gray'}`}>{p.estado?.toUpperCase() || '—'}</span>
+                  </div>
+                  {[
+                    ['Cargo', p.cargo],
+                    ['Área', p.area],
+                    ['Sede base', p.sede],
+                    p.supervisor ? ['Supervisor', p.supervisor] : null,
+                    ['Centro de costo', centrosCosto?.find(c => c.id === p.centro_costo_id)?.nombre || p.centro_costo_id || null],
+                    ['Turno asignado', turnoP ? `${turnoP.nombre} (${turnoP.hora_entrada} — ${turnoP.hora_salida})` : null],
+                    ['Modalidad', p.modalidad],
+                    ['Fecha de ingreso', p.fecha_ingreso],
+                    ['Tipo de contrato', p.tipo_contrato],
+                  ].filter(Boolean).map(([label, val]) => (
+                    <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
+                      <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
+                      <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
+                    </div>
+                  ))}
+                  <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
+                    <div className="text-muted" style={{fontSize:11, marginBottom:6, textTransform:'uppercase', letterSpacing:'0.08em'}}>Régimen de jornada</div>
+                    <div style={{fontWeight:500, fontSize:13, marginBottom:6}}>{(p.regimen_jornada || 'general').replace(/_/g, ' ')}</div>
+                    <div className="row" style={{gap:6, flexWrap:'wrap'}}>
+                      <span className="badge badge-gray">Fiscalización: {fiscalizacionLabel(getTipoFiscalizacion(p))}</span>
+                      <span className="badge badge-gray">Vacaciones: {diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general')} días/año</span>
+                    </div>
+                  </div>
+                  {p.cargo_confianza && (
+                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
+                      <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>Cargo especial</div>
+                      <span className="badge badge-orange">Dirección o confianza</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Sección 3 — Nómina y finanzas */}
+              {canFinanzas && (
+                <div>
+                  <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Nómina y finanzas</div>
+                  <div className="grid-2" style={{gap:12}}>
+                    {[
+                      ['Sueldo base', (p.sueldo_base != null || p.monto_mensual != null) ? `S/ ${Number(p.sueldo_base ?? p.monto_mensual ?? 0).toLocaleString()}` : null],
+                      ['Horas base del mes', p.horas_base_mes ? `${p.horas_base_mes} h` : null],
+                      ['Tarifa por hora', p.tarifa_hora != null ? `S/ ${Number(p.tarifa_hora).toFixed(2)}/h` : null],
+                      ['Costo hora extra', p.costo_hora_extra != null ? `S/ ${Number(p.costo_hora_extra).toFixed(2)}/h` : null],
+                      ['Sistema pensionario', esHon ? null : p.sistema_pensionario],
+                      ['AFP', esHon ? null : p.afp_nombre],
+                      ['Tipo de comisión AFP', esHon ? null : p.tipo_comision_afp],
+                    ].filter(([, val]) => val != null).map(([label, val]) => (
+                      <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
+                        <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
+                        <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sección 4 — Datos bancarios */}
+              {canFinanzas && (
+                <DatosBancariosSection cuentas={p.datos_bancarios ?? []} readOnly />
+              )}
+
+              {/* Sección 5 — Acceso al sistema */}
+              <div>
+                <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Acceso al sistema</div>
+                <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
+                  <div className="text-muted" style={{fontSize:11, marginBottom:6, textTransform:'uppercase', letterSpacing:'0.08em'}}>Cuenta de usuario vinculada</div>
+                  {p.usuario_bloqueado_en ? (
+                    <span className="badge badge-red">Acceso bloqueado</span>
+                  ) : p.auth_user_id ? (
+                    <div className="row" style={{gap:8, alignItems:'center'}}>
+                      <span className="badge badge-green">Tiene acceso al ERP</span>
+                      {p.email && <span className="text-muted" style={{fontSize:12}}>{p.email}</span>}
+                    </div>
+                  ) : (
+                    <span className="badge badge-gray">Sin acceso al ERP</span>
+                  )}
+                </div>
+              </div>
+
             </div>
           )}
 
           {fichaTab === 'contrato' && (
             <div className="card-body">
+              {!tieneContratoAprobado && (
+                <div style={{marginBottom:16, padding:'14px 16px', background: p.cargo_confianza ? 'var(--bg-subtle)' : 'rgba(229,62,62,0.08)', border:`1px solid ${p.cargo_confianza ? 'var(--border)' : 'rgba(229,62,62,0.3)'}`, borderRadius:8}}>
+                  {p.cargo_confianza ? (
+                    <div style={{fontSize:13, color:'var(--fg-muted)'}}>Este colaborador tiene cargo de dirección o confianza — no requiere contrato digital para el control de asistencia. Se recomienda igualmente registrar el contrato para trazabilidad.</div>
+                  ) : (
+                    <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
+                      <div>
+                        <div style={{fontWeight:600, fontSize:13, color:'var(--danger)', marginBottom:4}}>Sin contrato digital registrado</div>
+                        <div style={{fontSize:12, color:'var(--fg-muted)'}}>La asistencia está bloqueada hasta que RRHH suba y valide el contrato en la pestaña Documentos.</div>
+                      </div>
+                      <button type="button" className="btn btn-sm btn-primary" onClick={irADocumentoContrato}>Ir a Documentos → Subir contrato</button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="grid-2" style={{gap:16}}>
                 {[
                   ['Tipo de contrato', p.tipo_contrato],
                   ['Fecha de ingreso', p.fecha_ingreso],
-                  ['Cargo vigente', p.cargo],
-                  ['Remuneración vigente', canFinanzas ? `S/ ${Number(p.sueldo_base || p.monto_mensual || 0).toLocaleString()}` : '***'],
-                  ['Modalidad vigente', p.modalidad || 'Presencial'],
-                  ['Sede vigente', p.sede],
+                  ['Cargo vigente', tieneContratoAprobado ? p.cargo : null],
+                  ['Remuneración vigente', tieneContratoAprobado ? (canFinanzas ? `S/ ${Number(p.sueldo_base || p.monto_mensual || 0).toLocaleString()}` : '***') : null],
+                  ['Modalidad vigente', tieneContratoAprobado ? (p.modalidad || 'Presencial') : null],
+                  ['Sede vigente', tieneContratoAprobado ? p.sede : null],
+                  ['Área vigente', tieneContratoAprobado ? ((areasEmpresa.find(a => a.id === p.area_id)?.nombre) || p.area || null) : null],
                   ['Contrato digital', contratoDoc ? (contratoDoc.nombre || contratoDoc.tipo_doc_nombre || contratoDoc.tipo_doc || 'Contrato') : 'Sin contrato digital'],
-                  ['Vencimiento contrato', contratoDoc?.fecha_vencimiento || 'Sin vencimiento registrado'],
+                  ['Fecha inicio contrato', contratoDoc?.fecha_emision || '—'],
+                  ['Vencimiento contrato', contratoDoc?.fecha_vencimiento || '—'],
                   ['Régimen laboral', p.regimen_laboral],
-                  ['Régimen de jornada', p.regimen_jornada],
-                  ['Sueldo base', canFinanzas ? `S/ ${Number(p.sueldo_base||0).toLocaleString()}` : '***'],
+                  ['Régimen de jornada', tieneContratoAprobado ? p.regimen_jornada : null],
+                  ['Sueldo base', tieneContratoAprobado && canFinanzas ? `S/ ${Number(p.sueldo_base||0).toLocaleString()}` : (tieneContratoAprobado ? '***' : null)],
                   ['Costo/hora', canFinanzas ? money(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0, p.moneda === 'USD' ? 'US$' : 'S/') + '/hr' : '***'],
                   ['Costo hora extra', canFinanzas ? money(p.costo_hora_extra ?? 0, p.moneda === 'USD' ? 'US$' : 'S/') + '/hr' : '***'],
                   ['Sistema pensionario', esHon ? '—' : p.sistema_pensionario],
@@ -16776,8 +16938,7 @@ function RRHH_Operativo() {
                   <div style={{display:'flex', flexDirection:'column', gap:10}}>
                     {docsContractuales.map(doc => {
                       const esAdenda = esDocAdendaLocal(doc);
-                      const snap = doc.condiciones_laborales || {};
-                      const resumen = esAdenda ? rrhhContratoResumen(doc) : `${snap.cargo || 'Cargo no registrado'} · S/ ${Number(snap.remuneracion_base || 0).toLocaleString()} · ${snap.sede || 'Sin sede'}`;
+                      const resumen = rrhhContratoResumen(doc);
                       return (
                         <div key={doc.id} style={{padding:'12px 14px', border:'1px solid var(--border)', borderRadius:8, display:'flex', justifyContent:'space-between', gap:12, alignItems:'flex-start'}}>
                           <div>
@@ -17016,50 +17177,80 @@ function RRHH_Operativo() {
 
             const handleSubirInline = async (e) => {
               e.preventDefault();
-              if (!inlineUploadFile) { setInlineUploadError('Selecciona el archivo.'); return; }
+              if (!inlineUploadReq) return;
               const inlineEsContrato = rrhhEsTipoContrato(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id);
               const inlineEsAdenda = rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id);
-              if (inlineUploadReq.tipo?.exige_vencimiento && !inlineEsAdenda && !inlineUploadForm.fechaVencimiento) {
-                setInlineUploadError('Este tipo exige fecha de vencimiento.'); return;
-              }
               if (inlineEsAdenda && !inlineUploadForm.contratoReferenciaId) {
                 setInlineUploadError('Selecciona el contrato original que modifica la adenda.'); return;
               }
+              const esCorreccion = inlineUploadForm.modoSubida === 'corregir' && inlineUploadReq.doc;
+              if (!esCorreccion) {
+                if (!inlineUploadFile) { setInlineUploadError('Selecciona el archivo.'); return; }
+                if (inlineUploadReq.tipo?.exige_vencimiento && !inlineEsAdenda && !inlineUploadForm.fechaVencimiento) {
+                  setInlineUploadError('Este tipo exige fecha de vencimiento.'); return;
+                }
+              }
               setInlineUploading(true); setInlineUploadError('');
               try {
+                const cargoSel = cargos.find(c => c.id === inlineUploadForm.cargoIdFirma);
+                const sedeSel = sedes.find(s => s.id === inlineUploadForm.sedeIdFirma);
+                const areaSel = areasEmpresa.find(a => a.id === inlineUploadForm.areaIdFirma);
                 const condicionesLaborales = (inlineEsContrato || inlineEsAdenda) ? rrhhSnapshotLaboral(p, {
-                  cargo: inlineUploadForm.cargoFirma || p.cargo,
-                  remuneracion_base: inlineUploadForm.remuneracionFirma || p.sueldo_base || p.monto_mensual || 0,
-                  modalidad: inlineUploadForm.modalidadFirma || p.modalidad || 'Presencial',
-                  sede: inlineUploadForm.sedeFirma || p.sede,
+                  cargo: cargoSel?.nombre || inlineUploadForm.cargoFirma || p.cargo,
+                  cargo_id: inlineUploadForm.cargoIdFirma || p.cargo_id,
+                  cargo_nombre: cargoSel?.nombre || inlineUploadForm.cargoFirma || p.cargo,
+                  remuneracion_base: Number(inlineUploadForm.remuneracionFirma) || p.sueldo_base || p.monto_mensual || 0,
+                  modalidad: inlineUploadForm.modalidadFirma || '',
+                  sede: sedeSel?.nombre || inlineUploadForm.sedeFirma || p.sede,
+                  sede_id: inlineUploadForm.sedeIdFirma || p.sede_id,
+                  sede_nombre: sedeSel?.nombre || inlineUploadForm.sedeFirma || p.sede,
+                  area_id: inlineUploadForm.areaIdFirma || p.area_id || '',
+                  area_nombre: areaSel?.nombre || inlineUploadForm.areaNombreFirma || p.area || '',
+                  regimen_jornada: inlineUploadForm.regimenJornadaFirma || p.regimen_jornada || 'general',
+                  tipo_contrato: inlineUploadForm.tipoContratoFirma || p.tipo_contrato || '',
                   descripcion_cambio: inlineUploadForm.descripcionCambio || '',
                 }) : {};
-                await subirDocumentoPersonalCtx({
-                  personalId: p.id,
-                  personalTipo: 'operativo',
-                  tipoDoc: inlineUploadReq.tipo_documento_id,
-                  tipoDocumentoId: inlineUploadReq.tipo_documento_id,
-                  file: inlineUploadFile,
-                  fechaEmision: inlineUploadReq.tipo?.exige_emision ? (inlineUploadForm.fechaEmision || null) : null,
-                  fechaVencimiento: inlineEsAdenda ? null : (inlineUploadReq.tipo?.exige_vencimiento ? (inlineUploadForm.fechaVencimiento || null) : null),
-                  notas: inlineUploadForm.notas || null,
-                  subidoDesde: 'backoffice',
-                  condicionesLaborales,
-                  contratoReferenciaId: inlineEsAdenda ? inlineUploadForm.contratoReferenciaId : null,
-                  adendaCambios: inlineEsAdenda ? {
-                    cargo: Boolean(inlineUploadForm.cambioCargo),
-                    remuneracion: Boolean(inlineUploadForm.cambioRemuneracion),
-                    modalidad: Boolean(inlineUploadForm.cambioModalidad),
-                    sede: Boolean(inlineUploadForm.cambioSede),
-                    otro: Boolean(inlineUploadForm.cambioOtro),
-                  } : {},
-                  fechaVigenciaCambio: inlineEsAdenda ? (inlineUploadForm.fechaVigenciaCambio || null) : null,
-                  seccionDocumental: 'requisito_cargo',
-                });
+                if (esCorreccion) {
+                  await corregirDocumentoPersonalCtx({
+                    documentoId: inlineUploadReq.doc.id,
+                    file: inlineUploadFile || null,
+                    fechaEmision: inlineUploadForm.fechaEmision || null,
+                    fechaVencimiento: inlineUploadForm.fechaVencimiento || null,
+                    condicionesLaborales: (inlineEsContrato || inlineEsAdenda) ? condicionesLaborales : null,
+                    notas: inlineUploadForm.notas || null,
+                    personalId: p.id,
+                    personalTipo: 'operativo',
+                    tipoDoc: inlineUploadReq.tipo_documento_id,
+                  });
+                  addNotificacion('Documento corregido correctamente.');
+                } else {
+                  await subirDocumentoPersonalCtx({
+                    personalId: p.id,
+                    personalTipo: 'operativo',
+                    tipoDoc: inlineUploadReq.tipo_documento_id,
+                    tipoDocumentoId: inlineUploadReq.tipo_documento_id,
+                    file: inlineUploadFile,
+                    fechaEmision: inlineUploadReq.tipo?.exige_emision ? (inlineUploadForm.fechaEmision || null) : null,
+                    fechaVencimiento: inlineEsAdenda ? null : (inlineUploadReq.tipo?.exige_vencimiento ? (inlineUploadForm.fechaVencimiento || null) : null),
+                    notas: inlineUploadForm.notas || null,
+                    subidoDesde: 'backoffice',
+                    condicionesLaborales,
+                    contratoReferenciaId: inlineEsAdenda ? inlineUploadForm.contratoReferenciaId : null,
+                    adendaCambios: inlineEsAdenda ? {
+                      cargo: Boolean(inlineUploadForm.cambioCargo),
+                      remuneracion: Boolean(inlineUploadForm.cambioRemuneracion),
+                      modalidad: Boolean(inlineUploadForm.cambioModalidad),
+                      sede: Boolean(inlineUploadForm.cambioSede),
+                      otro: Boolean(inlineUploadForm.cambioOtro),
+                    } : {},
+                    fechaVigenciaCambio: inlineEsAdenda ? (inlineUploadForm.fechaVigenciaCambio || null) : null,
+                    seccionDocumental: 'requisito_cargo',
+                  });
+                  addNotificacion('Documento subido correctamente.');
+                }
                 setInlineUploadReq(null); setInlineUploadFile(null);
-                setInlineUploadForm({ fechaEmision:'', fechaVencimiento:'', notas:'', cargoFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '' });
-                addNotificacion('Documento subido correctamente.');
-              } catch (err) { setInlineUploadError(err?.message || 'Error al subir el documento.'); }
+                setInlineUploadForm(inlineUploadFormBase);
+              } catch (err) { setInlineUploadError(err?.message || 'Error al guardar el documento.'); }
               finally { setInlineUploading(false); }
             };
 
@@ -17101,13 +17292,52 @@ function RRHH_Operativo() {
                         const destacado = docHighlightTipo && req.tipo_documento_id === docHighlightTipo;
                         return (
                           <div key={req.tipo_documento_id} style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:destacado ? 'rgba(251,191,36,0.12)' : 'var(--bg-subtle)', borderRadius:6, border:destacado ? '1px solid var(--orange)' : '1px solid var(--border-subtle)'}}>
-                            <span className={'badge ' + (DOC_BDG[req.estado] || 'badge-gray')} style={{fontSize:10, flexShrink:0}}>{DOC_LBL[req.estado] || req.estado}</span>
+                            <span className={'badge ' + (DOC_BDG[req.estado] || 'badge-gray')} style={{fontSize:10, flexShrink:0}}>{DOC_LBL[req.estado] || req.estado}{req.estado === 'por_vencer' && req.dias_restantes != null ? ` (${req.dias_restantes} d)` : ''}</span>
                             <span style={{flex:1, fontSize:13, fontWeight:500}}>{nombreTipo}</span>
                             {!req.obligatorio && <span style={{fontSize:10, color:'var(--fg-muted)'}}>Opcional</span>}
                             {req.estado === 'rechazado' && req.doc?.motivo_rechazo && (
                               <span style={{fontSize:10, color:'var(--danger)', marginLeft:8}} title={req.doc.motivo_rechazo}>Motivo: {req.doc.motivo_rechazo}</span>
                             )}
-                            <button className="btn btn-sm btn-ghost" onClick={() => esActivo ? abrirPreviewDocumento(req, p) : setInlineUploadReq(req)} style={{color: esActivo ? 'var(--fg)' : 'var(--cyan)'}}>
+                            {req.doc?.estado_validacion === 'pendiente' && req.tipo?.requiere_validacion && canGestionarDocsRrhh && (<>
+                              <button className="btn btn-sm btn-primary" disabled={docValidandoId === req.doc.id} onClick={() => handleValidar(req.doc.id, 'aprobado')}>
+                                {docValidandoId === req.doc.id ? '...' : 'Aprobar'}
+                              </button>
+                              {showRechazoInput === req.doc.id ? (
+                                <div style={{display:'flex', gap:6}}>
+                                  <input className="input" style={{fontSize:12, padding:'4px 8px', minWidth:140}} placeholder="Motivo de rechazo..." value={motivoRechazo} onChange={e => setMotivoRechazo(e.target.value)} />
+                                  <button className="btn btn-sm btn-danger" onClick={() => handleValidar(req.doc.id, 'rechazado')}>Confirmar</button>
+                                  <button className="btn btn-sm btn-ghost" onClick={() => { setShowRechazoInput(null); setMotivoRechazo(''); }}>Cancelar</button>
+                                </div>
+                              ) : (
+                                <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} onClick={() => setShowRechazoInput(req.doc.id)}>Rechazar</button>
+                              )}
+                            </>)}
+                            <button className="btn btn-sm btn-ghost" onClick={() => {
+                              if (esActivo) { abrirPreviewDocumento(req, p); return; }
+                              setInlineUploadReq(req);
+                              const c = req.doc?.condiciones_laborales || {};
+                              setInlineUploadForm({
+                                ...inlineUploadFormBase,
+                                fechaEmision: req.doc?.fecha_emision || '',
+                                fechaVencimiento: req.doc?.fecha_vencimiento || '',
+                                notas: req.doc?.notas || '',
+                                cargoIdFirma: c.cargo_id || '',
+                                cargoFirma: c.cargo_nombre || c.cargo || '',
+                                remuneracionFirma: c.remuneracion_base !== undefined && c.remuneracion_base !== '' ? String(c.remuneracion_base) : '',
+                                modalidadFirma: c.modalidad || '',
+                                sedeIdFirma: c.sede_id || '',
+                                sedeFirma: c.sede_nombre || c.sede || '',
+                                areaIdFirma: c.area_id || '',
+                                areaNombreFirma: c.area_nombre || '',
+                                regimenJornadaFirma: c.regimen_jornada || '',
+                                tipoContratoFirma: c.tipo_contrato || '',
+                                contratoReferenciaId: req.doc?.contrato_referencia_id || '',
+                                descripcionCambio: c.descripcion_cambio || '',
+                                fechaVigenciaCambio: req.doc?.fecha_vigencia_cambio || '',
+                                modoSubida: req.doc ? 'nueva_version' : 'nueva_version',
+                              });
+                              setInlineUploadFile(null);
+                            }} style={{color: esActivo ? 'var(--fg)' : 'var(--cyan)'}}>
                               {esActivo ? 'Ver / Reemplazar' : 'Subir'}
                             </button>
                           </div>
@@ -17135,10 +17365,10 @@ function RRHH_Operativo() {
                             </div>
                             <button className="btn btn-sm btn-ghost" onClick={async () => {
                               try {
-                                const storagePath = inlineUploadReq.doc?.storage_path;
-                                if (storagePath && isSupabaseConfigured && isSupabaseConfigured()) {
+                                const ref = inlineUploadReq.doc?.storage_path || inlineUploadReq.doc?.archivo_url;
+                                if (ref && isSupabaseConfigured && isSupabaseConfigured()) {
                                   const svc = await import('./services/personalDocumentosService.js');
-                                  const freshUrl = await svc.renovarUrlDocumento(storagePath);
+                                  const freshUrl = await svc.renovarUrlDocumento(ref);
                                   window.open(freshUrl, '_blank');
                                 } else {
                                   window.open(visorUrl, '_blank');
@@ -17158,9 +17388,13 @@ function RRHH_Operativo() {
                             <input className="input" type="text" value={inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id} disabled />
                           </div>
                           <div className="input-group">
-                            <label>Archivo *</label>
-                            <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>setInlineUploadFile(e.target.files?.[0]||null)} required />
-                            <div className="text-muted" style={{fontSize:11, marginTop:4}}>PDF, JPG o PNG. Tamaño máximo recomendado 5MB.</div>
+                            <label>Archivo {inlineUploadForm.modoSubida !== 'corregir' ? '*' : ''}</label>
+                            <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>setInlineUploadFile(e.target.files?.[0]||null)} required={inlineUploadForm.modoSubida !== 'corregir'} />
+                            <div className="text-muted" style={{fontSize:11, marginTop:4}}>
+                              {inlineUploadForm.modoSubida === 'corregir' && inlineUploadReq?.doc
+                                ? 'Sin cambio de archivo — se mantiene el actual. Adjunta uno nuevo solo si quieres reemplazarlo.'
+                                : 'PDF, JPG o PNG. Tamaño máximo recomendado 5MB.'}
+                            </div>
                           </div>
                           <div className="grid-2" style={{gap:12}}>
                             <div className="input-group">
@@ -17170,22 +17404,55 @@ function RRHH_Operativo() {
                             {inlineUploadReq.tipo?.exige_vencimiento && !rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && (
                               <div className="input-group">
                                 <label>Fecha de vencimiento *</label>
-                                <input className="input" type="date" value={inlineUploadForm.fechaVencimiento} onChange={e=>setInlineUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} required />
+                                <input className="input" type="date" value={inlineUploadForm.fechaVencimiento} onChange={e=>setInlineUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} required={inlineUploadForm.modoSubida !== 'corregir'} />
                               </div>
                             )}
                           </div>
                           {(rrhhEsTipoContrato(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) || rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id)) && (
-                            <div className="grid-2" style={{gap:12, padding:12, background:'var(--bg-subtle)', borderRadius:8}}>
+                            <div style={{display:'grid', gap:12, padding:12, background:'var(--bg-subtle)', borderRadius:8}}>
+                              {inlineUploadReq.doc && (
+                                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                                  <label>Modo de guardado</label>
+                                  <div className="row" style={{gap:8}}>
+                                    {[['nueva_version','Subir nueva versión'],['corregir','Corregir este documento']].map(([v,l])=>(
+                                      <label key={v} className="row" style={{gap:6, cursor:'pointer'}}>
+                                        <input type="radio" name="modoSubida" value={v} checked={inlineUploadForm.modoSubida===v} onChange={()=>setInlineUploadForm(f=>({...f,modoSubida:v}))}/>
+                                        <span style={{fontSize:13}}>{l}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                  {inlineUploadForm.modoSubida==='corregir' && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>Se actualiza este documento sin crear una nueva versión. Si no adjuntas un archivo nuevo, se mantiene el actual.</div>}
+                                </div>
+                              )}
                               {rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && <>
-                                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={inlineUploadForm.contratoReferenciaId || ''} onChange={e=>setInlineUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidados.map(d=><option key={d.id} value={d.id}>{d.fecha_emision || 'Sin emisión'} · vence {d.fecha_vencimiento || 'sin vencimiento'}</option>)}</select></div>
-                                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Qué cambió</label><div className="row" style={{gap:12, flexWrap:'wrap'}}>{[['cambioCargo','Cargo'],['cambioRemuneracion','Remuneración'],['cambioModalidad','Modalidad'],['cambioSede','Sede'],['cambioOtro','Otro']].map(([k,l])=><label key={k} className="row" style={{gap:6}}><input type="checkbox" checked={Boolean(inlineUploadForm[k])} onChange={e=>setInlineUploadForm(f=>({...f,[k]:e.target.checked}))}/>{l}</label>)}</div></div>
-                                <div className="input-group"><label>Vigencia del cambio</label><input className="input" type="date" value={inlineUploadForm.fechaVigenciaCambio || ''} onChange={e=>setInlineUploadForm(f=>({...f,fechaVigenciaCambio:e.target.value}))}/></div>
+                                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={inlineUploadForm.contratoReferenciaId||''} onChange={e=>setInlineUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidados.map(d=><option key={d.id} value={d.id}>{d.fecha_emision||'Sin emisión'} · vence {d.fecha_vencimiento||'sin vencimiento'}</option>)}</select></div>
+                                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Qué cambió</label><div className="row" style={{gap:12,flexWrap:'wrap'}}>{[['cambioCargo','Cargo'],['cambioRemuneracion','Remuneración'],['cambioModalidad','Modalidad'],['cambioSede','Sede'],['cambioOtro','Otro']].map(([k,l])=><label key={k} className="row" style={{gap:6}}><input type="checkbox" checked={Boolean(inlineUploadForm[k])} onChange={e=>setInlineUploadForm(f=>({...f,[k]:e.target.checked}))}/>{l}</label>)}</div></div>
+                                <div className="input-group"><label>Vigencia del cambio</label><input className="input" type="date" value={inlineUploadForm.fechaVigenciaCambio||''} onChange={e=>setInlineUploadForm(f=>({...f,fechaVigenciaCambio:e.target.value}))}/></div>
                               </>}
-                              {(!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) || inlineUploadForm.cambioCargo) && <div className="input-group"><label>Cargo al momento de firma</label><input className="input" value={inlineUploadForm.cargoFirma || p.cargo || ''} onChange={e=>setInlineUploadForm(f=>({...f,cargoFirma:e.target.value}))}/></div>}
-                              {(!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) || inlineUploadForm.cambioRemuneracion) && <div className="input-group"><label>Remuneración base</label><input className="input" type="number" min="0" value={inlineUploadForm.remuneracionFirma || p.sueldo_base || p.monto_mensual || ''} onChange={e=>setInlineUploadForm(f=>({...f,remuneracionFirma:e.target.value}))}/></div>}
-                              {(!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) || inlineUploadForm.cambioModalidad) && <div className="input-group"><label>Modalidad</label><input className="input" value={inlineUploadForm.modalidadFirma || p.modalidad || 'Presencial'} onChange={e=>setInlineUploadForm(f=>({...f,modalidadFirma:e.target.value}))}/></div>}
-                              {(!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) || inlineUploadForm.cambioSede) && <div className="input-group"><label>Sede</label><input className="input" value={inlineUploadForm.sedeFirma || p.sede || ''} onChange={e=>setInlineUploadForm(f=>({...f,sedeFirma:e.target.value}))}/></div>}
-                              {rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && inlineUploadForm.cambioOtro && <div className="input-group" style={{gridColumn:'1/-1'}}><label>Descripción del cambio</label><input className="input" value={inlineUploadForm.descripcionCambio || ''} onChange={e=>setInlineUploadForm(f=>({...f,descripcionCambio:e.target.value}))}/></div>}
+                              {(!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) || inlineUploadForm.cambioCargo) && (
+                                <div className="input-group"><label>Cargo *</label><select className="select" value={inlineUploadForm.cargoIdFirma||''} onChange={e=>{const c=cargos.find(x=>x.id===e.target.value);setInlineUploadForm(f=>({...f,cargoIdFirma:e.target.value,cargoFirma:c?.nombre||''}));}}><option value="">{inlineUploadForm.cargoFirma?`Histórico: ${inlineUploadForm.cargoFirma}`:'Selecciona del catálogo...'}</option>{cargos.filter(c=>c.estado!=='inactivo'&&c.nombre).sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
+                              )}
+                              {(!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) || inlineUploadForm.cambioRemuneracion) && (
+                                <div className="input-group"><label>Remuneración base (S/) *</label><input className="input" type="number" min="0" placeholder="0" value={inlineUploadForm.remuneracionFirma} onChange={e=>setInlineUploadForm(f=>({...f,remuneracionFirma:e.target.value}))}/></div>
+                              )}
+                              {!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && (
+                                <div className="input-group"><label>Régimen de jornada *</label><select className="select" value={inlineUploadForm.regimenJornadaFirma||'general'} onChange={e=>setInlineUploadForm(f=>({...f,regimenJornadaFirma:e.target.value}))}>{[['general','General'],['minero_14x7','Minero 14×7'],['minero_20x10','Minero 20×10'],['minero_28x14','Minero 28×14'],['minero_2x1','Minero 2×1'],['ciclo_acumulativo','Ciclo acumulativo']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                              )}
+                              {!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && (
+                                <div className="input-group"><label>Tipo de contrato *</label><select className="select" value={inlineUploadForm.tipoContratoFirma||''} onChange={e=>setInlineUploadForm(f=>({...f,tipoContratoFirma:e.target.value}))}><option value="">Seleccionar...</option>{[['plazo_fijo','Plazo fijo'],['indefinido','Indefinido'],['honorarios','Honorarios']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                              )}
+                              {(!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) || inlineUploadForm.cambioModalidad) && (
+                                <div className="input-group"><label>Modalidad</label><select className="select" value={inlineUploadForm.modalidadFirma||''} onChange={e=>setInlineUploadForm(f=>({...f,modalidadFirma:e.target.value}))}><option value="">Seleccionar...</option>{[['presencial','Presencial'],['remoto','Remoto'],['hibrido','Híbrido'],['campo','Campo'],['mina','Mina']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                              )}
+                              {(!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) || inlineUploadForm.cambioSede) && (
+                                <div className="input-group"><label>Sede</label><select className="select" value={inlineUploadForm.sedeIdFirma||''} onChange={e=>{const s=sedes.find(x=>x.id===e.target.value);setInlineUploadForm(f=>({...f,sedeIdFirma:e.target.value,sedeFirma:s?.nombre||''}));}}><option value="">{inlineUploadForm.sedeFirma?`Histórico: ${inlineUploadForm.sedeFirma}`:'Selecciona del catálogo...'}</option>{sedes.filter(s=>s.estado!=='inactivo'&&s.nombre).map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</select></div>
+                              )}
+                              {!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && (
+                                <div className="input-group"><label>Área</label><select className="select" value={inlineUploadForm.areaIdFirma||''} onChange={e=>{const a=areasEmpresa.find(x=>x.id===e.target.value);setInlineUploadForm(f=>({...f,areaIdFirma:e.target.value,areaNombreFirma:a?.nombre||''}));}}><option value="">{inlineUploadForm.areaNombreFirma?`Histórico: ${inlineUploadForm.areaNombreFirma}`:'Selecciona del catálogo...'}</option>{areasEmpresa.filter(a=>a.estado!=='inactivo'&&a.nombre).map(a=><option key={a.id} value={a.id}>{a.nombre}</option>)}</select></div>
+                              )}
+                              {rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && inlineUploadForm.cambioOtro && (
+                                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Descripción del cambio</label><input className="input" value={inlineUploadForm.descripcionCambio||''} onChange={e=>setInlineUploadForm(f=>({...f,descripcionCambio:e.target.value}))}/></div>
+                              )}
                             </div>
                           )}
                           <div className="input-group">
@@ -17198,7 +17465,7 @@ function RRHH_Operativo() {
                           <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
                             <button type="button" className="btn btn-secondary" onClick={() => setInlineUploadReq(null)}>Cancelar</button>
                             <button type="submit" className="btn btn-primary" disabled={inlineUploading}>
-                              {inlineUploading ? 'Subiendo...' : (inlineUploadReq.doc ? 'Subir nueva versión' : 'Subir documento')}
+                              {inlineUploading ? 'Guardando...' : (inlineUploadForm.modoSubida === 'corregir' ? 'Guardar corrección' : (inlineUploadReq.doc ? 'Subir nueva versión' : 'Subir documento'))}
                             </button>
                           </div>
                         </form>
@@ -17243,17 +17510,36 @@ function RRHH_Operativo() {
                       </div>
                     </div>
                     {(docUploadEsContrato || docUploadEsAdenda) && (
-                      <div className="grid-2" style={{gap:12, padding:12, background:'var(--bg-subtle)', borderRadius:8}}>
+                      <div style={{display:'grid', gap:12, padding:12, background:'var(--bg-subtle)', borderRadius:8}}>
                         {docUploadEsAdenda && <>
-                          <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={docUploadForm.contratoReferenciaId || ''} onChange={e=>setDocUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidados.map(d=><option key={d.id} value={d.id}>{d.fecha_emision || 'Sin emisión'} · vence {d.fecha_vencimiento || 'sin vencimiento'}</option>)}</select></div>
-                          <div className="input-group" style={{gridColumn:'1/-1'}}><label>Qué cambió</label><div className="row" style={{gap:12, flexWrap:'wrap'}}>{[['cambioCargo','Cargo'],['cambioRemuneracion','Remuneración'],['cambioModalidad','Modalidad'],['cambioSede','Sede'],['cambioOtro','Otro']].map(([k,l])=><label key={k} className="row" style={{gap:6}}><input type="checkbox" checked={Boolean(docUploadForm[k])} onChange={e=>setDocUploadForm(f=>({...f,[k]:e.target.checked}))}/>{l}</label>)}</div></div>
-                          <div className="input-group"><label>Vigencia del cambio</label><input className="input" type="date" value={docUploadForm.fechaVigenciaCambio || ''} onChange={e=>setDocUploadForm(f=>({...f,fechaVigenciaCambio:e.target.value}))}/></div>
+                          <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={docUploadForm.contratoReferenciaId||''} onChange={e=>setDocUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidados.map(d=><option key={d.id} value={d.id}>{d.fecha_emision||'Sin emisión'} · vence {d.fecha_vencimiento||'sin vencimiento'}</option>)}</select></div>
+                          <div className="input-group" style={{gridColumn:'1/-1'}}><label>Qué cambió</label><div className="row" style={{gap:12,flexWrap:'wrap'}}>{[['cambioCargo','Cargo'],['cambioRemuneracion','Remuneración'],['cambioModalidad','Modalidad'],['cambioSede','Sede'],['cambioOtro','Otro']].map(([k,l])=><label key={k} className="row" style={{gap:6}}><input type="checkbox" checked={Boolean(docUploadForm[k])} onChange={e=>setDocUploadForm(f=>({...f,[k]:e.target.checked}))}/>{l}</label>)}</div></div>
+                          <div className="input-group"><label>Vigencia del cambio</label><input className="input" type="date" value={docUploadForm.fechaVigenciaCambio||''} onChange={e=>setDocUploadForm(f=>({...f,fechaVigenciaCambio:e.target.value}))}/></div>
                         </>}
-                        {(!docUploadEsAdenda || docUploadForm.cambioCargo) && <div className="input-group"><label>Cargo al momento de firma</label><input className="input" value={docUploadForm.cargoFirma || p.cargo || ''} onChange={e=>setDocUploadForm(f=>({...f,cargoFirma:e.target.value}))}/></div>}
-                        {(!docUploadEsAdenda || docUploadForm.cambioRemuneracion) && <div className="input-group"><label>Remuneración base</label><input className="input" type="number" min="0" value={docUploadForm.remuneracionFirma || p.sueldo_base || p.monto_mensual || ''} onChange={e=>setDocUploadForm(f=>({...f,remuneracionFirma:e.target.value}))}/></div>}
-                        {(!docUploadEsAdenda || docUploadForm.cambioModalidad) && <div className="input-group"><label>Modalidad</label><input className="input" value={docUploadForm.modalidadFirma || p.modalidad || 'Presencial'} onChange={e=>setDocUploadForm(f=>({...f,modalidadFirma:e.target.value}))}/></div>}
-                        {(!docUploadEsAdenda || docUploadForm.cambioSede) && <div className="input-group"><label>Sede</label><input className="input" value={docUploadForm.sedeFirma || p.sede || ''} onChange={e=>setDocUploadForm(f=>({...f,sedeFirma:e.target.value}))}/></div>}
-                        {docUploadEsAdenda && docUploadForm.cambioOtro && <div className="input-group" style={{gridColumn:'1/-1'}}><label>Descripción del cambio</label><input className="input" value={docUploadForm.descripcionCambio || ''} onChange={e=>setDocUploadForm(f=>({...f,descripcionCambio:e.target.value}))}/></div>}
+                        {(!docUploadEsAdenda || docUploadForm.cambioCargo) && (
+                          <div className="input-group"><label>Cargo *</label><select className="select" value={docUploadForm.cargoIdFirma||''} onChange={e=>{const c=cargos.find(x=>x.id===e.target.value);setDocUploadForm(f=>({...f,cargoIdFirma:e.target.value,cargoFirma:c?.nombre||''}));}}><option value="">Selecciona del catálogo...</option>{cargos.filter(c=>c.estado!=='inactivo'&&c.nombre).sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
+                        )}
+                        {(!docUploadEsAdenda || docUploadForm.cambioRemuneracion) && (
+                          <div className="input-group"><label>Remuneración base (S/) *</label><input className="input" type="number" min="0" placeholder="0" value={docUploadForm.remuneracionFirma} onChange={e=>setDocUploadForm(f=>({...f,remuneracionFirma:e.target.value}))}/></div>
+                        )}
+                        {!docUploadEsAdenda && (
+                          <div className="input-group"><label>Régimen de jornada *</label><select className="select" value={docUploadForm.regimenJornadaFirma||'general'} onChange={e=>setDocUploadForm(f=>({...f,regimenJornadaFirma:e.target.value}))}>{[['general','General'],['minero_14x7','Minero 14×7'],['minero_20x10','Minero 20×10'],['minero_28x14','Minero 28×14'],['minero_2x1','Minero 2×1'],['ciclo_acumulativo','Ciclo acumulativo']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                        )}
+                        {!docUploadEsAdenda && (
+                          <div className="input-group"><label>Tipo de contrato *</label><select className="select" value={docUploadForm.tipoContratoFirma||''} onChange={e=>setDocUploadForm(f=>({...f,tipoContratoFirma:e.target.value}))}><option value="">Seleccionar...</option>{[['plazo_fijo','Plazo fijo'],['indefinido','Indefinido'],['honorarios','Honorarios']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                        )}
+                        {(!docUploadEsAdenda || docUploadForm.cambioModalidad) && (
+                          <div className="input-group"><label>Modalidad</label><select className="select" value={docUploadForm.modalidadFirma||''} onChange={e=>setDocUploadForm(f=>({...f,modalidadFirma:e.target.value}))}><option value="">Seleccionar...</option>{[['presencial','Presencial'],['remoto','Remoto'],['hibrido','Híbrido'],['campo','Campo'],['mina','Mina']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                        )}
+                        {(!docUploadEsAdenda || docUploadForm.cambioSede) && (
+                          <div className="input-group"><label>Sede</label><select className="select" value={docUploadForm.sedeIdFirma||''} onChange={e=>{const s=sedes.find(x=>x.id===e.target.value);setDocUploadForm(f=>({...f,sedeIdFirma:e.target.value,sedeFirma:s?.nombre||''}));}}><option value="">Selecciona del catálogo...</option>{sedes.filter(s=>s.estado!=='inactivo'&&s.nombre).map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</select></div>
+                        )}
+                        {!docUploadEsAdenda && (
+                          <div className="input-group"><label>Área</label><select className="select" value={docUploadForm.areaIdFirma||''} onChange={e=>{const a=areasEmpresa.find(x=>x.id===e.target.value);setDocUploadForm(f=>({...f,areaIdFirma:e.target.value,areaNombreFirma:a?.nombre||''}));}}><option value="">Selecciona del catálogo...</option>{areasEmpresa.filter(a=>a.estado!=='inactivo'&&a.nombre).map(a=><option key={a.id} value={a.id}>{a.nombre}</option>)}</select></div>
+                        )}
+                        {docUploadEsAdenda && docUploadForm.cambioOtro && (
+                          <div className="input-group" style={{gridColumn:'1/-1'}}><label>Descripción del cambio</label><input className="input" value={docUploadForm.descripcionCambio||''} onChange={e=>setDocUploadForm(f=>({...f,descripcionCambio:e.target.value}))}/></div>
+                        )}
                       </div>
                     )}
                     <div className="input-group">
@@ -17267,15 +17553,13 @@ function RRHH_Operativo() {
                 </details>
               </div>
 
-                {/* Lista de documentos cargados */}
-                <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8}}>Documentos cargados</div>
-                {docsPersona.length === 0 ? (
-                  <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'24px 0', fontSize:13}}>
-                    No hay documentos registrados. Sube el primer documento arriba.
-                  </div>
-                ) : (
-                  <div style={{display:'flex', flexDirection:'column', gap:10}}>
-                    {docsPersona.map(doc => {
+                {(() => {
+                  const docsAdicionales = docsPersona.filter(doc => !docReqPorTipo[doc.tipo_documento_id || doc.tipo_doc]);
+                  if (docsAdicionales.length === 0) return null;
+                  return (<>
+                    <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8}}>Documentos adicionales</div>
+                    <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                    {docsAdicionales.map(doc => {
                       const tipoInfo = tiposDocumento.find(t => t.id === (doc.tipo_documento_id || doc.tipo_doc)) || personalDocumentosService.TIPOS_DOC_OPERATIVO.find(t => t.key === doc.tipo_doc);
                       const reqDoc = docReqPorTipo[doc.tipo_documento_id || doc.tipo_doc] || { tipo_documento_id: doc.tipo_documento_id || doc.tipo_doc, tipo: tipoInfo, doc, estado: doc.estado_validacion === 'rechazado' ? 'rechazado' : 'vigente', fecha_vencimiento: doc.fecha_vencimiento };
                       const estadoMotor = reqDoc?.estado;
@@ -17327,8 +17611,9 @@ function RRHH_Operativo() {
                         </div>
                       );
                     })}
-                  </div>
-                )}
+                    </div>
+                  </>);
+                })()}
               </div>
             );
           })()}
@@ -18561,7 +18846,8 @@ export function SolicitudesRrhh() {
   const [solicitudes, setSolicitudes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState({ dias_vacaciones_anio: 30, max_dias_permiso_goce: 3, dias_licencia_empresa: 20, pct_max_equipo_ausente: 30 });
-  const [saldoVac, setSaldoVac] = useState({ disponibles: 30, usados: 0, saldo: 30 });
+  const [mesCal, setMesCal] = useState(() => new Date().getMonth());
+  const [anioCal, setAnioCal] = useState(() => new Date().getFullYear());
 
   // Filtros (tab Todas)
   const [filtroTipo, setFiltroTipo] = useState('');
@@ -18592,7 +18878,11 @@ export function SolicitudesRrhh() {
 
   const personalActual = useMemo(() => {
     const uid = authUser?.id || authUser?.user_id;
-    return todosPersonal.find(p => p.user_id === uid || p.id === uid) || todosPersonal[0];
+    const email = (authUser?.email || '').toLowerCase().trim();
+    return todosPersonal.find(p =>
+      (uid && (p.auth_user_id === uid || p.user_id === uid || p.id === uid)) ||
+      (email && (p.email || '').toLowerCase().trim() === email)
+    ) || todosPersonal[0];
   }, [authUser, todosPersonal]);
 
   const diasHabiles = useMemo(() => {
@@ -18620,12 +18910,6 @@ export function SolicitudesRrhh() {
     }).catch(err => addNotificacion('Error cargando solicitudes: ' + err.message))
       .finally(() => setLoading(false));
   }, [empresa?.id]);
-
-  useEffect(() => {
-    if (!empresa?.id || !personalActual?.id) return;
-    solicitudesRrhhService.calcularSaldoVacaciones(empresa.id, personalActual.id)
-      .then(setSaldoVac).catch(() => {});
-  }, [empresa?.id, personalActual?.id, solicitudes]);
 
   const abrirHistorial = async (solId) => {
     setHistorialSolId(solId);
@@ -18725,40 +19009,73 @@ export function SolicitudesRrhh() {
     solicitudes.filter(s => s.personal_id === personalActual?.id)
   , [solicitudes, personalActual]);
 
-  const pendientesAprobacion = useMemo(() => {
-    const misSubordinados = todosPersonal
-      .filter(p => p.supervisor_id === personalActual?.id || p.jefe_user_id === personalActual?.user_id)
-      .map(p => p.id);
-    return solicitudes.filter(s => s.estado === 'enviada' && misSubordinados.includes(s.personal_id));
-  }, [solicitudes, personalActual, todosPersonal]);
+  const saldoVac = useMemo(() => {
+    if (!personalActual) return { disponibles: 0, usados: 0, saldo: 0 };
+    const diasAnio = config.dias_vacaciones_anio ?? 30;
+    const fechaIngreso = personalActual.fecha_ingreso || null;
+    let devengados = diasAnio;
+    if (fechaIngreso) {
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+      const ingreso = new Date(`${fechaIngreso}T00:00:00`);
+      if (ingreso <= hoy) {
+        const diasTranscurridos = (hoy.getTime() - ingreso.getTime()) / 86400000;
+        devengados = Math.round((diasTranscurridos / 365 * diasAnio) * 10) / 10;
+      }
+    }
+    const usados = misSolicitudes
+      .filter(s => s.tipo === 'vacaciones' && ['confirmada_rrhh', 'activa'].includes(s.estado))
+      .reduce((acc, s) => acc + (s.dias_habiles || 0), 0);
+    const saldo = Math.max(0, Math.round((devengados - usados) * 10) / 10);
+    return { disponibles: devengados, usados, saldo };
+  }, [personalActual, misSolicitudes, config]);
 
-  const todasFiltradas = useMemo(() => solicitudes.filter(s => {
-    if (filtroTipo && s.tipo !== filtroTipo) return false;
-    if (filtroEstado && s.estado !== filtroEstado) return false;
-    if (filtroPersonal && !s.personal_nombre.toLowerCase().includes(filtroPersonal.toLowerCase())) return false;
-    return true;
-  }), [solicitudes, filtroTipo, filtroEstado, filtroPersonal]);
+  const subordinadosIds = useMemo(() => {
+    const uid = personalActual?.id;
+    const userUid = personalActual?.user_id;
+    return todosPersonal
+      .filter(p => p.supervisor_id === uid || p.jefe_user_id === userUid)
+      .map(p => p.id);
+  }, [personalActual, todosPersonal]);
+
+  const pendientesAprobacion = useMemo(() =>
+    solicitudes.filter(s => s.estado === 'enviada' && subordinadosIds.includes(s.personal_id))
+  , [solicitudes, subordinadosIds]);
+
+  const puedeVerTodas = canAdmin || subordinadosIds.length > 0;
+
+  const todasFiltradas = useMemo(() => {
+    const base = canAdmin
+      ? solicitudes
+      : solicitudes.filter(s => subordinadosIds.includes(s.personal_id));
+    return base.filter(s => {
+      if (filtroTipo && s.tipo !== filtroTipo) return false;
+      if (filtroEstado && s.estado !== filtroEstado) return false;
+      if (filtroPersonal && !s.personal_nombre.toLowerCase().includes(filtroPersonal.toLowerCase())) return false;
+      return true;
+    });
+  }, [solicitudes, filtroTipo, filtroEstado, filtroPersonal, canAdmin, subordinadosIds]);
 
   // Calendario de ausencias: agrupar días por colaborador
-  const hoy = new Date();
-  const mesActual = hoy.getMonth();
-  const anioActual = hoy.getFullYear();
-  const diasDelMes = new Date(anioActual, mesActual + 1, 0).getDate();
+  const diasDelMes = new Date(anioCal, mesCal + 1, 0).getDate();
   const ausenciasActivas = useMemo(() =>
     solicitudes.filter(s => ['aprobada_jefe', 'confirmada_rrhh', 'activa'].includes(s.estado))
   , [solicitudes]);
 
   function tieneDiaAusente(sol, dia) {
-    const d = new Date(anioActual, mesActual, dia);
+    const d = new Date(anioCal, mesCal, dia);
     const ini = new Date(sol.fecha_inicio + 'T00:00:00');
     const fin = new Date(sol.fecha_fin + 'T00:00:00');
     return d >= ini && d <= fin;
   }
 
+  const calMesPrimero = `${anioCal}-${String(mesCal + 1).padStart(2, '0')}-01`;
+  const calMesUltimo = new Date(anioCal, mesCal + 1, 0).toISOString().slice(0, 10);
+
   const colaboradoresConAusencia = useMemo(() => {
-    const ids = [...new Set(ausenciasActivas.map(s => s.personal_id))];
-    return ids.map(id => ({ id, nombre: ausenciasActivas.find(s => s.personal_id === id)?.personal_nombre || id }));
-  }, [ausenciasActivas]);
+    const enMes = ausenciasActivas.filter(s => s.fecha_inicio <= calMesUltimo && s.fecha_fin >= calMesPrimero);
+    const ids = [...new Set(enMes.map(s => s.personal_id))];
+    return ids.map(id => ({ id, nombre: enMes.find(s => s.personal_id === id)?.personal_nombre || id }));
+  }, [ausenciasActivas, calMesPrimero, calMesUltimo]);
 
   const accionSol = solicitudes.find(s => s.id === accionSolId);
   const historialSol = solicitudes.find(s => s.id === historialSolId);
@@ -18953,8 +19270,23 @@ export function SolicitudesRrhh() {
     licencia_maternidad: '#c084fc', licencia_paternidad: '#818cf8',
     compensacion_horas: 'var(--fg-muted)',
   };
+  const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const navMes = (delta) => {
+    const d = new Date(anioCal, mesCal + delta, 1);
+    setMesCal(d.getMonth());
+    setAnioCal(d.getFullYear());
+  };
   const tabCalendario = (
     <div style={{overflowX:'auto'}}>
+      <div className="row" style={{alignItems:'center', gap:12, marginBottom:16}}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => navMes(-1)}>‹</button>
+        <div style={{fontWeight:700, fontSize:15, minWidth:140, textAlign:'center'}}>{MESES_ES[mesCal]} {anioCal}</div>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => navMes(1)}>›</button>
+        <button type="button" className="btn btn-ghost btn-sm" style={{marginLeft:4, fontSize:12}}
+          onClick={() => { setMesCal(new Date().getMonth()); setAnioCal(new Date().getFullYear()); }}>
+          Hoy
+        </button>
+      </div>
       <div className="row" style={{gap:12, flexWrap:'wrap', marginBottom:12}}>
         {Object.entries(SOL_TIPO_LABELS).map(([k, v]) => (
           <div key={k} className="row" style={{gap:6, alignItems:'center', fontSize:12}}>
@@ -18964,7 +19296,7 @@ export function SolicitudesRrhh() {
         ))}
       </div>
       {colaboradoresConAusencia.length === 0
-        ? <div className="text-muted" style={{padding:'32px 0', textAlign:'center'}}>No hay ausencias aprobadas este mes.</div>
+        ? <div className="text-muted" style={{padding:'32px 0', textAlign:'center'}}>No hay ausencias aprobadas en {MESES_ES[mesCal]} {anioCal}.</div>
         : (
           <table style={{borderCollapse:'collapse', fontSize:12, minWidth:700}}>
             <thead>
@@ -19009,6 +19341,9 @@ export function SolicitudesRrhh() {
   const tiposOrdenados = Object.entries(SOL_TIPO_LABELS);
   const reqDoc = solicitudesRrhhService.requiereDocumento(form.tipo);
   const excedeSaldo = form.tipo === 'vacaciones' && diasHabiles > saldoVac.saldo && diasHabiles > 0;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const tiposConGoce = ['vacaciones','permiso_con_goce','comision_trabajo','licencia_maternidad','licencia_paternidad'];
+  const fechaRetroactiva = form.fecha_inicio && form.fecha_inicio < todayStr && tiposConGoce.includes(form.tipo);
 
   const panelNuevaContent = panelNueva ? (
     <>
@@ -19059,6 +19394,14 @@ export function SolicitudesRrhh() {
               )}
             </div>
 
+            <div className="input-group" style={{marginBottom:14}}>
+              <label>Unidad</label>
+              <select className="select" value={form.unidad || 'dias'} onChange={e => setForm(f => ({...f, unidad: e.target.value}))}>
+                <option value="dias">Días</option>
+                <option value="horas">Horas</option>
+              </select>
+            </div>
+
             <div className="grid-2" style={{gap:12, marginBottom:14}}>
               <div className="input-group">
                 <label>Fecha inicio *</label>
@@ -19071,26 +19414,19 @@ export function SolicitudesRrhh() {
                   onChange={e => setForm(f => ({...f, fecha_fin: e.target.value}))} required/>
               </div>
             </div>
+
+            {fechaRetroactiva && (
+              <div style={{marginBottom:8, padding:'6px 10px', background:'rgba(251,191,36,0.12)', borderLeft:'3px solid var(--amber)', borderRadius:4, fontSize:12, color:'var(--amber)'}}>
+                La fecha de inicio es anterior a hoy. Solo continúa si se trata de una retroactividad autorizada.
+              </div>
+            )}
             <div style={{marginBottom:14, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:8, fontSize:13}}>
-              Días hábiles: <strong>{diasHabiles}</strong>
-              {excedeSaldo && <span style={{color:'var(--red)', marginLeft:8}}>— Supera tu saldo ({saldoVac.saldo} días disponibles)</span>}
+              {form.unidad === 'horas'
+                ? <span>Período seleccionado · ingresa las horas abajo</span>
+                : <span>Días hábiles: <strong>{diasHabiles}</strong>{excedeSaldo && <span style={{color:'var(--red)', marginLeft:8}}>— Supera tu saldo ({saldoVac.saldo} días disponibles)</span>}</span>
+              }
             </div>
 
-            {/* Fecha de retorno y unidad */}
-            <div className="grid-2" style={{gap:12, marginBottom:14}}>
-              <div className="input-group">
-                <label>Fecha de retorno <span className="text-muted">(opcional)</span></label>
-                <input className="input" type="date" value={form.fecha_retorno || ''}
-                  onChange={e => setForm(f => ({...f, fecha_retorno: e.target.value}))}/>
-              </div>
-              <div className="input-group">
-                <label>Unidad</label>
-                <select className="select" value={form.unidad || 'dias'} onChange={e => setForm(f => ({...f, unidad: e.target.value}))}>
-                  <option value="dias">Días</option>
-                  <option value="horas">Horas</option>
-                </select>
-              </div>
-            </div>
             {form.unidad === 'horas' && (
               <div className="input-group" style={{marginBottom:14}}>
                 <label>Cantidad de horas *</label>
@@ -19098,6 +19434,12 @@ export function SolicitudesRrhh() {
                   onChange={e => setForm(f => ({...f, cantidad_horas: e.target.value}))}/>
               </div>
             )}
+
+            <div className="input-group" style={{marginBottom:14}}>
+              <label>Fecha de retorno <span className="text-muted">(opcional)</span></label>
+              <input className="input" type="date" value={form.fecha_retorno || ''}
+                onChange={e => setForm(f => ({...f, fecha_retorno: e.target.value}))}/>
+            </div>
 
             <div className="input-group" style={{marginBottom:14}}>
               <label>Motivo *</label>
@@ -19189,6 +19531,11 @@ export function SolicitudesRrhh() {
             <div className="text-muted">{accionSol?.fecha_inicio} — {accionSol?.fecha_fin}</div>
             <div style={{marginTop:6}}>{accionSol?.motivo}</div>
           </div>
+          {accionTipo === 'anular' && (
+            <div style={{marginBottom:14, padding:'10px 12px', background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.25)', borderRadius:8, fontSize:13, color:'var(--red)'}}>
+              ¿Estás seguro de que quieres anular esta solicitud? Esta acción no se puede deshacer.
+            </div>
+          )}
           <div className="input-group" style={{marginBottom:14}}>
             <label>{esRechazo ? 'Motivo / comentario *' : 'Comentario (opcional)'}</label>
             <textarea className="input" rows={3} value={accionComentario}
@@ -19239,7 +19586,7 @@ export function SolicitudesRrhh() {
             <span className="badge badge-orange" style={{marginLeft:6, fontSize:11}}>{pendientesAprobacion.length}</span>
           </div>
         )}
-        {canAdmin && <div className={'tab ' + (tab === 'todas' ? 'active' : '')} onClick={() => setTab('todas')}>Todas las solicitudes</div>}
+        {puedeVerTodas && <div className={'tab ' + (tab === 'todas' ? 'active' : '')} onClick={() => setTab('todas')}>Todas las solicitudes</div>}
         <div className={'tab ' + (tab === 'calendario' ? 'active' : '')} onClick={() => setTab('calendario')}>Calendario de ausencias</div>
       </div>
 

@@ -138,13 +138,77 @@ export async function validarDocumento(documentoId, decision, motivoRechazo = nu
   return normalizar(data);
 }
 
+// ── Corrección de metadatos sin nueva versión ─────────────────────────────────
+
+export async function corregirDocumento({
+  documentoId,
+  file,
+  fechaEmision,
+  fechaVencimiento,
+  condicionesLaborales,
+  notas,
+  empresaId,
+  personalId,
+  personalTipo,
+  tipoDoc,
+}) {
+  const supabase = await getSupabaseClient();
+
+  let archivoUrl = null;
+  let nombreArchivo = null;
+
+  if (file) {
+    const ext = file.name.split('.').pop();
+    const storagePath = `${empresaId}/personal/${personalTipo}/${personalId}/${tipoDoc}_${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET)
+      .upload(storagePath, file, { upsert: false, contentType: file.type });
+    if (uploadError) throw uploadError;
+    const { data: urlData, error: urlError } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(storagePath, SIGNED_URL_TTL);
+    if (urlError) throw urlError;
+    archivoUrl = urlData.signedUrl;
+    nombreArchivo = file.name;
+  }
+
+  const { data, error } = await supabase.rpc('corregir_documento_personal', {
+    p_documento_id:          documentoId,
+    p_fecha_emision:         fechaEmision || null,
+    p_fecha_vencimiento:     fechaVencimiento || null,
+    p_condiciones_laborales: condicionesLaborales || null,
+    p_notas:                 notas || null,
+    p_archivo_url:           archivoUrl,
+    p_nombre_archivo:        nombreArchivo,
+  });
+  if (error) throw error;
+  return normalizar(data);
+}
+
 // ── URL firmada renovada ──────────────────────────────────────────────────────
 
-export async function renovarUrlDocumento(storagePath) {
+// Extrae el storage path desde una URL firmada de Supabase.
+// Formato: .../storage/v1/object/sign/<bucket>/<path>?token=...
+function pathFromSignedUrl(url) {
+  if (!url) return null;
+  try {
+    const { pathname } = new URL(url);
+    const prefix = `/storage/v1/object/sign/${BUCKET}/`;
+    if (pathname.startsWith(prefix)) return decodeURIComponent(pathname.slice(prefix.length));
+  } catch {}
+  return null;
+}
+
+// Acepta un storage path directo o una URL firmada expirada.
+export async function renovarUrlDocumento(storagePathOrUrl) {
+  const path = (storagePathOrUrl && storagePathOrUrl.startsWith('http'))
+    ? pathFromSignedUrl(storagePathOrUrl)
+    : storagePathOrUrl;
+  if (!path) throw new Error('No se pudo determinar el path del documento');
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase.storage
     .from(BUCKET)
-    .createSignedUrl(storagePath, SIGNED_URL_TTL);
+    .createSignedUrl(path, SIGNED_URL_TTL);
   if (error) throw error;
   return data.signedUrl;
 }

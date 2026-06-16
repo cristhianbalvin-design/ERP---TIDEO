@@ -32,7 +32,7 @@ export const tiposDocumentoService = {
     const payload = {
       id: tipo.id || makeId('tdoc'),
       empresa_id: empresaId,
-      ...pick(tipo, ['codigo', 'nombre', 'ambito', 'exige_vencimiento', 'dias_alerta', 'es_habilitante', 'requiere_validacion', 'estado', 'orden']),
+      ...pick(tipo, ['codigo', 'nombre', 'ambito', 'exige_vencimiento', 'dias_alerta', 'es_habilitante', 'requiere_validacion', 'estado', 'orden', 'captura_snapshot_laboral', 'documento_padre_tipo_id']),
     };
     const { data, error } = await supabase
       .from('tipos_documento_empresa')
@@ -47,7 +47,7 @@ export const tiposDocumentoService = {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('tipos_documento_empresa')
-      .update(pick(payload, ['codigo', 'nombre', 'ambito', 'exige_vencimiento', 'dias_alerta', 'es_habilitante', 'requiere_validacion', 'estado', 'orden']))
+      .update(pick(payload, ['codigo', 'nombre', 'ambito', 'exige_vencimiento', 'dias_alerta', 'es_habilitante', 'requiere_validacion', 'estado', 'orden', 'captura_snapshot_laboral', 'documento_padre_tipo_id']))
       .eq('id', id)
       .select()
       .single();

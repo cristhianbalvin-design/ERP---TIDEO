@@ -30,7 +30,7 @@ export function resolverFichaEmpleadoLocal({ authUser, usuarios = [], personalAd
 
 const contratoEstado = (ficha = {}, docs = []) => {
   const contratos = docs
-    .filter(d => d.tipo_doc === 'contrato' || d.tipo_doc_codigo === 'contrato' || d.tipo_documento_codigo === 'contrato')
+    .slice()
     .sort((a, b) => String(b.fecha_vencimiento || '').localeCompare(String(a.fecha_vencimiento || '')));
   const vigente = contratos.find(d => d.activo !== false) || contratos[0] || null;
   const fechaFin = vigente?.fecha_vencimiento || null;
@@ -86,6 +86,7 @@ export function construirAutoservicioLocal({
   portalFirmaRegistros = [],
   periodo = new Date().toISOString().slice(0, 7),
   configAusencias = {},
+  tiposDocumentoContratoIds = [],
 }) {
   const ficha = resolverFichaEmpleadoLocal({ authUser, usuarios, personalAdmin, personalOperativo });
   if (!ficha) {
@@ -94,8 +95,11 @@ export function construirAutoservicioLocal({
   const personalTipo = ficha.personal_tipo;
   const personalId = ficha.id;
   const docs = (personalDocumentos || []).filter(d => d.personal_id === personalId && (!d.personal_tipo || d.personal_tipo === personalTipo));
-  const contratos = docs.filter(d => d.tipo_doc === 'contrato' || d.tipo_documento_codigo === 'contrato');
-  const documentos = docs.filter(d => d.tipo_doc !== 'contrato' && d.tipo_documento_codigo !== 'contrato');
+  const esContratoDoc = d =>
+    d.tipo_doc === 'contrato' || d.tipo_doc_codigo === 'contrato' || d.tipo_documento_codigo === 'contrato' ||
+    (tiposDocumentoContratoIds.length > 0 && (tiposDocumentoContratoIds.includes(d.tipo_doc) || tiposDocumentoContratoIds.includes(d.tipo_documento_id)));
+  const contratos = docs.filter(esContratoDoc);
+  const documentos = docs.filter(d => !esContratoDoc(d));
   const { desde, hasta } = monthRange(periodo);
   const asistencia = (registrosAsistencia || []).filter(r =>
     String(r.trabajador_id || r.personal_id) === String(personalId) &&
@@ -188,7 +192,7 @@ export const autoservicioEmpleadoService = {
     const ficha = await this.resolverMiFicha();
     if (!ficha?.personal_id) return { ficha: null };
     const { desde, hasta } = monthRange(periodo);
-    const [docsRes, solRes, asisRes, periodosRes, prestamosRes, amonRes, notRes, heRes, configAusRes] = await Promise.all([
+    const [docsRes, solRes, asisRes, periodosRes, prestamosRes, amonRes, notRes, heRes, configAusRes, tiposContratoRes] = await Promise.all([
       supabase.from('personal_documentos').select('*').eq('personal_id', ficha.personal_id).eq('empresa_id', ficha.empresa_id).order('created_at', { ascending: false }),
       supabase.from('solicitudes_rrhh').select('*').eq('personal_id', ficha.personal_id).eq('empresa_id', ficha.empresa_id).order('created_at', { ascending: false }),
       supabase.from('registros_asistencia').select('*').eq('trabajador_id', ficha.personal_id).eq('empresa_id', ficha.empresa_id).gte('fecha', desde).lte('fecha', hasta).order('fecha', { ascending: false }),
@@ -198,6 +202,7 @@ export const autoservicioEmpleadoService = {
       supabase.from('notificaciones_sistema').select('*').eq('empresa_id', ficha.empresa_id).order('created_at', { ascending: false }).limit(30),
       supabase.from('horas_extra_compensacion').select('*').eq('empresa_id', ficha.empresa_id).eq('personal_id', ficha.personal_id),
       supabase.from('rrhh_config_ausencias').select('dias_vacaciones_anio').eq('empresa_id', ficha.empresa_id).maybeSingle(),
+      supabase.from('tipos_documento_empresa').select('id').eq('empresa_id', ficha.empresa_id).eq('captura_snapshot_laboral', true),
     ]);
     const auth = await supabase.auth.getUser();
     return construirAutoservicioLocal({
@@ -214,6 +219,7 @@ export const autoservicioEmpleadoService = {
       notificaciones: notRes.data || [],
       periodo,
       configAusencias: configAusRes.data || {},
+      tiposDocumentoContratoIds: (tiposContratoRes.data || []).map(t => t.id),
     });
   },
 

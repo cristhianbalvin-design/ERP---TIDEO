@@ -43,7 +43,7 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
     { k: 'supervisor', l: 'Supervisor', icon: I.shield },
     { k: 'gerencia', l: 'Gerencia', icon: I.trend },
     { k: 'asistencia', l: 'Asistencia', icon: I.clock, requiereAsistencia: true },
-    { k: 'mi_espacio', l: 'Mi espacio', icon: I.userCheck },
+    { k: 'mi_espacio', l: 'Mi portal', icon: I.userCheck },
     { k: 'solicitudes', l: 'Solicitudes', icon: I.userCheck },
     { k: 'administrativo', l: 'Tareo', icon: I.users },
   ].filter(p => modulosUsuario.includes(p.k) && (!p.requiereAsistencia || puedeVerAsistencia)), [modulosUsuarioKey, puedeVerAsistencia]);
@@ -228,7 +228,6 @@ function getUsuarioCampoModulos(authUser, usuarios = []) {
   if (perfil.includes('supervisor')) return ['supervisor'];
   if (perfil.includes('gerencia')) return ['gerencia'];
   if (perfil.includes('admin')) return ['administrativo', 'solicitudes'];
-  if (perfil.includes('empleado')) return ['mi_espacio', 'solicitudes'];
   return ['tecnico'];
 }
 
@@ -3118,14 +3117,17 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
     amonestacionesPersonal, empresaConfig = {}, evaluacionPlantillas = [], evaluacionEvaluaciones = [],
     portalDatosSolicitudes = [], portalConstanciasTrabajo = [], portalBoletaAcuses = [], portalBoletaVisualizaciones = [], portalFirmaRegistros = [],
     crearConstanciaPortalCtx, registrarVisualizacionBoletaPortalCtx,
+    tiposDocumento = [],
   } = app;
+  const tiposDocumentoContratoIds = useMemo(() => (tiposDocumento || []).filter(t => t.captura_snapshot_laboral).map(t => t.id), [tiposDocumento]);
   const data = useMemo(() => construirAutoservicioLocal({
     authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos,
     solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina,
     amonestaciones: amonestacionesPersonal, notificaciones: app.notificaciones,
     evaluacionPlantillas, evaluacionEvaluaciones, portalDatosSolicitudes, portalConstanciasTrabajo,
     portalBoletaAcuses, portalBoletaVisualizaciones, portalFirmaRegistros,
-  }), [authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos, solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina, amonestacionesPersonal, app.notificaciones, evaluacionPlantillas, evaluacionEvaluaciones, portalDatosSolicitudes, portalConstanciasTrabajo, portalBoletaAcuses, portalBoletaVisualizaciones, portalFirmaRegistros]);
+    tiposDocumentoContratoIds,
+  }), [authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos, solicitudesRRHH, registrosAsistencia, periodosNomina, trabajadoresDatosNomina, amonestacionesPersonal, app.notificaciones, evaluacionPlantillas, evaluacionEvaluaciones, portalDatosSolicitudes, portalConstanciasTrabajo, portalBoletaAcuses, portalBoletaVisualizaciones, portalFirmaRegistros, tiposDocumentoContratoIds]);
   const ficha = data.ficha;
   const marcarActivo = Boolean(empresaConfig?.habilitar_marcacion_mobile_autoservicio);
   const contrato = data.resumen?.contrato;
@@ -3152,7 +3154,7 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
   return (
     <div style={{ padding: '16px 14px', overflowY: 'auto', height: '100%' }}>
       <div className="mobile-header" style={{ padding: 0, marginBottom: 14 }}>
-        <div><div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Mi espacio</div><div className="font-display" style={{ fontWeight: 800, fontSize: 17 }}>{ficha.nombre}</div></div>
+        <div><div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Mi portal</div><div className="font-display" style={{ fontWeight: 800, fontSize: 17 }}>{ficha.nombre}</div></div>
         <div className="avatar" style={{ width: 34, height: 34 }}>{inicialesDe(ficha.nombre)}</div>
       </div>
 
@@ -3284,7 +3286,7 @@ function SolicitudesMovilView({ screen, setScreen }) {
 
   useEffect(() => {
     if (!empresa?.id || !personalActual?.id) return;
-    solicitudesRrhhService.calcularSaldoVacaciones(empresa.id, personalActual.id)
+    solicitudesRrhhService.calcularSaldoVacaciones(empresa.id, personalActual.id, null, personalActual?.fecha_ingreso)
       .then(setSaldoVac).catch(() => {});
   }, [empresa?.id, personalActual?.id, solicitudes]);
 

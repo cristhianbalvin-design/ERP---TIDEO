@@ -311,17 +311,24 @@ export async function cargarConfigAusencias(empresaId) {
   return data || { dias_vacaciones_anio: 30, max_dias_permiso_goce: 3, dias_licencia_empresa: 20, pct_max_equipo_ausente: 30 };
 }
 
-export async function calcularSaldoVacaciones(empresaId, personalId, anio) {
-  const anioActual = anio || new Date().getFullYear();
+export async function calcularSaldoVacaciones(empresaId, personalId, anio, fechaIngreso) {
+  function calcDevengados(diasAnio, fi) {
+    if (!fi) return diasAnio;
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const ingreso = new Date(`${fi}T00:00:00`);
+    if (ingreso > hoy) return 0;
+    const dias = (hoy.getTime() - ingreso.getTime()) / 86400000;
+    return Math.round((dias / 365 * diasAnio) * 10) / 10;
+  }
   if (getDataMode() !== 'supabase') {
     const config = { ...mockConfig };
     const usados = mockSolicitudes
       .filter(s => s.empresa_id === empresaId && s.personal_id === personalId
         && s.tipo === 'vacaciones'
-        && ['aprobada_jefe', 'confirmada_rrhh', 'activa'].includes(s.estado)
-        && s.fecha_inicio?.startsWith(String(anioActual)))
+        && ['confirmada_rrhh', 'activa'].includes(s.estado))
       .reduce((acc, s) => acc + (s.dias_habiles || 0), 0);
-    return { disponibles: config.dias_vacaciones_anio, usados, saldo: config.dias_vacaciones_anio - usados };
+    const disponibles = calcDevengados(config.dias_vacaciones_anio, fechaIngreso);
+    return { disponibles, usados, saldo: Math.max(0, Math.round((disponibles - usados) * 10) / 10) };
   }
   const supabase = await getSupabaseClient();
   const [configRes, usadosRes] = await Promise.all([
@@ -331,15 +338,14 @@ export async function calcularSaldoVacaciones(empresaId, personalId, anio) {
       .eq('empresa_id', empresaId)
       .eq('personal_id', personalId)
       .eq('tipo', 'vacaciones')
-      .in('estado', ['aprobada_jefe', 'confirmada_rrhh', 'activa'])
-      .gte('fecha_inicio', `${anioActual}-01-01`)
-      .lte('fecha_inicio', `${anioActual}-12-31`),
+      .in('estado', ['confirmada_rrhh', 'activa']),
   ]);
   if (configRes.error) throw configRes.error;
   if (usadosRes.error) throw usadosRes.error;
-  const disponibles = configRes.data?.dias_vacaciones_anio ?? 30;
+  const diasAnio = configRes.data?.dias_vacaciones_anio ?? 30;
+  const disponibles = calcDevengados(diasAnio, fechaIngreso);
   const usados = (usadosRes.data || []).reduce((acc, r) => acc + (r.dias_habiles || 0), 0);
-  return { disponibles, usados, saldo: disponibles - usados };
+  return { disponibles, usados, saldo: Math.max(0, Math.round((disponibles - usados) * 10) / 10) };
 }
 
 export async function cargarHistorial(solicitudId) {

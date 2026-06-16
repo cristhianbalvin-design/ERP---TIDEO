@@ -4077,7 +4077,7 @@ export function AppProvider({ children }) {
       if (campo && campoModulos.length > 0) {
         try {
           const mods = [...new Set(campoModulos.filter(Boolean))];
-          const perfilLegacy = ({ tecnico: 'Tecnico', vendedor: 'Vendedor', compras: 'Compras', supervisor: 'Supervisor', gerencia: 'Gerencia', asistencia: 'Asistencia', logistica: 'Logistica', mi_espacio: 'Empleado', empleado: 'Empleado' }[mods[0]] || 'Tecnico');
+          const perfilLegacy = ({ tecnico: 'Tecnico', vendedor: 'Vendedor', compras: 'Compras', supervisor: 'Supervisor', gerencia: 'Gerencia', asistencia: 'Asistencia', logistica: 'Logistica', mi_espacio: 'Empleado' }[mods[0]] || 'Tecnico');
           const saved = await usuariosService.actualizarUsuarioAcceso({
             user_id: uid,
             empresa_id: empresa.id,
@@ -4154,7 +4154,6 @@ export function AppProvider({ children }) {
       if (value.includes('supervisor')) return ['supervisor'];
       if (value.includes('gerencia')) return ['gerencia'];
       if (value.includes('admin')) return ['administrativo', 'solicitudes'];
-      if (value.includes('empleado')) return ['mi_espacio', 'solicitudes'];
       return ['tecnico'];
     };
     const campoModulos = datos.campo ? normalizarCampoModulos(datos.campoModulos || datos.campo_modulos, datos.campoPerfil || datos.perfil_campo) : [];
@@ -8039,30 +8038,65 @@ export function AppProvider({ children }) {
   const aplicarSnapshotDocumentoPersonal = (doc) => {
     if (!doc || doc.estado_validacion !== 'aprobado') return;
     const tipo = String(`${doc.tipo_doc || ''} ${doc.tipo_doc_codigo || ''} ${doc.tipo_documento_codigo || ''} ${doc.tipo_documento_id || ''}`).toLowerCase();
-    if (!tipo.includes('contrato') && !tipo.includes('adenda')) return;
+
+    // Detección por catálogo (tipo_doc almacena IDs, no texto descriptivo)
+    let capturaViaCatalogo = false;
+    let esAdendaViaCatalogo = false;
+    if (doc.tipo_documento_id && tiposDocumento) {
+      const tipoInfo = tiposDocumento.find(t => t.id === doc.tipo_documento_id);
+      if (tipoInfo?.captura_snapshot_laboral) {
+        capturaViaCatalogo = true;
+        esAdendaViaCatalogo = Boolean(tipoInfo.documento_padre_tipo_id);
+      }
+    }
+
+    if (!tipo.includes('contrato') && !tipo.includes('adenda') && !capturaViaCatalogo) return;
+
     if (doc.fecha_vigencia_cambio && doc.fecha_vigencia_cambio > new Date().toISOString().slice(0, 10)) {
       addNotificacion('Adenda aprobada con vigencia futura. Queda registrada para aplicacion manual en la fecha indicada.', 'warning');
       return;
     }
     const cond = doc.condiciones_laborales || {};
     const cambios = doc.adenda_cambios || {};
+    const esAdenda = tipo.includes('adenda') || esAdendaViaCatalogo;
+
+    // Conversión régimen snapshot → formato personal_asignaciones_jornada
+    // La tabla solo acepta 'general' | 'ciclo_acumulativo' + dias_ciclo_*
+    const CICLOS_MINEROS = {
+      minero_14x7:  { t: 14, d: 7  },
+      minero_20x10: { t: 20, d: 10 },
+      minero_28x14: { t: 28, d: 14 },
+      minero_2x1:   { t: 2,  d: 1  },
+    };
+    const regimenSnapshot = !esAdenda && cond.regimen_jornada ? cond.regimen_jornada : null;
+    const cicloDatos = regimenSnapshot ? CICLOS_MINEROS[regimenSnapshot] : null;
+    const regimenParaAsig = regimenSnapshot === 'general' ? 'general'
+      : cicloDatos ? 'ciclo_acumulativo' : null;
+
     const aplicar = (persona) => {
       if (!persona) return persona;
       const patch = {};
-      const esAdenda = tipo.includes('adenda');
       const usar = (key) => !esAdenda || Boolean(cambios[key]);
-      if (usar('cargo') && cond.cargo) patch.cargo = cond.cargo;
-      if (usar('cargo') && cond.cargo_id) patch.cargo_id = cond.cargo_id;
+      // Cargo: solo histórico en snapshot, no se actualiza en la ficha operativa.
+      // El cargo activo lo gestiona RRHH desde el formulario de edición.
       if (usar('remuneracion') && cond.remuneracion_base !== undefined && cond.remuneracion_base !== '') {
-        const monto = Number(cond.remuneracion_base || 0);
+        const monto = Math.round(parseFloat(cond.remuneracion_base) || 0);
         patch.sueldo_base = monto;
         patch.remuneracion = monto;
         patch.monto_mensual = monto;
       }
       if (usar('modalidad') && cond.modalidad) patch.modalidad = cond.modalidad;
-      if (usar('sede') && cond.sede) patch.sede = cond.sede;
+      if (usar('sede') && (cond.sede_nombre || cond.sede)) patch.sede = cond.sede_nombre || cond.sede;
       if (usar('sede') && cond.sede_id) patch.sede_id = cond.sede_id;
       if (!esAdenda && cond.tipo_contrato) patch.tipo_contrato = cond.tipo_contrato;
+      if (regimenSnapshot && regimenParaAsig) {
+        patch.regimen_jornada = regimenSnapshot; // columna directa — display en formulario
+        if (cicloDatos) {
+          patch.dias_ciclo_trabajo  = cicloDatos.t;
+          patch.dias_ciclo_descanso = cicloDatos.d;
+        }
+      }
+      if (!esAdenda && cond.area_id) patch.area_id = cond.area_id;
       return { ...persona, ...patch };
     };
     if (doc.personal_tipo === 'administrativo') {
@@ -8070,25 +8104,53 @@ export function AppProvider({ children }) {
     } else {
       setPersonalOperativo(prev => prev.map(p => p.id === doc.personal_id ? aplicar(p) : p));
     }
+
+    // Crear asignación de jornada para que el motor de nómina respete el cambio.
+    // La tabla personal_asignaciones_jornada es la fuente de verdad para nómina.
+    if (regimenSnapshot && regimenParaAsig) {
+      const hoy = new Date().toISOString().slice(0, 10);
+      const fechaInicio = (doc.fecha_vigencia_cambio && doc.fecha_vigencia_cambio <= hoy)
+        ? doc.fecha_vigencia_cambio : hoy;
+      crearAsignacionJornadaCtx(doc.personal_id, doc.personal_tipo, {
+        tipo_tramo:           'normal',
+        fecha_inicio:         fechaInicio,
+        regimen_jornada:      regimenParaAsig,
+        dias_ciclo_trabajo:   cicloDatos?.t || null,
+        dias_ciclo_descanso:  cicloDatos?.d || null,
+        fecha_inicio_ciclo:   cicloDatos ? fechaInicio : null,
+        motivo:               'Cambio de régimen por validación de contrato',
+      }).catch(err => console.error('Error al crear asignación de jornada desde contrato:', err));
+    } else if (regimenSnapshot && !regimenParaAsig) {
+      console.warn('Régimen del snapshot no reconocido, no se crea asignación:', regimenSnapshot);
+    }
   };
 
   const subirDocumentoPersonalCtx = async (params) => {
     const data = await personalDocumentosService.subirDocumento({ ...params, empresaId: empresa?.id });
-    setPersonalDocumentos(prev => {
-      const sinVersionAnterior = prev.filter(
-        d => !(d.personal_id === params.personalId && d.activo && (
-          (params.tipoDocumentoId && d.tipo_documento_id === params.tipoDocumentoId) ||
-          d.tipo_doc === params.tipoDoc
-        ))
-      );
-      return [...sinVersionAnterior, data];
-    });
+    // El nuevo doc empieza activo=false; solo se agrega sin tocar los anteriores
+    setPersonalDocumentos(prev => [...prev, data]);
     return data;
   };
   const validarDocumentoPersonalCtx = async (documentoId, decision, motivoRechazo = null) => {
     const data = await personalDocumentosService.validarDocumento(documentoId, decision, motivoRechazo);
-    setPersonalDocumentos(prev => prev.map(d => d.id === documentoId ? data : d));
+    setPersonalDocumentos(prev => {
+      if (decision !== 'aprobado') return prev.map(d => d.id === documentoId ? data : d);
+      // Al aprobar: desactiva todos los del mismo tipo en estado local, activa el aprobado
+      return prev.map(d => {
+        if (d.id === documentoId) return { ...data, activo: true };
+        if (d.personal_id === data.personal_id &&
+            (d.tipo_documento_id === data.tipo_documento_id || d.tipo_doc === data.tipo_doc)) {
+          return { ...d, activo: false };
+        }
+        return d;
+      });
+    });
     aplicarSnapshotDocumentoPersonal(data);
+    return data;
+  };
+  const corregirDocumentoPersonalCtx = async (params) => {
+    const data = await personalDocumentosService.corregirDocumento({ ...params, empresaId: empresa?.id });
+    setPersonalDocumentos(prev => prev.map(d => d.id === params.documentoId ? data : d));
     return data;
   };
 
@@ -9474,7 +9536,7 @@ export function AppProvider({ children }) {
     crearPlantillaEvaluacionCtx, actualizarPlantillaEvaluacionCtx, cerrarPlantillaEvaluacionCtx,
     reasignarJefeEvaluacionCtx, guardarAutoevaluacionCtx, guardarEvaluacionJefeCtx,
     aprobarVacacion, rechazarVacacion,
-    subirDocumentoPersonalCtx, validarDocumentoPersonalCtx,
+    subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx,
     asignacionesJornada, setAsignacionesJornada, crearAsignacionJornadaCtx,
     crearOnboarding, registrarNPS,
     generarRenovacion, crearPlanRetencion,
