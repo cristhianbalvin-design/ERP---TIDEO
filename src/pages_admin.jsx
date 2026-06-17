@@ -2945,6 +2945,7 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
       estado: tipo.estado || 'activo',
       captura_snapshot_laboral: Boolean(tipo.captura_snapshot_laboral),
       documento_padre_tipo_id: tipo.documento_padre_tipo_id || null,
+      tipo_sucesor_id: tipo.tipo_sucesor_id || null,
       renovable: Boolean(tipo.renovable),
       permite_firma_trabajador: Boolean(tipo.permite_firma_trabajador),
     });
@@ -2981,6 +2982,7 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
         codigo: editando ? editando.codigo : `DOC${String(allTipos.length + 1).padStart(3, '0')}`,
         dias_alerta: form.exige_vencimiento ? (form.dias_alerta || 0) : 0,
         documento_padre_tipo_id: form.documento_padre_tipo_id || null,
+        tipo_sucesor_id: form.renovable ? null : (form.tipo_sucesor_id || null),
         renovable: form.documento_padre_tipo_id ? false : Boolean(form.renovable),
         permite_firma_trabajador: form.renovable ? Boolean(form.permite_firma_trabajador) : false,
       };

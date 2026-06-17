@@ -17981,13 +17981,13 @@ function RRHH_Operativo() {
                                 : 'PDF, JPG o PNG. Tamaño máximo recomendado 5MB.'}
                             </div>
                           </div>
-                          {(!rrhhEsTipoContrato(inlineUploadReq.tipo) || inlineUploadReq.tipo?.renovable !== false) && (
+                          {inlineUploadReq.tipo?.exige_vencimiento && (
                             <div className="grid-2" style={{gap:12}}>
                               <div className="input-group">
-                                <label>Fecha de emisión {inlineUploadReq.tipo?.exige_emision ? '*' : ''}</label>
-                                <input className="input" type="date" value={inlineUploadForm.fechaEmision} onChange={e=>setInlineUploadForm(f=>({...f,fechaEmision:e.target.value}))} required={inlineUploadReq.tipo?.exige_emision} />
+                                <label>Fecha de emisión *</label>
+                                <input className="input" type="date" value={inlineUploadForm.fechaEmision} onChange={e=>setInlineUploadForm(f=>({...f,fechaEmision:e.target.value}))} required />
                               </div>
-                              {inlineUploadReq.tipo?.exige_vencimiento && !rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && (
+                              {!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && (
                                 <div className="input-group">
                                   <label>Fecha de vencimiento *</label>
                                   <input className="input" type="date" value={inlineUploadForm.fechaVencimiento} onChange={e=>setInlineUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} required={inlineUploadForm.modoSubida !== 'corregir'} />
@@ -20907,6 +20907,7 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
       estado: tipo.estado || 'activo',
       captura_snapshot_laboral: Boolean(tipo.captura_snapshot_laboral),
       documento_padre_tipo_id: tipo.documento_padre_tipo_id || null,
+      tipo_sucesor_id: tipo.tipo_sucesor_id || null,
     });
     setEditando(tipo);
   };
@@ -20939,6 +20940,7 @@ function TiposDocumentoPanel({ onClose, onGoToRequisitos }) {
         codigo: editando ? editando.codigo : `DOC${String(allTipos.length + 1).padStart(3, '0')}`,
         dias_alerta: form.exige_vencimiento ? (form.dias_alerta || 0) : 0,
         documento_padre_tipo_id: form.documento_padre_tipo_id || null,
+        tipo_sucesor_id: form.tipo_sucesor_id || null,
       };
 
       if (editando) {
