@@ -957,3 +957,162 @@ export function PapeletaMovimientoPDF({ solicitud, empresa, historial = [] }) {
     </Document>
   );
 }
+
+// ── Amonestación (GAP-04) ──────────────────────────────────────────
+
+const amonStyles = StyleSheet.create({
+  page: { fontFamily: 'Helvetica', fontSize: 10, color: '#1a1a1a', padding: 40 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+  logo: { width: 100, height: 40, objectFit: 'contain' },
+  titleBlock: { textAlign: 'center', flex: 1 },
+  titleMain: { fontSize: 14, fontFamily: 'Helvetica-Bold', letterSpacing: 1 },
+  titleSub: { fontSize: 9, color: '#555', marginTop: 4 },
+  codeLabel: { fontSize: 8, color: '#888', marginTop: 2 },
+  sep: { borderBottomWidth: 1, borderColor: '#dde3ea', marginVertical: 12 },
+  sectionLabel: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#1a1a1a', letterSpacing: 0.5, marginBottom: 8, textTransform: 'uppercase', backgroundColor: '#f3f4f6', padding: 4 },
+  row2: { flexDirection: 'row', gap: 16, marginBottom: 12 },
+  infoBox: { flex: 1 },
+  fieldLabel: { fontSize: 8, color: '#6b7280', marginBottom: 2, textTransform: 'uppercase' },
+  fieldVal: { fontSize: 10, fontFamily: 'Helvetica-Bold' },
+  motivoBox: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 4, padding: 10, marginBottom: 12, minHeight: 60 },
+  motivoText: { fontSize: 10, lineHeight: 1.4 },
+  firmasRow: { flexDirection: 'row', gap: 24, marginTop: 40 },
+  firmaBox: { flex: 1, alignItems: 'center' },
+  firmaLine: { borderBottomWidth: 1, borderColor: '#374151', width: '100%', marginVertical: 8 },
+  firmaName: { fontSize: 9, fontFamily: 'Helvetica-Bold' },
+  firmaRole: { fontSize: 8, color: '#6b7280' },
+  firmaImg: { height: 40, objectFit: 'contain', marginBottom: 4, maxWidth: 120 },
+  footer: { position: 'absolute', bottom: 20, left: 40, right: 40, borderTopWidth: 1, borderColor: '#dde3ea', paddingTop: 8, textAlign: 'center', fontSize: 8, color: '#9ca3af' },
+  badgeVerbal: { color: '#d97706' },
+  badgeEscrita: { color: '#dc2626' },
+  badgeSuspension: { color: '#4b5563' },
+});
+
+export function AmonestacionPDF({ amonestacion, empresa, persona }) {
+  const cfg = empresa?.configuracion || {};
+
+  const tipoLabel = {
+    verbal: 'AMONESTACIÓN VERBAL',
+    escrita: 'AMONESTACIÓN ESCRITA',
+    suspension: 'SUSPENSIÓN SIN GOCE DE HABER'
+  };
+
+  const tipoColor = {
+    verbal: amonStyles.badgeVerbal,
+    escrita: amonStyles.badgeEscrita,
+    suspension: amonStyles.badgeSuspension,
+  };
+
+  return (
+    <Document>
+      <Page size="A4" style={amonStyles.page}>
+        {/* Encabezado */}
+        <View style={amonStyles.header}>
+          {cfg.logo_url
+            ? <Image src={cfg.logo_url} style={amonStyles.logo} />
+            : <View style={[amonStyles.logo, { backgroundColor: '#f3f4f6', borderRadius: 4 }]} />
+          }
+          <View style={amonStyles.titleBlock}>
+            <Text style={[amonStyles.titleMain, tipoColor[amonestacion.tipo] || {}]}>
+              {tipoLabel[amonestacion.tipo] || 'AMONESTACIÓN'}
+            </Text>
+            <Text style={amonStyles.titleSub}>{cfg.razon_social || empresa?.nombre || ''}</Text>
+          </View>
+        </View>
+
+        <View style={amonStyles.sep} />
+
+        {/* Datos del colaborador */}
+        <Text style={amonStyles.sectionLabel}>Datos del colaborador</Text>
+        <View style={amonStyles.row2}>
+          <View style={amonStyles.infoBox}>
+            <Text style={amonStyles.fieldLabel}>Nombre completo</Text>
+            <Text style={amonStyles.fieldVal}>{persona?.nombre || amonestacion.personal_nombre || '—'}</Text>
+          </View>
+          <View style={[amonStyles.infoBox, { flex: 0.5 }]}>
+            <Text style={amonStyles.fieldLabel}>DNI</Text>
+            <Text style={amonStyles.fieldVal}>{persona?.documento || persona?.dni || '—'}</Text>
+          </View>
+        </View>
+        <View style={amonStyles.row2}>
+          <View style={amonStyles.infoBox}>
+            <Text style={amonStyles.fieldLabel}>Cargo</Text>
+            <Text style={amonStyles.fieldVal}>{persona?.cargo || '—'}</Text>
+          </View>
+          <View style={[amonStyles.infoBox, { flex: 0.5 }]}>
+            <Text style={amonStyles.fieldLabel}>Área</Text>
+            <Text style={amonStyles.fieldVal}>{persona?.area || '—'}</Text>
+          </View>
+          <View style={[amonStyles.infoBox, { flex: 0.5 }]}>
+            <Text style={amonStyles.fieldLabel}>Fecha de ingreso</Text>
+            <Text style={amonStyles.fieldVal}>{persona?.fecha_ingreso || '—'}</Text>
+          </View>
+        </View>
+
+        <View style={amonStyles.sep} />
+
+        {/* Detalles de la amonestación */}
+        <Text style={amonStyles.sectionLabel}>Detalles de la amonestación</Text>
+        <View style={amonStyles.row2}>
+          <View style={amonStyles.infoBox}>
+            <Text style={amonStyles.fieldLabel}>Fecha de los hechos</Text>
+            <Text style={amonStyles.fieldVal}>{amonestacion.fecha || '—'}</Text>
+          </View>
+          {amonestacion.tipo === 'suspension' && (
+            <>
+              <View style={amonStyles.infoBox}>
+                <Text style={amonStyles.fieldLabel}>Días de suspensión</Text>
+                <Text style={amonStyles.fieldVal}>{amonestacion.dias_suspension || '—'}</Text>
+              </View>
+              <View style={amonStyles.infoBox}>
+                <Text style={amonStyles.fieldLabel}>Período de suspensión</Text>
+                <Text style={amonStyles.fieldVal}>
+                  {amonestacion.fecha_inicio_suspension || '—'} al {amonestacion.fecha_fin_suspension || '—'}
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
+
+        <Text style={[amonStyles.fieldLabel, { marginTop: 8 }]}>Motivo</Text>
+        <View style={amonStyles.motivoBox}>
+          <Text style={[amonStyles.motivoText, { fontFamily: 'Helvetica-Bold', marginBottom: 4 }]}>{amonestacion.motivo || '—'}</Text>
+          {amonestacion.descripcion && (
+            <Text style={amonStyles.motivoText}>{amonestacion.descripcion}</Text>
+          )}
+        </View>
+
+        {amonestacion.descargo && (
+          <>
+            <Text style={[amonStyles.fieldLabel, { marginTop: 8 }]}>Descargo del colaborador</Text>
+            <View style={amonStyles.motivoBox}>
+              <Text style={amonStyles.motivoText}>{amonestacion.descargo}</Text>
+            </View>
+          </>
+        )}
+
+        {/* Firmas */}
+        <View style={amonStyles.firmasRow}>
+          <View style={amonStyles.firmaBox}>
+            <View style={amonStyles.firmaLine} />
+            <Text style={amonStyles.firmaName}>{persona?.nombre || amonestacion.personal_nombre || '—'}</Text>
+            <Text style={amonStyles.firmaRole}>Trabajador</Text>
+          </View>
+          <View style={amonStyles.firmaBox}>
+            {cfg.firma_url
+              ? <Image src={cfg.firma_url} style={amonStyles.firmaImg} />
+              : <View style={{ height: 40 }} />
+            }
+            <View style={amonStyles.firmaLine} />
+            <Text style={amonStyles.firmaName}>{amonestacion.registrado_por || '—'}</Text>
+            <Text style={amonStyles.firmaRole}>Administrador / RRHH</Text>
+          </View>
+        </View>
+
+        <View style={amonStyles.footer} fixed>
+          <Text>{[cfg.razon_social, `Amonestación registrada el ${amonestacion.creado_en ? new Date(amonestacion.creado_en).toLocaleDateString('es-PE') : new Date().toLocaleDateString('es-PE')}`].filter(Boolean).join('  ·  ')}</Text>
+        </View>
+      </Page>
+    </Document>
+  );
+}

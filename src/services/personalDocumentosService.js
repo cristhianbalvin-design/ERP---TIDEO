@@ -5,12 +5,39 @@ const BUCKET = 'documentos-privados';
 // La renovación automática ocurre en el previsualizador del frontend.
 const SIGNED_URL_TTL = 600;
 
-// STUB — el estado de vencimiento lo calcula el motor BD (calcular_habilitaciones_personal).
-// Esta función se mantiene para no romper posibles importaciones externas,
-// pero NO debe usarse para tomar decisiones de estado en el frontend.
-export function calcularEstadoVencimiento(_fechaVencimiento) {
-  // Intencionalmente vacío: usar el campo `estado` que devuelve el motor BD.
-  return null;
+// Calcula el estado de un documento en el frontend, aplicando la regla de sucesor
+export function calcularEstadoDocumentoUI(doc, tipo, todosLosDocumentosActivos = []) {
+  if (!doc) return { estado: 'falta', dias: null };
+  if (doc.estado_validacion === 'rechazado') return { estado: 'rechazado', dias: null };
+  if (doc.estado_validacion === 'pendiente' && tipo?.requiere_validacion) return { estado: 'en_revision', dias: null };
+  
+  // Regla Sucesor
+  if (tipo?.tipo_sucesor_id) {
+    const sucesorAprobado = todosLosDocumentosActivos.some(d =>
+      d.personal_id === doc.personal_id &&
+      (d.tipo_documento_id === tipo.tipo_sucesor_id || d.tipo_doc === tipo.tipo_sucesor_id) &&
+      d.estado_validacion === 'aprobado' &&
+      d.activo === true
+    );
+    if (sucesorAprobado) {
+      return { estado: 'historico', dias: null };
+    }
+  }
+
+  if (tipo?.exige_vencimiento && !doc.fecha_vencimiento) return { estado: 'incompleto', dias: null };
+
+  let dias = null;
+  if (doc.fecha_vencimiento) {
+    const hoy = new Date();
+    const base = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()));
+    const vence = new Date(`${doc.fecha_vencimiento}T00:00:00Z`);
+    dias = Math.round((vence - base) / 86400000);
+  }
+
+  if (dias !== null && dias < 0) return { estado: 'vencido', dias };
+  if (dias !== null && dias <= Number(tipo?.dias_alerta || 0)) return { estado: 'por_vencer', dias };
+
+  return { estado: 'vigente', dias };
 }
 
 export function normalizar(doc = {}) {
@@ -31,6 +58,21 @@ export async function getDocumentosPersona(empresaId, personalId) {
     .order('tipo_doc')
     .order('version', { ascending: false });
   if (error) { console.error('Error getDocumentosPersona:', error); return []; }
+  return (data || []).map(normalizar);
+}
+
+// Documentos activos para una sola persona (usado para recargar local sin traer todos)
+export async function getDocumentosActivosPersona(empresaId, personalId) {
+  if (!empresaId || !personalId) return [];
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('personal_documentos')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .eq('personal_id', personalId)
+    .or('activo.eq.true,estado_validacion.eq.pendiente')
+    .order('fecha_vencimiento', { ascending: true });
+  if (error) { console.error('Error getDocumentosActivosPersona:', error); return []; }
   return (data || []).map(normalizar);
 }
 
@@ -62,6 +104,133 @@ export async function getDocumentosPendientes(empresaId) {
   return (data || []).map(normalizar);
 }
 
+// ── Tipos de Documento Config (Períodos) ──────────────────────────────────────
+
+export async function getTiposDocumentoConfig(empresaId) {
+  if (!empresaId) return [];
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('tipos_documento_empresa')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .eq('estado', 'activo');
+  if (error) { console.error('Error getTiposDocumentoConfig:', error); return []; }
+  return (data || []).map(d => ({
+    id: d.id,
+    empresa_id: d.empresa_id,
+    tipo_doc: d.nombre,
+    renovable: d.renovable,
+    es_habilitante: d.es_habilitante,
+    activo: d.estado === 'activo'
+  }));
+}
+
+export function getDocumentoActivoPorTipo(documentos, tipoDoc) {
+  if (!documentos) return null;
+  const docsTipo = documentos.filter(d => d.tipo_doc === tipoDoc && d.activo === true);
+  if (docsTipo.length === 0) return null;
+  if (docsTipo.length === 1) return docsTipo[0];
+
+  // Si hay más de uno activo (ej. error/BUG 2) o activos en distintos periodos:
+  // Retornar solo el más reciente (mayor fecha_vencimiento o creado_en)
+  docsTipo.sort((a, b) => {
+    const timeA = a.fecha_vencimiento ? new Date(a.fecha_vencimiento).getTime() : 0;
+    const timeB = b.fecha_vencimiento ? new Date(b.fecha_vencimiento).getTime() : 0;
+    if (timeA !== timeB) return timeB - timeA;
+    return new Date(b.creado_en).getTime() - new Date(a.creado_en).getTime();
+  });
+  
+  console.warn(`[Documentos] Múltiples documentos activos encontrados para ${tipoDoc}. Retornando el más reciente.`, docsTipo);
+  return docsTipo[0];
+}
+
+export async function getHistorialPorGrupo(empresaId, personalId, tipoDoc) {
+  if (!empresaId || !personalId || !tipoDoc) return [];
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('personal_documentos')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .eq('personal_id', personalId)
+    .eq('tipo_doc', tipoDoc)
+    .order('fecha_vencimiento', { ascending: false, nullsFirst: false })
+    .order('version', { ascending: false });
+  
+  if (error) { console.error('Error getHistorialPorGrupo:', error); return []; }
+  
+  const gruposMap = new Map();
+  const sinGrupo = [];
+  
+  (data || []).forEach(doc => {
+    const d = normalizar(doc);
+    if (!d.periodo_grupo_id) {
+      sinGrupo.push(d);
+    } else {
+      if (!gruposMap.has(d.periodo_grupo_id)) {
+        gruposMap.set(d.periodo_grupo_id, {
+          periodoGrupoId: d.periodo_grupo_id,
+          fechaVencimiento: d.fecha_vencimiento,
+          fechaEmision: d.fecha_emision,
+          creadoEn: d.creado_en,
+          activo: false,
+          versiones: []
+        });
+      }
+      const grupo = gruposMap.get(d.periodo_grupo_id);
+      grupo.versiones.push(d);
+      if (d.activo) grupo.activo = true;
+      if (d.activo || (!grupo.activo && grupo.versiones.length === 1)) {
+        grupo.fechaVencimiento = d.fecha_vencimiento;
+        grupo.fechaEmision = d.fecha_emision;
+      }
+    }
+  });
+  
+  const grupos = Array.from(gruposMap.values()).sort((a, b) => {
+     const dateA = a.fechaVencimiento ? new Date(a.fechaVencimiento).getTime() : 0;
+     const dateB = b.fechaVencimiento ? new Date(b.fechaVencimiento).getTime() : 0;
+     if (dateA !== dateB) return dateB - dateA;
+     return new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime();
+  });
+  
+  const hoyStr = new Date().toISOString().slice(0, 10);
+  
+  grupos.forEach(g => {
+    const tieneActivoAprobado = g.versiones.some(v => v.activo && v.estado_validacion === 'aprobado');
+    const fVenc = g.fechaVencimiento ? g.fechaVencimiento.slice(0, 10) : null;
+    const fIni = g.fechaEmision ? g.fechaEmision.slice(0, 10) : null;
+
+    if (fIni && fIni > hoyStr) {
+      g.estado_periodo = 'futuro';
+      g.badge_texto = `Futuro · inicia ${fIni}`;
+      g.badge_color = 'badge-cyan';
+    } else if (fVenc && fVenc < hoyStr && !g.activo) {
+      g.estado_periodo = 'archivado';
+      g.badge_texto = 'Archivado';
+      g.badge_color = 'badge-gray';
+    } else if ((!fVenc || fVenc >= hoyStr) && tieneActivoAprobado) {
+      g.estado_periodo = 'activo';
+      g.badge_texto = 'Período activo';
+      g.badge_color = 'badge-green';
+    } else {
+      g.estado_periodo = 'pendiente_activacion';
+      g.badge_texto = 'Pendiente de activación';
+      g.badge_color = 'badge-orange';
+    }
+  });
+  
+  if (sinGrupo.length > 0) {
+    grupos.push({
+      periodoGrupoId: null,
+      isLegacy: true,
+      titulo: 'Documentos anteriores al sistema',
+      versiones: sinGrupo
+    });
+  }
+  
+  return grupos;
+}
+
 // ── Upload a Storage + registro en tabla ──────────────────────────────────────
 
 export async function subirDocumento({
@@ -81,6 +250,8 @@ export async function subirDocumento({
   fechaVigenciaCambio,
   seccionDocumental,
   contratoPeriodoId,
+  periodoGrupoId,
+  origen = 'backoffice',
 }) {
   const supabase = await getSupabaseClient();
 
@@ -94,15 +265,88 @@ export async function subirDocumento({
 
   if (uploadError) throw uploadError;
 
-  // 2. Obtener URL firmada (válida 10 minutos — se renueva en el previsualizador)
+  // 2. Obtener URL firmada
   const { data: urlData, error: urlError } = await supabase.storage
     .from(BUCKET)
     .createSignedUrl(storagePath, SIGNED_URL_TTL);
 
   if (urlError) throw urlError;
 
-  // 3. Registrar en tabla via RPC (archiva versión anterior + crea nueva)
-  const { data, error: rpcError } = await supabase.rpc('subir_documento_personal', {
+  // 3. Consultar config
+  const configs = await getTiposDocumentoConfig(empresaId);
+  const config = configs.find(c => c.tipo_doc === tipoDoc);
+  const isRenovable = config ? config.renovable : false;
+
+  let rpcName = 'subir_documento_personal';
+  let rpcParams = {
+    p_empresa_id:        empresaId,
+    p_personal_id:       personalId,
+    p_personal_tipo:     personalTipo,
+    p_tipo_doc:          tipoDoc,
+    p_nombre_archivo:    file.name,
+    p_archivo_url:       urlData.signedUrl,
+    p_fecha_emision:     fechaEmision || null,
+    p_fecha_vencimiento: fechaVencimiento || null,
+    p_notas:             notas || null,
+    p_subido_desde:      subidoDesde,
+    p_tipo_documento_id: tipoDocumentoId || null,
+    p_condiciones_laborales: condicionesLaborales || {},
+    p_contrato_referencia_id: contratoReferenciaId || null,
+    p_adenda_cambios: adendaCambios || {},
+    p_fecha_vigencia_cambio: fechaVigenciaCambio || null,
+    p_seccion_documental: seccionDocumental || null,
+    p_contrato_periodo_id: contratoPeriodoId || null,
+    p_origen:            origen,
+  };
+
+  if (isRenovable) {
+    rpcName = 'subir_version_documento';
+    rpcParams.p_periodo_grupo_id = periodoGrupoId || null;
+  }
+
+  // 4. Registrar en tabla via RPC
+  const { data, error: rpcError } = await supabase.rpc(rpcName, rpcParams);
+
+  if (rpcError) throw rpcError;
+  return normalizar({ id: data }); // Los nuevos RPC retornan un UUID.
+}
+
+export async function renovarDocumento({
+  empresaId,
+  personalId,
+  personalTipo,
+  tipoDoc,
+  tipoDocumentoId,
+  file,
+  fechaEmision,
+  fechaVencimiento,
+  notas,
+  subidoDesde = 'backoffice',
+  condicionesLaborales,
+  contratoReferenciaId,
+  adendaCambios,
+  fechaVigenciaCambio,
+  seccionDocumental,
+  contratoPeriodoId,
+}) {
+  const supabase = await getSupabaseClient();
+
+  const ext = file.name.split('.').pop();
+  const storagePath = `${empresaId}/personal/${personalTipo}/${personalId}/${tipoDoc}_${Date.now()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(BUCKET)
+    .upload(storagePath, file, { upsert: false, contentType: file.type });
+
+  if (uploadError) throw uploadError;
+
+  const { data: urlData, error: urlError } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(storagePath, SIGNED_URL_TTL);
+
+  if (urlError) throw urlError;
+
+  const { data, error: rpcError } = await supabase.rpc('renovar_documento', {
     p_empresa_id:        empresaId,
     p_personal_id:       personalId,
     p_personal_tipo:     personalTipo,
@@ -123,7 +367,7 @@ export async function subirDocumento({
   });
 
   if (rpcError) throw rpcError;
-  return normalizar(data);
+  return normalizar({ id: data });
 }
 
 // ── Validación por RRHH ───────────────────────────────────────────────────────
@@ -288,6 +532,7 @@ export const BADGE_VENCIMIENTO = {
   por_vencer:      'badge-orange',
   vencido:         'badge-red',
   sin_vencimiento: 'badge-gray',
+  historico:       'badge-gray',
 };
 
 export const LABEL_VENCIMIENTO = {
@@ -295,6 +540,7 @@ export const LABEL_VENCIMIENTO = {
   por_vencer:      'Por vencer',
   vencido:         'Vencido',
   sin_vencimiento: 'Sin vencimiento',
+  historico:       'Histórico',
 };
 
 export const BADGE_VALIDACION = {

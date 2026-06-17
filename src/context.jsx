@@ -6556,6 +6556,7 @@ export function AppProvider({ children }) {
     }
   };
 
+
   const crearTipoDocumento = async (tipo) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await tiposDocumentoService.crearTipoDocumento(empresa.id, tipo);
@@ -8131,6 +8132,19 @@ export function AppProvider({ children }) {
     setPersonalDocumentos(prev => [...prev, data]);
     return data;
   };
+
+  const recargarPersonalDocumentosPersonaCtx = async (personalId) => {
+    if (!isSupabaseConfigured() || !empresa?.id) return;
+    try {
+      const docsPersona = await personalDocumentosService.getDocumentosActivosPersona(empresa.id, personalId);
+      setPersonalDocumentos(prev => {
+        const sinPersona = prev.filter(d => String(d.personal_id) !== String(personalId));
+        return [...sinPersona, ...(docsPersona || [])];
+      });
+    } catch (e) {
+      console.error('Error al recargar documentos del personal:', e);
+    }
+  };
   const validarDocumentoPersonalCtx = async (documentoId, decision, motivoRechazo = null) => {
     const data = await personalDocumentosService.validarDocumento(documentoId, decision, motivoRechazo);
     setPersonalDocumentos(prev => {
@@ -8181,9 +8195,12 @@ export function AppProvider({ children }) {
     await personalDocumentosService.reenviarNotificacionFirma({ documentoId, empresaId: empresa?.id, workerAuthUserId });
   };
   const subirDocumentoFirmadoPortalCtx = async ({ file, tipoDoc, tipoDocumentoId, personalId, personalTipo, documentoEnviadoAFirmaId, nombreColaborador }) => {
+    const docEnviado = personalDocumentos.find(d => d.id === documentoEnviadoAFirmaId);
     const nuevoDoc = await subirDocumentoPersonalCtx({
       personalId, personalTipo, tipoDoc, tipoDocumentoId, file,
-      fechaVencimiento: null,
+      fechaEmision: docEnviado?.fecha_emision || null,
+      fechaVencimiento: docEnviado?.fecha_vencimiento || null,
+      condicionesLaborales: docEnviado?.condiciones_laborales || {},
       notas: 'Documento firmado cargado desde Mi portal',
       subidoDesde: 'mobile',
     });
@@ -8211,6 +8228,7 @@ export function AppProvider({ children }) {
       fechaEmision: docOriginal.fecha_emision || null,
       fechaVencimiento: docOriginal.fecha_vencimiento || null,
       contratoPeriodoId: docOriginal.contrato_periodo_id || null,
+      condicionesLaborales: docOriginal.condiciones_laborales || {},
       notas: 'Contrato firmado cargado desde portal empleado',
       subidoDesde: 'mobile',
     });

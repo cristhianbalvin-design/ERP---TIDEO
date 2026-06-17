@@ -263,7 +263,7 @@ function WizardLiquidacion({ onClose, onCreated }) {
       const { liquidacion } = await crearLiquidacionCtx(payload);
       const { cxp } = await confirmarLiquidacionCtx(liquidacion.id, { observaciones: obs, moneda });
       addToast(
-        `Liquidación confirmada. CxP generada por ${fmtMoney(liquidacion.monto_total)}`,
+        `Liquidación confirmada. CxP generada por ${fmtMoney(liquidacion.monto_total)} y acceso al sistema bloqueado.`,
         'success',
         { modulo: 'cxp', label: 'Ver CxP' }
       );
@@ -627,7 +627,7 @@ function DetalleLiquidacion({ liquidacion, conceptos, onClose }) {
     setLoading(true);
     try {
       await confirmarLiquidacionCtx(liquidacion.id, { moneda: empresa?.moneda || 'PEN' });
-      addToast('Liquidación confirmada. CxP generada.', 'success', { modulo: 'cxp', label: 'Ver CxP' });
+      addToast('Liquidación confirmada. CxP generada y acceso al sistema bloqueado.', 'success', { modulo: 'cxp', label: 'Ver CxP' });
       onClose();
     } catch (err) {
       addToast(err.message || 'Error al confirmar.', 'error');

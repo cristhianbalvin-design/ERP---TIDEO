@@ -32,7 +32,7 @@ export const tiposDocumentoService = {
     const payload = {
       id: tipo.id || makeId('tdoc'),
       empresa_id: empresaId,
-      ...pick(tipo, ['codigo', 'nombre', 'ambito', 'exige_vencimiento', 'dias_alerta', 'es_habilitante', 'requiere_validacion', 'estado', 'orden', 'captura_snapshot_laboral', 'documento_padre_tipo_id']),
+      ...pick(tipo, ['codigo', 'nombre', 'ambito', 'exige_vencimiento', 'dias_alerta', 'es_habilitante', 'requiere_validacion', 'estado', 'orden', 'captura_snapshot_laboral', 'documento_padre_tipo_id', 'tipo_sucesor_id', 'renovable', 'permite_firma_trabajador']),
     };
     const { data, error } = await supabase
       .from('tipos_documento_empresa')
@@ -47,7 +47,7 @@ export const tiposDocumentoService = {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('tipos_documento_empresa')
-      .update(pick(payload, ['codigo', 'nombre', 'ambito', 'exige_vencimiento', 'dias_alerta', 'es_habilitante', 'requiere_validacion', 'estado', 'orden', 'captura_snapshot_laboral', 'documento_padre_tipo_id']))
+      .update(pick(payload, ['codigo', 'nombre', 'ambito', 'exige_vencimiento', 'dias_alerta', 'es_habilitante', 'requiere_validacion', 'estado', 'orden', 'captura_snapshot_laboral', 'documento_padre_tipo_id', 'tipo_sucesor_id', 'renovable', 'permite_firma_trabajador']))
       .eq('id', id)
       .select()
       .single();

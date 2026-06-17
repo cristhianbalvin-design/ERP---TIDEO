@@ -85,9 +85,13 @@ export function construirAutoservicioLocal({
   const personalTipo = ficha.personal_tipo;
   const personalId = ficha.id;
   const docs = (personalDocumentos || []).filter(d => d.personal_id === personalId && (!d.personal_tipo || d.personal_tipo === personalTipo) && d.activo !== false);
-  const esContratoDoc = d =>
-    d.tipo_doc === 'contrato' || d.tipo_doc_codigo === 'contrato' || d.tipo_documento_codigo === 'contrato' ||
-    (tiposDocumentoContratoIds.length > 0 && (tiposDocumentoContratoIds.includes(d.tipo_doc) || tiposDocumentoContratoIds.includes(d.tipo_documento_id)));
+  const esContratoDoc = d => {
+    if (!tiposDocumentoContratoIds || tiposDocumentoContratoIds.length === 0) {
+      console.warn('autoservicioEmpleadoService: tiposDocumentoContratoIds no disponible. Fallback por texto desactivado.');
+      return false;
+    }
+    return tiposDocumentoContratoIds.includes(d.tipo_doc) || tiposDocumentoContratoIds.includes(d.tipo_documento_id);
+  };
   const contratos = docs.filter(esContratoDoc);
   const documentos = docs.filter(d => !esContratoDoc(d));
   const { desde, hasta } = monthRange(periodo);

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { I } from '../icons.jsx';
+import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, labelOr } from '../utils/rrhhLabels.js';
 
 const HAB_DOC_LABEL = {
   vigente: 'Vigente',
@@ -63,48 +64,55 @@ export function DocumentoPreviewModal({
   const [motivo, setMotivo] = useState('');
   
   // Historical versions state
-  const [historial, setHistorial] = useState([]);
+  const [grupos, setGrupos] = useState([]);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
+  const [esRenovable, setEsRenovable] = useState(false);
+
   const [viewingHistoryDoc, setViewingHistoryDoc] = useState(null);
   const [historyUrl, setHistoryUrl] = useState('');
   const [loadingHistoryUrl, setLoadingHistoryUrl] = useState(false);
   const [anulandoId, setAnulandoId] = useState(null);
   const [anularMotivo, setAnularMotivo] = useState('');
+  const [sideTab, setSideTab] = useState('info');
 
   useEffect(() => {
-    if (!req?.doc?.id || !req?.doc?.personal_id || !req?.doc?.tipo_doc) return;
+    if (!req?.doc?.id || !req?.doc?.personal_id || !req?.doc?.tipo_doc || !req?.doc?.empresa_id) return;
     let mounted = true;
-    const fetchHistorial = async () => {
+    const fetchDatos = async () => {
       setLoadingHistorial(true);
       try {
         const { getSupabaseClient, isSupabaseConfigured } = await import('../lib/supabaseClient.js');
         if (!isSupabaseConfigured()) {
-          // MOCK mode support
-          if (mounted) setHistorial([]);
+          if (mounted) setGrupos([]);
           return;
         }
-        const supabase = await getSupabaseClient();
-        const { data, error } = await supabase
-          .from('personal_documentos')
-          .select('*')
-          .eq('personal_id', req.doc.personal_id)
-          .eq('tipo_doc', req.doc.tipo_doc)
-          .eq('activo', false)
-          .order('version', { ascending: false });
-        if (error) throw error;
-        if (mounted) setHistorial(data || []);
+        const { getHistorialPorGrupo, getTiposDocumentoConfig } = await import('../services/personalDocumentosService.js');
+        const [g, configs] = await Promise.all([
+          getHistorialPorGrupo(req.doc.empresa_id, req.doc.personal_id, req.doc.tipo_doc),
+          getTiposDocumentoConfig(req.doc.empresa_id)
+        ]);
+        if (mounted) {
+          setGrupos(g);
+          const conf = configs.find(c => c.tipo_doc === req.doc.tipo_doc);
+          setEsRenovable(conf?.renovable || false);
+        }
       } catch (err) {
-        console.error('Error fetching historial:', err);
+        console.error('Error fetching historial/config:', err);
       } finally {
         if (mounted) setLoadingHistorial(false);
       }
     };
-    fetchHistorial();
+    fetchDatos();
     return () => { mounted = false; };
-  }, [req?.doc?.id, req?.doc?.personal_id, req?.doc?.tipo_doc]);
+  }, [req?.doc?.id, req?.doc?.personal_id, req?.doc?.tipo_doc, req?.doc?.empresa_id]);
 
   if (!req?.doc) return null;
-  const doc = req.doc;
+  
+  // Buscar la versión fresca en el historial recién consultado
+  const todasVersionesFrescas = grupos.flatMap(g => g.versiones);
+  const docFresco = todasVersionesFrescas.find(v => v.id === req.doc.id) || req.doc;
+  
+  const doc = docFresco;
   const activeDoc = viewingHistoryDoc || doc;
   const activeUrl = viewingHistoryDoc ? historyUrl : url;
   const activeLoading = viewingHistoryDoc ? loadingHistoryUrl : loadingUrl;
@@ -161,7 +169,10 @@ export function DocumentoPreviewModal({
         })
         .eq('id', hDocId);
       if (error) throw error;
-      setHistorial(prev => prev.map(h => h.id === hDocId ? { ...h, estado_validacion: 'anulado', motivo_rechazo: anularMotivo.trim() } : h));
+      setGrupos(prevGrupos => prevGrupos.map(g => ({
+        ...g,
+        versiones: g.versiones.map(h => h.id === hDocId ? { ...h, estado_validacion: 'anulado', motivo_rechazo: anularMotivo.trim() } : h)
+      })));
       setAnulandoId(null);
       setAnularMotivo('');
     } catch (e) {
@@ -182,8 +193,23 @@ export function DocumentoPreviewModal({
   const validadoPor = activeDoc.revisado_por_nombre || fmtUser(activeDoc.revisado_por);
 
   const esContratoDoc = Boolean(req.tipo?.captura_snapshot_laboral && !req.tipo?.documento_padre_tipo_id);
-  const diasRestantes = req.dias_restantes != null ? Number(req.dias_restantes) : null;
-  const puedeNuevoContrato = !viewingHistoryDoc && esContratoDoc && diasRestantes != null && diasRestantes <= 30;
+  const btnNuevoPeriodoTexto = (() => {
+    const t = (doc.tipo_doc || '').toLowerCase();
+    if (t.includes('contrato')) return 'Nuevo contrato';
+    if (t.includes('sctr')) return 'Renovar SCTR';
+    if (t.includes('seguro')) return 'Renovar seguro';
+    return 'Nueva renovación';
+  })();
+
+  const cond = doc.condiciones_laborales || {};
+  const _condPropia = esContratoDoc && Object.values(cond).some(v => v !== null && v !== undefined && v !== '' && v !== 0);
+  
+  // Buscar docPadre en los grupos
+  const todasVersiones = grupos.flatMap(g => g.versiones);
+  const _docPadre = !_condPropia ? todasVersiones.find(h => Object.values(h.condiciones_laborales || {}).some(v => v !== null && v !== undefined && v !== '' && v !== 0)) : null;
+  const tieneContrato = _condPropia || Boolean(_docPadre);
+  const condEfectiva = _condPropia ? cond : (_docPadre?.condiciones_laborales || {});
+  const condDesdeOriginal = !_condPropia && Boolean(_docPadre);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -268,82 +294,163 @@ export function DocumentoPreviewModal({
             )}
           </div>
 
-          {/* Panel derecho: metadatos + acciones */}
+          {/* Panel derecho: tabs + acciones */}
           <aside style={{display:'flex', flexDirection:'column', minHeight:0, overflow:'hidden'}}>
 
-            {/* Metadatos — área scrollable */}
-            <div style={{flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:12, paddingBottom:8, paddingRight:4}}>
-              <span className={'badge ' + (HAB_DOC_BADGE[estado] || 'badge-gray')} style={{alignSelf:'flex-start', fontSize:12}}>
-                {HAB_DOC_LABEL[estado] || estado}
-              </span>
-              {metaRow('Tipo', req.tipo?.nombre || req.tipo_documento_id)}
-              {metaRow('Emisión', activeDoc.fecha_emision)}
-              {metaRow('Vencimiento', [activeDoc.fecha_vencimiento, dias].filter(Boolean).join('  ·  '))}
-              {metaRow('Versión', `Versión ${activeDoc.version || 1}${activeDoc.creado_en ? ` · Subida el ${String(activeDoc.creado_en).slice(0,10)}` : ''}`)}
-              {metaRow('Subido por', [subidoPor, activeDoc.creado_en ? String(activeDoc.creado_en).slice(0,16).replace('T',' ') : null].filter(Boolean).join('  ·  '))}
-              {activeDoc.revisado_en && metaRow('Validado por', [validadoPor, String(activeDoc.revisado_en).slice(0,16).replace('T',' ')].filter(Boolean).join('  ·  '))}
-              {activeDoc.motivo_rechazo && metaRow('Motivo de rechazo/anulación', activeDoc.motivo_rechazo, 'var(--danger)')}
-              {metaRow('Notas', activeDoc.notas)}
+            {/* Tabs */}
+            <div style={{display:'flex', gap:2, borderBottom:'1px solid var(--border)', marginBottom:14, flexShrink:0}}>
+              {[['info','Información'],['versiones',`Versiones (${todasVersiones.length})`]].map(([k,l]) => (
+                <button key={k} onClick={() => setSideTab(k)} style={{
+                  padding:'6px 12px', fontSize:12, fontWeight: sideTab===k ? 700 : 400,
+                  border:'none', background:'transparent', cursor:'pointer',
+                  color: sideTab===k ? 'var(--primary)' : 'var(--fg-muted)',
+                  borderBottom: sideTab===k ? '2px solid var(--primary)' : '2px solid transparent',
+                  marginBottom:-1,
+                }}>{l}</button>
+              ))}
+            </div>
 
-              {/* Historial de versiones */}
-              <details style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: 13, userSelect: 'none' }}>
-                  Historial de versiones ({historial.length})
-                </summary>
-                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {loadingHistorial && <div className="text-muted" style={{ fontSize: 12 }}>Cargando historial...</div>}
-                  {!loadingHistorial && historial.length === 0 && (
-                    <div className="text-muted" style={{ fontSize: 12 }}>No hay versiones anteriores.</div>
-                  )}
-                  {historial.map(h => (
-                    <div key={h.id} style={{ border: '1px solid var(--border)', borderRadius: 6, padding: 8, fontSize: 12, background: viewingHistoryDoc?.id === h.id ? 'var(--bg-subtle)' : 'transparent' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <strong>Versión {h.version || '?'}</strong>
-                        <span className={'badge ' + (h.estado_validacion === 'anulado' ? 'badge-gray' : 'badge-red')}>{h.estado_validacion || 'rechazado'}</span>
+            {/* Tab: Información */}
+            {sideTab === 'info' && (
+              <div style={{flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:0, paddingBottom:8, paddingRight:2}}>
+                {/* Estado */}
+                <span className={'badge ' + (HAB_DOC_BADGE[estado] || 'badge-gray')} style={{alignSelf:'flex-start', fontSize:12, marginBottom:12}}>
+                  {HAB_DOC_LABEL[estado] || estado}
+                </span>
+
+                {/* Datos del documento */}
+                <div style={{display:'flex', flexDirection:'column', gap:8, marginBottom:12}}>
+                  {metaRow('Tipo', req.tipo?.nombre || req.tipo_documento_id)}
+                  {metaRow('Emisión', activeDoc.fecha_emision)}
+                  {metaRow('Vencimiento', [activeDoc.fecha_vencimiento, dias].filter(Boolean).join('  ·  '))}
+                  {metaRow('Versión', `Versión ${activeDoc.version || 1}${activeDoc.creado_en ? ` · Subida el ${String(activeDoc.creado_en).slice(0,10)}` : ''}`)}
+                </div>
+
+                {/* Condiciones contractuales */}
+                {tieneContrato && (
+                  <div style={{borderTop:'1px solid var(--border)', paddingTop:12, marginBottom:12, display:'flex', flexDirection:'column', gap:8}}>
+                    <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:2}}>
+                      <div style={{fontSize:10, fontWeight:700, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.07em'}}>
+                        Condiciones contractuales
                       </div>
-                      <div className="text-muted" style={{ marginBottom: 4 }}>
-                        Subida: {h.creado_en ? String(h.creado_en).slice(0,10) : 'N/A'}
-                      </div>
-                      <div className="text-muted" style={{ marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {h.nombre_archivo}
-                      </div>
-                      {anulandoId === h.id ? (
-                        <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
-                          <input className="input" style={{ fontSize: 11, padding: '4px 8px' }} placeholder="Motivo obligatorio" value={anularMotivo} onChange={e => setAnularMotivo(e.target.value)} />
-                          <div className="row" style={{ gap: 6 }}>
-                            <button className="btn btn-danger btn-sm" disabled={!anularMotivo.trim()} onClick={() => confirmarAnular(h.id)}>Confirmar</button>
-                            <button className="btn btn-ghost btn-sm" onClick={() => { setAnulandoId(null); setAnularMotivo(''); }}>Cancelar</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="row" style={{ gap: 6, marginTop: 6 }}>
-                          {viewingHistoryDoc?.id !== h.id && (
-                            <button className="btn btn-secondary btn-sm" onClick={() => handleVerHistorico(h)}>Ver archivo</button>
-                          )}
-                          {h.estado_validacion !== 'anulado' && (
-                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => setAnulandoId(h.id)}>Anular versión</button>
-                          )}
-                        </div>
+                      {condDesdeOriginal && (
+                        <span style={{fontSize:10, color:'var(--fg-muted)', background:'var(--bg-subtle)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 6px'}}>
+                          del documento original
+                        </span>
                       )}
                     </div>
-                  ))}
+                    {metaRow('Cargo', condEfectiva.cargo_nombre || condEfectiva.cargo)}
+                    {condEfectiva.remuneracion_base ? metaRow('Sueldo base', `S/ ${Number(condEfectiva.remuneracion_base).toLocaleString('es-PE', {minimumFractionDigits:2})}`) : null}
+                    {metaRow('Tipo contrato', labelOr(TIPO_CONTRATO_LABELS, condEfectiva.tipo_contrato))}
+                    {metaRow('Modalidad', labelOr(MODALIDAD_TRABAJO_LABELS, condEfectiva.modalidad))}
+                    {metaRow('Sede', condEfectiva.sede_nombre || condEfectiva.sede)}
+                    {condEfectiva.area_nombre ? metaRow('Área', condEfectiva.area_nombre) : null}
+                    {metaRow('Régimen', labelOr(REGIMEN_JORNADA_LABELS, condEfectiva.regimen_jornada))}
+                    {(_docPadre?.fecha_vigencia_cambio || doc.fecha_vigencia_cambio) ? metaRow('Vigente desde', doc.fecha_vigencia_cambio || _docPadre?.fecha_vigencia_cambio) : null}
+                    {condEfectiva.descripcion_cambio ? metaRow('Descripción del cambio', condEfectiva.descripcion_cambio) : null}
+                  </div>
+                )}
+
+                {/* Auditoría y notas — al final */}
+                <div style={{borderTop:'1px solid var(--border)', paddingTop:12, display:'flex', flexDirection:'column', gap:8}}>
+                  {metaRow('Subido por', [subidoPor, activeDoc.creado_en ? String(activeDoc.creado_en).slice(0,16).replace('T',' ') : null].filter(Boolean).join('  ·  '))}
+                  {activeDoc.revisado_en && metaRow('Validado por', [validadoPor, String(activeDoc.revisado_en).slice(0,16).replace('T',' ')].filter(Boolean).join('  ·  '))}
+                  {activeDoc.motivo_rechazo && metaRow('Motivo de rechazo', activeDoc.motivo_rechazo, 'var(--danger)')}
+                  {metaRow('Notas', activeDoc.notas)}
                 </div>
-              </details>
-            </div>
+              </div>
+            )}
+
+            {/* Tab: Versiones */}
+            {sideTab === 'versiones' && (
+              <div style={{flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:8, paddingBottom:8, paddingRight:2}}>
+                {loadingHistorial && <div className="text-muted" style={{fontSize:12}}>Cargando historial...</div>}
+                {!loadingHistorial && grupos.length === 0 && (
+                  <div className="text-muted" style={{fontSize:12}}>No hay versiones registradas.</div>
+                )}
+                {!loadingHistorial && grupos.map((g, idx) => {
+                  const isLegacy = g.isLegacy;
+                  return (
+                    <div key={g.periodoGrupoId || 'legacy'} style={{marginBottom: 16}}>
+                      {/* Cabecera del Periodo */}
+                      {isLegacy ? (
+                        <div style={{fontSize: 12, fontWeight: 700, color: 'var(--fg-muted)', marginBottom: 8, textTransform: 'uppercase'}}>
+                          {g.titulo}
+                        </div>
+                      ) : (
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8}}>
+                          <strong style={{fontSize: 13}}>
+                            Período: {g.fechaEmision ? String(g.fechaEmision).slice(0, 10) : '?'} → {g.fechaVencimiento ? String(g.fechaVencimiento).slice(0, 10) : '?'}
+                          </strong>
+                          <span className={`badge ${g.badge_color || (g.activo ? 'badge-green' : 'badge-gray')}`} style={{fontSize: 10}}>
+                            {g.badge_texto || (g.activo ? 'Período activo' : 'Archivado')}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Lista de Versiones del Grupo */}
+                      <div style={{display: 'flex', flexDirection: 'column', gap: 6}}>
+                        {g.versiones.map((h, vIdx) => {
+                          const isCurrentActive = (!viewingHistoryDoc && h.id === doc.id) || (viewingHistoryDoc?.id === h.id);
+                          const bg = isCurrentActive ? 'var(--bg-subtle)' : 'transparent';
+                          const borderLeft = h.activo && !isLegacy ? '3px solid #22c55e' : '1px solid var(--border)';
+                          
+                          return (
+                            <div key={h.id} style={{border:'1px solid var(--border)', borderLeft, borderRadius:8, padding:'8px 12px', fontSize:12, background: bg}}>
+                              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4}}>
+                                <strong>Versión {h.version || (g.versiones.length - vIdx)} {h.activo ? '· activa' : ''}</strong>
+                                <span className={'badge ' + (h.estado_validacion==='anulado'?'badge-gray': HAB_DOC_BADGE[h.estado_validacion] || 'badge-gray')} style={{fontSize:10}}>
+                                  {HAB_DOC_LABEL[h.estado_validacion] || h.estado_validacion}
+                                </span>
+                              </div>
+                              <div className="text-muted" style={{marginBottom:2}}>
+                                Subida: {h.creado_en ? String(h.creado_en).slice(0,10) : 'N/A'}
+                              </div>
+                              <div className="text-muted" style={{marginBottom:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{h.nombre_archivo}</div>
+                              {anulandoId === h.id ? (
+                                <div style={{display:'grid', gap:6, marginTop:6}}>
+                                  <input className="input" style={{fontSize:11, padding:'4px 8px'}} placeholder="Motivo obligatorio" value={anularMotivo} onChange={e => setAnularMotivo(e.target.value)} />
+                                  <div className="row" style={{gap:6}}>
+                                    <button className="btn btn-danger btn-sm" disabled={!anularMotivo.trim()} onClick={() => confirmarAnular(h.id)}>Confirmar</button>
+                                    <button className="btn btn-ghost btn-sm" onClick={() => { setAnulandoId(null); setAnularMotivo(''); }}>Cancelar</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="row" style={{gap:6, marginTop:6}}>
+                                  {doc.id !== h.id && viewingHistoryDoc?.id !== h.id && (
+                                    <button className="btn btn-secondary btn-sm" onClick={() => handleVerHistorico(h)}>Ver</button>
+                                  )}
+                                  {viewingHistoryDoc?.id === h.id && (
+                                    <button className="btn btn-primary btn-sm" onClick={() => setViewingHistoryDoc(null)}>Volver a actual</button>
+                                  )}
+                                  {h.estado_validacion !== 'anulado' && !h.activo && (
+                                    <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => setAnulandoId(h.id)}>Anular</button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Acciones — siempre visibles al fondo */}
             <div style={{flexShrink:0, borderTop:'1px solid var(--border)', paddingTop:12, display:'grid', gap:8}}>
               {viewingHistoryDoc ? (
                 <>
-                  <button className="btn btn-primary btn-sm" onClick={() => setViewingHistoryDoc(null)}>Volver a la versión activa</button>
-                  <button className="btn btn-secondary btn-sm" onClick={handleDownload}>{I.download} Descargar esta versión</button>
+                  <button className="btn btn-secondary" onClick={handleDownload}>{I.download} Descargar esta versión</button>
+                  <button className="btn btn-ghost" onClick={() => setViewingHistoryDoc(null)}>Volver a la versión activa</button>
                 </>
               ) : (
                 <>
-                  <button className="btn btn-secondary btn-sm" onClick={handleDownload}>{I.download} Descargar</button>
+                  <button className="btn btn-secondary" onClick={handleDownload}>{I.download} Descargar</button>
                   {puedeValidar && (
                     <>
-                      <button className="btn btn-primary btn-sm" disabled={validatingId === doc.id} onClick={() => onValidate(doc.id, 'aprobado')}>
+                      <button className="btn btn-primary" disabled={validatingId === doc.id} onClick={() => onValidate(doc.id, 'aprobado')}>
                         {validatingId === doc.id ? 'Procesando...' : 'Validar'}
                       </button>
                       {rejecting ? (
@@ -355,43 +462,43 @@ export function DocumentoPreviewModal({
                           </div>
                         </div>
                       ) : (
-                        <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} disabled={validatingId === doc.id} onClick={() => setRejecting(true)}>
+                        <button className="btn btn-ghost" style={{color:'var(--danger)'}} disabled={validatingId === doc.id} onClick={() => setRejecting(true)}>
                           Rechazar con motivo
                         </button>
                       )}
                     </>
                   )}
-                  {esContratoDoc ? (
+                  {esContratoDoc || esRenovable ? (
                     <>
-                      {onCorregir && (
-                        <button className="btn btn-ghost btn-sm" onClick={onCorregir}>
+                      {onCorregir && (doc.estado_validacion === 'pendiente' || doc.estado_validacion === 'rechazado' || !onNuevaVersion) && (
+                        <button className="btn btn-ghost" onClick={onCorregir}>
                           {I.edit || I.upload} Corregir este documento
                         </button>
                       )}
-                      {onNuevaVersion && doc.estado_validacion === 'aprobado' && (
-                        <button className="btn btn-ghost btn-sm" onClick={onNuevaVersion}>
+                      {onNuevaVersion && doc.estado_validacion === 'aprobado' && !esRenovable && (
+                        <button className="btn btn-ghost" onClick={onNuevaVersion}>
                           {I.upload} Subir nueva versión
                         </button>
                       )}
-                      {onNuevoContrato && puedeNuevoContrato && (
+                      {onNuevoContrato && doc.estado_validacion === 'aprobado' && esRenovable && (
                         <div style={{display:'grid', gap:4}}>
-                          <button className="btn btn-ghost btn-sm" style={{color:'var(--orange)'}} onClick={onNuevoContrato}>
-                            {I.plus || I.upload} Nuevo contrato
+                          <button className="btn btn-ghost" style={{color:'var(--orange)'}} onClick={onNuevoContrato}>
+                            + {btnNuevoPeriodoTexto}
                           </button>
                           <div style={{fontSize:10, color:'var(--fg-muted)', lineHeight:1.4}}>
-                            El período anterior quedará archivado. Usar cuando el contrato anterior venció o se terminó.
+                            El período anterior quedará archivado. Úsalo para crear una nueva renovación independiente.
                           </div>
                         </div>
                       )}
                     </>
                   ) : (
                     onReplace && (
-                      <button className="btn btn-ghost btn-sm" onClick={onReplace}>{I.upload} Reemplazar</button>
+                      <button className="btn btn-ghost" onClick={onReplace}>{I.upload} Reemplazar</button>
                     )
                   )}
                 </>
               )}
-              <button className="btn btn-ghost btn-sm" onClick={onClose}>Cerrar</button>
+              <button className="btn btn-ghost" style={{color:'var(--fg-muted)'}} onClick={onClose}>Cerrar</button>
             </div>
           </aside>
         </div>

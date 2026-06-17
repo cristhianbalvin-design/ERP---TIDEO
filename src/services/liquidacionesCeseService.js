@@ -389,9 +389,6 @@ export async function crearLiquidacion(empresaId, payload, creadoPor = null) {
     .select('*');
   if (concErr) throw concErr;
 
-  // GAP-12: bloquear acceso al sistema al iniciar el proceso de cese
-  await bloquearAccesoColaborador(payload.personal_id, payload.personal_tipo, empresaId, creadoPor).catch(() => {});
-
   return { liquidacion, conceptos: concData || [] };
 }
 
@@ -468,6 +465,9 @@ export async function confirmarLiquidacion(liquidacionId, params = {}, confirmed
     .from(tablaPersonal)
     .update(cambiosPersonal)
     .eq('id', liq.personal_id);
+
+  // GAP-12: bloquear acceso al sistema al confirmar el cese
+  await bloquearAccesoColaborador(liq.personal_id, liq.personal_tipo, liq.empresa_id, confirmedBy).catch(() => {});
 
   const { data: conceptos } = await supabase
     .from('liquidaciones_cese_conceptos')

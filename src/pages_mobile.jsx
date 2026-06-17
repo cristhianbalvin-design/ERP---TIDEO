@@ -3162,6 +3162,11 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
     try {
       await subirContratoFirmadoAprobadoCtx({ file: fileSubir, docOriginal: modalSubirContrato });
       addNotificacion('Contrato firmado subido con éxito. Queda en revisión por RRHH.');
+      if (modalSubirContrato) {
+        modalSubirContrato.estado_validacion = 'pendiente';
+        modalSubirContrato.subido_desde = 'mobile';
+        modalSubirContrato.creado_en = new Date().toISOString();
+      }
       setModalSubirContrato(null);
       setFileSubir(null);
     } catch (err) {
@@ -3185,6 +3190,9 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
         nombreColaborador: ficha.nombre,
       });
       addNotificacion('Documento firmado subido con éxito. RRHH lo validará pronto.');
+      docOriginal.estado_validacion = 'pendiente';
+      docOriginal.subido_desde = 'mobile';
+      docOriginal.creado_en = new Date().toISOString();
     } catch (err) {
       addNotificacion(`Error al subir el documento: ${err?.message || err}`, 'error');
     } finally {
@@ -3270,13 +3278,16 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
           const allDocs = [...(data.contratos || []), ...(data.documentos || [])];
           const docsPendMobile = allDocs.filter(d => d.estado_validacion === 'pendiente_firma' || d.estado_firma === 'pendiente_trabajador');
           
+          const sinContratoAprobado = data.resumen?.contrato?.estado === 'sin_contrato' || !(data.contratos || []).some(c => c.estado_validacion === 'aprobado');
+
           if (allDocs.length === 0) {
             return (
               <>
-                <label className="btn btn-secondary btn-sm" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}>
-                  {I.upload} Cargar contrato firmado
-                  <input type="file" accept="application/pdf,image/*" capture="environment" style={{ display: 'none' }} />
-                </label>
+                {sinContratoAprobado && (
+                  <div className="alert alert-info" style={{ fontSize: 12, padding: '10px 14px', marginBottom: 8 }}>
+                    Tu contrato será cargado por RRHH. Recibirás una notificación cuando esté listo.
+                  </div>
+                )}
                 <div className="text-muted" style={{ fontSize: 12 }}>0 documentos personales registrados.</div>
               </>
             );
@@ -3284,34 +3295,66 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
           
           return (
             <div style={{ padding: '8px 0', marginBottom: 8 }}>
+              {sinContratoAprobado && (
+                <div className="alert alert-info" style={{ fontSize: 12, padding: '10px 14px', marginBottom: 12 }}>
+                  Tu contrato será cargado por RRHH. Recibirás una notificación cuando esté listo.
+                </div>
+              )}
               {docsPendMobile.length > 0 && (
                 <span className="badge badge-orange" style={{ marginBottom: 12, display: 'inline-block' }}>
                   Tienes {docsPendMobile.length} documento{docsPendMobile.length !== 1 ? 's' : ''} pendiente{docsPendMobile.length !== 1 ? 's' : ''} de firma
                 </span>
               )}
               {allDocs.map(d => {
-                const isPendiente = d.estado_validacion === 'pendiente_firma' || d.estado_firma === 'pendiente_trabajador';
-                const isEnRevision = d.estado_validacion === 'en_revision' || d.estado_validacion === 'pendiente';
+                const isPendienteFirma = (d.estado_validacion === 'pendiente_firma' || d.estado_firma === 'pendiente_trabajador') || (d.estado_validacion === 'pendiente' && d.subido_desde === 'backoffice');
+                const isPendienteValidacion = d.estado_validacion === 'pendiente' && d.subido_desde === 'mobile';
+                const isEnRevision = d.estado_validacion === 'en_revision' || (d.estado_validacion === 'pendiente' && d.subido_desde !== 'mobile' && d.subido_desde !== 'backoffice');
                 const isAprobado = d.estado_validacion === 'aprobado' || d.estado_validacion === 'vigente';
                 const isRechazado = d.estado_validacion === 'rechazado';
+                const yaSubioFirmado = isAprobado && (personalDocumentos || []).some(pd =>
+                  pd.personal_id === ficha?.id &&
+                  (pd.tipo_documento_id === d.tipo_documento_id || pd.tipo_doc === d.tipo_doc) &&
+                  pd.estado_validacion === 'pendiente' && pd.subido_desde === 'mobile' && pd.activo === false
+                );
                 
                 let subtext = '';
-                if (isPendiente) subtext = d.enviado_a_firma_en ? `Enviado el ${d.enviado_a_firma_en.slice(0, 10)}` : 'Enviado por RRHH';
+                if (isPendienteFirma) subtext = `Enviado el ${d.creado_en ? new Date(d.creado_en).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric' }) : (d.enviado_a_firma_en ? d.enviado_a_firma_en.slice(0, 10) : 'hoy')} · Esperando tu firma`;
+                else if (isPendienteValidacion) {
+                  const f = d.creado_en ? new Date(d.creado_en) : new Date();
+                  const fStr = `${String(f.getDate()).padStart(2, '0')}/${String(f.getMonth() + 1).padStart(2, '0')}/${f.getFullYear()} a las ${String(f.getHours()).padStart(2, '0')}:${String(f.getMinutes()).padStart(2, '0')}`;
+                  subtext = `Documento enviado — pendiente de validación · Enviado el ${fStr}`;
+                }
                 else if (isEnRevision) subtext = 'En revisión por RRHH';
                 else if (isAprobado) subtext = `Vigente ${d.fecha_vencimiento ? `· Vence: ${d.fecha_vencimiento}` : ''}`;
-                else if (isRechazado) subtext = 'Documento rechazado — sube una nueva versión';
+                else if (isRechazado) subtext = `Rechazado${d.motivo_rechazo ? ` · ${d.motivo_rechazo}` : ''}`;
                 else subtext = d.estado_validacion || 'Registrado';
+
+                const tInfo = (tiposDocumento || []).find(t => t.id === d.tipo_documento_id || t.id === d.tipo_doc);
+                const permiteFirma = tInfo ? tInfo.permite_firma_trabajador !== false : true;
+                const isContrato = Boolean(d.tipo_documento_id && tiposDocumentoContratoIds.includes(d.tipo_documento_id)) || Boolean(d.tipo_doc === 'contrato');
+                
+                let docBadge = null;
+                if (isContrato) {
+                  if (tInfo && !tInfo.renovable && tInfo.permite_firma_trabajador === false) {
+                    docBadge = <span className="badge badge-gray" style={{ fontSize: 10, marginLeft: 6 }}>Contrato original</span>;
+                  } else if (tInfo && tInfo.renovable) {
+                    docBadge = <span className="badge badge-cyan" style={{ fontSize: 10, marginLeft: 6 }}>Renovación vigente</span>;
+                  }
+                }
 
                 return (
                   <div key={d.id} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border-subtle)' }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{getNombreDoc(d)}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, display: 'flex', alignItems: 'center' }}>
+                      {getNombreDoc(d)}
+                      {docBadge}
+                    </div>
                     <div className="text-muted" style={{ fontSize: 11, marginBottom: 8 }}>
                       {subtext}
                     </div>
                     <div className="row" style={{ gap: 8 }}>
                       <button className="btn btn-sm btn-secondary flex-1" onClick={() => abrirDoc(d)}>{I.file} Ver</button>
                       
-                      {isPendiente && (
+                      {isPendienteFirma && permiteFirma && (
                         ficha.firma_onboarding_completo ? (
                           <button className="btn btn-sm btn-ghost flex-1" style={{ color: 'var(--fg-muted)', cursor: 'default' }} disabled title="Próximamente">Firma electrónica</button>
                         ) : (
@@ -3324,11 +3367,14 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
                         )
                       )}
                       
-                      {isAprobado && (
+                      {isAprobado && !yaSubioFirmado && permiteFirma && (
                         <button className="btn btn-sm btn-primary flex-1" onClick={() => setModalSubirContrato(d)}>Subir contrato firmado</button>
                       )}
+                      {isAprobado && yaSubioFirmado && (
+                        <span className="badge badge-orange" style={{ alignSelf: 'center' }}>Pendiente de validación</span>
+                      )}
                       
-                      {isRechazado && (
+                      {isRechazado && permiteFirma && (
                         <label className="btn btn-sm btn-primary flex-1" style={{ justifyContent: 'center' }}>
                           {uploading === d.id ? 'Subiendo...' : 'Subir nueva versión'}
                           <input type="file" accept="application/pdf,image/*" capture="environment" style={{ display: 'none' }}

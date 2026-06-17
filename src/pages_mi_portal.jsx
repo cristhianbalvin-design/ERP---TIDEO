@@ -163,6 +163,11 @@ export function MiPortal() {
     try {
       await subirContratoFirmadoAprobadoCtx({ file: fileSubir, docOriginal: modalSubirContrato });
       addNotificacion('Contrato firmado subido con éxito. Queda en revisión por RRHH.');
+      if (modalSubirContrato) {
+        modalSubirContrato.estado_validacion = 'pendiente';
+        modalSubirContrato.subido_desde = 'mobile';
+        modalSubirContrato.creado_en = new Date().toISOString();
+      }
       setModalSubirContrato(null);
       setFileSubir(null);
     } catch (err) {
@@ -186,6 +191,9 @@ export function MiPortal() {
         nombreColaborador: ficha.nombre,
       });
       addNotificacion('Documento firmado cargado. RRHH lo validara pronto.');
+      docOriginal.estado_validacion = 'pendiente';
+      docOriginal.subido_desde = 'mobile';
+      docOriginal.creado_en = new Date().toISOString();
     } catch (err) {
       addNotificacion(err?.message || 'No se pudo cargar el documento.');
     } finally {
@@ -195,19 +203,35 @@ export function MiPortal() {
 
   const subirDocumento = async (file, tipoDoc = 'contrato') => {
     if (!file || !ficha) return;
+
+    let docIdToUpload = tipoDoc;
+    let tipoDocumentoId = null;
+
+    if (tipoDoc === 'contrato') {
+      const tipoContrato = (tiposDocumento || []).find(t => t.nombre === 'Contrato Laboral' && t.estado === 'activo');
+      if (!tipoContrato) {
+        addNotificacion('Configuración de tipos de documento incompleta. Contacta a RRHH.', 'error');
+        return;
+      }
+      docIdToUpload = tipoContrato.id;
+      tipoDocumentoId = tipoContrato.id;
+    }
+
     setUploading(tipoDoc);
     try {
       await subirDocumentoPersonalCtx({
         personalId: ficha.id,
         personalTipo: ficha.personal_tipo,
-        tipoDoc,
+        tipoDoc: docIdToUpload,
+        tipoDocumentoId,
         file,
         fechaVencimiento: null,
         notas: tipoDoc === 'contrato' ? 'Contrato firmado cargado desde Mi portal' : 'Renovacion cargada desde Mi portal',
+        origen: 'portal_empleado',
       });
       addNotificacion('Documento cargado para validacion de RRHH.');
     } catch (err) {
-      addNotificacion(err.message || 'No se pudo cargar el documento.');
+      addNotificacion(err.message || 'No se pudo cargar el documento.', 'error');
     } finally {
       setUploading('');
     }
@@ -508,25 +532,105 @@ export function MiPortal() {
 
           {tab === 'contratos' && (
             <div className="card">
-              <div className="card-head"><h3>Contrato vigente</h3><span className={`badge ${estadoContratoBadge(data.resumen?.contrato?.estado, data.ficha)}`}>{estadoContratoLabel(data.resumen?.contrato)}</span></div>
+              <div className="card-head"><h3>Contratos vigentes / requeridos</h3></div>
               <div className="card-body">
                 {data.resumen?.contrato?.estado === 'sin_contrato' && !data.ficha?.cargo_confianza && (
                   <div className="alert alert-danger" style={{ fontSize: 12, marginBottom: 12, padding: '10px 14px' }}>Tu asistencia está bloqueada hasta que RRHH registre tu contrato digital. Consulta con RRHH.</div>
                 )}
                 <div className="text-muted" style={{ fontSize: 12, marginBottom: 16 }}>La firma electrónica avanzada queda disponible cuando RRHH active el parámetro del tenant y exista contrato pendiente.</div>
-                {docsPendientesFirma.length > 0 ? (
-                  <div>
+                
+                {docsPendientesFirma.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
                     <div className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>Tienes documentos pendientes de firma enviados por RRHH.</div>
                     <button className="btn btn-primary" onClick={() => setTab('firma')}>Ir a Firma y consentimiento →</button>
                   </div>
-                ) : (
-                  <div className="row">
-                    <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                      {uploading === 'contrato' ? 'Subiendo...' : <span style={{display:'flex',gap:6,alignItems:'center'}}><span style={{width:16,height:16}}>{I.upload}</span> Cargar contrato firmado</span>}
-                      <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={e => subirDocumento(e.target.files?.[0], 'contrato')} />
-                    </label>
-                  </div>
                 )}
+
+                {(() => {
+                  const contratosAMostrar = data.contratos.filter(c => c.activo || c.estado_validacion === 'pendiente' || c.estado_validacion === 'rechazado' || c.estado_validacion === 'aprobado');
+                  
+                  if (contratosAMostrar.length === 0) {
+                    return (
+                      <div className="alert alert-info" style={{ fontSize: 12, padding: '10px 14px' }}>
+                        Tu contrato será cargado por RRHH. Recibirás una notificación cuando esté disponible para que puedas revisarlo y firmarlo.
+                      </div>
+                    );
+                  }
+
+                  // Separar Primigenio y Laboral
+                  const primigenios = contratosAMostrar.filter(c => {
+                    const tInfo = tiposDocumento?.find(t => t.id === c.tipo_documento_id || t.nombre === c.tipo_doc || t.codigo === c.tipo_doc);
+                    return tInfo && !!tInfo.tipo_sucesor_id; // Es predecesor = Primigenio
+                  });
+
+                  const laborales = contratosAMostrar.filter(c => {
+                    const tInfo = tiposDocumento?.find(t => t.id === c.tipo_documento_id || t.nombre === c.tipo_doc || t.codigo === c.tipo_doc);
+                    return !tInfo || !tInfo.tipo_sucesor_id; // No es predecesor = Laboral
+                  });
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      {primigenios.map(primigenio => (
+                        <div key={primigenio.id} className="card" style={{ padding: 16, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <div style={{ fontWeight: 600 }}>Contrato Original</div>
+                            <span className="badge badge-gray">Contrato original</span>
+                          </div>
+                          <div className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+                            Documento histórico que establece las condiciones iniciales de tu relación laboral.
+                          </div>
+                          <div className="row" style={{ gap: 8 }}>
+                            <button className="btn btn-secondary btn-sm" onClick={() => verDocumento(primigenio)}>Ver</button>
+                            {primigenio.archivo_url && (
+                              <a href={primigenio.archivo_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">Descargar</a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {laborales.map(laboral => (
+                        <div key={laboral.id} className="card" style={{ padding: 16, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <div style={{ fontWeight: 600 }}>Renovación de Contrato</div>
+                            {laboral.estado_validacion === 'aprobado' ? (
+                              <span className="badge badge-green">Renovación vigente</span>
+                            ) : laboral.estado_validacion === 'pendiente' ? (
+                              <span className="badge badge-orange">En revisión</span>
+                            ) : laboral.estado_validacion === 'rechazado' ? (
+                              <span className="badge badge-red">Rechazado</span>
+                            ) : (
+                              <span className="badge badge-gray">{laboral.estado_validacion}</span>
+                            )}
+                          </div>
+
+                          {laboral.estado_validacion === 'pendiente' && (
+                            <div className="text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+                              Tu contrato está siendo revisado por RRHH.
+                            </div>
+                          )}
+                          {laboral.estado_validacion === 'rechazado' && (
+                            <div className="alert alert-danger" style={{ fontSize: 12, padding: '8px 12px', marginBottom: 12 }}>
+                              RRHH rechazó el documento. Espera instrucciones.
+                            </div>
+                          )}
+
+                          <div className="row" style={{ gap: 8 }}>
+                            <button className="btn btn-secondary btn-sm" onClick={() => verDocumento(laboral)}>Ver</button>
+                            {laboral.archivo_url && (
+                              <a href={laboral.archivo_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">Descargar</a>
+                            )}
+                            {laboral.estado_validacion === 'aprobado' && (
+                              <label className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0 }}>
+                                {uploading === 'contrato' ? 'Subiendo...' : <span style={{display:'flex',gap:6,alignItems:'center'}}><span style={{width:14,height:14}}>{I.upload}</span> Subir versión firmada</span>}
+                                <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={e => subirDocumento(e.target.files?.[0], 'contrato')} />
+                              </label>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="card-head" style={{ borderTop: '1px solid var(--border)' }}><h3>Historial de contratos</h3></div>
@@ -534,20 +638,183 @@ export function MiPortal() {
                 <table className="tbl">
                   <thead><tr><th>Documento</th><th>Fecha de vencimiento</th><th>Estado validación</th><th style={{ textAlign: 'right' }}>Acción</th></tr></thead>
                   <tbody>
-                    {data.contratos.map(d => <tr key={d.id}>
-                      <td style={{ fontWeight: 600 }}>{getNombreDoc(d)}</td>
-                      <td>{d.fecha_vencimiento || 'Sin vencimiento'}</td>
-                      <td><span className="badge badge-gray">{d.estado_validacion || 'registrado'}</span></td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                          <button className="btn btn-secondary btn-sm" onClick={() => abrirDoc(d)}>Ver</button>
-                          {(d.estado_validacion === 'aprobado' || d.estado_validacion === 'vigente') && (
-                            <button className="btn btn-primary btn-sm" onClick={() => setModalSubirContrato(d)}>Subir firmado</button>
+                    {(() => {
+                      const visibleContratos = data.contratos.filter(d => {
+                        const tInfo = tiposDocumento?.find(t => t.id === d.tipo_documento_id || t.nombre === d.tipo_doc || t.codigo === d.tipo_doc);
+                        const isPredecesor = tInfo && !!tInfo.tipo_sucesor_id;
+                        if (isPredecesor && d.estado_validacion !== 'aprobado' && d.estado_validacion !== 'vigente') {
+                          return false;
+                        }
+                        return true;
+                      });
+
+                      const periodosMap = {};
+                      const sinGrupo = [];
+                      visibleContratos.forEach(d => {
+                        if (!d.periodo_grupo_id) {
+                          sinGrupo.push(d);
+                          return;
+                        }
+                        if (!periodosMap[d.periodo_grupo_id]) {
+                          periodosMap[d.periodo_grupo_id] = { id: d.periodo_grupo_id, docs: [], activo: false, fechaInicio: d.fecha_emision || 'Sin fecha', fechaFin: d.fecha_vencimiento || 'Sin fecha' };
+                        }
+                        periodosMap[d.periodo_grupo_id].docs.push(d);
+                        if (d.activo) periodosMap[d.periodo_grupo_id].activo = true;
+                        if (!periodosMap[d.periodo_grupo_id].docRepresentativo || (d.version > (periodosMap[d.periodo_grupo_id].docRepresentativo.version || 0))) {
+                          periodosMap[d.periodo_grupo_id].docRepresentativo = d;
+                          periodosMap[d.periodo_grupo_id].fechaInicio = d.fecha_emision || periodosMap[d.periodo_grupo_id].fechaInicio;
+                          periodosMap[d.periodo_grupo_id].fechaFin = d.fecha_vencimiento || periodosMap[d.periodo_grupo_id].fechaFin;
+                        }
+                      });
+
+                      const hoyStr = new Date().toISOString().slice(0, 10);
+                      Object.values(periodosMap).forEach(g => {
+                        const tieneActivoAprobado = g.docs.some(v => v.activo && v.estado_validacion === 'aprobado');
+                        const fVenc = g.fechaFin !== 'Sin fecha' ? g.fechaFin : null;
+                        const fIni = g.fechaInicio !== 'Sin fecha' ? g.fechaInicio : null;
+
+                        if (fIni && fIni > hoyStr) {
+                          g.badge_color = 'badge-cyan';
+                          g.badge_texto = `Futuro · inicia ${fIni}`;
+                        } else if (fVenc && fVenc < hoyStr && !g.activo) {
+                          g.badge_color = 'badge-gray';
+                          g.badge_texto = 'Archivado';
+                        } else if ((!fVenc || fVenc >= hoyStr) && tieneActivoAprobado) {
+                          g.badge_color = 'badge-green';
+                          g.badge_texto = 'Período activo';
+                        } else {
+                          g.badge_color = 'badge-orange';
+                          g.badge_texto = 'Pendiente de activación';
+                        }
+                      });
+
+                      const periodos = Object.values(periodosMap).sort((a, b) => {
+                        if (a.activo && !b.activo) return -1;
+                        if (b.activo && !a.activo) return 1;
+                        return (b.fechaInicio || '').localeCompare(a.fechaInicio || '');
+                      });
+
+                      const renderDocRow = (d) => {
+                        const tInfo = tiposDocumento?.find(t => t.id === d.tipo_documento_id || t.nombre === d.tipo_doc || t.codigo === d.tipo_doc);
+                        const isPredecesor = tInfo && !!tInfo.tipo_sucesor_id;
+                        const isSucesor = tInfo && tiposDocumento.some(t => t.tipo_sucesor_id === tInfo.id);
+
+                        let isPendienteFirma = (d.estado_validacion === 'pendiente_firma' || d.estado_firma === 'pendiente_trabajador') || (d.estado_validacion === 'pendiente' && d.subido_desde === 'backoffice');
+                        let isPendienteValidacion = d.estado_validacion === 'pendiente' && d.subido_desde === 'mobile';
+                        let isEnRevision = d.estado_validacion === 'en_revision' || (d.estado_validacion === 'pendiente' && d.subido_desde !== 'mobile' && d.subido_desde !== 'backoffice');
+                        let isAprobado = d.estado_validacion === 'aprobado' || d.estado_validacion === 'vigente';
+                        let isRechazado = d.estado_validacion === 'rechazado';
+                        let yaSubioFirmado = isAprobado && (personalDocumentos || []).some(pd =>
+                          pd.personal_id === ficha?.id &&
+                          (pd.tipo_documento_id === d.tipo_documento_id || pd.tipo_doc === d.tipo_doc) &&
+                          pd.estado_validacion === 'pendiente' && pd.subido_desde === 'mobile' && pd.activo === false
+                        );
+                        
+                        let subtext = d.estado_validacion || 'registrado';
+                        let badgeClass = 'badge-gray';
+                        let extraAyuda = null;
+
+                        if (isPredecesor) {
+                          subtext = 'Contrato original';
+                          badgeClass = 'badge-gray';
+                          extraAyuda = 'Documento histórico. No requiere acción.';
+                          isPendienteFirma = false;
+                          isAprobado = false; // Hide Subir firmado
+                        } else if (isSucesor) {
+                          if (isAprobado) {
+                            subtext = 'Renovación vigente';
+                            badgeClass = 'badge-cyan';
+                          } else if (isEnRevision || isPendienteFirma || isPendienteValidacion) {
+                            subtext = 'En revisión';
+                            badgeClass = 'badge-orange';
+                            isPendienteFirma = false; // Disable signing
+                            extraAyuda = 'Tu contrato está siendo revisado por RRHH.';
+                          } else if (isRechazado) {
+                            subtext = 'Rechazado';
+                            badgeClass = 'badge-red';
+                          }
+                        } else {
+                          if (isPendienteFirma) { subtext = 'Esperando tu firma'; badgeClass = 'badge-orange'; }
+                          else if (isPendienteValidacion) { subtext = 'Pendiente de validación'; badgeClass = 'badge-orange'; }
+                          else if (isEnRevision) { subtext = 'En revisión por RRHH'; badgeClass = 'badge-cyan'; }
+                          else if (isAprobado) { subtext = 'Vigente'; badgeClass = 'badge-green'; }
+                          else if (isRechazado) { subtext = 'Rechazado'; badgeClass = 'badge-red'; }
+                        }
+
+                        const badgeStr = d.version ? `v${d.version}` : '';
+
+                        return (
+                          <tr key={d.id}>
+                            <td style={{ fontWeight: 600 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {getNombreDoc(d)} {badgeStr && <span className="badge badge-gray" style={{ fontSize: 10 }}>{badgeStr}</span>}
+                              </div>
+                              {isPendienteValidacion && d.creado_en && (
+                                <div className="text-muted" style={{ fontSize: 11, marginTop: 4, fontWeight: 400 }}>
+                                  Enviado el {new Date(d.creado_en).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                                </div>
+                              )}
+                              {isRechazado && d.motivo_rechazo && (
+                                <div className="text-muted" style={{ fontSize: 11, marginTop: 4, fontWeight: 400 }}>
+                                  {d.motivo_rechazo}
+                                </div>
+                              )}
+                              {extraAyuda && (
+                                <div className="text-muted" style={{ fontSize: 11, marginTop: 4, fontWeight: 400 }}>
+                                  {extraAyuda}
+                                </div>
+                              )}
+                            </td>
+                            <td>{d.fecha_vencimiento || 'Sin vencimiento'}</td>
+                            <td><span className={`badge ${badgeClass}`}>{subtext}</span></td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                                <button className="btn btn-secondary btn-sm" onClick={() => abrirDoc(d)}>Ver</button>
+                                {isAprobado && !yaSubioFirmado && (
+                                  <button className="btn btn-primary btn-sm" onClick={() => setModalSubirContrato(d)}>Subir firmado</button>
+                                )}
+                                {isAprobado && yaSubioFirmado && (
+                                  <span className="badge badge-orange">Pendiente de validación</span>
+                                )}
+                                {isPendienteFirma && (
+                                  <button className="btn btn-primary btn-sm" onClick={() => setModalSubirContrato(d)}>Subir firmado</button>
+                                )}
+                                {isRechazado && (
+                                  <button className="btn btn-primary btn-sm" onClick={() => setModalSubirContrato(d)}>Subir nueva versión</button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      };
+
+                      if (data.contratos.length === 0) return <tr><td colSpan="4" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin contratos registrados.</td></tr>;
+
+                      return (
+                        <>
+                          {periodos.map(periodo => (
+                            <React.Fragment key={periodo.id}>
+                              <tr style={{ background: 'var(--bg-subtle)' }}>
+                                <td colSpan="4" style={{ padding: '8px 12px', fontWeight: 600, fontSize: 12, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>
+                                  {periodo.badge_texto || (periodo.activo ? 'Período activo' : 'Período archivado')} ({periodo.fechaInicio} → {periodo.fechaFin})
+                                </td>
+                              </tr>
+                              {periodo.docs.sort((a, b) => (b.version || 0) - (a.version || 0)).map(d => renderDocRow(d))}
+                            </React.Fragment>
+                          ))}
+                          {sinGrupo.length > 0 && (
+                            <React.Fragment>
+                              <tr style={{ background: 'var(--bg-subtle)' }}>
+                                <td colSpan="4" style={{ padding: '8px 12px', fontWeight: 600, fontSize: 12, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>
+                                  Documentos anteriores
+                                </td>
+                              </tr>
+                              {sinGrupo.sort((a, b) => String(b.fecha_emision || b.creado_en || '').localeCompare(String(a.fecha_emision || a.creado_en || ''))).map(d => renderDocRow(d))}
+                            </React.Fragment>
                           )}
-                        </div>
-                      </td>
-                    </tr>)}
-                    {!data.contratos.length && <tr><td colSpan="4" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>Sin contratos registrados.</td></tr>}
+                        </>
+                      );
+                    })()}
                   </tbody>
                 </table>
               </div>

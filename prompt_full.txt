@@ -1,0 +1,87 @@
+<USER_REQUEST>
+# Verificación de los 8 prompts "listos para correr"
+## ERP TIDEO · DIFESMAQ · 16/06/2026
+### Para el agente — responder con estado actual, una línea por pregunta
+
+---
+
+## 1 — BUG-03 parcial: Diff de adendas en timeline
+
+**P1.** En la función `rrhhAdminContratoResumen()` (~línea 7047 de `pages_admin.jsx`): cuando el documento es una adenda, ¿muestra solo los campos que cambiaron con formato "Campo: valor anterior → valor nuevo", o sigue mostrando el snapshot completo?
+
+**P2.** Si ya hay diff implementado: ¿de dónde saca el valor anterior? ¿Compara contra el snapshot del documento padre?
+
+**Criterio:** ✅ si muestra "Sueldo: S/ 3,000 → S/ 4,500". ❌ si muestra el snapshot completo de la adenda.
+
+---
+
+## 2 — BUG-05 parcial: 7 ocurrencias filtro 'contrato' hardcodeado
+
+**P3.** Hacer grep en `src/` de comparaciones de texto contra `'contrato'` en el contexto de `tipo_doc` o `tipo_doc_nombre`. ¿Siguen existiendo las ocurrencias en estas ubicaciones?
+- `autoservicioEmpleadoService.js` línea 89
+- `pages_ops.jsx` líneas 15684, 15703, 15709
+- `pages_admin.jsx` líneas 6978, 7001, 7009
+
+**P4.** ¿Esas ocurrencias ya fueron reemplazadas por evaluación de `captura_snapshot_laboral`?
+
+**Criterio:** ✅ si el grep no devuelve ocurrencias de filtro por texto. ❌ si alguna persiste.
+
+---
+
+## 3 — GAP-04: PDF de amonestaciones
+
+**P5.** En el Tab "Amonestaciones" de la ficha (`AmonestacionesTab`): ¿existe un botón para generar o descargar la papeleta de amonestación en PDF?
+
+**P6.** En `pages_pdf.jsx`: ¿existe algún componente o layout para el PDF de amonestaciones (distinto de `PapeletaMovimientoPDF` que es para permisos/ausencias)?
+
+**Criterio:** ✅ si existe botón en el tab y layout en pages_pdf.jsx. ❌ si solo existe el PDF de permisos.
+
+---
+
+## 4 — MEJORA-03: Tab Ficha con 5 secciones de primer nivel
+
+**P7.** En `pages_ops.jsx` (~línea 17080), el Tab Ficha del colaborador operativo: ¿tiene secciones explícitas de primer nivel para
+<truncated 2226 bytes>
+a Personal Administrativo
+
+**P18.** ¿Existe algún botón o entrada de "Carga masiva" o "Importar" en el header de Personal Administrativo?
+
+**P19.** ¿Existe algún componente o modal de carga masiva para personal administrativo en `pages_admin.jsx`?
+
+**Criterio:** ✅ si existe el botón y el modal con plantilla descargable. ❌ si no existe ninguna entrada.
+
+---
+
+## 8 — Carga masiva Personal Operativo
+
+**P20.** ¿Existe algún botón o entrada de "Carga masiva" o "Importar" en el header de Personal Operativo?
+
+**P21.** ¿Existe algún componente o modal de carga masiva para personal operativo en `pages_ops.jsx`?
+
+**Criterio:** ✅ si existe el botón y el modal con plantilla descargable. ❌ si no existe ninguna entrada.
+
+---
+
+## FORMATO DE RESPUESTA
+
+Para cada pregunta: una línea con ✅ / ❌ / ⚠️ + detalle mínimo (archivo y línea si es relevante). No hace falta explicación larga — solo el estado y la ubicación si está roto.
+
+---
+
+*Generado: 16/06/2026 — TIDEO / DIFESMAQ*
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-06-16T18:02:38-05:00.
+
+The user's current state is as follows:
+Active Document: d:\VIBECODING\ERP - TIDEO\supabase\migrations\250_gap12_bloqueo_cese_trigger.sql (LANGUAGE_UNSPECIFIED)
+Cursor is on line: 61
+Other open documents:
+- d:\VIBECODING\ERP - TIDEO\supabase\migrations\250_gap12_bloqueo_cese_trigger.sql (LANGUAGE_UNSPECIFIED)
+- d:\VIBECODING\ERP - TIDEO\supabase\migrations\249_gap05_job_sin_contrato_conectado.sql (LANGUAGE_UNSPECIFIED)
+- d:\VIBECODING\ERP - TIDEO\Documents\Documentomaestro.md (LANGUAGE_MARKDOWN)
+- d:\VIBECODING\ERP - TIDEO\supabase\migrations\248_versioning_contrato_periodos.sql (LANGUAGE_UNSPECIFIED)
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from None to Gemini 3.1 Pro (High). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>
