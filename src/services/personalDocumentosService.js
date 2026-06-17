@@ -308,7 +308,8 @@ export async function subirDocumento({
   const { data, error: rpcError } = await supabase.rpc(rpcName, rpcParams);
 
   if (rpcError) throw rpcError;
-  return normalizar({ id: data }); // Los nuevos RPC retornan un UUID.
+  // subir_version_documento retorna un UUID; subir_documento_personal retorna la fila completa.
+  return normalizar(isRenovable ? { id: data } : data);
 }
 
 export async function renovarDocumento({

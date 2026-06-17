@@ -1776,6 +1776,9 @@ body {
   min-height: 0;
   max-height: none;
 }
+.params-section-nomina > .card {
+  height: auto;
+}
 .params-page .card-head {
   padding: 0 2px 12px;
   background: transparent;
@@ -1963,7 +1966,6 @@ body {
 .params-page[data-section="flujos"] .params-section-flujos,
 .params-page[data-section="sla"] .params-section-sla,
 .params-page[data-section="cuentas"] .params-section-cuentas,
-.params-page[data-section="nomina"] .params-section-nomina,
 .params-page[data-section="evaluaciones"] .params-section-evaluaciones {
   display: flex;
   flex-direction: column;

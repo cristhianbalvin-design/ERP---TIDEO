@@ -9642,6 +9642,7 @@ export function AppProvider({ children }) {
     reasignarJefeEvaluacionCtx, guardarAutoevaluacionCtx, guardarEvaluacionJefeCtx,
     aprobarVacacion, rechazarVacacion,
     subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx,
+    recargarPersonalDocumentosPersonaCtx,
     enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, subirDocumentoFirmadoPortalCtx, subirContratoFirmadoAprobadoCtx,
     asignacionesJornada, setAsignacionesJornada, crearAsignacionJornadaCtx,
     crearOnboarding, registrarNPS,
