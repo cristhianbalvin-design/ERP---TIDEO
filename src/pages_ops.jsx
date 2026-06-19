@@ -19302,7 +19302,7 @@ export function SolicitudesRrhh() {
     return todosPersonal.find(p =>
       (uid && (p.auth_user_id === uid || p.user_id === uid || p.id === uid)) ||
       (email && (p.email || '').toLowerCase().trim() === email)
-    ) || todosPersonal[0];
+    ) || null;
   }, [authUser, todosPersonal]);
 
   const diasHabiles = useMemo(() => {
@@ -19362,12 +19362,13 @@ export function SolicitudesRrhh() {
     if (!empresa?.id || !personalActual) { addNotificacion('No se identificó el colaborador.'); return; }
     setSaving(true);
     try {
+      const esAutoAprobacion = supervisor?.id === personalActual.id || (supervisor?.auth_user_id && supervisor?.auth_user_id === (personalActual.auth_user_id || personalActual.user_id));
       const nueva = await solicitudesRrhhService.crearSolicitud(empresa.id, {
         personal_id: personalActual.id,
         personal_nombre: personalActual.nombre,
         personal_tipo: personalActual._tipo || 'operativo',
-        aprobador_id: supervisor?.id || null,
-        aprobador_nombre: supervisor?.nombre || null,
+        aprobador_id: esAutoAprobacion ? null : (supervisor?.id || null),
+        aprobador_nombre: esAutoAprobacion ? null : (supervisor?.nombre || null),
         tipo: form.tipo,
         fecha_inicio: form.fecha_inicio,
         fecha_fin: form.fecha_fin,
@@ -19447,7 +19448,7 @@ export function SolicitudesRrhh() {
   }, [personalActual, todosPersonal]);
 
   const pendientesAprobacion = useMemo(() =>
-    solicitudes.filter(s => s.estado === 'enviada' && subordinadosIds.includes(s.personal_id))
+    solicitudes.filter(s => s.estado === 'enviada' && subordinadosIds.includes(s.personal_id) && s.personal_id !== personalActual?.id)
   , [solicitudes, subordinadosIds]);
 
   const puedeVerTodas = canAdmin || subordinadosIds.length > 0;

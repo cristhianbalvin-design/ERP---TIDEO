@@ -3475,13 +3475,17 @@ function SolicitudesMovilView() {
 
   const personalActual = useMemo(() => {
     const uid = authUser?.id || authUser?.user_id;
-    return todosPersonal.find(p => p.user_id === uid || p.id === uid) || todosPersonal[0];
+    const email = (authUser?.email || '').toLowerCase().trim();
+    return todosPersonal.find(p =>
+      (uid && (p.auth_user_id === uid || p.id === uid)) ||
+      (email && (p.email || '').toLowerCase().trim() === email)
+    ) || null;
   }, [authUser, todosPersonal]);
 
   const supervisor = useMemo(() => {
     if (!personalActual) return null;
     const jefe = personalActual.supervisor_id || personalActual.jefe_user_id;
-    return todosPersonal.find(p => p.id === jefe || p.user_id === jefe) || null;
+    return todosPersonal.find(p => p.id === jefe || p.auth_user_id === jefe) || null;
   }, [personalActual, todosPersonal]);
 
   const diasHabiles = useMemo(() => {
@@ -3497,7 +3501,7 @@ function SolicitudesMovilView() {
     const misIds = todosPersonal
       .filter(p => p.supervisor_id === personalActual?.id || p.jefe_user_id === personalActual?.user_id)
       .map(p => p.id);
-    return solicitudes.filter(s => s.estado === 'enviada' && misIds.includes(s.personal_id));
+    return solicitudes.filter(s => s.estado === 'enviada' && misIds.includes(s.personal_id) && s.personal_id !== personalActual?.id);
   }, [solicitudes, personalActual, todosPersonal]);
 
   useEffect(() => {
@@ -3518,18 +3522,23 @@ function SolicitudesMovilView() {
   , [solicitudes, personalActual]);
 
   const enviarSolicitud = async () => {
-    if (!form.motivo.trim() || diasHabiles <= 0 || !empresa?.id || !personalActual) {
+    if (!personalActual) {
+      addNotificacion('No se encontró tu ficha de personal. Contacta a RRHH.');
+      return;
+    }
+    if (!form.motivo.trim() || diasHabiles <= 0 || !empresa?.id) {
       addNotificacion('Completa todos los campos obligatorios.');
       return;
     }
     setSaving(true);
     try {
+      const esAutoAprobacion = supervisor?.id === personalActual.id || (supervisor?.auth_user_id && supervisor?.auth_user_id === (personalActual.auth_user_id || personalActual.user_id));
       const nueva = await solicitudesRrhhService.crearSolicitud(empresa.id, {
         personal_id: personalActual.id,
         personal_nombre: personalActual.nombre,
         personal_tipo: personalActual._tipo || 'operativo',
-        aprobador_id: supervisor?.id || null,
-        aprobador_nombre: supervisor?.nombre || null,
+        aprobador_id: esAutoAprobacion ? null : (supervisor?.id || null),
+        aprobador_nombre: esAutoAprobacion ? null : (supervisor?.nombre || null),
         tipo: form.tipo,
         fecha_inicio: form.fecha_inicio,
         fecha_fin: form.fecha_fin,
@@ -3823,7 +3832,11 @@ function AdministrativoView({ screen, setScreen }) {
   // Colaborador actual
   const personalActual = useMemo(() => {
     const uid = authUser?.id || authUser?.user_id;
-    return (personalAdmin || []).find(p => p.user_id === uid || p.id === uid) || (personalAdmin || [])[0] || null;
+    const email = (authUser?.email || '').toLowerCase().trim();
+    return (personalAdmin || []).find(p =>
+      (uid && (p.auth_user_id === uid || p.id === uid)) ||
+      (email && (p.email || '').toLowerCase().trim() === email)
+    ) || null;
   }, [authUser, personalAdmin]);
 
   // Estado principal
