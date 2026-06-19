@@ -3459,11 +3459,14 @@ function SolicitudesMovilView() {
   const { empresa, role, personalOperativo, personalAdmin, authUser, addNotificacion } = useApp();
   const [screen, setScreen] = useState('home');
   const [solicitudes, setSolicitudes] = useState([]);
+  const [autorizacionesHE, setAutorizacionesHE] = useState([]);
   const [saldoVac, setSaldoVac] = useState({ disponibles: 30, usados: 0, saldo: 30 });
   const [paso, setPaso] = useState(1); // 1 tipo, 2 fechas, 3 motivo, 4 confirmación
   const [form, setForm] = useState({ tipo: 'vacaciones', fecha_inicio: new Date().toISOString().slice(0,10), fecha_fin: new Date().toISOString().slice(0,10), motivo: '', documento_url: '' });
+  const [formHE, setFormHE] = useState({ fecha: new Date().toISOString().slice(0,10), horas_estimadas: 1, motivo: '' });
   const [saving, setSaving] = useState(false);
   const [accionSolId, setAccionSolId] = useState(null);
+  const [accionIsHE, setAccionIsHE] = useState(false);
   const [accionTipo, setAccionTipo] = useState('');
   const [accionComentario, setAccionComentario] = useState('');
   const [accionSaving, setAccionSaving] = useState(false);
@@ -3493,21 +3496,25 @@ function SolicitudesMovilView() {
     return solicitudesRrhhService.diasHabilesLocal(form.fecha_inicio, form.fecha_fin);
   }, [form.fecha_inicio, form.fecha_fin]);
 
-  const esJefe = useMemo(() =>
-    todosPersonal.some(p => p.supervisor_id === personalActual?.id || p.jefe_user_id === personalActual?.user_id)
-  , [todosPersonal, personalActual]);
+  const subordinadosIds = useMemo(() => {
+    if (!personalActual) return [];
+    const uid = personalActual.id;
+    const authUid = personalActual.auth_user_id || personalActual.user_id;
+    return todosPersonal
+      .filter(p => (p.supervisor_id && p.supervisor_id === uid) || (p.jefe_user_id && authUid && p.jefe_user_id === authUid))
+      .map(p => p.id);
+  }, [personalActual, todosPersonal]);
+
+  const esJefe = subordinadosIds.length > 0;
 
   const pendientesEquipo = useMemo(() => {
-    const misIds = todosPersonal
-      .filter(p => p.supervisor_id === personalActual?.id || p.jefe_user_id === personalActual?.user_id)
-      .map(p => p.id);
-    return solicitudes.filter(s => s.estado === 'enviada' && misIds.includes(s.personal_id) && s.personal_id !== personalActual?.id);
-  }, [solicitudes, personalActual, todosPersonal]);
+    return solicitudes.filter(s => s.estado === 'enviada' && subordinadosIds.includes(s.personal_id) && s.personal_id !== personalActual?.id);
+  }, [solicitudes, subordinadosIds, personalActual]);
 
   useEffect(() => {
     if (!empresa?.id) return;
-    solicitudesRrhhService.cargarSolicitudes(empresa.id)
-      .then(setSolicitudes).catch(() => {});
+    solicitudesRrhhService.cargarSolicitudes(empresa.id).then(setSolicitudes).catch(() => {});
+    rrhhService.getAutorizacionesHorasExtra(empresa.id).then(setAutorizacionesHE).catch(() => {});
   }, [empresa?.id]);
 
   useEffect(() => {
@@ -3520,6 +3527,18 @@ function SolicitudesMovilView() {
     solicitudes.filter(s => s.personal_id === personalActual?.id)
       .sort((a, b) => b.creado_en.localeCompare(a.creado_en))
   , [solicitudes, personalActual]);
+
+  const pendientesEquipoMixto = useMemo(() => {
+    const arr1 = solicitudes.filter(s => s.estado === 'enviada' && subordinadosIds.includes(s.personal_id) && s.personal_id !== personalActual?.id).map(s => ({...s, _isHE: false}));
+    const arr2 = autorizacionesHE.filter(s => s.estado === 'pendiente' && subordinadosIds.includes(s.personal_id) && s.personal_id !== personalActual?.id).map(s => ({...s, _isHE: true, tipo: 'horas_extra'}));
+    return [...arr1, ...arr2];
+  }, [solicitudes, autorizacionesHE, subordinadosIds, personalActual]);
+
+  const misSolicitudesMixtas = useMemo(() => {
+    const arr1 = solicitudes.filter(s => s.personal_id === personalActual?.id).map(s => ({...s, _isHE: false}));
+    const arr2 = autorizacionesHE.filter(s => s.personal_id === personalActual?.id).map(s => ({...s, _isHE: true, tipo: 'horas_extra', creado_en: s.creado_en || s.solicitado_en || new Date().toISOString()}));
+    return [...arr1, ...arr2].sort((a, b) => b.creado_en.localeCompare(a.creado_en));
+  }, [solicitudes, autorizacionesHE, personalActual]);
 
   const enviarSolicitud = async () => {
     if (!personalActual) {
@@ -3550,6 +3569,37 @@ function SolicitudesMovilView() {
       addNotificacion('Solicitud enviada.');
       setPaso(1);
       setForm({ tipo: 'vacaciones', fecha_inicio: new Date().toISOString().slice(0,10), fecha_fin: new Date().toISOString().slice(0,10), motivo: '', documento_url: '' });
+      setScreen('home');
+    } catch (err) {
+      addNotificacion('Error: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const enviarSolicitudHE = async () => {
+    if (!personalActual) return;
+    if (!formHE.motivo.trim() || Number(formHE.horas_estimadas) <= 0 || !empresa?.id) {
+      addNotificacion('Completa todos los campos obligatorios para horas extra.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const nueva = await rrhhService.crearAutorizacionHorasExtra(empresa.id, {
+        personal_id: personalActual.id,
+        personal_nombre: personalActual.nombre,
+        personal_tipo: personalActual._tipo || 'operativo',
+        fecha: formHE.fecha,
+        horas_estimadas: Number(formHE.horas_estimadas),
+        minutos_autorizados: Math.round(Number(formHE.horas_estimadas) * 60),
+        motivo: formHE.motivo.trim(),
+        estado: 'pendiente',
+        solicitado_por: 'empleado',
+      });
+      setAutorizacionesHE(prev => [nueva, ...prev]);
+      addNotificacion('Solicitud de horas extra enviada al supervisor/RRHH.');
+      setPaso(1);
+      setFormHE({ fecha: new Date().toISOString().slice(0,10), horas_estimadas: 1, motivo: '' });
       setScreen('home');
     } catch (err) {
       addNotificacion('Error: ' + err.message);
@@ -3601,38 +3651,45 @@ function SolicitudesMovilView() {
           <div style={{fontSize:20, fontWeight:700, color:'var(--cyan)'}}>{saldoVac.saldo} días</div>
           <div style={{fontSize:10, color:'var(--fg-muted)'}}>{saldoVac.usados} usados de {saldoVac.disponibles}</div>
         </div>
-        {esJefe && pendientesEquipo.length > 0 && (
+        {esJefe && pendientesEquipoMixto.length > 0 && (
           <div style={{marginLeft:'auto', textAlign:'right'}}>
             <div style={{fontSize:10, color:'var(--fg-muted)'}}>Pendientes de aprobar</div>
-            <span className="badge badge-orange" style={{fontSize:13, padding:'2px 10px'}}>{pendientesEquipo.length}</span>
+            <span className="badge badge-orange" style={{fontSize:13, padding:'2px 10px'}}>{pendientesEquipoMixto.length}</span>
           </div>
         )}
       </div>
 
-      <button className="btn btn-primary" style={{width:'100%', marginBottom:14}} onClick={() => { setPaso(1); setScreen('nueva'); }}>
-        {I.plus} Nueva solicitud
-      </button>
+      <div className="row" style={{gap:10, marginBottom:14}}>
+        <button className="btn btn-primary" style={{flex:1}} onClick={() => { setPaso(1); setScreen('nueva'); }}>
+          {I.plus} Nueva licencia
+        </button>
+        <button className="btn btn-secondary" style={{flex:1}} onClick={() => { setPaso(1); setScreen('nueva_he'); }}>
+          {I.clock} Solicitar HE
+        </button>
+      </div>
 
-      {esJefe && pendientesEquipo.length > 0 && (
+      {esJefe && pendientesEquipoMixto.length > 0 && (
         <div style={{marginBottom:14}}>
           <div style={{fontSize:12, fontWeight:700, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8}}>Pendientes de tu aprobación</div>
-          {pendientesEquipo.map(sol => (
+          {pendientesEquipoMixto.map(sol => (
             <div key={sol.id} className="card" style={{padding:12, marginBottom:8}}>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6}}>
                 <div>
                   <div style={{fontWeight:600, fontSize:13}}>{sol.personal_nombre}</div>
-                  <div style={{fontSize:12, color:'var(--fg-muted)'}}>{SOL_TIPO_LABELS_M[sol.tipo] || sol.tipo}</div>
+                  <div style={{fontSize:12, color:'var(--fg-muted)'}}>{sol._isHE ? 'Horas Extra' : (SOL_TIPO_LABELS_M[sol.tipo] || sol.tipo)}</div>
                 </div>
-                <span className={'badge ' + solEstadoBadgeM(sol.estado)}>{SOL_ESTADO_LABELS_M[sol.estado]}</span>
+                <span className={'badge ' + solEstadoBadgeM(sol.estado)}>{sol._isHE ? (sol.estado === 'pendiente' ? 'Enviada' : sol.estado) : SOL_ESTADO_LABELS_M[sol.estado]}</span>
               </div>
-              <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:8}}>{sol.fecha_inicio} — {sol.fecha_fin} · {sol.dias_habiles} días hábiles</div>
+              <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:8}}>
+                {sol._isHE ? `${sol.fecha} · ${sol.horas_estimadas} horas` : `${sol.fecha_inicio} — ${sol.fecha_fin} · ${sol.dias_habiles} días hábiles`}
+              </div>
               <div className="row" style={{gap:8}}>
                 <button className="btn btn-primary btn-sm" style={{flex:1}}
-                  onClick={() => { setAccionSolId(sol.id); setAccionTipo('aprobar_jefe'); setAccionComentario(''); setScreen('accion'); }}>
+                  onClick={() => { setAccionSolId(sol.id); setAccionIsHE(sol._isHE); setAccionTipo('aprobar_jefe'); setAccionComentario(''); setScreen('accion'); }}>
                   Aprobar
                 </button>
                 <button className="btn btn-secondary btn-sm" style={{flex:1, color:'var(--red)'}}
-                  onClick={() => { setAccionSolId(sol.id); setAccionTipo('rechazar_jefe'); setAccionComentario(''); setScreen('accion'); }}>
+                  onClick={() => { setAccionSolId(sol.id); setAccionIsHE(sol._isHE); setAccionTipo('rechazar_jefe'); setAccionComentario(''); setScreen('accion'); }}>
                   Rechazar
                 </button>
               </div>
@@ -3642,22 +3699,30 @@ function SolicitudesMovilView() {
       )}
 
       <div style={{fontSize:12, fontWeight:700, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8}}>Mis solicitudes recientes</div>
-      {misSolicitudes.length === 0
+      {misSolicitudesMixtas.length === 0
         ? <div className="text-muted" style={{textAlign:'center', padding:24, fontSize:13}}>No tienes solicitudes.</div>
-        : misSolicitudes.slice(0, 8).map(sol => (
-          <div key={sol.id} className="card" style={{padding:12, marginBottom:8}}>
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
-              <div style={{display:'flex', alignItems:'center', gap:8}}>
-                <span style={{width:18, height:18, color:'var(--fg-muted)'}}>{SOL_TIPO_ICONS_M[sol.tipo]}</span>
-                <div>
-                  <div style={{fontWeight:600, fontSize:13}}>{SOL_TIPO_LABELS_M[sol.tipo] || sol.tipo}</div>
-                  <div style={{fontSize:11, color:'var(--fg-muted)'}}>{sol.fecha_inicio} — {sol.fecha_fin} · {sol.dias_habiles} días</div>
+        : misSolicitudesMixtas.slice(0, 8).map(sol => {
+          const comentario = sol._isHE ? sol.comentario_resolucion : (sol.comentario_rrhh || sol.comentario_jefe || sol.motivo_anulacion);
+          return (
+            <div key={sol.id} className="card" style={{padding:12, marginBottom:8}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                <div style={{display:'flex', alignItems:'center', gap:8}}>
+                  <span style={{width:18, height:18, color:'var(--fg-muted)'}}>{sol._isHE ? I.clock : SOL_TIPO_ICONS_M[sol.tipo]}</span>
+                  <div>
+                    <div style={{fontWeight:600, fontSize:13}}>{sol._isHE ? 'Horas Extra' : (SOL_TIPO_LABELS_M[sol.tipo] || sol.tipo)}</div>
+                    <div style={{fontSize:11, color:'var(--fg-muted)'}}>{sol._isHE ? `${sol.fecha} · ${sol.horas_estimadas} horas` : `${sol.fecha_inicio} — ${sol.fecha_fin} · ${sol.dias_habiles} días`}</div>
+                  </div>
                 </div>
+                <span className={'badge ' + solEstadoBadgeM(sol.estado)} style={{fontSize:11}}>{sol._isHE ? sol.estado : SOL_ESTADO_LABELS_M[sol.estado]}</span>
               </div>
-              <span className={'badge ' + solEstadoBadgeM(sol.estado)} style={{fontSize:11}}>{SOL_ESTADO_LABELS_M[sol.estado]}</span>
+              {comentario && (
+                <div style={{marginTop: 8, padding: 8, backgroundColor: 'var(--bg-subtle)', borderRadius: 6, fontSize: 11, color: 'var(--fg-subtle)'}}>
+                  <span style={{fontWeight: 600}}>Obs:</span> {comentario}
+                </div>
+              )}
             </div>
-          </div>
-        ))
+          );
+        })
       }
     </div>
   );
@@ -3781,9 +3846,73 @@ function SolicitudesMovilView() {
     );
   }
 
+  // ── Pantalla nueva solicitud HE ───────────────────────────────────────
+  if (screen === 'nueva_he') {
+    return (
+      <div style={{padding:'16px 14px', overflowY:'auto', height:'100%', display:'flex', flexDirection:'column'}}>
+        <div className="row" style={{alignItems:'center', marginBottom:16, gap:8}}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setScreen('home')}>{I.chevLeft}</button>
+          <div style={{fontWeight:700, fontSize:15}}>Solicitar Horas Extra</div>
+        </div>
+
+        {paso === 1 && (
+          <div style={{flex:1}}>
+            <div className="text-muted" style={{fontSize:12, marginBottom:12}}>Detalles de horas extra</div>
+            <div className="input-group" style={{marginBottom:12}}>
+              <label>Fecha</label>
+              <input className="input" type="date" value={formHE.fecha}
+                onChange={e => setFormHE(f => ({...f, fecha: e.target.value}))}/>
+            </div>
+            <div className="input-group" style={{marginBottom:12}}>
+              <label>Horas estimadas</label>
+              <input className="input" type="number" min="0.5" step="0.5" value={formHE.horas_estimadas}
+                onChange={e => setFormHE(f => ({...f, horas_estimadas: e.target.value}))}/>
+            </div>
+            <div className="input-group" style={{marginBottom:12}}>
+              <label>Motivo / Actividad a realizar *</label>
+              <textarea className="input" rows={4} value={formHE.motivo}
+                onChange={e => setFormHE(f => ({...f, motivo: e.target.value}))}
+                placeholder="Explica qué trabajo necesitas completar..."/>
+            </div>
+
+            <div className="row" style={{gap:10, marginTop:16}}>
+              <button className="btn btn-primary" style={{flex:1}} disabled={!formHE.motivo.trim() || Number(formHE.horas_estimadas) <= 0}
+                onClick={() => setPaso(2)}>
+                Revisar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {paso === 2 && (
+          <div style={{flex:1}}>
+            <div className="text-muted" style={{fontSize:12, marginBottom:12}}>Confirma tu solicitud de horas extra</div>
+            <div className="card" style={{padding:14, marginBottom:14}}>
+              <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10}}>
+                <span style={{width:20, height:20, color:'var(--cyan)'}}>{I.clock}</span>
+                <div style={{fontWeight:700, fontSize:15}}>Horas Extra</div>
+              </div>
+              <div style={{fontSize:13, lineHeight:1.7}}>
+                <div><strong>Fecha:</strong> {formHE.fecha}</div>
+                <div><strong>Estimado:</strong> {formHE.horas_estimadas} horas</div>
+                <div style={{marginTop:8, color:'var(--fg-muted)'}}>{formHE.motivo}</div>
+              </div>
+            </div>
+            <div className="row" style={{gap:10}}>
+              <button className="btn btn-secondary" style={{flex:1}} onClick={() => setPaso(1)}>{I.chevLeft} Atrás</button>
+              <button className="btn btn-primary" style={{flex:2}} onClick={enviarSolicitudHE} disabled={saving}>
+                {saving ? 'Enviando...' : 'Confirmar y enviar'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // ── Pantalla acción (aprobar/rechazar) ───────────────────────────────────────
   if (screen === 'accion') {
-    const accionSol = solicitudes.find(s => s.id === accionSolId);
+    const accionSol = accionIsHE ? autorizacionesHE.find(s => s.id === accionSolId) : solicitudes.find(s => s.id === accionSolId);
     const esRechazo = accionTipo === 'rechazar_jefe';
     return (
       <div style={{padding:'16px 14px', overflowY:'auto', height:'100%', display:'flex', flexDirection:'column'}}>
@@ -3794,8 +3923,8 @@ function SolicitudesMovilView() {
         {accionSol && (
           <div className="card" style={{padding:14, marginBottom:14}}>
             <div style={{fontWeight:600, fontSize:14}}>{accionSol.personal_nombre}</div>
-            <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>{SOL_TIPO_LABELS_M[accionSol.tipo]} · {accionSol.dias_habiles} días</div>
-            <div style={{fontSize:12, color:'var(--fg-muted)'}}>{accionSol.fecha_inicio} — {accionSol.fecha_fin}</div>
+            <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>{accionIsHE ? 'Horas Extra' : SOL_TIPO_LABELS_M[accionSol.tipo]} · {accionIsHE ? `${accionSol.horas_estimadas} horas` : `${accionSol.dias_habiles} días`}</div>
+            <div style={{fontSize:12, color:'var(--fg-muted)'}}>{accionIsHE ? accionSol.fecha : `${accionSol.fecha_inicio} — ${accionSol.fecha_fin}`}</div>
             <div style={{fontSize:12, marginTop:8}}>{accionSol.motivo}</div>
           </div>
         )}

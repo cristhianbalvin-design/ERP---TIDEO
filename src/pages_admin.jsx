@@ -7768,10 +7768,10 @@ function RRHHAdmin() {
       }
       return;
     }
-    if (activeParams.action === 'new' && activeParams.email) {
+    if (activeParams.action === 'new') {
       setEditandoId(null);
       setHorasBaseOverride(false);
-      setFormAlta({ ...formAltaBase, codigo: codigoSugeridoAdmin(), turno_id: '', horas_base_mes: '', dias_vacaciones: vacacionesSugeridas, email: activeParams.email });
+      setFormAlta({ ...formAltaBase, codigo: codigoSugeridoAdmin(), turno_id: '', horas_base_mes: '', dias_vacaciones: vacacionesSugeridas, email: activeParams.email || '', nombre: activeParams.nombre || '', dni: activeParams.dni || '', telefono: activeParams.telefono || '' });
       setPanelAlta(true);
       setView('personal');
       paramsHandledRef.current = key;

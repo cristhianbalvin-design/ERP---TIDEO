@@ -132,6 +132,7 @@ body {
   z-index: 70;
   height: 100vh;
   overflow-y: auto;
+  scroll-snap-type: y proximity;
   display: flex;
   flex-direction: column;
   border-right: 1px solid rgba(255,255,255,0.05);
@@ -186,6 +187,7 @@ body {
   transition: all 0.14s;
   margin-bottom: 1px;
   position: relative;
+  scroll-snap-align: start;
 }
 .sidebar.collapsed .sidebar-item { justify-content: center; padding: 10px 8px !important; }
 .sidebar-item:hover { background: var(--sidebar-hover); color: var(--sidebar-fg-active); }
@@ -222,6 +224,7 @@ body {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   text-align: left;
+  scroll-snap-align: start;
 }
 .sidebar-section-toggle:hover,
 .sidebar-section-toggle.active {

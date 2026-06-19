@@ -5,6 +5,7 @@ import { construirAutoservicioLocal } from './services/autoservicioEmpleadoServi
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { autoservicioEmpleadoService } from './services/autoservicioEmpleadoService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
+import { rrhhService } from './services/rrhhService.js';
 
 const minToHours = min => `${Math.round(Number(min || 0) / 60 * 10) / 10} h`;
 const estadoContratoLabel = c => c?.estado === 'por_vencer' ? `Por vencer (${c.dias} dias)` : c?.estado === 'sin_contrato' ? 'Sin contrato digital' : c?.estado || 'Sin contrato digital';
@@ -118,6 +119,16 @@ export function MiPortal() {
   const [otpCodigo, setOtpCodigo] = useState('');
   const [modalSubirContrato, setModalSubirContrato] = useState(null);
   const [fileSubir, setFileSubir] = useState(null);
+  
+  const [autorizacionesHE, setAutorizacionesHE] = useState([]);
+  const [panelNuevaHE, setPanelNuevaHE] = useState(false);
+  const [formHE, setFormHE] = useState({ fecha: new Date().toISOString().slice(0,10), horas_estimadas: 1, motivo: '' });
+  const [savingHE, setSavingHE] = useState(false);
+
+  React.useEffect(() => {
+    if (!app.empresa?.id) return;
+    rrhhService.getAutorizacionesHorasExtra(app.empresa.id).then(setAutorizacionesHE).catch(() => {});
+  }, [app.empresa?.id]);
 
   const tiposDocumentoContratoIds = useMemo(() => (tiposDocumento || []).filter(t => t.captura_snapshot_laboral).map(t => t.id), [tiposDocumento]);
 
@@ -174,6 +185,36 @@ export function MiPortal() {
       addNotificacion(`Error al subir contrato: ${err?.message || err}`, 'error');
     } finally {
       setUploading('');
+    }
+  };
+
+  const enviarSolicitudHE = async () => {
+    if (!ficha) return;
+    if (!formHE.motivo.trim() || Number(formHE.horas_estimadas) <= 0 || !app.empresa?.id) {
+      addNotificacion('Completa todos los campos obligatorios para horas extra.');
+      return;
+    }
+    setSavingHE(true);
+    try {
+      const nueva = await rrhhService.crearAutorizacionHorasExtra(app.empresa.id, {
+        personal_id: ficha.id,
+        personal_nombre: ficha.nombre,
+        personal_tipo: ficha.personal_tipo || 'operativo',
+        fecha: formHE.fecha,
+        horas_estimadas: Number(formHE.horas_estimadas),
+        minutos_autorizados: Math.round(Number(formHE.horas_estimadas) * 60),
+        motivo: formHE.motivo.trim(),
+        estado: 'pendiente',
+        solicitado_por: 'empleado',
+      });
+      setAutorizacionesHE(prev => [nueva, ...prev]);
+      addNotificacion('Solicitud de horas extra enviada.');
+      setPanelNuevaHE(false);
+      setFormHE({ fecha: new Date().toISOString().slice(0,10), horas_estimadas: 1, motivo: '' });
+    } catch (err) {
+      addNotificacion('Error: ' + err.message);
+    } finally {
+      setSavingHE(false);
     }
   };
 
@@ -954,12 +995,71 @@ export function MiPortal() {
 
           {tab === 'he' && (
             <div className="card">
-              <div className="card-head"><h3>Mis horas extra</h3></div>
-              <div className="card-body" style={{ textAlign: 'center', padding: '40px 20px' }}>
+              <div className="card-head">
+                <h3>Mis horas extra</h3>
+                <button className="btn btn-primary btn-sm" onClick={() => setPanelNuevaHE(true)}>Solicitar HE</button>
+              </div>
+              <div className="card-body" style={{ textAlign: 'center', padding: '40px 20px', borderBottom: '1px solid var(--border)' }}>
                 <div className="font-display" style={{ fontSize: 48, fontWeight: 900, color: 'var(--navy)' }}>{minToHours(data.resumen?.he_pendiente_minutos)}</div>
                 <div className="text-muted" style={{ marginTop: 8 }}>Saldo pendiente de compensación desde la misma fuente de nómina.</div>
               </div>
+              <div className="card-head">
+                <h3 style={{ fontSize: 15 }}>Mis solicitudes enviadas</h3>
+              </div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Fecha</th><th>Horas estimadas</th><th>Motivo</th><th>Estado</th></tr></thead>
+                  <tbody>
+                    {autorizacionesHE.filter(a => a.personal_id === ficha?.id).map(a => <tr key={a.id}>
+                      <td style={{ fontWeight: 600 }}>{a.fecha}</td>
+                      <td>{a.horas_estimadas} h</td>
+                      <td>{a.motivo}</td>
+                      <td>
+                        <span className={'badge ' + (a.estado === 'aprobada' ? 'badge-green' : a.estado === 'rechazada' ? 'badge-red' : 'badge-orange')}>
+                          {a.estado === 'pendiente' ? 'Enviada' : a.estado}
+                        </span>
+                      </td>
+                    </tr>)}
+                    {!autorizacionesHE.filter(a => a.personal_id === ficha?.id).length && <tr><td colSpan="4" className="text-muted" style={{ padding: 16, textAlign: 'center' }}>No has solicitado horas extra recientemente.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
+          )}
+
+          {panelNuevaHE && (
+            <>
+              <div className="side-panel-backdrop" onClick={() => setPanelNuevaHE(false)} />
+              <div className="side-panel" style={{ width: 'min(480px, 96vw)' }}>
+                <div className="side-panel-head">
+                  <div>
+                    <div className="eyebrow">Solicitudes</div>
+                    <div className="font-display" style={{ fontSize: 22, fontWeight: 700, marginTop: 2 }}>Horas Extra</div>
+                  </div>
+                  <button className="icon-btn" onClick={() => setPanelNuevaHE(false)}>{I.x}</button>
+                </div>
+                <div className="side-panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div className="input-group">
+                    <label>Fecha</label>
+                    <input className="input" type="date" value={formHE.fecha} onChange={e => setFormHE(prev => ({ ...prev, fecha: e.target.value }))} />
+                  </div>
+                  <div className="input-group">
+                    <label>Horas estimadas</label>
+                    <input className="input" type="number" min="0.5" step="0.5" value={formHE.horas_estimadas} onChange={e => setFormHE(prev => ({ ...prev, horas_estimadas: e.target.value }))} />
+                  </div>
+                  <div className="input-group">
+                    <label>Motivo / Actividad a realizar</label>
+                    <textarea className="input" rows="4" placeholder="Detalla el motivo..." value={formHE.motivo} onChange={e => setFormHE(prev => ({ ...prev, motivo: e.target.value }))} />
+                  </div>
+                  <div className="row" style={{ justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+                    <button className="btn btn-secondary" onClick={() => setPanelNuevaHE(false)}>Cancelar</button>
+                    <button className="btn btn-primary" onClick={enviarSolicitudHE} disabled={savingHE || !formHE.motivo.trim() || Number(formHE.horas_estimadas) <= 0}>
+                      {savingHE ? 'Enviando...' : 'Enviar solicitud'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
 
           {tab === 'documentos' && (

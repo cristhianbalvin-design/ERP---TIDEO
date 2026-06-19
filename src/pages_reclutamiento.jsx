@@ -36,7 +36,7 @@ export function Reclutamiento() {
   const [busqueda, setBusqueda] = useState('');
   const [maxEtapa, setMaxEtapa] = useState('');
   const [formVacante, setFormVacante] = useState({ cargo: '', cargo_id: '', area: '', sede: '', descripcion: '', posiciones: 1, fecha_apertura: hoy() });
-  const [formCand, setFormCand] = useState({ vacante_id: '', nombre: '', dni: '', telefono: '', email: '', fuente: 'interno', notas_evaluacion: '' });
+  const [formCand, setFormCand] = useState({ vacante_id: '', nombre: '', dni: '', telefono: '', email: '', fuente: 'interno', notas_evaluacion: '', file: null });
   const [historialDni, setHistorialDni] = useState(null);
   const vacantesVisibles = reclutamientoVacantes.filter(v => v.estado !== 'cancelada');
   const vacante = vacantesVisibles.find(v => v.id === vacanteActiva) || vacantesVisibles[0] || null;
@@ -81,16 +81,20 @@ export function Reclutamiento() {
   const crearCandidatura = async (e) => {
     e.preventDefault();
     if (!formCand.vacante_id && !vacante?.id) return;
-    await crearCandidaturaReclutamientoCtx({
-      ...formCand,
-      vacante_id: formCand.vacante_id || vacante.id,
-      dni: formCand.dni.replace(/\D/g, ''),
-      alerta_historial: historialDni,
-    });
-    setShowCandidato(false);
-    setFormCand({ vacante_id: vacante?.id || '', nombre: '', dni: '', telefono: '', email: '', fuente: 'interno', notas_evaluacion: '' });
-    setHistorialDni(null);
-    addNotificacion('Candidatura registrada.');
+    try {
+      await crearCandidaturaReclutamientoCtx({
+        ...formCand,
+        vacante_id: formCand.vacante_id || vacante.id,
+        dni: formCand.dni.replace(/\D/g, ''),
+        alerta_historial: historialDni,
+      });
+      setShowCandidato(false);
+      setFormCand({ vacante_id: vacante?.id || '', nombre: '', dni: '', telefono: '', email: '', fuente: 'interno', notas_evaluacion: '', file: null });
+      setHistorialDni(null);
+      addNotificacion('Candidatura registrada.');
+    } catch (err) {
+      addNotificacion(err.message || 'Error al registrar candidatura.', 'error');
+    }
   };
 
   const mover = async (candidatura, etapa) => {
@@ -174,11 +178,17 @@ export function Reclutamiento() {
                           <div className="kanban-card-sub">DNI {cand.dni} · {c.fuente}</div>
                           {alerta.no_recontratar && <span className="badge badge-red">No recontratar</span>}
                           {!alerta.no_recontratar && alerta.encontrado && <span className="badge badge-orange">Historial laboral</span>}
-                          <div className="kanban-card-foot"><span>{cand.email || cand.telefono || '-'}</span><span>{c.notas_evaluacion ? 'Notas' : ''}</span></div>
+                          <div className="kanban-card-foot">
+                            <span>{cand.email || cand.telefono || '-'}</span>
+                            <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                              {cand.cv_url && <a href={cand.cv_url} target="_blank" rel="noreferrer" title="Ver CV" onClick={e => e.stopPropagation()} style={{ color: 'var(--text)', display: 'inline-flex' }}>{I.file || 'CV'}</a>}
+                              {c.notas_evaluacion ? 'Notas' : ''}
+                            </span>
+                          </div>
                         </div>
                       );
                     })}
-                    <button className="kanban-btn-add" onClick={() => { setFormCand(f => ({ ...f, vacante_id: vacante?.id || '' })); setShowCandidato(true); }}>{I.plus} Agregar</button>
+                    <button className="kanban-btn-add" onClick={() => { setFormCand(f => ({ ...f, vacante_id: vacante?.id || '', file: null })); setShowCandidato(true); }}>{I.plus} Agregar</button>
                   </div>
                 );
               })}
@@ -188,19 +198,22 @@ export function Reclutamiento() {
       )}
 
       {tab === 'vacantes' && (
-        <div className="card p-0">
-          <table className="table">
-            <thead><tr><th>Cargo</th><th>Area</th><th>Sede</th><th>Estado</th><th>Posiciones</th><th>Link</th></tr></thead>
-            <tbody>{vacantesVisibles.map(v => (
-              <tr key={v.id}>
-                <td><strong>{v.cargo}</strong><div className="text-muted" style={{ fontSize: 12 }}>{v.descripcion}</div></td>
-                <td>{v.area || '-'}</td><td>{v.sede || '-'}</td>
-                <td><span className="badge badge-cyan">{v.estado}</span></td>
-                <td>{v.posiciones_cubiertas || 0}/{v.posiciones}</td>
-                <td>{v.public_token ? <button className="btn btn-secondary btn-sm" onClick={() => copiarLink(v)}>Copiar</button> : '-'}</td>
-              </tr>
-            ))}</tbody>
-          </table>
+        <div className="card">
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Cargo</th><th>Area</th><th>Sede</th><th>Estado</th><th>Posiciones</th><th>Link</th></tr></thead>
+              <tbody>{vacantesVisibles.map(v => (
+                <tr key={v.id}>
+                  <td><strong>{v.cargo}</strong>{v.descripcion && <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{v.descripcion}</div>}</td>
+                  <td>{v.area || '-'}</td>
+                  <td>{v.sede || '-'}</td>
+                  <td><span className="badge badge-cyan">{v.estado}</span></td>
+                  <td>{v.posiciones_cubiertas || 0}/{v.posiciones}</td>
+                  <td>{v.public_token ? <button className="btn btn-secondary btn-sm" onClick={() => copiarLink(v)}>Copiar</button> : '-'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -218,15 +231,24 @@ export function Reclutamiento() {
           <div className="grid cols-3">
             {candidatosBanco.map(c => {
               const cand = candidatoDe(c);
+              const yaContratado = c.etapa === 'contratado';
               return (
-                <div className="card" key={`${c.id}-${cand.id}`} style={{ padding: 16 }}>
+                <div className="card" key={`${c.id}-${cand.id}`} style={{ padding: 16, cursor: 'pointer' }} onClick={() => setSel(c)}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <div><strong>{cand.nombre}</strong><div className="text-muted" style={{ fontSize: 12 }}>DNI {cand.dni}</div></div>
                     <span className={'badge ' + badgeEtapa(c.etapa)}>{c.etapa}</span>
                   </div>
                   {c.descarte_motivo && <div className="alert alert-warning" style={{ fontSize: 12, marginTop: 10 }}>{c.descarte_motivo}</div>}
                   {cand.alerta_historial?.no_recontratar && <div className="alert alert-danger" style={{ fontSize: 12, marginTop: 10 }}>No recontratable: {cand.alerta_historial.no_recontratar_motivo}</div>}
-                  <button className="btn btn-secondary btn-sm" style={{ marginTop: 12, width: '100%' }} disabled={!vacante?.id} onClick={() => invitarCandidatoReclutamientoCtx(cand, vacante.id)}>Invitar a esta vacante</button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ marginTop: 12, width: '100%' }}
+                    disabled={!vacante?.id || yaContratado}
+                    title={yaContratado ? 'Este candidato ya esta contratado.' : ''}
+                    onClick={e => { e.stopPropagation(); invitarCandidatoReclutamientoCtx(cand, vacante.id); }}
+                  >
+                    {yaContratado ? 'Ya contratado' : 'Invitar a esta vacante'}
+                  </button>
                 </div>
               );
             })}
@@ -237,8 +259,8 @@ export function Reclutamiento() {
       {showVacante && (
         <div className="modal-backdrop" onClick={() => setShowVacante(false)}>
           <form className="side-panel" onClick={e => e.stopPropagation()} onSubmit={crearVacante}>
-            <div className="panel-head"><h2>Nueva vacante</h2><button type="button" className="icon-btn" onClick={() => setShowVacante(false)}>{I.x}</button></div>
-            <div className="panel-body col" style={{ gap: 12 }}>
+            <div className="side-panel-head"><h2>Nueva vacante</h2><button type="button" className="icon-btn" onClick={() => setShowVacante(false)}>{I.x}</button></div>
+            <div className="side-panel-body col" style={{ gap: 12 }}>
               <div className="input-group"><label>Cargo *</label><input className="input" required value={formVacante.cargo} onChange={e => setFormVacante(f => ({ ...f, cargo: e.target.value }))} list="cargos-rrhh" /></div>
               <datalist id="cargos-rrhh">{cargos.map(c => <option key={c.id || c.nombre} value={c.nombre || c.cargo} />)}</datalist>
               <div className="input-group"><label>Area</label><input className="input" value={formVacante.area} onChange={e => setFormVacante(f => ({ ...f, area: e.target.value }))} list="areas-rrhh" /></div>
@@ -247,8 +269,8 @@ export function Reclutamiento() {
               <datalist id="sedes-rrhh">{sedes.map(s => <option key={s.id || s.nombre} value={s.nombre} />)}</datalist>
               <div className="input-group"><label>Posiciones</label><input className="input" type="number" min="1" value={formVacante.posiciones} onChange={e => setFormVacante(f => ({ ...f, posiciones: e.target.value }))} /></div>
               <div className="input-group"><label>Requisitos</label><textarea className="input" rows={4} value={formVacante.descripcion} onChange={e => setFormVacante(f => ({ ...f, descripcion: e.target.value }))} /></div>
+              <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><button className="btn btn-primary" type="submit">Crear vacante</button></div>
             </div>
-            <div className="panel-foot"><button className="btn btn-primary" type="submit">Crear vacante</button></div>
           </form>
         </div>
       )}
@@ -256,8 +278,8 @@ export function Reclutamiento() {
       {showCandidato && (
         <div className="modal-backdrop" onClick={() => setShowCandidato(false)}>
           <form className="side-panel" onClick={e => e.stopPropagation()} onSubmit={crearCandidatura}>
-            <div className="panel-head"><h2>Nuevo candidato</h2><button type="button" className="icon-btn" onClick={() => setShowCandidato(false)}>{I.x}</button></div>
-            <div className="panel-body col" style={{ gap: 12 }}>
+            <div className="side-panel-head"><h2>Nuevo candidato</h2><button type="button" className="icon-btn" onClick={() => setShowCandidato(false)}>{I.x}</button></div>
+            <div className="side-panel-body col" style={{ gap: 12 }}>
               <div className="input-group"><label>Vacante</label><select className="select" value={formCand.vacante_id || vacante?.id || ''} onChange={e => setFormCand(f => ({ ...f, vacante_id: e.target.value }))}>{vacantesVisibles.map(v => <option key={v.id} value={v.id}>{v.cargo}</option>)}</select></div>
               <div className="input-group"><label>Nombre *</label><input className="input" required value={formCand.nombre} onChange={e => setFormCand(f => ({ ...f, nombre: e.target.value }))} /></div>
               <div className="input-group"><label>DNI *</label><input className="input" required maxLength={12} value={formCand.dni} onChange={e => setFormCand(f => ({ ...f, dni: e.target.value }))} /></div>
@@ -265,32 +287,101 @@ export function Reclutamiento() {
               {historialDni && !historialDni.no_recontratar && <div className="alert alert-warning">Existe historial laboral: {historialDni.estado_laboral || historialDni.estado}</div>}
               <div className="input-group"><label>Telefono</label><input className="input" value={formCand.telefono} onChange={e => setFormCand(f => ({ ...f, telefono: e.target.value }))} /></div>
               <div className="input-group"><label>Email</label><input className="input" type="email" value={formCand.email} onChange={e => setFormCand(f => ({ ...f, email: e.target.value }))} /></div>
-              <div className="input-group"><label>Fuente</label><select className="select" value={formCand.fuente} onChange={e => setFormCand(f => ({ ...f, fuente: e.target.value }))}><option value="interno">Interno</option><option value="referido">Referido</option><option value="banco_talentos">Banco de talentos</option><option value="portal_publico">Portal publico</option></select></div>
-              <div className="input-group"><label>Notas</label><textarea className="input" rows={3} value={formCand.notas_evaluacion} onChange={e => setFormCand(f => ({ ...f, notas_evaluacion: e.target.value }))} /></div>
+              <div className="input-group"><label>Fuente</label><select className="select" value={formCand.fuente} onChange={e => setFormCand(f => ({ ...f, fuente: e.target.value }))}><option value="interno">Interno</option><option value="referido">Referido</option><option value="portal_publico">Portal Publico</option><option value="banco_talentos">Banco de Talentos</option><option value="computrabajo">Computrabajo</option><option value="linkedin">LinkedIn</option><option value="bumeran">Bumeran</option><option value="facebook">Facebook</option><option value="otro">Otro</option></select></div>
+              <div className="input-group">
+                <label>Archivo adjunto (Opcional)</label>
+                <input className="input" type="file" accept=".pdf,image/png,image/jpeg" onChange={e => setFormCand(f => ({ ...f, file: e.target.files?.[0] || null }))} />
+                <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>PDF, PNG o JPG (Max. 5MB).</div>
+              </div>
+              <div className="input-group"><label>Notas</label><textarea className="input" rows={3} value={formCand.notas_evaluacion} onChange={e => setFormCand(f => ({ ...f, notas_evaluacion: e.target.value }))}></textarea></div>
+              <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><button className="btn btn-primary" type="submit">Registrar</button></div>
             </div>
-            <div className="panel-foot"><button className="btn btn-primary" type="submit">Registrar</button></div>
           </form>
         </div>
       )}
 
-      {sel && (
-        <div className="modal-backdrop" onClick={() => setSel(null)}>
-          <div className="side-panel" onClick={e => e.stopPropagation()}>
-            <div className="panel-head"><h2>{candidatoDe(sel).nombre}</h2><button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button></div>
-            <div className="panel-body">
-              <div className="card" style={{ padding: 14, marginBottom: 12 }}>
-                <div className="text-muted" style={{ fontSize: 12 }}>DNI {candidatoDe(sel).dni}</div>
-                <div style={{ marginTop: 6 }}>{candidatoDe(sel).email || '-'} · {candidatoDe(sel).telefono || '-'}</div>
-              </div>
-              {candidatoDe(sel).alerta_historial?.no_recontratar && <div className="alert alert-danger">No recontratar: {candidatoDe(sel).alerta_historial.no_recontratar_motivo}</div>}
-              <div className="card" style={{ padding: 14 }}>
-                <div style={{ fontWeight: 700, marginBottom: 10 }}>Historial de etapas</div>
-                {(sel.historial || []).map((h, i) => <div key={i} style={{ fontSize: 12, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>{h.etapa_desde ? `${h.etapa_desde} -> ` : ''}{h.etapa_hasta} · {(h.fecha || '').slice(0, 10)} · {h.usuario || '-'}</div>)}
+      {sel && (() => {
+        const cand = candidatoDe(sel);
+        const cv_url = cand.cv_url || sel.cv_url || cand.archivo_url || sel.archivo_url;
+        const vacantePostulada = vacantesVisibles.find(v => v.id === sel.vacante_id);
+        
+        return (
+          <div className="modal-backdrop" onClick={() => setSel(null)}>
+            <div className="side-panel" onClick={e => e.stopPropagation()}>
+              <div className="side-panel-head"><h2>{cand.nombre}</h2><button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button></div>
+              <div className="side-panel-body col" style={{ gap: 14 }}>
+                <div className="card" style={{ padding: 16 }}>
+                  <div className="eyebrow" style={{ marginBottom: 8 }}>Datos Personales</div>
+                  <div className="text-muted" style={{ fontSize: 13 }}>DNI: <strong>{cand.dni}</strong></div>
+                  <div style={{ marginTop: 6, fontSize: 13 }}>Email: <strong>{cand.email || '-'}</strong></div>
+                  <div style={{ marginTop: 6, fontSize: 13 }}>Telefono: <strong>{cand.telefono || '-'}</strong></div>
+                  {cv_url && (
+                    <div style={{ marginTop: 14 }}>
+                      <a href={cv_url} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">{I.file} Ver archivo adjunto</a>
+                    </div>
+                  )}
+                </div>
+
+                <div className="card" style={{ padding: 16 }}>
+                  <div className="eyebrow" style={{ marginBottom: 8 }}>Datos de la Postulación</div>
+                  <div className="grid-2" style={{ gap: 12, fontSize: 13 }}>
+                    <div>
+                      <div className="text-subtle" style={{ fontSize: 11, marginBottom: 2 }}>Vacante</div>
+                      <strong>{vacantePostulada?.cargo || sel.cargo_postulado || '-'}</strong>
+                    </div>
+                    <div>
+                      <div className="text-subtle" style={{ fontSize: 11, marginBottom: 2 }}>Fuente</div>
+                      <span style={{ textTransform: 'capitalize' }}>{(sel.fuente || 'interno').replace('_', ' ')}</span>
+                    </div>
+                    <div>
+                      <div className="text-subtle" style={{ fontSize: 11, marginBottom: 2 }}>Etapa actual</div>
+                      <span className={'badge ' + badgeEtapa(sel.etapa)}>{sel.etapa}</span>
+                    </div>
+                  </div>
+                  
+                  {sel.notas_evaluacion && (
+                    <div style={{ marginTop: 14 }}>
+                      <div className="text-subtle" style={{ fontSize: 11, marginBottom: 4 }}>Notas de evaluación</div>
+                      <div style={{ fontSize: 13, padding: 8, background: 'var(--surface-hover)', borderRadius: 6, whiteSpace: 'pre-wrap' }}>
+                        {sel.notas_evaluacion}
+                      </div>
+                    </div>
+                  )}
+
+                  {sel.descarte_motivo && (
+                    <div className="alert alert-warning" style={{ marginTop: 14 }}>
+                      <strong>Motivo de descarte:</strong> {sel.descarte_motivo}
+                    </div>
+                  )}
+                </div>
+
+                {cand.alerta_historial?.no_recontratar && (
+                  <div className="alert alert-danger">
+                    No recontratar: {cand.alerta_historial.no_recontratar_motivo}
+                  </div>
+                )}
+                
+                <div className="card" style={{ padding: 16 }}>
+                  <div className="eyebrow" style={{ marginBottom: 12 }}>Historial de etapas</div>
+                  {(sel.historial || []).length === 0 ? (
+                    <div className="text-muted" style={{ fontSize: 13 }}>No hay historial registrado.</div>
+                  ) : (
+                    (sel.historial || []).map((h, i) => (
+                      <div key={i} style={{ fontSize: 13, padding: '10px 0', borderBottom: i === sel.historial.length - 1 ? 'none' : '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <strong>{h.etapa_desde ? `${h.etapa_desde} → ` : ''}{h.etapa_hasta}</strong>
+                          <span className="text-muted" style={{ fontSize: 11 }}>{(h.fecha || '').slice(0, 10)}</span>
+                        </div>
+                        <div className="text-subtle" style={{ fontSize: 11 }}>Registrado por: {h.usuario || '-'}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

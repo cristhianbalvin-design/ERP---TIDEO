@@ -35,7 +35,7 @@ export function TurnosHorarios() {
   const [editandoId, setEditandoId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const formBase = { nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false, refrigerio_minutos:60, descripcion:'', estado:'activo' };
+  const formBase = { nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false, refrigerio_minutos:60, descripcion:'', estado:'activo', requiere_autorizacion_he: '' };
   const [form, setForm] = useState(formBase);
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -64,6 +64,7 @@ export function TurnosHorarios() {
       refrigerio_minutos: t.refrigerio_minutos ?? 60,
       descripcion: t.descripcion || '',
       estado: t.estado || 'activo',
+      requiere_autorizacion_he: t.requiere_autorizacion_he === true ? 'true' : t.requiere_autorizacion_he === false ? 'false' : '',
     });
     setSaveError('');
     setPanel(true);
@@ -82,7 +83,7 @@ export function TurnosHorarios() {
       const next = (nums.length ? Math.max(...nums) : 0) + 1;
       return `tur_${String(next).padStart(3, '0')}`;
     };
-    const payload = { ...form, codigo: editandoId ? ((turnos||[]).find(t=>t.id===editandoId)?.codigo || generarCodigo()) : generarCodigo(), horas_efectivas: horas, tolerancia_minutos: Number(form.tolerancia_minutos), refrigerio_minutos: Number(form.refrigerio_minutos) };
+    const payload = { ...form, codigo: editandoId ? ((turnos||[]).find(t=>t.id===editandoId)?.codigo || generarCodigo()) : generarCodigo(), horas_efectivas: horas, tolerancia_minutos: Number(form.tolerancia_minutos), refrigerio_minutos: Number(form.refrigerio_minutos), requiere_autorizacion_he: form.requiere_autorizacion_he === 'true' ? true : form.requiere_autorizacion_he === 'false' ? false : null };
     try {
       if (editandoId) {
         const actualizado = await rrhhService.actualizarTurno(empresa.id, editandoId, payload);
@@ -106,8 +107,12 @@ export function TurnosHorarios() {
       await rrhhService.eliminarTurno(t.id);
       setTurnos(prev => prev.filter(x => x.id !== t.id));
       addNotificacion('Turno eliminado.');
-    } catch {
-      addNotificacion('No se pudo eliminar el turno. Puede tener colaboradores asignados.');
+    } catch (err) {
+      if (err?.code === '23503') {
+        addNotificacion('No se pudo eliminar: tienes personal o registros de asistencia vinculados a este turno. Reasígnalos primero o desactiva el turno en vez de eliminarlo.');
+      } else {
+        addNotificacion('No se pudo eliminar el turno.');
+      }
     }
   };
 
@@ -205,6 +210,15 @@ export function TurnosHorarios() {
               <select className="select" value={form.estado} onChange={e=>upd('estado',e.target.value)}>
                 <option value="activo">Activo</option>
                 <option value="inactivo">Inactivo</option>
+              </select>
+            </div>
+
+            <div className="input-group" style={{marginTop:14}}>
+              <label>Requiere autorización previa de HE</label>
+              <select className="select" value={form.requiere_autorizacion_he} onChange={e=>upd('requiere_autorizacion_he',e.target.value)}>
+                <option value="">Heredar de empresa</option>
+                <option value="true">Sí, requiere autorización</option>
+                <option value="false">No, cálculo automático</option>
               </select>
             </div>
 

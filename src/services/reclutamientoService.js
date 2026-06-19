@@ -98,6 +98,19 @@ export const reclutamientoService = {
 
   async crearCandidatoYCandidatura(empresaId, payload) {
     const supabase = await getSupabaseClient();
+    let cvPath = payload.cv_path || null;
+    let cvUrl = payload.cv_url || null;
+
+    if (payload.file) {
+      if (payload.file.size > 5 * 1024 * 1024) throw new Error('El CV no debe superar 5 MB.');
+      if (!['application/pdf', 'image/jpeg', 'image/png'].includes(payload.file.type)) throw new Error('Solo se aceptan PDF o imagen.');
+      cvPath = `${empresaId}/reclutamiento/${payload.vacante_id}/${Date.now()}_${payload.file.name.replace(/[^\w.-]/g, '_')}`;
+      const { error: uploadError } = await supabase.storage.from('documentos-privados').upload(cvPath, payload.file, { contentType: payload.file.type, upsert: false });
+      if (uploadError) throw uploadError;
+      const { data: signed } = await supabase.storage.from('documentos-privados').createSignedUrl(cvPath, 600);
+      cvUrl = signed?.signedUrl || null;
+    }
+
     const candidatoId = payload.candidato_id || id('cand');
     const candidaturaId = payload.id || id('candit');
     const candidatoRow = {
@@ -107,9 +120,9 @@ export const reclutamientoService = {
       dni: payload.dni,
       telefono: payload.telefono || null,
       email: payload.email || null,
-      cv_url: payload.cv_url || null,
-      cv_path: payload.cv_path || null,
-      alerta_historial: payload.alerta_historial || null,
+      cv_url: cvUrl,
+      cv_path: cvPath,
+      alerta_historial: payload.alerta_historial || {},
     };
     const { data: candidato, error: candError } = await supabase
       .from('rrhh_candidatos')
@@ -225,7 +238,7 @@ export function crearCandidaturaMock(empresaId, payload = {}) {
     telefono: payload.telefono || '',
     email: payload.email || '',
     cv_url: payload.cv_url || null,
-    alerta_historial: payload.alerta_historial || null,
+    alerta_historial: payload.alerta_historial || {},
   });
   return normalizeCandidatura({
     id: id('candit'),

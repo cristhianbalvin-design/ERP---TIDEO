@@ -599,13 +599,35 @@ async function enriquecerAsistenciaHorasExtra(supabase, empresaId, registro = {}
   const horasExtraMin = Number(registro.horas_extra_min || 0);
   if (horasExtraMin <= 0) return registro;
 
-  const { data: cfg } = await supabase
-    .from('empresa_config')
-    .select('requiere_autorizacion_he')
-    .eq('empresa_id', empresaId)
-    .maybeSingle();
+  let requiereAut = false;
 
-  if (!cfg?.requiere_autorizacion_he) return { ...registro, he_autorizada: true };
+  if (registro.turno_id) {
+    const { data: turnoData } = await supabase
+      .from('turnos')
+      .select('requiere_autorizacion_he')
+      .eq('id', registro.turno_id)
+      .maybeSingle();
+
+    if (turnoData && turnoData.requiere_autorizacion_he !== null) {
+      requiereAut = turnoData.requiere_autorizacion_he;
+    } else {
+      const { data: cfg } = await supabase
+        .from('empresa_config')
+        .select('requiere_autorizacion_he')
+        .eq('empresa_id', empresaId)
+        .maybeSingle();
+      requiereAut = cfg?.requiere_autorizacion_he || false;
+    }
+  } else {
+    const { data: cfg } = await supabase
+      .from('empresa_config')
+      .select('requiere_autorizacion_he')
+      .eq('empresa_id', empresaId)
+      .maybeSingle();
+    requiereAut = cfg?.requiere_autorizacion_he || false;
+  }
+
+  if (!requiereAut) return { ...registro, he_autorizada: true };
 
   const { data: aut } = await supabase
     .from('autorizaciones_horas_extra')
