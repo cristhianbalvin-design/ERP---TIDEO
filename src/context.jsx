@@ -9048,6 +9048,22 @@ export function AppProvider({ children }) {
       ? todasMembresias.some(m => m.rol?.es_superadmin && m.empresa?.es_plataforma)
       : role?.permisos?.todo
   );
+  const actualizarVacanteReclutamientoCtx = async (vacanteId, cambios) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await reclutamientoService.actualizarVacante(vacanteId, cambios);
+      setReclutamientoVacantes(prev => prev.map(v => v.id === vacanteId ? data : v));
+      return data;
+    }
+    let data;
+    setReclutamientoVacantes(prev => prev.map(v => {
+      if (v.id === vacanteId) {
+        data = { ...v, ...cambios };
+        return data;
+      }
+      return v;
+    }));
+    return data;
+  };
   const crearVacanteReclutamientoCtx = async (payload) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await reclutamientoService.crearVacante(empresa.id, payload);
@@ -9640,7 +9656,7 @@ export function AppProvider({ children }) {
     // RRHH Actions
     crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx,
     crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx,
-    crearVacanteReclutamientoCtx, crearCandidaturaReclutamientoCtx,
+    crearVacanteReclutamientoCtx, actualizarVacanteReclutamientoCtx, crearCandidaturaReclutamientoCtx,
     moverCandidaturaReclutamientoCtx, invitarCandidatoReclutamientoCtx,
     crearSolicitudDatosPortalCtx, resolverSolicitudDatosPortalCtx,
     crearConstanciaPortalCtx, resolverConstanciaPortalCtx,

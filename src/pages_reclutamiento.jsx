@@ -24,7 +24,7 @@ export function Reclutamiento() {
   const {
     empresa, cargos = [], sedes = [], areasEmpresa = [], usuarios = [], authUser,
     reclutamientoVacantes = [], reclutamientoCandidaturas = [],
-    crearVacanteReclutamientoCtx, crearCandidaturaReclutamientoCtx,
+    crearVacanteReclutamientoCtx, actualizarVacanteReclutamientoCtx, crearCandidaturaReclutamientoCtx,
     moverCandidaturaReclutamientoCtx, invitarCandidatoReclutamientoCtx,
     addNotificacion, navigate,
   } = useApp();
@@ -69,13 +69,32 @@ export function Reclutamiento() {
     });
   }, [reclutamientoCandidaturas, busqueda, maxEtapa, vacante?.cargo]);
 
-  const crearVacante = async (e) => {
+  const guardarVacante = async (e) => {
     e.preventDefault();
-    const creada = await crearVacanteReclutamientoCtx(formVacante);
-    setVacanteActiva(creada.id);
+    if (formVacante.id) {
+      await actualizarVacanteReclutamientoCtx(formVacante.id, formVacante);
+      addNotificacion('Vacante actualizada.');
+    } else {
+      const creada = await crearVacanteReclutamientoCtx(formVacante);
+      setVacanteActiva(creada.id);
+      addNotificacion('Vacante creada.');
+    }
     setShowVacante(false);
     setFormVacante({ cargo: '', cargo_id: '', area: '', sede: '', descripcion: '', posiciones: 1, fecha_apertura: hoy() });
-    addNotificacion('Vacante creada.');
+  };
+
+  const editarVacante = (v) => {
+    setFormVacante({
+      id: v.id,
+      cargo: v.cargo || '',
+      cargo_id: v.cargo_id || '',
+      area: v.area || '',
+      sede: v.sede || '',
+      descripcion: v.descripcion || '',
+      posiciones: v.posiciones || 1,
+      fecha_apertura: v.fecha_apertura || hoy(),
+    });
+    setShowVacante(true);
   };
 
   const crearCandidatura = async (e) => {
@@ -133,7 +152,7 @@ export function Reclutamiento() {
         </div>
         <div className="row" style={{ gap: 8 }}>
           <button className="btn btn-secondary" onClick={() => setShowCandidato(true)}>{I.plus} Candidato</button>
-          <button className="btn btn-primary" onClick={() => setShowVacante(true)}>{I.plus} Vacante</button>
+          <button className="btn btn-primary" onClick={() => { setFormVacante({ cargo: '', cargo_id: '', area: '', sede: '', descripcion: '', posiciones: 1, fecha_apertura: hoy() }); setShowVacante(true); }}>{I.plus} Vacante</button>
         </div>
       </div>
 
@@ -209,7 +228,12 @@ export function Reclutamiento() {
                   <td>{v.sede || '-'}</td>
                   <td><span className="badge badge-cyan">{v.estado}</span></td>
                   <td>{v.posiciones_cubiertas || 0}/{v.posiciones}</td>
-                  <td>{v.public_token ? <button className="btn btn-secondary btn-sm" onClick={() => copiarLink(v)}>Copiar</button> : '-'}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {v.public_token ? <button className="btn btn-secondary btn-sm" onClick={() => copiarLink(v)}>Copiar</button> : <span style={{ width: 60, textAlign: 'center' }}>-</span>}
+                      <button type="button" className="icon-btn text-muted" onClick={() => editarVacante(v)} title="Editar vacante" style={{ padding: 4 }}>{I.edit}</button>
+                    </div>
+                  </td>
                 </tr>
               ))}</tbody>
             </table>
@@ -258,8 +282,8 @@ export function Reclutamiento() {
 
       {showVacante && (
         <div className="modal-backdrop" onClick={() => setShowVacante(false)}>
-          <form className="side-panel" onClick={e => e.stopPropagation()} onSubmit={crearVacante}>
-            <div className="side-panel-head"><h2>Nueva vacante</h2><button type="button" className="icon-btn" onClick={() => setShowVacante(false)}>{I.x}</button></div>
+          <form className="side-panel" onClick={e => e.stopPropagation()} onSubmit={guardarVacante}>
+            <div className="side-panel-head"><h2>{formVacante.id ? 'Editar vacante' : 'Nueva vacante'}</h2><button type="button" className="icon-btn" onClick={() => setShowVacante(false)}>{I.x}</button></div>
             <div className="side-panel-body col" style={{ gap: 12 }}>
               <div className="input-group"><label>Cargo *</label><input className="input" required value={formVacante.cargo} onChange={e => setFormVacante(f => ({ ...f, cargo: e.target.value }))} list="cargos-rrhh" /></div>
               <datalist id="cargos-rrhh">{cargos.map(c => <option key={c.id || c.nombre} value={c.nombre || c.cargo} />)}</datalist>
@@ -267,9 +291,9 @@ export function Reclutamiento() {
               <datalist id="areas-rrhh">{areasEmpresa.map(a => <option key={a.id || a.nombre} value={a.nombre} />)}</datalist>
               <div className="input-group"><label>Sede</label><input className="input" value={formVacante.sede} onChange={e => setFormVacante(f => ({ ...f, sede: e.target.value }))} list="sedes-rrhh" /></div>
               <datalist id="sedes-rrhh">{sedes.map(s => <option key={s.id || s.nombre} value={s.nombre} />)}</datalist>
-              <div className="input-group"><label>Posiciones</label><input className="input" type="number" min="1" value={formVacante.posiciones} onChange={e => setFormVacante(f => ({ ...f, posiciones: e.target.value }))} /></div>
+              <div className="input-group"><label>Cantidad de posiciones</label><input className="input" type="number" min="1" value={formVacante.posiciones} onChange={e => setFormVacante(f => ({ ...f, posiciones: e.target.value }))} /></div>
               <div className="input-group"><label>Requisitos</label><textarea className="input" rows={4} value={formVacante.descripcion} onChange={e => setFormVacante(f => ({ ...f, descripcion: e.target.value }))} /></div>
-              <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><button className="btn btn-primary" type="submit">Crear vacante</button></div>
+              <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><button className="btn btn-primary" type="submit">{formVacante.id ? 'Guardar cambios' : 'Crear vacante'}</button></div>
             </div>
           </form>
         </div>
