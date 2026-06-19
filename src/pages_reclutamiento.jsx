@@ -119,11 +119,15 @@ export function Reclutamiento() {
   };
 
   const mover = async (candidatura, etapa) => {
-    let descarte_motivo = '';
+    let comentario = '';
     if (etapa === 'descartado') {
-      descarte_motivo = window.prompt('Motivo del descarte');
-      if (!descarte_motivo) return;
+      comentario = window.prompt('Motivo del descarte (obligatorio):');
+      if (!comentario) return;
+    } else if (etapa !== 'contratado') {
+      comentario = window.prompt(`Comentario para el cambio a etapa "${etapa}" (opcional):`);
+      if (comentario === null) return; // User clicked Cancel
     }
+
     if (etapa === 'contratado') {
       const cand = candidatoDe(candidatura);
       const tipo = window.confirm('Crear alta como administrativo? Aceptar = administrativo, Cancelar = operativo') ? 'administrativo' : 'operativo';
@@ -136,7 +140,7 @@ export function Reclutamiento() {
         candidaturaId: candidatura.id,
       });
     }
-    await moverCandidaturaReclutamientoCtx(candidatura.id, etapa, { descarte_motivo });
+    await moverCandidaturaReclutamientoCtx(candidatura.id, etapa, { descarte_motivo: etapa === 'descartado' ? comentario : undefined, motivo: comentario });
   };
 
   const copiarLink = async (v) => {
@@ -393,15 +397,21 @@ export function Reclutamiento() {
                   {(sel.historial || []).length === 0 ? (
                     <div className="text-muted" style={{ fontSize: 13 }}>No hay historial registrado.</div>
                   ) : (
-                    (sel.historial || []).map((h, i) => (
-                      <div key={i} style={{ fontSize: 13, padding: '10px 0', borderBottom: i === sel.historial.length - 1 ? 'none' : '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <strong>{h.etapa_desde ? `${h.etapa_desde} → ` : ''}{h.etapa_hasta}</strong>
-                          <span className="text-muted" style={{ fontSize: 11 }}>{(h.fecha || '').slice(0, 10)}</span>
+                    [...(sel.historial || [])].sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).map((h, i) => {
+                      const userObj = usuarios.find(u => u.id === h.usuario_id || u.email === h.usuario_id || u.email === h.usuario);
+                      const userName = userObj ? userObj.nombre || userObj.email : (h.usuario || h.usuario_id || '-');
+                      const comment = h.motivo || h.notas;
+                      return (
+                        <div key={i} style={{ fontSize: 13, padding: '10px 0', borderBottom: i === sel.historial.length - 1 ? 'none' : '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <strong>{h.etapa_desde ? `${h.etapa_desde} → ` : ''}{h.etapa_hasta}</strong>
+                            <span className="text-muted" style={{ fontSize: 11 }}>{(h.fecha || '').slice(0, 16).replace('T', ' ')}</span>
+                          </div>
+                          {comment && <div style={{ fontSize: 12, fontStyle: 'italic', marginBottom: 4, color: 'var(--text-secondary)' }}>"{comment}"</div>}
+                          <div className="text-subtle" style={{ fontSize: 11 }}>Registrado por: {userName}</div>
                         </div>
-                        <div className="text-subtle" style={{ fontSize: 11 }}>Registrado por: {h.usuario || '-'}</div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>

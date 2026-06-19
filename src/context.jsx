@@ -9120,7 +9120,25 @@ export function AppProvider({ children }) {
   const moverCandidaturaReclutamientoCtx = async (candidaturaId, etapa, params = {}) => {
     if (isSupabaseConfigured()) {
       const data = await reclutamientoService.moverCandidatura(candidaturaId, etapa, params);
-      setReclutamientoCandidaturas(prev => prev.map(c => c.id === candidaturaId ? { ...c, ...data } : c));
+      setReclutamientoCandidaturas(prev => prev.map(c => {
+        if (c.id !== candidaturaId) return c;
+        return {
+          ...c,
+          ...data,
+          historial: [
+            ...(c.historial || []),
+            {
+              etapa_desde: c.etapa,
+              etapa_hasta: etapa,
+              motivo: params.descarte_motivo || params.motivo || '',
+              notas: params.notas_evaluacion || params.motivo || '',
+              fecha: new Date().toISOString(),
+              usuario_id: authUser?.id || null,
+              usuario: authUser?.email || 'Sistema'
+            }
+          ]
+        };
+      }));
       if (etapa === 'contratado') {
         setReclutamientoVacantes(prev => prev.map(v => v.id === data.vacante_id ? { ...v, posiciones_cubiertas: Math.min(Number(v.posiciones || 1), Number(v.posiciones_cubiertas || 0) + 1), estado: Number(v.posiciones_cubiertas || 0) + 1 >= Number(v.posiciones || 1) ? 'cerrada' : v.estado } : v));
       }

@@ -89,7 +89,7 @@ export const reclutamientoService = {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('rrhh_candidaturas')
-      .select('*, candidato:rrhh_candidatos(*)')
+      .select('*, candidato:rrhh_candidatos(*), historial:rrhh_candidatura_historial(*)')
       .eq('empresa_id', empresaId)
       .order('created_at', { ascending: false });
     if (error) throw error;
