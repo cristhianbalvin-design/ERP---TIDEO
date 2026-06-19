@@ -14759,11 +14759,13 @@ function ControlAsistencia() {
                 <p><strong>Dias asistidos:</strong> {calc.incompleto_ciclo ? '—' : calc.dias_computables != null ? `${calc.dias_asistidos} (días trab. ciclo)` : calc.dias_asistidos}</p>
                 <p><strong>Dias con tardanza:</strong> {calc.incompleto_ciclo ? '—' : calc.tardanzas}</p>
                 <p><strong>Minutos tardanza:</strong> {calc.incompleto_ciclo ? '—' : calc.minutos_tardanza_total} minutos</p>
+                {!calc.incompleto_ciclo && calc.tardanzas > 0 && <div style={{padding:'4px 0 10px'}}><div className="text-subtle" style={{fontSize:11, marginBottom:4}}>Fechas de tardanza:</div><div style={{display:'flex', gap:6, flexWrap:'wrap'}}>{regsT.filter(r => (r.tardanza_min||0) > 0 || r.estado === 'tardanza').map(r => <span key={r.fecha} className="badge badge-orange" style={{fontSize:11}}>{r.fecha.slice(-2)}/{r.fecha.slice(5,7)} ({r.tardanza_min||0}m)</span>)}</div></div>}
                 <p><strong>Dias con falta:</strong> {calc.incompleto_ciclo ? '—' : faltas}</p>
                 <hr style={{margin:'14px 0', border:'none', borderTop:'1px solid var(--border-subtle)'}}/>
                 <p><strong>Horas esperadas:</strong> {calc.incompleto_ciclo ? '—' : `${calc.dias_laborables * (trn?.horas_efectivas || 8)}h`}</p>
                 <p><strong>Horas efectivas:</strong> {calc.incompleto_ciclo ? '—' : minutesToLabel(regsT.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</p>
                 <p><strong>Horas extra:</strong> {calc.incompleto_ciclo ? '—' : minutesToLabel(calc.horas_extra_total_min)}</p>
+                {!calc.incompleto_ciclo && calc.horas_extra_total_min > 0 && <div style={{padding:'4px 0 10px'}}><div className="text-subtle" style={{fontSize:11, marginBottom:4}}>Fechas con HE:</div><div style={{display:'flex', gap:6, flexWrap:'wrap'}}>{regsT.filter(r => (r.horas_extra_min||0) > 0).map(r => <span key={r.fecha} className="badge badge-cyan" style={{fontSize:11}}>{r.fecha.slice(-2)}/{r.fecha.slice(5,7)} ({minutesToLabel(r.horas_extra_min)})</span>)}</div></div>}
                 <p><strong>Impacto nomina:</strong> {calc.incompleto_ciclo ? 'Pendiente' : 'Días laborables y descuentos por faltas/tardanzas.'}</p>
                 <p className="text-muted">Cálculo sincronizado con la lógica oficial de Nómina.</p>
               </>}
