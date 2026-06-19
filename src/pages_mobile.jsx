@@ -44,7 +44,6 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
     { k: 'gerencia', l: 'Gerencia', icon: I.trend },
     { k: 'asistencia', l: 'Asistencia', icon: I.clock, requiereAsistencia: true },
     { k: 'mi_espacio', l: 'Mi portal', icon: I.userCheck },
-    { k: 'solicitudes', l: 'Solicitudes', icon: I.userCheck },
     { k: 'administrativo', l: 'Tareo', icon: I.users },
   ].filter(p => modulosUsuario.includes(p.k) && (!p.requiereAsistencia || puedeVerAsistencia)), [modulosUsuarioKey, puedeVerAsistencia]);
 
@@ -102,8 +101,7 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
                   {profile === 'supervisor' && <SupervisorView screen={screen} setScreen={setScreen}/>}
                   {profile === 'gerencia' && <GerenciaView screen={screen} setScreen={setScreen}/>}
                   {profile === 'asistencia' && <AsistenciaMobileView screen={screen} setScreen={setScreen}/>}
-                  {profile === 'mi_espacio' && <MiEspacioMobileView screen={screen} setScreen={setScreen} setProfile={setProfile}/>}
-                  {profile === 'solicitudes' && <SolicitudesMovilView screen={screen} setScreen={setScreen}/>}
+                  {profile === 'mi_espacio' && <MiEspacioMobileView setScreen={setScreen}/>}
                   {profile === 'administrativo' && <AdministrativoView screen={screen} setScreen={setScreen}/>}
                 </>
               )}
@@ -3109,7 +3107,7 @@ function solEstadoBadgeM(estado) {
   return 'badge-gray';
 }
 
-function MiEspacioMobileView({ setScreen, setProfile }) {
+function MiEspacioMobileView({ setScreen }) {
   const app = useApp();
   const {
     authUser, usuarios, personalAdmin, personalOperativo, personalDocumentos,
@@ -3119,6 +3117,7 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
     crearConstanciaPortalCtx, registrarVisualizacionBoletaPortalCtx,
     tiposDocumento = [], subirDocumentoFirmadoPortalCtx, subirContratoFirmadoAprobadoCtx, addNotificacion,
   } = app;
+  const [tab, setTab] = useState('resumen');
   const [uploading, setUploading] = useState('');
   const [modalSubirContrato, setModalSubirContrato] = useState(null);
   const [fileSubir, setFileSubir] = useState(null);
@@ -3220,12 +3219,14 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
   ];
 
   return (
-    <div style={{ padding: '16px 14px', overflowY: 'auto', height: '100%' }}>
-      <div className="mobile-header" style={{ padding: 0, marginBottom: 14 }}>
+    <>
+      <div className="mobile-header">
         <div><div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Mi portal</div><div className="font-display" style={{ fontWeight: 800, fontSize: 17 }}>{ficha.nombre}</div></div>
         <div className="avatar" style={{ width: 34, height: 34 }}>{inicialesDe(ficha.nombre)}</div>
       </div>
-
+      <div className="mobile-content">
+      {tab === 'resumen' && (
+      <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
         {cards.map(([label, value]) => (
           <div key={label} className="card" style={{ padding: 12, minHeight: 78 }}>
@@ -3272,6 +3273,15 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
         <button className="btn btn-secondary btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={() => crearConstanciaPortalCtx?.({ ficha, personal_id: ficha.id, personal_tipo: ficha.personal_tipo, proposito: 'Solicitud mobile' })}>Solicitar constancia</button>
       </div>
 
+      <button className="btn btn-primary" style={{ width: '100%', marginBottom: 10 }} onClick={() => setTab('solicitudes')}>
+        {I.clipboard} Solicitudes
+      </button>
+      </>
+      )}
+
+      {tab === 'solicitudes' && <SolicitudesMovilView />}
+
+      {tab === 'contratos' && (
       <div className="card" style={{ padding: 12, marginBottom: 10 }}>
         <div style={{ fontWeight: 800, marginBottom: 8 }}>Contratos y documentos</div>
         {(() => {
@@ -3390,7 +3400,10 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
           );
         })()}
       </div>
+      )}
 
+      {tab === 'mas' && (
+      <>
       <div className="card" style={{ padding: 12, marginBottom: 10 }}>
         <div style={{ fontWeight: 800, marginBottom: 8 }}>Asistencia del mes</div>
         <div className="row" style={{ gap: 8 }}>
@@ -3399,14 +3412,20 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
         </div>
       </div>
 
-      <button className="btn btn-primary" style={{ width: '100%', marginBottom: 10 }} onClick={() => { setProfile('solicitudes'); setScreen('home'); }}>
-        {I.clipboard} Solicitudes
-      </button>
-
       <div className="card" style={{ padding: 12 }}>
         <div style={{ fontWeight: 800, marginBottom: 8 }}>Amonestaciones</div>
         {data.amonestaciones.slice(0, 2).map(a => <div key={a.id} style={{ fontSize: 12, padding: '7px 0', borderBottom: '1px solid var(--border)' }}>{a.descripcion || a.motivo}</div>)}
         {!data.amonestaciones.length && <div className="text-muted" style={{ fontSize: 12 }}>Sin amonestaciones activas.</div>}
+      </div>
+      </>
+      )}
+      </div>
+
+      <div className="mobile-nav">
+        <div className={'mobile-nav-item '+(tab==='resumen'?'active':'')} onClick={()=>setTab('resumen')}>{I.dashboard}Resumen</div>
+        <div className={'mobile-nav-item '+(tab==='solicitudes'?'active':'')} onClick={()=>setTab('solicitudes')}>{I.clipboard}Solicitudes</div>
+        <div className={'mobile-nav-item '+(tab==='contratos'?'active':'')} onClick={()=>setTab('contratos')}>{I.file}Contratos</div>
+        <div className={'mobile-nav-item '+(tab==='mas'?'active':'')} onClick={()=>setTab('mas')}>{I.settings}Más</div>
       </div>
 
       {modalSubirContrato && (
@@ -3432,13 +3451,13 @@ function MiEspacioMobileView({ setScreen, setProfile }) {
           </div>
         </div>
       )}
-
-    </div>
+    </>
   );
 }
 
-function SolicitudesMovilView({ screen, setScreen }) {
+function SolicitudesMovilView() {
   const { empresa, role, personalOperativo, personalAdmin, authUser, addNotificacion } = useApp();
+  const [screen, setScreen] = useState('home');
   const [solicitudes, setSolicitudes] = useState([]);
   const [saldoVac, setSaldoVac] = useState({ disponibles: 30, usados: 0, saldo: 30 });
   const [paso, setPaso] = useState(1); // 1 tipo, 2 fechas, 3 motivo, 4 confirmación

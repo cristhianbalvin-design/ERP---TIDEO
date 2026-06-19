@@ -111,6 +111,12 @@ function recalcularDiasSinActividadLeads(leads = [], actividades = [], agendaEve
   }));
 }
 
+// "Mi portal" (mi_espacio) incluye Solicitudes como funcionalidad base; se asigna
+// automaticamente para que RRHH no tenga que marcar dos modulos por separado.
+function conSolicitudesIncluido(mods = []) {
+  return mods.includes('mi_espacio') && !mods.includes('solicitudes') ? [...mods, 'solicitudes'] : mods;
+}
+
 function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo_modulos = []) {
   const esSuperadmin = rol?.es_superadmin || false;
   const esAdmin = esSuperadmin || rol?.es_admin_empresa || false;
@@ -4076,7 +4082,7 @@ export function AppProvider({ children }) {
 
       if (campo && campoModulos.length > 0) {
         try {
-          const mods = [...new Set(campoModulos.filter(Boolean))];
+          const mods = conSolicitudesIncluido([...new Set(campoModulos.filter(Boolean))]);
           const perfilLegacy = ({ tecnico: 'Tecnico', vendedor: 'Vendedor', compras: 'Compras', supervisor: 'Supervisor', gerencia: 'Gerencia', asistencia: 'Asistencia', logistica: 'Logistica', mi_espacio: 'Empleado' }[mods[0]] || 'Tecnico');
           const saved = await usuariosService.actualizarUsuarioAcceso({
             user_id: uid,
@@ -4147,7 +4153,7 @@ export function AppProvider({ children }) {
     const previous = usuarios;
     const current = usuarios.find(u => u.id === usuarioId && (!empresaId || u.empresa_id === empresaId)) || usuarios.find(u => u.id === usuarioId);
     const normalizarCampoModulos = (mods, perfil) => {
-      if (Array.isArray(mods) && mods.length) return [...new Set(mods.filter(Boolean))];
+      if (Array.isArray(mods) && mods.length) return conSolicitudesIncluido([...new Set(mods.filter(Boolean))]);
       const value = String(perfil || '').toLowerCase();
       if (value.includes('vendedor')) return ['vendedor'];
       if (value.includes('compra')) return ['compras'];
@@ -8043,11 +8049,13 @@ export function AppProvider({ children }) {
     // Detección por catálogo (tipo_doc almacena IDs, no texto descriptivo)
     let capturaViaCatalogo = false;
     let esAdendaViaCatalogo = false;
+    let tieneSucesorViaCatalogo = false;
     if (doc.tipo_documento_id && tiposDocumento) {
       const tipoInfo = tiposDocumento.find(t => t.id === doc.tipo_documento_id);
       if (tipoInfo?.captura_snapshot_laboral) {
         capturaViaCatalogo = true;
         esAdendaViaCatalogo = Boolean(tipoInfo.documento_padre_tipo_id);
+        tieneSucesorViaCatalogo = Boolean(tipoInfo.tipo_sucesor_id);
       }
     }
 
@@ -8060,6 +8068,10 @@ export function AppProvider({ children }) {
     const cond = doc.condiciones_laborales || {};
     const cambios = doc.adenda_cambios || {};
     const esAdenda = tipo.includes('adenda') || esAdendaViaCatalogo;
+
+    // Un Contrato Primigenio (tiene sucesor, ej. "Contrato Laboral") es histórico:
+    // captura el estado de la ficha al subirlo, no lo empuja de vuelta al aprobarlo.
+    if (!esAdenda && tieneSucesorViaCatalogo) return;
 
     // Conversión régimen snapshot → formato personal_asignaciones_jornada
     // La tabla solo acepta 'general' | 'ciclo_acumulativo' + dias_ciclo_*

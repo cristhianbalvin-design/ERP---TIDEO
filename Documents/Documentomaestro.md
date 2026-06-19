@@ -1,6 +1,6 @@
 # ERP Modular Estándar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado — TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS · Última actualización: 16/06/2026
+### Arquitectura Multitenant SaaS · Última actualización: 19/06/2026
 
 ---
 
@@ -23,7 +23,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 
 ---
 
-## 3. Estado de desarrollo — 14/06/2026
+## 3. Estado de desarrollo — 19/06/2026
 
 ### 3.1 Resumen de progreso
 
@@ -33,10 +33,10 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Módulos en prompt pendiente de implementar | 0 |
 | Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase |
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
-| Migraciones SQL registradas en el repositorio | 253 archivos SQL locales, hasta `248_versioning_contrato_periodos.sql` |
-| Migración local más reciente | `248_versioning_contrato_periodos.sql`: versionado avanzado de contratos por periodos y soporte de firmas. |
-| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior: 238–248 (seguimiento OC, tránsitos, GRNI, kardex valorización, contacto personal, contratos como fuente única, snapshot de adendas, versionado, contrato digital obligatorio y firmas PWA). |
-| Bugs/ajustes corregidos en sesiones 13–16/06/2026 | **Hardening posterior:** Implementación de carga masiva de personal por Excel; Alineación UI RRHH; Auditoría de flujo de firma PWA; **Fix persistencia documentos:** corrección en `personalDocumentosService.js` (getDocumentosActivos/Pendientes) para cargar correctamente documentos con `estado_validacion = pendiente` (activo = false); Correcciones críticas y mejoras de integración. |
+| Migraciones SQL registradas en el repositorio | 270 archivos SQL locales, hasta `268_fix_liquidaciones_cxp_id_type.sql` |
+| Migración local más reciente | `268_fix_liquidaciones_cxp_id_type.sql`: fix en tipo de id de cuenta por pagar para liquidaciones por cese, tras una serie de migraciones de contratos, periodos de documentos y bloqueos de portal. |
+| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior: 249–268 (sincronización área y contrato primigenio, reglas predecesor/sucesor, limpieza y consolidación de tipos de documento, periodos documentales y bloqueos de portal/ceses). |
+| Bugs/ajustes corregidos en sesiones 17–19/06/2026 | **Hardening y fix de persistencia:** Correcciones de ID type en CxP de liquidaciones; **Motor de Contratos:** Integración de predecesores/sucesores, sincronización de área con contrato primigenio; **Documentos:** soporte para caducidad/periodos, consolidación/limpieza de backfill y formatos (pdf/imagen); **Seguridad:** candados en primer contrato de portal y triggers de bloqueo en ceses. |
 
 ### 3.2 Inventario completo de módulos
 
@@ -77,17 +77,17 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 |--------|--------|-------|
 | Mi portal | ✔ Implementado | `pages_mi_portal.jsx`. Autoservicio del colaborador: ficha propia, documentos, solicitudes, boletas/acuses, constancias y amonestaciones con acuse. |
 | Reclutamiento | ✔ Implementado | `pages_reclutamiento.jsx` + ruta pública `PostulacionPublica`. Vacantes, candidatos, candidaturas, historial por etapa e invitación/postulación pública. |
-| Personal Operativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales, datos de nómina/honorarios, carga masiva vía Excel y gestión de adendas. |
-| Personal Administrativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales, reportes, comisiones, datos de honorarios, carga masiva vía Excel y gestión de adendas. |
+| Personal Operativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales, datos de nómina/honorarios, carga masiva vía Excel, gestión de adendas y sincronización de área/contrato primigenio. |
+| Personal Administrativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales, reportes, comisiones, datos de honorarios, carga masiva vía Excel, gestión de adendas y sincronización de área/contrato primigenio. |
 | Control de Asistencia | ✔ Implementado | Tabs diaria, semanal, mensual, resumen, autorizaciones HE, biométrico y SAR/geocercas. Tardanzas, horas extra, importación biométrica, GPS móvil y validación de geocerca. |
 | Turnos y Horarios | ✔ Implementado | Módulo standalone `pages_turnos.jsx`. CRUD completo: crear/editar/eliminar con side-panel. Campos: nombre, entrada/salida, tolerancia, cruza medianoche, días laborables (o variables), refrigerio. Preview de horas efectivas en tiempo real. |
-| Nómina Básica | ✔ Implementado | AFP 3 componentes (tabla multitenant completa), IR 5ta con UIT dinámica, horas extra 25%/35%, CTS computable, bonif. extraordinaria. Régimen MYPE. Régimen minero 14×7/20×10/28×14. Pago quincenal configurable. PLAME. Cierre → egresos en finanzas. **Fase 1 (10/06):** motor corregido. **Fase 2 (10/06):** historial de asignaciones de jornada con vigencia (`personal_asignaciones_jornada`). **Fase 3 (11/06):** `afp_parametros` con comisiones por flujo/mixta. **Ola 2 (12/06):** contratos, cese por falta grave, datos bancarios, autorización HE, compensación y descuentos extraordinarios. **Contratos avanzados (16/06):** flujos de adendas y versionado de contratos. |
+| Nómina Básica | ✔ Implementado | AFP 3 componentes (tabla multitenant completa), IR 5ta con UIT dinámica, horas extra 25%/35%, CTS computable, bonif. extraordinaria. Régimen MYPE. Régimen minero 14×7/20×10/28×14. Pago quincenal configurable. PLAME. Cierre → egresos en finanzas. **Fase 1 (10/06):** motor corregido. **Fase 2 (10/06):** historial de asignaciones de jornada con vigencia (`personal_asignaciones_jornada`). **Fase 3 (11/06):** `afp_parametros` con comisiones por flujo/mixta. **Ola 2 (12/06):** contratos, cese por falta grave, datos bancarios, autorización HE, compensación y descuentos extraordinarios. **Contratos avanzados (16/06):** flujos de adendas y versionado de contratos. **Contrato Primigenio y Periodos (19/06):** reglas de predecesor/sucesor, candados en ceses y caducidad de documentos. |
 | Comisiones | ✔ Implementado | Liquidación, aprobaciones (acuerdos especiales, +48h sin respuesta), retenciones IR de 4ta categoría según suspensión y tipo de cambio, generación de RHE y CxP asociada. |
 | Solicitudes de RRHH | ✔ Implementado | Flujo multietapa: enviada → aprobada_jefe → confirmada_rrhh → activa. Tipos: vacaciones, permisos, licencias, compensación horas y papeletas. Saldo de vacaciones automático. Calendario de ausencias mensual. Vista mobile con formulario paso a paso. |
 | Tareo Administrativo | ✔ Implementado | Registro de horas de personal administrativo contra OT o CECO libre, backoffice y PWA, integrado a Control de Horas. |
 | Control de Horas | ✔ Implementado | Consolidado operativo/administrativo por período: partes, tareos, OTs, tarifa hora, productividad y costos de mano de obra. |
 | Evaluación de Desempeño | ✔ Implementado | 360° básico (autoevaluación + jefe), competencias + objetivos, score ponderado configurable, solo informativo. |
-| Liquidación por Cese | ✔ Implementado | Todos los tipos de cese (renuncia, despido, mutuo acuerdo, vencimiento contrato, fallecimiento y falta grave documentada). Motor de cálculo: vacaciones truncas, CTS proporcional, gratificación proporcional + bonif. 9%, indemnización según régimen (general/MYPE/microempresa). Genera CxP automática al confirmar. Colaborador queda marcado como cesado. |
+| Liquidación por Cese | ✔ Implementado | Todos los tipos de cese (renuncia, despido, mutuo acuerdo, vencimiento contrato, fallecimiento y falta grave documentada). Motor de cálculo: vacaciones truncas, CTS proporcional, gratificación proporcional + bonif. 9%, indemnización según régimen (general/MYPE/microempresa). Genera CxP automática al confirmar (fix de ID type uuid aplicado). Colaborador queda marcado como cesado con bloqueo de trigger. |
 | Préstamos al Personal | ✔ Implementado | En sección RRHH. Incluye schema completo, cuotas, saldo, descuento en nómina e historial de pagos. |
 | Amonestaciones | ✔ Implementado | Integrado como tab en fichas RRHH y Mi portal. Registro/anulación, notificación y acuse del colaborador. |
 | Roster Minero | ✔ Implementado | Snapshots de roster por período/ciclo, cálculo de estado minero y cierre de roster. |
@@ -311,7 +311,8 @@ Se han identificado las siguientes discrepancias tras la auditoría cruzada entr
 | **Compras** / `comprasService.js` | **Devoluciones proveedor no estaba documentado** | Medio | `devolucionesService` permite crear/enviar/aceptar devoluciones, registrar nota de crédito y anular. |
 | **Operaciones Mobile** / `BarcodeScanner.jsx`, `pages_mobile.jsx` | **Checklist SSOMA y escáner ya existían pero el documento los mantenía como pendientes** | Medio | Vista `checklist` móvil y componente `BarcodeScanner` están importados y usados. |
 | **RRHH** / `pages_ops.jsx`, `pages_admin.jsx` | **Carga Masiva de Personal (Operativo y Administrativo)** | Alto | Implementación de modales de carga masiva (`CargaMasivaPersonalModal`, `CargaMasivaAdminModal`) para importar trabajadores desde plantillas Excel. |
-| **RRHH** / `pages_ops.jsx`, `pages_admin.jsx`, `personalDocumentosService.js` | **Motor de Adendas a Contratos** | Alto | Lógica integrada para detectar advertencias `advAdendaManual` al modificar cargos/salarios y requerir subida de adendas vinculadas al contrato original (`adenda_cambios`). |
+| **RRHH** / `pages_ops.jsx`, `pages_admin.jsx`, `personalDocumentosService.js` | **Motor de Adendas a Contratos y Contrato Primigenio** | Alto | Lógica integrada para detectar advertencias `advAdendaManual` y vincular adendas. Ahora expandido a soportar tipos de predecesor/sucesor, sincronización de área y bloqueos de "Contrato Primigenio". |
+| **RRHH** / `personalDocumentosService.js`, `tiposDocumentoService.js` | **Periodos y caducidad de documentos de personal** | Alto | Se integró soporte avanzado de caducidad por periodos documentales y formato candado por extensión (PDF vs Imagen) con limpieza de backfill. |
 | **Compras** / `comprasService.js`, `context.jsx` | **Seguimiento OC, Tránsitos y GRNI** | Medio | Lógica base implementada para soportar seguimiento de Órdenes de Compra en tránsito y valorización GRNI (Goods Received Not Invoiced). |
 
 **b) Documentado pero NO implementado o aún parcial**
@@ -326,14 +327,14 @@ Se han identificado las siguientes discrepancias tras la auditoría cruzada entr
 
 | Rango | Estado | Detalle Técnico |
 |-------|--------|-----------------|
-| `238`–`248` | Registradas localmente | Seguimiento OC y tránsitos, GRNI kardex valorización, contacto de emergencia RRHH, contratos como fuente única documental, snapshot adendas, versionado, contrato digital obligatorio y firma documental. |
+| `249`–`268` | Registradas localmente | Fix de ID en liquidaciones de cese, sincronización área-contrato, reglas de predecesor/sucesor, periodos de documentos, consolidación de tipos, bloqueo cese trigger, job de contrato primigenio. |
 
 **d) Inconsistencias corregidas**
 
 | Sección | Inconsistencia | Corrección |
 |---------|----------------|------------|
-| 3.1 | Migraciones marcadas solo hasta 237 | Actualizado a 253 archivos locales, hasta `248_versioning_contrato_periodos.sql`. |
-| 3.2 | Sidebar y detalle omitían funcionalidades nuevas de RRHH | Agregados: carga masiva de personal por Excel y soporte para flujos de adendas a contratos. |
+| 3.1 | Migraciones marcadas solo hasta 248 | Actualizado a 270 archivos locales, hasta `268_fix_liquidaciones_cxp_id_type.sql`. |
+| 3.2 | Sidebar y detalle omitían funcionalidades nuevas de RRHH | Agregados: carga masiva de personal, contrato primigenio, lógica de periodos en documentos y candados portal/cese. |
 | 3.2 CRM | Leads mantenía nota pendiente de Razón Social/RUC/Industria | El formulario y servicio ya manejan `razon_social`, `ruc` e `industria`; nota corregida. |
 | 3.7 anterior | Checklist SSOMA marcado ausente | Corregido: existe en `pages_mobile.jsx`; quedan pendientes otros flujos F2. |
 
@@ -1728,6 +1729,7 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 - ERP personalizado para rubros específicos (producto separado de TIDEO).
 
 ---
+| 19/06/2026 | **Auditoría técnica Documento Maestro vs repositorio (Corte 19/06):** Revisión del repositorio posterior a múltiples sesiones de consolidación. Actualización del corte a 270 migraciones locales hasta `268_fix_liquidaciones_cxp_id_type.sql`. Se identificaron nuevas implementaciones en código no documentadas previamente: Motor de Predecesor/Sucesor para contratos, Contrato Primigenio, Periodos y caducidad de documentos, Consolidación y candados de formatos de tipos de documento, y bloqueos de cese/portal. Se actualizaron los GAPS, el resumen de progreso y el historial de sesiones. |
 | 16/06/2026 | **Auditoría técnica Documento Maestro vs repositorio (Corte 16/06):** Revisión del repositorio posterior a múltiples sesiones. Actualización del corte a 253 migraciones locales hasta `248_versioning_contrato_periodos.sql`. Se identificaron nuevas implementaciones en código no documentadas: Carga Masiva de Personal (Operativo y Administrativo) por Excel, soporte de Motor de Adendas en fichas RRHH (`advAdendaManual`), lógicas base de tránsitos OC/GRNI, y **corrección en persistencia de visualización** de documentos subidos pendientes de validación (`personalDocumentosService.js`). Se actualizaron los GAPS, el resumen de progreso y la sección de RRHH del inventario de módulos. |
 | 14/06/2026 | **Auditoría técnica Documento Maestro vs repositorio:** revisión cruzada de `src/pages_*.jsx`, `src/context.jsx`, `src/services/*.js` y `supabase/migrations`. Se actualiza el corte a 242 migraciones locales hasta `237_ola5b_geo_sar.sql`, 74 ítems activos de sidebar/ruta, estructura real de archivos, GAPS categorizados y modelo de datos. Se corrigen inconsistencias: `Leads` ya tiene razón social/RUC/industria; SSOMA y `BarcodeScanner` ya existen en PWA; sidebar documental omitía `mi_portal`, `reclutamiento`, `compras_gastos`, `activos_fijos` y `organigrama`. |
 | 14/06/2026 | **RRHH Olas 2–5 documentadas:** migraciones `222`–`234_ola5a` y `237` registran datos bancarios/bloqueo por cese, falta grave, contratos y vencimientos, horas extra/compensación/descuentos, amonestaciones, papeletas, asistencia honorarios, régimen/roster minero, reclutamiento/autoservicio, portal empleado Fase 2, biométrico, WhatsApp, geocercas y SAR. Archivos afectados: `pages_ops.jsx`, `pages_admin.jsx`, `pages_mobile.jsx`, `pages_mi_portal.jsx`, `pages_reclutamiento.jsx`, `context.jsx`, `rrhhService.js`, `reclutamientoService.js`, `portalFase2Service.js`, `biometricoService.js`, `geofencingService.js`, `whatsappService.js`, `amonestacionesService.js`, `rosterMineroService.js`. |

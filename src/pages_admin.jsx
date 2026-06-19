@@ -927,7 +927,7 @@ function Usuarios() {
                     )}
                   </td>
                   <td className="text-muted">{getEmpresa(u.empresa_id)}</td>
-                  <td>{u.campo?<span className="badge badge-cyan">{I.mobile}{getCampoModulos(u).map(m => mobileModuleOptions.find(x => x.id === m)?.label || m).join(', ')}</span>:<span className="text-subtle">—</span>}</td>
+                  <td>{u.campo?<span className="badge badge-cyan">{I.mobile}{getCampoModulos(u).map(m => m === 'solicitudes' ? 'Solicitudes' : (mobileModuleOptions.find(x => x.id === m)?.label || m)).join(', ')}</span>:<span className="text-subtle">—</span>}</td>
                   <td><span className="badge badge-green">{u.estado}</span></td>
                   <td className="text-muted">{u.ultimo || 'Nuevo'}</td>
                   <td style={{textAlign:'right'}}>
@@ -1068,6 +1068,7 @@ function Usuarios() {
                       </label>
                     )})}
                   </div>
+                  {editForm.campoModulos.includes('mi_espacio') && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Mi espacio incluye automáticamente Solicitudes, sin necesidad de marcarlo por separado.</div>}
                   {fichaUsuario.loading && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Verificando ficha RRHH por email...</div>}
                   {fichaUsuario.error && <div className="text-muted" style={{fontSize:12, marginTop:6}}>No se pudo refrescar la ficha desde Supabase; se esta usando la informacion cargada localmente.</div>}
                   {!fichaUsuario.loading && !esRolAdminODireccion(editForm.rol) && !fichaUsuario.tieneFicha && (
@@ -1212,6 +1213,7 @@ function Usuarios() {
                     ))}
                   </div>
                   <div className="text-muted" style={{fontSize:12, marginTop:6}}>Control de asistencia requiere una ficha de colaborador con el mismo email y turno asignado.</div>
+                  {nuevoForm.campoModulos.includes('mi_espacio') && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Mi espacio incluye automáticamente Solicitudes, sin necesidad de marcarlo por separado.</div>}
                 </div>
               )}
               <div className="modal-foot mt-4">
@@ -7863,9 +7865,7 @@ function RRHHAdmin() {
       regimen_laboral: 'general',
       regimen_jornada: modalidad === 'planilla' ? (formAlta.regimen_jornada || 'general') : 'general',
       horas_diarias_pactadas: Number(formAlta.horas_diarias_pactadas || 8),
-      fecha_inicio_ciclo: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (formAlta.fecha_inicio_ciclo || null) : null,
-      dias_ciclo_trabajo: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (Number(formAlta.dias_ciclo_trabajo || 0) || null) : null,
-      dias_ciclo_descanso: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (Number(formAlta.dias_ciclo_descanso || 0) || null) : null,
+      fecha_inicio_ciclo: (modalidad === 'planilla' && formAlta.regimen_jornada !== 'general') ? (formAlta.fecha_inicio_ciclo || null) : null,
       bonif_altitud: Number(formAlta.bonif_altitud || 0),
       tipo_comision_afp: formAlta.tipo_comision_afp || 'mixta',
       pct_comision_afp_flujo: Number(formAlta.pct_comision_afp_flujo || 0),
@@ -7933,6 +7933,23 @@ function RRHHAdmin() {
       .filter(d => esDocContratoLocal(d) || esDocAdendaLocal(d))
       .sort((a, b) => String(b.fecha_emision || b.creado_en || b.created_at || '').localeCompare(String(a.fecha_emision || a.creado_en || a.created_at || '')));
     const contratosValidados = docsContractuales.filter(d => esDocContratoLocal(d) && d.estado_validacion === 'aprobado');
+    const condicionesContrato = (() => {
+      if (!contratoDoc) return null;
+      const cond = { ...(contratoDoc.condiciones_laborales || {}) };
+      const hoy = new Date().toISOString().slice(0, 10);
+      const adendasAplicables = docsContractuales
+        .filter(d => esDocAdendaLocal(d) && d.estado_validacion === 'aprobado' && d.contrato_referencia_id === contratoDoc.id && (!d.fecha_vigencia_cambio || d.fecha_vigencia_cambio <= hoy))
+        .sort((a, b) => String(a.fecha_vigencia_cambio || a.fecha_emision || '').localeCompare(String(b.fecha_vigencia_cambio || b.fecha_emision || '')));
+      adendasAplicables.forEach(d => {
+        const c = d.condiciones_laborales || {};
+        const cambios = d.adenda_cambios || {};
+        if (cambios.cargo) { cond.cargo = c.cargo; cond.cargo_id = c.cargo_id; cond.cargo_nombre = c.cargo_nombre || c.cargo; }
+        if (cambios.remuneracion) cond.remuneracion_base = c.remuneracion_base;
+        if (cambios.modalidad) cond.modalidad = c.modalidad;
+        if (cambios.sede) { cond.sede = c.sede; cond.sede_id = c.sede_id; cond.sede_nombre = c.sede_nombre || c.sede; }
+      });
+      return cond;
+    })();
     const irADocumentoContrato = () => {
       setTab('documentos');
       setDocUploadForm(prev => ({ ...prev, tipoDoc: contratoTipoDoc }));
@@ -8155,14 +8172,14 @@ function RRHHAdmin() {
               )}
               <div className="grid-2" style={{gap:16}}>
                 {[
-                  ['Tipo de contrato', labelOr(TIPO_CONTRATO_LABELS, persona.tipo_contrato)],
+                  ['Tipo de contrato', condicionesContrato ? labelOr(TIPO_CONTRATO_LABELS, condicionesContrato.tipo_contrato) : null],
                   ['Fecha de ingreso', persona.fecha_ingreso],
-                  ['Cargo vigente', tieneContratoAprobado ? persona.cargo : null],
-                  ['Remuneración vigente', tieneContratoAprobado ? (canFinanzasAdmin ? `S/ ${Number(persona.sueldo_base || persona.remuneracion || 0).toLocaleString()}` : '***') : null],
-                  ['Régimen de jornada vigente', tieneContratoAprobado && persona.regimen_jornada ? labelOr(REGIMEN_JORNADA_LABELS, persona.regimen_jornada) : null],
-                  ['Modalidad vigente', tieneContratoAprobado ? labelOr(MODALIDAD_TRABAJO_LABELS, persona.modalidad) : null],
-                  ['Sede vigente', tieneContratoAprobado ? persona.sede : null],
-                  ['Área vigente', tieneContratoAprobado ? ((areasEmpresa.find(a => a.id === persona.area_id)?.nombre) || persona.area || null) : null],
+                  ['Cargo vigente', condicionesContrato ? (condicionesContrato.cargo_nombre || condicionesContrato.cargo) : null],
+                  ['Remuneración vigente', condicionesContrato ? (canFinanzasAdmin ? `S/ ${Number(condicionesContrato.remuneracion_base || 0).toLocaleString()}` : '***') : null],
+                  ['Régimen de jornada vigente', condicionesContrato ? labelOr(REGIMEN_JORNADA_LABELS, condicionesContrato.regimen_jornada) : null],
+                  ['Modalidad vigente', condicionesContrato ? labelOr(MODALIDAD_TRABAJO_LABELS, condicionesContrato.modalidad) : null],
+                  ['Sede vigente', condicionesContrato ? (condicionesContrato.sede_nombre || condicionesContrato.sede) : null],
+                  ['Área vigente', condicionesContrato ? ((areasEmpresa.find(a => a.id === condicionesContrato.area_id)?.nombre) || condicionesContrato.area_nombre || condicionesContrato.area || null) : null],
                   ['Contrato digital', contratoDoc ? (contratoDoc.nombre_archivo || contratoDoc.nombre || contratoDoc.tipo_doc_nombre || 'Contrato') : 'Sin contrato digital'],
                   ['Fecha inicio contrato', contratoDoc?.fecha_emision || '—'],
                   ['Vencimiento contrato', contratoDoc?.fecha_vencimiento || '—'],

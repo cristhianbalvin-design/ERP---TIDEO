@@ -411,11 +411,13 @@ export async function confirmarLiquidacion(liquidacionId, params = {}, confirmed
   fechaVenc.setDate(fechaVenc.getDate() + 10); // ~7 días hábiles
 
   const beneficiario = liq.beneficiario_nombre || liq.personal_nombre;
-  const concepto     = `Liquidación por cese — ${TIPOS_CESE_LABELS[liq.tipo_cese] || liq.tipo_cese} — ${beneficiario}`;
+  const baseConcepto = `Liquidación por cese — ${TIPOS_CESE_LABELS[liq.tipo_cese] || liq.tipo_cese} — ${beneficiario}`;
+  const concepto     = params.observaciones ? `${baseConcepto} | ${params.observaciones}` : baseConcepto;
 
   const { data: cxp, error: cxpErr } = await supabase
     .from('cxp')
     .insert({
+      id:               crypto.randomUUID(),
       empresa_id:       liq.empresa_id,
       tipo_beneficiario: 'personal',
       personal_id:      liq.personal_id,
@@ -426,8 +428,7 @@ export async function confirmarLiquidacion(liquidacionId, params = {}, confirmed
       fecha_emision:    now.toISOString().slice(0, 10),
       fecha_vencimiento: fechaVenc.toISOString().slice(0, 10),
       estado:           'pendiente',
-      moneda:           params.moneda || 'PEN',
-      notas:            params.observaciones || '',
+      moneda:           params.moneda || 'PEN'
     })
     .select('*')
     .single();
@@ -504,7 +505,7 @@ export async function anularLiquidacion(liquidacionId, motivo, anuladoPor = null
     if (liq.cxp_id) {
       const { data: cxpAnu } = await supabase
         .from('cxp')
-        .update({ estado: 'anulada', notas: `Anulada — liquidación anulada: ${motivo}` })
+        .update({ estado: 'anulada' })
         .eq('id', liq.cxp_id)
         .select('*')
         .single();

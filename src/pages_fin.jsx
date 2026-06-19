@@ -6467,6 +6467,7 @@ function CxP() {
 
   // ── Datos filtrados y KPIs ────────────────────────────────────────────────
   const cxpFiltrada = (cxp || []).filter(c => {
+    if (c.estado === 'anulada') return false;
     if (tabCxP === 'tributos' && !cxpEsTributo(c)) return false;
     if (filtTipo !== 'todos' && (c.tipo_beneficiario || 'proveedor') !== filtTipo) return false;
     if (filtOrigen !== 'todos' && (c.origen || 'manual') !== filtOrigen) return false;

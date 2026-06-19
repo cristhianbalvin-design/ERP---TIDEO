@@ -14180,7 +14180,7 @@ function ControlAsistencia() {
 
       {tab === 'diaria' && <div className="card"><div className="card-head"><h3>Asistencia del dia (Régimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.map(row=><tr key={row.trabajador.id}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td><td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>abrirEdicion(row)}>Editar</button></td></tr>)}</tbody></table></div></div>}
 
-      {tab === 'semanal' && <div className="card"><div className="card-head"><h3>Vista semanal (Régimen General)</h3><span className="text-muted">{semanaTexto}</span></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.slice(0,8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
+      {tab === 'semanal' && <div className="card"><div className="card-head" style={{flexWrap:'wrap', gap:10}}><h3>Vista semanal (Régimen General)</h3><div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><div className="row" style={{background:'var(--bg-subtle)', borderRadius:8, padding:'2px 4px', border:'1px solid var(--border)'}}><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() - 7); return n.toISOString().split('T')[0]; })} title="Semana anterior">{I.chevronLeft}</button><span className="text-muted" style={{minWidth:200, textAlign:'center', fontSize:13, fontWeight:600}}>{semanaTexto}</span><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() + 7); return n.toISOString().split('T')[0]; })} title="Siguiente semana">{I.chevronRight}</button></div><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/><button type="button" className="btn btn-ghost btn-sm" onClick={() => setFecha(new Date().toISOString().split('T')[0])}>Hoy</button></div></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.slice(0,8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
 
       {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head"><h3>Resumen mensual - {mesNombreCap}</h3></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Régimen/Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>
         {calculosAsistencia.slice(0,8).map(c => {
@@ -14674,7 +14674,7 @@ function Nomina() {
   }, [periodosNomina.length]);
 
   const periodoActivo = periodoId ? periodosNomina.find(p => p.id === periodoId) : null;
-  const periodo = periodoActivo || periodosNomina[0];
+  const periodo = periodoActivo || periodosNomina.find(p => p.anio != null && p.mes != null) || periodosNomina[0];
   const periodoKey = periodo ? `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}` : '';
 
   const comisionesPlanilla = useMemo(() =>
@@ -14686,8 +14686,9 @@ function Nomina() {
     return map;
   }, [comisionesPlanilla]);
 
-  const periodoIni = periodo ? new Date(periodo.anio, periodo.mes - 1, 1) : null;
-  const periodoFin = periodo ? new Date(periodo.anio, periodo.mes, 0) : null;
+  const periodoValido = periodo && periodo.anio != null && periodo.mes != null;
+  const periodoIni = periodoValido ? new Date(periodo.anio, periodo.mes - 1, 1) : null;
+  const periodoFin = periodoValido ? new Date(periodo.anio, periodo.mes, 0) : null;
   const estaActivoEnPeriodo = (p) => {
     if (!periodoFin) return true;
     const ing = p.fecha_ingreso || null;
@@ -14695,8 +14696,8 @@ function Nomina() {
     return true;
   };
   const trabajadores = [
-    ...personalOperativo.filter(p => p.estado_laboral === 'activo' && !esModalidadHonorarios(p) && estaActivoEnPeriodo(p)).map(p => ({ ...p, area: p.area || 'Operativo', tipo: 'operativo' })),
-    ...personalAdmin.filter(p => p.estado_laboral === 'activo' && !esModalidadHonorarios(p) && estaActivoEnPeriodo(p)).map(p => ({ ...p, area: p.area || 'Administrativo', tipo: 'admin' })),
+    ...personalOperativo.filter(p => p.estado_laboral !== 'cesado' && !esModalidadHonorarios(p) && estaActivoEnPeriodo(p)).map(p => ({ ...p, area: p.area || 'Operativo', tipo: 'operativo' })),
+    ...personalAdmin.filter(p => p.estado_laboral !== 'cesado' && !esModalidadHonorarios(p) && estaActivoEnPeriodo(p)).map(p => ({ ...p, area: p.area || 'Administrativo', tipo: 'admin' })),
   ];
 
   useEffect(() => {
@@ -16306,9 +16307,10 @@ function RRHH_Operativo() {
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const vacacionesSugeridas = diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general');
   const vacRegimenLabel = { general: 'General', pequena_empresa: 'Pequeña empresa', microempresa: 'Microempresa' }[empresaConfig?.regimen_laboral_empresa || 'general'] || 'General';
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', email_personal:'', celular_personal:'', codigo:'', cargo:'', cargo_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'' };
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', email_personal:'', celular_personal:'', codigo:'', cargo:'', cargo_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'', auth_user_id:'' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [nuevoCargoTextoOp, setNuevoCargoTextoOp] = useState('');
   const [horasBaseOverride, setHorasBaseOverride] = useState(false);
@@ -16459,6 +16461,7 @@ function RRHH_Operativo() {
       suspension_retenciones: Boolean(p.suspension_retenciones),
       vencimiento_suspension: p.vencimiento_suspension || '',
       tarifa_hora_referencial: p.tarifa_hora_referencial != null ? String(p.tarifa_hora_referencial) : '',
+      auth_user_id: p.auth_user_id || '',
     });
     setFormDatosBancarios(Array.isArray(p.datos_bancarios) ? p.datos_bancarios : []);
     setCrearUsuarioSistema(false);
@@ -16563,9 +16566,7 @@ function RRHH_Operativo() {
       descuento_judicial: modalidad === 'honorarios' ? 0 : Number(formAlta.descuento_judicial) || 0,
       regimen_jornada: modalidad === 'honorarios' ? 'general' : (formAlta.regimen_jornada || 'general'),
       horas_diarias_pactadas: Number(formAlta.horas_diarias_pactadas || 8),
-      fecha_inicio_ciclo: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (formAlta.fecha_inicio_ciclo || null) : null,
-      dias_ciclo_trabajo: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (Number(formAlta.dias_ciclo_trabajo || 0) || null) : null,
-      dias_ciclo_descanso: formAlta.regimen_jornada === 'ciclo_acumulativo' ? (Number(formAlta.dias_ciclo_descanso || 0) || null) : null,
+      fecha_inicio_ciclo: (modalidad !== 'honorarios' && formAlta.regimen_jornada !== 'general') ? (formAlta.fecha_inicio_ciclo || null) : null,
       bonif_altitud: Number(formAlta.bonif_altitud || 0),
       tipo_comision_afp: formAlta.tipo_comision_afp || 'mixta',
       pct_comision_afp_flujo: Number(formAlta.pct_comision_afp_flujo || 0),
@@ -16580,6 +16581,7 @@ function RRHH_Operativo() {
       docs: { sctr:'pendiente', medico:'pendiente', epp:'pendiente', licencia:'pendiente' },
       tarifa_hora_referencial: modalidad === 'honorarios' && formAlta.tarifa_hora_referencial !== '' ? Number(formAlta.tarifa_hora_referencial) : null,
       datos_bancarios: formDatosBancarios,
+      auth_user_id: formAlta.auth_user_id || null,
     };
     try {
       if (editandoId) {
@@ -16677,7 +16679,7 @@ function RRHH_Operativo() {
     // Enriquecer con el objeto documento completo para el previsualizador
     const docIdx = {};
     for (const d of personalDocumentos) {
-      if (!d.activo) continue;
+      if (!d.activo && d.estado_validacion !== 'pendiente') continue;
       const k = `${d.personal_id}|${d.tipo_documento_id || d.tipo_doc}`;
       const prev = docIdx[k];
       if (!prev || (d.version ?? 0) >= (prev.version ?? 0)) docIdx[k] = d;
@@ -16959,6 +16961,23 @@ function RRHH_Operativo() {
       .filter(d => esDocContratoLocal(d) || esDocAdendaLocal(d))
       .sort((a, b) => String(b.fecha_emision || b.creado_en || b.created_at || '').localeCompare(String(a.fecha_emision || a.creado_en || a.created_at || '')));
     const contratosValidados = docsContractuales.filter(d => esDocContratoLocal(d) && d.estado_validacion === 'aprobado');
+    const condicionesContrato = (() => {
+      if (!contratoDoc) return null;
+      const cond = { ...(contratoDoc.condiciones_laborales || {}) };
+      const hoy = new Date().toISOString().slice(0, 10);
+      const adendasAplicables = docsContractuales
+        .filter(d => esDocAdendaLocal(d) && d.estado_validacion === 'aprobado' && d.contrato_referencia_id === contratoDoc.id && (!d.fecha_vigencia_cambio || d.fecha_vigencia_cambio <= hoy))
+        .sort((a, b) => String(a.fecha_vigencia_cambio || a.fecha_emision || '').localeCompare(String(b.fecha_vigencia_cambio || b.fecha_emision || '')));
+      adendasAplicables.forEach(d => {
+        const c = d.condiciones_laborales || {};
+        const cambios = d.adenda_cambios || {};
+        if (cambios.cargo) { cond.cargo = c.cargo; cond.cargo_id = c.cargo_id; cond.cargo_nombre = c.cargo_nombre || c.cargo; }
+        if (cambios.remuneracion) cond.remuneracion_base = c.remuneracion_base;
+        if (cambios.modalidad) cond.modalidad = c.modalidad;
+        if (cambios.sede) { cond.sede = c.sede; cond.sede_id = c.sede_id; cond.sede_nombre = c.sede_nombre || c.sede; }
+      });
+      return cond;
+    })();
     const irADocumentoContrato = () => {
       setFichaTab('documentos');
       setDocHighlightTipo(contratoDoc?.tipo_doc || contratoDoc?.tipo_documento_id || contratoTipoDoc);
@@ -17282,24 +17301,17 @@ function RRHH_Operativo() {
               )}
               <div className="grid-2" style={{gap:16}}>
                 {[
-                  ['Tipo de contrato', labelOr(TIPO_CONTRATO_LABELS, p.tipo_contrato)],
+                  ['Tipo de contrato', condicionesContrato ? labelOr(TIPO_CONTRATO_LABELS, condicionesContrato.tipo_contrato) : null],
                   ['Fecha de ingreso', p.fecha_ingreso],
-                  ['Cargo vigente', tieneContratoAprobado ? p.cargo : null],
-                  ['Remuneración vigente', tieneContratoAprobado ? (canFinanzas ? `S/ ${Number(p.sueldo_base || p.monto_mensual || 0).toLocaleString()}` : '***') : null],
-                  ['Modalidad vigente', tieneContratoAprobado ? labelOr(MODALIDAD_TRABAJO_LABELS, p.modalidad || 'presencial') : null],
-                  ['Sede vigente', tieneContratoAprobado ? p.sede : null],
-                  ['Área vigente', tieneContratoAprobado ? ((areasEmpresa.find(a => a.id === p.area_id)?.nombre) || p.area || null) : null],
+                  ['Cargo vigente', condicionesContrato ? (condicionesContrato.cargo_nombre || condicionesContrato.cargo) : null],
+                  ['Remuneración vigente', condicionesContrato ? (canFinanzas ? `S/ ${Number(condicionesContrato.remuneracion_base || 0).toLocaleString()}` : '***') : null],
+                  ['Modalidad vigente', condicionesContrato ? labelOr(MODALIDAD_TRABAJO_LABELS, condicionesContrato.modalidad || 'presencial') : null],
+                  ['Sede vigente', condicionesContrato ? (condicionesContrato.sede_nombre || condicionesContrato.sede) : null],
+                  ['Área vigente', condicionesContrato ? ((areasEmpresa.find(a => a.id === condicionesContrato.area_id)?.nombre) || condicionesContrato.area_nombre || condicionesContrato.area || null) : null],
                   ['Contrato digital', contratoDoc ? (contratoDoc.nombre || contratoDoc.tipo_doc_nombre || contratoDoc.tipo_doc || 'Contrato') : 'Sin contrato digital'],
                   ['Fecha inicio contrato', contratoDoc?.fecha_emision || '—'],
                   ['Vencimiento contrato', contratoDoc?.fecha_vencimiento || '—'],
-                  ['Régimen laboral', p.regimen_laboral],
-                  ['Régimen de jornada', tieneContratoAprobado ? labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada) : null],
-                  ['Sueldo base', tieneContratoAprobado && canFinanzas ? `S/ ${Number(p.sueldo_base||0).toLocaleString()}` : (tieneContratoAprobado ? '***' : null)],
-                  ['Costo/hora', canFinanzas ? money(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0, p.moneda === 'USD' ? 'US$' : 'S/') + '/hr' : '***'],
-                  ['Costo hora extra', canFinanzas ? money(p.costo_hora_extra ?? 0, p.moneda === 'USD' ? 'US$' : 'S/') + '/hr' : '***'],
-                  ['Sistema pensionario', esHon ? '—' : p.sistema_pensionario],
-                  ['AFP', esHon ? '—' : (p.afp_nombre || '—')],
-                  ['Vacaciones disponibles', esHon ? '—' : `${solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso||null, p.dias_vacaciones_total??30, vacPersona).saldo} días`],
+                  ['Régimen de jornada', condicionesContrato ? labelOr(REGIMEN_JORNADA_LABELS, condicionesContrato.regimen_jornada) : null],
                 ].map(([label, val]) => (
                   <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
                     <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
@@ -17769,7 +17781,7 @@ function RRHH_Operativo() {
                     tipoDoc: inlineUploadReq.tipo_documento_id,
                     tipoDocumentoId: inlineUploadReq.tipo_documento_id,
                     file: inlineUploadFile,
-                    fechaEmision: inlineUploadReq.tipo?.exige_emision ? (inlineUploadForm.fechaEmision || null) : null,
+                    fechaEmision: inlineUploadForm.fechaEmision || null,
                     fechaVencimiento: inlineEsAdenda ? null : (inlineUploadReq.tipo?.exige_vencimiento ? (inlineUploadForm.fechaVencimiento || null) : null),
                     notas: inlineUploadForm.notas || null,
                     subidoDesde: 'backoffice',
@@ -17790,6 +17802,7 @@ function RRHH_Operativo() {
                 }
                 setInlineUploadReq(null); setInlineUploadFile(null);
                 setInlineUploadForm(inlineUploadFormBase);
+                if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(p.id);
               } catch (err) { setInlineUploadError(err?.message || 'Error al guardar el documento.'); }
               finally { setInlineUploading(false); }
             };
@@ -18694,7 +18707,16 @@ function RRHH_Operativo() {
                   <div className="grid-2" style={{gap:14, marginBottom:12}}>
                     <div className="input-group" style={{gridColumn:'1/-1'}}>
                       <label>Régimen de jornada</label>
-                      <select className="select" value={formAlta.regimen_jornada} onChange={e=>setFormAlta(v=>({...v,regimen_jornada:e.target.value,horas_diarias_pactadas:e.target.value==='general'?'8':'12'}))}>
+                      <select className="select" value={formAlta.regimen_jornada} onChange={e=>{
+                        const val = e.target.value;
+                        const presets = { minero_14x7:[14,7], minero_20x10:[20,10], minero_28x14:[28,14], minero_2x1:[2,1] };
+                        if (presets[val]) {
+                          const [t,d] = presets[val];
+                          setFormAlta(v=>({...v, regimen_jornada:val, horas_diarias_pactadas:'12', dias_ciclo_trabajo:String(t), dias_ciclo_descanso:String(d)}));
+                        } else {
+                          setFormAlta(v=>({...v, regimen_jornada:val, horas_diarias_pactadas:val==='general'?'8':'12', dias_ciclo_trabajo:'', dias_ciclo_descanso:''}));
+                        }
+                      }}>
                         <option value="general">General (8h/día estándar)</option>
                         <option value="minero_14x7">Minero 14×7</option>
                         <option value="minero_20x10">Minero 20×10</option>
@@ -18705,8 +18727,8 @@ function RRHH_Operativo() {
                     {formAlta.regimen_jornada !== 'general' && <>
                       <div className="input-group"><label>Horas diarias pactadas <span className="text-muted">(D. Leg. 857)</span></label><input className="input" type="number" min="1" max="12" value={formAlta.horas_diarias_pactadas} onChange={e=>setFormAlta(v=>({...v,horas_diarias_pactadas:e.target.value}))}/></div>
                       <div className="input-group"><label>Fecha inicio del ciclo actual</label><input className="input" type="date" value={formAlta.fecha_inicio_ciclo} onChange={e=>setFormAlta(v=>({...v,fecha_inicio_ciclo:e.target.value}))}/></div>
-                      <div className="input-group"><label>Días de trabajo en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_trabajo} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_trabajo:e.target.value}))}/></div>
-                      <div className="input-group"><label>Días de descanso en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_descanso} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_descanso:e.target.value}))}/></div>
+                      <div className="input-group"><label>Días de trabajo en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_trabajo} readOnly style={{background:'var(--bg-subtle)'}} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_trabajo:e.target.value}))}/></div>
+                      <div className="input-group"><label>Días de descanso en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_descanso} readOnly style={{background:'var(--bg-subtle)'}} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_descanso:e.target.value}))}/></div>
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Bonificación por altitud (S/)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.bonif_altitud} onChange={e=>setFormAlta(v=>({...v,bonif_altitud:e.target.value}))} placeholder="0 si no aplica"/></div>
                       <div className="card" style={{gridColumn:'1/-1',padding:'8px 12px',background:'rgba(6,182,212,0.08)',fontSize:12,color:'var(--cyan)'}}> Cálculo proporcional por días computables en cada período.</div>
                     </>}
@@ -18743,24 +18765,35 @@ function RRHH_Operativo() {
               </div>
             )}
 
-            {!editandoId && (
-              <div style={{marginBottom:20}}>
-                <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10}}>Acceso al sistema</div>
-                <label className="row" style={{gap:8, alignItems:'center', marginBottom:8}}>
-                  <input type="checkbox" checked={crearUsuarioSistema} onChange={e=>setCrearUsuarioSistema(e.target.checked)}/>
-                  ¿Crear usuario de sistema?
-                </label>
-                <div className="text-muted" style={{fontSize:12, marginBottom:crearUsuarioSistema?12:0}}>Activa esto solo si este colaborador necesita acceder al ERP. No todo el personal operativo requiere acceso al sistema.</div>
-                {crearUsuarioSistema && (
-                  <div className="grid-2" style={{gap:12}}>
-                    <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" value={usuarioSistemaForm.email} onChange={e=>setUsuarioSistemaForm(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
-                    <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaForm.rol} onChange={e=>setUsuarioSistemaForm(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>
-                    <div className="input-group"><label>Perfil de campo</label><select className="select" value={usuarioSistemaForm.perfil_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v,perfil_campo:e.target.value}))}><option value="tecnico">Técnico</option><option value="comprador">Comprador</option><option value="vendedor">Vendedor</option><option value="supervisor">Supervisor</option><option value="gerencia">Gerencia</option><option value="administrativo">Administrativo</option></select></div>
-                    <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaForm.acceso_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v,acceso_campo:e.target.checked}))}/>Acceso a app de campo</label>
-                  </div>
-                )}
-              </div>
-            )}
+            <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10}}>Acceso al sistema</div>
+            <div style={{marginBottom:20}}>
+              {editandoId ? (
+                <div className="input-group">
+                  <label>Cuenta de usuario <span className="text-muted">(opcional — para aislamiento de datos)</span></label>
+                  <select className="select" value={formAlta.auth_user_id} onChange={e=>setFormAlta(v=>({...v,auth_user_id:e.target.value}))}>
+                    <option value="">Sin cuenta vinculada</option>
+                    {usuariosEmpresa.map(u=><option key={u.id} value={u.id}>{u.nombre || u.email} — {u.email}</option>)}
+                  </select>
+                  <div className="text-muted" style={{fontSize:11, marginTop:5}}>Vincula este técnico a su cuenta de inicio de sesión para que las políticas de visibilidad se apliquen correctamente.</div>
+                </div>
+              ) : (
+                <>
+                  <label className="row" style={{gap:8, alignItems:'center', marginBottom:8}}>
+                    <input type="checkbox" checked={crearUsuarioSistema} onChange={e=>setCrearUsuarioSistema(e.target.checked)}/>
+                    ¿Crear usuario de sistema?
+                  </label>
+                  <div className="text-muted" style={{fontSize:12, marginBottom:crearUsuarioSistema?12:0}}>Activa esto solo si este colaborador necesita acceder al ERP. No todo el personal operativo requiere acceso al sistema.</div>
+                  {crearUsuarioSistema && (
+                    <div className="grid-2" style={{gap:12}}>
+                      <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" value={usuarioSistemaForm.email} onChange={e=>setUsuarioSistemaForm(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
+                      <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaForm.rol} onChange={e=>setUsuarioSistemaForm(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>
+                      <div className="input-group"><label>Perfil de campo</label><select className="select" value={usuarioSistemaForm.perfil_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v,perfil_campo:e.target.value}))}><option value="tecnico">Técnico</option><option value="comprador">Comprador</option><option value="vendedor">Vendedor</option><option value="supervisor">Supervisor</option><option value="gerencia">Gerencia</option><option value="administrativo">Administrativo</option></select></div>
+                      <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaForm.acceso_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v,acceso_campo:e.target.checked}))}/>Acceso a app de campo</label>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
 
             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
               <button type="button" className="btn btn-secondary" onClick={cerrarPanelTecnico}>Cancelar</button>

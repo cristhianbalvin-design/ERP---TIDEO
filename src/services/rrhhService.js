@@ -268,9 +268,12 @@ const normalizarPersonalOperativo = (p = {}) => ({
   // Deprecated: regimen_laboral individual ya no gobierna calculos; usar empresa_config.regimen_laboral_empresa.
   regimen_laboral: p.regimen_laboral || null,
   regimen_jornada: p.regimen_jornada || 'general',
-  dias_ciclo_trabajo: p.dias_ciclo_trabajo ?? null,
-  dias_ciclo_descanso: p.dias_ciclo_descanso ?? null,
+  dias_ciclo_trabajo: p.dias_ciclo_trabajo ?? (p.regimen_jornada === 'minero_14x7' ? 14 : p.regimen_jornada === 'minero_20x10' ? 20 : p.regimen_jornada === 'minero_28x14' ? 28 : p.regimen_jornada === 'minero_2x1' ? 2 : null),
+  dias_ciclo_descanso: p.dias_ciclo_descanso ?? (p.regimen_jornada === 'minero_14x7' ? 7 : p.regimen_jornada === 'minero_20x10' ? 10 : p.regimen_jornada === 'minero_28x14' ? 14 : p.regimen_jornada === 'minero_2x1' ? 1 : null),
+  horas_diarias_pactadas: Number(p.horas_diarias_pactadas || 8),
+  fecha_inicio_ciclo: p.fecha_inicio_ciclo || null,
   cargo_confianza: Boolean(p.cargo_confianza),
+  bonif_altitud: Number(p.bonif_altitud || 0),
   cuota_prestamo_mes: Number(p.cuota_prestamo_mes || 0),
   descuento_judicial: Number(p.descuento_judicial || 0),
   docs: p.docs || { sctr: 'pendiente', medico: 'pendiente', epp: 'pendiente', licencia: 'pendiente' },
@@ -330,8 +333,6 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   regimen_jornada: persona.regimen_jornada || 'general',
   horas_diarias_pactadas: Number(persona.horas_diarias_pactadas || 8),
   fecha_inicio_ciclo: persona.fecha_inicio_ciclo || null,
-  dias_ciclo_trabajo: persona.regimen_jornada === 'ciclo_acumulativo' ? (Number(persona.dias_ciclo_trabajo || 0) || null) : null,
-  dias_ciclo_descanso: persona.regimen_jornada === 'ciclo_acumulativo' ? (Number(persona.dias_ciclo_descanso || 0) || null) : null,
   cargo_confianza: Boolean(persona.cargo_confianza),
   bonif_altitud: Number(persona.bonif_altitud || 0),
   tipo_comision_afp: persona.tipo_comision_afp || 'mixta',
@@ -371,8 +372,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
     'modalidad_contrato', 'tipo_contrato', 'afp_nombre', 'tiene_hijos', 'regimen_laboral',
     'cuota_prestamo_mes', 'descuento_judicial',
     'regimen_jornada', 'horas_diarias_pactadas', 'fecha_inicio_ciclo',
-    'dias_ciclo_trabajo', 'dias_ciclo_descanso', 'cargo_confianza',
-    'bonif_altitud', 'tipo_comision_afp', 'pct_comision_afp_flujo',
+    'cargo_confianza', 'bonif_altitud', 'tipo_comision_afp', 'pct_comision_afp_flujo',
     'costo_hora_real', 'costo_hora_extra',
     'ruc_colaborador', 'retencion_ir', 'suspension_retenciones', 'vencimiento_suspension',
     'acceso_campo', 'perfil_campo',
@@ -382,7 +382,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
     'firma_autorizacion_doc_id', 'firma_onboarding_completo',
     'codigo_biometrico', 'celular_whatsapp', 'whatsapp_opt_in', 'whatsapp_opt_in_en',
     'docs', 'estado', 'centro_costo_id', 'tarifa_hora_referencial',
-    'datos_bancarios', 'usuario_bloqueado_en', 'usuario_bloqueado_por'
+    'datos_bancarios', 'usuario_bloqueado_en', 'usuario_bloqueado_por', 'auth_user_id'
   ]);
 
   return Object.entries(cambios).reduce((row, [key, value]) => {
@@ -392,7 +392,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
       row[target] = value !== '' && value != null ? Number(value) : null;
       return row;
     }
-    row[target] = ['sueldo_base', 'monto_mensual', 'horas_base_mes', 'tarifa_hora', 'costo_hora_real', 'costo_hora_extra', 'cuota_prestamo_mes', 'descuento_judicial', 'horas_diarias_pactadas', 'dias_ciclo_trabajo', 'dias_ciclo_descanso', 'bonif_altitud', 'pct_comision_afp_flujo'].includes(target)
+    row[target] = ['sueldo_base', 'monto_mensual', 'horas_base_mes', 'tarifa_hora', 'costo_hora_real', 'costo_hora_extra', 'cuota_prestamo_mes', 'descuento_judicial', 'horas_diarias_pactadas', 'bonif_altitud', 'pct_comision_afp_flujo'].includes(target)
       ? Number(value || 0)
       : value;
     return row;
@@ -436,8 +436,8 @@ const normalizarPersonalAdmin = (p = {}) => ({
   regimen_jornada: p.regimen_jornada || 'general',
   horas_diarias_pactadas: Number(p.horas_diarias_pactadas || 8),
   fecha_inicio_ciclo: p.fecha_inicio_ciclo || null,
-  dias_ciclo_trabajo: p.dias_ciclo_trabajo ?? null,
-  dias_ciclo_descanso: p.dias_ciclo_descanso ?? null,
+  dias_ciclo_trabajo: p.dias_ciclo_trabajo ?? (p.regimen_jornada === 'minero_14x7' ? 14 : p.regimen_jornada === 'minero_20x10' ? 20 : p.regimen_jornada === 'minero_28x14' ? 28 : p.regimen_jornada === 'minero_2x1' ? 2 : null),
+  dias_ciclo_descanso: p.dias_ciclo_descanso ?? (p.regimen_jornada === 'minero_14x7' ? 7 : p.regimen_jornada === 'minero_20x10' ? 10 : p.regimen_jornada === 'minero_28x14' ? 14 : p.regimen_jornada === 'minero_2x1' ? 1 : null),
   cargo_confianza: Boolean(p.cargo_confianza),
   bonif_altitud: Number(p.bonif_altitud || 0),
   tipo_comision_afp: p.tipo_comision_afp || 'mixta',

@@ -189,7 +189,7 @@ function WizardLiquidacion({ onClose, onCreated }) {
   const [checked,   setChecked]   = useState(false);
 
   const regimen = empresaConfig?.regimen_laboral_empresa || 'general';
-  const moneda  = empresa?.moneda || 'PEN';
+  const moneda  = 'PEN'; // La liquidación siempre se calcula en Soles en la interfaz actual
 
   // fecha_ingreso es la única fecha de la ficha que usa Liquidación — las fechas de contrato viven en personal_documentos.
   const fechaIngreso = persona?.fecha_ingreso || '';
@@ -292,7 +292,7 @@ function WizardLiquidacion({ onClose, onCreated }) {
             <div className="eyebrow">Nueva liquidación</div>
             <div style={{ fontWeight: 800, fontSize: 18 }}>Liquidación por Cese</div>
           </div>
-          <button className="icon-btn" onClick={onClose}>{I.x}</button>
+          <button className="icon-btn" style={{ color: 'var(--fg-muted)' }} onClick={onClose}>{I.x}</button>
         </div>
 
         {/* Stepper */}
@@ -626,7 +626,7 @@ function DetalleLiquidacion({ liquidacion, conceptos, onClose }) {
   const confirmar = async () => {
     setLoading(true);
     try {
-      await confirmarLiquidacionCtx(liquidacion.id, { moneda: empresa?.moneda || 'PEN' });
+      await confirmarLiquidacionCtx(liquidacion.id, { moneda: 'PEN' });
       addToast('Liquidación confirmada. CxP generada y acceso al sistema bloqueado.', 'success', { modulo: 'cxp', label: 'Ver CxP' });
       onClose();
     } catch (err) {
@@ -652,7 +652,7 @@ function DetalleLiquidacion({ liquidacion, conceptos, onClose }) {
                 {fmtDate(liquidacion.fecha_ingreso)} → {fmtDate(liquidacion.fecha_cese)} · {liquidacion.anios_servicio}a {liquidacion.meses_servicio}m {liquidacion.dias_servicio}d de servicio
               </div>
             </div>
-            <button className="icon-btn" onClick={onClose}>{I.x}</button>
+            <button className="icon-btn" style={{ color: 'var(--fg-muted)' }} onClick={onClose}>{I.x}</button>
           </div>
 
           <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>

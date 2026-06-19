@@ -80,7 +80,7 @@ const estadoToProfile = (estado: string) => {
   return labels[value] || "Activo";
 };
 
-const allowedCampoModulos = new Set(["tecnico", "logistica", "vendedor", "compras", "supervisor", "gerencia", "asistencia", "administrativo", "mi_espacio"]);
+const allowedCampoModulos = new Set(["tecnico", "logistica", "vendedor", "compras", "supervisor", "gerencia", "asistencia", "administrativo", "mi_espacio", "solicitudes"]);
 const legacyPerfilToModulo = (perfil: string | null) => {
   const value = String(perfil || "").toLowerCase();
   if (value.includes("vendedor")) return "vendedor";
@@ -328,11 +328,16 @@ serve(async (req) => {
   const jefeUserId = jefeUserIdRaw || null;
   const asignacionesPayload = payload.asignaciones || [];
   const accesoCampo = Boolean(payload.acceso_campo);
-  const campoModulos = accesoCampo
+  const campoModulosFiltrados = accesoCampo
     ? [...new Set((Array.isArray(payload.campo_modulos) ? payload.campo_modulos : [legacyPerfilToModulo(String(payload.perfil_campo || "Tecnico"))])
       .map((m) => String(m || "").trim().toLowerCase())
       .filter((m) => allowedCampoModulos.has(m)))]
     : [];
+  // "Mi portal" (mi_espacio) incluye Solicitudes como funcionalidad base; se asigna
+  // automaticamente para que RRHH no tenga que marcar dos modulos por separado.
+  const campoModulos = campoModulosFiltrados.includes("mi_espacio") && !campoModulosFiltrados.includes("solicitudes")
+    ? [...campoModulosFiltrados, "solicitudes"]
+    : campoModulosFiltrados;
   const perfilCampo = accesoCampo ? moduloToPerfil(campoModulos[0] || legacyPerfilToModulo(String(payload.perfil_campo || "Tecnico"))) : null;
   const estadoPerfil = estadoToProfile(String(payload.estado || "Activo"));
   const estadoMembership = estadoToMembership(estadoPerfil);
