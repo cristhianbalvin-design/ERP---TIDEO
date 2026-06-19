@@ -17541,7 +17541,7 @@ function RRHH_Operativo() {
           {fichaTab === 'jornada' && (() => {
             const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === p.id).sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio));
             const asigActiva = asigsTrabajador.find(a => !a.fecha_fin);
-            const tipoTramoLabel = { normal: 'Normal (pagado)', suspension_perfecta: 'Suspensión perfecta' };
+            const tipoTramoLabel = { normal: 'Normal', suspension_perfecta: 'Suspensión perfecta' };
             const regimenLabel2 = { general: 'Jornada general', ciclo_acumulativo: 'Ciclo acumulativo' };
             const guardarAsig = async () => {
               if (!formAsig.fecha_inicio) { addNotificacion('La fecha de inicio es obligatoria.', 'error'); return; }
@@ -17582,8 +17582,7 @@ function RRHH_Operativo() {
                     <div className="grid-2" style={{gap:12}}>
                       <div className="input-group"><label>Tipo de tramo</label>
                         <select className="select" value={formAsig.tipo_tramo} onChange={e => setFormAsig(f => ({ ...f, tipo_tramo: e.target.value }))}>
-                          <option value="normal">Normal (pagado)</option>
-                          <option value="suspension_perfecta">Suspensión perfecta</option>
+                          <option value="normal">Normal</option>
                         </select>
                       </div>
                       <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsig.fecha_inicio} onChange={e => setFormAsig(f => ({ ...f, fecha_inicio: e.target.value }))}/></div>
@@ -17613,7 +17612,7 @@ function RRHH_Operativo() {
                 <div style={{fontWeight:600, marginBottom:8}}>Historial</div>
                 {asigsTrabajador.length === 0
                   ? <div className="text-muted" style={{fontSize:13}}>Sin registros. El régimen actual se toma directamente de la ficha del trabajador.</div>
-                  : <table className="table" style={{fontSize:12}}>
+                  : <div className="table-wrap" style={{margin:'0 -16px'}}><table className="tbl" style={{fontSize:12, width:'100%'}}>
                       <thead><tr><th>Desde</th><th>Hasta</th><th>Tipo</th><th>Régimen</th><th>Ciclo</th><th>Motivo</th></tr></thead>
                       <tbody>
                         {asigsTrabajador.map(a => (
@@ -17627,7 +17626,7 @@ function RRHH_Operativo() {
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </table></div>
                 }
                 <div className="alert alert-info" style={{fontSize:12, marginTop:16}}>La fecha de ingreso del trabajador ({p.fecha_ingreso || '—'}) nunca se modifica al crear asignaciones de jornada.</div>
               </div>
@@ -19680,6 +19679,21 @@ export function SolicitudesRrhh() {
                   <button type="button" className="btn btn-sm btn-secondary" style={{color:'var(--red)'}}
                     onClick={() => { setAccionSolId(sol.id); setAccionTipo('rechazar_rrhh'); setAccionComentario(''); }}>
                     Rechazar
+                  </button>
+                </div>
+              ) : sol.estado === 'enviada' ? (
+                <div className="row" style={{gap:6}}>
+                  <button type="button" className="btn btn-sm btn-primary"
+                    onClick={() => { setAccionSolId(sol.id); setAccionTipo('aprobar_jefe'); setAccionComentario(''); }}>
+                    Aprobar
+                  </button>
+                  <button type="button" className="btn btn-sm btn-secondary" style={{color:'var(--red)'}}
+                    onClick={() => { setAccionSolId(sol.id); setAccionTipo('rechazar_jefe'); setAccionComentario(''); }}>
+                    Rechazar
+                  </button>
+                  <button type="button" className="btn btn-sm btn-secondary" style={{color:'var(--red)'}}
+                    onClick={() => { setAccionSolId(sol.id); setAccionTipo('anular'); setAccionComentario(''); }}>
+                    Anular
                   </button>
                 </div>
               ) : sol.estado !== 'anulada' ? (
