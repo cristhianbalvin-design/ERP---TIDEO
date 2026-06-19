@@ -39,7 +39,7 @@ export function Reclutamiento() {
   const [formCand, setFormCand] = useState({ vacante_id: '', nombre: '', dni: '', telefono: '', email: '', fuente: 'interno', notas_evaluacion: '', file: null });
   const [historialDni, setHistorialDni] = useState(null);
   const vacantesVisibles = reclutamientoVacantes.filter(v => v.estado !== 'cancelada');
-  const vacante = vacantesVisibles.find(v => v.id === vacanteActiva) || vacantesVisibles[0] || null;
+  const vacante = vacanteActiva === 'todas' ? null : (vacantesVisibles.find(v => v.id === vacanteActiva) || vacantesVisibles[0] || null);
 
   useEffect(() => {
     if (!vacanteActiva && vacantesVisibles[0]?.id) setVacanteActiva(vacantesVisibles[0].id);
@@ -55,7 +55,9 @@ export function Reclutamiento() {
     return () => { alive = false; };
   }, [formCand.dni, empresa?.id]);
 
-  const candidaturasVacante = reclutamientoCandidaturas.filter(c => c.vacante_id === vacante?.id);
+  const candidaturasVacante = vacanteActiva === 'todas' 
+    ? reclutamientoCandidaturas.filter(c => vacantesVisibles.some(v => v.id === c.vacante_id))
+    : reclutamientoCandidaturas.filter(c => c.vacante_id === vacante?.id);
   const candidatosBanco = useMemo(() => {
     const etapaRank = { postulado: 1, entrevista: 2, evaluacion: 3, seleccionado: 4, contratado: 5, descartado: 6 };
     const rows = reclutamientoCandidaturas.map(c => ({ ...c, candidato: candidatoDe(c) }));
@@ -166,7 +168,8 @@ export function Reclutamiento() {
         <>
           <div className="card" style={{ padding: 14, marginBottom: 14 }}>
             <div className="row" style={{ gap: 12, alignItems: 'center' }}>
-              <select className="select" value={vacante?.id || ''} onChange={e => setVacanteActiva(e.target.value)} style={{ maxWidth: 360 }}>
+              <select className="select" value={vacanteActiva || vacante?.id || ''} onChange={e => setVacanteActiva(e.target.value)} style={{ maxWidth: 360 }}>
+                <option value="todas">Todas las vacantes</option>
                 {vacantesVisibles.map(v => <option key={v.id} value={v.id}>{v.cargo} - {v.sede || 'Sin sede'}</option>)}
               </select>
               {vacante && <span className="badge badge-cyan">{vacante.estado}</span>}
