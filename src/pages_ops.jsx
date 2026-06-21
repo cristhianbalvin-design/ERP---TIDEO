@@ -13488,6 +13488,14 @@ function GeoMiniMapa({ lat, lng, radio = 250, puntos = [] }) {
   );
 }
 
+const BIO_MOTIVO_LABELS = {
+  sin_identificador: 'Falta el DNI/codigo',
+  fecha_invalida: 'Fecha invalida',
+  hora_invalida: 'Hora invalida',
+  identificador_no_resuelto: 'DNI/codigo no encontrado en Personal',
+  registro_existente_del_dia: 'Ya existe un registro ese dia',
+};
+
 function ControlAsistencia() {
   const {
     turnos, registrosAsistencia, setRegistrosAsistencia, personalOperativo, personalAdmin, empresa, addNotificacion, asignacionesJornada = [], role,
@@ -13514,6 +13522,7 @@ function ControlAsistencia() {
   const [bioOverwrite, setBioOverwrite] = useState(false);
   const [bioPerfilForm, setBioPerfilForm] = useState({ ...BIOMETRICO_PERFIL_DEFAULT });
   const [bioSaving, setBioSaving] = useState(false);
+  const [bioAvanzado, setBioAvanzado] = useState(false);
   const [geoForm, setGeoForm] = useState({ nombre:'', sede_id:'', sede_nombre:'', latitud:'', longitud:'', radio_m:600, estado:'activo', vigencia_desde:'', vigencia_hasta:'', notas:'' });
   const [geoAsignacionForm, setGeoAsignacionForm] = useState({ geocerca_id:'', personal_id:'', personal_tipo:'operativo', grupo_tipo:'individual', estado:'activo' });
   const [geoSaving, setGeoSaving] = useState(false);
@@ -13847,6 +13856,33 @@ function ControlAsistencia() {
       addNotificacion(`No se pudo guardar el perfil: ${err.message || 'error'}`);
     } finally {
       setBioSaving(false);
+    }
+  };
+
+  const descargarPlantillaMarcaciones = () => {
+    try {
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['dni', 'fecha', 'hora', 'tipo'],
+        ['45678912', '01/06/2026', '07:58', 'entrada'],
+        ['45678912', '01/06/2026', '17:05', 'salida'],
+      ]);
+      ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Marcaciones');
+      const wsInstr = XLSX.utils.aoa_to_sheet([
+        ['Columna', 'Obligatorio', 'Formato / Valores validos'],
+        ['dni', 'Si', 'DNI del trabajador registrado en Personal (8 digitos)'],
+        ['fecha', 'Si', 'DD/MM/YYYY'],
+        ['hora', 'Si', 'HH:mm (24 horas)'],
+        ['tipo', 'No', 'entrada, salida. Si se omite la columna, se infiere: primera marca del dia = entrada, ultima = salida'],
+        [''],
+        ['No renombres las columnas. Si tu equipo biometrico exporta con otro formato, usa "Configuracion avanzada" dentro del importador.'],
+      ]);
+      XLSX.utils.book_append_sheet(wb, wsInstr, 'Instrucciones');
+      XLSX.writeFile(wb, 'plantilla_marcaciones.xlsx');
+    } catch (e) {
+      console.error(e);
+      addNotificacion('Error al generar la plantilla.');
     }
   };
 
@@ -14692,31 +14728,16 @@ function ControlAsistencia() {
         </form>
       </div></>}
 
-      {bioPanel && <><div className="side-panel-backdrop" onClick={()=>setBioPanel(false)}/><div className="side-panel" style={{width:'min(860px,96vw)'}}>
+      {bioPanel && <><div className="side-panel-backdrop" onClick={()=>setBioPanel(false)}/><div className="side-panel" style={{width:'min(1100px,96vw)'}}>
         <div className="side-panel-head"><div><div className="eyebrow">GAP-14</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Importar marcaciones</div></div><button className="icon-btn" onClick={()=>setBioPanel(false)}>{I.x}</button></div>
         <div className="side-panel-body">
-          <div className="grid-2" style={{gap:16, alignItems:'flex-start'}}>
-            <form className="card" style={{padding:16}} onSubmit={guardarPerfilBio}>
-              <div className="card-head"><h3>Perfil de importacion</h3></div>
-              <div className="grid-2" style={{gap:10}}>
-                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Perfil guardado</label><select className="select" value={bioPerfilId} onChange={e=>setBioPerfilId(e.target.value)}><option value="">Nuevo perfil</option>{biometricoPerfiles.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}</select></div>
-                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre</label><input className="input" value={bioPerfilForm.nombre} onChange={e=>setBioPerfilForm(v=>({...v,nombre:e.target.value}))}/></div>
-                <div className="input-group"><label>Separador CSV/TXT</label><select className="select" value={bioPerfilForm.separador} onChange={e=>setBioPerfilForm(v=>({...v,separador:e.target.value}))}><option value=",">Coma</option><option value=";">Punto y coma</option><option value="|">Pipe</option><option value="\t">Tab</option></select></div>
-                <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={bioPerfilForm.tiene_encabezado} onChange={e=>setBioPerfilForm(v=>({...v,tiene_encabezado:e.target.checked}))}/> Tiene encabezado</label>
-                <div className="input-group"><label>Identificador</label><select className="select" value={bioPerfilForm.identificador_tipo} onChange={e=>setBioPerfilForm(v=>({...v,identificador_tipo:e.target.value}))}><option value="dni">DNI</option><option value="codigo_biometrico">Codigo biometrico</option></select></div>
-                <div className="input-group"><label>Col. identificador</label><input className="input" value={bioPerfilForm.columna_identificador} onChange={e=>setBioPerfilForm(v=>({...v,columna_identificador:e.target.value}))}/></div>
-                <div className="input-group"><label>Col. fecha</label><input className="input" value={bioPerfilForm.columna_fecha} onChange={e=>setBioPerfilForm(v=>({...v,columna_fecha:e.target.value}))}/></div>
-                <div className="input-group"><label>Col. hora</label><input className="input" value={bioPerfilForm.columna_hora} onChange={e=>setBioPerfilForm(v=>({...v,columna_hora:e.target.value}))}/></div>
-                <div className="input-group"><label>Col. tipo</label><input className="input" value={bioPerfilForm.columna_tipo} disabled={bioPerfilForm.solo_marcas} onChange={e=>setBioPerfilForm(v=>({...v,columna_tipo:e.target.value}))}/></div>
-                <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={bioPerfilForm.solo_marcas} onChange={e=>setBioPerfilForm(v=>({...v,solo_marcas:e.target.checked}))}/> Archivo solo trae marcas</label>
-              </div>
-              <div className="alert alert-warning" style={{fontSize:12, marginTop:12}}>Si el archivo no trae tipo, se infiere: primera marca del dia = entrada, ultima = salida. Las marcas intermedias quedan en el detalle.</div>
-              <div className="row" style={{justifyContent:'flex-end', marginTop:12}}><button className="btn btn-secondary" disabled={bioSaving}>{bioSaving ? 'Guardando...' : 'Guardar perfil'}</button></div>
-            </form>
+          <div style={{display:'flex', flexDirection:'column', gap:16}}>
             <div className="card" style={{padding:16}}>
               <div className="card-head"><h3>Archivo y previsualizacion</h3></div>
+              <button type="button" className="btn btn-secondary" style={{marginBottom:12}} onClick={descargarPlantillaMarcaciones}>{I.download} Descargar plantilla</button>
               <div className="input-group"><label>Archivo CSV, TXT o Excel</label><input className="input" type="file" accept=".csv,.txt,.xlsx,.xls" onChange={e=>setBioFile(e.target.files?.[0] || null)}/></div>
               <div className="row" style={{gap:8, marginTop:12}}><button className="btn btn-secondary" onClick={previsualizarBio}>Previsualizar</button><label className="row" style={{gap:6}}><input type="checkbox" checked={bioOverwrite} onChange={e=>setBioOverwrite(e.target.checked)}/> Sobrescribir duplicados</label></div>
+              {bioPreview?.advertencias?.length > 0 && <div className="alert alert-warning" style={{fontSize:12, marginTop:12}}>{bioPreview.advertencias.map((a, i) => <div key={i}>{a}</div>)}</div>}
               {bioPreview && <div style={{marginTop:14}}>
                 <div className="kpi-grid" style={{gridTemplateColumns:'repeat(5,1fr)', marginBottom:12}}>
                   <div className="kpi-card"><div className="kpi-label">Listos</div><div className="kpi-value">{bioPreview.resumen.listos}</div></div>
@@ -14725,12 +14746,34 @@ function ControlAsistencia() {
                   <div className="kpi-card"><div className="kpi-label">Errores</div><div className="kpi-value">{bioPreview.resumen.errores}</div></div>
                   <div className="kpi-card"><div className="kpi-label">Bloqueados</div><div className="kpi-value">{bioPreview.resumen.bloqueados}</div></div>
                 </div>
-                <div className="table-wrap" style={{maxHeight:260, overflow:'auto'}}><table className="tbl"><thead><tr><th>Trabajador/ID</th><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead><tbody>
-                  {[...bioPreview.ready, ...bioPreview.duplicates, ...bioPreview.unresolved, ...bioPreview.errors, ...bioPreview.blocked].slice(0, 40).map((r, idx)=><tr key={r.id || idx}><td><strong>{r.trabajador?.nombre || r.identificador || '-'}</strong></td><td>{r.fecha || '-'}</td><td>{r.hora_entrada || r.hora || '-'}</td><td>{r.hora_salida || '-'}</td><td><span className={'badge '+(r.clasificacion === 'listo' ? 'badge-green' : r.clasificacion === 'duplicado' ? 'badge-orange' : 'badge-red')}>{r.clasificacion}</span></td></tr>)}
+                <div className="table-wrap" style={{maxHeight:320, overflow:'auto'}}><table className="tbl"><thead><tr><th>Trabajador/ID</th><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>
+                  {[...bioPreview.ready, ...bioPreview.duplicates, ...bioPreview.unresolved, ...bioPreview.errors, ...bioPreview.blocked].slice(0, 40).map((r, idx)=><tr key={r.id || idx}><td><strong>{r.trabajador?.nombre || r.identificador || '-'}</strong></td><td>{r.fecha || '-'}</td><td>{r.hora_entrada || r.hora || '-'}</td><td>{r.hora_salida || '-'}</td><td><span className={'badge '+(r.clasificacion === 'listo' ? 'badge-green' : r.clasificacion === 'duplicado' ? 'badge-orange' : 'badge-red')}>{r.clasificacion}</span></td><td style={{fontSize:12}}>{r.motivo ? (BIO_MOTIVO_LABELS[r.motivo] || r.motivo) : '-'}</td></tr>)}
                 </tbody></table></div>
                 <div className="row" style={{justifyContent:'flex-end', marginTop:12}}><button className="btn btn-primary" onClick={confirmarImportacionBio}>Confirmar importacion</button></div>
               </div>}
             </div>
+            <form className="card" style={{padding:16}} onSubmit={guardarPerfilBio}>
+              <div className="card-head"><h3>Perfil de importacion</h3></div>
+              <div className="alert alert-info" style={{fontSize:12}}>Si usas la plantilla oficial (columnas dni, fecha, hora, tipo) no necesitas configurar nada aqui. Usa la configuracion avanzada solo si tu archivo viene de un equipo biometrico con otro formato de columnas.</div>
+              <button type="button" className="btn btn-secondary" style={{marginTop:10}} onClick={()=>setBioAvanzado(v=>!v)}>{bioAvanzado ? 'Ocultar configuracion avanzada' : 'Configuracion avanzada (otro formato)'}</button>
+              {bioAvanzado && <>
+                <div className="grid-2" style={{gap:10, marginTop:12}}>
+                  <div className="input-group" style={{gridColumn:'1/-1'}}><label>Perfil guardado</label><select className="select" value={bioPerfilId} onChange={e=>setBioPerfilId(e.target.value)}><option value="">Nuevo perfil</option>{biometricoPerfiles.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}</select></div>
+                  <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre</label><input className="input" value={bioPerfilForm.nombre} onChange={e=>setBioPerfilForm(v=>({...v,nombre:e.target.value}))}/></div>
+                  <div className="input-group"><label>Separador CSV/TXT</label><select className="select" value={bioPerfilForm.separador} onChange={e=>setBioPerfilForm(v=>({...v,separador:e.target.value}))}><option value=",">Coma</option><option value=";">Punto y coma</option><option value="|">Pipe</option><option value="\t">Tab</option></select></div>
+                  <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={bioPerfilForm.tiene_encabezado} onChange={e=>setBioPerfilForm(v=>({...v,tiene_encabezado:e.target.checked}))}/> Tiene encabezado</label>
+                  <div className="input-group"><label>Identificador</label><select className="select" value={bioPerfilForm.identificador_tipo} onChange={e=>setBioPerfilForm(v=>({...v,identificador_tipo:e.target.value}))}><option value="dni">DNI</option><option value="codigo_biometrico">Codigo biometrico</option></select></div>
+                  <div className="input-group"><label>Formato de fecha</label><select className="select" value={bioPerfilForm.formato_fecha} onChange={e=>setBioPerfilForm(v=>({...v,formato_fecha:e.target.value}))}><option value="DD/MM/YYYY">DD/MM/YYYY</option><option value="MM/DD/YYYY">MM/DD/YYYY</option><option value="auto">Auto-detectar</option></select></div>
+                  <div className="input-group"><label>Col. identificador</label><input className="input" value={bioPerfilForm.columna_identificador} onChange={e=>setBioPerfilForm(v=>({...v,columna_identificador:e.target.value}))}/></div>
+                  <div className="input-group"><label>Col. fecha</label><input className="input" value={bioPerfilForm.columna_fecha} onChange={e=>setBioPerfilForm(v=>({...v,columna_fecha:e.target.value}))}/></div>
+                  <div className="input-group"><label>Col. hora</label><input className="input" value={bioPerfilForm.columna_hora} onChange={e=>setBioPerfilForm(v=>({...v,columna_hora:e.target.value}))}/></div>
+                  <div className="input-group"><label>Col. tipo</label><input className="input" value={bioPerfilForm.columna_tipo} disabled={bioPerfilForm.solo_marcas} onChange={e=>setBioPerfilForm(v=>({...v,columna_tipo:e.target.value}))}/></div>
+                  <label className="row" style={{gap:8, alignItems:'center'}}><input type="checkbox" checked={bioPerfilForm.solo_marcas} onChange={e=>setBioPerfilForm(v=>({...v,solo_marcas:e.target.checked}))}/> Archivo solo trae marcas</label>
+                </div>
+                <div className="alert alert-warning" style={{fontSize:12, marginTop:12}}>Si el archivo no trae tipo, se infiere: primera marca del dia = entrada, ultima = salida. Las marcas intermedias quedan en el detalle.</div>
+                <div className="row" style={{justifyContent:'flex-end', marginTop:12}}><button className="btn btn-secondary" disabled={bioSaving}>{bioSaving ? 'Guardando...' : 'Guardar perfil'}</button></div>
+              </>}
+            </form>
           </div>
         </div>
       </div></>}

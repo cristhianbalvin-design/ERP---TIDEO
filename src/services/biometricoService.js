@@ -10,7 +10,7 @@ export const BIOMETRICO_PERFIL_DEFAULT = {
   separador: ',',
   tiene_encabezado: true,
   encoding: 'utf-8',
-  formato_fecha: 'auto',
+  formato_fecha: 'DD/MM/YYYY',
   formato_hora: 'HH:mm',
   identificador_tipo: 'dni',
   columna_identificador: 'dni',
@@ -87,6 +87,10 @@ export async function leerArchivoMarcaciones(file, perfil = BIOMETRICO_PERFIL_DE
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
+    if (!perfil.tiene_encabezado) {
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+      return aoa.map(cells => cells.reduce((acc, v, i) => ({ ...acc, [String(i)]: v }), {}));
+    }
     return XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
   }
 
@@ -125,6 +129,23 @@ const clasificarTipo = (value, perfil) => {
 
 export async function previsualizarImportacionBiometrica({ file, perfil, trabajadores = [], registrosAsistencia = [] }) {
   const rows = await leerArchivoMarcaciones(file, perfil);
+
+  const advertencias = [];
+  if (perfil.tiene_encabezado && rows.length) {
+    const headerKeys = Object.keys(rows[0]).map(normKey);
+    const columnasEsperadas = [
+      ['Col. identificador', perfil.columna_identificador],
+      ['Col. fecha', perfil.columna_fecha],
+      ['Col. hora', perfil.columna_hora],
+      ...(perfil.solo_marcas ? [] : [['Col. tipo', perfil.columna_tipo]]),
+    ];
+    columnasEsperadas.forEach(([label, col]) => {
+      if (col && !headerKeys.includes(normKey(col))) {
+        advertencias.push(`No se encontro la columna "${col}" (${label}) en el archivo. Se está usando una columna por posición como respaldo; verifica el resultado antes de confirmar.`);
+      }
+    });
+  }
+
   const marks = rows.map((row, index) => {
     const identificador = colValue(row, perfil.columna_identificador, 0);
     const fecha = parseDate(colValue(row, perfil.columna_fecha, 1), perfil.formato_fecha);
@@ -189,6 +210,7 @@ export async function previsualizarImportacionBiometrica({ file, perfil, trabaja
     errors,
     blocked,
     marks,
+    advertencias,
     resumen: {
       listos: ready.length,
       duplicados: duplicates.length,
