@@ -700,9 +700,10 @@ export const rrhhService = {
   },
   eliminarPersonalOperativo: async (id) => {
     const supabase = await getSupabaseClient();
-    const { error } = await supabase
-      .from('personal_operativo').delete().eq('id', id);
+    const { data, error } = await supabase
+      .from('personal_operativo').delete().eq('id', id).select('id').single();
     if (error) throw error;
+    if (!data) throw new Error('No se pudo eliminar. Permisos insuficientes o registro no encontrado.');
     return id;
   },
 
@@ -762,9 +763,10 @@ export const rrhhService = {
   },
   eliminarPersonalAdmin: async (id) => {
     const supabase = await getSupabaseClient();
-    const { error } = await supabase
-      .from('personal_administrativo').delete().eq('id', id);
+    const { data, error } = await supabase
+      .from('personal_administrativo').delete().eq('id', id).select('id').single();
     if (error) throw error;
+    if (!data) throw new Error('No se pudo eliminar. Permisos insuficientes o registro no encontrado.');
     return id;
   },
 
