@@ -84,7 +84,7 @@ export function construirAutoservicioLocal({
   }
   const personalTipo = ficha.personal_tipo;
   const personalId = ficha.id;
-  const docs = (personalDocumentos || []).filter(d => d.personal_id === personalId && (!d.personal_tipo || d.personal_tipo === personalTipo) && d.activo !== false);
+  const docs = (personalDocumentos || []).filter(d => d.personal_id === personalId && (!d.personal_tipo || d.personal_tipo === personalTipo) && (d.activo !== false || d.estado_validacion === 'pendiente'));
   const esContratoDoc = d => {
     if (!tiposDocumentoContratoIds || tiposDocumentoContratoIds.length === 0) {
       console.warn('autoservicioEmpleadoService: tiposDocumentoContratoIds no disponible. Fallback por texto desactivado.');
