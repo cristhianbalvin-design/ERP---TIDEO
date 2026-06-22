@@ -356,6 +356,7 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   docs: persona.docs || { sctr: 'pendiente', medico: 'pendiente', epp: 'pendiente', licencia: 'pendiente' },
   centro_costo_id: persona.centro_costo_id || null,
   estado: persona.estado || 'disponible',
+  datos_bancarios: persona.datos_bancarios ?? [],
 });
 
 const toPersonalOperativoUpdate = (cambios = {}) => {
@@ -532,6 +533,9 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   whatsapp_opt_in: Boolean(persona.whatsapp_opt_in),
   whatsapp_opt_in_en: persona.whatsapp_opt_in_en || null,
   tarifa_hora_referencial: persona.tarifa_hora_referencial != null ? Number(persona.tarifa_hora_referencial) : null,
+  datos_bancarios: persona.datos_bancarios ?? [],
+  usuario_bloqueado_en: persona.usuario_bloqueado_en || null,
+  usuario_bloqueado_por: persona.usuario_bloqueado_por || null,
 });
 
 const toPersonalAdminUpdate = (cambios = {}) => {
