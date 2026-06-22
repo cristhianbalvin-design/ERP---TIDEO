@@ -534,7 +534,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
       <div className="avatar" style={{width:34,height:34}}>{usuarioMovil.iniciales}</div>
     </div>
     
-    <div className="mobile-content" style={{display:'flex', flexDirection:'column', justifyContent: 'flex-start', alignItems:'center', minHeight:'calc(100vh - 140px)', padding: '20px'}}>
+    <div className="mobile-content" style={{display:'flex', flexDirection:'column', justifyContent: 'flex-start', alignItems:'center', width:'100%', padding: '20px'}}>
       <div className="font-display" style={{fontSize:38, fontWeight:700, marginBottom:4, textAlign:'center', color:'var(--fg)'}}>
         {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
       </div>
@@ -606,8 +606,42 @@ function AsistenciaMobileView({ screen, setScreen }) {
               {r.geofence_salida_estado && <span className={'badge ' + (r.geofence_salida_estado === 'dentro' ? 'badge-green' : r.geofence_salida_estado === 'fuera' ? 'badge-orange' : 'badge-gray')}>Salida {r.geofence_salida_estado}</span>}
               {Number(r.precision_entrada_m || 0) > Number(geoCfg.geofencing_precision_baja_m || 80) && <span className="badge badge-orange">precision baja</span>}
             </div>}
-            {r.latitud && <div style={{fontSize:12, color:'var(--fg-muted)', background:'var(--bg)', padding:8, borderRadius:6}}>{I.mapPin} Ingreso: {r.latitud}, {r.longitud}</div>}
-            {r.latitud_salida && <div style={{fontSize:12, color:'var(--fg-muted)', background:'var(--bg)', padding:8, borderRadius:6, marginTop:4}}>{I.mapPin} Salida: {r.latitud_salida}, {r.longitud_salida}</div>}
+            {r.latitud && (
+              <div style={{marginTop: 8, background:'var(--bg)', padding:8, borderRadius:8}}>
+                <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom: 6, display:'flex', alignItems:'center', gap:4}}>
+                  <span style={{width:14, height:14, display:'inline-block'}}>{I.mapPin}</span> 
+                  Ingreso: {r.latitud}, {r.longitud}
+                </div>
+                <a href={`https://www.google.com/maps?q=${r.latitud},${r.longitud}`} target="_blank" rel="noreferrer" style={{display:'block'}}>
+                  <iframe 
+                    width="100%" 
+                    height="120" 
+                    frameBorder="0" 
+                    style={{border:0, borderRadius:6, pointerEvents: 'none'}}
+                    src={`https://maps.google.com/maps?q=${r.latitud},${r.longitud}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
+                    allowFullScreen
+                  ></iframe>
+                </a>
+              </div>
+            )}
+            {r.latitud_salida && (
+              <div style={{marginTop: 8, background:'var(--bg)', padding:8, borderRadius:8}}>
+                <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom: 6, display:'flex', alignItems:'center', gap:4}}>
+                  <span style={{width:14, height:14, display:'inline-block'}}>{I.mapPin}</span> 
+                  Salida: {r.latitud_salida}, {r.longitud_salida}
+                </div>
+                <a href={`https://www.google.com/maps?q=${r.latitud_salida},${r.longitud_salida}`} target="_blank" rel="noreferrer" style={{display:'block'}}>
+                  <iframe 
+                    width="100%" 
+                    height="120" 
+                    frameBorder="0" 
+                    style={{border:0, borderRadius:6, pointerEvents: 'none'}}
+                    src={`https://maps.google.com/maps?q=${r.latitud_salida},${r.longitud_salida}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
+                    allowFullScreen
+                  ></iframe>
+                </a>
+              </div>
+            )}
           </div>
         ))}
         {registrosAsistencia.filter(r => r.trabajador_id === trabajadorId && r.fecha === today).length === 0 && (
