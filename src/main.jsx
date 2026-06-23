@@ -18,3 +18,12 @@ if (import.meta.env.DEV && 'serviceWorker' in navigator) {
     caches.keys().then(keys => keys.forEach(key => caches.delete(key)));
   }
 }
+
+// En produccion, registrar el SW con auto-actualizacion: cuando se detecta
+// una version nueva, recarga sola en lugar de quedarse con el bundle viejo
+// cacheado indefinidamente (afecta sobre todo a la PWA instalada en celular).
+if (import.meta.env.PROD) {
+  import('virtual:pwa-register').then(({ registerSW }) => {
+    registerSW({ immediate: true });
+  });
+}

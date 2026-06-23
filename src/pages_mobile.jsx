@@ -284,6 +284,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
   const [geoEstado, setGeoEstado] = useState('');
   const [showConsent, setShowConsent] = useState(false);
   const [offlinePendientes, setOfflinePendientes] = useState(() => getGeoQueue().length);
+  const [aviso, setAviso] = useState('');
   
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const trabajadorActual = getTrabajadorAsistenciaMovil({ authUser, usuarios, personalAdmin, personalOperativo });
@@ -374,12 +375,17 @@ function AsistenciaMobileView({ screen, setScreen }) {
 
   const manejarMarcacion = async () => {
     if (modo === 'completado') return;
+    setAviso('');
     if (!trabajadorId) {
-      addNotificacion('No encuentro un colaborador habilitado para asistencia móvil. Revisa el email y el permiso en Personal.');
+      const msg = 'No encuentro un colaborador habilitado para asistencia móvil. Revisa el email y el permiso en Personal.';
+      addNotificacion(msg);
+      setAviso(msg);
       return;
     }
     if (!turnoIdPersistible) {
-      addNotificacion('Tu ficha no tiene un turno real asignado. Pide a RRHH asignarte un turno creado en Supabase.');
+      const msg = 'Tu ficha no tiene un turno real asignado. Pide a RRHH asignarte un turno creado en Supabase.';
+      addNotificacion(msg);
+      setAviso(msg);
       return;
     }
     if (necesitaConsentimiento) {
@@ -411,14 +417,18 @@ function AsistenciaMobileView({ screen, setScreen }) {
       : null;
     const motivo = fix ? null : (geoActivo ? 'gps_no_disponible' : 'geofencing_inactivo');
     if (!fix && geoActivo && !geoCfg.geofencing_permitir_sin_gps) {
-      addNotificacion('No se pudo marcar: la politica exige ubicacion GPS.');
+      const msg = 'No se pudo marcar: la politica exige ubicacion GPS.';
+      addNotificacion(msg);
+      setAviso(msg);
       setLoading(false);
       setGeoEstado('');
       return;
     }
     const geoLocal = evaluarGeofenceLocal({ trabajador: trabajadorActual, geocercas, asignaciones: geocercaAsignaciones, fix: fix || { motivo }, fecha: today, config: geoCfg });
     if (geoLocal.estado === 'rechazable') {
-      addNotificacion(`Fuera de perimetro (${geoLocal.distancia_m} m). Politica estricta activa.`);
+      const msg = `Fuera de perimetro (${geoLocal.distancia_m} m). Politica estricta activa.`;
+      addNotificacion(msg);
+      setAviso(msg);
       setLoading(false);
       setGeoEstado('');
       return;
@@ -577,6 +587,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
       </div>
       
       {loading && <div className="text-muted" style={{fontSize:14, fontWeight:600, marginBottom:20}}>{I.mapPin} {geoEstado}</div>}
+      {aviso && !loading && <div className="alert alert-warning" style={{width:'100%', marginBottom:14}}>{aviso}</div>}
       {geoActivo && !loading && (
         <div className="card" style={{width:'100%', padding:12, marginBottom:14}}>
           <div style={{fontWeight:800, fontSize:13}}>Ubicacion puntual</div>
