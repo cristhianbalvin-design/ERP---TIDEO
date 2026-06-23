@@ -501,9 +501,17 @@ function Roles() {
 }
 
 function Usuarios() {
-  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, roles: rolesCtx, accessDebug, navigate, personalAdmin = [], personalOperativo = [] } = useApp();
+  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, roles: rolesCtx, accessDebug, navigate, personalAdmin = [], personalOperativo = [] } = useApp();
   const [resetting, setResetting] = useState(null);
-  const [tempPass, setTempPass] = useState('Tideo2026!');
+  const [tempPass, setTempPass] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [guardandoReset, setGuardandoReset] = useState(false);
+  const generarPasswordTemporal = () => Math.random().toString(36).slice(-8) + '!';
+  const abrirAsignarPassword = (u) => {
+    setResetError('');
+    setTempPass(generarPasswordTemporal());
+    setResetting(u);
+  };
   const [creando, setCreando] = useState(false);
   const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', password: '', asignaciones: [], campo: false, campoModulos: [] });
   const [mostrarPasswordNuevo, setMostrarPasswordNuevo] = useState(false);
@@ -637,16 +645,20 @@ function Usuarios() {
 
   const handleReset = async () => {
     if (!resetting) return;
-    try {
-      const supabase = await getSupabaseClient();
-      await supabase.auth.resetPasswordForEmail(resetting.email, {
-        redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/` : undefined,
-      });
-      addNotificacion(`Se envió un link de restablecimiento a ${resetting.email}`);
-    } catch {
-      addNotificacion(`Enlace de restablecimiento enviado a ${resetting.email}`);
+    setResetError('');
+    if (tempPass.length < 6) {
+      setResetError('La contraseña temporal debe tener al menos 6 caracteres.');
+      return;
     }
-    setResetting(null);
+    setGuardandoReset(true);
+    try {
+      await asignarPasswordTemporal(resetting.id, tempPass);
+      addNotificacion(`Contraseña temporal asignada a ${resetting.nombre}. Deberá cambiarla en su próximo inicio de sesión.`);
+      setResetting(null);
+    } catch (error) {
+      setResetError(error?.message || 'No se pudo asignar la contraseña temporal.');
+    }
+    setGuardandoReset(false);
   };
 
   const handleCrearUsuario = async (e) => {
@@ -963,7 +975,7 @@ function Usuarios() {
                       <button className="btn btn-ghost btn-sm" title="Editar usuario" onClick={() => abrirEditarUsuario(u)}>
                         <span style={{width:16,height:16,display:'inline-flex'}}>{I.edit}</span>
                       </button>
-                      <button className="btn btn-ghost btn-sm" title="Enviar link de reset" onClick={() => setResetting(u)}>
+                      <button className="btn btn-ghost btn-sm" title="Asignar contraseña temporal" onClick={() => abrirAsignarPassword(u)}>
                         <span style={{fontSize:16}}>🔑</span>
                       </button>
                       <button className="btn btn-ghost btn-sm" title="Eliminar usuario" style={{color:'var(--danger)'}} onClick={() => eliminarUsuario(u.id)}>
@@ -987,18 +999,19 @@ function Usuarios() {
             </div>
             <div className="modal-body col" style={{gap:16}}>
               <p style={{fontSize:13, color:'var(--fg-muted)'}}>
-                Estás asignando una clave de acceso manual para <strong>{resetting.nombre}</strong>.
+                Estás asignando una clave de acceso manual para <strong>{resetting.nombre}</strong>. Podrá ingresar con esta contraseña y el sistema le pedirá cambiarla en su próximo inicio de sesión.
               </p>
+              {resetError && <div className="alert alert-danger">{resetError}</div>}
               <div className="input-group">
                 <label>Contraseña Temporal</label>
                 <div style={{display:'flex', gap:8}}>
                   <input className="input" type="text" value={tempPass} onChange={e => setTempPass(e.target.value)} />
-                  <button className="btn btn-secondary" onClick={() => setTempPass(Math.random().toString(36).slice(-8) + '!')}>Generar</button>
+                  <button className="btn btn-secondary" onClick={() => setTempPass(generarPasswordTemporal())}>Generar</button>
                 </div>
               </div>
               <div className="modal-foot mt-4">
-                <button className="btn btn-secondary" onClick={() => setResetting(null)}>Cancelar</button>
-                <button className="btn btn-primary" onClick={handleReset}>Guardar y Notificar</button>
+                <button className="btn btn-secondary" onClick={() => setResetting(null)} disabled={guardandoReset}>Cancelar</button>
+                <button className="btn btn-primary" onClick={handleReset} disabled={guardandoReset}>{guardandoReset ? 'Guardando...' : 'Guardar y Notificar'}</button>
               </div>
             </div>
           </div>
@@ -3575,6 +3588,7 @@ function Maestros() {
     crearSede, actualizarSede, eliminarSede,
     crearIndustria, actualizarIndustria, eliminarIndustria,
     crearMonedaImpuestoUnidad, actualizarMonedaImpuestoUnidad, eliminarMonedaImpuestoUnidad,
+    tiposContrato = [], crearTipoContrato, actualizarTipoContrato, eliminarTipoContrato,
     tiposDocumento = [], crearTipoDocumento, actualizarTipoDocumento, importarPlantillaTiposDoc,
     requisitosCargo = [], upsertRequisitoCargo, eliminarRequisitoCargo,
     addNotificacion
@@ -3608,6 +3622,7 @@ function Maestros() {
     { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades' },
     { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno' },
     { id: 'mst_almacenes', tabla: 'Almacenes y depósitos' },
+    { id: 'mst_tipos_contrato', tabla: 'Tipos de Contrato' },
   ];
   const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', tipo_catalogo:'moneda', ambito:'Ambos', exige_vencimiento:false, dias_alerta:30, es_habilitante:false, requiere_validacion:true, orden:0 };
   const [rows, setRows] = useState({
@@ -3634,6 +3649,7 @@ function Maestros() {
     if (sel.id === 'mst_sedes') return sedes;
     if (sel.id === 'mst_industrias') return industrias;
     if (sel.id === 'mst_impuestos') return monedasImpuestosUnidades;
+    if (sel.id === 'mst_tipos_contrato') return tiposContrato;
     return rows[sel.id] || [];
   };
   const selectedRows = getSelectedRows();
@@ -3718,6 +3734,13 @@ function Maestros() {
       ejemplo: ['TDOC-001','SCTR','Operativo','si','30','si','si','activo','1'],
       hint: 'Ambito: Operativo / Administrativo / Ambos · Exige vencimiento, Es habilitante, Requiere validacion: si / no',
     },
+    mst_tipos_contrato: {
+      sheetName: 'TiposContrato', filename: 'tipos_contrato.xlsx',
+      headers: ['Codigo','Nombre','Estado'],
+      fields:  ['codigo','nombre','estado'],
+      ejemplo: ['1000','PLAZO INDETERMINADO','activo'],
+      hint: 'Se recomienda usar los códigos establecidos por SUNAT',
+    },
   };
 
   const parseMstXlsx = async (file) => {
@@ -3791,6 +3814,7 @@ function Maestros() {
         else if (sel.id === 'mst_industrias') await crearIndustria({ ...base, categoria: r.categoria || r.detalle || 'General' });
         else if (sel.id === 'mst_impuestos') await crearMonedaImpuestoUnidad({ codigo: (r.codigo||'').trim().toUpperCase(), tipo: r.tipo || 'moneda', nombre: r.nombre, detalle: r.detalle || '', estado: r.estado || 'activo' });
         else if (sel.id === 'mst_tipos_documento') await crearTipoDocumento({ ...base, ambito: r.ambito || 'Ambos', exige_vencimiento: (r.exige_vencimiento||'').toLowerCase()==='si', dias_alerta: parseInt(r.dias_alerta)||30, es_habilitante: (r.es_habilitante||'').toLowerCase()==='si', requiere_validacion: (r.requiere_validacion||'si').toLowerCase()==='si', orden: parseInt(r.orden)||0 });
+        else if (sel.id === 'mst_tipos_contrato') await crearTipoContrato({ codigo: (r.codigo||'').trim(), nombre: r.nombre, estado: r.estado || 'activo' });
         count++;
       }
       addNotificacion?.(`${count} registros importados correctamente.`);
@@ -3802,7 +3826,7 @@ function Maestros() {
   };
 
   const autoCode = (id, len) => {
-    const prefixMap = { mst_areas:'ARE', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_almacenes:'ALM', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX', mst_tipos_documento:'TDOC', mst_requisitos_cargo:'CDR' };
+    const prefixMap = { mst_areas:'ARE', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_almacenes:'ALM', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX', mst_tipos_documento:'TDOC', mst_requisitos_cargo:'CDR', mst_tipos_contrato:'TCON' };
     const prefix = prefixMap[id] || id.slice(4,7).toUpperCase();
     return `${prefix}-${String(len+1).padStart(3,'0')}`;
   };
@@ -3869,6 +3893,15 @@ function Maestros() {
         };
         if (editandoId) await actualizarTipoDocumento(editandoId, item);
         else await crearTipoDocumento(item);
+      } else if (sel.id === 'mst_tipos_contrato') {
+        const item = {
+          codigo: String(nuevo.codigo || '').trim(),
+          nombre: nuevo.nombre || 'Nuevo valor',
+          estado: nuevo.estado || 'activo',
+        };
+        if (!item.codigo) throw new Error('Completa el codigo del tipo de contrato.');
+        if (editandoId) await actualizarTipoContrato(editandoId, item);
+        else await crearTipoContrato(item);
       } else {
         return;
       }
@@ -3956,6 +3989,7 @@ function Maestros() {
       else if (sel.id === 'mst_sedes') await eliminarSede(r.id);
       else if (sel.id === 'mst_industrias') await eliminarIndustria(r.id);
       else if (sel.id === 'mst_impuestos') await eliminarMonedaImpuestoUnidad(r.id);
+      else if (sel.id === 'mst_tipos_contrato') await eliminarTipoContrato(r.id);
       else if (sel.id === 'mst_tipos_documento') {
         await actualizarTipoDocumento(r.id, { estado: 'inactivo' });
         if (editandoId === r.id) resetForm();
@@ -7547,7 +7581,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
 
 
 function RRHHAdmin() {
-  const { personalAdmin, partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [] } = useApp();
+  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [] } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -10129,7 +10163,7 @@ function RRHHAdmin() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Código de empleado *</label><input className="input" readOnly value={formAlta.codigo} placeholder="ADM-008" style={{background:'var(--bg-subtle)', fontWeight:700}}/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Autogenerado por correlativo. Solo Admin puede modificarlo después del alta.</div></div>
               <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato), ruc_colaborador: modalidad === 'honorarios' ? v.ruc_colaborador : ''}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
-              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorariosAlta} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{CONTRATO_DURACION_OPCIONES.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
+              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorariosAlta} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{(esHonorariosAlta ? [['honorarios', 'Honorarios']] : tiposContrato.length > 0 ? tiposContrato.map(c => [c.codigo, c.nombre]) : CONTRATO_DURACION_OPCIONES).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
               <div className="input-group"><label>Cargo</label>
                 <select className="select" value={formAlta.cargo_id} onChange={e=>{
                   if(e.target.value==='__nuevo__'){setFormAlta(v=>({...v,cargo_id:'__nuevo__'}));setNuevoCargoTextoAdmin('');return;}

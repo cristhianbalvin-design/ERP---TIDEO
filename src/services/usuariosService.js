@@ -61,6 +61,23 @@ export const usuariosService = {
     };
   },
 
+  async asignarPasswordTemporal({ user_id, empresa_id, password }) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.functions.invoke('asignar-password-temporal', {
+      body: { user_id, empresa_id, password },
+    });
+    if (error) {
+      let message = error.message;
+      try {
+        const body = await error.context?.json?.();
+        message = body?.error || message;
+      } catch { /* ignore */ }
+      throw new Error(message || 'No se pudo asignar la contrasena temporal.');
+    }
+    if (!data?.success) throw new Error(data?.error || 'No se pudo asignar la contrasena temporal.');
+    return data;
+  },
+
   async eliminarUsuario(id) {
     const supabase = await getSupabaseClient();
     const { error } = await supabase

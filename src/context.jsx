@@ -350,6 +350,7 @@ export function AppProvider({ children }) {
   // Maestros Base Data
   const [areasEmpresa, setAreasEmpresa] = useState([]);
   const [cargos, setCargos] = useState([]);
+  const [tiposContrato, setTiposContrato] = useState([]);
   const [tiposDocumento, setTiposDocumento] = useState(useSupabase ? [] : (MOCK.tiposDocumento || []));
   const [requisitosCargo, setRequisitosCargo] = useState(useSupabase ? [] : (MOCK.requisitosCargo || []));
   const [especialidades, setEspecialidades] = useState([]);
@@ -936,6 +937,7 @@ export function AppProvider({ children }) {
         try {
           const ar = await maestrosService.getAreas(empresa.id);
           const cg = await maestrosService.getCargos(empresa.id);
+          const tc = await rrhhService.getTiposContrato(empresa.id);
           const es = await maestrosService.getEspecialidades(empresa.id);
           const ts = await maestrosService.getTiposServicio(empresa.id);
           const al = await maestrosService.getAlmacenes(empresa.id);
@@ -947,6 +949,7 @@ export function AppProvider({ children }) {
           if (mounted) {
             setAreasEmpresa(ar || []);
             setCargos(cg || []);
+            setTiposContrato(tc || []);
             setEspecialidades(es || []);
             setTiposServicio(ts || []);
             setAlmacenes(al || []);
@@ -4224,6 +4227,22 @@ export function AppProvider({ children }) {
     }
   };
 
+  const asignarPasswordTemporal = async (usuarioId, password) => {
+    if (!isSupabaseConfigured()) {
+      addNotificacion('Se requiere Supabase para asignar contrasenas temporales.', 'error');
+      return;
+    }
+    const empresaId = usuarios.find(u => u.id === usuarioId)?.empresa_id || empresa?.id;
+    try {
+      if (!empresaId) throw new Error('No hay tenant activo para asignar la contrasena.');
+      await usuariosService.asignarPasswordTemporal({ user_id: usuarioId, empresa_id: empresaId, password });
+      setUsuarios(prev => prev.map(u => u.id === usuarioId ? { ...u, must_change_password: true } : u));
+    } catch (err) {
+      addNotificacion('Error al asignar contrasena: ' + (err.message || 'Error desconocido'), 'error');
+      throw err;
+    }
+  };
+
   const marcarContrasenaActualizada = async () => {
     if (!authUser?.id) return;
     try {
@@ -6521,6 +6540,30 @@ export function AppProvider({ children }) {
   const eliminarArea = async (id) => {
     if (isSupabaseConfigured()) await maestrosService.eliminarArea(id);
     setAreasEmpresa(prev => prev.filter(a => a.id !== id));
+  };
+
+  const crearTipoContrato = async (datos) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await rrhhService.crearTipoContrato(empresa.id, datos);
+      setTiposContrato(prev => [data, ...prev]);
+      return data;
+    }
+    const nuevo = { id: generateId('tcon'), empresa_id: empresa?.id, estado: 'activo', ...datos };
+    setTiposContrato(prev => [nuevo, ...prev]);
+    return nuevo;
+  };
+  const actualizarTipoContrato = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const act = await rrhhService.actualizarTipoContrato(id, datos);
+      setTiposContrato(prev => prev.map(a => a.id === id ? act : a));
+      return act;
+    }
+    setTiposContrato(prev => prev.map(a => a.id === id ? { ...a, ...datos } : a));
+    return datos;
+  };
+  const eliminarTipoContrato = async (id) => {
+    if (isSupabaseConfigured()) await rrhhService.eliminarTipoContrato(id);
+    setTiposContrato(prev => prev.filter(a => a.id !== id));
   };
 
   const crearCargo = async (cargo) => {
@@ -9567,6 +9610,7 @@ export function AppProvider({ children }) {
     // Maestros Base Data
     areasEmpresa, setAreasEmpresa, crearArea, actualizarArea, eliminarArea,
     cargos, setCargos, actualizarCargo, eliminarCargo, fusionarCargos,
+    tiposContrato, setTiposContrato, crearTipoContrato, actualizarTipoContrato, eliminarTipoContrato,
     tiposDocumento, setTiposDocumento, crearTipoDocumento, actualizarTipoDocumento, importarPlantillaTiposDoc,
     requisitosCargo, setRequisitosCargo, upsertRequisitoCargo, eliminarRequisitoCargo,
     especialidades, setEspecialidades, actualizarEspecialidad, eliminarEspecialidad,
@@ -9602,6 +9646,7 @@ export function AppProvider({ children }) {
     eliminarUsuario,
     actualizarUsuarioAcceso,
     crearUsuarioConAcceso,
+    asignarPasswordTemporal,
     marcarContrasenaActualizada,
     registrarActividad,
     actualizarActividad,

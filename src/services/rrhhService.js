@@ -678,6 +678,35 @@ async function crearCompensacionHePendiente(supabase, empresaId, asistenciaRow =
 
 export const rrhhService = {
 
+  // ─── Maestros ─────────────────────────────────────────────────
+  getTiposContrato: async (empresaId) => {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('tipos_contrato').select('*').eq('empresa_id', empresaId).order('codigo', { ascending: true });
+    if (error) { console.error('Error fetching tipos_contrato:', error); return []; }
+    return data || [];
+  },
+  crearTipoContrato: async (empresaId, payload) => {
+    const supabase = await getSupabaseClient();
+    const id = 'tcon_' + Math.random().toString(36).substr(2, 9);
+    const { data, error } = await supabase.from('tipos_contrato').insert([{ id, empresa_id: empresaId, ...payload }]).select().single();
+    if (error) throw error;
+    return data;
+  },
+  actualizarTipoContrato: async (id, payload) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('tipos_contrato').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+    if (error) throw error;
+    return data;
+  },
+  eliminarTipoContrato: async (id) => {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.from('tipos_contrato').delete().eq('id', id);
+    if (error) throw error;
+    return true;
+  },
+
   // ─── Personal Operativo ───────────────────────────────────────
   getPersonalOperativo: async (empresaId) => {
     if (!empresaId) return [];
