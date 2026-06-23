@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context.jsx';
 import { AuthGate } from './AuthGate.jsx';
-import { Sidebar, Header } from './shell.jsx';
+import { Sidebar, Header, SIDEBAR } from './shell.jsx';
 
 // ─── Lazy imports ─────────────────────────────────────────────────────────────
 // Cada archivo de páginas genera un chunk separado, cargado solo cuando el
