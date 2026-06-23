@@ -14055,7 +14055,6 @@ function ControlAsistencia() {
       sar_habilitado: Boolean(geoCfg.sar_habilitado),
       sar_hora_limite: geoCfg.sar_hora_limite || '09:00',
       sar_gracia_minutos: Number(geoCfg.sar_gracia_minutos || 15),
-      acceso_asistencia_movil: Boolean(geoCfg.asistencia_movil_ubicacion_habilitada),
     });
   };
 
