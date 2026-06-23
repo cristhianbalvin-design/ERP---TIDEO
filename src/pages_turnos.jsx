@@ -29,19 +29,79 @@ function diasLabel(t) {
   return t.dias_laborables.map(d => DIAS_LABELS[d]).join(', ');
 }
 
+function calcTotalHorasEfectivas(t) {
+  if (t.dias_variables) return t.horas_efectivas;
+  if (!t.detalle_dias) return t.horas_efectivas;
+  
+  // Calculate average or total? In the table we usually show hours per day. 
+  // If it's variable, maybe show a range.
+  let min = 9999;
+  let max = 0;
+  let allSame = true;
+  let firstH = -1;
+  let totalH = 0;
+  let daysCount = 0;
+  
+  DIAS_ORDER.forEach(d => {
+    const dDet = t.detalle_dias?.[d];
+    if (dDet?.activo) {
+      const minSalida = timeToMinutes(dDet.hora_salida) + (dDet.cruza_medianoche ? 1440 : 0);
+      const ef = minSalida - timeToMinutes(dDet.hora_entrada) - Number(dDet.refrigerio_minutos || 0);
+      const h = ef / 60;
+      if (h < min) min = h;
+      if (h > max) max = h;
+      if (firstH === -1) firstH = h;
+      else if (firstH !== h) allSame = false;
+      totalH += h;
+      daysCount++;
+    }
+  });
+  
+  if (daysCount === 0) return '0h';
+  if (allSame) return `${parseFloat(firstH.toFixed(1))}h`;
+  return `${parseFloat(min.toFixed(1))}h - ${parseFloat(max.toFixed(1))}h`;
+}
+
 export function TurnosHorarios() {
   const { turnos, setTurnos, empresa, addNotificacion } = useApp();
   const [panel, setPanel] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const formBase = { nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false, refrigerio_minutos:60, descripcion:'', estado:'activo', requiere_autorizacion_he: '' };
+  const formBase = { nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false, refrigerio_minutos:60, descripcion:'', estado:'activo', requiere_autorizacion_he: '', detalle_dias: DIAS_ORDER.reduce((acc, d) => ({...acc, [d]: { activo: ['lun','mar','mie','jue','vie'].includes(d), hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, refrigerio_minutos:60 }}), {}) };
   const [form, setForm] = useState(formBase);
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const toggleDia = d => {
-    const curr = form.dias_laborables;
-    upd('dias_laborables', curr.includes(d) ? curr.filter(x => x !== d) : [...curr, d]);
+    setForm(f => {
+      const activo = !f.detalle_dias[d].activo;
+      const nd = { ...f.detalle_dias, [d]: { ...f.detalle_dias[d], activo } };
+      const dl = DIAS_ORDER.filter(x => nd[x].activo);
+      return { ...f, detalle_dias: nd, dias_laborables: dl };
+    });
+  };
+
+  const updateDetalleDia = (d, key, val) => {
+    setForm(f => ({
+      ...f, 
+      detalle_dias: {
+        ...f.detalle_dias,
+        [d]: { ...f.detalle_dias[d], [key]: val }
+      }
+    }));
+  };
+
+  const copyToAll = (sourceDay) => {
+    setForm(f => {
+      const source = f.detalle_dias[sourceDay];
+      const nd = { ...f.detalle_dias };
+      DIAS_ORDER.forEach(d => {
+        if (nd[d].activo && d !== sourceDay) {
+          nd[d] = { ...nd[d], hora_entrada: source.hora_entrada, hora_salida: source.hora_salida, tolerancia_minutos: source.tolerancia_minutos, refrigerio_minutos: source.refrigerio_minutos, cruza_medianoche: source.cruza_medianoche };
+        }
+      });
+      return { ...f, detalle_dias: nd };
+    });
   };
 
   const abrirNuevo = () => {
@@ -65,6 +125,7 @@ export function TurnosHorarios() {
       descripcion: t.descripcion || '',
       estado: t.estado || 'activo',
       requiere_autorizacion_he: t.requiere_autorizacion_he === true ? 'true' : t.requiere_autorizacion_he === false ? 'false' : '',
+      detalle_dias: t.detalle_dias || DIAS_ORDER.reduce((acc, d) => ({...acc, [d]: { activo: (t.dias_laborables||['lun','mar','mie','jue','vie']).includes(d), hora_entrada: t.hora_entrada || '08:00', hora_salida: t.hora_salida || '17:00', tolerancia_minutos: t.tolerancia_minutos ?? 10, cruza_medianoche: t.cruza_medianoche || false, refrigerio_minutos: t.refrigerio_minutos ?? 60 }}), {})
     });
     setSaveError('');
     setPanel(true);
@@ -83,7 +144,27 @@ export function TurnosHorarios() {
       const next = (nums.length ? Math.max(...nums) : 0) + 1;
       return `tur_${String(next).padStart(3, '0')}`;
     };
-    const payload = { ...form, codigo: editandoId ? ((turnos||[]).find(t=>t.id===editandoId)?.codigo || generarCodigo()) : generarCodigo(), horas_efectivas: horas, tolerancia_minutos: Number(form.tolerancia_minutos), refrigerio_minutos: Number(form.refrigerio_minutos), requiere_autorizacion_he: form.requiere_autorizacion_he === 'true' ? true : form.requiere_autorizacion_he === 'false' ? false : null };
+    
+    // Find the first active day to set as fallback defaults, if not dias_variables
+    let fallbackEntrada = form.hora_entrada;
+    let fallbackSalida = form.hora_salida;
+    let fallbackTol = form.tolerancia_minutos;
+    let fallbackRef = form.refrigerio_minutos;
+    let fallbackCruza = form.cruza_medianoche;
+    
+    if (!form.dias_variables && form.detalle_dias) {
+       const firstActive = DIAS_ORDER.find(d => form.detalle_dias[d].activo);
+       if (firstActive) {
+         const fa = form.detalle_dias[firstActive];
+         fallbackEntrada = fa.hora_entrada;
+         fallbackSalida = fa.hora_salida;
+         fallbackTol = fa.tolerancia_minutos;
+         fallbackRef = fa.refrigerio_minutos;
+         fallbackCruza = fa.cruza_medianoche;
+       }
+    }
+    
+    const payload = { ...form, hora_entrada: fallbackEntrada, hora_salida: fallbackSalida, tolerancia_minutos: Number(fallbackTol), refrigerio_minutos: Number(fallbackRef), cruza_medianoche: fallbackCruza, codigo: editandoId ? ((turnos||[]).find(t=>t.id===editandoId)?.codigo || generarCodigo()) : generarCodigo(), horas_efectivas: horas, requiere_autorizacion_he: form.requiere_autorizacion_he === 'true' ? true : form.requiere_autorizacion_he === 'false' ? false : null };
     try {
       if (editandoId) {
         const actualizado = await rrhhService.actualizarTurno(empresa.id, editandoId, payload);
@@ -133,12 +214,12 @@ export function TurnosHorarios() {
               <tr key={t.id} className="hover-row">
                 <td className="mono text-muted" style={{fontSize:11}}>{t.codigo || t.id}</td>
                 <td><strong>{t.nombre}</strong></td>
-                <td><span className="badge badge-gray" style={{fontFamily:'monospace'}}>{t.hora_entrada}</span></td>
-                <td><span className="badge badge-gray" style={{fontFamily:'monospace'}}>{t.hora_salida}{t.cruza_medianoche && <span style={{color:'var(--cyan)',marginLeft:4}}>+1d</span>}</span></td>
-                <td className="num"><strong>{t.horas_efectivas}h</strong></td>
-                <td className="num">{t.tolerancia_minutos} min</td>
+                <td><span className="badge badge-gray" style={{fontFamily:'monospace'}}>{t.detalle_dias && !t.dias_variables ? (Object.values(t.detalle_dias).some(x=>x.activo && x.hora_entrada !== t.hora_entrada) ? 'Variado' : t.hora_entrada) : t.hora_entrada}</span></td>
+                <td><span className="badge badge-gray" style={{fontFamily:'monospace'}}>{t.detalle_dias && !t.dias_variables ? (Object.values(t.detalle_dias).some(x=>x.activo && x.hora_salida !== t.hora_salida) ? 'Variado' : `${t.hora_salida}${t.cruza_medianoche ? ' +1d' : ''}`) : `${t.hora_salida}${t.cruza_medianoche ? ' +1d' : ''}`}</span></td>
+                <td className="num"><strong>{calcTotalHorasEfectivas(t)}</strong></td>
+                <td className="num">{t.detalle_dias && !t.dias_variables && Object.values(t.detalle_dias).some(x=>x.activo && x.tolerancia_minutos !== t.tolerancia_minutos) ? 'Var.' : t.tolerancia_minutos} {t.detalle_dias && !t.dias_variables && Object.values(t.detalle_dias).some(x=>x.activo && x.tolerancia_minutos !== t.tolerancia_minutos) ? '' : 'min'}</td>
                 <td>{diasLabel(t)}</td>
-                <td className="num">{t.refrigerio_minutos} min</td>
+                <td className="num">{t.detalle_dias && !t.dias_variables && Object.values(t.detalle_dias).some(x=>x.activo && x.refrigerio_minutos !== t.refrigerio_minutos) ? 'Var.' : t.refrigerio_minutos} {t.detalle_dias && !t.dias_variables && Object.values(t.detalle_dias).some(x=>x.activo && x.refrigerio_minutos !== t.refrigerio_minutos) ? '' : 'min'}</td>
                 <td><span className={`badge badge-${t.estado==='activo'?'green':'gray'}`}>{t.estado}</span></td>
                 <td style={{textAlign:'right'}}>
                   <div style={{display:'flex',gap:4,justifyContent:'flex-end'}}>
@@ -163,39 +244,85 @@ export function TurnosHorarios() {
             {saveError && <div className="alert alert-danger" style={{marginBottom:14}}>{saveError}</div>}
             <div className="input-group"><label>Nombre del turno *</label><input className="input" required value={form.nombre} onChange={e=>upd('nombre',e.target.value)} placeholder="Ej: Turno Mañana" autoFocus/></div>
 
-            <div className="grid-2" style={{gap:14,marginTop:14}}>
-              <div className="input-group"><label>Hora de entrada *</label><input className="input" type="time" required value={form.hora_entrada} onChange={e=>upd('hora_entrada',e.target.value)}/></div>
-              <div className="input-group"><label>Hora de salida *</label><input className="input" type="time" required value={form.hora_salida} onChange={e=>upd('hora_salida',e.target.value)}/></div>
-              <div className="input-group"><label>Tolerancia tardanza (min)</label><input className="input" type="number" min="0" value={form.tolerancia_minutos} onChange={e=>upd('tolerancia_minutos',e.target.value)}/></div>
-              <div className="input-group"><label>Refrigerio / break (min)</label><input className="input" type="number" min="0" value={form.refrigerio_minutos} onChange={e=>upd('refrigerio_minutos',e.target.value)}/></div>
-            </div>
-
-            <div style={{padding:'12px 16px',background:'rgba(6,182,212,0.08)',border:'1px solid rgba(6,182,212,0.25)',borderRadius:8,marginTop:12,fontSize:13}}>
-              <span className="text-muted">Horas efectivas calculadas: </span><strong style={{color:'var(--cyan)'}}>{horasPreview}</strong>
-              <span className="text-muted" style={{marginLeft:8,fontSize:11}}>(entrada → salida − refrigerio)</span>
-            </div>
-
             <div style={{marginTop:16}}>
-              <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13}}>
-                <input type="checkbox" checked={form.cruza_medianoche} onChange={e=>upd('cruza_medianoche',e.target.checked)}/>
-                Turno cruza medianoche <span className="text-muted" style={{fontSize:11}}>(ej. 22:00 → 06:00)</span>
-              </label>
-            </div>
-
-            <div style={{marginTop:16}}>
-              <div style={{fontWeight:600,fontSize:12,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--fg-subtle)',marginBottom:8}}>Días laborables</div>
               <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,marginBottom:10}}>
                 <input type="checkbox" checked={form.dias_variables} onChange={e=>upd('dias_variables',e.target.checked)}/>
-                Días variables (el responsable define por semana)
+                <strong>Días variables</strong> <span className="text-muted">(el responsable define la jornada por semana)</span>
               </label>
-              {!form.dias_variables && (
-                <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                  {DIAS_ORDER.map(d => (
-                    <label key={d} style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',padding:'5px 10px',borderRadius:6,border:`1px solid ${form.dias_laborables.includes(d)?'var(--cyan)':'var(--border)'}`,background:form.dias_laborables.includes(d)?'rgba(6,182,212,0.1)':'transparent',fontSize:13}}>
-                      <input type="checkbox" checked={form.dias_laborables.includes(d)} onChange={()=>toggleDia(d)} style={{display:'none'}}/>
-                      {DIAS_LABELS[d]}
+              
+              {form.dias_variables ? (
+                <>
+                  <div className="grid-2" style={{gap:14,marginTop:14}}>
+                    <div className="input-group"><label>Hora de entrada base *</label><input className="input" type="time" required value={form.hora_entrada} onChange={e=>upd('hora_entrada',e.target.value)}/></div>
+                    <div className="input-group"><label>Hora de salida base *</label><input className="input" type="time" required value={form.hora_salida} onChange={e=>upd('hora_salida',e.target.value)}/></div>
+                    <div className="input-group"><label>Tolerancia tardanza (min)</label><input className="input" type="number" min="0" value={form.tolerancia_minutos} onChange={e=>upd('tolerancia_minutos',e.target.value)}/></div>
+                    <div className="input-group"><label>Refrigerio / break (min)</label><input className="input" type="number" min="0" value={form.refrigerio_minutos} onChange={e=>upd('refrigerio_minutos',e.target.value)}/></div>
+                  </div>
+      
+                  <div style={{padding:'12px 16px',background:'rgba(6,182,212,0.08)',border:'1px solid rgba(6,182,212,0.25)',borderRadius:8,marginTop:12,fontSize:13}}>
+                    <span className="text-muted">Horas efectivas calculadas: </span><strong style={{color:'var(--cyan)'}}>{horasPreview}</strong>
+                    <span className="text-muted" style={{marginLeft:8,fontSize:11}}>(entrada → salida − refrigerio)</span>
+                  </div>
+      
+                  <div style={{marginTop:16}}>
+                    <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13}}>
+                      <input type="checkbox" checked={form.cruza_medianoche} onChange={e=>upd('cruza_medianoche',e.target.checked)}/>
+                      Turno cruza medianoche <span className="text-muted" style={{fontSize:11}}>(ej. 22:00 → 06:00)</span>
                     </label>
-                  ))}
+                  </div>
+                </>
+              ) : (
+                <div style={{marginTop:16}}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+                    <div style={{fontWeight:600,fontSize:12,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--fg-subtle)'}}>Horarios por día</div>
+                    {DIAS_ORDER.some(d => form.detalle_dias[d].activo) && (
+                      <button type="button" className="btn btn-sm btn-ghost" style={{fontSize:11, padding:'2px 8px'}} onClick={() => {
+                        const firstActive = DIAS_ORDER.find(d => form.detalle_dias[d].activo);
+                        if (firstActive) copyToAll(firstActive);
+                      }}>Copiar el primer día a todos</button>
+                    )}
+                  </div>
+                  
+                  <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                    {DIAS_ORDER.map(d => {
+                      const det = form.detalle_dias[d];
+                      return (
+                        <div key={d} style={{display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:8, border:`1px solid ${det.activo?'var(--cyan)':'var(--border)'}`, background:det.activo?'rgba(6,182,212,0.05)':'transparent', opacity:det.activo?1:0.6}}>
+                          <label style={{display:'flex', alignItems:'center', gap:8, cursor:'pointer', width:60, fontWeight:600}}>
+                            <input type="checkbox" checked={det.activo} onChange={()=>toggleDia(d)}/>
+                            {DIAS_LABELS[d]}
+                          </label>
+                          
+                          {det.activo ? (
+                            <div style={{display:'flex', alignItems:'center', gap:12, flex:1, flexWrap:'wrap'}}>
+                              <div style={{display:'flex', alignItems:'center', gap:6}}>
+                                <span className="text-muted" style={{fontSize:11}}>Entrada</span>
+                                <input className="input" type="time" style={{padding:'4px 8px', width:110, fontSize:13}} required value={det.hora_entrada} onChange={e=>updateDetalleDia(d, 'hora_entrada', e.target.value)}/>
+                              </div>
+                              <div style={{display:'flex', alignItems:'center', gap:6}}>
+                                <span className="text-muted" style={{fontSize:11}}>Salida</span>
+                                <input className="input" type="time" style={{padding:'4px 8px', width:110, fontSize:13}} required value={det.hora_salida} onChange={e=>updateDetalleDia(d, 'hora_salida', e.target.value)}/>
+                              </div>
+                              <div style={{display:'flex', alignItems:'center', gap:6}}>
+                                <span className="text-muted" style={{fontSize:11}}>Tol. (min)</span>
+                                <input className="input" type="number" min="0" style={{padding:'4px 8px', width:60, fontSize:13}} value={det.tolerancia_minutos} onChange={e=>updateDetalleDia(d, 'tolerancia_minutos', e.target.value)}/>
+                              </div>
+                              <div style={{display:'flex', alignItems:'center', gap:6}}>
+                                <span className="text-muted" style={{fontSize:11}}>Refrig. (min)</span>
+                                <input className="input" type="number" min="0" style={{padding:'4px 8px', width:60, fontSize:13}} value={det.refrigerio_minutos} onChange={e=>updateDetalleDia(d, 'refrigerio_minutos', e.target.value)}/>
+                              </div>
+                              <label style={{display:'flex',alignItems:'center',gap:4,cursor:'pointer',fontSize:11, marginLeft:'auto'}}>
+                                <input type="checkbox" checked={det.cruza_medianoche} onChange={e=>updateDetalleDia(d, 'cruza_medianoche', e.target.checked)}/>
+                                +1d (noche)
+                              </label>
+                            </div>
+                          ) : (
+                            <div className="text-muted" style={{fontSize:13, fontStyle:'italic'}}>Día de descanso</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

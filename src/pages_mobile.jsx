@@ -383,7 +383,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
       return;
     }
     if (!turnoIdPersistible) {
-      const msg = `Tu ficha no tiene un turno real asignado. Pide a RRHH asignarte un turno creado en Supabase. [diag: ficha_id=${trabajadorActual?.id || 'null'} tipo=${trabajadorActual?.trabajador_tipo || 'null'} turno_id=${trabajadorActual?.turno_id || 'null'} turnos_cargados=${turnos?.length ?? 'null'}]`;
+      const msg = 'Tu ficha no tiene un turno real asignado. Pide a RRHH asignarte un turno creado en Supabase.';
       addNotificacion(msg);
       setAviso(msg);
       return;

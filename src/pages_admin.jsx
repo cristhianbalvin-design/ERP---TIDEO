@@ -7551,6 +7551,9 @@ function RRHHAdmin() {
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
+  const [filtroPersonal, setFiltroPersonal] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('');
+  const [filtroModalidad, setFiltroModalidad] = useState('');
   const [panelAlta, setPanelAlta] = useState(false);
   const [showRequisitosRRHH, setShowRequisitosRRHH] = useState(false);
   const [showTiposDocumentoRRHH, setShowTiposDocumentoRRHH] = useState(false);
@@ -9897,16 +9900,16 @@ function RRHHAdmin() {
       {showTiposDocumentoRRHH && <TiposDocumentoPanel onClose={() => setShowTiposDocumentoRRHH(false)} onGoToRequisitos={() => { setShowTiposDocumentoRRHH(false); setShowRequisitosRRHH(true); }} />}
       {showCargaMasivaAdmin && <CargaMasivaAdminPanel onClose={() => setShowCargaMasivaAdmin(false)} turnosOptions={turnosOptions} cargosAdminOptions={cargosAdminOptions} areasOptions={areasOptions} sedesOptions={sedesOptions} cecosActivos={cecosActivos} empresaConfig={empresaConfig} crearAdminPersonalCtx={crearAdminPersonalCtx} addNotificacion={addNotificacion} />}
 
-      <div className="tabs">
-        <div className={'tab '+(view==='personal'?'active':'')} onClick={()=>setView('personal')}>Personal</div>
-        <div className={'tab '+(view==='reportes'?'active':'')} onClick={()=>setView('reportes')}>Reportes</div>
-      </div>
-
       <div className="kpi-grid">
         <div className="kpi-card"><div className="kpi-label">Colaboradores activos</div><div className="kpi-value">{colaboradoresActivos}</div><div className="kpi-icon cyan">{I.users}</div></div>
         <div className="kpi-card"><div className="kpi-label">Contratos por vencer</div><div className="kpi-value" style={{color:'var(--orange)'}}>{contratosVencer.filter(p => p.dias_restantes <= 14).length}</div><div className="kpi-icon orange">{I.alert}</div></div>
         <div className="kpi-card"><div className="kpi-label">Vacaciones pendientes</div><div className="kpi-value" style={{color: vacPendientes.length > 0 ? 'var(--orange)' : 'inherit'}}>{vacPendientes.length}</div><div className="kpi-icon purple">{I.calendar}</div></div>
         <div className="kpi-card"><div className="kpi-label">Docs vencidos / por vencer</div><div className="kpi-value" style={{color:'var(--danger)'}}>{vencimientosDocumentos.length}</div><div className="kpi-icon red">{I.shield}</div></div>
+      </div>
+
+      <div className="tabs" style={{marginTop: 24}}>
+        <div className={'tab '+(view==='personal'?'active':'')} onClick={()=>setView('personal')}>Personal</div>
+        <div className={'tab '+(view==='reportes'?'active':'')} onClick={()=>setView('reportes')}>Reportes</div>
       </div>
 
       {vencimientosDocumentos.length > 0 && (
@@ -9918,11 +9921,39 @@ function RRHHAdmin() {
 
       {view === 'personal' && (
         <div className="card">
+          <div className="card-head row" style={{gap:12}}>
+            <input className="input" placeholder="Buscar personal..." value={filtroPersonal} onChange={e=>setFiltroPersonal(e.target.value)} style={{flex:'1 1 200px'}} />
+            <select className="input" value={filtroEstado} onChange={e=>setFiltroEstado(e.target.value)} style={{flex:'1 1 140px'}}>
+              <option value="">Todos los estados</option>
+              <option value="activo">Activo (Disponible)</option>
+              <option value="no_disponible">No Disponible</option>
+              <option value="bloqueado">Bloqueado</option>
+              <option value="inactivo">Inactivo / Cesado</option>
+            </select>
+            <select className="input" value={filtroModalidad} onChange={e=>setFiltroModalidad(e.target.value)} style={{flex:'1 1 140px'}}>
+              <option value="">Todas las modalidades</option>
+              <option value="planilla">Planilla</option>
+              <option value="honorarios">Honorarios</option>
+            </select>
+          </div>
           <div className="table-wrap">
             <table className="tbl">
               <thead><tr><th>Colaborador</th><th>Cargo</th><th>Área</th><th>Sede</th><th>Turno</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones disp.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
               <tbody>
-                {todosPersonal.map(p => {
+                {todosPersonal.length === 0 && <tr><td colSpan={10} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal administrativo registrado.</td></tr>}
+                {todosPersonal.filter(p => {
+                  if (filtroEstado && p.estado !== filtroEstado) return false;
+                  if (filtroModalidad) {
+                    const esHon = normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato) === 'honorarios';
+                    if (filtroModalidad === 'honorarios' && !esHon) return false;
+                    if (filtroModalidad === 'planilla' && esHon) return false;
+                  }
+                  if (filtroPersonal) {
+                    const q = filtroPersonal.toLowerCase();
+                    if (!p.nombre?.toLowerCase().includes(q) && !p.cargo?.toLowerCase().includes(q)) return false;
+                  }
+                  return true;
+                }).map(p => {
                   const esHon = normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato) === 'honorarios';
                   const contratoDocFila = rrhhAdminContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
                   const contratoInfoFila = rrhhAdminContratoVencimientoInfo(contratoDocFila);
