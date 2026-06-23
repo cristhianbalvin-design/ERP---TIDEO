@@ -108,10 +108,10 @@ export function TurnosHorarios() {
       setTurnos(prev => prev.filter(x => x.id !== t.id));
       addNotificacion('Turno eliminado.');
     } catch (err) {
-      if (err?.code === '23503') {
-        addNotificacion('No se pudo eliminar: tienes personal o registros de asistencia vinculados a este turno. Reasígnalos primero o desactiva el turno en vez de eliminarlo.');
+      if (err?.code === '23503' || err?.status === 409) {
+        window.alert('Este turno está siendo usado por trabajadores o tiene registros de asistencia en el historial. No se puede eliminar de la base de datos.\\n\\nPara dejar de usarlo, edítalo y cambia su Estado a "Inactivo".');
       } else {
-        addNotificacion('No se pudo eliminar el turno.');
+        addNotificacion(`No se pudo eliminar el turno: ${err.message || 'Error desconocido'}`, 'error');
       }
     }
   };

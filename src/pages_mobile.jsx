@@ -191,7 +191,9 @@ function getFichaColaboradorMovil({ authUser, usuarios = [], personalAdmin = [],
   return trabajadores.find(p => {
     const email = normalizarTexto(p.email);
     const nombreSlug = slugPersona(p.nombre);
-    return p.id === authUser?.id ||
+    return p.auth_user_id === authUser?.id ||
+      p.auth_user_id === usuarioMovil.id ||
+      p.id === authUser?.id ||
       p.id === usuarioMovil.id ||
       (emailAuth && email === emailAuth) ||
       (usuarioSlug && nombreSlug === usuarioSlug);

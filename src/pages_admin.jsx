@@ -539,35 +539,63 @@ function Usuarios() {
     const rol = rolesCtx?.[rolId] || MOCK.roles?.[rolId] || {};
     return Boolean(rol.es_admin_empresa || ['direccion', 'jefatura'].includes(String(rol.nivel_jerarquico || '').toLowerCase()));
   };
-  const estadoFichaDesdeListas = (email) => {
+  const estadoFichaDesdeListas = (email, userId) => {
     const normalized = normalizarEmail(email);
-    if (!normalized) return { tieneFicha: false, tieneTurno: false, ficha: null, tipo: null };
-    const operativo = (personalOperativo || []).find(p => normalizarEmail(p.email) === normalized && !['inactivo', 'cesado', 'suspendido'].includes(String(p.estado || '').toLowerCase()));
+    const activo = p => !['inactivo', 'cesado', 'suspendido'].includes(String(p.estado || '').toLowerCase());
+    const match = p => activo(p) && ((userId && p.auth_user_id === userId) || (normalized && normalizarEmail(p.email) === normalized));
+    const operativo = (personalOperativo || []).find(match);
     if (operativo) return { tieneFicha: true, tieneTurno: Boolean(operativo.turno_id), ficha: operativo, tipo: 'operativo' };
-    const administrativo = (personalAdmin || []).find(p => normalizarEmail(p.email) === normalized && !['inactivo', 'cesado', 'suspendido'].includes(String(p.estado || '').toLowerCase()));
+    const administrativo = (personalAdmin || []).find(match);
     if (administrativo) return { tieneFicha: true, tieneTurno: Boolean(administrativo.turno_id), ficha: administrativo, tipo: 'administrativo' };
     return { tieneFicha: false, tieneTurno: false, ficha: null, tipo: null };
   };
-  const consultarFichaUsuario = async ({ email, empresaId }) => {
-    const fallback = estadoFichaDesdeListas(email);
-    if (!email || !empresaId) {
+  const consultarFichaUsuario = async ({ email, empresaId, userId }) => {
+    const fallback = estadoFichaDesdeListas(email, userId);
+    if ((!email && !userId) || !empresaId) {
       setFichaUsuario({ loading: false, error: '', ...fallback });
       return;
     }
     setFichaUsuario({ loading: true, error: '', ...fallback });
     try {
       const supabase = await getSupabaseClient();
-      const selectCols = 'id,nombre,email,turno_id,estado';
-      const [opResult, admResult] = await Promise.all([
-        supabase.from('personal_operativo').select(selectCols).eq('empresa_id', empresaId).ilike('email', email).limit(1),
-        supabase.from('personal_administrativo').select(selectCols).eq('empresa_id', empresaId).ilike('email', email).limit(1),
-      ]);
-      if (opResult.error) throw opResult.error;
-      if (admResult.error) throw admResult.error;
+      const selectColsOp = 'id,nombre,email,turno_id,estado,auth_user_id';
+      const selectColsAdm = 'id,nombre,email,turno_id,estado,auth_user_id';
+      
+      const queries = [];
+      
+      if (userId) {
+        queries.push(supabase.from('personal_operativo').select(selectColsOp).eq('empresa_id', empresaId).eq('auth_user_id', userId).limit(1));
+        queries.push(supabase.from('personal_administrativo').select(selectColsAdm).eq('empresa_id', empresaId).eq('auth_user_id', userId).limit(1));
+      } else {
+        queries.push(Promise.resolve({ data: [] }));
+        queries.push(Promise.resolve({ data: [] }));
+      }
+      
+      if (email) {
+        queries.push(supabase.from('personal_operativo').select(selectColsOp).eq('empresa_id', empresaId).ilike('email', email).limit(1));
+        queries.push(supabase.from('personal_administrativo').select(selectColsAdm).eq('empresa_id', empresaId).ilike('email', email).limit(1));
+      } else {
+        queries.push(Promise.resolve({ data: [] }));
+        queries.push(Promise.resolve({ data: [] }));
+      }
+
+      const [opUser, admUser, opEmail, admEmail] = await Promise.all(queries);
+      
+      if (opUser.error) throw opUser.error;
+      if (admUser.error) throw admUser.error;
+      if (opEmail.error) throw opEmail.error;
+      if (admEmail.error) throw admEmail.error;
+      
+      const opData = [...(opUser.data || []), ...(opEmail.data || [])];
+      const admData = [...(admUser.data || []), ...(admEmail.data || [])];
+      
       const activo = row => row && !['inactivo', 'cesado', 'suspendido'].includes(String(row.estado || '').toLowerCase());
-      const operativo = (opResult.data || []).find(activo);
-      const administrativo = (admResult.data || []).find(activo);
+      const findBestMatch = (data) => data.find(r => activo(r) && r.auth_user_id === userId) || data.find(activo);
+      
+      const operativo = findBestMatch(opData);
+      const administrativo = findBestMatch(admData);
       const ficha = operativo || administrativo || null;
+      
       setFichaUsuario({
         loading: false,
         error: '',
@@ -663,7 +691,7 @@ function Usuarios() {
       campoModulos: getCampoModulos(usuario),
       estado: usuario.estado || 'Activo',
     });
-    consultarFichaUsuario({ email: usuario.email || '', empresaId: usuario.empresa_id || empresa?.id });
+    consultarFichaUsuario({ email: usuario.email || '', empresaId: usuario.empresa_id || empresa?.id, userId: usuario.id });
   };
 
   const handleEditarUsuario = async (e) => {
@@ -691,7 +719,7 @@ function Usuarios() {
   useEffect(() => {
     if (!editando) return;
     const handle = setTimeout(() => {
-      consultarFichaUsuario({ email: editForm.email || '', empresaId: editando.empresa_id || empresa?.id });
+      consultarFichaUsuario({ email: editForm.email || '', empresaId: editando.empresa_id || empresa?.id, userId: editando.id });
     }, 250);
     return () => clearTimeout(handle);
   }, [editando?.id, editForm.email, editando?.empresa_id, empresa?.id]);
@@ -1070,7 +1098,7 @@ function Usuarios() {
                   </div>
                   {editForm.campoModulos.includes('mi_espacio') && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Mi espacio incluye automáticamente Solicitudes, sin necesidad de marcarlo por separado.</div>}
                   {fichaUsuario.loading && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Verificando ficha RRHH por email...</div>}
-                  {fichaUsuario.error && <div className="text-muted" style={{fontSize:12, marginTop:6}}>No se pudo refrescar la ficha desde Supabase; se esta usando la informacion cargada localmente.</div>}
+                  {fichaUsuario.error && <div className="text-muted" style={{fontSize:12, marginTop:6, color: 'var(--danger)'}}>Error consultando ficha: {fichaUsuario.error}</div>}
                   {!fichaUsuario.loading && !esRolAdminODireccion(editForm.rol) && !fichaUsuario.tieneFicha && (
                     <div className="alert alert-warning" style={{marginTop:10}}>
                       <div className="row" style={{alignItems:'flex-start', gap:8}}>
@@ -1695,28 +1723,30 @@ function CecoCebePanel({ onClose }) {
     const errores = [];
     const estadoNorm = normEstado(r.estado);
     const tipoNorm = normTipo(r.tipo);
+    const yaExiste = (centrosCosto||[]).some(c=>c.codigo===r.codigo);
     if (!r.codigo) errores.push('Código vacío');
-    else if ((centrosCosto||[]).some(c=>c.codigo===r.codigo) || rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado');
+    else if (rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado en el archivo');
     if (!r.nombre) errores.push('Nombre vacío');
     if (!r.tipo) errores.push('Tipo vacío');
     if (r.cebe_padre && !findCebe(r.cebe_padre)) errores.push(`CEBE "${r.cebe_padre}" no encontrado`);
     if (r.estado && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido (usa "activo" o "inactivo")');
     const cebe = findCebe(r.cebe_padre);
     const resp = usuariosActivos.find(u=>u.nombre===r.responsable);
-    return { ...r, tipo: tipoNorm, estado: estadoNorm || 'activo', cebe_id: cebe?.id || null, responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, presupuesto_mensual: r.presupuesto_mensual || null, _errores: errores };
+    return { ...r, tipo: tipoNorm, estado: estadoNorm || 'activo', cebe_id: cebe?.id || null, responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, presupuesto_mensual: r.presupuesto_mensual || null, _errores: errores, _existe: yaExiste };
   });
   const validarCebeImport = rows => rows.map(r => {
     const errores = [];
     const estadoNorm = normEstado(r.estado);
     const tipoNorm = normTipo(r.tipo);
+    const yaExiste = (centrosBeneficio||[]).some(c=>c.codigo===r.codigo);
     if (!r.codigo) errores.push('Código vacío');
-    else if ((centrosBeneficio||[]).some(c=>c.codigo===r.codigo) || rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado');
+    else if (rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado en el archivo');
     if (!r.nombre) errores.push('Nombre vacío');
     if (!r.tipo) errores.push('Tipo vacío');
     else if (!CEBE_TIPOS.includes(tipoNorm)) errores.push(`Tipo inválido: "${r.tipo}". Usa: linea_servicio, cliente, proyecto, producto, temporal`);
     if (r.estado && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido (usa "activo" o "inactivo")');
     const resp = usuariosActivos.find(u=>u.nombre===r.responsable);
-    return { ...r, tipo: tipoNorm, estado: estadoNorm || 'activo', responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, meta_ingresos: r.meta_ingresos || null, cuenta_id: r.cuenta_id || null, _errores: errores };
+    return { ...r, tipo: tipoNorm, estado: estadoNorm || 'activo', responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, meta_ingresos: r.meta_ingresos || null, cuenta_id: r.cuenta_id || null, _errores: errores, _existe: yaExiste };
   });
   const exportCsv = (data, headers, filename) => {
     const rows = [headers.join(','), ...data.map(r => headers.map(h=>`"${r[h]??''}"` ).join(','))];
@@ -2037,7 +2067,7 @@ function CecoCebePanel({ onClose }) {
                         <tbody>{cecoImportRows.map((r,i)=>(
                           <tr key={i} style={{ background: r._errores.length>0 ? 'rgba(239,68,68,0.05)' : 'transparent' }}>
                             <td className="mono text-muted">{i+2}</td><td className="mono">{r.codigo}</td><td>{r.nombre}</td>
-                            <td>{r._errores.length===0 ? <span className="badge badge-green">OK</span> : <span className="badge badge-red">Error</span>}</td>
+                            <td>{r._errores.length>0 ? <span className="badge badge-red">Error</span> : r._existe ? <span className="badge badge-cyan">Actualizar</span> : <span className="badge badge-green">OK</span>}</td>
                             <td style={{ fontSize:11, color:'var(--danger)' }}>{r._errores.join(' · ')}</td>
                           </tr>
                         ))}</tbody>
@@ -2051,7 +2081,7 @@ function CecoCebePanel({ onClose }) {
                 )}
                 {cecoImportStep === 3 && (
                   <div>
-                    <p style={{ marginBottom:16, fontSize:13 }}>Se importarán <strong>{cecoImportRows.filter(r=>r._errores.length===0).length} CECOs</strong>. Los {cecoImportRows.filter(r=>r._errores.length>0).length} con errores serán ignorados.</p>
+                    <p style={{ marginBottom:16, fontSize:13 }}>Se importarán <strong>{cecoImportRows.filter(r=>r._errores.length===0 && !r._existe).length} CECOs nuevos</strong> y se actualizarán <strong>{cecoImportRows.filter(r=>r._errores.length===0 && r._existe).length} existentes</strong>. Los {cecoImportRows.filter(r=>r._errores.length>0).length} con errores serán ignorados.</p>
                     <button className="btn btn-primary" onClick={async e => {
                       const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Importando...';
                       try {
@@ -2097,7 +2127,7 @@ function CecoCebePanel({ onClose }) {
                         <tbody>{cebeImportRows.map((r,i)=>(
                           <tr key={i} style={{ background: r._errores.length>0 ? 'rgba(239,68,68,0.05)' : 'transparent' }}>
                             <td className="mono text-muted">{i+2}</td><td className="mono">{r.codigo}</td><td>{r.nombre}</td>
-                            <td>{r._errores.length===0 ? <span className="badge badge-green">OK</span> : <span className="badge badge-red">Error</span>}</td>
+                            <td>{r._errores.length>0 ? <span className="badge badge-red">Error</span> : r._existe ? <span className="badge badge-cyan">Actualizar</span> : <span className="badge badge-green">OK</span>}</td>
                             <td style={{ fontSize:11, color:'var(--danger)' }}>{r._errores.join(' · ')}</td>
                           </tr>
                         ))}</tbody>
@@ -2111,7 +2141,7 @@ function CecoCebePanel({ onClose }) {
                 )}
                 {cebeImportStep === 3 && (
                   <div>
-                    <p style={{ marginBottom:16, fontSize:13 }}>Se importarán <strong>{cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs</strong>. Los {cebeImportRows.filter(r=>r._errores.length>0).length} con errores serán ignorados.</p>
+                    <p style={{ marginBottom:16, fontSize:13 }}>Se importarán <strong>{cebeImportRows.filter(r=>r._errores.length===0 && !r._existe).length} CEBEs nuevos</strong> y se actualizarán <strong>{cebeImportRows.filter(r=>r._errores.length===0 && r._existe).length} existentes</strong>. Los {cebeImportRows.filter(r=>r._errores.length>0).length} con errores serán ignorados.</p>
                     <button className="btn btn-primary" onClick={async()=>{ const v=cebeImportRows.filter(r=>r._errores.length===0).map(({_errores,...r})=>({...r,estado:r.estado||'activo'})); await importarCentrosBeneficio(v); addNotificacion?.(`${v.length} CEBEs importados.`); setCebeModalImport(false); }}>Importar {cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs</button>
                   </div>
                 )}
