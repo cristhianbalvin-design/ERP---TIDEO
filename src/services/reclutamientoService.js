@@ -199,17 +199,25 @@ export const reclutamientoService = {
     if (payload.file) {
       cvPath = `${vacante.empresa_id}/reclutamiento/${vacante.id}/${Date.now()}_${payload.file.name.replace(/[^\w.-]/g, '_')}`;
       const { error: uploadError } = await supabase.storage.from('documentos-privados').upload(cvPath, payload.file, { contentType: payload.file.type, upsert: false });
-      if (uploadError) throw uploadError;
+      if (uploadError) throw new Error(uploadError.message || 'Error subiendo el archivo CV.');
       const { data: signed } = await supabase.storage.from('documentos-privados').createSignedUrl(cvPath, 600);
       cvUrl = signed?.signedUrl || null;
     }
-    return this.crearCandidatoYCandidatura(vacante.empresa_id, {
-      ...payload,
-      vacante_id: vacante.id,
-      cv_path: cvPath,
-      cv_url: cvUrl,
-      fuente: 'portal_publico',
+    
+    const { data, error } = await supabase.rpc('registrar_postulacion_publica', {
+      p_empresa_id: vacante.empresa_id,
+      p_vacante_id: vacante.id,
+      p_nombre: payload.nombre,
+      p_dni: payload.dni,
+      p_telefono: payload.telefono || null,
+      p_email: payload.email || null,
+      p_cv_url: cvUrl,
+      p_cv_path: cvPath,
+      p_fuente: 'portal_publico'
     });
+    
+    if (error) throw new Error(error.message || 'No se pudo registrar la postulacion.');
+    return data;
   },
 };
 
