@@ -285,10 +285,26 @@ function MainLayout() {
       navigate('dashboard');
       return;
     }
-    if (allowed && active !== 'mi_portal' && !allowed.has(active)) {
-      navigate('dashboard');
+    
+    const activeAllowed = allowed ? (active === 'mi_portal' || allowed.has(active)) : true;
+    if (!activeAllowed) {
+      let fallback = 'mi_portal';
+      if (allowed && allowed.has('dashboard')) {
+        fallback = 'dashboard';
+      } else if (allowed && allowed.size > 0) {
+        // Encontrar el primer modulo permitido de acuerdo al orden del SIDEBAR
+        for (const group of SIDEBAR) {
+          if (group.plataforma && !isSuperadmin) continue;
+          const found = group.items.find(it => allowed.has(it.key));
+          if (found) {
+            fallback = found.key;
+            break;
+          }
+        }
+      }
+      navigate(fallback);
     }
-  }, [roleKey, active, isSuperadmin]);
+  }, [roleKey, active, isSuperadmin, allowed, navigate]);
 
   if (mobileMode) {
     return (
@@ -374,7 +390,7 @@ function MainLayout() {
       case 'ia_operativa':     return <IAOperativa/>;
       case 'ia_financiera':    return <IAFinanciera/>;
       case 'bi_financiero':    return <BIFinanciero/>;
-      default:                 return <Dashboard role={role}/>;
+      default:                 return allowed && !allowed.has('dashboard') ? <MiPortal /> : <Dashboard role={role}/>;
     }
   };
 
