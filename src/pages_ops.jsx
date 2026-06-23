@@ -16182,30 +16182,36 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
 
   return (
     <div className="modal-backdrop">
-      <div className="modal-content" style={{maxWidth: 900}}>
-        <h2>Carga Masiva de Personal Operativo</h2>
-        <button className="icon-btn close-btn" onClick={procesando ? undefined : onClose} disabled={procesando}>{I.x}</button>
+      <div className="modal" style={{maxWidth: 900}}>
+        <div className="modal-head">
+          <h2>Carga Masiva de Personal Operativo</h2>
+          <button className="icon-btn" style={{color: 'var(--fg-muted)'}} onClick={procesando ? undefined : onClose} disabled={procesando}>{I.x}</button>
+        </div>
         
         {!resultados ? (
-          <div className="card-body">
-            <div className="grid-2" style={{gap:20, marginBottom: 20}}>
-              <div className="card" style={{padding: 20, textAlign: 'center'}}>
+          <div className="modal-body">
+            <div className="grid-2" style={{gap:20, marginBottom: 20, alignItems: 'stretch'}}>
+              <div className="card" style={{padding: 20, textAlign: 'center', display: 'flex', flexDirection: 'column'}}>
                 <div style={{width: 48, height: 48, margin: '0 auto 12px', color: 'var(--primary)'}}>{I.download}</div>
                 <h3 style={{marginBottom: 8}}>1. Descargar Plantilla</h3>
-                <p className="text-muted" style={{fontSize: 13, marginBottom: 16}}>Descarga el archivo Excel con las columnas requeridas y las instrucciones de llenado.</p>
-                <button className="btn btn-secondary" onClick={descargarPlantilla}>Descargar plantilla</button>
+                <p className="text-muted" style={{fontSize: 13, marginBottom: 16, flex: 1}}>Descarga el archivo Excel con las columnas requeridas y las instrucciones de llenado.</p>
+                <div style={{marginTop: 'auto'}}>
+                  <button className="btn btn-secondary" onClick={descargarPlantilla}>Descargar plantilla</button>
+                </div>
               </div>
-              <div className="card" style={{padding: 20, textAlign: 'center'}}>
+              <div className="card" style={{padding: 20, textAlign: 'center', display: 'flex', flexDirection: 'column'}}>
                 <div style={{width: 48, height: 48, margin: '0 auto 12px', color: 'var(--primary)'}}>{I.upload}</div>
                 <h3 style={{marginBottom: 8}}>2. Cargar Archivo</h3>
-                <p className="text-muted" style={{fontSize: 13, marginBottom: 16}}>Sube la plantilla completada para validar y procesar los registros.</p>
-                <input type="file" id="file-upload-op" accept=".xlsx,.xls" style={{display: 'none'}} onChange={handleFileUpload} />
-                <label htmlFor="file-upload-op" className="btn btn-primary" style={{cursor: 'pointer'}}>Seleccionar archivo</label>
+                <p className="text-muted" style={{fontSize: 13, marginBottom: 16, flex: 1}}>Sube la plantilla completada para validar y procesar los registros.</p>
+                <div style={{marginTop: 'auto'}}>
+                  <input type="file" id="file-upload-op" accept=".xlsx,.xls" style={{display: 'none'}} onChange={handleFileUpload} />
+                  <label htmlFor="file-upload-op" className="btn btn-primary" style={{cursor: 'pointer', margin: 0, display: 'inline-block'}}>Seleccionar archivo</label>
+                </div>
               </div>
             </div>
           </div>
         ) : (
-            <div className="card-body">
+            <div className="modal-body">
               <p style={{marginBottom: 16, fontSize: 13}}>
                 <strong>{resultados.validos.length + resultados.errores.length} filas leídas</strong> · {resultados.validos.length} válidas · {resultados.errores.length} con errores
               </p>
