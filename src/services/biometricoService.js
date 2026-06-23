@@ -114,7 +114,11 @@ const resolverTrabajador = (identificador, trabajadores, tipo = 'dni') => {
   if (tipo === 'codigo_biometrico') {
     return trabajadores.find(t => norm(t.codigo_biometrico) === id) || null;
   }
-  return trabajadores.find(t => trabajadorDocumento(t) === id || norm(t.codigo_biometrico) === id) || null;
+  return trabajadores.find(t => 
+    trabajadorDocumento(t) === id || 
+    norm(t.codigo_biometrico) === id ||
+    norm(t.nombre).toLowerCase() === id.toLowerCase()
+  ) || null;
 };
 
 const clasificarTipo = (value, perfil) => {

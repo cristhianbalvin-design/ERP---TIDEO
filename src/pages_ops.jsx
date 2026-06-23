@@ -13906,64 +13906,86 @@ function ControlAsistencia() {
   };
 
   const confirmarImportacionBio = async () => {
-    if (!bioPreview) return;
-    const importables = [
-      ...(bioPreview.ready || []),
-      ...(bioOverwrite ? (bioPreview.duplicates || []) : []),
-    ];
-    if (!importables.length) {
-      addNotificacion('No hay registros listos para importar.');
-      return;
-    }
-    const lote = await registrarLoteBiometricoCtx({
-      perfil_id: bioPerfilActual?.id || null,
-      archivo_nombre: bioPreview.fileName,
-      archivo_hash: `${bioPreview.fileName}:${bioPreview.total}`,
-      estado: 'confirmado',
-      totales: { ...bioPreview.resumen, importados: importables.length },
-      detalle: { regla_inferencia: 'sin tipo: primera marca del dia = entrada, ultima = salida; intermedias quedan como detalle' },
-      sobrescribio_duplicados: Boolean(bioOverwrite),
-    });
-    const guardados = [];
-    for (const row of importables) {
-      const trn = workerTurno(turnos, row.trabajador);
-      const calc = calcularResultadoAsistencia(row.hora_entrada, row.hora_salida, trn, false, false);
-      const registro = {
-        empresa_id: empresa.id,
-        trabajador_id: row.trabajador.id,
-        trabajador_tipo: row.trabajador.trabajador_tipo || 'operativo',
-        fecha: row.fecha,
-        turno_id: turnos.some(t => t.id === trn.id) ? trn.id : null,
-        hora_entrada: row.hora_entrada,
-        hora_salida: row.hora_salida,
-        horas_trabajadas_min: calc.horas_trabajadas_min,
-        tardanza_min: calc.tardanza_min || 0,
-        horas_extra_min: calc.horas_extra_min || 0,
-        estado: calc.estado,
-        es_falta: false,
-        justificada: false,
-        notas: `Importacion biometrica ${bioPreview.fileName}`,
-        regimen_jornada: 'general',
-        origen_registro: 'biometrico_importacion',
-        importacion_biometrica_lote_id: lote.id,
-        marcas_biometricas: row.marcas,
-      };
-      try {
-        const existente = row.existente || registrosAsistencia.find(r => r.trabajador_id === row.trabajador.id && r.fecha === row.fecha);
-        const data = existente?.id && bioOverwrite
-          ? await rrhhService.actualizarAsistencia(existente.id, registro)
-          : await rrhhService.registrarAsistencia(empresa.id, registro);
-        guardados.push({ ...data, importacion_biometrica_lote_id: lote.id, marcas_biometricas: row.marcas });
-      } catch {
-        guardados.push({ ...registro, id: `asis_bio_${Date.now()}_${row.trabajador.id}` });
+    try {
+      if (!bioPreview) return;
+      const importables = [
+        ...(bioPreview.ready || []),
+        ...(bioOverwrite ? (bioPreview.duplicates || []) : []),
+      ];
+      if (!importables.length) {
+        addNotificacion('No hay registros listos para importar.');
+        return;
       }
+      setBioSaving(true);
+      const lote = await registrarLoteBiometricoCtx({
+        perfil_id: bioPerfilActual?.id || null,
+        archivo_nombre: bioPreview.fileName,
+        archivo_hash: `${bioPreview.fileName}:${bioPreview.total}`,
+        estado: 'confirmado',
+        totales: { ...bioPreview.resumen, importados: importables.length },
+        detalle: { regla_inferencia: 'sin tipo: primera marca del dia = entrada, ultima = salida; intermedias quedan como detalle' },
+        sobrescribio_duplicados: Boolean(bioOverwrite),
+      });
+      const guardados = [];
+      const supabase = await getSupabaseClient();
+      for (const row of importables) {
+        const trn = workerTurno(turnos, row.trabajador);
+        const calc = calcularResultadoAsistencia(row.hora_entrada, row.hora_salida, trn, false, false);
+        const registro = {
+          empresa_id: empresa?.id || 'emp_001',
+          trabajador_id: row.trabajador.id,
+          trabajador_tipo: row.trabajador.trabajador_tipo || 'operativo',
+          fecha: row.fecha,
+          turno_id: turnos.some(t => t.id === trn.id) ? trn.id : null,
+          hora_entrada: row.hora_entrada,
+          hora_salida: row.hora_salida,
+          horas_trabajadas_min: calc.horas_trabajadas_min,
+          tardanza_min: calc.tardanza_min || 0,
+          horas_extra_min: calc.horas_extra_min || 0,
+          estado: calc.estado,
+          es_falta: false,
+          justificada: false,
+          notas: `Importacion biometrica ${bioPreview.fileName}`,
+          regimen_jornada: 'general',
+          origen_registro: 'biometrico_importacion',
+          importacion_biometrica_lote_id: lote.id,
+          marcas_biometricas: row.marcas,
+        };
+        try {
+          const { data: fetchExistente } = await supabase.from('registros_asistencia')
+             .select('id')
+             .eq('trabajador_id', row.trabajador.id)
+             .eq('fecha', row.fecha)
+             .maybeSingle();
+
+          const targetId = fetchExistente?.id || row.existente?.id;
+          
+          if (targetId) {
+            if (bioOverwrite) {
+              const data = await rrhhService.actualizarAsistencia(targetId, registro);
+              guardados.push({ ...data, importacion_biometrica_lote_id: lote.id, marcas_biometricas: row.marcas });
+            }
+          } else {
+            const data = await rrhhService.registrarAsistencia(empresa?.id || 'emp_001', registro);
+            guardados.push({ ...data, importacion_biometrica_lote_id: lote.id, marcas_biometricas: row.marcas });
+          }
+        } catch (err) {
+          console.error("Error al registrar fila:", err);
+          guardados.push({ ...registro, id: `asis_bio_${Date.now()}_${row.trabajador.id}` });
+        }
+      }
+      const keys = new Set(guardados.map(r => `${r.trabajador_id}:${r.fecha}`));
+      setRegistrosAsistencia(prev => [...guardados, ...prev.filter(r => !keys.has(`${r.trabajador_id}:${r.fecha}`))]);
+      addNotificacion(`Importacion biometrica confirmada: ${guardados.length} registros.`);
+      setBioPreview(null);
+      setBioFile(null);
+      setBioPanel(false);
+    } catch (error) {
+      console.error('Error general en confirmarImportacionBio:', error);
+      addNotificacion(`Error en importación masiva: ${error.message || 'Desconocido'}`, 'error');
+    } finally {
+      setBioSaving(false);
     }
-    const keys = new Set(guardados.map(r => `${r.trabajador_id}:${r.fecha}`));
-    setRegistrosAsistencia(prev => [...guardados, ...prev.filter(r => !keys.has(`${r.trabajador_id}:${r.fecha}`))]);
-    addNotificacion(`Importacion biometrica confirmada: ${guardados.length} registros.`);
-    setBioPreview(null);
-    setBioFile(null);
-    setBioPanel(false);
   };
 
   const anularBio = async (lote) => {
@@ -14277,7 +14299,7 @@ function ControlAsistencia() {
 
       {tab === 'semanal' && <div className="card"><div className="card-head" style={{flexWrap:'wrap', gap:10}}><h3>Vista semanal (Régimen General)</h3><div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><div className="row" style={{background:'var(--bg-subtle)', borderRadius:8, padding:'2px 4px', border:'1px solid var(--border)'}}><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() - 7); return n.toISOString().split('T')[0]; })} title="Semana anterior">{I.chevronLeft}</button><span className="text-muted" style={{minWidth:200, textAlign:'center', fontSize:13, fontWeight:600}}>{semanaTexto}</span><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() + 7); return n.toISOString().split('T')[0]; })} title="Siguiente semana">{I.chevronRight}</button></div><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/><button type="button" className="btn btn-ghost btn-sm" onClick={() => setFecha(new Date().toISOString().split('T')[0])}>Hoy</button></div></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.slice(0,8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
 
-      {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head"><h3>Resumen mensual - {mesNombreCap}</h3></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Régimen/Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>
+      {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head" style={{flexWrap:'wrap', gap:10}}><div className="row" style={{gap:16, alignItems:'center'}}><h3>Resumen mensual - {mesNombreCap}</h3><input type="month" className="input" style={{width: 160}} value={currentMonth} onChange={e => { if (e.target.value) setFecha(e.target.value + '-01'); }} /></div></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Régimen/Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>
         {calculosAsistencia.slice(0,8).map(c => {
           const t = c.trabajador;
           const regs = registrosPeriodo.filter(r => r.trabajador_id === t.id);
@@ -14343,7 +14365,7 @@ function ControlAsistencia() {
 
       </div>}
 
-      {tab === 'resumen' && <div className="card" style={{padding:20}}><div className="card-head"><h3>Resumen por trabajador</h3><button className="btn btn-secondary btn-sm">{I.download} Exportar Excel</button></div>
+      {tab === 'resumen' && <div className="card" style={{padding:20}}><div className="card-head" style={{flexWrap:'wrap', gap:10}}><div className="row" style={{gap:16, alignItems:'center'}}><h3>Resumen por trabajador - {mesNombreCap}</h3><input type="month" className="input" style={{width: 160}} value={currentMonth} onChange={e => { if (e.target.value) setFecha(e.target.value + '-01'); }} /></div><button className="btn btn-secondary btn-sm">{I.download} Exportar Excel</button></div>
         <div className="input-group" style={{maxWidth:300, marginBottom:20}}><label>Seleccionar Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div>
         {!resumenTrabajador ? <div style={{padding:24, textAlign:'center', color:'var(--fg-muted)'}}>Sin trabajadores registrados.</div> :
         (() => {
@@ -14749,7 +14771,7 @@ function ControlAsistencia() {
                 <div className="table-wrap" style={{maxHeight:320, overflow:'auto'}}><table className="tbl"><thead><tr><th>Trabajador/ID</th><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>
                   {[...bioPreview.ready, ...bioPreview.duplicates, ...bioPreview.unresolved, ...bioPreview.errors, ...bioPreview.blocked].slice(0, 40).map((r, idx)=><tr key={r.id || idx}><td><strong>{r.trabajador?.nombre || r.identificador || '-'}</strong></td><td>{r.fecha || '-'}</td><td>{r.hora_entrada || r.hora || '-'}</td><td>{r.hora_salida || '-'}</td><td><span className={'badge '+(r.clasificacion === 'listo' ? 'badge-green' : r.clasificacion === 'duplicado' ? 'badge-orange' : 'badge-red')}>{r.clasificacion}</span></td><td style={{fontSize:12}}>{r.motivo ? (BIO_MOTIVO_LABELS[r.motivo] || r.motivo) : '-'}</td></tr>)}
                 </tbody></table></div>
-                <div className="row" style={{justifyContent:'flex-end', marginTop:12}}><button className="btn btn-primary" onClick={confirmarImportacionBio}>Confirmar importacion</button></div>
+                <div className="row" style={{justifyContent:'flex-end', marginTop:12}}><button className="btn btn-primary" onClick={confirmarImportacionBio} disabled={bioSaving}>{bioSaving ? 'Importando...' : 'Confirmar importacion'}</button></div>
               </div>}
             </div>
             <form className="card" style={{padding:16}} onSubmit={guardarPerfilBio}>

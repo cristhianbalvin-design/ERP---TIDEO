@@ -3551,6 +3551,8 @@ function Maestros() {
   } = useApp();
   const { centrosCosto, centrosBeneficio } = useApp();
   const [sel, setSel] = useState(null);
+  const [checkedIds, setCheckedIds] = useState([]);
+  useEffect(() => { setCheckedIds([]); }, [sel]);
   const [showCecoCebe, setShowCecoCebe] = useState(false);
   const [showRequisitos, setShowRequisitos] = useState(false);
   const [showTiposDocumento, setShowTiposDocumento] = useState(false);
@@ -3913,8 +3915,8 @@ function Maestros() {
     scrollToForm();
   };
 
-  const eliminarRegistro = async (r) => {
-    if (!sel || !window.confirm(`Eliminar "${r.nombre}"? Esta accion se reflejara en la base de datos.`)) return;
+  const eliminarRegistro = async (r, silent = false) => {
+    if (!silent && (!sel || !window.confirm(`Eliminar "${r.nombre}"? Esta accion se reflejara en la base de datos.`))) return;
     try {
       if (sel.id === 'mst_cargos') await eliminarCargo(r.id);
       else if (sel.id === 'mst_areas') await eliminarArea(r.id);
@@ -3927,17 +3929,38 @@ function Maestros() {
       else if (sel.id === 'mst_tipos_documento') {
         await actualizarTipoDocumento(r.id, { estado: 'inactivo' });
         if (editandoId === r.id) resetForm();
-        addNotificacion?.(`Tipo de documento desactivado.`);
+        if (!silent) addNotificacion?.(`Tipo de documento desactivado.`);
         return;
       }
       else return;
       if (editandoId === r.id) resetForm();
-      addNotificacion?.(`${sel.tabla}: registro eliminado.`);
+      if (!silent) addNotificacion?.(`${sel.tabla}: registro eliminado.`);
     } catch (err) {
       const msg = err?.message || 'No se pudo eliminar el registro.';
       setFormError(msg);
-      addNotificacion?.(`No se pudo eliminar el registro: ${msg}`);
+      if (!silent) addNotificacion?.(`No se pudo eliminar el registro: ${msg}`);
+      throw err;
     }
+  };
+
+  const eliminarSeleccionados = async () => {
+    if (!window.confirm(`¿Eliminar los ${checkedIds.length} registros seleccionados? Esta acción se reflejará en la base de datos.`)) return;
+    setFormSaving(true);
+    let eliminados = 0;
+    for (const id of checkedIds) {
+      try {
+        const r = selectedRows.find(x => x.id === id);
+        if (r) {
+          await eliminarRegistro(r, true);
+          eliminados++;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setCheckedIds([]);
+    setFormSaving(false);
+    if (eliminados > 0) addNotificacion?.(`Se eliminaron ${eliminados} registros correctamente.`);
   };
 
   const RowActions = ({ item }) => (
@@ -4190,9 +4213,10 @@ function Maestros() {
     }
     if (sel?.id === 'mst_areas') return (
       <table className="tbl">
-        <thead><tr><th>Codigo</th><th>Area</th><th>Tipo</th><th>Responsable</th><th>Descripcion</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Codigo</th><th>Area</th><th>Tipo</th><th>Responsable</th><th>Descripcion</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r,i) => (
           <tr key={`${r.codigo}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
+            <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
             <td className="mono text-muted">{r.codigo}</td>
             <td><strong>{r.nombre}</strong></td>
             <td><span className={'badge '+(r.tipo==='Operativa'?'badge-cyan':r.tipo==='Administrativa'?'badge-gray':'badge-purple')} style={{fontSize:11}}>{r.tipo || 'Ambos'}</span></td>
@@ -4254,9 +4278,10 @@ function Maestros() {
           </div>
         )}
         <table className="tbl">
-          <thead><tr><th>Código</th><th>Cargo</th><th>Tipo</th><th>Colaboradores</th><th>Descripción</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+          <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Código</th><th>Cargo</th><th>Tipo</th><th>Colaboradores</th><th>Descripción</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
           <tbody>{selectedRows.map((r,i) => (
             <tr key={`${r.codigo}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
+              <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
               <td className="mono text-muted">{r.codigo}</td>
               <td><strong>{r.nombre}</strong></td>
               <td><span className={'badge '+(r.tipo==='Operativo'?'badge-cyan':r.tipo==='Ambos'?'badge-purple':'badge-gray')} style={{fontSize:11}}>{r.tipo||'—'}</span></td>
@@ -4274,9 +4299,10 @@ function Maestros() {
     }
     if (sel?.id === 'mst_especialidades') return (
       <table className="tbl">
-        <thead><tr><th>Código</th><th>Especialidad</th><th>Área</th><th>Certif.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Código</th><th>Especialidad</th><th>Área</th><th>Certif.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r,i) => (
           <tr key={`${r.codigo}-${i}`}>
+            <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
             <td className="mono">{r.codigo}</td>
             <td><strong>{r.nombre}</strong></td>
             <td className="text-muted">{r.area}</td>
@@ -4289,9 +4315,10 @@ function Maestros() {
     );
     if (sel?.id === 'mst_tipos_servicio') return (
       <table className="tbl">
-        <thead><tr><th>Código</th><th>Nombre</th><th>Clasificación</th><th>Facturable</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Código</th><th>Nombre</th><th>Clasificación</th><th>Facturable</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r,i) => (
           <tr key={`${r.codigo}-${i}`}>
+            <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
             <td className="mono">{r.codigo}</td>
             <td><strong>{r.nombre}</strong></td>
             <td><span className="badge badge-cyan" style={{fontSize:11}}>{r.clasificacion}</span></td>
@@ -4304,9 +4331,10 @@ function Maestros() {
     );
     if (sel?.id === 'mst_almacenes') return (
       <table className="tbl">
-        <thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Responsable</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Código</th><th>Nombre</th><th>Tipo</th><th>Responsable</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r,i) => (
           <tr key={`${r.codigo}-${i}`}>
+            <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
             <td className="mono">{r.codigo}</td>
             <td><strong>{r.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{r.direccion}</div></td>
             <td><span className="badge badge-purple" style={{fontSize:11}}>{r.tipo}</span></td>
@@ -4319,9 +4347,10 @@ function Maestros() {
     );
     if (sel?.id === 'mst_sedes') return (
       <table className="tbl">
-        <thead><tr><th>Código</th><th>Nombre</th><th>Dirección física</th><th>GPS</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Código</th><th>Nombre</th><th>Dirección física</th><th>GPS</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r,i) => (
           <tr key={`${r.codigo}-${i}`}>
+            <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
             <td className="mono text-muted">{r.codigo}</td>
             <td><strong>{r.nombre}</strong></td>
             <td className="text-muted" style={{fontSize:12}}>{r.direccion || '—'}</td>
@@ -4334,9 +4363,10 @@ function Maestros() {
     );
     if (sel?.id === 'mst_impuestos') return (
       <table className="tbl">
-        <thead><tr><th>Tipo</th><th>Codigo</th><th>Valor</th><th>Detalle</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Tipo</th><th>Codigo</th><th>Valor</th><th>Detalle</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r,i) => (
           <tr key={`${r.codigo}-${i}`}>
+            <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
             <td><span className="badge badge-cyan">{r.tipo}</span></td>
             <td className="mono">{r.codigo}</td>
             <td><strong>{r.nombre}</strong></td>
@@ -4350,9 +4380,10 @@ function Maestros() {
     if (sel?.id === 'mst_requisitos_cargo') return null;
     return (
       <table className="tbl">
-        <thead><tr><th>Codigo</th><th>Valor</th><th>Detalle</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Codigo</th><th>Valor</th><th>Detalle</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r, i) => (
           <tr key={`${r.codigo}-${i}`}>
+            <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
             <td className="mono">{r.codigo}</td>
             <td><strong>{r.nombre}</strong></td>
             <td className="text-muted">{r.detalle}</td>
@@ -4501,6 +4532,11 @@ function Maestros() {
           <div className="side-panel-body">
             {sel.id !== 'mst_clientes' && sel.id !== 'mst_proveedores' && sel.id !== 'mst_requisitos_cargo' && (
               <div className="row" style={{gap:10, marginBottom:18, flexWrap:'wrap'}}>
+                {checkedIds.length > 0 && (
+                  <button className="btn" style={{backgroundColor: 'var(--danger)', color: '#fff', borderColor: 'var(--danger)'}} onClick={eliminarSeleccionados}>
+                    {I.trash} Eliminar seleccionados ({checkedIds.length})
+                  </button>
+                )}
                 <button className="btn btn-secondary" onClick={() => { setImportRows([]); setImportStep(1); setImportModal(true); }}>{I.download} Importar Excel</button>
                 <button className="btn btn-secondary" onClick={exportarMaestro}>{I.download} Exportar</button>
                 {sel.id === 'mst_tipos_documento' && (
