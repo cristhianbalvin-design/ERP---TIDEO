@@ -1,6 +1,6 @@
 # ERP Modular Estándar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado — TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS · Última actualización: 19/06/2026
+### Arquitectura Multitenant SaaS · Última actualización: 24/06/2026
 
 ---
 
@@ -23,7 +23,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 
 ---
 
-## 3. Estado de desarrollo — 19/06/2026
+## 3. Estado de desarrollo — 24/06/2026
 
 ### 3.1 Resumen de progreso
 
@@ -35,8 +35,8 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
 | Migraciones SQL registradas en el repositorio | 270 archivos SQL locales, hasta `268_fix_liquidaciones_cxp_id_type.sql` |
 | Migración local más reciente | `268_fix_liquidaciones_cxp_id_type.sql`: fix en tipo de id de cuenta por pagar para liquidaciones por cese, tras una serie de migraciones de contratos, periodos de documentos y bloqueos de portal. |
-| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior: 249–268 (sincronización área y contrato primigenio, reglas predecesor/sucesor, limpieza y consolidación de tipos de documento, periodos documentales y bloqueos de portal/ceses). |
-| Bugs/ajustes corregidos en sesiones 17–19/06/2026 | **Hardening y fix de persistencia:** Correcciones de ID type en CxP de liquidaciones; **Motor de Contratos:** Integración de predecesores/sucesores, sincronización de área con contrato primigenio; **Documentos:** soporte para caducidad/periodos, consolidación/limpieza de backfill y formatos (pdf/imagen); **Seguridad:** candados en primer contrato de portal y triggers de bloqueo en ceses. |
+| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior: 269–277 (maestro tipos contrato, supervisor huérfano, turnos detalle días, reclutamiento anónimo, turnos HE). |
+| Bugs/ajustes corregidos en sesiones 20–24/06/2026 | **Hardening y fix de persistencia:** Corrección de supervisor huérfano; **Maestros:** Migración de tipos de contrato a base de datos con interfaz UI; **Turnos:** Detalle de días laborables, selector autoservicio y autorizaciones HE; **Seguridad:** RLS para postulaciones anónimas y self-read de email. |
 
 ### 3.2 Inventario completo de módulos
 
@@ -1549,7 +1549,7 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 **IA:** ia_logs.
 
-**Maestros:** servicios, familias_servicios, tarifarios, materiales (+codigo_barras, grupo_id, familia_id, subfamilia_id, nro_parte, unidades_contenidas, almacen_id, ubicacion, observacion, precio_unitario), material_grupos, material_familias, material_subfamilias, especialidades_tecnicas, tipos_servicio_interno, almacenes/almacenes_depositos (según módulo), centros_costo, centros_beneficio, sedes, industrias, proyectos, monedas_impuestos_unidades, empresa_config (+agente_retencion).
+**Maestros:** servicios, familias_servicios, tarifarios, materiales (+codigo_barras, grupo_id, familia_id, subfamilia_id, nro_parte, unidades_contenidas, almacen_id, ubicacion, observacion, precio_unitario), material_grupos, material_familias, material_subfamilias, especialidades_tecnicas, tipos_servicio_interno, tipos_contrato, almacenes/almacenes_depositos (según módulo), centros_costo, centros_beneficio, sedes, industrias, proyectos, monedas_impuestos_unidades, empresa_config (+agente_retencion).
 
 ### 9.4 Infraestructura de Storage
 
@@ -1729,6 +1729,7 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 - ERP personalizado para rubros específicos (producto separado de TIDEO).
 
 ---
+| 24/06/2026 | **Auditoría técnica Documento Maestro vs repositorio (Corte 24/06):** Revisión del repositorio posterior a múltiples sesiones de consolidación. Actualización del corte a 277 migraciones locales hasta 277_maestro_tipos_contrato.sql. Se identificaron nuevas implementaciones: Maestro de tipos de contrato migrado a base de datos y UI (Configuración > Maestros Base), mejoras en módulo de Turnos (autorizaciones HE, detalle de días, selector autoservicio), y correcciones de seguridad RLS (postulaciones anónimas, self-read emails). Se actualizaron los GAPS, el resumen de progreso y el historial de sesiones. |
 | 19/06/2026 | **Auditoría técnica Documento Maestro vs repositorio (Corte 19/06):** Revisión del repositorio posterior a múltiples sesiones de consolidación. Actualización del corte a 270 migraciones locales hasta `268_fix_liquidaciones_cxp_id_type.sql`. Se identificaron nuevas implementaciones en código no documentadas previamente: Motor de Predecesor/Sucesor para contratos, Contrato Primigenio, Periodos y caducidad de documentos, Consolidación y candados de formatos de tipos de documento, y bloqueos de cese/portal. Se actualizaron los GAPS, el resumen de progreso y el historial de sesiones. |
 | 16/06/2026 | **Auditoría técnica Documento Maestro vs repositorio (Corte 16/06):** Revisión del repositorio posterior a múltiples sesiones. Actualización del corte a 253 migraciones locales hasta `248_versioning_contrato_periodos.sql`. Se identificaron nuevas implementaciones en código no documentadas: Carga Masiva de Personal (Operativo y Administrativo) por Excel, soporte de Motor de Adendas en fichas RRHH (`advAdendaManual`), lógicas base de tránsitos OC/GRNI, y **corrección en persistencia de visualización** de documentos subidos pendientes de validación (`personalDocumentosService.js`). Se actualizaron los GAPS, el resumen de progreso y la sección de RRHH del inventario de módulos. |
 | 14/06/2026 | **Auditoría técnica Documento Maestro vs repositorio:** revisión cruzada de `src/pages_*.jsx`, `src/context.jsx`, `src/services/*.js` y `supabase/migrations`. Se actualiza el corte a 242 migraciones locales hasta `237_ola5b_geo_sar.sql`, 74 ítems activos de sidebar/ruta, estructura real de archivos, GAPS categorizados y modelo de datos. Se corrigen inconsistencias: `Leads` ya tiene razón social/RUC/industria; SSOMA y `BarcodeScanner` ya existen en PWA; sidebar documental omitía `mi_portal`, `reclutamiento`, `compras_gastos`, `activos_fijos` y `organigrama`. |
