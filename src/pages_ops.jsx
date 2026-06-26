@@ -16086,11 +16086,22 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
       const parseDate = (val) => {
         if (!val) return null;
         if (typeof val === 'number') {
-           const d = new Date((val - (25567 + 2)) * 86400 * 1000);
-           return d.toISOString().slice(0, 10);
+          const d = new Date((val - 25569) * 86400 * 1000);
+          if (isNaN(d.getTime())) return null;
+          return d.toISOString().split('T')[0];
         }
-        const parts = val.split('/');
-        if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        if (typeof val === 'string') {
+          const str = val.trim();
+          const d = new Date(str);
+          if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+          if (str.includes('/')) {
+            const parts = str.split('/');
+            if (parts.length === 3) {
+              const d2 = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+              if (!isNaN(d2.getTime())) return d2.toISOString().split('T')[0];
+            }
+          }
+        }
         return null;
       };
 
