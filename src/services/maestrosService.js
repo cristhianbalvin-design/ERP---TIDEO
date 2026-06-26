@@ -25,7 +25,8 @@ export const maestrosService = {
     const payload = {
       id: area.id || makeId('area'),
       empresa_id: empresaId,
-      ...pick(area, ['codigo', 'nombre', 'tipo', 'responsable', 'detalle', 'estado']),
+      codigo: area.codigo || `AREA-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      ...pick(area, ['nombre', 'tipo', 'responsable', 'detalle', 'estado']),
     };
     const { data, error } = await supabase.from('areas_empresa').insert([payload]).select().single();
     if (error) throw error;
@@ -56,7 +57,8 @@ export const maestrosService = {
     const payload = {
       id: cargo.id || makeId('car'),
       empresa_id: empresaId,
-      ...pick(cargo, ['codigo', 'nombre', 'tipo', 'detalle', 'estado']),
+      codigo: cargo.codigo || `CAR-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      ...pick(cargo, ['nombre', 'tipo', 'detalle', 'estado']),
     };
     const { data, error } = await supabase.from('cargos_empresa').insert([payload]).select().single();
     if (error) throw error;
@@ -95,7 +97,8 @@ export const maestrosService = {
     const payload = {
       id: especialidad.id || makeId('esp'),
       empresa_id: empresaId,
-      ...pick(especialidad, ['codigo', 'nombre', 'area', 'requiere_cert', 'estado']),
+      codigo: especialidad.codigo || `ESP-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      ...pick(especialidad, ['nombre', 'area', 'requiere_cert', 'estado']),
     };
     const { data, error } = await supabase.from('especialidades_tecnicas').insert([payload]).select().single();
     if (error) throw error;
@@ -126,7 +129,8 @@ export const maestrosService = {
     const payload = {
       id: tipoServicio.id || makeId('tsi'),
       empresa_id: empresaId,
-      ...pick(tipoServicio, ['codigo', 'nombre', 'clasificacion', 'facturable', 'estado']),
+      codigo: tipoServicio.codigo || `TSI-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      ...pick(tipoServicio, ['nombre', 'clasificacion', 'facturable', 'estado']),
     };
     const { data, error } = await supabase.from('tipos_servicio_interno').insert([payload]).select().single();
     if (error) throw error;
@@ -157,7 +161,8 @@ export const maestrosService = {
     const payload = {
       id: almacen.id || makeId('alm'),
       empresa_id: empresaId,
-      ...pick(almacen, ['codigo', 'nombre', 'tipo', 'responsable', 'direccion', 'estado']),
+      codigo: almacen.codigo || `ALM-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      ...pick(almacen, ['nombre', 'tipo', 'responsable', 'direccion', 'estado']),
     };
     const { data, error } = await supabase.from('almacenes').insert([payload]).select().single();
     if (error) throw error;
@@ -188,7 +193,8 @@ export const maestrosService = {
     const payload = {
       id: sede.id || makeId('sed'),
       empresa_id: empresaId,
-      ...pick(sede, ['codigo', 'nombre', 'direccion', 'gps', 'estado']),
+      codigo: sede.codigo || `SED-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      ...pick(sede, ['nombre', 'direccion', 'gps', 'estado']),
     };
     const { data, error } = await supabase.from('sedes').insert([payload]).select().single();
     if (error) throw error;
@@ -219,7 +225,8 @@ export const maestrosService = {
     const payload = {
       id: industria.id || makeId('ind'),
       empresa_id: empresaId,
-      ...pick(industria, ['codigo', 'nombre', 'categoria', 'estado']),
+      codigo: industria.codigo || `IND-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      ...pick(industria, ['nombre', 'categoria', 'estado']),
     };
     const { data, error } = await supabase.from('industrias').insert([payload]).select().single();
     if (error) throw error;
