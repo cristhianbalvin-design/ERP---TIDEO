@@ -16092,8 +16092,10 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
         }
         if (typeof val === 'string') {
           const str = val.trim();
-          const d = new Date(str);
-          if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+          if (/^\d+(\.\d+)?$/.test(str) && Number(str) > 10000) {
+            const d = new Date((Number(str) - 25569) * 86400 * 1000);
+            if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+          }
           if (str.includes('/')) {
             const parts = str.split('/');
             if (parts.length === 3) {
@@ -16101,6 +16103,8 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
               if (!isNaN(d2.getTime())) return d2.toISOString().split('T')[0];
             }
           }
+          const d = new Date(str);
+          if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
         }
         return null;
       };

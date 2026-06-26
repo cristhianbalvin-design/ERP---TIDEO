@@ -1,8 +1,20 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execSync } from 'node:child_process';
+
+function getCommitMessage() {
+  try {
+    return execSync('git log -1 --pretty=%s').toString().trim();
+  } catch {
+    return '';
+  }
+}
 
 export default defineConfig({
+  define: {
+    __COMMIT_MSG__: JSON.stringify(getCommitMessage()),
+  },
   plugins: [
     react(),
     VitePWA({
