@@ -7527,7 +7527,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
               <strong>{rows.length} filas leídas</strong> · {rows.filter(r => r._errores.length === 0).length} válidas · {rows.filter(r => r._errores.length > 0).length} con errores
             </p>
             
-            <div className="table-responsive" style={{maxHeight: 400, marginBottom: 16}}>
+            <div className="table-responsive" style={{maxHeight: 400, overflowY: 'auto', marginBottom: 16}}>
               <table className="table">
                 <thead>
                   <tr>
@@ -9089,7 +9089,7 @@ function RRHHAdmin() {
                                     </div>
                                     <div style={{fontSize:12, color:'var(--fg-muted)'}}>{dvResumen}</div>
                                     {dv.fecha_vigencia_cambio && (
-                                      <div style={{fontSize:11, marginTop:3, color: dvVigenciaFutura ? 'var(--orange)' : 'var(--fg-muted)', padding: dvVigenciaFutura ? '4px 8px' : 0, background: dvVigenciaFutura ? 'rgba(255,160,0,0.1)' : 'transparent', borderRadius: dvVigenciaFutura ? 4 : 0, marginTop:4}}>
+                                      <div style={{fontSize:11, color: dvVigenciaFutura ? 'var(--orange)' : 'var(--fg-muted)', padding: dvVigenciaFutura ? '4px 8px' : 0, background: dvVigenciaFutura ? 'rgba(255,160,0,0.1)' : 'transparent', borderRadius: dvVigenciaFutura ? 4 : 0, marginTop:4}}>
                                         {dvVigenciaFutura
                                           ? `Esta adenda entra en vigor el ${dv.fecha_vigencia_cambio}. Recuerda actualizar la ficha en esa fecha.`
                                           : `Vigente desde: ${dv.fecha_vigencia_cambio}`}
