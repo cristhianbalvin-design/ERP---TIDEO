@@ -7340,6 +7340,32 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
     const validas = rows.filter(r => r._errores.length === 0);
     let exitosos = 0;
     
+    const parseExcelDate = (val) => {
+      if (!val) return null;
+      if (typeof val === 'number') {
+        const d = new Date((val - 25569) * 86400 * 1000);
+        if (isNaN(d.getTime())) return null;
+        return d.toISOString().split('T')[0];
+      }
+      if (typeof val === 'string') {
+        const str = val.trim();
+        if (/^\d+(\.\d+)?$/.test(str) && Number(str) > 10000) {
+          const d = new Date((Number(str) - 25569) * 86400 * 1000);
+          if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+        }
+        if (str.includes('/')) {
+          const parts = str.split('/');
+          if (parts.length === 3) {
+            const d2 = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+            if (!isNaN(d2.getTime())) return d2.toISOString().split('T')[0];
+          }
+        }
+        const d = new Date(str);
+        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+      }
+      return null;
+    };
+    
     for (const r of validas) {
       const modContrato = normalizar(r['Modalidad de contrato']);
       const tipoContratoRaw = normalizar(r['Tipo de contrato']);
@@ -7349,7 +7375,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
         id: `per_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         nombre: r['Nombres y apellidos'],
         dni: String(r['DNI']).trim(),
-        fecha_nacimiento: r['Fecha de nacimiento'] ? new Date((r['Fecha de nacimiento'] - (25567 + 2)) * 86400 * 1000).toISOString().split('T')[0] : '', // Excel date conversion if numeric, else keep as is if string. Better: assumes string YYYY-MM-DD for now.
+        fecha_nacimiento: parseExcelDate(r['Fecha de nacimiento']),
         telefono: String(r['Teléfono / celular'] || '').trim(),
         email: String(r['Email corporativo'] || '').trim(),
         email_personal: String(r['Correo personal'] || '').trim() || null,
@@ -7374,7 +7400,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
         dias_vacaciones_usados: 0,
         dias_vacaciones_disponibles: 30,
         estado: 'activo',
-        fecha_ingreso: r['Fecha de ingreso'],
+        fecha_ingreso: parseExcelDate(r['Fecha de ingreso']),
         contacto_emergencia: '', relacion_emergencia: '', telefono_emergencia: '',
         documentos: [],
         auth_user_id: null,
@@ -7387,7 +7413,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
         sistema_pensionario: modContrato === 'planilla' ? (normalizar(r['Sistema pensionario']) === 'onp' ? 'ONP' : 'AFP') : null,
         retencion_ir: modContrato === 'honorarios' ? Number(r['Retención IR'] || empresaConfig?.pct_retencion_ir_honorarios || 8) : null,
         suspension_retenciones: modContrato === 'honorarios' ? normalizar(r['Suspensión de retenciones']) === 'si' : false,
-        vencimiento_suspension: modContrato === 'honorarios' && normalizar(r['Suspensión de retenciones']) === 'si' ? r['Fecha vencimiento suspensión'] : null,
+        vencimiento_suspension: modContrato === 'honorarios' && normalizar(r['Suspensión de retenciones']) === 'si' ? parseExcelDate(r['Fecha vencimiento suspensión']) : null,
         afp_nombre: modContrato === 'planilla' && normalizar(r['Sistema pensionario']) !== 'onp' ? (r['AFP nombre'] || 'Integra') : null,
         tiene_hijos: modContrato === 'planilla' ? normalizar(r['Tiene hijos']) === 'si' : false,
         cargo_confianza: modContrato === 'planilla' ? normalizar(r['Cargo de confianza']) === 'si' : false,
@@ -7396,7 +7422,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
         regimen_laboral: 'general',
         regimen_jornada: modContrato === 'planilla' ? (r['Régimen de jornada'] || 'general') : 'general',
         horas_diarias_pactadas: Number(r['Horas diarias pactadas'] || 8),
-        fecha_inicio_ciclo: r['Régimen de jornada'] === 'ciclo_acumulativo' ? r['Fecha inicio ciclo'] : null,
+        fecha_inicio_ciclo: r['Régimen de jornada'] === 'ciclo_acumulativo' ? parseExcelDate(r['Fecha inicio ciclo']) : null,
         dias_ciclo_trabajo: r['Régimen de jornada'] === 'ciclo_acumulativo' ? Number(r['Días ciclo trabajo'] || 0) : null,
         dias_ciclo_descanso: r['Régimen de jornada'] === 'ciclo_acumulativo' ? Number(r['Días ciclo descanso'] || 0) : null,
         bonif_altitud: Number(r['Bonificación por altitud'] || 0),
