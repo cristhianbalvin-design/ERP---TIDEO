@@ -15949,7 +15949,7 @@ const rrhhContratoResumen = (doc = {}, docPrevio = null, tiposDocumento = []) =>
   return doc.notas || 'Documento contractual';
 };
 
-function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, especialidadesOptions, sedesOptions, cecosActivos, empresaConfig, crearTecnicoCtx, addNotificacion }) {
+function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, especialidadesOptions, sedesOptions, cecosActivos, empresaConfig, crearTecnicoCtx, addNotificacion, personalOperativo = [] }) {
   const [archivo, setArchivo] = useState(null);
   const [procesando, setProcesando] = useState(false);
   const [resultados, setResultados] = useState(null);
@@ -16096,11 +16096,14 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
             const d = new Date((Number(str) - 25569) * 86400 * 1000);
             if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
           }
-          if (str.includes('/')) {
-            const parts = str.split('/');
-            if (parts.length === 3) {
-              const d2 = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-              if (!isNaN(d2.getTime())) return d2.toISOString().split('T')[0];
+          const m = str.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})$/);
+          if (m) {
+            if (m[1].length === 4) {
+              const d = new Date(`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`);
+              if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+            } else if (m[3].length === 4) {
+              const d = new Date(`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`);
+              if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
             }
           }
           const d = new Date(str);
@@ -16122,6 +16125,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
         if (!nombre) errs.push('Nombre obligatorio');
         
         const dni = getVal(row, COLUMNAS[1]);
+        if (personalOperativo.some(p => String(p.dni).trim() === dni)) continue;
         if (!dni || dni.length < 8) errs.push('DNI/Doc inválido (min 8 caracteres)');
 
         const codigo = getVal(row, COLUMNAS[7]);
@@ -16148,7 +16152,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
         const turnoObj = turnosOptions.find(t => t.nombre.toLowerCase() === turnoNombre.toLowerCase());
         if (!turnoObj && modalidad !== 'honorarios') errs.push('Turno obligatorio para planilla y no encontrado');
 
-        const regimen = getVal(row, COLUMNAS[19]) || 'general';
+        const regimen = getVal(row, COLUMNAS[19]).toLowerCase() || 'general';
         const fechaInicioCiclo = parseDate(getVal(row, COLUMNAS[21]));
         if (regimen.startsWith('minero') && !fechaInicioCiclo) errs.push('Fecha inicio ciclo es obligatoria para régimen minero');
 
@@ -18509,7 +18513,7 @@ function RRHH_Operativo() {
     <>
       {showRequisitosRRHH && <RequisitosPorCargo onClose={() => setShowRequisitosRRHH(false)} onGoToTiposDoc={() => { setShowRequisitosRRHH(false); setShowTiposDocumentoRRHH(true); }} />}
       {showTiposDocumentoRRHH && <TiposDocumentoPanel onClose={() => setShowTiposDocumentoRRHH(false)} onGoToRequisitos={() => { setShowTiposDocumentoRRHH(false); setShowRequisitosRRHH(true); }} />}
-      {showCargaMasivaOp && <CargaMasivaOpPanel onClose={() => setShowCargaMasivaOp(false)} turnosOptions={turnosOptions} cargosOperativosOptions={cargosOperativosOptions} especialidadesOptions={especialidadesOptions} sedesOptions={sedesOptions} cecosActivos={cecosActivos} empresaConfig={empresaConfig} crearTecnicoCtx={crearTecnicoCtx} addNotificacion={addNotificacion} />}
+      {showCargaMasivaOp && <CargaMasivaOpPanel onClose={() => setShowCargaMasivaOp(false)} turnosOptions={turnosOptions} cargosOperativosOptions={cargosOperativosOptions} especialidadesOptions={especialidadesOptions} sedesOptions={sedesOptions} cecosActivos={cecosActivos} empresaConfig={empresaConfig} crearTecnicoCtx={crearTecnicoCtx} addNotificacion={addNotificacion} personalOperativo={personalOperativo} />}
 
       <div className="page-header">
         <div><h1 className="page-title">RRHH Operativo</h1><div className="page-sub">{operativosActivos} técnicos activos</div></div>

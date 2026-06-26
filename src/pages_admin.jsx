@@ -7237,7 +7237,7 @@ const rrhhAdminContratoResumen = (doc = {}, docPrevio = null, tiposDocumento = [
   return doc.notas || 'Documento contractual';
 };
 
-function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, areasOptions, sedesOptions, cecosActivos, empresaConfig, crearAdminPersonalCtx, addNotificacion }) {
+function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, areasOptions, sedesOptions, cecosActivos, empresaConfig, crearAdminPersonalCtx, addNotificacion, personalAdmin = [] }) {
   const [step, setStep] = React.useState(1);
   const [rows, setRows] = React.useState([]);
   const [procesando, setProcesando] = React.useState(false);
@@ -7353,11 +7353,14 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
           const d = new Date((Number(str) - 25569) * 86400 * 1000);
           if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
         }
-        if (str.includes('/')) {
-          const parts = str.split('/');
-          if (parts.length === 3) {
-            const d2 = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-            if (!isNaN(d2.getTime())) return d2.toISOString().split('T')[0];
+        const m = str.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})$/);
+        if (m) {
+          if (m[1].length === 4) {
+            const d = new Date(`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`);
+            if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+          } else if (m[3].length === 4) {
+            const d = new Date(`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`);
+            if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
           }
         }
         const d = new Date(str);
@@ -7367,6 +7370,12 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
     };
     
     for (const r of validas) {
+      const dniVal = String(r['DNI']).trim();
+      const existe = personalAdmin.some(p => p.dni === dniVal);
+      if (existe) {
+        continue;
+      }
+      
       const modContrato = normalizar(r['Modalidad de contrato']);
       const tipoContratoRaw = normalizar(r['Tipo de contrato']);
       const modTrabajo = normalizar(r['Modalidad de trabajo']) || 'presencial';
@@ -7390,7 +7399,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
         modalidad_contrato: modContrato === 'honorarios' ? 'honorarios' : 'planilla',
         tipo_contrato: tipoContratoRaw === 'indefinido' ? 'Indefinido' : (tipoContratoRaw === 'por_obra' ? 'Por obra o servicio' : 'Plazo fijo'),
         remuneracion: Number(r['Sueldo base / Honorario pactado']) || 0,
-        moneda: r['Moneda'] || 'PEN',
+        moneda: normalizar(r['Moneda']) === 'usd' ? 'USD' : 'PEN',
         metodo_pago: normalizar(r['Método de pago']) === 'por_horas' ? 'por_horas' : 'mensual',
         monto_mensual: Number(r['Sueldo base / Honorario pactado']) || 0,
         horas_base_mes: Number(r['Horas base mes']) || 0,
@@ -7420,11 +7429,11 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
         cuota_prestamo_mes: modContrato === 'planilla' ? Number(r['Cuota préstamo mes'] || 0) : 0,
         descuento_judicial: modContrato === 'planilla' ? Number(r['Descuento judicial'] || 0) : 0,
         regimen_laboral: 'general',
-        regimen_jornada: modContrato === 'planilla' ? (r['Régimen de jornada'] || 'general') : 'general',
+        regimen_jornada: modContrato === 'planilla' ? (normalizar(r['Régimen de jornada']) === 'ciclo_acumulativo' ? 'ciclo_acumulativo' : 'general') : 'general',
         horas_diarias_pactadas: Number(r['Horas diarias pactadas'] || 8),
-        fecha_inicio_ciclo: r['Régimen de jornada'] === 'ciclo_acumulativo' ? parseExcelDate(r['Fecha inicio ciclo']) : null,
-        dias_ciclo_trabajo: r['Régimen de jornada'] === 'ciclo_acumulativo' ? Number(r['Días ciclo trabajo'] || 0) : null,
-        dias_ciclo_descanso: r['Régimen de jornada'] === 'ciclo_acumulativo' ? Number(r['Días ciclo descanso'] || 0) : null,
+        fecha_inicio_ciclo: normalizar(r['Régimen de jornada']) === 'ciclo_acumulativo' ? parseExcelDate(r['Fecha inicio ciclo']) : null,
+        dias_ciclo_trabajo: normalizar(r['Régimen de jornada']) === 'ciclo_acumulativo' ? Number(r['Días ciclo trabajo'] || 0) : null,
+        dias_ciclo_descanso: normalizar(r['Régimen de jornada']) === 'ciclo_acumulativo' ? Number(r['Días ciclo descanso'] || 0) : null,
         bonif_altitud: Number(r['Bonificación por altitud'] || 0),
         tipo_comision_afp: normalizar(r['Tipo comisión AFP']) === 'flujo' ? 'flujo' : 'mixta',
         pct_comision_afp_flujo: Number(r['Porcentaje comisión AFP flujo'] || 0),
@@ -9958,7 +9967,7 @@ function RRHHAdmin() {
 
       {showRequisitosRRHH && <RequisitosPorCargo onClose={() => setShowRequisitosRRHH(false)} onGoToTiposDoc={() => { setShowRequisitosRRHH(false); setShowTiposDocumentoRRHH(true); }} />}
       {showTiposDocumentoRRHH && <TiposDocumentoPanel onClose={() => setShowTiposDocumentoRRHH(false)} onGoToRequisitos={() => { setShowTiposDocumentoRRHH(false); setShowRequisitosRRHH(true); }} />}
-      {showCargaMasivaAdmin && <CargaMasivaAdminPanel onClose={() => setShowCargaMasivaAdmin(false)} turnosOptions={turnosOptions} cargosAdminOptions={cargosAdminOptions} areasOptions={areasOptions} sedesOptions={sedesOptions} cecosActivos={cecosActivos} empresaConfig={empresaConfig} crearAdminPersonalCtx={crearAdminPersonalCtx} addNotificacion={addNotificacion} />}
+      {showCargaMasivaAdmin && <CargaMasivaAdminPanel onClose={() => setShowCargaMasivaAdmin(false)} turnosOptions={turnosOptions} cargosAdminOptions={cargosAdminOptions} areasOptions={areasOptions} sedesOptions={sedesOptions} cecosActivos={cecosActivos} empresaConfig={empresaConfig} crearAdminPersonalCtx={crearAdminPersonalCtx} addNotificacion={addNotificacion} personalAdmin={personalAdmin} />}
 
       <div className="kpi-grid">
         <div className="kpi-card"><div className="kpi-label">Colaboradores activos</div><div className="kpi-value">{colaboradoresActivos}</div><div className="kpi-icon cyan">{I.users}</div></div>
