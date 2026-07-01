@@ -19156,23 +19156,23 @@ export function ComprasGastos() {
       </div>
 
       <div className="card" style={{marginBottom:12}}>
-        <div className="card-head" style={{flexWrap:'wrap', gap:10}}>
-          <div style={{fontWeight:600, fontSize:13}}>Filtros</div>
-          <select className="select" style={{minWidth:140, fontSize:13}} value={filtroMes} onChange={e => setFiltroMes(e.target.value)}>
+        <div className="card-head" style={{flexWrap:'nowrap', justifyContent:'flex-start', gap:10}}>
+          <div style={{fontWeight:600, fontSize:13, flexShrink:0}}>Filtros</div>
+          <select className="select" style={{width:150, flexShrink:0, fontSize:13}} value={filtroMes} onChange={e => setFiltroMes(e.target.value)}>
             <option value="">Todos los meses</option>
             {mesesDisponibles.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
-          <select className="select" style={{minWidth:160, fontSize:13}} value={filtroCeco} onChange={e => setFiltroCeco(e.target.value)}>
+          <select className="select" style={{width:170, flexShrink:0, fontSize:13}} value={filtroCeco} onChange={e => setFiltroCeco(e.target.value)}>
             <option value="">Todos los CECO</option>
             {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
           </select>
-          <select className="select" style={{minWidth:140, fontSize:13}} value={filtroEstadoPago} onChange={e => setFiltroEstadoPago(e.target.value)}>
+          <select className="select" style={{width:150, flexShrink:0, fontSize:13}} value={filtroEstadoPago} onChange={e => setFiltroEstadoPago(e.target.value)}>
             <option value="">Todo estado pago</option>
             <option value="pagado">Pagado</option>
             <option value="pendiente">Pendiente</option>
           </select>
           {(filtroMes || filtroCeco || filtroEstadoPago) && (
-            <button className="btn btn-ghost" style={{fontSize:12}} onClick={() => { setFiltroMes(''); setFiltroCeco(''); setFiltroEstadoPago(''); }}>Limpiar filtros</button>
+            <button className="btn btn-ghost" style={{fontSize:12, flexShrink:0, marginLeft:'auto'}} onClick={() => { setFiltroMes(''); setFiltroCeco(''); setFiltroEstadoPago(''); }}>Limpiar filtros</button>
           )}
         </div>
       </div>
