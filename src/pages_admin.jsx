@@ -5274,6 +5274,13 @@ const SECCION_MAP_IMPORT = {
   'gastos financieros':'gastos_financieros',
 };
 const REGLA_MAP_IMPORT = { 'con ot': 'con_ot', 'sin ot': 'sin_ot', 'siempre': 'siempre' };
+const TIPO_SISTEMA_MAP_IMPORT = Object.fromEntries(ER_TIPO_SISTEMA_OPTIONS.map(o => [normCat(o.label), o.value]));
+const parseTipoSistemaImport = raw => {
+  const v = normCat(raw);
+  if (!v || v.includes('personalizado') || v === 'sin tipo') return { ok: true, value: null };
+  if (TIPO_SISTEMA_MAP_IMPORT[v]) return { ok: true, value: TIPO_SISTEMA_MAP_IMPORT[v] };
+  return { ok: false, value: null };
+};
 
 function ErCategoriasAdmin() {
   const { empresa, addNotificacion } = useApp();
@@ -5348,43 +5355,69 @@ function ErCategoriasAdmin() {
 
   const descargarPlantilla = () => {
     // Hoja 1: fila 1 = encabezados, fila 2 = notas, fila 3+ = datos del usuario
-    const headers = ['Nombre tipo gasto', 'Categoría ER', 'Sección ER', 'Regla OT'];
+    const headers = ['Nombre tipo gasto', 'Categoría ER', 'Sección ER', 'Regla OT', 'Tipo Sistema'];
     const notas   = [
       'Nombre que verá el usuario al registrar un gasto. Ej: Mano de obra técnica, Materiales e insumos',
       'Cómo se agrupará esta línea en el ER. Texto libre. Si no existe, se creará automáticamente.',
       'Elegir de la lista desplegable',
       'Elegir de la lista desplegable',
+      'OPCIONAL. Elegir de la lista desplegable solo si esta categoría corresponde a un concepto estándar del sistema. Ver hoja "Instrucciones" para el detalle. Deja "Personalizado" o vacío si no aplica.',
     ];
     const ws = XLSX.utils.aoa_to_sheet([headers, notas]);
-    ws['!cols'] = [{ wch: 28 }, { wch: 22 }, { wch: 20 }, { wch: 14 }];
+    ws['!cols'] = [{ wch: 28 }, { wch: 22 }, { wch: 20 }, { wch: 14 }, { wch: 30 }];
     // Comentario indicativo en A3
     ws['A3'] = { t: 's', v: '', c: [{ a: 'Sistema', t: 'Ingresa tus datos a partir de esta fila' }] };
+    const tipoSistemaListaValidacion = ['Personalizado', ...ER_TIPO_SISTEMA_OPTIONS.map(o => o.label)].join(',');
     ws['!dataValidations'] = [
       { type: 'list', sqref: 'C3:C1048576', formula1: '"Costo de Ventas,Gastos Operativos,Gastos Financieros"' },
       { type: 'list', sqref: 'D3:D1048576', formula1: '"Con OT,Sin OT,Siempre"' },
+      { type: 'list', sqref: 'E3:E1048576', formula1: `"${tipoSistemaListaValidacion}"` },
     ];
 
-    // Hoja 2: referencia de columnas + ejemplos + FAQ
+    // Hoja 2: referencia de columnas + ejemplos + FAQ + guía detallada de Tipo Sistema
     const ws2 = XLSX.utils.aoa_to_sheet([
       ['Columna', 'Valores válidos', 'Ejemplo'],
       ['Nombre tipo gasto', 'Texto libre', 'Mano de obra técnica'],
       ['Categoría ER', 'Texto libre — si no existe se creará automáticamente', 'Mano de obra'],
       ['Sección ER', 'Costo de Ventas / Gastos Operativos / Gastos Financieros', 'Costo de Ventas'],
       ['Regla OT', 'Con OT / Sin OT / Siempre', 'Con OT'],
+      ['Tipo Sistema', 'OPCIONAL. Ver guía detallada más abajo. Uno de: ' + ER_TIPO_SISTEMA_OPTIONS.map(o => o.label).join(', ') + ', o vacío/Personalizado', 'Mano de obra'],
       [],
-      ['Ejemplos de llenado', '', ''],
-      ['Nombre tipo gasto', 'Categoría ER', 'Sección ER', 'Regla OT'],
-      ['Mano de obra técnica',     'Mano de obra',       'Costo de Ventas',    'Con OT'],
-      ['Materiales e insumos',      'Materiales',         'Costo de Ventas',    'Con OT'],
-      ['Gasto administrativo',      'Administrativos',    'Gastos Operativos',  'Siempre'],
-      ['Interés préstamo bancario', 'Gastos financieros', 'Gastos Financieros', 'Siempre'],
+      ['Ejemplos de llenado', '', '', '', ''],
+      ['Nombre tipo gasto', 'Categoría ER', 'Sección ER', 'Regla OT', 'Tipo Sistema'],
+      ['Mano de obra técnica',      'Mano de obra',        'Costo de Ventas',    'Con OT',  'Mano de obra'],
+      ['Materiales e insumos',      'Materiales',          'Costo de Ventas',    'Con OT',  'Materiales'],
+      ['Gasto administrativo',      'Administrativos',     'Gastos Operativos',  'Siempre', 'Administrativos'],
+      ['Interés préstamo bancario', 'Gastos financieros',  'Gastos Financieros', 'Siempre', 'Intereses de financiamiento'],
+      ['Comisión de venta especial','Comisiones especiales','Gastos Operativos', 'Siempre', ''],
+      [],
+      ['¿QUÉ ES "TIPO SISTEMA" Y PARA QUÉ SIRVE?', '', ''],
+      ['Es una etiqueta OPCIONAL, distinta del nombre de la categoría o del tipo de gasto.', 'Sirve para que el ERP reconozca automáticamente esta categoría en reglas del sistema, sin importar cómo la hayas nombrado tú.', ''],
+      ['¿Dónde se usa automáticamente?', 'Ej: en el formulario de Recibo por Honorarios (RHE), el sistema busca la categoría con Tipo Sistema = "Mano de obra" para asignarla sola, sin que el usuario tenga que elegirla. También se usa como respaldo en el cálculo del Estado de Resultados si falta configuración.', ''],
+      ['¿Cómo se llena?', 'Solo si tu categoría corresponde EXACTAMENTE a uno de los conceptos estándar de la lista desplegable (columna E). Elige el valor de la lista; no escribas texto libre.', ''],
+      ['¿Qué pongo si mi categoría es propia del negocio y no calza con ningún concepto estándar?', 'Déjala vacía, o escribe "Personalizado". La categoría funcionará normal en reportes; solo no participará de las reglas automáticas.', ''],
+      ['¿Qué pasa si me equivoco o la dejo vacía?', 'No se pierde nada ni se generan errores. Puedes asignarla o corregirla después, manualmente, desde Parámetros Generales > Egresos > Categorías ER, editando la categoría y eligiendo el Tipo Sistema en el panel.', ''],
+      ['¿Puedo repetir el mismo Tipo Sistema en varias categorías?', 'Evítalo. El sistema toma solo una categoría por Tipo Sistema (la que mejor calce con la Regla OT). Si repites el tipo, una de las categorías quedará sin usarse en las reglas automáticas.', ''],
+      ['Lista completa de valores y su significado:', '', ''],
+      ['Mano de obra', 'Costo de personal técnico/operativo facturable a los clientes (usado por el formulario de RHE).', ''],
+      ['Materiales', 'Insumos y materiales consumidos en la prestación del servicio.', ''],
+      ['Servicios terceros', 'Subcontratos y servicios prestados por terceros.', ''],
+      ['Logistica', 'Transporte, fletes y movilización asociados al servicio.', ''],
+      ['Administrativos', 'Gastos de administración general del negocio.', ''],
+      ['Comerciales', 'Gastos de ventas, comisiones y marketing.', ''],
+      ['Gastos financieros', 'Gastos financieros generales, distintos de intereses de préstamos.', ''],
+      ['Planilla', 'Sueldos y planilla del personal fijo (no honorarios).', ''],
+      ['Cargas sociales', 'EsSalud, CTS, gratificaciones y beneficios sociales.', ''],
+      ['Intereses de financiamiento', 'Intereses de préstamos y financiamiento bancario.', ''],
+      ['Inversiones / Activos', 'Compra de activos fijos o inversiones de capital (capitalizables).', ''],
+      ['Personalizado / vacío', 'No corresponde a ningún concepto estándar del sistema; es exclusivo de tu empresa.', ''],
       [],
       ['PREGUNTAS FRECUENTES', '', ''],
       ['¿Qué pasa si la categoría ER ya existe?', 'Se reutiliza sin crear duplicado.', ''],
       ['¿Qué pasa si el tipo de gasto ya existe?', 'Se omite sin error. El sistema nunca duplica.', ''],
       ['¿Qué significa Regla OT?', "Con OT = solo aparece si el gasto tiene OT vinculada. Sin OT = solo sin OT. Siempre = siempre aparece en el ER.", ''],
     ]);
-    ws2['!cols'] = [{ wch: 40 }, { wch: 70 }, { wch: 30 }];
+    ws2['!cols'] = [{ wch: 42 }, { wch: 90 }, { wch: 30 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Configuración de egresos');
     XLSX.utils.book_append_sheet(wb, ws2, 'Instrucciones');
@@ -5405,13 +5438,15 @@ function ErCategoriasAdmin() {
       const catEr    = String(r[1] || '').trim();
       const secRaw   = normCat(String(r[2] || '').trim());
       const reglaRaw = normCat(String(r[3] || '').trim());
+      const tipoSist = parseTipoSistemaImport(r[4]);
       const rowErrs  = [];
       if (!nombre)                          rowErrs.push('Nombre tipo gasto vacío');
       if (!catEr)                           rowErrs.push('Categoría ER vacía');
       if (!SECCION_MAP_IMPORT[secRaw])      rowErrs.push(`Sección ER inválida: "${r[2]}"`);
       if (!REGLA_MAP_IMPORT[reglaRaw])      rowErrs.push(`Regla OT inválida: "${r[3]}"`);
+      if (!tipoSist.ok)                     rowErrs.push(`Tipo Sistema inválido: "${r[4]}" (debe ser uno de la lista o quedar vacío)`);
       if (rowErrs.length) { errores.push({ fila: excelRow, errores: rowErrs }); return; }
-      filasValidas.push({ nombre, catEr, seccion: SECCION_MAP_IMPORT[secRaw], reglaOt: REGLA_MAP_IMPORT[reglaRaw] });
+      filasValidas.push({ nombre, catEr, seccion: SECCION_MAP_IMPORT[secRaw], reglaOt: REGLA_MAP_IMPORT[reglaRaw], tipoSistema: tipoSist.value });
       if (!catsActualesNorm.has(normCat(catEr))) nuevasCatsSet.add(catEr);
     });
     return { total: dataRows.length, nuevasCats: [...nuevasCatsSet], errores, filasValidas };
@@ -5442,7 +5477,7 @@ function ErCategoriasAdmin() {
         if (!catsActuales.has(nk)) {
           const ref = preview.filasValidas.find(f => normCat(f.catEr) === nk);
           const { data, error } = await sb.from('er_categorias')
-            .insert({ nombre: catNombre, seccion: ref?.seccion || 'gastos_operativos', regla_ot: ref?.reglaOt || 'siempre', empresa_id: empresaId })
+            .insert({ nombre: catNombre, seccion: ref?.seccion || 'gastos_operativos', regla_ot: ref?.reglaOt || 'siempre', tipo_sistema: ref?.tipoSistema || null, empresa_id: empresaId })
             .select().single();
           if (!error) { catsCreadas++; catsActuales.set(nk, data); setCats(prev => [...prev, data]); }
         }

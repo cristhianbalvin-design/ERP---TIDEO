@@ -31,6 +31,15 @@ const ACTIVO_TIPOS_WIZ = [
 const METODOS_PAGO = ['Transferencia bancaria', 'Caja chica', 'Tarjeta empresa', 'Efectivo', 'Otro'];
 const TIPOS_COMP   = ['Factura', 'Boleta', 'Recibo honorarios', 'Ticket', 'Sin comprobante'];
 
+const normTexto = s => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+// Coincide si cada palabra escrita es el inicio de alguna palabra del texto (nombre + categoría ER)
+const matchIniciales = (texto, busqueda) => {
+  const palabrasBusqueda = normTexto(busqueda).split(/\s+/).filter(Boolean);
+  if (!palabrasBusqueda.length) return true;
+  const palabrasTexto = normTexto(texto).split(/\s+/).filter(Boolean);
+  return palabrasBusqueda.every(pb => palabrasTexto.some(pt => pt.startsWith(pb)));
+};
+
 const sv = (d) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>;
 const TIPO_GASTO_ICONOS = {
   // Operaciones y campo
@@ -162,6 +171,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const [paso, setPaso]           = useState(draft?.paso || preconfig?.paso || 1);
   const [tipoSel, setTipoSel]     = useState(draft?.tipoSel || preconfig?.tipoSel || null);
   const [tiposGasto, setTiposGasto] = useState([]);
+  const [buscarTipo, setBuscarTipo] = useState('');
   const [tc, setTc]               = useState(null);
   const [archivoUrl, setArchivoUrl] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -176,7 +186,6 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const [activoSerie, setActivoSerie]       = useState('');
   const [activoVidaUtil, setActivoVidaUtil] = useState('');
   const [errActivoVidaUtil, setErrActivoVidaUtil] = useState(false);
-  const [cxpYaRegistrado, setCxpYaRegistrado] = useState(true);
   const [fondosCaja, setFondosCaja] = useState([]);
   const [loadingFondosCaja, setLoadingFondosCaja] = useState(false);
   const [form, setForm]           = useState({ ...FORM_VACIO, fecha: today, ...(preconfig?.form || {}), ...(draft?.form || {}) });
@@ -279,20 +288,44 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     : 'compras_gastos + CxP pendiente';
 
   // ── Paso 1: selección de tipo ─────────────────────────────────────────────
+  const tiposGastoFiltrados = useMemo(
+    () => tiposGasto.filter(t => matchIniciales(`${t.nombre} ${t.categoria_er}`, buscarTipo)),
+    [tiposGasto, buscarTipo]
+  );
+
+  const seleccionarTipo = t => {
+    setTipoSel(t);
+    // Prellena el concepto con el nombre del tipo (editable); no pisa un concepto que el usuario ya haya escrito.
+    setForm(p => (p.concepto.trim() ? p : { ...p, concepto: t.nombre }));
+  };
+
   const renderPaso1 = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>
         Selecciona el tipo de gasto. La categoría ER se asignará automáticamente.
       </div>
 
+      <input
+        type="text"
+        className="input"
+        placeholder="Buscar por tipo de gasto o categoría ER..."
+        value={buscarTipo}
+        onChange={e => setBuscarTipo(e.target.value)}
+      />
+
+      {tiposGastoFiltrados.length === 0 ? (
+        <div style={{ fontSize: 13, color: 'var(--fg-muted)', textAlign: 'center', padding: '20px 0' }}>
+          Ningún tipo de gasto coincide con "{buscarTipo}".
+        </div>
+      ) : (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
-        {tiposGasto.map(t => {
+        {tiposGastoFiltrados.map(t => {
           const activo = tipoSel?.id === t.id;
           return (
             <button
               key={t.id}
               type="button"
-              onClick={() => setTipoSel(t)}
+              onClick={() => seleccionarTipo(t)}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
                 padding: '16px 10px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
@@ -310,6 +343,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           );
         })}
       </div>
+      )}
 
       {tipoSel && (
         <div style={{
@@ -689,27 +723,6 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
               />
             )}
           </div>
-          <label style={{
-            display:'flex', alignItems:'center', gap:10, cursor:'pointer',
-            padding:'10px 14px', borderRadius:8,
-            background: cxpYaRegistrado
-              ? 'color-mix(in srgb, var(--orange) 8%, var(--surface))'
-              : 'var(--bg-subtle)',
-            border: `1px solid ${cxpYaRegistrado ? 'color-mix(in srgb, var(--orange) 30%, var(--border))' : 'var(--border)'}`,
-          }}>
-            <input
-              type="checkbox"
-              checked={cxpYaRegistrado}
-              onChange={e => setCxpYaRegistrado(e.target.checked)}
-              style={{width:16, height:16, cursor:'pointer', flexShrink:0}}
-            />
-            <div>
-              <div style={{fontSize:13, fontWeight:600}}>Este gasto ya fue registrado en Compras/Gastos</div>
-              <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>
-                Marca esto si el gasto ya existe en compras_gastos para evitar que se cree un devengo duplicado en el ER.
-              </div>
-            </div>
-          </label>
         </>
       )}
 
@@ -1113,7 +1126,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           created_at:        new Date().toISOString(),
         };
         if (isSupabaseConfigured()) {
-          await finanzasService.generarCxP({ ...cxpRecord, no_devengar_er: cxpYaRegistrado }).catch(err =>
+          await finanzasService.generarCxP(cxpRecord).catch(err =>
             console.warn('[NuevoEgreso] cxp insert:', err?.message),
           );
         }
