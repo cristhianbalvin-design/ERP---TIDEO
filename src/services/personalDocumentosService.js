@@ -252,6 +252,7 @@ export async function subirDocumento({
   contratoPeriodoId,
   periodoGrupoId,
   origen = 'backoffice',
+  esIndefinido,
 }) {
   const supabase = await getSupabaseClient();
 
@@ -297,6 +298,7 @@ export async function subirDocumento({
     p_seccion_documental: seccionDocumental || null,
     p_contrato_periodo_id: contratoPeriodoId || null,
     p_origen:            origen,
+    p_es_indefinido:     esIndefinido || false,
   };
 
   if (isRenovable) {
@@ -437,6 +439,7 @@ export async function nuevoContrato({
   empresaId, personalId, personalTipo, tipoDoc, tipoDocumentoId,
   file, fechaEmision, fechaVencimiento, notas, condicionesLaborales,
   periodoIdAnterior,
+  esIndefinido,
 }) {
   const supabase = await getSupabaseClient();
 
@@ -471,6 +474,7 @@ export async function nuevoContrato({
     p_condiciones_laborales: condicionesLaborales || null,
     p_tipo_documento_id:     tipoDocumentoId || null,
     p_periodo_id_anterior:   periodoIdAnterior || null,
+    p_es_indefinido:         esIndefinido || false,
   });
   if (error) throw error;
   return normalizar(data);

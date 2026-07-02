@@ -421,6 +421,7 @@ export async function confirmarLiquidacion(liquidacionId, params = {}, confirmed
       empresa_id:       liq.empresa_id,
       tipo_beneficiario: 'personal',
       personal_id:      liq.personal_id,
+      nombre_emisor:    beneficiario,
       concepto,
       monto_total:      liq.monto_total,
       monto_pagado:     0,
