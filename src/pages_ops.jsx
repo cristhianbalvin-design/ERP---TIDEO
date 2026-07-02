@@ -5672,7 +5672,7 @@ function ImportarProveedoresPreview({ dataRows, proveedoresActuales, responsable
     const PAISES = ['Peru', 'Chile', 'Colombia', 'Mexico'];
     const CATEGORIAS = ['Materiales', 'Servicios', 'Transporte', 'Equipos', 'Mixto'];
     const ESTADOS = { potencial: 'potencial', 'en evaluacion': 'en_evaluacion', 'en_evaluacion': 'en_evaluacion', homologado: 'homologado' };
-    const normalizeStr = (s) => s ? s.toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim() : '';
+    const normalizeStr = (s) => s ? s.toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim() : '';
     const findMatch = (val, list) => list.find(l => normalizeStr(l) === normalizeStr(val));
 
     const dbRucs = new Set(proveedoresActuales.map(p => (p.ruc || '').trim()).filter(Boolean));
@@ -13187,6 +13187,35 @@ function esFeriado(fechaDate) {
   return FERIADOS_PERU.includes(_isoDate(fechaDate));
 }
 
+// ── Auditoría de control (NO forma parte del motor de cálculo de nómina) ──────
+// Detecta días laborables sin ningún registro de asistencia (de cualquier estado)
+// y sin cobertura por una solicitud de RRHH aprobada (vacaciones/permiso/licencia).
+// Es puramente informativo: no descuenta ni afecta remuneracionBruta/descFaltas.
+const SOLICITUD_TIPOS_JUSTIFICAN_AUSENCIA = ['vacaciones', 'permiso_con_goce', 'permiso_sin_goce', 'licencia_medica', 'licencia_maternidad', 'licencia_paternidad'];
+const SOLICITUD_ESTADOS_APROBADOS = ['aprobada_jefe', 'confirmada_rrhh'];
+function detectarDiasSinCobertura(trabajador, turno, registrosPeriodo, periodo, solicitudesAprobadas, hastaFecha = null) {
+  if (periodo?.anio == null || periodo?.mes == null) return [];
+  const mapDias = ['dom','lun','mar','mie','jue','vie','sab'];
+  const diasLaborablesSemana = turno?.dias_laborables || ['lun','mar','mie','jue','vie','sab'];
+  const pIniOriginal = new Date(periodo.anio, periodo.mes - 1, 1);
+  const pFin = new Date(periodo.anio, periodo.mes, 0);
+  const dtIng = trabajador.fecha_ingreso ? new Date(`${trabajador.fecha_ingreso}T00:00:00`) : null;
+  const pIni = (dtIng && dtIng > pIniOriginal) ? dtIng : pIniOriginal;
+  const dtCese = trabajador.fecha_cese ? new Date(`${trabajador.fecha_cese}T00:00:00`) : null;
+  let pFinEfectivo = (dtCese && dtCese < pFin) ? dtCese : pFin;
+  if (hastaFecha && hastaFecha < pFinEfectivo) pFinEfectivo = hastaFecha;
+
+  const faltantes = [];
+  for (let dia = new Date(pIni); dia <= pFinEfectivo; dia.setDate(dia.getDate() + 1)) {
+    if (!diasLaborablesSemana.includes(mapDias[dia.getDay()]) || esFeriado(dia)) continue;
+    const iso = _isoDate(dia);
+    if (registrosPeriodo.some(r => r.fecha === iso)) continue;
+    const cubierto = solicitudesAprobadas.some(s => s.personal_id === trabajador.id && s.fecha_inicio && iso >= s.fecha_inicio && iso <= (s.fecha_fin || s.fecha_inicio));
+    if (!cubierto) faltantes.push(iso);
+  }
+  return faltantes;
+}
+
 // Calcula remuneración de un tramo (sin AFP/IR/cargas — se aplican sobre el total)
 function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno) {
   const { asignacion, fechaSegIni, fechaSegFin } = seg;
@@ -15141,6 +15170,7 @@ function Nomina() {
     comisiones = [], setComisiones, afpParametros = [],
     asignacionesJornada = [],
     portalBoletaAcuses = [],
+    solicitudesRRHH = [],
   } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('periodos');
@@ -15321,6 +15351,23 @@ function Nomina() {
       };
     }).filter(Boolean);
   }, [periodo?.id, trabajadores.length, registrosAsistencia.length, asignacionesJornada.length, heCompRows, descExtraPorTrabajador, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, empresaCfg.requiere_autorizacion_he, afpParametros]);
+
+  const solicitudesAprobadasCobertura = useMemo(() => (solicitudesRRHH || []).filter(s =>
+    SOLICITUD_ESTADOS_APROBADOS.includes(s.estado) && SOLICITUD_TIPOS_JUSTIFICAN_AUSENCIA.includes(s.tipo)
+  ), [solicitudesRRHH]);
+
+  // Auditoría de control: días sin marcación de asistencia ni justificación aprobada.
+  // No afecta ningún cálculo de nómina — solo alimenta la alerta visual del tab Resumen.
+  const diasSinCoberturaPorTrabajador = useMemo(() => {
+    if (!periodo) return [];
+    return trabajadores.map(t => {
+      const turno = workerTurno(turnos, t);
+      const regs = registrosAsistencia.filter(r => r.trabajador_id === t.id && r.fecha.startsWith(periodoKey));
+      const fechas = detectarDiasSinCobertura(t, turno, regs, periodo, solicitudesAprobadasCobertura, hoy);
+      return { trabajador_id: t.id, nombre: t.nombre, fechas };
+    }).filter(x => x.fechas.length > 0);
+  }, [trabajadores, turnos, registrosAsistencia, periodo?.id, periodoKey, solicitudesAprobadasCobertura]);
+  const totalDiasSinCobertura = diasSinCoberturaPorTrabajador.reduce((s, x) => s + x.fechas.length, 0);
 
   const hayMineros = calculos.some(c => c.regimen_jornada !== 'general');
 
@@ -15677,6 +15724,20 @@ function Nomina() {
           {calculos.some(c => c.incompleto_ciclo) && (
             <div className="alert alert-warning" style={{margin:'0 16px 12px',fontSize:12}}>
               <strong>Datos de ciclo incompletos:</strong> {calculos.filter(c=>c.incompleto_ciclo).map(c=>c.trabajador.nombre).join(', ')} — completar fecha de inicio de ciclo en la ficha del trabajador para procesar su pago.
+            </div>
+          )}
+          {totalDiasSinCobertura > 0 && (
+            <div className="alert alert-danger" style={{margin:'0 16px 12px', fontSize:13, padding:'12px 14px'}}>
+              <div style={{fontWeight:700, marginBottom:6, fontSize:14, display:'flex', alignItems:'center', gap:6}}>
+                <span style={{width:16, height:16, flexShrink:0, display:'inline-flex'}}>{I.alert}</span>
+                {totalDiasSinCobertura} día{totalDiasSinCobertura !== 1 ? 's' : ''} sin marcación ni justificación — revisar antes de procesar
+              </div>
+              <div style={{fontSize:12, marginBottom:6}}>Días laborables sin registro de asistencia (de ningún tipo) y sin una solicitud aprobada (vacaciones/permiso/licencia) que los cubra. El sueldo completo se pagaría sin descuento si no se resuelven.</div>
+              <ul style={{margin:0, paddingLeft:18}}>
+                {diasSinCoberturaPorTrabajador.map(x => (
+                  <li key={x.trabajador_id}><strong>{x.nombre}</strong>: {x.fechas.length} día{x.fechas.length !== 1 ? 's' : ''} — {x.fechas.join(', ')}</li>
+                ))}
+              </ul>
             </div>
           )}
           <div className="table-wrap">
