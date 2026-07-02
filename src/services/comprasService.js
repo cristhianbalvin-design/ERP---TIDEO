@@ -165,6 +165,12 @@ export const comprasService = {
     if (error) throw error;
     return data;
   },
+  eliminarProveedor: async (id) => {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.from('proveedores').delete().eq('id', id);
+    if (error) throw error;
+    return true;
+  },
   getEvaluacionesProveedor: async (empresaId) => {
     if (!empresaId) return [];
     const supabase = await getSupabaseClient();

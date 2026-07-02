@@ -7208,6 +7208,19 @@ export function AppProvider({ children }) {
       auditSync({ modulo: 'compras', entidad: 'proveedores', entidad_id: id, accion: 'editar', valor_anterior: anterior, valor_nuevo: cambios });
     }
   };
+  const eliminarProveedorCtx = async (id) => {
+    const anterior = proveedores.find(p => p.id === id) || null;
+    if (isSupabaseConfigured()) {
+      await comprasService.eliminarProveedor(id);
+      setProveedores(prev => prev.filter(p => p.id !== id));
+      auditSync({ modulo: 'compras', entidad: 'proveedores', entidad_id: id, accion: 'eliminar', valor_anterior: anterior, valor_nuevo: null });
+      return true;
+    } else {
+      setProveedores(prev => prev.filter(p => p.id !== id));
+      auditSync({ modulo: 'compras', entidad: 'proveedores', entidad_id: id, accion: 'eliminar', valor_anterior: anterior, valor_nuevo: null });
+      return true;
+    }
+  };
   const crearProcesoCompraCtx = async (proceso) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await comprasService.crearProcesoCompra(empresa.id, proceso);
@@ -9661,7 +9674,7 @@ export function AppProvider({ children }) {
     // Maestros Base Actions
     crearCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria,
     // Compras Actions
-    registrarProveedor, actualizarProveedorCtx,
+    registrarProveedor, actualizarProveedorCtx, eliminarProveedorCtx,
     crearProcesoCompraCtx, actualizarProcesoCompraCtx,
     crearOrdenCompraCtx, actualizarOrdenCompraCtx, registrarTransitoOCCtx, crearOrdenServicioCtx, crearRecepcionCtx, registrarRecepcionConCxP, registrarEvaluacionProveedorCtx,
     // WMS Actions

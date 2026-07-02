@@ -5289,9 +5289,10 @@ export function PlaceholderCompras({ titulo }) {
 }
 
 function Proveedores() {
-  const { proveedores, setProveedores, evaluacionesProveedor, ordenesCompra, recepciones, usuarios, roles, empresa, role, addNotificacion, registrarProveedor, actualizarProveedorCtx } = useApp();
+  const { proveedores, setProveedores, evaluacionesProveedor, ordenesCompra, recepciones, usuarios, roles, empresa, role, addNotificacion, registrarProveedor, actualizarProveedorCtx, eliminarProveedorCtx } = useApp();
   const [tab, setTab] = useState('todos');
   const [panel, setPanel] = useState(false);
+  const [editId, setEditId] = useState(null);
   const [sel, setSel] = useState(null);
   const [detailTab, setDetailTab] = useState('resumen');
   const [form, setForm] = useState({
@@ -5319,11 +5320,89 @@ function Proveedores() {
     bloqueados: proveedores.filter(p => p.estado === 'bloqueado').length
   };
   const update = (name, value) => setForm(prev => ({ ...prev, [name]: value }));
-  const resetForm = () => setForm({
-    ruc:'', pais:'Peru', razon_social:'', nombre_comercial:'', categoria:'Materiales', estado:'potencial',
-    servicios:'', contacto_nombre:'', contacto_cargo:'', telefono:'', email:'', web:'', direccion:'',
-    responsable_compras:'', notas:''
-  });
+  const resetForm = () => {
+    setForm({
+      ruc:'', pais:'Peru', razon_social:'', nombre_comercial:'', categoria:'Materiales', estado:'potencial',
+      servicios:'', contacto_nombre:'', contacto_cargo:'', telefono:'', email:'', web:'', direccion:'',
+      responsable_compras:'', notas:''
+    });
+    setEditId(null);
+  };
+  const fileInputRef = useRef(null);
+  const [importRows, setImportRows] = useState(null);
+  const handleDescargarPlantillaProveedores = () => {
+    const wsData = [
+      ['ruc','pais','razon_social','nombre_comercial','categoria','estado','servicios','contacto_nombre','contacto_cargo','telefono','email','web','direccion','responsable_compras','notas'],
+      ['20123456789','Peru','Proveedor Ejemplo SAC','Proveedor Ejemplo','Materiales','potencial','Venta de materiales de construccion','Juan Perez','Gerente Comercial','987654321','contacto@proveedorejemplo.com','https://proveedorejemplo.com','Av. Ejemplo 123, Lima','Nombre del responsable de compras','Notas internas opcionales']
+    ];
+    const wsInstr = [
+      ['Instrucciones para Plantilla de Proveedores'],
+      [''],
+      ['Columna', 'Requerido', 'Valores permitidos', 'Descripcion'],
+      ['ruc', 'SI (si pais=Peru)', '11 digitos, inicia con 1 o 2', 'RUC o NIT del proveedor'],
+      ['pais', 'SI', 'Peru, Chile, Colombia, Mexico', 'Pais del proveedor'],
+      ['razon_social', 'SI', 'Texto', 'Razon social del proveedor'],
+      ['nombre_comercial', 'NO', 'Texto', 'Nombre comercial si difiere de la razon social'],
+      ['categoria', 'SI', 'Materiales, Servicios, Transporte, Equipos, Mixto', 'Categoria del proveedor'],
+      ['estado', 'NO (potencial por defecto)', 'potencial, en_evaluacion, homologado', 'Estado inicial del proveedor'],
+      ['servicios', 'SI', 'Texto', 'Servicios o productos que ofrece'],
+      ['contacto_nombre', 'SI', 'Texto', 'Nombre del contacto principal'],
+      ['contacto_cargo', 'NO', 'Texto', 'Cargo del contacto principal'],
+      ['telefono', 'SI', '9 digitos, inicia con 9', 'Telefono del contacto'],
+      ['email', 'SI', 'Correo valido', 'Email del contacto'],
+      ['web', 'NO', 'URL', 'Sitio web del proveedor'],
+      ['direccion', 'NO', 'Texto', 'Direccion del proveedor'],
+      ['responsable_compras', 'SI', 'Texto', 'Nombre del responsable de compras asignado'],
+      ['notas', 'NO', 'Texto', 'Notas internas']
+    ];
+    const wb = XLSX.utils.book_new();
+    const sheetInstr = XLSX.utils.aoa_to_sheet(wsInstr);
+    const sheetData = XLSX.utils.aoa_to_sheet(wsData);
+    XLSX.utils.book_append_sheet(wb, sheetInstr, 'Instrucciones');
+    XLSX.utils.book_append_sheet(wb, sheetData, 'Proveedores');
+    XLSX.writeFile(wb, 'plantilla_proveedores.xlsx');
+  };
+  const handleFileUploadProveedores = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target.result;
+        const wb = XLSX.read(data, { type: 'array' });
+        const sheetName = wb.SheetNames.find(n => n.trim() === 'Proveedores') || wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        if (!json.length) {
+          addNotificacion('El archivo no tiene filas de datos.');
+        } else {
+          setImportRows(json);
+        }
+      } catch (err) {
+        addNotificacion('Error al leer el archivo Excel: ' + (err?.message || ''));
+      }
+      e.target.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+  };
+  const abrirEditarProveedor = (p) => {
+    setForm({
+      ruc: p.ruc || '', pais: p.pais || 'Peru', razon_social: p.razon_social || '', nombre_comercial: p.nombre_comercial || '', categoria: p.categoria || p.rubro || 'Materiales', estado: p.estado || 'potencial',
+      servicios: p.servicios || '', contacto_nombre: p.contacto_nombre || '', contacto_cargo: p.contacto_cargo || '', telefono: p.telefono || '', email: p.email || '', web: p.web || '', direccion: p.direccion || '',
+      responsable_compras: p.responsable_compras || '', notas: p.notas || ''
+    });
+    setEditId(p.id);
+    setPanel(true);
+  };
+  const eliminarProveedor = async (p) => {
+    if (!window.confirm(`¿Seguro que deseas eliminar al proveedor ${p.razon_social}?`)) return;
+    try {
+      await eliminarProveedorCtx(p.id);
+      addNotificacion('Proveedor eliminado', 'success');
+    } catch (e) {
+      addNotificacion(`Error al eliminar: ${e.message}`, 'error');
+    }
+  };
   const saveProveedor = async (e) => {
     e.preventDefault();
     if (form.pais === 'Peru' && !isValidRuc(form.ruc)) {
@@ -5334,32 +5413,37 @@ function Proveedores() {
       addNotificacion('El telefono debe tener 9 digitos y comenzar con 9.');
       return;
     }
-    const next = proveedores.length + 1;
-    const payload = {
-      id: `prv_${String(next).padStart(3,'0')}`,
-      empresa_id: empresa.id,
-      codigo: `PRV-${String(next).padStart(3,'0')}`,
-      rubro: form.categoria,
-      calificacion_promedio: null,
-      total_evaluaciones: 0,
-      condicion_pago: '',
-      moneda: 'PEN',
-      sujeto_retencion: false,
-      pct_retencion: 0,
-      limite_gasto_mensual: 0,
-      total_ocs: 0,
-      monto_total_comprado: 0,
-      fecha_ultima_oc: null,
-      fecha_homologacion: form.estado === 'homologado' ? new Date().toISOString().slice(0,10) : null,
-      ...form
-    };
     try {
-      await registrarProveedor(payload);
+      if (editId) {
+        await actualizarProveedorCtx(editId, form);
+        addNotificacion(`Proveedor actualizado.`);
+      } else {
+        const uid = Date.now().toString();
+        const payload = {
+          id: `prv_${uid}`,
+          empresa_id: empresa.id,
+          codigo: `PRV-${uid.slice(-6)}`,
+          rubro: form.categoria,
+          calificacion_promedio: null,
+          total_evaluaciones: 0,
+          condicion_pago: '',
+          moneda: 'PEN',
+          sujeto_retencion: false,
+          pct_retencion: 0,
+          limite_gasto_mensual: 0,
+          total_ocs: 0,
+          monto_total_comprado: 0,
+          fecha_ultima_oc: null,
+          fecha_homologacion: form.estado === 'homologado' ? new Date().toISOString().slice(0,10) : null,
+          ...form
+        };
+        await registrarProveedor(payload);
+        addNotificacion(`Proveedor ${payload.codigo} registrado.`);
+      }
     } catch (error) {
       addNotificacion(`No se pudo guardar el proveedor: ${error.message || error}`);
       return;
     }
-    addNotificacion(`Proveedor ${payload.codigo} registrado.`);
     resetForm();
     setPanel(false);
   };
@@ -5497,8 +5581,10 @@ function Proveedores() {
       <div className="page-header">
         <div><h1 className="page-title">Proveedores</h1><div className="page-sub">Registro, homologacion, evaluacion y ficha completa</div></div>
         <div className="row" style={{gap:10}}>
-          <button className="btn btn-secondary">{I.download} Importar Excel</button>
-          <button className="btn btn-primary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Nuevo proveedor</button>
+          <input type="file" ref={fileInputRef} accept=".xlsx" style={{display:'none'}} onChange={handleFileUploadProveedores}/>
+          <button className="btn btn-secondary" onClick={handleDescargarPlantillaProveedores}>{I.download} Descargar plantilla</button>
+          <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()}>{I.download} Importar Excel</button>
+          <button className="btn btn-primary" data-local-form="true" onClick={() => { resetForm(); setPanel(true); }}>{I.plus} Nuevo proveedor</button>
         </div>
       </div>
       <div className="kpi-grid">
@@ -5526,7 +5612,14 @@ function Proveedores() {
             <td><span className={'badge '+estadoProveedorClass(p.estado)}>{p.estado.replace('_',' ')}</span></td>
             <td><span className={'badge '+(docEstado==='OK'?'badge-green':docEstado==='Por vencer'?'badge-orange':'badge-red')}>{docEstado}</span></td>
             <td>{p.fecha_ultima_oc || '-'}</td>
-            <td><button className="btn btn-sm btn-secondary" onClick={() => { setSel(p); setDetailTab('resumen'); }}>Ver ficha</button> <button className="btn btn-sm btn-ghost" disabled={p.estado==='bloqueado' || docEstado==='Vencido'}>Nueva OC</button></td>
+            <td>
+              <div className="row" style={{gap:6, flexWrap: 'nowrap'}}>
+                <button className="btn btn-sm btn-secondary" onClick={() => { setSel(p); setDetailTab('resumen'); }}>Ver ficha</button>
+                <button className="btn btn-sm btn-ghost" disabled={p.estado==='bloqueado' || docEstado==='Vencido'}>Nueva OC</button>
+                <button className="icon-btn" title="Editar proveedor" style={{color:'var(--cyan)'}} onClick={() => abrirEditarProveedor(p)}>{I.edit}</button>
+                <button className="icon-btn" title="Eliminar proveedor" style={{color:'var(--danger)'}} onClick={() => eliminarProveedor(p)}>{I.trash}</button>
+              </div>
+            </td>
           </tr>;
         })}</tbody>
       </table></div></div>
@@ -5534,7 +5627,7 @@ function Proveedores() {
       {panel && <>
         <div className="side-panel-backdrop" onClick={() => setPanel(false)}/>
         <div className="side-panel" style={{width:'min(560px, 96vw)'}}>
-          <div className="side-panel-head"><div><div className="eyebrow">Formulario de registro</div><div className="font-display" style={{fontSize:22, fontWeight:700}}>Nuevo proveedor</div><div className="text-muted" style={{fontSize:12}}>Los campos * son obligatorios</div></div><button className="icon-btn" onClick={() => setPanel(false)}>{I.x}</button></div>
+          <div className="side-panel-head"><div><div className="eyebrow">Formulario de registro</div><div className="font-display" style={{fontSize:22, fontWeight:700}}>{editId ? 'Editar proveedor' : 'Nuevo proveedor'}</div><div className="text-muted" style={{fontSize:12}}>Los campos * son obligatorios</div></div><button className="icon-btn" onClick={() => setPanel(false)}>{I.x}</button></div>
           <form className="side-panel-body" onSubmit={saveProveedor}>
             <div className="eyebrow">Identificacion fiscal</div>
             <div className="grid-2" style={{gap:12, marginBottom:18}}>
@@ -5565,7 +5658,183 @@ function Proveedores() {
           </form>
         </div>
       </>}
+      {importRows && <ImportarProveedoresPreview dataRows={importRows} proveedoresActuales={proveedores} responsables={responsables} onClose={() => setImportRows(null)} onImported={() => setImportRows(null)} />}
     </>
+  );
+}
+
+function ImportarProveedoresPreview({ dataRows, proveedoresActuales, responsables, onClose, onImported }) {
+  const { registrarProveedor, addNotificacion, empresa } = useApp();
+  const [saving, setSaving] = useState(false);
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    const PAISES = ['Peru', 'Chile', 'Colombia', 'Mexico'];
+    const CATEGORIAS = ['Materiales', 'Servicios', 'Transporte', 'Equipos', 'Mixto'];
+    const ESTADOS = { potencial: 'potencial', 'en evaluacion': 'en_evaluacion', 'en_evaluacion': 'en_evaluacion', homologado: 'homologado' };
+    const normalizeStr = (s) => s ? s.toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim() : '';
+    const findMatch = (val, list) => list.find(l => normalizeStr(l) === normalizeStr(val));
+
+    const dbRucs = new Set(proveedoresActuales.map(p => (p.ruc || '').trim()).filter(Boolean));
+    const fileRucs = new Set();
+
+    const parsed = dataRows.map((r, index) => {
+      const item = {
+        id: `imp_${index}`,
+        ruc: sanitizeRuc((r.ruc || '').toString().trim()),
+        pais: findMatch(r.pais, PAISES) || 'Peru',
+        razon_social: (r.razon_social || '').toString().trim(),
+        nombre_comercial: (r.nombre_comercial || '').toString().trim(),
+        categoria: findMatch(r.categoria, CATEGORIAS) || '',
+        estado: ESTADOS[normalizeStr(r.estado)] || 'potencial',
+        servicios: (r.servicios || '').toString().trim(),
+        contacto_nombre: (r.contacto_nombre || '').toString().trim(),
+        contacto_cargo: (r.contacto_cargo || '').toString().trim(),
+        telefono: sanitizePhone((r.telefono || '').toString().trim()),
+        email: (r.email || '').toString().trim(),
+        web: (r.web || '').toString().trim(),
+        direccion: (r.direccion || '').toString().trim(),
+        responsable_compras: (r.responsable_compras || '').toString().trim(),
+        notas: (r.notas || '').toString().trim(),
+        selected: false,
+        status: 'LISTO',
+        errorMsg: ''
+      };
+
+      if (!item.razon_social) { item.status = 'ERROR'; item.errorMsg = 'Razon social vacia'; }
+      else if (item.pais === 'Peru' && !isValidRuc(item.ruc)) { item.status = 'ERROR'; item.errorMsg = 'RUC invalido (11 digitos, inicia con 1 o 2)'; }
+      else if (!item.categoria) { item.status = 'ERROR'; item.errorMsg = 'Categoria invalida'; }
+      else if (!item.servicios) { item.status = 'ERROR'; item.errorMsg = 'Servicios vacio'; }
+      else if (!item.contacto_nombre) { item.status = 'ERROR'; item.errorMsg = 'Contacto vacio'; }
+      else if (!isValidPhone(item.telefono)) { item.status = 'ERROR'; item.errorMsg = 'Telefono invalido (9 digitos, inicia con 9)'; }
+      else if (!item.email) { item.status = 'ERROR'; item.errorMsg = 'Email vacio'; }
+      else if (!item.responsable_compras) { item.status = 'ERROR'; item.errorMsg = 'Responsable de compras vacio'; }
+      else if (item.ruc && dbRucs.has(item.ruc)) { item.status = 'OMITIDO_DB'; item.errorMsg = 'RUC ya registrado'; }
+      else if (item.ruc && fileRucs.has(item.ruc)) { item.status = 'OMITIDO_EXCEL'; item.errorMsg = 'RUC duplicado en el archivo'; }
+      else { if (item.ruc) fileRucs.add(item.ruc); item.selected = true; }
+      return item;
+    });
+    setItems(parsed);
+  }, [dataRows, proveedoresActuales]);
+
+  const toggleSelect = (id) => setItems(p => p.map(t => t.id === id && t.status === 'LISTO' ? { ...t, selected: !t.selected } : t));
+  const updateField = (id, field, value) => setItems(p => p.map(t => t.id === id ? { ...t, [field]: value } : t));
+
+  const handleImport = async () => {
+    const toImport = items.filter(t => t.selected && t.status === 'LISTO');
+    if (!toImport.length) return;
+    setSaving(true);
+    let successCount = 0;
+    try {
+      for (let i = 0; i < toImport.length; i++) {
+        const it = toImport[i];
+        const uid = (Date.now() + i).toString();
+        await registrarProveedor({
+          id: `prv_${uid}`,
+          empresa_id: empresa.id,
+          codigo: `PRV-${uid.slice(-6)}`,
+          ruc: it.ruc, pais: it.pais, razon_social: it.razon_social, nombre_comercial: it.nombre_comercial,
+          categoria: it.categoria, rubro: it.categoria, estado: it.estado,
+          servicios: it.servicios, contacto_nombre: it.contacto_nombre, contacto_cargo: it.contacto_cargo,
+          telefono: it.telefono, email: it.email, web: it.web, direccion: it.direccion,
+          responsable_compras: it.responsable_compras, notas: it.notas,
+          calificacion_promedio: null, total_evaluaciones: 0, condicion_pago: '', moneda: 'PEN',
+          sujeto_retencion: false, pct_retencion: 0, limite_gasto_mensual: 0, total_ocs: 0,
+          monto_total_comprado: 0, fecha_ultima_oc: null,
+          fecha_homologacion: it.estado === 'homologado' ? new Date().toISOString().slice(0,10) : null
+        });
+        successCount++;
+      }
+      addNotificacion?.(`${successCount} proveedores importados exitosamente.`);
+      onImported();
+    } catch (err) {
+      addNotificacion?.('Error al importar: ' + (err?.message || ''));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const validCount = items.filter(t => t.status === 'LISTO').length;
+  const selCount = items.filter(t => t.selected).length;
+
+  return (
+    <div className="modal-backdrop" style={{ zIndex: 1100 }}>
+      <div className="modal" style={{ maxWidth: 1200, width: '96vw' }}>
+        <div className="modal-head">
+          <div>
+            <h2>Previsualizar Importacion de Proveedores</h2>
+            <div className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
+              Se detectaron {items.length} filas. {validCount} listas para importar.
+            </div>
+          </div>
+          <button className="icon-btn" onClick={onClose} disabled={saving}>{I.x}</button>
+        </div>
+        <div className="modal-body" style={{ padding: 0 }}>
+          <div className="table-wrap" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            <table className="tbl">
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg)' }}>
+                <tr>
+                  <th style={{ width: 40, textAlign: 'center' }}>
+                    <input type="checkbox" checked={validCount > 0 && selCount === validCount} onChange={e => setItems(p => p.map(t => t.status === 'LISTO' ? { ...t, selected: e.target.checked } : t))} disabled={validCount === 0} />
+                  </th>
+                  <th style={{ width: 40 }}>Est.</th>
+                  <th>RUC</th>
+                  <th>Razon social</th>
+                  <th>Categoria</th>
+                  <th>Contacto</th>
+                  <th>Telefono</th>
+                  <th>Email</th>
+                  <th>Responsable</th>
+                  <th>Mensaje</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(t => (
+                  <tr key={t.id} style={{ opacity: t.status !== 'LISTO' ? 0.6 : 1, background: t.status === 'ERROR' ? 'var(--danger-lt)' : t.status !== 'LISTO' ? 'var(--bg-subtle)' : 'transparent' }}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="checkbox" checked={t.selected} onChange={() => toggleSelect(t.id)} disabled={t.status !== 'LISTO'} />
+                    </td>
+                    <td style={{ textAlign: 'center', fontSize: 16 }}>
+                      {t.status === 'LISTO' ? '✅' : t.status === 'ERROR' ? '❌' : '⏭'}
+                    </td>
+                    <td><input className="input" style={{ width: 110 }} value={t.ruc} onChange={e => updateField(t.id, 'ruc', sanitizeRuc(e.target.value))} disabled={t.status !== 'LISTO'} /></td>
+                    <td><input className="input" style={{ width: '100%', minWidth: 160 }} value={t.razon_social} onChange={e => updateField(t.id, 'razon_social', e.target.value)} disabled={t.status !== 'LISTO'} /></td>
+                    <td>
+                      <select className="select" value={t.categoria || ''} onChange={e => updateField(t.id, 'categoria', e.target.value)} disabled={t.status !== 'LISTO'}>
+                        <option value="">--</option>
+                        {['Materiales','Servicios','Transporte','Equipos','Mixto'].map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </td>
+                    <td><input className="input" style={{ width: '100%', minWidth: 120 }} value={t.contacto_nombre} onChange={e => updateField(t.id, 'contacto_nombre', e.target.value)} disabled={t.status !== 'LISTO'} /></td>
+                    <td><input className="input" style={{ width: 100 }} value={t.telefono} onChange={e => updateField(t.id, 'telefono', sanitizePhone(e.target.value))} disabled={t.status !== 'LISTO'} /></td>
+                    <td><input className="input" style={{ width: '100%', minWidth: 150 }} value={t.email} onChange={e => updateField(t.id, 'email', e.target.value)} disabled={t.status !== 'LISTO'} /></td>
+                    <td>
+                      <select className="select" value={t.responsable_compras || ''} onChange={e => updateField(t.id, 'responsable_compras', e.target.value)} disabled={t.status !== 'LISTO'}>
+                        <option value="">Seleccionar...</option>
+                        {responsables.map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
+                        {t.responsable_compras && !responsables.some(u => u.nombre === t.responsable_compras) && <option value={t.responsable_compras}>{t.responsable_compras}</option>}
+                      </select>
+                    </td>
+                    <td style={{ fontSize: 12, color: t.status === 'ERROR' ? 'var(--danger)' : 'var(--fg-muted)', whiteSpace: 'nowrap' }}>{t.errorMsg}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="modal-foot" style={{ padding: 16, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>
+            Omitidos por duplicado: {items.filter(i => i.status.startsWith('OMITIDO')).length} | Errores: {items.filter(i => i.status === 'ERROR').length}
+          </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleImport} disabled={saving || selCount === 0}>
+              {saving ? 'Importando...' : `Importar ${selCount} proveedores`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -14322,15 +14591,16 @@ function ControlAsistencia() {
       {tab === 'semanal' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', flexWrap:'wrap', width:'100%', gap:10}}><h3>Vista semanal (Régimen General)</h3><div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><div className="row" style={{background:'var(--bg-subtle)', borderRadius:8, padding:'2px 4px', border:'1px solid var(--border)'}}><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() - 7); return n.toISOString().split('T')[0]; })} title="Semana anterior">{I.chevronLeft}</button><span className="text-muted" style={{minWidth:200, textAlign:'center', fontSize:13, fontWeight:600}}>{semanaTexto}</span><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() + 7); return n.toISOString().split('T')[0]; })} title="Siguiente semana">{I.chevronRight}</button></div><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/><button type="button" className="btn btn-ghost btn-sm" onClick={() => setFecha(new Date().toISOString().split('T')[0])}>Hoy</button></div></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.filter(t => !filtroTrabajador || t.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).slice(0, filtroTrabajador ? undefined : 8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t,d); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
 
       {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%', gap:16}}><h3>Resumen mensual - {mesNombreCap}</h3><input type="month" className="input" style={{width: 160}} value={currentMonth} onChange={e => { if (e.target.value) setFecha(e.target.value + '-01'); }} /></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Régimen/Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>
-        {calculosAsistencia.filter(c => !filtroTrabajador || c.trabajador.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).slice(0, filtroTrabajador ? undefined : 8).map(c => {
+        {calculosAsistencia.filter(c => c && c.trabajador && (!filtroTrabajador || (c.trabajador.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).slice(0, filtroTrabajador ? undefined : 8).map(c => {
           const t = c.trabajador;
           const regs = registrosPeriodo.filter(r => r.trabajador_id === t.id);
           const faltas = c.faltas_injustificadas + c.faltas_justificadas;
-          const isMinero = c.regimen_jornada !== 'general' && !c.regimen_jornada.startsWith('Mixto');
-          const badgeClass = c.incompleto_ciclo ? 'badge-red' : c.regimen_jornada.startsWith('Mixto') ? 'badge-purple' : isMinero ? 'badge-orange' : 'badge-gray';
-          const regimenLabel = c.incompleto_ciclo ? 'Sin fecha ciclo' : c.regimen_jornada === 'general' ? workerTurno(turnos, t, fecha)?.nombre || 'General' : c.regimen_jornada.replace('minero_', 'Minero ').replace('x', '×');
+          const regimenStr = c.regimen_jornada || 'general';
+          const isMinero = regimenStr !== 'general' && !regimenStr.startsWith('Mixto');
+          const badgeClass = c.incompleto_ciclo ? 'badge-red' : regimenStr.startsWith('Mixto') ? 'badge-purple' : isMinero ? 'badge-orange' : 'badge-gray';
+          const regimenLabel = c.incompleto_ciclo ? 'Sin fecha ciclo' : regimenStr === 'general' ? workerTurno(turnos, t, fecha)?.nombre || 'General' : regimenStr.replace('minero_', 'Minero ').replace('x', '×');
           return <tr key={t.id} style={{background: c.incompleto_ciclo ? 'rgba(239,68,68,0.06)' : undefined}}>
-            <td><strong>{t.nombre}</strong></td>
+            <td><strong>{t.nombre || 'Desconocido'}</strong></td>
             <td><span className={`badge ${badgeClass}`}>{regimenLabel}</span></td>
             <td>{c.incompleto_ciclo ? '—' : c.dias_laborables}</td>
             <td title={c.dias_computables != null ? "Indicador de días trabajados del ciclo" : "Asistencias registradas"}>{c.incompleto_ciclo ? '—' : c.dias_computables != null ? `${c.dias_asistidos} (días trab. ciclo)` : c.dias_asistidos}</td>
@@ -14353,7 +14623,7 @@ function ControlAsistencia() {
               </tr>
             </thead>
             <tbody>
-              {trabajadoresMineros.filter(t => !filtroTrabajador || t.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).slice(0, filtroTrabajador ? undefined : 8).map(t => {
+              {trabajadoresMineros.filter(t => t && (!filtroTrabajador || (t.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).slice(0, filtroTrabajador ? undefined : 8).map(t => {
                 const regsM = registrosPeriodo.filter(r => r.trabajador_id === t.id);
                 return <tr key={t.id}>
                   <td><strong>{t.nombre}</strong></td>
@@ -14867,7 +15137,7 @@ function ControlAsistencia() {
 function Nomina() {
   const {
     turnos, registrosAsistencia, personalOperativo, personalAdmin, trabajadoresDatosNomina,
-    periodosNomina, setPeriodosNomina, crearPeriodoNominaCtx, crearGasto, generarCxP, role, empresa, authUser, addNotificacion, empresaConfig,
+    periodosNomina, setPeriodosNomina, crearPeriodoNominaCtx, crearGasto, generarCxP, role, empresa, authUser, addNotificacion, addToast, empresaConfig,
     comisiones = [], setComisiones, afpParametros = [],
     asignacionesJornada = [],
     portalBoletaAcuses = [],
@@ -14910,13 +15180,14 @@ function Nomina() {
     const hoyAnio = hoy.getFullYear();
     const hoyMes = hoy.getMonth() + 1;
 
+    // Se ancla en el PRIMER período existente (no el último) para poder detectar y rellenar
+    // huecos en medio del historial (ej. mayo existe, junio falta, julio existe), no solo
+    // extender hacia adelante desde el más reciente.
     const conFechaInicio = periodosNomina.filter(p => p.fecha_inicio);
     let sigAnio = hoyAnio, sigMes = hoyMes;
     if (conFechaInicio.length) {
-      const ultimo = [...conFechaInicio].sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio))[0];
-      const [uAnio, uMes] = ultimo.fecha_inicio.split('-').map(Number);
-      sigAnio = uMes === 12 ? uAnio + 1 : uAnio;
-      sigMes = uMes === 12 ? 1 : uMes + 1;
+      const primero = [...conFechaInicio].sort((a, b) => a.fecha_inicio.localeCompare(b.fecha_inicio))[0];
+      [sigAnio, sigMes] = primero.fecha_inicio.split('-').map(Number);
     }
 
     const mesesFaltantes = [];
@@ -14983,7 +15254,11 @@ function Nomina() {
 
   const periodoValido = periodo && periodo.anio != null && periodo.mes != null;
   const periodoIni = periodoValido ? new Date(periodo.anio, periodo.mes - 1, 1) : null;
-  const periodoFin = periodoValido ? new Date(periodo.anio, periodo.mes, 0) : null;
+  // Si anio/mes vienen null (dato mal cargado en periodos_nomina), no asumir "sin fin de período"
+  // (eso deja pasar a cualquier trabajador sin filtro de fecha_ingreso) — usar fecha_fin como respaldo.
+  const periodoFin = periodoValido
+    ? new Date(periodo.anio, periodo.mes, 0)
+    : (periodo?.fecha_fin ? new Date(`${periodo.fecha_fin}T00:00:00`) : null);
   const estaActivoEnPeriodo = (p) => {
     if (!periodoFin) return true;
     const ing = p.fecha_ingreso || null;
@@ -15081,12 +15356,15 @@ function Nomina() {
       try {
         const actual = await rrhhService.obtenerPeriodoNominaPorId(periodo.id);
         if (actual?.estado === 'cerrado') {
+          addToast(`El período ${periodo.periodo} ya estaba cerrado. No se generaron egresos nuevos.`, 'warning');
           addNotificacion(`El período ${periodo.periodo} ya estaba cerrado. No se generaron egresos nuevos.`);
           setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, estado: 'cerrado' } : p));
           setCierre(false);
           return;
         }
       } catch (err) {
+        console.error('[cerrarPeriodo] obtenerPeriodoNominaPorId:', err);
+        addToast(`No se pudo verificar el estado del período antes de cerrar: ${err.message || 'BD'}. Cierre cancelado.`, 'error');
         addNotificacion(`No se pudo verificar el estado del período antes de cerrar: ${err.message || 'BD'}. Cierre cancelado.`);
         return;
       }
@@ -15163,6 +15441,8 @@ function Nomina() {
         const actualizado = await rrhhService.cerrarPeriodoNomina(periodo.id, authUser?.id || null);
         setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, ...actualizado, total_trabajadores:resumen.total_trabajadores, masa_salarial_bruta:resumen.masa_salarial_bruta, total_neto:resumen.total_neto, total_cargas_empresa:resumen.total_cargas_empresa } : p));
       } catch (err) {
+        console.error('[cerrarPeriodo] cerrarPeriodoNomina:', err);
+        addToast(`Error cerrando el período en BD: ${err.message || 'No se pudo actualizar.'} El período NO quedó marcado como cerrado.`, 'error');
         addNotificacion(`Error cerrando el período en BD: ${err.message || 'No se pudo actualizar.'} El período NO quedó marcado como cerrado.`);
         return;
       }
@@ -15179,6 +15459,8 @@ function Nomina() {
             const actualizada = await finanzasService.actualizarComision(id, { estado: 'pagada', pagado_en: new Date().toISOString() });
             setComisiones(prev => prev.map(c => c.id === id ? { ...c, ...actualizada } : c));
           } catch (err) {
+            console.error('[cerrarPeriodo] actualizarComision:', err);
+            addToast(`Error marcando comisión como pagada (${id}): ${err.message || 'BD'}`, 'error');
             addNotificacion(`Error marcando comisión como pagada (${id}): ${err.message || 'BD'}`);
           }
         }
@@ -15202,8 +15484,15 @@ function Nomina() {
       }
     }
 
+    addToast(`Nómina ${periodo.periodo} cerrada correctamente.`, 'success');
     addNotificacion(`Nomina ${periodo.periodo} cerrada. CxPs separadas generadas por institución.`);
     setCierre(false);
+    } catch (err) {
+      // Red de seguridad: cualquier falla no anticipada en el flujo de cierre debe verse,
+      // nunca quedar en silencio dejando el modal colgado sin explicación.
+      console.error('[cerrarPeriodo] error inesperado:', err);
+      addToast(`No se pudo cerrar el período: ${err.message || 'error inesperado'}.`, 'error');
+      addNotificacion(`No se pudo cerrar el período ${periodo.periodo}: ${err.message || 'error inesperado'}.`);
     } finally {
       cerrandoPeriodoRef.current = false;
     }

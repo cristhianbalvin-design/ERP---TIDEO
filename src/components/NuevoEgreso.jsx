@@ -280,13 +280,6 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     return convertirMonto(m, form.moneda, 'PEN', tc);
   }, [form.monto, form.moneda, tc]);
 
-  // Descripción de destino (se actualiza en paso 2 según toggle)
-  const destinoLabel = form.ya_pagado
-    ? (form.metodo_pago === 'Caja chica'
-        ? 'compras_gastos + caja_chica'
-        : 'compras_gastos + CxP pagada + Tesoreria')
-    : 'compras_gastos + CxP pendiente';
-
   // ── Paso 1: selección de tipo ─────────────────────────────────────────────
   const tiposGastoFiltrados = useMemo(
     () => tiposGasto.filter(t => matchIniciales(`${t.nombre} ${t.categoria_er}`, buscarTipo)),
@@ -297,6 +290,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     setTipoSel(t);
     // Prellena el concepto con el nombre del tipo (editable); no pisa un concepto que el usuario ya haya escrito.
     setForm(p => (p.concepto.trim() ? p : { ...p, concepto: t.nombre }));
+    setPaso(2);
   };
 
   const renderPaso1 = () => (
@@ -344,48 +338,6 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         })}
       </div>
       )}
-
-      {tipoSel && (
-        <div style={{
-          display: 'flex', gap: 14, padding: '12px 16px', borderRadius: 8,
-          background: esCapitalizacion
-            ? 'color-mix(in srgb, var(--orange) 6%, var(--surface))'
-            : 'color-mix(in srgb, var(--cyan) 6%, var(--surface))',
-          border: `1px solid ${esCapitalizacion
-            ? 'color-mix(in srgb, var(--orange) 30%, var(--border))'
-            : 'color-mix(in srgb, var(--cyan) 25%, var(--border))'}`,
-        }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 3 }}>Categoría ER</div>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>
-              {tipoSel.categoria_er}
-              {esCapitalizacion
-                ? <span className="badge badge-orange" style={{ marginLeft: 8, fontSize: 10 }}>Capitalización</span>
-                : <span className="badge badge-cyan" style={{ marginLeft: 8, fontSize: 10 }}>automático</span>}
-            </div>
-            {esCapitalizacion && (
-              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
-                No aparece como gasto en el ER — se capitaliza como activo fijo.
-              </div>
-            )}
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 3 }}>Destino</div>
-            <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--fg-muted)' }}>{destinoLabel}</div>
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 4 }}>
-        <button
-          className="btn btn-primary"
-          type="button"
-          disabled={!tipoSel}
-          onClick={() => setPaso(2)}
-        >
-          Siguiente →
-        </button>
-      </div>
     </div>
   );
 
