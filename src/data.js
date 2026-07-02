@@ -7,6 +7,7 @@ export const empresas = [
 
 const tenantAdminScreens = [
   'dashboard','bi_comercial','bi_operativo','bi_financiero',
+  'api_keys',
   'cuentas','leads','marketing','pipeline','actividades','agenda_comercial',
   'hoja_costeo','cotizaciones','os_cliente',
   'planner','backlog','ot','partes','cierre','tickets',
@@ -15,7 +16,7 @@ const tenantAdminScreens = [
   'ventas','caja','activos_fijos','financiamiento','prestamos_personal','cxc','cxp','facturacion','tesoreria','resultados','valorizacion','presupuestos',
   'cs_onboarding','cs_planes','cs_health','cs_renovaciones','cs_fidelizacion','bi_cs',
   'ia_comercial','ia_operativa','ia_financiera',
-  'campo','mi_portal','usuarios','rrhh_operativo','rrhh_admin','reclutamiento','asistencia','turnos','nomina','tareo_admin','control_horas','evaluaciones_desempeno','liquidaciones_cese','roles','maestros','parametros','servicios','tarifarios'
+  'campo','mi_portal','usuarios','organigrama','rrhh_operativo','rrhh_admin','reclutamiento','asistencia','turnos','nomina','tareo_admin','control_horas','evaluaciones_desempeno','liquidaciones_cese','roles','maestros','parametros','servicios','tarifarios'
 ];
 
 const platformScreens = ['dashboard','mi_portal','tenants','planes','metricas_saas','usuarios','roles'];
@@ -23,10 +24,10 @@ const platformScreens = ['dashboard','mi_portal','tenants','planes','metricas_sa
 export const roles = {
   plataforma: { nombre: 'Superadmin TIDEO', color: 'navy', categoria: 'admin', nivel_jerarquico: 'direccion', descripcion: 'Administra la plataforma SaaS, tenants, planes, metricas y soporte TIDEO', permisos: { ver: platformScreens, plataforma: true, soporte_tenant: true, ver_costos: true, ver_finanzas: true } },
   admin: { nombre: 'Super Administrador', color: 'purple', categoria: 'admin', nivel_jerarquico: 'direccion', descripcion: 'Administra todos los modulos del ERP dentro de su empresa', permisos: { ver: tenantAdminScreens, tenant_admin: true, ver_costos: true, ver_precios: true, ver_finanzas: true, aprobar_descuentos: true, anular_documentos: true, acceso_campo: true, perfil_campo: 'Gerencia', ver_agenda_equipo: true } },
-  comercial: { nombre: 'Jefe Comercial', color: 'cyan', categoria: 'comercial', nivel_jerarquico: 'jefatura', descripcion: 'Gestión de ventas y cotizaciones', permisos: { ver: ['dashboard','cuentas','leads','pipeline','actividades','agenda_comercial','hoja_costeo','cotizaciones','os_cliente','evaluaciones_desempeno'], crear: true, aprobar_descuentos: true, ver_costos: true, ver_agenda_equipo: true } },
-  vendedor: { nombre: 'Vendedor', color: 'blue', categoria: 'comercial', nivel_jerarquico: 'asesor', descripcion: 'Gestión de sus propias ventas y agenda', permisos: { ver: ['dashboard','cuentas','leads','pipeline','actividades','agenda_comercial','cotizaciones','evaluaciones_desempeno'], crear: true, acceso_campo: true, perfil_campo: 'Vendedor' } },
-  tecnico: { nombre: 'Técnico de Campo', color: 'orange', categoria: 'operaciones', nivel_jerarquico: 'operativo', descripcion: 'Ejecución de OTs', permisos: { ver: ['ot','partes','evaluaciones_desempeno'], acceso_campo: true } },
-  finanzas: { nombre: 'Finanzas', color: 'green', categoria: 'finanzas', nivel_jerarquico: 'jefatura', descripcion: 'Control de cajas y facturación', permisos: { ver: ['dashboard','bi_financiero','presupuestos','cxc','cxp','tesoreria','resultados','facturacion','caja','activos_fijos','financiamiento','prestamos_personal','ventas','valorizacion','nomina','evaluaciones_desempeno'], ver_finanzas: true } },
+  comercial: { nombre: 'Jefe Comercial', color: 'cyan', categoria: 'comercial', nivel_jerarquico: 'jefatura', descripcion: 'Gestión de ventas y cotizaciones', permisos: { ver: ['dashboard','cuentas','leads','marketing','pipeline','actividades','agenda_comercial','hoja_costeo','cotizaciones','os_cliente','evaluaciones_desempeno','ia_comercial'], crear: true, aprobar_descuentos: true, ver_costos: true, ver_agenda_equipo: true } },
+  vendedor: { nombre: 'Vendedor', color: 'blue', categoria: 'comercial', nivel_jerarquico: 'asesor', descripcion: 'Gestión de sus propias ventas y agenda', permisos: { ver: ['dashboard','cuentas','leads','marketing','pipeline','actividades','agenda_comercial','cotizaciones','evaluaciones_desempeno','ia_comercial'], crear: true, acceso_campo: true, perfil_campo: 'Vendedor' } },
+  tecnico: { nombre: 'Técnico de Campo', color: 'orange', categoria: 'operaciones', nivel_jerarquico: 'operativo', descripcion: 'Ejecución de OTs', permisos: { ver: ['ot','partes','evaluaciones_desempeno','ia_operativa','campo'], acceso_campo: true } },
+  finanzas: { nombre: 'Finanzas', color: 'green', categoria: 'finanzas', nivel_jerarquico: 'jefatura', descripcion: 'Control de cajas y facturación', permisos: { ver: ['dashboard','bi_financiero','presupuestos','cxc','cxp','tesoreria','resultados','facturacion','caja','activos_fijos','financiamiento','prestamos_personal','ventas','valorizacion','nomina','evaluaciones_desempeno','ia_financiera'], ver_finanzas: true } },
 };
 
 export const usuarios = [
@@ -1056,7 +1057,25 @@ export const pantallasPermisos = [
   { key: 'roles', modulo: 'Configuracion', pantalla: 'Roles y Permisos', acciones: ['ver','crear','editar','anular','exportar'] },
   { key: 'usuarios', modulo: 'Configuracion', pantalla: 'Usuarios', acciones: ['ver','crear','editar','anular','exportar'] },
   { key: 'maestros', modulo: 'Configuracion', pantalla: 'Maestros Base', acciones: ['ver','crear','editar','exportar'] },
-  { key: 'parametros', modulo: 'Configuracion', pantalla: 'Parametros Generales', acciones: ['ver','crear','editar','exportar'] }
+  { key: 'parametros', modulo: 'Configuracion', pantalla: 'Parametros Generales', acciones: ['ver','crear','editar','exportar'] },
+  { key: 'api_keys', modulo: 'Plataforma', pantalla: 'API Keys', acciones: ['ver','crear','anular','exportar'] },
+  { key: 'marketing', modulo: 'CRM', pantalla: 'Marketing Automation', acciones: ['ver','crear','editar','exportar'] },
+  { key: 'facturacion', modulo: 'Administracion', pantalla: 'Facturacion', acciones: ['ver','crear','editar','anular','aprobar','exportar','finanzas'] },
+  { key: 'valorizacion', modulo: 'Administracion', pantalla: 'Valorizaciones', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
+  { key: 'presupuestos', modulo: 'Administracion', pantalla: 'Presupuesto vs Real', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
+  { key: 'cs_onboarding', modulo: 'Customer Success', pantalla: 'Onboarding', acciones: ['ver','crear','editar','aprobar','exportar'] },
+  { key: 'cs_planes', modulo: 'Customer Success', pantalla: 'Planes de Exito', acciones: ['ver','crear','editar','exportar'] },
+  { key: 'cs_health', modulo: 'Customer Success', pantalla: 'Health Score', acciones: ['ver','exportar'] },
+  { key: 'cs_renovaciones', modulo: 'Customer Success', pantalla: 'Renovaciones', acciones: ['ver','crear','editar','aprobar','exportar','finanzas'] },
+  { key: 'cs_fidelizacion', modulo: 'Customer Success', pantalla: 'Fidelizacion y NPS', acciones: ['ver','crear','editar','exportar'] },
+  { key: 'bi_cs', modulo: 'BI', pantalla: 'BI Customer Success', acciones: ['ver','exportar'] },
+  { key: 'ia_comercial', modulo: 'Comercial', pantalla: 'IA Comercial', acciones: ['ver','exportar'] },
+  { key: 'ia_operativa', modulo: 'Operaciones', pantalla: 'IA Operativa', acciones: ['ver','exportar','costos'] },
+  { key: 'ia_financiera', modulo: 'Administracion', pantalla: 'IA Financiera', acciones: ['ver','exportar','finanzas'] },
+  { key: 'campo', modulo: 'Operaciones', pantalla: 'Vistas de Campo', acciones: ['ver','crear','editar'] },
+  { key: 'organigrama', modulo: 'Configuracion', pantalla: 'Organigrama', acciones: ['ver','crear','editar','exportar'] },
+  { key: 'servicios', modulo: 'Configuracion', pantalla: 'Catalogo Servicios', acciones: ['ver','crear','editar','exportar'] },
+  { key: 'tarifarios', modulo: 'Configuracion', pantalla: 'Tarifarios', acciones: ['ver','crear','editar','exportar'] }
 ];
 export const servicios = [
   { id: 'SRV-001', familia: 'Mantenimiento', descripcion: 'Mantenimiento preventivo mensual', unidad: 'Servicio', costo: 3800, precio: 6200, margen: 39, estado: 'activo', facturable: true, precio_incluido: false, detalle: 'Revisión integral de equipos mecánicos y eléctricos, lubricación, ajuste de componentes críticos, limpieza de tableros y reporte de estado de equipos.', entregables: ['Informe de estado de equipos', 'Registro de actividades ejecutadas', 'Recomendaciones de mejora preventiva'] },

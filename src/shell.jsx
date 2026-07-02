@@ -111,6 +111,18 @@ const SIDEBAR = [
   ]},
 ];
 
+if (import.meta.env.DEV) {
+  const pantallasRegistradas = new Set(MOCK.pantallasPermisos.map(p => p.key));
+  const faltantes = SIDEBAR.flatMap(g => g.items)
+    .map(it => it.key)
+    .filter(key => key !== 'mi_portal' && !pantallasRegistradas.has(key));
+  if (faltantes.length) {
+    console.warn(
+      `[Roles y Permisos] ${faltantes.length} pantalla(s) del sidebar no estan registradas en MOCK.pantallasPermisos y quedaran ocultas para todo rol sin acceso total: ${faltantes.join(', ')}`
+    );
+  }
+}
+
 const SECTION_ICONS = {
   'Business Intelligence': I.dashboard,
   Plataforma: I.building,
