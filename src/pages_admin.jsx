@@ -7723,7 +7723,12 @@ function RRHHAdmin() {
   const tarifaSym = symOf(formAlta.moneda || 'PEN');
   const modalidadAlta = normalizarModalidadContrato(formAlta.modalidad);
   const esHonorariosAlta = modalidadAlta === 'honorarios';
-  const tipoContratoAlta = normalizarTipoContratoDuracion(formAlta.tipo_contrato, modalidadAlta);
+  const opcionesTipoContratoAlta = esHonorariosAlta ? [['honorarios', 'Honorarios']] : (tiposContrato.length > 0 ? tiposContrato.map(c => [c.codigo, c.nombre]) : CONTRATO_DURACION_OPCIONES);
+  const tipoContratoAlta = esHonorariosAlta
+    ? 'honorarios'
+    : (tiposContrato.length > 0
+        ? (tiposContrato.some(c => c.codigo === formAlta.tipo_contrato) ? formAlta.tipo_contrato : (tiposContrato[0]?.codigo || ''))
+        : normalizarTipoContratoDuracion(formAlta.tipo_contrato, modalidadAlta));
   const asignacionFamiliar = asignacionFamiliarMonto(empresaConfig);
   const tipoFiscalizacionAlta = getTipoFiscalizacion({
     modalidad_contrato: modalidadAlta,
@@ -7973,7 +7978,7 @@ function RRHHAdmin() {
     e.preventDefault();
     if (altaSaving) return;
     const modalidad = normalizarModalidadContrato(formAlta.modalidad);
-    const tipoContrato = normalizarTipoContratoDuracion(formAlta.tipo_contrato, modalidad);
+    const tipoContrato = tipoContratoAlta;
     if (modalidad !== 'honorarios' && !turnosOptions.some(t => t.id === formAlta.turno_id)) {
       setAltaError('Selecciona un turno real creado en Supabase antes de guardar el colaborador.');
       return;
@@ -10361,7 +10366,7 @@ function RRHHAdmin() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Código de empleado *</label><input className="input" readOnly value={formAlta.codigo} placeholder="ADM-008" style={{background:'var(--bg-subtle)', fontWeight:700}}/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Autogenerado por correlativo. Solo Admin puede modificarlo después del alta.</div></div>
               <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato), ruc_colaborador: modalidad === 'honorarios' ? v.ruc_colaborador : ''}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
-              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorariosAlta} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{(esHonorariosAlta ? [['honorarios', 'Honorarios']] : tiposContrato.length > 0 ? tiposContrato.map(c => [c.codigo, c.nombre]) : CONTRATO_DURACION_OPCIONES).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
+              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorariosAlta} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
               <div className="input-group"><label>Cargo</label>
                 <select className="select" value={formAlta.cargo_id} onChange={e=>{
                   if(e.target.value==='__nuevo__'){setFormAlta(v=>({...v,cargo_id:'__nuevo__'}));setNuevoCargoTextoAdmin('');return;}
