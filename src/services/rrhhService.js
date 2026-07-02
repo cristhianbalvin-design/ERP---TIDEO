@@ -32,9 +32,9 @@ export const esModalidadHonorarios = (persona = {}) => {
 export const normalizarTipoContratoDuracion = (value = '', modalidad = 'planilla') => {
   if (normalizarModalidadContrato(modalidad) === 'honorarios') return 'por_encargo';
   const v = String(value || '').trim().toLowerCase();
-  if (['plazo_fijo', 'plazo fijo', 'temporal'].includes(v)) return 'plazo_fijo';
-  if (['obra_determinada', 'obra determinada'].includes(v)) return 'obra_determinada';
-  if (['por_encargo', 'por encargo', 'honorarios', 'recibos por honorarios'].includes(v)) return 'por_encargo';
+  if (v.includes('plazo_fijo') || v.includes('plazo fijo') || v.includes('temporal')) return 'plazo_fijo';
+  if (v.includes('obra_determinada') || v.includes('obra determinada') || v.includes('obra o servicio')) return 'obra_determinada';
+  if (v.includes('por_encargo') || v.includes('por encargo') || v.includes('honorario')) return 'por_encargo';
   return CONTRATO_DURACION_DEFAULT;
 };
 

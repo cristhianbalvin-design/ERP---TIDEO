@@ -18,9 +18,23 @@ export const GEO_CONFIG_DEFAULT = {
 
 const generateId = prefix => `${prefix}_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`}`;
 
+const DMS_RE = /(\d+(?:\.\d+)?)\s*°\s*(\d+(?:\.\d+)?)\s*['′]\s*(\d+(?:\.\d+)?)\s*["″]?\s*([NSEWnsew])/g;
+
+function dmsToDecimal(deg, min, sec, dir) {
+  const dd = Number(deg) + Number(min) / 60 + Number(sec) / 3600;
+  return ['S', 'W'].includes(String(dir).toUpperCase()) ? -dd : dd;
+}
+
 export function parseGps(value) {
   if (!value) return null;
-  const parts = String(value).split(',').map(v => Number(String(v).trim()));
+  const str = String(value).trim();
+  const dmsMatches = [...str.matchAll(DMS_RE)];
+  if (dmsMatches.length >= 2) {
+    const lat = dmsToDecimal(...dmsMatches[0].slice(1));
+    const lng = dmsToDecimal(...dmsMatches[1].slice(1));
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  }
+  const parts = str.split(',').map(v => Number(String(v).trim()));
   if (parts.length < 2 || parts.some(Number.isNaN)) return null;
   return { lat: parts[0], lng: parts[1] };
 }

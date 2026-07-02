@@ -7978,7 +7978,8 @@ function RRHHAdmin() {
     e.preventDefault();
     if (altaSaving) return;
     const modalidad = normalizarModalidadContrato(formAlta.modalidad);
-    const tipoContrato = tipoContratoAlta;
+    const tipoContratoNombreCatalogo = tiposContrato.find(c => c.codigo === tipoContratoAlta)?.nombre || tipoContratoAlta;
+    const tipoContrato = normalizarTipoContratoDuracion(tipoContratoNombreCatalogo, modalidad);
     if (modalidad !== 'honorarios' && !turnosOptions.some(t => t.id === formAlta.turno_id)) {
       setAltaError('Selecciona un turno real creado en Supabase antes de guardar el colaborador.');
       return;

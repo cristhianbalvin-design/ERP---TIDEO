@@ -13809,6 +13809,45 @@ function GeoMiniMapa({ lat, lng, radio = 250, puntos = [] }) {
   );
 }
 
+function UbicacionMarcacionModal({ registro, estadoGeocerca, onClose }) {
+  if (!registro) return null;
+  const badgeClass = estadoGeocerca === 'dentro' ? 'badge-green' : estadoGeocerca === 'fuera' ? 'badge-orange' : 'badge-gray';
+  return (
+    <>
+      <div className="side-panel-backdrop" onClick={onClose}/>
+      <div className="side-panel" style={{width:'min(420px,96vw)'}}>
+        <div className="side-panel-head">
+          <div><div className="eyebrow">Ubicación de marcación</div><div className="font-display" style={{fontSize:20,fontWeight:700}}>{registro.fecha}</div></div>
+          <button className="icon-btn" onClick={onClose}>{I.x}</button>
+        </div>
+        <div className="side-panel-body">
+          <div className="row" style={{gap:8, marginBottom:12, flexWrap:'wrap'}}>
+            <span className="badge badge-gray">Entrada {registro.hora_entrada || '--:--'}</span>
+            {estadoGeocerca && <span className={'badge ' + badgeClass}>{estadoGeocerca}</span>}
+          </div>
+          <div style={{background:'var(--bg)', padding:8, borderRadius:8}}>
+            <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:6, display:'flex', alignItems:'center', gap:4}}>
+              <span style={{width:14, height:14, display:'inline-block'}}>{I.mapPin}</span>
+              Ingreso: {registro.latitud}, {registro.longitud}
+            </div>
+            <a href={`https://www.google.com/maps?q=${registro.latitud},${registro.longitud}`} target="_blank" rel="noreferrer" style={{display:'block'}}>
+              <iframe
+                title="Mapa de marcación"
+                width="100%"
+                height="220"
+                frameBorder="0"
+                style={{border:0, borderRadius:6, pointerEvents:'none'}}
+                src={`https://maps.google.com/maps?q=${registro.latitud},${registro.longitud}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
+                allowFullScreen
+              />
+            </a>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 const BIO_MOTIVO_LABELS = {
   sin_identificador: 'Falta el DNI/codigo',
   fecha_invalida: 'Fecha invalida',
@@ -13833,6 +13872,7 @@ function ControlAsistencia() {
   const [masivoDatos, setMasivoDatos] = useState({});
   const [kiosk, setKiosk] = useState(false);
   const [resumenPanelId, setResumenPanelId] = useState(null);
+  const [ubicacionModal, setUbicacionModal] = useState(null);
   const [autHeRows, setAutHeRows] = useState([]);
   const [autHeForm, setAutHeForm] = useState({ personal_id:'', fecha:new Date().toISOString().split('T')[0], horas:'1', motivo:'' });
   const [autHeComentario, setAutHeComentario] = useState('');
@@ -13980,6 +14020,14 @@ function ControlAsistencia() {
   const currentMonth = fecha.substring(0, 7);
   const registrosPeriodo = registrosAsistencia.filter(r => r.fecha.startsWith(currentMonth) && trabajadores.some(t => t.id === r.trabajador_id));
 
+  const geocercaAsignadaPorTrabajador = useMemo(() => {
+    const map = new Map();
+    geocercaAsignaciones.forEach(a => {
+      if (a.estado !== 'inactivo' && a.personal_id && !map.has(a.personal_id)) map.set(a.personal_id, a);
+    });
+    return map;
+  }, [geocercaAsignaciones]);
+
   const diaRows = trabajadoresGenerales.map(t => {
     const reg = registrosAsistencia.find(r => r.trabajador_id === t.id && r.fecha === fecha);
     const trn = workerTurno(turnos, t, fecha);
@@ -14121,6 +14169,15 @@ function ControlAsistencia() {
       justificada:Boolean(r?.justificada), motivo_falta:r?.motivo_falta || '', notas:r?.notas || ''
     });
     setPanel(true);
+  };
+
+  const abrirUbicacionMarcacion = (row) => {
+    const reg = row.registro;
+    if (!reg?.latitud) return;
+    const asignacion = geocercaAsignadaPorTrabajador.get(row.trabajador.id);
+    const estadoGeocerca = !asignacion ? null
+      : reg.geofence_entrada_estado || evaluarGeofenceLocal({ trabajador: row.trabajador, geocercas, asignaciones: geocercaAsignaciones, fix: { lat: reg.latitud, lng: reg.longitud, precision_m: reg.precision_entrada_m }, fecha: reg.fecha, config: geoCfg }).estado;
+    setUbicacionModal({ registro: reg, estadoGeocerca });
   };
 
   const abrirMasivo = () => {
@@ -14616,7 +14673,7 @@ function ControlAsistencia() {
 
       <div className="tabs">{allTabs.map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
 
-      {tab === 'diaria' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%'}}><h3>Asistencia del dia (Régimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.filter(r => !filtroTrabajador || r.trabajador.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(row=><tr key={row.trabajador.id} className="hover-row" style={{cursor:'pointer'}} onClick={()=>setResumenPanelId(row.trabajador.id)}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td><td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><button className="btn btn-sm btn-secondary" onClick={(e)=>{e.stopPropagation(); abrirEdicion(row);}}>Editar</button></td></tr>)}</tbody></table></div></div>}
+      {tab === 'diaria' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%'}}><h3>Asistencia del dia (Régimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Geocerca</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.filter(r => !filtroTrabajador || r.trabajador.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(row=><tr key={row.trabajador.id} className="hover-row" style={{cursor:'pointer'}} onClick={()=>setResumenPanelId(row.trabajador.id)}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td><td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td><td>{geocercaAsignadaPorTrabajador.has(row.trabajador.id) ? <span className="badge badge-cyan">Asignada</span> : <span className="badge badge-gray">Sin asignar</span>}</td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><div className="row" style={{gap:6}}>{row.registro?.latitud ? <button type="button" className="icon-btn" title="Ver ubicación de marcación" onClick={(e)=>{e.stopPropagation(); abrirUbicacionMarcacion(row);}}>{I.mapPin}</button> : <button type="button" className="icon-btn" disabled title="Sin ubicación registrada" style={{opacity:0.35, cursor:'not-allowed'}}>{I.mapPin}</button>}<button className="btn btn-sm btn-secondary" onClick={(e)=>{e.stopPropagation(); abrirEdicion(row);}}>Editar</button></div></td></tr>)}</tbody></table></div></div>}
 
       {tab === 'semanal' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', flexWrap:'wrap', width:'100%', gap:10}}><h3>Vista semanal (Régimen General)</h3><div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><div className="row" style={{background:'var(--bg-subtle)', borderRadius:8, padding:'2px 4px', border:'1px solid var(--border)'}}><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() - 7); return n.toISOString().split('T')[0]; })} title="Semana anterior">{I.chevronLeft}</button><span className="text-muted" style={{minWidth:200, textAlign:'center', fontSize:13, fontWeight:600}}>{semanaTexto}</span><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() + 7); return n.toISOString().split('T')[0]; })} title="Siguiente semana">{I.chevronRight}</button></div><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/><button type="button" className="btn btn-ghost btn-sm" onClick={() => setFecha(new Date().toISOString().split('T')[0])}>Hoy</button></div></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.filter(t => !filtroTrabajador || t.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).slice(0, filtroTrabajador ? undefined : 8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t,d); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
 
@@ -15160,6 +15217,8 @@ function ControlAsistencia() {
           </div>
         </>;
       })()}
+
+      {ubicacionModal && <UbicacionMarcacionModal registro={ubicacionModal.registro} estadoGeocerca={ubicacionModal.estadoGeocerca} onClose={() => setUbicacionModal(null)} />}
     </>
   );
 }
@@ -17127,7 +17186,8 @@ function RRHH_Operativo() {
     e.preventDefault();
     if (altaSaving) return;
     const modalidad = normalizarModalidadContrato(formAlta.modalidad);
-    const tipoContrato = tipoContratoAlta;
+    const tipoContratoNombreCatalogo = tiposContrato.find(c => c.codigo === tipoContratoAlta)?.nombre || tipoContratoAlta;
+    const tipoContrato = normalizarTipoContratoDuracion(tipoContratoNombreCatalogo, modalidad);
     if (modalidad !== 'honorarios' && !turnosOptions.some(t => t.id === formAlta.turno_id)) {
       setAltaError('Selecciona un turno real creado en Supabase antes de guardar el tecnico.');
       return;
