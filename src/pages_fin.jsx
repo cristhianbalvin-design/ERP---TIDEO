@@ -6391,6 +6391,9 @@ function CxP() {
         || c?.proveedor_id;
       return { nombre: nombreProveedor, badge: 'Proveedor', badgeCls: 'badge-blue', tipo: 'proveedor' };
     }
+    if (c?.nombre_emisor) {
+      return { nombre: c.nombre_emisor, badge: 'Proveedor', badgeCls: 'badge-blue', tipo: 'proveedor' };
+    }
     if (c?.origen === 'auto_gasto') {
       const gasto = gastoOrigenDe(c);
       return {
@@ -6639,6 +6642,7 @@ function CxP() {
         : (sel.factura_numero || sel.tipo_comprobante || '-'))
     : '-';
   const selDatosComprobante = sel ? [
+    ['Beneficiario', selBeneficiario?.nombre || '-'],
     ['Concepto', sel.concepto || selGastoConcepto || '-'],
     ['Moneda y monto total', money(totalDe(sel), symOf(sel.moneda))],
     ['Monto pagado', money(pagadoDe(sel), symOf(sel.moneda))],
@@ -6841,6 +6845,9 @@ function CxP() {
                         <div style={{color:'var(--fg-muted)'}}>{l}</div>
                         <div style={{fontWeight:600,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                           <span>{v}</span>
+                          {l === 'Beneficiario' && selBeneficiario?.badge && (
+                            <span className={'badge '+selBeneficiario.badgeCls} style={{fontSize:9,padding:'1px 5px'}}>{selBeneficiario.badge}</span>
+                          )}
                           {l === 'Fecha de vencimiento' && selSemaforo?.badgeCls !== 'badge-gray' && (
                             <span className={'badge '+selSemaforo.badgeCls} style={{fontSize:9,padding:'1px 5px'}}>{selSemaforo.label}</span>
                           )}

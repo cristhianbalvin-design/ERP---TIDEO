@@ -16338,7 +16338,7 @@ function RRHH_Operativo() {
   const [formAsig, setFormAsig] = useState({ tipo_tramo: 'normal', fecha_inicio: '', regimen_jornada: 'general', dias_ciclo_trabajo: '', dias_ciclo_descanso: '', fecha_inicio_ciclo: '', motivo: '' });
   const [savingAsig, setSavingAsig] = useState(false);
   // Estado para subir documentos en ficha
-  const docUploadFormBase = { tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '' };
+  const docUploadFormBase = { tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
   const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
   const [docUploadFile, setDocUploadFile] = useState(null);
   const [docUploading, setDocUploading] = useState(false);
@@ -16354,7 +16354,7 @@ function RRHH_Operativo() {
   const [docHighlightTipo, setDocHighlightTipo] = useState('');
 
   // Estado para subida inline
-  const inlineUploadFormBase = { fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', modoSubida: 'nueva_version', periodoIdAnterior: null };
+  const inlineUploadFormBase = { fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', modoSubida: 'nueva_version', periodoIdAnterior: null, esIndefinido: false };
   const [inlineUploadReq, setInlineUploadReq] = useState(null);
   const [inlineUploadFile, setInlineUploadFile] = useState(null);
   const [inlineUploadForm, setInlineUploadForm] = useState(inlineUploadFormBase);
@@ -16981,85 +16981,11 @@ function RRHH_Operativo() {
       canValidate={canGestionarDocsRrhh}
       validatingId={docValidandoId}
       onClose={cerrarPreviewDocumento}
-      onCorregir={() => {
-        const req = docPreviewReq;
-        cerrarPreviewDocumento();
-        setInlineUploadReq(req);
-        const c = req.doc?.condiciones_laborales || {};
-        setInlineUploadForm({
-          ...inlineUploadFormBase,
-          fechaEmision: req.doc?.fecha_emision || '',
-          fechaVencimiento: req.doc?.fecha_vencimiento || '',
-          notas: req.doc?.notas || '',
-          cargoIdFirma: c.cargo_id || '',
-          cargoFirma: c.cargo_nombre || c.cargo || '',
-          remuneracionFirma: c.remuneracion_base !== undefined && c.remuneracion_base !== '' ? String(c.remuneracion_base) : '',
-          modalidadFirma: c.modalidad || '',
-          sedeIdFirma: c.sede_id || '',
-          sedeFirma: c.sede_nombre || c.sede || '',
-          areaIdFirma: c.area_id || '',
-          areaNombreFirma: c.area_nombre || '',
-          regimenJornadaFirma: c.regimen_jornada || '',
-          tipoContratoFirma: c.tipo_contrato || '',
-          contratoReferenciaId: req.doc?.contrato_referencia_id || '',
-          descripcionCambio: c.descripcion_cambio || '',
-          fechaVigenciaCambio: req.doc?.fecha_vigencia_cambio || '',
-          modoSubida: 'corregir',
-          periodoIdAnterior: req.doc?.contrato_periodo_id || null,
-        });
-        setInlineUploadFile(null);
-      }}
-      onNuevaVersion={() => {
-        const req = docPreviewReq;
-        cerrarPreviewDocumento();
-        setInlineUploadReq(req);
-        const c = req.doc?.condiciones_laborales || {};
-        setInlineUploadForm({
-          ...inlineUploadFormBase,
-          fechaEmision: req.doc?.fecha_emision || '',
-          fechaVencimiento: req.doc?.fecha_vencimiento || '',
-          notas: req.doc?.notas || '',
-          cargoIdFirma: c.cargo_id || '',
-          cargoFirma: c.cargo_nombre || c.cargo || '',
-          remuneracionFirma: c.remuneracion_base !== undefined && c.remuneracion_base !== '' ? String(c.remuneracion_base) : '',
-          modalidadFirma: c.modalidad || '',
-          sedeIdFirma: c.sede_id || '',
-          sedeFirma: c.sede_nombre || c.sede || '',
-          areaIdFirma: c.area_id || '',
-          areaNombreFirma: c.area_nombre || '',
-          regimenJornadaFirma: c.regimen_jornada || '',
-          tipoContratoFirma: c.tipo_contrato || '',
-          contratoReferenciaId: req.doc?.contrato_referencia_id || '',
-          descripcionCambio: c.descripcion_cambio || '',
-          fechaVigenciaCambio: req.doc?.fecha_vigencia_cambio || '',
-          modoSubida: 'nueva_version',
-          periodoIdAnterior: req.doc?.contrato_periodo_id || null,
-        });
-        setInlineUploadFile(null);
-      }}
-      onNuevoContrato={() => {
-        const req = docPreviewReq;
-        const persona = selTecnico;
-        cerrarPreviewDocumento();
-        setInlineUploadReq(req);
-        setInlineUploadForm({
-          ...inlineUploadFormBase,
-          cargoIdFirma: persona?.cargo_id || '',
-          cargoFirma: persona?.cargo || '',
-          remuneracionFirma: persona?.sueldo_base || persona?.remuneracion ? String(persona.sueldo_base || persona.remuneracion) : '',
-          modalidadFirma: persona?.modalidad || '',
-          sedeIdFirma: persona?.sede_id || '',
-          sedeFirma: persona?.sede || '',
-          areaIdFirma: persona?.area_id || '',
-          areaNombreFirma: persona?.area || '',
-          regimenJornadaFirma: persona?.regimen_jornada || '',
-          tipoContratoFirma: persona?.tipo_contrato || '',
-          modoSubida: 'nuevo_contrato',
-          periodoIdAnterior: req.doc?.contrato_periodo_id || null,
-        });
-        setInlineUploadFile(null);
-      }}
-      onValidate={validarPreviewDocumento}
+                onCorregir={() => {
+                  const req = docPreviewReq;
+                  cerrarPreviewDocumento();
+                  handleOpenInlineUpload(req, hab.docs, p, 'corregir');
+                }}
       onDownload={descargarPreviewDocumento}
     />
   ) : null;
@@ -17186,7 +17112,8 @@ function RRHH_Operativo() {
           tipoDocumentoId: usarMaestro ? docUploadForm.tipoDoc : undefined,
           file: docUploadFile,
           fechaEmision: docUploadForm.fechaEmision || null,
-          fechaVencimiento: docUploadEsAdenda ? null : (docUploadForm.fechaVencimiento || null),
+          fechaVencimiento: (docUploadEsAdenda || docUploadForm.esIndefinido) ? null : (docUploadForm.fechaVencimiento || null),
+        es_indefinido: docUploadForm.esIndefinido,
           notas: docUploadForm.notas || null,
           subidoDesde: 'backoffice',
           condicionesLaborales,
@@ -17875,7 +17802,7 @@ function RRHH_Operativo() {
               const esNuevoContrato = inlineUploadForm.modoSubida === 'nuevo_contrato';
               if (!esCorreccion) {
                 if (!inlineUploadFile) { setInlineUploadError('Selecciona el archivo.'); return; }
-                if (!esNuevoContrato && inlineUploadReq.tipo?.exige_vencimiento && !inlineEsAdenda && !inlineUploadForm.fechaVencimiento) {
+                if (!esNuevoContrato && inlineUploadReq.tipo?.exige_vencimiento && !inlineEsAdenda && !inlineUploadForm.esIndefinido && !inlineUploadForm.fechaVencimiento) {
                   setInlineUploadError('Este tipo exige fecha de vencimiento.'); return;
                 }
               }
@@ -17907,7 +17834,8 @@ function RRHH_Operativo() {
                     tipoDocumentoId: inlineUploadReq.tipo_documento_id,
                     file: inlineUploadFile,
                     fechaEmision: inlineUploadForm.fechaEmision || null,
-                    fechaVencimiento: inlineUploadForm.fechaVencimiento || null,
+                    fechaVencimiento: inlineUploadForm.esIndefinido ? null : (inlineUploadForm.fechaVencimiento || null),
+          es_indefinido: inlineUploadForm.esIndefinido,
                     notas: inlineUploadForm.notas || null,
                     condicionesLaborales,
                     periodoIdAnterior: inlineUploadForm.periodoIdAnterior || null,
@@ -17994,95 +17922,266 @@ function RRHH_Operativo() {
                       {hab.docs.length > 0 && <span style={{fontSize:11, color:'var(--fg-muted)'}}>{hab.docs.filter(d => d.doc).length} / {hab.docs.length}</span>}
                     </div>
                     <div style={{display:'flex', flexDirection:'column', gap:8}}>
-                      {hab.docs.map(req => {
-                        const nombreTipo = req.tipo?.nombre || req.tipo_documento_id;
-                        const esActivo = !!req.doc;
-                        const destacado = docHighlightTipo && req.tipo_documento_id === docHighlightTipo;
-                        const tPredecesor = tiposDocumento.find(t => t.tipo_sucesor_id === req.tipo_documento_id || t.tipo_sucesor_id === req.tipo?.id);
-                        const hasAprobadoPredecesor = tPredecesor ? docsPersona.some(d => (d.tipo_documento_id === tPredecesor.id || d.tipo_doc === tPredecesor.id || d.tipo_doc === tPredecesor.codigo || d.tipo_doc === tPredecesor.nombre) && d.estado_validacion === 'aprobado' && d.activo) : true;
-                        const tooltipPredecesor = tPredecesor && !hasAprobadoPredecesor ? `Primero debes cargar el ${tPredecesor.nombre} aprobado para este colaborador.` : null;
+                      {(() => {
+                        
+                        const handleOpenInlineUpload = (req, docsList, pContext, forceModo = null) => {
+                          if (req.doc && !forceModo) {
+                            abrirPreviewDocumento(req, pContext);
+                            return;
+                          }
+                          setInlineUploadReq(req);
+                          let pCargoFirma = '';
+                          let pRemuneracion = '';
+                          let pModalidad = '';
+                          let pSedeId = '';
+                          let pSedeFirma = '';
+                          let pAreaId = '';
+                          let pAreaFirma = '';
+                          let pRegimen = '';
+                          let pTipoContrato = '';
+                          let origenPrefill = '';
+
+                          if (!req.doc || forceModo === 'nuevo_contrato') {
+                            if (req.tipo?.documento_padre_tipo_id) {
+                              const padre = docsList.find(d => d.activo && d.tipo_documento_id === req.tipo.documento_padre_tipo_id && d.estado_validacion === 'aprobado');
+                              if (padre && padre.condiciones_laborales) {
+                                pCargoFirma = padre.condiciones_laborales.cargo || padre.condiciones_laborales.cargo_nombre || '';
+                                pRemuneracion = padre.condiciones_laborales.remuneracion_base || '';
+                                pModalidad = padre.condiciones_laborales.modalidad || '';
+                                pSedeId = padre.condiciones_laborales.sede_id || '';
+                                pSedeFirma = padre.condiciones_laborales.sede || padre.condiciones_laborales.sede_nombre || '';
+                                pAreaId = padre.condiciones_laborales.area_id || '';
+                                pAreaFirma = padre.condiciones_laborales.area_nombre || '';
+                                pRegimen = padre.condiciones_laborales.regimen_jornada || '';
+                                pTipoContrato = padre.condiciones_laborales.tipo_contrato || '';
+                                origenPrefill = padre.tipo_doc || 'Documento padre';
+                              }
+                            } else {
+                              const tPredecesorParaFill = tiposDocumento.find(t => t.tipo_sucesor_id === req.tipo_documento_id || t.tipo_sucesor_id === req.tipo?.id);
+                              const predecessor = tPredecesorParaFill ? docsList.find(d => d.activo && d.estado_validacion === 'aprobado' && (d.tipo_documento_id === tPredecesorParaFill.id || d.tipo_doc === tPredecesorParaFill.nombre || d.tipo_doc === tPredecesorParaFill.codigo)) : null;
+                              if (predecessor && predecessor.condiciones_laborales) {
+                                pCargoFirma = predecessor.condiciones_laborales.cargo || predecessor.condiciones_laborales.cargo_nombre || '';
+                                pRemuneracion = predecessor.condiciones_laborales.remuneracion_base || '';
+                                pModalidad = predecessor.condiciones_laborales.modalidad || '';
+                                pSedeId = predecessor.condiciones_laborales.sede_id || '';
+                                pSedeFirma = predecessor.condiciones_laborales.sede || predecessor.condiciones_laborales.sede_nombre || '';
+                                pAreaId = predecessor.condiciones_laborales.area_id || '';
+                                pAreaFirma = predecessor.condiciones_laborales.area_nombre || '';
+                                pRegimen = predecessor.condiciones_laborales.regimen_jornada || '';
+                                pTipoContrato = predecessor.condiciones_laborales.tipo_contrato || '';
+                                origenPrefill = predecessor.tipo_doc || 'Documento anterior';
+                              } else if (pContext) {
+                                pCargoFirma = pContext.cargo || '';
+                                pRemuneracion = pContext.salario || pContext.monto_mensual || '';
+                                pSedeId = pContext.sede_id || '';
+                                pSedeFirma = pContext.sede_nombre || pContext.sede || '';
+                                pAreaId = pContext.area_id || '';
+                                pAreaFirma = pContext.area_nombre || pContext.area || '';
+                                origenPrefill = 'Ficha del trabajador';
+                              }
+                            }
+                          }
+                          const c = req.doc?.condiciones_laborales || {};
+                          setInlineUploadForm({
+                            ...inlineUploadFormBase,
+                            _origenPrefill: origenPrefill,
+                            fechaEmision: req.doc?.fecha_emision || '',
+                            fechaVencimiento: req.doc?.fecha_vencimiento || '',
+                            notas: req.doc?.notas || '',
+                            cargoIdFirma: c.cargo_id || '',
+                            cargoFirma: c.cargo_nombre || c.cargo || pCargoFirma,
+                            remuneracionFirma: c.remuneracion_base !== undefined && c.remuneracion_base !== '' ? String(c.remuneracion_base) : String(pRemuneracion),
+                            modalidadFirma: c.modalidad || pModalidad,
+                            sedeIdFirma: c.sede_id || pSedeId,
+                            sedeFirma: c.sede_nombre || c.sede || pSedeFirma,
+                            areaIdFirma: c.area_id || pAreaId,
+                            areaNombreFirma: c.area_nombre || pAreaFirma,
+                            regimenJornadaFirma: c.regimen_jornada || pRegimen,
+                            tipoContratoFirma: c.tipo_contrato || pTipoContrato,
+                            contratoReferenciaId: req.doc?.contrato_referencia_id || (req.tipo?.documento_padre_tipo_id ? (docsList.find(d => d.activo && d.tipo_documento_id === req.tipo.documento_padre_tipo_id && d.estado_validacion === 'aprobado')?.id || '') : ''),
+                            descripcionCambio: c.descripcion_cambio || '',
+                            fechaVigenciaCambio: c.fecha_vigencia_cambio || '',
+                            modoSubida: forceModo || 'nueva_version',
+                            periodoIdAnterior: req.doc?.periodo_id || null,
+                            esIndefinido: req.doc?.es_indefinido || false
+                          });
+                          setInlineUploadFile(null);
+                        };
+
+                        const groupedDocs = {};
+                        hab.docs.forEach(req => {
+                          const cat = req.tipo?.categoria || 'Otros';
+                          if (!groupedDocs[cat]) groupedDocs[cat] = [];
+                          groupedDocs[cat].push(req);
+                        });
+                        Object.entries(groupedDocs).forEach(([cat, catDocs]) => {
+                          const chains = [];
+                          const added = new Set();
+                          const buildChain = (doc, currentChain = []) => {
+                            if (added.has(doc.tipo_documento_id)) return currentChain;
+                            currentChain.push(doc);
+                            added.add(doc.tipo_documento_id);
+                            const tHijos = tiposDocumento.filter(t => t.documento_padre_tipo_id === doc.tipo_documento_id);
+                            for (const th of tHijos) {
+                              const docHijo = catDocs.find(d => d.tipo_documento_id === th.id && d.doc);
+                              if (docHijo) return buildChain(docHijo, currentChain);
+                            }
+                            return currentChain;
+                          };
+                          const heads = catDocs.filter(d => !d.tipo?.documento_padre_tipo_id);
+                          heads.forEach(head => {
+                            const chain = buildChain(head);
+                            if (chain.length > 0) chains.push(chain);
+                          });
+                          catDocs.forEach(doc => {
+                            if (!added.has(doc.tipo_documento_id)) {
+                              if (doc.tipo?.documento_padre_tipo_id && hab.docs.some(d => d.tipo_documento_id === doc.tipo.documento_padre_tipo_id)) return;
+                              const chain = buildChain(doc);
+                              if (chain.length > 0) chains.push(chain);
+                            }
+                          });
+                          groupedDocs[cat] = chains;
+                        });
+
                         return (
-                          <div key={req.tipo_documento_id} style={{display:'flex', alignItems:'center', gap:8, padding:'10px 14px', flexWrap:'wrap', background:destacado ? 'rgba(251,191,36,0.12)' : 'var(--bg-subtle)', borderRadius:10, border:destacado ? '1px solid var(--orange)' : '1px solid var(--border-subtle)', borderLeft:destacado ? '4px solid var(--orange)' : `4px solid ${{vigente:'#22c55e',por_vencer:'#f97316',vencido:'#ef4444',en_revision:'#06b6d4',rechazado:'#ef4444',falta:'#d1d5db',incompleto:'#f97316'}[req.estado]||'#d1d5db'}`}}>
-                            <span className={'badge ' + (DOC_BDG[req.estado] || 'badge-gray')} style={{fontSize:10, flexShrink:0}}>{DOC_LBL[req.estado] || req.estado}{req.estado === 'por_vencer' && req.dias_restantes != null ? ` (${req.dias_restantes}d)` : ''}</span>
-                            <span style={{flex:1, fontSize:14, fontWeight:700}}>{nombreTipo}</span>
-                            {!req.obligatorio && <span style={{fontSize:10, color:'var(--fg-muted)'}}>Opcional</span>}
-                            {req.estado === 'rechazado' && req.doc?.motivo_rechazo && (
-                              <span style={{fontSize:10, color:'var(--danger)', marginLeft:8}} title={req.doc.motivo_rechazo}>Motivo: {req.doc.motivo_rechazo}</span>
-                            )}
-                            {req.doc?.estado_validacion === 'pendiente' && req.tipo?.requiere_validacion && canGestionarDocsRrhh && (<>
-                              <button className="btn btn-sm btn-primary" disabled={docValidandoId === req.doc.id} onClick={() => handleValidar(req.doc.id, 'aprobado')}>
-                                {docValidandoId === req.doc.id ? '...' : 'Aprobar'}
-                              </button>
-                              {showRechazoInput === req.doc.id ? (
-                                <div style={{display:'flex', gap:6}}>
-                                  <input className="input" style={{fontSize:12, padding:'4px 8px', minWidth:140}} placeholder="Motivo de rechazo..." value={motivoRechazo} onChange={e => setMotivoRechazo(e.target.value)} />
-                                  <button className="btn btn-sm btn-danger" onClick={() => handleValidar(req.doc.id, 'rechazado')}>Confirmar</button>
-                                  <button className="btn btn-sm btn-ghost" onClick={() => { setShowRechazoInput(null); setMotivoRechazo(''); }}>Cancelar</button>
-                                </div>
-                              ) : (
-                                <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} onClick={() => setShowRechazoInput(req.doc.id)}>Rechazar</button>
-                              )}
-                            </>)}
-                            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4}}>
-                              <button className="btn btn-sm btn-ghost" onClick={() => {
-                                if (esActivo) { abrirPreviewDocumento(req, p); return; }
-                                setInlineUploadReq(req);
-                                const c = req.doc?.condiciones_laborales || {};
-                                setInlineUploadForm({
-                                  ...inlineUploadFormBase,
-                                  fechaEmision: req.doc?.fecha_emision || '',
-                                  fechaVencimiento: req.doc?.fecha_vencimiento || '',
-                                  notas: req.doc?.notas || '',
-                                  cargoIdFirma: c.cargo_id || '',
-                                  cargoFirma: c.cargo_nombre || c.cargo || '',
-                                  remuneracionFirma: c.remuneracion_base !== undefined && c.remuneracion_base !== '' ? String(c.remuneracion_base) : '',
-                                  modalidadFirma: c.modalidad || '',
-                                  sedeIdFirma: c.sede_id || '',
-                                  sedeFirma: c.sede_nombre || c.sede || '',
-                                  areaIdFirma: c.area_id || '',
-                                  areaNombreFirma: c.area_nombre || '',
-                                  regimenJornadaFirma: c.regimen_jornada || '',
-                                  tipoContratoFirma: c.tipo_contrato || '',
-                                  contratoReferenciaId: req.doc?.contrato_referencia_id || '',
-                                  descripcionCambio: c.descripcion_cambio || '',
-                                  fechaVigenciaCambio: req.doc?.fecha_vigencia_cambio || '',
-                                  modoSubida: req.doc ? 'nueva_version' : 'nueva_version',
-                                });
-                                setInlineUploadFile(null);
-                              }} style={{color: esActivo ? 'var(--fg)' : 'var(--cyan)', opacity: tooltipPredecesor && !esActivo ? 0.5 : 1}} disabled={!!(tooltipPredecesor && !esActivo)} title={tooltipPredecesor || undefined}>
-                                {esActivo ? 'Ver / Reemplazar' : 'Subir'}
-                              </button>
-                              {tooltipPredecesor && !esActivo && <span style={{fontSize:9, color:'var(--danger)', maxWidth:140, textAlign:'center', lineHeight:1.1}}>{tooltipPredecesor}</span>}
-                            </div>
-                            {esActivo && canGestionarDocsRrhh && req.tipo?.captura_snapshot_laboral && !req.tipo?.documento_padre_tipo_id && req.tipo?.permite_firma_trabajador !== false && (() => {
-                              const ef = req.doc?.estado_firma || 'no_requiere';
-                              if (ef === 'pendiente_trabajador') return (
-                                <>
-                                  <span className="badge badge-orange" style={{fontSize:10, flexShrink:0}}>Esperando firma</span>
-                                  <button className="btn btn-sm btn-ghost" style={{fontSize:11}} title="Reenviar notificacion al trabajador" onClick={async () => { await reenviarNotificacionFirmaCtx({ documentoId: req.doc.id, workerAuthUserId: p.auth_user_id }); addNotificacion('Notificacion reenviada.'); }}>Reenviar</button>
-                                  <button className="btn btn-sm btn-ghost" style={{fontSize:11, color:'var(--danger)'}} onClick={async () => { await cancelarEnvioFirmaCtx({ documentoId: req.doc.id }); addNotificacion('Envio a firma cancelado.'); }}>Cancelar</button>
-                                </>
-                              );
-                              if (ef === 'firmado_trabajador') return (
-                                <span className="badge badge-cyan" style={{fontSize:10, flexShrink:0}}>Firmado por trabajador</span>
-                              );
-                              const yaSubioFirmado = personalDocumentos.some(pd =>
-                                pd.personal_id === p.id &&
-                                (pd.tipo_documento_id === req.doc.tipo_documento_id || pd.tipo_doc === req.doc.tipo_doc) &&
-                                pd.estado_validacion === 'pendiente' && pd.subido_desde === 'mobile' && pd.activo === false
-                              );
-                              if (yaSubioFirmado) return (
-                                <span className="badge badge-orange" style={{fontSize:10, flexShrink:0}}>Firmado · Por validar</span>
-                              );
-                              return (
-                                <button className="btn btn-sm btn-ghost" style={{color:'var(--cyan)', borderColor:'rgba(0,178,198,0.4)', fontSize:11}} onClick={() => { setModalEnviarFirmaDocOps({ doc: req.doc, nombre: req.tipo?.nombre || req.tipo_documento_id }); setEnviarFirmaMensajeOps(''); }}>
-                                  Enviar a firma
-                                </button>
-                              );
-                            })()}
+                          <div style={{display:'flex', flexDirection:'column', gap:24}}>
+                            {Object.entries(groupedDocs).map(([catName, chains]) => (
+                              <div key={catName} style={{display:'flex', flexDirection:'column', gap:10}}>
+                                <div style={{fontSize: 13, fontWeight: 700, color: 'var(--fg)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: 6, marginBottom: 4, textTransform:'uppercase', letterSpacing:'0.05em'}}>{catName}</div>
+                                {chains.map((chain, chainIdx) => (
+                                  <div key={'chain-'+chainIdx} style={{ display: 'flex', flexDirection: 'column', position: 'relative', gap: 12 }}>
+                                    {chain.length > 1 && (
+                                      <div style={{ position: 'absolute', top: 30, bottom: 30, left: 15, width: 2, background: 'var(--border)', zIndex: 0 }} />
+                                    )}
+                                    {chain.map((req, idx) => {
+                                      const destacado = docHighlightTipo && req.tipo_documento_id === docHighlightTipo;
+                                      const tPredecesor = tiposDocumento.find(t => t.tipo_sucesor_id === req.tipo_documento_id || t.tipo_sucesor_id === req.tipo?.id);
+                                      const hasAprobadoPredecesor = tPredecesor ? docsPersona.some(d => (d.tipo_documento_id === tPredecesor.id || d.tipo_doc === tPredecesor.id || d.tipo_doc === tPredecesor.codigo || d.tipo_doc === tPredecesor.nombre) && d.estado_validacion === 'aprobado' && d.activo) : true;
+                                      const tooltipPredecesor = tPredecesor && !hasAprobadoPredecesor ? `Primero debes cargar el ${tPredecesor.nombre} aprobado para este colaborador.` : null;
+                                      const tiposHijos = tiposDocumento.filter(t => t.documento_padre_tipo_id === req.tipo_documento_id && t.estado === 'activo');
+                                      const docPadreValidado = req.doc?.estado_validacion === 'aprobado';
+                                      const docsVinculados = docsPersona.filter(d => d.activo && d.contrato_referencia_id === req.doc?.id).sort((a, b) => (a.creado_en || '').localeCompare(b.creado_en || ''));
+                                      const reqsHijosFaltantes = hab.docs.filter(d => d.tipo?.documento_padre_tipo_id === req.tipo_documento_id && !d.doc);
+                                      const hoy = new Date().toISOString().slice(0, 10);
+                                      const _borderColor = {vigente:'#22c55e',por_vencer:'#f97316',vencido:'#ef4444',en_revision:'#06b6d4',rechazado:'#ef4444',falta:'#d1d5db',incompleto:'#f97316'}[req.estado] || '#d1d5db';
+                                      const isHistorico = req.estado === 'historico';
+                                      const opacityStyle = isHistorico ? 0.65 : 1;
+
+                                      return (
+                                        <div key={req.tipo_documento_id} style={{ display: 'flex', gap: 12, position: 'relative', zIndex: 1 }}>
+                                          {chain.length > 1 && (
+                                            <div style={{ width: 32, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 16 }}>
+                                              <div style={{ width: 10, height: 10, borderRadius: '50%', background: isHistorico ? 'var(--border)' : 'var(--primary)', border: '2px solid var(--bg)' }} />
+                                            </div>
+                                          )}
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{background:destacado ? 'rgba(251,191,36,0.12)' : 'var(--bg-subtle)', borderRadius:10, border:destacado ? '1px solid var(--orange)' : '1px solid var(--border-subtle)', borderLeft:destacado ? '4px solid var(--orange)' : `4px solid ${_borderColor}`, opacity: opacityStyle}}>
+                                              <div style={{display:'flex', alignItems:'flex-start', justifyContent:'space-between', padding:'12px 16px', gap:12, flexWrap:'wrap'}}>
+                                              <div style={{flex:1, minWidth:0}}>
+                                                <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap'}}>
+                                                  <span style={{fontWeight:700, fontSize:14}}>{req.tipo?.nombre || req.tipo_documento_id}</span>
+                                                  <span className={'badge ' + (DOC_BDG[req.estado] || 'badge-gray')} style={{fontSize:10}}>{DOC_LBL[req.estado] || req.estado}{req.estado === 'por_vencer' && req.dias_restantes != null ? ` (${req.dias_restantes}d)` : ''}</span>
+                                                </div>
+                                                <div style={{fontSize:11, color:'var(--fg-muted)', display:'flex', gap:10, flexWrap:'wrap'}}>
+                                                  <span style={{fontWeight:500}}>{!req.obligatorio ? 'Opcional' : 'Obligatorio'}</span>
+                                                  {req.doc?.version && <span>v{req.doc.version}</span>}
+                                                  {req.doc?.fecha_vencimiento && <span>Vence: {req.doc.fecha_vencimiento}</span>}
+                                                  {req.doc?.dias_restantes != null && <span style={{color: req.doc.dias_restantes <= 0 ? 'var(--red)' : req.doc.dias_restantes <= 30 ? 'var(--orange)' : 'inherit'}}>{req.doc.dias_restantes <= 0 ? 'Vencido' : `Faltan ${req.doc.dias_restantes} días`}</span>}
+                                                </div>
+                                                {req.doc && <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:6}}>{req.doc.nombre_archivo}</div>}
+                                              </div>
+                                              
+                                              {req.doc ? (
+                                                <div style={{display:'flex', gap:5, flexShrink:0, flexWrap:'wrap', alignItems:'flex-start'}}>
+                                                  {req.doc.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => window.open(req.doc.archivo_url,'_blank')}>Ver</button>}
+                                                  <button className="btn btn-sm" onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Actualizar</button>
+                                                </div>
+                                              ) : (
+                                                <div style={{display:'flex', gap:5, flexShrink:0, flexWrap:'wrap', alignItems:'flex-start'}}>
+                                                  <button className="btn btn-sm btn-primary" title={tooltipPredecesor || undefined} disabled={!hasAprobadoPredecesor} style={{opacity: hasAprobadoPredecesor ? 1 : 0.5}} onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Subir {req.tipo?.nombre || req.tipo_documento_id}</button>
+                                                </div>
+                                              )}
+                                              </div>
+                                              
+                                              {req.doc?.estado_validacion === 'rechazado' && req.doc.comentarios_validacion && (
+                                                <div style={{padding:'8px 16px', background:'rgba(239,68,68,0.08)', borderTop:'1px solid rgba(239,68,68,0.2)', fontSize:12, color:'var(--red)'}}>
+                                                  <strong>Rechazado:</strong> {req.doc.comentarios_validacion}
+                                                </div>
+                                              )}
+
+                                            </div>
+
+                                            {docsVinculados.map(dv => {
+                                              const dvTipo = tiposDocumento.find(t => t.id === dv.tipo_documento_id || t.id === dv.tipo_doc || t.codigo === dv.tipo_doc || t.nombre === dv.tipo_doc);
+                                              const dvCambios = [
+                                                dv.cambio_cargo && 'Cargo',
+                                                dv.cambio_remuneracion && 'Remuneración',
+                                                dv.cambio_modalidad && 'Modalidad',
+                                                dv.cambio_sede && 'Sede',
+                                                dv.cambio_otro && 'Otro'
+                                              ].filter(Boolean);
+                                              let dvCond = {};
+                                              try { dvCond = typeof dv.condiciones_json === 'string' ? JSON.parse(dv.condiciones_json) : (dv.condiciones_json || {}); } catch(e){}
+                                              const dvResumen = [
+                                                dvCambios.includes('Cargo') ? `Cargo: ${dvCond.cargo || '-'}` : '',
+                                                dvCambios.includes('Remuneración') ? `Sueldo: S/ ${Number(dvCond.remuneracion_base || 0).toLocaleString()}` : '',
+                                                dvCambios.includes('Modalidad') ? `Modalidad: ${dvCond.modalidad || '-'}` : '',
+                                                dvCambios.includes('Sede') ? `Sede: ${dvCond.sede || '-'}` : '',
+                                                dvCambios.includes('Otro') && dvCond.descripcion_cambio ? dvCond.descripcion_cambio : '',
+                                              ].filter(Boolean).join(' · ') || 'Documento vinculado';
+                                              const dvVigenciaFutura = dv.fecha_vigencia_cambio && dv.fecha_vigencia_cambio > hoy;
+                                              return (
+                                                <div key={dv.id} style={{marginTop:8, marginLeft: chain.length > 1 ? 52 : 20, border:'1px solid var(--border)', borderLeft:'3px solid #06b6d4', borderRadius:10, overflow:'hidden', opacity: opacityStyle}}>
+                                                  <div style={{padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8}}>
+                                                  <div style={{flex:1, minWidth:0}}>
+                                                    <div style={{display:'flex', gap:6, alignItems:'center', marginBottom:4, flexWrap:'wrap'}}>
+                                                      <span style={{fontWeight:700, fontSize:13}}>{dvTipo?.nombre || dv.tipo_doc}</span>
+                                                      <span className={'badge ' + (personalDocumentosService.BADGE_VALIDACION[dv.estado_validacion] || 'badge-gray')} style={{fontSize:10}}>{labelOr(ESTADO_VALIDACION_LABELS, dv.estado_validacion)}</span>
+                                                      {dv.fecha_emision && <span className="text-muted" style={{fontSize:11}}>Emitido: {dv.fecha_emision}</span>}
+                                                    </div>
+                                                    <div style={{fontSize:12, color:'var(--fg-muted)'}}>{dvResumen}</div>
+                                                    {dvVigenciaFutura && <div style={{fontSize:11, color:'var(--cyan)', marginTop:2}}>Vigente desde {dv.fecha_vigencia_cambio}</div>}
+                                                    {dv.fecha_vencimiento && <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Vence: {dv.fecha_vencimiento}</div>}
+                                                  </div>
+                                                  <div style={{display:'flex', gap:5, flexShrink:0, flexWrap:'wrap', alignItems:'flex-start'}}>
+                                                    {dv.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => window.open(dv.archivo_url,'_blank')}>Ver</button>}
+                                                  </div>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+
+                                            {reqsHijosFaltantes.map(rh => {
+                                              const missingParent = !req.doc || req.doc.estado_validacion !== 'aprobado';
+                                              return (
+                                                <div key={rh.tipo_documento_id} style={{marginTop:8, marginLeft: chain.length > 1 ? 52 : 20, border:'1px solid var(--border)', borderLeft:'3px solid #d1d5db', borderRadius:10, overflow:'hidden'}}>
+                                                  <div style={{padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8}}>
+                                                    <div style={{flex:1, minWidth:0}}>
+                                                      <div style={{display:'flex', gap:6, alignItems:'center', marginBottom:4, flexWrap:'wrap'}}>
+                                                        <span style={{fontWeight:700, fontSize:13}}>{rh.tipo?.nombre || rh.tipo_documento_id}</span>
+                                                        <span className="badge badge-gray" style={{fontSize:10}}>Falta</span>
+                                                      </div>
+                                                      <div style={{fontSize:12, color:'var(--fg-muted)'}}>{!rh.obligatorio ? 'Requisito Opcional' : 'Requisito Obligatorio'}</div>
+                                                    </div>
+                                                    <div style={{display:'flex', gap:5, flexShrink:0, flexWrap:'wrap', alignItems:'flex-start'}}>
+                                                      <button className="btn btn-sm btn-ghost" style={{color:'var(--cyan)', opacity: missingParent ? 0.5 : 1}} disabled={missingParent} title={missingParent ? 'Debes cargar y aprobar el documento padre primero.' : undefined} onClick={() => handleOpenInlineUpload(rh, hab.docs, p)}>Subir</button>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
                           </div>
                         );
-                      })}
+                      })()}
+
                     </div>
                   </div>
                 )}
@@ -18154,8 +18253,15 @@ function RRHH_Operativo() {
                               </div>
                               {!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && (
                                 <div className="input-group">
-                                  <label>Fecha de vencimiento *</label>
-                                  <input className="input" type="date" value={inlineUploadForm.fechaVencimiento} onChange={e=>setInlineUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} required={inlineUploadForm.modoSubida !== 'corregir'} />
+                                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4}}>
+                                    <label style={{marginBottom:0}}>Fecha de vencimiento {!inlineUploadForm.esIndefinido && '*'}</label>
+                                    <label style={{display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:500, cursor:'pointer'}}>
+                                      <input type="checkbox" checked={inlineUploadForm.esIndefinido} onChange={e => setInlineUploadForm(f => ({ ...f, esIndefinido: e.target.checked, fechaVencimiento: '' }))} />
+                                      Indefinido
+                                    </label>
+                                  </div>
+                                  {!inlineUploadForm.esIndefinido && <input className="input" type="date" value={inlineUploadForm.fechaVencimiento} onChange={e=>setInlineUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} required={inlineUploadForm.modoSubida !== 'corregir'} />}
+                                  {inlineUploadForm.esIndefinido && <div style={{ fontSize: 12, padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 6, color: 'var(--fg-muted)' }}>El contrato se considerará vigente hasta que se registre un cese o cambio.</div>}
                                 </div>
                               )}
                             </div>
@@ -18352,7 +18458,7 @@ function RRHH_Operativo() {
                               <div className="text-muted" style={{fontSize:11}}>
                                 {doc.nombre_archivo || '—'} · v{doc.version}
                                 {doc.fecha_emision && ` · Emitido: ${doc.fecha_emision}`}
-                                {doc.fecha_vencimiento && ` · Vence: ${doc.fecha_vencimiento}`}
+                                {doc.es_indefinido ? ' · Indefinido' : (doc.fecha_vencimiento && ` · Vence: ${doc.fecha_vencimiento}`)}
                               </div>
                             </div>
                             <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
