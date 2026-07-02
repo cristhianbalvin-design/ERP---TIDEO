@@ -6361,8 +6361,9 @@ function CxP() {
     if (c?.tipo_beneficiario === 'personal') {
       const persona = [...(personalAdmin||[]), ...(personalOperativo||[])].find(p => p.id === c?.personal_id);
       return persona?.nombre
+        || c?.nombre_emisor
         || c?.personal_administrativo?.nombre
-        || c?.personal_id || '-';
+        || 'Colaborador';
     }
     return c?.proveedor || c?.proveedores?.razon_social
       || (proveedores || []).find(p => p.id === c?.proveedor_id)?.razon_social
@@ -6379,7 +6380,7 @@ function CxP() {
     if (c?.tipo_beneficiario === 'personal') {
       const persona = [...(personalAdmin||[]), ...(personalOperativo||[])].find(p => p.id === c?.personal_id);
       return {
-        nombre: persona?.nombre || c?.personal_administrativo?.nombre || c?.personal_id || 'Colaborador',
+        nombre: persona?.nombre || c?.nombre_emisor || c?.personal_administrativo?.nombre || 'Colaborador',
         badge: 'Colab.',
         badgeCls: 'badge-cyan',
         tipo: 'personal',

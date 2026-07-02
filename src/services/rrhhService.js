@@ -958,9 +958,23 @@ export const rrhhService = {
   },
   crearPeriodoNomina: async (empresaId, periodo) => {
     const supabase = await getSupabaseClient();
+    // id, fecha_inicio y fecha_fin son NOT NULL sin default en la tabla periodos_nomina.
+    const payload = { id: `pnm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, ...periodo, empresa_id: empresaId };
     const { data, error } = await supabase
-      .from('periodos_nomina').insert([{ ...periodo, empresa_id: empresaId }]).select().single();
-    if (error) throw error;
+      .from('periodos_nomina').insert([payload]).select().single();
+    if (error) {
+      // Ya existe un período con esta combinación empresa/año/mes/quincena
+      // (índice único periodos_nomina_empresa_periodo_uq): devolvemos el existente en vez de duplicar.
+      if (error.code === '23505') {
+        let query = supabase.from('periodos_nomina').select('*')
+          .eq('empresa_id', empresaId).eq('anio', periodo.anio).eq('mes', periodo.mes);
+        query = periodo.quincena == null ? query.is('quincena', null) : query.eq('quincena', periodo.quincena);
+        const { data: existente, error: errSel } = await query.maybeSingle();
+        if (errSel) throw errSel;
+        if (existente) return existente;
+      }
+      throw error;
+    }
     return data;
   },
   cerrarPeriodoNomina: async (id, cerradoPor) => {
@@ -969,6 +983,13 @@ export const rrhhService = {
       .from('periodos_nomina')
       .update({ estado: 'cerrado', cerrado_por: cerradoPor, cerrado_at: new Date().toISOString() })
       .eq('id', id).select().single();
+    if (error) throw error;
+    return data;
+  },
+  obtenerPeriodoNominaPorId: async (id) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('periodos_nomina').select('id, estado').eq('id', id).maybeSingle();
     if (error) throw error;
     return data;
   },

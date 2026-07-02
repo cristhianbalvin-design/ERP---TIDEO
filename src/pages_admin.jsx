@@ -8375,9 +8375,8 @@ function RRHHAdmin() {
                 </div>
               )}
               {(() => {
-                const hoy = new Date().toISOString().slice(0, 10);
-                const diasContratoVigente = contratoDoc?.fecha_vencimiento
-                  ? Math.round((new Date(contratoDoc.fecha_vencimiento) - new Date(hoy)) / 86400000)
+                const diasContratoVigente = (contratoDoc?.fecha_vencimiento && contratoInfo.dias !== null)
+                  ? contratoInfo.dias
                   : null;
                 if (diasContratoVigente !== null && diasContratoVigente <= 30) {
                   const texto = diasContratoVigente < 0
@@ -8836,6 +8835,87 @@ function RRHHAdmin() {
             const docUploadEsAdendaAdmin = rrhhAdminEsTipoAdenda(tipoDocSelecInfoAdmin, docUploadForm.tipoDoc);
             const tiposRestantes = tipoDocOptsAdminLocal.filter(t => !docReqPorTipo[t.id || t.key] && !t.documento_padre_tipo_id);
             
+            const handleOpenInlineUpload = (req, docsList, pContext, forceModo = null) => {
+              if (req.doc && !forceModo) { abrirPreviewDocumentoAdmin(req, pContext); return; }
+              setInlineUploadReq(req);
+              let pCargoFirma = '';
+              let pRemuneracion = '';
+              let pModalidad = '';
+              let pSedeId = '';
+              let pSedeFirma = '';
+              let pAreaId = '';
+              let pAreaFirma = '';
+              let pRegimen = '';
+              let pTipoContrato = '';
+              let origenPrefill = '';
+
+              if (!req.doc || forceModo === 'nuevo_contrato') {
+                if (req.tipo?.documento_padre_tipo_id) {
+                  const padre = docsList.find(d => d.activo && d.tipo_documento_id === req.tipo.documento_padre_tipo_id && d.estado_validacion === 'aprobado');
+                  if (padre && padre.condiciones_laborales) {
+                    pCargoFirma = padre.condiciones_laborales.cargo || padre.condiciones_laborales.cargo_nombre || '';
+                    pRemuneracion = padre.condiciones_laborales.remuneracion_base || '';
+                    pModalidad = padre.condiciones_laborales.modalidad || '';
+                    pSedeId = padre.condiciones_laborales.sede_id || '';
+                    pSedeFirma = padre.condiciones_laborales.sede || padre.condiciones_laborales.sede_nombre || '';
+                    pAreaId = padre.condiciones_laborales.area_id || '';
+                    pAreaFirma = padre.condiciones_laborales.area_nombre || '';
+                    pRegimen = padre.condiciones_laborales.regimen_jornada || '';
+                    pTipoContrato = padre.condiciones_laborales.tipo_contrato || '';
+                    origenPrefill = padre.tipo_doc || 'Documento padre';
+                  }
+                } else {
+                  const tPredecesorParaFill = tiposDocumento.find(t => t.tipo_sucesor_id === req.tipo_documento_id || t.tipo_sucesor_id === req.tipo?.id);
+                  const predecessor = tPredecesorParaFill ? docsList.find(d => d.activo && d.estado_validacion === 'aprobado' && (d.tipo_documento_id === tPredecesorParaFill.id || d.tipo_doc === tPredecesorParaFill.nombre || d.tipo_doc === tPredecesorParaFill.codigo)) : null;
+                  if (predecessor && predecessor.condiciones_laborales) {
+                    pCargoFirma = predecessor.condiciones_laborales.cargo || predecessor.condiciones_laborales.cargo_nombre || '';
+                    pRemuneracion = predecessor.condiciones_laborales.remuneracion_base || '';
+                    pModalidad = predecessor.condiciones_laborales.modalidad || '';
+                    pSedeId = predecessor.condiciones_laborales.sede_id || '';
+                    pSedeFirma = predecessor.condiciones_laborales.sede || predecessor.condiciones_laborales.sede_nombre || '';
+                    pAreaId = predecessor.condiciones_laborales.area_id || '';
+                    pAreaFirma = predecessor.condiciones_laborales.area_nombre || '';
+                    pRegimen = predecessor.condiciones_laborales.regimen_jornada || '';
+                    pTipoContrato = predecessor.condiciones_laborales.tipo_contrato || '';
+                    origenPrefill = predecessor.tipo_doc || 'Documento anterior';
+                  } else if (pContext) {
+                    pCargoFirma = pContext.cargo || '';
+                    pRemuneracion = pContext.salario || pContext.monto_mensual || '';
+                    pSedeId = pContext.sede_id || '';
+                    pSedeFirma = pContext.sede_nombre || pContext.sede || '';
+                    pAreaId = pContext.area_id || '';
+                    pAreaFirma = pContext.area_nombre || pContext.area || '';
+                    origenPrefill = 'Ficha del trabajador';
+                  }
+                }
+              }
+              const c = req.doc?.condiciones_laborales || {};
+              setInlineUploadForm({
+                ...inlineUploadFormBase,
+                _origenPrefill: origenPrefill,
+                fechaEmision: req.doc?.fecha_emision || '',
+                fechaVencimiento: req.doc?.fecha_vencimiento || '',
+                notas: req.doc?.notas || '',
+                cargoIdFirma: c.cargo_id || '',
+                cargoFirma: c.cargo_nombre || c.cargo || pCargoFirma,
+                remuneracionFirma: c.remuneracion_base !== undefined && c.remuneracion_base !== '' ? String(c.remuneracion_base) : String(pRemuneracion),
+                modalidadFirma: c.modalidad || pModalidad,
+                sedeIdFirma: c.sede_id || pSedeId,
+                sedeFirma: c.sede_nombre || c.sede || pSedeFirma,
+                areaIdFirma: c.area_id || pAreaId,
+                areaNombreFirma: c.area_nombre || pAreaFirma,
+                regimenJornadaFirma: c.regimen_jornada || pRegimen,
+                tipoContratoFirma: c.tipo_contrato || pTipoContrato,
+                contratoReferenciaId: req.doc?.contrato_referencia_id || (req.tipo?.documento_padre_tipo_id ? (docsList.find(d => d.activo && d.tipo_documento_id === req.tipo.documento_padre_tipo_id && d.estado_validacion === 'aprobado')?.id || '') : ''),
+                descripcionCambio: c.descripcion_cambio || '',
+                fechaVigenciaCambio: c.fecha_vigencia_cambio || '',
+                modoSubida: forceModo || 'nueva_version',
+                periodoIdAnterior: req.doc?.periodo_id || null,
+                esIndefinido: req.doc?.es_indefinido || false
+              });
+              setInlineUploadFile(null);
+            };
+
             const previewNodeAdmin = docPreviewReqAdmin ? (
               <DocumentoPreviewModal
                 req={docPreviewReqAdmin}
@@ -8845,10 +8925,30 @@ function RRHHAdmin() {
                 canValidate={canGestionarDocsRrhhAdmin}
                 validatingId={docValidandoId}
                 onClose={cerrarPreviewDocumentoAdmin}
+                                onValidate={async (docId, decision, motivo) => {
+                  setDocValidandoId(docId);
+                  try {
+                    await validarDocumentoPersonalCtx(docId, decision, motivo || null);
+                    addNotificacion('Documento ' + (decision === 'aprobado' ? 'aprobado' : 'rechazado') + '.');
+                    if (typeof recargarPersonalDocumentosPersonaCtx === 'function') {
+                      const pid = typeof persona !== 'undefined' ? persona?.id : (typeof p !== 'undefined' ? p?.id : null);
+                      if (pid) await recargarPersonalDocumentosPersonaCtx(pid);
+                    }
+                  } catch (e) {
+                    addNotificacion('Error al validar el documento.');
+                  } finally {
+                    setDocValidandoId(null);
+                  }
+                }}
                 onCorregir={() => {
                   const req = docPreviewReqAdmin;
                   cerrarPreviewDocumentoAdmin();
                   handleOpenInlineUpload(req, habPersona.docs, persona, 'corregir');
+                }}
+                onNuevoContrato={() => {
+                  const req = docPreviewReqAdmin;
+                  cerrarPreviewDocumentoAdmin();
+                  handleOpenInlineUpload(req, habPersona.docs, persona, 'nuevo_contrato');
                 }}
                 onDownload={descargarPreviewDocumentoAdmin}
               />
@@ -8953,90 +9053,6 @@ function RRHHAdmin() {
                   ) : (
                     <div style={{display:'flex', flexDirection:'column', gap:10}}>
                       {(() => {
-                        
-                        const handleOpenInlineUpload = (req, docsList, pContext, forceModo = null) => {
-                          if (req.doc && !forceModo) {
-                            abrirPreviewDocumento(req, pContext);
-                            return;
-                          }
-                          setInlineUploadReq(req);
-                          let pCargoFirma = '';
-                          let pRemuneracion = '';
-                          let pModalidad = '';
-                          let pSedeId = '';
-                          let pSedeFirma = '';
-                          let pAreaId = '';
-                          let pAreaFirma = '';
-                          let pRegimen = '';
-                          let pTipoContrato = '';
-                          let origenPrefill = '';
-
-                          if (!req.doc || forceModo === 'nuevo_contrato') {
-                            if (req.tipo?.documento_padre_tipo_id) {
-                              const padre = docsList.find(d => d.activo && d.tipo_documento_id === req.tipo.documento_padre_tipo_id && d.estado_validacion === 'aprobado');
-                              if (padre && padre.condiciones_laborales) {
-                                pCargoFirma = padre.condiciones_laborales.cargo || padre.condiciones_laborales.cargo_nombre || '';
-                                pRemuneracion = padre.condiciones_laborales.remuneracion_base || '';
-                                pModalidad = padre.condiciones_laborales.modalidad || '';
-                                pSedeId = padre.condiciones_laborales.sede_id || '';
-                                pSedeFirma = padre.condiciones_laborales.sede || padre.condiciones_laborales.sede_nombre || '';
-                                pAreaId = padre.condiciones_laborales.area_id || '';
-                                pAreaFirma = padre.condiciones_laborales.area_nombre || '';
-                                pRegimen = padre.condiciones_laborales.regimen_jornada || '';
-                                pTipoContrato = padre.condiciones_laborales.tipo_contrato || '';
-                                origenPrefill = padre.tipo_doc || 'Documento padre';
-                              }
-                            } else {
-                              const tPredecesorParaFill = tiposDocumento.find(t => t.tipo_sucesor_id === req.tipo_documento_id || t.tipo_sucesor_id === req.tipo?.id);
-                              const predecessor = tPredecesorParaFill ? docsList.find(d => d.activo && d.estado_validacion === 'aprobado' && (d.tipo_documento_id === tPredecesorParaFill.id || d.tipo_doc === tPredecesorParaFill.nombre || d.tipo_doc === tPredecesorParaFill.codigo)) : null;
-                              if (predecessor && predecessor.condiciones_laborales) {
-                                pCargoFirma = predecessor.condiciones_laborales.cargo || predecessor.condiciones_laborales.cargo_nombre || '';
-                                pRemuneracion = predecessor.condiciones_laborales.remuneracion_base || '';
-                                pModalidad = predecessor.condiciones_laborales.modalidad || '';
-                                pSedeId = predecessor.condiciones_laborales.sede_id || '';
-                                pSedeFirma = predecessor.condiciones_laborales.sede || predecessor.condiciones_laborales.sede_nombre || '';
-                                pAreaId = predecessor.condiciones_laborales.area_id || '';
-                                pAreaFirma = predecessor.condiciones_laborales.area_nombre || '';
-                                pRegimen = predecessor.condiciones_laborales.regimen_jornada || '';
-                                pTipoContrato = predecessor.condiciones_laborales.tipo_contrato || '';
-                                origenPrefill = predecessor.tipo_doc || 'Documento anterior';
-                              } else if (pContext) {
-                                pCargoFirma = pContext.cargo || '';
-                                pRemuneracion = pContext.salario || pContext.monto_mensual || '';
-                                pSedeId = pContext.sede_id || '';
-                                pSedeFirma = pContext.sede_nombre || pContext.sede || '';
-                                pAreaId = pContext.area_id || '';
-                                pAreaFirma = pContext.area_nombre || pContext.area || '';
-                                origenPrefill = 'Ficha del trabajador';
-                              }
-                            }
-                          }
-                          const c = req.doc?.condiciones_laborales || {};
-                          setInlineUploadForm({
-                            ...inlineUploadFormBase,
-                            _origenPrefill: origenPrefill,
-                            fechaEmision: req.doc?.fecha_emision || '',
-                            fechaVencimiento: req.doc?.fecha_vencimiento || '',
-                            notas: req.doc?.notas || '',
-                            cargoIdFirma: c.cargo_id || '',
-                            cargoFirma: c.cargo_nombre || c.cargo || pCargoFirma,
-                            remuneracionFirma: c.remuneracion_base !== undefined && c.remuneracion_base !== '' ? String(c.remuneracion_base) : String(pRemuneracion),
-                            modalidadFirma: c.modalidad || pModalidad,
-                            sedeIdFirma: c.sede_id || pSedeId,
-                            sedeFirma: c.sede_nombre || c.sede || pSedeFirma,
-                            areaIdFirma: c.area_id || pAreaId,
-                            areaNombreFirma: c.area_nombre || pAreaFirma,
-                            regimenJornadaFirma: c.regimen_jornada || pRegimen,
-                            tipoContratoFirma: c.tipo_contrato || pTipoContrato,
-                            contratoReferenciaId: req.doc?.contrato_referencia_id || (req.tipo?.documento_padre_tipo_id ? (docsList.find(d => d.activo && d.tipo_documento_id === req.tipo.documento_padre_tipo_id && d.estado_validacion === 'aprobado')?.id || '') : ''),
-                            descripcionCambio: c.descripcion_cambio || '',
-                            fechaVigenciaCambio: c.fecha_vigencia_cambio || '',
-                            modoSubida: forceModo || 'nueva_version',
-                            periodoIdAnterior: req.doc?.periodo_id || null,
-                            esIndefinido: req.doc?.es_indefinido || false
-                          });
-                          setInlineUploadFile(null);
-                        };
 
                         const groupedDocs = {};
                         habPersona.docs.forEach(req => {
@@ -9053,7 +9069,7 @@ function RRHHAdmin() {
                             added.add(doc.tipo_documento_id);
                             const tHijos = tiposDocumento.filter(t => t.documento_padre_tipo_id === doc.tipo_documento_id);
                             for (const th of tHijos) {
-                              const docHijo = catDocs.find(d => d.tipo_documento_id === th.id && d.doc);
+                              const docHijo = catDocs.find(d => d.tipo_documento_id === th.id);
                               if (docHijo) return buildChain(docHijo, currentChain);
                             }
                             return currentChain;
@@ -9069,6 +9085,25 @@ function RRHHAdmin() {
                               const chain = buildChain(doc);
                               if (chain.length > 0) chains.push(chain);
                             }
+                          });
+                                                                              chains.sort((a, b) => {
+                            const reqA = a[0];
+                            const reqB = b[0];
+                            const nA = (reqA.tipo?.nombre || reqA.tipo_documento_id || '').toLowerCase();
+                            const nB = (reqB.tipo?.nombre || reqB.tipo_documento_id || '').toLowerCase();
+                            
+                            const getW = (n) => {
+                              if (n.includes('primigenio')) return 1;
+                              if (n.includes('laboral')) return 2;
+                              if (n.includes('adenda')) return 3;
+                              return 99;
+                            };
+                            
+                            const wA = getW(nA);
+                            const wB = getW(nB);
+                            
+                            if (wA !== wB) return wA - wB;
+                            return nA.localeCompare(nB);
                           });
                           groupedDocs[cat] = chains;
                         });
@@ -9140,6 +9175,9 @@ function RRHHAdmin() {
                                   </button>
                                   {tooltipPredecesor && !req.doc && <span style={{fontSize:9, color:'var(--danger)', maxWidth:140, textAlign:'center', lineHeight:1.1}}>{tooltipPredecesor}</span>}
                                 </div>
+                                {req.doc && req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
+                                  <button className="btn btn-sm btn-ghost" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => handleOpenInlineUpload(req, habPersona.docs, persona, 'nuevo_contrato')}>Renovar</button>
+                                )}
                                 {docPadreValidado && tiposHijos.map(th => (
                                   <button key={th.id} className="btn btn-sm btn-ghost" style={{color:'var(--cyan)', borderColor:'var(--cyan)'}}
                                     onClick={() => {
@@ -9219,25 +9257,7 @@ function RRHHAdmin() {
                                 </div>
                               );
                             })}
-                            {habPersona.docs.filter(d => d.tipo?.documento_padre_tipo_id === req.tipo_documento_id && !d.doc).map(rh => {
-                              const missingParent = !req.doc || req.doc.estado_validacion !== 'aprobado';
-                              return (
-                                <div key={rh.tipo_documento_id} style={{marginTop:8, marginLeft: chain.length > 1 ? 52 : 20, border:'1px solid var(--border)', borderLeft:'3px solid #d1d5db', borderRadius:10, overflow:'hidden'}}>
-                                  <div style={{padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8}}>
-                                    <div style={{flex:1, minWidth:0}}>
-                                      <div style={{display:'flex', gap:6, alignItems:'center', marginBottom:4, flexWrap:'wrap'}}>
-                                        <span style={{fontWeight:700, fontSize:13}}>{rh.tipo?.nombre || rh.tipo_documento_id}</span>
-                                        <span className="badge badge-gray" style={{fontSize:10}}>Falta</span>
-                                      </div>
-                                      <div style={{fontSize:12, color:'var(--fg-muted)'}}>{!rh.obligatorio ? 'Requisito Opcional' : 'Requisito Obligatorio'}</div>
-                                    </div>
-                                    <div style={{display:'flex', gap:5, flexShrink:0, flexWrap:'wrap', alignItems:'flex-start'}}>
-                                      <button className="btn btn-sm btn-ghost" style={{color:'var(--cyan)', opacity: missingParent ? 0.5 : 1}} disabled={missingParent} title={missingParent ? 'Debes cargar y aprobar el documento padre primero.' : undefined} onClick={() => handleOpenInlineUpload(rh, habPersona.docs, persona)}>Subir</button>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                            
                                   </div>
                                 </div>
                               );
@@ -9304,13 +9324,22 @@ function RRHHAdmin() {
                           {inlineUploadReq.tipo?.exige_vencimiento && (
                             <div className="grid-2" style={{gap:12}}>
                               <div className="input-group">
-                                <label>Fecha de emisión *</label>
+                                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4}}>
+                                  <label style={{marginBottom:0}}>Fecha de emisión *</label>
+                                </div>
                                 <input className="input" type="date" value={inlineUploadForm.fechaEmision} onChange={e=>setInlineUploadForm(f=>({...f,fechaEmision:e.target.value}))} required />
                               </div>
                               {!rrhhAdminEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && (
                                 <div className="input-group">
-                                  <label>Fecha de vencimiento *</label>
-                                  <input className="input" type="date" value={inlineUploadForm.fechaVencimiento} onChange={e=>setInlineUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} required />
+                                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4}}>
+                                    <label style={{marginBottom:0}}>Fecha de vencimiento {!inlineUploadForm.esIndefinido && '*'}</label>
+                                    <label style={{display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:500, cursor:'pointer'}}>
+                                      <input type="checkbox" checked={inlineUploadForm.esIndefinido} onChange={e => setInlineUploadForm(f => ({ ...f, esIndefinido: e.target.checked, fechaVencimiento: '' }))} />
+                                      Indefinido
+                                    </label>
+                                  </div>
+                                  {!inlineUploadForm.esIndefinido && <input className="input" type="date" value={inlineUploadForm.fechaVencimiento} onChange={e=>setInlineUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} required />}
+                                  {inlineUploadForm.esIndefinido && <div style={{ fontSize: 12, padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 6, color: 'var(--fg-muted)' }}>El contrato se considerará vigente hasta que se registre un cese o cambio.</div>}
                                 </div>
                               )}
                             </div>
@@ -9472,8 +9501,17 @@ function RRHHAdmin() {
                                   <input className="input" type="date" value={docUploadForm.fechaEmision} onChange={e=>setDocUploadForm(f=>({...f,fechaEmision:e.target.value}))} required />
                                 </div>
                                 <div className="input-group">
-                                  <label>Fecha vencimiento *</label>
-                                  <input className="input" type="date" value={docUploadForm.fechaVencimiento} onChange={e=>setDocUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} disabled={docUploadEsAdendaAdmin} required />
+                                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4}}>
+                                    <label style={{marginBottom:0}}>Fecha vencimiento {(!docUploadEsAdendaAdmin && !docUploadForm.esIndefinido) && '*'}</label>
+                                    {!docUploadEsAdendaAdmin && (
+                                      <label style={{display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:500, cursor:'pointer'}}>
+                                        <input type="checkbox" checked={docUploadForm.esIndefinido} onChange={e => setDocUploadForm(f => ({ ...f, esIndefinido: e.target.checked, fechaVencimiento: '' }))} />
+                                        Indefinido
+                                      </label>
+                                    )}
+                                  </div>
+                                  {!docUploadForm.esIndefinido && <input className="input" type="date" value={docUploadForm.fechaVencimiento} onChange={e=>setDocUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} disabled={docUploadEsAdendaAdmin} required />}
+                                  {docUploadForm.esIndefinido && <div style={{ fontSize: 12, padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 6, color: 'var(--fg-muted)' }}>El contrato se considerará vigente indefinidamente.</div>}
                                 </div>
                               </>
                             );

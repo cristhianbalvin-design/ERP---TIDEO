@@ -8075,7 +8075,7 @@ export function AppProvider({ children }) {
   const crearPeriodoNominaCtx = async (periodo) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await rrhhService.crearPeriodoNomina(empresa.id, periodo);
-      setPeriodosNomina(prev => [data, ...prev]);
+      setPeriodosNomina(prev => prev.some(p => p.id === data.id) ? prev : [data, ...prev]);
       return data;
     } else {
       const nuevo = { ...periodo, id: generateId('pnm'), empresa_id: empresa?.id, created_at: new Date().toISOString() };
