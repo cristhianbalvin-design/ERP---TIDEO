@@ -6,6 +6,8 @@ import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { autoservicioEmpleadoService } from './services/autoservicioEmpleadoService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { rrhhService } from './services/rrhhService.js';
+import { CATEGORIA_FIRMA_RUBRICA, entidadTipoDesdePersonalTipo } from './services/firmaPersonalService.js';
+import { FileUpload } from './components/FileUpload.jsx';
 
 const minToHours = min => `${Math.round(Number(min || 0) / 60 * 10) / 10} h`;
 const estadoContratoLabel = c => c?.estado === 'por_vencer' ? `Por vencer (${c.dias} dias)` : c?.estado === 'sin_contrato' ? 'Sin contrato digital' : c?.estado || 'Sin contrato digital';
@@ -490,6 +492,20 @@ export function MiPortal() {
               </div>
               <div className="card-body" style={{ paddingTop: 0 }}>
                 <div className="text-muted" style={{ fontSize: 12 }}>Los cambios sensibles, como datos bancarios, quedan sujetos a aprobación de RRHH.</div>
+              </div>
+
+              <div className="card-head" style={{ borderTop: '1px solid var(--border)' }}><h3>Firma / Rúbrica</h3></div>
+              <div className="card-body">
+                <FileUpload
+                  entidadTipo={entidadTipoDesdePersonalTipo(ficha.personal_tipo)}
+                  entidadId={ficha.id}
+                  empresaId={app.empresa?.id}
+                  categoria={CATEGORIA_FIRMA_RUBRICA}
+                  multiple={false}
+                  soloImagenes
+                  soloUltimo
+                  subidoPor={authUser?.id}
+                />
               </div>
 
               <div className="card-head" style={{ borderTop: '1px solid var(--border)' }}><h3>Proponer actualización</h3></div>

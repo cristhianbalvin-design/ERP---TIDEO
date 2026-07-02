@@ -23,6 +23,7 @@ import * as storageService from './services/storageService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
+import { CATEGORIA_FIRMA_RUBRICA } from './services/firmaPersonalService.js';
 import { getPrimaSeguroAfp } from './services/nominaService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { BIOMETRICO_PERFIL_DEFAULT, previsualizarImportacionBiometrica } from './services/biometricoService.js';
@@ -17907,6 +17908,23 @@ function RRHH_Operativo() {
               {/* Sección 4 — Datos bancarios */}
               {canFinanzas && (
                 <DatosBancariosSection cuentas={p.datos_bancarios ?? []} readOnly />
+              )}
+
+              {/* Sección 4.5 — Firma / Rúbrica */}
+              {canGestionarDocsRrhh && (
+                <div>
+                  <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Firma / Rúbrica</div>
+                  <FileUpload
+                    entidadTipo="personal_operativo"
+                    entidadId={p.id}
+                    empresaId={empresa?.id}
+                    categoria={CATEGORIA_FIRMA_RUBRICA}
+                    multiple={false}
+                    soloImagenes
+                    soloUltimo
+                    subidoPor={role?.id}
+                  />
+                </div>
               )}
 
               {/* Sección 5 — Acceso al sistema */}

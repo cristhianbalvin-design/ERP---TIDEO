@@ -12,6 +12,8 @@ export const FileUpload = forwardRef(function FileUpload({
   subidoPor = null,
   deferUpload = false,
   disabled = false,
+  soloImagenes = false,
+  soloUltimo = false,
   onUploaded,
 }, ref) {
   const inputRef = useRef(null);
@@ -58,6 +60,14 @@ export const FileUpload = forwardRef(function FileUpload({
     if (invalid) {
       setError(invalid.validation.error);
       return;
+    }
+
+    if (soloImagenes) {
+      const noEsImagen = selectedFiles.find(file => !/^image\/(jpeg|png)$/i.test(file.type) && !/\.(jpe?g|png)$/i.test(file.name));
+      if (noEsImagen) {
+        setError('Solo se permiten imágenes JPG o PNG.');
+        return;
+      }
     }
 
     setError('');
@@ -171,7 +181,8 @@ export const FileUpload = forwardRef(function FileUpload({
     </div>
   ));
 
-  const adjuntoItems = adjuntos.map(adjunto => (
+  const adjuntosVisibles = soloUltimo ? adjuntos.slice(0, 1) : adjuntos;
+  const adjuntoItems = adjuntosVisibles.map(adjunto => (
     <div key={adjunto.id} className="row" style={{justifyContent:'space-between', gap:10, padding:'9px 0', borderBottom:'1px solid var(--border-subtle)'}}>
       <button type="button" className="btn btn-ghost" onClick={() => abrirAdjunto(adjunto)} style={{justifyContent:'flex-start', minWidth:0, padding:0}}>
         <span style={{width:18, height:18, display:'inline-flex'}}>{I.file}</span>
@@ -186,7 +197,7 @@ export const FileUpload = forwardRef(function FileUpload({
     </div>
   ));
 
-  const totalAdjuntos = adjuntos.length + pendingFiles.length;
+  const totalAdjuntos = adjuntosVisibles.length + pendingFiles.length;
   const dropBorder = dragging ? '1px solid var(--cyan)' : '1px dashed var(--border)';
   const uploadButton = !deferUpload && pendingFiles.length ? (
     <button type="button" className="btn btn-secondary btn-sm" onClick={uploadPendingFiles} disabled={uploading || disabled}>
@@ -235,7 +246,7 @@ export const FileUpload = forwardRef(function FileUpload({
             <span style={{width:28, height:28, display:'inline-flex', color:'var(--cyan)'}}>{I.file}</span>
             <div>
               <div className="font-display" style={{fontSize:13, fontWeight:700}}>Adjuntar archivo</div>
-              <div className="text-muted" style={{fontSize:11}}>PDF, imagen u Office - max. 20 MB</div>
+              <div className="text-muted" style={{fontSize:11}}>{soloImagenes ? 'Imagen JPG o PNG - max. 20 MB' : 'PDF, imagen u Office - max. 20 MB'}</div>
             </div>
           </div>
           <input
@@ -243,7 +254,7 @@ export const FileUpload = forwardRef(function FileUpload({
             type="file"
             multiple={multiple}
             disabled={disabled || uploading}
-            accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,application/pdf,image/jpeg,image/png,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept={soloImagenes ? '.jpg,.jpeg,.png,image/jpeg,image/png' : '.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,application/pdf,image/jpeg,image/png,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
             onChange={event => {
               agregarArchivos(event.target.files);
               event.target.value = '';
@@ -257,7 +268,7 @@ export const FileUpload = forwardRef(function FileUpload({
         {pendingBlock}
 
         <div className="row" style={{justifyContent:'space-between', marginTop:12}}>
-          <div className="text-muted" style={{fontSize:11}}>{loading ? 'Cargando adjuntos...' : 'Archivos vinculados'}</div>
+          <div className="text-muted" style={{fontSize:11}}>{loading ? 'Cargando adjuntos...' : soloUltimo ? 'Archivo vigente' : 'Archivos vinculados'}</div>
           {uploadButton}
         </div>
         <div style={{marginTop:4}}>{adjuntosBlock}</div>

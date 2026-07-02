@@ -1,6 +1,7 @@
 import { createMockRepository } from './createMockRepository.js';
 import { createSupabaseRepository } from './createSupabaseRepository.js';
 import { isSupabaseMode } from '../lib/dataMode.js';
+import { getSupabaseClient } from '../lib/supabaseClient.js';
 
 const round2 = value => +Number(value || 0).toFixed(2);
 
@@ -159,6 +160,40 @@ export function buildFinanciamiento({ form, empresa, sequence = 1 }) {
   };
 }
 
+export async function crearFinanciamientoConAmortizacion({ empresa, nuevo }) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('crear_financiamiento', {
+    p_empresa_id: empresa.id,
+    p_id: nuevo.id,
+    p_codigo: nuevo.codigo,
+    p_tipo: nuevo.tipo,
+    p_entidad: nuevo.entidad,
+    p_monto_original: nuevo.monto_original,
+    p_cuotas: nuevo.tabla_amortizacion,
+    p_tipo_entidad: nuevo.tipo_entidad || null,
+    p_contacto_nombre: nuevo.contacto_nombre || null,
+    p_contacto_telefono: nuevo.contacto_telefono || null,
+    p_contacto_email: nuevo.contacto_email || null,
+    p_moneda: nuevo.moneda || 'PEN',
+    p_tasa_anual: nuevo.tasa_anual || 0,
+    p_tipo_tasa: nuevo.tipo_tasa || 'TEA',
+    p_plazo_meses: nuevo.plazo_meses || null,
+    p_meses_gracia: nuevo.meses_gracia || 0,
+    p_dia_pago: nuevo.dia_pago || null,
+    p_tipo_cuota: nuevo.tipo_cuota || 'frances',
+    p_cuota_mensual: nuevo.cuota_mensual || 0,
+    p_fecha_desembolso: nuevo.fecha_desembolso || null,
+    p_fecha_primer_pago: nuevo.fecha_primer_pago || null,
+    p_fecha_ultimo_pago: nuevo.fecha_ultimo_pago || null,
+    p_proposito: nuevo.proposito || null,
+    p_centro_costo: nuevo.centro_costo || null,
+    p_cuenta_bancaria_destino: nuevo.cuenta_bancaria_destino || null,
+    p_notas: nuevo.notas || null,
+  });
+  if (error) throw error;
+  return { ...data, pagos_realizados: [] };
+}
+
 export function buildPagoFinanciamiento({ financiamiento, datos, nuevoSaldo }) {
   const esCuota = datos.modo === 'cuota';
   const capital = round2(datos.resumen?.capital);
@@ -217,6 +252,35 @@ export function buildEgresoTesoreria({ financiamiento, pago, datos, empresa }) {
     vinculo_id: financiamiento.id,
     estado: 'registrado',
   };
+}
+
+export async function registrarPagoFinanciamientoRpc({
+  empresa,
+  financiamientoId,
+  saldoPendiente,
+  estado,
+  cuotasPagadas,
+  interesesPagadosTotal,
+  tabla,
+  pago,
+  movimiento,
+  gasto,
+}) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('registrar_pago_financiamiento', {
+    p_empresa_id: empresa.id,
+    p_financiamiento_id: financiamientoId,
+    p_saldo_pendiente: saldoPendiente,
+    p_estado: estado,
+    p_cuotas_pagadas: cuotasPagadas,
+    p_intereses_pagados_total: interesesPagadosTotal,
+    p_cuotas: tabla,
+    p_pago: pago,
+    p_movimiento_tesoreria: movimiento,
+    p_gasto_interes: gasto || null,
+  });
+  if (error) throw error;
+  return data;
 }
 
 export function sumFinanciamientosByCurrency(financiamientos = [], valueGetter = item => item?.saldo_pendiente || 0) {

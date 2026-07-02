@@ -8,11 +8,13 @@ import {
   buildFinanciamiento,
   buildGastoIntereses,
   buildPagoFinanciamiento,
+  crearFinanciamientoConAmortizacion,
   createFinanciamientosDataSource,
   generarAmortizacion as generarAmortizacionService,
   isCapitalPayment,
   nextCuota,
   recalcularTabla as recalcularTablaService,
+  registrarPagoFinanciamientoRpc,
 } from './services/financiamientosService.js';
 
 const tipoLabel = { bancario:'Bancario', tercero:'Tercero', leasing:'Leasing', linea_credito:'Linea credito', otro:'Otro' };
@@ -27,7 +29,7 @@ function moneyByCurrency(totals) {
   return keys.length ? keys.map(m => fmtMoney(m, totals[m])).join(' · ') : fmtMoney('PEN', 0);
 }
 
-function NuevoFinanciamientoPanel({ form, setForm, onClose, onSubmit }) {
+function NuevoFinanciamientoPanel({ form, setForm, onClose, onSubmit, isSubmitting, error }) {
   const tabla = generarAmortizacionService({ monto:form.monto_original, tasaAnual:form.tasa_anual, plazoMeses:form.plazo_meses, mesesGracia:form.meses_gracia, fechaDesembolso:form.fecha_desembolso, diaPago:form.dia_pago, tipoCuota:form.tipo_cuota });
   const set = (k, v) => setForm(prev => ({ ...prev, [k]:v }));
   return (
@@ -52,20 +54,21 @@ function NuevoFinanciamientoPanel({ form, setForm, onClose, onSubmit }) {
             <div className="input-group" style={{gridColumn:'1 / -1'}}><label>Proposito</label><textarea className="input" rows="2" value={form.proposito} onChange={e=>set('proposito', e.target.value)}/></div>
           </div>
           <div className="card mt-6" style={{padding:16}}><strong>Vista previa</strong><div className="mt-4">Cuota estimada: <strong>{fmtMoney(form.moneda, tabla[0]?.total || 0)}</strong></div><div>Total a pagar: <strong>{fmtMoney(form.moneda, tabla.reduce((s,c)=>s+c.total,0))}</strong></div><div>Total intereses: <strong>{fmtMoney(form.moneda, tabla.reduce((s,c)=>s+c.interes,0))}</strong></div></div>
-          <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary">Guardar y generar tabla</button></div>
+          {error && <div className="mt-6" style={{color:'var(--red, #dc2626)'}}>{error}</div>}
+          <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSubmitting}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar y generar tabla'}</button></div>
         </form>
       </div>
     </>
   );
 }
 
-function PagoModal({ data, onClose, onConfirm }) {
+function PagoModal({ data, onClose, onConfirm, isSubmitting, error }) {
   const { financiamiento, cuota } = data;
   const cuotas = (financiamiento.tabla_amortizacion || []).filter(c => c.estado !== 'pagada' && c.estado !== 'cancelada');
   const inicial = cuota || cuotas[0];
   const [modo, setModo] = useState(inicial ? 'cuota' : 'capital_parcial');
   const [cuotaNumero, setCuotaNumero] = useState(inicial?.numero || '');
-  const [pago, setPago] = useState({ fecha:'2026-04-28', cuenta_bancaria:financiamiento.cuenta_bancaria_destino || 'BCP Cta. cte.', referencia:'', comprobante:'', capital:Math.min(financiamiento.saldo_pendiente || 0, 1000) });
+  const [pago, setPago] = useState({ fecha:inicial?.fecha || new Date().toISOString().slice(0,10), cuenta_bancaria:financiamiento.cuenta_bancaria_destino || 'BCP Cta. cte.', referencia:'', comprobante:'', capital:Math.min(financiamiento.saldo_pendiente || 0, 1000) });
   const cuotaSel = cuotas.find(c => c.numero === Number(cuotaNumero)) || inicial;
   const capitalAbono = modo === 'capital_total' ? Number(financiamiento.saldo_pendiente || 0) : Math.min(Number(pago.capital || 0), Number(financiamiento.saldo_pendiente || 0));
   const resumen = modo === 'cuota' && cuotaSel ? { capital:cuotaSel.capital, interes:cuotaSel.interes, total:cuotaSel.total } : { capital:capitalAbono, interes:0, total:capitalAbono };
@@ -80,7 +83,8 @@ function PagoModal({ data, onClose, onConfirm }) {
           {modo === 'capital_parcial' && <div className="input-group"><label>Monto a capital</label><input className="input" type="number" value={pago.capital} onChange={e=>setPago(v=>({...v, capital:e.target.value}))}/></div>}
           <div className="card" style={{padding:16}}><div>Capital: <strong>{finMoney(financiamiento, resumen.capital)}</strong></div><div>Interes: <strong>{finMoney(financiamiento, resumen.interes)}</strong></div><div>Total egreso: <strong>{finMoney(financiamiento, resumen.total)}</strong></div></div>
           <div className="grid-2 mt-6" style={{gap:16}}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={pago.fecha} onChange={e=>setPago(v=>({...v, fecha:e.target.value}))}/></div><div className="input-group"><label>Cuenta</label><input className="input" value={pago.cuenta_bancaria} onChange={e=>setPago(v=>({...v, cuenta_bancaria:e.target.value}))}/></div><div className="input-group"><label>Referencia</label><input className="input" value={pago.referencia} onChange={e=>setPago(v=>({...v, referencia:e.target.value}))}/></div><div className="input-group"><label>Comprobante</label><input className="input" value={pago.comprobante} onChange={e=>setPago(v=>({...v, comprobante:e.target.value}))}/></div></div>
-          <div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={()=>onConfirm(financiamiento, { modo, cuota:cuotaSel, resumen, ...pago })}>Confirmar pago</button></div>
+          {error && <div className="mt-6" style={{color:'var(--red, #dc2626)'}}>{error}</div>}
+          <div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={onClose} disabled={isSubmitting}>Cancelar</button><button className="btn btn-primary" onClick={()=>onConfirm(financiamiento, { modo, cuota:cuotaSel, resumen, ...pago })} disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Confirmar pago'}</button></div>
         </div>
       </div>
     </>
@@ -93,6 +97,10 @@ export function FinanciamientoDeuda() {
   const [detalleTab, setDetalleTab] = useState('resumen');
   const [nuevoOpen, setNuevoOpen] = useState(false);
   const [pagoOpen, setPagoOpen] = useState(null);
+  const [guardandoFinanciamiento, setGuardandoFinanciamiento] = useState(false);
+  const [errorNuevoFinanciamiento, setErrorNuevoFinanciamiento] = useState('');
+  const [guardandoPago, setGuardandoPago] = useState(false);
+  const [errorPago, setErrorPago] = useState('');
   const [form, setForm] = useState({ tipo:'bancario', entidad:'', tipo_entidad:'banco', contacto_nombre:'', contacto_telefono:'', contacto_email:'', monto_original:50000, moneda:'PEN', fecha_desembolso:'2026-04-01', tasa_anual:12, tipo_tasa:'TEA', plazo_meses:24, meses_gracia:0, dia_pago:5, tipo_cuota:'frances', centro_costo:'CC-OPS', proposito:'', cuenta_bancaria_destino:'BCP Cta. cte.', notas:'' });
   const detalle = activeParams?.detail ? financiamientos.find(f => f.id === activeParams.detail) : null;
   const dataSource = createFinanciamientosDataSource({
@@ -108,27 +116,77 @@ export function FinanciamientoDeuda() {
   const { activos, deudaTotalPorMoneda, cuotasMesPorMoneda, interesesMesPorMoneda, interesesPagadosPorMoneda } = buildDebtSummary(empresaFinanciamientos);
   const visibles = financiamientos.filter(f => f.empresa_id === empresa.id && (tab === 'todos' || tab === 'reporte' || (tab === 'vigentes' ? f.estado === 'vigente' : f.estado === 'cancelado')));
 
-  const guardarFinanciamiento = e => {
+  const guardarFinanciamiento = async e => {
     e.preventDefault();
+    const formEl = e.target;
+    if (!formEl.checkValidity()) {
+      formEl.reportValidity();
+      setErrorNuevoFinanciamiento('Completa los campos obligatorios (*) antes de guardar.');
+      return;
+    }
+    setErrorNuevoFinanciamiento('');
+    setGuardandoFinanciamiento(true);
     const nuevo = buildFinanciamiento({ form, empresa, sequence: financiamientos.length + 1 });
-    dataSource.financiamientos.create(nuevo);
-    setNuevoOpen(false);
-    addNotificacion(`Financiamiento ${nuevo.codigo} creado con tabla de amortizacion.`);
+    try {
+      if (dataSource.mode === 'supabase') {
+        const persistido = await crearFinanciamientoConAmortizacion({ empresa, nuevo });
+        setFinanciamientos(prev => [...prev, persistido]);
+      } else {
+        dataSource.financiamientos.create(nuevo);
+      }
+      setNuevoOpen(false);
+      addNotificacion(`Financiamiento ${nuevo.codigo} creado con tabla de amortizacion.`);
+    } catch (error) {
+      setErrorNuevoFinanciamiento(error?.message || 'No se pudo guardar el financiamiento.');
+    } finally {
+      setGuardandoFinanciamiento(false);
+    }
   };
 
-  const registrarPago = (financiamiento, datos) => {
+  const registrarPago = async (financiamiento, datos) => {
     const esCuota = datos.modo === 'cuota';
     const capital = +datos.resumen.capital || 0;
     const interes = +datos.resumen.interes || 0;
-    const total = +datos.resumen.total || 0;
     const nuevoSaldo = Math.max(0, (financiamiento.saldo_pendiente || 0) - capital);
+    const nuevoEstado = nuevoSaldo <= 0 ? 'cancelado' : financiamiento.estado;
+    const nuevasCuotasPagadas = esCuota ? (financiamiento.cuotas_pagadas || 0) + 1 : (financiamiento.cuotas_pagadas || 0);
+    const nuevosInteresesPagados = (financiamiento.intereses_pagados_total || 0) + interes;
     const pago = buildPagoFinanciamiento({ financiamiento, datos, nuevoSaldo });
     const tablaMarcada = (financiamiento.tabla_amortizacion || []).map(c => esCuota && c.numero === datos.cuota?.numero ? { ...c, estado:'pagada', fecha_pago_real:datos.fecha, referencia:datos.referencia, comprobante:datos.comprobante } : c);
     const tabla = esCuota ? tablaMarcada : recalcularTablaService(financiamiento, tablaMarcada, nuevoSaldo, datos.fecha);
-    if (esCuota && interes > 0) dataSource.gastos.create(buildGastoIntereses({ financiamiento, cuota: datos.cuota, interes, fecha: datos.fecha, empresa }));
-    dataSource.tesoreria.create(buildEgresoTesoreria({ financiamiento, pago, datos, empresa }));
-    setFinanciamientos(prev => prev.map(f => f.id === financiamiento.id ? { ...f, saldo_pendiente:nuevoSaldo, estado:nuevoSaldo <= 0 ? 'cancelado' : f.estado, tabla_amortizacion:tabla, cuotas_pagadas:esCuota ? (f.cuotas_pagadas || 0) + 1 : (f.cuotas_pagadas || 0), intereses_pagados_total:(f.intereses_pagados_total || 0) + interes, pagos_realizados:[...(f.pagos_realizados || []), pago] } : f));
-    setPagoOpen(null);
+    const movimiento = buildEgresoTesoreria({ financiamiento, pago, datos, empresa });
+    const gasto = (esCuota && interes > 0) ? buildGastoIntereses({ financiamiento, cuota: datos.cuota, interes, fecha: datos.fecha, empresa }) : null;
+
+    setErrorPago('');
+    setGuardandoPago(true);
+    setFinanciamientos(prev => prev.map(f => f.id === financiamiento.id ? { ...f, saldo_pendiente:nuevoSaldo, estado:nuevoEstado, tabla_amortizacion:tabla, cuotas_pagadas:nuevasCuotasPagadas, intereses_pagados_total:nuevosInteresesPagados, pagos_realizados:[...(f.pagos_realizados || []), pago] } : f));
+    setMovimientosTesoreria(prev => [movimiento, ...prev]);
+    if (gasto) setComprasGastos(prev => [gasto, ...prev]);
+
+    try {
+      if (dataSource.mode === 'supabase') {
+        await registrarPagoFinanciamientoRpc({
+          empresa,
+          financiamientoId: financiamiento.id,
+          saldoPendiente: nuevoSaldo,
+          estado: nuevoEstado,
+          cuotasPagadas: nuevasCuotasPagadas,
+          interesesPagadosTotal: nuevosInteresesPagados,
+          tabla,
+          pago,
+          movimiento,
+          gasto,
+        });
+      }
+      setGuardandoPago(false);
+      setPagoOpen(null);
+    } catch (error) {
+      setFinanciamientos(prev => prev.map(f => f.id === financiamiento.id ? financiamiento : f));
+      setMovimientosTesoreria(prev => prev.filter(m => m.id !== movimiento.id));
+      if (gasto) setComprasGastos(prev => prev.filter(g => g.id !== gasto.id));
+      setErrorPago(error?.message || 'No se pudo registrar el pago en Supabase.');
+      setGuardandoPago(false);
+    }
   };
 
   if (detalle) {
@@ -151,7 +209,7 @@ export function FinanciamientoDeuda() {
         {detalleTab === 'amortizacion' && <div className="card"><div className="card-head"><h3>Tabla de amortizacion</h3><button className="btn btn-primary btn-sm" data-local-form="true" onClick={()=>setPagoOpen({financiamiento:detalleVista, cuota})}>Pagar / abonar capital</button></div><div className="table-wrap"><table className="tbl"><thead><tr><th>N</th><th>Fecha</th><th>Cuota total</th><th>Capital</th><th>Interes</th><th>Saldo</th><th>Estado</th><th></th></tr></thead><tbody>{filas.map(c => c.tipo_fila === 'abono' ? <tr key={c.id} style={{background:'rgba(0,188,212,0.06)'}}><td className="mono">ABO</td><td>{fmtDate(c.fecha)}</td><td className="num">{finMoney(detalle,c.total)}</td><td className="num"><strong>{finMoney(detalle,c.capital)}</strong></td><td className="num">{finMoney(detalle,c.interes)}</td><td className="num"><strong>{finMoney(detalle,c.saldo)}</strong></td><td><span className="badge badge-cyan">{c.descripcion}</span></td><td></td></tr> : <tr key={c.id}><td>{c.numero}</td><td>{fmtDate(c.fecha)}</td><td className="num">{finMoney(detalle,c.total)}</td><td className="num">{finMoney(detalle,c.capital)}</td><td className="num">{finMoney(detalle,c.interes)}</td><td className="num">{finMoney(detalle,c.saldo)}</td><td><span className={'badge '+badgeCuota(c.estado)}>{c.estado}</span></td><td>{c.estado !== 'pagada' && c.estado !== 'cancelada' && <button className="btn btn-sm btn-primary" data-local-form="true" onClick={()=>setPagoOpen({financiamiento:detalleVista, cuota:c})}>Pagar</button>}</td></tr>)}</tbody></table></div><div className="card-body row" style={{justifyContent:'flex-end', gap:24}}><strong>Total cuotas futuras: {finMoney(detalle, tablaDetalle.filter(c => c.estado !== 'pagada' && c.estado !== 'cancelada').reduce((s,c)=>s+c.total,0))}</strong><strong>Intereses futuros: {finMoney(detalle, tablaDetalle.filter(c => c.estado !== 'pagada' && c.estado !== 'cancelada').reduce((s,c)=>s+c.interes,0))}</strong></div></div>}
         {detalleTab === 'pagos' && <div className="card"><div className="card-head"><h3>Pagos realizados</h3><button className="btn btn-primary btn-sm" data-local-form="true" onClick={()=>setPagoOpen({financiamiento:detalleVista, cuota})}>Registrar pago / abono</button></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Fecha pago</th><th>Tipo</th><th>N cuota</th><th>Capital</th><th>Interes</th><th>Total</th><th>Banco / Cuenta</th><th>Registrado por</th></tr></thead><tbody>{pagosTabla.map(p => <tr key={p.id}><td>{fmtDate(p.fecha_pago)}</td><td>{p.tipo === 'cuota' ? 'Cuota' : p.tipo === 'capital_total' ? 'Cancelacion capital' : 'Abono capital'}</td><td>{p.cuota_numero || '-'}</td><td className="num">{finMoney(detalle,p.capital)}</td><td className="num">{finMoney(detalle,p.interes)}</td><td className="num">{finMoney(detalle,p.total)}</td><td>{p.cuenta_bancaria || '-'}</td><td>{p.registrado_por}</td></tr>)}</tbody></table></div></div>}
         {detalleTab === 'documentos' && <div className="card"><div className="card-head"><h3>Documentos</h3><button className="btn btn-secondary btn-sm">{I.plus} Adjuntar</button></div><div className="card-body text-muted">Sin documentos adjuntos para este financiamiento.</div></div>}
-        {pagoOpen && <PagoModal data={pagoOpen} onClose={()=>setPagoOpen(null)} onConfirm={registrarPago}/>}
+        {pagoOpen && <PagoModal data={pagoOpen} onClose={()=>{ setPagoOpen(null); setErrorPago(''); }} onConfirm={registrarPago} isSubmitting={guardandoPago} error={errorPago}/>}
       </>
     );
   }
@@ -181,7 +239,7 @@ export function FinanciamientoDeuda() {
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(5,1fr)'}}><div className="kpi-card"><div className="kpi-label">Deuda total vigente</div><div className="kpi-value" style={{fontSize:20}}>{moneyByCurrency(deudaTotalPorMoneda)}</div></div><div className="kpi-card"><div className="kpi-label">Cuotas este mes</div><div className="kpi-value" style={{fontSize:20}}>{moneyByCurrency(cuotasMesPorMoneda)}</div></div><div className="kpi-card"><div className="kpi-label">Intereses este mes</div><div className="kpi-value" style={{fontSize:20}}>{moneyByCurrency(interesesMesPorMoneda)}</div></div><div className="kpi-card"><div className="kpi-label">Capital pendiente</div><div className="kpi-value" style={{fontSize:20}}>{moneyByCurrency(deudaTotalPorMoneda)}</div></div><div className="kpi-card"><div className="kpi-label">Prestamos activos</div><div className="kpi-value" style={{fontSize:22}}>{activos.length}</div></div></div>
       <div className="tabs"><div className={'tab '+(tab==='todos'?'active':'')} onClick={()=>setTab('todos')}>Todos los prestamos</div><div className={'tab '+(tab==='vigentes'?'active':'')} onClick={()=>setTab('vigentes')}>Vigentes</div><div className={'tab '+(tab==='cancelados'?'active':'')} onClick={()=>setTab('cancelados')}>Cancelados</div><div className={'tab '+(tab==='reporte'?'active':'')} onClick={()=>setTab('reporte')}>Reporte de deuda</div></div>
       {tab === 'reporte' ? <div className="card"><div className="card-head"><h3>Reporte de deuda financiera</h3><button className="btn btn-secondary btn-sm">{I.download} Exportar reporte Excel</button></div><div className="card-body"><div className="grid-2" style={{gap:20}}><div style={{padding:16, border:'1px solid var(--border)', borderRadius:8}}><h3 style={{marginTop:0}}>Resumen ejecutivo por moneda</h3><p>Deuda total vigente: <strong>{moneyByCurrency(deudaTotalPorMoneda)}</strong></p><p>Cuotas del mes: <strong>{moneyByCurrency(cuotasMesPorMoneda)}</strong></p><p>Intereses del mes: <strong>{moneyByCurrency(interesesMesPorMoneda)}</strong></p><p>Intereses acumulados 2026: <strong>{moneyByCurrency(interesesPagadosPorMoneda)}</strong></p></div><div style={{padding:16, border:'1px solid var(--border)', borderRadius:8}}><h3 style={{marginTop:0}}>Deuda por tipo de acreedor</h3>{porTipo.map(x => <div key={x.tipo} style={{marginBottom:10}}><div className="row" style={{justifyContent:'space-between'}}><span>{tipoLabel[x.tipo]}</span><strong>{moneyByCurrency(x.totals)}</strong></div>{Object.entries(x.totals).map(([m]) => <div key={m} className="text-muted" style={{fontSize:12}}>{m}: {x.pct[m]}% de la deuda en {m}</div>)}</div>)}</div></div><div className="mt-6"><h3>Calendario de pagos - proximos 12 meses</h3>{meses.map(m => <div key={m.label} className="row" style={{gap:12, margin:'8px 0'}}><span style={{width:90}}>{m.label}</span><strong style={{width:190}}>{moneyByCurrency(m.totals)}</strong><div className="bar" style={{flex:1}}><div style={{width:(m.visual/maxMes*100)+'%', background:'var(--orange)'}}/></div></div>)}<div className="mt-4"><strong>Total comprometido 12 meses: {moneyByCurrency(meses.reduce((acc,m)=>{Object.entries(m.totals).forEach(([moneda,total])=>{acc[moneda]=(acc[moneda]||0)+total;});return acc;},{}))}</strong></div></div><div className="grid-2 mt-6">{activos.map(f => <div key={f.id} style={{border:'1px solid var(--border)', borderRadius:8, padding:14}}><div className="row" style={{justifyContent:'space-between'}}><strong>{f.entidad}</strong><span>{finMoney(f, f.saldo_pendiente)}</span></div><div className="text-muted" style={{fontSize:12}}>Moneda: {f.moneda || 'PEN'} · Interes mes: {finMoney(f, nextCuota(f)?.interes || 0)}</div><div className="bar mt-4"><div style={{width:Math.min(100,(f.cuotas_pagadas || 0)/(f.plazo_meses || 1)*100)+'%', background:'var(--green)'}}/></div></div>)}</div></div></div> : <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>ID</th><th>Entidad prestamista</th><th>Moneda</th><th>Tipo</th><th>Monto original</th><th>Tasa</th><th>Plazo</th><th>Saldo pendiente</th><th>Prox. cuota</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{visibles.map(f => { const c=nextCuota(f); return <tr key={f.id}><td className="mono">{f.codigo}</td><td><strong>{f.entidad}</strong></td><td>{f.moneda || 'PEN'}</td><td>{tipoLabel[f.tipo]}</td><td className="num">{finMoney(f, f.monto_original)}</td><td>{f.tasa_anual}% anual</td><td>{f.plazo_meses ? `${f.plazo_meses} meses` : 'Revolvente'}</td><td className="num"><strong>{finMoney(f, f.saldo_pendiente)}</strong></td><td>{c ? `${finMoney(f, c.total)} · ${fmtDate(c.fecha)}` : '-'}</td><td><span className={'badge '+badgeEstado(f.estado)}>{f.estado}</span></td><td><button className="btn btn-sm btn-ghost" onClick={()=>{setDetalleTab('resumen'); navigate('financiamiento',{detail:f.id});}}>{I.eye} Ver</button></td></tr>;})}</tbody></table></div></div>}
-      {nuevoOpen && <NuevoFinanciamientoPanel form={form} setForm={setForm} onClose={()=>setNuevoOpen(false)} onSubmit={guardarFinanciamiento}/>}
+      {nuevoOpen && <NuevoFinanciamientoPanel form={form} setForm={setForm} onClose={()=>{ setNuevoOpen(false); setErrorNuevoFinanciamiento(''); }} onSubmit={guardarFinanciamiento} isSubmitting={guardandoFinanciamiento} error={errorNuevoFinanciamiento}/>}
     </>
   );
 }

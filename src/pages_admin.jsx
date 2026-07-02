@@ -16,6 +16,8 @@ import { ER_TIPO_SISTEMA_LABELS, ER_TIPO_SISTEMA_OPTIONS } from './services/esta
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import * as amonestacionesService from './services/amonestacionesService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
+import { CATEGORIA_FIRMA_RUBRICA } from './services/firmaPersonalService.js';
+import { FileUpload } from './components/FileUpload.jsx';
 import { AFP_PARAMETROS_DEFAULT, AFP_PRIMA_SEGURO_FALLBACK, latestAfpParametros } from './services/nominaService.js';
 import { computarSaldoVacaciones } from './services/solicitudesRrhhService.js';
 import { WHATSAPP_TIPOS_ALERTA, WHATSAPP_TEMPLATES_DEFAULT, WHATSAPP_RUTAS_DEFAULT, whatsappProviderStatus } from './services/whatsappService.js';
@@ -8309,6 +8311,23 @@ function RRHHAdmin() {
               {/* Sección 4 — Datos bancarios */}
               {canFinanzasAdmin && (
                 <DatosBancariosAdmin cuentas={persona.datos_bancarios ?? []} readOnly />
+              )}
+
+              {/* Sección 4.5 — Firma / Rúbrica */}
+              {canGestionarDocsRrhhAdmin && (
+                <div>
+                  <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Firma / Rúbrica</div>
+                  <FileUpload
+                    entidadTipo="personal_administrativo"
+                    entidadId={persona.id}
+                    empresaId={empresa?.id}
+                    categoria={CATEGORIA_FIRMA_RUBRICA}
+                    multiple={false}
+                    soloImagenes
+                    soloUltimo
+                    subidoPor={role?.id}
+                  />
+                </div>
               )}
 
               {/* Sección 5 — Acceso al sistema */}
