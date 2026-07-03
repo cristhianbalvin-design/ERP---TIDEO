@@ -191,8 +191,11 @@ function getFichaColaboradorMovil({ authUser, usuarios = [], personalAdmin = [],
   return trabajadores.find(p => {
     const email = normalizarTexto(p.email);
     const nombreSlug = slugPersona(p.nombre);
-    return p.auth_user_id === authUser?.id ||
-      p.auth_user_id === usuarioMovil.id ||
+    // p.auth_user_id es nullable (empleados sin cuenta vinculada): nunca comparar
+    // contra un id de sesion vacio, o cualquier ficha sin vincular calzaria por error
+    // con una sesion aun no resuelta (authUser/usuarioMovil.id en null).
+    return (authUser?.id && p.auth_user_id === authUser.id) ||
+      (usuarioMovil.id && p.auth_user_id === usuarioMovil.id) ||
       p.id === authUser?.id ||
       p.id === usuarioMovil.id ||
       (emailAuth && email === emailAuth) ||
