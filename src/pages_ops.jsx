@@ -29,6 +29,7 @@ import { insertarNotificacionesSistema } from './services/crmService.js';
 import { BIOMETRICO_PERFIL_DEFAULT, previsualizarImportacionBiometrica } from './services/biometricoService.js';
 import { GEO_CONFIG_DEFAULT, evaluarGeofenceLocal, parseGps } from './services/geofencingService.js';
 import { GeoPoligonoMapa } from './components/GeoPoligonoMapa.jsx';
+import { GeoMiniMapa } from './components/GeoMiniMapa.jsx';
 import { FileUpload } from './components/FileUpload.jsx';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
 import { comprasService, getSpendAnalysis } from './services/comprasService.js';
@@ -13787,29 +13788,6 @@ function TurnosHorarios() {
   );
 }
 
-function GeoMiniMapa({ lat, lng, radio = 250, puntos = [] }) {
-  const latNum = Number(lat);
-  const lngNum = Number(lng);
-  if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
-    return <div className="card" style={{ padding: 16, minHeight: 180, display: 'grid', placeItems: 'center' }}><span className="text-muted">Ingresa coordenadas para ver el mapa.</span></div>;
-  }
-  const delta = Math.max(0.004, Number(radio || 250) / 80000);
-  const bbox = [lngNum - delta, latNum - delta, lngNum + delta, latNum + delta].join(',');
-  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${latNum},${lngNum}`;
-  return (
-    <div style={{ position: 'relative', height: 220, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'var(--bg-subtle)' }}>
-      <iframe title="Mapa geocerca" src={src} style={{ border: 0, width: '100%', height: '100%' }} loading="lazy" />
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', display: 'grid', placeItems: 'center' }}>
-        <div style={{ width: 116, height: 116, borderRadius: '50%', border: '2px solid var(--cyan)', background: 'rgba(6,182,212,.12)' }} />
-      </div>
-      {puntos.slice(0, 12).map((p, i) => (
-        <div key={p.id || i} title={p.nombre || p.estado} style={{ position: 'absolute', left: `${50 + Math.max(-42, Math.min(42, (Number(p.lng) - lngNum) / delta * 50))}%`, top: `${50 - Math.max(-42, Math.min(42, (Number(p.lat) - latNum) / delta * 50))}%`, width: 10, height: 10, borderRadius: '50%', background: p.estado === 'fuera' ? 'var(--orange)' : p.estado === 'sin_ubicacion' ? 'var(--gray)' : 'var(--green)', border: '2px solid white', transform: 'translate(-50%, -50%)', boxShadow: '0 1px 6px rgba(0,0,0,.35)' }} />
-      ))}
-      <div className="badge badge-cyan" style={{ position: 'absolute', left: 10, bottom: 10 }}>Radio {radio} m</div>
-    </div>
-  );
-}
-
 function UbicacionMarcacionModal({ registro, estadoGeocerca, estadoGeocercaSalida, onClose }) {
   if (!registro) return null;
   const badgeClass = estadoGeocerca === 'dentro' ? 'badge-green' : estadoGeocerca === 'fuera' ? 'badge-orange' : 'badge-gray';
@@ -13908,12 +13886,14 @@ function ControlAsistencia() {
   const [bioPerfilForm, setBioPerfilForm] = useState({ ...BIOMETRICO_PERFIL_DEFAULT });
   const [bioSaving, setBioSaving] = useState(false);
   const [bioAvanzado, setBioAvanzado] = useState(false);
-  const [geoForm, setGeoForm] = useState({ nombre:'', sede_id:'', sede_nombre:'', tipo:'circulo', latitud:'', longitud:'', radio_m:600, poligono_geojson:null, estado:'activo', vigencia_desde:'', vigencia_hasta:'', notas:'' });
+  const [geoForm, setGeoForm] = useState({ id:null, nombre:'', sede_id:'', sede_nombre:'', tipo:'circulo', latitud:'', longitud:'', radio_m:600, poligono_geojson:null, estado:'activo', vigencia_desde:'', vigencia_hasta:'', notas:'' });
   const [geoAsignacionForm, setGeoAsignacionForm] = useState({ geocerca_id:'', personal_id:'', personal_tipo:'operativo', grupo_tipo:'individual', estado:'activo' });
   const [geoSaving, setGeoSaving] = useState(false);
   const [sarFecha, setSarFecha] = useState(new Date().toISOString().split('T')[0]);
   const [sarEvaluando, setSarEvaluando] = useState(false);
+  const [sarSeleccionado, setSarSeleccionado] = useState(null);
   const [geoCfg, setGeoCfg] = useState({ ...GEO_CONFIG_DEFAULT });
+  const [geoSubTab, setGeoSubTab] = useState('politica');
 
   // Estados Mineros
   const [ciclosMineros, setCiclosMineros] = useState([]);
@@ -14073,6 +14053,13 @@ function ControlAsistencia() {
     const estadoEntrada = reg?.geofence_entrada_estado
       || (reg?.latitud ? evaluarGeofenceLocal({ trabajador: row.trabajador, geocercas, asignaciones: geocercaAsignaciones, fix: { lat: reg.latitud, lng: reg.longitud, precision_m: reg.precision_entrada_m }, fecha, config: geoCfg }).estado : null);
     return estadoEntrada !== 'dentro';
+  };
+
+  const estadoGeocercaRow = (row) => {
+    const reg = row.registro;
+    if (!reg?.latitud || !geocercaAsignadaPorTrabajador.has(row.trabajador.id)) return null;
+    return reg.geofence_entrada_estado
+      || evaluarGeofenceLocal({ trabajador: row.trabajador, geocercas, asignaciones: geocercaAsignaciones, fix: { lat: reg.latitud, lng: reg.longitud, precision_m: reg.precision_entrada_m }, fecha, config: geoCfg }).estado;
   };
 
   const periodoFiltro = { anio: parseInt(currentMonth.split('-')[0]), mes: parseInt(currentMonth.split('-')[1]) };
@@ -14481,10 +14468,33 @@ function ControlAsistencia() {
         vigencia_hasta: geoForm.vigencia_hasta || null,
       });
       setGeoAsignacionForm(v => ({ ...v, geocerca_id: data.id }));
-      setGeoForm({ nombre:'', sede_id:'', sede_nombre:'', tipo:'circulo', latitud:'', longitud:'', radio_m:600, poligono_geojson:null, estado:'activo', vigencia_desde:'', vigencia_hasta:'', notas:'' });
+      setGeoForm({ id:null, nombre:'', sede_id:'', sede_nombre:'', tipo:'circulo', latitud:'', longitud:'', radio_m:600, poligono_geojson:null, estado:'activo', vigencia_desde:'', vigencia_hasta:'', notas:'' });
     } finally {
       setGeoSaving(false);
     }
+  };
+
+  const editarGeocerca = (g) => {
+    setGeoForm({
+      id: g.id,
+      nombre: g.nombre || '',
+      sede_id: g.sede_id || '',
+      sede_nombre: g.sede_nombre || '',
+      tipo: g.tipo === 'poligono' ? 'poligono' : 'circulo',
+      latitud: g.latitud ?? '',
+      longitud: g.longitud ?? '',
+      radio_m: g.radio_m ?? 600,
+      poligono_geojson: g.tipo === 'poligono' ? g.poligono_geojson : null,
+      estado: g.estado || 'activo',
+      vigencia_desde: g.vigencia_desde || '',
+      vigencia_hasta: g.vigencia_hasta || '',
+      notas: g.notas || '',
+    });
+    setGeoSubTab('geocercas');
+  };
+
+  const cancelarEdicionGeo = () => {
+    setGeoForm({ id:null, nombre:'', sede_id:'', sede_nombre:'', tipo:'circulo', latitud:'', longitud:'', radio_m:600, poligono_geojson:null, estado:'activo', vigencia_desde:'', vigencia_hasta:'', notas:'' });
   };
 
   const eliminarGeocerca = async (g) => {
@@ -14555,7 +14565,7 @@ function ControlAsistencia() {
     .map(r => {
       const reg = r.registro;
       if (!reg?.latitud || !reg?.longitud) return null;
-      return { id: reg.id, lat: reg.latitud, lng: reg.longitud, estado: r.estado, nombre: r.persona?.nombre };
+      return { id: r.asignacion.id, lat: reg.latitud, lng: reg.longitud, estado: r.estado, nombre: r.persona?.nombre };
     })
     .filter(Boolean);
 
@@ -14762,7 +14772,7 @@ function ControlAsistencia() {
 
       <div className="tabs">{allTabs.map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
 
-      {tab === 'diaria' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%'}}><h3>Asistencia del dia (Régimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Geocerca</th><th>SAR</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.filter(r => !filtroTrabajador || r.trabajador.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(row=><tr key={row.trabajador.id} className="hover-row" style={{cursor:'pointer'}} onClick={()=>setResumenPanelId(row.trabajador.id)}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td><td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td><td>{geocercaAsignadaPorTrabajador.has(row.trabajador.id) ? <span className="badge badge-cyan">Asignada</span> : <span className="badge badge-gray">Sin asignar</span>}</td><td>{mostrarSarBadge(row) ? <span className="badge badge-red">SAR: no llegada</span> : '-'}</td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><div className="row" style={{gap:6}}>{row.registro?.latitud ? <button type="button" className="icon-btn" title="Ver ubicación de marcación" style={{color:'var(--fg-muted)'}} onClick={(e)=>{e.stopPropagation(); abrirUbicacionMarcacion(row);}}>{I.mapPin}</button> : <button type="button" className="icon-btn" disabled title="Sin ubicación registrada" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.mapPin}</button>}{row.registro?.id ? <button type="button" className="icon-btn" title="Eliminar registro de asistencia" style={{color:'var(--danger)'}} onClick={(e)=>{e.stopPropagation(); eliminarRegistroAsistencia(row);}}>{I.trash}</button> : <button type="button" className="icon-btn" disabled title="Sin registro para eliminar" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.trash}</button>}<button className="btn btn-sm btn-secondary" onClick={(e)=>{e.stopPropagation(); abrirEdicion(row);}}>Editar</button></div></td></tr>)}</tbody></table></div></div>}
+      {tab === 'diaria' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%'}}><h3>Asistencia del dia (Régimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Geocerca</th><th>SAR</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.filter(r => !filtroTrabajador || r.trabajador.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(row=><tr key={row.trabajador.id} className="hover-row" style={{cursor:'pointer'}} onClick={()=>setResumenPanelId(row.trabajador.id)}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td><td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td><td><div className="row" style={{gap:4, flexWrap:'wrap'}}>{geocercaAsignadaPorTrabajador.has(row.trabajador.id) ? <span className="badge badge-cyan">Asignada</span> : <span className="badge badge-gray">Sin asignar</span>}{estadoGeocercaRow(row) === 'dentro' && <span className="badge badge-green">Dentro</span>}{(estadoGeocercaRow(row) === 'fuera' || estadoGeocercaRow(row) === 'rechazable') && <span className="badge badge-orange">Fuera</span>}</div></td><td>{mostrarSarBadge(row) ? <span className="badge badge-red">SAR: no llegada</span> : '-'}</td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><div className="row" style={{gap:6}}>{row.registro?.latitud ? <button type="button" className="icon-btn" title="Ver ubicación de marcación" style={{color:'var(--fg-muted)'}} onClick={(e)=>{e.stopPropagation(); abrirUbicacionMarcacion(row);}}>{I.mapPin}</button> : <button type="button" className="icon-btn" disabled title="Sin ubicación registrada" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.mapPin}</button>}{row.registro?.id ? <button type="button" className="icon-btn" title="Eliminar registro de asistencia" style={{color:'var(--danger)'}} onClick={(e)=>{e.stopPropagation(); eliminarRegistroAsistencia(row);}}>{I.trash}</button> : <button type="button" className="icon-btn" disabled title="Sin registro para eliminar" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.trash}</button>}<button className="btn btn-sm btn-secondary" onClick={(e)=>{e.stopPropagation(); abrirEdicion(row);}}>Editar</button></div></td></tr>)}</tbody></table></div></div>}
 
       {tab === 'semanal' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', flexWrap:'wrap', width:'100%', gap:10}}><h3>Vista semanal (Régimen General)</h3><div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><div className="row" style={{background:'var(--bg-subtle)', borderRadius:8, padding:'2px 4px', border:'1px solid var(--border)'}}><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() - 7); return n.toISOString().split('T')[0]; })} title="Semana anterior">{I.chevronLeft}</button><span className="text-muted" style={{minWidth:200, textAlign:'center', fontSize:13, fontWeight:600}}>{semanaTexto}</span><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() + 7); return n.toISOString().split('T')[0]; })} title="Siguiente semana">{I.chevronRight}</button></div><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/><button type="button" className="btn btn-ghost btn-sm" onClick={() => setFecha(new Date().toISOString().split('T')[0])}>Hoy</button></div></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.filter(t => !filtroTrabajador || t.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).slice(0, filtroTrabajador ? undefined : 8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t,d); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
 
@@ -14915,7 +14925,9 @@ function ControlAsistencia() {
       </div>}
 
       {tab === 'sar' && <div style={{display:'grid', gap:16}}>
-        <div className="card" style={{padding:16}}>
+        <div className="tabs">{[['politica','Politica GPS y SAR'],['geocercas','Geocercas'],['panel','Panel SAR']].map(([k,l])=><div key={k} className={'tab '+(geoSubTab===k?'active':'')} onClick={()=>setGeoSubTab(k)}>{l}</div>)}</div>
+
+        {geoSubTab === 'politica' && <div className="card" style={{padding:16}}>
           <div className="card-head"><h3>Politica GPS y SAR</h3><span className="badge badge-gray">Captura puntual, no rastreo continuo</span></div>
           <div className="grid-2" style={{gap:12}}>
             <label className="row" style={{gap:8}}><input type="checkbox" checked={Boolean(geoCfg.asistencia_movil_ubicacion_habilitada)} onChange={e=>setGeoCfg(v=>({...v, asistencia_movil_ubicacion_habilitada:e.target.checked}))}/> Habilitar ubicacion en asistencia movil</label>
@@ -14928,11 +14940,11 @@ function ControlAsistencia() {
             <div className="input-group" style={{gridColumn:'1/-1'}}><label>Texto de consentimiento</label><textarea className="input" rows="3" value={geoCfg.asistencia_movil_consentimiento_texto || ''} onChange={e=>setGeoCfg(v=>({...v, asistencia_movil_consentimiento_texto:e.target.value}))}/></div>
           </div>
           <div className="row" style={{justifyContent:'flex-end', marginTop:12}}><button className="btn btn-primary" onClick={guardarGeoCfg}>Guardar politica</button></div>
-        </div>
+        </div>}
 
-        <div className="grid-2" style={{gap:16, alignItems:'flex-start'}}>
+        {geoSubTab === 'geocercas' && <div className="grid-2" style={{gap:16, alignItems:'flex-start'}}>
           <form className="card" style={{padding:16}} onSubmit={guardarGeo}>
-            <div className="card-head"><h3>Geocerca</h3><span className="badge badge-cyan">{geoForm.tipo === 'poligono' ? 'Poligono' : 'Centro + radio'}</span></div>
+            <div className="card-head"><h3>{geoForm.id ? 'Editar geocerca' : 'Geocerca'}</h3><span className="badge badge-cyan">{geoForm.tipo === 'poligono' ? 'Poligono' : 'Centro + radio'}</span></div>
             <div className="grid-2" style={{gap:10}}>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Tipo</label><select className="select" value={geoForm.tipo} onChange={e=>setGeoForm(v=>({...v, tipo:e.target.value, poligono_geojson: e.target.value === 'poligono' ? v.poligono_geojson : null}))}><option value="circulo">Circulo (centro + radio)</option><option value="poligono">Poligono</option></select></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre</label><input className="input" value={geoForm.nombre} onChange={e=>setGeoForm(v=>({...v,nombre:e.target.value}))} placeholder="Operacion Mina Norte"/></div>
@@ -14948,11 +14960,14 @@ function ControlAsistencia() {
             </div>
             <div style={{marginTop:12}}>
               {geoForm.tipo === 'poligono'
-                ? <GeoPoligonoMapa centro={geoForm.latitud && geoForm.longitud ? { lat: geoForm.latitud, lng: geoForm.longitud } : undefined} poligonoGeojson={geoForm.poligono_geojson} onChange={geo => setGeoForm(v => ({ ...v, poligono_geojson: geo }))}/>
-                : <GeoMiniMapa lat={geoForm.latitud} lng={geoForm.longitud} radio={geoForm.radio_m}/>}
+                ? <GeoPoligonoMapa centro={geoForm.latitud && geoForm.longitud ? { lat: geoForm.latitud, lng: geoForm.longitud } : undefined} poligonoGeojson={geoForm.poligono_geojson} onChange={geo => setGeoForm(v => ({ ...v, poligono_geojson: geo }))} altura={480}/>
+                : <GeoMiniMapa lat={geoForm.latitud} lng={geoForm.longitud} radio={geoForm.radio_m} altura={480}/>}
             </div>
             {geoForm.tipo === 'poligono' && <div className="text-muted" style={{fontSize:11, marginTop:6}}>Haz clic en el mapa para agregar vertices y dibuja el perimetro del almacen. Minimo 3 vertices.</div>}
-            <div className="row" style={{justifyContent:'flex-end', marginTop:12}}><button className="btn btn-primary" disabled={geoSaving}>{geoSaving ? 'Guardando...' : 'Guardar geocerca'}</button></div>
+            <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}>
+              {geoForm.id && <button type="button" className="btn btn-secondary" onClick={cancelarEdicionGeo}>Cancelar edicion</button>}
+              <button className="btn btn-primary" disabled={geoSaving}>{geoSaving ? 'Guardando...' : (geoForm.id ? 'Guardar cambios' : 'Guardar geocerca')}</button>
+            </div>
           </form>
 
           <div className="card" style={{padding:16}}>
@@ -14963,27 +14978,25 @@ function ControlAsistencia() {
               <div style={{gridColumn:'1/-1'}} className="row"><button className="btn btn-secondary">Asignar trabajador</button></div>
             </form>
             <div className="table-wrap" style={{maxHeight:260, overflow:'auto'}}><table className="tbl"><thead><tr><th>Geocerca</th><th>Centro</th><th>Radio</th><th>Asignados</th><th></th></tr></thead><tbody>
-              {geocercas.map(g => <tr key={g.id}><td><strong>{g.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{g.sede_nombre || g.sede_id || '-'}</div></td><td className="mono" style={{fontSize:11}}>{g.latitud}, {g.longitud}</td><td>{g.tipo === 'poligono' ? `Poligono (${(g.poligono_geojson?.coordinates?.[0]?.length || 1) - 1} vertices)` : `${g.radio_m} m`}</td><td>{geocercaAsignaciones.filter(a=>a.geocerca_id===g.id && a.estado!=='inactivo').length}</td><td><button type="button" className="icon-btn" title="Eliminar geocerca" style={{color:'var(--danger)'}} onClick={()=>eliminarGeocerca(g)}>{I.trash}</button></td></tr>)}
+              {geocercas.map(g => <tr key={g.id}><td><strong>{g.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{g.sede_nombre || g.sede_id || '-'}</div></td><td className="mono" style={{fontSize:11}}>{g.latitud}, {g.longitud}</td><td>{g.tipo === 'poligono' ? `Poligono (${(g.poligono_geojson?.coordinates?.[0]?.length || 1) - 1} vertices)` : `${g.radio_m} m`}</td><td>{geocercaAsignaciones.filter(a=>a.geocerca_id===g.id && a.estado!=='inactivo').length}</td><td><div className="row" style={{gap:4}}><button type="button" className="icon-btn" title="Editar geocerca" style={{color:'var(--fg-muted)'}} onClick={()=>editarGeocerca(g)}>{I.edit}</button><button type="button" className="icon-btn" title="Eliminar geocerca" style={{color:'var(--danger)'}} onClick={()=>eliminarGeocerca(g)}>{I.trash}</button></div></td></tr>)}
               {!geocercas.length && <tr><td colSpan={5} className="text-muted" style={{padding:16}}>Sin geocercas registradas.</td></tr>}
             </tbody></table></div>
           </div>
-        </div>
+        </div>}
 
-        <div className="card">
+        {geoSubTab === 'panel' && <div className="card">
           <div className="card-head">
             <div><h3>Panel SAR</h3><p className="text-muted" style={{margin:0}}>Verificacion puntual de llegada por operacion/geocerca.</p></div>
             <div className="row" style={{gap:8}}><input className="input" type="date" value={sarFecha} onChange={e=>setSarFecha(e.target.value)} style={{width:150}}/><button className="btn btn-secondary btn-sm" onClick={ejecutarSar} disabled={sarEvaluando}>{sarEvaluando ? 'Evaluando...' : 'Generar alertas'}</button></div>
           </div>
           <div className="grid-2" style={{gap:16, padding:16}}>
             <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Operacion</th><th>Estado</th><th>Hora</th></tr></thead><tbody>
-              {sarRows.map(r => <tr key={`${r.asignacion.id}_${sarFecha}`}><td><strong>{r.persona.nombre}</strong></td><td>{r.geocerca.nombre}</td><td><span className={'badge '+(r.estado==='dentro'?'badge-green':r.estado==='no_marcado'?'badge-red':r.estado==='fuera'?'badge-orange':'badge-gray')}>{r.estado}</span></td><td>{r.registro?.hora_entrada || '-'}</td></tr>)}
+              {sarRows.map(r => <tr key={`${r.asignacion.id}_${sarFecha}`} onClick={()=>setSarSeleccionado(r.asignacion.id)} style={{cursor:'pointer', background: sarSeleccionado===r.asignacion.id ? 'var(--bg-hover, rgba(6,182,212,.08))' : undefined}}><td><strong>{r.persona.nombre}</strong></td><td>{r.geocerca.nombre}</td><td><span className={'badge '+(r.estado==='dentro'?'badge-green':r.estado==='no_marcado'?'badge-red':r.estado==='fuera'?'badge-orange':'badge-gray')}>{r.estado}</span></td><td>{r.registro?.hora_entrada || '-'}</td></tr>)}
               {!sarRows.length && <tr><td colSpan={4} className="text-muted" style={{padding:16}}>Asigna geocercas a trabajadores para ver el SAR.</td></tr>}
             </tbody></table></div>
-            {geocercas[0]?.tipo === 'poligono'
-              ? <div className="card" style={{ padding: 16, minHeight: 180, display: 'grid', placeItems: 'center' }}><span className="text-muted">Geocerca poligono - mapa de referencia disponible en el formulario de creacion.</span></div>
-              : <GeoMiniMapa lat={geocercas[0]?.latitud} lng={geocercas[0]?.longitud} radio={geocercas[0]?.radio_m || 600} puntos={sarPuntosMapa}/>}
+            <GeoMiniMapa lat={geocercas[0]?.latitud} lng={geocercas[0]?.longitud} radio={geocercas[0]?.radio_m || 600} mostrarRadio={geocercas[0]?.tipo !== 'poligono'} puntos={sarPuntosMapa} seleccionado={sarSeleccionado} onSeleccionar={setSarSeleccionado} altura={480}/>
           </div>
-        </div>
+        </div>}
       </div>}
 
       {tab === 'minero' && <div>

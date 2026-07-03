@@ -215,8 +215,11 @@ export const geofencingService = {
   async eliminarGeocerca(id) {
     if (!isSupabaseConfigured()) return;
     const supabase = await getSupabaseClient();
-    const { error } = await supabase.from('rrhh_geocercas').delete().eq('id', id);
+    const { data, error } = await supabase.from('rrhh_geocercas').delete().eq('id', id).select();
     if (error) throw error;
+    if (!data || !data.length) {
+      throw new Error('No se elimino ninguna geocerca: no tienes permiso o la geocerca ya no existe.');
+    }
   },
 
   async guardarAsignacion(empresaId, asignacion) {

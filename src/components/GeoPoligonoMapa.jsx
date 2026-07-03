@@ -118,13 +118,13 @@ function BotonMiUbicacion() {
   );
 }
 
-export function GeoPoligonoMapa({ centro, poligonoGeojson, onChange }) {
+export function GeoPoligonoMapa({ centro, poligonoGeojson, onChange, altura = 320 }) {
   const centroValido = centro && Number.isFinite(Number(centro.lat)) && Number.isFinite(Number(centro.lng))
     ? [Number(centro.lat), Number(centro.lng)]
     : [-12.0464, -77.0428];
 
   return (
-    <div style={{ height: 320, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ height: altura, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
       <MapContainer center={centroValido} zoom={17} style={{ height: '100%', width: '100%' }}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
         <ControlDibujoPoligono poligonoGeojson={poligonoGeojson} onChange={onChange} />
