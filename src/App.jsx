@@ -309,7 +309,7 @@ function MainLayout() {
   if (mobileMode) {
     return (
       <Suspense fallback={<PageLoader />}>
-        <MobileFieldView onExit={() => setMobileMode(false)} profile={mobileProfile} setProfile={setMobileProfile} dark={dark} setDark={setDark}/>
+        <MobileFieldView onExit={() => { setMobileMode(false); navigate('dashboard'); }} profile={mobileProfile} setProfile={setMobileProfile} dark={dark} setDark={setDark}/>
       </Suspense>
     );
   }
