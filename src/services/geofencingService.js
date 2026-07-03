@@ -203,9 +203,10 @@ export const geofencingService = {
   async guardarGeocerca(empresaId, geocerca) {
     if (!isSupabaseConfigured()) return { ...geocerca, id: geocerca.id || generateId('geo'), empresa_id: empresaId };
     const supabase = await getSupabaseClient();
-    const payload = { ...geocerca, empresa_id: empresaId, updated_at: new Date().toISOString() };
-    const query = geocerca.id
-      ? supabase.from('rrhh_geocercas').update(payload).eq('id', geocerca.id)
+    const { id, ...resto } = geocerca;
+    const payload = { ...resto, empresa_id: empresaId, updated_at: new Date().toISOString() };
+    const query = id
+      ? supabase.from('rrhh_geocercas').update(payload).eq('id', id)
       : supabase.from('rrhh_geocercas').insert(payload);
     const { data, error } = await query.select('*').single();
     if (error) throw error;
