@@ -884,6 +884,14 @@ export const rrhhService = {
     await crearCompensacionHePendiente(supabase, empresaId, data, personal);
     return normalizarAsistencia(data);
   },
+  eliminarAsistencia: async (id) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('registros_asistencia').delete().eq('id', id).select();
+    if (error) throw error;
+    if (!data || !data.length) {
+      throw new Error('No se elimino ningun registro: no tienes permiso (requiere ser admin de la empresa) o el registro ya no existe.');
+    }
+  },
   actualizarAsistencia: async (id, cambios) => {
     const supabase = await getSupabaseClient();
     const empresaId = cambios.empresa_id;

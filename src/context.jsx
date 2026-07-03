@@ -9518,6 +9518,15 @@ export function AppProvider({ children }) {
     return data;
   };
 
+  const eliminarGeocercaCtx = async (id) => {
+    if (isSupabaseConfigured()) {
+      await geofencingService.eliminarGeocerca(id);
+    }
+    setGeocercas(prev => prev.filter(g => g.id !== id));
+    setGeocercaAsignaciones(prev => prev.filter(a => a.geocerca_id !== id));
+    addNotificacion('Geocerca eliminada.');
+  };
+
   const guardarGeocercaAsignacionCtx = async (asignacion) => {
     const data = await geofencingService.guardarAsignacion(empresa?.id || asignacion.empresa_id || 'emp_001', asignacion);
     setGeocercaAsignaciones(prev => data.id && prev.some(a => a.id === data.id) ? prev.map(a => a.id === data.id ? data : a) : [data, ...prev]);
@@ -9740,7 +9749,7 @@ export function AppProvider({ children }) {
     iniciarOtpFirmaPortalCtx, validarOtpFirmaPortalCtx, guardarOnboardingFirmaPortalCtx,
     guardarPerfilBiometricoCtx, registrarLoteBiometricoCtx, anularLoteBiometricoCtx,
     guardarWhatsappPlantillaCtx, guardarWhatsappRutaCtx, registrarWhatsappSimuladoCtx,
-    guardarGeocercaCtx, guardarGeocercaAsignacionCtx, registrarConsentimientoUbicacionCtx, evaluarSarNoLlegadaCtx,
+    guardarGeocercaCtx, eliminarGeocercaCtx, guardarGeocercaAsignacionCtx, registrarConsentimientoUbicacionCtx, evaluarSarNoLlegadaCtx,
     crearTurnoCtx, actualizarTurnoCtx, eliminarTurnoCtx, registrarAsistenciaCtx, crearPeriodoNominaCtx,
     crearPlantillaEvaluacionCtx, actualizarPlantillaEvaluacionCtx, cerrarPlantillaEvaluacionCtx,
     reasignarJefeEvaluacionCtx, guardarAutoevaluacionCtx, guardarEvaluacionJefeCtx,

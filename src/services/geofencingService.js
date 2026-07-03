@@ -51,6 +51,48 @@ export function distanciaMetros(a, b) {
   return 2 * r * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
+export function puntoEnPoligono(lat, lng, poligonoGeojson) {
+  const anillo = poligonoGeojson?.coordinates?.[0];
+  if (!Array.isArray(anillo) || anillo.length < 3) return false;
+  let dentro = false;
+  for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
+    const [xi, yi] = anillo[i];
+    const [xj, yj] = anillo[j];
+    const cruza = (yi > lat) !== (yj > lat) && lng < (xj - xi) * (lat - yi) / (yj - yi) + xi;
+    if (cruza) dentro = !dentro;
+  }
+  return dentro;
+}
+
+function distanciaPuntoASegmentoM(lat, lng, lat1, lng1, lat2, lng2) {
+  const metrosPorGradoLat = 111320;
+  const metrosPorGradoLng = 111320 * Math.cos(lat * Math.PI / 180);
+  const toXY = (la, ln) => [(ln - lng) * metrosPorGradoLng, (la - lat) * metrosPorGradoLat];
+  const [x1, y1] = toXY(lat1, lng1);
+  const [x2, y2] = toXY(lat2, lng2);
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  let t = lenSq === 0 ? 0 : (-x1 * dx - y1 * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const projX = x1 + t * dx;
+  const projY = y1 + t * dy;
+  return Math.hypot(projX, projY);
+}
+
+export function distanciaAPoligonoM(lat, lng, poligonoGeojson) {
+  const anillo = poligonoGeojson?.coordinates?.[0];
+  if (!Array.isArray(anillo) || anillo.length < 2) return Infinity;
+  let min = Infinity;
+  for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
+    const [lng1, lat1] = anillo[i];
+    const [lng2, lat2] = anillo[j];
+    const d = distanciaPuntoASegmentoM(lat, lng, lat1, lng1, lat2, lng2);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
 export function evaluarGeofenceLocal({ trabajador, geocercas = [], asignaciones = [], fix, fecha = new Date().toISOString().slice(0, 10), config = {} }) {
   if (!fix?.lat || !fix?.lng) {
     return { estado: 'sin_ubicacion', motivo: fix?.motivo || 'gps_no_disponible' };
@@ -70,20 +112,34 @@ export function evaluarGeofenceLocal({ trabajador, geocercas = [], asignaciones 
   });
   if (!activas.length) return { estado: 'sin_geocerca', motivo: 'sin_geocerca_asignada' };
   const ordenadas = activas
-    .map(g => ({ geocerca: g, distancia_m: distanciaMetros(fix, { lat: g.latitud ?? g.lat, lng: g.longitud ?? g.lng }) }))
+    .map(g => {
+      if (g.tipo === 'poligono') {
+        const lat = Number(fix.lat);
+        const lng = Number(fix.lng);
+        let dentro = puntoEnPoligono(lat, lng, g.poligono_geojson);
+        if (!dentro) {
+          const precisionFix = Number(fix.precision_m || fix.accuracy || 0);
+          if (distanciaAPoligonoM(lat, lng, g.poligono_geojson) <= precisionFix) dentro = true;
+        }
+        return { geocerca: g, distancia_m: dentro ? 0 : Infinity, dentroPoligono: dentro };
+      }
+      return { geocerca: g, distancia_m: distanciaMetros(fix, { lat: g.latitud ?? g.lat, lng: g.longitud ?? g.lng }) };
+    })
     .filter(x => x.distancia_m != null)
     .sort((a, b) => a.distancia_m - b.distancia_m);
   const best = ordenadas[0];
   if (!best) return { estado: 'sin_geocerca', motivo: 'coordenadas_invalidas' };
   const precision = Number(fix.precision_m || fix.accuracy || 0);
-  const radio = Number(best.geocerca.radio_m || 0);
-  const dentro = best.distancia_m <= radio + precision;
-  if (dentro) return { estado: 'dentro', geocerca_id: best.geocerca.id, geocerca_nombre: best.geocerca.nombre, distancia_m: Math.round(best.distancia_m), radio_m: radio };
+  const esPoligono = best.geocerca.tipo === 'poligono';
+  const radio = esPoligono ? null : Number(best.geocerca.radio_m || 0);
+  const dentro = esPoligono ? best.dentroPoligono : best.distancia_m <= radio + precision;
+  const distanciaSalida = esPoligono ? null : Math.round(best.distancia_m);
+  if (dentro) return { estado: 'dentro', geocerca_id: best.geocerca.id, geocerca_nombre: best.geocerca.nombre, distancia_m: distanciaSalida, radio_m: radio };
   return {
     estado: (config.geofencing_modo || 'flexible') === 'estricto' ? 'rechazable' : 'fuera',
     geocerca_id: best.geocerca.id,
     geocerca_nombre: best.geocerca.nombre,
-    distancia_m: Math.round(best.distancia_m),
+    distancia_m: distanciaSalida,
     radio_m: radio,
   };
 }
@@ -154,6 +210,13 @@ export const geofencingService = {
     const { data, error } = await query.select('*').single();
     if (error) throw error;
     return data;
+  },
+
+  async eliminarGeocerca(id) {
+    if (!isSupabaseConfigured()) return;
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.from('rrhh_geocercas').delete().eq('id', id);
+    if (error) throw error;
   },
 
   async guardarAsignacion(empresaId, asignacion) {
