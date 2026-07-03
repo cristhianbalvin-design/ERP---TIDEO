@@ -471,6 +471,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
         const data = await rrhhService.registrarAsistencia(empresa?.id || 'emp_001', nuevoRegistro);
         setRegistrosAsistencia(prev => [data, ...prev]);
         addNotificacion(`Entrada registrada a las ${horaActual}`);
+        setModo('salida');
       } catch (e) {
         const local = {...nuevoRegistro, id: `asis_off_${Date.now()}`, offline_marcacion: true};
         if (!navigator.onLine || e.message === 'offline') {
@@ -478,11 +479,13 @@ function AsistenciaMobileView({ screen, setScreen }) {
           setOfflinePendientes(getGeoQueue().length);
           addNotificacion(`Entrada guardada offline a las ${horaActual}. Se sincronizara al recuperar senal.`);
           setRegistrosAsistencia(prev => [local, ...prev]);
+          setModo('salida');
         } else {
-          addNotificacion(`Error BD (Entrada): ${e.message || JSON.stringify(e)}`);
+          const msg = `Error BD (Entrada): ${e.message || JSON.stringify(e)}`;
+          addNotificacion(msg);
+          setAviso(msg);
         }
       }
-      setModo('salida');
     } else if (modo === 'salida') {
       const abierto = registrosAsistencia.find(r => r.trabajador_id === trabajadorId && r.fecha === today && !r.hora_salida);
       if (abierto) {
@@ -514,6 +517,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
              setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? updated : r));
           }
           addNotificacion(`Salida registrada a las ${horaActual}`);
+          setModo('completado');
         } catch (e) {
           const updated = { ...abierto, ...cambios };
           if (!navigator.onLine || e.message === 'offline') {
@@ -528,12 +532,14 @@ function AsistenciaMobileView({ screen, setScreen }) {
             setOfflinePendientes(getGeoQueue().length);
             addNotificacion(`Salida guardada offline a las ${horaActual}. Se sincronizara al recuperar senal.`);
             setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? updated : r));
+            setModo('completado');
           } else {
-            addNotificacion(`Error BD (Salida): ${e.message || JSON.stringify(e)}`);
+            const msg = `Error BD (Salida): ${e.message || JSON.stringify(e)}`;
+            addNotificacion(msg);
+            setAviso(msg);
           }
         }
       }
-      setModo('completado');
     }
     
     setLoading(false);
