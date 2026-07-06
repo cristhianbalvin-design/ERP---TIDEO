@@ -5349,10 +5349,10 @@ function Proveedores() {
       ['categoria', 'SI', 'Materiales, Servicios, Transporte, Equipos, Mixto', 'Categoria del proveedor'],
       ['estado', 'NO (potencial por defecto)', 'potencial, en_evaluacion, homologado', 'Estado inicial del proveedor'],
       ['servicios', 'SI', 'Texto', 'Servicios o productos que ofrece'],
-      ['contacto_nombre', 'SI', 'Texto', 'Nombre del contacto principal'],
+      ['contacto_nombre', 'NO', 'Texto', 'Nombre del contacto principal'],
       ['contacto_cargo', 'NO', 'Texto', 'Cargo del contacto principal'],
-      ['telefono', 'SI', '9 digitos, inicia con 9', 'Telefono del contacto'],
-      ['email', 'SI', 'Correo valido', 'Email del contacto'],
+      ['telefono', 'NO', '9 digitos, inicia con 9', 'Telefono del contacto'],
+      ['email', 'NO', 'Correo valido', 'Email del contacto'],
       ['web', 'NO', 'URL', 'Sitio web del proveedor'],
       ['direccion', 'NO', 'Texto', 'Direccion del proveedor'],
       ['responsable_compras', 'SI', 'Texto', 'Nombre del responsable de compras asignado'],
@@ -5647,10 +5647,10 @@ function Proveedores() {
             </div>
             <div className="eyebrow">Contacto principal</div>
             <div className="grid-2" style={{gap:12, marginBottom:18}}>
-              <div className="input-group"><label>Nombre del contacto *</label><input className="input" required value={form.contacto_nombre} onChange={e=>update('contacto_nombre', e.target.value)}/></div>
+              <div className="input-group"><label>Nombre del contacto</label><input className="input" value={form.contacto_nombre} onChange={e=>update('contacto_nombre', e.target.value)}/></div>
               <div className="input-group"><label>Cargo</label><input className="input" value={form.contacto_cargo} onChange={e=>update('contacto_cargo', e.target.value)}/></div>
-              <div className="input-group"><label>Telefono *</label><input className="input" required type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={form.telefono} onChange={e=>update('telefono', sanitizePhone(e.target.value))} placeholder="9XXXXXXXX"/></div>
-              <div className="input-group"><label>Email *</label><input className="input" required type="email" value={form.email} onChange={e=>update('email', e.target.value)}/></div>
+              <div className="input-group"><label>Telefono</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={form.telefono} onChange={e=>update('telefono', sanitizePhone(e.target.value))} placeholder="9XXXXXXXX"/></div>
+              <div className="input-group"><label>Email</label><input className="input" type="email" value={form.email} onChange={e=>update('email', e.target.value)}/></div>
               <div className="input-group"><label>Sitio web</label><input className="input" value={form.web} onChange={e=>update('web', e.target.value)} placeholder="https://"/></div>
               <div className="input-group"><label>Direccion</label><input className="input" value={form.direccion} onChange={e=>update('direccion', e.target.value)}/></div>
             </div>
@@ -5708,9 +5708,7 @@ function ImportarProveedoresPreview({ dataRows, proveedoresActuales, responsable
       else if (item.pais === 'Peru' && !isValidRuc(item.ruc)) { item.status = 'ERROR'; item.errorMsg = 'RUC invalido (11 digitos, inicia con 1 o 2)'; }
       else if (!item.categoria) { item.status = 'ERROR'; item.errorMsg = 'Categoria invalida'; }
       else if (!item.servicios) { item.status = 'ERROR'; item.errorMsg = 'Servicios vacio'; }
-      else if (!item.contacto_nombre) { item.status = 'ERROR'; item.errorMsg = 'Contacto vacio'; }
       else if (!isValidPhone(item.telefono)) { item.status = 'ERROR'; item.errorMsg = 'Telefono invalido (9 digitos, inicia con 9)'; }
-      else if (!item.email) { item.status = 'ERROR'; item.errorMsg = 'Email vacio'; }
       else if (!item.responsable_compras) { item.status = 'ERROR'; item.errorMsg = 'Responsable de compras vacio'; }
       else if (item.ruc && dbRucs.has(item.ruc)) { item.status = 'OMITIDO_DB'; item.errorMsg = 'RUC ya registrado'; }
       else if (item.ruc && fileRucs.has(item.ruc)) { item.status = 'OMITIDO_EXCEL'; item.errorMsg = 'RUC duplicado en el archivo'; }
@@ -16501,20 +16499,25 @@ const rrhhEsTipoContrato = (tipo) => {
   return Boolean(tipo.captura_snapshot_laboral && !tipo.documento_padre_tipo_id);
 };
 const rrhhEsTipoAdenda = (tipo, fallback = '') => rrhhTipoDocumentoTexto(tipo, fallback).includes('adenda');
-const rrhhSnapshotLaboral = (p = {}, extra = {}) => ({
-  cargo: extra.cargo ?? p.cargo ?? '',
-  cargo_id: extra.cargo_id ?? p.cargo_id ?? '',
-  cargo_nombre: extra.cargo_nombre ?? extra.cargo ?? p.cargo ?? '',
-  remuneracion_base: extra.remuneracion_base ?? p.sueldo_base ?? p.monto_mensual ?? 0,
-  modalidad: extra.modalidad ?? p.modalidad ?? p.modalidad_trabajo ?? '',
-  sede: extra.sede ?? p.sede ?? '',
-  sede_id: extra.sede_id ?? p.sede_id ?? '',
-  sede_nombre: extra.sede_nombre ?? extra.sede ?? p.sede ?? '',
-  area_id: extra.area_id ?? p.area_id ?? '',
-  area_nombre: extra.area_nombre ?? p.area ?? '',
-  regimen_jornada: extra.regimen_jornada ?? p.regimen_jornada ?? 'general',
-  tipo_contrato: extra.tipo_contrato ?? p.tipo_contrato ?? '',
-});
+const rrhhSnapshotLaboral = (p = {}, extra = {}) => {
+  const tipoContratoRaw = extra.tipo_contrato ?? p.tipo_contrato ?? '';
+  const esHonorarios = tipoContratoRaw === 'honorarios';
+  return {
+    cargo: extra.cargo ?? p.cargo ?? '',
+    cargo_id: extra.cargo_id ?? p.cargo_id ?? '',
+    cargo_nombre: extra.cargo_nombre ?? extra.cargo ?? p.cargo ?? '',
+    remuneracion_base: extra.remuneracion_base ?? p.sueldo_base ?? p.monto_mensual ?? 0,
+    modalidad: extra.modalidad ?? p.modalidad ?? p.modalidad_trabajo ?? '',
+    sede: extra.sede ?? p.sede ?? '',
+    sede_id: extra.sede_id ?? p.sede_id ?? '',
+    sede_nombre: extra.sede_nombre ?? extra.sede ?? p.sede ?? '',
+    area_id: extra.area_id ?? p.area_id ?? '',
+    area_nombre: extra.area_nombre ?? p.area ?? '',
+    regimen_jornada: extra.regimen_jornada ?? p.regimen_jornada ?? 'general',
+    tipo_contrato: tipoContratoRaw,
+    modalidad_contrato: tipoContratoRaw ? (esHonorarios ? 'honorarios' : 'planilla') : (p.modalidad_contrato ?? ''),
+  };
+};
 const rrhhContratoResumen = (doc = {}, docPrevio = null, tiposDocumento = []) => {
   const c = doc.condiciones_laborales || {};
   const cambios = doc.adenda_cambios || {};
@@ -17368,9 +17371,9 @@ function RRHH_Operativo() {
       suspension_retenciones: modalidad === 'honorarios' ? formAlta.suspension_retenciones : false,
       vencimiento_suspension: modalidad === 'honorarios' && formAlta.suspension_retenciones ? (formAlta.vencimiento_suspension || null) : null,
       estado: formAlta.estado || 'disponible',
-      turno_id: modalidad === 'honorarios' ? null : formAlta.turno_id,
+      turno_id: formAlta.turno_id || null,
       centro_costo_id: formAlta.centro_costo_id,
-      turno: modalidad === 'honorarios' ? '' : (turnosOptions.find(t => t.id === formAlta.turno_id)?.nombre || ''),
+      turno: turnosOptions.find(t => t.id === formAlta.turno_id)?.nombre || '',
       docs: { sctr:'pendiente', medico:'pendiente', epp:'pendiente', licencia:'pendiente' },
       tarifa_hora_referencial: modalidad === 'honorarios' && formAlta.tarifa_hora_referencial !== '' ? Number(formAlta.tarifa_hora_referencial) : null,
       datos_bancarios: formDatosBancarios,
@@ -19576,7 +19579,7 @@ function RRHH_Operativo() {
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato)}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
               <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorarios} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
-              {!esHonorarios && <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>}
+              <div className="input-group"><label>Turno asignado {esHonorarios ? <span className="text-muted">(opcional, requerido para tomar asistencia)</span> : '*'}</label><select className="select" required={!esHonorarios} value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               <div className="input-group"><label>Cargo</label>
                 <select className="select" value={formAlta.cargo_id} onChange={e=>{
                   if(e.target.value==='__nuevo__'){setFormAlta(v=>({...v,cargo_id:'__nuevo__'}));setNuevoCargoTextoOp('');return;}
