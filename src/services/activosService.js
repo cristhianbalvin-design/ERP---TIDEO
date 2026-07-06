@@ -71,6 +71,44 @@ export const darBajaActivo = async (id, motivo, usuarioId = null) => {
 // Validaciones: codigo y nombre son obligatorios.
 // centro_costo: se resuelve por codigo o nombre; si no se encuentra → error de fila.
 // Sin fallbacks silenciosos: fila inválida = error reportado, no insertada.
+const parseExcelDate = (val) => {
+  if (val === null || val === undefined || val === '') return null;
+  if (val instanceof Date) {
+    return isNaN(val.getTime()) ? null : val.toISOString().split('T')[0];
+  }
+  if (typeof val === 'number') {
+    const d = new Date((val - 25569) * 86400 * 1000);
+    return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+  }
+  const str = String(val).trim();
+  if (/^\d+(\.\d+)?$/.test(str) && Number(str) > 10000) {
+    const d = new Date((Number(str) - 25569) * 86400 * 1000);
+    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  }
+  const m = str.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})$/);
+  if (m) {
+    if (m[1].length === 4) {
+      const d = new Date(`${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`);
+      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+    } else if (m[3].length === 4) {
+      const d = new Date(`${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`);
+      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+    }
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+};
+
+// Acepta variantes con espacios ("en mantenimiento", "dado de baja") además del valor canónico con guion bajo.
+const normalizarEstadoActivo = (raw) => {
+  const s = String(raw ?? '').trim().toLowerCase();
+  if (!s) return 'operativo';
+  if (s === 'operativo' || s === 'activo') return 'operativo';
+  if (s.includes('mantenimiento')) return 'en_mantenimiento';
+  if (s.includes('baja')) return 'dado_baja';
+  return s.replace(/\s+/g, '_');
+};
+
 export const importarActivosMasivo = async (empresaId, filas) => {
   const supabase = await getSupabaseClient();
   const creados = [], actualizados = [], errores = [];
@@ -108,11 +146,18 @@ export const importarActivosMasivo = async (empresaId, filas) => {
 
       const valorAdquisicion = Number(String(fila.valor_adquisicion ?? '').replace(/[^0-9.]/g, '')) || 0;
       const vidaUtilAnos = parseInt(fila.vida_util_anos, 10) || 0;
-      const estadoActivo = norm(fila.estado) || 'operativo';
+      const estadoRaw = norm(fila.estado);
+      const estadoActivo = normalizarEstadoActivo(estadoRaw);
 
       const ESTADOS_VALIDOS = ['operativo', 'en_mantenimiento', 'dado_baja'];
       if (!ESTADOS_VALIDOS.includes(estadoActivo)) {
-        errores.push({ fila: codigo, error: `Estado "${estadoActivo}" inválido. Use: operativo, en_mantenimiento, dado_baja` });
+        errores.push({ fila: codigo, error: `Estado "${estadoRaw}" inválido. Use: operativo, en_mantenimiento, dado_baja` });
+        continue;
+      }
+
+      const fechaAlta = parseExcelDate(fila.fecha_alta);
+      if (fila.fecha_alta !== undefined && norm(fila.fecha_alta) !== '' && fechaAlta === null) {
+        errores.push({ fila: codigo, error: `Fecha de alta "${fila.fecha_alta}" no es una fecha válida` });
         continue;
       }
 
@@ -128,7 +173,7 @@ export const importarActivosMasivo = async (empresaId, filas) => {
         estado: estadoActivo,
         centro_costo_id,
         responsable_nombre: norm(fila.responsable) || null,
-        fecha_alta: norm(fila.fecha_alta) || null,
+        fecha_alta: fechaAlta,
         valor_adquisicion: valorAdquisicion,
         moneda: norm(fila.moneda) || 'PEN',
         vida_util_anos: vidaUtilAnos,

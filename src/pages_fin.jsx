@@ -4793,8 +4793,9 @@ const calcVentaFechaVencimiento = (fecha, diasCredito) => {
 };
 
 function Ventas() {
-  const { empresa, authUser, addNotificacion, navigate } = useApp();
+  const { empresa, authUser, addNotificacion, navigate, role } = useApp();
   const supabaseMode = isSupabaseMode();
+  const puedeVerClientes = !supabaseMode || Boolean(role?.permisos?.todo) || Boolean(role?.permisos?.ver?.includes('cuentas'));
   const [ventas, setVentas] = useState(() => supabaseMode ? [] : (MOCK.ventas || []));
   const [clientes, setClientes] = useState(() => supabaseMode ? [] : (MOCK.cuentas || []));
   const [loading, setLoading] = useState(false);
@@ -4839,6 +4840,7 @@ function Ventas() {
   const guardarVenta = async e => {
     e.preventDefault();
     setError('');
+    if (!puedeVerClientes) { setError('No tienes permiso para ver clientes. Solicita a tu administrador el permiso de la pantalla "Cuentas y Contactos".'); return; }
     const cuenta = clientes.find(c => c.id === form.cuenta_id);
     const monto = Number(form.monto_total);
     if (!form.cuenta_id || !cuenta) { setError('Selecciona un cliente.'); return; }
@@ -4988,7 +4990,12 @@ function Ventas() {
             <form className="side-panel-body" onSubmit={guardarVenta} style={{display:'flex',flexDirection:'column',gap:14}}>
               <div className="input-group">
                 <label>Cliente <span style={{color:'var(--danger)'}}>*</span></label>
-                <select className="select" value={form.cuenta_id} onChange={e => setF('cuenta_id', e.target.value)} required>
+                {!loading && clientes.length === 0 && !puedeVerClientes && (
+                  <div className="alert alert-danger" style={{marginBottom:8}}>
+                    No tienes permiso para ver el listado de clientes (pantalla "Cuentas y Contactos"). Solicita a tu administrador que te asigne ese permiso.
+                  </div>
+                )}
+                <select className="select" value={form.cuenta_id} onChange={e => setF('cuenta_id', e.target.value)} required disabled={!puedeVerClientes}>
                   <option value="">Seleccionar cliente...</option>
                   {clientes.map(c => <option key={c.id} value={c.id}>{cuentaVentaNombre(c)}</option>)}
                 </select>

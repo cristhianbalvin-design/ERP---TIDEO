@@ -1738,7 +1738,7 @@ function CecoCebePanel({ onClose }) {
     const errores = [];
     const estadoNorm = normEstado(r.estado);
     const tipoNorm = normTipo(r.tipo);
-    const yaExiste = (centrosCosto||[]).some(c=>c.codigo===r.codigo);
+    const existente = (centrosCosto||[]).find(c=>c.codigo===r.codigo);
     if (!r.codigo) errores.push('Código vacío');
     else if (rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado en el archivo');
     if (!r.nombre) errores.push('Nombre vacío');
@@ -1747,13 +1747,13 @@ function CecoCebePanel({ onClose }) {
     if (r.estado && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido (usa "activo" o "inactivo")');
     const cebe = findCebe(r.cebe_padre);
     const resp = usuariosActivos.find(u=>u.nombre===r.responsable);
-    return { ...r, tipo: tipoNorm, estado: estadoNorm || 'activo', cebe_id: cebe?.id || null, responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, presupuesto_mensual: r.presupuesto_mensual || null, _errores: errores, _existe: yaExiste };
+    return { ...r, id: existente?.id, tipo: tipoNorm, estado: estadoNorm || 'activo', cebe_id: cebe?.id || null, responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, presupuesto_mensual: r.presupuesto_mensual || null, _errores: errores, _existe: !!existente };
   });
   const validarCebeImport = rows => rows.map(r => {
     const errores = [];
     const estadoNorm = normEstado(r.estado);
     const tipoNorm = normTipo(r.tipo);
-    const yaExiste = (centrosBeneficio||[]).some(c=>c.codigo===r.codigo);
+    const existente = (centrosBeneficio||[]).find(c=>c.codigo===r.codigo);
     if (!r.codigo) errores.push('Código vacío');
     else if (rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado en el archivo');
     if (!r.nombre) errores.push('Nombre vacío');
@@ -1761,7 +1761,7 @@ function CecoCebePanel({ onClose }) {
     else if (!CEBE_TIPOS.includes(tipoNorm)) errores.push(`Tipo inválido: "${r.tipo}". Usa: linea_servicio, cliente, proyecto, producto, temporal`);
     if (r.estado && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido (usa "activo" o "inactivo")');
     const resp = usuariosActivos.find(u=>u.nombre===r.responsable);
-    return { ...r, tipo: tipoNorm, estado: estadoNorm || 'activo', responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, meta_ingresos: r.meta_ingresos || null, cuenta_id: r.cuenta_id || null, _errores: errores, _existe: yaExiste };
+    return { ...r, id: existente?.id, tipo: tipoNorm, estado: estadoNorm || 'activo', responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, meta_ingresos: r.meta_ingresos || null, cuenta_id: r.cuenta_id || null, _errores: errores, _existe: !!existente };
   });
   const exportCsv = (data, headers, filename) => {
     const rows = [headers.join(','), ...data.map(r => headers.map(h=>`"${r[h]??''}"` ).join(','))];
@@ -7191,21 +7191,26 @@ const rrhhAdminEsTipoContrato = (tipo) => {
 const rrhhAdminEsTipoAdenda = (tipo, fallback = '') =>
   Boolean(tipo?.documento_padre_tipo_id) ||
   rrhhAdminTipoDocumentoTexto(tipo, fallback).includes('adenda');
-const rrhhAdminSnapshotLaboral = (p = {}, extra = {}) => ({
-  cargo: extra.cargo ?? p.cargo ?? '',
-  cargo_id: extra.cargo_id ?? p.cargo_id ?? '',
-  cargo_nombre: extra.cargo_nombre ?? extra.cargo ?? p.cargo ?? '',
-  remuneracion_base: extra.remuneracion_base ?? p.sueldo_base ?? p.remuneracion ?? p.monto_mensual ?? 0,
-  modalidad: extra.modalidad ?? p.modalidad ?? '',
-  sede: extra.sede ?? p.sede ?? '',
-  sede_id: extra.sede_id ?? p.sede_id ?? '',
-  sede_nombre: extra.sede_nombre ?? extra.sede ?? p.sede ?? '',
-  area_id: extra.area_id ?? p.area_id ?? '',
-  area_nombre: extra.area_nombre ?? p.area ?? '',
-  regimen_jornada: extra.regimen_jornada ?? p.regimen_jornada ?? 'general',
-  tipo_contrato: extra.tipo_contrato ?? p.tipo_contrato ?? '',
-  descripcion_cambio: extra.descripcion_cambio ?? '',
-});
+const rrhhAdminSnapshotLaboral = (p = {}, extra = {}) => {
+  const tipoContratoRaw = extra.tipo_contrato ?? p.tipo_contrato ?? '';
+  const esHonorarios = tipoContratoRaw === 'honorarios';
+  return {
+    cargo: extra.cargo ?? p.cargo ?? '',
+    cargo_id: extra.cargo_id ?? p.cargo_id ?? '',
+    cargo_nombre: extra.cargo_nombre ?? extra.cargo ?? p.cargo ?? '',
+    remuneracion_base: extra.remuneracion_base ?? p.sueldo_base ?? p.remuneracion ?? p.monto_mensual ?? 0,
+    modalidad: extra.modalidad ?? p.modalidad ?? '',
+    sede: extra.sede ?? p.sede ?? '',
+    sede_id: extra.sede_id ?? p.sede_id ?? '',
+    sede_nombre: extra.sede_nombre ?? extra.sede ?? p.sede ?? '',
+    area_id: extra.area_id ?? p.area_id ?? '',
+    area_nombre: extra.area_nombre ?? p.area ?? '',
+    regimen_jornada: extra.regimen_jornada ?? p.regimen_jornada ?? 'general',
+    tipo_contrato: tipoContratoRaw,
+    modalidad_contrato: tipoContratoRaw ? (esHonorarios ? 'honorarios' : 'planilla') : (p.modalidad_contrato ?? ''),
+    descripcion_cambio: extra.descripcion_cambio ?? '',
+  };
+};
 const rrhhAdminContratoResumen = (doc = {}, docPrevio = null, tiposDocumento = []) => {
   const c = doc.condiciones_laborales || {};
   const cambios = doc.adenda_cambios || {};
@@ -10387,9 +10392,7 @@ function RRHHAdmin() {
               <div className="input-group"><label>Área</label>{areasOptions.length ? <select className="select" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))}><option value="">Seleccionar área...</option>{areasOptions.map(a=><option key={a}>{a}</option>)}</select> : <input className="input" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))} placeholder="Ej: Comercial"/>}</div>
               <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
-              {!esHonorariosAlta && (
-                <div className="input-group"><label>Turno asignado *</label><select className="select" required value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
-              )}
+              <div className="input-group"><label>Turno asignado {esHonorariosAlta ? <span className="text-muted">(opcional, requerido para tomar asistencia)</span> : '*'}</label><select className="select" required={!esHonorariosAlta} value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               <div className="input-group">
                 <label>{esHonorariosAlta ? 'Inicio del encargo *' : 'Fecha de ingreso *'}</label>
                 <input className="input" type="date" required value={formAlta.fecha_inicio} onChange={e=>setFormAlta(v=>({...v,fecha_inicio:e.target.value}))}/>
