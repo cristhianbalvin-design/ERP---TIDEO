@@ -20,30 +20,6 @@ export const maestrosService = {
     if (error) { console.error('Error fetching areas:', error); return []; }
     return data;
   },
-  crearArea: async (empresaId, area) => {
-    const supabase = await getSupabaseClient();
-    const payload = {
-      id: area.id || makeId('area'),
-      empresa_id: empresaId,
-      codigo: area.codigo || `AREA-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
-      ...pick(area, ['nombre', 'tipo', 'responsable', 'detalle', 'estado']),
-    };
-    const { data, error } = await supabase.from('areas_empresa').insert([payload]).select().single();
-    if (error) throw error;
-    return data;
-  },
-  actualizarArea: async (areaId, payload) => {
-    const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.from('areas_empresa').update(pick(payload, ['codigo', 'nombre', 'tipo', 'responsable', 'detalle', 'estado'])).eq('id', areaId).select().single();
-    if (error) throw error;
-    return data;
-  },
-  eliminarArea: async (areaId) => {
-    const supabase = await getSupabaseClient();
-    const { error } = await supabase.from('areas_empresa').delete().eq('id', areaId);
-    if (error) throw error;
-  },
-
   // Cargos
   getCargos: async (empresaId) => {
     if (!empresaId) return [];
@@ -58,7 +34,7 @@ export const maestrosService = {
       id: cargo.id || makeId('car'),
       empresa_id: empresaId,
       codigo: cargo.codigo || `CAR-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
-      ...pick(cargo, ['nombre', 'tipo', 'detalle', 'estado']),
+      ...pick(cargo, ['nombre', 'tipo', 'detalle', 'estado', 'modo_gestion']),
     };
     const { data, error } = await supabase.from('cargos_empresa').insert([payload]).select().single();
     if (error) throw error;
@@ -66,7 +42,7 @@ export const maestrosService = {
   },
   actualizarCargo: async (cargoId, payload) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.from('cargos_empresa').update(pick(payload, ['codigo', 'nombre', 'tipo', 'detalle', 'estado'])).eq('id', cargoId).select().single();
+    const { data, error } = await supabase.from('cargos_empresa').update(pick(payload, ['codigo', 'nombre', 'tipo', 'detalle', 'estado', 'modo_gestion'])).eq('id', cargoId).select().single();
     if (error) throw error;
     return data;
   },

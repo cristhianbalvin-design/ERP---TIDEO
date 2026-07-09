@@ -1,0 +1,47 @@
+-- TIDEO ERP - Retira usuario_alcance_jerarquico: codigo muerto, sin consumidores, divergente de
+-- la funcion viva.
+--
+-- Por que existio: se creo en la Fase de jerarquia por rol (069_jerarquia_roles_usuarios.sql) y
+-- se migro de nuevo en la Fase 2 (297_jerarquia_posiciones_rls.sql) para que leyera del arbol de
+-- Posiciones -- igual que usuario_puede_ver_usuario y usuario_puede_aprobar_hoja_costeo -- "por
+-- consistencia, sin riesgo" (comentario textual de esa migracion), aunque nunca la conecto
+-- ninguna policy. El diseño real de proteccion de datos se construyo directamente sobre
+-- usuario_puede_ver_usuario/usuario_puede_ver_registro (chequeo punto a punto: "¿puedo ver A
+-- esta persona/registro?"), no sobre una etiqueta de 3 niveles (tenant/equipo/propio) como la que
+-- devuelve esta funcion. Nunca encontro un consumidor real.
+--
+-- Por que se retira (y no se conecta): auditoria confirmo con evidencia (pg_get_functiondef +
+-- prueba real en transaccion con ROLLBACK) que diverge de usuario_puede_ver_usuario, la funcion
+-- que si protege datos hoy (leads, oportunidades, cotizaciones, cuentas, partes_diarios,
+-- acuerdo_comision_historial, personal_administrativo), en 3 aspectos concretos:
+--   1. Profundidad de arbol: solo mira subordinados DIRECTOS (1 nivel), mientras que
+--      usuario_puede_ver_usuario recorre el arbol completo via CTE recursivo. Un director con
+--      jerarquia de 3+ niveles obtendria 'equipo' sin que eso implique visibilidad real de sus
+--      nietos organizacionales.
+--   2. Filtro por nivel jerarquico: no exige nivel_jerarquico in ('jefatura','supervisor') para
+--      la rama 'equipo' -- cualquier usuario (incluso 'operativo') con un subordinado directo
+--      obtendria 'equipo'. usuario_puede_ver_usuario si lo exige. Conectarla tal cual habria sido
+--      MAS PERMISIVA de lo que el sistema real permite.
+--   3. Bypass de superadmin de plataforma: no llama a usuario_es_superadmin_plataforma() -- un
+--      superadmin de plataforma sin fila en usuarios_asignaciones del tenant destino obtendria
+--      'propio' (la mas restrictiva), cuando usuario_puede_ver_usuario le da acceso total.
+--      Conectarla tal cual habria sido MAS RESTRICTIVA de lo que el sistema real permite para ese
+--      caso.
+--
+-- En suma: conectarla hoy tal cual habria introducido tanto falsos positivos como falsos
+-- negativos frente al comportamiento probado del sistema, no una simple redundancia inofensiva.
+--
+-- Confirmado inmediatamente antes de este DROP (no se reutilizo una confirmacion previa):
+--   - 0 RLS policies la referencian (pg_policies.qual / with_check)
+--   - 0 funciones de public.pg_proc la invocan (prosrc)
+--   - 0 vistas la referencian (pg_views.definition)
+--   - 0 referencias en el frontend (src/)
+--
+-- Fuera de alcance (NO se toca aqui): usuario_puede_ver_usuario, usuario_puede_ver_registro, ni
+-- usuario_puede_aprobar_hoja_costeo -- esta ultima tiene su propio CTE recursivo independiente
+-- (duplicacion de logica de jerarquia, senalada en la auditoria) que queda pendiente de revisar
+-- en otro turno, sin modificarse ahora.
+
+drop function if exists public.usuario_alcance_jerarquico(text);
+
+select pg_notify('pgrst', 'reload schema');

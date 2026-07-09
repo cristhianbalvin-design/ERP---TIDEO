@@ -253,6 +253,8 @@ export async function subirDocumento({
   periodoGrupoId,
   origen = 'backoffice',
   esIndefinido,
+  forzarOverride,
+  motivoOverride,
 }) {
   const supabase = await getSupabaseClient();
 
@@ -299,6 +301,8 @@ export async function subirDocumento({
     p_contrato_periodo_id: contratoPeriodoId || null,
     p_origen:            origen,
     p_es_indefinido:     esIndefinido || false,
+    p_forzar_override:   forzarOverride || false,
+    p_motivo_override:   motivoOverride || null,
   };
 
   if (isRenovable) {
@@ -399,6 +403,8 @@ export async function corregirDocumento({
   personalId,
   personalTipo,
   tipoDoc,
+  forzarOverride,
+  motivoOverride,
 }) {
   const supabase = await getSupabaseClient();
 
@@ -428,6 +434,8 @@ export async function corregirDocumento({
     p_notas:                 notas || null,
     p_archivo_url:           archivoUrl,
     p_nombre_archivo:        nombreArchivo,
+    p_forzar_override:       forzarOverride || false,
+    p_motivo_override:       motivoOverride || null,
   });
   if (error) throw error;
   return normalizar(data);
@@ -440,6 +448,8 @@ export async function nuevoContrato({
   file, fechaEmision, fechaVencimiento, notas, condicionesLaborales,
   periodoIdAnterior,
   esIndefinido,
+  forzarOverride,
+  motivoOverride,
 }) {
   const supabase = await getSupabaseClient();
 
@@ -475,6 +485,8 @@ export async function nuevoContrato({
     p_tipo_documento_id:     tipoDocumentoId || null,
     p_periodo_id_anterior:   periodoIdAnterior || null,
     p_es_indefinido:         esIndefinido || false,
+    p_forzar_override:       forzarOverride || false,
+    p_motivo_override:       motivoOverride || null,
   });
   if (error) throw error;
   return normalizar(data);

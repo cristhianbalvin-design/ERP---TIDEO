@@ -43,6 +43,9 @@ const splitLine = (line, sep) => {
 };
 
 const parseDate = (value, format = 'auto') => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  }
   const raw = norm(value);
   if (!raw) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
@@ -61,6 +64,9 @@ const parseDate = (value, format = 'auto') => {
 };
 
 const parseTime = value => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
+  }
   const raw = norm(value);
   const m = raw.match(/(\d{1,2}):(\d{2})(?::\d{2})?/);
   if (!m) return null;
@@ -85,13 +91,15 @@ export async function leerArchivoMarcaciones(file, perfil = BIOMETRICO_PERFIL_DE
   const ext = String(file?.name || '').split('.').pop()?.toLowerCase();
   if (['xlsx', 'xls'].includes(ext)) {
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: 'array' });
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
     const ws = wb.Sheets[wb.SheetNames[0]];
+    // raw:true preserva las celdas de fecha/hora como Date nativo (evita que SheetJS
+    // las reformatee a texto en orden mes/dia US, que luego se interpretaba mal como DD/MM).
     if (!perfil.tiene_encabezado) {
-      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
       return aoa.map(cells => cells.reduce((acc, v, i) => ({ ...acc, [String(i)]: v }), {}));
     }
-    return XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+    return XLSX.utils.sheet_to_json(ws, { defval: '', raw: true });
   }
 
   const text = await file.text();

@@ -113,21 +113,15 @@ const upsertGlobalProfile = async (
   if (error) throw error;
 };
 
-const allowedScopes = new Set(["tenant", "area", "equipo", "sede", "proyecto", "centro_costo", "custom"]);
-
 const normalizeAssignments = (value: unknown) =>
   (Array.isArray(value) ? value : [])
     .map((item) => item && typeof item === "object" ? item as Record<string, unknown> : null)
     .filter(Boolean)
     .map((item) => ({
       rol_id: String(item?.rol_id || item?.rol || "").trim(),
-      jefe_user_id: String(item?.jefe_user_id || "").trim() || null,
-      alcance_tipo: allowedScopes.has(String(item?.alcance_tipo || "").trim())
-        ? String(item?.alcance_tipo || "").trim()
-        : "tenant",
-      alcance_id: String(item?.alcance_id || "").trim() || null,
+      posicion_id: String(item?.posicion_id || "").trim(),
     }))
-    .filter((item) => item.rol_id);
+    .filter((item) => item.rol_id && item.posicion_id);
 
 const saveFunctionalAssignments = async (
   adminClient: ReturnType<typeof createClient>,
@@ -136,6 +130,7 @@ const saveFunctionalAssignments = async (
     userId: string;
     principalRole: Record<string, unknown>;
     jefeUserId: string | null;
+    posicionId: string | null;
     extras: unknown;
   },
 ) => {
@@ -164,7 +159,21 @@ const saveFunctionalAssignments = async (
   if (principalLookupError && principalLookupError.code === "42P01") return [];
   if (principalLookupError) throw principalLookupError;
 
-  if (existingPrincipal?.id) {
+  if (params.posicionId) {
+    // El jefe_user_id se deriva server-side dentro del RPC a partir de reporta_a_posicion_id;
+    // el detach+asignacion de posiciones_usuarios ocurre en la misma transaccion para no dejar
+    // ventanas de inconsistencia frente al trigger legado de sincronizacion.
+    const { error: posicionRpcError } = await adminClient.rpc("posicion_guardar_asignacion_principal", {
+      p_asignacion_id: existingPrincipal?.id || null,
+      p_empresa_id: params.empresaId,
+      p_user_id: params.userId,
+      p_rol_id: baseRow.rol_id,
+      p_categoria: baseRow.categoria,
+      p_nivel_jerarquico: baseRow.nivel_jerarquico,
+      p_posicion_id: params.posicionId,
+    });
+    if (posicionRpcError) throw posicionRpcError;
+  } else if (existingPrincipal?.id) {
     const { error } = await adminClient
       .from("usuarios_asignaciones")
       .update(baseRow)
@@ -177,31 +186,11 @@ const saveFunctionalAssignments = async (
     if (error) throw error;
   }
 
-  const { error: deactivateError } = await adminClient
-    .from("usuarios_asignaciones")
-    .update({ activo: false, fecha_fin: new Date().toISOString().slice(0, 10), updated_at: new Date().toISOString() })
-    .eq("empresa_id", params.empresaId)
-    .eq("user_id", params.userId)
-    .eq("principal", false)
-    .eq("activo", true);
-  if (deactivateError) throw deactivateError;
-
+  // La desactivacion de las asignaciones no-principales viejas ahora ocurre DENTRO de
+  // posicion_guardar_asignaciones_extra (abajo), con un detach previo de la posicion vinculada
+  // para que el trigger legado no la cierre por accidente. Hacerlo aca (antes, sin detach)
+  // volvia a introducir exactamente el ruido historico que ese RPC esta disenado para evitar.
   const extras = normalizeAssignments(params.extras);
-  const jefeIds = [...new Set(extras.map((item) => item.jefe_user_id).filter(Boolean) as string[])];
-  if (jefeIds.includes(params.userId)) throw new Error("Un usuario no puede ser su propio jefe funcional.");
-  if (jefeIds.length) {
-    const { data: jefeRows, error: jefeRowsError } = await adminClient
-      .from("usuarios_empresas")
-      .select("user_id")
-      .eq("empresa_id", params.empresaId)
-      .eq("estado", "activo")
-      .in("user_id", jefeIds);
-    if (jefeRowsError) throw jefeRowsError;
-    const found = new Set((jefeRows || []).map((row) => row.user_id));
-    if (jefeIds.some((id) => !found.has(id))) {
-      throw new Error("Todo jefe funcional debe pertenecer al mismo tenant y estar activo.");
-    }
-  }
   const extraRoleIds = [...new Set(extras.map((item) => item.rol_id))];
   let rolesById = new Map<string, Record<string, unknown>>();
   if (extraRoleIds.length) {
@@ -214,30 +203,37 @@ const saveFunctionalAssignments = async (
     rolesById = new Map((extraRoles || []).map((role) => [role.id, role]));
   }
 
-  const rows: Record<string, unknown>[] = [];
-  for (const item of extras) {
-    const role = rolesById.get(item.rol_id);
-    if (!role) continue;
-    if (role.empresa_id !== params.empresaId || role.es_superadmin === true) continue;
-    if (item.jefe_user_id === params.userId) continue;
-    rows.push({
-      empresa_id: params.empresaId,
-      user_id: params.userId,
-      rol_id: item.rol_id,
-      categoria: String(role.categoria || "otro"),
-      nivel_jerarquico: String(role.nivel_jerarquico || "operativo"),
-      jefe_user_id: item.jefe_user_id,
-      alcance_tipo: item.alcance_tipo,
-      alcance_id: item.alcance_tipo === "tenant" ? null : item.alcance_id,
-      principal: false,
-      activo: true,
-    });
+  const extraPosicionIds = [...new Set(extras.map((item) => item.posicion_id))];
+  let posicionesValidas = new Set<string>();
+  if (extraPosicionIds.length) {
+    const { data: posicionesRows, error: posicionesError } = await adminClient
+      .from("posiciones")
+      .select("id, empresa_id")
+      .in("id", extraPosicionIds);
+    if (posicionesError) throw posicionesError;
+    posicionesValidas = new Set((posicionesRows || []).filter((p) => p.empresa_id === params.empresaId).map((p) => p.id));
   }
 
-  if (rows.length) {
-    const { error } = await adminClient.from("usuarios_asignaciones").insert(rows);
-    if (error) throw error;
-  }
+  const extrasPayload = extras
+    .map((item) => {
+      const role = rolesById.get(item.rol_id);
+      if (!role || role.empresa_id !== params.empresaId || role.es_superadmin === true) return null;
+      if (!posicionesValidas.has(item.posicion_id)) return null;
+      return {
+        rol_id: item.rol_id,
+        categoria: String(role.categoria || "otro"),
+        nivel_jerarquico: String(role.nivel_jerarquico || "operativo"),
+        posicion_id: item.posicion_id,
+      };
+    })
+    .filter(Boolean);
+
+  const { error: extrasRpcError } = await adminClient.rpc("posicion_guardar_asignaciones_extra", {
+    p_empresa_id: params.empresaId,
+    p_user_id: params.userId,
+    p_extras: extrasPayload,
+  });
+  if (extrasRpcError) throw extrasRpcError;
 
   const { data: saved, error: savedError } = await adminClient
     .from("usuarios_asignaciones")
@@ -290,6 +286,7 @@ serve(async (req) => {
   const empresaId = String(payload.empresa_id || "").trim();
   const rolInput = String(payload.rol || "").trim();
   const jefeUserId = String(payload.jefe_user_id || "").trim() || null;
+  const posicionId = String(payload.posicion_id || "").trim() || null;
   const asignacionesPayload = payload.asignaciones || [];
 
   if (!nombre || !email || !empresaId || !rolInput) {
@@ -387,6 +384,17 @@ serve(async (req) => {
       .maybeSingle();
     if (jefeError) return jsonResponse({ success: false, error: jefeError.message }, 500);
     if (!jefeMembership) return jsonResponse({ success: false, error: "El jefe directo debe pertenecer al mismo tenant y estar activo." }, 400);
+  }
+
+  if (posicionId) {
+    const { data: posicionRow, error: posicionError } = await adminClient
+      .from("posiciones")
+      .select("id")
+      .eq("id", posicionId)
+      .eq("empresa_id", empresaId)
+      .maybeSingle();
+    if (posicionError) return jsonResponse({ success: false, error: posicionError.message }, 500);
+    if (!posicionRow?.id) return jsonResponse({ success: false, error: "La posicion seleccionada no existe para este tenant." }, 400);
   }
 
   let alreadyExists = false;
@@ -550,11 +558,14 @@ serve(async (req) => {
       userId: uid,
       principalRole: roleRow,
       jefeUserId,
+      posicionId,
       extras: asignacionesPayload,
     });
   } catch (error) {
     return jsonResponse({ success: false, error: error instanceof Error ? error.message : "No se pudieron guardar las asignaciones funcionales." }, 500);
   }
+
+  const principalAsignacion = asignaciones.find((a) => a.principal) || null;
 
   return jsonResponse({
     success: true,
@@ -565,7 +576,7 @@ serve(async (req) => {
       rol_nombre: roleRow.nombre,
       rol_categoria: roleRow.categoria,
       nivel_jerarquico: roleRow.nivel_jerarquico,
-      jefe_user_id: jefeUserId,
+      jefe_user_id: (principalAsignacion?.jefe_user_id as string | null | undefined) ?? jefeUserId,
       asignaciones,
     },
   });

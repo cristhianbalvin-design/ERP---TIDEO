@@ -37,8 +37,17 @@ export function getPrimaryAssignment(user) {
   return asignaciones.find(a => a?.principal) || asignaciones[0] || null;
 }
 
+export function getPrimaryPosicion(user) {
+  const posiciones = Array.isArray(user?.posiciones) ? user.posiciones : [];
+  return posiciones.find(p => p?.principal) || posiciones[0] || null;
+}
+
+// Fase 5: la categoria de permisos se resuelve desde el arbol real de posiciones (la unidad
+// organizacional de la posicion PRINCIPAL del usuario), no desde el espejo legado `categoria`
+// de usuarios_asignaciones. `roles` se mantiene en la firma para no romper los call-sites
+// existentes, aunque ya no se usa dentro de la funcion.
 export function getUserCategory(user, roles = {}) {
-  return getPrimaryAssignment(user)?.categoria || user?.rol_categoria || getRoleForUser(user, roles)?.categoria || 'otro';
+  return getPrimaryPosicion(user)?.unidad_organizacional_categoria || 'otro';
 }
 
 export function getUserHierarchyLevel(user, roles = {}) {
@@ -111,14 +120,24 @@ export function canUserSeeOwner({ viewer, ownerUserId, ownerName, users = [], ro
   const owner = ownerUserId
     ? byId.get(ownerUserId)
     : users.find(user => String(user.nombre || '').trim() === String(ownerName || '').trim());
-  const ownerAssignments = Array.isArray(owner?.asignaciones) ? owner.asignaciones : [];
-  if (ownerAssignments.some(a => a?.jefe_user_id === viewer.id)) return true;
-  let current = owner;
-  while (current?.jefe_user_id) {
-    if (current.jefe_user_id === viewer.id) return true;
-    current = byId.get(current.jefe_user_id);
-  }
-  return false;
+
+  const viewerPosicionIds = new Set((Array.isArray(viewer.posiciones) ? viewer.posiciones : []).map(p => p.posicion_id));
+  if (!viewerPosicionIds.size) return false;
+
+  // Mapa global posicion_id -> reporta_a_posicion_id (arbol de posiciones de todo el tenant),
+  // para recorrer hacia arriba desde cada posicion del owner hasta ver si llega a una del viewer.
+  const posicionPadre = new Map();
+  users.forEach(u => (Array.isArray(u.posiciones) ? u.posiciones : []).forEach(p => posicionPadre.set(p.posicion_id, p.reporta_a_posicion_id)));
+
+  const ownerPosiciones = Array.isArray(owner?.posiciones) ? owner.posiciones : [];
+  return ownerPosiciones.some(({ posicion_id }) => {
+    let current = posicion_id;
+    while (current) {
+      if (viewerPosicionIds.has(current)) return true;
+      current = posicionPadre.get(current) || null;
+    }
+    return false;
+  });
 }
 
 export function canUserApproveOwner({ viewer, ownerUserId, ownerName, users = [], roles = {} }) {
