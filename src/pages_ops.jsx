@@ -16648,7 +16648,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
 
   const COLUMNAS = [
     'Nombre completo (*)', 'DNI / Documento (*)', 'Email corporativo', 'Email personal', 'Teléfono celular', 'Celular personal (WhatsApp)', 'RUC Colaborador',
-    'Código de empleado (*)', 'Modalidad de Contrato (*)', 'Tipo de contrato', 'Fecha de ingreso (*)', 'Cargo (*)', 'Especialidad principal', 'Especialidad secundaria',
+    'Código de empleado', 'Modalidad de Contrato (*)', 'Tipo de contrato', 'Fecha de ingreso (*)', 'Cargo (*)', 'Especialidad principal', 'Especialidad secundaria',
     'Sede base', 'Área', 'Centro de costo (CECO) (*)', 'Turno asignado (*)', 'Supervisor directo', 'Régimen de jornada', 'Horas diarias pactadas', 'Fecha inicio ciclo',
     'Acceso a campo', 'Perfil campo', 'Método de pago (*)', 'Monto mensual / Honorario (*)', 'Horas base mes', 'Tarifa hora referencial', 'Sistema pensionario',
     'AFP Nombre', 'Tipo comisión AFP', 'Porcentaje comisión flujo', 'Tiene hijos', 'Cargo de confianza', 'Bonificación altitud', 'Suspensión de retenciones'
@@ -16675,7 +16675,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
         ['Teléfono celular', 'No', '9 dígitos'],
         ['Celular personal (WhatsApp)', 'No', '9 dígitos'],
         ['RUC Colaborador', 'Condicional', '11 dígitos. Obligatorio si la modalidad es honorarios'],
-        ['Código de empleado (*)', 'Sí', 'Ej. TEC-001'],
+        ['Código de empleado', 'No', 'Ej. TEC-001. Si se deja vacío, se autogenera por correlativo'],
         ['Modalidad de Contrato (*)', 'Sí', 'planilla, honorarios'],
         ['Tipo de contrato', 'No', 'indefinido, plazo_fijo, obra_determinada, por_encargo'],
         ['Fecha de ingreso (*)', 'Sí', 'DD/MM/YYYY'],
@@ -16772,6 +16772,11 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
       const res = { validos: [], errores: [] };
+      let siguienteNumTec = Math.max(
+        0,
+        ...(personalOperativo || []).map(p => Number(String(p.codigo || '').match(/^TEC-(\d+)$/i)?.[1])).filter(n => !isNaN(n)),
+        (personalOperativo || []).length
+      ) + 1;
 
       // Helpers
       const getVal = (row, col) => String(row[col] || '').trim();
@@ -16820,8 +16825,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
         if (personalOperativo.some(p => String(p.dni).trim() === dni)) continue;
         if (!dni || dni.length < 8) errs.push('DNI/Doc inválido (min 8 caracteres)');
 
-        const codigo = getVal(row, COLUMNAS[7]);
-        if (!codigo) errs.push('Código obligatorio');
+        const codigo = getVal(row, COLUMNAS[7]) || `TEC-${String(siguienteNumTec++).padStart(4, '0')}`;
 
         const modalidad = getVal(row, COLUMNAS[8]).toLowerCase() || 'planilla';
         if (!['planilla', 'honorarios'].includes(modalidad)) errs.push('Modalidad inválida');

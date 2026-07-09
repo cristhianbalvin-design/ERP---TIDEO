@@ -7829,7 +7829,12 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
     setProcesando(true);
     const validas = rows.filter(r => r._errores.length === 0);
     let exitosos = 0;
-    
+    let siguienteNumAdm = Math.max(
+      0,
+      ...(todosPersonal || []).map(p => Number(String(p.codigo || '').match(/^ADM-(\d+)$/i)?.[1])).filter(n => !isNaN(n)),
+      (todosPersonal || []).length
+    ) + 1;
+
     const parseExcelDate = (val) => {
       if (!val) return null;
       if (typeof val === 'number') {
@@ -7870,8 +7875,10 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
       const tipoContratoRaw = normalizar(r['Tipo de contrato']);
       const modTrabajo = normalizar(r['Modalidad de trabajo']) || 'presencial';
       
+      const codigoPlantilla = String(r['Código de empleado'] || '').trim();
       const nuevo = {
         id: `per_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        codigo: codigoPlantilla || `ADM-${String(siguienteNumAdm++).padStart(3, '0')}`,
         nombre: r['Nombres y apellidos'],
         dni: String(r['DNI']).trim(),
         fecha_nacimiento: parseExcelDate(r['Fecha de nacimiento']),
@@ -10943,7 +10950,7 @@ function RRHHAdmin() {
 
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos laborales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group"><label>Código de empleado *</label><input className="input" readOnly value={formAlta.codigo} placeholder="ADM-008" style={{background:'var(--bg-subtle)', fontWeight:700}}/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Autogenerado por correlativo. Solo Admin puede modificarlo después del alta.</div></div>
+              <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder="ADM-008" style={{fontWeight:700}}/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Autogenerado por correlativo. Puedes editarlo si lo necesitas.</div></div>
               <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato), ruc_colaborador: modalidad === 'honorarios' ? v.ruc_colaborador : ''}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
               <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorariosAlta} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
               <div className="input-group"><label>Cargo</label>
