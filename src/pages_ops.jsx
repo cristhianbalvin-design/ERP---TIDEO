@@ -14235,7 +14235,7 @@ function ControlAsistencia() {
 
   const guardarMasivo = async () => {
     const bloqueados = trabajadoresGenerales.filter(t => t.asistencia_bloqueada);
-    if (bloqueados.length) addNotificacion(`${bloqueados.length} colaborador(es) con contrato vencido fueron omitidos del registro masivo.`);
+    if (bloqueados.length) addNotificacion(`${bloqueados.length} colaborador(es) con bloqueo por contrato (sin contrato, vencido o rechazado) fueron omitidos del registro masivo.`);
     const ops = trabajadoresGenerales.filter(t => !t.asistencia_bloqueada).map(t => {
       const trn = workerTurno(turnos, t, fecha);
       const d = masivoDatos[t.id] || { estado: 'completo', hora_entrada: trn.hora_entrada, hora_salida: trn.hora_salida };

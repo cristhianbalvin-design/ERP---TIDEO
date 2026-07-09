@@ -599,6 +599,18 @@ async function buscarPersonalAsistenciaBloqueada(supabase, empresaId, registro =
   return data || null;
 }
 
+function mensajeAsistenciaBloqueada(personal) {
+  const nombre = personal.nombre || 'el colaborador';
+  const motivo = personal.asistencia_bloqueada_motivo || '';
+  if (motivo === 'Contrato rechazado') {
+    return `No se puede registrar asistencia: el contrato de ${nombre} fue rechazado en la validacion. Regularice el contrato en Documentos.`;
+  }
+  if (motivo === 'Sin contrato digital registrado' || motivo === 'job_diario_sin_contrato') {
+    return `No se puede registrar asistencia: ${nombre} no tiene contrato digital registrado. Regularice el contrato en Documentos.`;
+  }
+  return `No se puede registrar asistencia: el contrato de ${nombre} esta vencido. Regularice el contrato en Documentos.`;
+}
+
 async function enriquecerAsistenciaHorasExtra(supabase, empresaId, registro = {}) {
   const horasExtraMin = Number(registro.horas_extra_min || 0);
   if (horasExtraMin <= 0) return registro;
@@ -875,7 +887,7 @@ export const rrhhService = {
     const supabase = await getSupabaseClient();
     const personal = await buscarPersonalAsistenciaBloqueada(supabase, empresaId, registro);
     if (personal?.asistencia_bloqueada) {
-      throw new Error(`No se puede registrar asistencia: el contrato de ${personal.nombre || 'el colaborador'} esta vencido. Regularice el contrato en Documentos.`);
+      throw new Error(mensajeAsistenciaBloqueada(personal));
     }
     const registroFinal = await enriquecerAsistenciaHorasExtra(supabase, empresaId, registro);
     const { data, error } = await supabase
@@ -898,7 +910,7 @@ export const rrhhService = {
     if (empresaId && cambios.trabajador_id) {
       const personal = await buscarPersonalAsistenciaBloqueada(supabase, empresaId, cambios);
       if (personal?.asistencia_bloqueada) {
-        throw new Error(`No se puede registrar asistencia: el contrato de ${personal.nombre || 'el colaborador'} esta vencido. Regularice el contrato en Documentos.`);
+        throw new Error(mensajeAsistenciaBloqueada(personal));
       }
       cambios = await enriquecerAsistenciaHorasExtra(supabase, empresaId, cambios);
     }
