@@ -18,6 +18,7 @@ import * as plannerSvc from './services/plannerService.js';
 import { auditoriaService } from './services/auditoriaService.js';
 import { plataformaService } from './services/plataformaService.js';
 import { usuariosService } from './services/usuariosService.js';
+import { posicionesService } from './services/posicionesService.js';
 import { rolesService } from './services/rolesService.js';
 import { campanasService } from './services/campanasService.js';
 import { presupuestosService } from './services/presupuestosService.js';
@@ -61,6 +62,36 @@ const AppContext = createContext();
 const PLATFORM_SUPERADMIN_EMAIL = 'cristhianbalvin@gmail.com';
 const isPlatformSuperadminEmail = email =>
   String(email || '').trim().toLowerCase() === PLATFORM_SUPERADMIN_EMAIL;
+
+// Adjunta a cada usuario sus posiciones activas (Fase 3: modelo Unidad -> Posicion -> Persona),
+// igual que ya se le adjunta `asignaciones`. Extraida para poder recomputarla tanto en la carga
+// inicial como al refrescar posiciones tras una alta/cambio de puesto.
+const construirUsuariosConPosiciones = (usrData, posicionesData, posicionesUsuariosData, unidadesData) => {
+  const unidadNombrePorId = new Map(unidadesData.map(u => [u.id, u.nombre]));
+  const unidadCategoriaPorId = new Map(unidadesData.map(u => [u.id, u.categoria || 'otro']));
+  const posicionPorId = new Map(posicionesData.map(p => [p.id, p]));
+  const asignacionPorId = new Map();
+  usrData.forEach(u => (Array.isArray(u.asignaciones) ? u.asignaciones : []).forEach(a => {
+    if (a?.id) asignacionPorId.set(a.id, a);
+  }));
+  const posicionesPorUsuario = new Map();
+  posicionesUsuariosData.forEach(pu => {
+    const posicion = posicionPorId.get(pu.posicion_id);
+    if (!posicion) return;
+    const asignacionOrigen = posicion.origen_asignacion_id ? asignacionPorId.get(posicion.origen_asignacion_id) : null;
+    const lista = posicionesPorUsuario.get(pu.user_id) || [];
+    lista.push({
+      posicion_id: posicion.id,
+      reporta_a_posicion_id: posicion.reporta_a_posicion_id,
+      unidad_organizacional_id: posicion.unidad_organizacional_id,
+      unidad_organizacional_nombre: unidadNombrePorId.get(posicion.unidad_organizacional_id) || null,
+      unidad_organizacional_categoria: unidadCategoriaPorId.get(posicion.unidad_organizacional_id) || 'otro',
+      principal: Boolean(asignacionOrigen?.principal),
+    });
+    posicionesPorUsuario.set(pu.user_id, lista);
+  });
+  return usrData.map(u => ({ ...u, posiciones: posicionesPorUsuario.get(u.id) || [] }));
+};
 
 export function useApp() {
   return useContext(AppContext);
@@ -287,6 +318,11 @@ export function AppProvider({ children }) {
     if (isSupabaseConfigured()) return;
     try { localStorage.setItem('tideo_usuarios', JSON.stringify(usuarios)); } catch {}
   }, [usuarios]);
+  // Modelo Unidad Organizacional -> Posicion -> Persona (Fase 3). Se guardan aparte de
+  // `usuarios` (que solo trae las posiciones ocupadas) para poder mostrar vacantes.
+  const [posiciones, setPosiciones] = useState([]);
+  const [posicionesUsuarios, setPosicionesUsuarios] = useState([]);
+  const [unidadesOrganizacionales, setUnidadesOrganizacionales] = useState([]);
   const useSupabase = isSupabaseConfigured();
   const [leads, setLeads] = useState(useSupabase ? [] : MOCK.leads);
   const [historialEstados, setHistorialEstados] = useState([]);
@@ -780,16 +816,30 @@ export function AppProvider({ children }) {
     }));
 
     const loadAccessData = async () => {
-      const [usuariosResult, rolesResult] = await Promise.allSettled([
+      const [usuariosResult, rolesResult, posicionesResult, posicionesUsuariosResult, unidadesResult] = await Promise.allSettled([
         usuariosService.getUsuarios(empresaId),
         rolesService.getRolesConPermisos(empresaId),
+        posicionesService.getPosiciones(empresaId),
+        posicionesService.getPosicionesUsuarios(empresaId),
+        posicionesService.getUnidadesOrganizacionales(empresaId),
       ]);
 
       if (!mounted) return;
 
       if (usuariosResult.status === 'fulfilled') {
         const usrData = usuariosResult.value || [];
-        setUsuarios(usrData);
+
+        // Adjunta a cada usuario sus posiciones activas (Fase 3: modelo Unidad -> Posicion -> Persona),
+        // igual que ya se le adjunta `asignaciones`. Degrada con lista vacia si la carga falla.
+        const posicionesData = posicionesResult.status === 'fulfilled' ? (posicionesResult.value || []) : [];
+        const posicionesUsuariosData = posicionesUsuariosResult.status === 'fulfilled' ? (posicionesUsuariosResult.value || []) : [];
+        const unidadesData = unidadesResult.status === 'fulfilled' ? (unidadesResult.value || []) : [];
+        const usrDataConPosiciones = construirUsuariosConPosiciones(usrData, posicionesData, posicionesUsuariosData, unidadesData);
+
+        setUsuarios(usrDataConPosiciones);
+        setPosiciones(posicionesData);
+        setPosicionesUsuarios(posicionesUsuariosData);
+        setUnidadesOrganizacionales(unidadesData);
         setAccessDebug(prev => ({
           ...prev,
           usuariosError: '',
@@ -935,7 +985,10 @@ export function AppProvider({ children }) {
         }
 
         try {
-          const ar = await maestrosService.getAreas(empresa.id);
+          // Fase 3: areasEmpresa ahora se nutre de unidades_organizacionales (mismo id/nombre/estado
+          // que las areas migradas en la Fase 1), asi todos sus consumidores de solo lectura
+          // (SOLPE, documentos de personal, reclutamiento) leen del modelo nuevo sin tocarlos.
+          const ar = await posicionesService.getUnidadesOrganizacionales(empresa.id);
           const cg = await maestrosService.getCargos(empresa.id);
           const tc = await rrhhService.getTiposContrato(empresa.id);
           const es = await maestrosService.getEspecialidades(empresa.id);
@@ -4043,7 +4096,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  const crearUsuarioConAcceso = async ({ nombre, email, password, rol, jefe_user_id = null, asignaciones = [], campo = false, campoModulos = [] }) => {
+  const crearUsuarioConAcceso = async ({ nombre, email, password, rol, jefe_user_id = null, posicion_id = null, asignaciones = [], campo = false, campoModulos = [] }) => {
     if (!isSupabaseConfigured()) {
       addNotificacion('Se requiere Supabase para crear usuarios con acceso.', 'error');
       return;
@@ -4063,6 +4116,7 @@ export function AppProvider({ children }) {
           password,
           rol,
           jefe_user_id: jefe_user_id || null,
+          posicion_id: posicion_id || null,
           asignaciones,
           empresa_id: empresa.id,
         },
@@ -4111,6 +4165,7 @@ export function AppProvider({ children }) {
         }
         return [...prev, nuevoUsuario];
       });
+      if (posicion_id) await refrescarPosiciones();
       addNotificacion(
         data.alreadyExists
           ? `El usuario ${nombre} ya tenia cuenta. Se agrego al tenant actual y usara su contrasena actual.`
@@ -4199,6 +4254,7 @@ export function AppProvider({ children }) {
         email: nextUser.email,
         rol: nextUser.rol,
         jefe_user_id: nextUser.jefe_user_id || null,
+        posicion_id: nextUser.posicion_id || null,
         asignaciones: nextUser.asignaciones || [],
         acceso_campo: Boolean(nextUser.campo),
         perfil_campo: nextUser.campoPerfil,
@@ -4218,6 +4274,7 @@ export function AppProvider({ children }) {
           ? mergedSavedUser
           : u
       )));
+      if (nextUser.posicion_id) await refrescarPosiciones();
       addNotificacion(`Usuario ${mergedSavedUser.nombre || nextUser.nombre || ''} actualizado.`);
       return mergedSavedUser;
     } catch (err) {
@@ -6518,28 +6575,93 @@ export function AppProvider({ children }) {
     setDiccionarioComercial(prev => prev.filter(d => d.id !== id));
   };
 
-  const crearArea = async (area) => {
+  const crearUnidadOrganizacional = async (unidad) => {
     if (isSupabaseConfigured() && empresa?.id) {
-      const data = await maestrosService.crearArea(empresa.id, area);
-      setAreasEmpresa(prev => [data, ...prev]);
+      const data = await posicionesService.crearUnidadOrganizacional(empresa.id, unidad);
+      setUnidadesOrganizacionales(prev => [...prev, data]);
       return data;
     }
-    const nuevo = { ...area, id: generateId('area'), empresa_id: empresa?.id, created_at: new Date().toISOString() };
-    setAreasEmpresa(prev => [nuevo, ...prev]);
+    const nuevo = { ...unidad, id: generateId('uo'), empresa_id: empresa?.id };
+    setUnidadesOrganizacionales(prev => [...prev, nuevo]);
     return nuevo;
   };
-  const actualizarArea = async (id, datos) => {
+  const actualizarUnidadOrganizacional = async (id, datos) => {
     if (isSupabaseConfigured()) {
-      const act = await maestrosService.actualizarArea(id, datos);
-      setAreasEmpresa(prev => prev.map(a => a.id === id ? act : a));
+      const act = await posicionesService.actualizarUnidadOrganizacional(id, datos);
+      setUnidadesOrganizacionales(prev => prev.map(u => u.id === id ? act : u));
       return act;
     }
-    setAreasEmpresa(prev => prev.map(a => a.id === id ? { ...a, ...datos } : a));
+    setUnidadesOrganizacionales(prev => prev.map(u => u.id === id ? { ...u, ...datos } : u));
     return datos;
   };
-  const eliminarArea = async (id) => {
-    if (isSupabaseConfigured()) await maestrosService.eliminarArea(id);
-    setAreasEmpresa(prev => prev.filter(a => a.id !== id));
+  // Reasigna la unidad organizacional de una posicion puntual (no en cascada a sus
+  // subordinados, no toca el historico de posiciones_usuarios).
+  const reasignarUnidadDePosicion = async (posicionId, unidadOrganizacionalId) => {
+    if (isSupabaseConfigured()) {
+      const act = await posicionesService.actualizarUnidadDePosicion(posicionId, unidadOrganizacionalId);
+      setPosiciones(prev => prev.map(p => p.id === posicionId ? act : p));
+    } else {
+      setPosiciones(prev => prev.map(p => p.id === posicionId ? { ...p, unidad_organizacional_id: unidadOrganizacionalId } : p));
+    }
+    const unidadNombre = unidadesOrganizacionales.find(u => u.id === unidadOrganizacionalId)?.nombre || null;
+    setUsuarios(prev => prev.map(u => (
+      Array.isArray(u.posiciones) && u.posiciones.some(p => p.posicion_id === posicionId)
+        ? {
+            ...u,
+            posiciones: u.posiciones.map(p => p.posicion_id === posicionId
+              ? { ...p, unidad_organizacional_id: unidadOrganizacionalId, unidad_organizacional_nombre: unidadNombre }
+              : p),
+          }
+        : u
+    )));
+  };
+
+  // Asigna/cambia el cargo de UNA posicion puntual (backfill masivo desde Organigrama). No toca
+  // personal_operativo.cargo_id ni personal_administrativo.cargo_id.
+  const reasignarCargoDePosicion = async (posicionId, cargoId) => {
+    if (isSupabaseConfigured()) {
+      const act = await posicionesService.actualizarCargoDePosicion(posicionId, cargoId);
+      setPosiciones(prev => prev.map(p => p.id === posicionId ? act : p));
+      return act;
+    }
+    setPosiciones(prev => prev.map(p => p.id === posicionId ? { ...p, cargo_id: cargoId || null } : p));
+  };
+
+  const crearPosicion = async (datos) => {
+    if (!empresa?.id) throw new Error('No hay tenant activo para crear la posicion.');
+    const data = await posicionesService.crearPosicion(empresa.id, datos);
+    setPosiciones(prev => [...prev, data]);
+    return data;
+  };
+
+  const archivarPosicion = async (id) => {
+    await posicionesService.archivarPosicion(id);
+    setPosiciones(prev => prev.filter(p => p.id !== id));
+  };
+
+  const eliminarPosicion = async (id) => {
+    await posicionesService.eliminarPosicion(id);
+    setPosiciones(prev => prev.filter(p => p.id !== id));
+  };
+
+  // Vuelve a cargar posiciones/posicionesUsuarios/unidadesOrganizacionales y recompone
+  // usuario.posiciones. Se llama tras crear/editar un usuario con posicion_id, porque esa
+  // operacion escribe posiciones_usuarios en el backend sin que el estado local se entere.
+  const refrescarPosiciones = async () => {
+    if (!empresa?.id) return;
+    try {
+      const [posicionesData, posicionesUsuariosData, unidadesData] = await Promise.all([
+        posicionesService.getPosiciones(empresa.id),
+        posicionesService.getPosicionesUsuarios(empresa.id),
+        posicionesService.getUnidadesOrganizacionales(empresa.id),
+      ]);
+      setPosiciones(posicionesData);
+      setPosicionesUsuarios(posicionesUsuariosData);
+      setUnidadesOrganizacionales(unidadesData);
+      setUsuarios(prev => construirUsuariosConPosiciones(prev, posicionesData, posicionesUsuariosData, unidadesData));
+    } catch (error) {
+      console.error('Error refrescando posiciones:', error);
+    }
   };
 
   const crearTipoContrato = async (datos) => {
@@ -9556,6 +9678,7 @@ export function AppProvider({ children }) {
     rol: usuarioActual?.rol || membresiaActiva?.rol_id || authUser.rol,
     empresa_id: empresa?.id || usuarioActual?.empresa_id,
     asignaciones: usuarioActual?.asignaciones || [],
+    posiciones: usuarioActual?.posiciones || [],
     jefe_user_id: usuarioActual?.jefe_user_id || null,
     nivel_jerarquico: usuarioActual?.nivel_jerarquico || membresiaActiva?.rol?.nivel_jerarquico || (esSuperadminPlataforma ? 'direccion' : undefined),
     rol_categoria: usuarioActual?.rol_categoria || membresiaActiva?.rol?.categoria || (esSuperadminPlataforma ? 'admin' : undefined),
@@ -9579,6 +9702,7 @@ export function AppProvider({ children }) {
     empresasPlataforma, setEmpresasPlataforma, crearTenantConAdmin, actualizarTenant, eliminarTenant,
     // Data
     usuarios, setUsuarios,
+    posiciones, posicionesUsuarios, unidadesOrganizacionales,
     roles: rolesCtx, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, accessDebug,
     leads, setLeads, updateLeadState, historialEstados,
     campanas, setCampanas, crearCampana, actualizarCampana, cambiarEstadoCampana, eliminarCampana,
@@ -9630,7 +9754,9 @@ export function AppProvider({ children }) {
     ocAnticipos, setOcAnticipos, registrarAnticipoOC,
 
     // Maestros Base Data
-    areasEmpresa, setAreasEmpresa, crearArea, actualizarArea, eliminarArea,
+    areasEmpresa, setAreasEmpresa,
+    crearUnidadOrganizacional, actualizarUnidadOrganizacional, reasignarUnidadDePosicion,
+    crearPosicion, archivarPosicion, eliminarPosicion, reasignarCargoDePosicion,
     cargos, setCargos, actualizarCargo, eliminarCargo, fusionarCargos,
     tiposContrato, setTiposContrato, crearTipoContrato, actualizarTipoContrato, eliminarTipoContrato,
     tiposDocumento, setTiposDocumento, crearTipoDocumento, actualizarTipoDocumento, importarPlantillaTiposDoc,

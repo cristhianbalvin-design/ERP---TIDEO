@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
+import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, labelOr } from './utils/rrhhLabels.js';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
@@ -35,6 +36,7 @@ import { NuevoEgreso } from './components/NuevoEgreso.jsx';
 import { comprasService, getSpendAnalysis } from './services/comprasService.js';
 import { finanzasService } from './services/finanzasService.js';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
+import { getPosicionesPorCategoriaUnidad, buildOcupantesPorPosicion } from './lib/posicionesHelpers.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import * as XLSX from 'xlsx';
@@ -5292,7 +5294,11 @@ export function PlaceholderCompras({ titulo }) {
 }
 
 function Proveedores() {
-  const { proveedores, setProveedores, evaluacionesProveedor, ordenesCompra, recepciones, usuarios, roles, empresa, role, addNotificacion, registrarProveedor, actualizarProveedorCtx, eliminarProveedorCtx } = useApp();
+  const {
+    proveedores, setProveedores, evaluacionesProveedor, ordenesCompra, recepciones, usuarios, empresa, role, addNotificacion,
+    registrarProveedor, actualizarProveedorCtx, eliminarProveedorCtx,
+    posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [],
+  } = useApp();
   const [tab, setTab] = useState('todos');
   const [panel, setPanel] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -5301,12 +5307,33 @@ function Proveedores() {
   const [form, setForm] = useState({
     ruc:'', pais:'Peru', razon_social:'', nombre_comercial:'', categoria:'Materiales', estado:'potencial',
     servicios:'', contacto_nombre:'', contacto_cargo:'', telefono:'', email:'', web:'', direccion:'',
-    responsable_compras:'', notas:''
+    responsable_compras_posicion_id:'', notas:''
   });
   const docs = MOCK.documentosProveedor || [];
   const evals = evaluacionesProveedor?.length ? evaluacionesProveedor : (MOCK.evaluacionesProveedor || []);
   const contactosProv = MOCK.contactosProveedor || [];
-  const responsables = getAssignableUsers({ users: usuarios, roles, categories: ['compras', 'logistica', 'finanzas'], includeAdmins: true, empresaId: empresa?.id });
+  const usuariosPorId = useMemo(() => new Map(usuarios.map(u => [u.id, u])), [usuarios]);
+  const posicionPorId = useMemo(() => new Map(posiciones.map(p => [p.id, p])), [posiciones]);
+  const cargoNombrePorId = useMemo(() => new Map(cargos.map(c => [c.id, c.nombre])), [cargos]);
+  const ocupantesPorPosicion = useMemo(
+    () => buildOcupantesPorPosicion(posicionesUsuarios, usuariosPorId, posicionPorId),
+    [posicionesUsuarios, usuariosPorId, posicionPorId]
+  );
+  const posicionesCompras = useMemo(
+    () => getPosicionesPorCategoriaUnidad(posiciones, unidadesOrganizacionales, 'compras'),
+    [posiciones, unidadesOrganizacionales]
+  );
+  const labelPosicionCompras = (p) => {
+    const ocupantes = ocupantesPorPosicion.get(p.id) || [];
+    const ocupanteNombre = ocupantes.length ? ocupantes.map(o => o.nombre).join(' + ') : 'Vacante';
+    const cargoNombre = cargoNombrePorId.get(p.cargo_id);
+    return cargoNombre ? `${cargoNombre} — ${ocupanteNombre}` : ocupanteNombre;
+  };
+  const nombreResponsableCompras = (posicionId) => {
+    if (!posicionId) return null;
+    const ocupantes = ocupantesPorPosicion.get(posicionId) || [];
+    return ocupantes.length ? ocupantes.map(o => o.nombre).join(' + ') : 'Vacante';
+  };
   const visibleTabs = role.permisos?.ver_finanzas
     ? ['resumen','finanzas','documentos','evaluaciones','historial','contactos']
     : ['resumen','documentos','evaluaciones','historial','contactos'];
@@ -5327,7 +5354,7 @@ function Proveedores() {
     setForm({
       ruc:'', pais:'Peru', razon_social:'', nombre_comercial:'', categoria:'Materiales', estado:'potencial',
       servicios:'', contacto_nombre:'', contacto_cargo:'', telefono:'', email:'', web:'', direccion:'',
-      responsable_compras:'', notas:''
+      responsable_compras_posicion_id:'', notas:''
     });
     setEditId(null);
   };
@@ -5355,7 +5382,7 @@ function Proveedores() {
       ['email', 'NO', 'Correo valido', 'Email del contacto'],
       ['web', 'NO', 'URL', 'Sitio web del proveedor'],
       ['direccion', 'NO', 'Texto', 'Direccion del proveedor'],
-      ['responsable_compras', 'SI', 'Texto', 'Nombre del responsable de compras asignado'],
+      ['responsable_compras', 'NO', 'Texto', 'Nombre del ocupante de una posicion de la unidad de Compras. Si coincide se asigna automaticamente; si no, se puede elegir manualmente en la previsualizacion o dejar sin asignar'],
       ['notas', 'NO', 'Texto', 'Notas internas']
     ];
     const wb = XLSX.utils.book_new();
@@ -5392,7 +5419,7 @@ function Proveedores() {
     setForm({
       ruc: p.ruc || '', pais: p.pais || 'Peru', razon_social: p.razon_social || '', nombre_comercial: p.nombre_comercial || '', categoria: p.categoria || p.rubro || 'Materiales', estado: p.estado || 'potencial',
       servicios: p.servicios || '', contacto_nombre: p.contacto_nombre || '', contacto_cargo: p.contacto_cargo || '', telefono: p.telefono || '', email: p.email || '', web: p.web || '', direccion: p.direccion || '',
-      responsable_compras: p.responsable_compras || '', notas: p.notas || ''
+      responsable_compras_posicion_id: p.responsable_compras_posicion_id || '', notas: p.notas || ''
     });
     setEditId(p.id);
     setPanel(true);
@@ -5519,7 +5546,7 @@ function Proveedores() {
               {[
                 ['RUC', sel.ruc], ['Razon social', sel.razon_social], ['Nombre comercial', sel.nombre_comercial],
                 ['Categoria', sel.categoria], ['Pais', sel.pais], ['Direccion', sel.direccion || '-'],
-                ['Sitio web', sel.web || '-'], ['Servicios', sel.servicios], ['Responsable', sel.responsable_compras], ['Notas', sel.notas || '-']
+                ['Sitio web', sel.web || '-'], ['Servicios', sel.servicios], ['Responsable', nombreResponsableCompras(sel.responsable_compras_posicion_id) || 'Sin asignar'], ['Notas', sel.notas || '-']
               ].map(([k,v]) => <div key={k} style={{display:'grid', gridTemplateColumns:'150px 1fr', gap:12, padding:'8px 0', borderBottom:'1px solid var(--border-subtle)'}}><strong>{k}</strong><span className="text-muted">{v}</span></div>)}
             </div>
             <div className="card" style={{padding:20}}>
@@ -5654,19 +5681,19 @@ function Proveedores() {
               <div className="input-group"><label>Sitio web</label><input className="input" value={form.web} onChange={e=>update('web', e.target.value)} placeholder="https://"/></div>
               <div className="input-group"><label>Direccion</label><input className="input" value={form.direccion} onChange={e=>update('direccion', e.target.value)}/></div>
             </div>
-            <div className="input-group" style={{marginBottom:18}}><label>Responsable de compras *</label><select className="select" required value={form.responsable_compras} onChange={e=>update('responsable_compras', e.target.value)}><option value="">Seleccionar...</option>{responsables.map(u=><option key={u.id} value={u.nombre}>{u.nombre}</option>)}</select></div>
+            <div className="input-group" style={{marginBottom:18}}><label>Responsable de compras</label><select className="select" value={form.responsable_compras_posicion_id} onChange={e=>update('responsable_compras_posicion_id', e.target.value)}><option value="">Sin asignar</option>{posicionesCompras.map(p=><option key={p.id} value={p.id}>{labelPosicionCompras(p)}</option>)}</select></div>
             <div className="input-group"><label>Notas internas</label><textarea className="input" rows="3" value={form.notas} onChange={e=>update('notas', e.target.value)}/></div>
             <div style={{padding:'12px 14px', background:'rgba(26,43,74,0.08)', borderLeft:'3px solid var(--cyan)', borderRadius:6, margin:'18px 0', fontSize:13}}>Las condiciones de pago y datos bancarios se completan en la ficha del proveedor, tab Condiciones financieras.</div>
             <div className="row" style={{justifyContent:'flex-end', gap:10}}><button type="button" className="btn btn-secondary" onClick={() => setPanel(false)}>Cancelar</button><button type="submit" className="btn btn-primary">Guardar proveedor</button></div>
           </form>
         </div>
       </>}
-      {importRows && <ImportarProveedoresPreview dataRows={importRows} proveedoresActuales={proveedores} responsables={responsables} onClose={() => setImportRows(null)} onImported={() => setImportRows(null)} />}
+      {importRows && <ImportarProveedoresPreview dataRows={importRows} proveedoresActuales={proveedores} posicionesCompras={posicionesCompras} ocupantesPorPosicion={ocupantesPorPosicion} labelPosicionCompras={labelPosicionCompras} onClose={() => setImportRows(null)} onImported={() => setImportRows(null)} />}
     </>
   );
 }
 
-function ImportarProveedoresPreview({ dataRows, proveedoresActuales, responsables, onClose, onImported }) {
+function ImportarProveedoresPreview({ dataRows, proveedoresActuales, posicionesCompras, ocupantesPorPosicion, labelPosicionCompras, onClose, onImported }) {
   const { registrarProveedor, addNotificacion, empresa } = useApp();
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState([]);
@@ -5677,11 +5704,19 @@ function ImportarProveedoresPreview({ dataRows, proveedoresActuales, responsable
     const ESTADOS = { potencial: 'potencial', 'en evaluacion': 'en_evaluacion', 'en_evaluacion': 'en_evaluacion', homologado: 'homologado' };
     const normalizeStr = (s) => s ? s.toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim() : '';
     const findMatch = (val, list) => list.find(l => normalizeStr(l) === normalizeStr(val));
+    const matchPosicionPorNombre = (nombre) => {
+      if (!nombre) return '';
+      const posicion = posicionesCompras.find(p =>
+        (ocupantesPorPosicion.get(p.id) || []).some(o => normalizeStr(o.nombre) === normalizeStr(nombre))
+      );
+      return posicion?.id || '';
+    };
 
     const dbRucs = new Set(proveedoresActuales.map(p => (p.ruc || '').trim()).filter(Boolean));
     const fileRucs = new Set();
 
     const parsed = dataRows.map((r, index) => {
+      const responsableTexto = (r.responsable_compras || '').toString().trim();
       const item = {
         id: `imp_${index}`,
         ruc: sanitizeRuc((r.ruc || '').toString().trim()),
@@ -5697,7 +5732,8 @@ function ImportarProveedoresPreview({ dataRows, proveedoresActuales, responsable
         email: (r.email || '').toString().trim(),
         web: (r.web || '').toString().trim(),
         direccion: (r.direccion || '').toString().trim(),
-        responsable_compras: (r.responsable_compras || '').toString().trim(),
+        responsable_compras_texto: responsableTexto,
+        responsable_compras_posicion_id: matchPosicionPorNombre(responsableTexto),
         notas: (r.notas || '').toString().trim(),
         selected: false,
         status: 'LISTO',
@@ -5709,14 +5745,17 @@ function ImportarProveedoresPreview({ dataRows, proveedoresActuales, responsable
       else if (!item.categoria) { item.status = 'ERROR'; item.errorMsg = 'Categoria invalida'; }
       else if (!item.servicios) { item.status = 'ERROR'; item.errorMsg = 'Servicios vacio'; }
       else if (!isValidPhone(item.telefono)) { item.status = 'ERROR'; item.errorMsg = 'Telefono invalido (9 digitos, inicia con 9)'; }
-      else if (!item.responsable_compras) { item.status = 'ERROR'; item.errorMsg = 'Responsable de compras vacio'; }
       else if (item.ruc && dbRucs.has(item.ruc)) { item.status = 'OMITIDO_DB'; item.errorMsg = 'RUC ya registrado'; }
       else if (item.ruc && fileRucs.has(item.ruc)) { item.status = 'OMITIDO_EXCEL'; item.errorMsg = 'RUC duplicado en el archivo'; }
-      else { if (item.ruc) fileRucs.add(item.ruc); item.selected = true; }
+      else {
+        if (item.ruc) fileRucs.add(item.ruc);
+        item.selected = true;
+        if (responsableTexto && !item.responsable_compras_posicion_id) item.errorMsg = 'Responsable no coincide con ningun ocupante de Compras -- se importa sin asignar salvo que elijas uno';
+      }
       return item;
     });
     setItems(parsed);
-  }, [dataRows, proveedoresActuales]);
+  }, [dataRows, proveedoresActuales, posicionesCompras, ocupantesPorPosicion]);
 
   const toggleSelect = (id) => setItems(p => p.map(t => t.id === id && t.status === 'LISTO' ? { ...t, selected: !t.selected } : t));
   const updateField = (id, field, value) => setItems(p => p.map(t => t.id === id ? { ...t, [field]: value } : t));
@@ -5738,7 +5777,7 @@ function ImportarProveedoresPreview({ dataRows, proveedoresActuales, responsable
           categoria: it.categoria, rubro: it.categoria, estado: it.estado,
           servicios: it.servicios, contacto_nombre: it.contacto_nombre, contacto_cargo: it.contacto_cargo,
           telefono: it.telefono, email: it.email, web: it.web, direccion: it.direccion,
-          responsable_compras: it.responsable_compras, notas: it.notas,
+          responsable_compras_posicion_id: it.responsable_compras_posicion_id || null, notas: it.notas,
           calificacion_promedio: null, total_evaluaciones: 0, condicion_pago: '', moneda: 'PEN',
           sujeto_retencion: false, pct_retencion: 0, limite_gasto_mensual: 0, total_ocs: 0,
           monto_total_comprado: 0, fecha_ultima_oc: null,
@@ -5810,10 +5849,9 @@ function ImportarProveedoresPreview({ dataRows, proveedoresActuales, responsable
                     <td><input className="input" style={{ width: 100 }} value={t.telefono} onChange={e => updateField(t.id, 'telefono', sanitizePhone(e.target.value))} disabled={t.status !== 'LISTO'} /></td>
                     <td><input className="input" style={{ width: '100%', minWidth: 150 }} value={t.email} onChange={e => updateField(t.id, 'email', e.target.value)} disabled={t.status !== 'LISTO'} /></td>
                     <td>
-                      <select className="select" value={t.responsable_compras || ''} onChange={e => updateField(t.id, 'responsable_compras', e.target.value)} disabled={t.status !== 'LISTO'}>
-                        <option value="">Seleccionar...</option>
-                        {responsables.map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
-                        {t.responsable_compras && !responsables.some(u => u.nombre === t.responsable_compras) && <option value={t.responsable_compras}>{t.responsable_compras}</option>}
+                      <select className="select" value={t.responsable_compras_posicion_id || ''} onChange={e => updateField(t.id, 'responsable_compras_posicion_id', e.target.value)} disabled={t.status !== 'LISTO'}>
+                        <option value="">Sin asignar{t.responsable_compras_texto ? ` (texto: ${t.responsable_compras_texto})` : ''}</option>
+                        {posicionesCompras.map(p => <option key={p.id} value={p.id}>{labelPosicionCompras(p)}</option>)}
                       </select>
                     </td>
                     <td style={{ fontSize: 12, color: t.status === 'ERROR' ? 'var(--danger)' : 'var(--fg-muted)', whiteSpace: 'nowrap' }}>{t.errorMsg}</td>
@@ -14347,57 +14385,74 @@ function ControlAsistencia() {
         detalle: { regla_inferencia: 'sin tipo: primera marca del dia = entrada, ultima = salida; intermedias quedan como detalle' },
         sobrescribio_duplicados: Boolean(bioOverwrite),
       });
-      const guardados = [];
       const supabase = await getSupabaseClient();
-      for (const row of importables) {
-        const trn = workerTurno(turnos, row.trabajador, row.fecha);
-        const calc = calcularResultadoAsistencia(row.hora_entrada, row.hora_salida, trn, false, false);
-        const registro = {
-          empresa_id: empresa?.id || 'emp_001',
-          trabajador_id: row.trabajador.id,
-          trabajador_tipo: row.trabajador.trabajador_tipo || 'operativo',
-          fecha: row.fecha,
-          turno_id: turnos.some(t => t.id === trn.id) ? trn.id : null,
-          hora_entrada: row.hora_entrada,
-          hora_salida: row.hora_salida,
-          horas_trabajadas_min: calc.horas_trabajadas_min,
-          tardanza_min: calc.tardanza_min || 0,
-          horas_extra_min: calc.horas_extra_min || 0,
-          estado: calc.estado,
-          es_falta: false,
-          justificada: false,
-          notas: `Importacion biometrica ${bioPreview.fileName}`,
-          regimen_jornada: 'general',
-          origen_registro: 'biometrico_importacion',
-          importacion_biometrica_lote_id: lote.id,
-          marcas_biometricas: row.marcas,
-        };
-        try {
-          const { data: fetchExistente } = await supabase.from('registros_asistencia')
-             .select('id')
-             .eq('trabajador_id', row.trabajador.id)
-             .eq('fecha', row.fecha)
-             .maybeSingle();
+      const workerIds = [...new Set(importables.map(r => r.trabajador.id))];
+      const fechas = [...new Set(importables.map(r => r.fecha))];
+      const { data: existentesActuales } = await supabase
+        .from('registros_asistencia')
+        .select('id, trabajador_id, fecha')
+        .in('trabajador_id', workerIds)
+        .in('fecha', fechas)
+        .neq('estado', 'anulado');
+      const existentesMap = new Map((existentesActuales || []).map(r => [`${r.trabajador_id}:${r.fecha}`, r.id]));
 
-          const targetId = fetchExistente?.id || row.existente?.id;
-          
-          if (targetId) {
-            if (bioOverwrite) {
-              const data = await rrhhService.actualizarAsistencia(targetId, registro);
-              guardados.push({ ...data, importacion_biometrica_lote_id: lote.id, marcas_biometricas: row.marcas });
+      const guardados = [];
+      const fallidos = [];
+      const CONCURRENCIA = 8;
+      for (let i = 0; i < importables.length; i += CONCURRENCIA) {
+        const lote_filas = importables.slice(i, i + CONCURRENCIA);
+        const resultados = await Promise.all(lote_filas.map(async (row) => {
+          const trn = workerTurno(turnos, row.trabajador, row.fecha);
+          const calc = calcularResultadoAsistencia(row.hora_entrada, row.hora_salida, trn, false, false);
+          const registro = {
+            empresa_id: empresa?.id || 'emp_001',
+            trabajador_id: row.trabajador.id,
+            trabajador_tipo: row.trabajador.trabajador_tipo || 'operativo',
+            fecha: row.fecha,
+            turno_id: turnos.some(t => t.id === trn.id) ? trn.id : null,
+            hora_entrada: row.hora_entrada,
+            hora_salida: row.hora_salida,
+            horas_trabajadas_min: calc.horas_trabajadas_min,
+            tardanza_min: calc.tardanza_min || 0,
+            horas_extra_min: calc.horas_extra_min || 0,
+            estado: calc.estado,
+            es_falta: false,
+            justificada: false,
+            notas: `Importacion biometrica ${bioPreview.fileName}`,
+            regimen_jornada: 'general',
+            origen_registro: 'biometrico_importacion',
+            importacion_biometrica_lote_id: lote.id,
+            marcas_biometricas: row.marcas,
+          };
+          try {
+            const targetId = existentesMap.get(`${row.trabajador.id}:${row.fecha}`) || row.existente?.id;
+
+            if (targetId) {
+              if (bioOverwrite) {
+                const data = await rrhhService.actualizarAsistencia(targetId, registro);
+                return { ...data, importacion_biometrica_lote_id: lote.id, marcas_biometricas: row.marcas };
+              }
+              return null;
+            } else {
+              const data = await rrhhService.registrarAsistencia(empresa?.id || 'emp_001', registro);
+              return { ...data, importacion_biometrica_lote_id: lote.id, marcas_biometricas: row.marcas };
             }
-          } else {
-            const data = await rrhhService.registrarAsistencia(empresa?.id || 'emp_001', registro);
-            guardados.push({ ...data, importacion_biometrica_lote_id: lote.id, marcas_biometricas: row.marcas });
+          } catch (err) {
+            console.error("Error al registrar fila:", err);
+            fallidos.push({ trabajador: row.trabajador?.nombre || row.trabajador?.id, fecha: row.fecha, error: err.message || String(err) });
+            return null;
           }
-        } catch (err) {
-          console.error("Error al registrar fila:", err);
-          guardados.push({ ...registro, id: `asis_bio_${Date.now()}_${row.trabajador.id}` });
-        }
+        }));
+        guardados.push(...resultados.filter(Boolean));
       }
       const keys = new Set(guardados.map(r => `${r.trabajador_id}:${r.fecha}`));
       setRegistrosAsistencia(prev => [...guardados, ...prev.filter(r => !keys.has(`${r.trabajador_id}:${r.fecha}`))]);
-      addNotificacion(`Importacion biometrica confirmada: ${guardados.length} registros.`);
+      if (fallidos.length) {
+        console.table(fallidos);
+        addNotificacion(`Importacion biometrica: ${guardados.length} registros guardados, ${fallidos.length} fallaron (ver consola para detalle).`, 'error');
+      } else {
+        addNotificacion(`Importacion biometrica confirmada: ${guardados.length} registros.`);
+      }
       setBioPreview(null);
       setBioFile(null);
       setBioPanel(false);
@@ -14772,10 +14827,10 @@ function ControlAsistencia() {
 
       {tab === 'diaria' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%'}}><h3>Asistencia del dia (Régimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Geocerca</th><th>SAR</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.filter(r => !filtroTrabajador || r.trabajador.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(row=><tr key={row.trabajador.id} className="hover-row" style={{cursor:'pointer'}} onClick={()=>setResumenPanelId(row.trabajador.id)}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td><td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td><td><div className="row" style={{gap:4, flexWrap:'wrap'}}>{geocercaAsignadaPorTrabajador.has(row.trabajador.id) ? <span className="badge badge-cyan">Asignada</span> : <span className="badge badge-gray">Sin asignar</span>}{estadoGeocercaRow(row) === 'dentro' && <span className="badge badge-green">Dentro</span>}{(estadoGeocercaRow(row) === 'fuera' || estadoGeocercaRow(row) === 'rechazable') && <span className="badge badge-orange">Fuera</span>}</div></td><td>{mostrarSarBadge(row) ? <span className="badge badge-red">SAR: no llegada</span> : '-'}</td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><div className="row" style={{gap:6}}>{row.registro?.latitud ? <button type="button" className="icon-btn" title="Ver ubicación de marcación" style={{color:'var(--fg-muted)'}} onClick={(e)=>{e.stopPropagation(); abrirUbicacionMarcacion(row);}}>{I.mapPin}</button> : <button type="button" className="icon-btn" disabled title="Sin ubicación registrada" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.mapPin}</button>}{row.registro?.id ? <button type="button" className="icon-btn" title="Eliminar registro de asistencia" style={{color:'var(--danger)'}} onClick={(e)=>{e.stopPropagation(); eliminarRegistroAsistencia(row);}}>{I.trash}</button> : <button type="button" className="icon-btn" disabled title="Sin registro para eliminar" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.trash}</button>}<button className="btn btn-sm btn-secondary" onClick={(e)=>{e.stopPropagation(); abrirEdicion(row);}}>Editar</button></div></td></tr>)}</tbody></table></div></div>}
 
-      {tab === 'semanal' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', flexWrap:'wrap', width:'100%', gap:10}}><h3>Vista semanal (Régimen General)</h3><div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><div className="row" style={{background:'var(--bg-subtle)', borderRadius:8, padding:'2px 4px', border:'1px solid var(--border)'}}><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() - 7); return n.toISOString().split('T')[0]; })} title="Semana anterior">{I.chevronLeft}</button><span className="text-muted" style={{minWidth:200, textAlign:'center', fontSize:13, fontWeight:600}}>{semanaTexto}</span><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() + 7); return n.toISOString().split('T')[0]; })} title="Siguiente semana">{I.chevronRight}</button></div><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/><button type="button" className="btn btn-ghost btn-sm" onClick={() => setFecha(new Date().toISOString().split('T')[0])}>Hoy</button></div></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.filter(t => !filtroTrabajador || t.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).slice(0, filtroTrabajador ? undefined : 8).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t,d); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
+      {tab === 'semanal' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', flexWrap:'wrap', width:'100%', gap:10}}><h3>Vista semanal (Régimen General)</h3><div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><div className="row" style={{background:'var(--bg-subtle)', borderRadius:8, padding:'2px 4px', border:'1px solid var(--border)'}}><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() - 7); return n.toISOString().split('T')[0]; })} title="Semana anterior">{I.chevronLeft}</button><span className="text-muted" style={{minWidth:200, textAlign:'center', fontSize:13, fontWeight:600}}>{semanaTexto}</span><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() + 7); return n.toISOString().split('T')[0]; })} title="Siguiente semana">{I.chevronRight}</button></div><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/><button type="button" className="btn btn-ghost btn-sm" onClick={() => setFecha(new Date().toISOString().split('T')[0])}>Hoy</button></div></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.filter(t => !filtroTrabajador || t.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t,d); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
 
       {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%', gap:16}}><h3>Resumen mensual - {mesNombreCap}</h3><input type="month" className="input" style={{width: 160}} value={currentMonth} onChange={e => { if (e.target.value) setFecha(e.target.value + '-01'); }} /></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Régimen/Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>
-        {calculosAsistencia.filter(c => c && c.trabajador && (!filtroTrabajador || (c.trabajador.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).slice(0, filtroTrabajador ? undefined : 8).map(c => {
+        {calculosAsistencia.filter(c => c && c.trabajador && (!filtroTrabajador || (c.trabajador.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).map(c => {
           const t = c.trabajador;
           const regs = registrosPeriodo.filter(r => r.trabajador_id === t.id);
           const faltas = c.faltas_injustificadas + c.faltas_justificadas;
@@ -14807,7 +14862,7 @@ function ControlAsistencia() {
               </tr>
             </thead>
             <tbody>
-              {trabajadoresMineros.filter(t => t && (!filtroTrabajador || (t.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).slice(0, filtroTrabajador ? undefined : 8).map(t => {
+              {trabajadoresMineros.filter(t => t && (!filtroTrabajador || (t.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).map(t => {
                 const regsM = registrosPeriodo.filter(r => r.trabajador_id === t.id);
                 return <tr key={t.id}>
                   <td><strong>{t.nombre}</strong></td>
@@ -16952,7 +17007,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
 }
 
 function RRHH_Operativo() {
-  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx } = useApp();
+  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   
   const [showTiposDocumentoRRHH, setShowTiposDocumentoRRHH] = useState(false);
@@ -16970,7 +17025,7 @@ function RRHH_Operativo() {
   const [fichaTab, setFichaTab] = useState('ficha');
   const [formDatosBancarios, setFormDatosBancarios] = useState([]);
   const [crearUsuarioSistema, setCrearUsuarioSistema] = useState(false);
-  const [usuarioSistemaForm, setUsuarioSistemaForm] = useState({ email:'', rol:'', acceso_campo:false, perfil_campo:'tecnico' });
+  const [usuarioSistemaForm, setUsuarioSistemaForm] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'tecnico' });
   const [showFormAsig, setShowFormAsig] = useState(false);
   const [formAsig, setFormAsig] = useState({ tipo_tramo: 'normal', fecha_inicio: '', regimen_jornada: 'general', dias_ciclo_trabajo: '', dias_ciclo_descanso: '', fecha_inicio_ciclo: '', motivo: '' });
   const [savingAsig, setSavingAsig] = useState(false);
@@ -16997,6 +17052,8 @@ function RRHH_Operativo() {
   const [inlineUploadForm, setInlineUploadForm] = useState(inlineUploadFormBase);
   const [inlineUploading, setInlineUploading] = useState(false);
   const [inlineUploadError, setInlineUploadError] = useState('');
+  const [retroWallInline, setRetroWallInline] = useState(null);
+  const [retroWallMotivoInline, setRetroWallMotivoInline] = useState('');
   const [modalEnviarFirmaDocOps, setModalEnviarFirmaDocOps] = useState(null);
   const [enviarFirmaMensajeOps, setEnviarFirmaMensajeOps] = useState('');
   const [enviandoFirmaOps, setEnviandoFirmaOps] = useState(false);
@@ -17390,7 +17447,7 @@ function RRHH_Operativo() {
       if (!editandoId && crearUsuarioSistema && usuarioSistemaForm.email && crearUsuarioConAcceso) {
         try {
           const rolId = Object.keys(rolesCtx).find(k => rolesCtx[k]?.nombre === usuarioSistemaForm.rol) || usuarioSistemaForm.rol;
-          await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaForm.email, rol: rolId, campo: usuarioSistemaForm.acceso_campo, campoModulos: usuarioSistemaForm.acceso_campo ? [usuarioSistemaForm.perfil_campo] : [] });
+          await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaForm.email, rol: rolId, posicion_id: usuarioSistemaForm.posicion_id || null, campo: usuarioSistemaForm.acceso_campo, campoModulos: usuarioSistemaForm.acceso_campo ? [usuarioSistemaForm.perfil_campo] : [] });
           addNotificacion('Usuario de sistema creado.');
         } catch (userErr) {
           addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
@@ -17576,7 +17633,7 @@ function RRHH_Operativo() {
     setFichaTab('documentos');
     setDocHighlightTipo(alerta.req.tipo_documento_id);
     if (alerta.req.doc) abrirPreviewDocumento(alerta.req, alerta.personal);
-    else setInlineUploadReq(alerta.req);
+    else { setInlineUploadReq(alerta.req); setRetroWallInline(null); setRetroWallMotivoInline(''); }
   };
 
   const porEspecialidad = personal.reduce((acc, p) => { const esp = p.especialidad || 'Sin especialidad'; acc[esp] = (acc[esp] || 0) + 1; return acc; }, {});
@@ -17621,6 +17678,8 @@ function RRHH_Operativo() {
       return;
     }
     setInlineUploadReq(req);
+    setRetroWallInline(null);
+    setRetroWallMotivoInline('');
     let pCargoFirma = '';
     let pRemuneracion = '';
     let pModalidad = '';
@@ -18555,8 +18614,8 @@ function RRHH_Operativo() {
             );
             const tooltipBadge = docsConProblema.map(d => d.tipo?.nombre || d.tipo_documento_id).join(', ');
 
-            const handleSubirInline = async (e) => {
-              e.preventDefault();
+            const handleSubirInline = async (e, overrideOpts) => {
+              e?.preventDefault?.();
               if (!inlineUploadReq) return;
               const inlineEsContrato = rrhhEsTipoContrato(inlineUploadReq.tipo);
               const inlineEsAdenda = rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id);
@@ -18571,7 +18630,9 @@ function RRHH_Operativo() {
                   setInlineUploadError('Este tipo exige fecha de vencimiento.'); return;
                 }
               }
-              setInlineUploading(true); setInlineUploadError('');
+              const forzarOverride = overrideOpts?.forzarOverride || false;
+              const motivoOverride = overrideOpts?.motivoOverride || null;
+              setInlineUploading(true); setInlineUploadError(''); setRetroWallInline(null);
               try {
                 const cargoSel = cargos.find(c => c.id === inlineUploadForm.cargoIdFirma);
                 const sedeSel = sedes.find(s => s.id === inlineUploadForm.sedeIdFirma);
@@ -18604,6 +18665,7 @@ function RRHH_Operativo() {
                     notas: inlineUploadForm.notas || null,
                     condicionesLaborales,
                     periodoIdAnterior: inlineUploadForm.periodoIdAnterior || null,
+                    forzarOverride, motivoOverride,
                   });
                   addNotificacion('Nuevo contrato creado. El período anterior quedó archivado.');
                 } else if (esCorreccion) {
@@ -18617,6 +18679,7 @@ function RRHH_Operativo() {
                     personalId: p.id,
                     personalTipo: 'operativo',
                     tipoDoc: inlineUploadReq.tipo_documento_id,
+                    forzarOverride, motivoOverride,
                   });
                   addNotificacion('Documento corregido correctamente.');
                 } else {
@@ -18642,13 +18705,25 @@ function RRHH_Operativo() {
                     fechaVigenciaCambio: inlineEsAdenda ? (inlineUploadForm.fechaVigenciaCambio || null) : null,
                     seccionDocumental: 'requisito_cargo',
                     contratoPeriodoId: inlineUploadForm.periodoIdAnterior || null,
+                    forzarOverride, motivoOverride,
                   });
                   addNotificacion('Documento subido correctamente.');
                 }
                 setInlineUploadReq(null); setInlineUploadFile(null);
                 setInlineUploadForm(inlineUploadFormBase);
+                setRetroWallInline(null);
+                setRetroWallMotivoInline('');
                 if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(p.id);
-              } catch (err) { setInlineUploadError(err?.message || 'Error al guardar el documento.'); }
+              } catch (err) {
+                const msg = err?.message || 'Error al guardar el documento.';
+                if (msg.startsWith('RETRO_WALL_PERMISO:')) {
+                  setInlineUploadError(msg.replace('RETRO_WALL_PERMISO:', '').trim());
+                } else if (msg.startsWith('RETRO_WALL:')) {
+                  setRetroWallInline(msg.replace('RETRO_WALL:', '').trim());
+                } else {
+                  setInlineUploadError(msg);
+                }
+              }
               finally { setInlineUploading(false); }
             };
 
@@ -18914,11 +18989,11 @@ function RRHH_Operativo() {
 
                 {/* Modal inline upload */}
                 {inlineUploadReq && (
-                  <div className="modal-backdrop" onClick={() => setInlineUploadReq(null)}>
+                  <div className="modal-backdrop" onClick={() => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); }}>
                     <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:500}}>
                       <div className="modal-head">
                         <h3>Subir {inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id}</h3>
-                        <button className="icon-btn" onClick={() => setInlineUploadReq(null)}>{I.x}</button>
+                        <button className="icon-btn" onClick={() => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); }}>{I.x}</button>
                       </div>
                       <div className="modal-body">
                         {/* Documento actual con URL fresca al descargar/ver */}
@@ -19053,8 +19128,30 @@ function RRHH_Operativo() {
 
                           {inlineUploadError && <div style={{fontSize:12, color:'var(--danger)'}}>{inlineUploadError}</div>}
 
+                          {retroWallInline && (
+                            <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, display:'flex', flexDirection:'column', gap:8}}>
+                              <div style={{color:'var(--danger)', fontWeight:600}}>Cambio bloqueado por nómina ya procesada</div>
+                              <div>{retroWallInline}</div>
+                              <div className="input-group">
+                                <label>Justificación para forzar el cambio (obligatoria)</label>
+                                <textarea className="input" rows={2} value={retroWallMotivoInline} onChange={e=>setRetroWallMotivoInline(e.target.value)} />
+                              </div>
+                              <div className="row" style={{justifyContent:'flex-end', gap:8}}>
+                                <button type="button" className="btn btn-secondary" onClick={() => { setRetroWallInline(null); setRetroWallMotivoInline(''); }}>Cancelar</button>
+                                <button
+                                  type="button"
+                                  className="btn btn-danger"
+                                  disabled={inlineUploading || !retroWallMotivoInline.trim()}
+                                  onClick={() => handleSubirInline(null, { forzarOverride: true, motivoOverride: retroWallMotivoInline.trim() })}
+                                >
+                                  Forzar cambio (requiere autorización)
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
                           <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
-                            <button type="button" className="btn btn-secondary" onClick={() => setInlineUploadReq(null)}>Cancelar</button>
+                            <button type="button" className="btn btn-secondary" onClick={() => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); }}>Cancelar</button>
                             <button type="submit" className="btn btn-primary" disabled={inlineUploading}>
                               {inlineUploading ? 'Guardando...' : (inlineUploadForm.modoSubida === 'nuevo_contrato' ? 'Crear nuevo contrato' : inlineUploadForm.modoSubida === 'corregir' ? 'Guardar corrección' : (inlineUploadReq.doc ? 'Subir nueva versión' : 'Subir documento'))}
                             </button>
@@ -19393,9 +19490,9 @@ function RRHH_Operativo() {
           </div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Técnico</th><th>Cargo</th><th>Área</th><th>Sede</th><th>Turno</th><th>Jornada</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones Disp.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+              <thead><tr><th>Código</th><th>Técnico</th><th>Cargo</th><th>Área</th><th>Sede</th><th>Turno</th><th>Jornada</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones Disp.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
               <tbody>
-                {personal.length === 0 && <tr><td colSpan={11} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
+                {personal.length === 0 && <tr><td colSpan={12} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
                 {personal.filter(p => {
                   if (filtroEstado && p.estado !== filtroEstado) return false;
                   if (filtroModalidad) {
@@ -19415,6 +19512,7 @@ function RRHH_Operativo() {
                   const contratoInfoFila = rrhhContratoVencimientoInfo(contratoDocFila);
                   return (
                     <tr key={p.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => { setSelTecnico(p); setFichaTab('ficha'); }}>
+                      <td className="mono text-muted">{p.codigo || '—'}</td>
                       <td>
                         <div className="row">
                           <div className="avatar" style={{width:30,height:30,fontSize:11}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
@@ -19774,6 +19872,18 @@ function RRHH_Operativo() {
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" value={usuarioSistemaForm.email} onChange={e=>setUsuarioSistemaForm(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
                       <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaForm.rol} onChange={e=>setUsuarioSistemaForm(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>
                       <div className="input-group"><label>Perfil de campo</label><select className="select" value={usuarioSistemaForm.perfil_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v,perfil_campo:e.target.value}))}><option value="tecnico">Técnico</option><option value="comprador">Comprador</option><option value="vendedor">Vendedor</option><option value="supervisor">Supervisor</option><option value="gerencia">Gerencia</option><option value="administrativo">Administrativo</option></select></div>
+                      <div style={{gridColumn:'1/-1'}}>
+                        <PosicionSelector
+                          value={usuarioSistemaForm.posicion_id}
+                          onChange={posicionId => setUsuarioSistemaForm(v=>({...v,posicion_id:posicionId}))}
+                          posiciones={posiciones}
+                          posicionesUsuarios={posicionesUsuarios}
+                          unidadesOrganizacionales={unidadesOrganizacionales}
+                          cargos={cargos}
+                          usuarios={usuarios}
+                          onCrearPosicion={crearPosicion}
+                        />
+                      </div>
                       <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaForm.acceso_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v,acceso_campo:e.target.checked}))}/>Acceso a app de campo</label>
                     </div>
                   )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr } from './utils/rrhhLabels.js';
 import { I, money } from './icons.jsx';
@@ -7,7 +7,10 @@ import { useApp } from './context.jsx';
 import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { TiposGastoAdmin } from './components/NuevoEgreso.jsx';
-import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getPotentialManagers, getUserHierarchyLevel, hasTeamScope } from './lib/hierarchy.js';
+import { PosicionSelector } from './components/PosicionSelector.jsx';
+import { AsignacionCargosModal } from './components/AsignacionCargosModal.jsx';
+import { buildOcupantesPorPosicion, getPosicionesSinCargo, contarRespaldoPrincipal } from './lib/posicionesHelpers.js';
+import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getUserHierarchyLevel, getPrimaryPosicion } from './lib/hierarchy.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { VARIABLES_COMERCIALES } from './lib/textoComercial.js';
 import { maestrosService } from './services/maestrosService.js';
@@ -503,7 +506,7 @@ function Roles() {
 }
 
 function Usuarios() {
-  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, roles: rolesCtx, accessDebug, navigate, personalAdmin = [], personalOperativo = [] } = useApp();
+  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, roles: rolesCtx, accessDebug, navigate, personalAdmin = [], personalOperativo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [], crearPosicion } = useApp();
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('');
   const [resetError, setResetError] = useState('');
@@ -515,7 +518,7 @@ function Usuarios() {
     setResetting(u);
   };
   const [creando, setCreando] = useState(false);
-  const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', password: '', asignaciones: [], campo: false, campoModulos: [] });
+  const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', posicion_id: '', password: '', asignaciones: [], campo: false, campoModulos: [] });
   const [mostrarPasswordNuevo, setMostrarPasswordNuevo] = useState(false);
   const [guardandoNuevo, setGuardandoNuevo] = useState(false);
   const [nuevoError, setNuevoError] = useState('');
@@ -635,7 +638,7 @@ function Usuarios() {
     }
     return { disabled: false, tooltip: '' };
   };
-  const [editForm, setEditForm] = useState({ nombre: '', email: '', rol: '', jefe_user_id: '', asignaciones: [], campo: false, campoModulos: [], estado: 'Activo' });
+  const [editForm, setEditForm] = useState({ nombre: '', email: '', rol: '', jefe_user_id: '', posicion_id: '', asignaciones: [], campo: false, campoModulos: [], estado: 'Activo' });
   const [guardandoEdit, setGuardandoEdit] = useState(false);
   const [editError, setEditError] = useState('');
   const [filtroTenant, setFiltroTenant] = useState('');
@@ -671,7 +674,7 @@ function Usuarios() {
       await crearUsuarioConAcceso(nuevoForm);
       setCreando(false);
       setMostrarPasswordNuevo(false);
-      setNuevoForm({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', password: '', asignaciones: [], campo: false, campoModulos: [] });
+      setNuevoForm({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', posicion_id: '', password: '', asignaciones: [], campo: false, campoModulos: [] });
     } catch (error) {
       const message = error?.message || 'No se pudo crear el usuario.';
       if (normalizarEmail(message).includes('contrasena temporal es obligatoria')) {
@@ -693,6 +696,7 @@ function Usuarios() {
       email: usuario.email || '',
       rol: usuario.rol || '',
       jefe_user_id: usuario.jefe_user_id || '',
+      posicion_id: getPrimaryPosicion(usuario)?.posicion_id || '',
       asignaciones: (usuario.asignaciones || [])
         .filter(a => !a.principal)
         .map(a => ({
@@ -747,7 +751,6 @@ function Usuarios() {
   const rolesEditOpciones = Object.entries(rolesCtx || {}).filter(([id, r]) => (
     (!r.es_superadmin && rolPerteneceTenant(r)) || id === editando?.rol
   ));
-  const getRoleCategory = (rolId) => rolesCtx?.[rolId]?.categoria || 'otro';
   const getOptionLabel = (items, value) => items.find(x => x.value === value)?.label || value || '-';
   const getRoleMeta = (rolId) => {
     const r = rolesCtx?.[rolId] || MOCK.roles?.[rolId] || {};
@@ -766,25 +769,14 @@ function Usuarios() {
   };
   const nuevoRoleMeta = getRoleMeta(nuevoForm.rol);
   const editRoleMeta = getRoleMeta(editForm.rol);
-  const alcanceOptions = [
-    { value: 'tenant', label: 'Todo el tenant' },
-    { value: 'area', label: 'Area' },
-    { value: 'equipo', label: 'Equipo' },
-    { value: 'sede', label: 'Sede' },
-    { value: 'proyecto', label: 'Proyecto' },
-    { value: 'centro_costo', label: 'Centro de costo' },
-    { value: 'custom', label: 'Personalizado' },
-  ];
   const crearAsignacionVacia = () => ({
     rol_id: rolesOpciones[0]?.[0] || '',
-    jefe_user_id: '',
-    alcance_tipo: 'tenant',
-    alcance_id: '',
+    posicion_id: '',
   });
   const actualizarAsignacion = (items, index, patch) => items.map((item, i) => (
     i === index ? { ...item, ...patch } : item
   ));
-  const renderAsignacionesAvanzadas = ({ items, setItems, excludeUserId = null }) => (
+  const renderAsignacionesAvanzadas = ({ items, setItems }) => (
     <details style={{border:'1px solid var(--border)', borderRadius:8, padding:12}}>
       <summary style={{cursor:'pointer', fontWeight:700, fontSize:13}}>Asignaciones adicionales opcionales</summary>
       <div className="text-muted" style={{fontSize:12, margin:'8px 0 12px'}}>
@@ -793,39 +785,27 @@ function Usuarios() {
       <div className="col" style={{gap:10}}>
         {items.map((asig, index) => {
           const meta = getRoleMeta(asig.rol_id);
-          const managers = getPotentialManagers({
-            users: usuarios,
-            roles: rolesCtx,
-            empresaId: empresa?.id,
-            excludeUserId,
-            category: getRoleCategory(asig.rol_id),
-          });
           return (
             <div key={index} style={{border:'1px solid var(--border)', borderRadius:8, padding:10}}>
               <div className="grid-2" style={{gap:10}}>
                 <div className="input-group">
                   <label>Rol adicional</label>
-                  <select className="input" value={asig.rol_id} onChange={e => setItems(actualizarAsignacion(items, index, { rol_id: e.target.value, jefe_user_id: '' }))}>
+                  <select className="input" value={asig.rol_id} onChange={e => setItems(actualizarAsignacion(items, index, { rol_id: e.target.value }))}>
                     {rolesOpciones.map(([id, r]) => <option key={id} value={id}>{roleOptionText({ ...r, id })}</option>)}
                   </select>
                 </div>
-                <div className="input-group">
-                  <label>Jefe funcional</label>
-                  <select className="input" value={asig.jefe_user_id} onChange={e => setItems(actualizarAsignacion(items, index, { jefe_user_id: e.target.value }))}>
-                    <option value="">Sin jefe funcional</option>
-                    {managers.map(u => <option key={`${u.id}_${u.empresa_id}`} value={u.id}>{u.nombre} · {rolesCtx?.[u.rol]?.nombre || u.rol_nombre || u.rol}</option>)}
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>Alcance</label>
-                  <select className="input" value={asig.alcance_tipo} onChange={e => setItems(actualizarAsignacion(items, index, { alcance_tipo: e.target.value, alcance_id: e.target.value === 'tenant' ? '' : asig.alcance_id }))}>
-                    {alcanceOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>ID alcance</label>
-                  <input className="input" disabled={asig.alcance_tipo === 'tenant'} value={asig.alcance_id || ''} onChange={e => setItems(actualizarAsignacion(items, index, { alcance_id: e.target.value }))} placeholder={asig.alcance_tipo === 'tenant' ? 'No aplica' : 'Ej: proyecto_001'} />
-                </div>
+                <PosicionSelector
+                  label="Posicion adicional"
+                  value={asig.posicion_id}
+                  onChange={posicionId => setItems(actualizarAsignacion(items, index, { posicion_id: posicionId }))}
+                  posiciones={posiciones}
+                  posicionesUsuarios={posicionesUsuarios}
+                  unidadesOrganizacionales={unidadesOrganizacionales}
+                  cargos={cargos}
+                  usuarios={usuarios}
+                  onCrearPosicion={crearPosicion}
+                  currentUserId={editando?.id}
+                />
               </div>
               <div className="row" style={{justifyContent:'space-between', marginTop:8}}>
                 <div className="row" style={{gap:6, fontSize:12}}>
@@ -841,19 +821,6 @@ function Usuarios() {
       </div>
     </details>
   );
-  const nuevoJefes = getPotentialManagers({
-    users: usuarios,
-    roles: rolesCtx,
-    empresaId: empresa?.id,
-    category: getRoleCategory(nuevoForm.rol),
-  });
-  const editJefes = getPotentialManagers({
-    users: usuarios,
-    roles: rolesCtx,
-    empresaId: editando?.empresa_id || empresa?.id,
-    excludeUserId: editando?.id,
-    category: getRoleCategory(editForm.rol),
-  });
 
   useEffect(() => {
     if (!rolesOpciones.length) return;
@@ -1047,16 +1014,19 @@ function Usuarios() {
                 <span className="badge badge-gray">Categoria: {editRoleMeta.categoriaLabel}</span>
                 <span className="badge badge-cyan">Nivel: {editRoleMeta.nivelLabel}</span>
               </div>
-              <div className="input-group">
-                <label>Jefe directo</label>
-                <select className="input" value={editForm.jefe_user_id} onChange={e => setEditForm(p => ({...p, jefe_user_id: e.target.value}))}>
-                  <option value="">Sin jefe directo</option>
-                  {editJefes.map(u => <option key={`${u.id}_${u.empresa_id}`} value={u.id}>{u.nombre} · {rolesCtx?.[u.rol]?.nombre || u.rol_nombre || u.rol}</option>)}
-                </select>
-              </div>
+              <PosicionSelector
+                value={editForm.posicion_id}
+                onChange={posicionId => setEditForm(p => ({...p, posicion_id: posicionId}))}
+                posiciones={posiciones}
+                posicionesUsuarios={posicionesUsuarios}
+                unidadesOrganizacionales={unidadesOrganizacionales}
+                cargos={cargos}
+                usuarios={usuarios}
+                onCrearPosicion={crearPosicion}
+                currentUserId={editando?.id}
+              />
               {renderAsignacionesAvanzadas({
                 items: editForm.asignaciones,
-                excludeUserId: editando?.id,
                 setItems: next => setEditForm(p => ({ ...p, asignaciones: next })),
               })}
               <div className="input-group">
@@ -1219,13 +1189,16 @@ function Usuarios() {
                 <span className="badge badge-gray">Categoria: {nuevoRoleMeta.categoriaLabel}</span>
                 <span className="badge badge-cyan">Nivel: {nuevoRoleMeta.nivelLabel}</span>
               </div>
-              <div className="input-group">
-                <label>Jefe directo</label>
-                <select className="input" value={nuevoForm.jefe_user_id} onChange={e => setNuevoForm(p => ({...p, jefe_user_id: e.target.value}))}>
-                  <option value="">Sin jefe directo</option>
-                  {nuevoJefes.map(u => <option key={`${u.id}_${u.empresa_id}`} value={u.id}>{u.nombre} · {rolesCtx?.[u.rol]?.nombre || u.rol_nombre || u.rol}</option>)}
-                </select>
-              </div>
+              <PosicionSelector
+                value={nuevoForm.posicion_id}
+                onChange={posicionId => setNuevoForm(p => ({...p, posicion_id: posicionId}))}
+                posiciones={posiciones}
+                posicionesUsuarios={posicionesUsuarios}
+                unidadesOrganizacionales={unidadesOrganizacionales}
+                cargos={cargos}
+                usuarios={usuarios}
+                onCrearPosicion={crearPosicion}
+              />
               {renderAsignacionesAvanzadas({
                 items: nuevoForm.asignaciones,
                 setItems: next => setNuevoForm(p => ({ ...p, asignaciones: next })),
@@ -3576,13 +3549,342 @@ function RequisitosPorCargo({ onClose, onGoToTiposDoc }) {
   );
 }
 
+// Catalogo de mantenimiento de Posiciones (listado plano, no arbol -- complementa al Organigrama,
+// que oculta posiciones matriciales y no permite filtrar). Reutiliza reasignarUnidadDePosicion,
+// reasignarCargoDePosicion, crearPosicion y AsignacionCargosModal tal cual -- no duplica logica.
+// Contenido de la pestaña "Gestion de Posiciones" del Organigrama: listado plano con filtros,
+// complementa al arbol (que oculta posiciones matriciales y no permite filtrar). Presentacional
+// puro -- recibe todo por props desde Organigrama(), que ya calcula posicionesDeEmpresa/
+// ocupantesPorPosicion/unidadNombrePorId/posicionPorId para el arbol; no los recalcula aqui.
+// "Asignar cargos" vive una sola vez en Organigrama (boton del header, compartido por ambas
+// pestañas) para no duplicar la misma accion en dos lugares de la misma pantalla.
+function GestionPosicionesTab({
+  posiciones = [], posicionesUsuarios = [], ocupantesPorPosicion, unidadNombrePorId, posicionPorId,
+  unidadesOrganizacionales = [], cargos = [], usuarios = [],
+  reasignarUnidadDePosicion, reasignarCargoDePosicion, crearPosicion, archivarPosicion, eliminarPosicion, addNotificacion,
+}) {
+  const [filtroUnidad, setFiltroUnidad] = React.useState('');
+  const [filtroCargo, setFiltroCargo] = React.useState('');
+  const [filtroEstado, setFiltroEstado] = React.useState('');
+  const [showCrearVacante, setShowCrearVacante] = React.useState(false);
+  const [reasignandoUnidadId, setReasignandoUnidadId] = React.useState(null);
+  const [nuevaUnidadInline, setNuevaUnidadInline] = React.useState('');
+  const [guardandoUnidadInline, setGuardandoUnidadInline] = React.useState(false);
+  const [editandoCargoId, setEditandoCargoId] = React.useState(null);
+  const [nuevoCargoInline, setNuevoCargoInline] = React.useState('');
+  const [guardandoCargoInline, setGuardandoCargoInline] = React.useState(false);
+
+  const cargoNombrePorId = React.useMemo(() => new Map(cargos.map(c => [c.id, c.nombre])), [cargos]);
+
+  const posicionesFiltradas = React.useMemo(() => posiciones.filter(p => {
+    if (filtroUnidad && p.unidad_organizacional_id !== filtroUnidad) return false;
+    if (filtroCargo === '__sin_cargo__' && p.cargo_id) return false;
+    if (filtroCargo && filtroCargo !== '__sin_cargo__' && p.cargo_id !== filtroCargo) return false;
+    if (filtroEstado === 'vacante' && p.estado !== 'vacante') return false;
+    if (filtroEstado === 'ocupada' && p.estado === 'vacante') return false;
+    return true;
+  }), [posiciones, filtroUnidad, filtroCargo, filtroEstado]);
+
+  const metrics = React.useMemo(() => {
+    const total = posicionesFiltradas.length;
+    let cubiertas = 0;
+    let vacantes = 0;
+    for (const p of posicionesFiltradas) {
+      if (p.estado === 'vacante') vacantes++;
+      else cubiertas++;
+    }
+    const ocupacion = total ? Math.round((cubiertas / total) * 100) : 0;
+    return { total, cubiertas, vacantes, ocupacion };
+  }, [posicionesFiltradas]);
+
+  // Agrupacion por unidad para las tarjetas y la tabla
+  const gruposPorUnidad = React.useMemo(() => {
+    const map = new Map(); // unidadId -> { posiciones: [], cubiertas: 0, vacantes: 0 }
+    posicionesFiltradas.forEach(p => {
+      const uid = p.unidad_organizacional_id || '__sin_unidad__';
+      if (!map.has(uid)) {
+        map.set(uid, {
+          unidadId: uid,
+          nombre: uid === '__sin_unidad__' ? 'Sin unidad' : (unidadNombrePorId.get(uid) || 'Sin unidad'),
+          posiciones: [],
+          cubiertas: 0,
+          vacantes: 0,
+        });
+      }
+      const g = map.get(uid);
+      g.posiciones.push(p);
+      if (p.estado === 'vacante') g.vacantes++;
+      else g.cubiertas++;
+    });
+    return [...map.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  }, [posicionesFiltradas, unidadNombrePorId]);
+
+  const labelReportaA = (posicion) => {
+    if (!posicion.reporta_a_posicion_id) return <span className="text-subtle">Sin jefe (nivel superior)</span>;
+    const jefe = posicionPorId.get(posicion.reporta_a_posicion_id);
+    if (!jefe) return <span className="text-subtle">—</span>;
+    const ocupantesJefe = ocupantesPorPosicion.get(jefe.id) || [];
+    return ocupantesJefe.length
+      ? ocupantesJefe.map(o => o.nombre).join(' + ')
+      : <span className="text-subtle" style={{ fontStyle: 'italic' }}>Posición vacante</span>;
+  };
+
+  const estadoBadge = (estado) => {
+    if (estado === 'vacante') return <span className="badge badge-gray">Vacante</span>;
+    if (estado === 'parcial') return <span className="badge badge-orange">Parcial</span>;
+    return <span className="badge badge-green">Cubierta</span>;
+  };
+
+  const iniciarReasignarUnidad = (posicion) => {
+    setReasignandoUnidadId(posicion.id);
+    setNuevaUnidadInline(posicion.unidad_organizacional_id || '');
+  };
+  const cancelarReasignarUnidad = () => { setReasignandoUnidadId(null); setNuevaUnidadInline(''); };
+  const guardarReasignarUnidad = async (posicion) => {
+    if (!nuevaUnidadInline || nuevaUnidadInline === posicion.unidad_organizacional_id) { cancelarReasignarUnidad(); return; }
+    setGuardandoUnidadInline(true);
+    try {
+      await reasignarUnidadDePosicion(posicion.id, nuevaUnidadInline);
+      addNotificacion('Unidad organizacional actualizada.');
+    } catch {
+      addNotificacion('No se pudo actualizar la unidad organizacional.');
+    }
+    setGuardandoUnidadInline(false);
+    cancelarReasignarUnidad();
+  };
+
+  const iniciarEditarCargo = (posicion) => {
+    setEditandoCargoId(posicion.id);
+    setNuevoCargoInline(posicion.cargo_id || '');
+  };
+  const cancelarEditarCargo = () => { setEditandoCargoId(null); setNuevoCargoInline(''); };
+  const guardarEditarCargo = async (posicion) => {
+    if (nuevoCargoInline === (posicion.cargo_id || '')) { cancelarEditarCargo(); return; }
+    setGuardandoCargoInline(true);
+    try {
+      await reasignarCargoDePosicion(posicion.id, nuevoCargoInline || null);
+      addNotificacion('Cargo de la posición actualizado.');
+    } catch {
+      addNotificacion('No se pudo actualizar el cargo de la posición.');
+    }
+    setGuardandoCargoInline(false);
+    cancelarEditarCargo();
+  };
+
+  const confirmarEliminar = async (posicionId) => {
+    if (window.confirm('¿Estás seguro de que deseas eliminar esta posición vacante? Esta acción no se puede deshacer.')) {
+      try {
+        await eliminarPosicion(posicionId);
+        addNotificacion('Posición eliminada correctamente.');
+      } catch (err) {
+        addNotificacion('Error al eliminar la posición.');
+      }
+    }
+  };
+
+  const confirmarArchivar = async (posicionId) => {
+    if (window.confirm('Esta posición tuvo ocupantes en el pasado. Será archivada para mantener el historial, pero ya no aparecerá como disponible. ¿Deseas continuar?')) {
+      try {
+        await archivarPosicion(posicionId);
+        addNotificacion('Posición archivada correctamente.');
+      } catch (err) {
+        addNotificacion('Error al archivar la posición.');
+      }
+    }
+  };
+
+  return (
+    <>
+      <div className="kpi-grid mb-6">
+        <div className="kpi-card">
+          <div className="kpi-label">Headcount Total</div>
+          <div className="kpi-value">{metrics.total}</div>
+          <div className="kpi-icon cyan">{I.users}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Cubiertas</div>
+          <div className="kpi-value">{metrics.cubiertas}</div>
+          <div className="kpi-icon green">{I.check}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Vacantes</div>
+          <div className="kpi-value">{metrics.vacantes}</div>
+          <div className="kpi-icon orange">{I.alertCircle}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">% Ocupación</div>
+          <div className="kpi-value">{metrics.ocupacion}%</div>
+          <div className="kpi-icon purple">{I.activity}</div>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 20 }}>
+        {gruposPorUnidad.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12, marginBottom: 20 }}>
+            {gruposPorUnidad.map(g => {
+              const progreso = g.posiciones.length ? (g.cubiertas / g.posiciones.length) * 100 : 0;
+              const isActive = filtroUnidad === g.unidadId || (!filtroUnidad && g.unidadId === '__sin_unidad__');
+              return (
+                <div 
+                  key={g.unidadId} 
+                  className="kpi-card" 
+                  style={{ cursor: 'pointer', outline: isActive && filtroUnidad ? '2px solid var(--cyan)' : 'none', padding: '12px 16px', minHeight: 0 }}
+                  onClick={() => setFiltroUnidad(filtroUnidad === g.unidadId ? '' : g.unidadId)}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={g.nombre}>
+                    {g.nombre}
+                  </div>
+                  <div style={{ width: '100%', height: 4, backgroundColor: 'var(--bg-hover)', borderRadius: 2, marginBottom: 8 }}>
+                    <div style={{ width: progreso + '%', height: '100%', backgroundColor: 'var(--cyan)', borderRadius: 2 }} />
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
+                    {g.cubiertas} cubiertas · {g.vacantes} vacantes
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="row" style={{ gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+          <select className="input" style={{ flex: '1 1 200px' }} value={filtroUnidad} onChange={e => setFiltroUnidad(e.target.value)}>
+            <option value="">Todas las unidades</option>
+            {unidadesOrganizacionales.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+          </select>
+          <select className="input" style={{ flex: '1 1 200px' }} value={filtroCargo} onChange={e => setFiltroCargo(e.target.value)}>
+            <option value="">Todos los cargos</option>
+            <option value="__sin_cargo__">Sin cargo</option>
+            {cargos.filter(c => c.estado === 'activo').map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+          <select className="input" style={{ flex: '1 1 160px' }} value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}>
+            <option value="">Todos los estados</option>
+            <option value="vacante">Vacante</option>
+            <option value="ocupada">Ocupada</option>
+          </select>
+          <button className="btn btn-secondary" onClick={() => setShowCrearVacante(true)}>{I.plus} Crear posición vacante</button>
+        </div>
+
+        <div className="table-wrap">
+          <table className="tbl">
+            <thead><tr><th>Unidad</th><th>Cargo</th><th>Estado</th><th>Ocupante(s)</th><th>Reporta a</th><th style={{ textAlign: 'right' }}>Acciones</th></tr></thead>
+            <tbody>
+              {gruposPorUnidad.length === 0 && (
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--fg-muted)', padding: 24 }}>Sin posiciones que coincidan con los filtros.</td></tr>
+              )}
+              {gruposPorUnidad.map(g => (
+                <React.Fragment key={g.unidadId}>
+                  <tr style={{ backgroundColor: 'var(--surface-1)' }}>
+                    <td colSpan={6} style={{ borderTop: '2px solid var(--border-color)', fontWeight: 600, fontSize: 13, paddingTop: 16, paddingBottom: 16 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{g.nombre}</span>
+                        <span style={{ fontWeight: 400, color: 'var(--fg-muted)', fontSize: 12 }}>{g.cubiertas} cubiertas · {g.vacantes} vacantes</span>
+                      </div>
+                    </td>
+                  </tr>
+                  {g.posiciones.map(p => {
+                    const ocupantes = ocupantesPorPosicion.get(p.id) || [];
+                    const isOcupada = p.estado === 'cubierta' || p.estado === 'parcial';
+                    const isVacante = p.estado === 'vacante';
+                    const hasHistorial = posicionesUsuarios.some(pu => pu.posicion_id === p.id);
+
+                    return (
+                      <tr key={p.id}>
+                        <td className="text-muted" style={{ fontSize: 12 }}>{g.nombre}</td>
+                        <td className="text-muted" style={{ fontSize: 12 }}>{cargoNombrePorId.get(p.cargo_id) || <span className="text-subtle">Sin cargo</span>}</td>
+                        <td>
+                          {estadoBadge(p.estado)}
+                          {isVacante && (
+                            <span style={{ fontSize: 10, color: 'var(--fg-muted)', marginLeft: 4 }}>
+                              {hasHistorial ? '[H: Sí]' : '[H: No]'}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ fontSize: 12, fontStyle: ocupantes.length ? 'normal' : 'italic' }}>
+                          {ocupantes.length ? ocupantes.map(o => o.nombre).join(' + ') : <span className="text-subtle">Vacante</span>}
+                        </td>
+                        <td style={{ fontSize: 12 }}>{labelReportaA(p)}</td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {reasignandoUnidadId === p.id ? (
+                            <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', alignItems: 'center' }}>
+                              <select className="select" style={{ fontSize: 11 }} value={nuevaUnidadInline} onChange={e => setNuevaUnidadInline(e.target.value)}>
+                                {unidadesOrganizacionales.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                              </select>
+                              <button className="btn btn-sm btn-primary" disabled={guardandoUnidadInline} onClick={() => guardarReasignarUnidad(p)}>Guardar</button>
+                              <button className="btn btn-sm btn-ghost" onClick={cancelarReasignarUnidad}>Cancelar</button>
+                            </div>
+                          ) : editandoCargoId === p.id ? (
+                            <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', alignItems: 'center' }}>
+                              <select className="select" style={{ fontSize: 11 }} value={nuevoCargoInline} onChange={e => setNuevoCargoInline(e.target.value)}>
+                                <option value="">Sin cargo</option>
+                                {cargos.filter(c => c.estado === 'activo').map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                              </select>
+                              <button className="btn btn-sm btn-primary" disabled={guardandoCargoInline} onClick={() => guardarEditarCargo(p)}>Guardar</button>
+                              <button className="btn btn-sm btn-ghost" onClick={cancelarEditarCargo}>Cancelar</button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                              <button className="btn btn-sm btn-ghost" onClick={() => iniciarReasignarUnidad(p)}>Reasignar unidad</button>
+                              <button className="btn btn-sm btn-ghost" onClick={() => iniciarEditarCargo(p)}>Editar cargo</button>
+                              {isVacante && !hasHistorial && (
+                                <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} title="Eliminar posición vacante" onClick={() => confirmarEliminar(p.id)}>
+                                  {I.trash} Eliminar
+                                </button>
+                              )}
+                              {isVacante && hasHistorial && (
+                                <button className="btn btn-sm btn-ghost" title="Archivar posición (preservar historial)" onClick={() => confirmarArchivar(p.id)}>
+                                  {I.archive} Archivar
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {showCrearVacante && (
+        <div className="modal-backdrop" onClick={() => setShowCrearVacante(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="modal-head">
+              <h3>Crear posición vacante</h3>
+              <button className="icon-btn" onClick={() => setShowCrearVacante(false)}>{I.x}</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 12 }}>
+                Usa "+ Crear nueva posición" para reservar una plaza sin asignarla a nadie todavía. También puedes elegir una posición vacante existente del listado si corresponde.
+              </p>
+              <PosicionSelector
+                label="Posición"
+                value=""
+                onChange={(id) => { if (id) { setShowCrearVacante(false); addNotificacion('Posición vacante lista.'); } }}
+                posiciones={posiciones}
+                posicionesUsuarios={posicionesUsuarios}
+                unidadesOrganizacionales={unidadesOrganizacionales}
+                cargos={cargos}
+                usuarios={usuarios}
+                onCrearPosicion={crearPosicion}
+                allowCrear
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 // ============ CONFIGURACIÓN Y MAESTROS ============
 function Maestros() {
   const {
     navigate, cuentas, proveedores, personalAdmin = [], personalOperativo = [],
     areasEmpresa, cargos, especialidades, tiposServicio, almacenes, sedes, industrias,
     monedasImpuestosUnidades = [],
-    crearArea, actualizarArea, eliminarArea,
+    unidadesOrganizacionales = [], crearUnidadOrganizacional, actualizarUnidadOrganizacional,
     crearCargo, actualizarCargo, eliminarCargo, fusionarCargos,
     crearEspecialidad, actualizarEspecialidad, eliminarEspecialidad,
     crearTipoServicio, actualizarTipoServicio, eliminarTipoServicio,
@@ -3593,6 +3895,7 @@ function Maestros() {
     tiposContrato = [], crearTipoContrato, actualizarTipoContrato, eliminarTipoContrato,
     tiposDocumento = [], crearTipoDocumento, actualizarTipoDocumento, importarPlantillaTiposDoc,
     requisitosCargo = [], upsertRequisitoCargo, eliminarRequisitoCargo,
+    posiciones = [], posicionesUsuarios = [], usuarios = [],
     addNotificacion
   } = useApp();
   const { centrosCosto, centrosBeneficio } = useApp();
@@ -3611,11 +3914,25 @@ function Maestros() {
   const formRef = React.useRef(null);
   const [clienteSearch, setClienteSearch] = useState('');
 
+  // Solo para mostrar el ocupante de responsable_compras_posicion_id en el catalogo de
+  // referencia de Proveedores (la gestion real vive en Compras -> Proveedores).
+  const usuariosPorId = useMemo(() => new Map(usuarios.map(u => [u.id, u])), [usuarios]);
+  const posicionPorId = useMemo(() => new Map(posiciones.map(p => [p.id, p])), [posiciones]);
+  const ocupantesPorPosicion = useMemo(
+    () => buildOcupantesPorPosicion(posicionesUsuarios, usuariosPorId, posicionPorId),
+    [posicionesUsuarios, usuariosPorId, posicionPorId]
+  );
+  const nombreResponsableCompras = (posicionId) => {
+    if (!posicionId) return null;
+    const ocupantes = ocupantesPorPosicion.get(posicionId) || [];
+    return ocupantes.length ? ocupantes.map(o => o.nombre).join(' + ') : 'Vacante';
+  };
+
   const maestrosCatalogos = [
     { id: 'mst_industrias', tabla: 'Industrias' },
     { id: 'mst_sedes', tabla: 'Sedes y ubicaciones GPS' },
     { id: 'mst_ceco_cebe', tabla: 'Centros de Costo y Beneficio' },
-    { id: 'mst_areas', tabla: 'Areas de la empresa' },
+    { id: 'mst_unidades_organizacionales', tabla: 'Unidades Organizacionales' },
     { id: 'mst_cargos', tabla: 'Cargos de la empresa' },
     { id: 'mst_tipos_documento', tabla: 'Tipos de Documento' },
     { id: 'mst_requisitos_cargo', tabla: 'Requisitos por Cargo' },
@@ -3626,7 +3943,7 @@ function Maestros() {
     { id: 'mst_almacenes', tabla: 'Almacenes y depósitos' },
     { id: 'mst_tipos_contrato', tabla: 'Tipos de Contrato' },
   ];
-  const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', tipo_catalogo:'moneda', ambito:'Ambos', exige_vencimiento:false, dias_alerta:30, es_habilitante:false, requiere_validacion:true, orden:0 };
+  const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', modo_gestion:'individual', tipo_catalogo:'moneda', ambito:'Ambos', exige_vencimiento:false, dias_alerta:30, es_habilitante:false, requiere_validacion:true, orden:0, unidad_padre_id:'', ceco_id:'', categoria:'otro' };
   const [rows, setRows] = useState({
     mst_clientes: [],
     mst_proveedores: [],
@@ -3641,7 +3958,7 @@ function Maestros() {
   const [importStep, setImportStep] = useState(1);
   const getSelectedRows = () => {
     if (!sel) return [];
-    if (sel.id === 'mst_areas') return areasEmpresa;
+    if (sel.id === 'mst_unidades_organizacionales') return unidadesOrganizacionales;
     if (sel.id === 'mst_cargos') return cargos;
     if (sel.id === 'mst_tipos_documento') return tiposDocumento;
     if (sel.id === 'mst_requisitos_cargo') return requisitosCargo;
@@ -3655,6 +3972,47 @@ function Maestros() {
     return rows[sel.id] || [];
   };
   const selectedRows = getSelectedRows();
+
+  // Ids de la propia unidad + todos sus descendientes, para excluirlos del selector de
+  // "unidad padre" al editar (evita ciclos obvios en la UI; el trigger de la base de
+  // datos es la proteccion real).
+  const getDescendientesIds = (unidadId) => {
+    const resultado = new Set([unidadId]);
+    let agrego = true;
+    while (agrego) {
+      agrego = false;
+      unidadesOrganizacionales.forEach(u => {
+        if (u.unidad_padre_id && resultado.has(u.unidad_padre_id) && !resultado.has(u.id)) {
+          resultado.add(u.id);
+          agrego = true;
+        }
+      });
+    }
+    return resultado;
+  };
+  // Arbol de unidades en orden jerarquico (para la vista indentada), con huerfanos al final.
+  const construirArbolUnidades = (unidades) => {
+    const porPadre = new Map();
+    unidades.forEach(u => {
+      const key = u.unidad_padre_id || null;
+      const lista = porPadre.get(key) || [];
+      lista.push(u);
+      porPadre.set(key, lista);
+    });
+    const resultado = [];
+    const recorrer = (padreId, depth) => {
+      const hijos = (porPadre.get(padreId) || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+      hijos.forEach(u => {
+        resultado.push({ ...u, _depth: depth });
+        recorrer(u.id, depth + 1);
+      });
+    };
+    recorrer(null, 0);
+    const incluidos = new Set(resultado.map(u => u.id));
+    unidades.filter(u => !incluidos.has(u.id)).forEach(u => resultado.push({ ...u, _depth: 0 }));
+    return resultado;
+  };
+
   const responsablesPersonal = [...personalAdmin, ...personalOperativo]
     .filter(p => p?.id && p?.nombre)
     .map(p => ({ id: p.id, nombre: p.nombre, tipo: personalOperativo.some(op => op.id === p.id) ? 'Operativo' : 'Administrativo' }))
@@ -3673,13 +4031,6 @@ function Maestros() {
   };
 
   const MAESTRO_XLSX_CFG = {
-    mst_areas: {
-      sheetName: 'Areas', filename: 'areas.xlsx',
-      headers: ['Codigo','Nombre','Tipo','Responsable','Descripcion','Estado'],
-      fields:  ['codigo','nombre','tipo','responsable','detalle','estado'],
-      ejemplo: ['ARE-001','Operaciones Lima','Operativa','','Área principal de operaciones','activo'],
-      hint: 'Tipo: Operativa / Administrativa / Ambos',
-    },
     mst_cargos: {
       sheetName: 'Cargos', filename: 'cargos.xlsx',
       headers: ['Codigo','Nombre','Tipo de personal','Descripcion','Estado'],
@@ -3807,8 +4158,7 @@ function Maestros() {
       for (let i = 0; i < valid.length; i++) {
         const r = valid[i];
         const base = { codigo: autoCode(sel.id, selectedRows.length + i), nombre: r.nombre, estado: r.estado || 'activo' };
-        if (sel.id === 'mst_areas') await crearArea({ ...base, tipo: r.tipo || 'Ambos', responsable: r.responsable || '', detalle: r.detalle || '' });
-        else if (sel.id === 'mst_cargos') await crearCargo({ ...base, tipo: r.tipo || 'Administrativo', detalle: r.detalle || '' });
+        if (sel.id === 'mst_cargos') await crearCargo({ ...base, tipo: r.tipo || 'Administrativo', detalle: r.detalle || '' });
         else if (sel.id === 'mst_especialidades') await crearEspecialidad({ ...base, area: r.area || 'General', requiere_cert: (r.requiere_cert||'').toLowerCase()==='si' });
         else if (sel.id === 'mst_tipos_servicio') await crearTipoServicio({ ...base, clasificacion: r.clasificacion || 'General', facturable: (r.facturable||'').toLowerCase()==='si' });
         else if (sel.id === 'mst_almacenes') await crearAlmacen({ ...base, tipo: r.tipo || 'Central', responsable: r.responsable || '', direccion: r.direccion || '' });
@@ -3828,7 +4178,7 @@ function Maestros() {
   };
 
   const autoCode = (id, len) => {
-    const prefixMap = { mst_areas:'ARE', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_almacenes:'ALM', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX', mst_tipos_documento:'TDOC', mst_requisitos_cargo:'CDR', mst_tipos_contrato:'TCON' };
+    const prefixMap = { mst_unidades_organizacionales:'UO', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_almacenes:'ALM', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX', mst_tipos_documento:'TDOC', mst_requisitos_cargo:'CDR', mst_tipos_contrato:'TCON' };
     const prefix = prefixMap[id] || id.slice(4,7).toUpperCase();
     return `${prefix}-${String(len+1).padStart(3,'0')}`;
   };
@@ -3844,12 +4194,12 @@ function Maestros() {
       estado: nuevo.estado
     };
     try {
-      if (sel.id === 'mst_areas') {
-        const item = { ...base, tipo: nuevo.tipo || 'Ambos', responsable: nuevo.responsable || '', detalle: nuevo.detalle || '' };
-        if (editandoId) await actualizarArea(editandoId, item);
-        else await crearArea(item);
+      if (sel.id === 'mst_unidades_organizacionales') {
+        const item = { ...base, unidad_padre_id: nuevo.unidad_padre_id || null, ceco_id: nuevo.ceco_id || null, categoria: nuevo.categoria || 'otro' };
+        if (editandoId) await actualizarUnidadOrganizacional(editandoId, item);
+        else await crearUnidadOrganizacional(item);
       } else if (sel.id === 'mst_cargos') {
-        const item = { ...base, tipo: nuevo.tipo_cargo || 'Administrativo', detalle: nuevo.detalle || 'Pendiente de completar' };
+        const item = { ...base, tipo: nuevo.tipo_cargo || 'Administrativo', detalle: nuevo.detalle || 'Pendiente de completar', modo_gestion: nuevo.modo_gestion || 'individual' };
         if (editandoId) await actualizarCargo(editandoId, item);
         else await crearCargo(item);
       } else if (sel.id === 'mst_especialidades') {
@@ -3915,8 +4265,8 @@ function Maestros() {
       let msg = rawMsg;
       if (rawMsg.includes('monedas_impuestos_unidades') || (sel.id === 'mst_impuestos' && rawMsg.includes('schema cache'))) {
         msg = 'No existe la tabla monedas_impuestos_unidades en Supabase. Aplica la migracion 095_parametros_generales_resto.sql y recarga el schema cache.';
-      } else if (rawMsg.includes('areas_empresa') || (sel.id === 'mst_areas' && rawMsg.includes('schema cache'))) {
-        msg = 'No existe la tabla areas_empresa en Supabase. Aplica la migracion 050_maestro_areas_empresa.sql y recarga el schema cache.';
+      } else if (rawMsg.includes('unidades_organizacionales') || (sel.id === 'mst_unidades_organizacionales' && rawMsg.includes('schema cache'))) {
+        msg = 'No existe la tabla unidades_organizacionales en Supabase. Aplica las migraciones de la Fase 1 (292 en adelante) y recarga el schema cache.';
       }
       setFormError(msg);
       addNotificacion?.(`No se pudo guardar el registro: ${msg}`);
@@ -3967,12 +4317,16 @@ function Maestros() {
       direccion: r.direccion || '',
       gps: r.gps || '',
       tipo_cargo: r.tipo || '',
+      modo_gestion: r.modo_gestion || 'individual',
       ambito: r.ambito || 'Ambos',
       exige_vencimiento: Boolean(r.exige_vencimiento),
       dias_alerta: r.dias_alerta ?? 30,
       es_habilitante: Boolean(r.es_habilitante),
       requiere_validacion: r.requiere_validacion !== false,
-      orden: r.orden ?? 0
+      orden: r.orden ?? 0,
+      unidad_padre_id: r.unidad_padre_id || '',
+      ceco_id: r.ceco_id || '',
+      categoria: r.categoria || 'otro',
     };
     setEditandoId(r.id);
     setNuevo(form);
@@ -3984,7 +4338,12 @@ function Maestros() {
     if (!silent && (!sel || !window.confirm(`Eliminar "${r.nombre}"? Esta accion se reflejara en la base de datos.`))) return;
     try {
       if (sel.id === 'mst_cargos') await eliminarCargo(r.id);
-      else if (sel.id === 'mst_areas') await eliminarArea(r.id);
+      else if (sel.id === 'mst_unidades_organizacionales') {
+        await actualizarUnidadOrganizacional(r.id, { estado: 'inactivo' });
+        if (editandoId === r.id) resetForm();
+        if (!silent) addNotificacion?.('Unidad organizacional desactivada.');
+        return;
+      }
       else if (sel.id === 'mst_especialidades') await eliminarEspecialidad(r.id);
       else if (sel.id === 'mst_tipos_servicio') await eliminarTipoServicio(r.id);
       else if (sel.id === 'mst_almacenes') await eliminarAlmacen(r.id);
@@ -4058,38 +4417,46 @@ function Maestros() {
             <td><strong>{p.razon_social}</strong><div className="text-muted" style={{fontSize:11}}>{p.ruc}</div></td>
             <td><span className="badge badge-cyan">{p.categoria}</span></td>
             <td><span className={'badge '+(p.estado==='homologado'?'badge-green':p.estado==='bloqueado'?'badge-red':p.estado==='observado'?'badge-orange':'badge-gray')}>{p.estado.replace('_',' ')}</span></td>
-            <td>{p.responsable_compras || '-'}</td>
+            <td>{nombreResponsableCompras(p.responsable_compras_posicion_id) || '-'}</td>
             <td><button className="btn btn-sm btn-ghost" onClick={()=>{ setSel(null); navigate('proveedores'); }}>Ir a ficha</button></td>
           </tr>
         ))}</tbody>
       </table>
     );
-    if (sel?.id === 'mst_areas') return (
-      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          <CodPreview id={sel.id} len={formLen}/>
-          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre del area *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Operaciones" autoFocus/></div>
-          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
-          <div className="input-group">
-            <label>Tipo de area</label>
-            <select className="select" value={nuevo.tipo || 'Ambos'} onChange={e=>setNuevo(v=>({...v,tipo:e.target.value}))}>
-              <option value="Administrativa">Administrativa</option>
-              <option value="Operativa">Operativa</option>
-              <option value="Ambos">Ambos</option>
-            </select>
+    if (sel?.id === 'mst_unidades_organizacionales') {
+      const excluidas = editandoId ? getDescendientesIds(editandoId) : new Set();
+      const opcionesPadre = unidadesOrganizacionales.filter(u => !excluidas.has(u.id));
+      return (
+        <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+          <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+            <CodPreview id={sel.id} len={formLen}/>
+            <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre de la unidad *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Operaciones" autoFocus/></div>
+            <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
+            <div className="input-group" style={{gridColumn:'span 2'}}>
+              <label>Unidad padre</label>
+              <select className="select" value={nuevo.unidad_padre_id} onChange={e=>setNuevo(v=>({...v,unidad_padre_id:e.target.value}))}>
+                <option value="">Sin unidad padre (raíz)</option>
+                {opcionesPadre.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+              </select>
+            </div>
+            <div className="input-group" style={{gridColumn:'span 2'}}>
+              <label>Centro de Costo</label>
+              <select className="select" value={nuevo.ceco_id} onChange={e=>setNuevo(v=>({...v,ceco_id:e.target.value}))}>
+                <option value="">Sin CECO asignado</option>
+                {(centrosCosto || []).map(c => <option key={c.id} value={c.id}>{c.codigo} · {c.nombre}</option>)}
+              </select>
+            </div>
+            <div className="input-group" style={{gridColumn:'span 2'}}>
+              <label>Categoría (para permisos)</label>
+              <select className="select" value={nuevo.categoria} onChange={e=>setNuevo(v=>({...v,categoria:e.target.value}))}>
+                {ROLE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <FormActions label="unidad" />
           </div>
-          <div className="input-group" style={{gridColumn:'span 2'}}>
-            <label>Responsable</label>
-            <select className="select" value={nuevo.responsable} onChange={e=>setNuevo(v=>({...v,responsable:e.target.value}))}>
-              <option value="">Sin responsable asignado</option>
-              {responsablesPersonal.map(p => <option key={`${p.tipo}-${p.id}`} value={p.nombre}>{p.nombre} - {p.tipo}</option>)}
-            </select>
-          </div>
-          <div className="input-group"><label>Descripcion breve</label><input className="input" value={nuevo.detalle} onChange={e=>setNuevo(v=>({...v,detalle:e.target.value}))} placeholder="Ej: Gestion operativa y supervision"/></div>
-          <FormActions label="area" />
-        </div>
-      </form>
-    );
+        </form>
+      );
+    }
     if (sel?.id === 'mst_cargos') return (
       <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
@@ -4097,6 +4464,13 @@ function Maestros() {
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre del cargo *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Analista de Calidad" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
           <div className="input-group"><label>Tipo de personal *</label><select className="select" value={nuevo.tipo_cargo} onChange={e=>setNuevo(v=>({...v,tipo_cargo:e.target.value}))}><option value="">Seleccionar...</option><option value="Administrativo">Administrativo</option><option value="Operativo">Operativo</option><option value="Ambos">Ambos</option></select></div>
+          <div className="input-group">
+            <label>Modo de gestión de Posición</label>
+            <select className="select" value={nuevo.modo_gestion} onChange={e=>setNuevo(v=>({...v,modo_gestion:e.target.value}))}>
+              <option value="individual">Individual (1 persona = 1 Posición)</option>
+              <option value="compartido">Compartido (varias personas, 1 sola Posición)</option>
+            </select>
+          </div>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Descripción breve</label><input className="input" value={nuevo.detalle} onChange={e=>setNuevo(v=>({...v,detalle:e.target.value}))} placeholder="Ej: Responsable de análisis y reportes"/></div>
           <FormActions label="cargo" />
         </div>
@@ -4277,23 +4651,29 @@ function Maestros() {
         </>
       );
     }
-    if (sel?.id === 'mst_areas') return (
-      <table className="tbl">
-        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Codigo</th><th>Area</th><th>Tipo</th><th>Responsable</th><th>Descripcion</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
-        <tbody>{selectedRows.map((r,i) => (
-          <tr key={`${r.codigo}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
-            <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
-            <td className="mono text-muted">{r.codigo}</td>
-            <td><strong>{r.nombre}</strong></td>
-            <td><span className={'badge '+(r.tipo==='Operativa'?'badge-cyan':r.tipo==='Administrativa'?'badge-gray':'badge-purple')} style={{fontSize:11}}>{r.tipo || 'Ambos'}</span></td>
-            <td className="text-muted">{r.responsable || '-'}</td>
-            <td className="text-muted" style={{fontSize:12}}>{r.detalle}</td>
-            <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
-            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
-          </tr>
-        ))}</tbody>
-      </table>
-    );
+    if (sel?.id === 'mst_unidades_organizacionales') {
+      const arbol = construirArbolUnidades(selectedRows);
+      const cecoNombrePorId = new Map((centrosCosto || []).map(c => [c.id, `${c.codigo} · ${c.nombre}`]));
+      return (
+        <table className="tbl">
+          <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Codigo</th><th>Unidad</th><th>CECO</th><th>Categoría</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+          <tbody>{arbol.map((r,i) => (
+            <tr key={`${r.id}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
+              <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
+              <td className="mono text-muted">{r.codigo}</td>
+              <td style={{paddingLeft: 12 + r._depth * 20}}>
+                {r._depth > 0 && <span className="text-muted" style={{marginRight:6}}>↳</span>}
+                <strong>{r.nombre}</strong>
+              </td>
+              <td className="text-muted" style={{fontSize:12}}>{cecoNombrePorId.get(r.ceco_id) || '-'}</td>
+              <td><span className="badge badge-cyan">{ROLE_CATEGORIES.find(c => c.value === (r.categoria || 'otro'))?.label || r.categoria}</span></td>
+              <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
+              <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
+            </tr>
+          ))}</tbody>
+        </table>
+      );
+    }
     if (sel?.id === 'mst_cargos') {
       const handleFusionar = async () => {
         if (!fusionOrigenId || !fusionDestinoId || fusionOrigenId === fusionDestinoId) return;
@@ -4312,7 +4692,74 @@ function Maestros() {
       const contarColaboradores = (cargoId) =>
         personalAdmin.filter(p => p.cargo_id === cargoId).length +
         personalOperativo.filter(p => p.cargo_id === cargoId).length;
+      // Agrupa cargos activos que probablemente sean duplicados/variantes, para que Cristhian
+      // decida cuales fusionar con fusionar_cargos. Es solo un reporte visual (union-find sobre
+      // nombre normalizado exacto + palabras compartidas de 4+ letras); no fusiona nada por si
+      // mismo. Sinonimos sin palabra en comun (ej. "Vendedor" / "Ventas") no se detectan aqui:
+      // por eso la tabla completa de abajo sigue disponible para revision manual.
+      const CARGOS_STOPWORDS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'en', 'para', 'con']);
+      const CARGOS_ACENTOS = { 'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u' };
+      const normalizarNombreCargo = (s) => (s || '')
+        .toLowerCase()
+        .replace(/[áéíóúü]/g, ch => CARGOS_ACENTOS[ch] || ch)
+        .replace(/\s+/g, ' ').trim();
+      const cargosActivos = cargos.filter(c => c.estado === 'activo');
+      const ufParent = new Map(cargosActivos.map(c => [c.id, c.id]));
+      const ufFind = (x) => { while (ufParent.get(x) !== x) x = ufParent.get(x); return x; };
+      const ufUnion = (a, b) => { const ra = ufFind(a), rb = ufFind(b); if (ra !== rb) ufParent.set(ra, rb); };
+      const porNormKey = new Map();
+      cargosActivos.forEach(c => {
+        const key = normalizarNombreCargo(c.nombre);
+        (porNormKey.get(key) || porNormKey.set(key, []).get(key)).push(c);
+      });
+      porNormKey.forEach(lista => lista.slice(1).forEach(c => ufUnion(c.id, lista[0].id)));
+      const porToken = new Map();
+      cargosActivos.forEach(c => {
+        normalizarNombreCargo(c.nombre).split(' ').filter(t => t.length >= 4 && !CARGOS_STOPWORDS.has(t)).forEach(t => {
+          (porToken.get(t) || porToken.set(t, []).get(t)).push(c);
+        });
+      });
+      porToken.forEach(lista => lista.slice(1).forEach(c => ufUnion(c.id, lista[0].id)));
+      const clustersMap = new Map();
+      cargosActivos.forEach(c => {
+        const root = ufFind(c.id);
+        (clustersMap.get(root) || clustersMap.set(root, []).get(root)).push(c);
+      });
+      const candidatosFusion = [...clustersMap.values()]
+        .filter(g => g.length > 1)
+        .map(g => [...g].sort((a, b) => contarColaboradores(b.id) - contarColaboradores(a.id) || a.nombre.localeCompare(b.nombre, 'es')));
+
       return (<>
+        {candidatosFusion.length > 0 && (
+          <div className="card" style={{ marginBottom: 16, padding: 16 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Candidatos a fusión detectados ({candidatosFusion.length})</div>
+            <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 12 }}>
+              Cargos con nombres iguales o muy similares. Revisa cada grupo y decide si fusionar (esto no fusiona nada automáticamente).
+              También pueden existir sinónimos sin palabra en común (ej. "Vendedor" / "Ventas") que no se detectan aquí — revisa la tabla completa abajo.
+            </div>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {candidatosFusion.map((grupo, gi) => (
+                <div key={gi} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {grupo.map((c, ci) => (
+                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, background: ci === 0 ? 'var(--bg-subtle)' : 'transparent', border: ci === 0 ? '1px solid var(--border)' : '1px dashed var(--border)' }}>
+                        <span style={{ fontSize: 13, fontWeight: ci === 0 ? 700 : 500 }}>{c.nombre}</span>
+                        <span className="badge badge-gray" style={{ fontSize: 10 }}>{c.tipo || '—'}</span>
+                        <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{contarColaboradores(c.id)} colab.</span>
+                        {ci === 0 && <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>(sugerido destino)</span>}
+                        {ci > 0 && (
+                          <button className="btn btn-ghost" style={{ fontSize: 11, padding: '1px 6px' }} onClick={() => { setFusionOrigenId(c.id); setFusionDestinoId(grupo[0].id); }}>
+                            Fusionar con "{grupo[0].nombre}"
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {fusionOrigenId && (
           <div className="modal-backdrop" onClick={() => { setFusionOrigenId(null); setFusionDestinoId(''); }}>
             <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:480}}>
@@ -4344,13 +4791,14 @@ function Maestros() {
           </div>
         )}
         <table className="tbl">
-          <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Código</th><th>Cargo</th><th>Tipo</th><th>Colaboradores</th><th>Descripción</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+          <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Código</th><th>Cargo</th><th>Tipo</th><th>Posición</th><th>Colaboradores</th><th>Descripción</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
           <tbody>{selectedRows.map((r,i) => (
             <tr key={`${r.codigo}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
               <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
               <td className="mono text-muted">{r.codigo}</td>
               <td><strong>{r.nombre}</strong></td>
               <td><span className={'badge '+(r.tipo==='Operativo'?'badge-cyan':r.tipo==='Ambos'?'badge-purple':'badge-gray')} style={{fontSize:11}}>{r.tipo||'—'}</span></td>
+              <td><span className={'badge '+(r.modo_gestion==='compartido'?'badge-purple':'badge-gray')} style={{fontSize:11}}>{r.modo_gestion==='compartido'?'Compartido':'Individual'}</span></td>
               <td className="text-muted" style={{fontSize:12}}>{contarColaboradores(r.id)}</td>
               <td className="text-muted" style={{fontSize:12}}>{r.detalle}</td>
               <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
@@ -7658,7 +8106,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
 
 
 function RRHHAdmin() {
-  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [] } = useApp();
+  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -7676,7 +8124,7 @@ function RRHHAdmin() {
   const canFinanzasAdmin = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [formDatosBancariosAdmin, setFormDatosBancariosAdmin] = useState([]);
   const [crearUsuarioSistemaAdmin, setCrearUsuarioSistemaAdmin] = useState(false);
-  const [usuarioSistemaFormAdmin, setUsuarioSistemaFormAdmin] = useState({ email:'', rol:'', acceso_campo:false, perfil_campo:'administrativo' });
+  const [usuarioSistemaFormAdmin, setUsuarioSistemaFormAdmin] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'administrativo' });
   // Estados para subida de documentos en tab Documentos
   const docUploadFormBase = { tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
   const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
@@ -7698,6 +8146,8 @@ function RRHHAdmin() {
   const [inlineUploadFile, setInlineUploadFile] = useState(null);
   const [inlineUploading, setInlineUploading] = useState(false);
   const [inlineUploadError, setInlineUploadError] = useState('');
+  const [retroWallInline, setRetroWallInline] = useState(null);
+  const [retroWallMotivoInline, setRetroWallMotivoInline] = useState('');
   const [modalEnviarFirmaDocAdmin, setModalEnviarFirmaDocAdmin] = useState(null);
   const [enviarFirmaMensajeAdmin, setEnviarFirmaMensajeAdmin] = useState('');
   const [enviandoFirmaAdmin, setEnviandoFirmaAdmin] = useState(false);
@@ -7767,6 +8217,108 @@ function RRHHAdmin() {
   };
   const todosPersonal = personalAdmin;
   const persona = sel ? todosPersonal.find(p => p.id === sel) : null;
+
+  // ── Motor de habilitaciones documentarias -- fuente unica: RPC calcular_habilitaciones_personal
+  // (mismo patron que pages_ops.jsx). Reemplaza la antigua replica JS que reimplementaba el
+  // calculo a mano (auditoria confirmo divergencias latentes, ej. checkbox "Es indefinido" nunca
+  // se leia). En modo mock (Supabase no configurado) cae a un calculo local via
+  // calcularEstadoDocumentoUI, que personalDocumentosService sigue exportando porque tambien lo
+  // usa el fallback mock de Personal Operativo (pages_ops.jsx) -- no se elimina esa funcion.
+  const [habilitacionesAdmin, setHabilitacionesAdmin] = useState({});
+
+  const calcHabilitacionesMockAdmin = useCallback(() => {
+    const tipoIdx = Object.fromEntries(tiposDocumento.map(t => [t.id, t]));
+    const docIdx = {};
+    for (const d of personalDocumentos) {
+      if (!d.activo && d.estado_validacion !== 'pendiente') continue;
+      const k = `${d.personal_id}|${d.tipo_documento_id || d.tipo_doc}`;
+      const prev = docIdx[k];
+      if (!prev || (d.version ?? 0) >= (prev.version ?? 0)) docIdx[k] = d;
+    }
+    const CRITICOS = new Set(['vencido', 'rechazado', 'falta', 'incompleto']);
+    const ADV = new Set(['por_vencer', 'en_revision']);
+    const mapa = {};
+    for (const p of personalAdmin) {
+      if (!p.cargo_id) { mapa[p.id] = { estado_global: 'sin_cargo', docs: [], tiene_cargo: false }; continue; }
+      const reqCargo = requisitosCargo.filter(r => r.cargo_id === p.cargo_id);
+      if (!reqCargo.length) { mapa[p.id] = { estado_global: 'sin_requisitos', docs: [], tiene_cargo: true, cargo_id: p.cargo_id }; continue; }
+      const docs = reqCargo.map(req => {
+        const tipo = tipoIdx[req.tipo_documento_id];
+        const doc = docIdx[`${p.id}|${req.tipo_documento_id}`] || null;
+        const uiState = personalDocumentosService.calcularEstadoDocumentoUI(doc, tipo, personalDocumentos || []);
+        return { ...req, tipo, doc, estado: uiState.estado, dias_restantes: uiState.dias };
+      });
+      const obs = docs.filter(d => d.obligatorio).map(d => d.estado);
+      const estado_global = obs.some(e => CRITICOS.has(e)) ? 'critico' : obs.some(e => ADV.has(e)) ? 'advertencia' : 'en_regla';
+      mapa[p.id] = { estado_global, docs, tiene_cargo: true, cargo_id: p.cargo_id };
+    }
+    return mapa;
+  }, [personalAdmin, requisitosCargo, tiposDocumento, personalDocumentos]);
+
+  // Agrupa las filas planas del RPC en la estructura { estado_global, docs, tiene_cargo } por
+  // personal_id, igual que agruparFilasMotorBD en pages_ops.jsx, pero con la agregacion propia de
+  // Ficha Administrativa (por 'obligatorio', no por 'es_habilitante' -- decision de negocio
+  // pre-existente, no se unifica aqui).
+  const agruparHabilitacionesAdmin = useCallback((filas) => {
+    const tipoIdx = Object.fromEntries(tiposDocumento.map(t => [t.id, t]));
+    const mapa = {};
+    for (const fila of filas) {
+      if (fila.personal_tipo !== 'administrativo') continue;
+      const pid = fila.personal_id;
+      if (!mapa[pid]) mapa[pid] = { estado_global: null, docs: [], tiene_cargo: fila.tiene_cargo, cargo_id: fila.cargo_id };
+      if (fila.estado === 'sin_cargo') { mapa[pid].estado_global = 'sin_cargo'; mapa[pid].tiene_cargo = false; continue; }
+      mapa[pid].docs.push({
+        tipo_documento_id: fila.tipo_documento_id,
+        obligatorio: fila.obligatorio,
+        tipo: tipoIdx[fila.tipo_documento_id] || { id: fila.tipo_documento_id, nombre: fila.tipo_doc_nombre, categoria: fila.categoria },
+        estado: fila.estado,
+        fecha_vencimiento: fila.fecha_vencimiento,
+        dias_restantes: fila.dias_restantes,
+        doc: null, // enriquecido abajo con el documento crudo, para preview/reemplazo
+      });
+    }
+    const docIdx = {};
+    for (const d of personalDocumentos) {
+      if (!d.activo && d.estado_validacion !== 'pendiente') continue;
+      const k = `${d.personal_id}|${d.tipo_documento_id || d.tipo_doc}`;
+      const prev = docIdx[k];
+      if (!prev || (d.version ?? 0) >= (prev.version ?? 0)) docIdx[k] = d;
+    }
+    const CRITICOS = new Set(['vencido', 'rechazado', 'falta', 'incompleto']);
+    const ADV = new Set(['por_vencer', 'en_revision']);
+    for (const pid of Object.keys(mapa)) {
+      const h = mapa[pid];
+      for (const d of h.docs) d.doc = docIdx[`${pid}|${d.tipo_documento_id}`] || null;
+      if (h.estado_global === 'sin_cargo') continue;
+      if (!h.docs.length) { h.estado_global = 'sin_requisitos'; continue; }
+      const obs = h.docs.filter(d => d.obligatorio).map(d => d.estado);
+      h.estado_global = obs.some(e => CRITICOS.has(e)) ? 'critico' : obs.some(e => ADV.has(e)) ? 'advertencia' : 'en_regla';
+    }
+    // Asegura que todo personalAdmin aparezca, incluso quien no tenga filas en el RPC.
+    for (const p of personalAdmin) {
+      if (!mapa[p.id]) mapa[p.id] = { estado_global: p.cargo_id ? 'sin_requisitos' : 'sin_cargo', tiene_cargo: !!p.cargo_id, cargo_id: p.cargo_id, docs: [] };
+    }
+    return mapa;
+  }, [tiposDocumento, personalDocumentos, personalAdmin]);
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+    if (!isSupabaseConfigured || !isSupabaseConfigured()) {
+      setHabilitacionesAdmin(calcHabilitacionesMockAdmin());
+      return;
+    }
+    getSupabaseClient().then(sb =>
+      sb.rpc('calcular_habilitaciones_personal', { p_empresa_id: empresa.id })
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('[Motor BD] Error al cargar habilitaciones administrativas:', error.message);
+            setHabilitacionesAdmin(calcHabilitacionesMockAdmin());
+          } else {
+            setHabilitacionesAdmin(agruparHabilitacionesAdmin(data || []));
+          }
+        })
+    );
+  }, [empresa?.id, personalDocumentos, requisitosCargo]);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -8006,6 +8558,7 @@ function RRHHAdmin() {
     const idx = todosPersonal.length + 1;
     const nuevo = {
       id: editandoId || `per_${Date.now()}`, empresa_id: empresa?.id,
+      codigo: formAlta.codigo || codigoSugeridoAdmin(),
       nombre: formAlta.nombre || 'Nuevo colaborador',
       dni: formAlta.dni || '00000000',
       fecha_nacimiento: formAlta.fecha_nacimiento || '',
@@ -8074,7 +8627,7 @@ function RRHHAdmin() {
         if (crearUsuarioSistemaAdmin && usuarioSistemaFormAdmin.email && crearUsuarioConAcceso) {
           try {
             const rolId = Object.keys(rolesCtx).find(k => rolesCtx[k]?.nombre === usuarioSistemaFormAdmin.rol) || usuarioSistemaFormAdmin.rol;
-            await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaFormAdmin.email, rol: rolId, campo: usuarioSistemaFormAdmin.acceso_campo, campoModulos: usuarioSistemaFormAdmin.acceso_campo ? [usuarioSistemaFormAdmin.perfil_campo] : [] });
+            await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaFormAdmin.email, rol: rolId, posicion_id: usuarioSistemaFormAdmin.posicion_id || null, campo: usuarioSistemaFormAdmin.acceso_campo, campoModulos: usuarioSistemaFormAdmin.acceso_campo ? [usuarioSistemaFormAdmin.perfil_campo] : [] });
             addNotificacion('Usuario de sistema creado.');
           } catch (userErr) {
             addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
@@ -8656,33 +9209,10 @@ function RRHHAdmin() {
 
           {tab === 'documentos' && (() => {
             const docsPersona = personalDocumentos.filter(d => d.personal_id === persona.id && (d.activo || d.estado_validacion === 'pendiente'));
-            // ── Motor de habilitaciones (Fase 1C: lee estado desde el campo estado_validacion)
             const DOC_LBL = { vigente:'Cargado / Validado', por_vencer:'Por vencer', vencido:'Vencido', en_revision:'En revisión', rechazado:'Rechazado', falta:'Falta', incompleto:'Sin fecha de vencimiento', historico:'Histórico' };
             const DOC_BDG = { vigente:'badge-green', por_vencer:'badge-orange', vencido:'badge-red', en_revision:'badge-cyan', rechazado:'badge-red', falta:'badge-gray', incompleto:'badge-orange', historico:'badge-gray' };
-            const habPersona = (() => {
-              if (!persona.cargo_id) return { estado_global: 'sin_cargo', docs: [], tiene_cargo: false };
-              const tipoIdx = Object.fromEntries(tiposDocumento.map(t => [t.id, t]));
-              const docIdx = {};
-              for (const d of docsPersona) {
-                const key = d.tipo_documento_id || d.tipo_doc;
-                const prev = docIdx[key];
-                if (!prev || (d.version ?? 0) >= (prev.version ?? 0)) docIdx[key] = d;
-              }
-              // calcEst y cálculo de días delegados a personalDocumentosService
-              const reqCargo = requisitosCargo.filter(r => r.cargo_id === persona.cargo_id);
-              if (!reqCargo.length) return { estado_global: 'sin_requisitos', docs: [], tiene_cargo: true };
-              const docs = reqCargo.map(req => {
-                const tipo = tipoIdx[req.tipo_documento_id];
-                const doc = docIdx[req.tipo_documento_id] || null;
-                const uiState = personalDocumentosService.calcularEstadoDocumentoUI(doc, tipo, personalDocumentos || []);
-                return { ...req, tipo, doc, estado: uiState.estado, dias_restantes: uiState.dias };
-              });
-              const CRITICOS = new Set(['vencido','rechazado','falta','incompleto']);
-              const ADV = new Set(['por_vencer','en_revision']);
-              const obs = docs.filter(d => d.obligatorio).map(d => d.estado);
-              const estado_global = obs.some(e => CRITICOS.has(e)) ? 'critico' : obs.some(e => ADV.has(e)) ? 'advertencia' : 'en_regla';
-              return { estado_global, docs, tiene_cargo: true };
-            })();
+            // Fuente unica: RPC calcular_habilitaciones_personal (ver habilitacionesAdmin arriba).
+            const habPersona = habilitacionesAdmin[persona.id] || { estado_global: 'sin_cargo', docs: [], tiene_cargo: false };
             const docReqPorTipo = Object.fromEntries(habPersona.docs.map(d => [d.tipo_documento_id, d]));
             const reqPendientes = habPersona.docs.filter(r => r.estado === 'falta' && r.obligatorio).length;
 
@@ -8695,8 +9225,8 @@ function RRHHAdmin() {
               } catch { if (doc.archivo_url) window.open(doc.archivo_url, '_blank', 'noopener,noreferrer'); }
             };
 
-            const handleSubirInline = async (e) => {
-              e.preventDefault();
+            const handleSubirInline = async (e, overrideOpts) => {
+              e?.preventDefault?.();
               if (!inlineUploadReq) return;
               const inlineEsContrato = rrhhAdminEsTipoContrato(inlineUploadReq.tipo);
               const inlineEsAdenda = rrhhAdminEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id);
@@ -8704,7 +9234,9 @@ function RRHHAdmin() {
               const esCorreccion = inlineUploadForm.modoSubida === 'corregir' && inlineUploadReq.doc;
               const esNuevoContrato = inlineUploadForm.modoSubida === 'nuevo_contrato';
               if (!esCorreccion && !inlineUploadFile) { setInlineUploadError('Selecciona el archivo.'); return; }
-              setInlineUploading(true); setInlineUploadError('');
+              const forzarOverride = overrideOpts?.forzarOverride || false;
+              const motivoOverride = overrideOpts?.motivoOverride || null;
+              setInlineUploading(true); setInlineUploadError(''); setRetroWallInline(null);
               try {
                 const cargoSeleccionado = cargos.find(c => c.id === inlineUploadForm.cargoIdFirma);
                 const sedeSeleccionada = sedes.find(s => s.id === inlineUploadForm.sedeIdFirma);
@@ -8736,6 +9268,7 @@ function RRHHAdmin() {
                     notas: inlineUploadForm.notas || null,
                     condicionesLaborales,
                     periodoIdAnterior: inlineUploadForm.periodoIdAnterior || null,
+                    forzarOverride, motivoOverride,
                   });
                   addNotificacion('Nuevo contrato creado. El período anterior quedó archivado.');
                 } else if (esCorreccion) {
@@ -8749,6 +9282,7 @@ function RRHHAdmin() {
                     personalId: persona.id,
                     personalTipo: 'administrativo',
                     tipoDoc: inlineUploadReq.tipo_documento_id,
+                    forzarOverride, motivoOverride,
                   });
                   addNotificacion('Documento corregido correctamente.');
                 } else {
@@ -8772,14 +9306,26 @@ function RRHHAdmin() {
                     fechaVigenciaCambio: inlineEsAdenda ? (inlineUploadForm.fechaVigenciaCambio || null) : null,
                     seccionDocumental: 'requisito_cargo',
                     contratoPeriodoId: inlineUploadForm.periodoIdAnterior || null,
+                    forzarOverride, motivoOverride,
                   });
                   addNotificacion('Documento subido correctamente.');
                 }
                 setInlineUploadFile(null);
                 setInlineUploadForm(inlineUploadFormBase);
                 setInlineUploadReq(null);
+                setRetroWallInline(null);
+                setRetroWallMotivoInline('');
                 if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(persona.id);
-              } catch (err) { setInlineUploadError(err?.message || 'Error al guardar.'); }
+              } catch (err) {
+                const msg = err?.message || 'Error al guardar.';
+                if (msg.startsWith('RETRO_WALL_PERMISO:')) {
+                  setInlineUploadError(msg.replace('RETRO_WALL_PERMISO:', '').trim());
+                } else if (msg.startsWith('RETRO_WALL:')) {
+                  setRetroWallInline(msg.replace('RETRO_WALL:', '').trim());
+                } else {
+                  setInlineUploadError(msg);
+                }
+              }
               finally { setInlineUploading(false); }
             };
 
@@ -8868,6 +9414,8 @@ function RRHHAdmin() {
             const handleOpenInlineUpload = (req, docsList, pContext, forceModo = null) => {
               if (req.doc && !forceModo) { abrirPreviewDocumentoAdmin(req, pContext); return; }
               setInlineUploadReq(req);
+              setRetroWallInline(null);
+              setRetroWallMotivoInline('');
               let pCargoFirma = '';
               let pRemuneracion = '';
               let pModalidad = '';
@@ -9213,6 +9761,8 @@ function RRHHAdmin() {
                                     onClick={() => {
                                       setInlineUploadReq({ tipo: th, tipo_documento_id: th.id, doc: null, estado: 'falta', obligatorio: false });
                                       setInlineUploadForm(f => ({ ...f, contratoReferenciaId: req.doc.id }));
+                                      setRetroWallInline(null);
+                                      setRetroWallMotivoInline('');
                                     }}>
                                     + {th.nombre}
                                   </button>
@@ -9306,11 +9856,11 @@ function RRHHAdmin() {
                 </div>
 
                 {inlineUploadReq && (
-                  <div className="modal-backdrop" onClick={() => setInlineUploadReq(null)}>
+                  <div className="modal-backdrop" onClick={() => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); }}>
                     <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:500}}>
                       <div className="modal-head">
                         <h3>Subir {inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id}</h3>
-                        <button className="icon-btn" onClick={() => setInlineUploadReq(null)}>{I.x}</button>
+                        <button className="icon-btn" onClick={() => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); }}>{I.x}</button>
                       </div>
                       <div className="modal-body">
                         {inlineUploadReq.doc?.archivo_url && (
@@ -9467,9 +10017,31 @@ function RRHHAdmin() {
                           </div>
                           
                           {inlineUploadError && <div style={{fontSize:12, color:'var(--danger)'}}>{inlineUploadError}</div>}
-                          
+
+                          {retroWallInline && (
+                            <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, display:'flex', flexDirection:'column', gap:8}}>
+                              <div style={{color:'var(--danger)', fontWeight:600}}>Cambio bloqueado por nómina ya procesada</div>
+                              <div>{retroWallInline}</div>
+                              <div className="input-group">
+                                <label>Justificación para forzar el cambio (obligatoria)</label>
+                                <textarea className="input" rows={2} value={retroWallMotivoInline} onChange={e=>setRetroWallMotivoInline(e.target.value)} />
+                              </div>
+                              <div className="row" style={{justifyContent:'flex-end', gap:8}}>
+                                <button type="button" className="btn btn-secondary" onClick={() => { setRetroWallInline(null); setRetroWallMotivoInline(''); }}>Cancelar</button>
+                                <button
+                                  type="button"
+                                  className="btn btn-danger"
+                                  disabled={inlineUploading || !retroWallMotivoInline.trim()}
+                                  onClick={() => handleSubirInline(null, { forzarOverride: true, motivoOverride: retroWallMotivoInline.trim() })}
+                                >
+                                  Forzar cambio (requiere autorización)
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
                           <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
-                            <button type="button" className="btn btn-secondary" onClick={() => setInlineUploadReq(null)}>Cancelar</button>
+                            <button type="button" className="btn btn-secondary" onClick={() => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); }}>Cancelar</button>
                             <button type="submit" className="btn btn-primary" disabled={inlineUploading}>
                               {inlineUploading ? 'Guardando...' : (inlineUploadForm.modoSubida === 'nuevo_contrato' ? 'Crear nuevo contrato' : inlineUploadForm.modoSubida === 'corregir' ? 'Guardar corrección' : (inlineUploadReq.doc ? 'Subir nueva versión' : 'Subir documento'))}
                             </button>
@@ -10181,9 +10753,9 @@ function RRHHAdmin() {
           </div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Colaborador</th><th>Cargo</th><th>Área</th><th>Sede</th><th>Turno</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones disp.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+              <thead><tr><th>Código</th><th>Colaborador</th><th>Cargo</th><th>Área</th><th>Sede</th><th>Turno</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones disp.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
               <tbody>
-                {todosPersonal.length === 0 && <tr><td colSpan={10} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal administrativo registrado.</td></tr>}
+                {todosPersonal.length === 0 && <tr><td colSpan={11} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal administrativo registrado.</td></tr>}
                 {todosPersonal.filter(p => {
                   if (filtroEstado && p.estado !== filtroEstado) return false;
                   if (filtroModalidad) {
@@ -10202,6 +10774,7 @@ function RRHHAdmin() {
                   const contratoInfoFila = rrhhAdminContratoVencimientoInfo(contratoDocFila);
                   return (
                   <tr key={p.id} className="hover-row" onClick={() => { setSel(p.id); setTab('ficha'); }} style={{cursor:'pointer'}}>
+                    <td className="mono text-muted">{p.codigo || '—'}</td>
                     <td>
                       <div className="row">
                         <div className="avatar" style={{width:30,height:30,fontSize:11}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
@@ -10634,6 +11207,18 @@ function RRHHAdmin() {
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" value={usuarioSistemaFormAdmin.email} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
                       <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaFormAdmin.rol} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>
                       <div className="input-group"><label>Perfil de campo</label><select className="select" value={usuarioSistemaFormAdmin.perfil_campo} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,perfil_campo:e.target.value}))}><option value="administrativo">Administrativo</option><option value="supervisor">Supervisor</option><option value="gerencia">Gerencia</option><option value="vendedor">Vendedor</option><option value="comprador">Comprador</option></select></div>
+                      <div style={{gridColumn:'1/-1'}}>
+                        <PosicionSelector
+                          value={usuarioSistemaFormAdmin.posicion_id}
+                          onChange={posicionId => setUsuarioSistemaFormAdmin(v=>({...v,posicion_id:posicionId}))}
+                          posiciones={posiciones}
+                          posicionesUsuarios={posicionesUsuarios}
+                          unidadesOrganizacionales={unidadesOrganizacionales}
+                          cargos={cargos}
+                          usuarios={usuarios}
+                          onCrearPosicion={crearPosicion}
+                        />
+                      </div>
                       <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaFormAdmin.acceso_campo} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,acceso_campo:e.target.checked}))}/>Acceso a app de campo</label>
                     </div>
                   )}
@@ -10759,13 +11344,18 @@ const NIVEL_COLORS = {
   soporte: '#64748b',
 };
 
-function OrgNodo({ user, depth, getChildren, roles, selId, onSelect }) {
+function OrgNodo({ posicion, depth, getChildren, ocupantesPorPosicion, unidadNombrePorId, roles, selId, onSelect }) {
   const [abierto, setAbierto] = useState(depth < 2);
-  const hijos = getChildren(user.id);
-  const rol = roles?.[user.rol];
-  const nivel = getUserHierarchyLevel(user, roles);
-  const color = NIVEL_COLORS[nivel] || '#64748b';
-  const seleccionado = selId === user.id;
+  const hijos = getChildren(posicion.id);
+  const ocupantes = ocupantesPorPosicion.get(posicion.id) || [];
+  const vacante = ocupantes.length === 0;
+  const nivel = ocupantes[0] ? getUserHierarchyLevel(ocupantes[0], roles) : null;
+  const color = vacante ? '#94a3b8' : (NIVEL_COLORS[nivel] || '#64748b');
+  const seleccionado = selId === posicion.id;
+  const unidadNombre = unidadNombrePorId.get(posicion.unidad_organizacional_id) || 'Sin unidad';
+  const etiqueta = vacante ? 'Posicion vacante' : ocupantes.map(o => o.nombre).join(' + ');
+  const otrasAsignaciones = (ocupantes[0]?.posiciones || []).filter(p => !p.principal);
+  const tieneRespaldo = ocupantes.some(o => o.esPosicionRespaldo);
 
   return (
     <div style={{ position: 'relative', marginLeft: depth > 0 ? 28 : 0 }}>
@@ -10773,24 +11363,35 @@ function OrgNodo({ user, depth, getChildren, roles, selId, onSelect }) {
         <div style={{ position: 'absolute', left: -20, top: 19, width: 20, borderTop: '1px solid var(--border)' }} />
       )}
       <div
-        onClick={() => onSelect(user)}
+        onClick={() => onSelect(posicion)}
         style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '7px 12px', borderRadius: 8, marginBottom: 5, cursor: 'pointer',
-          border: `1px solid ${seleccionado ? color : 'var(--border)'}`,
+          border: `1px ${vacante ? 'dashed' : 'solid'} ${seleccionado ? color : 'var(--border)'}`,
           background: seleccionado ? `color-mix(in srgb, ${color} 9%, transparent)` : 'var(--card)',
           borderLeft: `3px solid ${color}`,
         }}
       >
         <div style={{ width: 30, height: 30, borderRadius: '50%', background: color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-          {(user.nombre || '?').split(' ').map(x => x[0]).slice(0, 2).join('')}
+          {vacante ? '—' : ocupantes.map(o => (o.nombre || '?')[0]).slice(0, 2).join('')}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.nombre}</div>
+          <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: vacante ? 'italic' : 'normal', color: vacante ? 'var(--fg-muted)' : 'inherit' }}>
+            {etiqueta}
+          </div>
           <div style={{ fontSize: 11, color: 'var(--fg-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {rol?.nombre || user.rol_nombre || user.rol}
+            {unidadNombre}
+            {otrasAsignaciones.length > 0 && ` · también en ${otrasAsignaciones.map(a => a.unidad_organizacional_nombre || '?').join(', ')}`}
           </div>
         </div>
+        {tieneRespaldo && (
+          <span
+            title="Posición sin vínculo principal confirmado — revisar"
+            style={{ width: 16, height: 16, flexShrink: 0, display: 'inline-flex', color: 'var(--orange)' }}
+          >
+            {I.alert}
+          </span>
+        )}
         {hijos.length > 0 && (
           <button
             type="button"
@@ -10804,7 +11405,11 @@ function OrgNodo({ user, depth, getChildren, roles, selId, onSelect }) {
       {abierto && hijos.length > 0 && (
         <div style={{ marginLeft: 16, paddingLeft: 12, borderLeft: '1px dashed var(--border)' }}>
           {hijos.map(h => (
-            <OrgNodo key={h.id} user={h} depth={depth + 1} getChildren={getChildren} roles={roles} selId={selId} onSelect={onSelect} />
+            <OrgNodo
+              key={h.id} posicion={h} depth={depth + 1} getChildren={getChildren}
+              ocupantesPorPosicion={ocupantesPorPosicion} unidadNombrePorId={unidadNombrePorId}
+              roles={roles} selId={selId} onSelect={onSelect}
+            />
           ))}
         </div>
       )}
@@ -10813,32 +11418,84 @@ function OrgNodo({ user, depth, getChildren, roles, selId, onSelect }) {
 }
 
 function Organigrama() {
-  const { usuarios, empresa, empresasPlataforma, roles: rolesCtx, actualizarUsuarioAcceso, addNotificacion, authUser } = useApp();
+  const {
+    usuarios, posiciones, posicionesUsuarios, unidadesOrganizacionales, cargos = [],
+    empresa, empresasPlataforma, roles: rolesCtx, actualizarUsuarioAcceso, reasignarUnidadDePosicion,
+    crearPosicion, archivarPosicion, eliminarPosicion, reasignarCargoDePosicion, addNotificacion, authUser,
+    personalAdmin = [], personalOperativo = [],
+  } = useApp();
   const [filtroEmpresa, setFiltroEmpresa] = useState('');
   const [selNode, setSelNode] = useState(null);
-  const [nuevoJefeId, setNuevoJefeId] = useState('');
+  const [selOcupanteId, setSelOcupanteId] = useState(null);
+  const [nuevaPosicionId, setNuevaPosicionId] = useState('');
   const [nuevoRolId, setNuevoRolId] = useState('');
+  const [nuevaUnidadId, setNuevaUnidadId] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [guardandoRol, setGuardandoRol] = useState(false);
+  const [guardandoUnidad, setGuardandoUnidad] = useState(false);
+  const [showAsignarCargos, setShowAsignarCargos] = useState(false);
+  const [vistaOrganigrama, setVistaOrganigrama] = useState('arbol');
 
   const empresaActiva = filtroEmpresa || empresa?.id || '';
   const usersDeEmpresa = useMemo(
     () => usuarios.filter(u => !empresaActiva || u.empresa_id === empresaActiva),
     [usuarios, empresaActiva]
   );
-  const byId = useMemo(() => new Map(usersDeEmpresa.map(u => [u.id, u])), [usersDeEmpresa]);
-  const roots = useMemo(
-    () => usersDeEmpresa.filter(u => !u.jefe_user_id || !byId.has(u.jefe_user_id)),
-    [usersDeEmpresa, byId]
+  const usuariosPorId = useMemo(() => new Map(usersDeEmpresa.map(u => [u.id, u])), [usersDeEmpresa]);
+  const posicionesDeEmpresa = useMemo(
+    () => (posiciones || []).filter(p => !empresaActiva || p.empresa_id === empresaActiva),
+    [posiciones, empresaActiva]
   );
-  const getChildren = (userId) => usersDeEmpresa.filter(u => u.jefe_user_id === userId);
+  const posicionPorId = useMemo(() => new Map(posicionesDeEmpresa.map(p => [p.id, p])), [posicionesDeEmpresa]);
+  const unidadNombrePorId = useMemo(
+    () => new Map((unidadesOrganizacionales || []).map(u => [u.id, u.nombre])),
+    [unidadesOrganizacionales]
+  );
+  const ocupantesPorPosicion = useMemo(
+    () => buildOcupantesPorPosicion(posicionesUsuarios.filter(pu => posicionPorId.has(pu.posicion_id)), usuariosPorId, posicionPorId),
+    [posicionesUsuarios, posicionPorId, usuariosPorId]
+  );
 
-  const potentialesJefes = useMemo(() => {
-    if (!selNode) return [];
-    return usersDeEmpresa
-      .filter(u => u.id !== selNode.id && hasTeamScope(u, rolesCtx))
-      .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
-  }, [selNode, usersDeEmpresa, rolesCtx]);
+  // Conteo para el boton "Asignar cargos" -- el detalle/sugerencia vive en AsignacionCargosModal.
+  const posicionesSinCargoCount = useMemo(
+    () => getPosicionesSinCargo(posicionesDeEmpresa).length,
+    [posicionesDeEmpresa]
+  );
+
+  // Una posicion se muestra como nodo propio del arbol si esta vacante o si es la posicion
+  // PRINCIPAL de su ocupante (o, en su defecto, la posicion de respaldo elegida cuando la
+  // persona no tiene ningun vinculo principal real -- ver buildOcupantesPorPosicion). Las
+  // posiciones matriciales ocupadas no generan un nodo aparte (para no repetir el nombre de la
+  // misma persona varias veces); su info se muestra como etiqueta secundaria en el nodo
+  // principal de esa persona (ver OrgNodo).
+  const esPosicionVisible = (posicion) => {
+    const ocupantes = ocupantesPorPosicion.get(posicion.id) || [];
+    return ocupantes.length === 0 || ocupantes.some(o => o.esPosicionPrincipal || o.esPosicionRespaldo);
+  };
+  const padreVisible = (posicion) => {
+    let actual = posicionPorId.get(posicion.reporta_a_posicion_id);
+    while (actual && !esPosicionVisible(actual)) {
+      actual = posicionPorId.get(actual.reporta_a_posicion_id);
+    }
+    return actual || null;
+  };
+  const posicionesVisibles = useMemo(
+    () => posicionesDeEmpresa.filter(esPosicionVisible),
+    [posicionesDeEmpresa, ocupantesPorPosicion]
+  );
+  const roots = useMemo(
+    () => posicionesVisibles.filter(p => !padreVisible(p)),
+    [posicionesVisibles, posicionPorId, ocupantesPorPosicion]
+  );
+  const getChildren = (posicionId) => posicionesVisibles.filter(p => padreVisible(p)?.id === posicionId);
+
+  const selOcupantes = selNode ? (ocupantesPorPosicion.get(selNode.id) || []) : [];
+  const selOcupante = selOcupantes.find(o => o.id === selOcupanteId) || selOcupantes[0] || null;
+  // Subordinados directos reales (incluye posiciones matriciales ocupadas, no solo las
+  // que se muestran como nodo propio del arbol) -- para advertir antes de mover de unidad.
+  const subordinadosDirectos = selNode
+    ? posicionesDeEmpresa.filter(p => p.reporta_a_posicion_id === selNode.id).length
+    : 0;
 
   const rolesOpciones = useMemo(
     () => Object.entries(rolesCtx || {})
@@ -10847,25 +11504,50 @@ function Organigrama() {
     [rolesCtx, empresaActiva]
   );
 
-  const handleGuardarJefe = async () => {
-    if (!selNode) return;
+  const seleccionarPosicion = (posicion) => {
+    setSelNode(posicion);
+    const ocupantes = ocupantesPorPosicion.get(posicion.id) || [];
+    const primero = ocupantes[0] || null;
+    setSelOcupanteId(primero?.id || null);
+    setNuevaPosicionId(primero ? (getPrimaryPosicion(primero)?.posicion_id || '') : '');
+    setNuevoRolId(primero?.rol || '');
+    setNuevaUnidadId(posicion.unidad_organizacional_id || '');
+  };
+
+  const handleGuardarUnidad = async () => {
+    if (!selNode || !nuevaUnidadId || nuevaUnidadId === selNode.unidad_organizacional_id) return;
+    setGuardandoUnidad(true);
+    try {
+      await reasignarUnidadDePosicion(selNode.id, nuevaUnidadId);
+      setSelNode(n => n ? { ...n, unidad_organizacional_id: nuevaUnidadId } : null);
+      addNotificacion(
+        subordinadosDirectos > 0
+          ? `Unidad actualizada. Sus ${subordinadosDirectos} subordinado(s) directo(s) mantienen su propia unidad (no se movieron en cascada).`
+          : 'Unidad organizacional actualizada.'
+      );
+    } catch {
+      addNotificacion('No se pudo actualizar la unidad organizacional.');
+    }
+    setGuardandoUnidad(false);
+  };
+
+  const handleGuardarPosicion = async () => {
+    if (!selOcupante || !nuevaPosicionId) return;
     setGuardando(true);
     try {
-      await actualizarUsuarioAcceso(selNode.id, { ...selNode, jefe_user_id: nuevoJefeId || null });
-      setSelNode(s => s ? { ...s, jefe_user_id: nuevoJefeId || null } : null);
-      addNotificacion('Jefe directo actualizado.');
+      await actualizarUsuarioAcceso(selOcupante.id, { ...selOcupante, posicion_id: nuevaPosicionId });
+      addNotificacion('Posicion actualizada.');
     } catch {
-      addNotificacion('No se pudo actualizar el jefe.');
+      addNotificacion('No se pudo actualizar la posicion.');
     }
     setGuardando(false);
   };
 
   const handleGuardarRol = async () => {
-    if (!selNode || !nuevoRolId) return;
+    if (!selOcupante || !nuevoRolId) return;
     setGuardandoRol(true);
     try {
-      await actualizarUsuarioAcceso(selNode.id, { ...selNode, rol: nuevoRolId });
-      setSelNode(s => s ? { ...s, rol: nuevoRolId } : null);
+      await actualizarUsuarioAcceso(selOcupante.id, { ...selOcupante, rol: nuevoRolId });
       addNotificacion('Rol actualizado.');
     } catch {
       addNotificacion('No se pudo actualizar el rol.');
@@ -10880,30 +11562,79 @@ function Organigrama() {
   };
 
   const isSuperadmin = authUser?.permisos?.plataforma;
-  const selRolEfectivo = nuevoRolId || selNode?.rol;
-  const selNivel = selNode ? (rolesCtx?.[selRolEfectivo]?.nivel_jerarquico || getUserHierarchyLevel(selNode, rolesCtx)) : null;
-  const selColor = NIVEL_COLORS[selNivel] || '#64748b';
+  const selVacante = Boolean(selNode) && selOcupantes.length === 0;
+  const selRolEfectivo = nuevoRolId || selOcupante?.rol;
+  const selNivel = selOcupante ? (rolesCtx?.[selRolEfectivo]?.nivel_jerarquico || getUserHierarchyLevel(selOcupante, rolesCtx)) : null;
+  const selColor = selVacante ? '#94a3b8' : (NIVEL_COLORS[selNivel] || '#64748b');
   const selRol = rolesCtx?.[selRolEfectivo];
-  const selJefe = selNode ? byId.get(selNode.jefe_user_id) : null;
+  const posicionJefe = selNode ? posicionPorId.get(selNode.reporta_a_posicion_id) : null;
+  const ocupantesJefe = posicionJefe ? (ocupantesPorPosicion.get(posicionJefe.id) || []) : [];
   const selHijos = selNode ? getChildren(selNode.id) : [];
-  const jefeNoChanged = nuevoJefeId === (selNode?.jefe_user_id || '');
+  const posicionNoChanged = nuevaPosicionId === (getPrimaryPosicion(selOcupante)?.posicion_id || '');
 
   return (
     <>
       <div className="page-header">
         <div>
           <h1 className="page-title">Organigrama</h1>
-          <div className="page-sub">Árbol jerárquico · {usersDeEmpresa.length} usuarios</div>
+          <div className="page-sub">
+            {vistaOrganigrama === 'arbol' ? 'Árbol de posiciones' : 'Gestión de posiciones'} · {posicionesDeEmpresa.length} posiciones
+          </div>
         </div>
-        {isSuperadmin && (
-          <select className="input" style={{ width: 240 }} value={filtroEmpresa} onChange={e => { setFiltroEmpresa(e.target.value); setSelNode(null); }}>
-            <option value="">Todas las empresas</option>
-            {[...new Map(usuarios.map(u => [u.empresa_id, getEmpresaNombre(u.empresa_id)])).entries()].map(([id, nombre]) => (
-              <option key={id} value={id}>{nombre}</option>
-            ))}
-          </select>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowAsignarCargos(true)}>
+            Asignar cargos {posicionesSinCargoCount > 0 ? `(${posicionesSinCargoCount} pendientes)` : '(completo)'}
+          </button>
+          {isSuperadmin && (
+            <select className="input" style={{ width: 240 }} value={filtroEmpresa} onChange={e => { setFiltroEmpresa(e.target.value); setSelNode(null); }}>
+              <option value="">Todas las empresas</option>
+              {[...new Map(usuarios.map(u => [u.empresa_id, getEmpresaNombre(u.empresa_id)])).entries()].map(([id, nombre]) => (
+                <option key={id} value={id}>{nombre}</option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
+
+      <div className="tabs" style={{ marginTop: 24, marginBottom: 20 }}>
+        <div className={'tab ' + (vistaOrganigrama === 'arbol' ? 'active' : '')} onClick={() => setVistaOrganigrama('arbol')}>Árbol</div>
+        <div className={'tab ' + (vistaOrganigrama === 'gestion' ? 'active' : '')} onClick={() => setVistaOrganigrama('gestion')}>Gestión de Posiciones</div>
+      </div>
+
+      {showAsignarCargos && (
+        <AsignacionCargosModal
+          posiciones={posicionesDeEmpresa}
+          ocupantesPorPosicion={ocupantesPorPosicion}
+          unidadNombrePorId={unidadNombrePorId}
+          cargos={cargos}
+          personalAdmin={personalAdmin}
+          personalOperativo={personalOperativo}
+          reasignarCargoDePosicion={reasignarCargoDePosicion}
+          addNotificacion={addNotificacion}
+          onClose={() => setShowAsignarCargos(false)}
+        />
+      )}
+
+      {vistaOrganigrama === 'gestion' && (
+        <GestionPosicionesTab
+          posiciones={posicionesDeEmpresa}
+          posicionesUsuarios={posicionesUsuarios}
+          ocupantesPorPosicion={ocupantesPorPosicion}
+          unidadNombrePorId={unidadNombrePorId}
+          posicionPorId={posicionPorId}
+          unidadesOrganizacionales={unidadesOrganizacionales}
+          cargos={cargos}
+          usuarios={usersDeEmpresa}
+          reasignarUnidadDePosicion={reasignarUnidadDePosicion}
+          reasignarCargoDePosicion={reasignarCargoDePosicion}
+          crearPosicion={crearPosicion}
+          archivarPosicion={archivarPosicion}
+          eliminarPosicion={eliminarPosicion}
+          addNotificacion={addNotificacion}
+        />
+      )}
+
+      {vistaOrganigrama === 'arbol' && (<>
 
       {/* Leyenda */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -10913,6 +11644,10 @@ function Organigrama() {
             <span style={{ color: 'var(--fg-muted)' }}>{l.label}</span>
           </div>
         ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+          <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#94a3b8', flexShrink: 0, border: '1px dashed #64748b' }} />
+          <span style={{ color: 'var(--fg-muted)' }}>Posicion vacante</span>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
@@ -10921,16 +11656,17 @@ function Organigrama() {
         <div style={{ flex: 1, minWidth: 0 }}>
           {roots.length === 0 ? (
             <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--fg-muted)' }}>
-              No hay usuarios configurados. Ve a Usuarios y asigna un jefe directo a cada persona.
+              No hay posiciones configuradas todavia. Ve a Usuarios y asigna un jefe directo a cada persona.
             </div>
           ) : (
             <div className="card" style={{ padding: 20 }}>
               {roots.map(r => (
                 <OrgNodo
-                  key={r.id} user={r} depth={0}
-                  getChildren={getChildren} roles={rolesCtx}
+                  key={r.id} posicion={r} depth={0}
+                  getChildren={getChildren} ocupantesPorPosicion={ocupantesPorPosicion}
+                  unidadNombrePorId={unidadNombrePorId} roles={rolesCtx}
                   selId={selNode?.id}
-                  onSelect={u => { setSelNode(u); setNuevoJefeId(u.jefe_user_id || ''); setNuevoRolId(u.rol || ''); }}
+                  onSelect={seleccionarPosicion}
                 />
               ))}
             </div>
@@ -10945,77 +11681,136 @@ function Organigrama() {
               <button className="icon-btn" onClick={() => setSelNode(null)}>{I.x}</button>
             </div>
 
-            {/* Avatar + nombre */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-              <div style={{ width: 44, height: 44, borderRadius: '50%', background: selColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
-                {(selNode.nombre || '?').split(' ').map(x => x[0]).slice(0, 2).join('')}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selNode.nombre}</div>
-                <div style={{ fontSize: 11, color: 'var(--fg-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selNode.email}</div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-              <span className="badge" style={{ background: `color-mix(in srgb, ${selColor} 15%, transparent)`, color: selColor, border: `1px solid color-mix(in srgb, ${selColor} 30%, transparent)` }}>
-                {selRol?.nombre || selNode.rol}
-              </span>
-              <span className="badge badge-gray">{nivelLabel(selNivel)}</span>
-            </div>
-
-            {/* Jefe actual */}
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>Jefe directo actual</div>
-            <div style={{ fontSize: 13, fontWeight: 600, padding: '6px 10px', background: 'var(--bg-subtle)', borderRadius: 6, marginBottom: 16 }}>
-              {selJefe
-                ? <span>{selJefe.nombre}</span>
-                : <span style={{ color: 'var(--fg-muted)', fontStyle: 'italic' }}>Sin jefe (nodo raíz)</span>}
-            </div>
-
-            {/* Cambiar jefe */}
-            <div className="input-group" style={{ marginBottom: 12 }}>
-              <label>Cambiar jefe directo</label>
-              <select className="select" value={nuevoJefeId} onChange={e => setNuevoJefeId(e.target.value)}>
-                <option value="">Sin jefe (nodo raíz)</option>
-                {potentialesJefes.map(u => (
-                  <option key={u.id} value={u.id}>
-                    {u.nombre} · {rolesCtx?.[u.rol]?.nombre || u.rol_nombre || u.rol}
-                  </option>
+            <div className="input-group" style={{ marginBottom: 8 }}>
+              <label>Unidad organizacional</label>
+              <select className="select" value={nuevaUnidadId} onChange={e => setNuevaUnidadId(e.target.value)}>
+                {(unidadesOrganizacionales || []).filter(u => u.estado === 'activo' || u.id === selNode.unidad_organizacional_id).map(u => (
+                  <option key={u.id} value={u.id}>{u.nombre}</option>
                 ))}
               </select>
             </div>
-
+            {subordinadosDirectos > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 8, fontStyle: 'italic' }}>
+                Esta posición tiene {subordinadosDirectos} subordinado(s) directo(s). Cambiar su unidad no los mueve a ellos.
+              </div>
+            )}
             <button
-              className="btn btn-primary"
-              style={{ width: '100%' }}
-              onClick={handleGuardarJefe}
-              disabled={guardando || jefeNoChanged}
+              className="btn btn-secondary"
+              style={{ width: '100%', marginBottom: 14 }}
+              onClick={handleGuardarUnidad}
+              disabled={guardandoUnidad || !nuevaUnidadId || nuevaUnidadId === selNode.unidad_organizacional_id}
             >
-              {guardando ? 'Guardando...' : 'Guardar jefe'}
+              {guardandoUnidad ? 'Guardando...' : 'Guardar unidad'}
             </button>
 
-            {/* Cambiar rol */}
-            <div style={{ paddingTop: 14, borderTop: '1px solid var(--border)', marginTop: 16, marginBottom: 12 }}>
-              <div className="input-group" style={{ marginBottom: 10 }}>
-                <label>Rol</label>
-                <select className="select" value={nuevoRolId} onChange={e => setNuevoRolId(e.target.value)}>
-                  {rolesOpciones.map(([id, r]) => (
-                    <option key={id} value={id}>
-                      {r.nombre} · {nivelLabel(r.nivel_jerarquico || 'operativo')}
-                    </option>
-                  ))}
-                </select>
+            {selVacante ? (
+              <div className="card" style={{ padding: 12, background: 'var(--bg-subtle)', border: '1px dashed var(--border)', marginBottom: 16, fontSize: 12, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
+                Esta posicion no tiene ocupante activo.
               </div>
-              <button
-                className="btn btn-secondary"
-                style={{ width: '100%' }}
-                onClick={handleGuardarRol}
-                disabled={guardandoRol || !nuevoRolId || nuevoRolId === selNode?.rol}
-              >
-                {guardandoRol ? 'Guardando...' : 'Guardar rol'}
-              </button>
-            </div>
+            ) : (
+              <>
+                {/* Selector de ocupante, solo si la posicion tiene mas de una persona */}
+                {selOcupantes.length > 1 && (
+                  <div className="input-group" style={{ marginBottom: 12 }}>
+                    <label>Ocupante</label>
+                    <select
+                      className="select"
+                      value={selOcupanteId || ''}
+                      onChange={e => {
+                        setSelOcupanteId(e.target.value);
+                        const persona = selOcupantes.find(o => o.id === e.target.value);
+                        setNuevoJefeId(persona?.jefe_user_id || '');
+                        setNuevoRolId(persona?.rol || '');
+                      }}
+                    >
+                      {selOcupantes.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+                    </select>
+                  </div>
+                )}
 
-            {/* Reportes directos */}
+                {/* Avatar + nombre */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: selColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
+                    {(selOcupante?.nombre || '?').split(' ').map(x => x[0]).slice(0, 2).join('')}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selOcupante?.nombre}</div>
+                    <div style={{ fontSize: 11, color: 'var(--fg-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selOcupante?.email}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+                  <span className="badge" style={{ background: `color-mix(in srgb, ${selColor} 15%, transparent)`, color: selColor, border: `1px solid color-mix(in srgb, ${selColor} 30%, transparent)` }}>
+                    {selRol?.nombre || selOcupante?.rol}
+                  </span>
+                  <span className="badge badge-gray">{nivelLabel(selNivel)}</span>
+                </div>
+
+                {/* Jefe de ESTA posicion (solo lectura, viene del arbol de posiciones) */}
+                <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>Jefe de esta posición</div>
+                <div style={{ fontSize: 13, fontWeight: 600, padding: '6px 10px', background: 'var(--bg-subtle)', borderRadius: 6, marginBottom: 16 }}>
+                  {!posicionJefe
+                    ? <span style={{ color: 'var(--fg-muted)', fontStyle: 'italic' }}>Sin jefe (nodo raíz)</span>
+                    : ocupantesJefe.length
+                      ? <span>{ocupantesJefe.map(o => o.nombre).join(' + ')}</span>
+                      : <span style={{ color: 'var(--fg-muted)', fontStyle: 'italic' }}>Posicion vacante</span>}
+                </div>
+
+                {!selOcupante?.esPosicionPrincipal && (
+                  <div className="card" style={{ padding: 10, background: 'var(--bg-subtle)', border: '1px dashed var(--border)', marginBottom: 16, fontSize: 12, color: 'var(--fg-muted)' }}>
+                    Esta es una asignación matricial de {selOcupante?.nombre}. El editor de abajo cambia su jefe y rol <strong>principal</strong>, no esta posición matricial en particular.
+                  </div>
+                )}
+
+                {/* Mover a otra posicion (afecta la posicion PRINCIPAL de la persona, disponible
+                    desde cualquier posicion suya, igual que antes con "Cambiar jefe") */}
+                <PosicionSelector
+                  label={`Mover a otra posición${selOcupante?.esPosicionPrincipal ? '' : ' (principal)'}`}
+                  value={nuevaPosicionId}
+                  onChange={setNuevaPosicionId}
+                  posiciones={posicionesDeEmpresa}
+                  posicionesUsuarios={posicionesUsuarios}
+                  unidadesOrganizacionales={unidadesOrganizacionales}
+                  cargos={cargos}
+                  usuarios={usuarios}
+                  onCrearPosicion={crearPosicion}
+                  currentUserId={selOcupante?.id}
+                />
+
+                <button
+                  className="btn btn-primary"
+                  style={{ width: '100%' }}
+                  onClick={handleGuardarPosicion}
+                  disabled={guardando || posicionNoChanged}
+                >
+                  {guardando ? 'Guardando...' : 'Guardar posición'}
+                </button>
+
+                {/* Cambiar rol */}
+                <div style={{ paddingTop: 14, borderTop: '1px solid var(--border)', marginTop: 16, marginBottom: 12 }}>
+                  <div className="input-group" style={{ marginBottom: 10 }}>
+                    <label>Rol</label>
+                    <select className="select" value={nuevoRolId} onChange={e => setNuevoRolId(e.target.value)}>
+                      {rolesOpciones.map(([id, r]) => (
+                        <option key={id} value={id}>
+                          {r.nombre} · {nivelLabel(r.nivel_jerarquico || 'operativo')}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ width: '100%' }}
+                    onClick={handleGuardarRol}
+                    disabled={guardandoRol || !nuevoRolId || nuevoRolId === selOcupante?.rol}
+                  >
+                    {guardandoRol ? 'Guardando...' : 'Guardar rol'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Reportes directos (posiciones hijas, incluidas vacantes) */}
             {selHijos.length > 0 && (
               <div style={{ paddingTop: 14, borderTop: '1px solid var(--border)' }}>
                 <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 8 }}>
@@ -11023,20 +11818,24 @@ function Organigrama() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {selHijos.map(h => {
-                    const hNivel = getUserHierarchyLevel(h, rolesCtx);
-                    const hColor = NIVEL_COLORS[hNivel] || '#64748b';
+                    const hOcupantes = ocupantesPorPosicion.get(h.id) || [];
+                    const hVacante = hOcupantes.length === 0;
+                    const hNivel = hOcupantes[0] ? getUserHierarchyLevel(hOcupantes[0], rolesCtx) : null;
+                    const hColor = hVacante ? '#94a3b8' : (NIVEL_COLORS[hNivel] || '#64748b');
                     return (
                       <button
                         key={h.id} type="button"
-                        onClick={() => { setSelNode(h); setNuevoJefeId(h.jefe_user_id || ''); setNuevoRolId(h.rol || ''); }}
+                        onClick={() => seleccionarPosicion(h)}
                         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-subtle)', cursor: 'pointer', textAlign: 'left', borderLeft: `3px solid ${hColor}` }}
                       >
                         <div style={{ width: 22, height: 22, borderRadius: '50%', background: hColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
-                          {(h.nombre || '?').split(' ').map(x => x[0]).slice(0, 2).join('')}
+                          {hVacante ? '—' : hOcupantes.map(o => (o.nombre || '?')[0]).slice(0, 2).join('')}
                         </div>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.nombre}</div>
-                          <div style={{ fontSize: 10, color: 'var(--fg-muted)' }}>{rolesCtx?.[h.rol]?.nombre || h.rol}</div>
+                          <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: hVacante ? 'italic' : 'normal' }}>
+                            {hVacante ? 'Posicion vacante' : hOcupantes.map(o => o.nombre).join(' + ')}
+                          </div>
+                          <div style={{ fontSize: 10, color: 'var(--fg-muted)' }}>{unidadNombrePorId.get(h.unidad_organizacional_id) || 'Sin unidad'}</div>
                         </div>
                       </button>
                     );
@@ -11047,6 +11846,7 @@ function Organigrama() {
           </div>
         )}
       </div>
+      </>)}
     </>
   );
 }
