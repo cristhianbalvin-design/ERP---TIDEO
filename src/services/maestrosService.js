@@ -92,6 +92,37 @@ export const maestrosService = {
     if (error) throw error;
   },
 
+  // Niveles Jerarquicos
+  getNivelesJerarquicos: async (empresaId) => {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('niveles_jerarquicos').select('*').eq('empresa_id', empresaId).order('orden', { ascending: true });
+    if (error) { console.error('Error fetching niveles jerarquicos:', error); return []; }
+    return data;
+  },
+  crearNivelJerarquico: async (empresaId, nivel) => {
+    const supabase = await getSupabaseClient();
+    const payload = {
+      id: nivel.id || makeId('nvj'),
+      empresa_id: empresaId,
+      ...pick(nivel, ['codigo', 'nombre', 'alcance', 'orden', 'estado']),
+    };
+    const { data, error } = await supabase.from('niveles_jerarquicos').insert([payload]).select().single();
+    if (error) throw error;
+    return data;
+  },
+  actualizarNivelJerarquico: async (nivelId, payload) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('niveles_jerarquicos').update(pick(payload, ['codigo', 'nombre', 'alcance', 'orden', 'estado'])).eq('id', nivelId).select().single();
+    if (error) throw error;
+    return data;
+  },
+  eliminarNivelJerarquico: async (nivelId) => {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.from('niveles_jerarquicos').delete().eq('id', nivelId);
+    if (error) throw error;
+  },
+
   // Tipos de Servicio
   getTiposServicio: async (empresaId) => {
     if (!empresaId) return [];
