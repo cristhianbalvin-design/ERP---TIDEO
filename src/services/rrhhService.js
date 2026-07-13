@@ -149,6 +149,9 @@ const toTurnoRow = (empresaId, turno = {}) => {
     minutos_refrigerio: Number(turno.minutos_refrigerio ?? turno.refrigerio_minutos ?? 0),
     horas_efectivas: Number(turno.horas_efectivas || 0),
     estado: turno.estado || 'activo',
+    detalle_dias: turno.dias_variables ? null : (turno.detalle_dias || null),
+    requiere_autorizacion_he: turno.requiere_autorizacion_he ?? null,
+    descripcion: turno.descripcion || null,
   };
 };
 
