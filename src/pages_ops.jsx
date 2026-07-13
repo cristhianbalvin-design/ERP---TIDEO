@@ -16923,6 +16923,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
           res.validos.push({
             fila: numFila,
             datos: {
+              id: `pop_${Date.now()}_${i}`,
               nombre,
               dni,
               documento: dni,

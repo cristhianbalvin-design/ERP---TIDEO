@@ -10,7 +10,7 @@ import { TiposGastoAdmin } from './components/NuevoEgreso.jsx';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { AsignacionCargosModal } from './components/AsignacionCargosModal.jsx';
 import { buildOcupantesPorPosicion, getPosicionesSinCargo, contarRespaldoPrincipal } from './lib/posicionesHelpers.js';
-import { ROLE_CATEGORIES, HIERARCHY_LEVELS, getUserHierarchyLevel, getPrimaryPosicion } from './lib/hierarchy.js';
+import { ROLE_CATEGORIES, getUserHierarchyLevel, getPrimaryPosicion } from './lib/hierarchy.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { VARIABLES_COMERCIALES } from './lib/textoComercial.js';
 import { maestrosService } from './services/maestrosService.js';
@@ -76,7 +76,8 @@ const rrhhBajaProductividad = (persona, partes = [], tareos = [], periodo = rrhh
 // Roles builder, Usuarios, Tenants/Planes, and simple stub pages
 
 function Roles() {
-  const { roles, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, setUsuarios, addNotificacion, accessDebug } = useApp();
+  const { roles, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, setUsuarios, addNotificacion, accessDebug, nivelesJerarquicos = [] } = useApp();
+  const nivelesActivos = nivelesJerarquicos.filter(n => n.estado === 'activo').sort((a, b) => (a.orden ?? 100) - (b.orden ?? 100));
   const rolKeys = Object.keys(roles);
   const [sel, setSel] = useState(rolKeys.includes('comercial') ? 'comercial' : rolKeys[0] || '');
   const [tab, setTab] = useState('permisos');
@@ -92,11 +93,8 @@ function Roles() {
   const [nuevoCategoria, setNuevoCategoria] = useState('otro');
   const [nuevoNivel, setNuevoNivel] = useState('operativo');
   const [clonarNombre, setClonarNombre] = useState('');
-  const [editingMeta, setEditingMeta] = useState(false);
-  const [editNombre, setEditNombre] = useState('');
-  const [editDesc, setEditDesc] = useState('');
-  const [editCategoria, setEditCategoria] = useState('otro');
-  const [editNivel, setEditNivel] = useState('operativo');
+  const [editandoRolId, setEditandoRolId] = useState(null);
+  const [guardandoRol, setGuardandoRol] = useState(false);
   const [reasignarUsuario, setReasignarUsuario] = useState(null);
   const [reasignarRolId, setReasignarRolId] = useState('');
   const [roleActionError, setRoleActionError] = useState('');
@@ -115,14 +113,37 @@ function Roles() {
   }, [sel]);
 
   const handleNuevoRol = async () => {
-    if (!nuevoNombre.trim()) return;
-    const newId = await crearRol({ nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim(), categoria: nuevoCategoria, nivel_jerarquico: nuevoNivel });
-    if (newId) setSel(newId);
+    if (!nuevoNombre.trim() || guardandoRol) return;
+    setGuardandoRol(true);
+    try {
+      if (editandoRolId) {
+        await editarRol(editandoRolId, { nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim(), categoria: nuevoCategoria, nivel_jerarquico: nuevoNivel });
+      } else {
+        const newId = await crearRol({ nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim(), categoria: nuevoCategoria, nivel_jerarquico: nuevoNivel });
+        if (newId) setSel(newId);
+      }
+      cerrarModalNuevo();
+    } finally {
+      setGuardandoRol(false);
+    }
+  };
+
+  const cerrarModalNuevo = () => {
     setModalNuevo(false);
+    setEditandoRolId(null);
     setNuevoNombre('');
     setNuevoDesc('');
     setNuevoCategoria('otro');
     setNuevoNivel('operativo');
+  };
+
+  const abrirEditarRol = () => {
+    setEditandoRolId(sel);
+    setNuevoNombre(role.nombre || '');
+    setNuevoDesc(role.descripcion || '');
+    setNuevoCategoria(role.categoria || 'otro');
+    setNuevoNivel(role.nivel_jerarquico || 'operativo');
+    setModalNuevo(true);
   };
 
   const handleClonar = () => {
@@ -154,11 +175,6 @@ function Roles() {
     if (!confirm(`Eliminar el rol "${role?.nombre}"?${detail} Esta accion no se puede deshacer.`)) return;
     const eliminado = await eliminarRol(sel);
     if (eliminado) setSel(rolKeys.find(k => k !== sel) || '');
-  };
-
-  const handleSaveMeta = () => {
-    editarRol(sel, { nombre: editNombre, descripcion: editDesc, categoria: editCategoria, nivel_jerarquico: editNivel });
-    setEditingMeta(false);
   };
 
   const handleGuardarPermisos = async () => {
@@ -219,7 +235,7 @@ function Roles() {
         <div><h1 className="page-title">Roles y Permisos</h1><div className="page-sub">{rolKeys.length} roles configurados · permisos granulares por pantalla</div></div>
         <div className="row">
           <button className="btn btn-secondary" onClick={() => { setClonarNombre(`Copia de ${role.nombre}`); setModalClonar(true); }}>{I.copy} Clonar rol</button>
-          <button className="btn btn-primary" data-local-form="true" onClick={() => setModalNuevo(true)}>{I.plus} Nuevo rol</button>
+          <button className="btn btn-primary" data-local-form="true" onClick={() => { setEditandoRolId(null); setNuevoNombre(''); setNuevoDesc(''); setNuevoCategoria('otro'); setNuevoNivel('operativo'); setModalNuevo(true); }}>{I.plus} Nuevo rol</button>
         </div>
       </div>
 
@@ -247,7 +263,7 @@ function Roles() {
                 <div className="text-muted" style={{fontSize:11,marginTop:2}}>{r.descripcion}</div>
                 <div className="text-subtle" style={{fontSize:11,marginTop:4}}>{r.assigned_count ?? usuarios.filter(u=>u.rol===k).length} usuarios</div>
                 {sel === k && (
-                  <button className="icon-btn" style={{position:'absolute',top:8,right:4,opacity:0.4,fontSize:11}} title="Eliminar rol"
+                  <button className="icon-btn" style={{position:'absolute',top:8,right:4,color:'var(--danger)'}} title="Eliminar rol"
                     onClick={e => { e.stopPropagation(); handleEliminar(); }}>{I.trash}</button>
                 )}
               </div>
@@ -258,32 +274,17 @@ function Roles() {
         {/* Panel derecho */}
         <div className="card">
           <div className="card-head">
-            {editingMeta ? (
-              <div className="col" style={{gap:8, flex:1}}>
-                <input className="input" value={editNombre} onChange={e=>setEditNombre(e.target.value)} style={{fontWeight:700, fontSize:16}}/>
-                <input className="input" value={editDesc} onChange={e=>setEditDesc(e.target.value)} style={{fontSize:12}}/>
-                <select className="select" style={{fontSize:12}} value={editCategoria} onChange={e=>setEditCategoria(e.target.value)}>
-                  {ROLE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
-                <select className="select" style={{fontSize:12}} value={editNivel} onChange={e=>setEditNivel(e.target.value)}>
-                  {HIERARCHY_LEVELS.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
-                </select>
-                <div className="row" style={{gap:6}}>
-                  <button className="btn btn-sm btn-primary" onClick={handleSaveMeta}>Guardar</button>
-                  <button className="btn btn-sm btn-secondary" onClick={()=>setEditingMeta(false)}>Cancelar</button>
-                </div>
-              </div>
-            ) : (
-              <div className="col" style={{gap:4, flex:1}}>
+            <div className="col" style={{gap:4, flex:1}}>
+              <div className="row" style={{gap:6, alignItems:'center'}}>
                 <h3 style={{margin:0}}>{role.nombre}</h3>
-                <div className="text-muted" style={{fontSize:12}}>{role.descripcion}</div>
-                <div className="row" style={{gap:8, alignItems:'center'}}>
-                  <div className="text-subtle" style={{fontSize:11}}>Categoría: <strong>{role.categoria || 'otro'}</strong></div>
-                  <div className="text-subtle" style={{fontSize:11}}>Nivel: <strong>{role.nivel_jerarquico || 'operativo'}</strong></div>
-                  <button className="btn btn-sm btn-secondary" style={{fontSize:11,padding:'2px 8px'}} onClick={()=>{ setEditNombre(role.nombre); setEditDesc(role.descripcion||''); setEditCategoria(role.categoria||'otro'); setEditNivel(role.nivel_jerarquico||'operativo'); setEditingMeta(true); }}>Editar</button>
-                </div>
+                <button className="icon-btn" title="Editar rol" style={{color:'var(--cyan)'}} onClick={abrirEditarRol}>{I.edit}</button>
               </div>
-            )}
+              <div className="text-muted" style={{fontSize:12}}>{role.descripcion}</div>
+              <div className="row" style={{gap:8, alignItems:'center'}}>
+                <div className="text-subtle" style={{fontSize:11}}>Categoría: <strong>{role.categoria || 'otro'}</strong></div>
+                <div className="text-subtle" style={{fontSize:11}}>Nivel: <strong>{role.nivel_jerarquico || 'operativo'}</strong></div>
+              </div>
+            </div>
             <div className="row" style={{gap:8}}>
               <button
                 className="btn btn-primary btn-sm"
@@ -398,11 +399,11 @@ function Roles() {
         </div>
       </div>
 
-      {/* Modal: Nuevo rol */}
+      {/* Modal: Nuevo rol / Editar rol */}
       {modalNuevo && <>
-        <div className="side-panel-backdrop" onClick={()=>setModalNuevo(false)}/>
+        <div className="side-panel-backdrop" onClick={cerrarModalNuevo}/>
         <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:420,zIndex:200,boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
-          <h3 style={{marginBottom:20}}>Nuevo rol</h3>
+          <h3 style={{marginBottom:20}}>{editandoRolId ? 'Editar rol' : 'Nuevo rol'}</h3>
           <div className="col" style={{gap:14}}>
             <div className="input-group">
               <label>Nombre del rol *</label>
@@ -421,13 +422,13 @@ function Roles() {
             <div className="input-group">
               <label>Nivel jerarquico <span className="text-muted" style={{fontSize:11}}>define alcance: tenant, equipo o propio</span></label>
               <select className="select" value={nuevoNivel} onChange={e=>setNuevoNivel(e.target.value)}>
-                {HIERARCHY_LEVELS.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
+                {nivelesActivos.map(n => <option key={n.codigo} value={n.codigo}>{n.nombre}</option>)}
               </select>
             </div>
           </div>
           <div className="row" style={{gap:8,marginTop:24,justifyContent:'flex-end'}}>
-            <button className="btn btn-secondary" onClick={()=>setModalNuevo(false)}>Cancelar</button>
-            <button className="btn btn-primary" data-local-form="true" onClick={handleNuevoRol} disabled={!nuevoNombre.trim()}>Crear rol</button>
+            <button className="btn btn-secondary" onClick={cerrarModalNuevo} disabled={guardandoRol}>Cancelar</button>
+            <button className="btn btn-primary" data-local-form="true" onClick={handleNuevoRol} disabled={!nuevoNombre.trim() || guardandoRol}>{guardandoRol ? 'Guardando...' : editandoRolId ? 'Guardar cambios' : 'Crear rol'}</button>
           </div>
         </div>
       </>}
@@ -506,7 +507,7 @@ function Roles() {
 }
 
 function Usuarios() {
-  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, roles: rolesCtx, accessDebug, navigate, personalAdmin = [], personalOperativo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [], crearPosicion } = useApp();
+  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, roles: rolesCtx, accessDebug, navigate, personalAdmin = [], personalOperativo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [], crearPosicion, nivelesJerarquicos = [] } = useApp();
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('');
   const [resetError, setResetError] = useState('');
@@ -760,7 +761,7 @@ function Usuarios() {
       categoria,
       nivel,
       categoriaLabel: getOptionLabel(ROLE_CATEGORIES, categoria),
-      nivelLabel: getOptionLabel(HIERARCHY_LEVELS, nivel),
+      nivelLabel: nivelesJerarquicos.find(x => x.codigo === nivel)?.nombre || nivel,
     };
   };
   const roleOptionText = (r) => {
@@ -3882,11 +3883,12 @@ function GestionPosicionesTab({
 function Maestros() {
   const {
     navigate, cuentas, proveedores, personalAdmin = [], personalOperativo = [],
-    areasEmpresa, cargos, especialidades, tiposServicio, almacenes, sedes, industrias,
+    areasEmpresa, cargos, especialidades, nivelesJerarquicos, tiposServicio, almacenes, sedes, industrias,
     monedasImpuestosUnidades = [],
     unidadesOrganizacionales = [], crearUnidadOrganizacional, actualizarUnidadOrganizacional,
     crearCargo, actualizarCargo, eliminarCargo, fusionarCargos,
     crearEspecialidad, actualizarEspecialidad, eliminarEspecialidad,
+    crearNivelJerarquico, actualizarNivelJerarquico, eliminarNivelJerarquico,
     crearTipoServicio, actualizarTipoServicio, eliminarTipoServicio,
     crearAlmacen, actualizarAlmacen, eliminarAlmacen,
     crearSede, actualizarSede, eliminarSede,
@@ -3937,13 +3939,14 @@ function Maestros() {
     { id: 'mst_tipos_documento', tabla: 'Tipos de Documento' },
     { id: 'mst_requisitos_cargo', tabla: 'Requisitos por Cargo' },
     { id: 'mst_especialidades', tabla: 'Especialidades técnicas' },
+    { id: 'mst_niveles_jerarquicos', tabla: 'Niveles Jerárquicos' },
     { id: 'mst_materiales', tabla: 'Materiales e insumos con codigo de barras' },
     { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades' },
     { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno' },
     { id: 'mst_almacenes', tabla: 'Almacenes y depósitos' },
     { id: 'mst_tipos_contrato', tabla: 'Tipos de Contrato' },
   ];
-  const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', modo_gestion:'individual', tipo_catalogo:'moneda', ambito:'Ambos', exige_vencimiento:false, dias_alerta:30, es_habilitante:false, requiere_validacion:true, orden:0, unidad_padre_id:'', ceco_id:'', categoria:'otro' };
+  const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', modo_gestion:'individual', tipo_catalogo:'moneda', ambito:'Ambos', exige_vencimiento:false, dias_alerta:30, es_habilitante:false, requiere_validacion:true, orden:0, unidad_padre_id:'', ceco_id:'', categoria:'otro', alcance:'propio' };
   const [rows, setRows] = useState({
     mst_clientes: [],
     mst_proveedores: [],
@@ -3963,6 +3966,7 @@ function Maestros() {
     if (sel.id === 'mst_tipos_documento') return tiposDocumento;
     if (sel.id === 'mst_requisitos_cargo') return requisitosCargo;
     if (sel.id === 'mst_especialidades') return especialidades;
+    if (sel.id === 'mst_niveles_jerarquicos') return nivelesJerarquicos;
     if (sel.id === 'mst_tipos_servicio') return tiposServicio;
     if (sel.id === 'mst_almacenes') return almacenes;
     if (sel.id === 'mst_sedes') return sedes;
@@ -4183,6 +4187,12 @@ function Maestros() {
     return `${prefix}-${String(len+1).padStart(3,'0')}`;
   };
 
+  // El codigo de un nivel jerarquico es el valor real guardado en roles.nivel_jerarquico
+  // (ej. 'practicante'), no un correlativo decorativo — se deriva del nombre.
+  const slugifyNivel = (nombre) => String(nombre || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
   const addRow = async (e) => {
     e.preventDefault();
     if (!sel) return;
@@ -4206,6 +4216,17 @@ function Maestros() {
         const item = { ...base, area: nuevo.area || 'General', requiere_cert: nuevo.requiere_cert };
         if (editandoId) await actualizarEspecialidad(editandoId, item);
         else await crearEspecialidad(item);
+      } else if (sel.id === 'mst_niveles_jerarquicos') {
+        const item = {
+          codigo: editandoId ? nuevo.codigo : slugifyNivel(nuevo.nombre),
+          nombre: nuevo.nombre || 'Nuevo valor',
+          alcance: nuevo.alcance || 'propio',
+          orden: parseInt(nuevo.orden) || 100,
+          estado: nuevo.estado || 'activo',
+        };
+        if (!item.codigo) throw new Error('Completa el nombre para generar el codigo del nivel.');
+        if (editandoId) await actualizarNivelJerarquico(editandoId, item);
+        else await crearNivelJerarquico(item);
       } else if (sel.id === 'mst_tipos_servicio') {
         const item = { ...base, clasificacion: nuevo.clasificacion || 'General', facturable: nuevo.facturable };
         if (editandoId) await actualizarTipoServicio(editandoId, item);
@@ -4327,6 +4348,7 @@ function Maestros() {
       unidad_padre_id: r.unidad_padre_id || '',
       ceco_id: r.ceco_id || '',
       categoria: r.categoria || 'otro',
+      alcance: r.alcance || 'propio',
     };
     setEditandoId(r.id);
     setNuevo(form);
@@ -4345,6 +4367,7 @@ function Maestros() {
         return;
       }
       else if (sel.id === 'mst_especialidades') await eliminarEspecialidad(r.id);
+      else if (sel.id === 'mst_niveles_jerarquicos') await eliminarNivelJerarquico(r.id);
       else if (sel.id === 'mst_tipos_servicio') await eliminarTipoServicio(r.id);
       else if (sel.id === 'mst_almacenes') await eliminarAlmacen(r.id);
       else if (sel.id === 'mst_sedes') await eliminarSede(r.id);
@@ -4485,6 +4508,27 @@ function Maestros() {
           <div className="input-group"><label>Área</label><select className="select" value={nuevo.area} onChange={e=>setNuevo(v=>({...v,area:e.target.value}))}><option value="">Seleccionar...</option>{(areasEmpresa||[]).map(a=><option key={a.id} value={a.nombre}>{a.nombre}</option>)}</select></div>
           <div className="input-group"><label>Requiere certificación</label><select className="select" value={nuevo.requiere_cert?'si':'no'} onChange={e=>setNuevo(v=>({...v,requiere_cert:e.target.value==='si'}))}><option value="no">No</option><option value="si">Sí</option></select></div>
           <FormActions label="especialidad" />
+        </div>
+      </form>
+    );
+    if (sel?.id === 'mst_niveles_jerarquicos') return (
+      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+          <div className="input-group">
+            <label>Código <span style={{fontSize:10, color:'var(--fg-subtle)', fontWeight:400}}>· Auto-generado del nombre</span></label>
+            <input className="input" readOnly value={editandoId ? nuevo.codigo : slugifyNivel(nuevo.nombre)} style={{color:'var(--fg-muted)', cursor:'default', background:'var(--bg-subtle)'}}/>
+          </div>
+          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Practicante" autoFocus/></div>
+          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
+          <div className="input-group" style={{gridColumn:'span 2'}}>
+            <label>Alcance <span className="text-muted" style={{fontSize:11}}>— define qué tanto puede ver alguien con este nivel</span></label>
+            <select className="select" value={nuevo.alcance} onChange={e=>setNuevo(v=>({...v,alcance:e.target.value}))}>
+              <option value="propio">Solo lo propio</option>
+              <option value="equipo">Su equipo</option>
+              <option value="tenant">Todo el tenant</option>
+            </select>
+          </div>
+          <FormActions label="nivel" />
         </div>
       </form>
     );
@@ -4821,6 +4865,21 @@ function Maestros() {
             <td><strong>{r.nombre}</strong></td>
             <td className="text-muted">{r.area}</td>
             <td>{r.requiere_cert ? <span className="badge badge-orange">Sí</span> : <span className="badge badge-gray">No</span>}</td>
+            <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
+            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
+          </tr>
+        ))}</tbody>
+      </table>
+    );
+    if (sel?.id === 'mst_niveles_jerarquicos') return (
+      <table className="tbl">
+        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Código</th><th>Nombre</th><th>Alcance</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <tbody>{selectedRows.map((r,i) => (
+          <tr key={`${r.codigo}-${i}`}>
+            <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
+            <td className="mono">{r.codigo}</td>
+            <td><strong>{r.nombre}</strong></td>
+            <td><span className="badge badge-cyan">{r.alcance === 'tenant' ? 'Todo el tenant' : r.alcance === 'equipo' ? 'Su equipo' : 'Solo lo propio'}</span></td>
             <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
             <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
           </tr>
@@ -11429,8 +11488,9 @@ function Organigrama() {
     usuarios, posiciones, posicionesUsuarios, unidadesOrganizacionales, cargos = [],
     empresa, empresasPlataforma, roles: rolesCtx, actualizarUsuarioAcceso, reasignarUnidadDePosicion,
     crearPosicion, archivarPosicion, eliminarPosicion, reasignarCargoDePosicion, addNotificacion, authUser,
-    personalAdmin = [], personalOperativo = [],
+    personalAdmin = [], personalOperativo = [], nivelesJerarquicos = [],
   } = useApp();
+  const nivelesActivos = nivelesJerarquicos.filter(n => n.estado === 'activo').sort((a, b) => (a.orden ?? 100) - (b.orden ?? 100));
   const [filtroEmpresa, setFiltroEmpresa] = useState('');
   const [selNode, setSelNode] = useState(null);
   const [selOcupanteId, setSelOcupanteId] = useState(null);
@@ -11562,7 +11622,7 @@ function Organigrama() {
     setGuardandoRol(false);
   };
 
-  const nivelLabel = (n) => HIERARCHY_LEVELS.find(x => x.value === n)?.label || n;
+  const nivelLabel = (n) => nivelesJerarquicos.find(x => x.codigo === n)?.nombre || n;
   const getEmpresaNombre = (id) => {
     if (empresa?.id === id) return empresa.nombre;
     return (empresasPlataforma || []).find(e => e.id === id)?.nombre || id;
@@ -11645,10 +11705,10 @@ function Organigrama() {
 
       {/* Leyenda */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-        {HIERARCHY_LEVELS.map(l => (
-          <div key={l.value} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-            <div style={{ width: 9, height: 9, borderRadius: '50%', background: NIVEL_COLORS[l.value] || '#64748b', flexShrink: 0 }} />
-            <span style={{ color: 'var(--fg-muted)' }}>{l.label}</span>
+        {nivelesActivos.map(l => (
+          <div key={l.codigo} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <div style={{ width: 9, height: 9, borderRadius: '50%', background: NIVEL_COLORS[l.codigo] || '#64748b', flexShrink: 0 }} />
+            <span style={{ color: 'var(--fg-muted)' }}>{l.nombre}</span>
           </div>
         ))}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>

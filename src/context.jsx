@@ -390,6 +390,7 @@ export function AppProvider({ children }) {
   const [tiposDocumento, setTiposDocumento] = useState(useSupabase ? [] : (MOCK.tiposDocumento || []));
   const [requisitosCargo, setRequisitosCargo] = useState(useSupabase ? [] : (MOCK.requisitosCargo || []));
   const [especialidades, setEspecialidades] = useState([]);
+  const [nivelesJerarquicos, setNivelesJerarquicos] = useState([]);
   const [tiposServicio, setTiposServicio] = useState([]);
   const [almacenes, setAlmacenes] = useState([]);
   const [sedes, setSedes] = useState([]);
@@ -992,6 +993,7 @@ export function AppProvider({ children }) {
           const cg = await maestrosService.getCargos(empresa.id);
           const tc = await rrhhService.getTiposContrato(empresa.id);
           const es = await maestrosService.getEspecialidades(empresa.id);
+          const nj = await maestrosService.getNivelesJerarquicos(empresa.id);
           const ts = await maestrosService.getTiposServicio(empresa.id);
           const al = await maestrosService.getAlmacenes(empresa.id);
           const sd = await maestrosService.getSedes(empresa.id);
@@ -1004,6 +1006,7 @@ export function AppProvider({ children }) {
             setCargos(cg || []);
             setTiposContrato(tc || []);
             setEspecialidades(es || []);
+            setNivelesJerarquicos(nj || []);
             setTiposServicio(ts || []);
             setAlmacenes(al || []);
             setSedes(sd || []);
@@ -6787,6 +6790,19 @@ export function AppProvider({ children }) {
     if (isSupabaseConfigured()) await maestrosService.eliminarEspecialidad(id);
     setEspecialidades(prev => prev.filter(e => e.id !== id));
   };
+  const actualizarNivelJerarquico = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const act = await maestrosService.actualizarNivelJerarquico(id, datos);
+      setNivelesJerarquicos(prev => prev.map(n => n.id === id ? act : n));
+      return act;
+    }
+    setNivelesJerarquicos(prev => prev.map(n => n.id === id ? { ...n, ...datos } : n));
+    return datos;
+  };
+  const eliminarNivelJerarquico = async (id) => {
+    if (isSupabaseConfigured()) await maestrosService.eliminarNivelJerarquico(id);
+    setNivelesJerarquicos(prev => prev.filter(n => n.id !== id));
+  };
   const actualizarTipoServicio = async (id, datos) => {
     if (isSupabaseConfigured()) {
       const act = await maestrosService.actualizarTipoServicio(id, datos);
@@ -6834,6 +6850,17 @@ export function AppProvider({ children }) {
     } else {
       const nuevo = { ...especialidad, id: generateId('esp'), empresa_id: empresa?.id, created_at: new Date().toISOString() };
       setEspecialidades(prev => [nuevo, ...prev]);
+      return nuevo;
+    }
+  };
+  const crearNivelJerarquico = async (nivel) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await maestrosService.crearNivelJerarquico(empresa.id, nivel);
+      setNivelesJerarquicos(prev => [data, ...prev]);
+      return data;
+    } else {
+      const nuevo = { ...nivel, id: generateId('nvj'), empresa_id: empresa?.id, created_at: new Date().toISOString() };
+      setNivelesJerarquicos(prev => [nuevo, ...prev]);
       return nuevo;
     }
   };
@@ -9185,19 +9212,19 @@ export function AppProvider({ children }) {
   };
 
   const eliminarRol = async (rolId) => {
+    const rolPrevio = rolesCtx[rolId];
+    setRolesCtx(prev => { const next = { ...prev }; delete next[rolId]; return next; });
     if (isSupabaseConfigured()) {
       try {
         await rolesService.eliminarRol(rolId);
-        await cargarRolesAcceso();
       } catch (error) {
+        setRolesCtx(prev => ({ ...prev, [rolId]: rolPrevio }));
         const message = `No se pudo eliminar el rol en Supabase: ${error.message}`;
         addNotificacion(message, 'error');
         setAccessDebug(prev => ({ ...prev, rolesError: message }));
         try { window.alert(message); } catch {}
         return false;
       }
-    } else {
-      setRolesCtx(prev => { const next = { ...prev }; delete next[rolId]; return next; });
     }
     addNotificacion('Rol eliminado.');
     return true;
@@ -9762,6 +9789,7 @@ export function AppProvider({ children }) {
     tiposDocumento, setTiposDocumento, crearTipoDocumento, actualizarTipoDocumento, importarPlantillaTiposDoc,
     requisitosCargo, setRequisitosCargo, upsertRequisitoCargo, eliminarRequisitoCargo,
     especialidades, setEspecialidades, actualizarEspecialidad, eliminarEspecialidad,
+    nivelesJerarquicos, setNivelesJerarquicos, crearNivelJerarquico, actualizarNivelJerarquico, eliminarNivelJerarquico,
     tiposServicio, setTiposServicio, actualizarTipoServicio, eliminarTipoServicio,
     almacenes, setAlmacenes, actualizarAlmacen, eliminarAlmacen,
     sedes, setSedes, actualizarSede, eliminarSede,
