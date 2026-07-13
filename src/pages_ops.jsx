@@ -16684,7 +16684,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
         ['Especialidad secundaria', 'No', 'Nombre exacto de la especialidad'],
         ['Sede base', 'No', 'Nombre exacto de la sede'],
         ['Área', 'No', 'Texto libre (por defecto: Operaciones)'],
-        ['Centro de costo (CECO) (*)', 'Sí', 'Nombre exacto del CECO'],
+        ['Centro de costo (CECO) (*)', 'Sí', 'Código o nombre exacto del CECO'],
         ['Turno asignado (*)', 'Sí', 'Nombre exacto del turno'],
         ['Supervisor directo', 'No', 'DNI o Nombre exacto del supervisor'],
         ['Régimen de jornada', 'No', 'general, minero_14x7, minero_20x10, minero_28x14, minero_2x1 (default: general)'],
@@ -16841,7 +16841,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
         if (!cargoObj && cargoNombre) errs.push('Cargo no encontrado');
 
         const cecoNombre = getVal(row, COLUMNAS[16]);
-        const cecoObj = cecosActivos.find(c => c.nombre.toLowerCase() === cecoNombre.toLowerCase());
+        const cecoObj = cecosActivos.find(c => c.nombre.toLowerCase() === cecoNombre.toLowerCase() || (c.codigo || '').toLowerCase() === cecoNombre.toLowerCase());
         if (!cecoObj) errs.push('CECO no encontrado o no activo');
 
         const turnoNombre = getVal(row, COLUMNAS[17]);
