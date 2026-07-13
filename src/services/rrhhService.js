@@ -43,7 +43,6 @@ export const requiereFechaFinContrato = (tipoContrato = '') => {
 };
 
 export const getTipoFiscalizacion = (persona = {}) => {
-  if (esModalidadHonorarios(persona)) return 'ninguna';
   if ((persona.regimen_jornada || 'general') === 'ciclo_acumulativo') return 'ciclo';
   if (Boolean(persona.cargo_confianza)) return 'ninguna';
   return 'diaria';
