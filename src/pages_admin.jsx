@@ -7890,8 +7890,8 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
     let exitosos = 0;
     let siguienteNumAdm = Math.max(
       0,
-      ...(todosPersonal || []).map(p => Number(String(p.codigo || '').match(/^ADM-(\d+)$/i)?.[1])).filter(n => !isNaN(n)),
-      (todosPersonal || []).length
+      ...(personalAdmin || []).map(p => Number(String(p.codigo || '').match(/^ADM-(\d+)$/i)?.[1])).filter(n => !isNaN(n)),
+      (personalAdmin || []).length
     ) + 1;
 
     const parseExcelDate = (val) => {
