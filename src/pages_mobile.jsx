@@ -300,6 +300,13 @@ function AsistenciaMobileView({ screen, setScreen }) {
   
   // Estado local para gobernar el flujo: entrada -> salida -> completado
   const [modo, setModo] = useState('entrada');
+  // Evita que el boton quede en "Entrada" (valor inicial) mientras se confirma
+  // el estado real de hoy. registrosAsistencia en contexto se llena con TODO el
+  // historial de la empresa (sin filtro de fecha); en tenants con miles de
+  // registros esa carga puede tardar y dejar una ventana donde el boton muestra
+  // un estado desactualizado. Esta verificacion es liviana (solo trae "hoy") y
+  // no depende de que termine la carga completa.
+  const [verificandoHoy, setVerificandoHoy] = useState(true);
 
   useEffect(() => {
     if (!trabajadorId) {
@@ -315,6 +322,23 @@ function AsistenciaMobileView({ screen, setScreen }) {
       setModo('entrada');
     }
   }, [registrosAsistencia, trabajadorId, today]);
+
+  useEffect(() => {
+    if (!trabajadorId || !empresa?.id) { setVerificandoHoy(false); return; }
+    let cancelled = false;
+    setVerificandoHoy(true);
+    rrhhService.getAsistencia(empresa.id, today, today)
+      .then(rows => {
+        if (cancelled) return;
+        setRegistrosAsistencia(prev => {
+          const idsFrescos = new Set(rows.map(r => r.id));
+          return [...rows, ...prev.filter(r => !idsFrescos.has(r.id))];
+        });
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setVerificandoHoy(false); });
+    return () => { cancelled = true; };
+  }, [trabajadorId, empresa?.id, today]);
 
   useEffect(() => {
     const sincronizar = () => {
@@ -374,7 +398,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
   };
 
   const manejarMarcacion = async () => {
-    if (modo === 'completado') return;
+    if (modo === 'completado' || verificandoHoy) return;
     setAviso('');
     if (!trabajadorId) {
       const msg = 'No encuentro un colaborador habilitado para asistencia móvil. Revisa el email y el permiso en Personal.';
@@ -561,6 +585,11 @@ function AsistenciaMobileView({ screen, setScreen }) {
       </div>
       
       <div style={{position:'relative', width:220, height:220, display:'flex', alignItems:'center', justifyContent:'center', marginBottom:30}}>
+        {verificandoHoy ? (
+          <div style={{width:200, height:200, borderRadius:'50%', background:'var(--bg-subtle)', border:'2px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, color:'var(--fg-muted)', fontWeight:600, textAlign:'center', padding:20}}>
+            Verificando estado del dia...
+          </div>
+        ) : <>
         {modo === 'entrada' && (
           <button 
             onClick={manejarMarcacion} 
@@ -590,6 +619,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
             Nuevo registro
           </button>
         )}
+        </>}
       </div>
       
       {loading && <div className="text-muted" style={{fontSize:14, fontWeight:600, marginBottom:20}}>{I.mapPin} {geoEstado}</div>}
