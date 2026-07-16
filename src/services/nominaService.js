@@ -60,6 +60,62 @@ export function getPrimaSeguroAfp(afpNombre, rows = []) {
   return Number(row.pct_prima_seguro) || AFP_PRIMA_SEGURO_FALLBACK;
 }
 
+// Arma explícitamente la fila de nomina_detalle a partir de un elemento de `calculos`
+// (whitelist + rename) — nunca spread directo: calculos[i] trae objetos anidados
+// (trabajador, turno, periodo, datosNomina), nombres de campo distintos a las columnas
+// (dias_asistidos→dias_laborados, comision_flujo→comision_afp_flujo, prima_seguro→
+// prima_seguro_afp) y campos que no existen en el esquema (tramos, valor_dia, etc.).
+export function mapCalculoANominaDetalle(c, periodo, empresaCfg = {}) {
+  const quincena = periodo?.quincena ?? null;
+  return {
+    trabajador_id: c.trabajador_id,
+    trabajador_tipo: c.trabajador?.trabajador_tipo === 'administrativo' ? 'administrativo' : 'operativo',
+    regimen_jornada_snap: c.regimen_jornada ?? null,
+    regimen_empresa_snap: c.regimen_empresa ?? null,
+    dias_laborables: c.dias_laborables ?? null,
+    dias_laborados: c.dias_asistidos ?? null,
+    dias_computables: c.dias_computables ?? null,
+    horas_extra_tramo1_min: Number(c.horas_extra_tramo1_min) || 0,
+    horas_extra_tramo2_min: Number(c.horas_extra_tramo2_min) || 0,
+    sueldo_base: Number(c.sueldo_base) || 0,
+    remuneracion_bruta: Number(c.remuneracion_bruta) || 0,
+    asignacion_familiar: Number(c.asignacion_familiar) || 0,
+    add_horas_extra: Number(c.add_horas_extra) || 0,
+    bonif_altitud: Number(c.bonif_altitud) || 0,
+    // Pendiente Frente 4 (tabla ingresos_extraordinarios aun no existe): se persiste 0.
+    // Actualizar este mapeo cuando esa tabla y su integracion con el motor esten listas.
+    otros_ingresos: 0,
+    desc_faltas: Number(c.desc_faltas) || 0,
+    desc_tardanzas: Number(c.desc_tardanzas) || 0,
+    aporte_afp: Number(c.aporte_afp) || 0,
+    comision_afp_flujo: Number(c.comision_flujo) || 0,
+    prima_seguro_afp: Number(c.prima_seguro) || 0,
+    desc_onp: Number(c.desc_onp) || 0,
+    retencion_ir: Number(c.retencion_ir) || 0,
+    desc_prestamo: Number(c.desc_prestamo) || 0,
+    desc_anticipo: Number(c.desc_anticipo) || 0,
+    desc_judicial: Number(c.desc_judicial) || 0,
+    desc_extraordinario: Number(c.desc_extraordinario) || 0,
+    total_descuentos: Number(c.total_descuentos) || 0,
+    neto: Number(c.neto) || 0,
+    essalud: Number(c.essalud) || 0,
+    cts_mensualizado: Number(c.cts_mensualizado) || 0,
+    tiene_cts: Boolean(c.tiene_cts),
+    gratificacion_mensualizada: Number(c.gratificacion_mensualizada) || 0,
+    bonif_extraordinaria: Number(c.bonif_extraordinaria) || 0,
+    tiene_gratificacion: Boolean(c.tiene_gratificacion),
+    vacaciones_mensualizadas: Number(c.vacaciones_mensualizadas) || 0,
+    total_cargas: Number(c.total_cargas) || 0,
+    costo_real_empresa: Number(c.costo_real_empresa) || 0,
+    es_quincena: quincena != null,
+    quincena,
+    // Refleja el % efectivamente aplicado por el motor (Rama Q1), no un valor recalculado
+    // aparte. Q2 hoy todavia calcula al 100% (factorQuincena=1, Rama Q2 aun no implementada):
+    // guardar 50/50 teorico seria incorrecto y no coincidiria con lo que el motor uso.
+    pct_quincena_aplicado: quincena === 1 ? Number(empresaCfg?.pct_quincena_1 ?? 50) : (quincena === 2 ? 100 : null),
+  };
+}
+
 export const nominaService = {
   // ─── Períodos ────────────────────────────────────────────────
   getPeriodos: async (empresaId) => {
@@ -122,20 +178,19 @@ export const nominaService = {
     return data || [];
   },
 
+  // Borrado + insercion transaccional de todo el detalle de un periodo (RPC de Postgres,
+  // migracion 333). Reemplaza filas huerfanas de un "Procesar" anterior con roster distinto;
+  // ambas operaciones ocurren dentro de la misma transaccion de la funcion en el servidor.
   guardarDetalle: async (empresaId, periodoId, filas) => {
-    if (!filas.length) return [];
+    if (!filas.length) return 0;
     const supabase = await getSupabaseClient();
-    const rows = filas.map(f => ({
-      ...f,
-      empresa_id: empresaId,
-      periodo_id: periodoId,
-    }));
-    const { data, error } = await supabase
-      .from('nomina_detalle')
-      .upsert(rows, { onConflict: 'periodo_id,trabajador_id' })
-      .select();
+    const { data, error } = await supabase.rpc('guardar_nomina_detalle_periodo', {
+      p_empresa_id: empresaId,
+      p_periodo_id: periodoId,
+      p_filas: filas,
+    });
     if (error) throw error;
-    return data || [];
+    return data ?? 0;
   },
 
   // ─── Config nómina en empresa_config ─────────────────────────

@@ -201,7 +201,7 @@ export const maestrosService = {
       id: sede.id || makeId('sed'),
       empresa_id: empresaId,
       codigo: sede.codigo || `SED-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
-      ...pick(sede, ['nombre', 'direccion', 'gps', 'estado']),
+      ...pick(sede, ['nombre', 'direccion', 'gps', 'estado', 'tipo']),
     };
     const { data, error } = await supabase.from('sedes').insert([payload]).select().single();
     if (error) throw error;
@@ -209,7 +209,7 @@ export const maestrosService = {
   },
   actualizarSede: async (sedeId, payload) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.from('sedes').update(pick(payload, ['codigo', 'nombre', 'direccion', 'gps', 'estado'])).eq('id', sedeId).select().single();
+    const { data, error } = await supabase.from('sedes').update(pick(payload, ['codigo', 'nombre', 'direccion', 'gps', 'estado', 'tipo'])).eq('id', sedeId).select().single();
     if (error) throw error;
     return data;
   },
