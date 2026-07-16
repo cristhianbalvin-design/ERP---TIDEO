@@ -15448,7 +15448,7 @@ function ControlAsistencia() {
 function Nomina() {
   const {
     turnos, registrosAsistencia, personalOperativo, personalAdmin, trabajadoresDatosNomina,
-    periodosNomina, setPeriodosNomina, crearPeriodoNominaCtx, crearGasto, generarCxP, role, empresa, authUser, addNotificacion, addToast, empresaConfig,
+    periodosNomina, setPeriodosNomina, isDataLoaded, crearPeriodoNominaCtx, crearGasto, generarCxP, role, empresa, authUser, addNotificacion, addToast, empresaConfig,
     comisiones = [], setComisiones, afpParametros = [],
     asignacionesJornada = [],
     portalBoletaAcuses = [],
@@ -15488,7 +15488,7 @@ function Nomina() {
   // Auto-generar (backfill) los períodos faltantes entre el último existente en BD y el mes actual
   const autoGenNominaRef = useRef(false);
   useEffect(() => {
-    if (!empresa?.id || autoGenNominaRef.current) return;
+    if (!empresa?.id || autoGenNominaRef.current || !isDataLoaded) return;
     const hoyAnio = hoy.getFullYear();
     const hoyMes = hoy.getMonth() + 1;
 
@@ -15538,7 +15538,7 @@ function Nomina() {
       }
       autoGenNominaRef.current = false;
     })();
-  }, [periodosNomina.length, empresa?.id]);
+  }, [periodosNomina.length, empresa?.id, isDataLoaded]);
 
   const periodoActivo = periodoId ? periodosNomina.find(p => p.id === periodoId) : null;
   const anioActual = hoy.getFullYear();

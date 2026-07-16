@@ -357,6 +357,7 @@ export function AppProvider({ children }) {
 
 
   // Fase 2 Data
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [ots, setOts] = useState(useSupabase ? [] : (MOCK.ots || []));
   const [partes, setPartes] = useState(useSupabase ? [] : (MOCK.partes || []));
   const [backlog, setBacklog] = useState(useSupabase ? [] : (MOCK.backlog || []));
@@ -1271,7 +1272,9 @@ export function AppProvider({ children }) {
         } catch (_err) { /* keep mock */ }
 
       } catch (_err) { /* keep mock on error */ }
+      if (mounted) setIsDataLoaded(true);
     };
+    setIsDataLoaded(false);
     loadCrm();
     return () => { mounted = false; };
   }, [empresa?.id, authSession?.user?.id, membresiaActiva?.empresa?.id]);
@@ -9715,6 +9718,7 @@ export function AppProvider({ children }) {
   } : null;
 
   const contextValue = {
+    isDataLoaded,
     active, navigate, activeParams,
     roleKey, setRoleKey, role, isSuperadmin,
     empresa, setEmpresa,
