@@ -8332,13 +8332,32 @@ export function AppProvider({ children }) {
       const hoy = new Date().toISOString().slice(0, 10);
       const fechaInicio = (doc.fecha_vigencia_cambio && doc.fecha_vigencia_cambio <= hoy)
         ? doc.fecha_vigencia_cambio : hoy;
+
+      // Si el tramo vigente inmediatamente anterior tenía el mismo régimen de
+      // ciclo minero, el nuevo tramo hereda su fecha_inicio_ciclo en vez de
+      // reiniciar el conteo (el trabajador nunca dejó su patrón de guardia).
+      let fechaInicioCiclo = cicloDatos ? fechaInicio : null;
+      if (cicloDatos) {
+        const tramoAnterior = asignacionesJornada
+          .filter(a => a.personal_id === doc.personal_id && a.personal_tipo === doc.personal_tipo
+            && a.fecha_fin === null && a.fecha_inicio < fechaInicio)
+          .sort((a, b) => (a.fecha_inicio < b.fecha_inicio ? 1 : -1))[0];
+        if (tramoAnterior
+          && tramoAnterior.regimen_jornada === 'ciclo_acumulativo'
+          && tramoAnterior.dias_ciclo_trabajo === cicloDatos.t
+          && tramoAnterior.dias_ciclo_descanso === cicloDatos.d
+          && tramoAnterior.fecha_inicio_ciclo) {
+          fechaInicioCiclo = tramoAnterior.fecha_inicio_ciclo;
+        }
+      }
+
       crearAsignacionJornadaCtx(doc.personal_id, doc.personal_tipo, {
         tipo_tramo:           'normal',
         fecha_inicio:         fechaInicio,
         regimen_jornada:      regimenParaAsig,
         dias_ciclo_trabajo:   cicloDatos?.t || null,
         dias_ciclo_descanso:  cicloDatos?.d || null,
-        fecha_inicio_ciclo:   cicloDatos ? fechaInicio : null,
+        fecha_inicio_ciclo:   fechaInicioCiclo,
         motivo:               'Cambio de régimen por validación de contrato',
       }).catch(err => console.error('Error al crear asignación de jornada desde contrato:', err));
     } else if (regimenSnapshot && !regimenParaAsig) {

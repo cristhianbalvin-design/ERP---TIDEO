@@ -124,6 +124,88 @@ export function calcularEstadoCicloMinero({
   };
 }
 
+/**
+ * Genera el estado día por día de un trabajador minero para un rango de fechas,
+ * combinando el cálculo teórico del ciclo (calcularEstadoCicloMinero) con el
+ * registro real de asistencia cuando existe. No modifica ni depende del estado
+ * interno de calcularEstadoCicloMinero — solo la envuelve.
+ *
+ * Prioridad por día:
+ *   1. Antes de fechaInicioCiclo (o sin fechaInicioCiclo) → 'sin_ciclo'
+ *   2. Fecha pasada u hoy, con registro real de asistencia → 'real'
+ *   3. Fecha futura, o pasada sin registro real todavía    → 'teorico'
+ *
+ * @param {object} params
+ * @param {string} params.trabajadorId       - id para matchear contra registros.trabajador_id
+ * @param {string} params.fechaInicioCiclo
+ * @param {number} params.diasTrabajo
+ * @param {number} params.diasDescanso
+ * @param {boolean} [params.tieneInduccion]
+ * @param {number} [params.diasInduccion]
+ * @param {string} [params.fechaFinInduccion]
+ * @param {string} params.fechaInicio        - 'YYYY-MM-DD' inicio del rango a generar
+ * @param {string} params.fechaFin           - 'YYYY-MM-DD' fin del rango a generar
+ * @param {Array}  [params.registros]        - registros_asistencia; se filtran por trabajadorId
+ * @param {Array}  [params.ajustes]          - roster_minero_ajustes; se filtran por trabajadorId (personal_id).
+ *                                             Un ajuste 'aprobado' prevalece sobre real y teorico; uno 'pendiente'
+ *                                             no cambia el resultado pero se expone en ajustePendiente.
+ * @param {string} [params.hoy]              - 'YYYY-MM-DD' fecha de referencia; default hoy real
+ *
+ * @returns {Array<{ fecha: string, origen: 'sin_ciclo'|'real'|'teorico'|'ajuste', estado: string, detalle: object|null, ajustePendiente: object|null }>}
+ */
+export function calcularRangoRosterMinero({
+  trabajadorId,
+  fechaInicioCiclo,
+  diasTrabajo,
+  diasDescanso,
+  tieneInduccion = false,
+  diasInduccion = 0,
+  fechaFinInduccion = null,
+  fechaInicio,
+  fechaFin,
+  registros = [],
+  ajustes = [],
+  hoy = null,
+}) {
+  const hoyStr = hoy || new Date().toISOString().split('T')[0];
+  const registrosTrabajador = registros.filter(r => r.trabajador_id === trabajadorId);
+  const ajustesTrabajador = ajustes.filter(a => a.personal_id === trabajadorId);
+
+  const dias = [];
+  const inicio = new Date(fechaInicio);
+  const fin = new Date(fechaFin);
+  for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
+    dias.push(d.toISOString().split('T')[0]);
+  }
+
+  return dias.map(fechaStr => {
+    const ajustesDia = ajustesTrabajador.filter(a => a.fecha === fechaStr);
+    const ajusteAprobado = ajustesDia.find(a => a.estado === 'aprobado') || null;
+    const ajustePendiente = ajustesDia.find(a => a.estado === 'pendiente') || null;
+
+    if (ajusteAprobado) {
+      return { fecha: fechaStr, origen: 'ajuste', estado: ajusteAprobado.tipo_dia_solicitado, detalle: ajusteAprobado, ajustePendiente: null };
+    }
+
+    if (!fechaInicioCiclo || fechaStr < fechaInicioCiclo) {
+      return { fecha: fechaStr, origen: 'sin_ciclo', estado: 'sin_ciclo_vigente', detalle: null, ajustePendiente };
+    }
+
+    if (fechaStr <= hoyStr) {
+      const registro = registrosTrabajador.find(r => r.fecha === fechaStr);
+      if (registro) {
+        return { fecha: fechaStr, origen: 'real', estado: registro.estado, detalle: registro, ajustePendiente };
+      }
+    }
+
+    const teorico = calcularEstadoCicloMinero({
+      fechaInicioCiclo, diasTrabajo, diasDescanso,
+      fechaEval: fechaStr, tieneInduccion, diasInduccion, fechaFinInduccion,
+    });
+    return { fecha: fechaStr, origen: 'teorico', estado: teorico.estado, detalle: teorico, ajustePendiente };
+  });
+}
+
 // ── Mock data ─────────────────────────────────────────────────────────────────
 
 let mockSnapshots = [
@@ -270,6 +352,105 @@ export async function cerrarRosterPeriodo(empresaId, periodoAnio, periodoMes, no
     .eq('periodo_anio', periodoAnio)
     .eq('periodo_mes', periodoMes);
   if (error) throw error;
+}
+
+// ── Ajustes manuales de roster (swap trabajo <-> descanso) ───────────────────
+// La aprobación cuando la fecha cae en un periodo de nómina ya procesado la
+// bloquea el trigger bloquear_aprobacion_ajuste_roster_cerrado (migración 332),
+// que reutiliza tal cual el permiso del retro wall de contratos
+// (personal_documentos_puede_forzar_retro). No se duplica esa validación aquí.
+
+let mockAjustes = [];
+
+/**
+ * Crea una solicitud de ajuste manual de día (queda en estado 'pendiente').
+ * El motivo es obligatorio; la tabla también lo exige (constraint), esto solo
+ * da un mensaje de error más claro antes de llegar a la base.
+ */
+export async function crearAjusteRosterMinero(empresaId, params) {
+  const motivo = (params.motivo || '').trim();
+  if (!motivo) throw new Error('El motivo del ajuste es obligatorio.');
+  if (params.tipoDiaSolicitado === params.tipoDiaAntes) {
+    throw new Error('El tipo de día solicitado debe ser distinto al tipo de día actual.');
+  }
+
+  const row = {
+    id: genId(),
+    empresa_id: empresaId,
+    personal_id: params.personalId,
+    personal_tipo: params.personalTipo,
+    fecha: params.fecha,
+    tipo_dia_antes: params.tipoDiaAntes,
+    tipo_dia_solicitado: params.tipoDiaSolicitado,
+    motivo,
+    solicitado_por: params.solicitadoPor || null,
+    estado: 'pendiente',
+  };
+
+  if (getDataMode() !== 'supabase') {
+    const nuevo = { ...row, solicitado_en: new Date().toISOString(), periodo_cerrado: false, aprobado_por: null, resuelto_en: null };
+    mockAjustes = [...mockAjustes, nuevo];
+    return nuevo;
+  }
+
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.from('roster_minero_ajustes').insert([row]).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function getAjustesRosterMinero(empresaId, personalId = null) {
+  if (getDataMode() !== 'supabase') {
+    let rows = mockAjustes.filter(a => a.empresa_id === empresaId);
+    if (personalId) rows = rows.filter(a => a.personal_id === personalId);
+    return rows;
+  }
+  const supabase = await getSupabaseClient();
+  let query = supabase.from('roster_minero_ajustes').select('*').eq('empresa_id', empresaId);
+  if (personalId) query = query.eq('personal_id', personalId);
+  const { data, error } = await query.order('fecha', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Aprueba o rechaza un ajuste. Si la fecha cae en un periodo con nómina ya
+ * procesada, aprobar sin forzarOverride (o sin permiso real) es rechazado por
+ * el trigger de la base — ver comentario de la migración 332.
+ */
+export async function resolverAjusteRosterMinero(empresaId, ajusteId, estado, resueltoPor, opts = {}) {
+  const patch = {
+    estado,
+    aprobado_por: resueltoPor || null,
+    resuelto_en: new Date().toISOString(),
+  };
+  if (opts.forzarOverride) {
+    patch.retro_override_por = resueltoPor;
+    patch.retro_override_motivo = opts.motivoOverride || null;
+  }
+
+  if (getDataMode() !== 'supabase') {
+    let actualizado = null;
+    mockAjustes = mockAjustes.map(a => {
+      if (a.id === ajusteId && a.empresa_id === empresaId) {
+        actualizado = { ...a, ...patch };
+        return actualizado;
+      }
+      return a;
+    });
+    return actualizado;
+  }
+
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('roster_minero_ajustes')
+    .update(patch)
+    .eq('id', ajusteId)
+    .eq('empresa_id', empresaId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 // ── Motor de cálculo ──────────────────────────────────────────────────────────

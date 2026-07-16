@@ -4065,10 +4065,10 @@ function Maestros() {
     },
     mst_sedes: {
       sheetName: 'Sedes', filename: 'sedes.xlsx',
-      headers: ['Codigo','Nombre','Direccion','GPS','Estado'],
-      fields:  ['codigo','nombre','direccion','gps','estado'],
-      ejemplo: ['SED-001','Sede Lima Norte','Av. Naranjal 456, Lima','-12.0464,-77.0428','activo'],
-      hint: '',
+      headers: ['Codigo','Nombre','Direccion','GPS','Tipo','Estado'],
+      fields:  ['codigo','nombre','direccion','gps','tipo','estado'],
+      ejemplo: ['SED-001','Sede Lima Norte','Av. Naranjal 456, Lima','-12.0464,-77.0428','oficina','activo'],
+      hint: 'Tipo: oficina / unidad_minera',
     },
     mst_industrias: {
       sheetName: 'Industrias', filename: 'industrias.xlsx',
@@ -4122,7 +4122,11 @@ function Maestros() {
     if (sel?.id === 'mst_impuestos' && !r.codigo) errores.push('Código vacío');
     if (estadoNorm && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido');
     if (r.nombre && selectedRows.some(x=>x.nombre===r.nombre)) errores.push('Nombre ya existe');
-    return { ...r, estado: estadoNorm || 'activo', _errores: errores };
+    const tipoNorm = (r.tipo||'').trim().toLowerCase();
+    if (sel?.id === 'mst_sedes' && tipoNorm && !['oficina','unidad_minera'].includes(tipoNorm)) {
+      errores.push(`Tipo inválido: "${r.tipo}" (debe ser "oficina" o "unidad_minera")`);
+    }
+    return { ...r, estado: estadoNorm || 'activo', tipo: sel?.id === 'mst_sedes' ? (tipoNorm || 'oficina') : r.tipo, _errores: errores };
   });
 
   const exportarMaestro = () => {
@@ -4166,7 +4170,7 @@ function Maestros() {
         else if (sel.id === 'mst_especialidades') await crearEspecialidad({ ...base, area: r.area || 'General', requiere_cert: (r.requiere_cert||'').toLowerCase()==='si' });
         else if (sel.id === 'mst_tipos_servicio') await crearTipoServicio({ ...base, clasificacion: r.clasificacion || 'General', facturable: (r.facturable||'').toLowerCase()==='si' });
         else if (sel.id === 'mst_almacenes') await crearAlmacen({ ...base, tipo: r.tipo || 'Central', responsable: r.responsable || '', direccion: r.direccion || '' });
-        else if (sel.id === 'mst_sedes') await crearSede({ ...base, direccion: r.direccion || '', gps: r.gps || '' });
+        else if (sel.id === 'mst_sedes') await crearSede({ ...base, direccion: r.direccion || '', gps: r.gps || '', tipo: r.tipo || 'oficina' });
         else if (sel.id === 'mst_industrias') await crearIndustria({ ...base, categoria: r.categoria || r.detalle || 'General' });
         else if (sel.id === 'mst_impuestos') await crearMonedaImpuestoUnidad({ codigo: (r.codigo||'').trim().toUpperCase(), tipo: r.tipo || 'moneda', nombre: r.nombre, detalle: r.detalle || '', estado: r.estado || 'activo' });
         else if (sel.id === 'mst_tipos_documento') await crearTipoDocumento({ ...base, ambito: r.ambito || 'Ambos', exige_vencimiento: (r.exige_vencimiento||'').toLowerCase()==='si', dias_alerta: parseInt(r.dias_alerta)||30, es_habilitante: (r.es_habilitante||'').toLowerCase()==='si', requiere_validacion: (r.requiere_validacion||'si').toLowerCase()==='si', orden: parseInt(r.orden)||0 });
@@ -4192,6 +4196,25 @@ function Maestros() {
   const slugifyNivel = (nombre) => String(nombre || '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+  // Cuenta asignaciones vigentes en personal_asignaciones_um (sin fecha_fin, o con
+  // fecha_fin >= hoy) para una sede — mismo criterio de "vigente" que ya usa la
+  // grilla del roster (pages_ops.jsx, rosterGridGrupos) para no definirlo dos veces
+  // de forma distinta. Usado para bloquear el downgrade de unidad_minera a oficina
+  // si hay trabajadores dependiendo de ella. Consulta directa a Supabase: no se
+  // toca ni se reutiliza el servicio del roster.
+  const contarAsignacionesUmVigentes = async (sedeId) => {
+    if (!isSupabaseConfigured()) return 0;
+    const supabase = await getSupabaseClient();
+    const hoy = new Date().toISOString().split('T')[0];
+    const { count, error } = await supabase
+      .from('personal_asignaciones_um')
+      .select('id', { count: 'exact', head: true })
+      .eq('sede_id', sedeId)
+      .or(`fecha_fin.is.null,fecha_fin.gte.${hoy}`);
+    if (error) throw error;
+    return count || 0;
+  };
 
   const addRow = async (e) => {
     e.preventDefault();
@@ -4236,7 +4259,18 @@ function Maestros() {
         if (editandoId) await actualizarAlmacen(editandoId, item);
         else await crearAlmacen(item);
       } else if (sel.id === 'mst_sedes') {
-        const item = { ...base, direccion: nuevo.direccion || 'Sin direccion', gps: nuevo.gps || '' };
+        const nuevoTipo = nuevo.tipo || 'oficina';
+        if (editandoId) {
+          const sedeActual = sedes.find(s => s.id === editandoId);
+          if (sedeActual?.tipo === 'unidad_minera' && nuevoTipo !== 'unidad_minera') {
+            const enUso = await contarAsignacionesUmVigentes(editandoId);
+            if (enUso > 0) {
+              setNuevo(v => ({ ...v, tipo: sedeActual.tipo }));
+              throw new Error(`No se puede cambiar el tipo de "${sedeActual.nombre}" a oficina: ${enUso} trabajador(es) tienen una asignación vigente a esta unidad minera en personal_asignaciones_um. Reasigna o cierra esas asignaciones antes de cambiar el tipo.`);
+            }
+          }
+        }
+        const item = { ...base, direccion: nuevo.direccion || 'Sin direccion', gps: nuevo.gps || '', tipo: nuevoTipo };
         if (editandoId) await actualizarSede(editandoId, item);
         else await crearSede(item);
       } else if (sel.id === 'mst_industrias') {
@@ -4563,6 +4597,7 @@ function Maestros() {
           <CodPreview id={sel.id} len={formLen}/>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre de la sede *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Sede Norte, Planta Central" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
+          <div className="input-group"><label>Tipo de sede</label><select className="select" value={nuevo.tipo || 'oficina'} onChange={e=>setNuevo(v=>({...v,tipo:e.target.value}))}><option value="oficina">Oficina administrativa</option><option value="unidad_minera">Unidad minera</option></select></div>
           <div className="input-group" style={{gridColumn:'span 3'}}><label>Dirección física</label><input className="input" value={nuevo.direccion} onChange={e=>setNuevo(v=>({...v,direccion:e.target.value}))} placeholder="Ej: Av. Industrial 1450, Ate Vitarte, Lima"/></div>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Coordenadas GPS <span style={{fontSize:10,color:'var(--fg-subtle)',fontWeight:400}}>· lat, lng</span></label><input className="input" value={nuevo.gps} onChange={e=>setNuevo(v=>({...v,gps:e.target.value}))} placeholder="Ej: -12.0464, -77.0428"/></div>
           <FormActions label="sede" />
@@ -4920,7 +4955,7 @@ function Maestros() {
     );
     if (sel?.id === 'mst_sedes') return (
       <table className="tbl">
-        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Código</th><th>Nombre</th><th>Dirección física</th><th>GPS</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Código</th><th>Nombre</th><th>Dirección física</th><th>GPS</th><th>Tipo</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
         <tbody>{selectedRows.map((r,i) => (
           <tr key={`${r.codigo}-${i}`}>
             <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
@@ -4928,6 +4963,7 @@ function Maestros() {
             <td><strong>{r.nombre}</strong></td>
             <td className="text-muted" style={{fontSize:12}}>{r.direccion || '—'}</td>
             <td><span className="mono" style={{fontSize:11, color:'var(--cyan-dk)', background:'var(--cyan-lt)', padding:'2px 7px', borderRadius:6}}>{r.gps || '—'}</span></td>
+            <td><span className={'badge '+(r.tipo==='unidad_minera'?'badge-orange':'badge-gray')}>{r.tipo === 'unidad_minera' ? 'Unidad minera' : 'Oficina'}</span></td>
             <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
             <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
           </tr>
