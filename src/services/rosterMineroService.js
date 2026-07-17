@@ -151,7 +151,7 @@ export function calcularEstadoCicloMinero({
  *                                             no cambia el resultado pero se expone en ajustePendiente.
  * @param {string} [params.hoy]              - 'YYYY-MM-DD' fecha de referencia; default hoy real
  *
- * @returns {Array<{ fecha: string, origen: 'sin_ciclo'|'real'|'teorico'|'ajuste', estado: string, detalle: object|null, ajustePendiente: object|null }>}
+ * @returns {Array<{ fecha: string, origen: 'sin_ciclo'|'real'|'teorico'|'ajuste', estado: string, detalle: object|null, ajustePendiente: object|null, ajusteAprobado: object|null, registro: object|null, teorico: object|null, pendienteRevision: boolean }>}
  */
 export function calcularRangoRosterMinero({
   trabajadorId,
@@ -183,26 +183,37 @@ export function calcularRangoRosterMinero({
     const ajusteAprobado = ajustesDia.find(a => a.estado === 'aprobado') || null;
     const ajustePendiente = ajustesDia.find(a => a.estado === 'pendiente') || null;
 
-    if (ajusteAprobado) {
-      return { fecha: fechaStr, origen: 'ajuste', estado: ajusteAprobado.tipo_dia_solicitado, detalle: ajusteAprobado, ajustePendiente: null };
-    }
-
-    if (!fechaInicioCiclo || fechaStr < fechaInicioCiclo) {
-      return { fecha: fechaStr, origen: 'sin_ciclo', estado: 'sin_ciclo_vigente', detalle: null, ajustePendiente };
-    }
-
-    if (fechaStr <= hoyStr) {
-      const registro = registrosTrabajador.find(r => r.fecha === fechaStr);
-      if (registro) {
-        return { fecha: fechaStr, origen: 'real', estado: registro.estado, detalle: registro, ajustePendiente };
-      }
-    }
-
-    const teorico = calcularEstadoCicloMinero({
+    // sinCiclo/teorico/registro se calculan siempre (aunque un ajuste ya haya
+    // decidido el día) únicamente para exponerlos en el objeto devuelto — los
+    // consumidores (íconos de la grilla) necesitan ver el dato real subyacente
+    // incluso cuando el fondo final lo decide el ajuste. No cambia qué rama
+    // decide el día ni el balance: eso sigue siendo exactamente lo de antes.
+    const sinCiclo = !fechaInicioCiclo || fechaStr < fechaInicioCiclo;
+    const teorico = sinCiclo ? null : calcularEstadoCicloMinero({
       fechaInicioCiclo, diasTrabajo, diasDescanso,
       fechaEval: fechaStr, tieneInduccion, diasInduccion, fechaFinInduccion,
     });
-    return { fecha: fechaStr, origen: 'teorico', estado: teorico.estado, detalle: teorico, ajustePendiente };
+    const registro = (!sinCiclo && fechaStr <= hoyStr)
+      ? registrosTrabajador
+          .filter(r => r.fecha === fechaStr)
+          .reduce((masReciente, r) => (!masReciente || new Date(r.created_at) > new Date(masReciente.created_at)) ? r : masReciente, null)
+      : null;
+
+    if (ajusteAprobado) {
+      return { fecha: fechaStr, origen: 'ajuste', estado: ajusteAprobado.tipo_dia_solicitado, detalle: ajusteAprobado, ajustePendiente: null, ajusteAprobado, registro, teorico, pendienteRevision: false };
+    }
+
+    if (sinCiclo) {
+      return { fecha: fechaStr, origen: 'sin_ciclo', estado: 'sin_ciclo_vigente', detalle: null, ajustePendiente, ajusteAprobado: null, registro: null, teorico: null, pendienteRevision: false };
+    }
+
+    if (registro) {
+      // 'incompleto' sin ajuste aprobado: no queda claro si fue trabajo o
+      // descanso — pendiente de revisión (ajuste manual o falta en Asistencia).
+      return { fecha: fechaStr, origen: 'real', estado: registro.estado, detalle: registro, ajustePendiente, ajusteAprobado: null, registro, teorico, pendienteRevision: registro.estado === 'incompleto' };
+    }
+
+    return { fecha: fechaStr, origen: 'teorico', estado: teorico.estado, detalle: teorico, ajustePendiente, ajusteAprobado: null, registro: null, teorico, pendienteRevision: false };
   });
 }
 
@@ -215,7 +226,7 @@ let mockSnapshots = [
     periodo_anio: 2026, periodo_mes: 5,
     regimen_jornada: 'ciclo_acumulativo', dias_ciclo_trabajo: 20, dias_ciclo_descanso: 10,
     dias_en_mina: 20, dias_induccion: 0, dias_efectivos_descanso: 20,
-    dias_descanso_ganados: 10, dias_descanso_gozados: 0,
+    dias_descanso_ganados: 10, dias_descanso_gozados: 0, dias_pendientes_revision: 0,
     balance_periodo: 10, balance_acumulado: 10,
     calculado_en: '2026-05-31T18:00:00Z', calculado_por: 'RRHH Demo',
     periodo_cerrado: true, nomina_periodo_id: null,
@@ -226,7 +237,7 @@ let mockSnapshots = [
     periodo_anio: 2026, periodo_mes: 6,
     regimen_jornada: 'ciclo_acumulativo', dias_ciclo_trabajo: 20, dias_ciclo_descanso: 10,
     dias_en_mina: 10, dias_induccion: 0, dias_efectivos_descanso: 10,
-    dias_descanso_ganados: 5, dias_descanso_gozados: 10,
+    dias_descanso_ganados: 5, dias_descanso_gozados: 10, dias_pendientes_revision: 0,
     balance_periodo: -5, balance_acumulado: 5,
     calculado_en: '2026-06-11T18:00:00Z', calculado_por: 'RRHH Demo',
     periodo_cerrado: false, nomina_periodo_id: null,
@@ -237,7 +248,7 @@ let mockSnapshots = [
     periodo_anio: 2026, periodo_mes: 6,
     regimen_jornada: 'ciclo_acumulativo', dias_ciclo_trabajo: 14, dias_ciclo_descanso: 7,
     dias_en_mina: 14, dias_induccion: 5, dias_efectivos_descanso: 9,
-    dias_descanso_ganados: 4.5, dias_descanso_gozados: 0,
+    dias_descanso_ganados: 4.5, dias_descanso_gozados: 0, dias_pendientes_revision: 0,
     balance_periodo: 4.5, balance_acumulado: 4.5,
     calculado_en: '2026-06-11T18:00:00Z', calculado_por: 'RRHH Demo',
     periodo_cerrado: false, nomina_periodo_id: null,
@@ -266,10 +277,13 @@ export async function getSnapshotsRoster(empresaId, periodoAnio = null, periodoM
 /**
  * Calcula y persiste el roster del período para todos los trabajadores mineros.
  * Solo puede ejecutarse sobre períodos abiertos (no cerrados).
+ * @param {Array} [ajustes] - roster_minero_ajustes ya aprobados y filtrados al
+ *   período por el llamador (ver recalcularRoster en pages_ops.jsx); se pasan
+ *   tal cual a calcularRosterPeriodo, que decide con prioridad sobre todo lo demás.
  */
-export async function calcularYGuardarRoster(empresaId, periodoAnio, periodoMes, trabajadores, registros, ciclos, calculadoPor, nominaPeriodoId = null) {
+export async function calcularYGuardarRoster(empresaId, periodoAnio, periodoMes, trabajadores, registros, ciclos, ajustes = [], calculadoPor, nominaPeriodoId = null) {
   if (getDataMode() !== 'supabase') {
-    const nuevosPorPersonal = calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, registros, ciclos);
+    const nuevosPorPersonal = calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, registros, ciclos, ajustes);
     // Sobreescribir snapshots del período
     mockSnapshots = [
       ...mockSnapshots.filter(s => !(s.empresa_id === empresaId && s.periodo_anio === periodoAnio && s.periodo_mes === periodoMes)),
@@ -313,7 +327,7 @@ export async function calcularYGuardarRoster(empresaId, periodoAnio, periodoMes,
     .eq('periodo_mes', mesAnterior);
   const acumuladoAnt = new Map((snapsAnt || []).map(s => [s.personal_id, Number(s.balance_acumulado)]));
 
-  const filas = calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, registros, ciclos);
+  const filas = calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, registros, ciclos, ajustes);
 
   const upserts = filas.map(f => ({
     id: genId(),
@@ -453,46 +467,143 @@ export async function resolverAjusteRosterMinero(empresaId, ajusteId, estado, re
   return data;
 }
 
+/**
+ * Marca un ajuste aprobado (resultado 'descanso') como ya revisado en Control
+ * de Asistencia — trazabilidad humana pura, sin ningún efecto en cálculos ni
+ * en registros_asistencia. Solo controla si la grilla muestra el ícono
+ * "Revisar impacto en nómina" para ese día.
+ */
+export async function confirmarRevisionAjusteRoster(empresaId, ajusteId, confirmadoPor) {
+  const patch = {
+    revision_asistencia_confirmada: true,
+    revision_confirmada_por: confirmadoPor || null,
+    revision_confirmada_en: new Date().toISOString(),
+  };
+
+  if (getDataMode() !== 'supabase') {
+    let actualizado = null;
+    mockAjustes = mockAjustes.map(a => {
+      if (a.id === ajusteId && a.empresa_id === empresaId) {
+        actualizado = { ...a, ...patch };
+        return actualizado;
+      }
+      return a;
+    });
+    return actualizado;
+  }
+
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('roster_minero_ajustes')
+    .update(patch)
+    .eq('id', ajusteId)
+    .eq('empresa_id', empresaId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // ── Motor de cálculo ──────────────────────────────────────────────────────────
 
 /**
  * Calcula las filas del roster para un período mensual.
+ *
+ * Prioridad por día (dentro del período, para cada trabajador minero):
+ *   1. Ajuste aprobado (roster_minero_ajustes) para esa fecha → decide trabajo o
+ *      descanso según tipo_dia_solicitado, sin importar qué diga el registro real.
+ *   2. Registro real 'completo' | 'tardanza' | 'horas_extra' (sin ajuste)      → mina.
+ *   3. Registro real 'incompleto', o sin ningún registro en un día que el ciclo
+ *      teórico esperaba trabajo (fecha_inicio_ciclo / dias_ciclo_trabajo del
+ *      registro en asistencia_ciclos_mineros) → no suma a dias_en_mina ni a
+ *      dias_descanso_gozados; se cuenta en dias_pendientes_revision.
+ *   4. Registro real 'falta' (es_falta=true) o 'descanso'/'bajada'            → igual que antes.
+ *
  * @param {number} periodoAnio
  * @param {number} periodoMes
  * @param {Array} trabajadores - lista completa (operativo + admin)
  * @param {Array} registros   - registros_asistencia del período
  * @param {Array} ciclos      - asistencia_ciclos_mineros
+ * @param {Array} [ajustes]   - roster_minero_ajustes ya filtrados a estado='aprobado'
  * @returns {Array} una fila por trabajador minero
  */
-export function calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, registros, ciclos) {
+export function calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, registros, ciclos, ajustes = []) {
   const mineros = trabajadores.filter(t => {
     const rj = t.regimen_jornada || 'general';
     return rj === 'ciclo_acumulativo' || rj.startsWith('minero_');
   });
 
+  const prefijoMes = `${periodoAnio}-${String(periodoMes).padStart(2, '0')}`;
+  const diasEnMes = new Date(periodoAnio, periodoMes, 0).getDate();
+
   return mineros.map(t => {
-    const regsT = registros.filter(r => r.trabajador_id === t.id && r.fecha?.startsWith(`${periodoAnio}-${String(periodoMes).padStart(2, '0')}`));
+    const regsT = registros.filter(r => r.trabajador_id === t.id && r.fecha?.startsWith(prefijoMes));
     const cicloT = ciclos.filter(c => c.personal_id === t.id);
-
-    // Días efectivos en mina del mes (no falta, no descanso, no induccion)
-    const diasEnMina = regsT.filter(r => !r.es_falta && r.estado !== 'descanso' && r.origen_registro !== 'ciclo_induccion').length;
-
-    // Días de inducción del mes
-    const diasInduccion = regsT.filter(r => r.estado === 'induccion' || r.origen_registro === 'ciclo_induccion').length;
-
-    // Días efectivos para generar descanso
-    const diasEfectivos = diasEnMina;
+    const cicloInfo = cicloT[0] || null;
+    const ajustesT = ajustes.filter(a => a.personal_id === t.id && a.estado === 'aprobado' && a.fecha?.startsWith(prefijoMes));
 
     // Calcular ratio del régimen
     const diasT = t.dias_ciclo_trabajo || 14;
     const diasD = t.dias_ciclo_descanso || 7;
     const ratio = diasD / diasT;
 
+    let diasEnMina = 0;
+    let diasInduccion = 0;
+    let diasGozados = 0;
+    let diasPendientesRevision = 0;
+
+    for (let dia = 1; dia <= diasEnMes; dia++) {
+      const fechaStr = `${prefijoMes}-${String(dia).padStart(2, '0')}`;
+      const ajuste = ajustesT.find(a => a.fecha === fechaStr);
+
+      // 1. Ajuste aprobado: prioridad máxima, sin más preguntas.
+      if (ajuste) {
+        if (ajuste.tipo_dia_solicitado === 'trabajo') diasEnMina++;
+        else diasGozados++;
+        continue;
+      }
+
+      const registro = regsT
+        .filter(r => r.fecha === fechaStr)
+        .reduce((masReciente, r) => (!masReciente || new Date(r.created_at) > new Date(masReciente.created_at)) ? r : masReciente, null);
+
+      if (registro) {
+        // 4. Falta real: igual que antes (no suma a nada).
+        if (registro.es_falta) continue;
+        // 4. Descanso/bajada real: igual que antes.
+        if (registro.estado === 'descanso' || registro.estado === 'bajada') { diasGozados++; continue; }
+        // Inducción real: igual que antes.
+        if (registro.estado === 'induccion' || registro.origen_registro === 'ciclo_induccion') { diasInduccion++; continue; }
+        // 3. Incompleto: no queda claro si fue trabajo o descanso — a revisión.
+        if (registro.estado === 'incompleto') { diasPendientesRevision++; continue; }
+        // 2. completo | tardanza | horas_extra (u otro estado real no contemplado
+        //    arriba): cuenta como mina, igual que antes — sin tratamiento especial.
+        diasEnMina++;
+        continue;
+      }
+
+      // Sin ningún registro ese día: solo es "pendiente de revisión" si el ciclo
+      // teórico esperaba trabajo (usa fecha_inicio_ciclo, antes recibido y no usado).
+      if (cicloInfo?.fecha_inicio_ciclo) {
+        const teorico = calcularEstadoCicloMinero({
+          fechaInicioCiclo: cicloInfo.fecha_inicio_ciclo,
+          diasTrabajo: diasT,
+          diasDescanso: diasD,
+          fechaEval: fechaStr,
+          tieneInduccion: cicloInfo.tiene_induccion || false,
+          diasInduccion: cicloInfo.dias_induccion || 0,
+          fechaFinInduccion: cicloInfo.fecha_fin_induccion || null,
+        });
+        if (teorico.estado === 'en_mina') diasPendientesRevision++;
+      }
+      // Sin info de ciclo, o el ciclo no esperaba trabajo ese día: no se cuenta
+      // nada, igual que el comportamiento previo (el día simplemente no existía
+      // en regsT y no afectaba ningún total).
+    }
+
+    // Días efectivos para generar descanso
+    const diasEfectivos = diasEnMina;
     const diasDescansoGanados = Math.round(diasEfectivos * ratio * 100) / 100;
-
-    // Días de descanso o bajada gozados en el mes
-    const diasGozados = regsT.filter(r => r.estado === 'descanso' || r.estado === 'bajada').length;
-
     const balancePeriodo = Math.round((diasDescansoGanados - diasGozados) * 100) / 100;
 
     return {
@@ -509,6 +620,7 @@ export function calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, reg
       dias_efectivos_descanso: diasEfectivos,
       dias_descanso_ganados: diasDescansoGanados,
       dias_descanso_gozados: diasGozados,
+      dias_pendientes_revision: diasPendientesRevision,
       balance_periodo: balancePeriodo,
       balance_acumulado: balancePeriodo, // se sobreescribe con el acumulado real en calcularYGuardarRoster
     };

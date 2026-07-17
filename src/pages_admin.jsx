@@ -29,6 +29,7 @@ import {
   asignacionFamiliarMonto,
   calcularHorasBaseMesDesdeTurno,
   diasVacacionesPorRegimen,
+  esRegimenMinero,
   fiscalizacionLabel,
   getTipoFiscalizacion,
   normalizarModalidadContrato,
@@ -7869,6 +7870,12 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
         errores.push('Modalidad de contrato inválida');
       }
 
+      // Régimen de jornada (columna opcional; vacía = 'general')
+      const regimenJornadaStr = normalizar(row['Régimen de jornada']);
+      if (regimenJornadaStr && regimenJornadaStr !== 'general' && regimenJornadaStr !== 'ciclo_acumulativo' && !esRegimenMinero(regimenJornadaStr)) {
+        errores.push(`Régimen de jornada "${row['Régimen de jornada']}" no reconocido (valores válidos: general, ciclo_acumulativo, minero_14x7, minero_20x10, minero_28x14, minero_2x1)`);
+      }
+
       // Honorarios RUC
       if (modContratoStr === 'honorarios') {
         const ruc = String(row['RUC colaborador'] || '').trim();
@@ -8021,11 +8028,14 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
         cuota_prestamo_mes: modContrato === 'planilla' ? Number(r['Cuota préstamo mes'] || 0) : 0,
         descuento_judicial: modContrato === 'planilla' ? Number(r['Descuento judicial'] || 0) : 0,
         regimen_laboral: 'general',
-        regimen_jornada: modContrato === 'planilla' ? (normalizar(r['Régimen de jornada']) === 'ciclo_acumulativo' ? 'ciclo_acumulativo' : 'general') : 'general',
+        regimen_jornada: (() => {
+          const rj = normalizar(r['Régimen de jornada']);
+          return modContrato === 'planilla' && esRegimenMinero(rj) ? rj : 'general';
+        })(),
         horas_diarias_pactadas: Number(r['Horas diarias pactadas'] || 8),
-        fecha_inicio_ciclo: normalizar(r['Régimen de jornada']) === 'ciclo_acumulativo' ? parseExcelDate(r['Fecha inicio ciclo']) : null,
-        dias_ciclo_trabajo: normalizar(r['Régimen de jornada']) === 'ciclo_acumulativo' ? Number(r['Días ciclo trabajo'] || 0) : null,
-        dias_ciclo_descanso: normalizar(r['Régimen de jornada']) === 'ciclo_acumulativo' ? Number(r['Días ciclo descanso'] || 0) : null,
+        fecha_inicio_ciclo: modContrato === 'planilla' && esRegimenMinero(normalizar(r['Régimen de jornada'])) ? parseExcelDate(r['Fecha inicio ciclo']) : null,
+        dias_ciclo_trabajo: modContrato === 'planilla' && esRegimenMinero(normalizar(r['Régimen de jornada'])) ? Number(r['Días ciclo trabajo'] || 0) : null,
+        dias_ciclo_descanso: modContrato === 'planilla' && esRegimenMinero(normalizar(r['Régimen de jornada'])) ? Number(r['Días ciclo descanso'] || 0) : null,
         bonif_altitud: Number(r['Bonificación por altitud'] || 0),
         tipo_comision_afp: normalizar(r['Tipo comisión AFP']) === 'flujo' ? 'flujo' : 'mixta',
         pct_comision_afp_flujo: Number(r['Porcentaje comisión AFP flujo'] || 0),
@@ -8052,6 +8062,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
         'Nombres y apellidos', 'DNI', 'Email corporativo', 'Teléfono / celular', 'Fecha de nacimiento',
         'Cargo', 'Área', 'Sede base', 'Centro de costo (CECO)', 'Fecha de ingreso',
         'Modalidad de contrato', 'Tipo de contrato', 'Turno asignado', 'Modalidad de trabajo', 'Régimen de jornada',
+        'Fecha inicio ciclo', 'Días ciclo trabajo', 'Días ciclo descanso',
         'Horas diarias pactadas', 'Código de empleado', 'Sueldo base / Honorario pactado',
         'Sistema pensionario', 'AFP nombre', 'Tipo comisión AFP', 'Porcentaje comisión AFP flujo',
         'Tiene hijos', 'Bonificación por altitud', 'Método de pago', 'Horas base mes',
@@ -8062,7 +8073,8 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
       [
         'Juan Pérez Ejemplo', '12345678', 'juan@ejemplo.com', '987654321', '1990-01-01',
         cargosAdminOptions[0]?.nombre || 'Asistente Administrativo', areasOptions[0] || 'Administración', sedesOptions[0]?.nombre || 'Sede Central', cecosActivos[0]?.nombre || 'Administración Central', '2026-06-01',
-        'Planilla', 'Indefinido', turnosOptions[0]?.nombre || 'Turno Oficina', 'Presencial', 'General (8h/día estándar)',
+        'Planilla', 'Indefinido', turnosOptions[0]?.nombre || 'Turno Oficina', 'Presencial', 'general',
+        '', '', '',
         '8', 'ADM-001', '2500',
         'AFP', 'Integra', 'Mixta', '0',
         'NO', 'NO', 'Mensual', '160',
@@ -8090,7 +8102,10 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
       ['Tipo de contrato', 'Sí', 'Indefinido, Plazo fijo, Por obra o servicio'],
       ['Turno asignado', 'Sí (Planilla)', 'Nombre exacto del turno (ver catálogo)'],
       ['Modalidad de trabajo', 'Sí', 'Presencial, Remoto, Híbrido'],
-      ['Régimen de jornada', 'Sí', 'General (8h/día estándar), Minero 14×7, etc.'],
+      ['Régimen de jornada', 'No (vacío = general)', 'Valor exacto en minúsculas: general, ciclo_acumulativo, minero_14x7, minero_20x10, minero_28x14, minero_2x1. Si es un régimen minero, completa también Fecha inicio ciclo, Días ciclo trabajo y Días ciclo descanso.'],
+      ['Fecha inicio ciclo', 'Sí (si régimen minero)', 'YYYY-MM-DD. Se ignora si Régimen de jornada es general.'],
+      ['Días ciclo trabajo', 'Sí (si régimen minero)', 'Número entero (ej. 14 para minero_14x7). Se ignora si Régimen de jornada es general.'],
+      ['Días ciclo descanso', 'Sí (si régimen minero)', 'Número entero (ej. 7 para minero_14x7). Se ignora si Régimen de jornada es general.'],
       ['Sistema pensionario', 'Sí (Planilla)', 'AFP, ONP'],
       ['AFP nombre', 'Sí (si AFP)', 'Integra, Prima, Profuturo, Habitat'],
       ['Tipo comisión AFP', 'Sí (si AFP)', 'Mixta, Flujo'],
@@ -8100,12 +8115,13 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
     ]);
 
     const wsValores = XLSX.utils.aoa_to_sheet([
-      ['Modalidad de contrato', 'Tipo de contrato', 'Modalidad de trabajo', 'Régimen de jornada', 'Sistema pensionario', 'AFP nombre', 'Tipo comisión AFP', 'Método de pago', 'Booleanos'],
-      ['Planilla', 'Indefinido', 'Presencial', 'General (8h/día estándar)', 'AFP', 'Integra', 'Mixta', 'Mensual', 'SI'],
-      ['Honorarios', 'Plazo fijo', 'Remoto', 'Minero 14×7', 'ONP', 'Prima', 'Flujo', 'Por horas', 'NO'],
-      ['', 'Por obra o servicio', 'Híbrido', 'Minero 20×10', '', 'Profuturo', '', '', ''],
-      ['', '', '', 'Minero 28×14', '', 'Habitat', '', '', ''],
-      ['', '', '', 'Minero 2×1', '', '', '', '', '']
+      ['Modalidad de contrato', 'Tipo de contrato', 'Modalidad de trabajo', 'Régimen de jornada (valor exacto)', 'Sistema pensionario', 'AFP nombre', 'Tipo comisión AFP', 'Método de pago', 'Booleanos'],
+      ['Planilla', 'Indefinido', 'Presencial', 'general', 'AFP', 'Integra', 'Mixta', 'Mensual', 'SI'],
+      ['Honorarios', 'Plazo fijo', 'Remoto', 'ciclo_acumulativo', 'ONP', 'Prima', 'Flujo', 'Por horas', 'NO'],
+      ['', 'Por obra o servicio', 'Híbrido', 'minero_14x7', '', 'Profuturo', '', '', ''],
+      ['', '', '', 'minero_20x10', '', 'Habitat', '', '', ''],
+      ['', '', '', 'minero_28x14', '', '', '', '', ''],
+      ['', '', '', 'minero_2x1', '', '', '', '', '']
     ]);
 
     const wb = XLSX.utils.book_new();
