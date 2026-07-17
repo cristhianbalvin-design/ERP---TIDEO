@@ -13187,6 +13187,13 @@ function segmentarMesPorAsignaciones(asigs, periodo, trabajador = {}) {
 
   if (solapadas.length === 0) return null;
 
+  const primeraAsig = solapadas[0];
+  const primeraAsigIni = new Date(primeraAsig.fecha_inicio + 'T00:00:00');
+  if (primeraAsigIni > primerDia) {
+    const origenLabel = (_dtIng && _dtIng > primerDiaOriginal) ? `la fecha de ingreso (${_isoDate(primerDia)})` : `el inicio del período (${_isoDate(primerDia)})`;
+    return { error: 'gap', detail: `Hueco sin asignación: entre ${origenLabel} y ${primeraAsig.fecha_inicio}. Verifica el historial.` };
+  }
+
   for (let i = 1; i < solapadas.length; i++) {
     const prev = solapadas[i - 1];
     const curr = solapadas[i];
