@@ -18980,7 +18980,21 @@ function RRHH_Operativo() {
                       : <div className="text-muted" style={{fontSize:13}}>Sin asignación registrada — se usa el régimen de la ficha ({p.regimen_jornada || 'general'}).</div>
                     }
                   </div>
-                  <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => { setShowFormAsig(v => !v); setFormAsig(f => ({ ...f, fecha_inicio: '', regimen_jornada: asigActiva?.regimen_jornada || 'general' })); }}>+ Nueva asignación</button>
+                  <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => {
+                    setShowFormAsig(v => !v);
+                    setFormAsig(f => {
+                      if (asigActiva) return { ...f, fecha_inicio: '', regimen_jornada: asigActiva.regimen_jornada || 'general' };
+                      const esCicloFicha = p.regimen_jornada === 'ciclo_acumulativo' || (p.regimen_jornada || '').startsWith('minero_');
+                      return {
+                        ...f,
+                        fecha_inicio: p.fecha_ingreso || '',
+                        regimen_jornada: esCicloFicha ? 'ciclo_acumulativo' : 'general',
+                        dias_ciclo_trabajo: esCicloFicha ? (p.dias_ciclo_trabajo || '') : '',
+                        dias_ciclo_descanso: esCicloFicha ? (p.dias_ciclo_descanso || '') : '',
+                        fecha_inicio_ciclo: esCicloFicha ? (p.fecha_inicio_ciclo || '') : '',
+                      };
+                    });
+                  }}>+ Nueva asignación</button>
                 </div>
 
                 {showFormAsig && (
