@@ -42,8 +42,17 @@ export const requiereFechaFinContrato = (tipoContrato = '') => {
   return ['plazo_fijo', 'obra_determinada', 'por_encargo'].includes(String(tipoContrato || '').toLowerCase());
 };
 
+// Reconoce cualquier variante de régimen de ciclo minero: el literal genérico
+// 'ciclo_acumulativo' y los catálogos predefinidos 'minero_14x7', 'minero_20x10',
+// 'minero_28x14', 'minero_2x1', etc. Único punto de verdad para esta clasificación
+// — usar esto en vez de comparar contra 'ciclo_acumulativo' suelto.
+export const esRegimenMinero = (regimenJornada) => {
+  const rj = regimenJornada || 'general';
+  return rj === 'ciclo_acumulativo' || rj.startsWith('minero_');
+};
+
 export const getTipoFiscalizacion = (persona = {}) => {
-  if ((persona.regimen_jornada || 'general') === 'ciclo_acumulativo') return 'ciclo';
+  if (esRegimenMinero(persona.regimen_jornada)) return 'ciclo';
   if (Boolean(persona.cargo_confianza)) return 'ninguna';
   return 'diaria';
 };
@@ -497,8 +506,8 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   regimen_jornada: persona.regimen_jornada || 'general',
   horas_diarias_pactadas: Number(persona.horas_diarias_pactadas || 8),
   fecha_inicio_ciclo: persona.fecha_inicio_ciclo || null,
-  dias_ciclo_trabajo: persona.regimen_jornada === 'ciclo_acumulativo' ? (Number(persona.dias_ciclo_trabajo || 0) || null) : null,
-  dias_ciclo_descanso: persona.regimen_jornada === 'ciclo_acumulativo' ? (Number(persona.dias_ciclo_descanso || 0) || null) : null,
+  dias_ciclo_trabajo: esRegimenMinero(persona.regimen_jornada) ? (Number(persona.dias_ciclo_trabajo || 0) || null) : null,
+  dias_ciclo_descanso: esRegimenMinero(persona.regimen_jornada) ? (Number(persona.dias_ciclo_descanso || 0) || null) : null,
   cargo_confianza: Boolean(persona.cargo_confianza),
   bonif_altitud: Number(persona.bonif_altitud || 0),
   tipo_comision_afp: persona.tipo_comision_afp || 'mixta',

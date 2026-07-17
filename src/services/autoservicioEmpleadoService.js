@@ -1,5 +1,5 @@
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
-import { rrhhService } from './rrhhService.js';
+import { rrhhService, esRegimenMinero } from './rrhhService.js';
 import { computarSaldoVacaciones } from './solicitudesRrhhService.js';
 
 const norm = value => String(value || '').trim().toLowerCase();
@@ -133,7 +133,7 @@ export function construirAutoservicioLocal({
       ultima_boleta: boletas[0] || null,
       vacaciones: calcSaldoVacaciones(ficha, solicitudes, configAusencias),
       he_pendiente_minutos: hePendienteMin,
-      ciclo_minero: ficha.regimen_jornada === 'ciclo_acumulativo' ? {
+      ciclo_minero: esRegimenMinero(ficha.regimen_jornada) ? {
         dia: ficha.dia_ciclo_actual || null,
         proxima_bajada: ficha.proxima_bajada || null,
         regimen: `${ficha.dias_ciclo_trabajo || 14}x${ficha.dias_ciclo_descanso || 7}`,

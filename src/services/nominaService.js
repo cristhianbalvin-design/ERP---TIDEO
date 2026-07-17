@@ -70,6 +70,9 @@ export function mapCalculoANominaDetalle(c, periodo, empresaCfg = {}) {
   return {
     trabajador_id: c.trabajador_id,
     trabajador_tipo: c.trabajador?.trabajador_tipo === 'administrativo' ? 'administrativo' : 'operativo',
+    // c.sistema_pensionario (no c.trabajador.sistema_pensionario) es el valor YA resuelto
+    // por el motor: datosNomina?.sistema_pensionario || trabajador.sistema_pensionario || 'AFP'.
+    sistema_pensionario: c.sistema_pensionario === 'ONP' ? 'ONP' : (c.sistema_pensionario === 'AFP' ? 'AFP' : null),
     regimen_jornada_snap: c.regimen_jornada ?? null,
     regimen_empresa_snap: c.regimen_empresa ?? null,
     dias_laborables: c.dias_laborables ?? null,
