@@ -1,4 +1,5 @@
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
+import { esRemunerativoPorSubTipo } from './nominaService.js';
 
 const generateTextId = (prefix) => {
   const uuid = globalThis.crypto?.randomUUID?.();
@@ -316,9 +317,10 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   documento: persona.documento || persona.dni || null,
   cargo: persona.cargo || 'Tecnico de Campo',
   cargo_id: persona.cargo_id || null,
+  posicion_id: persona.posicion_id || null,
   especialidad: persona.especialidad || 'General',
   especialidad2: persona.especialidad2 || null,
-  area: persona.area || 'Operaciones',
+  area: persona.area || null,
   turno_id: persona.turno_id || null,
   telefono: persona.telefono || null,
   email: persona.email || null,
@@ -377,7 +379,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
     costo_extra: 'costo_hora_extra',
   };
   const allowed = new Set([
-    'codigo', 'nombre', 'documento', 'cargo', 'cargo_id', 'especialidad', 'especialidad2',
+    'codigo', 'nombre', 'documento', 'cargo', 'cargo_id', 'posicion_id', 'especialidad', 'especialidad2',
     'area', 'turno_id', 'telefono', 'email', 'sede', 'supervisor_id', 'supervisor',
     'fecha_ingreso', 'sueldo_base', 'moneda', 'sistema_pensionario',
     'metodo_pago', 'monto_mensual', 'horas_base_mes', 'tarifa_hora',
@@ -480,7 +482,8 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   direccion: persona.direccion || null,
   cargo: persona.cargo || 'Por definir',
   cargo_id: persona.cargo_id || null,
-  area: persona.area || 'Administracion',
+  posicion_id: persona.posicion_id || null,
+  area: persona.area || null,
   telefono: persona.telefono || null,
   email: persona.email || null,
   supervisor: persona.supervisor || null,
@@ -554,7 +557,7 @@ const toPersonalAdminUpdate = (cambios = {}) => {
   };
   const allowed = new Set([
     'codigo', 'nombre', 'documento', 'dni', 'fecha_nacimiento', 'direccion',
-    'cargo', 'cargo_id', 'area', 'telefono', 'email', 'supervisor', 'sede', 'turno_id',
+    'cargo', 'cargo_id', 'posicion_id', 'area', 'telefono', 'email', 'supervisor', 'sede', 'turno_id',
     'modalidad_contrato', 'tipo_contrato', 'fecha_ingreso',
     'sueldo_base', 'remuneracion', 'moneda', 'metodo_pago', 'monto_mensual',
     'horas_base_mes', 'tarifa_hora', 'sistema_pensionario', 'modalidad',
@@ -1204,6 +1207,58 @@ export const rrhhService = {
   resolverDescuentoExtraordinario: async (id, estado, params = {}) => {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase.from('descuentos_extraordinarios').update({ estado, resuelto_por: params.resuelto_por || null, comentario_resolucion: params.comentario_resolucion || null, resuelto_en: new Date().toISOString() }).eq('id', id).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  // ── Ingresos extraordinarios (espejo de descuentos_extraordinarios) ──────────
+  // Defectos corregidos respecto al espejo: periodo_id obligatorio (no puede
+  // "flotar" sin período) y evidencia opcional (a diferencia del descuento, que la
+  // exige). La transición a 'aplicado' ocurre en cerrarPeriodo, no acá.
+  getIngresosExtraordinarios: async (empresaId) => {
+    if (!empresaId || !isSupabaseConfigured()) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('ingresos_extraordinarios').select('*').eq('empresa_id', empresaId).order('registrado_en', { ascending: false });
+    if (error) { console.error('getIngresosExtraordinarios:', error); return []; }
+    return data || [];
+  },
+
+  crearIngresoExtraordinario: async (empresaId, payload) => {
+    if (!payload?.periodo_id) throw new Error('Selecciona un período antes de registrar el ingreso.');
+    const supabase = await getSupabaseClient();
+    // es_remunerativo se calcula del sub_tipo (el usuario nunca lo elige a mano) — se
+    // vuelve a calcular al aprobar, para que el snapshot final refleje la clasificación
+    // vigente en ese momento, no la que había al momento de la captura inicial.
+    const { data, error } = await supabase.from('ingresos_extraordinarios').insert([{
+      ...payload,
+      empresa_id: empresaId,
+      es_remunerativo: esRemunerativoPorSubTipo(payload.sub_tipo),
+      registrado_por: payload?.registrado_por || 'sistema',
+    }]).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  resolverIngresoExtraordinario: async (id, estado, params = {}) => {
+    const supabase = await getSupabaseClient();
+    const update = { estado, resuelto_por: params.resuelto_por || null, comentario_resolucion: params.comentario_resolucion || null, resuelto_en: new Date().toISOString() };
+    // Snapshot de es_remunerativo solo al aprobar — clasificación vigente en ese momento,
+    // no se recalcula después aunque la constante de clasificación cambie más adelante.
+    if (estado === 'aprobado') {
+      const { data: actual, error: errActual } = await supabase.from('ingresos_extraordinarios').select('sub_tipo').eq('id', id).single();
+      if (errActual) throw errActual;
+      update.es_remunerativo = esRemunerativoPorSubTipo(actual.sub_tipo);
+    }
+    const { data, error } = await supabase.from('ingresos_extraordinarios').update(update).eq('id', id).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  // Transición 'aprobado' → 'aplicado', disparada en cerrarPeriodo (no en resolverIngresoExtraordinario,
+  // que representa la aprobación humana original y no debe sobreescribirse por el cierre).
+  aplicarIngresoExtraordinario: async (id) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('ingresos_extraordinarios').update({ estado: 'aplicado', aplicado_en: new Date().toISOString() }).eq('id', id).select().single();
     if (error) throw error;
     return data;
   },

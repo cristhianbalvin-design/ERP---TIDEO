@@ -1,5 +1,28 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 
+// Clasificación remunerativo/no-remunerativo por sub_tipo de ingresos_extraordinarios.
+// 'otro' es remunerativo por defecto (presunción general de la ley laboral peruana:
+// todo pago se presume remunerativo salvo excepción legal expresa) — si surge un caso
+// "otro" que realmente sea no remunerativo, se debe agregar un sub_tipo nuevo específico,
+// no reclasificar 'otro'.
+// PENDIENTE DE VALIDACIÓN FINAL CON EL CONTADOR antes de usar en producción real:
+// bono_desempeño (¿depende de habitualidad/regularidad?), utilidades (no remunerativo
+// para CTS/gratificación, pero puede tributar IR 5ta distinto) y
+// alimentacion_indispensable (Ley 28051 distingue "principal" de "indispensable" con
+// tratamientos distintos). "Los cálculos son referenciales. Valida con tu contador."
+export const INGRESO_EXTRAORDINARIO_SUBTIPOS = {
+  bono_desempeño:              { label: 'Bono de desempeño',            es_remunerativo: true },
+  gratificacion_extraordinaria: { label: 'Gratificación extraordinaria', es_remunerativo: false },
+  utilidades:                  { label: 'Utilidades',                   es_remunerativo: false },
+  alimentacion_indispensable:  { label: 'Alimentación indispensable',   es_remunerativo: false },
+  condicion_trabajo:           { label: 'Condición de trabajo',         es_remunerativo: false },
+  otro:                        { label: 'Otro',                        es_remunerativo: true },
+};
+
+export function esRemunerativoPorSubTipo(subTipo) {
+  return INGRESO_EXTRAORDINARIO_SUBTIPOS[subTipo]?.es_remunerativo ?? true;
+}
+
 export const AFP_NOMBRES = ['Integra', 'Prima', 'Profuturo', 'Habitat'];
 export const AFP_PRIMA_SEGURO_FALLBACK = 1.37;
 export const AFP_PARAMETROS_DEFAULT = AFP_NOMBRES.map(afp_nombre => {
@@ -69,7 +92,9 @@ export function mapCalculoANominaDetalle(c, periodo, empresaCfg = {}) {
   const quincena = periodo?.quincena ?? null;
   return {
     trabajador_id: c.trabajador_id,
-    trabajador_tipo: c.trabajador?.trabajador_tipo === 'administrativo' ? 'administrativo' : 'operativo',
+    // Nomina() arma `trabajadores` con el campo `tipo` ('operativo'/'admin'), no
+    // `trabajador_tipo` — ese otro nombre lo usan componentes distintos del archivo.
+    trabajador_tipo: c.trabajador?.tipo === 'admin' ? 'administrativo' : 'operativo',
     // c.sistema_pensionario (no c.trabajador.sistema_pensionario) es el valor YA resuelto
     // por el motor: datosNomina?.sistema_pensionario || trabajador.sistema_pensionario || 'AFP'.
     sistema_pensionario: c.sistema_pensionario === 'ONP' ? 'ONP' : (c.sistema_pensionario === 'AFP' ? 'AFP' : null),
@@ -85,9 +110,9 @@ export function mapCalculoANominaDetalle(c, periodo, empresaCfg = {}) {
     asignacion_familiar: Number(c.asignacion_familiar) || 0,
     add_horas_extra: Number(c.add_horas_extra) || 0,
     bonif_altitud: Number(c.bonif_altitud) || 0,
-    // Pendiente Frente 4 (tabla ingresos_extraordinarios aun no existe): se persiste 0.
-    // Actualizar este mapeo cuando esa tabla y su integracion con el motor esten listas.
-    otros_ingresos: 0,
+    // Suma de ingresos_extraordinarios NO remunerativos aprobados (Frente 4). Los
+    // remunerativos NO se repiten aca: ya estan dentro de remuneracion_bruta.
+    otros_ingresos: Number(c.otros_ingresos) || 0,
     desc_faltas: Number(c.desc_faltas) || 0,
     desc_tardanzas: Number(c.desc_tardanzas) || 0,
     aporte_afp: Number(c.aporte_afp) || 0,

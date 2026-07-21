@@ -8285,7 +8285,7 @@ function RRHHAdmin() {
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const vacacionesSugeridas = String(diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general'));
-  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', email_personal:'', celular_personal:'', direccion:'', codigo:'', cargo:'', cargo_id:'', area:'', sede:'', turno_id:'', centro_costo_id:'', modalidad:'planilla', tipo_contrato:'indefinido', fecha_inicio:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', dias_vacaciones:vacacionesSugeridas, estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', tarifa_hora_referencial:'' };
+  const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', email_personal:'', celular_personal:'', direccion:'', codigo:'', cargo:'', cargo_id:'', posicion_id:'', area:'', sede:'', turno_id:'', centro_costo_id:'', modalidad:'planilla', tipo_contrato:'indefinido', fecha_inicio:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', dias_vacaciones:vacacionesSugeridas, estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', tarifa_hora_referencial:'' };
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [nuevoCargoTextoAdmin, setNuevoCargoTextoAdmin] = useState('');
@@ -8320,9 +8320,21 @@ function RRHHAdmin() {
     .filter(s => s.estado !== 'inactivo')
     .map(s => ({ nombre: s.nombre, detalle: s.direccion || s.detalle || s.gps || '' }))
     .filter(s => s.nombre);
-  const areasOptions = areasEmpresa.length
-    ? areasEmpresa.filter(a => a.tipo !== 'Operativa').map(a => a.nombre).filter(Boolean)
-    : [];
+  // La fuente de verdad para la unidad del colaborador es el maestro de
+  // Unidades Organizacionales. `areasEmpresa` se mantiene solo como respaldo
+  // transitorio para instalaciones que aun estan terminando la migracion.
+  const unidadesOrganizacionalesOptions = (unidadesOrganizacionales.length ? unidadesOrganizacionales : areasEmpresa)
+    .filter(u => u.estado !== 'inactivo' && u.nombre)
+    .map(u => ({ id: u.id, nombre: u.nombre }));
+  const areasOptions = unidadesOrganizacionalesOptions.map(u => u.nombre);
+  const unidadNombrePorId = React.useMemo(() => new Map(unidadesOrganizacionalesOptions.map(u => [u.id, u.nombre])), [unidadesOrganizacionalesOptions]);
+  const posicionesParaCargoAlta = React.useMemo(() => posiciones.filter(p => (
+    p.activa !== false && p.estado !== 'inactivo' && p.cargo_id === formAlta.cargo_id
+  )), [posiciones, formAlta.cargo_id]);
+  const posicionSeleccionadaAlta = React.useMemo(
+    () => posiciones.find(p => p.id === formAlta.posicion_id) || null,
+    [posiciones, formAlta.posicion_id]
+  );
   const verificarDniAlta = async (dni) => {
     const clean = String(dni || '').trim();
     if (clean.length < 8 || !empresa?.id) { setHistorialDniAlta(null); return; }
@@ -8569,6 +8581,7 @@ function RRHHAdmin() {
       codigo: p.codigo || p.id || '',
       cargo: p.cargo || '',
       cargo_id: p.cargo_id || '',
+      posicion_id: p.posicion_id || '',
       area: p.area || '',
       sede: p.sede || '',
       turno_id: turnoActualId,
@@ -8671,6 +8684,10 @@ function RRHHAdmin() {
       setAltaError('Este campo es obligatorio. Selecciona un CECO antes de continuar.');
       return;
     }
+    if (formAlta.posicion_id && !posicionSeleccionadaAlta) {
+      setAltaError('La posición seleccionada ya no está disponible. Selecciona otra o deja la ficha sin posición.');
+      return;
+    }
     setAltaSaving(true);
     setAltaError('');
     const idx = todosPersonal.length + 1;
@@ -8687,7 +8704,8 @@ function RRHHAdmin() {
       direccion: formAlta.direccion || '',
       cargo: formAlta.cargo || 'Por definir',
       cargo_id: formAlta.cargo_id || null,
-      area: formAlta.area || 'Sin area',
+      posicion_id: formAlta.posicion_id || null,
+      area: posicionSeleccionadaAlta ? (unidadNombrePorId.get(posicionSeleccionadaAlta.unidad_organizacional_id) || null) : (formAlta.area || null),
       supervisor: '', sede: formAlta.sede || '', turno_id: formAlta.turno_id,
       centro_costo_id: formAlta.centro_costo_id,
       nivel_estudios: '', especialidad: '', institucion: '',
@@ -10871,7 +10889,7 @@ function RRHHAdmin() {
           </div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Código</th><th>Colaborador</th><th>Cargo</th><th>Área</th><th>Sede</th><th>Turno</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones disp.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+              <thead><tr><th>Código</th><th>Colaborador</th><th>Cargo</th><th>Unidad organizacional</th><th>Sede</th><th>Turno</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones disp.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
               <tbody>
                 {todosPersonal.length === 0 && <tr><td colSpan={11} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal administrativo registrado.</td></tr>}
                 {todosPersonal.filter(p => {
@@ -10896,11 +10914,11 @@ function RRHHAdmin() {
                     <td>
                       <div className="row">
                         <div className="avatar" style={{width:30,height:30,fontSize:11}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
-                        <div><strong>{p.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{p.email || p.dni}</div></div>
+                        <div><strong>{p.nombre}</strong><div className="text-muted" style={{fontSize:11}}>DNI: {p.dni || p.documento || '—'}</div></div>
                       </div>
                     </td>
                     <td>{p.cargo}</td>
-                    <td>{p.area}</td>
+                    <td>{unidadNombrePorId.get(posiciones.find(pos => pos.id === p.posicion_id)?.unidad_organizacional_id) || p.area || <span className="text-subtle">Sin posición</span>}</td>
                     <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
                     <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnosOptions.find(t => t.id === p.turno_id)?.nombre || 'Sin turno'}</span>}</td>
                     <td>{esHon ? <span className="text-subtle">—</span> : (
@@ -10934,7 +10952,7 @@ function RRHHAdmin() {
           <div style={{display:'grid', gap:24}}>
             {/* Headcount por área */}
             <div className="card">
-              <div className="card-head"><h3>Headcount por Área</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Total: {personalAdmin.length} colaboradores</span></div>
+              <div className="card-head"><h3>Headcount por Unidad organizacional</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Total: {personalAdmin.length} colaboradores</span></div>
               <div style={{padding:'16px 20px', display:'flex', flexDirection:'column', gap:12}}>
                 {Object.entries(porArea).map(([area, cnt]) => (
                   <div key={area} style={{display:'grid', gridTemplateColumns:'140px 1fr 40px', gap:12, alignItems:'center'}}>
@@ -10980,7 +10998,7 @@ function RRHHAdmin() {
             <div className="card">
               <div className="card-head"><h3>Vacaciones Disponibles</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Total acumulado: {vacRanking.reduce((s,p)=>s+p._vacDisp,0)} días</span></div>
               <table className="tbl">
-                <thead><tr><th>Colaborador</th><th>Área</th><th>Días totales</th><th>Usados</th><th>Disponibles</th></tr></thead>
+                <thead><tr><th>Colaborador</th><th>Unidad organizacional</th><th>Días totales</th><th>Usados</th><th>Disponibles</th></tr></thead>
                 <tbody>
                   {vacRanking.map(p => (
                     <tr key={p.id}>
@@ -11068,7 +11086,7 @@ function RRHHAdmin() {
                 <select className="select" value={formAlta.cargo_id} onChange={e=>{
                   if(e.target.value==='__nuevo__'){setFormAlta(v=>({...v,cargo_id:'__nuevo__'}));setNuevoCargoTextoAdmin('');return;}
                   const c=cargosAdminOptions.find(x=>x.id===e.target.value);
-                  setFormAlta(v=>({...v,cargo_id:e.target.value,cargo:c?.nombre||v.cargo}));
+                  setFormAlta(v=>({...v,cargo_id:e.target.value,cargo:c?.nombre||v.cargo,posicion_id:''}));
                 }}>
                   <option value="">Seleccionar cargo...</option>
                   {cargosAdminOptions.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -11080,7 +11098,22 @@ function RRHHAdmin() {
                   <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setFormAlta(v=>({...v,cargo_id:''}))}>×</button>
                 </div>}
               </div>
-              <div className="input-group"><label>Área</label>{areasOptions.length ? <select className="select" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))}><option value="">Seleccionar área...</option>{areasOptions.map(a=><option key={a}>{a}</option>)}</select> : <input className="input" value={formAlta.area} onChange={e=>setFormAlta(v=>({...v,area:e.target.value}))} placeholder="Ej: Comercial"/>}</div>
+              <div className="input-group">
+                <label>Posición organizacional <span className="text-muted">(opcional)</span></label>
+                <select className="select" value={formAlta.posicion_id} onChange={e=>{
+                  const posicion = posiciones.find(p => p.id === e.target.value);
+                  setFormAlta(v=>({...v, posicion_id:e.target.value, area: posicion ? (unidadNombrePorId.get(posicion.unidad_organizacional_id) || '') : v.area}));
+                }} disabled={!formAlta.cargo_id || formAlta.cargo_id === '__nuevo__'}>
+                  <option value="">Sin posición asignada</option>
+                  {posicionesParaCargoAlta.map(p=><option key={p.id} value={p.id}>{unidadNombrePorId.get(p.unidad_organizacional_id) || 'Sin unidad'} — {p.codigo || p.id.slice(0,8)}</option>)}
+                </select>
+                {!formAlta.cargo_id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Selecciona primero un cargo para ver sus posiciones.</div>}
+                {formAlta.cargo_id && !posicionesParaCargoAlta.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>No hay posiciones activas para este cargo.</div>}
+              </div>
+              <div className="input-group">
+                <label>Unidad organizacional</label>
+                <input className="input" readOnly value={posicionSeleccionadaAlta ? (unidadNombrePorId.get(posicionSeleccionadaAlta.unidad_organizacional_id) || 'Sin unidad asignada') : (formAlta.area || 'Se deriva de la posición')} style={{background:'var(--bg-subtle)'}}/>
+              </div>
               <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Turno asignado {esHonorariosAlta ? <span className="text-muted">(opcional, requerido para tomar asistencia)</span> : '*'}</label><select className="select" required={!esHonorariosAlta} value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
