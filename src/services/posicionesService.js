@@ -66,6 +66,16 @@ export const posicionesService = {
     if (error) throw error;
     return data;
   },
+  eliminarUnidadOrganizacional: async (unidadId) => {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase
+      .from('unidades_organizacionales')
+      .delete()
+      .eq('id', unidadId)
+      .select('id')
+      .single();
+    if (error) throw error;
+  },
 
   // Reasigna la unidad organizacional de UNA posicion puntual. No toca posiciones_usuarios
   // (el historico de ocupacion queda intacto) ni mueve en cascada a sus subordinados.
@@ -75,6 +85,16 @@ export const posicionesService = {
       .from('posiciones')
       .update({ unidad_organizacional_id: unidadOrganizacionalId })
       .eq('id', posicionId).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  reasignarPadreDePosicion: async (posicionId, posicionPadreId) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('reasignar_padre_posicion', {
+      p_posicion_id: posicionId,
+      p_reporta_a_posicion_id: posicionPadreId || null,
+    });
     if (error) throw error;
     return data;
   },

@@ -6600,6 +6600,12 @@ export function AppProvider({ children }) {
     setUnidadesOrganizacionales(prev => prev.map(u => u.id === id ? { ...u, ...datos } : u));
     return datos;
   };
+  const eliminarUnidadOrganizacional = async (id) => {
+    if (isSupabaseConfigured()) {
+      await posicionesService.eliminarUnidadOrganizacional(id);
+    }
+    setUnidadesOrganizacionales(prev => prev.filter(u => u.id !== id));
+  };
   // Reasigna la unidad organizacional de una posicion puntual (no en cascada a sus
   // subordinados, no toca el historico de posiciones_usuarios).
   const reasignarUnidadDePosicion = async (posicionId, unidadOrganizacionalId) => {
@@ -6619,6 +6625,15 @@ export function AppProvider({ children }) {
               : p),
           }
         : u
+    )));
+  };
+
+  const reasignarPadreDePosicion = async (posicionId, posicionPadreId) => {
+    if (isSupabaseConfigured()) {
+      await posicionesService.reasignarPadreDePosicion(posicionId, posicionPadreId);
+    }
+    setPosiciones(prev => prev.map(p => (
+      p.id === posicionId ? { ...p, reporta_a_posicion_id: posicionPadreId || null } : p
     )));
   };
 
@@ -9805,8 +9820,8 @@ export function AppProvider({ children }) {
 
     // Maestros Base Data
     areasEmpresa, setAreasEmpresa,
-    crearUnidadOrganizacional, actualizarUnidadOrganizacional, reasignarUnidadDePosicion,
-    crearPosicion, archivarPosicion, eliminarPosicion, reasignarCargoDePosicion,
+    crearUnidadOrganizacional, actualizarUnidadOrganizacional, eliminarUnidadOrganizacional, reasignarUnidadDePosicion,
+    crearPosicion, archivarPosicion, eliminarPosicion, reasignarCargoDePosicion, reasignarPadreDePosicion,
     cargos, setCargos, actualizarCargo, eliminarCargo, fusionarCargos,
     tiposContrato, setTiposContrato, crearTipoContrato, actualizarTipoContrato, eliminarTipoContrato,
     tiposDocumento, setTiposDocumento, crearTipoDocumento, actualizarTipoDocumento, importarPlantillaTiposDoc,
