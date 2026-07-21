@@ -3886,7 +3886,7 @@ function Maestros() {
     navigate, cuentas, proveedores, personalAdmin = [], personalOperativo = [],
     areasEmpresa, cargos, especialidades, nivelesJerarquicos, tiposServicio, almacenes, sedes, industrias,
     monedasImpuestosUnidades = [],
-    unidadesOrganizacionales = [], crearUnidadOrganizacional, actualizarUnidadOrganizacional,
+    unidadesOrganizacionales = [], crearUnidadOrganizacional, actualizarUnidadOrganizacional, eliminarUnidadOrganizacional,
     crearCargo, actualizarCargo, eliminarCargo, fusionarCargos,
     crearEspecialidad, actualizarEspecialidad, eliminarEspecialidad,
     crearNivelJerarquico, actualizarNivelJerarquico, eliminarNivelJerarquico,
@@ -4392,13 +4392,16 @@ function Maestros() {
   };
 
   const eliminarRegistro = async (r, silent = false) => {
-    if (!silent && (!sel || !window.confirm(`Eliminar "${r.nombre}"? Esta accion se reflejara en la base de datos.`))) return;
+    const confirmarEliminacion = sel?.id === 'mst_unidades_organizacionales'
+      ? `Eliminar definitivamente la unidad organizacional "${r.nombre}"? No se puede eliminar si tiene posiciones asignadas.`
+      : `Eliminar "${r.nombre}"? Esta accion se reflejara en la base de datos.`;
+    if (!silent && (!sel || !window.confirm(confirmarEliminacion)) ) return;
     try {
       if (sel.id === 'mst_cargos') await eliminarCargo(r.id);
       else if (sel.id === 'mst_unidades_organizacionales') {
-        await actualizarUnidadOrganizacional(r.id, { estado: 'inactivo' });
+        await eliminarUnidadOrganizacional(r.id);
         if (editandoId === r.id) resetForm();
-        if (!silent) addNotificacion?.('Unidad organizacional desactivada.');
+        if (!silent) addNotificacion?.('Unidad organizacional eliminada.');
         return;
       }
       else if (sel.id === 'mst_especialidades') await eliminarEspecialidad(r.id);
@@ -11571,7 +11574,7 @@ function OrgNodo({ posicion, depth, getChildren, ocupantesPorPosicion, unidadNom
 function Organigrama() {
   const {
     usuarios, posiciones, posicionesUsuarios, unidadesOrganizacionales, cargos = [],
-    empresa, empresasPlataforma, roles: rolesCtx, actualizarUsuarioAcceso, reasignarUnidadDePosicion,
+    empresa, empresasPlataforma, roles: rolesCtx, actualizarUsuarioAcceso, reasignarUnidadDePosicion, reasignarPadreDePosicion,
     crearPosicion, archivarPosicion, eliminarPosicion, reasignarCargoDePosicion, addNotificacion, authUser,
     personalAdmin = [], personalOperativo = [], nivelesJerarquicos = [],
   } = useApp();
@@ -11582,9 +11585,11 @@ function Organigrama() {
   const [nuevaPosicionId, setNuevaPosicionId] = useState('');
   const [nuevoRolId, setNuevoRolId] = useState('');
   const [nuevaUnidadId, setNuevaUnidadId] = useState('');
+  const [nuevaPosicionPadreId, setNuevaPosicionPadreId] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [guardandoRol, setGuardandoRol] = useState(false);
   const [guardandoUnidad, setGuardandoUnidad] = useState(false);
+  const [guardandoPadre, setGuardandoPadre] = useState(false);
   const [showAsignarCargos, setShowAsignarCargos] = useState(false);
   const [vistaOrganigrama, setVistaOrganigrama] = useState('arbol');
 
@@ -11664,6 +11669,7 @@ function Organigrama() {
     setNuevaPosicionId(primero ? (getPrimaryPosicion(primero)?.posicion_id || '') : '');
     setNuevoRolId(primero?.rol || '');
     setNuevaUnidadId(posicion.unidad_organizacional_id || '');
+    setNuevaPosicionPadreId(posicion.reporta_a_posicion_id || '');
   };
 
   const handleGuardarUnidad = async () => {
@@ -11695,6 +11701,22 @@ function Organigrama() {
     setGuardando(false);
   };
 
+  const handleGuardarPadre = async () => {
+    if (!selNode) return;
+    const padreId = nuevaPosicionPadreId || null;
+    if (padreId === (selNode.reporta_a_posicion_id || null)) return;
+    setGuardandoPadre(true);
+    try {
+      await reasignarPadreDePosicion(selNode.id, padreId);
+      setSelNode(n => n ? { ...n, reporta_a_posicion_id: padreId } : null);
+      addNotificacion('Jerarquía de la posición actualizada.');
+    } catch (err) {
+      addNotificacion(`No se pudo actualizar la jerarquía: ${err?.message || 'error desconocido'}`);
+    } finally {
+      setGuardandoPadre(false);
+    }
+  };
+
   const handleGuardarRol = async () => {
     if (!selOcupante || !nuevoRolId) return;
     setGuardandoRol(true);
@@ -11723,6 +11745,8 @@ function Organigrama() {
   const ocupantesJefe = posicionJefe ? (ocupantesPorPosicion.get(posicionJefe.id) || []) : [];
   const selHijos = selNode ? getChildren(selNode.id) : [];
   const posicionNoChanged = nuevaPosicionId === (getPrimaryPosicion(selOcupante)?.posicion_id || '');
+  const padreNoChanged = nuevaPosicionPadreId === (selNode?.reporta_a_posicion_id || '');
+  const opcionesPadre = selNode ? posicionesDeEmpresa.filter(p => p.id !== selNode.id) : [];
 
   return (
     <>
@@ -11855,6 +11879,25 @@ function Organigrama() {
               {guardandoUnidad ? 'Guardando...' : 'Guardar unidad'}
             </button>
 
+            <div className="input-group" style={{ marginBottom: 16 }}>
+              <label>Reporta a posición</label>
+              <select className="select" value={nuevaPosicionPadreId} onChange={e => setNuevaPosicionPadreId(e.target.value)}>
+                <option value="">Sin jefe (nodo raíz)</option>
+                {opcionesPadre.map(p => {
+                  const ocupantes = ocupantesPorPosicion.get(p.id) || [];
+                  const etiquetaOcupante = ocupantes.length ? ` · ${ocupantes.map(o => o.nombre).join(' + ')}` : ' · Vacante';
+                  const etiquetaCargo = cargos.find(c => c.id === p.cargo_id)?.nombre || 'Sin cargo';
+                  return <option key={p.id} value={p.id}>{unidadNombrePorId.get(p.unidad_organizacional_id) || 'Sin unidad'} · {etiquetaCargo}{etiquetaOcupante}</option>;
+                })}
+              </select>
+              <div className="text-muted" style={{ fontSize: 11, marginTop: 5 }}>
+                {!posicionJefe ? 'La posición es un nodo raíz.' : ocupantesJefe.length ? `Jefe actual: ${ocupantesJefe.map(o => o.nombre).join(' + ')}` : 'La posición padre actual está vacante.'}
+              </div>
+              <button type="button" className="btn btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={handleGuardarPadre} disabled={guardandoPadre || padreNoChanged}>
+                {guardandoPadre ? 'Guardando jerarquía...' : 'Guardar jerarquía'}
+              </button>
+            </div>
+
             {selVacante ? (
               <div className="card" style={{ padding: 12, background: 'var(--bg-subtle)', border: '1px dashed var(--border)', marginBottom: 16, fontSize: 12, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
                 Esta posicion no tiene ocupante activo.
@@ -11871,7 +11914,6 @@ function Organigrama() {
                       onChange={e => {
                         setSelOcupanteId(e.target.value);
                         const persona = selOcupantes.find(o => o.id === e.target.value);
-                        setNuevoJefeId(persona?.jefe_user_id || '');
                         setNuevoRolId(persona?.rol || '');
                       }}
                     >
@@ -11896,16 +11938,6 @@ function Organigrama() {
                     {selRol?.nombre || selOcupante?.rol}
                   </span>
                   <span className="badge badge-gray">{nivelLabel(selNivel)}</span>
-                </div>
-
-                {/* Jefe de ESTA posicion (solo lectura, viene del arbol de posiciones) */}
-                <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>Jefe de esta posición</div>
-                <div style={{ fontSize: 13, fontWeight: 600, padding: '6px 10px', background: 'var(--bg-subtle)', borderRadius: 6, marginBottom: 16 }}>
-                  {!posicionJefe
-                    ? <span style={{ color: 'var(--fg-muted)', fontStyle: 'italic' }}>Sin jefe (nodo raíz)</span>
-                    : ocupantesJefe.length
-                      ? <span>{ocupantesJefe.map(o => o.nombre).join(' + ')}</span>
-                      : <span style={{ color: 'var(--fg-muted)', fontStyle: 'italic' }}>Posicion vacante</span>}
                 </div>
 
                 {!selOcupante?.esPosicionPrincipal && (
