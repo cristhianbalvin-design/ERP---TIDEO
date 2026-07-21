@@ -26,7 +26,7 @@ import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { CATEGORIA_FIRMA_RUBRICA } from './services/firmaPersonalService.js';
-import { getPrimaSeguroAfp, nominaService, mapCalculoANominaDetalle } from './services/nominaService.js';
+import { getPrimaSeguroAfp, nominaService, mapCalculoANominaDetalle, INGRESO_EXTRAORDINARIO_SUBTIPOS } from './services/nominaService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { BIOMETRICO_PERFIL_DEFAULT, previsualizarImportacionBiometrica } from './services/biometricoService.js';
 import { GEO_CONFIG_DEFAULT, evaluarGeofenceLocal, parseGps } from './services/geofencingService.js';
@@ -13429,19 +13429,19 @@ function incompletoPorFaltaDeQ1(trabajador, datosNomina, turno, periodo, regimen
 }
 
 // Orquestador: usa historial si existe; cae en calcularNominaTrabajador (sin regresión) si no.
-function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot = null) {
+function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot = null, montoIngresoRemunerativo = 0) {
   if (!asigsTrabajador || asigsTrabajador.length === 0) {
-    return calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot);
+    return calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo);
   }
 
   const segmentos = segmentarMesPorAsignaciones(asigsTrabajador, periodo, trabajador);
 
   if (!segmentos) {
-    return calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot);
+    return calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo);
   }
 
   if (segmentos.error) {
-    const base = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot) || {};
+    const base = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo) || {};
     return { ...base, error_historial: segmentos.error, error_historial_detail: segmentos.detail, tramos: null, multi_tramo: false };
   }
 
@@ -13449,11 +13449,11 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   if (segmentos.length === 1) {
     const { asignacion } = segmentos[0];
     if (asignacion.tipo_tramo === 'suspension_perfecta') {
-      const base = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot) || {};
+      const base = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo) || {};
       return { ...base, sueldo_proporcional: 0, remuneracion_bruta: 0, total_descuentos: 0, neto: 0, essalud: 0, cts_mensualizado: 0, gratificacion_mensualizada: 0, bonif_extraordinaria: 0, vacaciones_mensualizadas: 0, total_cargas: 0, costo_real_empresa: 0, tramos: [calcularRemuneracionTramo(segmentos[0], 0, 0, 0, registros, turno)], multi_tramo: false, tiene_suspension: true };
     }
     const workerAdaptado = { ...trabajador, regimen_jornada: asignacion.regimen_jornada || trabajador.regimen_jornada, dias_ciclo_trabajo: asignacion.dias_ciclo_trabajo ?? trabajador.dias_ciclo_trabajo, dias_ciclo_descanso: asignacion.dias_ciclo_descanso ?? trabajador.dias_ciclo_descanso, fecha_inicio_ciclo: asignacion.fecha_inicio_ciclo ?? trabajador.fecha_inicio_ciclo };
-    const result = calcularNominaTrabajador(workerAdaptado, { ...datosNomina, ...workerAdaptado }, turno, registros, periodo, empresaCfg, q1Snapshot);
+    const result = calcularNominaTrabajador(workerAdaptado, { ...datosNomina, ...workerAdaptado }, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo);
     if (!result) return null;
     const sb = Number(datosNomina?.sueldo_base || trabajador.remuneracion || 3000);
     return { ...result, tramos: [calcularRemuneracionTramo(segmentos[0], sb, result.valor_dia, result.valor_hora, registros, turno)], multi_tramo: false };
@@ -13475,7 +13475,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     const q1Row = q1Snapshot?.disponible ? q1Snapshot.porTrabajador[trabajador.id] : null;
     if (!q1Row) return incompletoPorFaltaDeQ1(trabajador, datosNomina, turno, periodo, trabajador.regimen_jornada || 'general', sueldoBase);
     const periodoMesCompleto = { anio: periodo.anio, mes: periodo.mes, quincena: null };
-    const mesCompleto = calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno, registros, periodoMesCompleto, empresaCfg, null);
+    const mesCompleto = calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno, registros, periodoMesCompleto, empresaCfg, null, montoIngresoRemunerativo);
     if (!mesCompleto) return null;
     if (mesCompleto.incompleto_ciclo || mesCompleto.incompleto_historial) return { ...mesCompleto, periodo };
     return { ...reconciliarQ2(mesCompleto, q1Row), periodo };
@@ -13510,7 +13510,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   const asignacionFamiliar = asignacionFamiliarBase * factorQuincena;
   const bonifAltitud = (Number(datosNomina?.bonif_altitud || trabajador.bonif_altitud) || 0) * factorQuincena;
 
-  const remuneracionBruta = sueldoProporcional - descFaltasTotal - descTardanzasTotal + addHorasExtraTotal + asignacionFamiliar + bonifAltitud;
+  const remuneracionBruta = sueldoProporcional - descFaltasTotal - descTardanzasTotal + addHorasExtraTotal + asignacionFamiliar + bonifAltitud + Number(montoIngresoRemunerativo || 0);
 
   const sistema          = datosNomina?.sistema_pensionario || trabajador.sistema_pensionario || 'AFP';
   const afpNombre        = datosNomina?.afp_nombre || trabajador.afp_nombre || 'Integra';
@@ -13581,6 +13581,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     desc_faltas: descFaltasTotal, desc_tardanzas: descTardanzasTotal, add_horas_extra: addHorasExtraTotal,
     asignacion_familiar: asignacionFamiliar, bonif_altitud: bonifAltitud,
     remuneracion_bruta: remuneracionBruta,
+    ingreso_extra_remunerativo: Number(montoIngresoRemunerativo || 0),
     sistema_pensionario: sistema, afp_nombre: afpNombre, tipo_comision_afp: tipoComisionAfp, pct_prima_seguro: pctPrimaSeguro,
     aporte_afp: aporteAfp, comision_flujo: comisionFlujoCal, prima_seguro: primaSeguro, desc_onp: descOnp, desc_pensiones: descPensiones,
     desc_prestamo: descPrestamo, desc_anticipo: descAnticipo, desc_judicial: descJudicial,
@@ -13595,7 +13596,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg = {}, q1Snapshot = null) {
+function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg = {}, q1Snapshot = null, montoIngresoRemunerativo = 0) {
   if (esModalidadHonorarios(trabajador)) return null;
   const {
     regimen_laboral_empresa = 'general',
@@ -13613,11 +13614,15 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   // Rama Q2 (Opción A): recalcula el mes completo (periodo sintético sin fecha_inicio/
   // fecha_fin, cae al mes calendario vía rangoDiasPeriodo) y resta el snapshot real de Q1.
   // Retorna antes de todo lo demás — Q2 nunca ejecuta el cuerpo "normal" de esta función.
+  // montoIngresoRemunerativo ya viene como el total Q1+Q2 combinado (el llamador lo arma
+  // así para Q2) — se reenvía tal cual a la llamada recursiva del mes completo, que lo
+  // suma a remuneracion_bruta; reconciliarQ2 resta el snapshot de Q1 (que ya lo incluye)
+  // igual que con asistencia, sin lógica especial adicional.
   if (periodo?.quincena === 2) {
     const q1Row = q1Snapshot?.disponible ? q1Snapshot.porTrabajador[trabajador.id] : null;
     if (!q1Row) return incompletoPorFaltaDeQ1(trabajador, datosNomina, turno, periodo, regimenJornada, sueldoBase);
     const periodoMesCompleto = { anio: periodo.anio, mes: periodo.mes, quincena: null };
-    const mesCompleto = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodoMesCompleto, empresaCfg, null);
+    const mesCompleto = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodoMesCompleto, empresaCfg, null, montoIngresoRemunerativo);
     if (!mesCompleto) return null;
     if (mesCompleto.incompleto_ciclo) return { ...mesCompleto, periodo };
     return { ...reconciliarQ2(mesCompleto, q1Row), periodo };
@@ -13768,7 +13773,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
 
   // Remuneración proporcional para minero si no completó ciclo
   const sueldoProporcional = (esMinero ? sueldoBase * (diasBase / 30) * factorProp : sueldoBase * factorProp) * factorQuincena;
-  const remuneracionBruta = sueldoProporcional - descFaltas - descTardanzas + addHorasExtra + asignacionFamiliar + bonifAltitud;
+  const remuneracionBruta = sueldoProporcional - descFaltas - descTardanzas + addHorasExtra + asignacionFamiliar + bonifAltitud + Number(montoIngresoRemunerativo || 0);
 
   // ── Sistema previsional ──
   const sistema = datosNomina?.sistema_pensionario || trabajador.sistema_pensionario || 'AFP';
@@ -13830,6 +13835,8 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
     desc_faltas: descFaltas, desc_tardanzas: descTardanzas, add_horas_extra: addHorasExtra,
     asignacion_familiar: asignacionFamiliar, bonif_altitud: bonifAltitud,
     remuneracion_bruta: remuneracionBruta,
+    // Informativo (ya incluido en remuneracion_bruta) — desglose para boleta/detalle.
+    ingreso_extra_remunerativo: Number(montoIngresoRemunerativo || 0),
     sistema_pensionario: sistema, afp_nombre: afpNombre, tipo_comision_afp: tipoComisionAfp, pct_prima_seguro: pctPrimaSeguro,
     aporte_afp: aporteAfp, comision_flujo: comisionFlujoCal, prima_seguro: primaSeguro, desc_onp: descOnp,
     desc_pensiones: descPensiones,
@@ -16192,11 +16199,17 @@ function Nomina() {
   const [plameVerTodos, setPlameVerTodos] = useState(false);
   const [heCompRows, setHeCompRows] = useState([]);
   const [descRows, setDescRows] = useState([]);
+  const [ingresosExtraRows, setIngresosExtraRows] = useState([]);
   const [descPanel, setDescPanel] = useState(false);
   const [descForm, setDescForm] = useState({ personal_id:'', tipo:'otro', descripcion:'', monto:'', evidencia_url:'' });
   const [descComentario, setDescComentario] = useState('');
   const descUploadRef = useRef(null);
   const [descEntityId, setDescEntityId] = useState(`desc_${Date.now()}`);
+  const [ingresoPanel, setIngresoPanel] = useState(false);
+  const [ingresoForm, setIngresoForm] = useState({ personal_id:'', sub_tipo:'bono_desempeño', descripcion:'', monto:'', evidencia_url:'' });
+  const [ingresoComentario, setIngresoComentario] = useState('');
+  const ingresoUploadRef = useRef(null);
+  const [ingresoEntityId, setIngresoEntityId] = useState(`ingreso_${Date.now()}`);
   const cerrandoPeriodoRef = useRef(false);
   const [cerrandoPeriodo, setCerrandoPeriodo] = useState(false);
   const procesandoNominaRef = useRef(false);
@@ -16335,6 +16348,7 @@ function Nomina() {
     if (!empresa?.id) return;
     rrhhService.getHorasExtraCompensacion(empresa.id).then(setHeCompRows).catch(() => {});
     rrhhService.getDescuentosExtraordinarios(empresa.id).then(setDescRows).catch(() => {});
+    rrhhService.getIngresosExtraordinarios(empresa.id).then(setIngresosExtraRows).catch(() => {});
   }, [empresa?.id]);
 
   const descExtraPorTrabajador = useMemo(() => {
@@ -16345,6 +16359,21 @@ function Nomina() {
       .forEach(d => { map[d.personal_id] = (map[d.personal_id] || 0) + Number(d.monto || 0); });
     return map;
   }, [descRows, periodo?.id]);
+
+  // ── Ingresos extraordinarios: periodo_id exacto, sin fallback a "|| !periodo_id"
+  // (defecto ya corregido respecto a descuentos_extraordinarios) ──
+  const ingresoExtraPorTrabajador = useMemo(() => {
+    if (!periodo) return {};
+    const map = {};
+    ingresosExtraRows
+      .filter(r => r.estado === 'aprobado' && r.periodo_id === periodo.id)
+      .forEach(r => {
+        if (!map[r.personal_id]) map[r.personal_id] = { remunerativo: 0, noRemunerativo: 0 };
+        if (r.es_remunerativo) map[r.personal_id].remunerativo += Number(r.monto || 0);
+        else map[r.personal_id].noRemunerativo += Number(r.monto || 0);
+      });
+    return map;
+  }, [ingresosExtraRows, periodo?.id]);
 
   // ── Rama Q2: snapshot real de Q1 para reconciliar (Opción A) ──
   // Se busca el período de Q1 del mismo anio/mes/tenant y se trae su nomina_detalle ya
@@ -16371,6 +16400,19 @@ function Nomina() {
     return { disponible: q1SnapshotRows.length > 0, porTrabajador };
   }, [periodo?.quincena, periodoQ1, q1SnapshotRows]);
 
+  // Para el "mes completo" sintético de la Rama Q2: suma de ingresos remunerativos
+  // aprobados de AMBOS periodo_id (Q1 y Q2 reales) — reconciliarQ2 resta el snapshot
+  // de Q1 sobre ese total, igual que ya hace con asistencia/horas extra.
+  const ingresoRemunerativoMesCompletoPorTrabajador = useMemo(() => {
+    if (periodo?.quincena !== 2) return {};
+    const idsDelMes = [periodoQ1?.id, periodo?.id].filter(Boolean);
+    const map = {};
+    ingresosExtraRows
+      .filter(r => r.estado === 'aprobado' && r.es_remunerativo && idsDelMes.includes(r.periodo_id))
+      .forEach(r => { map[r.personal_id] = (map[r.personal_id] || 0) + Number(r.monto || 0); });
+    return map;
+  }, [ingresosExtraRows, periodo?.quincena, periodo?.id, periodoQ1?.id]);
+
   const calculos = useMemo(() => {
     if (!periodo) return [];
     return trabajadores.map(t => {
@@ -16386,17 +16428,31 @@ function Nomina() {
           : r
         );
       const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === t.id);
-      const base = calcularNominaConTramos(t, asigsTrabajador, datos, turno, regs, periodo, empresaCfg, q1Snapshot);
+      const ingresoInfo = ingresoExtraPorTrabajador[t.id] || { remunerativo: 0, noRemunerativo: 0 };
+      // Para Q2, el motor necesita el total remunerativo de Q1+Q2 combinado (para que
+      // reconciliarQ2 reste correctamente el snapshot de Q1) — no solo el de esta quincena.
+      const montoIngresoRemunerativo = periodo.quincena === 2
+        ? (ingresoRemunerativoMesCompletoPorTrabajador[t.id] || 0)
+        : ingresoInfo.remunerativo;
+      const base = calcularNominaConTramos(t, asigsTrabajador, datos, turno, regs, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo);
+      if (!base) return base;
       const descExtra = Number(descExtraPorTrabajador[t.id] || 0);
-      if (!base || descExtra <= 0) return base;
+      const ingresoNoRemunerativo = ingresoInfo.noRemunerativo;
+      // El motor devuelve ingreso_extra_remunerativo como el total del mes combinado en
+      // Q2 (lo que usó internamente) — para mostrar en boleta/detalle se corrige a lo que
+      // realmente corresponde solo a esta quincena.
+      const ingresoExtraRemunerativoPropio = periodo.quincena === 2 ? ingresoInfo.remunerativo : base.ingreso_extra_remunerativo;
+      if (descExtra <= 0 && ingresoNoRemunerativo <= 0 && periodo.quincena !== 2) return base;
       return {
         ...base,
+        ingreso_extra_remunerativo: ingresoExtraRemunerativoPropio,
+        otros_ingresos: Math.round(ingresoNoRemunerativo * 100) / 100,
         desc_extraordinario: descExtra,
         total_descuentos: Math.round((Number(base.total_descuentos || 0) + descExtra) * 100) / 100,
-        neto: Math.round((Number(base.neto || 0) - descExtra) * 100) / 100,
+        neto: Math.round((Number(base.neto || 0) + ingresoNoRemunerativo - descExtra) * 100) / 100,
       };
     }).filter(Boolean);
-  }, [periodo?.id, trabajadores.length, registrosAsistencia.length, asignacionesJornada.length, heCompRows, descExtraPorTrabajador, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, empresaCfg.requiere_autorizacion_he, afpParametros, q1Snapshot]);
+  }, [periodo?.id, trabajadores.length, registrosAsistencia.length, asignacionesJornada.length, heCompRows, descExtraPorTrabajador, ingresoExtraPorTrabajador, ingresoRemunerativoMesCompletoPorTrabajador, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, empresaCfg.requiere_autorizacion_he, afpParametros, q1Snapshot]);
 
   const solicitudesAprobadasCobertura = useMemo(() => (solicitudesRRHH || []).filter(s =>
     SOLICITUD_ESTADOS_APROBADOS.includes(s.estado) && SOLICITUD_TIPOS_JUSTIFICAN_AUSENCIA.includes(s.tipo)
@@ -16649,6 +16705,28 @@ function Nomina() {
       }
     }
 
+    // ── Transición de ingresos_extraordinarios aprobados de este período a 'aplicado' ──
+    // Aquí, no en "Procesar": un reproceso antes del cierre debe seguir viéndolos como
+    // 'aprobado' (si ya estuvieran 'aplicado', un reproceso los perdería silenciosamente).
+    const ingresosDelPeriodo = ingresosExtraRows.filter(r => r.estado === 'aprobado' && r.periodo_id === periodo.id);
+    if (ingresosDelPeriodo.length > 0) {
+      if (isSupabaseConfigured()) {
+        for (const r of ingresosDelPeriodo) {
+          try {
+            const actualizado = await rrhhService.aplicarIngresoExtraordinario(r.id);
+            setIngresosExtraRows(prev => prev.map(x => x.id === r.id ? { ...x, ...actualizado } : x));
+          } catch (err) {
+            console.error('[cerrarPeriodo] aplicarIngresoExtraordinario:', err);
+            addToast(`Error aplicando ingreso extraordinario (${r.id}): ${err.message || 'BD'}`, 'error');
+            addNotificacion(`Error aplicando ingreso extraordinario (${r.id}): ${err.message || 'BD'}`);
+          }
+        }
+      } else {
+        const idsSet = new Set(ingresosDelPeriodo.map(r => r.id));
+        setIngresosExtraRows(prev => prev.map(r => idsSet.has(r.id) ? { ...r, estado:'aplicado', aplicado_en:new Date().toISOString() } : r));
+      }
+    }
+
     // ── Pagos automáticos de préstamos vinculados a nómina ──
     const trabajadoresConPrestamo = filasConPrestamo;
     if (trabajadoresConPrestamo.length > 0 && empresa?.id) {
@@ -16739,6 +16817,57 @@ function Nomina() {
     }
   };
 
+  const guardarIngreso = async (e) => {
+    e?.preventDefault?.();
+    const persona = trabajadores.find(t => t.id === ingresoForm.personal_id);
+    if (!persona) return;
+    if (!periodo?.id) {
+      addNotificacion('Selecciona un período antes de registrar el ingreso.');
+      return;
+    }
+    const monto = Number(ingresoForm.monto || 0);
+    if (!ingresoForm.descripcion.trim() || monto <= 0) {
+      addNotificacion('Completa descripcion y monto del ingreso.');
+      return;
+    }
+    try {
+      // Evidencia opcional (a diferencia del descuento): si no hay archivo ni URL, se
+      // guarda null y el registro igual nace en 'pendiente' — la aprobación no se salta.
+      const adjuntos = await (ingresoUploadRef.current?.uploadPendingFiles?.() || Promise.resolve([]));
+      const evidenciaUrl = ingresoForm.evidencia_url || adjuntos[0]?.url || adjuntos[0]?.storage_path || adjuntos[0]?.path || null;
+      const data = await rrhhService.crearIngresoExtraordinario(empresa.id, {
+        id: `ingx_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2,8)}`}`,
+        personal_id: persona.id,
+        personal_tipo: persona.tipo === 'admin' ? 'administrativo' : 'operativo',
+        personal_nombre: persona.nombre,
+        sub_tipo: ingresoForm.sub_tipo,
+        descripcion: ingresoForm.descripcion.trim(),
+        monto,
+        evidencia_url: evidenciaUrl,
+        estado: 'pendiente',
+        periodo_id: periodo.id,
+      });
+      setIngresosExtraRows(prev => [data, ...prev]);
+      setIngresoPanel(false);
+      setIngresoForm({ personal_id: persona.id, sub_tipo:'bono_desempeño', descripcion:'', monto:'', evidencia_url:'' });
+      setIngresoEntityId(`ingreso_${Date.now()}`);
+      addNotificacion('Ingreso extraordinario registrado.');
+    } catch (err) {
+      addNotificacion(`Error registrando ingreso: ${err.message || 'BD'}`);
+    }
+  };
+
+  const resolverIngreso = async (row, estado) => {
+    try {
+      const data = await rrhhService.resolverIngresoExtraordinario(row.id, estado, { comentario_resolucion: ingresoComentario || null, resuelto_por: role?.nombre || null });
+      setIngresosExtraRows(prev => prev.map(r => r.id === row.id ? data : r));
+      setIngresoComentario('');
+      addNotificacion(`Ingreso ${estado === 'aprobado' ? 'aprobado' : 'rechazado'}.`);
+    } catch (err) {
+      addNotificacion(`Error resolviendo ingreso: ${err.message || 'BD'}`);
+    }
+  };
+
   if (!canFinanzas) return (
     <div className="card" style={{padding:24}}>
       <div className="card-head"><h3>Nomina</h3></div>
@@ -16754,6 +16883,7 @@ function Nomina() {
     ['detalle','Detalle'],
     ['he_pendientes','HE pendientes'],
     ['descuentos','Descuentos'],
+    ['ingresos','Ingresos'],
     ['cargas','Cargas empresa'],
     ['entrega_boletas','Entrega boletas'],
     ['plame', periodo?.estado === 'cerrado' ? 'Reporte PLAME' : 'PLAME'],
@@ -16772,6 +16902,8 @@ function Nomina() {
   // horas_extra_compensacion no tiene periodo_id: se asocia al período por la fecha en que ocurrió la HE.
   const heCompRowsPeriodo = periodo ? heCompRows.filter(r => r.fecha_he && (periodo.fecha_inicio && periodo.fecha_fin ? (r.fecha_he >= periodo.fecha_inicio && r.fecha_he <= periodo.fecha_fin) : r.fecha_he.startsWith(periodoKey))) : [];
   const descRowsPeriodo = periodo ? descRows.filter(d => !d.periodo_id || d.periodo_id === periodo.id) : [];
+  // Sin fallback a "!r.periodo_id" — periodo_id es NOT NULL en ingresos_extraordinarios.
+  const ingresoRowsPeriodo = periodo ? ingresosExtraRows.filter(r => r.periodo_id === periodo.id) : [];
 
   return (
     <>
@@ -17028,6 +17160,29 @@ function Nomina() {
         </div>
       )}
 
+      {tab === 'ingresos' && periodo && (
+        <div className="card">
+          <div className="card-head">
+            <div><h3>Ingresos extraordinarios</h3><div className="text-muted" style={{fontSize:12}}>Evidencia opcional; siempre requieren aprobación antes de impactar nómina. La afectación de bases (AFP/EsSalud/CTS) la determina el sub-tipo, no quien lo registra.</div></div>
+            <button className="btn btn-primary" data-local-form="true" onClick={()=>setIngresoPanel(true)}>{I.plus} Nuevo ingreso</button>
+          </div>
+          <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Sub-tipo</th><th>Remunerativo</th><th>Descripcion</th><th>Monto</th><th>Evidencia</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+            {ingresoRowsPeriodo.length === 0 && <tr><td colSpan={8} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin ingresos extraordinarios.</td></tr>}
+            {ingresoRowsPeriodo.map(r => <tr key={r.id}>
+              <td><strong>{r.personal_nombre || trabajadores.find(t=>t.id===r.personal_id)?.nombre || r.personal_id}</strong></td>
+              <td><span className="badge badge-gray">{INGRESO_EXTRAORDINARIO_SUBTIPOS[r.sub_tipo]?.label || r.sub_tipo}</span></td>
+              <td>{r.estado === 'aprobado' || r.estado === 'aplicado' ? (r.es_remunerativo ? <span className="badge badge-cyan">Sí</span> : <span className="badge badge-gray">No</span>) : <span className="text-muted">Pendiente de aprobar</span>}</td>
+              <td>{r.descripcion}</td>
+              <td className="num">{money(r.monto)}</td>
+              <td>{r.evidencia_url ? <a href={r.evidencia_url} target="_blank" rel="noreferrer">Ver evidencia</a> : <span className="text-muted">Sin evidencia</span>}</td>
+              <td><span className={'badge '+(r.estado==='aprobado'?'badge-green':r.estado==='rechazado'?'badge-red':r.estado==='aplicado'?'badge-cyan':'badge-orange')}>{r.estado}</span></td>
+              <td>{r.estado === 'pendiente' ? <div className="row" style={{gap:6}}><button className="btn btn-sm btn-secondary" onClick={()=>resolverIngreso(r, 'aprobado')}>Aprobar</button><button className="btn btn-sm btn-secondary" onClick={()=>resolverIngreso(r, 'rechazado')}>Rechazar</button></div> : <span className="text-muted">-</span>}</td>
+            </tr>)}
+          </tbody></table></div>
+          <div style={{padding:16, borderTop:'1px solid var(--border-subtle)'}}><div className="input-group"><label>Comentario de resolucion</label><input className="input" value={ingresoComentario} onChange={e=>setIngresoComentario(e.target.value)} placeholder="Opcional"/></div></div>
+        </div>
+      )}
+
       {/* ── TAB: CARGAS ── */}
       {tab === 'cargas' && periodo && (
         <div className="card" style={{padding:20}}>
@@ -17079,6 +17234,11 @@ function Nomina() {
       )}
 
       {/* ── TAB: PLAME ── */}
+      {/* TODO (ingresos_extraordinarios no remunerativos): "Total ingresos" abajo lee
+          remuneracion_bruta, que ya incluye los remunerativos correctamente. Los NO
+          remunerativos (otros_ingresos) NO se declaran acá por ahora — pendiente de
+          validar con el contador, sub_tipo por sub_tipo, si alguno igual requiere
+          declararse aparte para SUNAT (ej. IR 5ta) aunque no afecte AFP/EsSalud/CTS. */}
       {tab === 'plame' && periodo && (
         <div className="card" style={{padding:20}}>
           <div className="card-head">
@@ -17176,7 +17336,7 @@ function Nomina() {
 
 
       {/* Boleta */}
-      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{empresa?.nombre}</strong></p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} · Período: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p><hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}{boleta.desc_extraordinario>0&&<p>Extraordinario: -{money(boleta.desc_extraordinario)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={()=>addNotificacion('Boleta PDF lista.')}>{I.download} Descargar boleta PDF</button></div></div></>}
+      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{empresa?.nombre}</strong></p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} · Período: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}{boleta.ingreso_extra_remunerativo>0&&<p>Ingreso extraordinario (remunerativo): {money(boleta.ingreso_extra_remunerativo)}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p>{boleta.otros_ingresos>0&&<><hr/><p><strong>Otros ingresos no remunerativos</strong> <span className="text-muted" style={{fontSize:11}}>(no afectan AFP/EsSalud/CTS)</span></p><p>+{money(boleta.otros_ingresos)}</p></>}<hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}{boleta.desc_extraordinario>0&&<p>Extraordinario: -{money(boleta.desc_extraordinario)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={()=>addNotificacion('Boleta PDF lista.')}>{I.download} Descargar boleta PDF</button></div></div></>}
 
       {descPanel && <><div className="side-panel-backdrop" onClick={()=>setDescPanel(false)}/><div className="side-panel" style={{width:'min(560px,96vw)'}}>
         <div className="side-panel-head"><div><div className="eyebrow">Nomina</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nuevo descuento</div></div><button className="icon-btn" onClick={()=>setDescPanel(false)}>{I.x}</button></div>
@@ -17190,6 +17350,21 @@ function Nomina() {
           <div className="input-group"><label>URL de evidencia externa</label><input className="input" value={descForm.evidencia_url} onChange={e=>setDescForm(v=>({...v, evidencia_url:e.target.value}))} placeholder="Opcional si adjuntas archivo"/></div>
           <FileUpload ref={descUploadRef} entidadTipo="descuentos_extraordinarios" entidadId={descEntityId} empresaId={empresa?.id} categoria="evidencia_descuento" multiple={false} deferUpload subidoPor={role?.id || role?.nombre}/>
           <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setDescPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Registrar</button></div>
+        </form>
+      </div></>}
+
+      {ingresoPanel && <><div className="side-panel-backdrop" onClick={()=>setIngresoPanel(false)}/><div className="side-panel" style={{width:'min(560px,96vw)'}}>
+        <div className="side-panel-head"><div><div className="eyebrow">Nomina</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nuevo ingreso</div></div><button className="icon-btn" onClick={()=>setIngresoPanel(false)}>{I.x}</button></div>
+        <form className="side-panel-body" onSubmit={guardarIngreso}>
+          <div className="input-group"><label>Trabajador</label><select className="select" value={ingresoForm.personal_id} onChange={e=>setIngresoForm(v=>({...v, personal_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div>
+          <div className="grid-2" style={{gap:12}}>
+            <div className="input-group"><label>Sub-tipo</label><select className="select" value={ingresoForm.sub_tipo} onChange={e=>setIngresoForm(v=>({...v, sub_tipo:e.target.value}))}>{Object.entries(INGRESO_EXTRAORDINARIO_SUBTIPOS).map(([key, cfg]) => <option key={key} value={key}>{cfg.label}</option>)}</select></div>
+            <div className="input-group"><label>Monto</label><input className="input" type="number" min="0" step="0.01" value={ingresoForm.monto} onChange={e=>setIngresoForm(v=>({...v, monto:e.target.value}))}/></div>
+          </div>
+          <div className="input-group"><label>Descripcion</label><textarea className="input" rows="3" value={ingresoForm.descripcion} onChange={e=>setIngresoForm(v=>({...v, descripcion:e.target.value}))}/></div>
+          <div className="input-group"><label>URL de evidencia externa</label><input className="input" value={ingresoForm.evidencia_url} onChange={e=>setIngresoForm(v=>({...v, evidencia_url:e.target.value}))} placeholder="Opcional"/></div>
+          <FileUpload ref={ingresoUploadRef} entidadTipo="ingresos_extraordinarios" entidadId={ingresoEntityId} empresaId={empresa?.id} categoria="evidencia_ingreso" multiple={false} deferUpload subidoPor={role?.id || role?.nombre}/>
+          <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setIngresoPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit">Registrar</button></div>
         </form>
       </div></>}
 
@@ -18071,7 +18246,7 @@ function RRHH_Operativo() {
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const vacacionesSugeridas = diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general');
   const vacRegimenLabel = { general: 'General', pequena_empresa: 'Pequeña empresa', microempresa: 'Microempresa' }[empresaConfig?.regimen_laboral_empresa || 'general'] || 'General';
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', email_personal:'', celular_personal:'', codigo:'', cargo:'', cargo_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'', auth_user_id:'' };
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', email_personal:'', celular_personal:'', codigo:'', cargo:'', cargo_id:'', posicion_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', area:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'', auth_user_id:'' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const [nuevoCargoTextoOp, setNuevoCargoTextoOp] = useState('');
   const [horasBaseOverride, setHorasBaseOverride] = useState(false);
@@ -18126,6 +18301,17 @@ function RRHH_Operativo() {
     .filter(s => s.estado !== 'inactivo')
     .map(s => ({ nombre: s.nombre, detalle: s.direccion || s.detalle || s.gps || '' }))
     .filter(s => s.nombre);
+  const unidadesOrganizacionalesOptions = (unidadesOrganizacionales.length ? unidadesOrganizacionales : areasEmpresa)
+    .filter(u => u.estado !== 'inactivo' && u.nombre)
+    .map(u => ({ id: u.id, nombre: u.nombre }));
+  const unidadNombrePorId = React.useMemo(() => new Map(unidadesOrganizacionalesOptions.map(u => [u.id, u.nombre])), [unidadesOrganizacionalesOptions]);
+  const posicionesParaCargoAlta = React.useMemo(() => posiciones.filter(p => (
+    p.activa !== false && p.estado !== 'inactivo' && p.cargo_id === formAlta.cargo_id
+  )), [posiciones, formAlta.cargo_id]);
+  const posicionSeleccionadaAlta = React.useMemo(
+    () => posiciones.find(p => p.id === formAlta.posicion_id) || null,
+    [posiciones, formAlta.posicion_id]
+  );
   const esSupervisorOperativo = (p = {}) => {
     const cargo = String(p.cargo || '').toLowerCase();
     return p.perfil_campo === 'Supervisor' || cargo.includes('supervis');
@@ -18192,6 +18378,8 @@ function RRHH_Operativo() {
       especialidad2: p.especialidad2 || '',
       supervisor_id: p.supervisor_id || personal.find(s => s.nombre === p.supervisor)?.id || '',
       supervisor: p.supervisor || '',
+      posicion_id: p.posicion_id || '',
+      area: p.area || '',
       sede: p.sede || '',
       turno_id: turnoActualId,
       centro_costo_id: p.centro_costo_id || '',
@@ -18282,6 +18470,10 @@ function RRHH_Operativo() {
       setAltaError('Este campo es obligatorio. Selecciona un CECO antes de continuar.');
       return;
     }
+    if (formAlta.posicion_id && !posicionSeleccionadaAlta) {
+      setAltaError('La posición seleccionada ya no está disponible. Selecciona otra o deja la ficha sin posición.');
+      return;
+    }
     if (modalidad === 'honorarios' && (!formAlta.ruc_colaborador || !isValidRuc(formAlta.ruc_colaborador))) {
       setAltaError('El RUC es obligatorio para colaboradores con modalidad Honorarios (11 dígitos, comenzar con 1 o 2).');
       return;
@@ -18307,6 +18499,8 @@ function RRHH_Operativo() {
       nombre: formAlta.nombre || 'Nuevo técnico',
       cargo: formAlta.cargo || 'Técnico de Campo',
       cargo_id: formAlta.cargo_id || null,
+      posicion_id: formAlta.posicion_id || null,
+      area: posicionSeleccionadaAlta ? (unidadNombrePorId.get(posicionSeleccionadaAlta.unidad_organizacional_id) || null) : (formAlta.area || null),
       especialidad: formAlta.especialidad || 'General',
       especialidad2: formAlta.especialidad2 || '',
       supervisor_id: formAlta.supervisor_id || null,
@@ -20418,7 +20612,7 @@ function RRHH_Operativo() {
           </div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Código</th><th>Técnico</th><th>Cargo</th><th>Área</th><th>Sede</th><th>Turno</th><th>Jornada</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones Disp.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+              <thead><tr><th>Código</th><th>Técnico</th><th>Cargo</th><th>Unidad organizacional</th><th>Sede</th><th>Turno</th><th>Jornada</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones Disp.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
               <tbody>
                 {personal.length === 0 && <tr><td colSpan={12} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
                 {personal.filter(p => {
@@ -20444,11 +20638,11 @@ function RRHH_Operativo() {
                       <td>
                         <div className="row">
                           <div className="avatar" style={{width:30,height:30,fontSize:11}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
-                          <div><strong>{p.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{p.especialidad || 'Sin especialidad'}</div></div>
+                          <div><strong>{p.nombre}</strong><div className="text-muted" style={{fontSize:11}}>DNI: {p.dni || p.documento || '—'}</div></div>
                         </div>
                       </td>
                       <td>{p.cargo}</td>
-                      <td>{p.area || <span className="text-subtle">—</span>}</td>
+                      <td>{unidadNombrePorId.get(posiciones.find(pos => pos.id === p.posicion_id)?.unidad_organizacional_id) || p.area || <span className="text-subtle">Sin posición</span>}</td>
                       <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
                       <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>
                       <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span>}</td>
@@ -20610,7 +20804,7 @@ function RRHH_Operativo() {
                 <select className="select" value={formAlta.cargo_id} onChange={e=>{
                   if(e.target.value==='__nuevo__'){setFormAlta(v=>({...v,cargo_id:'__nuevo__'}));setNuevoCargoTextoOp('');return;}
                   const c=cargosOperativosOptions.find(x=>x.id===e.target.value);
-                  setFormAlta(v=>({...v,cargo_id:e.target.value,cargo:c?.nombre||v.cargo}));
+                  setFormAlta(v=>({...v,cargo_id:e.target.value,cargo:c?.nombre||v.cargo,posicion_id:''}));
                 }}>
                   <option value="">Seleccionar cargo...</option>
                   {cargosOperativosOptions.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -20621,6 +20815,22 @@ function RRHH_Operativo() {
                   <button type="button" className="btn btn-sm" disabled={!nuevoCargoTextoOp.trim()} onClick={async()=>{const c=await crearCargo({nombre:nuevoCargoTextoOp.trim(),tipo:'Operativo',estado:'activo'});setFormAlta(v=>({...v,cargo_id:c.id,cargo:c.nombre}));setNuevoCargoTextoOp('');}}>Crear</button>
                   <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setFormAlta(v=>({...v,cargo_id:''}))}>×</button>
                 </div>}
+              </div>
+              <div className="input-group">
+                <label>Posición organizacional <span className="text-muted">(opcional)</span></label>
+                <select className="select" value={formAlta.posicion_id} onChange={e=>{
+                  const posicion = posiciones.find(p => p.id === e.target.value);
+                  setFormAlta(v=>({...v, posicion_id:e.target.value, area: posicion ? (unidadNombrePorId.get(posicion.unidad_organizacional_id) || '') : v.area}));
+                }} disabled={!formAlta.cargo_id || formAlta.cargo_id === '__nuevo__'}>
+                  <option value="">Sin posición asignada</option>
+                  {posicionesParaCargoAlta.map(p=><option key={p.id} value={p.id}>{unidadNombrePorId.get(p.unidad_organizacional_id) || 'Sin unidad'} — {p.codigo || p.id.slice(0,8)}</option>)}
+                </select>
+                {!formAlta.cargo_id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Selecciona primero un cargo para ver sus posiciones.</div>}
+                {formAlta.cargo_id && !posicionesParaCargoAlta.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>No hay posiciones activas para este cargo.</div>}
+              </div>
+              <div className="input-group">
+                <label>Unidad organizacional</label>
+                <input className="input" readOnly value={posicionSeleccionadaAlta ? (unidadNombrePorId.get(posicionSeleccionadaAlta.unidad_organizacional_id) || 'Sin unidad asignada') : (formAlta.area || 'Se deriva de la posición')} style={{background:'var(--bg-subtle)'}}/>
               </div>
               <div className="input-group"><label>Especialidad principal</label><select className="select" value={formAlta.especialidad} onChange={e=>setFormAlta(v=>({...v,especialidad:e.target.value}))}><option value="">Seleccionar...</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>
               <div className="input-group"><label>Especialidad secundaria <span className="text-muted">(opcional)</span></label><select className="select" value={formAlta.especialidad2} onChange={e=>setFormAlta(v=>({...v,especialidad2:e.target.value}))}><option value="">Ninguna</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>

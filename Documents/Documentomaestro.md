@@ -1,6 +1,6 @@
 # ERP Modular Estándar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado — TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS · Última actualización: 24/06/2026
+### Arquitectura Multitenant SaaS · Última actualización: 21/07/2026
 
 ---
 
@@ -33,9 +33,9 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Módulos en prompt pendiente de implementar | 0 |
 | Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase |
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
-| Migraciones SQL registradas en el repositorio | 270 archivos SQL locales, hasta `268_fix_liquidaciones_cxp_id_type.sql` |
-| Migración local más reciente | `268_fix_liquidaciones_cxp_id_type.sql`: fix en tipo de id de cuenta por pagar para liquidaciones por cese, tras una serie de migraciones de contratos, periodos de documentos y bloqueos de portal. |
-| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior: 269–277 (maestro tipos contrato, supervisor huérfano, turnos detalle días, reclutamiento anónimo, turnos HE). |
+| Migraciones SQL registradas en el repositorio | 340 archivos SQL locales, hasta `338_backfill_asistencia_ciclos_mineros.sql` |
+| Migración local más reciente | `338_backfill_asistencia_ciclos_mineros.sql`: ajustes de herencia en ciclos mineros e inmutabilidad de asistencia, tras el despliegue del motor de Posiciones, Retro Wall y Vigencia Efectiva. |
+| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior (269-338): despliegue profundo del módulo de Posiciones, Unidades Organizacionales, Jerarquía Matricial, Retro Wall de nómina, y reglas estrictas de Vigencia Efectiva Contractual. |
 | Bugs/ajustes corregidos en sesiones 20–24/06/2026 | **Hardening y fix de persistencia:** Corrección de supervisor huérfano; **Maestros:** Migración de tipos de contrato a base de datos con interfaz UI; **Turnos:** Detalle de días laborables, selector autoservicio y autorizaciones HE; **Seguridad:** RLS para postulaciones anónimas y self-read de email. |
 
 ### 3.2 Inventario completo de módulos
@@ -79,7 +79,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Reclutamiento | ✔ Implementado | `pages_reclutamiento.jsx` + ruta pública `PostulacionPublica`. Vacantes, candidatos, candidaturas, historial por etapa e invitación/postulación pública. |
 | Personal Operativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales, datos de nómina/honorarios, carga masiva vía Excel, gestión de adendas y sincronización de área/contrato primigenio. |
 | Personal Administrativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales, reportes, comisiones, datos de honorarios, carga masiva vía Excel, gestión de adendas y sincronización de área/contrato primigenio. |
-| Control de Asistencia | ✔ Implementado | Tabs diaria, semanal, mensual, resumen, autorizaciones HE, biométrico y SAR/geocercas. Tardanzas, horas extra, importación biométrica, GPS móvil y validación de geocerca. |
+| Control de Asistencia | ✔ Implementado | Tabs diaria, semanal, mensual, resumen, autorizaciones HE, biométrico, SAR/geocercas. **Vigencia Efectiva:** validación estricta de estado contractual que bloquea registros si el contrato no está en periodo activo. Tardanzas, HE, GPS móvil. |
 | Turnos y Horarios | ✔ Implementado | Módulo standalone `pages_turnos.jsx`. CRUD completo: crear/editar/eliminar con side-panel. Campos: nombre, entrada/salida, tolerancia, cruza medianoche, días laborables (o variables), refrigerio. Preview de horas efectivas en tiempo real. |
 | Nómina Básica | ✔ Implementado | AFP 3 componentes (tabla multitenant completa), IR 5ta con UIT dinámica, horas extra 25%/35%, CTS computable, bonif. extraordinaria. Régimen MYPE. Régimen minero 14×7/20×10/28×14. Pago quincenal configurable. PLAME. Cierre → egresos en finanzas. **Fase 1 (10/06):** motor corregido. **Fase 2 (10/06):** historial de asignaciones de jornada con vigencia (`personal_asignaciones_jornada`). **Fase 3 (11/06):** `afp_parametros` con comisiones por flujo/mixta. **Ola 2 (12/06):** contratos, cese por falta grave, datos bancarios, autorización HE, compensación y descuentos extraordinarios. **Contratos avanzados (16/06):** flujos de adendas y versionado de contratos. **Contrato Primigenio y Periodos (19/06):** reglas de predecesor/sucesor, candados en ceses y caducidad de documentos. |
 | Comisiones | ✔ Implementado | Liquidación, aprobaciones (acuerdos especiales, +48h sin respuesta), retenciones IR de 4ta categoría según suspensión y tipo de cambio, generación de RHE y CxP asociada. |
@@ -147,7 +147,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Módulo | Estado | Notas |
 |--------|--------|-------|
 | Usuarios | ✅ Implementado | |
-| Organigrama | ✔ Implementado | Vista jerárquica por roles, jefes funcionales y asignaciones. |
+| Organigrama | ✔ Implementado | Arquitectura avanzada basada en Posiciones, Unidades Organizacionales, Jerarquía Matricial (líder principal y reporting line), origen de asignación, y sincronización continua (cargo <-> posición). |
 | Roles y Permisos | ✅ Implementado | |
 | Maestros Base | ✔ Implementado | Catálogos de referencia alineados: áreas, cargos, especialidades, tipos de servicio, almacenes, sedes, industrias, CECO/CEBE, materiales jerárquicos, monedas/impuestos/unidades. |
 | Catálogo de Servicios | ✔ Implementado | Formulario ampliado con campos comerciales/técnicos, moneda, costo, precio, margen, facturable, entregables y notas internas. |
@@ -314,6 +314,9 @@ Se han identificado las siguientes discrepancias tras la auditoría cruzada entr
 | **RRHH** / `pages_ops.jsx`, `pages_admin.jsx`, `personalDocumentosService.js` | **Motor de Adendas a Contratos y Contrato Primigenio** | Alto | Lógica integrada para detectar advertencias `advAdendaManual` y vincular adendas. Ahora expandido a soportar tipos de predecesor/sucesor, sincronización de área y bloqueos de "Contrato Primigenio". |
 | **RRHH** / `personalDocumentosService.js`, `tiposDocumentoService.js` | **Periodos y caducidad de documentos de personal** | Alto | Se integró soporte avanzado de caducidad por periodos documentales y formato candado por extensión (PDF vs Imagen) con limpieza de backfill. |
 | **Compras** / `comprasService.js`, `context.jsx` | **Seguimiento OC, Tránsitos y GRNI** | Medio | Lógica base implementada para soportar seguimiento de Órdenes de Compra en tránsito y valorización GRNI (Goods Received Not Invoiced). |
+| **Administración / RRHH** | **Posiciones y Unidades Organizacionales** | Alto | Implementación de `unidades_organizacionales`, `posiciones`, `matriciales_posicion`, `niveles_jerarquicos`. Arquitectura profunda que reemplaza el organigrama simple. |
+| **RRHH / Nómina** | **Retro Wall y Vigencia Efectiva** | Alto | Implementación de inmutabilidad (`retro_wall`) para documentos y nómina, y bloqueos estrictos de asistencia basados en vigencia contractual (`bloqueo_asistencia_vigencia_efectiva.sql`). |
+| **Operaciones** | **Geocercas Polígonos y SAR Notificaciones** | Medio | Mejoras de geolocalización (`geocerca_poligono`) y lógicas Búsqueda y Rescate (SAR no llegada). |
 
 **b) Documentado pero NO implementado o aún parcial**
 
@@ -328,6 +331,7 @@ Se han identificado las siguientes discrepancias tras la auditoría cruzada entr
 | Rango | Estado | Detalle Técnico |
 |-------|--------|-----------------|
 | `249`–`268` | Registradas localmente | Fix de ID en liquidaciones de cese, sincronización área-contrato, reglas de predecesor/sucesor, periodos de documentos, consolidación de tipos, bloqueo cese trigger, job de contrato primigenio. |
+| `269`–`338` | Registradas localmente | Implementación masiva del motor de Posiciones, Unidades Organizacionales, Jerarquía Matricial, Retro Wall de Nómina, Vigencia Efectiva Contractual y ajustes en Roster/Ciclos mineros. |
 
 **d) Inconsistencias corregidas**
 
@@ -473,6 +477,20 @@ Dos mediciones independientes del mismo trabajador:
 El costo operativo vigente se imputa con `tarifa_hora` del colaborador. Esa tarifa se calcula desde `monto_mensual / horas_base_mes` y se usa en OTs, partes, tareos administrativos y Control de Horas. Nómina sigue midiendo cuánto se paga al trabajador; no reemplaza automáticamente el costo operativo por OT.
 
 ---
+
+
+### 5.8 Organigrama basado en Posiciones
+
+El organigrama ya no es una simple representación de usuarios y roles, sino una **arquitectura de Posiciones**:
+- **Posición**: Es la silla, no la persona. Una posición pertenece a una Unidad Organizacional, requiere un Cargo, y tiene un líder principal (jerarquía lineal).
+- **Relaciones Matriciales**: Una posición puede reportar indirectamente a otras posiciones.
+- **Sincronización Continua**: Al asignar un usuario a una posición, su "cargo" en RRHH se mantiene sincronizado automáticamente. Las responsabilidades en el sistema recaen en la Posición (ej: aprobador), de modo que si el ocupante cambia, el flujo no se rompe.
+
+### 5.9 Vigencia Efectiva y Retro Wall
+
+Dos conceptos críticos protegen la inmutabilidad de la información operativa:
+- **Vigencia Efectiva**: Un trabajador solo "existe" operativamente durante los periodos en que su contrato está activo. El Control de Asistencia incluye bloqueos estrictos: no permite registrar ingresos si la vigencia no lo ampara.
+- **Retro Wall**: Funciona como un candado histórico. Los registros de nómina, partes diarios y documentos críticos quedan inmutables en periodos cerrados, protegiendo las declaraciones legales de modificaciones accidentales.
 
 ## 6. Estructura del sidebar — arquitectura final
 
@@ -641,7 +659,7 @@ Configurar turnos y horarios
          ↓
     Asignar turno a cada trabajador
          ↓
-    Registrar asistencia diaria (entrada / salida / tardanza / falta)
+    Registrar asistencia diaria (validación de Vigencia Efectiva bloquea ingresos si el contrato no ampara la fecha)
          ↓
     Al cierre del período:
     Calcular nómina:
