@@ -385,7 +385,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
     'metodo_pago', 'monto_mensual', 'horas_base_mes', 'tarifa_hora',
     'modalidad_contrato', 'tipo_contrato', 'afp_nombre', 'tiene_hijos', 'regimen_laboral',
     'cuota_prestamo_mes', 'descuento_judicial',
-    'regimen_jornada', 'horas_diarias_pactadas', 'fecha_inicio_ciclo',
+    'horas_diarias_pactadas',
     'cargo_confianza', 'bonif_altitud', 'tipo_comision_afp', 'pct_comision_afp_flujo',
     'costo_hora_real', 'costo_hora_extra',
     'ruc_colaborador', 'retencion_ir', 'suspension_retenciones', 'vencimiento_suspension',
@@ -562,8 +562,7 @@ const toPersonalAdminUpdate = (cambios = {}) => {
     'sueldo_base', 'remuneracion', 'moneda', 'metodo_pago', 'monto_mensual',
     'horas_base_mes', 'tarifa_hora', 'sistema_pensionario', 'modalidad',
     'afp_nombre', 'tiene_hijos', 'regimen_laboral', 'cuota_prestamo_mes',
-    'descuento_judicial', 'regimen_jornada', 'horas_diarias_pactadas',
-    'fecha_inicio_ciclo', 'dias_ciclo_trabajo', 'dias_ciclo_descanso',
+    'descuento_judicial', 'horas_diarias_pactadas',
     'cargo_confianza', 'bonif_altitud', 'tipo_comision_afp', 'pct_comision_afp_flujo',
     'vacaciones_pendientes', 'dias_vacaciones_total', 'dias_vacaciones_usados',
     'dias_vacaciones_disponibles', 'contacto_emergencia', 'relacion_emergencia',
@@ -1291,6 +1290,8 @@ export const rrhhService = {
       p_fecha_inicio_ciclo:  params.fecha_inicio_ciclo || null,
       p_turno_id:            params.turno_id || null,
       p_motivo:              params.motivo || null,
+      p_forzar_override:     params.forzar_override || false,
+      p_motivo_override:     params.motivo_override || null,
     });
     if (error) throw error;
     return data;

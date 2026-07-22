@@ -8,7 +8,7 @@
 // resultado (un trabajador real con ciclo activo genera "pendientes" también
 // para cualquier otro día sin registro dentro de su ventana de trabajo — eso
 // es el comportamiento correcto, no ruido de esta prueba).
-import { calcularRosterPeriodo } from './src/services/rosterMineroService.js';
+import { calcularEstadoCicloMinero, calcularRosterPeriodo } from './src/services/rosterMineroService.js';
 
 let fallos = 0;
 function assertEq(actual, esperado, msg) {
@@ -134,6 +134,36 @@ function registrosMesCompleto(trabajadorId, excepto = {}) {
   const ganadosEsperados = Math.round(2 * ratio * 100) / 100;
   assertEq(resultado.dias_descanso_ganados, ganadosEsperados, 'Caso 5d — dias_descanso_ganados usa la misma fórmula de antes (diasEfectivos × ratio)');
   assertEq(resultado.balance_periodo, Math.round((ganadosEsperados - 1) * 100) / 100, 'Caso 5e — balance_periodo = ganados - gozados, igual que antes');
+}
+
+// Caso 6: la inducción configurada se excluye aunque los registros diarios
+// generados por el ciclo todavía estén marcados como "completo". Un ajuste
+// aprobado en esos días tampoco puede volverlos días que ganan descanso.
+{
+  const trabajadores = [trabajador('w6')];
+  const registros = registrosMesCompleto('w6');
+  const ciclos = [{
+    personal_id: 'w6', fecha_inicio_ciclo: '2026-06-01',
+    tiene_induccion: true, dias_induccion: 3, fecha_fin_induccion: '2026-06-03',
+  }];
+  const ajustes = [{ personal_id: 'w6', fecha: '2026-06-02', estado: 'aprobado', tipo_dia_solicitado: 'trabajo' }];
+
+  const resultado = calcularRosterPeriodo(2026, 6, trabajadores, registros, ciclos, ajustes)[0];
+  assertEq(resultado.dias_induccion, 3, 'Caso 6a — los tres días iniciales quedan identificados como inducción');
+  assertEq(resultado.dias_en_mina, 27, 'Caso 6b — ningún día de inducción suma a dias_en_mina, aun con ajuste aprobado');
+  assertEq(resultado.dias_descanso_ganados, 13.5, 'Caso 6c — inducción no suma a dias_descanso_ganados');
+}
+
+// Caso 7: el cálculo puro del ciclo también excluye la inducción del saldo.
+{
+  const estado = calcularEstadoCicloMinero({
+    fechaInicioCiclo: '2026-06-01', diasTrabajo: 14, diasDescanso: 7,
+    fechaEval: '2026-06-05', tieneInduccion: true, diasInduccion: 3,
+    fechaFinInduccion: '2026-06-03',
+  });
+  assertEq(estado.diasInduccionMes, 3, 'Caso 7a — calcularEstadoCicloMinero identifica los días de inducción');
+  assertEq(estado.diasEnMinaMes, 2, 'Caso 7b — solo los días posteriores a inducción cuentan como mina');
+  assertEq(estado.diasDescansoGanados, 1, 'Caso 7c — el saldo usa únicamente los dos días de mina (ratio 7/14)');
 }
 
 console.log(fallos === 0 ? '\nTodos los casos pasaron.' : `\n${fallos} caso(s) fallaron.`);
