@@ -14,6 +14,12 @@ import { ROLE_CATEGORIES, getUserHierarchyLevel, getPrimaryPosicion } from './li
 import { PHONE_PATTERN, RUC_PATTERN, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { VARIABLES_COMERCIALES } from './lib/textoComercial.js';
 import { maestrosService } from './services/maestrosService.js';
+import {
+  CEBE_TIPOS_IMPORTACION,
+  CECO_TIPOS_IMPORTACION,
+  validarFilasImportacionCebe,
+  validarFilasImportacionCeco,
+} from './utils/cecoCebeImport.js';
 import { importarMaterialesMasivo } from './services/materialService.js';
 import { ER_TIPO_SISTEMA_LABELS, ER_TIPO_SISTEMA_OPTIONS } from './services/estadoResultadosService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
@@ -1542,7 +1548,7 @@ function Stub({title, description}) {
 // ============ CECO / CEBE ============
 function CecoCebePanel({ onClose }) {
   const {
-    centrosCosto, centrosBeneficio, cuentas, usuarios, empresa, ots,
+    centrosCosto, centrosBeneficio, cuentas, usuarios, empresa, ots, sedes, especialidades,
     crearCentroCosto, actualizarCentroCosto, importarCentrosCosto,
     crearCentroBeneficio, actualizarCentroBeneficio, importarCentrosBeneficio,
     addNotificacion
@@ -1590,8 +1596,8 @@ function CecoCebePanel({ onClose }) {
     addNotificacion?.('CECO inactivado.');
   };
 
-  const CECO_TIPOS = ['area_funcional','proyecto','sede','temporal'];
-  const CEBE_TIPOS = ['linea_servicio','cliente','proyecto','producto','temporal'];
+  const CECO_TIPOS = CECO_TIPOS_IMPORTACION;
+  const CEBE_TIPOS = CEBE_TIPOS_IMPORTACION;
   const labelTipo = t => ({
     area_funcional: 'Área funcional',
     proyecto: 'Proyecto',
@@ -1688,55 +1694,17 @@ function CecoCebePanel({ onClose }) {
       return row;
     });
   };
-  const normEstado = v => (v||'').trim().toLowerCase();
-  const tipoKeyMap = {
-    'área funcional':'area_funcional', 'area funcional':'area_funcional', 'area_funcional':'area_funcional', 'funcional':'area_funcional',
-    'proyecto':'proyecto', 'project':'proyecto',
-    'sede':'sede', 'sucursal':'sede',
-    'temporal':'temporal',
-    'línea de servicio':'linea_servicio', 'linea de servicio':'linea_servicio', 'linea_servicio':'linea_servicio', 'línea':'linea_servicio', 'servicio':'linea_servicio',
-    'cliente':'cliente', 'producto':'producto',
-  };
-  const normTipo = v => tipoKeyMap[(v||'').trim().toLowerCase()] || (v||'').trim().toLowerCase().replace(/\s+/g,'_');
-  const findCebe = val => {
-    if (!val) return null;
-    const v = val.trim();
-    return (centrosBeneficio||[]).find(b =>
-      b.nombre === v ||
-      b.codigo === v ||
-      `${b.codigo} - ${b.nombre}` === v ||
-      v.includes(b.nombre) ||
-      v.includes(b.codigo)
-    ) || null;
-  };
-  const validarCecoImport = rows => rows.map(r => {
-    const errores = [];
-    const estadoNorm = normEstado(r.estado);
-    const tipoNorm = normTipo(r.tipo);
-    const existente = (centrosCosto||[]).find(c=>c.codigo===r.codigo);
-    if (!r.codigo) errores.push('Código vacío');
-    else if (rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado en el archivo');
-    if (!r.nombre) errores.push('Nombre vacío');
-    if (!r.tipo) errores.push('Tipo vacío');
-    if (r.cebe_padre && !findCebe(r.cebe_padre)) errores.push(`CEBE "${r.cebe_padre}" no encontrado`);
-    if (r.estado && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido (usa "activo" o "inactivo")');
-    const cebe = findCebe(r.cebe_padre);
-    const resp = usuariosActivos.find(u=>u.nombre===r.responsable);
-    return { ...r, id: existente?.id, tipo: tipoNorm, estado: estadoNorm || 'activo', cebe_id: cebe?.id || null, responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, presupuesto_mensual: r.presupuesto_mensual || null, _errores: errores, _existe: !!existente };
+  const validarCecoImport = rows => validarFilasImportacionCeco(rows, {
+    centrosCosto,
+    centrosBeneficio,
+    sedes,
+    especialidades,
+    usuarios,
   });
-  const validarCebeImport = rows => rows.map(r => {
-    const errores = [];
-    const estadoNorm = normEstado(r.estado);
-    const tipoNorm = normTipo(r.tipo);
-    const existente = (centrosBeneficio||[]).find(c=>c.codigo===r.codigo);
-    if (!r.codigo) errores.push('Código vacío');
-    else if (rows.filter(x=>x!==r).some(x=>x.codigo===r.codigo)) errores.push('Código duplicado en el archivo');
-    if (!r.nombre) errores.push('Nombre vacío');
-    if (!r.tipo) errores.push('Tipo vacío');
-    else if (!CEBE_TIPOS.includes(tipoNorm)) errores.push(`Tipo inválido: "${r.tipo}". Usa: linea_servicio, cliente, proyecto, producto, temporal`);
-    if (r.estado && !['activo','inactivo'].includes(estadoNorm)) errores.push('Estado inválido (usa "activo" o "inactivo")');
-    const resp = usuariosActivos.find(u=>u.nombre===r.responsable);
-    return { ...r, id: existente?.id, tipo: tipoNorm, estado: estadoNorm || 'activo', responsable_id: resp?.id || null, responsable_nombre: r.responsable || '', fecha_inicio: r.fecha_inicio || null, fecha_fin: r.fecha_fin || null, meta_ingresos: r.meta_ingresos || null, cuenta_id: r.cuenta_id || null, _errores: errores, _existe: !!existente };
+  const validarCebeImport = rows => validarFilasImportacionCebe(rows, {
+    centrosBeneficio,
+    cuentas,
+    usuarios,
   });
   const exportCsv = (data, headers, filename) => {
     const rows = [headers.join(','), ...data.map(r => headers.map(h=>`"${r[h]??''}"` ).join(','))];
@@ -1749,13 +1717,14 @@ function CecoCebePanel({ onClose }) {
     XLSX.utils.book_append_sheet(wb, ws, 'Datos');
     XLSX.writeFile(wb, filename);
   };
-  const parseXlsx = file => new Promise((resolve, reject) => {
+  const parseXlsx = (file, sheetName) => new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = ev => {
       try {
         const wb = XLSX.read(ev.target.result, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        resolve(XLSX.utils.sheet_to_json(ws, { defval: '' }));
+        const ws = wb.Sheets[sheetName];
+        if (!ws) throw new Error(`El archivo no contiene la hoja "${sheetName}".`);
+        resolve(XLSX.utils.sheet_to_json(ws, { defval: '', raw: false, dateNF: 'yyyy-mm-dd' }));
       } catch(e) { reject(e); }
     };
     r.onerror = reject;
@@ -1786,8 +1755,9 @@ function CecoCebePanel({ onClose }) {
           {/* ===== TAB CECO ===== */}
           {tab === 'ceco' && (<>
             <div className="row" style={{ gap:10, marginBottom:18 }}>
+              <a className="btn btn-secondary" href={`${import.meta.env.BASE_URL}plantillas/plantilla_cecos.xlsx`} download="plantilla_cecos.xlsx">{I.download} Descargar plantilla</a>
               <button className="btn btn-secondary" onClick={() => { setCecoModalImport(true); setCecoImportRows([]); setCecoImportStep(1); }}>{I.download} Importar Excel</button>
-              <button className="btn btn-secondary" onClick={() => { const data = (centrosCosto||[]).map(c => ({ ...c, cebe_padre: (centrosBeneficio||[]).find(b=>b.id===c.cebe_id)?.nombre || '', responsable: c.responsable_nombre || '' })); exportXlsx(data, ['codigo','nombre','tipo','responsable','cebe_padre','presupuesto_mensual','fecha_inicio','fecha_fin','descripcion','estado'], 'cecos.xlsx'); }}>{I.download} Exportar Excel</button>
+              <button className="btn btn-secondary" onClick={() => { const data = (centrosCosto||[]).map(c => ({ ...c, especialidad: (especialidades||[]).find(e=>e.id===c.especialidad)?.codigo || '', responsable: c.responsable_nombre || '', cebe_padre: (centrosBeneficio||[]).find(b=>b.id===c.cebe_id)?.codigo || '', sede_padre: (sedes||[]).find(s=>s.id===c.sede_padre)?.codigo || '' })); exportXlsx(data, ['codigo','nombre','tipo','especialidad','responsable','cebe_padre','sede_padre','presupuesto_mensual','fecha_inicio','fecha_fin','descripcion','estado'], 'cecos.xlsx'); }}>{I.download} Exportar Excel</button>
               <span className="badge badge-cyan">Validación de duplicados activa</span>
             </div>
 
@@ -1912,8 +1882,9 @@ function CecoCebePanel({ onClose }) {
           {/* ===== TAB CEBE ===== */}
           {tab === 'cebe' && (<>
             <div className="row" style={{ gap:10, marginBottom:18 }}>
+              <a className="btn btn-secondary" href={`${import.meta.env.BASE_URL}plantillas/plantilla_cebes.xlsx`} download="plantilla_cebes.xlsx">{I.download} Descargar plantilla</a>
               <button className="btn btn-secondary" onClick={() => { setCebeModalImport(true); setCebeImportRows([]); setCebeImportStep(1); }}>{I.download} Importar Excel</button>
-              <button className="btn btn-secondary" onClick={() => exportXlsx(centrosBeneficio||[], ['codigo','nombre','tipo','responsable_nombre','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.xlsx')}>{I.download} Exportar Excel</button>
+              <button className="btn btn-secondary" onClick={() => { const data=(centrosBeneficio||[]).map(c=>({...c,cliente_asociado:(cuentas||[]).find(x=>x.id===c.cuenta_id)?.nombre_comercial||'',responsable:c.responsable_nombre||''})); exportXlsx(data, ['codigo','nombre','tipo','cargo_financiero_dbs','modelo_negocio','cliente_asociado','responsable','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.xlsx'); }}>{I.download} Exportar Excel</button>
               <span className="badge badge-cyan">Validación de duplicados activa</span>
             </div>
 
@@ -2044,8 +2015,8 @@ function CecoCebePanel({ onClose }) {
               <div className="modal-body">
                 {cecoImportStep === 1 && (
                   <div>
-                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con columnas: <code>codigo, nombre, tipo, responsable, cebe_padre, presupuesto_mensual, estado</code></p>
-                    <input type="file" accept=".xlsx,.xls" onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const rows = await parseXlsx(f); setCecoImportRows(validarCecoImport(rows)); setCecoImportStep(2); }}/>
+                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con hoja <code>CECOs</code> y columnas: <code>codigo, nombre, tipo, especialidad, responsable, cebe_padre, sede_padre, presupuesto_mensual, estado</code></p>
+                    <input type="file" accept=".xlsx,.xls" onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const rows = await parseXlsx(f, 'CECOs'); setCecoImportRows(validarCecoImport(rows)); setCecoImportStep(2); }}/>
                   </div>
                 )}
                 {cecoImportStep === 2 && (
@@ -2057,8 +2028,8 @@ function CecoCebePanel({ onClose }) {
                         <tbody>{cecoImportRows.map((r,i)=>(
                           <tr key={i} style={{ background: r._errores.length>0 ? 'rgba(239,68,68,0.05)' : 'transparent' }}>
                             <td className="mono text-muted">{i+2}</td><td className="mono">{r.codigo}</td><td>{r.nombre}</td>
-                            <td>{r._errores.length>0 ? <span className="badge badge-red">Error</span> : r._existe ? <span className="badge badge-cyan">Actualizar</span> : <span className="badge badge-green">OK</span>}</td>
-                            <td style={{ fontSize:11, color:'var(--danger)' }}>{r._errores.join(' · ')}</td>
+                            <td>{r._errores.length>0 ? <span className="badge badge-red">Error</span> : r._advertencias.length>0 ? <span className="badge badge-cyan">Advertencia</span> : <span className="badge badge-green">OK</span>}</td>
+                            <td style={{ fontSize:11, color:r._errores.length ? 'var(--danger)' : 'var(--fg-muted)' }}>{[...r._errores, ...r._advertencias].join(' · ')}</td>
                           </tr>
                         ))}</tbody>
                       </table>
@@ -2071,13 +2042,13 @@ function CecoCebePanel({ onClose }) {
                 )}
                 {cecoImportStep === 3 && (
                   <div>
-                    <p style={{ marginBottom:16, fontSize:13 }}>Se importarán <strong>{cecoImportRows.filter(r=>r._errores.length===0 && !r._existe).length} CECOs nuevos</strong> y se actualizarán <strong>{cecoImportRows.filter(r=>r._errores.length===0 && r._existe).length} existentes</strong>. Los {cecoImportRows.filter(r=>r._errores.length>0).length} con errores serán ignorados.</p>
+                    <p style={{ marginBottom:16, fontSize:13 }}>Se insertarán <strong>{cecoImportRows.filter(r=>r._errores.length===0).length} CECOs nuevos</strong>. Los {cecoImportRows.filter(r=>r._errores.length>0).length} rechazados no se sobrescribirán ni se enviarán a la base.</p>
                     <button className="btn btn-primary" onClick={async e => {
                       const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Importando...';
                       try {
-                        const v = cecoImportRows.filter(r=>r._errores.length===0).map(({_errores,...r})=>r);
-                        await importarCentrosCosto(v);
-                        addNotificacion?.(`${v.length} CECOs importados correctamente.`);
+                        const v = cecoImportRows.filter(r=>r._errores.length===0).map(({_errores,_advertencias,_fila,...r})=>r);
+                        const resultado = await importarCentrosCosto(v);
+                        addNotificacion?.(`${resultado?.insertados?.length || 0} CECOs importados; ${resultado?.rechazados?.length || 0} rechazados.`);
                         setCecoModalImport(false);
                       } catch(err) {
                         btn.disabled = false; btn.textContent = 'Reintentar';
@@ -2104,8 +2075,8 @@ function CecoCebePanel({ onClose }) {
               <div className="modal-body">
                 {cebeImportStep === 1 && (
                   <div>
-                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con columnas: <code>codigo, nombre, tipo, responsable_nombre, meta_ingresos, estado</code></p>
-                    <input type="file" accept=".xlsx,.xls" onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const rows = await parseXlsx(f); setCebeImportRows(validarCebeImport(rows)); setCebeImportStep(2); }}/>
+                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con hoja <code>CEBEs</code> y columnas: <code>codigo, nombre, tipo, cargo_financiero_dbs, modelo_negocio, cliente_asociado, responsable, estado</code></p>
+                    <input type="file" accept=".xlsx,.xls" onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const rows = await parseXlsx(f, 'CEBEs'); setCebeImportRows(validarCebeImport(rows)); setCebeImportStep(2); }}/>
                   </div>
                 )}
                 {cebeImportStep === 2 && (
@@ -2117,8 +2088,8 @@ function CecoCebePanel({ onClose }) {
                         <tbody>{cebeImportRows.map((r,i)=>(
                           <tr key={i} style={{ background: r._errores.length>0 ? 'rgba(239,68,68,0.05)' : 'transparent' }}>
                             <td className="mono text-muted">{i+2}</td><td className="mono">{r.codigo}</td><td>{r.nombre}</td>
-                            <td>{r._errores.length>0 ? <span className="badge badge-red">Error</span> : r._existe ? <span className="badge badge-cyan">Actualizar</span> : <span className="badge badge-green">OK</span>}</td>
-                            <td style={{ fontSize:11, color:'var(--danger)' }}>{r._errores.join(' · ')}</td>
+                            <td>{r._errores.length>0 ? <span className="badge badge-red">Error</span> : r._advertencias.length>0 ? <span className="badge badge-cyan">Advertencia</span> : <span className="badge badge-green">OK</span>}</td>
+                            <td style={{ fontSize:11, color:r._errores.length ? 'var(--danger)' : 'var(--fg-muted)' }}>{[...r._errores, ...r._advertencias].join(' · ')}</td>
                           </tr>
                         ))}</tbody>
                       </table>
@@ -2131,8 +2102,8 @@ function CecoCebePanel({ onClose }) {
                 )}
                 {cebeImportStep === 3 && (
                   <div>
-                    <p style={{ marginBottom:16, fontSize:13 }}>Se importarán <strong>{cebeImportRows.filter(r=>r._errores.length===0 && !r._existe).length} CEBEs nuevos</strong> y se actualizarán <strong>{cebeImportRows.filter(r=>r._errores.length===0 && r._existe).length} existentes</strong>. Los {cebeImportRows.filter(r=>r._errores.length>0).length} con errores serán ignorados.</p>
-                    <button className="btn btn-primary" onClick={async()=>{ const v=cebeImportRows.filter(r=>r._errores.length===0).map(({_errores,...r})=>({...r,estado:r.estado||'activo'})); await importarCentrosBeneficio(v); addNotificacion?.(`${v.length} CEBEs importados.`); setCebeModalImport(false); }}>Importar {cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs</button>
+                    <p style={{ marginBottom:16, fontSize:13 }}>Se insertarán <strong>{cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs nuevos</strong>. Los {cebeImportRows.filter(r=>r._errores.length>0).length} rechazados no se sobrescribirán ni se enviarán a la base.</p>
+                    <button className="btn btn-primary" onClick={async()=>{ const v=cebeImportRows.filter(r=>r._errores.length===0).map(({_errores,_advertencias,_fila,...r})=>({...r,estado:r.estado||'activo'})); const resultado=await importarCentrosBeneficio(v); addNotificacion?.(`${resultado?.insertados?.length || 0} CEBEs importados; ${resultado?.rechazados?.length || 0} rechazados.`); setCebeModalImport(false); }}>Importar {cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs</button>
                   </div>
                 )}
               </div>
@@ -10105,7 +10076,7 @@ function RRHHAdmin() {
                                 <div className="input-group">
                                   <label>Régimen de jornada *</label>
                                   <select className="select" value={inlineUploadForm.regimenJornadaFirma||'general'} onChange={e=>setInlineUploadForm(f=>({...f,regimenJornadaFirma:e.target.value}))}>
-                                    {[['general','General'],['minero_14x7','Minero 14×7'],['minero_20x10','Minero 20×10'],['minero_28x14','Minero 28×14'],['minero_2x1','Minero 2×1'],['ciclo_acumulativo','Ciclo acumulativo']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                                    {[['general','General'],['minero_14x7','Minero 14×7'],['minero_20x10','Minero 20×10'],['minero_28x14','Minero 28×14'],['minero_2x1','Minero 2×1']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
                                   </select>
                                 </div>
                               )}
@@ -10272,7 +10243,7 @@ function RRHHAdmin() {
                               <div className="input-group"><label>Remuneración base (S/) *</label><input className="input" type="number" min="0" placeholder="0" value={docUploadForm.remuneracionFirma} onChange={e=>setDocUploadForm(f=>({...f,remuneracionFirma:e.target.value}))}/></div>
                             )}
                             {!docUploadEsAdendaAdmin && (
-                              <div className="input-group"><label>Régimen de jornada *</label><select className="select" value={docUploadForm.regimenJornadaFirma||'general'} onChange={e=>setDocUploadForm(f=>({...f,regimenJornadaFirma:e.target.value}))}>{[['general','General'],['minero_14x7','Minero 14×7'],['minero_20x10','Minero 20×10'],['minero_28x14','Minero 28×14'],['minero_2x1','Minero 2×1'],['ciclo_acumulativo','Ciclo acumulativo']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                              <div className="input-group"><label>Régimen de jornada *</label><select className="select" value={docUploadForm.regimenJornadaFirma||'general'} onChange={e=>setDocUploadForm(f=>({...f,regimenJornadaFirma:e.target.value}))}>{[['general','General'],['minero_14x7','Minero 14×7'],['minero_20x10','Minero 20×10'],['minero_28x14','Minero 28×14'],['minero_2x1','Minero 2×1']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
                             )}
                             {!docUploadEsAdendaAdmin && (
                               <div className="input-group"><label>Tipo de contrato *</label><select className="select" value={docUploadForm.tipoContratoFirma||''} onChange={e=>setDocUploadForm(f=>({...f,tipoContratoFirma:e.target.value}))}><option value="">Seleccionar...</option>{[['plazo_fijo','Plazo fijo'],['indefinido','Indefinido'],['honorarios','Honorarios']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
@@ -11191,31 +11162,32 @@ function RRHHAdmin() {
 
             {!esHonorariosAlta && <>
               <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Régimen de jornada</div>
+              {editandoId && <div className="alert alert-info" style={{fontSize:12, marginBottom:12}}>El régimen vigente es de solo lectura. Los cambios deben registrarse como una nueva asignación de jornada.</div>}
               <div className="grid-2" style={{gap:14, marginBottom:12}}>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Régimen de jornada</label>
-                  <select className="select" value={formAlta.regimen_jornada} onChange={e=>{
+                  <select className="select" disabled={!!editandoId} value={formAlta.regimen_jornada} onChange={e=>{
                     const val = e.target.value;
-                    const presets = { minero_14x7:[14,7], minero_20x10:[20,10], minero_28x14:[28,14] };
+                    const presets = { minero_14x7:[14,7], minero_20x10:[20,10], minero_28x14:[28,14], minero_2x1:[2,1] };
                     if (presets[val]) {
                       const [t,d] = presets[val];
-                      setFormAlta(v=>({...v, regimen_jornada:'ciclo_acumulativo', horas_diarias_pactadas:'12', dias_ciclo_trabajo:String(t), dias_ciclo_descanso:String(d)}));
+                      setFormAlta(v=>({...v, regimen_jornada:val, horas_diarias_pactadas:'12', dias_ciclo_trabajo:String(t), dias_ciclo_descanso:String(d)}));
                     } else {
-                      setFormAlta(v=>({...v, regimen_jornada:val, horas_diarias_pactadas:val==='general'?'8':'12'}));
+                      setFormAlta(v=>({...v, regimen_jornada:val, horas_diarias_pactadas:'8', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', fecha_inicio_ciclo:''}));
                     }
                   }}>
                     <option value="general">General (8h/día estándar)</option>
-                    <option value="ciclo_acumulativo">Ciclo acumulativo (personalizado)</option>
-                    <option value="minero_14x7">Minero 14×7 (atajo → 14d+7d)</option>
-                    <option value="minero_20x10">Minero 20×10 (atajo → 20d+10d)</option>
-                    <option value="minero_28x14">Minero 28×14 (atajo → 28d+14d)</option>
+                    <option value="minero_14x7">Minero 14×7</option>
+                    <option value="minero_20x10">Minero 20×10</option>
+                    <option value="minero_28x14">Minero 28×14</option>
+                    <option value="minero_2x1">Minero 2×1</option>
                   </select>
                 </div>
-                {formAlta.regimen_jornada === 'ciclo_acumulativo' && <>
+                {formAlta.regimen_jornada !== 'general' && <>
                   <div className="input-group"><label>Horas diarias pactadas <span className="text-muted">(D. Leg. 857)</span></label><input className="input" type="number" min="1" max="12" value={formAlta.horas_diarias_pactadas} onChange={e=>setFormAlta(v=>({...v,horas_diarias_pactadas:e.target.value}))}/></div>
-                  <div className="input-group"><label>Fecha inicio del ciclo actual</label><input className="input" type="date" value={formAlta.fecha_inicio_ciclo} onChange={e=>setFormAlta(v=>({...v,fecha_inicio_ciclo:e.target.value}))}/></div>
-                  <div className="input-group"><label>Días de trabajo en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_trabajo} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_trabajo:e.target.value}))}/></div>
-                  <div className="input-group"><label>Días de descanso en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_descanso} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_descanso:e.target.value}))}/></div>
+                  <div className="input-group"><label>Fecha inicio del ciclo actual</label><input className="input" type="date" readOnly={!!editandoId} value={formAlta.fecha_inicio_ciclo} onChange={e=>setFormAlta(v=>({...v,fecha_inicio_ciclo:e.target.value}))}/></div>
+                  <div className="input-group"><label>Días de trabajo en el ciclo</label><input className="input" type="number" value={formAlta.dias_ciclo_trabajo} readOnly/></div>
+                  <div className="input-group"><label>Días de descanso en el ciclo</label><input className="input" type="number" value={formAlta.dias_ciclo_descanso} readOnly/></div>
                   <div className="card" style={{gridColumn:'1/-1', padding:'8px 12px', background:'rgba(6,182,212,0.08)', fontSize:12, color:'var(--cyan)'}}>Ciclo de {(Number(formAlta.dias_ciclo_trabajo)||0) + (Number(formAlta.dias_ciclo_descanso)||0)} días: {Number(formAlta.dias_ciclo_trabajo)||0} en campo + {Number(formAlta.dias_ciclo_descanso)||0} de descanso.</div>
                   <div className="input-group" style={{gridColumn:'1/-1'}}><label>Bonificación por altitud (S/)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.bonif_altitud} onChange={e=>setFormAlta(v=>({...v,bonif_altitud:e.target.value}))} placeholder="0 si no aplica"/></div>
                   <div className="card" style={{gridColumn:'1/-1', padding:'8px 12px', background:'rgba(6,182,212,0.08)', fontSize:12, color:'var(--cyan)'}}>⛏ Este trabajador usa cálculo proporcional por días computables en cada período.</div>

@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { normalizarCodigoImportacion } from '../utils/cecoCebeImport.js';
 
 const makeId = (prefix) => {
   const randomPart = globalThis.crypto?.randomUUID?.()
@@ -10,6 +11,66 @@ const pick = (source, keys) => keys.reduce((acc, key) => {
   if (source[key] !== undefined) acc[key] = source[key];
   return acc;
 }, {});
+
+export const importarMaestroSinSobrescribir = async ({
+  supabase,
+  tabla,
+  empresaId,
+  filas,
+  prefijoId,
+  campos,
+}) => {
+  const { data: existentes, error: errorExistentes } = await supabase
+    .from(tabla)
+    .select('codigo')
+    .eq('empresa_id', empresaId);
+  if (errorExistentes) throw errorExistentes;
+
+  const codigosExistentes = new Set((existentes || []).map(item => normalizarCodigoImportacion(item.codigo)));
+  const conteoArchivo = new Map();
+  (filas || []).forEach(fila => {
+    const codigo = normalizarCodigoImportacion(fila?.codigo);
+    conteoArchivo.set(codigo, (conteoArchivo.get(codigo) || 0) + 1);
+  });
+
+  const insertados = [];
+  const rechazados = [];
+  for (let index = 0; index < (filas || []).length; index += 1) {
+    const fila = filas[index];
+    const codigo = normalizarCodigoImportacion(fila?.codigo);
+    const filaExcel = fila?._fila || index + 2;
+    if (!codigo) {
+      rechazados.push({ fila: filaExcel, codigo, motivo: 'Código obligatorio.' });
+      continue;
+    }
+    if ((conteoArchivo.get(codigo) || 0) > 1) {
+      rechazados.push({ fila: filaExcel, codigo, motivo: `Código duplicado en el archivo: "${codigo}".` });
+      continue;
+    }
+    if (codigosExistentes.has(codigo)) {
+      rechazados.push({ fila: filaExcel, codigo, motivo: `Código duplicado: "${codigo}" ya existe en este tenant.` });
+      continue;
+    }
+
+    const payload = {
+      id: fila.id || makeId(prefijoId),
+      empresa_id: empresaId,
+      ...pick({ ...fila, codigo }, campos),
+    };
+    const { data, error } = await supabase.from(tabla).insert([payload]).select().single();
+    if (error) {
+      const motivo = error.code === '23505'
+        ? `Código duplicado: "${codigo}" ya existe en este tenant.`
+        : error.message || 'La fila no pudo insertarse.';
+      rechazados.push({ fila: filaExcel, codigo, motivo, codigo_sql: error.code || null });
+      continue;
+    }
+    insertados.push(data);
+    codigosExistentes.add(codigo);
+  }
+
+  return { insertados, rechazados };
+};
 
 export const maestrosService = {
   // Areas de empresa
@@ -294,7 +355,7 @@ export const maestrosService = {
     const payload = {
       id: cebe.id || makeId('cebe'),
       empresa_id: empresaId,
-      ...pick(cebe, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
+      ...pick(cebe, ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
     };
     const { data, error } = await supabase.from('centros_beneficio').insert([payload]).select().single();
     if (error) throw error;
@@ -302,20 +363,20 @@ export const maestrosService = {
   },
   actualizarCentroBeneficio: async (cebeId, payload) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.from('centros_beneficio').update(pick(payload, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cebeId).select().single();
+    const { data, error } = await supabase.from('centros_beneficio').update(pick(payload, ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cebeId).select().single();
     if (error) throw error;
     return data;
   },
   importarCentrosBeneficio: async (empresaId, cebes) => {
     const supabase = await getSupabaseClient();
-    const payload = cebes.map(c => ({
-      id: c.id || makeId('cebe'),
-      empresa_id: empresaId,
-      ...pick(c, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
-    }));
-    const { data, error } = await supabase.from('centros_beneficio').upsert(payload, { onConflict: 'empresa_id,codigo' }).select();
-    if (error) throw error;
-    return data;
+    return importarMaestroSinSobrescribir({
+      supabase,
+      tabla: 'centros_beneficio',
+      empresaId,
+      filas: cebes,
+      prefijoId: 'cebe',
+      campos: ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'],
+    });
   },
   getCentrosCosto: async (empresaId) => {
     if (!empresaId) return [];
@@ -329,7 +390,7 @@ export const maestrosService = {
     const payload = {
       id: ceco.id || makeId('ceco'),
       empresa_id: empresaId,
-      ...pick(ceco, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
+      ...pick(ceco, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'sede_padre', 'especialidad', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
     };
     const { data, error } = await supabase.from('centros_costo').insert([payload]).select().single();
     if (error) throw error;
@@ -337,20 +398,20 @@ export const maestrosService = {
   },
   actualizarCentroCosto: async (cecoId, payload) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.from('centros_costo').update(pick(payload, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cecoId).select().single();
+    const { data, error } = await supabase.from('centros_costo').update(pick(payload, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'sede_padre', 'especialidad', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cecoId).select().single();
     if (error) throw error;
     return data;
   },
   importarCentrosCosto: async (empresaId, cecos) => {
     const supabase = await getSupabaseClient();
-    const payload = cecos.map(c => ({
-      id: c.id || makeId('ceco'),
-      empresa_id: empresaId,
-      ...pick(c, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
-    }));
-    const { data, error } = await supabase.from('centros_costo').upsert(payload, { onConflict: 'empresa_id,codigo' }).select();
-    if (error) throw error;
-    return data;
+    return importarMaestroSinSobrescribir({
+      supabase,
+      tabla: 'centros_costo',
+      empresaId,
+      filas: cecos,
+      prefijoId: 'ceco',
+      campos: ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'sede_padre', 'especialidad', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'],
+    });
   },
 
   getServicios: async (empresaId) => {

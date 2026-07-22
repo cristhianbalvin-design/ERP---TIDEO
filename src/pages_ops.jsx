@@ -14080,7 +14080,7 @@ function ControlAsistencia() {
   // Estados Mineros
   const [ciclosMineros, setCiclosMineros] = useState([]);
   const [panelMinero, setPanelMinero] = useState(false);
-  const formMineroBase = { id:'', personal_id:'', regimen_jornada:'', fecha_inicio_ciclo:'', horas_extra_ciclo:0, estado_ciclo:'completo', incidencias:[], tiene_induccion:false, dias_induccion:'', fecha_fin_induccion:'' };
+  const formMineroBase = { id:'', personal_id:'', regimen_jornada:'', fecha_inicio_ciclo:'', horas_extra_ciclo:0, estado_ciclo:'completo', incidencias:[], tiene_induccion:false, fecha_inicio_induccion:'', fecha_fin_induccion:'' };
   const [formMinero, setFormMinero] = useState(formMineroBase);
   const [detalleMineroId, setDetalleMineroId] = useState(null);
 
@@ -14103,11 +14103,20 @@ function ControlAsistencia() {
   }, [empresa.id, trabajadoresMineros.length]);
 
   // GAP-16: Roster minero
+  // Mismo criterio que Nómina/Comisiones (ver trabajadores más abajo en este archivo):
+  // un trabajador cesado deja de considerarse para cálculos nuevos, sin excepción por fecha.
   const trabajadoresRoster = [
-    ...personalOperativo.map(p => ({ ...p, trabajador_tipo:'operativo', regimen_jornada: p.regimen_jornada || 'general' })),
-    ...personalAdmin.map(p => ({ ...p, trabajador_tipo:'administrativo', regimen_jornada: p.regimen_jornada || 'general' })),
+    ...personalOperativo.filter(p => p.estado_laboral !== 'cesado').map(p => ({ ...p, trabajador_tipo:'operativo', regimen_jornada: p.regimen_jornada || 'general' })),
+    ...personalAdmin.filter(p => p.estado_laboral !== 'cesado').map(p => ({ ...p, trabajador_tipo:'administrativo', regimen_jornada: p.regimen_jornada || 'general' })),
   ];
   const hayMinerosRoster = trabajadoresRoster.some(t => esRegimenMinero(t.regimen_jornada));
+  // Mapa de cesados sobre el universo completo (no el filtrado): permite marcar en
+  // Totales una fila de un snapshot ya guardado que pertenece a alguien hoy cesado,
+  // sin recalcularla ni ocultarla — es informativo, no bloqueante.
+  const cesadosPorId = new Map([
+    ...personalOperativo.filter(p => p.estado_laboral === 'cesado').map(p => [p.id, p]),
+    ...personalAdmin.filter(p => p.estado_laboral === 'cesado').map(p => [p.id, p]),
+  ]);
   const [rosterRows, setRosterRows] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterPeriodo, setRosterPeriodo] = useState(null);
@@ -14134,7 +14143,7 @@ function ControlAsistencia() {
       const ciclos = await rrhhService.getCiclosMineros(empresa.id);
       const prefijoPeriodo = `${rosterPeriodo.anio}-${String(rosterPeriodo.mes).padStart(2,'0')}`;
       const ajustesAprobadosPeriodo = ajustesRoster.filter(a => a.estado === 'aprobado' && a.fecha?.startsWith(prefijoPeriodo));
-      const rows = await calcularYGuardarRoster(empresa.id, rosterPeriodo.anio, rosterPeriodo.mes, trabajadoresRoster, regsDelPeriodo, ciclos, ajustesAprobadosPeriodo, role?.nombre || 'RRHH', rosterPeriodo.id);
+      const rows = await calcularYGuardarRoster(empresa.id, rosterPeriodo.anio, rosterPeriodo.mes, trabajadoresRoster, regsDelPeriodo, ciclos, ajustesAprobadosPeriodo, role?.nombre || 'RRHH', rosterPeriodo.id, asignacionesJornada);
       setRosterRows(rows);
       addNotificacion('Roster minero calculado correctamente.');
     } catch (err) {
@@ -14310,12 +14319,15 @@ function ControlAsistencia() {
     const ciclo = ciclosMineros.find(c => c.personal_id === t.id);
     const dias = (tramo && rosterGridInicio && rosterGridFin) ? calcularRangoRosterMinero({
       trabajadorId: t.id,
+      fechaInicioTramo: tramo.fecha_inicio,
+      fechaFinTramo: tramo.fecha_fin,
       fechaInicioCiclo: tramo.fecha_inicio_ciclo,
       diasTrabajo: tramo.dias_ciclo_trabajo,
       diasDescanso: tramo.dias_ciclo_descanso,
       tieneInduccion: ciclo?.tiene_induccion || false,
       diasInduccion: ciclo?.dias_induccion || 0,
       fechaFinInduccion: ciclo?.fecha_fin_induccion || null,
+      fechaInicioInduccion: ciclo?.fecha_inicio_induccion || null,
       fechaInicio: rosterGridInicio,
       fechaFin: rosterGridFin,
       registros: registrosAsistencia,
@@ -14325,20 +14337,18 @@ function ControlAsistencia() {
     return { trabajador: t, dias, totales };
   };
 
-  // El roster solo responde "¿trabajo o descanso (o sin ciclo)?" — 3 fondos,
-  // sin colores propios para sub-estados de Control de Asistencia (tardanza,
-  // horas extra, falta, falta justificada, incompleto). Un ajuste aprobado no
-  // es un fondo propio: decide cuál de los 2 (trabajo/descanso) se pinta,
-  // marcado con un borde distintivo (ver estiloCeldaRoster).
+  // El roster usa cuatro fondos: Trabajo, Descanso, Sin ciclo e Inducción.
+  // Los sub-estados de Asistencia y el origen del dato se muestran solo con
+  // íconos; el borde nunca comunica estado.
   const FONDO_ESTILO = {
-    trabajo: { bg: '#e6f4ea', color: 'var(--green)', label: 'Trabajo' },
-    descanso: { bg: 'var(--bg-muted)', color: 'var(--slate)', label: 'Descanso' },
-    sin_ciclo: { bg: 'var(--bg-subtle)', color: 'var(--border)', label: 'Sin ciclo' },
+    trabajo: { bg: '#8EDCA8', label: 'Trabajo' },
+    descanso: { bg: '#AEB9C9', label: 'Descanso' },
+    sin_ciclo: { bg: '#D7DEE8', label: 'Sin ciclo' },
+    induccion: { bg: '#C5A0EE', label: 'Inducción' },
   };
-  // completo/tardanza/horas_extra/induccion: siempre trabajo (fusionados, sin
-  // distinción de color). falta/falta_justificada: siempre descanso, sin
-  // distinguir si fue justificada (ambas son "no hubo trabajo" para el roster).
-  const TRABAJO_ESTADOS_REALES = new Set(['completo', 'tardanza', 'horas_extra', 'induccion', 'en_mina', 'en_induccion']);
+  // completo/tardanza/horas_extra: Trabajo. La inducción configurada se toma
+  // del teórico del ciclo, incluso cuando el registro diario diga "completo".
+  const TRABAJO_ESTADOS_REALES = new Set(['completo', 'tardanza', 'horas_extra', 'en_mina']);
   const DESCANSO_ESTADOS_REALES = new Set(['descanso', 'bajada', 'falta', 'falta_justificada', 'en_descanso']);
 
   // 'incompleto' (o cualquier estado real no contemplado arriba) no decide por
@@ -14348,6 +14358,7 @@ function ControlAsistencia() {
   const fondoCelda = (dia) => {
     if (dia.origen === 'sin_ciclo') return 'sin_ciclo';
     if (dia.origen === 'ajuste') return dia.estado; // 'trabajo' | 'descanso'
+    if (dia.teorico?.estaEnInduccion) return 'induccion';
     if (dia.origen === 'teorico') return dia.estado === 'en_descanso' ? 'descanso' : 'trabajo';
     if (TRABAJO_ESTADOS_REALES.has(dia.estado)) return 'trabajo';
     if (DESCANSO_ESTADOS_REALES.has(dia.estado)) return 'descanso';
@@ -14357,17 +14368,10 @@ function ControlAsistencia() {
   const estiloCeldaRoster = (dia) => {
     const fondo = fondoCelda(dia);
     const m = FONDO_ESTILO[fondo];
-    if (dia.origen === 'ajuste') {
-      // Indicador sutil de "decidido por ajuste manual": borde distintivo, no
-      // un color de fondo propio — el fondo sigue siendo Trabajo o Descanso.
-      return { background: m.bg, border: '2px solid var(--orange)', label: `${m.label} (ajuste)` };
-    }
-    const borderStyle = dia.origen === 'real' ? 'solid' : 'dashed';
-    return { background: m.bg, border: `1px ${borderStyle} ${m.color}`, label: m.label };
+    return { background: m.bg, border: '1px solid var(--border)', label: m.label };
   };
 
-  // Íconos de advertencia — mutuamente excluyentes según el fondo (nunca se
-  // combinan entre sí, "Solicitud pendiente" puede sumarse a cualquiera).
+  // Íconos de advertencia. Cada uno tiene una posición fija; pueden coexistir.
   const marcacionPorConfirmar = (dia) => {
     // Caso ya validado: hay un registro real problemático (tardanza/incompleto/
     // falta) bajo un fondo Trabajo — usa dia.registro.estado (no dia.estado) a
@@ -14385,20 +14389,47 @@ function ControlAsistencia() {
     return false;
   };
   const revisarImpactoNomina = (dia) => fondoCelda(dia) === 'descanso' && Boolean(dia.registro) && ['falta', 'falta_justificada'].includes(dia.registro.estado) && !(dia.ajusteAprobado?.revision_asistencia_confirmada);
+  const esFaltaReal = (dia) => dia.registro?.estado === 'falta';
+  // Esta condición es deliberadamente estricta: el ícono solo puede aparecer
+  // si el resultado de ESTA celda fue decidido por un ajuste aprobado para el
+  // mismo trabajador y la misma fecha.
+  const tieneAjusteManual = (dia, trabajadorId) => (
+    dia.origen === 'ajuste'
+    && dia.ajusteAprobado?.estado === 'aprobado'
+    && dia.ajusteAprobado?.personal_id === trabajadorId
+    && dia.ajusteAprobado?.fecha === dia.fecha
+  );
 
   // Insignia circular sólida para los íconos superpuestos de la grilla — el
   // glifo a 10px sin fondo propio resultaba casi imperceptible sobre el verde
   // pastel de la celda. El círculo sólido (13px) + anillo claro de separación
-  // da contraste real contra ambos fondos (Trabajo y Descanso) sin invadir la
+  // da contraste real contra los fondos sin invadir la
   // celda vecina (offset moderado, -4/-5px sobre una celda de ~24-28px).
-  const rosterBadge = (lado, bg, icono) => (
+  const rosterBadge = (posicion, bg, icono) => {
+    const posiciones = {
+      arribaIzquierda: { top: -5, left: -4 },
+      arribaDerecha: { top: -5, right: -4 },
+      abajoIzquierda: { bottom: -5, left: -4 },
+      abajoDerecha: { bottom: -5, right: -4 },
+    };
+    return (
     <span style={{
-      position: 'absolute', top: -5, [lado]: -4, width: 13, height: 13, borderRadius: '50%',
+      position: 'absolute', ...posiciones[posicion], width: 13, height: 13, borderRadius: '50%',
       background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
       boxShadow: '0 0 0 1.5px var(--bg-card, #fff)', lineHeight: 0,
     }}>
       {React.cloneElement(icono, { style: { width: 9, height: 9, color: '#fff' } })}
     </span>
+    );
+  };
+
+  // "F" se reserva al centro para diferenciarla de las insignias circulares.
+  const rosterMarcaFalta = () => (
+    <span style={{
+      position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+      color: 'var(--danger)', fontWeight: 800, fontSize: 12, lineHeight: 1,
+      textShadow: '0 0 2px var(--bg-card, #fff)', pointerEvents: 'none',
+    }}>F</span>
   );
 
   // Mapea el día al par binario trabajo/descanso que exige roster_minero_ajustes
@@ -15214,14 +15245,36 @@ function ControlAsistencia() {
     return d.toISOString().split('T')[0];
   };
 
+  const getTramoMineroVigente = (personalId) => asignacionesJornada
+    .filter(a => a.personal_id === personalId
+      && !a.fecha_fin
+      && a.tipo_tramo === 'normal'
+      && a.regimen_jornada === 'ciclo_acumulativo')
+    .sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio))[0] || null;
+
+  const getCodigoRegimenTramo = (tramo) => {
+    if (!tramo) return '';
+    const clave = `${Number(tramo.dias_ciclo_trabajo)}x${Number(tramo.dias_ciclo_descanso)}`;
+    return ({ '14x7':'minero_14x7', '20x10':'minero_20x10', '28x14':'minero_28x14', '2x1':'minero_2x1' })[clave] || '';
+  };
+
   const abrirRegistroMinero = (trabajador, ciclo = null) => {
-    if (ciclo) {
-      setFormMinero({ ...ciclo, incidencias: ciclo.incidencias || [] });
-    } else {
-      const { t, d } = getCicloDias(trabajador.regimen_jornada, trabajador);
-      const hoy = new Date().toISOString().split('T')[0];
-      setFormMinero({ ...formMineroBase, personal_id: trabajador.id, regimen_jornada: trabajador.regimen_jornada, fecha_inicio_ciclo: hoy });
+    const tramo = getTramoMineroVigente(trabajador.id);
+    const codigoRegimen = getCodigoRegimenTramo(tramo);
+    if (!tramo || !codigoRegimen || !tramo.fecha_inicio_ciclo) {
+      addNotificacion('Registra primero una asignación de jornada minera válida para este trabajador.', 'error');
+      return;
     }
+    setFormMinero({
+      ...formMineroBase,
+      ...(ciclo || {}),
+      personal_id: trabajador.id,
+      regimen_jornada: codigoRegimen,
+      fecha_inicio_ciclo: tramo.fecha_inicio_ciclo,
+      dias_ciclo_trabajo: Number(tramo.dias_ciclo_trabajo),
+      dias_ciclo_descanso: Number(tramo.dias_ciclo_descanso),
+      incidencias: ciclo?.incidencias || [],
+    });
     setPanelMinero(true);
   };
 
@@ -15229,23 +15282,47 @@ function ControlAsistencia() {
     e.preventDefault();
     const t = trabajadoresMineros.find(x => x.id === formMinero.personal_id);
     if (!t) return;
-    const { t: diasT, d: diasD } = getCicloDias(t.regimen_jornada, t);
-    const fecha_fin = calcularFechaFinCiclo(formMinero.fecha_inicio_ciclo, diasT, diasD);
+    const tramo = getTramoMineroVigente(t.id);
+    const regimenTramo = getCodigoRegimenTramo(tramo);
+    if (!tramo || !regimenTramo) {
+      addNotificacion('La asignación minera vigente ya no está disponible.', 'error');
+      return;
+    }
+    if (formMinero.tiene_induccion) {
+      if (!formMinero.fecha_inicio_induccion || !formMinero.fecha_fin_induccion) {
+        addNotificacion('Completa la fecha de inicio y de fin de la inducción.', 'error');
+        return;
+      }
+      if (formMinero.fecha_inicio_induccion > formMinero.fecha_fin_induccion) {
+        addNotificacion('La fecha de inicio de inducción no puede ser posterior a la fecha de fin.', 'error');
+        return;
+      }
+    }
+    const diasT = Number(tramo.dias_ciclo_trabajo);
+    const diasD = Number(tramo.dias_ciclo_descanso);
+    const fechaInicioCiclo = tramo.fecha_inicio_ciclo;
+    const fecha_fin = calcularFechaFinCiclo(fechaInicioCiclo, diasT, diasD);
+    // dias_induccion es un valor derivado del rango de fechas (fuente única),
+    // no una entrada libre independiente que pueda desincronizarse de él.
+    const diasInduccionDerivado = formMinero.tiene_induccion
+      ? Math.round((new Date(formMinero.fecha_fin_induccion) - new Date(formMinero.fecha_inicio_induccion)) / 86400000) + 1
+      : null;
     const cicloParams = {
       personal_id: t.id, personal_nombre: t.nombre, personal_tipo: t.trabajador_tipo,
-      regimen_jornada: t.regimen_jornada, fecha_inicio_ciclo: formMinero.fecha_inicio_ciclo,
+      regimen_jornada: regimenTramo, fecha_inicio_ciclo: fechaInicioCiclo,
       fecha_fin_ciclo: fecha_fin, dias_ciclo_trabajo: diasT, dias_ciclo_descanso: diasD,
       estado_ciclo: formMinero.estado_ciclo, incidencias: formMinero.incidencias,
       horas_extra_ciclo: Number(formMinero.horas_extra_ciclo || 0),
       tiene_induccion: Boolean(formMinero.tiene_induccion),
-      dias_induccion: formMinero.tiene_induccion ? (Number(formMinero.dias_induccion) || null) : null,
-      fecha_fin_induccion: formMinero.tiene_induccion && formMinero.fecha_fin_induccion ? formMinero.fecha_fin_induccion : null,
+      dias_induccion: diasInduccionDerivado,
+      fecha_inicio_induccion: formMinero.tiene_induccion ? formMinero.fecha_inicio_induccion : null,
+      fecha_fin_induccion: formMinero.tiene_induccion ? formMinero.fecha_fin_induccion : null,
     };
 
     // Generar registros diarios
     const diarios = [];
     const duracion = diasT + diasD;
-    const inicio = new Date(formMinero.fecha_inicio_ciclo);
+    const inicio = new Date(fechaInicioCiclo);
     for (let i = 0; i < duracion; i++) {
       const d = new Date(inicio); d.setDate(d.getDate() + i);
       const fechaStr = d.toISOString().split('T')[0];
@@ -15638,6 +15715,7 @@ function ControlAsistencia() {
                     tieneInduccion: c.tiene_induccion || false,
                     diasInduccion: c.dias_induccion || 0,
                     fechaFinInduccion: c.fecha_fin_induccion || null,
+                    fechaInicioInduccion: c.fecha_inicio_induccion || null,
                   }) : null;
                   const estadoBadge = !estadoCiclo ? 'badge-gray'
                     : estadoCiclo.estaEnInduccion ? 'badge-purple'
@@ -15795,7 +15873,7 @@ function ControlAsistencia() {
                       const balAColor = r.balance_acumulado >= 0 ? 'var(--green)' : 'var(--danger)';
                       return (
                         <tr key={r.personal_id}>
-                          <td><strong>{r.personal_nombre}</strong><div className="text-muted" style={{fontSize:11}}>{r.personal_tipo}</div></td>
+                          <td><strong>{r.personal_nombre}</strong><div className="text-muted" style={{fontSize:11}}>{r.personal_tipo}</div>{cesadosPorId.has(r.personal_id) && <span className="badge badge-gray" style={{fontSize:10, marginTop:4, display:'inline-block'}} title={`Cesado el ${cesadosPorId.get(r.personal_id).fecha_cese || '-'}`}>Cesado — datos de un cálculo anterior a su cese</span>}</td>
                           <td><span className="badge badge-orange" style={{fontSize:11}}>{r.dias_ciclo_trabajo}×{r.dias_ciclo_descanso}</span></td>
                           <td>{r.dias_en_mina}</td>
                           <td>{r.dias_induccion > 0 ? <span className="badge badge-purple" style={{fontSize:11}}>{r.dias_induccion}</span> : '—'}</td>
@@ -15818,13 +15896,15 @@ function ControlAsistencia() {
             <div className="card-head">
               <h3>Grilla de roster — {rosterGridInicio} a {rosterGridFin}</h3>
               <div className="row" style={{gap:10, fontSize:11}}>
-                <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--green)', background:'#e6f4ea'}}/>Trabajo</span>
-                <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--slate)', background:'var(--bg-muted)'}}/>Descanso</span>
-                <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px dashed var(--border)', background:'var(--bg-subtle)'}}/>Sin ciclo</span>
-                <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'2px solid var(--orange)', background:'var(--bg-subtle)'}}/>Ajuste manual</span>
+                <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--border)', background:'#8EDCA8'}}/>Trabajo</span>
+                <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--border)', background:'#AEB9C9'}}/>Descanso</span>
+                <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--border)', background:'#D7DEE8'}}/>Sin ciclo</span>
+                <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--border)', background:'#C5A0EE'}}/>Inducción</span>
                 <span className="row" style={{gap:4}}>{I.clock} Solicitud pendiente</span>
                 <span className="row" style={{gap:4}}>{I.alertCircle} Marcación por confirmar</span>
                 <span className="row" style={{gap:4}}>{I.dollar} Revisar impacto en nómina</span>
+                <span className="row" style={{gap:4}}>{I.wrench} Ajuste manual</span>
+                <span className="row" style={{gap:4}}><strong style={{color:'var(--danger)', fontSize:13}}>F</strong> Falta</span>
               </div>
             </div>
             {!rosterGridInicio && <div className="text-muted" style={{padding:20, textAlign:'center'}}>Selecciona un período para generar la grilla.</div>}
@@ -15861,15 +15941,17 @@ function ControlAsistencia() {
                                 const marcacion = marcacionPorConfirmar(dia);
                                 const impactoNomina = revisarImpactoNomina(dia);
                                 return (
-                                  <td key={dia.fecha} style={{padding:2}}>
+                                  <td key={dia.fecha} style={{padding:0, minWidth:28}}>
                                     <div
                                       onClick={() => abrirAjusteDia(t, dia)}
-                                      title={`${dia.fecha} · ${est.label}${dia.ajustePendiente ? ' · solicitud pendiente' : ''}${marcacion ? ' · marcación por confirmar en Control de Asistencia' : ''}${impactoNomina ? ' · revisar impacto en nómina' : ''}`}
-                                      style={{position:'relative', textAlign:'center', padding:'4px 2px', background:est.background, borderRadius:4, border:est.border, cursor: dia.origen === 'sin_ciclo' ? 'default' : 'pointer', minHeight:20}}
+                                      title={`${dia.fecha} · ${est.label}${dia.ajustePendiente ? ' · solicitud pendiente' : ''}${tieneAjusteManual(dia, t.id) ? ' · ajuste manual aprobado' : ''}${esFaltaReal(dia) ? ' · falta' : ''}${marcacion ? ' · marcación por confirmar en Control de Asistencia' : ''}${impactoNomina ? ' · revisar impacto en nómina' : ''}`}
+                                      style={{position:'relative', boxSizing:'border-box', width:'100%', height:'100%', textAlign:'center', padding:'4px 2px', background:est.background, borderRadius:4, border:est.border, cursor: dia.origen === 'sin_ciclo' ? 'default' : 'pointer', minHeight:20}}
                                     >
-                                      {dia.ajustePendiente && rosterBadge('right', 'var(--orange)', I.clock)}
-                                      {marcacion && rosterBadge('left', 'var(--danger)', I.alertCircle)}
-                                      {impactoNomina && rosterBadge('left', 'var(--purple)', I.dollar)}
+                                      {tieneAjusteManual(dia, t.id) && rosterBadge('arribaIzquierda', 'var(--orange)', I.wrench)}
+                                      {dia.ajustePendiente && rosterBadge('arribaDerecha', 'var(--orange)', I.clock)}
+                                      {marcacion && rosterBadge('abajoIzquierda', 'var(--danger)', I.alertCircle)}
+                                      {impactoNomina && rosterBadge('abajoDerecha', 'var(--purple)', I.dollar)}
+                                      {esFaltaReal(dia) && rosterMarcaFalta()}
                                     </div>
                                   </td>
                                 );
@@ -16033,8 +16115,11 @@ function ControlAsistencia() {
         <div className="side-panel-head"><div><div className="eyebrow">Registro Ciclo Minero</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{trabajadoresMineros.find(t=>t.id===formMinero.personal_id)?.nombre}</div></div><button className="icon-btn" onClick={()=>setPanelMinero(false)}>{I.x}</button></div>
         <form className="side-panel-body" onSubmit={guardarCicloMinero}>
           <div className="grid-2" style={{gap:12}}>
-            <div className="input-group"><label>Fecha Inicio Ciclo</label><input type="date" className="input" required value={formMinero.fecha_inicio_ciclo} onChange={e=>setFormMinero(v=>({...v, fecha_inicio_ciclo: e.target.value}))}/></div>
-            <div className="input-group"><label>Fecha Fin (Calc)</label><input type="text" className="input" disabled value={calcularFechaFinCiclo(formMinero.fecha_inicio_ciclo, getCicloDias(formMinero.regimen_jornada).t, getCicloDias(formMinero.regimen_jornada).d)}/></div>
+            <div className="input-group"><label>Régimen (desde Jornada)</label><input type="text" className="input" readOnly value={formMinero.regimen_jornada ? formMinero.regimen_jornada.replace('minero_', 'Minero ').replace('x', '×') : ''}/></div>
+            <div className="input-group"><label>Fecha inicio de ciclo (desde Jornada)</label><input type="date" className="input" readOnly value={formMinero.fecha_inicio_ciclo}/></div>
+            <div className="input-group"><label>Días de trabajo</label><input type="number" className="input" readOnly value={formMinero.dias_ciclo_trabajo || ''}/></div>
+            <div className="input-group"><label>Días de descanso</label><input type="number" className="input" readOnly value={formMinero.dias_ciclo_descanso || ''}/></div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}><label>Fecha fin (calculada)</label><input type="text" className="input" readOnly value={calcularFechaFinCiclo(formMinero.fecha_inicio_ciclo, Number(formMinero.dias_ciclo_trabajo || 0), Number(formMinero.dias_ciclo_descanso || 0))}/></div>
           </div>
           <div className="input-group" style={{marginTop:12}}><label>Estado del Ciclo</label><select className="select" value={formMinero.estado_ciclo} onChange={e=>setFormMinero(v=>({...v, estado_ciclo:e.target.value}))}>
             <option value="completo">Completo</option><option value="incompleto">Incompleto</option><option value="con_incidencias">Con incidencias</option>
@@ -16048,10 +16133,41 @@ function ControlAsistencia() {
               Tiene período de inducción inicial
             </label>
             {formMinero.tiene_induccion && <div className="grid-2" style={{gap:10, marginTop:10}}>
-              <div className="input-group"><label>Días de inducción</label><input type="number" min="1" className="input" value={formMinero.dias_induccion} onChange={e=>setFormMinero(v=>({...v, dias_induccion:e.target.value}))}/></div>
+              <div className="input-group"><label>Fecha inicio inducción</label><input type="date" className="input" value={formMinero.fecha_inicio_induccion} onChange={e=>setFormMinero(v=>({...v, fecha_inicio_induccion:e.target.value}))}/></div>
               <div className="input-group"><label>Fecha fin inducción</label><input type="date" className="input" value={formMinero.fecha_fin_induccion} onChange={e=>setFormMinero(v=>({...v, fecha_fin_induccion:e.target.value}))}/></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Días de inducción (calculado)</label><input type="text" className="input" readOnly value={
+                formMinero.fecha_inicio_induccion && formMinero.fecha_fin_induccion && formMinero.fecha_inicio_induccion <= formMinero.fecha_fin_induccion
+                  ? `${Math.round((new Date(formMinero.fecha_fin_induccion) - new Date(formMinero.fecha_inicio_induccion)) / 86400000) + 1} días`
+                  : '—'
+              }/></div>
             </div>}
-            <div className="text-muted" style={{fontSize:11, marginTop:6}}>Los días de inducción se pagan como días normales pero no acumulan descanso en el Roster minero.</div>
+            <div className="text-muted" style={{fontSize:11, marginTop:6}}>Los días de inducción se pagan como días normales pero no acumulan descanso en el Roster minero. El inicio del ciclo real de mina/descanso es el que se capture en Asignación de Jornada (fecha_inicio_ciclo) — es una decisión manual, no se desplaza automáticamente por la inducción.</div>
+            {formMinero.tiene_induccion && formMinero.fecha_inicio_induccion && formMinero.fecha_fin_induccion && formMinero.fecha_inicio_ciclo && (() => {
+              const diasT = Number(formMinero.dias_ciclo_trabajo) || 0;
+              const inicioCiclo = formMinero.fecha_inicio_ciclo;
+              // Que la inducción empiece antes de fecha_inicio_ciclo ya no es
+              // incoherente: es el uso esperado (ventana pre-ciclo, entre que se
+              // asignó el régimen y que arranca el conteo real del patrón).
+              const diaFinInduccionEnCiclo = diasT > 0
+                ? Math.floor((new Date(formMinero.fecha_fin_induccion) - new Date(inicioCiclo)) / 86400000)
+                : null;
+              const terminaEnODespuesDelDescanso = diaFinInduccionEnCiclo !== null && diaFinInduccionEnCiclo >= diasT;
+              const tramoTrabajador = asignacionesJornada.find(a => a.personal_id === formMinero.personal_id && a.regimen_jornada === 'ciclo_acumulativo' && !a.fecha_fin);
+              const fueraDelTramo = Boolean(tramoTrabajador) && (
+                formMinero.fecha_fin_induccion < tramoTrabajador.fecha_inicio
+                || (Boolean(tramoTrabajador.fecha_fin) && formMinero.fecha_inicio_induccion > tramoTrabajador.fecha_fin)
+              );
+              if (!terminaEnODespuesDelDescanso && !fueraDelTramo) return null;
+              return (
+                <div className="alert alert-warning" style={{fontSize:12, marginTop:8}}>
+                  Las fechas capturadas podrían no ser coherentes entre sí: {terminaEnODespuesDelDescanso
+                    ? 'la fecha fin de inducción cae en o después de que el ciclo ya debería estar en su fase de descanso, según los días de trabajo del régimen. '
+                    : ''}{fueraDelTramo
+                    ? 'la ventana de inducción cae completamente fuera del tramo de jornada vigente del trabajador (antes de su fecha de inicio, o después de su fecha de fin). '
+                    : ''}Esto es solo un aviso — puedes guardar de todas formas si la captura es intencional.
+                </div>
+              );
+            })()}
           </div>
 
           <div style={{marginTop:24, marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
@@ -18116,8 +18232,10 @@ function RRHH_Operativo() {
   const [crearUsuarioSistema, setCrearUsuarioSistema] = useState(false);
   const [usuarioSistemaForm, setUsuarioSistemaForm] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'tecnico' });
   const [showFormAsig, setShowFormAsig] = useState(false);
-  const [formAsig, setFormAsig] = useState({ tipo_tramo: 'normal', fecha_inicio: '', regimen_jornada: 'general', dias_ciclo_trabajo: '', dias_ciclo_descanso: '', fecha_inicio_ciclo: '', motivo: '' });
+  const [formAsig, setFormAsig] = useState({ tipo_tramo: 'normal', fecha_inicio: '', regimen_jornada: 'general', fecha_inicio_ciclo: '', motivo: '' });
   const [savingAsig, setSavingAsig] = useState(false);
+  const [retroWallAsig, setRetroWallAsig] = useState(null);
+  const [retroWallMotivoAsig, setRetroWallMotivoAsig] = useState('');
   // Estado para subir documentos en ficha
   const docUploadFormBase = { tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
   const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
@@ -19512,25 +19630,50 @@ function RRHH_Operativo() {
             const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === p.id).sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio));
             const asigActiva = asigsTrabajador.find(a => !a.fecha_fin);
             const tipoTramoLabel = { normal: 'Normal', suspension_perfecta: 'Suspensión perfecta' };
-            const regimenLabel2 = { general: 'Jornada general', ciclo_acumulativo: 'Ciclo acumulativo' };
-            const guardarAsig = async () => {
+            const presetJornada = {
+              general: { regimen: 'general', t: null, d: null, label: 'Jornada general' },
+              minero_14x7: { regimen: 'ciclo_acumulativo', t: 14, d: 7, label: 'Minero 14×7' },
+              minero_20x10: { regimen: 'ciclo_acumulativo', t: 20, d: 10, label: 'Minero 20×10' },
+              minero_28x14: { regimen: 'ciclo_acumulativo', t: 28, d: 14, label: 'Minero 28×14' },
+              minero_2x1: { regimen: 'ciclo_acumulativo', t: 2, d: 1, label: 'Minero 2×1' },
+            };
+            const presetDeAsignacion = (a) => {
+              if (!a || a.regimen_jornada === 'general') return 'general';
+              return ({ '14x7':'minero_14x7', '20x10':'minero_20x10', '28x14':'minero_28x14', '2x1':'minero_2x1' })[`${Number(a.dias_ciclo_trabajo)}x${Number(a.dias_ciclo_descanso)}`] || '';
+            };
+            const guardarAsig = async (overrideOpts) => {
               if (!formAsig.fecha_inicio) { addNotificacion('La fecha de inicio es obligatoria.', 'error'); return; }
-              if (formAsig.tipo_tramo === 'normal' && !formAsig.regimen_jornada) { addNotificacion('Selecciona el régimen de jornada.', 'error'); return; }
-              if (formAsig.tipo_tramo === 'normal' && formAsig.regimen_jornada === 'ciclo_acumulativo' && (!formAsig.dias_ciclo_trabajo || !formAsig.dias_ciclo_descanso || !formAsig.fecha_inicio_ciclo)) { addNotificacion('Completa los datos del ciclo: días de trabajo, de descanso y fecha de inicio.', 'error'); return; }
-              setSavingAsig(true);
+              const preset = presetJornada[formAsig.regimen_jornada];
+              if (!preset) { addNotificacion('Selecciona un régimen de jornada predefinido.', 'error'); return; }
+              if (preset.regimen === 'ciclo_acumulativo' && !formAsig.fecha_inicio_ciclo) { addNotificacion('Completa la fecha de inicio del ciclo.', 'error'); return; }
+              const forzarOverride = overrideOpts?.forzarOverride || false;
+              const motivoOverride = overrideOpts?.motivoOverride || null;
+              setSavingAsig(true); setRetroWallAsig(null);
               try {
                 const payload = {
                   ...formAsig,
-                  regimen_jornada: formAsig.tipo_tramo === 'suspension_perfecta' ? null : formAsig.regimen_jornada,
-                  dias_ciclo_trabajo: formAsig.tipo_tramo === 'normal' && formAsig.dias_ciclo_trabajo ? Number(formAsig.dias_ciclo_trabajo) : null,
-                  dias_ciclo_descanso: formAsig.tipo_tramo === 'normal' && formAsig.dias_ciclo_descanso ? Number(formAsig.dias_ciclo_descanso) : null,
-                  fecha_inicio_ciclo: formAsig.tipo_tramo === 'normal' ? formAsig.fecha_inicio_ciclo : null,
+                  regimen_jornada: preset.regimen,
+                  dias_ciclo_trabajo: preset.t,
+                  dias_ciclo_descanso: preset.d,
+                  fecha_inicio_ciclo: preset.regimen === 'ciclo_acumulativo' ? formAsig.fecha_inicio_ciclo : null,
+                  forzar_override: forzarOverride,
+                  motivo_override: motivoOverride,
                 };
                 await crearAsignacionJornadaCtx(p.id, 'operativo', payload);
                 setShowFormAsig(false);
-                setFormAsig({ tipo_tramo: 'normal', fecha_inicio: '', regimen_jornada: 'general', dias_ciclo_trabajo: '', dias_ciclo_descanso: '', fecha_inicio_ciclo: '', motivo: '' });
+                setFormAsig({ tipo_tramo: 'normal', fecha_inicio: '', regimen_jornada: 'general', fecha_inicio_ciclo: '', motivo: '' });
+                setRetroWallAsig(null); setRetroWallMotivoAsig('');
                 addNotificacion('Asignación de jornada registrada.');
-              } catch (e) { addNotificacion(e.message || 'Error al guardar asignación.', 'error'); }
+              } catch (e) {
+                const msg = e.message || '';
+                if (msg.startsWith('RETRO_WALL_PERMISO:')) {
+                  addNotificacion(msg.replace('RETRO_WALL_PERMISO:', '').trim(), 'error');
+                } else if (msg.startsWith('RETRO_WALL:')) {
+                  setRetroWallAsig(msg.replace('RETRO_WALL:', '').trim());
+                } else {
+                  addNotificacion(msg || 'Error al guardar asignación.', 'error');
+                }
+              }
               finally { setSavingAsig(false); }
             };
             return (
@@ -19539,21 +19682,20 @@ function RRHH_Operativo() {
                   <div>
                     <div style={{fontWeight:600, marginBottom:4}}>Asignación vigente</div>
                     {asigActiva
-                      ? <div><span className="badge badge-green">{tipoTramoLabel[asigActiva.tipo_tramo] || asigActiva.tipo_tramo}</span>{' '}<span className="badge badge-blue">{regimenLabel2[asigActiva.regimen_jornada] || asigActiva.regimen_jornada || '—'}</span><span className="text-muted" style={{fontSize:12, marginLeft:8}}>desde {asigActiva.fecha_inicio}</span>{asigActiva.regimen_jornada === 'ciclo_acumulativo' && <span className="text-muted" style={{fontSize:12, marginLeft:8}}>Ciclo {asigActiva.dias_ciclo_trabajo}×{asigActiva.dias_ciclo_descanso} · inicio {asigActiva.fecha_inicio_ciclo}</span>}</div>
+                      ? <div><span className="badge badge-green">{tipoTramoLabel[asigActiva.tipo_tramo] || asigActiva.tipo_tramo}</span>{' '}<span className="badge badge-blue">{presetJornada[presetDeAsignacion(asigActiva)]?.label || 'Régimen inválido'}</span><span className="text-muted" style={{fontSize:12, marginLeft:8}}>desde {asigActiva.fecha_inicio}</span>{asigActiva.regimen_jornada === 'ciclo_acumulativo' && <span className="text-muted" style={{fontSize:12, marginLeft:8}}>Ciclo {asigActiva.dias_ciclo_trabajo}×{asigActiva.dias_ciclo_descanso} · inicio {asigActiva.fecha_inicio_ciclo}</span>}</div>
                       : <div className="text-muted" style={{fontSize:13}}>Sin asignación registrada — se usa el régimen de la ficha ({p.regimen_jornada || 'general'}).</div>
                     }
                   </div>
                   <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => {
                     setShowFormAsig(v => !v);
+                    setRetroWallAsig(null); setRetroWallMotivoAsig('');
                     setFormAsig(f => {
-                      if (asigActiva) return { ...f, fecha_inicio: '', regimen_jornada: asigActiva.regimen_jornada || 'general' };
+                      if (asigActiva) return { ...f, fecha_inicio: '', regimen_jornada: presetDeAsignacion(asigActiva), fecha_inicio_ciclo: asigActiva.fecha_inicio_ciclo || '' };
                       const esCicloFicha = esRegimenMinero(p.regimen_jornada);
                       return {
                         ...f,
                         fecha_inicio: p.fecha_ingreso || '',
-                        regimen_jornada: esCicloFicha ? 'ciclo_acumulativo' : 'general',
-                        dias_ciclo_trabajo: esCicloFicha ? (p.dias_ciclo_trabajo || '') : '',
-                        dias_ciclo_descanso: esCicloFicha ? (p.dias_ciclo_descanso || '') : '',
+                        regimen_jornada: esCicloFicha ? p.regimen_jornada : 'general',
                         fecha_inicio_ciclo: esCicloFicha ? (p.fecha_inicio_ciclo || '') : '',
                       };
                     });
@@ -19572,23 +19714,48 @@ function RRHH_Operativo() {
                       <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsig.fecha_inicio} onChange={e => setFormAsig(f => ({ ...f, fecha_inicio: e.target.value }))}/></div>
                       {formAsig.tipo_tramo === 'normal' && <>
                         <div className="input-group"><label>Régimen de jornada</label>
-                          <select className="select" value={formAsig.regimen_jornada} onChange={e => setFormAsig(f => ({ ...f, regimen_jornada: e.target.value }))}>
+                          <select className="select" value={formAsig.regimen_jornada} onChange={e => setFormAsig(f => ({ ...f, regimen_jornada: e.target.value, fecha_inicio_ciclo: e.target.value === 'general' ? '' : f.fecha_inicio_ciclo }))}>
                             <option value="general">Jornada general</option>
-                            <option value="ciclo_acumulativo">Ciclo acumulativo</option>
+                            <option value="minero_14x7">Minero 14×7</option>
+                            <option value="minero_20x10">Minero 20×10</option>
+                            <option value="minero_28x14">Minero 28×14</option>
+                            <option value="minero_2x1">Minero 2×1</option>
                           </select>
                         </div>
-                        {formAsig.regimen_jornada === 'ciclo_acumulativo' && <>
-                          <div className="input-group"><label>Días de trabajo en ciclo</label><input className="input" type="number" min="1" value={formAsig.dias_ciclo_trabajo} onChange={e => setFormAsig(f => ({ ...f, dias_ciclo_trabajo: e.target.value }))}/></div>
-                          <div className="input-group"><label>Días de descanso en ciclo</label><input className="input" type="number" min="1" value={formAsig.dias_ciclo_descanso} onChange={e => setFormAsig(f => ({ ...f, dias_ciclo_descanso: e.target.value }))}/></div>
+                        {formAsig.regimen_jornada !== 'general' && <>
+                          <div className="input-group"><label>Patrón fijo</label><input className="input" readOnly value={presetJornada[formAsig.regimen_jornada] ? `${presetJornada[formAsig.regimen_jornada].t} trabajo / ${presetJornada[formAsig.regimen_jornada].d} descanso` : ''}/></div>
                           <div className="input-group"><label>Fecha inicio de ciclo</label><input className="input" type="date" value={formAsig.fecha_inicio_ciclo} onChange={e => setFormAsig(f => ({ ...f, fecha_inicio_ciclo: e.target.value }))}/></div>
                         </>}
                       </>}
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Motivo (opcional)</label><input className="input" type="text" value={formAsig.motivo} onChange={e => setFormAsig(f => ({ ...f, motivo: e.target.value }))} placeholder="Ej. Fin de proyecto en mina, baja a Lima en espera de nuevo destino"/></div>
                     </div>
                     {formAsig.tipo_tramo === 'suspension_perfecta' && <div className="alert alert-warning" style={{fontSize:12, marginTop:8}}>Suspensión perfecta: los días de este tramo no generan remuneración. La relación laboral y la antigüedad continúan sin interrupción.</div>}
+
+                    {retroWallAsig && (
+                      <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, display:'flex', flexDirection:'column', gap:8, marginTop:8}}>
+                        <div style={{color:'var(--danger)', fontWeight:600}}>Cambio bloqueado por nómina ya procesada</div>
+                        <div>{retroWallAsig}</div>
+                        <div className="input-group">
+                          <label>Justificación para forzar el cambio (obligatoria)</label>
+                          <textarea className="input" rows={2} value={retroWallMotivoAsig} onChange={e=>setRetroWallMotivoAsig(e.target.value)} />
+                        </div>
+                        <div className="row" style={{justifyContent:'flex-end', gap:8}}>
+                          <button type="button" className="btn btn-secondary" onClick={() => { setRetroWallAsig(null); setRetroWallMotivoAsig(''); }}>Cancelar</button>
+                          <button
+                            type="button"
+                            className="btn btn-danger"
+                            disabled={savingAsig || !retroWallMotivoAsig.trim()}
+                            onClick={() => guardarAsig({ forzarOverride: true, motivoOverride: retroWallMotivoAsig.trim() })}
+                          >
+                            Forzar cambio (requiere autorización)
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => setShowFormAsig(false)}>Cancelar</button>
-                      <button className="btn btn-primary btn-sm" data-local-form="true" onClick={guardarAsig} disabled={savingAsig}>{savingAsig ? 'Guardando...' : 'Guardar asignación'}</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => { setShowFormAsig(false); setRetroWallAsig(null); setRetroWallMotivoAsig(''); }}>Cancelar</button>
+                      <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => guardarAsig()} disabled={savingAsig}>{savingAsig ? 'Guardando...' : 'Guardar asignación'}</button>
                     </div>
                   </div>
                 )}
@@ -19604,7 +19771,7 @@ function RRHH_Operativo() {
                             <td>{a.fecha_inicio}</td>
                             <td>{a.fecha_fin || <span className="badge badge-green" style={{fontSize:10}}>Vigente</span>}</td>
                             <td>{a.tipo_tramo === 'suspension_perfecta' ? <span className="badge badge-orange">Suspensión</span> : <span className="badge badge-gray">Normal</span>}</td>
-                            <td>{a.regimen_jornada ? (regimenLabel2[a.regimen_jornada] || a.regimen_jornada) : '—'}</td>
+                            <td>{a.regimen_jornada ? (presetJornada[presetDeAsignacion(a)]?.label || a.regimen_jornada) : '—'}</td>
                             <td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} (inicio ${a.fecha_inicio_ciclo})` : '—'}</td>
                             <td className="text-muted">{a.motivo || '—'}</td>
                           </tr>
@@ -20224,7 +20391,7 @@ function RRHH_Operativo() {
                                 <div className="input-group"><label>Remuneración base (S/) *</label><input className="input" type="number" min="0" placeholder="0" value={inlineUploadForm.remuneracionFirma} onChange={e=>setInlineUploadForm(f=>({...f,remuneracionFirma:e.target.value}))}/></div>
                               )}
                               {!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && (
-                                <div className="input-group"><label>Régimen de jornada *</label><select className="select" value={inlineUploadForm.regimenJornadaFirma||'general'} onChange={e=>setInlineUploadForm(f=>({...f,regimenJornadaFirma:e.target.value}))}>{[['general','General'],['minero_14x7','Minero 14×7'],['minero_20x10','Minero 20×10'],['minero_28x14','Minero 28×14'],['minero_2x1','Minero 2×1'],['ciclo_acumulativo','Ciclo acumulativo']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                                <div className="input-group"><label>Régimen de jornada *</label><select className="select" value={inlineUploadForm.regimenJornadaFirma||'general'} onChange={e=>setInlineUploadForm(f=>({...f,regimenJornadaFirma:e.target.value}))}>{[['general','General'],['minero_14x7','Minero 14×7'],['minero_20x10','Minero 20×10'],['minero_28x14','Minero 28×14'],['minero_2x1','Minero 2×1']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
                               )}
                               {!rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && (
                                 <div className="input-group"><label>Tipo de contrato *</label><select className="select" value={inlineUploadForm.tipoContratoFirma||''} onChange={e=>setInlineUploadForm(f=>({...f,tipoContratoFirma:e.target.value}))}><option value="">Seleccionar...</option>{(esHon ? [['honorarios','Honorarios']] : tiposContrato.length > 0 ? tiposContrato.map(c => [c.codigo, c.nombre]) : [['plazo_fijo','Plazo fijo'],['indefinido','Indefinido']]).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
@@ -20357,7 +20524,7 @@ function RRHH_Operativo() {
                           <div className="input-group"><label>Remuneración base (S/) *</label><input className="input" type="number" min="0" placeholder="0" value={docUploadForm.remuneracionFirma} onChange={e=>setDocUploadForm(f=>({...f,remuneracionFirma:e.target.value}))}/></div>
                         )}
                         {!docUploadEsAdenda && (
-                          <div className="input-group"><label>Régimen de jornada *</label><select className="select" value={docUploadForm.regimenJornadaFirma||'general'} onChange={e=>setDocUploadForm(f=>({...f,regimenJornadaFirma:e.target.value}))}>{[['general','General'],['minero_14x7','Minero 14×7'],['minero_20x10','Minero 20×10'],['minero_28x14','Minero 28×14'],['minero_2x1','Minero 2×1'],['ciclo_acumulativo','Ciclo acumulativo']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                          <div className="input-group"><label>Régimen de jornada *</label><select className="select" value={docUploadForm.regimenJornadaFirma||'general'} onChange={e=>setDocUploadForm(f=>({...f,regimenJornadaFirma:e.target.value}))}>{[['general','General'],['minero_14x7','Minero 14×7'],['minero_20x10','Minero 20×10'],['minero_28x14','Minero 28×14'],['minero_2x1','Minero 2×1']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
                         )}
                         {!docUploadEsAdenda && (
                           <div className="input-group"><label>Tipo de contrato *</label><select className="select" value={docUploadForm.tipoContratoFirma||''} onChange={e=>setDocUploadForm(f=>({...f,tipoContratoFirma:e.target.value}))}><option value="">Seleccionar...</option>{(esHon ? [['honorarios','Honorarios']] : tiposContrato.length > 0 ? tiposContrato.map(c => [c.codigo, c.nombre]) : [['plazo_fijo','Plazo fijo'],['indefinido','Indefinido']]).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
@@ -20926,10 +21093,11 @@ function RRHH_Operativo() {
                   </div>
 
                   <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10}}>Régimen de jornada</div>
+                  {editandoId && <div className="alert alert-info" style={{fontSize:12, marginBottom:12}}>El régimen vigente es de solo lectura. Para cambiarlo usa <strong>Jornada → + Nueva asignación</strong> en la ficha del trabajador.</div>}
                   <div className="grid-2" style={{gap:14, marginBottom:12}}>
                     <div className="input-group" style={{gridColumn:'1/-1'}}>
                       <label>Régimen de jornada</label>
-                      <select className="select" value={formAlta.regimen_jornada} onChange={e=>{
+                      <select className="select" disabled={!!editandoId} value={formAlta.regimen_jornada} onChange={e=>{
                         const val = e.target.value;
                         const presets = { minero_14x7:[14,7], minero_20x10:[20,10], minero_28x14:[28,14], minero_2x1:[2,1] };
                         if (presets[val]) {
@@ -20948,7 +21116,7 @@ function RRHH_Operativo() {
                     </div>
                     {formAlta.regimen_jornada !== 'general' && <>
                       <div className="input-group"><label>Horas diarias pactadas <span className="text-muted">(D. Leg. 857)</span></label><input className="input" type="number" min="1" max="12" value={formAlta.horas_diarias_pactadas} onChange={e=>setFormAlta(v=>({...v,horas_diarias_pactadas:e.target.value}))}/></div>
-                      <div className="input-group"><label>Fecha inicio del ciclo actual</label><input className="input" type="date" value={formAlta.fecha_inicio_ciclo} onChange={e=>setFormAlta(v=>({...v,fecha_inicio_ciclo:e.target.value}))}/></div>
+                      <div className="input-group"><label>Fecha inicio del ciclo actual</label><input className="input" type="date" readOnly={!!editandoId} value={formAlta.fecha_inicio_ciclo} onChange={e=>setFormAlta(v=>({...v,fecha_inicio_ciclo:e.target.value}))}/></div>
                       <div className="input-group"><label>Días de trabajo en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_trabajo} readOnly style={{background:'var(--bg-subtle)'}} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_trabajo:e.target.value}))}/></div>
                       <div className="input-group"><label>Días de descanso en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_descanso} readOnly style={{background:'var(--bg-subtle)'}} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_descanso:e.target.value}))}/></div>
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Bonificación por altitud (S/)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.bonif_altitud} onChange={e=>setFormAlta(v=>({...v,bonif_altitud:e.target.value}))} placeholder="0 si no aplica"/></div>

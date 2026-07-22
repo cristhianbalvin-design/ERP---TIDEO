@@ -8341,42 +8341,10 @@ export function AppProvider({ children }) {
       setPersonalOperativo(prev => prev.map(p => p.id === doc.personal_id ? aplicar(p) : p));
     }
 
-    // Crear asignación de jornada para que el motor de nómina respete el cambio.
-    // La tabla personal_asignaciones_jornada es la fuente de verdad para nómina.
-    if (regimenSnapshot && regimenParaAsig) {
-      const hoy = new Date().toISOString().slice(0, 10);
-      const fechaInicio = (doc.fecha_vigencia_cambio && doc.fecha_vigencia_cambio <= hoy)
-        ? doc.fecha_vigencia_cambio : hoy;
-
-      // Si el tramo vigente inmediatamente anterior tenía el mismo régimen de
-      // ciclo minero, el nuevo tramo hereda su fecha_inicio_ciclo en vez de
-      // reiniciar el conteo (el trabajador nunca dejó su patrón de guardia).
-      let fechaInicioCiclo = cicloDatos ? fechaInicio : null;
-      if (cicloDatos) {
-        const tramoAnterior = asignacionesJornada
-          .filter(a => a.personal_id === doc.personal_id && a.personal_tipo === doc.personal_tipo
-            && a.fecha_fin === null && a.fecha_inicio < fechaInicio)
-          .sort((a, b) => (a.fecha_inicio < b.fecha_inicio ? 1 : -1))[0];
-        if (tramoAnterior
-          && tramoAnterior.regimen_jornada === 'ciclo_acumulativo'
-          && tramoAnterior.dias_ciclo_trabajo === cicloDatos.t
-          && tramoAnterior.dias_ciclo_descanso === cicloDatos.d
-          && tramoAnterior.fecha_inicio_ciclo) {
-          fechaInicioCiclo = tramoAnterior.fecha_inicio_ciclo;
-        }
-      }
-
-      crearAsignacionJornadaCtx(doc.personal_id, doc.personal_tipo, {
-        tipo_tramo:           'normal',
-        fecha_inicio:         fechaInicio,
-        regimen_jornada:      regimenParaAsig,
-        dias_ciclo_trabajo:   cicloDatos?.t || null,
-        dias_ciclo_descanso:  cicloDatos?.d || null,
-        fecha_inicio_ciclo:   fechaInicioCiclo,
-        motivo:               'Cambio de régimen por validación de contrato',
-      }).catch(err => console.error('Error al crear asignación de jornada desde contrato:', err));
-    } else if (regimenSnapshot && !regimenParaAsig) {
-      console.warn('Régimen del snapshot no reconocido, no se crea asignación:', regimenSnapshot);
+    // El tramo contractual se crea en base de datos mediante trigger. Aquí se
+    // actualiza únicamente el espejo visual inmediato, sin una segunda escritura.
+    if (regimenSnapshot && !regimenParaAsig) {
+      console.warn('Régimen del snapshot no reconocido:', regimenSnapshot);
     }
   };
 
@@ -8414,6 +8382,10 @@ export function AppProvider({ children }) {
       });
     });
     aplicarSnapshotDocumentoPersonal(data);
+    if (decision === 'aprobado') {
+      const actualizado = await rrhhService.getAsignacionesJornada(empresa?.id);
+      setAsignacionesJornada(actualizado || []);
+    }
     return data;
   };
   const corregirDocumentoPersonalCtx = async (params) => {
@@ -8518,6 +8490,23 @@ export function AppProvider({ children }) {
     // La RPC cierra la anterior y retorna la nueva; recargar historial del trabajador
     const actualizado = await rrhhService.getAsignacionesJornada(empresa?.id);
     setAsignacionesJornada(actualizado || []);
+    if (data?.tipo_tramo === 'normal') {
+      const clave = `${Number(data.dias_ciclo_trabajo)}x${Number(data.dias_ciclo_descanso)}`;
+      const regimenFicha = data.regimen_jornada === 'general' ? 'general' : ({
+        '14x7':'minero_14x7', '20x10':'minero_20x10', '28x14':'minero_28x14', '2x1':'minero_2x1',
+      })[clave];
+      if (regimenFicha) {
+        const aplicarEspejo = prev => prev.map(p => p.id === personalId ? {
+          ...p,
+          regimen_jornada: regimenFicha,
+          dias_ciclo_trabajo: data.dias_ciclo_trabajo,
+          dias_ciclo_descanso: data.dias_ciclo_descanso,
+          fecha_inicio_ciclo: data.fecha_inicio_ciclo,
+        } : p);
+        if (personalTipo === 'administrativo') setPersonalAdmin(aplicarEspejo);
+        else setPersonalOperativo(aplicarEspejo);
+      }
+    }
     return data;
   };
 

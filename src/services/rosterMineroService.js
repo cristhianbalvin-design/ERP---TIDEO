@@ -40,6 +40,7 @@ export function calcularEstadoCicloMinero({
   tieneInduccion = false,
   diasInduccion = 0,
   fechaFinInduccion = null,
+  fechaInicioInduccion = null,
 }) {
   if (!fechaInicioCiclo || !diasTrabajo || !diasDescanso) {
     return {
@@ -66,11 +67,32 @@ export function calcularEstadoCicloMinero({
     };
   }
 
-  // Verificar si está en inducción
-  const estaEnInduccion = tieneInduccion && fechaFinInduccion
-    ? hoy <= new Date(fechaFinInduccion + 'T00:00:00')
+  // Ventana de inducción. Si fechaInicioInduccion viene explícita (fuente
+  // única, migración 349) se usa tal cual; si no, se deriva de
+  // fechaFinInduccion - (diasInduccion-1) por compatibilidad con datos que
+  // aún no tengan el campo nuevo. Caso de borde documentado: si
+  // fechaFinInduccion existe pero diasInduccion no es un número positivo y
+  // no hay fechaInicioInduccion explícita, no hay ventana que derivar —
+  // ningún día cuenta como inducción por esta rama.
+  const fechaFinInduccionDate = fechaFinInduccion ? new Date(fechaFinInduccion + 'T00:00:00') : null;
+  let fechaInicioInduccionDate = fechaInicioInduccion ? new Date(fechaInicioInduccion + 'T00:00:00') : null;
+  if (!fechaInicioInduccionDate && fechaFinInduccionDate && diasInduccion > 0) {
+    fechaInicioInduccionDate = new Date(fechaFinInduccionDate);
+    fechaInicioInduccionDate.setDate(fechaInicioInduccionDate.getDate() - (diasInduccion - 1));
+  }
+  const estaEnInduccion = tieneInduccion && fechaFinInduccionDate
+    ? Boolean(fechaInicioInduccionDate) && hoy >= fechaInicioInduccionDate && hoy <= fechaFinInduccionDate
     : (tieneInduccion && diasInduccion > 0 && diffDias < diasInduccion);
 
+  // La posición dentro del patrón de trabajo/descanso se cuenta únicamente
+  // desde fechaInicioCiclo — el inicio del ciclo y el rango de inducción son
+  // decisiones manuales e independientes del administrador (capturadas en la
+  // Asignación de Jornada y en el formulario de ciclo, respectivamente). El
+  // sistema no debe empujar ni derivar una fecha a partir de la otra; si el
+  // administrador quiere que el ciclo real empiece después de la inducción,
+  // debe poner esa fecha directamente en fechaInicioCiclo. La inducción no
+  // pausa ni desplaza diaDentroDelCiclo — solo excluye esos días del balance
+  // (calcularRosterPeriodo) y cambia la etiqueta 'estado' del día.
   const diaDentroDelCiclo = diffDias % duracionCiclo; // 0-based
   const esTrabajo = diaDentroDelCiclo < diasTrabajo;
   const estado = estaEnInduccion ? 'en_induccion' : (esTrabajo ? 'en_mina' : 'en_descanso');
@@ -84,8 +106,8 @@ export function calcularEstadoCicloMinero({
   while (cursor <= mesActualFin && cursor <= hoy) {
     const diffCursor = Math.floor((cursor.getTime() - inicio.getTime()) / 86400000);
     if (diffCursor >= 0) {
-      const enInduccion = tieneInduccion && fechaFinInduccion
-        ? cursor <= new Date(fechaFinInduccion + 'T00:00:00')
+      const enInduccion = tieneInduccion && fechaFinInduccionDate
+        ? Boolean(fechaInicioInduccionDate) && cursor >= fechaInicioInduccionDate && cursor <= fechaFinInduccionDate
         : (tieneInduccion && diasInduccion > 0 && diffCursor < diasInduccion);
       const diaEnCiclo = diffCursor % duracionCiclo;
       if (diaEnCiclo < diasTrabajo) {
@@ -131,18 +153,28 @@ export function calcularEstadoCicloMinero({
  * interno de calcularEstadoCicloMinero — solo la envuelve.
  *
  * Prioridad por día:
- *   1. Antes de fechaInicioCiclo (o sin fechaInicioCiclo) → 'sin_ciclo'
- *   2. Fecha pasada u hoy, con registro real de asistencia → 'real'
- *   3. Fecha futura, o pasada sin registro real todavía    → 'teorico'
+ *   1. Sin ningún tramo de jornada vigente para la fecha → 'sin_ciclo'
+ *   2. Antes de fechaInicioCiclo pero dentro del tramo vigente (ventana pre-ciclo,
+ *      entre que se asignó el régimen y que arrancó el conteo real del patrón) →
+ *      'teorico' con estado 'en_descanso' por defecto, o 'en_induccion' si la
+ *      fecha cae en fechaInicioInduccion/fechaFinInduccion (misma prioridad que
+ *      la inducción dentro del ciclo: excluye el día del balance).
+ *   3. Fecha pasada u hoy, con registro real de asistencia → 'real'
+ *   4. Fecha futura, o pasada sin registro real todavía    → 'teorico'
  *
  * @param {object} params
  * @param {string} params.trabajadorId       - id para matchear contra registros.trabajador_id
+ * @param {string} [params.fechaInicioTramo] - 'YYYY-MM-DD' inicio del tramo de jornada vigente (asignación;
+ *                                             distinto de fechaInicioCiclo). Sin este dato, el comportamiento
+ *                                             antes de fechaInicioCiclo es el previo ('sin_ciclo').
+ * @param {string} [params.fechaFinTramo]    - 'YYYY-MM-DD' fin del tramo (null/ausente = tramo abierto/vigente)
  * @param {string} params.fechaInicioCiclo
  * @param {number} params.diasTrabajo
  * @param {number} params.diasDescanso
  * @param {boolean} [params.tieneInduccion]
  * @param {number} [params.diasInduccion]
  * @param {string} [params.fechaFinInduccion]
+ * @param {string} [params.fechaInicioInduccion]
  * @param {string} params.fechaInicio        - 'YYYY-MM-DD' inicio del rango a generar
  * @param {string} params.fechaFin           - 'YYYY-MM-DD' fin del rango a generar
  * @param {Array}  [params.registros]        - registros_asistencia; se filtran por trabajadorId
@@ -155,12 +187,15 @@ export function calcularEstadoCicloMinero({
  */
 export function calcularRangoRosterMinero({
   trabajadorId,
+  fechaInicioTramo = null,
+  fechaFinTramo = null,
   fechaInicioCiclo,
   diasTrabajo,
   diasDescanso,
   tieneInduccion = false,
   diasInduccion = 0,
   fechaFinInduccion = null,
+  fechaInicioInduccion = null,
   fechaInicio,
   fechaFin,
   registros = [],
@@ -188,11 +223,28 @@ export function calcularRangoRosterMinero({
     // consumidores (íconos de la grilla) necesitan ver el dato real subyacente
     // incluso cuando el fondo final lo decide el ajuste. No cambia qué rama
     // decide el día ni el balance: eso sigue siendo exactamente lo de antes.
-    const sinCiclo = !fechaInicioCiclo || fechaStr < fechaInicioCiclo;
-    const teorico = sinCiclo ? null : calcularEstadoCicloMinero({
-      fechaInicioCiclo, diasTrabajo, diasDescanso,
-      fechaEval: fechaStr, tieneInduccion, diasInduccion, fechaFinInduccion,
-    });
+    const hayCiclo = Boolean(fechaInicioCiclo);
+    const esAntesDelCiclo = hayCiclo && fechaStr < fechaInicioCiclo;
+    const dentroDelTramo = Boolean(fechaInicioTramo) && fechaStr >= fechaInicioTramo && (!fechaFinTramo || fechaStr <= fechaFinTramo);
+    // Ventana pre-ciclo: el tramo de jornada ya existe para esta fecha pero el
+    // conteo real del patrón mina/descanso todavía no arranca (fechaInicioCiclo
+    // es posterior). sin_ciclo_vigente queda reservado a fechas sin ningún
+    // tramo — el caso ya conocido de trabajadores sin asignación.
+    const enVentanaPreCiclo = esAntesDelCiclo && dentroDelTramo;
+    const sinCiclo = !hayCiclo || (esAntesDelCiclo && !dentroDelTramo);
+
+    let teorico = null;
+    if (!sinCiclo && !esAntesDelCiclo) {
+      teorico = calcularEstadoCicloMinero({
+        fechaInicioCiclo, diasTrabajo, diasDescanso,
+        fechaEval: fechaStr, tieneInduccion, diasInduccion, fechaFinInduccion, fechaInicioInduccion,
+      });
+    } else if (enVentanaPreCiclo) {
+      const enInduccion = Boolean(tieneInduccion) && Boolean(fechaInicioInduccion) && Boolean(fechaFinInduccion)
+        && fechaStr >= fechaInicioInduccion && fechaStr <= fechaFinInduccion;
+      teorico = { estado: enInduccion ? 'en_induccion' : 'en_descanso', estaEnInduccion: enInduccion };
+    }
+
     const registro = (!sinCiclo && fechaStr <= hoyStr)
       ? registrosTrabajador
           .filter(r => r.fecha === fechaStr)
@@ -280,10 +332,11 @@ export async function getSnapshotsRoster(empresaId, periodoAnio = null, periodoM
  * @param {Array} [ajustes] - roster_minero_ajustes ya aprobados y filtrados al
  *   período por el llamador (ver recalcularRoster en pages_ops.jsx); se pasan
  *   tal cual a calcularRosterPeriodo, que decide con prioridad sobre todo lo demás.
+ * @param {Array} [asignaciones] - personal_asignaciones_jornada; ver calcularRosterPeriodo.
  */
-export async function calcularYGuardarRoster(empresaId, periodoAnio, periodoMes, trabajadores, registros, ciclos, ajustes = [], calculadoPor, nominaPeriodoId = null) {
+export async function calcularYGuardarRoster(empresaId, periodoAnio, periodoMes, trabajadores, registros, ciclos, ajustes = [], calculadoPor, nominaPeriodoId = null, asignaciones = []) {
   if (getDataMode() !== 'supabase') {
-    const nuevosPorPersonal = calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, registros, ciclos, ajustes);
+    const nuevosPorPersonal = calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, registros, ciclos, ajustes, asignaciones);
     // Sobreescribir snapshots del período
     mockSnapshots = [
       ...mockSnapshots.filter(s => !(s.empresa_id === empresaId && s.periodo_anio === periodoAnio && s.periodo_mes === periodoMes)),
@@ -327,7 +380,7 @@ export async function calcularYGuardarRoster(empresaId, periodoAnio, periodoMes,
     .eq('periodo_mes', mesAnterior);
   const acumuladoAnt = new Map((snapsAnt || []).map(s => [s.personal_id, Number(s.balance_acumulado)]));
 
-  const filas = calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, registros, ciclos, ajustes);
+  const filas = calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, registros, ciclos, ajustes, asignaciones);
 
   const upserts = filas.map(f => ({
     id: genId(),
@@ -510,14 +563,20 @@ export async function confirmarRevisionAjusteRoster(empresaId, ajusteId, confirm
  * Calcula las filas del roster para un período mensual.
  *
  * Prioridad por día (dentro del período, para cada trabajador minero):
- *   1. Ajuste aprobado (roster_minero_ajustes) para esa fecha → decide trabajo o
+ *   1. Inducción configurada para esa fecha (dentro del ciclo, o en la ventana
+ *      pre-ciclo — ver punto 3bis) → no genera descanso ganado, aun si existe
+ *      un registro real o un ajuste aprobado para el día.
+ *   2. Ajuste aprobado (roster_minero_ajustes) para esa fecha → decide trabajo o
  *      descanso según tipo_dia_solicitado, sin importar qué diga el registro real.
- *   2. Registro real 'completo' | 'tardanza' | 'horas_extra' (sin ajuste)      → mina.
- *   3. Registro real 'incompleto', o sin ningún registro en un día que el ciclo
- *      teórico esperaba trabajo (fecha_inicio_ciclo / dias_ciclo_trabajo del
- *      registro en asistencia_ciclos_mineros) → no suma a dias_en_mina ni a
- *      dias_descanso_gozados; se cuenta en dias_pendientes_revision.
- *   4. Registro real 'falta' (es_falta=true) o 'descanso'/'bajada'            → igual que antes.
+ *   3. Registro real 'completo' | 'tardanza' | 'horas_extra' (sin ajuste)      → mina.
+ *   3bis. Ventana pre-ciclo (hay tramo de jornada vigente para la fecha — ver
+ *      asignaciones — pero fecha_inicio_ciclo todavía no llega) sin registro real
+ *      ni ajuste: descanso gozado por defecto. Nunca cuenta en dias_pendientes_revision.
+ *   4. Registro real 'incompleto', o sin ningún registro en un día YA DENTRO del
+ *      ciclo que el ciclo teórico esperaba trabajo (fecha_inicio_ciclo /
+ *      dias_ciclo_trabajo del registro en asistencia_ciclos_mineros) → no suma
+ *      a dias_en_mina ni a dias_descanso_gozados; se cuenta en dias_pendientes_revision.
+ *   5. Registro real 'falta' (es_falta=true) o 'descanso'/'bajada'            → igual que antes.
  *
  * @param {number} periodoAnio
  * @param {number} periodoMes
@@ -525,9 +584,13 @@ export async function confirmarRevisionAjusteRoster(empresaId, ajusteId, confirm
  * @param {Array} registros   - registros_asistencia del período
  * @param {Array} ciclos      - asistencia_ciclos_mineros
  * @param {Array} [ajustes]   - roster_minero_ajustes ya filtrados a estado='aprobado'
+ * @param {Array} [asignaciones] - personal_asignaciones_jornada (todas, no solo del período);
+ *   se usa únicamente para saber, día a día, si existe un tramo 'ciclo_acumulativo'
+ *   vigente para el trabajador (fecha_inicio/fecha_fin del tramo) y así distinguir la
+ *   ventana pre-ciclo de "sin ningún tramo en absoluto".
  * @returns {Array} una fila por trabajador minero
  */
-export function calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, registros, ciclos, ajustes = []) {
+export function calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, registros, ciclos, ajustes = [], asignaciones = []) {
   const mineros = trabajadores.filter(t => {
     const rj = t.regimen_jornada || 'general';
     return rj === 'ciclo_acumulativo' || rj.startsWith('minero_');
@@ -541,6 +604,8 @@ export function calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, reg
     const cicloT = ciclos.filter(c => c.personal_id === t.id);
     const cicloInfo = cicloT[0] || null;
     const ajustesT = ajustes.filter(a => a.personal_id === t.id && a.estado === 'aprobado' && a.fecha?.startsWith(prefijoMes));
+    const asignacionesT = asignaciones.filter(a => a.personal_id === t.id && a.regimen_jornada === 'ciclo_acumulativo');
+    const tramoDeFecha = (fechaStr) => asignacionesT.find(a => a.fecha_inicio <= fechaStr && (!a.fecha_fin || fechaStr <= a.fecha_fin)) || null;
 
     // Calcular ratio del régimen
     const diasT = t.dias_ciclo_trabajo || 14;
@@ -556,7 +621,41 @@ export function calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, reg
       const fechaStr = `${prefijoMes}-${String(dia).padStart(2, '0')}`;
       const ajuste = ajustesT.find(a => a.fecha === fechaStr);
 
-      // 1. Ajuste aprobado: prioridad máxima, sin más preguntas.
+      const hayCiclo = Boolean(cicloInfo?.fecha_inicio_ciclo);
+      const esAntesDelCiclo = hayCiclo && fechaStr < cicloInfo.fecha_inicio_ciclo;
+      const enVentanaPreCiclo = esAntesDelCiclo && Boolean(tramoDeFecha(fechaStr));
+
+      // La inducción se configura en asistencia_ciclos_mineros, mientras que
+      // los registros diarios generados pueden seguir diciendo "completo".
+      // Por eso se consulta antes de interpretar el registro: nunca debe
+      // contaminar dias_en_mina ni dias_descanso_ganados. Dentro del ciclo usa
+      // calcularEstadoCicloMinero; en la ventana pre-ciclo el valor por defecto
+      // es descanso, salvo que la fecha caiga en fecha_inicio_induccion/
+      // fecha_fin_induccion (misma fuente única que dentro del ciclo).
+      let teorico = null;
+      if (hayCiclo && !esAntesDelCiclo) {
+        teorico = calcularEstadoCicloMinero({
+          fechaInicioCiclo: cicloInfo.fecha_inicio_ciclo,
+          diasTrabajo: diasT,
+          diasDescanso: diasD,
+          fechaEval: fechaStr,
+          tieneInduccion: cicloInfo.tiene_induccion || false,
+          diasInduccion: cicloInfo.dias_induccion || 0,
+          fechaFinInduccion: cicloInfo.fecha_fin_induccion || null,
+          fechaInicioInduccion: cicloInfo.fecha_inicio_induccion || null,
+        });
+      } else if (enVentanaPreCiclo) {
+        const enInduccion = Boolean(cicloInfo.tiene_induccion) && Boolean(cicloInfo.fecha_inicio_induccion) && Boolean(cicloInfo.fecha_fin_induccion)
+          && fechaStr >= cicloInfo.fecha_inicio_induccion && fechaStr <= cicloInfo.fecha_fin_induccion;
+        teorico = { estado: enInduccion ? 'en_induccion' : 'en_descanso', estaEnInduccion: enInduccion };
+      }
+
+      if (teorico?.estaEnInduccion) {
+        diasInduccion++;
+        continue;
+      }
+
+      // 2. Ajuste aprobado: prioridad máxima fuera de inducción.
       if (ajuste) {
         if (ajuste.tipo_dia_solicitado === 'trabajo') diasEnMina++;
         else diasGozados++;
@@ -582,23 +681,18 @@ export function calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, reg
         continue;
       }
 
-      // Sin ningún registro ese día: solo es "pendiente de revisión" si el ciclo
-      // teórico esperaba trabajo (usa fecha_inicio_ciclo, antes recibido y no usado).
-      if (cicloInfo?.fecha_inicio_ciclo) {
-        const teorico = calcularEstadoCicloMinero({
-          fechaInicioCiclo: cicloInfo.fecha_inicio_ciclo,
-          diasTrabajo: diasT,
-          diasDescanso: diasD,
-          fechaEval: fechaStr,
-          tieneInduccion: cicloInfo.tiene_induccion || false,
-          diasInduccion: cicloInfo.dias_induccion || 0,
-          fechaFinInduccion: cicloInfo.fecha_fin_induccion || null,
-        });
+      // Sin ajuste ni registro real: en la ventana pre-ciclo, descanso gozado
+      // por defecto (nunca pendiente de revisión — ese es el bug corregido).
+      if (enVentanaPreCiclo) { diasGozados++; continue; }
+
+      // Ya dentro del ciclo: solo es "pendiente de revisión" si el ciclo
+      // teórico esperaba trabajo.
+      if (teorico) {
         if (teorico.estado === 'en_mina') diasPendientesRevision++;
       }
-      // Sin info de ciclo, o el ciclo no esperaba trabajo ese día: no se cuenta
-      // nada, igual que el comportamiento previo (el día simplemente no existía
-      // en regsT y no afectaba ningún total).
+      // Sin info de ciclo/tramo, o el ciclo no esperaba trabajo ese día: no se
+      // cuenta nada, igual que el comportamiento previo (el día simplemente no
+      // existía en regsT y no afectaba ningún total).
     }
 
     // Días efectivos para generar descanso
