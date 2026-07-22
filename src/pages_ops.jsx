@@ -41,7 +41,7 @@ import { getPosicionesPorCategoriaUnidad, buildOcupantesPorPosicion } from './li
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import * as XLSX from 'xlsx';
-import { calcularEstadoCicloMinero, calcularYGuardarRoster, getSnapshotsRoster, cerrarRosterPeriodo, calcularRosterPeriodo, calcularRangoRosterMinero, getAjustesRosterMinero, crearAjusteRosterMinero, resolverAjusteRosterMinero, confirmarRevisionAjusteRoster } from './services/rosterMineroService.js';
+import { calcularEstadoCicloMinero, calcularYGuardarRoster, getSnapshotsRoster, cerrarRosterPeriodo, calcularRosterPeriodo, calcularRangoRosterMinero, getAjustesRosterMinero, crearAjusteRosterMinero, resolverAjusteRosterMinero, confirmarRevisionAjusteRoster, ajusteAprobadoPosteriorASnapshot, recalcularSnapshotRosterDirigido } from './services/rosterMineroService.js';
 import { getUnidadMineraAsignaciones, crearUnidadMineraAsignacion, actualizarUnidadMineraAsignacion } from './services/unidadMineraService.js';
 import * as amonestacionesService from './services/amonestacionesService.js';
 import { defaultClasificacionPago } from './services/solicitudesRrhhService.js';
@@ -14134,6 +14134,9 @@ function ControlAsistencia() {
   const [rosterRows, setRosterRows] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterPeriodo, setRosterPeriodo] = useState(null);
+  const [recalculoDirigidoId, setRecalculoDirigidoId] = useState(null);
+  const [retroWallSnapshotRoster, setRetroWallSnapshotRoster] = useState(null); // { snapshot, ajuste, mensaje } | null
+  const [retroWallMotivoSnapshotRoster, setRetroWallMotivoSnapshotRoster] = useState('');
 
   useEffect(() => {
     if (!empresa?.id || !hayMinerosRoster) return;
@@ -14295,11 +14298,93 @@ function ControlAsistencia() {
   const [ajusteForm, setAjusteForm] = useState({ tipo_dia_solicitado: '', motivo: '' });
   const [ajusteSaving, setAjusteSaving] = useState(false);
   const [ajusteResolviendo, setAjusteResolviendo] = useState(null); // id del ajuste en proceso (aprobar/rechazar/confirmar revisión)
+  const [retroWallAjusteRoster, setRetroWallAjusteRoster] = useState(null); // { ajuste, mensaje } | null
+  const [retroWallMotivoAjusteRoster, setRetroWallMotivoAjusteRoster] = useState('');
 
   useEffect(() => {
     if (!empresa?.id) return;
     getAjustesRosterMinero(empresa.id).then(setAjustesRoster).catch(() => {});
   }, [empresa?.id]);
+
+  // Solo en períodos cerrados: identifica el último ajuste aprobado que fue
+  // resuelto después del cálculo guardado de cada trabajador. No habilita el
+  // recálculo masivo; únicamente muestra la acción dirigida para esa fila.
+  const ajustesSnapshotPendientePorPersonal = (() => {
+    const pendientes = new Map();
+    if (rosterPeriodo?.estado !== 'cerrado') return pendientes;
+    const prefijo = `${rosterPeriodo.anio}-${String(rosterPeriodo.mes).padStart(2, '0')}`;
+    const snapshotsPorPersonal = new Map(rosterRows.map(row => [row.personal_id, row]));
+    ajustesRoster
+      .filter(a => a.estado === 'aprobado' && a.fecha?.startsWith(prefijo))
+      .forEach(ajuste => {
+        const snapshot = snapshotsPorPersonal.get(ajuste.personal_id);
+        if (!ajusteAprobadoPosteriorASnapshot(ajuste, snapshot)) return;
+        const anterior = pendientes.get(ajuste.personal_id);
+        const fechaAjuste = new Date(ajuste.resuelto_en || ajuste.solicitado_en || 0);
+        const fechaAnterior = new Date(anterior?.resuelto_en || anterior?.solicitado_en || 0);
+        if (!anterior || fechaAjuste > fechaAnterior) pendientes.set(ajuste.personal_id, ajuste);
+      });
+    return pendientes;
+  })();
+
+  const recalcularSnapshotDirigido = async (snapshot, ajuste, overrideOpts = {}) => {
+    if (!empresa?.id || !rosterPeriodo || !snapshot || !ajuste) return;
+    const forzarOverride = Boolean(overrideOpts.forzarOverride);
+    if (rosterPeriodo.estado === 'cerrado' && !forzarOverride) {
+      setRetroWallMotivoSnapshotRoster('');
+      setRetroWallSnapshotRoster({
+        snapshot,
+        ajuste,
+        mensaje: 'Este período tiene nómina procesada. El recálculo se limitará a este trabajador y requiere autorización.',
+      });
+      return;
+    }
+
+    const trabajador = trabajadoresRoster.find(t => t.id === snapshot.personal_id);
+    if (!trabajador) {
+      addNotificacion('No se encontró el trabajador activo necesario para recalcular su snapshot.', 'error');
+      return;
+    }
+
+    setRecalculoDirigidoId(snapshot.personal_id);
+    try {
+      const prefijo = `${rosterPeriodo.anio}-${String(rosterPeriodo.mes).padStart(2, '0')}`;
+      const registrosDelPeriodo = registrosAsistencia.filter(r => r.fecha?.startsWith(prefijo));
+      const ciclos = await rrhhService.getCiclosMineros(empresa.id);
+      const ajustesAprobadosPeriodo = ajustesRoster.filter(a => a.estado === 'aprobado' && a.fecha?.startsWith(prefijo));
+      const actualizado = await recalcularSnapshotRosterDirigido(
+        empresa.id,
+        rosterPeriodo.anio,
+        rosterPeriodo.mes,
+        trabajador,
+        registrosDelPeriodo,
+        ciclos,
+        ajustesAprobadosPeriodo,
+        role?.nombre || 'RRHH',
+        asignacionesJornada,
+        {
+          forzarOverride,
+          motivoOverride: overrideOpts.motivoOverride || null,
+        },
+      );
+      setRosterRows(prev => prev.map(row => row.personal_id === actualizado.personal_id ? actualizado : row));
+      setRetroWallSnapshotRoster(null);
+      setRetroWallMotivoSnapshotRoster('');
+      addNotificacion(`Snapshot de ${actualizado.personal_nombre} recalculado sin modificar otros trabajadores del período.`);
+    } catch (err) {
+      const mensaje = err.message || '';
+      if (mensaje.startsWith('RETRO_WALL_PERMISO:')) {
+        addNotificacion(mensaje.replace('RETRO_WALL_PERMISO:', '').trim(), 'error');
+      } else if (mensaje.startsWith('RETRO_WALL:')) {
+        setRetroWallMotivoSnapshotRoster('');
+        setRetroWallSnapshotRoster({ snapshot, ajuste, mensaje: mensaje.replace('RETRO_WALL:', '').trim() });
+      } else {
+        addNotificacion('Error al recalcular el snapshot dirigido: ' + mensaje, 'error');
+      }
+    } finally {
+      setRecalculoDirigidoId(null);
+    }
+  };
 
   const rosterGridInicio = rosterPeriodo ? `${rosterPeriodo.anio}-${String(rosterPeriodo.mes).padStart(2, '0')}-01` : null;
   const rosterGridFin = rosterPeriodo ? new Date(rosterPeriodo.anio, rosterPeriodo.mes, 0).toISOString().split('T')[0] : null;
@@ -14497,6 +14582,7 @@ function ControlAsistencia() {
         fecha: ajustePanel.fecha,
         tipoDiaAntes: tipoDiaAntesReal,
         tipoDiaSolicitado: ajusteForm.tipo_dia_solicitado,
+        motivo,
         solicitadoPor: authUser?.id || null,
       });
       setAjustesRoster(prev => [nuevo, ...prev]);
@@ -14509,16 +14595,38 @@ function ControlAsistencia() {
     }
   };
 
-  const aprobarAjusteRoster = async (ajuste) => {
+  const aprobarAjusteRoster = async (ajuste, overrideOpts = {}) => {
+    const forzarOverride = Boolean(overrideOpts.forzarOverride);
+    if (ajuste.periodo_cerrado && !forzarOverride) {
+      setRetroWallMotivoAjusteRoster('');
+      setRetroWallAjusteRoster({
+        ajuste,
+        mensaje: 'Este ajuste cae en un período con nómina procesada. Requiere una justificación y autorización para aprobarlo.',
+      });
+      return;
+    }
     setAjusteResolviendo(ajuste.id);
     try {
-      const actualizado = await resolverAjusteRosterMinero(empresa.id, ajuste.id, 'aprobado', authUser?.id || null);
+      const actualizado = await resolverAjusteRosterMinero(empresa.id, ajuste.id, 'aprobado', authUser?.id || null, {
+        forzarOverride,
+        motivoOverride: overrideOpts.motivoOverride || null,
+      });
       setAjustesRoster(prev => prev.map(a => a.id === actualizado.id ? actualizado : a));
+      setRetroWallAjusteRoster(null);
+      setRetroWallMotivoAjusteRoster('');
       addNotificacion(actualizado.tipo_dia_solicitado === 'descanso'
         ? 'Ajuste aprobado. Si este día no se cubre con balance de descanso disponible, recuerda registrar la falta correspondiente en Control de Asistencia.'
         : 'Ajuste aprobado.');
     } catch (err) {
-      addNotificacion('Error al aprobar el ajuste: ' + (err.message || ''), 'error');
+      const mensaje = err.message || '';
+      if (mensaje.startsWith('RETRO_WALL_PERMISO:')) {
+        addNotificacion(mensaje.replace('RETRO_WALL_PERMISO:', '').trim(), 'error');
+      } else if (mensaje.startsWith('RETRO_WALL:')) {
+        setRetroWallMotivoAjusteRoster('');
+        setRetroWallAjusteRoster({ ajuste, mensaje: mensaje.replace('RETRO_WALL:', '').trim() });
+      } else {
+        addNotificacion('Error al aprobar el ajuste: ' + mensaje, 'error');
+      }
     } finally {
       setAjusteResolviendo(null);
     }
@@ -15878,13 +15986,15 @@ function ControlAsistencia() {
                       <th title="Incompleto, o sin registro en un día que el ciclo esperaba trabajo — pendiente de un ajuste o de marcar falta en Asistencia">Pendientes</th>
                       <th title="Balance del período: ganados - gozados">Bal. período</th>
                       <th title="Balance acumulado incluyendo períodos anteriores">Bal. acumulado</th>
+                      <th>Acción</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rosterRows.length === 0 && <tr><td colSpan={10} className="text-muted" style={{padding:20, textAlign:'center'}}>Sin datos. Presiona "Calcular" para generar el roster.</td></tr>}
+                    {rosterRows.length === 0 && <tr><td colSpan={11} className="text-muted" style={{padding:20, textAlign:'center'}}>Sin datos. Presiona "Calcular" para generar el roster.</td></tr>}
                     {rosterRows.map(r => {
                       const balPColor = r.balance_periodo >= 0 ? 'var(--green)' : 'var(--danger)';
                       const balAColor = r.balance_acumulado >= 0 ? 'var(--green)' : 'var(--danger)';
+                      const ajustePendienteSnapshot = ajustesSnapshotPendientePorPersonal.get(r.personal_id);
                       return (
                         <tr key={r.personal_id}>
                           <td><strong>{r.personal_nombre}</strong><div className="text-muted" style={{fontSize:11}}>{r.personal_tipo}</div>{cesadosPorId.has(r.personal_id) && <span className="badge badge-gray" style={{fontSize:10, marginTop:4, display:'inline-block'}} title={`Cesado el ${cesadosPorId.get(r.personal_id).fecha_cese || '-'}`}>Cesado — datos de un cálculo anterior a su cese</span>}</td>
@@ -15897,6 +16007,19 @@ function ControlAsistencia() {
                           <td>{r.dias_pendientes_revision > 0 ? <span className="badge badge-red" style={{fontSize:11}}>{r.dias_pendientes_revision}</span> : '—'}</td>
                           <td style={{fontWeight:700, color:balPColor}}>{Number(r.balance_periodo) >= 0 ? '+' : ''}{Number(r.balance_periodo).toFixed(1)}</td>
                           <td style={{fontWeight:700, color:balAColor}}>{Number(r.balance_acumulado) >= 0 ? '+' : ''}{Number(r.balance_acumulado).toFixed(1)}</td>
+                          <td>
+                            {ajustePendienteSnapshot
+                              ? <button
+                                  type="button"
+                                  className="btn btn-sm btn-secondary"
+                                  disabled={recalculoDirigidoId === r.personal_id}
+                                  onClick={() => recalcularSnapshotDirigido(r, ajustePendienteSnapshot)}
+                                  title={`Reflejar el ajuste aprobado del ${ajustePendienteSnapshot.fecha} solo en este snapshot`}
+                                >
+                                  {recalculoDirigidoId === r.personal_id ? 'Recalculando...' : 'Reflejar ajuste'}
+                                </button>
+                              : <span className="text-muted">—</span>}
+                          </td>
                         </tr>
                       );
                     })}
@@ -15914,10 +16037,10 @@ function ControlAsistencia() {
                 <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--border)', background:'#AEB9C9'}}/>Descanso</span>
                 <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--border)', background:'#D7DEE8'}}/>Sin ciclo</span>
                 <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--border)', background:'#C5A0EE'}}/>Inducción</span>
-                <span className="row" style={{gap:4}}>{I.clock} Solicitud pendiente</span>
-                <span className="row" style={{gap:4}}>{I.alertCircle} Marcación por confirmar</span>
-                <span className="row" style={{gap:4}}>{I.dollar} Revisar impacto en nómina</span>
-                <span className="row" style={{gap:4}}>{I.wrench} Ajuste manual</span>
+                <span className="row roster-legend-item" style={{gap:4}}>{I.clock} Solicitud pendiente</span>
+                <span className="row roster-legend-item" style={{gap:4}}>{I.alertCircle} Marcación por confirmar</span>
+                <span className="row roster-legend-item" style={{gap:4}}>{I.dollar} Revisar impacto en nómina</span>
+                <span className="row roster-legend-item" style={{gap:4}}>{I.wrench} Ajuste manual</span>
                 <span className="row" style={{gap:4}}><strong style={{color:'var(--danger)', fontSize:13}}>F</strong> Falta</span>
               </div>
             </div>
@@ -16034,6 +16157,97 @@ function ControlAsistencia() {
               </table>
             </div>
           </div>
+
+          {retroWallAjusteRoster && <>
+            <div className="side-panel-backdrop" onClick={() => { setRetroWallAjusteRoster(null); setRetroWallMotivoAjusteRoster(''); }}/>
+            <div className="side-panel" style={{width:'min(460px,96vw)'}}>
+              <div className="side-panel-head">
+                <div>
+                  <div className="eyebrow">Autorización retroactiva</div>
+                  <div className="font-display" style={{fontSize:20,fontWeight:700}}>Aprobar ajuste con nómina procesada</div>
+                </div>
+                <button className="icon-btn" onClick={() => { setRetroWallAjusteRoster(null); setRetroWallMotivoAjusteRoster(''); }}>{I.x}</button>
+              </div>
+              <div className="side-panel-body">
+                <div className="alert alert-warning" style={{fontSize:12}}>
+                  La solicitud de {retroWallAjusteRoster.ajuste.fecha} cae en un período con nómina procesada. La base verificará que tengas autorización antes de permitir este cambio.
+                </div>
+                {retroWallAjusteRoster.mensaje && <div className="text-muted" style={{fontSize:12, marginTop:10}}>{retroWallAjusteRoster.mensaje}</div>}
+                <div className="input-group" style={{marginTop:14}}>
+                  <label>Justificación para aprobar retroactivamente *</label>
+                  <textarea
+                    className="input"
+                    rows="3"
+                    value={retroWallMotivoAjusteRoster}
+                    onChange={e => setRetroWallMotivoAjusteRoster(e.target.value)}
+                    placeholder="Explica por qué corresponde modificar un período ya procesado"
+                  />
+                </div>
+                <div className="row mt-6" style={{justifyContent:'flex-end', gap:8}}>
+                  <button type="button" className="btn btn-secondary" onClick={() => { setRetroWallAjusteRoster(null); setRetroWallMotivoAjusteRoster(''); }}>Cancelar</button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    disabled={ajusteResolviendo === retroWallAjusteRoster.ajuste.id || !retroWallMotivoAjusteRoster.trim()}
+                    onClick={() => aprobarAjusteRoster(retroWallAjusteRoster.ajuste, {
+                      forzarOverride: true,
+                      motivoOverride: retroWallMotivoAjusteRoster.trim(),
+                    })}
+                  >
+                    {ajusteResolviendo === retroWallAjusteRoster.ajuste.id ? 'Aprobando...' : 'Aprobar con autorización'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>}
+
+          {retroWallSnapshotRoster && <>
+            <div className="side-panel-backdrop" onClick={() => { setRetroWallSnapshotRoster(null); setRetroWallMotivoSnapshotRoster(''); }}/>
+            <div className="side-panel" style={{width:'min(460px,96vw)'}}>
+              <div className="side-panel-head">
+                <div>
+                  <div className="eyebrow">Recálculo dirigido</div>
+                  <div className="font-display" style={{fontSize:20,fontWeight:700}}>Reflejar ajuste en Totales</div>
+                  <div className="text-muted" style={{fontSize:12}}>{retroWallSnapshotRoster.snapshot.personal_nombre} · {rosterPeriodo?.periodo}</div>
+                </div>
+                <button className="icon-btn" onClick={() => { setRetroWallSnapshotRoster(null); setRetroWallMotivoSnapshotRoster(''); }}>{I.x}</button>
+              </div>
+              <div className="side-panel-body">
+                <div className="alert alert-warning" style={{fontSize:12}}>
+                  La nómina del período ya fue procesada. Esta acción recalcula solo el snapshot de este trabajador; no habilita ni ejecuta el recálculo masivo del período.
+                </div>
+                {retroWallSnapshotRoster.mensaje && <div className="text-muted" style={{fontSize:12, marginTop:10}}>{retroWallSnapshotRoster.mensaje}</div>}
+                <div className="text-muted" style={{fontSize:12, marginTop:8}}>
+                  Ajuste aprobado: {retroWallSnapshotRoster.ajuste.fecha} · {retroWallSnapshotRoster.ajuste.tipo_dia_antes === 'trabajo' ? 'Trabajo' : 'Descanso'} → {retroWallSnapshotRoster.ajuste.tipo_dia_solicitado === 'trabajo' ? 'Trabajo' : 'Descanso'}.
+                </div>
+                <div className="input-group" style={{marginTop:14}}>
+                  <label>Justificación para forzar el cambio *</label>
+                  <textarea
+                    className="input"
+                    rows="3"
+                    value={retroWallMotivoSnapshotRoster}
+                    onChange={e => setRetroWallMotivoSnapshotRoster(e.target.value)}
+                    placeholder="Explica por qué debe actualizarse este snapshot ya cerrado"
+                  />
+                </div>
+                <div className="row mt-6" style={{justifyContent:'flex-end', gap:8}}>
+                  <button type="button" className="btn btn-secondary" onClick={() => { setRetroWallSnapshotRoster(null); setRetroWallMotivoSnapshotRoster(''); }}>Cancelar</button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    disabled={recalculoDirigidoId === retroWallSnapshotRoster.snapshot.personal_id || !retroWallMotivoSnapshotRoster.trim()}
+                    onClick={() => recalcularSnapshotDirigido(
+                      retroWallSnapshotRoster.snapshot,
+                      retroWallSnapshotRoster.ajuste,
+                      { forzarOverride: true, motivoOverride: retroWallMotivoSnapshotRoster.trim() },
+                    )}
+                  >
+                    {recalculoDirigidoId === retroWallSnapshotRoster.snapshot.personal_id ? 'Recalculando...' : 'Forzar cambio (requiere autorización)'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>}
 
           {/* Asignación trabajador -> Unidad Minera: pantalla propia, separada de Geocercas/SAR */}
           <div className="card" style={{marginTop:16}}>

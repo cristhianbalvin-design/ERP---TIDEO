@@ -401,6 +401,100 @@ export async function calcularYGuardarRoster(empresaId, periodoAnio, periodoMes,
   return data || [];
 }
 
+// Un ajuste aprobado queda pendiente de reflejarse en Totales solo cuando fue
+// resuelto después del último cálculo guardado de esa fila.
+export const ajusteAprobadoPosteriorASnapshot = (ajuste, snapshot) => {
+  if (!ajuste || ajuste.estado !== 'aprobado' || !snapshot?.calculado_en) return false;
+  const resueltoEn = ajuste.resuelto_en || ajuste.solicitado_en;
+  return Boolean(resueltoEn) && new Date(resueltoEn) > new Date(snapshot.calculado_en);
+};
+
+/**
+ * Recalcula y persiste exclusivamente el snapshot de un trabajador para un
+ * período. La RPC valida el ajuste gatillo, protege los períodos cerrados con
+ * retro wall y nunca toca snapshots de otros trabajadores.
+ */
+export async function recalcularSnapshotRosterDirigido(empresaId, periodoAnio, periodoMes, trabajador, registros, ciclos, ajustes = [], calculadoPor, asignaciones = [], opts = {}) {
+  if (!empresaId || !trabajador?.id) throw new Error('Falta el trabajador para recalcular su snapshot.');
+
+  const prefijoPeriodo = `${periodoAnio}-${String(periodoMes).padStart(2, '0')}`;
+  const ajustesDelTrabajador = (ajustes || [])
+    .filter(a => a.personal_id === trabajador.id && a.estado === 'aprobado' && a.fecha?.startsWith(prefijoPeriodo))
+    .sort((a, b) => new Date(b.resuelto_en || b.solicitado_en || 0) - new Date(a.resuelto_en || a.solicitado_en || 0));
+
+  if (getDataMode() !== 'supabase') {
+    const snapshot = mockSnapshots.find(s => s.empresa_id === empresaId && s.personal_id === trabajador.id && s.periodo_anio === periodoAnio && s.periodo_mes === periodoMes);
+    if (!snapshot) throw new Error('No existe snapshot para el trabajador y período indicados.');
+    const ajuste = ajustesDelTrabajador.find(a => ajusteAprobadoPosteriorASnapshot(a, snapshot));
+    if (!ajuste) throw new Error('No existe un ajuste aprobado posterior al snapshot que requiera recálculo.');
+    if (snapshot.periodo_cerrado && !opts.forzarOverride) throw new Error('RETRO_WALL: el período está cerrado y requiere autorización para forzar el cambio.');
+    if (snapshot.periodo_cerrado && !String(opts.motivoOverride || '').trim()) throw new Error('RETRO_WALL: la justificación para forzar el cambio es obligatoria.');
+
+    const fila = calcularRosterPeriodo(periodoAnio, periodoMes, [trabajador], registros, ciclos, ajustes, asignaciones)[0];
+    if (!fila) throw new Error('No fue posible calcular el roster del trabajador indicado.');
+    const mesAnterior = periodoMes === 1 ? 12 : periodoMes - 1;
+    const anioAnterior = periodoMes === 1 ? periodoAnio - 1 : periodoAnio;
+    const anterior = mockSnapshots.find(s => s.empresa_id === empresaId && s.personal_id === trabajador.id && s.periodo_anio === anioAnterior && s.periodo_mes === mesAnterior);
+    const actualizado = {
+      ...snapshot,
+      ...fila,
+      balance_acumulado: Number(anterior?.balance_acumulado || 0) + Number(fila.balance_periodo),
+      calculado_en: new Date().toISOString(),
+      calculado_por: calculadoPor,
+    };
+    mockSnapshots = mockSnapshots.map(s => s.id === snapshot.id ? actualizado : s);
+    return actualizado;
+  }
+
+  const supabase = await getSupabaseClient();
+  const { data: snapshot, error: snapshotError } = await supabase
+    .from('roster_minero_snapshots')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .eq('personal_id', trabajador.id)
+    .eq('periodo_anio', periodoAnio)
+    .eq('periodo_mes', periodoMes)
+    .maybeSingle();
+  if (snapshotError) throw snapshotError;
+  if (!snapshot) throw new Error('No existe snapshot para el trabajador y período indicados.');
+
+  const ajuste = ajustesDelTrabajador.find(a => ajusteAprobadoPosteriorASnapshot(a, snapshot));
+  if (!ajuste) throw new Error('No existe un ajuste aprobado posterior al snapshot que requiera recálculo.');
+
+  const fila = calcularRosterPeriodo(periodoAnio, periodoMes, [trabajador], registros, ciclos, ajustes, asignaciones)[0];
+  if (!fila) throw new Error('No fue posible calcular el roster del trabajador indicado.');
+
+  const mesAnterior = periodoMes === 1 ? 12 : periodoMes - 1;
+  const anioAnterior = periodoMes === 1 ? periodoAnio - 1 : periodoAnio;
+  const { data: anterior, error: anteriorError } = await supabase
+    .from('roster_minero_snapshots')
+    .select('balance_acumulado')
+    .eq('empresa_id', empresaId)
+    .eq('personal_id', trabajador.id)
+    .eq('periodo_anio', anioAnterior)
+    .eq('periodo_mes', mesAnterior)
+    .maybeSingle();
+  if (anteriorError) throw anteriorError;
+
+  const payload = {
+    ...fila,
+    balance_acumulado: Number(anterior?.balance_acumulado || 0) + Number(fila.balance_periodo),
+  };
+  const { data, error } = await supabase.rpc('recalcular_snapshot_roster_dirigido', {
+    p_empresa_id: empresaId,
+    p_personal_id: trabajador.id,
+    p_periodo_anio: periodoAnio,
+    p_periodo_mes: periodoMes,
+    p_ajuste_id: ajuste.id,
+    p_snapshot: payload,
+    p_calculado_por: calculadoPor || null,
+    p_forzar_override: Boolean(opts.forzarOverride),
+    p_motivo_override: opts.motivoOverride || null,
+  });
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] : data;
+}
+
 export async function cerrarRosterPeriodo(empresaId, periodoAnio, periodoMes, nominaPeriodoId) {
   if (getDataMode() !== 'supabase') {
     mockSnapshots = mockSnapshots.map(s => {
