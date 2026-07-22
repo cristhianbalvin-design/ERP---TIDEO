@@ -2536,6 +2536,12 @@ body {
   font-size: 12px;
 }
 .calendar-owner svg { width: 14px; height: 14px; }
+
+.roster-legend-item svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
 .calendar-empty {
   border: 1px dashed var(--border);
   border-radius: 8px;
