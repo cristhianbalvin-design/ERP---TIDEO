@@ -210,6 +210,21 @@ export async function actualizarCuenta(supabase, empresaId, cuentaId, datos) {
     .single();
 }
 
+export async function eliminarCuenta(supabase, empresaId, cuentaId) {
+  const { data, error } = await supabase
+    .from('cuentas')
+    .delete()
+    .eq('id', cuentaId)
+    .eq('empresa_id', empresaId)
+    .select('id');
+
+  if (error) throw error;
+  if (!data?.length) {
+    throw new Error('La cuenta no se eliminó. Verifica tus permisos o que el registro siga disponible.');
+  }
+  return data[0];
+}
+
 export async function subirLogoCuenta(supabase, empresaId, cuentaId, file) {
   const ext = logoExtension(file);
   const path = `${empresaId}/${cuentaId}.${ext}`;

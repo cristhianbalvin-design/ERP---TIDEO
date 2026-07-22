@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { MOCK } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
-import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
 import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
@@ -1814,6 +1814,27 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'crm', entidad: 'cuentas', entidad_id: cuentaId, accion: 'editar', valor_anterior: anterior || null, valor_nuevo: payload });
     addNotificacion('Cuenta actualizada.');
     return { ...(anterior || {}), ...payload };
+  };
+
+  const eliminarCuenta = async (cuentaId) => {
+    const anterior = cuentas.find(c => c.id === cuentaId) || null;
+    if (!anterior) throw new Error('La cuenta ya no está disponible.');
+
+    try {
+      await crmPersist(sb => eliminarCuentaSvc(sb, empresa.id, cuentaId));
+      setCuentas(prev => prev.filter(c => c.id !== cuentaId));
+      // Las FKs de CRM quedan en NULL al eliminar una cuenta; conservamos los contactos.
+      setContactos(prev => prev.map(c => c.cuenta_id === cuentaId ? { ...c, cuenta_id: null } : c));
+      auditSync({ modulo: 'crm', entidad: 'cuentas', entidad_id: cuentaId, accion: 'eliminar', valor_anterior: anterior });
+      addNotificacion(`Cuenta "${anterior.razon_social || anterior.nombre_comercial}" eliminada.`);
+      return true;
+    } catch (error) {
+      const mensaje = error?.code === '23503'
+        ? 'No se puede eliminar la cuenta porque tiene documentos financieros o CxC asociados. Anúlalos o regularízalos antes.'
+        : `No se pudo eliminar la cuenta: ${error?.message || 'Error desconocido'}`;
+      addNotificacion(mensaje);
+      throw error;
+    }
   };
 
   const actualizarLogoCuenta = async (cuenta, file) => {
@@ -9760,7 +9781,7 @@ export function AppProvider({ children }) {
     roles: rolesCtx, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, accessDebug,
     leads, setLeads, updateLeadState, historialEstados,
     campanas, setCampanas, crearCampana, actualizarCampana, cambiarEstadoCampana, eliminarCampana,
-    cuentas, setCuentas, actualizarCuenta, actualizarLogoCuenta,
+    cuentas, setCuentas, actualizarCuenta, eliminarCuenta, actualizarLogoCuenta,
     contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta,
     oportunidades, setOportunidades, oppHistorialEtapas,
     actividades, setActividades,

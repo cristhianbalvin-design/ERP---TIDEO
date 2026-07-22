@@ -116,13 +116,15 @@ const habTooltip = (req) => {
 
 // ============ CUENTAS Y CONTACTOS ============
 function Cuentas() {
-  const { cuentas, setCuentas, crearCuenta, actualizarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, usuarios, roles, navigate, empresa, addNotificacion, role, authUser, healthScoresDetalle, onboardings, planesExito, npsEncuestas, renovaciones } = useApp();
+  const { cuentas, crearCuenta, actualizarCuenta, eliminarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, usuarios, roles, navigate, empresa, addNotificacion, role, authUser, healthScoresDetalle, onboardings, planesExito, npsEncuestas, renovaciones } = useApp();
   const [sel, setSel] = useState(null);
   const [condEdit, setCondEdit] = useState({});
   const [condEditing, setCondEditing] = useState(false);
   const [condSaving, setCondSaving] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [logoUploading, setLogoUploading] = useState(null);
+  const [deletingCuenta, setDeletingCuenta] = useState(false);
+  const [deleteCuentaError, setDeleteCuentaError] = useState('');
   const [contactEditId, setContactEditId] = useState(null);
   const [contactForm, setContactForm] = useState({ nombre:'', cargo:'', telefono:'', email:'', principal:false });
   const [formCuenta, setFormCuenta] = useState({
@@ -397,11 +399,22 @@ function Cuentas() {
     addNotificacion?.('Cuenta actualizada');
   };
 
-  const confirmarEliminarCuenta = () => {
-    setCuentas(prev => prev.filter(c => c.id !== confirmDelCuenta.id));
-    if (sel?.id === confirmDelCuenta.id) setSel(null);
-    setConfirmDelCuenta(null);
-    addNotificacion?.(`Cuenta "${confirmDelCuenta.razon_social}" eliminada`);
+  const confirmarEliminarCuenta = async () => {
+    if (!confirmDelCuenta || deletingCuenta) return;
+    const cuenta = confirmDelCuenta;
+    try {
+      setDeleteCuentaError('');
+      setDeletingCuenta(true);
+      await eliminarCuenta(cuenta.id);
+      if (sel?.id === cuenta.id) setSel(null);
+      setConfirmDelCuenta(null);
+    } catch (error) {
+      setDeleteCuentaError(error?.code === '23503'
+        ? 'Esta cuenta tiene CxC o documentos financieros asociados. Anúlalos o regularízalos antes de eliminarla.'
+        : error?.message || 'No se pudo eliminar la cuenta.');
+    } finally {
+      setDeletingCuenta(false);
+    }
   };
 
   const confirmarEliminarContacto = () => {
@@ -605,7 +618,7 @@ function Cuentas() {
                       </button>
                       <button type="button" className="icon-btn" title="Eliminar cuenta"
                         style={{width:26, height:26, color:'var(--danger)', borderRadius:6}}
-                        onClick={e => { e.stopPropagation(); setConfirmDelCuenta(c); }}>
+                        onClick={e => { e.stopPropagation(); setDeleteCuentaError(''); setConfirmDelCuenta(c); }}>
                         {I.trash}
                       </button>
                     </div>
@@ -1323,10 +1336,11 @@ function Cuentas() {
             <div className="modal-body">
               <p>¿Eliminar <strong>{confirmDelCuenta.razon_social}</strong>? Esta acción no se puede deshacer.</p>
               <p className="text-muted" style={{fontSize:12, marginTop:8}}>Las oportunidades y contactos vinculados quedarán sin cuenta asociada.</p>
+              {deleteCuentaError && <div className="alert alert-danger" style={{marginTop:12, fontSize:12}}>{deleteCuentaError}</div>}
             </div>
             <div className="modal-foot">
-              <button className="btn btn-secondary" onClick={() => setConfirmDelCuenta(null)}>Cancelar</button>
-              <button className="btn btn-primary" style={{background:'var(--danger)', borderColor:'var(--danger)'}} onClick={confirmarEliminarCuenta}>{I.trash} Eliminar</button>
+              <button className="btn btn-secondary" disabled={deletingCuenta} onClick={() => { setDeleteCuentaError(''); setConfirmDelCuenta(null); }}>Cancelar</button>
+              <button className="btn btn-primary" disabled={deletingCuenta} style={{background:'var(--danger)', borderColor:'var(--danger)'}} onClick={confirmarEliminarCuenta}>{I.trash} {deletingCuenta ? 'Eliminando...' : 'Eliminar'}</button>
             </div>
           </div>
         </div>
@@ -18423,6 +18437,27 @@ function RRHH_Operativo() {
     .filter(u => u.estado !== 'inactivo' && u.nombre)
     .map(u => ({ id: u.id, nombre: u.nombre }));
   const unidadNombrePorId = React.useMemo(() => new Map(unidadesOrganizacionalesOptions.map(u => [u.id, u.nombre])), [unidadesOrganizacionalesOptions]);
+  const normalizarNombreUnidad = (nombre = '') => String(nombre)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+  const unidadNombrePorNombreLegado = React.useMemo(
+    () => new Map(unidadesOrganizacionalesOptions.map(u => [normalizarNombreUnidad(u.nombre), u.nombre])),
+    [unidadesOrganizacionalesOptions]
+  );
+  const unidadNombrePorPosicionId = React.useMemo(
+    () => new Map(posiciones.map(posicion => [posicion.id, unidadNombrePorId.get(posicion.unidad_organizacional_id)])),
+    [posiciones, unidadNombrePorId]
+  );
+  const resolverUnidadOrganizacional = (persona) => {
+    const nombreDesdePosicion = unidadNombrePorPosicionId.get(persona.posicion_id);
+    if (nombreDesdePosicion) return nombreDesdePosicion;
+    // Fichas anteriores a posiciones conservan `area`; se muestra el nombre
+    // vigente del maestro en vez de su capitalización histórica.
+    return unidadNombrePorNombreLegado.get(normalizarNombreUnidad(persona.area)) || persona.area || null;
+  };
   const posicionesParaCargoAlta = React.useMemo(() => posiciones.filter(p => (
     p.activa !== false && p.estado !== 'inactivo' && p.cargo_id === formAlta.cargo_id
   )), [posiciones, formAlta.cargo_id]);
@@ -20809,7 +20844,7 @@ function RRHH_Operativo() {
                         </div>
                       </td>
                       <td>{p.cargo}</td>
-                      <td>{unidadNombrePorId.get(posiciones.find(pos => pos.id === p.posicion_id)?.unidad_organizacional_id) || p.area || <span className="text-subtle">Sin posición</span>}</td>
+                      <td>{resolverUnidadOrganizacional(p) || <span className="text-subtle">Sin posición</span>}</td>
                       <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
                       <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>
                       <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span>}</td>
