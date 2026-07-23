@@ -252,6 +252,7 @@ const toAsistenciaRow = (empresaId, registro = {}, { includeId = true } = {}) =>
     refrigerio_tomado_minutos: Number(registro.refrigerio_tomado_minutos || 0),
     regimen_jornada: registro.regimen_jornada || 'general',
     ciclo_minero_id: registro.ciclo_minero_id || null,
+    solicitud_rrhh_id: registro.solicitud_rrhh_id || null,
   };
   if (includeId) row.id = registro.id || generateTextId('asis');
   return row;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { ColumnFilter } from './components/ColumnFilter.jsx';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr } from './utils/rrhhLabels.js';
@@ -38,10 +39,11 @@ import { comprasService, getSpendAnalysis } from './services/comprasService.js';
 import { finanzasService } from './services/finanzasService.js';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { getPosicionesPorCategoriaUnidad, buildOcupantesPorPosicion } from './lib/posicionesHelpers.js';
+import { contarDiasDescontablesAsistencia } from './utils/asistenciaNomina.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import * as XLSX from 'xlsx';
-import { calcularEstadoCicloMinero, calcularYGuardarRoster, getSnapshotsRoster, cerrarRosterPeriodo, calcularRosterPeriodo, calcularRangoRosterMinero, getAjustesRosterMinero, crearAjusteRosterMinero, resolverAjusteRosterMinero, confirmarRevisionAjusteRoster, ajusteAprobadoPosteriorASnapshot, recalcularSnapshotRosterDirigido } from './services/rosterMineroService.js';
+import { calcularEstadoCicloMinero, calcularYGuardarRoster, getSnapshotsRoster, cerrarRosterPeriodo, calcularRosterPeriodo, calcularRangoRosterMinero, getAjustesRosterMinero, crearAjusteRosterMinero, resolverAjusteRosterMinero, confirmarRevisionAjusteRoster, ajusteAprobadoPosteriorASnapshot, recalcularSnapshotRosterDirigido, esAusenciaAutorizadaRoster } from './services/rosterMineroService.js';
 import { getUnidadMineraAsignaciones, crearUnidadMineraAsignacion, actualizarUnidadMineraAsignacion } from './services/unidadMineraService.js';
 import * as amonestacionesService from './services/amonestacionesService.js';
 import { defaultClasificacionPago } from './services/solicitudesRrhhService.js';
@@ -13343,7 +13345,7 @@ function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registr
   const justificadas    = regsTramo.filter(r => r.estado === 'falta_justificada').length;
   const tardanzas       = regsTramo.filter(r => r.estado === 'tardanza').length;
   const minutosTardanza = regsTramo.reduce((s, r) => s + (Number(r.tardanza_min) || 0), 0);
-  const descFaltas      = faltas * valorDia;
+  const descFaltas      = contarDiasDescontablesAsistencia(regsTramo) * valorDia;
   const descTardanzas   = minutosTardanza * valorMinuto;
   const { tramo1Min, tramo2Min, addHorasExtra, addTramo1, addTramo2 } = calcularHorasExtra(regsTramo, valorHora);
 
@@ -13769,7 +13771,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const tardanzas = registrosNomina.filter(r => r.estado === 'tardanza').length;
   const minutosTardanza = registrosNomina.reduce((s, r) => s + (Number(r.tardanza_min) || 0), 0);
 
-  const descFaltas = faltasInjustificadas * valorDia;
+  const descFaltas = contarDiasDescontablesAsistencia(registrosNomina) * valorDia;
   const descTardanzas = minutosTardanza * valorMinuto;
   const { tramo1Min, tramo2Min, addHorasExtra, addTramo1, addTramo2 } = sinFiscalizacionDiaria
     ? { tramo1Min: 0, tramo2Min: 0, addHorasExtra: 0, addTramo1: 0, addTramo2: 0 }
@@ -14436,14 +14438,15 @@ function ControlAsistencia() {
     return { trabajador: t, dias, totales };
   };
 
-  // El roster usa cuatro fondos: Trabajo, Descanso, Sin ciclo e Inducción.
-  // Los sub-estados de Asistencia y el origen del dato se muestran solo con
-  // íconos; el borde nunca comunica estado.
+  // El roster usa cinco fondos: Trabajo, Descanso, Sin ciclo, Inducción y
+  // Ausencia autorizada. Los sub-estados de Asistencia y el origen del dato
+  // se muestran solo con íconos; el borde nunca comunica estado.
   const FONDO_ESTILO = {
     trabajo: { bg: '#8EDCA8', label: 'Trabajo' },
     descanso: { bg: '#AEB9C9', label: 'Descanso' },
     sin_ciclo: { bg: '#D7DEE8', label: 'Sin ciclo' },
     induccion: { bg: '#C5A0EE', label: 'Inducción' },
+    ausencia_autorizada: { bg: '#F4C76B', label: 'Ausencia autorizada' },
   };
   // completo/tardanza/horas_extra: Trabajo. La inducción configurada se toma
   // del teórico del ciclo, incluso cuando el registro diario diga "completo".
@@ -14455,6 +14458,7 @@ function ControlAsistencia() {
   // al teórico del ciclo ese día (dia.teorico, expuesto por
   // calcularRangoRosterMinero sin que esto cambie su lógica de balance).
   const fondoCelda = (dia) => {
+    if (esAusenciaAutorizadaRoster(dia.registro?.estado)) return 'ausencia_autorizada';
     if (dia.origen === 'sin_ciclo') return 'sin_ciclo';
     if (dia.origen === 'ajuste') return dia.estado; // 'trabajo' | 'descanso'
     if (dia.teorico?.estaEnInduccion) return 'induccion';
@@ -14487,8 +14491,24 @@ function ControlAsistencia() {
     if (dia.origen === 'teorico' && dia.estado === 'en_mina' && dia.fecha < hoyStr) return true;
     return false;
   };
-  const revisarImpactoNomina = (dia) => fondoCelda(dia) === 'descanso' && Boolean(dia.registro) && ['falta', 'falta_justificada'].includes(dia.registro.estado) && !(dia.ajusteAprobado?.revision_asistencia_confirmada);
+  // Una falta registrada conscientemente desde Asistencia minera ya contiene
+  // su motivo y no deja una revisión de nómina pendiente. Las faltas de otras
+  // fuentes y las asociadas a ajustes conservan el flujo de revisión existente.
+  const revisarImpactoNomina = (dia) => (
+    fondoCelda(dia) === 'descanso'
+    && Boolean(dia.registro)
+    && ['falta', 'falta_justificada'].includes(dia.registro.estado)
+    && dia.registro.origen_registro !== 'manual_minero'
+    && !(dia.ajusteAprobado?.revision_asistencia_confirmada)
+  );
   const esFaltaReal = (dia) => dia.registro?.estado === 'falta';
+  const AUSENCIA_AUTORIZADA_MARCA = {
+    vacaciones: { letra: 'V', tooltip: 'Vacaciones aprobadas' },
+    licencia_medica: { letra: 'M', tooltip: 'Licencia médica aprobada' },
+    permiso_con_goce: { letra: 'P', tooltip: 'Permiso con goce aprobado' },
+    permiso_sin_goce: { letra: 'S', tooltip: 'Permiso sin goce aprobado' },
+  };
+  const ausenciaAutorizada = (dia) => AUSENCIA_AUTORIZADA_MARCA[dia.registro?.estado] || null;
   // Esta condición es deliberadamente estricta: el ícono solo puede aparecer
   // si el resultado de ESTA celda fue decidido por un ajuste aprobado para el
   // mismo trabajador y la misma fecha.
@@ -14499,25 +14519,26 @@ function ControlAsistencia() {
     && dia.ajusteAprobado?.fecha === dia.fecha
   );
 
-  // Insignia circular sólida para los íconos superpuestos de la grilla — el
-  // glifo a 10px sin fondo propio resultaba casi imperceptible sobre el verde
-  // pastel de la celda. El círculo sólido (13px) + anillo claro de separación
-  // da contraste real contra los fondos sin invadir la
-  // celda vecina (offset moderado, -4/-5px sobre una celda de ~24-28px).
-  const rosterBadge = (posicion, bg, icono) => {
+  // Insignia sólida compartida por la grilla y la leyenda. El tamaño y el
+  // inset están calculados para la celda mínima de 28px: aun con cuatro
+  // insignias (una por esquina) cada una permanece dentro de su propia celda.
+  const ROSTER_BADGE_SIZE = 10;
+  const ROSTER_BADGE_INSET = 2;
+  const rosterBadge = (posicion, bg, icono, enLeyenda = false) => {
     const posiciones = {
-      arribaIzquierda: { top: -5, left: -4 },
-      arribaDerecha: { top: -5, right: -4 },
-      abajoIzquierda: { bottom: -5, left: -4 },
-      abajoDerecha: { bottom: -5, right: -4 },
+      arribaIzquierda: { top: ROSTER_BADGE_INSET, left: ROSTER_BADGE_INSET },
+      arribaDerecha: { top: ROSTER_BADGE_INSET, right: ROSTER_BADGE_INSET },
+      abajoIzquierda: { bottom: ROSTER_BADGE_INSET, left: ROSTER_BADGE_INSET },
+      abajoDerecha: { bottom: ROSTER_BADGE_INSET, right: ROSTER_BADGE_INSET },
     };
     return (
     <span style={{
-      position: 'absolute', ...posiciones[posicion], width: 13, height: 13, borderRadius: '50%',
+      position: enLeyenda ? 'relative' : 'absolute', ...(enLeyenda ? {} : posiciones[posicion]),
+      width: ROSTER_BADGE_SIZE, height: ROSTER_BADGE_SIZE, minWidth: ROSTER_BADGE_SIZE, borderRadius: '50%',
       background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: '0 0 0 1.5px var(--bg-card, #fff)', lineHeight: 0,
+      boxShadow: '0 0 0 1px var(--bg-card, #fff)', lineHeight: 0, flexShrink: 0,
     }}>
-      {React.cloneElement(icono, { style: { width: 9, height: 9, color: '#fff' } })}
+      {React.cloneElement(icono, { style: { width: 7, height: 7, color: '#fff' } })}
     </span>
     );
   };
@@ -14529,6 +14550,16 @@ function ControlAsistencia() {
       color: 'var(--danger)', fontWeight: 800, fontSize: 12, lineHeight: 1,
       textShadow: '0 0 2px var(--bg-card, #fff)', pointerEvents: 'none',
     }}>F</span>
+  );
+
+  // Las letras de ausencia usan el mismo centro reservado para la F: son
+  // excluyentes entre sí y las insignias circulares conservan las esquinas.
+  const rosterMarcaAusencia = (ausencia) => (
+    <span style={{
+      position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+      color: '#4B3510', fontWeight: 800, fontSize: 12, lineHeight: 1,
+      textShadow: '0 0 2px rgba(255,255,255,0.75)', pointerEvents: 'none',
+    }}>{ausencia.letra}</span>
   );
 
   // Mapea el día al par binario trabajo/descanso que exige roster_minero_ajustes
@@ -14680,11 +14711,25 @@ function ControlAsistencia() {
   }, [empresa?.id]);
 
   const [form, setForm] = useState({ trabajador_id:trabajadoresGenerales[0]?.id || '', fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'', latitud:'', longitud:'', refrigerio_tomado_minutos:0, ubicacion_estado:'' });
+  // Vía independiente para registrar la asistencia real del personal por ciclo.
+  // No comparte estado ni handler con "+ Manual": para un minero las horas y el
+  // turno no tienen efecto de cálculo; solo el estado real corrige el roster/nómina.
+  const [panelAsistenciaMinera, setPanelAsistenciaMinera] = useState(false);
+  const [asistenciaMineraSaving, setAsistenciaMineraSaving] = useState(false);
+  const [formAsistenciaMinera, setFormAsistenciaMinera] = useState({
+    trabajador_id: '', fecha, estado: 'completo', hora_entrada: '', hora_salida: '', motivo_falta: '', notas: '',
+  });
   useEffect(() => {
     if (!form.trabajador_id && trabajadoresGenerales[0]?.id) {
       setForm(prev => ({ ...prev, trabajador_id: trabajadoresGenerales[0].id }));
     }
   }, [form.trabajador_id, trabajadoresGenerales[0]?.id]);
+
+  useEffect(() => {
+    if (!formAsistenciaMinera.trabajador_id && trabajadoresMineros[0]?.id) {
+      setFormAsistenciaMinera(prev => ({ ...prev, trabajador_id: trabajadoresMineros[0].id }));
+    }
+  }, [formAsistenciaMinera.trabajador_id, trabajadoresMineros[0]?.id]);
 
   useEffect(() => {
     if (!autHeForm.personal_id && trabajadoresGenerales[0]?.id) {
@@ -14817,6 +14862,79 @@ function ControlAsistencia() {
       addNotificacion(`Error BD: ${err.message || JSON.stringify(err)}`);
     }
     setPanel(false);
+  };
+
+  const abrirAsistenciaMinera = (trabajadorMinero, registro = null) => {
+    const estado = registro?.estado === 'falta_justificada'
+      ? 'falta_justificada'
+      : registro?.estado === 'falta'
+        ? 'falta'
+        : registro?.estado === 'incompleto'
+          ? 'incompleto'
+          : 'completo';
+    setFormAsistenciaMinera({
+      trabajador_id: trabajadorMinero?.id || trabajadoresMineros[0]?.id || '',
+      fecha: registro?.fecha || fecha,
+      estado,
+      hora_entrada: registro?.hora_entrada || '',
+      hora_salida: registro?.hora_salida || '',
+      motivo_falta: registro?.motivo_falta || '',
+      notas: registro?.notas || '',
+    });
+    setPanelAsistenciaMinera(true);
+  };
+
+  const guardarAsistenciaMinera = async (e) => {
+    e?.preventDefault?.();
+    const trabajadorMinero = trabajadoresMineros.find(t => t.id === formAsistenciaMinera.trabajador_id);
+    if (!trabajadorMinero || !formAsistenciaMinera.fecha) {
+      addNotificacion('Selecciona un trabajador minero y una fecha.');
+      return;
+    }
+    const esFalta = ['falta', 'falta_justificada'].includes(formAsistenciaMinera.estado);
+    if (esFalta && !formAsistenciaMinera.motivo_falta.trim()) {
+      addNotificacion('El motivo es obligatorio para registrar una falta.');
+      return;
+    }
+
+    // Los valores de horas se fuerzan explícitamente a cero: el registro es una
+    // corrección de estado de ciclo y nunca debe alimentar tardanzas ni HE.
+    const registroMinero = {
+      empresa_id: empresa.id,
+      trabajador_id: trabajadorMinero.id,
+      trabajador_tipo: trabajadorMinero.trabajador_tipo || 'operativo',
+      fecha: formAsistenciaMinera.fecha,
+      turno_id: null,
+      hora_entrada: formAsistenciaMinera.hora_entrada || null,
+      hora_salida: formAsistenciaMinera.hora_salida || null,
+      horas_trabajadas_min: 0,
+      tardanza_min: 0,
+      horas_extra_min: 0,
+      estado: formAsistenciaMinera.estado,
+      es_falta: esFalta,
+      justificada: formAsistenciaMinera.estado === 'falta_justificada',
+      motivo_falta: esFalta ? formAsistenciaMinera.motivo_falta.trim() : null,
+      notas: formAsistenciaMinera.notas.trim() || null,
+      regimen_jornada: trabajadorMinero.regimen_jornada || 'ciclo_acumulativo',
+      origen_registro: 'manual_minero',
+    };
+    const existente = registrosAsistencia.find(r =>
+      r.trabajador_id === registroMinero.trabajador_id && r.fecha === registroMinero.fecha && r.estado !== 'anulado'
+    );
+
+    setAsistenciaMineraSaving(true);
+    try {
+      const data = existente?.id
+        ? await rrhhService.actualizarAsistencia(existente.id, registroMinero)
+        : await rrhhService.registrarAsistencia(empresa.id, registroMinero);
+      setRegistrosAsistencia(prev => [data, ...prev.filter(r => !(r.trabajador_id === data.trabajador_id && r.fecha === data.fecha))]);
+      setPanelAsistenciaMinera(false);
+      addNotificacion(existente?.id ? 'Asistencia minera actualizada.' : 'Asistencia minera registrada.');
+    } catch (err) {
+      addNotificacion(`No se pudo guardar la asistencia minera: ${err.message || 'error de base de datos'}`);
+    } finally {
+      setAsistenciaMineraSaving(false);
+    }
   };
 
   const obtenerUbicacion = (e) => {
@@ -15562,6 +15680,7 @@ function ControlAsistencia() {
 
   // Tabs
   const allTabs = [['diaria','Vista diaria'],['semanal','Vista semanal'],['mensual','Vista mensual'],['resumen','Resumen por trabajador'],['aut_he','Autorizaciones HE'],['biometrico','Biometrico']];
+  if (trabajadoresMineros.length > 0) allTabs.splice(1, 0, ['minero_asistencia','Asistencia minera']);
   if (trabajadoresMineros.length > 0) allTabs.push(['minero','Régimen Minero']);
   if (hayMinerosRoster) allTabs.push(['roster','Roster minero']);
   allTabs.push(['sar','SAR / Geocercas']);
@@ -15582,7 +15701,7 @@ function ControlAsistencia() {
               <button
                 className={`btn btn-sm ${poblacion === 'honorarios' ? 'btn-primary' : 'btn-ghost'}`}
                 style={{borderRadius:0, border:'none', padding:'3px 12px'}}
-                onClick={() => { setPoblacion('honorarios'); if (tab === 'minero') setTab('diaria'); }}
+                onClick={() => { setPoblacion('honorarios'); if (tab === 'minero' || tab === 'minero_asistencia') setTab('diaria'); }}
               >Honorarios</button>
             </span>
           </div>
@@ -15590,9 +15709,84 @@ function ControlAsistencia() {
         <div className="row" style={{gap:10}}><button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}} onClick={() => setKiosk(true)}>{I.clock} Reloj Control (Móvil)</button><button className="btn btn-secondary" onClick={() => { setExportError(''); setExportModal(true); }}>{I.download} Exportar Excel</button><button className="btn btn-secondary" onClick={() => setBioPanel(true)}>Importar marcaciones</button><button className="btn btn-secondary" onClick={abrirMasivo}>Registro masivo</button><button className="btn btn-secondary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Manual</button></div>
       </div>
 
-      {tab !== 'minero' && <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Total Gral.</div><div className="kpi-value">{kpis.total}</div></div><div className="kpi-card"><div className="kpi-label">Dias completos</div><div className="kpi-value">{kpis.completos}</div></div><div className="kpi-card"><div className="kpi-label">Tardanzas</div><div className="kpi-value" style={{color:'var(--orange)'}}>{kpis.tardanzas}</div></div><div className="kpi-card"><div className="kpi-label">Faltas</div><div className="kpi-value" style={{color:'var(--danger)'}}>{kpis.faltas}</div></div></div>}
+      {!['minero', 'minero_asistencia'].includes(tab) && <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Total Gral.</div><div className="kpi-value">{kpis.total}</div></div><div className="kpi-card"><div className="kpi-label">Dias completos</div><div className="kpi-value">{kpis.completos}</div></div><div className="kpi-card"><div className="kpi-label">Tardanzas</div><div className="kpi-value" style={{color:'var(--orange)'}}>{kpis.tardanzas}</div></div><div className="kpi-card"><div className="kpi-label">Faltas</div><div className="kpi-value" style={{color:'var(--danger)'}}>{kpis.faltas}</div></div></div>}
 
       <div className="tabs">{allTabs.map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
+
+      {tab === 'minero_asistencia' && <div className="card">
+        <div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}>
+          <div className="row" style={{justifyContent:'space-between', width:'100%', gap:12, flexWrap:'wrap'}}>
+            <h3>Asistencia del día (Régimen Minero)</h3>
+            <div className="row" style={{gap:8}}>
+              <input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/>
+              <button className="btn btn-primary" type="button" onClick={() => abrirAsistenciaMinera()}>{I.plus} Registrar estado</button>
+            </div>
+          </div>
+          <div className="alert alert-info" style={{fontSize:12, margin:0}}>
+            Registra solo el estado real del día. Estas correcciones prevalecen sobre el ciclo programado en el Roster Minero; no calculan turno, tardanza, horas trabajadas ni horas extra.
+          </div>
+          <input className="input" placeholder="Filtrar por trabajador minero..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/>
+        </div>
+        <div className="table-wrap"><table className="tbl">
+          <thead><tr><th>Trabajador</th><th>Área</th><th>Jornada</th><th>Estado real</th><th>H. entrada ref.</th><th>H. salida ref.</th><th>Motivo</th><th>Acciones</th></tr></thead>
+          <tbody>{trabajadoresMineros.filter(t => !filtroTrabajador || t.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(t => {
+            const registro = registrosAsistencia
+              .filter(r => r.trabajador_id === t.id && r.fecha === fecha && r.estado !== 'anulado')
+              .reduce((masReciente, r) => (!masReciente || new Date(r.created_at) > new Date(masReciente.created_at)) ? r : masReciente, null);
+            const estadoLabel = registro?.estado === 'falta_justificada' ? 'Falta justificada'
+              : registro?.estado === 'falta' ? 'Falta'
+                : registro?.estado === 'incompleto' ? 'Incompleto'
+                  : 'Completo';
+            return <tr key={t.id}>
+              <td><strong>{t.nombre}</strong></td>
+              <td>{t.area || '—'}</td>
+              <td>{labelOr(REGIMEN_JORNADA_LABELS, t.regimen_jornada || 'ciclo_acumulativo')}</td>
+              <td>{registro ? <span className={'badge '+asistenciaBadge(registro.estado)}>{estadoLabel}</span> : <span className="text-muted">Sin registro real</span>}</td>
+              <td>{registro?.hora_entrada || '—'}</td>
+              <td>{registro?.hora_salida || '—'}</td>
+              <td>{registro?.motivo_falta || '—'}</td>
+              <td><button className="btn btn-sm btn-secondary" type="button" onClick={() => abrirAsistenciaMinera(t, registro)}>{registro ? 'Editar' : 'Registrar'}</button></td>
+            </tr>;
+          })}</tbody>
+        </table></div>
+      </div>}
+
+      {panelAsistenciaMinera && <>
+        <div className="side-panel-backdrop" onClick={() => setPanelAsistenciaMinera(false)}/>
+        <div className="side-panel" style={{width:'min(520px,96vw)'}}>
+          <div className="side-panel-head">
+            <div><div className="eyebrow">Asistencia real</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Régimen Minero</div></div>
+            <button className="icon-btn" type="button" onClick={() => setPanelAsistenciaMinera(false)}>{I.x}</button>
+          </div>
+          <form className="side-panel-body" onSubmit={guardarAsistenciaMinera}>
+            <div className="input-group"><label>Trabajador</label>
+              <select className="select" required value={formAsistenciaMinera.trabajador_id} onChange={e => setFormAsistenciaMinera(v => ({...v, trabajador_id:e.target.value}))}>
+                {trabajadoresMineros.map(t => <option key={t.id} value={t.id}>{t.nombre} · {labelOr(REGIMEN_JORNADA_LABELS, t.regimen_jornada || 'ciclo_acumulativo')}</option>)}
+              </select>
+            </div>
+            <div className="input-group"><label>Fecha</label><input className="input" required type="date" value={formAsistenciaMinera.fecha} onChange={e => setFormAsistenciaMinera(v => ({...v, fecha:e.target.value}))}/></div>
+            <div className="input-group"><label>Estado</label>
+              <select className="select" value={formAsistenciaMinera.estado} onChange={e => setFormAsistenciaMinera(v => ({...v, estado:e.target.value}))}>
+                <option value="completo">Completo</option>
+                <option value="falta">Falta</option>
+                <option value="falta_justificada">Falta justificada</option>
+                <option value="incompleto">Incompleto</option>
+              </select>
+            </div>
+            <div className="grid-2" style={{gap:12}}>
+              <div className="input-group"><label>Hora de entrada <span className="text-muted">(referencial)</span></label><input className="input" type="time" value={formAsistenciaMinera.hora_entrada} onChange={e => setFormAsistenciaMinera(v => ({...v, hora_entrada:e.target.value}))}/></div>
+              <div className="input-group"><label>Hora de salida <span className="text-muted">(referencial)</span></label><input className="input" type="time" value={formAsistenciaMinera.hora_salida} onChange={e => setFormAsistenciaMinera(v => ({...v, hora_salida:e.target.value}))}/></div>
+            </div>
+            {['falta', 'falta_justificada'].includes(formAsistenciaMinera.estado) && <div className="input-group"><label>Motivo *</label><textarea className="input" rows="3" required value={formAsistenciaMinera.motivo_falta} onChange={e => setFormAsistenciaMinera(v => ({...v, motivo_falta:e.target.value}))}/></div>}
+            <div className="input-group"><label>Notas <span className="text-muted">(opcional)</span></label><textarea className="input" rows="3" value={formAsistenciaMinera.notas} onChange={e => setFormAsistenciaMinera(v => ({...v, notas:e.target.value}))}/></div>
+            <div className="alert alert-info" style={{fontSize:12}}>No se guardarán horas trabajadas, tardanza ni horas extra. Las horas ingresadas son solo una referencia.</div>
+            <div className="row mt-6" style={{justifyContent:'flex-end'}}>
+              <button type="button" className="btn btn-secondary" onClick={() => setPanelAsistenciaMinera(false)}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={asistenciaMineraSaving}>{asistenciaMineraSaving ? 'Guardando...' : 'Guardar estado real'}</button>
+            </div>
+          </form>
+        </div>
+      </>}
 
       {tab === 'diaria' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%'}}><h3>Asistencia del dia (Régimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Geocerca</th><th>SAR</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.filter(r => !filtroTrabajador || r.trabajador.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(row=><tr key={row.trabajador.id} className="hover-row" style={{cursor:'pointer'}} onClick={()=>setResumenPanelId(row.trabajador.id)}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td><td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td><td><div className="row" style={{gap:4, flexWrap:'wrap'}}>{geocercaAsignadaPorTrabajador.has(row.trabajador.id) ? <span className="badge badge-cyan">Asignada</span> : <span className="badge badge-gray">Sin asignar</span>}{estadoGeocercaRow(row) === 'dentro' && <span className="badge badge-green">Dentro</span>}{(estadoGeocercaRow(row) === 'fuera' || estadoGeocercaRow(row) === 'rechazable') && <span className="badge badge-orange">Fuera</span>}</div></td><td>{mostrarSarBadge(row) ? <span className="badge badge-red">SAR: no llegada</span> : '-'}</td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><div className="row" style={{gap:6}}>{row.registro?.latitud ? <button type="button" className="icon-btn" title="Ver ubicación de marcación" style={{color:'var(--fg-muted)'}} onClick={(e)=>{e.stopPropagation(); abrirUbicacionMarcacion(row);}}>{I.mapPin}</button> : <button type="button" className="icon-btn" disabled title="Sin ubicación registrada" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.mapPin}</button>}{row.registro?.id ? <button type="button" className="icon-btn" title="Eliminar registro de asistencia" style={{color:'var(--danger)'}} onClick={(e)=>{e.stopPropagation(); eliminarRegistroAsistencia(row);}}>{I.trash}</button> : <button type="button" className="icon-btn" disabled title="Sin registro para eliminar" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.trash}</button>}<button className="btn btn-sm btn-secondary" onClick={(e)=>{e.stopPropagation(); abrirEdicion(row);}}>Editar</button></div></td></tr>)}</tbody></table></div></div>}
 
@@ -16037,10 +16231,11 @@ function ControlAsistencia() {
                 <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--border)', background:'#AEB9C9'}}/>Descanso</span>
                 <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--border)', background:'#D7DEE8'}}/>Sin ciclo</span>
                 <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--border)', background:'#C5A0EE'}}/>Inducción</span>
-                <span className="row roster-legend-item" style={{gap:4}}>{I.clock} Solicitud pendiente</span>
-                <span className="row roster-legend-item" style={{gap:4}}>{I.alertCircle} Marcación por confirmar</span>
-                <span className="row roster-legend-item" style={{gap:4}}>{I.dollar} Revisar impacto en nómina</span>
-                <span className="row roster-legend-item" style={{gap:4}}>{I.wrench} Ajuste manual</span>
+                <span className="row" style={{gap:4}}><span style={{width:12, height:12, borderRadius:2, display:'inline-block', border:'1px solid var(--border)', background:'#F4C76B'}}/>Ausencia autorizada: <strong>V</strong>/<strong>M</strong>/<strong>P</strong>/<strong>S</strong></span>
+                <span className="row roster-legend-item" style={{gap:4}}>{rosterBadge('arribaDerecha', 'var(--orange)', I.clock, true)} Solicitud pendiente</span>
+                <span className="row roster-legend-item" style={{gap:4}}>{rosterBadge('abajoIzquierda', 'var(--danger)', I.alertCircle, true)} Marcación por confirmar</span>
+                <span className="row roster-legend-item" style={{gap:4}}>{rosterBadge('abajoDerecha', 'var(--purple)', I.dollar, true)} Revisar impacto en nómina</span>
+                <span className="row roster-legend-item" style={{gap:4}}>{rosterBadge('arribaIzquierda', 'var(--orange)', I.wrench, true)} Ajuste manual</span>
                 <span className="row" style={{gap:4}}><strong style={{color:'var(--danger)', fontSize:13}}>F</strong> Falta</span>
               </div>
             </div>
@@ -16077,18 +16272,20 @@ function ControlAsistencia() {
                                 const est = estiloCeldaRoster(dia);
                                 const marcacion = marcacionPorConfirmar(dia);
                                 const impactoNomina = revisarImpactoNomina(dia);
+                                const ausencia = ausenciaAutorizada(dia);
                                 return (
                                   <td key={dia.fecha} style={{padding:0, minWidth:28}}>
                                     <div
                                       onClick={() => abrirAjusteDia(t, dia)}
-                                      title={`${dia.fecha} · ${est.label}${dia.ajustePendiente ? ' · solicitud pendiente' : ''}${tieneAjusteManual(dia, t.id) ? ' · ajuste manual aprobado' : ''}${esFaltaReal(dia) ? ' · falta' : ''}${marcacion ? ' · marcación por confirmar en Control de Asistencia' : ''}${impactoNomina ? ' · revisar impacto en nómina' : ''}`}
-                                      style={{position:'relative', boxSizing:'border-box', width:'100%', height:'100%', textAlign:'center', padding:'4px 2px', background:est.background, borderRadius:4, border:est.border, cursor: dia.origen === 'sin_ciclo' ? 'default' : 'pointer', minHeight:20}}
+                                      title={`${dia.fecha} · ${est.label}${ausencia ? ` · ${ausencia.tooltip}` : ''}${dia.ajustePendiente ? ' · solicitud pendiente' : ''}${tieneAjusteManual(dia, t.id) ? ' · ajuste manual aprobado' : ''}${esFaltaReal(dia) ? ' · falta' : ''}${marcacion ? ' · marcación por confirmar en Control de Asistencia' : ''}${impactoNomina ? ' · revisar impacto en nómina' : ''}`}
+                                      style={{position:'relative', boxSizing:'border-box', width:'100%', height:'100%', textAlign:'center', padding:'4px 2px', background:est.background, borderRadius:4, border:est.border, cursor: dia.origen === 'sin_ciclo' ? 'default' : 'pointer', minHeight:20, overflow:'hidden'}}
                                     >
                                       {tieneAjusteManual(dia, t.id) && rosterBadge('arribaIzquierda', 'var(--orange)', I.wrench)}
                                       {dia.ajustePendiente && rosterBadge('arribaDerecha', 'var(--orange)', I.clock)}
                                       {marcacion && rosterBadge('abajoIzquierda', 'var(--danger)', I.alertCircle)}
                                       {impactoNomina && rosterBadge('abajoDerecha', 'var(--purple)', I.dollar)}
                                       {esFaltaReal(dia) && rosterMarcaFalta()}
+                                      {ausencia && rosterMarcaAusencia(ausencia)}
                                     </div>
                                   </td>
                                 );
@@ -18480,6 +18677,31 @@ function RRHH_Operativo() {
   const [docAlertaTipo, setDocAlertaTipo] = useState('todos');
   const [docHighlightTipo, setDocHighlightTipo] = useState('');
 
+  const COLUMNAS_DEFAULT_OPS = [
+    { key: 'codigo', label: 'Código' },
+    { key: 'tecnico', label: 'Técnico' },
+    { key: 'cargo', label: 'Cargo' },
+    { key: 'unidad', label: 'Unidad organizacional' },
+    { key: 'sede', label: 'Sede' },
+    { key: 'turno', label: 'Turno' },
+    { key: 'jornada', label: 'Jornada' },
+    { key: 'contrato', label: 'Contrato' },
+    { key: 'modalidad', label: 'Modalidad' },
+    { key: 'vacaciones', label: 'Vacaciones Disp.' },
+    { key: 'estado', label: 'Estado' },
+    { key: 'acciones', label: 'Acciones' },
+  ];
+  const [visibleCols, setVisibleCols] = useState(() => {
+    try {
+      const stored = localStorage.getItem('erp_rrhh_ops_cols');
+      return stored ? JSON.parse(stored) : COLUMNAS_DEFAULT_OPS.map(c => c.key);
+    } catch(e) { return COLUMNAS_DEFAULT_OPS.map(c => c.key); }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('erp_rrhh_ops_cols', JSON.stringify(visibleCols));
+  }, [visibleCols]);
+
   // Estado para subida inline
   const inlineUploadFormBase = { fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', modoSubida: 'nueva_version', periodoIdAnterior: null, esIndefinido: false };
   const [inlineUploadReq, setInlineUploadReq] = useState(null);
@@ -19878,6 +20100,23 @@ function RRHH_Operativo() {
           {fichaTab === 'jornada' && (() => {
             const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === p.id).sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio));
             const asigActiva = asigsTrabajador.find(a => !a.fecha_fin);
+            const sumarDiaAsignacion = (fechaStr) => {
+              if (!fechaStr) return '';
+              const fecha = new Date(`${fechaStr}T00:00:00`);
+              fecha.setDate(fecha.getDate() + 1);
+              return fecha.toISOString().slice(0, 10);
+            };
+            // La sugerencia toma el inicio del tramo vigente. Si el último tramo
+            // conocido ya está cerrado, comienza el día posterior a su fin.
+            const tramoReferencia = asigActiva || asigsTrabajador[0] || null;
+            const fechaInicioSugerida = tramoReferencia
+              ? (tramoReferencia.fecha_fin ? sumarDiaAsignacion(tramoReferencia.fecha_fin) : tramoReferencia.fecha_inicio)
+              : (p.fecha_ingreso || '');
+            const fechaAnteriorATramoVigente = Boolean(
+              asigActiva?.fecha_inicio
+              && formAsig.fecha_inicio
+              && formAsig.fecha_inicio < asigActiva.fecha_inicio
+            );
             const tipoTramoLabel = { normal: 'Normal', suspension_perfecta: 'Suspensión perfecta' };
             const presetJornada = {
               general: { regimen: 'general', t: null, d: null, label: 'Jornada general' },
@@ -19939,11 +20178,11 @@ function RRHH_Operativo() {
                     setShowFormAsig(v => !v);
                     setRetroWallAsig(null); setRetroWallMotivoAsig('');
                     setFormAsig(f => {
-                      if (asigActiva) return { ...f, fecha_inicio: '', regimen_jornada: presetDeAsignacion(asigActiva), fecha_inicio_ciclo: asigActiva.fecha_inicio_ciclo || '' };
+                      if (asigActiva) return { ...f, fecha_inicio: fechaInicioSugerida, regimen_jornada: presetDeAsignacion(asigActiva), fecha_inicio_ciclo: asigActiva.fecha_inicio_ciclo || '' };
                       const esCicloFicha = esRegimenMinero(p.regimen_jornada);
                       return {
                         ...f,
-                        fecha_inicio: p.fecha_ingreso || '',
+                        fecha_inicio: fechaInicioSugerida,
                         regimen_jornada: esCicloFicha ? p.regimen_jornada : 'general',
                         fecha_inicio_ciclo: esCicloFicha ? (p.fecha_inicio_ciclo || '') : '',
                       };
@@ -19961,6 +20200,9 @@ function RRHH_Operativo() {
                         </select>
                       </div>
                       <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsig.fecha_inicio} onChange={e => setFormAsig(f => ({ ...f, fecha_inicio: e.target.value }))}/></div>
+                      {fechaAnteriorATramoVigente && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>
+                        Esta fecha queda antes del tramo vigente actual ({asigActiva.fecha_inicio}). Verifica que sea una corrección retroactiva; si el período tiene nómina procesada, el retro wall solicitará justificación y autorización al guardar.
+                      </div>}
                       {formAsig.tipo_tramo === 'normal' && <>
                         <div className="input-group"><label>Régimen de jornada</label>
                           <select className="select" value={formAsig.regimen_jornada} onChange={e => setFormAsig(f => ({ ...f, regimen_jornada: e.target.value, fecha_inicio_ciclo: e.target.value === 'general' ? '' : f.fecha_inicio_ciclo }))}>
@@ -21025,10 +21267,24 @@ function RRHH_Operativo() {
               <option value="planilla">Planilla</option>
               <option value="honorarios">Honorarios</option>
             </select>
+            <ColumnFilter columns={COLUMNAS_DEFAULT_OPS} visibleCols={visibleCols} onChange={setVisibleCols} />
           </div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Código</th><th>Técnico</th><th>Cargo</th><th>Unidad organizacional</th><th>Sede</th><th>Turno</th><th>Jornada</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones Disp.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+              <thead><tr>
+                {visibleCols.includes('codigo') && <th>Código</th>}
+                {visibleCols.includes('tecnico') && <th>Técnico</th>}
+                {visibleCols.includes('cargo') && <th>Cargo</th>}
+                {visibleCols.includes('unidad') && <th>Unidad organizacional</th>}
+                {visibleCols.includes('sede') && <th>Sede</th>}
+                {visibleCols.includes('turno') && <th>Turno</th>}
+                {visibleCols.includes('jornada') && <th>Jornada</th>}
+                {visibleCols.includes('contrato') && <th>Contrato</th>}
+                {visibleCols.includes('modalidad') && <th>Modalidad</th>}
+                {visibleCols.includes('vacaciones') && <th>Vacaciones Disp.</th>}
+                {visibleCols.includes('estado') && <th>Estado</th>}
+                {visibleCols.includes('acciones') && <th style={{textAlign:'right'}}>Acciones</th>}
+              </tr></thead>
               <tbody>
                 {personal.length === 0 && <tr><td colSpan={12} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
                 {personal.filter(p => {
@@ -21050,32 +21306,32 @@ function RRHH_Operativo() {
                   const contratoInfoFila = rrhhContratoVencimientoInfo(contratoDocFila);
                   return (
                     <tr key={p.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => { setSelTecnico(p); setFichaTab('ficha'); }}>
-                      <td className="mono text-muted">{p.codigo || '—'}</td>
-                      <td>
+                      {visibleCols.includes('codigo') && <td className="mono text-muted">{p.codigo || '—'}</td>}
+                      {visibleCols.includes('tecnico') && <td>
                         <div className="row">
                           <div className="avatar" style={{width:30,height:30,fontSize:11}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
                           <div><strong>{p.nombre}</strong><div className="text-muted" style={{fontSize:11}}>DNI: {p.dni || p.documento || '—'}</div></div>
                         </div>
-                      </td>
-                      <td>{p.cargo}</td>
-                      <td>{resolverUnidadOrganizacional(p) || <span className="text-subtle">Sin posición</span>}</td>
-                      <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
-                      <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>
-                      <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span>}</td>
-                      <td>{esHon ? <span className="text-subtle">—</span> : <span className={`badge ${contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'badge-red' : contratoInfoFila.badge}`} style={{fontSize:11}}>{contratoInfoFila.texto}</span>}</td>
-                      <td><span className={'badge '+(esHon ? 'badge-gray' : 'badge-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></td>
-                      <td className="num">{esHon ? <span className="text-subtle">—</span> : `${solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso||null, p.dias_vacaciones_total??30, solicitudesRRHH.filter(s => s.personal_id === p.id)).saldo} días`}</td>
-                      <td>
+                      </td>}
+                      {visibleCols.includes('cargo') && <td>{p.cargo}</td>}
+                      {visibleCols.includes('unidad') && <td>{resolverUnidadOrganizacional(p) || <span className="text-subtle">Sin posición</span>}</td>}
+                      {visibleCols.includes('sede') && <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>}
+                      {visibleCols.includes('turno') && <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>}
+                      {visibleCols.includes('jornada') && <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span>}</td>}
+                      {visibleCols.includes('contrato') && <td>{esHon ? <span className="text-subtle">—</span> : <span className={`badge ${contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'badge-red' : contratoInfoFila.badge}`} style={{fontSize:11}}>{contratoInfoFila.texto}</span>}</td>}
+                      {visibleCols.includes('modalidad') && <td><span className={'badge '+(esHon ? 'badge-gray' : 'badge-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></td>}
+                      {visibleCols.includes('vacaciones') && <td className="num">{esHon ? <span className="text-subtle">—</span> : `${solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso||null, p.dias_vacaciones_total??30, solicitudesRRHH.filter(s => s.personal_id === p.id)).saldo} días`}</td>}
+                      {visibleCols.includes('estado') && <td>
                         <span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span>
                         {!esHon && !p.sede && !p.turno_id && <span className="badge badge-gray" style={{fontSize:10, marginLeft:4}}>Ficha incompleta</span>}
-                      </td>
-                      <td>
+                      </td>}
+                      {visibleCols.includes('acciones') && <td>
                         <div style={{display:'flex', gap:4, justifyContent:'flex-end'}} onClick={e => e.stopPropagation()}>
                           <button className="btn btn-sm btn-ghost" onClick={() => { setSelTecnico(p); setFichaTab('ficha'); }}>Ver ficha</button>
                           <button className="icon-btn" title="Editar colaborador" style={{color:'var(--cyan)'}} onClick={() => abrirEditarTecnico(p)}>{I.edit}</button>
                           <button className="icon-btn" title="Eliminar colaborador" style={{color:'var(--danger)'}} onClick={() => eliminarTecnico(p)}>{I.trash}</button>
                         </div>
-                      </td>
+                      </td>}
                     </tr>
                   );
                 })}
@@ -21940,6 +22196,8 @@ export function SolicitudesRrhh() {
   const [accionTipo, setAccionTipo] = useState('');
   const [accionComentario, setAccionComentario] = useState('');
   const [accionSaving, setAccionSaving] = useState(false);
+  const [aplicarConflictos, setAplicarConflictos] = useState([]);
+  const [retroWallAplicar, setRetroWallAplicar] = useState(null);
 
   const canAdmin = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo || role?.es_admin_empresa);
   const todosPersonal = useMemo(() => [
@@ -21999,7 +22257,18 @@ export function SolicitudesRrhh() {
     setPanelNueva(false);
     setHistorialSolId(null);
     setAccionSolId(null);
+    setAccionTipo('');
     setAccionComentario('');
+    setAplicarConflictos([]);
+    setRetroWallAplicar(null);
+  };
+
+  const abrirAplicarAsistencia = (solicitud) => {
+    setAccionSolId(solicitud.id);
+    setAccionTipo('aplicar_asistencia');
+    setAccionComentario('');
+    setAplicarConflictos([]);
+    setRetroWallAplicar(null);
   };
 
   const enviarSolicitud = async (e) => {
@@ -22063,14 +22332,38 @@ export function SolicitudesRrhh() {
         updated = await solicitudesRrhhService.rechazarRrhh(accionSolId, empresa.id, accionComentario, usuario);
       } else if (accionTipo === 'anular') {
         updated = await solicitudesRrhhService.anularSolicitud(accionSolId, empresa.id, accionComentario, usuario);
+      } else if (accionTipo === 'aplicar_asistencia') {
+        const resultado = await solicitudesRrhhService.aplicarSolicitudAsistencia(empresa.id, accionSolId, {
+          confirmarReemplazo: aplicarConflictos.length > 0,
+          forzarOverride: Boolean(retroWallAplicar),
+          motivoOverride: accionComentario,
+        });
+        if (resultado?.requiere_confirmar_conflictos) {
+          setAplicarConflictos(resultado.conflictos || []);
+          addNotificacion('Se encontraron registros de asistencia existentes. Revísalos y confirma explícitamente si deseas reemplazarlos.', 'warning');
+          return;
+        }
+        if (resultado?.aplicada) {
+          updated = { ...sol, aplicada_asistencia: true };
+          const reemplazos = Number(resultado.registros_reemplazados || 0);
+          const inserts = Number(resultado.registros_insertados || 0);
+          addNotificacion(`Solicitud aplicada a asistencia: ${inserts} registro(s) creado(s)${reemplazos ? ` y ${reemplazos} reemplazado(s) tras confirmación.` : '.'}`);
+        }
       }
       if (updated) {
         setSolicitudes(prev => prev.map(s => s.id === updated.id ? updated : s));
-        addNotificacion('Acción aplicada correctamente.');
+        if (accionTipo !== 'aplicar_asistencia') addNotificacion('Acción aplicada correctamente.');
       }
       cerrarPaneles();
     } catch (err) {
-      addNotificacion('Error: ' + err.message);
+      const mensaje = err?.message || '';
+      if (accionTipo === 'aplicar_asistencia' && mensaje.startsWith('RETRO_WALL_PERMISO:')) {
+        addNotificacion(mensaje.replace('RETRO_WALL_PERMISO:', '').trim(), 'error');
+      } else if (accionTipo === 'aplicar_asistencia' && mensaje.startsWith('RETRO_WALL:')) {
+        setRetroWallAplicar(mensaje.replace('RETRO_WALL:', '').trim());
+      } else {
+        addNotificacion('Error: ' + mensaje);
+      }
     } finally {
       setAccionSaving(false);
     }
@@ -22141,6 +22434,16 @@ export function SolicitudesRrhh() {
 
   const accionSol = solicitudes.find(s => s.id === accionSolId);
   const historialSol = solicitudes.find(s => s.id === historialSolId);
+
+  const accionAplicarAsistencia = (sol) => {
+    if (!canAdmin || sol.estado !== 'confirmada_rrhh' || sol.aplicada_asistencia) return null;
+    if (!solicitudesRrhhService.estadoAsistenciaDesdeSolicitud(sol.tipo)) return null;
+    return (
+      <button type="button" className="btn btn-sm btn-primary" onClick={() => abrirAplicarAsistencia(sol)}>
+        Aplicar a asistencia
+      </button>
+    );
+  };
 
   // ── Filas de tabla compartida ────────────────────────────────────────────────
   function SolFila({ sol, accionesExtra }) {
@@ -22289,6 +22592,14 @@ export function SolicitudesRrhh() {
                   <button type="button" className="btn btn-sm btn-secondary" style={{color:'var(--red)'}}
                     onClick={() => { setAccionSolId(sol.id); setAccionTipo('rechazar_rrhh'); setAccionComentario(''); }}>
                     Rechazar
+                  </button>
+                </div>
+              ) : sol.estado === 'confirmada_rrhh' ? (
+                <div className="row" style={{gap:6}}>
+                  {accionAplicarAsistencia(sol)}
+                  <button type="button" className="btn btn-sm btn-secondary" style={{color:'var(--red)'}}
+                    onClick={() => { setAccionSolId(sol.id); setAccionTipo('anular'); setAccionComentario(''); }}>
+                    Anular
                   </button>
                 </div>
               ) : sol.estado === 'enviada' ? (
@@ -22589,6 +22900,7 @@ export function SolicitudesRrhh() {
   const accionTitulos = {
     aprobar_jefe: 'Aprobar solicitud', rechazar_jefe: 'Rechazar solicitud',
     confirmar_rrhh: 'Confirmar en RRHH', rechazar_rrhh: 'Rechazar en RRHH', anular: 'Anular solicitud',
+    aplicar_asistencia: 'Aplicar a asistencia',
   };
   const esRechazo = ['rechazar_jefe', 'rechazar_rrhh', 'anular'].includes(accionTipo);
   const panelAccion = accionSolId ? (
@@ -22613,11 +22925,41 @@ export function SolicitudesRrhh() {
               ¿Estás seguro de que quieres anular esta solicitud? Esta acción no se puede deshacer.
             </div>
           )}
+          {accionTipo === 'aplicar_asistencia' && (
+            <>
+              <div style={{marginBottom:14, padding:'10px 12px', background:'rgba(6,182,212,0.08)', border:'1px solid rgba(6,182,212,0.25)', borderRadius:8, fontSize:13}}>
+                Esta acción manual generará asistencia para <strong>cada día calendario</strong> del rango y vinculará los registros con esta solicitud. No se ejecuta automáticamente al confirmar RRHH.
+              </div>
+              <div className="card" style={{padding:12, marginBottom:14, fontSize:12}}>
+                <div><strong>Estado a registrar:</strong> {solicitudesRrhhService.estadoAsistenciaDesdeSolicitud(accionSol?.tipo) || 'No aplicable'}</div>
+                {accionSol?.tipo === 'permiso_con_goce' && (
+                  <div className="text-muted" style={{marginTop:4}}>Permiso con goce se registra con su propio estado en asistencia y se mantiene como ausencia sin descuento en nómina.</div>
+                )}
+              </div>
+              {aplicarConflictos.length > 0 && (
+                <div style={{marginBottom:14, padding:'10px 12px', background:'rgba(251,191,36,0.12)', border:'1px solid rgba(251,191,36,0.4)', borderRadius:8, fontSize:12}}>
+                  <div style={{fontWeight:700, marginBottom:6}}>Hay {aplicarConflictos.length} registro(s) existente(s)</div>
+                  <div className="text-muted" style={{marginBottom:7}}>No se modificó nada. Si continúas, estos registros se reemplazarán por la ausencia de esta solicitud.</div>
+                  {aplicarConflictos.map(conflicto => (
+                    <div key={conflicto.id || conflicto.fecha} style={{padding:'3px 0'}}>
+                      {conflicto.fecha}: <strong>{conflicto.estado}</strong>{conflicto.origen_registro ? ` · ${conflicto.origen_registro}` : ''}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {retroWallAplicar && (
+                <div style={{marginBottom:14, padding:'10px 12px', background:'rgba(251,191,36,0.12)', border:'1px solid rgba(251,191,36,0.4)', borderRadius:8, fontSize:12}}>
+                  <div style={{fontWeight:700, marginBottom:4}}>Cambio retroactivo protegido</div>
+                  <div>{retroWallAplicar}</div>
+                </div>
+              )}
+            </>
+          )}
           <div className="input-group" style={{marginBottom:14}}>
-            <label>{esRechazo ? 'Motivo / comentario *' : 'Comentario (opcional)'}</label>
+            <label>{esRechazo ? 'Motivo / comentario *' : retroWallAplicar ? 'Justificación del override *' : 'Comentario (opcional)'}</label>
             <textarea className="input" rows={3} value={accionComentario}
               onChange={e => setAccionComentario(e.target.value)}
-              placeholder={esRechazo ? 'Obligatorio' : 'Opcional'}/>
+              placeholder={esRechazo || retroWallAplicar ? 'Obligatorio' : 'Opcional'}/>
           </div>
           {accionTipo === 'confirmar_rrhh' && accionSol && (() => {
             const imp = solicitudesRrhhService.calcularImpactoNomina
@@ -22636,9 +22978,9 @@ export function SolicitudesRrhh() {
               type="button"
               className={'btn ' + (esRechazo ? 'btn-secondary' : 'btn-primary')}
               style={esRechazo ? {color:'var(--red)', borderColor:'var(--red)'} : {}}
-              onClick={ejecutarAccion} disabled={accionSaving}
+              onClick={ejecutarAccion} disabled={accionSaving || (Boolean(retroWallAplicar) && !accionComentario.trim())}
             >
-              {accionSaving ? 'Procesando...' : accionTitulos[accionTipo]}
+              {accionSaving ? 'Procesando...' : retroWallAplicar ? 'Forzar cambio (requiere autorización)' : aplicarConflictos.length > 0 ? `Reemplazar ${aplicarConflictos.length} registro(s) y aplicar` : accionTitulos[accionTipo]}
             </button>
           </div>
         </div>
