@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { ColumnFilter } from './components/ColumnFilter.jsx';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr } from './utils/rrhhLabels.js';
 import { I, money } from './icons.jsx';
@@ -8228,6 +8229,31 @@ function RRHHAdmin() {
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const [docPreviewReqAdmin, setDocPreviewReqAdmin] = useState(null);
   const [docPreviewPersonaAdmin, setDocPreviewPersonaAdmin] = useState(null);
+
+  const COLUMNAS_DEFAULT_ADMIN = [
+    { key: 'codigo', label: 'Código' },
+    { key: 'colaborador', label: 'Colaborador' },
+    { key: 'cargo', label: 'Cargo' },
+    { key: 'unidad', label: 'Unidad organizacional' },
+    { key: 'sede', label: 'Sede' },
+    { key: 'turno', label: 'Turno' },
+    { key: 'jornada', label: 'Jornada' },
+    { key: 'contrato', label: 'Contrato' },
+    { key: 'modalidad', label: 'Modalidad' },
+    { key: 'vacaciones', label: 'Vacaciones disp.' },
+    { key: 'estado', label: 'Estado' },
+    { key: 'acciones', label: 'Acciones' },
+  ];
+  const [visibleColsAdmin, setVisibleColsAdmin] = useState(() => {
+    try {
+      const stored = localStorage.getItem('erp_rrhh_admin_cols');
+      return stored ? JSON.parse(stored) : COLUMNAS_DEFAULT_ADMIN.map(c => c.key);
+    } catch(e) { return COLUMNAS_DEFAULT_ADMIN.map(c => c.key); }
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('erp_rrhh_admin_cols', JSON.stringify(visibleColsAdmin));
+  }, [visibleColsAdmin]);
   const [visorUrlAdmin, setVisorUrlAdmin] = useState(null);
   const [previewLoadingUrlAdmin, setPreviewLoadingUrlAdmin] = useState(false);
   const visorTimerRefAdmin = useRef(null);
@@ -10860,12 +10886,26 @@ function RRHHAdmin() {
               <option value="planilla">Planilla</option>
               <option value="honorarios">Honorarios</option>
             </select>
+            <ColumnFilter columns={COLUMNAS_DEFAULT_ADMIN} visibleCols={visibleColsAdmin} onChange={setVisibleColsAdmin} />
           </div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Código</th><th>Colaborador</th><th>Cargo</th><th>Unidad organizacional</th><th>Sede</th><th>Turno</th><th>Contrato</th><th>Modalidad</th><th>Vacaciones disp.</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+              <thead><tr>
+                {visibleColsAdmin.includes('codigo') && <th>Código</th>}
+                {visibleColsAdmin.includes('colaborador') && <th>Colaborador</th>}
+                {visibleColsAdmin.includes('cargo') && <th>Cargo</th>}
+                {visibleColsAdmin.includes('unidad') && <th>Unidad organizacional</th>}
+                {visibleColsAdmin.includes('sede') && <th>Sede</th>}
+                {visibleColsAdmin.includes('turno') && <th>Turno</th>}
+                {visibleColsAdmin.includes('jornada') && <th>Jornada</th>}
+                {visibleColsAdmin.includes('contrato') && <th>Contrato</th>}
+                {visibleColsAdmin.includes('modalidad') && <th>Modalidad</th>}
+                {visibleColsAdmin.includes('vacaciones') && <th>Vacaciones disp.</th>}
+                {visibleColsAdmin.includes('estado') && <th>Estado</th>}
+                {visibleColsAdmin.includes('acciones') && <th style={{textAlign:'right'}}>Acciones</th>}
+              </tr></thead>
               <tbody>
-                {todosPersonal.length === 0 && <tr><td colSpan={11} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal administrativo registrado.</td></tr>}
+                {todosPersonal.length === 0 && <tr><td colSpan={Math.max(visibleColsAdmin.length, 1)} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal administrativo registrado.</td></tr>}
                 {todosPersonal.filter(p => {
                   if (filtroEstado && p.estado !== filtroEstado) return false;
                   if (filtroModalidad) {
@@ -10884,35 +10924,36 @@ function RRHHAdmin() {
                   const contratoInfoFila = rrhhAdminContratoVencimientoInfo(contratoDocFila);
                   return (
                   <tr key={p.id} className="hover-row" onClick={() => { setSel(p.id); setTab('ficha'); }} style={{cursor:'pointer'}}>
-                    <td className="mono text-muted">{p.codigo || '—'}</td>
-                    <td>
+                    {visibleColsAdmin.includes('codigo') && <td className="mono text-muted">{p.codigo || '—'}</td>}
+                    {visibleColsAdmin.includes('colaborador') && <td>
                       <div className="row">
                         <div className="avatar" style={{width:30,height:30,fontSize:11}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
                         <div><strong>{p.nombre}</strong><div className="text-muted" style={{fontSize:11}}>DNI: {p.dni || p.documento || '—'}</div></div>
                       </div>
-                    </td>
-                    <td>{p.cargo}</td>
-                    <td>{unidadNombrePorId.get(posiciones.find(pos => pos.id === p.posicion_id)?.unidad_organizacional_id) || p.area || <span className="text-subtle">Sin posición</span>}</td>
-                    <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>
-                    <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnosOptions.find(t => t.id === p.turno_id)?.nombre || 'Sin turno'}</span>}</td>
-                    <td>{esHon ? <span className="text-subtle">—</span> : (
+                    </td>}
+                    {visibleColsAdmin.includes('cargo') && <td>{p.cargo}</td>}
+                    {visibleColsAdmin.includes('unidad') && <td>{unidadNombrePorId.get(posiciones.find(pos => pos.id === p.posicion_id)?.unidad_organizacional_id) || p.area || <span className="text-subtle">Sin posición</span>}</td>}
+                    {visibleColsAdmin.includes('sede') && <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>}
+                    {visibleColsAdmin.includes('turno') && <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnosOptions.find(t => t.id === p.turno_id)?.nombre || 'Sin turno'}</span>}</td>}
+                    {visibleColsAdmin.includes('jornada') && <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span>}</td>}
+                    {visibleColsAdmin.includes('contrato') && <td>{esHon ? <span className="text-subtle">—</span> : (
                       <span className={`badge ${contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'badge-red' : contratoInfoFila.badge}`}>
                         {contratoInfoFila.texto}
                       </span>
-                    )}</td>
-                    <td>{esHon ? <span className="text-subtle">—</span> : p.modalidad}</td>
-                    <td className="num">{esHon ? <span className="text-subtle">—</span> : `${rrhhAdminCalcVacProp(p, solicitudesRRHH)} días`}</td>
-                    <td>
+                    )}</td>}
+                    {visibleColsAdmin.includes('modalidad') && <td>{esHon ? <span className="text-subtle">—</span> : p.modalidad}</td>}
+                    {visibleColsAdmin.includes('vacaciones') && <td className="num">{esHon ? <span className="text-subtle">—</span> : `${rrhhAdminCalcVacProp(p, solicitudesRRHH)} días`}</td>}
+                    {visibleColsAdmin.includes('estado') && <td>
                       <span className="badge badge-green">{p.estado}</span>
                       {!esHon && !p.sede && !p.turno_id && <span className="badge badge-gray" style={{fontSize:10, marginLeft:4}}>Ficha incompleta</span>}
-                    </td>
-                    <td>
+                    </td>}
+                    {visibleColsAdmin.includes('acciones') && <td>
                       <div style={{display:'flex', gap:4, justifyContent:'flex-end'}}>
                         <button className="btn btn-sm btn-ghost" onClick={e=>{e.stopPropagation();setSel(p.id);setTab('ficha');}}>Ver ficha</button>
                         <button className="icon-btn" title="Editar colaborador" style={{color:'var(--cyan)'}} onClick={e=>{e.stopPropagation();abrirEditarColaborador(p);}}>{I.edit}</button>
                         <button className="icon-btn" title="Eliminar colaborador" style={{color:'var(--danger)'}} onClick={e=>{e.stopPropagation();eliminarColaborador(p);}}>{I.trash}</button>
                       </div>
-                    </td>
+                    </td>}
                   </tr>
                 );
                 })}

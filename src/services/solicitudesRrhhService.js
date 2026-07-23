@@ -48,6 +48,21 @@ export function defaultClasificacionPago(tipo) {
   return 'remunerado';
 }
 
+// La solicitud conserva su tipo original; este es el estado operativo que se
+// persiste cuando un administrador decide aplicarla manualmente a asistencia.
+// Cada tipo conserva su semántica en asistencia; permiso_con_goce continúa
+// siendo una ausencia remunerada para nómina.
+export const ESTADOS_ASISTENCIA_SOLICITUD = {
+  vacaciones: 'vacaciones',
+  licencia_medica: 'licencia_medica',
+  permiso_con_goce: 'permiso_con_goce',
+  permiso_sin_goce: 'permiso_sin_goce',
+};
+
+export function estadoAsistenciaDesdeSolicitud(tipo) {
+  return ESTADOS_ASISTENCIA_SOLICITUD[tipo] || null;
+}
+
 function requiereDocumento(tipo) {
   return ['licencia_medica', 'licencia_maternidad', 'licencia_paternidad'].includes(tipo);
 }
@@ -314,6 +329,50 @@ export async function anularSolicitud(solicitudId, empresaId, motivo, usuario) {
     motivo_anulacion: motivo.trim(),
     _usuario: usuario,
   });
+}
+
+/**
+ * Aplica, por decisión explícita de RRHH, una solicitud ya confirmada a la
+ * asistencia. El RPC hace toda la operación en una transacción: detecta
+ * conflictos sin sobrescribir, protege retroactividad y marca la solicitud.
+ */
+export async function aplicarSolicitudAsistencia(empresaId, solicitudId, opts = {}) {
+  const {
+    confirmarReemplazo = false,
+    forzarOverride = false,
+    motivoOverride = null,
+  } = opts;
+
+  if (getDataMode() !== 'supabase') {
+    const idx = mockSolicitudes.findIndex(s => s.id === solicitudId && s.empresa_id === empresaId);
+    if (idx === -1) throw new Error('SOLICITUD_NO_ENCONTRADA: la solicitud no pertenece al tenant indicado.');
+    const solicitud = mockSolicitudes[idx];
+    if (solicitud.estado !== 'confirmada_rrhh') throw new Error('SOLICITUD_NO_CONFIRMADA: solo se puede aplicar una solicitud confirmada por RRHH.');
+    if (solicitud.aplicada_asistencia) throw new Error('SOLICITUD_YA_APLICADA: la solicitud ya fue aplicada a asistencia.');
+    const estado = estadoAsistenciaDesdeSolicitud(solicitud.tipo);
+    if (!estado) throw new Error(`TIPO_SOLICITUD_NO_APLICABLE: el tipo ${solicitud.tipo} no se puede aplicar a asistencia.`);
+    const updated = { ...solicitud, aplicada_asistencia: true, actualizado_en: new Date().toISOString() };
+    mockSolicitudes[idx] = updated;
+    return {
+      aplicada: true,
+      solicitud_id: solicitudId,
+      estado_asistencia: estado,
+      registros_insertados: 0,
+      registros_reemplazados: 0,
+      modo_mock: true,
+    };
+  }
+
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('aplicar_solicitud_rrhh_a_asistencia', {
+    p_empresa_id: empresaId,
+    p_solicitud_id: solicitudId,
+    p_confirmar_reemplazo: Boolean(confirmarReemplazo),
+    p_forzar_override: Boolean(forzarOverride),
+    p_motivo_override: motivoOverride || null,
+  });
+  if (error) throw error;
+  return data || {};
 }
 
 export async function cargarConfigAusencias(empresaId) {

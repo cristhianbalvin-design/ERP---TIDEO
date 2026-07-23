@@ -245,7 +245,7 @@ export function calcularRangoRosterMinero({
       teorico = { estado: enInduccion ? 'en_induccion' : 'en_descanso', estaEnInduccion: enInduccion };
     }
 
-    const registro = (!sinCiclo && fechaStr <= hoyStr)
+    const registro = (fechaStr <= hoyStr)
       ? registrosTrabajador
           .filter(r => r.fecha === fechaStr)
           .reduce((masReciente, r) => (!masReciente || new Date(r.created_at) > new Date(masReciente.created_at)) ? r : masReciente, null)
@@ -256,6 +256,12 @@ export function calcularRangoRosterMinero({
     }
 
     if (sinCiclo) {
+      // Una ausencia autorizada debe poder leerse en la grilla aun cuando el
+      // trabajador no tuviera ciclo minero vigente ese día. No convierte el
+      // tramo a minero ni modifica el balance: solo expone el registro real.
+      if (registro && esAusenciaAutorizadaRoster(registro.estado)) {
+        return { fecha: fechaStr, origen: 'real', estado: registro.estado, detalle: registro, ajustePendiente, ajusteAprobado: null, registro, teorico: null, pendienteRevision: false };
+      }
       return { fecha: fechaStr, origen: 'sin_ciclo', estado: 'sin_ciclo_vigente', detalle: null, ajustePendiente, ajusteAprobado: null, registro: null, teorico: null, pendienteRevision: false };
     }
 
@@ -268,6 +274,20 @@ export function calcularRangoRosterMinero({
     return { fecha: fechaStr, origen: 'teorico', estado: teorico.estado, detalle: teorico, ajustePendiente, ajusteAprobado: null, registro: null, teorico, pendienteRevision: false };
   });
 }
+
+// Ausencias aprobadas que llegan desde solicitudes_rrhh mediante el puente
+// manual de asistencia. Conservan su tipo para la grilla, pero en el balance
+// de roster se comportan igual que una falta: no son mina, descanso gozado ni
+// inducción, y no alteran la posición teórica del ciclo.
+export const ESTADOS_AUSENCIA_AUTORIZADA = Object.freeze([
+  'vacaciones',
+  'licencia_medica',
+  'permiso_con_goce',
+  'permiso_sin_goce',
+]);
+
+export const esAusenciaAutorizadaRoster = (estado) =>
+  ESTADOS_AUSENCIA_AUTORIZADA.includes(estado);
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
 
@@ -670,7 +690,9 @@ export async function confirmarRevisionAjusteRoster(empresaId, ajusteId, confirm
  *      ciclo que el ciclo teórico esperaba trabajo (fecha_inicio_ciclo /
  *      dias_ciclo_trabajo del registro en asistencia_ciclos_mineros) → no suma
  *      a dias_en_mina ni a dias_descanso_gozados; se cuenta en dias_pendientes_revision.
- *   5. Registro real 'falta' (es_falta=true) o 'descanso'/'bajada'            → igual que antes.
+ *   5. Registro real de ausencia autorizada, 'falta' (es_falta=true) o
+ *      'descanso'/'bajada' → no suma a ningún balance. La ausencia no pausa
+ *      el ciclo teórico.
  *
  * @param {number} periodoAnio
  * @param {number} periodoMes
@@ -761,6 +783,10 @@ export function calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, reg
         .reduce((masReciente, r) => (!masReciente || new Date(r.created_at) > new Date(masReciente.created_at)) ? r : masReciente, null);
 
       if (registro) {
+        // Vacaciones/licencias/permisos aprobados son una ausencia real: no
+        // generan mina ni descanso ganado/gozado. No se modifica el teórico,
+        // por lo que diaDentroDelCiclo sigue avanzando normalmente.
+        if (esAusenciaAutorizadaRoster(registro.estado)) continue;
         // 4. Falta real: igual que antes (no suma a nada).
         if (registro.es_falta) continue;
         // 4. Descanso/bajada real: igual que antes.
