@@ -1,6 +1,6 @@
 # ERP Modular Estándar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado — TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS · Última actualización: 21/07/2026
+### Arquitectura Multitenant SaaS · Última actualización: 23/07/2026
 
 ---
 
@@ -23,7 +23,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 
 ---
 
-## 3. Estado de desarrollo — 24/06/2026
+## 3. Estado de desarrollo — 23/07/2026
 
 ### 3.1 Resumen de progreso
 
@@ -33,9 +33,9 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Módulos en prompt pendiente de implementar | 0 |
 | Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase |
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
-| Migraciones SQL registradas en el repositorio | 340 archivos SQL locales, hasta `338_backfill_asistencia_ciclos_mineros.sql` |
-| Migración local más reciente | `338_backfill_asistencia_ciclos_mineros.sql`: ajustes de herencia en ciclos mineros e inmutabilidad de asistencia, tras el despliegue del motor de Posiciones, Retro Wall y Vigencia Efectiva. |
-| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior (269-338): despliegue profundo del módulo de Posiciones, Unidades Organizacionales, Jerarquía Matricial, Retro Wall de nómina, y reglas estrictas de Vigencia Efectiva Contractual. |
+| Migraciones SQL registradas en el repositorio | 358 archivos SQL locales, hasta `355_habilitar_ausencias_autorizadas_mineros.sql` |
+| Migración local más reciente | `355_habilitar_ausencias_autorizadas_mineros.sql`: habilitación de permisos con goce, ajustes en ingresos extraordinarios, pensionario y retro wall expandido.
+| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior (339-355): Refinamiento en Posiciones (modo gestión, reasignar padres, categoría en unidades), ingresos extraordinarios, retro wall para asignaciones y condiciones laborales, lógica de ausencias con goce y modelo CECO/CEBE. |
 | Bugs/ajustes corregidos en sesiones 20–24/06/2026 | **Hardening y fix de persistencia:** Corrección de supervisor huérfano; **Maestros:** Migración de tipos de contrato a base de datos con interfaz UI; **Turnos:** Detalle de días laborables, selector autoservicio y autorizaciones HE; **Seguridad:** RLS para postulaciones anónimas y self-read de email. |
 
 ### 3.2 Inventario completo de módulos
@@ -79,18 +79,18 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Reclutamiento | ✔ Implementado | `pages_reclutamiento.jsx` + ruta pública `PostulacionPublica`. Vacantes, candidatos, candidaturas, historial por etapa e invitación/postulación pública. |
 | Personal Operativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales, datos de nómina/honorarios, carga masiva vía Excel, gestión de adendas y sincronización de área/contrato primigenio. |
 | Personal Administrativo | ✔ Implementado | En sección RRHH. Incluye ficha laboral, tarifa hora, documentos reales, reportes, comisiones, datos de honorarios, carga masiva vía Excel, gestión de adendas y sincronización de área/contrato primigenio. |
-| Control de Asistencia | ✔ Implementado | Tabs diaria, semanal, mensual, resumen, autorizaciones HE, biométrico, SAR/geocercas. **Vigencia Efectiva:** validación estricta de estado contractual que bloquea registros si el contrato no está en periodo activo. Tardanzas, HE, GPS móvil. |
+| Control de Asistencia | ✔ Implementado | Tabs diaria, semanal, mensual, resumen, autorizaciones HE, biométrico, SAR/geocercas. **Vigencia Efectiva:** validación estricta de estado contractual que bloquea registros si el contrato no está en periodo activo. Tardanzas, HE, GPS móvil. Ahora con hook directo a solicitudes de RRHH para reflejar permisos con goce de forma automática.
 | Turnos y Horarios | ✔ Implementado | Módulo standalone `pages_turnos.jsx`. CRUD completo: crear/editar/eliminar con side-panel. Campos: nombre, entrada/salida, tolerancia, cruza medianoche, días laborables (o variables), refrigerio. Preview de horas efectivas en tiempo real. |
 | Nómina Básica | ✔ Implementado | AFP 3 componentes (tabla multitenant completa), IR 5ta con UIT dinámica, horas extra 25%/35%, CTS computable, bonif. extraordinaria. Régimen MYPE. Régimen minero 14×7/20×10/28×14. Pago quincenal configurable. PLAME. Cierre → egresos en finanzas. **Fase 1 (10/06):** motor corregido. **Fase 2 (10/06):** historial de asignaciones de jornada con vigencia (`personal_asignaciones_jornada`). **Fase 3 (11/06):** `afp_parametros` con comisiones por flujo/mixta. **Ola 2 (12/06):** contratos, cese por falta grave, datos bancarios, autorización HE, compensación y descuentos extraordinarios. **Contratos avanzados (16/06):** flujos de adendas y versionado de contratos. **Contrato Primigenio y Periodos (19/06):** reglas de predecesor/sucesor, candados en ceses y caducidad de documentos. |
 | Comisiones | ✔ Implementado | Liquidación, aprobaciones (acuerdos especiales, +48h sin respuesta), retenciones IR de 4ta categoría según suspensión y tipo de cambio, generación de RHE y CxP asociada. |
-| Solicitudes de RRHH | ✔ Implementado | Flujo multietapa: enviada → aprobada_jefe → confirmada_rrhh → activa. Tipos: vacaciones, permisos, licencias, compensación horas y papeletas. Saldo de vacaciones automático. Calendario de ausencias mensual. Vista mobile con formulario paso a paso. |
+| Solicitudes de RRHH | ✔ Implementado | Flujo multietapa: enviada → aprobada_jefe → confirmada_rrhh → activa. Tipos: vacaciones, permisos, licencias, compensación horas y papeletas. Saldo automático. Ahora integra `aplicar_asistencia` que impacta directamente el Control de Asistencia para permisos con goce y licencias.
 | Tareo Administrativo | ✔ Implementado | Registro de horas de personal administrativo contra OT o CECO libre, backoffice y PWA, integrado a Control de Horas. |
 | Control de Horas | ✔ Implementado | Consolidado operativo/administrativo por período: partes, tareos, OTs, tarifa hora, productividad y costos de mano de obra. |
 | Evaluación de Desempeño | ✔ Implementado | 360° básico (autoevaluación + jefe), competencias + objetivos, score ponderado configurable, solo informativo. |
 | Liquidación por Cese | ✔ Implementado | Todos los tipos de cese (renuncia, despido, mutuo acuerdo, vencimiento contrato, fallecimiento y falta grave documentada). Motor de cálculo: vacaciones truncas, CTS proporcional, gratificación proporcional + bonif. 9%, indemnización según régimen (general/MYPE/microempresa). Genera CxP automática al confirmar (fix de ID type uuid aplicado). Colaborador queda marcado como cesado con bloqueo de trigger. |
 | Préstamos al Personal | ✔ Implementado | En sección RRHH. Incluye schema completo, cuotas, saldo, descuento en nómina e historial de pagos. |
 | Amonestaciones | ✔ Implementado | Integrado como tab en fichas RRHH y Mi portal. Registro/anulación, notificación y acuse del colaborador. |
-| Roster Minero | ✔ Implementado | Snapshots de roster por período/ciclo, cálculo de estado minero y cierre de roster. |
+| Roster Minero | ✔ Implementado | Snapshots de roster por período/ciclo, cálculo de estado minero y cierre de roster. **Gestión avanzada:** Inclusión de tabla `roster_minero_ajustes` para revisiones manuales, snapshots dirigidos y vinculación con sedes como tipo UM.
 
 #### Logística
 | Módulo | Estado |
@@ -482,15 +482,16 @@ El costo operativo vigente se imputa con `tarifa_hora` del colaborador. Esa tari
 ### 5.8 Organigrama basado en Posiciones
 
 El organigrama ya no es una simple representación de usuarios y roles, sino una **arquitectura de Posiciones**:
-- **Posición**: Es la silla, no la persona. Una posición pertenece a una Unidad Organizacional, requiere un Cargo, y tiene un líder principal (jerarquía lineal).
+- **Posición**: Es la silla, no la persona. Una posición pertenece a una Unidad Organizacional (ahora con `categoria`), requiere un Cargo (que cuenta con `modo_gestion` 'individual' o 'compartido'), y tiene un líder principal (jerarquía lineal).
 - **Relaciones Matriciales**: Una posición puede reportar indirectamente a otras posiciones.
-- **Sincronización Continua**: Al asignar un usuario a una posición, su "cargo" en RRHH se mantiene sincronizado automáticamente. Las responsabilidades en el sistema recaen en la Posición (ej: aprobador), de modo que si el ocupante cambia, el flujo no se rompe.
+- **Sincronización Continua**: Al asignar un usuario a una posición, su "cargo" en RRHH se mantiene sincronizado automáticamente.
+- **Niveles Jerárquicos**: Se integra una estructura profunda (`niveles_jerarquicos`) para determinar autorizaciones.
 
 ### 5.9 Vigencia Efectiva y Retro Wall
 
 Dos conceptos críticos protegen la inmutabilidad de la información operativa:
 - **Vigencia Efectiva**: Un trabajador solo "existe" operativamente durante los periodos en que su contrato está activo. El Control de Asistencia incluye bloqueos estrictos: no permite registrar ingresos si la vigencia no lo ampara.
-- **Retro Wall**: Funciona como un candado histórico. Los registros de nómina, partes diarios y documentos críticos quedan inmutables en periodos cerrados, protegiendo las declaraciones legales de modificaciones accidentales.
+- **Retro Wall**: Funciona como un candado histórico extendido. Los registros de nómina, partes diarios, documentos críticos, **condiciones laborales**, y **asignaciones de jornada** quedan inmutables en periodos cerrados, protegiendo las declaraciones legales de modificaciones accidentales (introducido en migraciones 347 y 348).
 
 ## 6. Estructura del sidebar — arquitectura final
 
@@ -659,7 +660,7 @@ Configurar turnos y horarios
          ↓
     Asignar turno a cada trabajador
          ↓
-    Registrar asistencia diaria (validación de Vigencia Efectiva bloquea ingresos si el contrato no ampara la fecha)
+    Registrar asistencia diaria (validación de Vigencia Efectiva bloquea ingresos si el contrato no ampara la fecha)\n    [AUTO] Solicitudes de RRHH aprobadas (vacaciones, licencias con goce) impactan directamente la asistencia y cubren los huecos
          ↓
     Al cierre del período:
     Calcular nómina:
@@ -1809,3 +1810,24 @@ No eliminar → anular con motivo y usuario. Modificaciones críticas registran 
 - **Etiqueta de Régimen 'Mixto'**: Cuando un trabajador transita entre regímenes o tramos (ej. Minero a General, o Suspensión Perfecta), el resumen de nómina lo categoriza como 'Mixto (Minero -> General)', reflejando su realidad mensual en vez de ocultar tramos.
 - **Invariante de Asistencia**: Asistencias nunca pueden superar a Días Esperados. El cálculo reconcilia múltiples tramos para asegurar que no existan ratios absurdos como '29/22'. Las asistencias son días reales laborados dentro de los esperados.
 - **Días computables**: Exclusivo para mostrar la porción del régimen minero. Para 'Mixtos', se muestra explícitamente como 'X (mina)' para no confundir la base.
+
+
+---
+
+## 9. Tablas de Soporte Organizacional y Minero (Nuevas)
+
+### `niveles_jerarquicos`
+Niveles de jerarquía definidos por tenant para el modelado profundo del organigrama.
+- `id`, `empresa_id`, `nombre`, `peso_relativo`
+
+### `roster_minero_ajustes`
+Ajustes manuales y revisiones al roster minero generado.
+- `id`, `empresa_id`, `roster_snapshot_id`, `personal_id`, `ajuste_dias`, `notas`, `estado`
+
+### `personal_asignaciones_um`
+Relación entre personal y unidades mineras (Sedes con `tipo_um_asignaciones`).
+- `id`, `empresa_id`, `personal_id`, `sede_id`, `fecha_inicio`, `fecha_fin`
+
+### `ingresos_extraordinarios`
+Gestión de ingresos no recurrentes acoplados a nómina.
+- `id`, `empresa_id`, `personal_id`, `concepto`, `monto`, `periodo_aplicacion`, `estado`

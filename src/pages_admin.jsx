@@ -8199,7 +8199,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
 
 
 function RRHHAdmin() {
-  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
+  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -8229,6 +8229,12 @@ function RRHHAdmin() {
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const [docPreviewReqAdmin, setDocPreviewReqAdmin] = useState(null);
   const [docPreviewPersonaAdmin, setDocPreviewPersonaAdmin] = useState(null);
+  const [showFormAsigAdmin, setShowFormAsigAdmin] = useState(false);
+  const [formAsigAdmin, setFormAsigAdmin] = useState({ fecha_inicio:'', fecha_fin:'', regimen_jornada:'general', fecha_inicio_ciclo:'', motivo:'' });
+  const [savingAsigAdmin, setSavingAsigAdmin] = useState(false);
+  const [formAsigAdminError, setFormAsigAdminError] = useState('');
+  const [retroWallAsigAdmin, setRetroWallAsigAdmin] = useState(null);
+  const [retroWallMotivoAsigAdmin, setRetroWallMotivoAsigAdmin] = useState('');
 
   const COLUMNAS_DEFAULT_ADMIN = [
     { key: 'codigo', label: 'Código' },
@@ -8864,7 +8870,7 @@ function RRHHAdmin() {
         <div className="card">
           <div style={{padding:'0 20px'}}>
             <div className="tabs">
-              {[...['ficha','contrato','vacaciones','licencias','solicitudes','documentos','reembolsos','amonestaciones'], ...(persona.tiene_comisiones ? ['comisiones'] : []), ...(canFinanzasAdmin ? ['bancarios'] : [])].map(t => (
+              {[...['ficha','jornada','contrato','vacaciones','licencias','solicitudes','documentos','reembolsos','amonestaciones'], ...(persona.tiene_comisiones ? ['comisiones'] : []), ...(canFinanzasAdmin ? ['bancarios'] : [])].map(t => (
                 <div key={t} className={'tab '+(tab===t?'active':'')} onClick={() => setTab(t)} style={{textTransform:'capitalize'}}>{t}</div>
               ))}
             </div>
@@ -8934,7 +8940,11 @@ function RRHHAdmin() {
                   ))}
                   <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
                     <div className="text-muted" style={{fontSize:11, marginBottom:6, textTransform:'uppercase', letterSpacing:'0.08em'}}>Régimen de jornada</div>
-                    <div style={{fontWeight:500, fontSize:13, marginBottom:6}}>{labelOr(REGIMEN_JORNADA_LABELS, persona.regimen_jornada || 'general')}</div>
+                    <div style={{fontWeight:500, fontSize:13, marginBottom:6}}>{(() => {
+                      const asig = asignacionesJornada.find(a => a.personal_id === persona.id && a.tipo_tramo === 'normal' && a.fecha_inicio <= new Date().toISOString().slice(0, 10) && (!a.fecha_fin || a.fecha_fin >= new Date().toISOString().slice(0, 10)));
+                      if (!asig) return <span className="text-muted">Sin jornada asignada</span>;
+                      return asig.regimen_jornada === 'general' ? labelOr(REGIMEN_JORNADA_LABELS, 'general') : `Minero ${asig.dias_ciclo_trabajo}×${asig.dias_ciclo_descanso}`;
+                    })()}</div>
                     <div className="row" style={{gap:6, flexWrap:'wrap'}}>
                       <span className="badge badge-gray">Fiscalización: {fiscalizacionLabel(getTipoFiscalizacion(persona))}</span>
                       <span className="badge badge-gray">Vacaciones: {diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general')} días/año</span>
@@ -9050,6 +9060,119 @@ function RRHHAdmin() {
 
             </div>
           )}
+
+          {tab === 'jornada' && (() => {
+            const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === persona.id).sort((a, b) => String(b.fecha_inicio).localeCompare(String(a.fecha_inicio)));
+            const hoyAsignacion = new Date().toISOString().slice(0, 10);
+            const asigActiva = asigsTrabajador.find(a => a.fecha_inicio <= hoyAsignacion && (!a.fecha_fin || a.fecha_fin >= hoyAsignacion));
+            const tramoReferencia = asigActiva || asigsTrabajador[0] || null;
+            const sumarDia = fecha => {
+              if (!fecha) return '';
+              const d = new Date(`${fecha}T00:00:00`);
+              d.setDate(d.getDate() + 1);
+              return d.toISOString().slice(0, 10);
+            };
+            const fechaInicioSugerida = tramoReferencia
+              ? (tramoReferencia.fecha_fin ? sumarDia(tramoReferencia.fecha_fin) : tramoReferencia.fecha_inicio)
+              : (persona.fecha_ingreso || '');
+            const presets = {
+              general: { regimen:'general', trabajo:null, descanso:null, label:'Jornada general' },
+              minero_14x7: { regimen:'ciclo_acumulativo', trabajo:14, descanso:7, label:'Minero 14×7' },
+              minero_20x10: { regimen:'ciclo_acumulativo', trabajo:20, descanso:10, label:'Minero 20×10' },
+              minero_28x14: { regimen:'ciclo_acumulativo', trabajo:28, descanso:14, label:'Minero 28×14' },
+              minero_2x1: { regimen:'ciclo_acumulativo', trabajo:2, descanso:1, label:'Minero 2×1' },
+            };
+            const presetDeAsignacion = a => {
+              if (!a || a.regimen_jornada === 'general') return 'general';
+              return ({ '14x7':'minero_14x7', '20x10':'minero_20x10', '28x14':'minero_28x14', '2x1':'minero_2x1' })[`${Number(a.dias_ciclo_trabajo)}x${Number(a.dias_ciclo_descanso)}`] || 'general';
+            };
+            const fechaAnteriorATramoVigente = Boolean(asigActiva?.fecha_inicio && formAsigAdmin.fecha_inicio && formAsigAdmin.fecha_inicio < asigActiva.fecha_inicio);
+            const guardarAsignacion = async (override = {}) => {
+              if (!formAsigAdmin.fecha_inicio) {
+                const mensaje = 'La fecha de inicio es obligatoria.';
+                setFormAsigAdminError(mensaje); addNotificacion(mensaje, 'error'); return;
+              }
+              if (formAsigAdmin.fecha_fin && formAsigAdmin.fecha_fin < formAsigAdmin.fecha_inicio) {
+                const mensaje = 'La fecha de fin no puede ser anterior a la fecha de inicio.';
+                setFormAsigAdminError(mensaje); addNotificacion(mensaje, 'error'); return;
+              }
+              const preset = presets[formAsigAdmin.regimen_jornada];
+              if (!preset) {
+                const mensaje = 'Selecciona un régimen de jornada válido.';
+                setFormAsigAdminError(mensaje); addNotificacion(mensaje, 'error'); return;
+              }
+              if (preset.regimen === 'ciclo_acumulativo' && !formAsigAdmin.fecha_inicio_ciclo) {
+                const mensaje = 'Completa la fecha de inicio del ciclo.';
+                setFormAsigAdminError(mensaje); addNotificacion(mensaje, 'error'); return;
+              }
+              setSavingAsigAdmin(true); setRetroWallAsigAdmin(null); setFormAsigAdminError('');
+              try {
+                await crearAsignacionJornadaCtx(persona.id, 'administrativo', {
+                  ...formAsigAdmin,
+                  tipo_tramo: 'normal',
+                  regimen_jornada: preset.regimen,
+                  dias_ciclo_trabajo: preset.trabajo,
+                  dias_ciclo_descanso: preset.descanso,
+                  fecha_inicio_ciclo: preset.regimen === 'ciclo_acumulativo' ? formAsigAdmin.fecha_inicio_ciclo : null,
+                  forzar_override: Boolean(override.forzarOverride),
+                  motivo_override: override.motivoOverride || null,
+                });
+                setShowFormAsigAdmin(false);
+                setFormAsigAdmin({ fecha_inicio:'', fecha_fin:'', regimen_jornada:'general', fecha_inicio_ciclo:'', motivo:'' });
+                setRetroWallAsigAdmin(null); setRetroWallMotivoAsigAdmin('');
+                addNotificacion('Asignación de jornada registrada.');
+              } catch (error) {
+                const msg = error?.message || '';
+                if (msg.startsWith('RETRO_WALL_PERMISO:')) addNotificacion(msg.replace('RETRO_WALL_PERMISO:', '').trim(), 'error');
+                else if (msg.startsWith('RETRO_WALL:')) setRetroWallAsigAdmin(msg.replace('RETRO_WALL:', '').trim());
+                else {
+                  const mensaje = msg || 'Error al guardar asignación.';
+                  setFormAsigAdminError(mensaje); addNotificacion(mensaje, 'error');
+                }
+              } finally { setSavingAsigAdmin(false); }
+            };
+            return <div className="card-body">
+              <div style={{display:'flex', justifyContent:'space-between', gap:12, alignItems:'center', marginBottom:16}}>
+                <div>
+                  <div style={{fontWeight:600, marginBottom:4}}>Asignación vigente</div>
+                  {asigActiva
+                    ? <div><span className="badge badge-blue">{presets[presetDeAsignacion(asigActiva)]?.label || asigActiva.regimen_jornada}</span><span className="text-muted" style={{fontSize:12, marginLeft:8}}>desde {asigActiva.fecha_inicio}</span></div>
+                    : <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div>}
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={() => {
+                  setShowFormAsigAdmin(v => !v); setRetroWallAsigAdmin(null); setRetroWallMotivoAsigAdmin(''); setFormAsigAdminError('');
+                  setFormAsigAdmin(f => ({ ...f, fecha_inicio: fechaInicioSugerida, fecha_fin:'', regimen_jornada: asigActiva ? presetDeAsignacion(asigActiva) : 'general', fecha_inicio_ciclo: asigActiva?.fecha_inicio_ciclo || '' }));
+                }}>+ Nueva asignación</button>
+              </div>
+
+              {showFormAsigAdmin && <div className="card" style={{padding:16, marginBottom:20, background:'rgba(6,182,212,0.04)', border:'1px solid var(--cyan)'}}>
+                <div className="grid-2" style={{gap:12}}>
+                  <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsigAdmin.fecha_inicio} onChange={e => { setFormAsigAdmin(f => ({...f, fecha_inicio:e.target.value})); setFormAsigAdminError(''); }} /></div>
+                  <div className="input-group"><label>Fecha de fin <span className="text-muted">(opcional)</span></label><input className="input" type="date" min={formAsigAdmin.fecha_inicio || undefined} value={formAsigAdmin.fecha_fin} onChange={e => { setFormAsigAdmin(f => ({...f, fecha_fin:e.target.value})); setFormAsigAdminError(''); }} /></div>
+                  {formAsigAdmin.fecha_fin && formAsigAdmin.fecha_inicio && formAsigAdmin.fecha_fin < formAsigAdmin.fecha_inicio && <div className="alert alert-danger" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>La fecha de fin debe ser igual o posterior a la fecha de inicio.</div>}
+                  {fechaAnteriorATramoVigente && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>Esta fecha queda antes del tramo vigente actual ({asigActiva.fecha_inicio}). Es una advertencia: si el período tiene nómina procesada, el retro wall pedirá justificación y autorización al guardar.</div>}
+                  <div className="input-group"><label>Régimen de jornada</label><select className="select" value={formAsigAdmin.regimen_jornada} onChange={e => setFormAsigAdmin(f => ({...f, regimen_jornada:e.target.value, fecha_inicio_ciclo:e.target.value === 'general' ? '' : f.fecha_inicio_ciclo}))}>
+                    {Object.entries(presets).map(([key, preset]) => <option key={key} value={key}>{preset.label}</option>)}
+                  </select></div>
+                  {formAsigAdmin.regimen_jornada !== 'general' && <>
+                    <div className="input-group"><label>Patrón fijo</label><input className="input" readOnly value={`${presets[formAsigAdmin.regimen_jornada]?.trabajo || ''} trabajo / ${presets[formAsigAdmin.regimen_jornada]?.descanso || ''} descanso`} /></div>
+                    <div className="input-group"><label>Fecha inicio de ciclo</label><input className="input" type="date" value={formAsigAdmin.fecha_inicio_ciclo} onChange={e => setFormAsigAdmin(f => ({...f, fecha_inicio_ciclo:e.target.value}))} /></div>
+                  </>}
+                  <div className="input-group" style={{gridColumn:'1/-1'}}><label>Motivo <span className="text-muted">(opcional)</span></label><input className="input" value={formAsigAdmin.motivo} onChange={e => setFormAsigAdmin(f => ({...f, motivo:e.target.value}))} /></div>
+                </div>
+                {formAsigAdminError && <div className="alert alert-danger" style={{fontSize:12, marginTop:12}}>{formAsigAdminError}</div>}
+                {retroWallAsigAdmin && <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, marginTop:12}}>
+                  <div style={{color:'var(--danger)', fontWeight:600, marginBottom:6}}>Cambio bloqueado por nómina ya procesada</div><div>{retroWallAsigAdmin}</div>
+                  <div className="input-group" style={{marginTop:8}}><label>Justificación para forzar el cambio (obligatoria)</label><textarea className="input" rows={2} value={retroWallMotivoAsigAdmin} onChange={e => setRetroWallMotivoAsigAdmin(e.target.value)} /></div>
+                  <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}><button className="btn btn-secondary btn-sm" onClick={() => { setRetroWallAsigAdmin(null); setRetroWallMotivoAsigAdmin(''); }}>Cancelar</button><button className="btn btn-danger btn-sm" disabled={savingAsigAdmin || !retroWallMotivoAsigAdmin.trim()} onClick={() => guardarAsignacion({forzarOverride:true, motivoOverride:retroWallMotivoAsigAdmin.trim()})}>Forzar cambio (requiere autorización)</button></div>
+                </div>}
+                <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}><button className="btn btn-secondary btn-sm" onClick={() => { setShowFormAsigAdmin(false); setFormAsigAdminError(''); }}>Cancelar</button><button className="btn btn-primary btn-sm" onClick={() => guardarAsignacion()} disabled={savingAsigAdmin}>{savingAsigAdmin ? 'Guardando...' : 'Guardar asignación'}</button></div>
+              </div>}
+
+              <div style={{fontWeight:600, marginBottom:8}}>Historial</div>
+              {asigsTrabajador.length === 0 ? <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div> : <div className="table-wrap"><table className="tbl" style={{fontSize:12, width:'100%'}}><thead><tr><th>Desde</th><th>Hasta</th><th>Régimen</th><th>Ciclo</th><th>Motivo</th></tr></thead><tbody>{asigsTrabajador.map(a => <tr key={a.id}><td>{a.fecha_inicio}</td><td>{a.fecha_fin || <span className="badge badge-green" style={{fontSize:10}}>Vigente</span>}</td><td>{presets[presetDeAsignacion(a)]?.label || a.regimen_jornada}</td><td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} · inicio ${a.fecha_inicio_ciclo || '—'}` : '—'}</td><td className="text-muted">{a.motivo || '—'}</td></tr>)}</tbody></table></div>}
+            </div>;
+          })()}
 
           {tab === 'contrato' && (
             <div className="card-body">
@@ -10935,7 +11058,7 @@ function RRHHAdmin() {
                     {visibleColsAdmin.includes('unidad') && <td>{unidadNombrePorId.get(posiciones.find(pos => pos.id === p.posicion_id)?.unidad_organizacional_id) || p.area || <span className="text-subtle">Sin posición</span>}</td>}
                     {visibleColsAdmin.includes('sede') && <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>}
                     {visibleColsAdmin.includes('turno') && <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnosOptions.find(t => t.id === p.turno_id)?.nombre || 'Sin turno'}</span>}</td>}
-                    {visibleColsAdmin.includes('jornada') && <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span>}</td>}
+                    {visibleColsAdmin.includes('jornada') && <td><span className="text-muted" style={{fontSize:12}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span></td>}
                     {visibleColsAdmin.includes('contrato') && <td>{esHon ? <span className="text-subtle">—</span> : (
                       <span className={`badge ${contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'badge-red' : contratoInfoFila.badge}`}>
                         {contratoInfoFila.texto}
@@ -11129,7 +11252,7 @@ function RRHHAdmin() {
                 <label>Unidad organizacional</label>
                 <input className="input" readOnly value={posicionSeleccionadaAlta ? (unidadNombrePorId.get(posicionSeleccionadaAlta.unidad_organizacional_id) || 'Sin unidad asignada') : (formAlta.area || 'Se deriva de la posición')} style={{background:'var(--bg-subtle)'}}/>
               </div>
-              <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
+              <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}</option>)}</select></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Turno asignado {esHonorariosAlta ? <span className="text-muted">(opcional, requerido para tomar asistencia)</span> : '*'}</label><select className="select" required={!esHonorariosAlta} value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               <div className="input-group">
@@ -11202,9 +11325,9 @@ function RRHHAdmin() {
             </div>
 
             {!esHonorariosAlta && <>
-              <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Régimen de jornada</div>
+              <div className="alert alert-info" style={{fontSize:12, marginBottom:12}}>La jornada se asigna después de registrar y validar el contrato, desde <strong>Jornada → + Nueva asignación</strong> en la ficha del trabajador.</div>
               {editandoId && <div className="alert alert-info" style={{fontSize:12, marginBottom:12}}>El régimen vigente es de solo lectura. Los cambios deben registrarse como una nueva asignación de jornada.</div>}
-              <div className="grid-2" style={{gap:14, marginBottom:12}}>
+              <div className="grid-2" style={{display:'none'}} aria-hidden="true">
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Régimen de jornada</label>
                   <select className="select" disabled={!!editandoId} value={formAlta.regimen_jornada} onChange={e=>{

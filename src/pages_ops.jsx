@@ -14058,7 +14058,7 @@ function ControlAsistencia() {
     periodosNomina = [],
   } = useApp();
   const [tab, setTab] = useState('diaria');
-  const [poblacion, setPoblacion] = useState('planilla'); // 'planilla' | 'honorarios'
+  const [modalidadFiltro, setModalidadFiltro] = useState('todas'); // 'todas' | 'planilla' | 'honorarios'
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [filtroTrabajador, setFiltroTrabajador] = useState('');
   const [panel, setPanel] = useState(false);
@@ -14100,17 +14100,56 @@ function ControlAsistencia() {
   const [formMinero, setFormMinero] = useState(formMineroBase);
   const [detalleMineroId, setDetalleMineroId] = useState(null);
 
-  // Trabajadores
+  // Control de asistencia solo trabaja con personas que ya tienen una jornada
+  // vigente para la fecha consultada. El valor espejo de personal_* no es una
+  // asignación: la única fuente es personal_asignaciones_jornada.
+  const regimenDesdeAsignacion = (asignacion) => {
+    if (!asignacion || asignacion.regimen_jornada === 'general') return 'general';
+    return ({
+      '14x7': 'minero_14x7',
+      '20x10': 'minero_20x10',
+      '28x14': 'minero_28x14',
+      '2x1': 'minero_2x1',
+    })[`${Number(asignacion.dias_ciclo_trabajo)}x${Number(asignacion.dias_ciclo_descanso)}`] || 'ciclo_acumulativo';
+  };
+  const asignacionVigentePorPersonal = new Map(
+    asignacionesJornada
+      .filter(a => a.tipo_tramo === 'normal' && a.fecha_inicio <= fecha && (!a.fecha_fin || a.fecha_fin >= fecha))
+      .sort((a, b) => String(b.fecha_inicio).localeCompare(String(a.fecha_inicio)))
+      .map(a => [a.personal_id, a])
+  );
+  const incorporarJornadaVigente = (persona, trabajador_tipo, defaults = {}) => {
+    const asignacion = asignacionVigentePorPersonal.get(persona.id);
+    if (!asignacion) return null;
+    return {
+      ...persona,
+      ...defaults,
+      trabajador_tipo,
+      regimen_jornada: regimenDesdeAsignacion(asignacion),
+      horas_diarias_pactadas: persona.horas_diarias_pactadas || 12,
+      turno_id: asignacion.turno_id || persona.turno_id || defaults.turno_id,
+      asignacion_jornada_vigente: asignacion,
+    };
+  };
   const trabajadores = [
-    ...personalOperativo.map(p => ({ ...p, trabajador_tipo:'operativo', area:p.area || 'Operativo', remuneracion:p.remuneracion || p.sueldo_base || 3000, regimen_jornada: p.regimen_jornada || 'general', horas_diarias_pactadas: p.horas_diarias_pactadas || 12 })),
-    ...personalAdmin.map(p => ({ ...p, trabajador_tipo:'administrativo', id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:p.turno_id || 'tur_005', remuneracion:p.remuneracion || 3000, regimen_jornada: p.regimen_jornada || 'general', horas_diarias_pactadas: p.horas_diarias_pactadas || 12 }))
+    ...personalOperativo.map(p => incorporarJornadaVigente(p, 'operativo', { area:p.area || 'Operativo', remuneracion:p.remuneracion || p.sueldo_base || 3000 })).filter(Boolean),
+    ...personalAdmin.map(p => incorporarJornadaVigente(p, 'administrativo', { id:p.id, nombre:p.nombre, cargo:p.cargo, area:p.area || 'Administrativo', turno_id:'tur_005', remuneracion:p.remuneracion || 3000 })).filter(Boolean),
   ];
 
   const esHonorarios = t => normalizarModalidadContrato(t.modalidad_contrato) === 'honorarios';
-  const trabajadoresPlanilla = trabajadores.filter(t => getTipoFiscalizacion(t) === 'diaria' && !esHonorarios(t));
-  const trabajadoresHonorarios = trabajadores.filter(t => esHonorarios(t));
-  const trabajadoresGenerales = poblacion === 'honorarios' ? trabajadoresHonorarios : trabajadoresPlanilla;
-  const trabajadoresMineros = trabajadores.filter(t => getTipoFiscalizacion(t) === 'ciclo' && !esHonorarios(t));
+  const modalidadEtiqueta = t => esHonorarios(t) ? 'Honorarios' : 'Planilla';
+  const sinContratoVigente = t => Boolean(t?.asistencia_bloqueada && !t?.cargo_confianza);
+  const estiloSinContratoVigente = t => sinContratoVigente(t) ? { opacity: 0.58, background: 'var(--bg-subtle)' } : undefined;
+  const badgeSinContratoVigente = t => sinContratoVigente(t)
+    ? <span className="badge badge-red" style={{fontSize:10, marginLeft:6}}>Sin contrato vigente</span>
+    : null;
+  const coincideModalidad = t => modalidadFiltro === 'todas' || (modalidadFiltro === 'honorarios' ? esHonorarios(t) : !esHonorarios(t));
+  const trabajadoresVisibles = trabajadores.filter(coincideModalidad);
+  const trabajadoresGenerales = trabajadores.filter(t => getTipoFiscalizacion(t) === 'diaria' && coincideModalidad(t));
+  const trabajadoresMineros = trabajadores.filter(t => getTipoFiscalizacion(t) === 'ciclo');
+  // El selector de población también aplica a las vistas mineras. No cambia
+  // quién califica como minero; solo limita lo que se está visualizando.
+  const trabajadoresMinerosVisibles = trabajadoresMineros.filter(coincideModalidad);
 
   useEffect(() => {
     if (trabajadoresMineros.length > 0) {
@@ -14121,10 +14160,8 @@ function ControlAsistencia() {
   // GAP-16: Roster minero
   // Mismo criterio que Nómina/Comisiones (ver trabajadores más abajo en este archivo):
   // un trabajador cesado deja de considerarse para cálculos nuevos, sin excepción por fecha.
-  const trabajadoresRoster = [
-    ...personalOperativo.filter(p => p.estado_laboral !== 'cesado').map(p => ({ ...p, trabajador_tipo:'operativo', regimen_jornada: p.regimen_jornada || 'general' })),
-    ...personalAdmin.filter(p => p.estado_laboral !== 'cesado').map(p => ({ ...p, trabajador_tipo:'administrativo', regimen_jornada: p.regimen_jornada || 'general' })),
-  ];
+  const trabajadoresRoster = trabajadores.filter(t => t.estado_laboral !== 'cesado');
+  const trabajadoresRosterVisibles = trabajadoresRoster.filter(coincideModalidad);
   const hayMinerosRoster = trabajadoresRoster.some(t => esRegimenMinero(t.regimen_jornada));
   // Mapa de cesados sobre el universo completo (no el filtrado): permite marcar en
   // Totales una fila de un snapshot ya guardado que pertenece a alguien hoy cesado,
@@ -14134,6 +14171,10 @@ function ControlAsistencia() {
     ...personalAdmin.filter(p => p.estado_laboral === 'cesado').map(p => [p.id, p]),
   ]);
   const [rosterRows, setRosterRows] = useState([]);
+  const rosterRowsVisibles = rosterRows.filter(row => {
+    const trabajador = trabajadoresRoster.find(t => t.id === row.personal_id);
+    return Boolean(trabajador && coincideModalidad(trabajador));
+  });
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterPeriodo, setRosterPeriodo] = useState(null);
   const [recalculoDirigidoId, setRecalculoDirigidoId] = useState(null);
@@ -14296,6 +14337,10 @@ function ControlAsistencia() {
   // nada acá) y roster_minero_snapshots (rosterRows) para los totales por fila.
   const [rosterVista, setRosterVista] = useState('totales'); // 'totales' | 'grilla'
   const [ajustesRoster, setAjustesRoster] = useState([]);
+  const ajustesRosterVisibles = ajustesRoster.filter(a => {
+    const trabajadorAjuste = trabajadoresRoster.find(t => t.id === a.personal_id);
+    return Boolean(trabajadorAjuste && coincideModalidad(trabajadorAjuste));
+  });
   const [ajustePanel, setAjustePanel] = useState(null); // { trabajadorId, trabajadorTipo, trabajadorNombre, fecha, tipoDiaAntes, registroReal } | null
   const [ajusteForm, setAjusteForm] = useState({ tipo_dia_solicitado: '', motivo: '' });
   const [ajusteSaving, setAjusteSaving] = useState(false);
@@ -14397,7 +14442,7 @@ function ControlAsistencia() {
     umAsignaciones.forEach(a => {
       if (!a.fecha_fin || a.fecha_fin >= hoyStr) umVigentePorTrabajador.set(a.personal_id, a);
     });
-    const mineros = trabajadoresRoster.filter(t => idsMinerosCicloVigente.has(t.id));
+    const mineros = trabajadoresRosterVisibles.filter(t => idsMinerosCicloVigente.has(t.id));
     const porSede = new Map();
     const sinUm = [];
     mineros.forEach(t => {
@@ -14814,13 +14859,23 @@ function ControlAsistencia() {
     const regs = registrosPeriodo.filter(r => r.trabajador_id === t.id);
     return calcularNominaConTramos(t, asigsTrabajador, {}, workerTurno(turnos, t), regs, periodoFiltro, empresa?.configuracion || {});
   }).filter(Boolean);
+  const calculosAsistenciaVisibles = calculosAsistencia.filter(c => c.trabajador && coincideModalidad(c.trabajador));
+  // Diaria y Semanal representan solo régimen general; Mensual muestra el
+  // universo completo filtrado. Las tarjetas deben seguir esa misma regla.
+  const trabajadoresKpi = ['diaria', 'semanal'].includes(tab) ? trabajadoresGenerales : trabajadoresVisibles;
+  const idsTrabajadoresKpi = new Set(trabajadoresKpi.map(t => t.id));
+  const calculosKpi = calculosAsistenciaVisibles.filter(c => idsTrabajadoresKpi.has(c.trabajador_id));
 
   const kpis = {
-    total: trabajadores.length,
-    completos: calculosAsistencia.reduce((s, c) => s + (c.dias_asistidos || 0), 0),
-    tardanzas: calculosAsistencia.reduce((s, c) => s + (c.tardanzas || 0), 0),
-    faltas: calculosAsistencia.reduce((s, c) => s + (c.faltas_injustificadas + c.faltas_justificadas || 0), 0)
+    total: trabajadoresKpi.length,
+    completos: calculosKpi.reduce((s, c) => s + (c.dias_asistidos || 0), 0),
+    tardanzas: calculosKpi.reduce((s, c) => s + (c.tardanzas || 0), 0),
+    faltas: calculosKpi.reduce((s, c) => s + (c.faltas_injustificadas + c.faltas_justificadas || 0), 0)
   };
+  const autHeRowsVisibles = autHeRows.filter(r => {
+    const trabajadorSolicitud = trabajadores.find(t => t.id === r.personal_id);
+    return Boolean(trabajadorSolicitud && coincideModalidad(trabajadorSolicitud));
+  });
 
   const guardarRegistro = async (e) => {
     e?.preventDefault?.();
@@ -14873,7 +14928,7 @@ function ControlAsistencia() {
           ? 'incompleto'
           : 'completo';
     setFormAsistenciaMinera({
-      trabajador_id: trabajadorMinero?.id || trabajadoresMineros[0]?.id || '',
+      trabajador_id: trabajadorMinero?.id || trabajadoresMinerosVisibles[0]?.id || '',
       fecha: registro?.fecha || fecha,
       estado,
       hora_entrada: registro?.hora_entrada || '',
@@ -15455,7 +15510,9 @@ function ControlAsistencia() {
     return rows.filter(r => r.persona && r.geocerca);
   }, [geocercaAsignaciones, geocercas, registrosAsistencia, sarFecha, trabajadores, geoCfg]);
 
-  const sarPuntosMapa = sarRows
+  const sarRowsVisibles = sarRows.filter(r => coincideModalidad(r.persona));
+
+  const sarPuntosMapa = sarRowsVisibles
     .map(r => {
       const reg = r.registro;
       if (!reg?.latitud || !reg?.longitud) return null;
@@ -15660,7 +15717,7 @@ function ControlAsistencia() {
   };
 
 
-  const resumenTrabajador = (trabajadoresGenerales.find(t => t.id === form.trabajador_id) || trabajadoresMineros.find(t => t.id === form.trabajador_id)) || trabajadores[0];
+  const resumenTrabajador = trabajadoresVisibles.find(t => t.id === form.trabajador_id) || trabajadoresVisibles[0] || null;
   const resumenRegs = registrosPeriodo.filter(r => r.trabajador_id === resumenTrabajador?.id);
   const resumenTurno = workerTurno(turnos, resumenTrabajador);
 
@@ -15677,6 +15734,16 @@ function ControlAsistencia() {
   const mesNombreCap = mesNombre.charAt(0).toUpperCase() + mesNombre.slice(1);
   const endOfWeek = new Date(startOfWeek.getTime() + 6*86400000);
   const semanaTexto = `Semana del ${startOfWeek.getDate()} al ${endOfWeek.getDate()} de ${mesNombreCap}`;
+  const filtroModalidadControl = (style = {}) => (
+    <div className="input-group" style={{margin:0, minWidth:180, ...style}}>
+      <label style={{fontSize:11}}>Modalidad</label>
+      <select className="select" value={modalidadFiltro} onChange={e => setModalidadFiltro(e.target.value)}>
+        <option value="todas">Todas</option>
+        <option value="planilla">Planilla</option>
+        <option value="honorarios">Honorarios</option>
+      </select>
+    </div>
+  );
 
   // Tabs
   const allTabs = [['diaria','Vista diaria'],['semanal','Vista semanal'],['mensual','Vista mensual'],['resumen','Resumen por trabajador'],['aut_he','Autorizaciones HE'],['biometrico','Biometrico']];
@@ -15692,24 +15759,12 @@ function ControlAsistencia() {
           <h1 className="page-title">Control de Asistencia</h1>
           <div className="page-sub" style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
             Registro manual, tardanzas y horas trabajadas
-            <span style={{marginLeft:8, display:'inline-flex', border:'1px solid var(--border)', borderRadius:6, overflow:'hidden', fontSize:12}}>
-              <button
-                className={`btn btn-sm ${poblacion === 'planilla' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{borderRadius:0, border:'none', padding:'3px 12px'}}
-                onClick={() => { setPoblacion('planilla'); if (tab === 'honorarios') setTab('diaria'); }}
-              >Planilla</button>
-              <button
-                className={`btn btn-sm ${poblacion === 'honorarios' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{borderRadius:0, border:'none', padding:'3px 12px'}}
-                onClick={() => { setPoblacion('honorarios'); if (tab === 'minero' || tab === 'minero_asistencia') setTab('diaria'); }}
-              >Honorarios</button>
-            </span>
           </div>
         </div>
         <div className="row" style={{gap:10}}><button className="btn btn-primary" style={{background:'var(--green)', borderColor:'var(--green)'}} onClick={() => setKiosk(true)}>{I.clock} Reloj Control (Móvil)</button><button className="btn btn-secondary" onClick={() => { setExportError(''); setExportModal(true); }}>{I.download} Exportar Excel</button><button className="btn btn-secondary" onClick={() => setBioPanel(true)}>Importar marcaciones</button><button className="btn btn-secondary" onClick={abrirMasivo}>Registro masivo</button><button className="btn btn-secondary" data-local-form="true" onClick={() => setPanel(true)}>{I.plus} Manual</button></div>
       </div>
 
-      {!['minero', 'minero_asistencia'].includes(tab) && <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Total Gral.</div><div className="kpi-value">{kpis.total}</div></div><div className="kpi-card"><div className="kpi-label">Dias completos</div><div className="kpi-value">{kpis.completos}</div></div><div className="kpi-card"><div className="kpi-label">Tardanzas</div><div className="kpi-value" style={{color:'var(--orange)'}}>{kpis.tardanzas}</div></div><div className="kpi-card"><div className="kpi-label">Faltas</div><div className="kpi-value" style={{color:'var(--danger)'}}>{kpis.faltas}</div></div></div>}
+      {['diaria', 'semanal', 'mensual'].includes(tab) && <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Total Gral.</div><div className="kpi-value">{kpis.total}</div></div><div className="kpi-card"><div className="kpi-label">Dias completos</div><div className="kpi-value">{kpis.completos}</div></div><div className="kpi-card"><div className="kpi-label">Tardanzas</div><div className="kpi-value" style={{color:'var(--orange)'}}>{kpis.tardanzas}</div></div><div className="kpi-card"><div className="kpi-label">Faltas</div><div className="kpi-value" style={{color:'var(--danger)'}}>{kpis.faltas}</div></div></div>}
 
       <div className="tabs">{allTabs.map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
 
@@ -15725,11 +15780,14 @@ function ControlAsistencia() {
           <div className="alert alert-info" style={{fontSize:12, margin:0}}>
             Registra solo el estado real del día. Estas correcciones prevalecen sobre el ciclo programado en el Roster Minero; no calculan turno, tardanza, horas trabajadas ni horas extra.
           </div>
-          <input className="input" placeholder="Filtrar por trabajador minero..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/>
+          <div className="row" style={{gap:12, alignItems:'end', flexWrap:'wrap'}}>
+            <input className="input" placeholder="Filtrar por trabajador minero..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{flex:1, minWidth:240}}/>
+            {filtroModalidadControl()}
+          </div>
         </div>
         <div className="table-wrap"><table className="tbl">
-          <thead><tr><th>Trabajador</th><th>Área</th><th>Jornada</th><th>Estado real</th><th>H. entrada ref.</th><th>H. salida ref.</th><th>Motivo</th><th>Acciones</th></tr></thead>
-          <tbody>{trabajadoresMineros.filter(t => !filtroTrabajador || t.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(t => {
+          <thead><tr><th>Trabajador</th><th>Modalidad</th><th>Área</th><th>Jornada</th><th>Estado real</th><th>H. entrada ref.</th><th>H. salida ref.</th><th>Motivo</th><th>Acciones</th></tr></thead>
+          <tbody>{trabajadoresMinerosVisibles.filter(t => !filtroTrabajador || t.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(t => {
             const registro = registrosAsistencia
               .filter(r => r.trabajador_id === t.id && r.fecha === fecha && r.estado !== 'anulado')
               .reduce((masReciente, r) => (!masReciente || new Date(r.created_at) > new Date(masReciente.created_at)) ? r : masReciente, null);
@@ -15737,8 +15795,9 @@ function ControlAsistencia() {
               : registro?.estado === 'falta' ? 'Falta'
                 : registro?.estado === 'incompleto' ? 'Incompleto'
                   : 'Completo';
-            return <tr key={t.id}>
-              <td><strong>{t.nombre}</strong></td>
+            return <tr key={t.id} style={estiloSinContratoVigente(t)}>
+              <td><strong>{t.nombre}</strong>{badgeSinContratoVigente(t)}</td>
+              <td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>
               <td>{t.area || '—'}</td>
               <td>{labelOr(REGIMEN_JORNADA_LABELS, t.regimen_jornada || 'ciclo_acumulativo')}</td>
               <td>{registro ? <span className={'badge '+asistenciaBadge(registro.estado)}>{estadoLabel}</span> : <span className="text-muted">Sin registro real</span>}</td>
@@ -15761,7 +15820,7 @@ function ControlAsistencia() {
           <form className="side-panel-body" onSubmit={guardarAsistenciaMinera}>
             <div className="input-group"><label>Trabajador</label>
               <select className="select" required value={formAsistenciaMinera.trabajador_id} onChange={e => setFormAsistenciaMinera(v => ({...v, trabajador_id:e.target.value}))}>
-                {trabajadoresMineros.map(t => <option key={t.id} value={t.id}>{t.nombre} · {labelOr(REGIMEN_JORNADA_LABELS, t.regimen_jornada || 'ciclo_acumulativo')}</option>)}
+                {trabajadoresMinerosVisibles.map(t => <option key={t.id} value={t.id}>{t.nombre} · {labelOr(REGIMEN_JORNADA_LABELS, t.regimen_jornada || 'ciclo_acumulativo')}</option>)}
               </select>
             </div>
             <div className="input-group"><label>Fecha</label><input className="input" required type="date" value={formAsistenciaMinera.fecha} onChange={e => setFormAsistenciaMinera(v => ({...v, fecha:e.target.value}))}/></div>
@@ -15788,12 +15847,20 @@ function ControlAsistencia() {
         </div>
       </>}
 
-      {tab === 'diaria' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%'}}><h3>Asistencia del dia (Régimen General)</h3><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Area</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Geocerca</th><th>SAR</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>{diaRows.filter(r => !filtroTrabajador || r.trabajador.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(row=><tr key={row.trabajador.id} className="hover-row" style={{cursor:'pointer'}} onClick={()=>setResumenPanelId(row.trabajador.id)}><td><strong>{row.trabajador.nombre}</strong></td><td>{row.trabajador.area}</td><td>{row.turno.nombre} ({row.turno.hora_entrada}-{row.turno.hora_salida})</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td><td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td><td><div className="row" style={{gap:4, flexWrap:'wrap'}}>{geocercaAsignadaPorTrabajador.has(row.trabajador.id) ? <span className="badge badge-cyan">Asignada</span> : <span className="badge badge-gray">Sin asignar</span>}{estadoGeocercaRow(row) === 'dentro' && <span className="badge badge-green">Dentro</span>}{(estadoGeocercaRow(row) === 'fuera' || estadoGeocercaRow(row) === 'rechazable') && <span className="badge badge-orange">Fuera</span>}</div></td><td>{mostrarSarBadge(row) ? <span className="badge badge-red">SAR: no llegada</span> : '-'}</td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><div className="row" style={{gap:6}}>{row.registro?.latitud ? <button type="button" className="icon-btn" title="Ver ubicación de marcación" style={{color:'var(--fg-muted)'}} onClick={(e)=>{e.stopPropagation(); abrirUbicacionMarcacion(row);}}>{I.mapPin}</button> : <button type="button" className="icon-btn" disabled title="Sin ubicación registrada" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.mapPin}</button>}{row.registro?.id ? <button type="button" className="icon-btn" title="Eliminar registro de asistencia" style={{color:'var(--danger)'}} onClick={(e)=>{e.stopPropagation(); eliminarRegistroAsistencia(row);}}>{I.trash}</button> : <button type="button" className="icon-btn" disabled title="Sin registro para eliminar" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.trash}</button>}<button className="btn btn-sm btn-secondary" onClick={(e)=>{e.stopPropagation(); abrirEdicion(row);}}>Editar</button></div></td></tr>)}</tbody></table></div></div>}
+      {tab === 'diaria' && <div className="card">
+        <div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}>
+          <div className="row" style={{width:'100%'}}><h3>Asistencia del día (Régimen General)</h3></div>
+          <div className="row" style={{gap:12, alignItems:'end', flexWrap:'wrap'}}><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{flex:1, minWidth:240}}/>{filtroModalidadControl()}<div className="input-group" style={{margin:0, minWidth:160}}><label style={{fontSize:11}}>Fecha</label><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/></div></div>
+        </div>
+        <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Modalidad</th><th>Área</th><th>Turno</th><th>H. Entrada</th><th>H. Salida</th><th>Horas trab.</th><th>Estado</th><th>Geocerca</th><th>SAR</th><th>Justif.</th><th>Acciones</th></tr></thead><tbody>
+          {diaRows.filter(r => !filtroTrabajador || r.trabajador.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(row=><tr key={row.trabajador.id} className="hover-row" style={{cursor:'pointer', ...estiloSinContratoVigente(row.trabajador)}} onClick={()=>setResumenPanelId(row.trabajador.id)}><td><strong>{row.trabajador.nombre}</strong>{badgeSinContratoVigente(row.trabajador)}</td><td><span className="badge badge-gray">{modalidadEtiqueta(row.trabajador)}</span></td><td>{row.trabajador.area}</td><td>{row.turno.nombre}</td><td>{row.registro?.hora_entrada || '-'}</td><td>{row.registro?.hora_salida || '-'}</td><td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td><td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td><td><div className="row" style={{gap:4, flexWrap:'wrap'}}>{geocercaAsignadaPorTrabajador.has(row.trabajador.id) ? <span className="badge badge-cyan">Asignada</span> : <span className="badge badge-gray">Sin asignar</span>}{estadoGeocercaRow(row) === 'dentro' && <span className="badge badge-green">Dentro</span>}{(estadoGeocercaRow(row) === 'fuera' || estadoGeocercaRow(row) === 'rechazable') && <span className="badge badge-orange">Fuera</span>}</div></td><td>{mostrarSarBadge(row) ? <span className="badge badge-red">SAR: no llegada</span> : '-'}</td><td>{row.registro?.justificada ? 'Si' : '-'}</td><td><div className="row" style={{gap:6}}>{row.registro?.latitud ? <button type="button" className="icon-btn" title="Ver ubicación de marcación" style={{color:'var(--fg-muted)'}} onClick={(e)=>{e.stopPropagation(); abrirUbicacionMarcacion(row);}}>{I.mapPin}</button> : <button type="button" className="icon-btn" disabled title="Sin ubicación registrada" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.mapPin}</button>}{row.registro?.id ? <button type="button" className="icon-btn" title="Eliminar registro de asistencia" style={{color:'var(--danger)'}} onClick={(e)=>{e.stopPropagation(); eliminarRegistroAsistencia(row);}}>{I.trash}</button> : <button type="button" className="icon-btn" disabled title="Sin registro para eliminar" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.trash}</button>}<button className="btn btn-sm btn-secondary" onClick={(e)=>{e.stopPropagation(); abrirEdicion(row);}}>Editar</button></div></td></tr>)}
+        </tbody></table></div>
+      </div>}
 
-      {tab === 'semanal' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', flexWrap:'wrap', width:'100%', gap:10}}><h3>Vista semanal (Régimen General)</h3><div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><div className="row" style={{background:'var(--bg-subtle)', borderRadius:8, padding:'2px 4px', border:'1px solid var(--border)'}}><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() - 7); return n.toISOString().split('T')[0]; })} title="Semana anterior">{I.chevronLeft}</button><span className="text-muted" style={{minWidth:200, textAlign:'center', fontSize:13, fontWeight:600}}>{semanaTexto}</span><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() + 7); return n.toISOString().split('T')[0]; })} title="Siguiente semana">{I.chevronRight}</button></div><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/><button type="button" className="btn btn-ghost btn-sm" onClick={() => setFecha(new Date().toISOString().split('T')[0])}>Hoy</button></div></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.filter(t => !filtroTrabajador || t.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t,d); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
+      {tab === 'semanal' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', flexWrap:'wrap', width:'100%', gap:10}}><h3>Vista semanal (Régimen General)</h3><div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><div className="row" style={{background:'var(--bg-subtle)', borderRadius:8, padding:'2px 4px', border:'1px solid var(--border)'}}><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() - 7); return n.toISOString().split('T')[0]; })} title="Semana anterior">{I.chevronLeft}</button><span className="text-muted" style={{minWidth:200, textAlign:'center', fontSize:13, fontWeight:600}}>{semanaTexto}</span><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() + 7); return n.toISOString().split('T')[0]; })} title="Siguiente semana">{I.chevronRight}</button></div><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/><button type="button" className="btn btn-ghost btn-sm" onClick={() => setFecha(new Date().toISOString().split('T')[0])}>Hoy</button></div></div><div className="row" style={{gap:12, alignItems:'end', flexWrap:'wrap'}}><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{flex:1, minWidth:240}}/>{filtroModalidadControl()}</div></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th><th>Modalidad</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.filter(t => !filtroTrabajador || t.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td><td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t,d); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
 
-      {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%', gap:16}}><h3>Resumen mensual - {mesNombreCap}</h3><input type="month" className="input" style={{width: 160}} value={currentMonth} onChange={e => { if (e.target.value) setFecha(e.target.value + '-01'); }} /></div><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{width:'100%'}}/></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Régimen/Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>
-        {calculosAsistencia.filter(c => c && c.trabajador && (!filtroTrabajador || (c.trabajador.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).map(c => {
+      {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%', gap:16}}><h3>Resumen mensual - {mesNombreCap}</h3><input type="month" className="input" style={{width: 160}} value={currentMonth} onChange={e => { if (e.target.value) setFecha(e.target.value + '-01'); }} /></div><div className="row" style={{gap:12, alignItems:'end', flexWrap:'wrap'}}><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{flex:1, minWidth:240}}/>{filtroModalidadControl()}</div></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Modalidad</th><th>Régimen/Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>
+        {calculosAsistenciaVisibles.filter(c => c && c.trabajador && (!filtroTrabajador || (c.trabajador.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).map(c => {
           const t = c.trabajador;
           const regs = registrosPeriodo.filter(r => r.trabajador_id === t.id);
           const faltas = c.faltas_injustificadas + c.faltas_justificadas;
@@ -15803,6 +15870,7 @@ function ControlAsistencia() {
           const regimenLabel = c.incompleto_ciclo ? 'Sin fecha ciclo' : regimenStr === 'general' ? workerTurno(turnos, t, fecha)?.nombre || 'General' : regimenStr.replace('minero_', 'Minero ').replace('x', '×');
           return <tr key={t.id} style={{background: c.incompleto_ciclo ? 'rgba(239,68,68,0.06)' : undefined}}>
             <td><strong>{t.nombre || 'Desconocido'}</strong></td>
+            <td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>
             <td><span className={`badge ${badgeClass}`}>{regimenLabel}</span></td>
             <td>{c.incompleto_ciclo ? '—' : c.dias_laborables}</td>
             <td title={c.dias_computables != null ? "Indicador de días trabajados del ciclo" : "Asistencias registradas"}>{c.incompleto_ciclo ? '—' : c.dias_computables != null ? `${c.dias_asistidos} (días trab. ciclo)` : c.dias_asistidos}</td>
@@ -15815,20 +15883,21 @@ function ControlAsistencia() {
       </tbody></table></div>
 
       {/* Grilla Mensual para Régimen Minero */}
-      {trabajadoresMineros.length > 0 && <div style={{padding: '0 16px 16px 16px'}}>
+      {trabajadoresMinerosVisibles.length > 0 && <div style={{padding: '0 16px 16px 16px'}}>
         <h4 style={{marginBottom:10}}>Vista Mensual - Régimen Minero</h4>
         <div style={{overflowX:'auto'}}>
           <table className="tbl" style={{minWidth:1000}}>
             <thead>
-              <tr><th>Trabajador</th>
+              <tr><th>Trabajador</th><th>Modalidad</th>
               {Array.from({length: 31}).map((_, i) => <th key={i} style={{width:28, padding:4, textAlign:'center', fontSize:10}}>{i+1}</th>)}
               </tr>
             </thead>
             <tbody>
-              {trabajadoresMineros.filter(t => t && (!filtroTrabajador || (t.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).map(t => {
+              {trabajadoresMinerosVisibles.filter(t => t && (!filtroTrabajador || (t.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).map(t => {
                 const regsM = registrosPeriodo.filter(r => r.trabajador_id === t.id);
                 return <tr key={t.id}>
                   <td><strong>{t.nombre}</strong></td>
+                  <td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>
                   {Array.from({length: 31}).map((_, i) => {
                     const diaStr = String(i+1).padStart(2,'0');
                     const fechaBuscada = `${currentMonth}-${diaStr}`;
@@ -15860,7 +15929,7 @@ function ControlAsistencia() {
       </div>}
 
       {tab === 'resumen' && <div className="card" style={{padding:20}}><div className="card-head" style={{flexWrap:'wrap', gap:10}}><div className="row" style={{gap:16, alignItems:'center'}}><h3>Resumen por trabajador - {mesNombreCap}</h3><input type="month" className="input" style={{width: 160}} value={currentMonth} onChange={e => { if (e.target.value) setFecha(e.target.value + '-01'); }} /></div><button className="btn btn-secondary btn-sm">{I.download} Exportar Excel</button></div>
-        <div className="input-group" style={{maxWidth:300, marginBottom:20}}><label>Seleccionar Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadores.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div>
+        <div className="row" style={{gap:12, alignItems:'end', flexWrap:'wrap', marginBottom:20}}><div className="input-group" style={{minWidth:300, margin:0}}><label>Seleccionar Trabajador</label><select className="select" value={resumenTrabajador?.id || ''} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresVisibles.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div>{filtroModalidadControl()}</div>
         {!resumenTrabajador ? <div style={{padding:24, textAlign:'center', color:'var(--fg-muted)'}}>Sin trabajadores registrados.</div> :
         (() => {
           const calc = calculosAsistencia.find(c => c.trabajador_id === resumenTrabajador.id);
@@ -15870,6 +15939,7 @@ function ControlAsistencia() {
             <div className="grid-2" style={{gap:20}}>
               <div>
                 <p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p>
+                <p><strong>Modalidad:</strong> {modalidadEtiqueta(resumenTrabajador)}</p>
                 <p><strong>Régimen/Turno:</strong> {calc.incompleto_ciclo ? 'Sin fecha ciclo' : calc.regimen_jornada === 'general' ? resumenTurno?.nombre || 'General' : calc.regimen_jornada.replace('minero_', 'Minero ').replace('x', '×')}</p>
                 <p><strong>Dias esperados (lab.):</strong> {calc.incompleto_ciclo ? '—' : calc.dias_laborables}</p>
                 <p><strong>Dias asistidos:</strong> {calc.incompleto_ciclo ? '—' : calc.dias_computables != null ? `${calc.dias_asistidos} (días trab. ciclo)` : calc.dias_asistidos}</p>
@@ -15904,11 +15974,12 @@ function ControlAsistencia() {
           </form>
         </div>
         <div className="card">
-          <div className="card-head"><h3>Solicitudes HE</h3><span className="badge badge-orange">{autHeRows.filter(r=>r.estado==='pendiente').length} pendientes</span></div>
-          <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Fecha</th><th>Horas</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
-            {autHeRows.length === 0 && <tr><td colSpan={5} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes registradas.</td></tr>}
-            {autHeRows.map(r => <tr key={r.id}>
+          <div className="card-head" style={{gap:12, flexWrap:'wrap'}}><h3>Solicitudes HE</h3>{filtroModalidadControl()}<span className="badge badge-orange">{autHeRowsVisibles.filter(r=>r.estado==='pendiente').length} pendientes</span></div>
+          <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Modalidad</th><th>Fecha</th><th>Horas</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+            {autHeRowsVisibles.length === 0 && <tr><td colSpan={6} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes registradas.</td></tr>}
+            {autHeRowsVisibles.map(r => <tr key={r.id}>
               <td><strong>{r.personal_nombre || trabajadores.find(t=>t.id===r.personal_id)?.nombre || r.personal_id}</strong><div className="text-muted" style={{fontSize:11}}>{r.motivo}</div></td>
+              <td><span className="badge badge-gray">{modalidadEtiqueta(trabajadores.find(t=>t.id===r.personal_id))}</span></td>
               <td>{r.fecha}</td>
               <td>{minutesToLabel(Number(r.minutos_autorizados || 0))}</td>
               <td><span className={'badge '+(r.estado==='aprobada'?'badge-green':r.estado==='rechazada'?'badge-red':'badge-orange')}>{r.estado}</span></td>
@@ -16003,12 +16074,12 @@ function ControlAsistencia() {
         {geoSubTab === 'panel' && <div className="card">
           <div className="card-head">
             <div><h3>Panel SAR</h3><p className="text-muted" style={{margin:0}}>Verificacion puntual de llegada por operacion/geocerca.</p></div>
-            <div className="row" style={{gap:8}}><input className="input" type="date" value={sarFecha} onChange={e=>setSarFecha(e.target.value)} style={{width:150}}/><button className="btn btn-secondary btn-sm" onClick={ejecutarSar} disabled={sarEvaluando}>{sarEvaluando ? 'Evaluando...' : 'Generar alertas'}</button></div>
+            <div className="row" style={{gap:8, alignItems:'end', flexWrap:'wrap'}}><input className="input" type="date" value={sarFecha} onChange={e=>setSarFecha(e.target.value)} style={{width:150}}/>{filtroModalidadControl()}<button className="btn btn-secondary btn-sm" onClick={ejecutarSar} disabled={sarEvaluando}>{sarEvaluando ? 'Evaluando...' : 'Generar alertas'}</button></div>
           </div>
           <div className="grid-2" style={{gap:16, padding:16}}>
-            <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Operacion</th><th>Estado</th><th>Hora</th></tr></thead><tbody>
-              {sarRows.map(r => <tr key={`${r.asignacion.id}_${sarFecha}`} onClick={()=>setSarSeleccionado(r.asignacion.id)} style={{cursor:'pointer', background: sarSeleccionado===r.asignacion.id ? 'var(--bg-hover, rgba(6,182,212,.08))' : undefined}}><td><strong>{r.persona.nombre}</strong></td><td>{r.geocerca.nombre}</td><td><span className={'badge '+(r.estado==='dentro'?'badge-green':r.estado==='no_marcado'?'badge-red':r.estado==='fuera'?'badge-orange':'badge-gray')}>{r.estado}</span></td><td>{r.registro?.hora_entrada || '-'}</td></tr>)}
-              {!sarRows.length && <tr><td colSpan={4} className="text-muted" style={{padding:16}}>Asigna geocercas a trabajadores para ver el SAR.</td></tr>}
+            <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Modalidad</th><th>Operacion</th><th>Estado</th><th>Hora</th></tr></thead><tbody>
+              {sarRowsVisibles.map(r => <tr key={`${r.asignacion.id}_${sarFecha}`} onClick={()=>setSarSeleccionado(r.asignacion.id)} style={{cursor:'pointer', background: sarSeleccionado===r.asignacion.id ? 'var(--bg-hover, rgba(6,182,212,.08))' : undefined}}><td><strong>{r.persona.nombre}</strong></td><td><span className="badge badge-gray">{modalidadEtiqueta(r.persona)}</span></td><td>{r.geocerca.nombre}</td><td><span className={'badge '+(r.estado==='dentro'?'badge-green':r.estado==='no_marcado'?'badge-red':r.estado==='fuera'?'badge-orange':'badge-gray')}>{r.estado}</span></td><td>{r.registro?.hora_entrada || '-'}</td></tr>)}
+              {!sarRowsVisibles.length && <tr><td colSpan={5} className="text-muted" style={{padding:16}}>Sin trabajadores para la modalidad seleccionada.</td></tr>}
             </tbody></table></div>
             <GeoMiniMapa lat={geocercas[0]?.latitud} lng={geocercas[0]?.longitud} radio={geocercas[0]?.radio_m || 600} mostrarRadio={geocercas[0]?.tipo !== 'poligono'} puntos={sarPuntosMapa} seleccionado={sarSeleccionado} onSeleccionar={setSarSeleccionado} altura={480}/>
           </div>
@@ -16017,12 +16088,12 @@ function ControlAsistencia() {
 
       {tab === 'minero' && <div>
         <div className="card" style={{marginBottom:12}}>
-          <div className="card-head"><h3>Régimen Minero — Estado de Ciclos</h3><p className="text-muted" style={{margin:0}}>Día actual del ciclo, próxima bajada y balance del mes</p></div>
+          <div className="card-head" style={{gap:12, flexWrap:'wrap'}}><div><h3>Régimen Minero — Estado de Ciclos</h3><p className="text-muted" style={{margin:0}}>Día actual del ciclo, próxima bajada y balance del mes</p></div>{filtroModalidadControl()}</div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Trabajador</th><th>Régimen</th><th>Estado</th><th>Día del ciclo</th><th>Progreso</th><th>Próxima bajada</th><th>Días mina/mes</th><th>Acciones</th></tr></thead>
+              <thead><tr><th>Trabajador</th><th>Modalidad</th><th>Régimen</th><th>Estado</th><th>Día del ciclo</th><th>Progreso</th><th>Próxima bajada</th><th>Días mina/mes</th><th>Acciones</th></tr></thead>
               <tbody>
-                {trabajadoresMineros.map(t => {
+                {trabajadoresMinerosVisibles.map(t => {
                   const c = ciclosMineros.find(x => x.personal_id === t.id);
                   const { t: diasT, d: diasD } = getCicloDias(t.regimen_jornada, t);
                   const estadoCiclo = c ? calcularEstadoCicloMinero({
@@ -16043,11 +16114,13 @@ function ControlAsistencia() {
                     : 'En descanso';
                   const regimenDisplay = t.regimen_jornada === 'minero_2x1' ? 'Minero 2×1'
                     : t.regimen_jornada.replace('minero_', 'Minero ').replace('x', '×');
-                  return <tr key={t.id}>
+                  return <tr key={t.id} style={estiloSinContratoVigente(t)}>
                     <td>
                       <strong>{t.nombre}</strong>
+                      {badgeSinContratoVigente(t)}
                       {t.usuario_bloqueado_en && <span className="badge badge-red" style={{fontSize:10, marginLeft:6}}>Bloqueado</span>}
                     </td>
+                    <td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>
                     <td><span className="badge badge-blue" style={{fontSize:11}}>{regimenDisplay}</span></td>
                     <td><span className={`badge ${estadoBadge}`}>{estadoLabel}</span></td>
                     <td>{estadoCiclo ? `Día ${estadoCiclo.diaCiclo} de ${estadoCiclo.totalDiasCiclo}` : '—'}</td>
@@ -16064,7 +16137,7 @@ function ControlAsistencia() {
                     </td>
                   </tr>;
                 })}
-                {trabajadoresMineros.length === 0 && <tr><td colSpan={8} className="text-muted" style={{padding:20, textAlign:'center'}}>No hay trabajadores con régimen minero activos.</td></tr>}
+                {trabajadoresMinerosVisibles.length === 0 && <tr><td colSpan={9} className="text-muted" style={{padding:20, textAlign:'center'}}>{modalidadFiltro === 'honorarios' ? 'No hay trabajadores honorarios con régimen minero activo.' : modalidadFiltro === 'planilla' ? 'No hay trabajadores en planilla con régimen minero activo.' : 'No hay trabajadores con régimen minero activo.'}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -16145,6 +16218,7 @@ function ControlAsistencia() {
             </div>
             <div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}>
               <input type="month" className="input" style={{width:150}} value={currentMonth} onChange={e => { if (e.target.value) setFecha(e.target.value + '-01'); }} />
+              {filtroModalidadControl({width:180})}
               <div className="row" style={{background:'var(--bg-subtle)', borderRadius:8, padding:'2px 4px', border:'1px solid var(--border)'}}>
                 <button type="button" className={'btn btn-sm ' + (rosterVista === 'totales' ? 'btn-primary' : 'btn-ghost')} onClick={() => setRosterVista('totales')}>Totales</button>
                 <button type="button" className={'btn btn-sm ' + (rosterVista === 'grilla' ? 'btn-primary' : 'btn-ghost')} onClick={() => setRosterVista('grilla')}>Grilla</button>
@@ -16159,10 +16233,10 @@ function ControlAsistencia() {
 
           {rosterVista === 'totales' && <>
             {/* KPIs del roster */}
-            {rosterRows.length > 0 && <div className="kpi-grid" style={{marginBottom:16}}>
-              <div className="kpi-card"><div className="kpi-label">Trabajadores en mina</div><div className="kpi-value">{rosterRows.filter(r => r.dias_en_mina > 0).length}</div></div>
-              <div className="kpi-card"><div className="kpi-label">Deuda total de descanso</div><div className="kpi-value" style={{color:'var(--green)'}}>{rosterRows.reduce((s,r) => s + Math.max(0, r.balance_acumulado), 0).toFixed(1)} días</div></div>
-              <div className="kpi-card"><div className="kpi-label">Con balance negativo</div><div className="kpi-value" style={{color:'var(--danger)'}}>{rosterRows.filter(r => r.balance_acumulado < 0).length}</div></div>
+            {rosterRowsVisibles.length > 0 && <div className="kpi-grid" style={{marginBottom:16}}>
+              <div className="kpi-card"><div className="kpi-label">Trabajadores en mina</div><div className="kpi-value">{rosterRowsVisibles.filter(r => r.dias_en_mina > 0).length}</div></div>
+              <div className="kpi-card"><div className="kpi-label">Deuda total de descanso</div><div className="kpi-value" style={{color:'var(--green)'}}>{rosterRowsVisibles.reduce((s,r) => s + Math.max(0, r.balance_acumulado), 0).toFixed(1)} días</div></div>
+              <div className="kpi-card"><div className="kpi-label">Con balance negativo</div><div className="kpi-value" style={{color:'var(--danger)'}}>{rosterRowsVisibles.filter(r => r.balance_acumulado < 0).length}</div></div>
             </div>}
 
             <div className="card">
@@ -16171,6 +16245,7 @@ function ControlAsistencia() {
                   <thead>
                     <tr>
                       <th>Trabajador</th>
+                      <th>Modalidad</th>
                       <th>Régimen</th>
                       <th title="Días trabajados en mina (excluye inducción)">En mina</th>
                       <th title="Días de inducción (pagados, no generan descanso)">Inducción</th>
@@ -16184,14 +16259,16 @@ function ControlAsistencia() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rosterRows.length === 0 && <tr><td colSpan={11} className="text-muted" style={{padding:20, textAlign:'center'}}>Sin datos. Presiona "Calcular" para generar el roster.</td></tr>}
-                    {rosterRows.map(r => {
+                    {rosterRowsVisibles.length === 0 && <tr><td colSpan={12} className="text-muted" style={{padding:20, textAlign:'center'}}>{modalidadFiltro === 'honorarios' ? 'No hay trabajadores honorarios con régimen minero para este período.' : modalidadFiltro === 'planilla' ? 'No hay trabajadores en planilla con régimen minero para este período.' : 'Sin datos. Presiona "Calcular" para generar el roster.'}</td></tr>}
+                    {rosterRowsVisibles.map(r => {
                       const balPColor = r.balance_periodo >= 0 ? 'var(--green)' : 'var(--danger)';
                       const balAColor = r.balance_acumulado >= 0 ? 'var(--green)' : 'var(--danger)';
                       const ajustePendienteSnapshot = ajustesSnapshotPendientePorPersonal.get(r.personal_id);
+                      const trabajadorSnapshot = trabajadoresRoster.find(t => t.id === r.personal_id);
                       return (
-                        <tr key={r.personal_id}>
-                          <td><strong>{r.personal_nombre}</strong><div className="text-muted" style={{fontSize:11}}>{r.personal_tipo}</div>{cesadosPorId.has(r.personal_id) && <span className="badge badge-gray" style={{fontSize:10, marginTop:4, display:'inline-block'}} title={`Cesado el ${cesadosPorId.get(r.personal_id).fecha_cese || '-'}`}>Cesado — datos de un cálculo anterior a su cese</span>}</td>
+                        <tr key={r.personal_id} style={estiloSinContratoVigente(trabajadorSnapshot)}>
+                          <td><strong>{r.personal_nombre}</strong>{badgeSinContratoVigente(trabajadorSnapshot)}<div className="text-muted" style={{fontSize:11}}>{r.personal_tipo}</div>{cesadosPorId.has(r.personal_id) && <span className="badge badge-gray" style={{fontSize:10, marginTop:4, display:'inline-block'}} title={`Cesado el ${cesadosPorId.get(r.personal_id).fecha_cese || '-'}`}>Cesado — datos de un cálculo anterior a su cese</span>}</td>
+                          <td><span className="badge badge-gray" style={{fontSize:11}}>{modalidadEtiqueta(trabajadorSnapshot)}</span></td>
                           <td><span className="badge badge-orange" style={{fontSize:11}}>{r.dias_ciclo_trabajo}×{r.dias_ciclo_descanso}</span></td>
                           <td>{r.dias_en_mina}</td>
                           <td>{r.dias_induccion > 0 ? <span className="badge badge-purple" style={{fontSize:11}}>{r.dias_induccion}</span> : '—'}</td>
@@ -16255,6 +16332,7 @@ function ControlAsistencia() {
                       <thead>
                         <tr>
                           <th style={{position:'sticky', left:0, background:'var(--bg-card, var(--bg))', zIndex:1}}>Trabajador</th>
+                          <th>Modalidad</th>
                           {diasRango.map(f => <th key={f} style={{textAlign:'center', minWidth:28}}>{f.slice(8,10)}</th>)}
                           <th title="Días en mina (snapshot del período)">Mina</th>
                           <th title="Días de descanso ganados (snapshot del período)">Ganados</th>
@@ -16266,8 +16344,9 @@ function ControlAsistencia() {
                         {grupo.trabajadores.map(t => {
                           const fila = filaGridRoster(t);
                           return (
-                            <tr key={t.id}>
-                              <td style={{position:'sticky', left:0, background:'var(--bg-card, var(--bg))', zIndex:1}}><strong>{t.nombre}</strong></td>
+                            <tr key={t.id} style={estiloSinContratoVigente(t)}>
+                              <td style={{position:'sticky', left:0, background:sinContratoVigente(t) ? 'var(--bg-subtle)' : 'var(--bg-card, var(--bg))', zIndex:1}}><strong>{t.nombre}</strong>{badgeSinContratoVigente(t)}</td>
+                              <td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>
                               {fila.dias.map(dia => {
                                 const est = estiloCeldaRoster(dia);
                                 const marcacion = marcacionPorConfirmar(dia);
@@ -16313,14 +16392,16 @@ function ControlAsistencia() {
             <div className="table-wrap">
               <table className="tbl" style={{fontSize:12}}>
                 <thead>
-                  <tr><th>Trabajador</th><th>Fecha</th><th>De</th><th>A</th><th>Motivo</th><th>Estado</th><th>Acciones / Revisión</th></tr>
+                  <tr><th>Trabajador</th><th>Modalidad</th><th>Fecha</th><th>De</th><th>A</th><th>Motivo</th><th>Estado</th><th>Acciones / Revisión</th></tr>
                 </thead>
                 <tbody>
-                  {ajustesRoster.map(a => {
-                    const nombreTrabajador = trabajadoresRoster.find(t => t.id === a.personal_id)?.nombre || a.personal_id;
+                  {ajustesRosterVisibles.map(a => {
+                    const trabajadorAjuste = trabajadoresRoster.find(t => t.id === a.personal_id);
+                    const nombreTrabajador = trabajadorAjuste?.nombre || a.personal_id;
                     return (
-                      <tr key={a.id}>
-                        <td><strong>{nombreTrabajador}</strong></td>
+                      <tr key={a.id} style={estiloSinContratoVigente(trabajadorAjuste)}>
+                        <td><strong>{nombreTrabajador}</strong>{badgeSinContratoVigente(trabajadorAjuste)}</td>
+                        <td><span className="badge badge-gray">{modalidadEtiqueta(trabajadorAjuste)}</span></td>
                         <td>{a.fecha}</td>
                         <td>{a.tipo_dia_antes === 'trabajo' ? 'Trabajo' : 'Descanso'}</td>
                         <td>{a.tipo_dia_solicitado === 'trabajo' ? 'Trabajo' : 'Descanso'}</td>
@@ -16349,7 +16430,7 @@ function ControlAsistencia() {
                       </tr>
                     );
                   })}
-                  {!ajustesRoster.length && <tr><td colSpan={7} className="text-muted" style={{textAlign:'center', padding:16}}>Sin ajustes registrados.</td></tr>}
+                  {!ajustesRosterVisibles.length && <tr><td colSpan={8} className="text-muted" style={{textAlign:'center', padding:16}}>Sin ajustes para la modalidad seleccionada.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -18657,8 +18738,9 @@ function RRHH_Operativo() {
   const [crearUsuarioSistema, setCrearUsuarioSistema] = useState(false);
   const [usuarioSistemaForm, setUsuarioSistemaForm] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'tecnico' });
   const [showFormAsig, setShowFormAsig] = useState(false);
-  const [formAsig, setFormAsig] = useState({ tipo_tramo: 'normal', fecha_inicio: '', regimen_jornada: 'general', fecha_inicio_ciclo: '', motivo: '' });
+  const [formAsig, setFormAsig] = useState({ tipo_tramo: 'normal', fecha_inicio: '', fecha_fin: '', regimen_jornada: 'general', fecha_inicio_ciclo: '', motivo: '' });
   const [savingAsig, setSavingAsig] = useState(false);
+  const [formAsigError, setFormAsigError] = useState('');
   const [retroWallAsig, setRetroWallAsig] = useState(null);
   const [retroWallMotivoAsig, setRetroWallMotivoAsig] = useState('');
   // Estado para subir documentos en ficha
@@ -19803,7 +19885,11 @@ function RRHH_Operativo() {
                   ))}
                   <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
                     <div className="text-muted" style={{fontSize:11, marginBottom:6, textTransform:'uppercase', letterSpacing:'0.08em'}}>Régimen de jornada</div>
-                    <div style={{fontWeight:500, fontSize:13, marginBottom:6}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || 'general')}</div>
+                    <div style={{fontWeight:500, fontSize:13, marginBottom:6}}>{(() => {
+                      const asig = asignacionesJornada.find(a => a.personal_id === p.id && a.tipo_tramo === 'normal' && a.fecha_inicio <= new Date().toISOString().slice(0, 10) && (!a.fecha_fin || a.fecha_fin >= new Date().toISOString().slice(0, 10)));
+                      if (!asig) return <span className="text-muted">Sin jornada asignada</span>;
+                      return asig.regimen_jornada === 'general' ? labelOr(REGIMEN_JORNADA_LABELS, 'general') : `Minero ${asig.dias_ciclo_trabajo}×${asig.dias_ciclo_descanso}`;
+                    })()}</div>
                     <div className="row" style={{gap:6, flexWrap:'wrap'}}>
                       <span className="badge badge-gray">Fiscalización: {fiscalizacionLabel(getTipoFiscalizacion(p))}</span>
                       <span className="badge badge-gray">Vacaciones: {diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general')} días/año</span>
@@ -20099,7 +20185,8 @@ function RRHH_Operativo() {
 
           {fichaTab === 'jornada' && (() => {
             const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === p.id).sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio));
-            const asigActiva = asigsTrabajador.find(a => !a.fecha_fin);
+            const hoyAsignacion = new Date().toISOString().slice(0, 10);
+            const asigActiva = asigsTrabajador.find(a => a.fecha_inicio <= hoyAsignacion && (!a.fecha_fin || a.fecha_fin >= hoyAsignacion));
             const sumarDiaAsignacion = (fechaStr) => {
               if (!fechaStr) return '';
               const fecha = new Date(`${fechaStr}T00:00:00`);
@@ -20130,13 +20217,26 @@ function RRHH_Operativo() {
               return ({ '14x7':'minero_14x7', '20x10':'minero_20x10', '28x14':'minero_28x14', '2x1':'minero_2x1' })[`${Number(a.dias_ciclo_trabajo)}x${Number(a.dias_ciclo_descanso)}`] || '';
             };
             const guardarAsig = async (overrideOpts) => {
-              if (!formAsig.fecha_inicio) { addNotificacion('La fecha de inicio es obligatoria.', 'error'); return; }
+              if (!formAsig.fecha_inicio) {
+                const mensaje = 'La fecha de inicio es obligatoria.';
+                setFormAsigError(mensaje); addNotificacion(mensaje, 'error'); return;
+              }
+              if (formAsig.fecha_fin && formAsig.fecha_fin < formAsig.fecha_inicio) {
+                const mensaje = 'La fecha de fin no puede ser anterior a la fecha de inicio.';
+                setFormAsigError(mensaje); addNotificacion(mensaje, 'error'); return;
+              }
               const preset = presetJornada[formAsig.regimen_jornada];
-              if (!preset) { addNotificacion('Selecciona un régimen de jornada predefinido.', 'error'); return; }
-              if (preset.regimen === 'ciclo_acumulativo' && !formAsig.fecha_inicio_ciclo) { addNotificacion('Completa la fecha de inicio del ciclo.', 'error'); return; }
+              if (!preset) {
+                const mensaje = 'Selecciona un régimen de jornada predefinido.';
+                setFormAsigError(mensaje); addNotificacion(mensaje, 'error'); return;
+              }
+              if (preset.regimen === 'ciclo_acumulativo' && !formAsig.fecha_inicio_ciclo) {
+                const mensaje = 'Completa la fecha de inicio del ciclo.';
+                setFormAsigError(mensaje); addNotificacion(mensaje, 'error'); return;
+              }
               const forzarOverride = overrideOpts?.forzarOverride || false;
               const motivoOverride = overrideOpts?.motivoOverride || null;
-              setSavingAsig(true); setRetroWallAsig(null);
+              setSavingAsig(true); setRetroWallAsig(null); setFormAsigError('');
               try {
                 const payload = {
                   ...formAsig,
@@ -20149,7 +20249,7 @@ function RRHH_Operativo() {
                 };
                 await crearAsignacionJornadaCtx(p.id, 'operativo', payload);
                 setShowFormAsig(false);
-                setFormAsig({ tipo_tramo: 'normal', fecha_inicio: '', regimen_jornada: 'general', fecha_inicio_ciclo: '', motivo: '' });
+                setFormAsig({ tipo_tramo: 'normal', fecha_inicio: '', fecha_fin: '', regimen_jornada: 'general', fecha_inicio_ciclo: '', motivo: '' });
                 setRetroWallAsig(null); setRetroWallMotivoAsig('');
                 addNotificacion('Asignación de jornada registrada.');
               } catch (e) {
@@ -20159,7 +20259,8 @@ function RRHH_Operativo() {
                 } else if (msg.startsWith('RETRO_WALL:')) {
                   setRetroWallAsig(msg.replace('RETRO_WALL:', '').trim());
                 } else {
-                  addNotificacion(msg || 'Error al guardar asignación.', 'error');
+                  const mensaje = msg || 'Error al guardar asignación.';
+                  setFormAsigError(mensaje); addNotificacion(mensaje, 'error');
                 }
               }
               finally { setSavingAsig(false); }
@@ -20171,18 +20272,19 @@ function RRHH_Operativo() {
                     <div style={{fontWeight:600, marginBottom:4}}>Asignación vigente</div>
                     {asigActiva
                       ? <div><span className="badge badge-green">{tipoTramoLabel[asigActiva.tipo_tramo] || asigActiva.tipo_tramo}</span>{' '}<span className="badge badge-blue">{presetJornada[presetDeAsignacion(asigActiva)]?.label || 'Régimen inválido'}</span><span className="text-muted" style={{fontSize:12, marginLeft:8}}>desde {asigActiva.fecha_inicio}</span>{asigActiva.regimen_jornada === 'ciclo_acumulativo' && <span className="text-muted" style={{fontSize:12, marginLeft:8}}>Ciclo {asigActiva.dias_ciclo_trabajo}×{asigActiva.dias_ciclo_descanso} · inicio {asigActiva.fecha_inicio_ciclo}</span>}</div>
-                      : <div className="text-muted" style={{fontSize:13}}>Sin asignación registrada — se usa el régimen de la ficha ({p.regimen_jornada || 'general'}).</div>
+                      : <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div>
                     }
                   </div>
                   <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => {
                     setShowFormAsig(v => !v);
-                    setRetroWallAsig(null); setRetroWallMotivoAsig('');
+                    setRetroWallAsig(null); setRetroWallMotivoAsig(''); setFormAsigError('');
                     setFormAsig(f => {
-                      if (asigActiva) return { ...f, fecha_inicio: fechaInicioSugerida, regimen_jornada: presetDeAsignacion(asigActiva), fecha_inicio_ciclo: asigActiva.fecha_inicio_ciclo || '' };
+                      if (asigActiva) return { ...f, fecha_inicio: fechaInicioSugerida, fecha_fin: '', regimen_jornada: presetDeAsignacion(asigActiva), fecha_inicio_ciclo: asigActiva.fecha_inicio_ciclo || '' };
                       const esCicloFicha = esRegimenMinero(p.regimen_jornada);
                       return {
                         ...f,
                         fecha_inicio: fechaInicioSugerida,
+                        fecha_fin: '',
                         regimen_jornada: esCicloFicha ? p.regimen_jornada : 'general',
                         fecha_inicio_ciclo: esCicloFicha ? (p.fecha_inicio_ciclo || '') : '',
                       };
@@ -20199,7 +20301,9 @@ function RRHH_Operativo() {
                           <option value="normal">Normal</option>
                         </select>
                       </div>
-                      <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsig.fecha_inicio} onChange={e => setFormAsig(f => ({ ...f, fecha_inicio: e.target.value }))}/></div>
+                      <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsig.fecha_inicio} onChange={e => { setFormAsig(f => ({ ...f, fecha_inicio: e.target.value })); setFormAsigError(''); }}/></div>
+                      <div className="input-group"><label>Fecha de fin <span className="text-muted">(opcional)</span></label><input className="input" type="date" min={formAsig.fecha_inicio || undefined} value={formAsig.fecha_fin || ''} onChange={e => { setFormAsig(f => ({ ...f, fecha_fin: e.target.value })); setFormAsigError(''); }}/></div>
+                      {formAsig.fecha_fin && formAsig.fecha_inicio && formAsig.fecha_fin < formAsig.fecha_inicio && <div className="alert alert-danger" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>La fecha de fin debe ser igual o posterior a la fecha de inicio.</div>}
                       {fechaAnteriorATramoVigente && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>
                         Esta fecha queda antes del tramo vigente actual ({asigActiva.fecha_inicio}). Verifica que sea una corrección retroactiva; si el período tiene nómina procesada, el retro wall solicitará justificación y autorización al guardar.
                       </div>}
@@ -20220,6 +20324,7 @@ function RRHH_Operativo() {
                       </>}
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Motivo (opcional)</label><input className="input" type="text" value={formAsig.motivo} onChange={e => setFormAsig(f => ({ ...f, motivo: e.target.value }))} placeholder="Ej. Fin de proyecto en mina, baja a Lima en espera de nuevo destino"/></div>
                     </div>
+                    {formAsigError && <div className="alert alert-danger" style={{fontSize:12, marginTop:12}}>{formAsigError}</div>}
                     {formAsig.tipo_tramo === 'suspension_perfecta' && <div className="alert alert-warning" style={{fontSize:12, marginTop:8}}>Suspensión perfecta: los días de este tramo no generan remuneración. La relación laboral y la antigüedad continúan sin interrupción.</div>}
 
                     {retroWallAsig && (
@@ -20245,7 +20350,7 @@ function RRHH_Operativo() {
                     )}
 
                     <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => { setShowFormAsig(false); setRetroWallAsig(null); setRetroWallMotivoAsig(''); }}>Cancelar</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => { setShowFormAsig(false); setRetroWallAsig(null); setRetroWallMotivoAsig(''); setFormAsigError(''); }}>Cancelar</button>
                       <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => guardarAsig()} disabled={savingAsig}>{savingAsig ? 'Guardando...' : 'Guardar asignación'}</button>
                     </div>
                   </div>
@@ -20253,7 +20358,7 @@ function RRHH_Operativo() {
 
                 <div style={{fontWeight:600, marginBottom:8}}>Historial</div>
                 {asigsTrabajador.length === 0
-                  ? <div className="text-muted" style={{fontSize:13}}>Sin registros. El régimen actual se toma directamente de la ficha del trabajador.</div>
+                  ? <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div>
                   : <div className="table-wrap" style={{margin:'0 -16px'}}><table className="tbl" style={{fontSize:12, width:'100%'}}>
                       <thead><tr><th>Desde</th><th>Hasta</th><th>Tipo</th><th>Régimen</th><th>Ciclo</th><th>Motivo</th></tr></thead>
                       <tbody>
@@ -21317,7 +21422,7 @@ function RRHH_Operativo() {
                       {visibleCols.includes('unidad') && <td>{resolverUnidadOrganizacional(p) || <span className="text-subtle">Sin posición</span>}</td>}
                       {visibleCols.includes('sede') && <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>}
                       {visibleCols.includes('turno') && <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>}
-                      {visibleCols.includes('jornada') && <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span>}</td>}
+                      {visibleCols.includes('jornada') && <td><span className="text-muted" style={{fontSize:12}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span></td>}
                       {visibleCols.includes('contrato') && <td>{esHon ? <span className="text-subtle">—</span> : <span className={`badge ${contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'badge-red' : contratoInfoFila.badge}`} style={{fontSize:11}}>{contratoInfoFila.texto}</span>}</td>}
                       {visibleCols.includes('modalidad') && <td><span className={'badge '+(esHon ? 'badge-gray' : 'badge-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></td>}
                       {visibleCols.includes('vacaciones') && <td className="num">{esHon ? <span className="text-subtle">—</span> : `${solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso||null, p.dias_vacaciones_total??30, solicitudesRRHH.filter(s => s.personal_id === p.id)).saldo} días`}</td>}
@@ -21506,7 +21611,7 @@ function RRHH_Operativo() {
               </div>
               <div className="input-group"><label>Especialidad principal</label><select className="select" value={formAlta.especialidad} onChange={e=>setFormAlta(v=>({...v,especialidad:e.target.value}))}><option value="">Seleccionar...</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>
               <div className="input-group"><label>Especialidad secundaria <span className="text-muted">(opcional)</span></label><select className="select" value={formAlta.especialidad2} onChange={e=>setFormAlta(v=>({...v,especialidad2:e.target.value}))}><option value="">Ninguna</option>{especialidadesOptions.map(e=><option key={e} value={e}>{e}</option>)}</select></div>
-              <div className="input-group"><label>Sede base</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}{s.detalle ? ` - ${s.detalle}` : ''}</option>)}</select></div>
+              <div className="input-group"><label>Sede base</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}</option>)}</select></div>
               <div className="input-group"><label>Supervisor directo</label><select className="select" value={formAlta.supervisor_id} onChange={e=>setFormAlta(v=>({...v,supervisor_id:e.target.value}))}><option value="">Sin supervisor asignado</option>{supervisorOptions.map(p=><option key={p.id} value={p.id}>{p.nombre} - {p.cargo}</option>)}</select>{!supervisorOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Crea o edita un colaborador con perfil de campo Supervisor.</div>}</div>
               <div className="input-group"><label>Fecha de ingreso *</label><input className="input" type="date" required value={formAlta.fecha_ingreso} onChange={e=>setFormAlta(v=>({...v,fecha_ingreso:e.target.value}))}/></div>
               <div className="input-group"><label>Estado inicial</label><select className="select" value={formAlta.estado} onChange={e=>setFormAlta(v=>({...v,estado:e.target.value}))}><option value="disponible">Disponible</option><option value="inactivo">Inactivo</option></select></div>
@@ -21597,9 +21702,9 @@ function RRHH_Operativo() {
                     <div className="input-group"><label>Descuento judicial</label><input className="input" type="number" min="0" value={formAlta.descuento_judicial} onChange={e=>setFormAlta(v=>({...v,descuento_judicial:e.target.value}))}/></div>
                   </div>
 
-                  <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10}}>Régimen de jornada</div>
+                  <div className="alert alert-info" style={{fontSize:12, marginBottom:12}}>La jornada se asigna después de registrar y validar el contrato, desde <strong>Jornada → + Nueva asignación</strong> en la ficha del trabajador.</div>
                   {editandoId && <div className="alert alert-info" style={{fontSize:12, marginBottom:12}}>El régimen vigente es de solo lectura. Para cambiarlo usa <strong>Jornada → + Nueva asignación</strong> en la ficha del trabajador.</div>}
-                  <div className="grid-2" style={{gap:14, marginBottom:12}}>
+                  <div className="grid-2" style={{display:'none'}} aria-hidden="true">
                     <div className="input-group" style={{gridColumn:'1/-1'}}>
                       <label>Régimen de jornada</label>
                       <select className="select" disabled={!!editandoId} value={formAlta.regimen_jornada} onChange={e=>{

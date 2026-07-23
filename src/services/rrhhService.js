@@ -1293,6 +1293,7 @@ export const rrhhService = {
       p_motivo:              params.motivo || null,
       p_forzar_override:     params.forzar_override || false,
       p_motivo_override:     params.motivo_override || null,
+      p_fecha_fin:           params.fecha_fin || null,
     });
     if (error) throw error;
     return data;
