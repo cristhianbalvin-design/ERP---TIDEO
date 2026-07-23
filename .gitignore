@@ -10,3 +10,5 @@ API OCR - ANTROPHIC.txt
 .env*.local
 vite-dev.err.log
 vite-dev.out.log
+
+.env*.local

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from './context.jsx';
 import { I } from './icons.jsx';
-import { getSupabaseClient } from './lib/supabaseClient.js';
+import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 
 function SplashLoading({ message, duration }) {
   return (
@@ -149,6 +149,19 @@ export function AuthGate({ children }) {
   }, [dataMode]);
 
   if (dataMode !== 'supabase') return children;
+
+  if (!isSupabaseConfigured()) {
+    return (
+      <div className="app-shell" style={{ alignItems:'center', justifyContent:'center', background:'#1A2B4A', padding:24 }}>
+        <div className="card" style={{ width:'min(480px, 100%)', padding:32, textAlign:'center' }}>
+          <div className="font-display" style={{ fontSize:22, fontWeight:800, color:'var(--navy)' }}>Configuración requerida</div>
+          <p className="text-muted" style={{ marginTop:12, lineHeight:1.5 }}>
+            No se pudo conectar la plataforma a Supabase. Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY y reinicia el servidor.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const passwordResetRedirectTo = () => {
     if (typeof window === 'undefined') return undefined;

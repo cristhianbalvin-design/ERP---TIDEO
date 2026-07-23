@@ -4,7 +4,9 @@ export const DATA_MODES = {
 };
 
 export const getDataMode = () => {
-  const mode = String(import.meta.env.VITE_DATA_MODE || DATA_MODES.MOCK).toLowerCase();
+  // La aplicación operativa debe fallar de forma visible si no se configuró
+  // Supabase. El modo mock solo se habilita de forma explícita para demos.
+  const mode = String(import.meta.env.VITE_DATA_MODE || DATA_MODES.SUPABASE).toLowerCase();
   return mode === DATA_MODES.SUPABASE ? DATA_MODES.SUPABASE : DATA_MODES.MOCK;
 };
 
