@@ -1,0 +1,12 @@
+{
+  "captured_at": "2026-07-27T17:29:18.1680049Z",
+  "encoding": "gzip + base64; descomprimir Base64 y luego gzip para obtener JSON",
+  "tables": {
+    "facturas": 27,
+    "cxc": 17,
+    "cobros_cxc": 17,
+    "cuentas": 84,
+    "os_clientes": 28
+  },
+  "file": "predeploy-362-authoritative-20260727-172918.json.gz.base64"
+}

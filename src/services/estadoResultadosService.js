@@ -303,16 +303,19 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], empr
   });
 }
 
-async function loadFacturas(supabase, empresaId, periodo) {
+async function loadFacturas(supabase, empresaId, periodo, cebeIds = []) {
   const { start, next } = periodBounds(periodo);
-  const { data, error } = await supabase
+  const selectedCebes = Array.isArray(cebeIds) ? cebeIds.filter(Boolean) : [];
+  let query = supabase
     .from('facturas')
-    .select('id, numero, subtotal, igv, total, moneda, fecha_emision, estado, tipo_documento')
+    .select('id, numero, subtotal, igv, total, moneda, fecha_emision, estado, tipo_documento, centro_beneficio_id')
     .eq('empresa_id', empresaId)
     .gte('fecha_emision', start)
     .lt('fecha_emision', next)
     .neq('estado', 'anulada')
     .in('tipo_documento', ['factura', 'boleta']);
+  if (selectedCebes.length) query = query.in('centro_beneficio_id', selectedCebes);
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
@@ -476,7 +479,7 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
   const result = emptyResult(periodo);
 
   const [facturas, costosOt, comprasGastos, detalleNomina, pagosFinancieros, cxpDevengos, cajaChica, erConfig] = await Promise.all([
-    loadFacturas(supabase, empresaId, periodo),
+    loadFacturas(supabase, empresaId, periodo, cebeIds),
     loadCostosOt(supabase, empresaId),
     loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds),
     loadNomina(supabase, empresaId, periodo, effectiveCecoIds),
