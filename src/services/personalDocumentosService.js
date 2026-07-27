@@ -403,6 +403,7 @@ export async function corregirDocumento({
   personalId,
   personalTipo,
   tipoDoc,
+  esIndefinido,
   forzarOverride,
   motivoOverride,
 }) {
@@ -434,6 +435,8 @@ export async function corregirDocumento({
     p_notas:                 notas || null,
     p_archivo_url:           archivoUrl,
     p_nombre_archivo:        nombreArchivo,
+    // null conserva el valor existente para clientes anteriores a este campo.
+    p_es_indefinido:         typeof esIndefinido === 'boolean' ? esIndefinido : null,
     p_forzar_override:       forzarOverride || false,
     p_motivo_override:       motivoOverride || null,
   });

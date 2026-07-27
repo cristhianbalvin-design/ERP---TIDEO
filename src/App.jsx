@@ -52,6 +52,8 @@ const RRHHAdmin    = lazy(() => import('./pages_admin.jsx').then(m => ({ default
 const Reclutamiento = lazy(() => import('./pages_reclutamiento.jsx').then(m => ({ default: m.Reclutamiento })));
 const MiPortal      = lazy(() => import('./pages_mi_portal.jsx').then(m => ({ default: m.MiPortal })));
 const MetricasSaaS = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.MetricasSaaS })));
+const SaludImplementacion = lazy(() => import('./pages_plataforma.jsx').then(m => ({ default: m.SaludImplementacion })));
+const SaludImplementacionTenant = lazy(() => import('./pages_salud_tenant.jsx').then(m => ({ default: m.SaludImplementacionTenant })));
 const Organigrama  = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Organigrama })));
 const Comisiones         = lazy(() => import('./pages_admin.jsx').then(m => ({ default: m.Comisiones })));
 const SolicitudesRrhh    = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.SolicitudesRrhh })));
@@ -379,6 +381,8 @@ function MainLayout() {
       case 'parametros':       return <Parametros/>;
       case 'rrhh_admin':       return <RRHHAdmin/>;
       case 'metricas_saas':    return isSuperadmin ? <MetricasSaaS/> : <Dashboard role={role}/>;
+      case 'salud_implementacion': return isSuperadmin ? <SaludImplementacion/> : <Dashboard role={role}/>;
+      case 'salud_implementacion_tenant': return <SaludImplementacionTenant/>;
       case 'api_keys':         return <ApiKeys/>;
       case 'cs_onboarding':    return <CSOnboarding/>;
       case 'cs_planes':        return <CSPlanes/>;
