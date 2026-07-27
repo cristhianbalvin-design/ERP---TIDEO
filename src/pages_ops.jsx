@@ -20340,6 +20340,36 @@ function RRHH_Operativo() {
             const fechaInicioSugerida = tramoReferencia
               ? (tramoReferencia.fecha_fin ? sumarDiaAsignacion(tramoReferencia.fecha_fin) : tramoReferencia.fecha_inicio)
               : (p.fecha_ingreso || '');
+            // Una jornada sin fecha_fin requiere que la RPC encuentre cobertura
+            // hasta un contrato indefinido. Para un contrato finito se propone
+            // su vencimiento como fin del tramo, sin alterar la regla SQL.
+            const finContratoParaFecha = fecha => {
+              if (!fecha) return null;
+              const contratos = (personalDocumentos || []).map(doc => {
+                const tipo = (tiposDocumento || []).find(t => t.id === doc.tipo_documento_id);
+                const esContractual = Boolean(tipo?.captura_snapshot_laboral)
+                  || /contrato|adenda/i.test(String(doc.tipo_doc || ''));
+                return {
+                  inicio: doc.periodo_fecha_inicio || doc.fecha_vigencia_cambio || doc.fecha_emision || null,
+                  fin: doc.es_indefinido ? null : (doc.periodo_fecha_fin || doc.fecha_vencimiento || null),
+                  esContractual,
+                  estado: doc.estado_validacion,
+                  periodoEstado: doc.periodo_estado || 'vigente',
+                  personalId: doc.personal_id,
+                  personalTipo: doc.personal_tipo,
+                };
+              }).filter(doc => (
+                doc.personalId === p.id
+                && doc.personalTipo === 'operativo'
+                && ['aprobado', 'validado'].includes(doc.estado)
+                && !['rechazado', 'anulado'].includes(doc.periodoEstado)
+                && doc.esContractual
+                && doc.inicio <= fecha
+                && (!doc.fin || doc.fin >= fecha)
+              )).sort((a, b) => String(b.fin || '9999-12-31').localeCompare(String(a.fin || '9999-12-31')));
+              return contratos[0]?.fin || null;
+            };
+            const finContratoSugerido = finContratoParaFecha(formAsig.fecha_inicio);
             const fechaAnteriorATramoVigente = Boolean(
               asigActiva?.fecha_inicio
               && formAsig.fecha_inicio
@@ -20364,6 +20394,10 @@ function RRHH_Operativo() {
               }
               if (formAsig.fecha_fin && formAsig.fecha_fin < formAsig.fecha_inicio) {
                 const mensaje = 'La fecha de fin no puede ser anterior a la fecha de inicio.';
+                setFormAsigError(mensaje); addNotificacion(mensaje, 'error'); return;
+              }
+              if (finContratoSugerido && !formAsig.fecha_fin) {
+                const mensaje = `Este contrato vence el ${finContratoSugerido}. Registra una fecha de fin para la jornada.`;
                 setFormAsigError(mensaje); addNotificacion(mensaje, 'error'); return;
               }
               const preset = presetJornada[formAsig.regimen_jornada];
@@ -20420,12 +20454,12 @@ function RRHH_Operativo() {
                     setShowFormAsig(v => !v);
                     setRetroWallAsig(null); setRetroWallMotivoAsig(''); setFormAsigError('');
                     setFormAsig(f => {
-                      if (asigActiva) return { ...f, fecha_inicio: fechaInicioSugerida, fecha_fin: '', regimen_jornada: presetDeAsignacion(asigActiva), fecha_inicio_ciclo: asigActiva.fecha_inicio_ciclo || '' };
+                      if (asigActiva) return { ...f, fecha_inicio: fechaInicioSugerida, fecha_fin: finContratoParaFecha(fechaInicioSugerida) || '', regimen_jornada: presetDeAsignacion(asigActiva), fecha_inicio_ciclo: asigActiva.fecha_inicio_ciclo || '' };
                       const esCicloFicha = esRegimenMinero(p.regimen_jornada);
                       return {
                         ...f,
                         fecha_inicio: fechaInicioSugerida,
-                        fecha_fin: '',
+                        fecha_fin: finContratoParaFecha(fechaInicioSugerida) || '',
                         regimen_jornada: esCicloFicha ? p.regimen_jornada : 'general',
                         fecha_inicio_ciclo: esCicloFicha ? (p.fecha_inicio_ciclo || '') : '',
                       };
@@ -20442,8 +20476,8 @@ function RRHH_Operativo() {
                           <option value="normal">Normal</option>
                         </select>
                       </div>
-                      <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsig.fecha_inicio} onChange={e => { setFormAsig(f => ({ ...f, fecha_inicio: e.target.value })); setFormAsigError(''); }}/></div>
-                      <div className="input-group"><label>Fecha de fin <span className="text-muted">(opcional)</span></label><input className="input" type="date" min={formAsig.fecha_inicio || undefined} value={formAsig.fecha_fin || ''} onChange={e => { setFormAsig(f => ({ ...f, fecha_fin: e.target.value })); setFormAsigError(''); }}/></div>
+                      <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsig.fecha_inicio} onChange={e => { const fecha = e.target.value; setFormAsig(f => ({ ...f, fecha_inicio: fecha, fecha_fin: f.fecha_fin || finContratoParaFecha(fecha) || '' })); setFormAsigError(''); }}/></div>
+                      <div className="input-group"><label>Fecha de fin {finContratoSugerido ? <span className="text-muted">(propuesta: vence contrato {finContratoSugerido})</span> : <span className="text-muted">(opcional)</span>}</label><input className="input" type="date" min={formAsig.fecha_inicio || undefined} value={formAsig.fecha_fin || ''} onChange={e => { setFormAsig(f => ({ ...f, fecha_fin: e.target.value })); setFormAsigError(''); }}/></div>
                       {formAsig.fecha_fin && formAsig.fecha_inicio && formAsig.fecha_fin < formAsig.fecha_inicio && <div className="alert alert-danger" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>La fecha de fin debe ser igual o posterior a la fecha de inicio.</div>}
                       {fechaAnteriorATramoVigente && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>
                         Esta fecha queda antes del tramo vigente actual ({asigActiva.fecha_inicio}). Verifica que sea una corrección retroactiva; si el período tiene nómina procesada, el retro wall solicitará justificación y autorización al guardar.

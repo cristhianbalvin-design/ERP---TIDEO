@@ -9318,6 +9318,36 @@ function RRHHAdmin() {
             const fechaInicioSugerida = tramoReferencia
               ? (tramoReferencia.fecha_fin ? sumarDia(tramoReferencia.fecha_fin) : tramoReferencia.fecha_inicio)
               : (persona.fecha_ingreso || '');
+            // Una jornada sin fecha_fin requiere cobertura hasta un contrato
+            // indefinido. Para un contrato finito se propone su vencimiento
+            // como fin del tramo, sin cambiar la regla de cobertura de la RPC.
+            const finContratoParaFecha = fecha => {
+              if (!fecha) return null;
+              const contratos = (personalDocumentos || []).map(doc => {
+                const tipo = (tiposDocumento || []).find(t => t.id === doc.tipo_documento_id);
+                const esContractual = Boolean(tipo?.captura_snapshot_laboral)
+                  || /contrato|adenda/i.test(String(doc.tipo_doc || ''));
+                return {
+                  inicio: doc.periodo_fecha_inicio || doc.fecha_vigencia_cambio || doc.fecha_emision || null,
+                  fin: doc.es_indefinido ? null : (doc.periodo_fecha_fin || doc.fecha_vencimiento || null),
+                  esContractual,
+                  estado: doc.estado_validacion,
+                  periodoEstado: doc.periodo_estado || 'vigente',
+                  personalId: doc.personal_id,
+                  personalTipo: doc.personal_tipo,
+                };
+              }).filter(doc => (
+                doc.personalId === persona.id
+                && doc.personalTipo === 'administrativo'
+                && ['aprobado', 'validado'].includes(doc.estado)
+                && !['rechazado', 'anulado'].includes(doc.periodoEstado)
+                && doc.esContractual
+                && doc.inicio <= fecha
+                && (!doc.fin || doc.fin >= fecha)
+              )).sort((a, b) => String(b.fin || '9999-12-31').localeCompare(String(a.fin || '9999-12-31')));
+              return contratos[0]?.fin || null;
+            };
+            const finContratoSugerido = finContratoParaFecha(formAsigAdmin.fecha_inicio);
             const presets = {
               general: { regimen:'general', trabajo:null, descanso:null, label:'Jornada general' },
               minero_14x7: { regimen:'ciclo_acumulativo', trabajo:14, descanso:7, label:'Minero 14×7' },
@@ -9337,6 +9367,10 @@ function RRHHAdmin() {
               }
               if (formAsigAdmin.fecha_fin && formAsigAdmin.fecha_fin < formAsigAdmin.fecha_inicio) {
                 const mensaje = 'La fecha de fin no puede ser anterior a la fecha de inicio.';
+                setFormAsigAdminError(mensaje); addNotificacion(mensaje, 'error'); return;
+              }
+              if (finContratoSugerido && !formAsigAdmin.fecha_fin) {
+                const mensaje = `Este contrato vence el ${finContratoSugerido}. Registra una fecha de fin para la jornada.`;
                 setFormAsigAdminError(mensaje); addNotificacion(mensaje, 'error'); return;
               }
               const preset = presets[formAsigAdmin.regimen_jornada];
@@ -9384,14 +9418,14 @@ function RRHHAdmin() {
                 </div>
                 <button className="btn btn-primary btn-sm" onClick={() => {
                   setShowFormAsigAdmin(v => !v); setRetroWallAsigAdmin(null); setRetroWallMotivoAsigAdmin(''); setFormAsigAdminError('');
-                  setFormAsigAdmin(f => ({ ...f, fecha_inicio: fechaInicioSugerida, fecha_fin:'', regimen_jornada: asigActiva ? presetDeAsignacion(asigActiva) : 'general', fecha_inicio_ciclo: asigActiva?.fecha_inicio_ciclo || '' }));
+                  setFormAsigAdmin(f => ({ ...f, fecha_inicio: fechaInicioSugerida, fecha_fin: finContratoParaFecha(fechaInicioSugerida) || '', regimen_jornada: asigActiva ? presetDeAsignacion(asigActiva) : 'general', fecha_inicio_ciclo: asigActiva?.fecha_inicio_ciclo || '' }));
                 }}>+ Nueva asignación</button>
               </div>
 
               {showFormAsigAdmin && <div className="card" style={{padding:16, marginBottom:20, background:'rgba(6,182,212,0.04)', border:'1px solid var(--cyan)'}}>
                 <div className="grid-2" style={{gap:12}}>
-                  <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsigAdmin.fecha_inicio} onChange={e => { setFormAsigAdmin(f => ({...f, fecha_inicio:e.target.value})); setFormAsigAdminError(''); }} /></div>
-                  <div className="input-group"><label>Fecha de fin <span className="text-muted">(opcional)</span></label><input className="input" type="date" min={formAsigAdmin.fecha_inicio || undefined} value={formAsigAdmin.fecha_fin} onChange={e => { setFormAsigAdmin(f => ({...f, fecha_fin:e.target.value})); setFormAsigAdminError(''); }} /></div>
+                  <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsigAdmin.fecha_inicio} onChange={e => { const fecha = e.target.value; setFormAsigAdmin(f => ({...f, fecha_inicio:fecha, fecha_fin:f.fecha_fin || finContratoParaFecha(fecha) || ''})); setFormAsigAdminError(''); }} /></div>
+                  <div className="input-group"><label>Fecha de fin {finContratoSugerido ? <span className="text-muted">(propuesta: vence contrato {finContratoSugerido})</span> : <span className="text-muted">(opcional)</span>}</label><input className="input" type="date" min={formAsigAdmin.fecha_inicio || undefined} value={formAsigAdmin.fecha_fin} onChange={e => { setFormAsigAdmin(f => ({...f, fecha_fin:e.target.value})); setFormAsigAdminError(''); }} /></div>
                   {formAsigAdmin.fecha_fin && formAsigAdmin.fecha_inicio && formAsigAdmin.fecha_fin < formAsigAdmin.fecha_inicio && <div className="alert alert-danger" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>La fecha de fin debe ser igual o posterior a la fecha de inicio.</div>}
                   {fechaAnteriorATramoVigente && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>Esta fecha queda antes del tramo vigente actual ({asigActiva.fecha_inicio}). Es una advertencia: si el período tiene nómina procesada, el retro wall pedirá justificación y autorización al guardar.</div>}
                   <div className="input-group"><label>Régimen de jornada</label><select className="select" value={formAsigAdmin.regimen_jornada} onChange={e => setFormAsigAdmin(f => ({...f, regimen_jornada:e.target.value, fecha_inicio_ciclo:e.target.value === 'general' ? '' : f.fecha_inicio_ciclo}))}>
