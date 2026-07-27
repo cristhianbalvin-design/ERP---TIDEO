@@ -4425,6 +4425,24 @@ export function AppProvider({ children }) {
     const fechaEmision = vencimientoCxC.fechaEmision;
     const fechaVencimiento = vencimientoCxC.fechaVencimiento;
     const condicionPago = vencimientoCxC.condicionPago;
+    const centroBeneficioId = datos.centro_beneficio_id || null;
+    const centroBeneficio = centrosBeneficio.find(c => c.id === centroBeneficioId && c.empresa_id === empresa.id);
+
+    if (!centroBeneficioId) {
+      throw new Error('Debe seleccionar un CEBE para emitir la factura.');
+    }
+    if (!centroBeneficio) {
+      throw new Error('El CEBE seleccionado no existe en el tenant actual.');
+    }
+    if (centroBeneficio.estado !== 'activo') {
+      throw new Error('El CEBE seleccionado está inactivo.');
+    }
+    if (centroBeneficio.fecha_inicio && fechaEmision < String(centroBeneficio.fecha_inicio).slice(0, 10)) {
+      throw new Error('El CEBE seleccionado no está vigente para la fecha de emisión.');
+    }
+    if (centroBeneficio.fecha_fin && fechaEmision > String(centroBeneficio.fecha_fin).slice(0, 10)) {
+      throw new Error('El CEBE seleccionado no está vigente para la fecha de emisión.');
+    }
 
     const serieDoc = (seriesDocumentarias || []).find(s => s.documento === 'Facturas' && s.estado === 'activo');
     const numero = datos.numero || (serieDoc
@@ -4436,6 +4454,7 @@ export function AppProvider({ children }) {
       cuenta_id: datos.cuenta_id,
       os_cliente_id: datos.os_cliente_id || null,
       valorizacion_id: datos.valorizacion_id || null,
+      centro_beneficio_id: centroBeneficioId,
       items: datos.items || [],
       numero,
       fecha_emision: fechaEmision,
@@ -4517,6 +4536,7 @@ export function AppProvider({ children }) {
       igv: Number(valorizacion.igv || 0),
       total: Number(valorizacion.total || 0),
       moneda: valorizacion.moneda || osCliente?.moneda || 'PEN',
+      centro_beneficio_id: datos.centro_beneficio_id || osCliente?.centro_beneficio_id || null,
       ...datos,
     });
   };

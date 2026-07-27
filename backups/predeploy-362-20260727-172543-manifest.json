@@ -1,0 +1,12 @@
+{
+  "captured_at": "2026-07-27T17:27:38.720Z",
+  "format": "row-snapshot paginado vía REST service_role",
+  "page_size": 10,
+  "tables": {
+    "facturas": 27,
+    "cxc": 17,
+    "cobros_cxc": 17,
+    "cuentas": 83,
+    "os_clientes": 28
+  }
+}

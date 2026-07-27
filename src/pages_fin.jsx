@@ -24,6 +24,8 @@ import {
 } from './services/finanzasService.js';
 import { cajaChicaService } from './services/cajaChicaService.js';
 import { rrhhService } from './services/rrhhService.js';
+import { maestrosService } from './services/maestrosService.js';
+import { servicioPreciosClienteService } from './services/servicioPreciosClienteService.js';
 import {
   cargarCatalogosCxpMasivo,
   descargarPlantillaCxpMasiva,
@@ -31,6 +33,13 @@ import {
   leerPlantillaCxpMasiva,
   validarFilasCxpMasiva,
 } from './services/cxpMassiveImportService.js';
+import {
+  cargarCatalogosCxcMasivo,
+  descargarPlantillaCxcMasiva,
+  ejecutarImportacionCxcMasiva,
+  leerPlantillaCxcMasiva,
+  validarFilasCxcMasiva,
+} from './services/cxcMassiveImportService.js';
 import * as storageService from './services/storageService.js';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
 import * as XLSX from 'xlsx';
@@ -131,7 +140,8 @@ function CxC() {
     cobrosHistorial, gestionesCobranza, cuentasBancarias,
     registrarCobroCxC, registrarGestionCobranza, actualizarVencimientoCxC, revertirCobroCxC, comisiones,
     condonarMoraCxC, restaurarMoraCxC,
-    navigate, role,
+    navigate, role, empresa, addNotificacion,
+    setCxc, setFacturas, setCuentas, setCobrosHistorial, setOsClientes,
   } = useApp();
 
   const today = new Date().toISOString().split('T')[0];
@@ -236,6 +246,11 @@ function CxC() {
   const [savingVencimiento, setSavingVencimiento] = useState(false);
   const [confirmAnular, setConfirmAnular] = useState(null); // CxC a anular
   const [savingCondonar, setSavingCondonar] = useState(false);
+  const [cxcImportRows, setCxcImportRows] = useState([]);
+  const [cxcImportResult, setCxcImportResult] = useState(null);
+  const [cxcImportando, setCxcImportando] = useState(false);
+  const [cxcImportCargando, setCxcImportCargando] = useState(false);
+  const cxcImportFileRef = useRef(null);
 
   // ── KPIs ──────────────────────────────────────────────────────────────
   const MONEDAS_CXC = [
@@ -479,6 +494,85 @@ function CxC() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href=url; a.download=`cxc_${today}.csv`; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const descargarPlantillaCxc = async () => {
+    addNotificacion('La plantilla incluirá CEBEs activos y vigentes ahora. La OS es opcional; sin OS el CEBE es obligatorio. Solo admite saldo pendiente, calcula retención automáticamente y el PDF se adjunta después.');
+    if (!isSupabaseConfigured() || !empresa?.id) {
+      addNotificacion('No se puede generar la plantilla dinámica sin conexión al tenant.');
+      return;
+    }
+    try {
+      const sb = await getSupabaseClient();
+      await descargarPlantillaCxcMasiva(sb, empresa.id, empresa.nombre || empresa.razon_social || '');
+    } catch (error) {
+      addNotificacion(`No se pudo descargar la plantilla: ${error.message}`);
+    }
+  };
+
+  const leerArchivoCxcMasivo = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!isSupabaseConfigured() || !empresa?.id) {
+      addNotificacion('La carga masiva requiere conexión al tenant.');
+      return;
+    }
+    setCxcImportCargando(true);
+    setCxcImportResult(null);
+    try {
+      const sb = await getSupabaseClient();
+      const [rows, catalogos] = await Promise.all([
+        leerPlantillaCxcMasiva(file),
+        cargarCatalogosCxcMasivo(sb, empresa.id),
+      ]);
+      const validadas = validarFilasCxcMasiva(rows, catalogos);
+      setCxcImportRows(validadas);
+      const rechazadas = validadas.filter(row => row._errores.length).length;
+      addNotificacion(`Archivo analizado: ${validadas.length - rechazadas} filas válidas y ${rechazadas} rechazadas.`);
+    } catch (error) {
+      addNotificacion(`No se pudo analizar la plantilla: ${error.message}`);
+    } finally {
+      setCxcImportCargando(false);
+    }
+  };
+
+  const ejecutarCargaCxcMasiva = async () => {
+    if (!cxcImportRows.length || cxcImportando || !empresa?.id) return;
+    setCxcImportando(true);
+    try {
+      const sb = await getSupabaseClient();
+      const resultado = await ejecutarImportacionCxcMasiva({ filas: cxcImportRows, empresaId: empresa.id, supabase: sb });
+      setCxcImportRows(resultado.filas);
+      setCxcImportResult(resultado);
+      if (resultado.registros.length) {
+        setFacturas(prev => [...resultado.registros.map(item => item.factura), ...prev]);
+        setCxc(prev => [...resultado.registros.map(item => item.cxc), ...prev]);
+        const cobros = resultado.registros.map(item => item.cobro).filter(Boolean);
+        if (cobros.length) setCobrosHistorial(prev => [...cobros, ...prev]);
+        const clientesNuevos = resultado.registros
+          .filter(item => item.cuenta_creada)
+          .map((item, index) => {
+            const fila = resultado.filas.find(row => row._resultado?.factura?.id === item.factura?.id);
+            return {
+              id: item.cuenta_id, empresa_id: empresa.id, ruc: fila?.ruc_cliente || '',
+              razon_social: fila?.razon_social || '', nombre_comercial: fila?.razon_social || `Cliente importado ${index + 1}`,
+              estado: 'activo',
+            };
+          });
+        if (clientesNuevos.length) setCuentas(prev => [...clientesNuevos.filter(cliente => !prev.some(c => c.id === cliente.id)), ...prev]);
+        setOsClientes(prev => prev.map(os => resultado.filas.reduce((actual, row) => (
+          row._estado === 'CREADA' && row.os_cliente_codigo === os.numero
+            ? { ...actual, saldo_por_facturar: Math.max(0, Number(actual.saldo_por_facturar || 0) - Number(row.monto_total || 0)), monto_facturado: Number(actual.monto_facturado || 0) + Number(row.monto_total || 0) }
+            : actual
+        ), os)));
+      }
+      addNotificacion(`Carga finalizada: ${resultado.creadas} creadas, ${resultado.rechazadas} rechazadas, ${resultado.fallidas} fallidas, ${resultado.clientesCreados} clientes creados y ${resultado.cobrosRegistrados} cobros registrados.`);
+    } catch (error) {
+      addNotificacion(`No se pudo ejecutar la carga: ${error.message}`);
+    } finally {
+      setCxcImportando(false);
+    }
   };
 
   // ── Ficha ─────────────────────────────────────────────────────────────
@@ -787,6 +881,13 @@ function CxC() {
           </div>
         </div>
         <div className="row" style={{gap:8,alignItems:'center'}}>
+          <input ref={cxcImportFileRef} type="file" accept=".xlsx,.xls" onChange={leerArchivoCxcMasivo} style={{display:'none'}} />
+          <button className="btn btn-secondary" onClick={descargarPlantillaCxc} style={{fontSize:13}}>
+            {I.download} Descargar plantilla
+          </button>
+          <button className="btn btn-secondary" onClick={() => cxcImportFileRef.current?.click()} disabled={cxcImportCargando} style={{fontSize:13}}>
+            {I.upload} {cxcImportCargando ? 'Analizando...' : 'Subir plantilla masiva'}
+          </button>
           <button className="btn btn-secondary" onClick={exportarCSV}>{I.download} Exportar</button>
         </div>
       </div>
@@ -1217,6 +1318,54 @@ function CxC() {
           </div>
         </>
       )}
+      {cxcImportRows.length > 0 && (() => {
+        const listas = cxcImportRows.filter(row => row._estado === 'VALIDA').length;
+        const rechazadas = cxcImportRows.filter(row => row._estado === 'RECHAZADA' || row._errores?.length).length;
+        const fallidas = cxcImportRows.filter(row => row._estado === 'FALLIDA').length;
+        return (
+          <div className="modal-backdrop" style={{zIndex:1200}}>
+            <div className="modal" style={{maxWidth:1240,width:'96vw'}}>
+              <div className="modal-head">
+                <div>
+                  <h2>Previsualizacion de carga masiva CxC</h2>
+                  <div className="text-muted" style={{fontSize:13,marginTop:4}}>
+                    {listas} listas - {rechazadas} rechazadas - {fallidas} fallidas
+                  </div>
+                </div>
+                <button className="icon-btn" onClick={() => { if (!cxcImportando) { setCxcImportRows([]); setCxcImportResult(null); } }} disabled={cxcImportando}>{I.x}</button>
+              </div>
+              <div className="modal-body" style={{padding:0}}>
+                {cxcImportResult && <div style={{padding:'12px 16px',background:'var(--bg-subtle)',fontSize:13}}>
+                  Resultado: <strong>{cxcImportResult.creadas}</strong> creadas, <strong>{cxcImportResult.rechazadas}</strong> rechazadas, <strong>{cxcImportResult.fallidas}</strong> fallidas, <strong>{cxcImportResult.clientesCreados}</strong> clientes creados y <strong>{cxcImportResult.cobrosRegistrados}</strong> cobros registrados.
+                </div>}
+                <div className="table-wrap" style={{maxHeight:'58vh',overflowY:'auto'}}>
+                  <table className="tbl">
+                    <thead style={{position:'sticky',top:0,zIndex:1,background:'var(--bg)'}}><tr>
+                      <th>Fila</th><th>Estado</th><th>RUC</th><th>Razon social</th><th>Documento</th><th>Fecha</th><th>Monto</th><th>OS Cliente</th><th>CEBE</th><th>Mensaje</th>
+                    </tr></thead>
+                    <tbody>{cxcImportRows.map(row => {
+                      const estado = row._estado || (row._errores?.length ? 'RECHAZADA' : 'VALIDA');
+                      const listo = estado === 'VALIDA' || estado === 'CREADA';
+                      const tone = estado === 'CREADA' ? 'var(--green)' : estado === 'VALIDA' ? 'var(--cyan)' : 'var(--danger)';
+                      return <tr key={row._fila} style={{background:estado === 'CREADA' ? 'rgba(31,157,85,.06)' : estado === 'VALIDA' ? 'transparent' : 'rgba(220,53,69,.06)'}}>
+                        <td>{row._fila}</td><td style={{fontWeight:700,color:tone}}>{estado}</td><td>{row.ruc_cliente}</td><td>{row.razon_social}</td><td>{row.numero}</td><td>{row.fecha_emision}</td><td>{row.moneda} {Number(row.monto_total || 0).toFixed(2)}</td><td>{row.os_cliente_codigo || 'â€”'}</td><td>{row.centro_beneficio_codigo || (row.os_cliente_codigo ? 'Heredado de OS' : 'â€”')}</td>
+                        <td style={{fontSize:12,color:listo ? 'var(--fg-muted)' : 'var(--danger)'}}>{(row._errores || []).join(' | ') || (estado === 'CREADA' ? 'Importada correctamente.' : 'Lista para importar.')}</td>
+                      </tr>;
+                    })}</tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="modal-foot" style={{padding:16,borderTop:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span className="text-muted" style={{fontSize:12}}>Solo se procesaran las filas listas; las rechazadas quedan visibles con su motivo.</span>
+                <div className="row" style={{gap:8}}>
+                  <button className="btn btn-secondary" onClick={() => { setCxcImportRows([]); setCxcImportResult(null); }} disabled={cxcImportando}>Cerrar</button>
+                  <button className="btn btn-primary" onClick={ejecutarCargaCxcMasiva} disabled={cxcImportando || listas === 0 || Boolean(cxcImportResult)}>{cxcImportando ? 'Importando...' : `Importar ${listas} filas validas`}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
@@ -3061,7 +3210,7 @@ const FAC_BADGE_LABEL = { emitida:'Emitida', cobro_parcial:'Cobro parcial', cobr
 
 function Facturacion() {
   const {
-    facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, seriesDocumentarias,
+    facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, seriesDocumentarias, centrosBeneficio, empresa,
     emitirFacturaConCxC, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
     registrarCobroCxC, generarCxC, generarCxP, navigate, activeParams, searchQuery,
     empresaConfig, role,
@@ -3084,7 +3233,7 @@ function Facturacion() {
   const [valSel, setValSel] = useState('');
   const [cuentaSel, setCuentaSel] = useState('');
   const [osSel, setOsSel] = useState('');
-  const [form, setForm] = useState({ tipo_documento:'factura', numero:'', fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: fechaVencimientoInicial, glosa:'', notas:'', moneda:'PEN' });
+  const [form, setForm] = useState({ tipo_documento:'factura', numero:'', fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: fechaVencimientoInicial, glosa:'', notas:'', moneda:'PEN', centro_beneficio_id:'' });
   const [partidas, setPartidas] = useState([{ id:1, descripcion:'', cantidad:1, precio_unitario:'' }]);
   const [igvPct, setIgvPct] = useState(18);
   const [saving, setSaving] = useState(false);
@@ -3094,6 +3243,44 @@ function Facturacion() {
   const [clienteRetencion, setClienteRetencion] = useState({ aplica: false, tasa: 3 });
   const [ventaContextId, setVentaContextId] = useState(null);
   const [ventaCtxLabel, setVentaCtxLabel] = useState('');
+  const [serviciosCatalogo, setServiciosCatalogo] = useState([]);
+  const [cargandoServiciosCatalogo, setCargandoServiciosCatalogo] = useState(false);
+  const [errorServiciosCatalogo, setErrorServiciosCatalogo] = useState('');
+  const contextoPrecioCatalogoRef = useRef(null);
+  contextoPrecioCatalogoRef.current = {
+    empresaId: empresa?.id || null,
+    cuentaId: cuentaSel,
+    fechaEmision: form.fecha_emision,
+    moneda: form.moneda,
+  };
+
+  useEffect(() => {
+    let cancelado = false;
+    if (mode !== 'directa' || !empresa?.id || !isSupabaseConfigured()) {
+      setServiciosCatalogo([]);
+      setErrorServiciosCatalogo('');
+      return undefined;
+    }
+
+    setCargandoServiciosCatalogo(true);
+    setErrorServiciosCatalogo('');
+    maestrosService.getServicios(empresa.id)
+      .then(rows => {
+        if (cancelado) return;
+        setServiciosCatalogo((rows || []).filter(servicio => (
+          String(servicio.estado || '').toLowerCase() === 'activo'
+          && servicio.facturable === true
+        )));
+      })
+      .catch(error => {
+        if (!cancelado) setErrorServiciosCatalogo(error?.message || 'No se pudo cargar el catálogo de servicios.');
+      })
+      .finally(() => {
+        if (!cancelado) setCargandoServiciosCatalogo(false);
+      });
+
+    return () => { cancelado = true; };
+  }, [empresa?.id, mode]);
 
   // ── Ficha state ───────────────────────────────────────────────────────
   const [selFac, setSelFac] = useState(null);
@@ -3190,6 +3377,13 @@ function Facturacion() {
   const getCuenta = id => (cuentas || []).find(c => c.id === id);
   const getOs = id => (osClientes || []).find(o => o.id === id);
   const getVal = id => (valorizaciones || []).find(v => v.id === id);
+  const cebeVigenteParaFecha = (cebe, fecha) => Boolean(cebe)
+    && cebe.estado === 'activo'
+    && (!cebe.fecha_inicio || String(fecha || '').slice(0, 10) >= String(cebe.fecha_inicio).slice(0, 10))
+    && (!cebe.fecha_fin || String(fecha || '').slice(0, 10) <= String(cebe.fecha_fin).slice(0, 10));
+  const cebesVigentes = (centrosBeneficio || []).filter(cebe =>
+    (!empresa?.id || cebe.empresa_id === empresa.id) && cebeVigenteParaFecha(cebe, form.fecha_emision)
+  );
   const cuentaNombre = id => { const c = getCuenta(id); return c?.razon_social || c?.nombre_comercial || '—'; };
   const rucCliente = id => getCuenta(id)?.ruc || '—';
 
@@ -3226,9 +3420,135 @@ function Facturacion() {
   const osParaValidar = mode === 'val' ? getOs(getVal(valSel)?.os_cliente_id) : getOs(osSel);
   const excedeOsSaldo = mode === 'val' && osParaValidar != null && totalCalc > Number(osParaValidar.saldo_por_facturar || 0);
 
-  const addPartida = () => setPartidas(prev => [...prev, { id: Date.now(), descripcion:'', cantidad:1, precio_unitario:'' }]);
+  const etiquetaServicioCatalogo = servicio => `${servicio?.codigo || servicio?.id || 'Servicio'} — ${servicio?.descripcion || 'Sin descripción'}`;
+  const nuevaPartidaManual = () => ({
+    id: Date.now(), descripcion: '', cantidad: 1, precio_unitario: '',
+    servicio_id: null, origen: 'manual', precio_origen: null,
+    catalogo_busqueda: '', catalogo_moneda: null, catalogo_advertencia: null,
+  });
+  const addPartida = () => setPartidas(prev => [...prev, nuevaPartidaManual()]);
   const removePartida = id => setPartidas(prev => prev.filter(p => p.id !== id));
   const updatePartida = (id, field, val) => setPartidas(prev => prev.map(p => p.id === id ? {...p, [field]: val} : p));
+
+  const desvincularServicioCatalogo = partidaId => {
+    setPartidas(prev => prev.map(partida => partida.id === partidaId ? {
+      ...partida,
+      servicio_id: null,
+      origen: 'manual',
+      precio_origen: null,
+      catalogo_busqueda: '',
+      catalogo_moneda: null,
+      catalogo_advertencia: null,
+      catalogo_cargando: false,
+    } : partida));
+  };
+
+  const seleccionarServicioCatalogo = async (partidaId, valor) => {
+    const servicio = serviciosCatalogo.find(item => item.id === valor || etiquetaServicioCatalogo(item) === valor);
+    if (!servicio) {
+      updatePartida(partidaId, 'catalogo_busqueda', valor);
+      return;
+    }
+    if (!cuentaSel || !form.fecha_emision) return;
+
+    const contextoSolicitud = {
+      empresaId: empresa.id,
+      cuentaId: cuentaSel,
+      fechaEmision: form.fecha_emision,
+      moneda: form.moneda,
+    };
+    const solicitudId = `catalogo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    setPartidas(prev => prev.map(partida => partida.id === partidaId ? {
+      ...partida,
+      servicio_id: servicio.id,
+      origen: 'catalogo',
+      catalogo_busqueda: etiquetaServicioCatalogo(servicio),
+      catalogo_cargando: true,
+      catalogo_advertencia: null,
+      catalogo_solicitud_id: solicitudId,
+      descripcion: servicio.descripcion || partida.descripcion,
+    } : partida));
+
+    try {
+      const resultado = await servicioPreciosClienteService.resolver(
+        contextoSolicitud.empresaId,
+        contextoSolicitud.cuentaId,
+        servicio.id,
+        contextoSolicitud.fechaEmision,
+      );
+      const contextoActual = contextoPrecioCatalogoRef.current || contextoSolicitud;
+      const contextoCambio = contextoActual.empresaId !== contextoSolicitud.empresaId
+        || contextoActual.cuentaId !== contextoSolicitud.cuentaId
+        || contextoActual.fechaEmision !== contextoSolicitud.fechaEmision
+        || contextoActual.moneda !== contextoSolicitud.moneda;
+      const monedaResuelta = String(resultado?.moneda || '').toUpperCase();
+      const hayConflictoMoneda = !monedaResuelta || monedaResuelta !== contextoActual.moneda;
+      setPartidas(prev => prev.map(partida => {
+        if (partida.id !== partidaId || partida.catalogo_solicitud_id !== solicitudId) return partida;
+        const actualizada = {
+          ...partida,
+          catalogo_cargando: false,
+          catalogo_moneda: monedaResuelta || null,
+          precio_origen: contextoCambio ? partida.precio_origen || null : (resultado?.origen || null),
+          catalogo_advertencia: contextoCambio
+            ? 'El cliente, la fecha de emisión o la moneda cambió mientras se resolvía el servicio. El precio unitario se conserva y se revalidará.'
+            : hayConflictoMoneda
+              ? `Este servicio tiene precio en ${monedaResuelta || 'una moneda no resuelta'}, pero la factura es en ${contextoActual.moneda}. Ingresa el precio unitario manualmente.`
+            : null,
+        };
+        return contextoCambio || hayConflictoMoneda ? actualizada : {
+          ...actualizada,
+          precio_unitario: resultado?.precio ?? partida.precio_unitario,
+        };
+      }));
+    } catch (error) {
+      setPartidas(prev => prev.map(partida => (
+        partida.id === partidaId && partida.catalogo_solicitud_id === solicitudId ? {
+          ...partida,
+          catalogo_cargando: false,
+          catalogo_advertencia: error?.message || 'No se pudo resolver el precio del servicio.',
+        } : partida
+      )));
+    }
+  };
+
+  useEffect(() => {
+    if (mode !== 'directa' || !empresa?.id || !cuentaSel || !form.fecha_emision) return undefined;
+    const partidasCatalogo = partidas.filter(partida => partida.origen === 'catalogo' && partida.servicio_id);
+    if (!partidasCatalogo.length) return undefined;
+
+    let cancelado = false;
+    const idsPartidasCatalogo = new Set(partidasCatalogo.map(partida => partida.id));
+    Promise.all(partidasCatalogo.map(async partida => ({
+      id: partida.id,
+      servicio_id: partida.servicio_id,
+      resultado: await servicioPreciosClienteService.resolver(empresa.id, cuentaSel, partida.servicio_id, form.fecha_emision),
+    }))).then(respuestas => {
+      if (cancelado) return;
+      const porPartida = new Map(respuestas.map(respuesta => [respuesta.id, respuesta]));
+      setPartidas(prev => prev.map(partida => {
+        const respuesta = porPartida.get(partida.id);
+        if (!respuesta || partida.servicio_id !== respuesta.servicio_id) return partida;
+        const monedaResuelta = String(respuesta.resultado?.moneda || '').toUpperCase();
+        const hayConflictoMoneda = !monedaResuelta || monedaResuelta !== form.moneda;
+        return {
+          ...partida,
+          catalogo_moneda: monedaResuelta || null,
+          precio_origen: respuesta.resultado?.origen || partida.precio_origen || null,
+          catalogo_advertencia: hayConflictoMoneda
+            ? `Este servicio tiene precio en ${monedaResuelta || 'una moneda no resuelta'}, pero la factura es en ${form.moneda}. El precio unitario existente se conserva.`
+            : null,
+        };
+      }));
+    }).catch(() => {
+      if (cancelado) return;
+      setPartidas(prev => prev.map(partida => idsPartidasCatalogo.has(partida.id) ? {
+        ...partida,
+        catalogo_advertencia: 'No se pudo revalidar el precio de catálogo. El precio unitario existente se conserva.',
+      } : partida));
+    });
+    return () => { cancelado = true; };
+  }, [mode, cuentaSel, form.fecha_emision, form.moneda]);
   const permisosEditarFacturacion = role?.permisos?.editar;
   const puedeEditarFacturacion = Boolean(role?.permisos?.todo || permisosEditarFacturacion === true || permisosEditarFacturacion?.includes?.('facturacion'));
 
@@ -3284,7 +3604,7 @@ function Facturacion() {
     setValSel(''); setCuentaSel(''); setOsSel('');
     setPartidas([{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:0 }]);
     setIgvPct(18);
-    setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: calcularVencimientoForm(today, condicionPagoInicial), glosa:'', notas:'', moneda:'PEN' });
+    setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: calcularVencimientoForm(today, condicionPagoInicial), glosa:'', notas:'', moneda:'PEN', centro_beneficio_id:'' });
     setVencimientoManual(false);
     setCondicionManual(false);
     setConfirmarExcesoFac(false);
@@ -3296,7 +3616,11 @@ function Facturacion() {
   // ── Pre-fill from val ─────────────────────────────────────────────────
   const handleSelectVal = vId => {
     setValSel(vId);
-    if (!vId) { setPartidas([{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:0 }]); return; }
+    if (!vId) {
+      setPartidas([{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:0 }]);
+      setForm(f => ({ ...f, centro_beneficio_id: '' }));
+      return;
+    }
     const v = getVal(vId);
     const os = getOs(v?.os_cliente_id);
     const cuentaId = os?.cuenta_id;
@@ -3319,6 +3643,7 @@ function Facturacion() {
         moneda: v?.moneda || os?.moneda || 'PEN',
         condicion_pago: nuevaCondicion,
         fecha_vencimiento: calcularVencimientoForm(f.fecha_emision, nuevaCondicion),
+        centro_beneficio_id: os?.centro_beneficio_id || '',
       };
     });
     setClienteRetencion({
@@ -3391,6 +3716,7 @@ function Facturacion() {
       condicion_pago: condicion,
       fecha_vencimiento: calcularVencimientoForm(f.fecha_emision, condicion),
       moneda: cuenta?.moneda || 'PEN',
+      centro_beneficio_id: '',
     }));
     setClienteRetencion({
       aplica: Boolean(cuenta?.agente_retencion_sunat),
@@ -3406,6 +3732,14 @@ function Facturacion() {
     if (!cuentaId) { alert('Debe seleccionar un cliente.'); return; }
     if (mode === 'val' && !valSel) { alert('Debe seleccionar una valorización.'); return; }
     if (partidas.every(p => !p.descripcion && !p.precio_unitario)) { alert('Debe completar al menos una partida.'); return; }
+    const centroBeneficio = (centrosBeneficio || []).find(c => c.id === form.centro_beneficio_id && (!empresa?.id || c.empresa_id === empresa.id));
+    if (!form.centro_beneficio_id) { alert('Debe seleccionar un CEBE para emitir la factura.'); return; }
+    if (!centroBeneficio) { alert('El CEBE seleccionado no existe en el tenant actual.'); return; }
+    if (centroBeneficio.estado !== 'activo') { alert('El CEBE seleccionado está inactivo.'); return; }
+    if (!cebeVigenteParaFecha(centroBeneficio, form.fecha_emision)) {
+      alert('El CEBE seleccionado no está vigente para la fecha de emisión.');
+      return;
+    }
 
     // P7.1 — una valorización solo puede tener una factura activa (excluye NC/ND)
     if (mode === 'val' && valSel) {
@@ -3439,7 +3773,15 @@ function Facturacion() {
         cuenta_id: cuentaId,
         os_cliente_id: mode === 'val' ? getVal(valSel)?.os_cliente_id : (osSel || null),
         valorizacion_id: mode === 'val' ? valSel : null,
-        items: partidas.map(p => ({ descripcion: p.descripcion, cantidad: Number(p.cantidad||0), precio_unitario: Number(p.precio_unitario||0) })),
+        centro_beneficio_id: form.centro_beneficio_id,
+        items: partidas.map(p => ({
+          descripcion: p.descripcion,
+          cantidad: Number(p.cantidad || 0),
+          precio_unitario: Number(p.precio_unitario || 0),
+          servicio_id: p.servicio_id || null,
+          origen: p.origen === 'catalogo' ? 'catalogo' : 'manual',
+          precio_origen: p.precio_origen || null,
+        })),
         subtotal: subtotalNeto,
         igv: igvCalc,
         total: totalCalc,
@@ -4292,7 +4634,11 @@ function Facturacion() {
   if (mode) {
     const valSrc = mode === 'val' ? getVal(valSel) : null;
     const osSrc = getOs(valSrc?.os_cliente_id || osSel);
-    const osesDelCliente = cuentaSel ? osClientes.filter(os => os.cuenta_id === cuentaSel && os.estado === 'activa') : [];
+    const osesDelCliente = cuentaSel ? osClientes.filter(os => (
+      os.cuenta_id === cuentaSel
+      && ['activa', 'activo', 'en_ejecucion'].includes(os.estado)
+      && Number(os.saldo_por_facturar || 0) > 0
+    )) : [];
 
     return (
       <>
@@ -4376,7 +4722,11 @@ function Facturacion() {
                   </div>
                   <div className="input-group" style={{gridColumn:'1/-1'}}>
                     <label>OS Cliente <span style={{color:'var(--fg-muted)', fontWeight:400}}>(opcional)</span></label>
-                    <select className="select" value={osSel} onChange={e => setOsSel(e.target.value)}>
+                    <select className="select" value={osSel} onChange={e => {
+                      const osId = e.target.value;
+                      setOsSel(osId);
+                      setForm(f => ({ ...f, centro_beneficio_id: getOs(osId)?.centro_beneficio_id || '' }));
+                    }}>
                       <option value="">Sin OS asociada</option>
                       {osesDelCliente.map(os => <option key={os.id} value={os.id}>{os.numero} — {money(os.monto_aprobado||0)}</option>)}
                     </select>
@@ -4391,18 +4741,38 @@ function Facturacion() {
                   <span>Moneda: <strong>{valSrc.moneda || 'PEN'}</strong></span>
                 </div>
               )}
+              <div className="input-group" style={{marginTop:16}}>
+                <label>CEBE <span style={{color:'var(--danger)'}}>*</span></label>
+                <select className="select" value={form.centro_beneficio_id} onChange={e => handleFormChange('centro_beneficio_id', e.target.value)}>
+                  <option value="">Seleccionar CEBE...</option>
+                  {cebesVigentes.map(cebe => <option key={cebe.id} value={cebe.id}>{cebe.codigo ? `${cebe.codigo} — ` : ''}{cebe.nombre}</option>)}
+                </select>
+                <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>
+                  {osSrc?.centro_beneficio_id
+                    ? 'Preseleccionado desde la OS vinculada; puedes cambiarlo.'
+                    : 'Obligatorio. Selecciona un CEBE activo y vigente para la fecha de emisión.'}
+                </div>
+              </div>
             </div>
 
             {/* Partidas */}
             <div className="card">
               <div style={{padding:'14px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
                 <h3 style={{margin:0, fontSize:14}}>Partidas</h3>
-                <button className="btn btn-secondary btn-sm" onClick={addPartida}>{I.plus} Agregar línea</button>
+                <button className="btn btn-secondary btn-sm" onClick={addPartida}>{I.plus} {mode === 'directa' ? 'Agregar línea personalizada' : 'Agregar línea'}</button>
               </div>
+              {mode === 'directa' && (
+                <datalist id="facturacion-catalogo-servicios">
+                  {serviciosCatalogo.map(servicio => (
+                    <option key={servicio.id} value={etiquetaServicioCatalogo(servicio)} />
+                  ))}
+                </datalist>
+              )}
               <div className="table-wrap">
                 <table className="tbl">
                   <thead>
                     <tr>
+                      {mode === 'directa' && <th style={{minWidth:260}}>Servicio de catálogo</th>}
                       <th>Descripción</th>
                       <th style={{width:90}}>Cant.</th>
                       <th style={{width:140}}>P. Unitario</th>
@@ -4413,6 +4783,33 @@ function Facturacion() {
                   <tbody>
                     {partidas.map(p => (
                       <tr key={p.id}>
+                        {mode === 'directa' && (
+                          <td>
+                            {p.servicio_id ? (
+                              <div style={{display:'flex', flexDirection:'column', gap:5}}>
+                                <div style={{fontSize:12, fontWeight:600}}>{p.catalogo_busqueda || p.servicio_id}</div>
+                                <div style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+                                  {p.precio_origen && <span className="badge badge-cyan" style={{fontSize:10}}>Precio {p.precio_origen === 'cliente' ? 'cliente' : 'general'}</span>}
+                                  <button type="button" className="btn btn-ghost btn-sm" style={{fontSize:11, padding:0, color:'var(--cyan)'}} onClick={() => desvincularServicioCatalogo(p.id)}>Desvincular del catálogo</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <input
+                                  className="input"
+                                  list="facturacion-catalogo-servicios"
+                                  value={p.catalogo_busqueda || ''}
+                                  disabled={!cuentaSel || cargandoServiciosCatalogo}
+                                  onChange={e => seleccionarServicioCatalogo(p.id, e.target.value)}
+                                  placeholder={!cuentaSel ? 'Selecciona primero un cliente' : (cargandoServiciosCatalogo ? 'Cargando servicios...' : 'Buscar por código o descripción')}
+                                />
+                                {errorServiciosCatalogo && <div style={{fontSize:11,color:'var(--danger)',marginTop:4}}>{errorServiciosCatalogo}</div>}
+                              </>
+                            )}
+                            {p.catalogo_cargando && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>Resolviendo precio…</div>}
+                            {p.catalogo_advertencia && <div style={{fontSize:11,color:'var(--warning)',marginTop:4,lineHeight:1.35}}>{p.catalogo_advertencia}</div>}
+                          </td>
+                        )}
                         <td><input type="text" className="input" value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} /></td>
                         <td><input type="number" className="input num" min="1" value={p.cantidad} onChange={e => updatePartida(p.id, 'cantidad', e.target.value)} /></td>
                         <td><input type="number" className="input num" min="0" step="0.01" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', e.target.value)} /></td>

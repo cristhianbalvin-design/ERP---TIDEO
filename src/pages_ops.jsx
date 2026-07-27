@@ -7,6 +7,8 @@ import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
+import { maestrosService } from './services/maestrosService.js';
+import { servicioPreciosClienteService } from './services/servicioPreciosClienteService.js';
 import {
   rrhhService,
   CONTRATO_DURACION_OPCIONES,
@@ -123,6 +125,15 @@ function Cuentas() {
   const [condEdit, setCondEdit] = useState({});
   const [condEditing, setCondEditing] = useState(false);
   const [condSaving, setCondSaving] = useState(false);
+  const precioClienteBase = { servicio_id:'', precio:'', moneda:'PEN', fecha_inicio:'', fecha_fin:'', activo:true };
+  const [preciosServicioCliente, setPreciosServicioCliente] = useState([]);
+  const [serviciosParaPrecio, setServiciosParaPrecio] = useState([]);
+  const [preciosServicioLoading, setPreciosServicioLoading] = useState(false);
+  const [precioServicioFormOpen, setPrecioServicioFormOpen] = useState(false);
+  const [precioServicioEditId, setPrecioServicioEditId] = useState(null);
+  const [precioServicioForm, setPrecioServicioForm] = useState(precioClienteBase);
+  const [precioServicioSaving, setPrecioServicioSaving] = useState(false);
+  const [precioServicioError, setPrecioServicioError] = useState('');
   const [newOpen, setNewOpen] = useState(false);
   const [logoUploading, setLogoUploading] = useState(null);
   const [deletingCuenta, setDeletingCuenta] = useState(false);
@@ -451,6 +462,96 @@ function Cuentas() {
       addNotificacion?.(`No se pudieron guardar las condiciones: ${error?.message || 'error desconocido'}`);
     } finally {
       setCondSaving(false);
+    }
+  };
+
+  const cargarPreciosServicioCliente = useCallback(async () => {
+    if (!sel?.id || !empresa?.id || !isSupabaseConfigured()) return;
+    setPreciosServicioLoading(true);
+    try {
+      const [precios, servicios] = await Promise.all([
+        servicioPreciosClienteService.listarPorCuenta(empresa.id, sel.id),
+        maestrosService.getServicios(empresa.id),
+      ]);
+      setPreciosServicioCliente(precios || []);
+      setServiciosParaPrecio((servicios || []).filter(s => s.estado === 'activo' && s.facturable !== false));
+    } catch (error) {
+      setPrecioServicioError(error?.message || 'No se pudieron cargar los precios por servicio.');
+    } finally {
+      setPreciosServicioLoading(false);
+    }
+  }, [empresa?.id, sel?.id]);
+
+  useEffect(() => {
+    if (activeTab !== 'Condiciones comerciales') return;
+    cargarPreciosServicioCliente();
+  }, [activeTab, cargarPreciosServicioCliente]);
+
+  const cerrarPrecioServicioForm = () => {
+    setPrecioServicioFormOpen(false);
+    setPrecioServicioEditId(null);
+    setPrecioServicioForm(precioClienteBase);
+    setPrecioServicioError('');
+  };
+
+  const editarPrecioServicio = precio => {
+    setPrecioServicioEditId(precio.id);
+    setPrecioServicioForm({
+      servicio_id: precio.servicio_id,
+      precio: String(precio.precio ?? ''),
+      moneda: precio.moneda || 'PEN',
+      fecha_inicio: precio.fecha_inicio || '',
+      fecha_fin: precio.fecha_fin || '',
+      activo: precio.activo !== false,
+    });
+    setPrecioServicioError('');
+    setPrecioServicioFormOpen(true);
+  };
+
+  const guardarPrecioServicio = async e => {
+    e.preventDefault();
+    if (!sel?.id || !empresa?.id) return;
+    if (!precioServicioForm.servicio_id) return setPrecioServicioError('Seleccione un servicio.');
+    if (precioServicioForm.precio === '' || Number(precioServicioForm.precio) < 0) {
+      return setPrecioServicioError('Ingrese un precio válido.');
+    }
+    if (precioServicioForm.fecha_inicio && precioServicioForm.fecha_fin
+      && precioServicioForm.fecha_fin < precioServicioForm.fecha_inicio) {
+      return setPrecioServicioError('La fecha de fin no puede ser anterior a la fecha de inicio.');
+    }
+    setPrecioServicioSaving(true);
+    setPrecioServicioError('');
+    try {
+      const payload = { ...precioServicioForm, cuenta_id: sel.id };
+      if (precioServicioEditId) {
+        await servicioPreciosClienteService.actualizar(precioServicioEditId, payload);
+      } else {
+        await servicioPreciosClienteService.crear(empresa.id, payload);
+      }
+      await cargarPreciosServicioCliente();
+      cerrarPrecioServicioForm();
+      addNotificacion?.(precioServicioEditId ? 'Precio por cliente actualizado.' : 'Precio por cliente registrado.');
+    } catch (error) {
+      setPrecioServicioError(error?.message || 'No se pudo guardar el precio por cliente.');
+    } finally {
+      setPrecioServicioSaving(false);
+    }
+  };
+
+  const desactivarPrecioServicio = async precio => {
+    try {
+      await servicioPreciosClienteService.actualizar(precio.id, {
+        servicio_id: precio.servicio_id,
+        precio: precio.precio,
+        moneda: precio.moneda,
+        fecha_inicio: precio.fecha_inicio,
+        fecha_fin: precio.fecha_fin,
+        activo: false,
+      });
+      await cargarPreciosServicioCliente();
+      addNotificacion?.('Precio desactivado; queda como historial.');
+    } catch (error) {
+      setPrecioServicioError(error?.message || 'No se pudo desactivar el precio.');
     }
   };
 
@@ -1230,6 +1331,46 @@ function Cuentas() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                </div>
+                <div className="card">
+                  <div className="card-head">
+                    <div>
+                      <h3>Precios por servicio</h3>
+                      <div className="text-muted" style={{fontSize:12, marginTop:3}}>Tienen prioridad sobre el precio general del catálogo cuando estén activos y vigentes.</div>
+                    </div>
+                    {!precioServicioFormOpen && <button className="btn btn-secondary btn-sm" onClick={() => { setPrecioServicioForm(precioClienteBase); setPrecioServicioEditId(null); setPrecioServicioError(''); setPrecioServicioFormOpen(true); }}>{I.plus} Agregar precio</button>}
+                  </div>
+                  <div className="card-body">
+                    {precioServicioError && <div className="alert alert-danger" style={{marginBottom:12}}>{precioServicioError}</div>}
+                    {precioServicioFormOpen && (
+                      <form onSubmit={guardarPrecioServicio} className="col" style={{gap:12, padding:'12px', marginBottom:14, background:'var(--bg-subtle)', borderRadius:8}}>
+                        <div className="grid-2" style={{gap:12}}>
+                          <div className="input-group" style={{gridColumn:'1/-1'}}>
+                            <label>Servicio *</label>
+                            <select className="select" value={precioServicioForm.servicio_id} disabled={precioServicioSaving} onChange={e => {
+                              const servicio = serviciosParaPrecio.find(s => s.id === e.target.value);
+                              setPrecioServicioForm(prev => ({ ...prev, servicio_id:e.target.value, precio: servicio ? String(servicio.precio ?? '') : prev.precio, moneda: servicio?.moneda || prev.moneda }));
+                            }}>
+                              <option value="">Seleccionar servicio...</option>
+                              {serviciosParaPrecio.map(servicio => <option key={servicio.id} value={servicio.id}>{servicio.codigo} — {servicio.descripcion}</option>)}
+                            </select>
+                          </div>
+                          <div className="input-group"><label>Precio *</label><input className="input num" type="number" min="0" step="0.0001" value={precioServicioForm.precio} disabled={precioServicioSaving} onChange={e => setPrecioServicioForm(prev => ({ ...prev, precio:e.target.value }))}/></div>
+                          <div className="input-group"><label>Moneda *</label><select className="select" value={precioServicioForm.moneda} disabled={precioServicioSaving} onChange={e => setPrecioServicioForm(prev => ({ ...prev, moneda:e.target.value }))}><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
+                          <div className="input-group"><label>Vigencia desde</label><input className="input" type="date" value={precioServicioForm.fecha_inicio} disabled={precioServicioSaving} onChange={e => setPrecioServicioForm(prev => ({ ...prev, fecha_inicio:e.target.value }))}/></div>
+                          <div className="input-group"><label>Vigencia hasta</label><input className="input" type="date" value={precioServicioForm.fecha_fin} disabled={precioServicioSaving} onChange={e => setPrecioServicioForm(prev => ({ ...prev, fecha_fin:e.target.value }))}/></div>
+                        </div>
+                        <label className="row" style={{gap:8, alignItems:'center', fontSize:12}}><input type="checkbox" checked={Boolean(precioServicioForm.activo)} disabled={precioServicioSaving} onChange={e => setPrecioServicioForm(prev => ({ ...prev, activo:e.target.checked }))}/>Precio activo para la resolución de Facturación</label>
+                        <div className="row" style={{justifyContent:'flex-end', gap:8}}><button type="button" className="btn btn-secondary btn-sm" disabled={precioServicioSaving} onClick={cerrarPrecioServicioForm}>Cancelar</button><button type="submit" className="btn btn-primary btn-sm" disabled={precioServicioSaving}>{precioServicioSaving ? 'Guardando...' : precioServicioEditId ? 'Actualizar precio' : 'Guardar precio'}</button></div>
+                      </form>
+                    )}
+                    {preciosServicioLoading ? <div className="text-muted" style={{fontSize:13}}>Cargando precios por servicio...</div> : (
+                      <div className="table-wrap"><table className="tbl"><thead><tr><th>Servicio</th><th>Precio</th><th>Moneda</th><th>Vigencia</th><th>Estado</th><th></th></tr></thead><tbody>
+                        {preciosServicioCliente.map(precio => <tr key={precio.id}><td><strong>{precio.servicios?.codigo || '—'}</strong><div className="text-muted" style={{fontSize:11}}>{precio.servicios?.descripcion || precio.servicio_id}</div></td><td className="num">{Number(precio.precio || 0).toFixed(4)}</td><td>{precio.moneda}</td><td className="text-muted">{precio.fecha_inicio || 'Sin inicio'} → {precio.fecha_fin || 'Sin fin'}</td><td><span className={'badge '+(precio.activo ? 'badge-green' : 'badge-gray')}>{precio.activo ? 'Activo' : 'Histórico'}</span></td><td><div className="row" style={{gap:6}}><button className="btn btn-secondary btn-sm" onClick={() => editarPrecioServicio(precio)}>Editar</button>{precio.activo && <button className="btn btn-ghost btn-sm text-danger" onClick={() => desactivarPrecioServicio(precio)}>Desactivar</button>}</div></td></tr>)}
+                        {!preciosServicioCliente.length && <tr><td colSpan="6" className="text-muted" style={{padding:16}}>No hay precios especiales. Facturación usará el precio general del catálogo.</td></tr>}
+                      </tbody></table></div>
+                    )}
                   </div>
                 </div>
                 <div className="card">
