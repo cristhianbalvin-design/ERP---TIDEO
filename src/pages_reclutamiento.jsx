@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { I } from './icons.jsx';
 import { useApp } from './context.jsx';
 import { rrhhService } from './services/rrhhService.js';
@@ -55,9 +55,19 @@ export function Reclutamiento() {
     return () => { alive = false; };
   }, [formCand.dni, empresa?.id]);
 
-  const candidaturasVacante = vacanteActiva === 'todas' 
-    ? reclutamientoCandidaturas.filter(c => vacantesVisibles.some(v => v.id === c.vacante_id))
-    : reclutamientoCandidaturas.filter(c => c.vacante_id === vacante?.id);
+  const candidaturasVacante = useMemo(() => {
+    const filas = vacanteActiva === 'todas'
+      ? reclutamientoCandidaturas.filter(c => vacantesVisibles.some(v => v.id === c.vacante_id))
+      : reclutamientoCandidaturas.filter(c => c.vacante_id === vacante?.id);
+    const vistas = new Set();
+    return filas.filter(c => {
+      const candidato = candidatoDe(c);
+      const clave = `${c.vacante_id}|${c.candidato_id || candidato.id || candidato.dni || c.id}`;
+      if (vistas.has(clave)) return false;
+      vistas.add(clave);
+      return true;
+    });
+  }, [reclutamientoCandidaturas, vacanteActiva, vacante?.id, vacantesVisibles]);
   const candidatosBanco = useMemo(() => {
     const etapaRank = { postulado: 1, entrevista: 2, evaluacion: 3, seleccionado: 4, contratado: 5, descartado: 6 };
     const rows = reclutamientoCandidaturas.map(c => ({ ...c, candidato: candidatoDe(c) }));
@@ -427,8 +437,11 @@ export function PostulacionPublica({ token }) {
   const [vacante, setVacante] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sent, setSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [sentMessage, setSentMessage] = useState('');
   const [error, setError] = useState('');
   const [form, setForm] = useState({ nombre: '', dni: '', telefono: '', email: '', file: null });
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -446,13 +459,24 @@ export function PostulacionPublica({ token }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current || sent) return;
+    submittingRef.current = true;
+    setSubmitting(true);
     setError('');
     try {
       if (!vacante || vacante.estado !== 'abierta') throw new Error('Esta vacante ya no recibe postulaciones.');
-      if (isSupabaseConfigured()) await reclutamientoService.crearPostulacionPublica(vacante, form);
+      const resultado = isSupabaseConfigured()
+        ? await reclutamientoService.crearPostulacionPublica(vacante, form)
+        : null;
+      setSentMessage(resultado?.ya_existia
+        ? 'Tu postulacion ya habia sido recibida. RRHH revisara tu informacion.'
+        : 'Postulacion recibida. RRHH revisara tu informacion.');
       setSent(true);
     } catch (err) {
       setError(err.message || 'No se pudo enviar la postulacion.');
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
     }
   };
 
@@ -463,7 +487,7 @@ export function PostulacionPublica({ token }) {
         <h1 className="page-title" style={{ marginTop: 6 }}>{loading ? 'Cargando...' : vacante?.cargo || 'Vacante no disponible'}</h1>
         {vacante?.sede && <div className="page-sub">{vacante.sede}</div>}
         {sent ? (
-          <div className="alert alert-success" style={{ marginTop: 18 }}>Postulacion recibida. RRHH revisara tu informacion.</div>
+          <div className="alert alert-success" style={{ marginTop: 18 }}>{sentMessage || 'Postulacion recibida. RRHH revisara tu informacion.'}</div>
         ) : !loading && vacante?.estado === 'abierta' ? (
           <div className="col" style={{ gap: 12, marginTop: 18 }}>
             <input className="input" required placeholder="Nombre completo" value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
@@ -473,7 +497,8 @@ export function PostulacionPublica({ token }) {
             <input className="input" type="file" accept=".pdf,image/png,image/jpeg" required onChange={e => setForm(f => ({ ...f, file: e.target.files?.[0] || null }))} />
             <div className="text-muted" style={{ fontSize: 12 }}>PDF, PNG o JPG. Maximo 5 MB.</div>
             {error && <div className="alert alert-danger">{error}</div>}
-            <button className="btn btn-primary" type="submit">Enviar postulacion</button>
+            {submitting && <div className="alert alert-info" role="status">Enviando postulacion y CV. No cierres esta pagina.</div>}
+            <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? 'Enviando postulacion...' : 'Enviar postulacion'}</button>
           </div>
         ) : (
           <div className="alert alert-warning" style={{ marginTop: 18 }}>La vacante fue cerrada o el link fue revocado.</div>

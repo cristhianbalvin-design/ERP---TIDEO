@@ -3932,6 +3932,7 @@ function Maestros() {
   const [importModal, setImportModal] = useState(false);
   const [importRows, setImportRows] = useState([]);
   const [importStep, setImportStep] = useState(1);
+  const [importandoUnidades, setImportandoUnidades] = useState(false);
   const getSelectedRows = () => {
     if (!sel) return [];
     if (sel.id === 'mst_unidades_organizacionales') return unidadesOrganizacionales;
@@ -3950,6 +3951,10 @@ function Maestros() {
     return rows[sel.id] || [];
   };
   const selectedRows = getSelectedRows();
+  const esImportacionUnidades = sel?.id === 'mst_unidades_organizacionales';
+  const filasValidasImport = importRows.filter(row => (
+    esImportacionUnidades ? row._estado === 'VALIDA' : row._errores?.length === 0
+  ));
 
   // Ids de la propia unidad + todos sus descendientes, para excluirlos del selector de
   // "unidad padre" al editar (evita ciclos obvios en la UI; el trigger de la base de
@@ -4009,6 +4014,13 @@ function Maestros() {
   };
 
   const MAESTRO_XLSX_CFG = {
+    mst_unidades_organizacionales: {
+      sheetName: 'Unidades Organizacionales', filename: 'unidades_organizacionales.xlsx',
+      headers: ['Codigo','Unidad','Unidad padre (codigo)','CECO (codigo)','Categoria','Estado'],
+      fields: ['codigo','nombre','unidad_padre_codigo','ceco_codigo','categoria','estado'],
+      ejemplo: ['UO-001','Unidad de ejemplo','','','otro','activo'],
+      hint: 'La unidad padre debe existir previamente en el catalogo. Categoria y Estado usan los valores de la hoja de instrucciones.',
+    },
     mst_cargos: {
       sheetName: 'Cargos', filename: 'cargos.xlsx',
       headers: ['Codigo','Nombre','Tipo de personal','Descripcion','Estado'],
@@ -4089,7 +4101,68 @@ function Maestros() {
     });
   };
 
-  const validarImportMaestro = rows => rows.map(r => {
+  const validarImportMaestro = rows => {
+    if (sel?.id === 'mst_unidades_organizacionales') {
+      const clave = value => String(value || '').trim().toLocaleLowerCase();
+      const codigoClave = value => String(value || '').trim().toUpperCase();
+      const unidadesPorCodigo = new Map((unidadesOrganizacionales || []).map(u => [codigoClave(u.codigo), u]));
+      const cecosPorCodigo = new Map((centrosCosto || []).map(c => [codigoClave(c.codigo), c]));
+      const categoriasValidas = new Set(ROLE_CATEGORIES.map(c => c.value));
+      const codigosArchivo = new Map();
+      const nombresArchivo = new Map();
+
+      (rows || []).forEach((row, index) => {
+        const codigo = codigoClave(row.codigo);
+        const nombre = clave(row.nombre);
+        if (codigo) codigosArchivo.set(codigo, [...(codigosArchivo.get(codigo) || []), index + 2]);
+        if (nombre) nombresArchivo.set(nombre, [...(nombresArchivo.get(nombre) || []), index + 2]);
+      });
+
+      return (rows || []).map((source, index) => {
+        const codigo = String(source.codigo || '').trim();
+        const nombre = String(source.nombre || '').trim();
+        const unidad_padre_codigo = String(source.unidad_padre_codigo || '').trim();
+        const ceco_codigo = String(source.ceco_codigo || '').trim();
+        const categoria = String(source.categoria || 'otro').trim().toLowerCase();
+        const estado = String(source.estado || 'activo').trim().toLowerCase();
+        const errores = [];
+        const codigoNormalizado = codigoClave(codigo);
+        const nombreNormalizado = clave(nombre);
+        const padreNormalizado = codigoClave(unidad_padre_codigo);
+        const cecoNormalizado = codigoClave(ceco_codigo);
+
+        if (!codigo) errores.push('Codigo obligatorio.');
+        if (!nombre) errores.push('Unidad obligatoria.');
+        if (!['activo', 'inactivo'].includes(estado)) errores.push('Estado invalido: usa activo o inactivo.');
+        if (!categoriasValidas.has(categoria)) errores.push(`Categoria invalida: "${categoria || '-'}".`);
+        if (codigoNormalizado && unidadesPorCodigo.has(codigoNormalizado)) errores.push(`Codigo duplicado: "${codigo}" ya existe.`);
+        if (nombreNormalizado && (unidadesOrganizacionales || []).some(u => clave(u.nombre) === nombreNormalizado)) errores.push(`Unidad duplicada: "${nombre}" ya existe.`);
+        const filasCodigo = codigosArchivo.get(codigoNormalizado) || [];
+        const filasNombre = nombresArchivo.get(nombreNormalizado) || [];
+        if (codigoNormalizado && filasCodigo.length > 1) errores.push(`Codigo duplicado en archivo: filas ${filasCodigo.join(', ')}.`);
+        if (nombreNormalizado && filasNombre.length > 1) errores.push(`Unidad duplicada en archivo: filas ${filasNombre.join(', ')}.`);
+        if (padreNormalizado) {
+          if (padreNormalizado === codigoNormalizado) errores.push('La unidad padre no puede ser la misma unidad.');
+          else if (!unidadesPorCodigo.has(padreNormalizado)) errores.push(`Unidad padre inexistente: "${unidad_padre_codigo}". Debe existir antes de importar.`);
+        }
+        if (cecoNormalizado && !cecosPorCodigo.has(cecoNormalizado)) errores.push(`CECO inexistente en el tenant: "${ceco_codigo}".`);
+
+        return {
+          ...source,
+          _fila: index + 2,
+          codigo,
+          nombre,
+          unidad_padre_codigo,
+          ceco_codigo,
+          categoria,
+          estado,
+          _errores: errores,
+          _estado: errores.length ? 'RECHAZADA' : 'VALIDA',
+        };
+      });
+    }
+
+    return rows.map(r => {
     const errores = [];
     const estadoNorm = (r.estado||'').trim().toLowerCase();
     if (!r.nombre) errores.push('Nombre vacío');
@@ -4100,11 +4173,30 @@ function Maestros() {
     if (sel?.id === 'mst_sedes' && tipoNorm && !['oficina','unidad_minera'].includes(tipoNorm)) {
       errores.push(`Tipo inválido: "${r.tipo}" (debe ser "oficina" o "unidad_minera")`);
     }
-    return { ...r, estado: estadoNorm || 'activo', tipo: sel?.id === 'mst_sedes' ? (tipoNorm || 'oficina') : r.tipo, _errores: errores };
-  });
+      return { ...r, estado: estadoNorm || 'activo', tipo: sel?.id === 'mst_sedes' ? (tipoNorm || 'oficina') : r.tipo, _errores: errores };
+    });
+  };
 
   const exportarMaestro = () => {
     const cfg = MAESTRO_XLSX_CFG[sel?.id]; if (!cfg) return;
+    if (sel?.id === 'mst_unidades_organizacionales') {
+      const unidadPorId = new Map((unidadesOrganizacionales || []).map(u => [u.id, u]));
+      const cecoPorId = new Map((centrosCosto || []).map(c => [c.id, c]));
+      const data = (selectedRows || []).map(unidad => ({
+        'Codigo': unidad.codigo || '',
+        'Unidad': unidad.nombre || '',
+        'Unidad padre (codigo)': unidadPorId.get(unidad.unidad_padre_id)?.codigo || '',
+        'CECO (codigo)': cecoPorId.get(unidad.ceco_id)?.codigo || '',
+        'Categoria': unidad.categoria || 'otro',
+        'Estado': unidad.estado || 'activo',
+      }));
+      const ws = XLSX.utils.json_to_sheet(data, { header: cfg.headers });
+      ws['!cols'] = cfg.headers.map((header, index) => ({ wch: index === 1 ? 34 : Math.max(18, header.length + 2) }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, cfg.sheetName);
+      XLSX.writeFile(wb, cfg.filename);
+      return;
+    }
     const data = selectedRows.map(r => {
       const row = {};
       cfg.headers.forEach((h, i) => {
@@ -4125,11 +4217,96 @@ function Maestros() {
 
   const descargarPlantillaMaestro = () => {
     const cfg = MAESTRO_XLSX_CFG[sel?.id]; if (!cfg) return;
+    if (sel?.id === 'mst_unidades_organizacionales') {
+      const dataSheet = XLSX.utils.aoa_to_sheet([
+        cfg.headers,
+        cfg.ejemplo,
+      ]);
+      dataSheet['!cols'] = cfg.headers.map((header, index) => ({ wch: index === 1 ? 34 : Math.max(18, header.length + 2) }));
+
+      const cecosActivos = (centrosCosto || [])
+        .filter(ceco => ceco.estado === 'activo')
+        .map(ceco => [ceco.codigo || '', ceco.nombre || '']);
+      const instrucciones = XLSX.utils.aoa_to_sheet([
+        ['Plantilla de Unidades Organizacionales'],
+        [],
+        ['Instrucciones'],
+        ['1', 'Codigo: obligatorio y unico dentro del tenant.'],
+        ['2', 'Unidad: nombre obligatorio y unico dentro del tenant.'],
+        ['3', 'Unidad padre (codigo): opcional. Debe existir previamente en el catalogo; no se crean padres desde el archivo.'],
+        ['4', 'CECO (codigo): opcional. Si se informa, debe existir en el tenant.'],
+        ['5', 'Categoria: admin, comercial, operaciones, finanzas, rrhh, compras, logistica, customer_success u otro.'],
+        ['6', 'Estado: activo o inactivo.'],
+        ['7', 'Las filas con errores se rechazan y las filas validas se pueden importar.'],
+        [],
+        ['CECOs activos al momento de descargar'],
+        ['Codigo CECO', 'Nombre CECO'],
+        ...cecosActivos,
+      ]);
+      instrucciones['!cols'] = [{ wch: 42 }, { wch: 110 }];
+      instrucciones['!protect'] = { selectLockedCells: true, selectUnlockedCells: false };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, dataSheet, cfg.sheetName);
+      XLSX.utils.book_append_sheet(wb, instrucciones, 'Instrucciones');
+      XLSX.writeFile(wb, 'plantilla_unidades_organizacionales.xlsx');
+      return;
+    }
     const ws = XLSX.utils.aoa_to_sheet([cfg.headers, cfg.ejemplo]);
     ws['!cols'] = cfg.headers.map((_, i) => ({ wch: i <= 1 ? 14 : i === 2 ? 28 : 22 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, cfg.sheetName);
     XLSX.writeFile(wb, `plantilla_${cfg.filename}`);
+  };
+
+  const importarUnidadesOrganizacionales = async () => {
+    if (importandoUnidades) return;
+    const unidadesPorCodigo = new Map((unidadesOrganizacionales || []).map(u => [String(u.codigo || '').trim().toUpperCase(), u]));
+    const cecosPorCodigo = new Map((centrosCosto || []).map(c => [String(c.codigo || '').trim().toUpperCase(), c]));
+    const resultado = [];
+    let creadas = 0;
+    let fallidas = 0;
+    let rechazadas = 0;
+
+    setImportandoUnidades(true);
+    try {
+      for (const fila of importRows) {
+        if (fila._errores?.length) {
+          rechazadas++;
+          resultado.push({ ...fila, _estado: 'RECHAZADA' });
+          continue;
+        }
+        try {
+          const padre = fila.unidad_padre_codigo
+            ? unidadesPorCodigo.get(String(fila.unidad_padre_codigo).trim().toUpperCase())
+            : null;
+          const ceco = fila.ceco_codigo
+            ? cecosPorCodigo.get(String(fila.ceco_codigo).trim().toUpperCase())
+            : null;
+          await crearUnidadOrganizacional({
+            codigo: fila.codigo,
+            nombre: fila.nombre,
+            unidad_padre_id: padre?.id || null,
+            ceco_id: ceco?.id || null,
+            categoria: fila.categoria,
+            estado: fila.estado,
+          });
+          creadas++;
+          resultado.push({ ...fila, _estado: 'CREADA', _errores: [] });
+        } catch (error) {
+          fallidas++;
+          resultado.push({
+            ...fila,
+            _estado: 'FALLIDA',
+            _errores: [...(fila._errores || []), error?.message || 'No se pudo crear la unidad.'],
+          });
+        }
+      }
+      setImportRows(resultado);
+      setImportStep(2);
+      addNotificacion?.(`Importacion finalizada: ${creadas} creadas, ${rechazadas} rechazadas y ${fallidas} fallidas.`);
+    } finally {
+      setImportandoUnidades(false);
+    }
   };
 
   const doImportMaestro = async (btn) => {
@@ -5077,20 +5254,48 @@ function Maestros() {
                   {MAESTRO_XLSX_CFG[sel.id].hint && (
                     <p className="text-muted" style={{marginBottom:10, fontSize:12}}>{MAESTRO_XLSX_CFG[sel.id].hint}</p>
                   )}
-                  <div style={{display:'flex', gap:10, alignItems:'center', marginBottom:14}}>
+                  {!esImportacionUnidades && <div style={{display:'flex', gap:10, alignItems:'center', marginBottom:14}}>
                     <button className="btn btn-secondary btn-sm" onClick={descargarPlantillaMaestro}>{I.download} Descargar plantilla</button>
                     <span className="text-muted" style={{fontSize:12}}>Descarga la plantilla con las columnas correctas y un ejemplo</span>
-                  </div>
+                  </div>}
                   <input type="file" accept=".xlsx,.xls" onChange={async e => {
                     const f = e.target.files[0]; if (!f) return;
                     e.target.value = '';
-                    const parsed = await parseMstXlsx(f);
-                    setImportRows(validarImportMaestro(parsed));
-                    setImportStep(2);
+                    try {
+                      const parsed = await parseMstXlsx(f);
+                      setImportRows(validarImportMaestro(parsed));
+                      setImportStep(2);
+                    } catch (error) {
+                      addNotificacion?.(`No se pudo leer el Excel: ${error?.message || 'archivo invalido'}.`, 'error');
+                    }
                   }}/>
                 </div>
               )}
-              {importStep === 2 && (
+              {importStep === 2 && esImportacionUnidades && (
+                <div>
+                  <p style={{marginBottom:12, fontSize:13}}>
+                    <strong>{importRows.length} filas</strong> - {filasValidasImport.length} validas - {importRows.filter(row => row._errores?.length > 0).length} con errores
+                  </p>
+                  <div style={{maxHeight:280, overflow:'auto'}}>
+                    <table className="tbl">
+                      <thead><tr><th>Fila</th><th>Codigo</th><th>Unidad</th><th>Padre</th><th>CECO</th><th>Categoria</th><th>Estado</th><th>Mensaje</th></tr></thead>
+                      <tbody>{importRows.map((row, index) => {
+                        const estado = row._estado || (row._errores?.length ? 'RECHAZADA' : 'VALIDA');
+                        const color = estado === 'CREADA' ? 'var(--green)' : estado === 'VALIDA' ? 'var(--cyan)' : 'var(--danger)';
+                        return <tr key={row._fila || index} style={{background: estado === 'CREADA' ? 'rgba(31,157,85,.06)' : estado === 'VALIDA' ? 'transparent' : 'rgba(239,68,68,.05)'}}>
+                          <td className="mono text-muted">{row._fila || index + 2}</td><td>{row.codigo}</td><td>{row.nombre}</td><td>{row.unidad_padre_codigo || '-'}</td><td>{row.ceco_codigo || '-'}</td><td>{row.categoria}</td>
+                          <td style={{fontWeight:700, color}}>{estado}</td><td style={{fontSize:11, color: row._errores?.length ? 'var(--danger)' : 'var(--fg-muted)'}}>{row._errores?.join(' | ') || (estado === 'CREADA' ? 'Importada correctamente.' : 'Lista para importar.')}</td>
+                        </tr>;
+                      })}</tbody>
+                    </table>
+                  </div>
+                  <div style={{display:'flex', gap:10, marginTop:16}}>
+                    <button className="btn btn-secondary" onClick={()=>setImportStep(1)} disabled={importandoUnidades}>Volver</button>
+                    <button className="btn btn-primary" disabled={filasValidasImport.length === 0 || importandoUnidades} onClick={()=>setImportStep(3)}>Confirmar importacion</button>
+                  </div>
+                </div>
+              )}
+              {importStep === 2 && !esImportacionUnidades && (
                 <div>
                   <p style={{marginBottom:12, fontSize:13}}>
                     <strong>{importRows.length} filas</strong> · {importRows.filter(r=>r._errores.length===0).length} válidas · {importRows.filter(r=>r._errores.length>0).length} con errores
@@ -5114,7 +5319,17 @@ function Maestros() {
                   </div>
                 </div>
               )}
-              {importStep === 3 && (
+              {importStep === 3 && esImportacionUnidades && (
+                <div>
+                  <p style={{marginBottom:16, fontSize:13}}>
+                    Se importaran <strong>{filasValidasImport.length} registros validos</strong>. Las filas rechazadas permaneceran visibles con su motivo.
+                  </p>
+                  <button className="btn btn-primary" disabled={importandoUnidades || filasValidasImport.length === 0} onClick={importarUnidadesOrganizacionales}>
+                    {importandoUnidades ? 'Importando...' : `Importar ${filasValidasImport.length} registros`}
+                  </button>
+                </div>
+              )}
+              {importStep === 3 && !esImportacionUnidades && (
                 <div>
                   <p style={{marginBottom:16, fontSize:13}}>
                     Se importarán <strong>{importRows.filter(r=>r._errores.length===0).length} registros</strong> en <em>{sel.tabla}</em>. Los {importRows.filter(r=>r._errores.length>0).length} con errores serán ignorados.
@@ -5150,6 +5365,7 @@ function Maestros() {
                   </button>
                 )}
                 <button className="btn btn-secondary" onClick={() => { setImportRows([]); setImportStep(1); setImportModal(true); }}>{I.download} Importar Excel</button>
+                {sel.id === 'mst_unidades_organizacionales' && <button className="btn btn-secondary" onClick={descargarPlantillaMaestro}>{I.download} Descargar plantilla</button>}
                 <button className="btn btn-secondary" onClick={exportarMaestro}>{I.download} Exportar</button>
                 {sel.id === 'mst_tipos_documento' && (
                   <button className="btn btn-secondary" onClick={async () => {

@@ -529,7 +529,9 @@ function CxC() {
       const validadas = validarFilasCxcMasiva(rows, catalogos);
       setCxcImportRows(validadas);
       const rechazadas = validadas.filter(row => row._errores.length).length;
-      addNotificacion(`Archivo analizado: ${validadas.length - rechazadas} filas válidas y ${rechazadas} rechazadas.`);
+      // La previsualizacion se arma despues de validar el archivo contra los
+      // catalogos y comprobantes actuales del tenant, antes de ejecutar la RPC.
+      addNotificacion(`Archivo validado: ${validadas.length - rechazadas} filas validas y ${rechazadas} rechazadas.`);
     } catch (error) {
       addNotificacion(`No se pudo analizar la plantilla: ${error.message}`);
     } finally {
@@ -568,6 +570,10 @@ function CxC() {
         ), os)));
       }
       addNotificacion(`Carga finalizada: ${resultado.creadas} creadas, ${resultado.rechazadas} rechazadas, ${resultado.fallidas} fallidas, ${resultado.clientesCreados} clientes creados y ${resultado.cobrosRegistrados} cobros registrados.`);
+      // Los motivos de rechazo ya se muestran durante la validacion previa.
+      // Al concluir el lote se cierra el modal, incluso en una carga parcial.
+      setCxcImportRows([]);
+      setCxcImportResult(null);
     } catch (error) {
       addNotificacion(`No se pudo ejecutar la carga: ${error.message}`);
     } finally {
@@ -1348,7 +1354,7 @@ function CxC() {
                       const listo = estado === 'VALIDA' || estado === 'CREADA';
                       const tone = estado === 'CREADA' ? 'var(--green)' : estado === 'VALIDA' ? 'var(--cyan)' : 'var(--danger)';
                       return <tr key={row._fila} style={{background:estado === 'CREADA' ? 'rgba(31,157,85,.06)' : estado === 'VALIDA' ? 'transparent' : 'rgba(220,53,69,.06)'}}>
-                        <td>{row._fila}</td><td style={{fontWeight:700,color:tone}}>{estado}</td><td>{row.ruc_cliente}</td><td>{row.razon_social}</td><td>{row.numero}</td><td>{row.fecha_emision}</td><td>{row.moneda} {Number(row.monto_total || 0).toFixed(2)}</td><td>{row.os_cliente_codigo || 'â€”'}</td><td>{row.centro_beneficio_codigo || (row.os_cliente_codigo ? 'Heredado de OS' : 'â€”')}</td>
+                        <td>{row._fila}</td><td style={{fontWeight:700,color:tone}}>{estado}</td><td>{row.ruc_cliente}</td><td>{row.razon_social}</td><td>{row.numero}</td><td>{row.fecha_emision}</td><td>{row.moneda} {Number(row.monto_total || 0).toFixed(2)}</td><td>{row.os_cliente_codigo || '-'}</td><td>{row.centro_beneficio_codigo || (row.os_cliente_codigo ? 'Heredado de OS' : '-')}</td>
                         <td style={{fontSize:12,color:listo ? 'var(--fg-muted)' : 'var(--danger)'}}>{(row._errores || []).join(' | ') || (estado === 'CREADA' ? 'Importada correctamente.' : 'Lista para importar.')}</td>
                       </tr>;
                     })}</tbody>
@@ -7130,6 +7136,10 @@ function CxP() {
       }
       if (resultado.proveedoresNuevos.length) setProveedores(prev => [...resultado.proveedoresNuevos, ...prev]);
       addNotificacion(`Carga finalizada: ${resultado.creadas} creadas, ${resultado.rechazadas} rechazadas, ${resultado.fallidas} fallidas.`);
+      // Los motivos de rechazo ya se muestran durante la validacion previa.
+      // Al concluir el lote se cierra el modal, incluso en una carga parcial.
+      setCxpImportRows([]);
+      setCxpImportResult(null);
     } catch (error) {
       addNotificacion(`No se pudo ejecutar la carga: ${error.message}`);
     } finally {
