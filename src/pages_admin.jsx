@@ -9769,6 +9769,9 @@ function RRHHAdmin() {
               if (inlineEsAdenda && !inlineUploadForm.contratoReferenciaId) { setInlineUploadError('Selecciona el contrato original que modifica la adenda.'); return; }
               const esCorreccion = inlineUploadForm.modoSubida === 'corregir' && inlineUploadReq.doc;
               const esNuevoContrato = inlineUploadForm.modoSubida === 'nuevo_contrato';
+              if (inlineUploadReq.tipo?.exige_vencimiento && !inlineEsAdenda && !inlineUploadForm.esIndefinido && !inlineUploadForm.fechaVencimiento) {
+                setInlineUploadError('Este tipo exige fecha de vencimiento o marcarlo como indefinido.'); return;
+              }
               if (!esCorreccion && !inlineUploadFile) { setInlineUploadError('Selecciona el archivo.'); return; }
               const forzarOverride = overrideOpts?.forzarOverride || false;
               const motivoOverride = overrideOpts?.motivoOverride || null;
@@ -9815,6 +9818,7 @@ function RRHHAdmin() {
                     fechaVencimiento: inlineUploadForm.fechaVencimiento || null,
                     condicionesLaborales: (inlineEsContrato || inlineEsAdenda) ? condicionesLaborales : null,
                     notas: inlineUploadForm.notas || null,
+                    esIndefinido: inlineUploadForm.esIndefinido,
                     personalId: persona.id,
                     personalTipo: 'administrativo',
                     tipoDoc: inlineUploadReq.tipo_documento_id,

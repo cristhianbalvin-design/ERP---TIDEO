@@ -107,7 +107,7 @@ const SIDEBAR = [
     { key: 'maestros', label: 'Maestros Base', icon: I.settings },
     { key: 'parametros', label: 'Parametros Generales', icon: I.settings },
     { key: 'servicios', label: 'Catalogo Servicios', icon: I.package },
-    { key: 'tarifarios', label: 'Tarifarios', icon: I.dollar },
+    { key: 'salud_implementacion_tenant', label: 'Salud Implementacion', icon: I.trend, adminOnly: true },
   ]},
 ];
 

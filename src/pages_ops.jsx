@@ -20684,11 +20684,11 @@ function RRHH_Operativo() {
               }
               const esCorreccion = inlineUploadForm.modoSubida === 'corregir' && inlineUploadReq.doc;
               const esNuevoContrato = inlineUploadForm.modoSubida === 'nuevo_contrato';
+              if (inlineUploadReq.tipo?.exige_vencimiento && !inlineEsAdenda && !inlineUploadForm.esIndefinido && !inlineUploadForm.fechaVencimiento) {
+                setInlineUploadError('Este tipo exige fecha de vencimiento o marcarlo como indefinido.'); return;
+              }
               if (!esCorreccion) {
                 if (!inlineUploadFile) { setInlineUploadError('Selecciona el archivo.'); return; }
-                if (!esNuevoContrato && inlineUploadReq.tipo?.exige_vencimiento && !inlineEsAdenda && !inlineUploadForm.esIndefinido && !inlineUploadForm.fechaVencimiento) {
-                  setInlineUploadError('Este tipo exige fecha de vencimiento.'); return;
-                }
               }
               const forzarOverride = overrideOpts?.forzarOverride || false;
               const motivoOverride = overrideOpts?.motivoOverride || null;
@@ -20736,6 +20736,7 @@ function RRHH_Operativo() {
                     fechaVencimiento: inlineUploadForm.fechaVencimiento || null,
                     condicionesLaborales: (inlineEsContrato || inlineEsAdenda) ? condicionesLaborales : null,
                     notas: inlineUploadForm.notas || null,
+                    esIndefinido: inlineUploadForm.esIndefinido,
                     personalId: p.id,
                     personalTipo: 'operativo',
                     tipoDoc: inlineUploadReq.tipo_documento_id,
@@ -21123,7 +21124,7 @@ function RRHH_Operativo() {
                                       Indefinido
                                     </label>
                                   </div>
-                                  {!inlineUploadForm.esIndefinido && <input className="input" type="date" value={inlineUploadForm.fechaVencimiento} onChange={e=>setInlineUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} required={inlineUploadForm.modoSubida !== 'corregir'} />}
+                                  {!inlineUploadForm.esIndefinido && <input className="input" type="date" value={inlineUploadForm.fechaVencimiento} onChange={e=>setInlineUploadForm(f=>({...f,fechaVencimiento:e.target.value}))} required />}
                                   {inlineUploadForm.esIndefinido && <div style={{ fontSize: 12, padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 6, color: 'var(--fg-muted)' }}>El contrato se considerará vigente hasta que se registre un cese o cambio.</div>}
                                 </div>
                               )}
