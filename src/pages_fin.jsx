@@ -24,6 +24,13 @@ import {
 } from './services/finanzasService.js';
 import { cajaChicaService } from './services/cajaChicaService.js';
 import { rrhhService } from './services/rrhhService.js';
+import {
+  cargarCatalogosCxpMasivo,
+  descargarPlantillaCxpMasiva,
+  ejecutarImportacionCxpMasiva,
+  leerPlantillaCxpMasiva,
+  validarFilasCxpMasiva,
+} from './services/cxpMassiveImportService.js';
 import * as storageService from './services/storageService.js';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
 import * as XLSX from 'xlsx';
@@ -780,63 +787,63 @@ function CxC() {
           </div>
         </div>
         <div className="row" style={{gap:8,alignItems:'center'}}>
-          <select className="select" style={{fontSize:12,padding:'4px 8px'}} value={fPeriodoEmision} onChange={e=>setFPeriodoEmision(e.target.value)}>
-            <option value="">Todos los períodos</option>
-            {periodoOptsEmision.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
-          </select>
-          <button className="btn btn-secondary" onClick={()=>setShowFiltros(v=>!v)}>
-            {I.filter} Filtros{hayFiltros?' ·':''}
-          </button>
           <button className="btn btn-secondary" onClick={exportarCSV}>{I.download} Exportar</button>
         </div>
       </div>
 
       {/* Aging — clickable */}
-      {/* Filtros */}
-      {showFiltros && (
-        <div className="card" style={{padding:16,marginTop:12}}>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:12,alignItems:'end'}}>
-            <div className="input-group">
-              <label>Cliente</label>
-              <input className="input" value={fCliente} onChange={e=>setFCliente(e.target.value)} placeholder="Nombre del cliente..." />
-            </div>
-            <div className="input-group">
-              <label>Estado</label>
-              <select className="select" value={fEstado} onChange={e=>setFEstado(e.target.value)}>
-                <option value="">Todos</option>
-                {Object.entries(ESTADO_META).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
-              </select>
-            </div>
-            <div className="input-group">
-              <label>Vence desde</label>
-              <input className="input" type="date" value={fVenceDesde} onChange={e=>setFVenceDesde(e.target.value)} />
-            </div>
-            <div className="input-group">
-              <label>Vence hasta</label>
-              <input className="input" type="date" value={fVenceHasta} onChange={e=>setFVenceHasta(e.target.value)} />
-            </div>
-            <div className="input-group">
-              <label>Moneda</label>
-              <select className="select" value={fMoneda} onChange={e=>setFMoneda(e.target.value)}>
-                <option value="">Todas</option>
-                <option value="PEN">S/ Soles (PEN)</option>
-                <option value="USD">US$ Dólares (USD)</option>
-              </select>
-            </div>
-            <div className="input-group">
-              <label>Mora mín. (días)</label>
-              <input className="input" type="number" min="0" value={fMoraDesde} onChange={e=>setFMoraDesde(e.target.value)} />
-            </div>
-            <div className="input-group">
-              <label>Mora máx. (días)</label>
-              <input className="input" type="number" min="0" value={fMoraHasta} onChange={e=>setFMoraHasta(e.target.value)} />
-            </div>
-            <button className="btn btn-secondary" onClick={()=>{setFCliente('');setFEstado('');setFMoneda('');setFVenceDesde('');setFVenceHasta('');setFMoraDesde('');setFMoraHasta('');setFGestor('');setFPeriodoEmision('');setAgingFilter(null);}}>Limpiar</button>
-          </div>
-        </div>
-      )}
+      {/* Filtros movidos al interior de las tablas */}
 
-      {seccionesMoneda.map(sec => {
+      {(() => {
+        const firstVisibleIdx = seccionesMoneda.findIndex(s => s.rows.length > 0);
+
+        const FiltersUI = (
+          <div className="card-head row" style={{gap:12, flexWrap:'wrap', alignItems:'center'}}>
+            <input className="input" placeholder="Buscar cliente..." value={fCliente} onChange={e=>setFCliente(e.target.value)} style={{flex:'1 1 200px'}} />
+            <select className="input" style={{flex:'1 1 140px'}} value={fPeriodoEmision} onChange={e=>setFPeriodoEmision(e.target.value)}>
+              <option value="">Todos los períodos</option>
+              {periodoOptsEmision.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+            </select>
+            <select className="input" style={{flex:'1 1 140px'}} value={fEstado} onChange={e=>setFEstado(e.target.value)}>
+              <option value="">Todos los estados</option>
+              {Object.entries(ESTADO_META).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <select className="input" style={{flex:'1 1 120px'}} value={fMoneda} onChange={e=>setFMoneda(e.target.value)}>
+              <option value="">Todas las monedas</option>
+              <option value="PEN">S/ Soles (PEN)</option>
+              <option value="USD">US$ Dólares (USD)</option>
+            </select>
+            <div style={{display:'flex', gap:8, alignItems:'center', flex:'1 1 240px'}}>
+              <span style={{fontSize:12, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>Vence:</span>
+              <input className="input" type="date" value={fVenceDesde} onChange={e=>setFVenceDesde(e.target.value)} style={{flex:1}} />
+              <span style={{fontSize:12, color:'var(--fg-muted)'}}>-</span>
+              <input className="input" type="date" value={fVenceHasta} onChange={e=>setFVenceHasta(e.target.value)} style={{flex:1}} />
+            </div>
+            <div style={{display:'flex', gap:8, alignItems:'center', flex:'1 1 160px'}}>
+              <span style={{fontSize:12, color:'var(--fg-muted)', whiteSpace:'nowrap'}}>Mora:</span>
+              <input className="input" type="number" min="0" placeholder="Mín" value={fMoraDesde} onChange={e=>setFMoraDesde(e.target.value)} style={{flex:1}} />
+              <input className="input" type="number" min="0" placeholder="Máx" value={fMoraHasta} onChange={e=>setFMoraHasta(e.target.value)} style={{flex:1}} />
+            </div>
+            {hayFiltros && (
+              <button className="icon-btn" onClick={()=>{setFCliente('');setFEstado('');setFMoneda('');setFVenceDesde('');setFVenceHasta('');setFMoraDesde('');setFMoraHasta('');setFGestor('');setFPeriodoEmision('');setAgingFilter(null);}} title="Limpiar filtros">
+                ✕
+              </button>
+            )}
+          </div>
+        );
+
+        if (firstVisibleIdx === -1) {
+          return (
+            <div className="card mt-6">
+              {FiltersUI}
+              <div style={{padding: 40, textAlign:'center', color:'var(--fg-muted)'}}>
+                No hay registros que coincidan con los filtros.
+              </div>
+            </div>
+          );
+        }
+
+        return seccionesMoneda.map((sec, index) => {
         if (sec.rows.length === 0) return null;
         return (
         <React.Fragment key={sec.moneda}>
@@ -868,6 +875,7 @@ function CxC() {
           </div>
 
           <div className="card mt-6">
+            {index === firstVisibleIdx && FiltersUI}
             <div className="table-wrap">
               <table className="tbl">
                 <thead>
@@ -917,7 +925,8 @@ function CxC() {
           </div>
         </React.Fragment>
         );
-      })}
+      });
+      })()}
 
       {fichaJSX}
 
@@ -6139,7 +6148,7 @@ const cxpTributoTipoLabel = c => TRIBUTO_LABEL[c?.tributo_tipo] || c?.tributo_ti
 })();
 
 function CxP() {
-  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], registrarPagoCxP, generarCxP, crearGasto, addNotificacion, centrosCosto, setCxp, empresa } = useApp();
+  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], registrarPagoCxP, generarCxP, crearGasto, addNotificacion, centrosCosto, setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, empresa } = useApp();
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const [erCatOpts, setErCatOpts] = useState([]);
   const [erCategorias, setErCategorias] = useState([]);
@@ -6200,6 +6209,11 @@ function CxP() {
   const [fichaClasifCategoria, setFichaClasifCategoria] = useState('');
   const [fichaClasifCeco, setFichaClasifCeco] = useState('');
   const [guardandoClasif, setGuardandoClasif] = useState(false);
+  const [cxpImportRows, setCxpImportRows] = useState([]);
+  const [cxpImportResult, setCxpImportResult] = useState(null);
+  const [cxpImportando, setCxpImportando] = useState(false);
+  const [cxpImportCargando, setCxpImportCargando] = useState(false);
+  const cxpImportFileRef = useRef(null);
   const rheRetencion = Math.round(Number(rheMontoBruto || 0) * 0.08 * 100) / 100;
   const rheMontoNeto = Math.round((Number(rheMontoBruto || 0) - rheRetencion) * 100) / 100;
   const colaboradoresHonorarios = [
@@ -6326,6 +6340,17 @@ function CxP() {
   const [filtTipo, setFiltTipo] = useState('todos');
   const [filtOrigen, setFiltOrigen] = useState('todos');
   const [filtMoneda, setFiltMoneda] = useState('todos');
+  const [filtMes, setFiltMes] = useState('todos');
+  const [filtBusqueda, setFiltBusqueda] = useState('');
+
+  const mesesDisponibles = useMemo(() => {
+    const set = new Set();
+    (cxp || []).forEach(c => {
+      const fecha = c.fecha_emision || c.emision;
+      if (fecha && fecha.length >= 7) set.add(fecha.substring(0, 7));
+    });
+    return Array.from(set).sort().reverse();
+  }, [cxp]);
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   const saldoDe  = c => Number(c?.saldo ?? c?.monto_total ?? c?.monto ?? 0);
@@ -6483,6 +6508,15 @@ function CxP() {
     if (filtTipo !== 'todos' && (c.tipo_beneficiario || 'proveedor') !== filtTipo) return false;
     if (filtOrigen !== 'todos' && (c.origen || 'manual') !== filtOrigen) return false;
     if (filtMoneda !== 'todos' && (c.moneda || 'PEN') !== filtMoneda) return false;
+    if (filtMes !== 'todos') {
+      const fecha = c.fecha_emision || c.emision || '';
+      if (!fecha.startsWith(filtMes)) return false;
+    }
+    if (filtBusqueda) {
+      const ben = beneficiarioDetalle(c);
+      const nombre = (ben?.nombre || '').toLowerCase();
+      if (!nombre.includes(filtBusqueda.toLowerCase())) return false;
+    }
     return true;
   });
   const cxpTributos = (cxp || []).filter(cxpEsTributo);
@@ -6636,6 +6670,76 @@ function CxP() {
     setFormCrear(v => ({ ...v, fecha_emision: fecha, fecha_vencimiento: vence }));
   };
 
+  const descargarPlantillaCxp = async () => {
+    addNotificacion('La plantilla incluirá CECO, categorías ER y colaboradores RHE vigentes en este momento. Admite proveedores y RHE, solo con saldo pendiente y pagos parciales.');
+    if (!isSupabaseConfigured() || !empresa?.id) {
+      addNotificacion('No se puede generar la plantilla dinámica sin conexión al tenant.');
+      return;
+    }
+    try {
+      const sb = await getSupabaseClient();
+      await descargarPlantillaCxpMasiva(sb, empresa.id, empresa.nombre || empresa.razon_social || '');
+    } catch (error) {
+      addNotificacion(`No se pudo descargar la plantilla: ${error.message}`);
+    }
+  };
+
+  const leerArchivoCxpMasivo = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!isSupabaseConfigured() || !empresa?.id) {
+      addNotificacion('La carga masiva requiere conexión al tenant.');
+      return;
+    }
+    setCxpImportCargando(true);
+    setCxpImportResult(null);
+    try {
+      const sb = await getSupabaseClient();
+      const [rows, catalogos] = await Promise.all([
+        leerPlantillaCxpMasiva(file),
+        cargarCatalogosCxpMasivo(sb, empresa.id),
+      ]);
+      const validadas = validarFilasCxpMasiva(rows, catalogos);
+      setCxpImportRows(validadas);
+      const rechazadas = validadas.filter(row => row._errores.length).length;
+      addNotificacion(`Archivo analizado: ${validadas.length - rechazadas} filas listas y ${rechazadas} rechazadas.`);
+    } catch (error) {
+      addNotificacion(`No se pudo analizar la plantilla: ${error.message}`);
+    } finally {
+      setCxpImportCargando(false);
+    }
+  };
+
+  const ejecutarCargaCxpMasiva = async () => {
+    if (!cxpImportRows.length || cxpImportando) return;
+    setCxpImportando(true);
+    try {
+      const sb = await getSupabaseClient();
+      const resultado = await ejecutarImportacionCxpMasiva({
+        filas: cxpImportRows,
+        empresaId: empresa.id,
+        supabase: sb,
+        proveedores,
+        authUserId: authUser?.id || null,
+      });
+      setCxpImportRows(resultado.filas);
+      setCxpImportResult(resultado);
+      if (resultado.registros.length) {
+        setCxp(prev => [...resultado.registros.map(item => item.cxp), ...prev]);
+        setComprasGastos(prev => [...resultado.registros.map(item => item.gasto), ...prev]);
+        const pagos = resultado.registros.map(item => item.pago).filter(Boolean);
+        if (pagos.length) setCxpPagos(prev => [...pagos, ...prev]);
+      }
+      if (resultado.proveedoresNuevos.length) setProveedores(prev => [...resultado.proveedoresNuevos, ...prev]);
+      addNotificacion(`Carga finalizada: ${resultado.creadas} creadas, ${resultado.rechazadas} rechazadas, ${resultado.fallidas} fallidas.`);
+    } catch (error) {
+      addNotificacion(`No se pudo ejecutar la carga: ${error.message}`);
+    } finally {
+      setCxpImportando(false);
+    }
+  };
+
   const selBeneficiario = sel ? beneficiarioDetalle(sel) : null;
   const selGastoOrigen = sel ? gastoOrigenDe(sel) : null;
   const selSemaforo = sel ? semaforoDe(sel) : null;
@@ -6668,13 +6772,21 @@ function CxP() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Cuentas por Pagar</h1>
-          <div className="page-sub">
-            Total por pagar {money(saldosPEN)}{saldosUSD > 0 && <> · {money(saldosUSD, 'US$')}</>}
-            {' · '}
-            {money(vencidoPEN)}{vencidoUSD > 0 && <> · {money(vencidoUSD, 'US$')}</>} vencido
+          <div className="page-sub" style={{display:'flex',gap:16,flexWrap:'wrap',alignItems:'center'}}>
+            <span>Total por pagar: <strong>{money(saldosPEN)}</strong> · <strong>{money(saldosUSD, 'US$')}</strong></span>
+            <span style={{color:'var(--danger)',fontWeight:600}}>
+              · Vencido: {money(vencidoPEN)} · {money(vencidoUSD, 'US$')}
+            </span>
           </div>
         </div>
         <div className="row" style={{gap:8}}>
+          <input ref={cxpImportFileRef} type="file" accept=".xlsx,.xls" onChange={leerArchivoCxpMasivo} style={{display:'none'}} />
+          <button className="btn btn-secondary" onClick={descargarPlantillaCxp} style={{fontSize:13}}>
+            {I.download} Descargar plantilla
+          </button>
+          <button className="btn btn-secondary" onClick={() => cxpImportFileRef.current?.click()} disabled={cxpImportCargando} style={{fontSize:13}}>
+            {I.upload} {cxpImportCargando ? 'Analizando...' : 'Subir plantilla masiva'}
+          </button>
           <button className="btn btn-secondary" onClick={() => abrirCrearCxP(tabCxP === 'tributos' ? 'tributos' : 'rhe')} style={{fontSize:13}}>
             {I.plus} {tabCxP === 'tributos' ? 'Registrar tributo' : 'Registrar RHE'}
           </button>
@@ -6722,21 +6834,31 @@ function CxP() {
         </div>
       </div>
 
-      <div className="row" style={{gap:8, marginTop:16, marginBottom:4, flexWrap:'wrap'}}>
-        {[{v:'todos',l:'Todos'},{v:'proveedor',l:'Proveedores'},{v:'personal',l:'Colaboradores'},{v:DIVIDENDO_TIPO,l:'Socio / accionista'}].map(f => (
-          <button key={f.v} className={'btn btn-sm '+(filtTipo===f.v?'btn-primary':'btn-secondary')} onClick={() => setFiltTipo(f.v)}>{f.l}</button>
-        ))}
-        <div style={{width:1,background:'var(--border)',margin:'0 4px'}}/>
-        {[{v:'todos',l:'Origen: Todos'},{v:'recepcion',l:'OC'},{v:'auto_gasto',l:'Gasto directo'},{v:'rhe_externo',l:'RHE'},{v:'honorarios',l:'Honorarios'},{v:'viaticos',l:'Viáticos'},{v:'nomina',l:'Nómina'},{v:'manual',l:'Manual'}].map(f => (
-          <button key={f.v} className={'btn btn-sm '+(filtOrigen===f.v?'btn-primary':'btn-secondary')} onClick={() => setFiltOrigen(f.v)}>{f.l}</button>
-        ))}
-        <div style={{width:1,background:'var(--border)',margin:'0 4px'}}/>
-        {[{v:'todos',l:'Todas'},{v:'PEN',l:'S/ PEN'},{v:'USD',l:'US$ USD'}].map(f => (
-          <button key={f.v} className={'btn btn-sm '+(filtMoneda===f.v?'btn-primary':'btn-secondary')} onClick={() => setFiltMoneda(f.v)}>{f.l}</button>
-        ))}
-      </div>
-
       <div className="card">
+        <div className="card-head row" style={{gap:12, flexWrap:'wrap'}}>
+          <input className="input" placeholder="Buscar beneficiario..." value={filtBusqueda} onChange={e => setFiltBusqueda(e.target.value)} style={{flex:'1 1 200px'}} />
+          <select className="input" style={{flex:'1 1 140px'}} value={filtTipo} onChange={e => setFiltTipo(e.target.value)}>
+            {[{v:'todos',l:'Todos los beneficiarios'},{v:'proveedor',l:'Proveedores'},{v:'personal',l:'Colaboradores'},{v:DIVIDENDO_TIPO,l:'Socio / accionista'}].map(f => (
+              <option key={f.v} value={f.v}>{f.l}</option>
+            ))}
+          </select>
+          <select className="input" style={{flex:'1 1 140px'}} value={filtOrigen} onChange={e => setFiltOrigen(e.target.value)}>
+            {[{v:'todos',l:'Todos los orígenes'},{v:'recepcion',l:'OC'},{v:'auto_gasto',l:'Gasto directo'},{v:'rhe_externo',l:'RHE'},{v:'honorarios',l:'Honorarios'},{v:'viaticos',l:'Viáticos'},{v:'nomina',l:'Nómina'},{v:'manual',l:'Manual'}].map(f => (
+              <option key={f.v} value={f.v}>{f.l}</option>
+            ))}
+          </select>
+          <select className="input" style={{flex:'1 1 120px'}} value={filtMoneda} onChange={e => setFiltMoneda(e.target.value)}>
+            {[{v:'todos',l:'Todas las monedas'},{v:'PEN',l:'S/ PEN'},{v:'USD',l:'US$ USD'}].map(f => (
+              <option key={f.v} value={f.v}>{f.l}</option>
+            ))}
+          </select>
+          <select className="input" style={{flex:'1 1 120px'}} value={filtMes} onChange={e => setFiltMes(e.target.value)}>
+            <option value="todos">Todos los meses</option>
+            {mesesDisponibles.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
         <div className="table-wrap">
           <table className="tbl">
             <thead>
@@ -7495,6 +7617,53 @@ function CxP() {
           </div>
         </>
       )}
+      {cxpImportRows.length > 0 && (() => {
+        const listas = cxpImportRows.filter(row => !row._errores?.length && row._estado !== 'FALLIDA').length;
+        const rechazadas = cxpImportRows.filter(row => row._estado === 'RECHAZADA' || row._errores?.length).length;
+        const fallidas = cxpImportRows.filter(row => row._estado === 'FALLIDA').length;
+        return (
+          <div className="modal-backdrop" style={{zIndex:1200}}>
+            <div className="modal" style={{maxWidth:1240,width:'96vw'}}>
+              <div className="modal-head">
+                <div>
+                  <h2>Previsualización de carga masiva CxP</h2>
+                  <div className="text-muted" style={{fontSize:13,marginTop:4}}>
+                    {listas} listas · {rechazadas} rechazadas · {fallidas} fallidas
+                  </div>
+                </div>
+                <button className="icon-btn" onClick={() => { if (!cxpImportando) { setCxpImportRows([]); setCxpImportResult(null); } }} disabled={cxpImportando}>{I.x}</button>
+              </div>
+              <div className="modal-body" style={{padding:0}}>
+                {cxpImportResult && <div style={{padding:'12px 16px',background:'var(--bg-subtle)',fontSize:13}}>
+                  Resultado: <strong>{cxpImportResult.creadas}</strong> creadas, <strong>{cxpImportResult.rechazadas}</strong> rechazadas, <strong>{cxpImportResult.fallidas}</strong> fallidas, <strong>{cxpImportResult.proveedoresCreados}</strong> proveedores creados y <strong>{cxpImportResult.pagosRegistrados}</strong> pagos registrados.
+                </div>}
+                <div className="table-wrap" style={{maxHeight:'58vh',overflowY:'auto'}}>
+                  <table className="tbl">
+                    <thead style={{position:'sticky',top:0,zIndex:1,background:'var(--bg)'}}><tr>
+                      <th>Fila</th><th>Estado</th><th>RUC</th><th>Razón social</th><th>Concepto</th><th>Fecha</th><th>Monto</th><th>CECO</th><th>Mensaje</th>
+                    </tr></thead>
+                    <tbody>{cxpImportRows.map(row => {
+                      const estado = row._estado || (row._errores?.length ? 'RECHAZADA' : 'LISTA');
+                      const tone = estado === 'CREADA' ? 'var(--green)' : estado === 'LISTA' ? 'var(--cyan)' : 'var(--danger)';
+                      return <tr key={row._fila} style={{background:estado === 'CREADA' ? 'rgba(31,157,85,.06)' : estado === 'LISTA' ? 'transparent' : 'rgba(220,53,69,.06)'}}>
+                        <td>{row._fila}</td><td style={{fontWeight:700,color:tone}}>{estado}</td><td>{row.ruc_emisor}</td><td>{row.razon_social}</td><td>{row.concepto}</td><td>{row.fecha_emision}</td><td>{row.moneda} {Number(row.monto_total || 0).toFixed(2)}</td><td>{row.centro_costo_codigo}</td>
+                        <td style={{fontSize:12,color:estado === 'LISTA' || estado === 'CREADA' ? 'var(--fg-muted)' : 'var(--danger)'}}>{(row._errores || []).join(' · ') || (estado === 'CREADA' ? 'Importada correctamente.' : 'Lista para importar.')}</td>
+                      </tr>;
+                    })}</tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="modal-foot" style={{padding:16,borderTop:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span className="text-muted" style={{fontSize:12}}>Solo se procesarán las filas listas; las rechazadas quedan visibles con su motivo.</span>
+                <div className="row" style={{gap:8}}>
+                  <button className="btn btn-secondary" onClick={() => { setCxpImportRows([]); setCxpImportResult(null); }} disabled={cxpImportando}>Cerrar</button>
+                  <button className="btn btn-primary" onClick={ejecutarCargaCxpMasiva} disabled={cxpImportando || listas === 0 || Boolean(cxpImportResult)}>{cxpImportando ? 'Importando...' : `Importar ${listas} filas válidas`}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }

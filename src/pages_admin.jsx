@@ -3871,7 +3871,7 @@ function Maestros() {
     tiposDocumento = [], crearTipoDocumento, actualizarTipoDocumento, importarPlantillaTiposDoc,
     requisitosCargo = [], upsertRequisitoCargo, eliminarRequisitoCargo,
     posiciones = [], posicionesUsuarios = [], usuarios = [],
-    addNotificacion
+    addNotificacion, materiales = []
   } = useApp();
   const { centrosCosto, centrosBeneficio } = useApp();
   const [sel, setSel] = useState(null);
@@ -3946,6 +3946,7 @@ function Maestros() {
     if (sel.id === 'mst_industrias') return industrias;
     if (sel.id === 'mst_impuestos') return monedasImpuestosUnidades;
     if (sel.id === 'mst_tipos_contrato') return tiposContrato;
+    if (sel.id === 'mst_materiales') return materiales;
     return rows[sel.id] || [];
   };
   const selectedRows = getSelectedRows();
@@ -4427,6 +4428,37 @@ function Maestros() {
       <button className="icon-btn" title="Eliminar" onClick={() => eliminarRegistro(item)} style={{color:'var(--danger)'}}>{I.trash}</button>
     </div>
   );
+
+  const getMaestroMetaText = (mId) => {
+    const emptyEl = <span style={{color: 'var(--orange)'}}>Aún no se ha cargado nada</span>;
+    if (mId === 'mst_ceco_cebe') {
+      const c = (centrosCosto||[]).length;
+      const b = (centrosBeneficio||[]).length;
+      if (c === 0 && b === 0) return emptyEl;
+      return `${c} CECOs · ${b} CEBEs`;
+    }
+    
+    let arr = [];
+    switch (mId) {
+      case 'mst_industrias': arr = industrias || []; break;
+      case 'mst_sedes': arr = sedes || []; break;
+      case 'mst_unidades_organizacionales': arr = unidadesOrganizacionales || []; break;
+      case 'mst_cargos': arr = cargos || []; break;
+      case 'mst_tipos_documento': arr = tiposDocumento || []; break;
+      case 'mst_requisitos_cargo': arr = requisitosCargo || []; break;
+      case 'mst_especialidades': arr = especialidades || []; break;
+      case 'mst_niveles_jerarquicos': arr = nivelesJerarquicos || []; break;
+      case 'mst_materiales': arr = materiales || []; break;
+      case 'mst_impuestos': arr = monedasImpuestosUnidades || []; break;
+      case 'mst_tipos_servicio': arr = tiposServicio || []; break;
+      case 'mst_almacenes': arr = almacenes || []; break;
+      case 'mst_tipos_contrato': arr = tiposContrato || []; break;
+    }
+    
+    if (!arr || arr.length === 0) return emptyEl;
+    if (mId === 'mst_industrias') return `${arr.length} valores - Actualizado en tiempo real`;
+    return `${arr.length} valor${arr.length === 1 ? '' : 'es'} cargado${arr.length === 1 ? '' : 's'}`;
+  };
 
   const renderForm = () => {
     if (sel?.id === 'mst_proveedores') return (
@@ -4994,12 +5026,7 @@ function Maestros() {
             <div className="maestro-card-icon">{I.settings}</div>
             <div className="maestro-card-main">
               <div className="maestro-card-title">{m.tabla}</div>
-              {m.id === 'mst_industrias' && (
-                <div className="maestro-card-meta">{industrias.length} valores - Actualizado en tiempo real</div>
-              )}
-              {m.id === 'mst_ceco_cebe' && (
-                <div className="maestro-card-meta">{(centrosCosto||[]).length} CECOs · {(centrosBeneficio||[]).length} CEBEs</div>
-              )}
+              <div className="maestro-card-meta">{getMaestroMetaText(m.id)}</div>
             </div>
             <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { if (m.id === 'mst_ceco_cebe') { setShowCecoCebe(true); } else if (m.id === 'mst_requisitos_cargo') { setShowRequisitos(true); } else if (m.id === 'mst_tipos_documento') { setShowTiposDocumento(true); } else { setSel(m); resetForm(); } }}>
               Gestionar {I.chevRight}
