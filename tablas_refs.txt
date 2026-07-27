@@ -1,0 +1,419 @@
+d:\VIBECODING\ERP - TIDEO\src\AuthGate.jsx:230 => if (authUser?.id) await supabase.from('usuarios').update({ must_change_password: false }).eq('id', authUser.id);
+d:\VIBECODING\ERP - TIDEO\src\AuthGate.jsx:523 => await supabase.from('usuarios').update({ must_change_password: false }).eq('id', authUser.id);
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:715 => const scoped = table => supabase.from(table).select('*').eq('empresa_id', empresaId);
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:1063 => const { data: cfgData } = await supabase.from('empresa_config').select('*').eq('empresa_id', empresa.id).maybeSingle();
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:1068 => supabase.from('series_documentarias').select('*').eq('empresa_id', empresa.id).order('documento', { ascending: true }),
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:1069 => supabase.from('sla_plantillas').select('*').eq('empresa_id', empresa.id).order('nombre', { ascending: true }),
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:1070 => supabase.from('diccionario_comercial').select('*').eq('empresa_id', empresa.id).order('categoria', { ascending: true }).order('clave', { ascending: true }),
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:1351 => supabase.from('empresas').select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma').in('id', empresaIds),
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:1352 => supabase.from('roles').select('id, nombre, es_admin_empresa, es_superadmin').in('id', rolIds),
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:4335 => await supabase.from('usuarios').update({ must_change_password: false }).eq('id', authUser.id);
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:6466 => supabase.from('series_documentarias').select('*').eq('empresa_id', empresa.id).order('documento', { ascending: true }),
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:6467 => supabase.from('sla_plantillas').select('*').eq('empresa_id', empresa.id).order('nombre', { ascending: true }),
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:6468 => supabase.from('diccionario_comercial').select('*').eq('empresa_id', empresa.id).order('categoria', { ascending: true }).order('clave', { ascending: true }),
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:6490 => const { data, error } = await supabase.from('series_documentarias').insert(payload).select('*').single();
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:6510 => const { data, error } = await supabase.from('series_documentarias').update(payload).eq('id', id).select('*').single();
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:6522 => const { error } = await supabase.from('series_documentarias').delete().eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:6540 => const { data, error } = await supabase.from('sla_plantillas').insert(payload).select('*').single();
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:6560 => const { data, error } = await supabase.from('sla_plantillas').update(payload).eq('id', id).select('*').single();
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:6572 => const { error } = await supabase.from('sla_plantillas').delete().eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:6589 => const { data, error } = await supabase.from('diccionario_comercial').insert(payload).select('*').single();
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:6608 => const { data, error } = await supabase.from('diccionario_comercial').update(payload).eq('id', id).select('*').single();
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:6620 => const { error } = await supabase.from('diccionario_comercial').delete().eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:7044 => const { error } = await supabase.from('centros_costo').delete().eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:7079 => const { error } = await supabase.from('centros_beneficio').delete().eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:8513 => await supabase.from('notificaciones_sistema').insert({
+d:\VIBECODING\ERP - TIDEO\src\context.jsx:9121 => const { error } = await supabase.from('cuadrillas').update({ activa: false }).eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\data.js:1117 => { id: 'mst_industrias', tabla: 'Industrias', valores: 15, actualizado: 'hoy' },
+d:\VIBECODING\ERP - TIDEO\src\data.js:1118 => { id: 'mst_sedes', tabla: 'Sedes y ubicaciones GPS', valores: 14, actualizado: 'hace 2 dias' },
+d:\VIBECODING\ERP - TIDEO\src\data.js:1119 => { id: 'mst_centros_costo', tabla: 'Centros de costo', valores: 9, actualizado: 'hace 1 semana' },
+d:\VIBECODING\ERP - TIDEO\src\data.js:1120 => { id: 'mst_cargos', tabla: 'Cargos de la empresa', valores: 12, actualizado: 'hoy' },
+d:\VIBECODING\ERP - TIDEO\src\data.js:1121 => { id: 'mst_especialidades', tabla: 'Especialidades técnicas', valores: 8, actualizado: 'hoy' },
+d:\VIBECODING\ERP - TIDEO\src\data.js:1122 => { id: 'mst_materiales', tabla: 'Materiales e insumos con codigo de barras', valores: 186, actualizado: 'hoy' },
+d:\VIBECODING\ERP - TIDEO\src\data.js:1123 => { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades', valores: 21, actualizado: 'hace 1 mes' },
+d:\VIBECODING\ERP - TIDEO\src\data.js:1124 => { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno', valores: 6, actualizado: 'hace 3 dias' },
+d:\VIBECODING\ERP - TIDEO\src\data.js:1125 => { id: 'mst_almacenes', tabla: 'Almacenes y depósitos', valores: 4, actualizado: 'hoy' }
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:589 => queries.push(supabase.from('personal_operativo').select(selectColsOp).eq('empresa_id', empresaId).eq('auth_user_id', userId).limit(1));
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:590 => queries.push(supabase.from('personal_administrativo').select(selectColsAdm).eq('empresa_id', empresaId).eq('auth_user_id', userId).limit(1));
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:597 => queries.push(supabase.from('personal_operativo').select(selectColsOp).eq('empresa_id', empresaId).ilike('email', email).limit(1));
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:598 => queries.push(supabase.from('personal_administrativo').select(selectColsAdm).eq('empresa_id', empresaId).ilike('email', email).limit(1));
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3907 => { id: 'mst_industrias', tabla: 'Industrias' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3908 => { id: 'mst_sedes', tabla: 'Sedes y ubicaciones GPS' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3909 => { id: 'mst_ceco_cebe', tabla: 'Centros de Costo y Beneficio' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3910 => { id: 'mst_unidades_organizacionales', tabla: 'Unidades Organizacionales' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3911 => { id: 'mst_cargos', tabla: 'Cargos de la empresa' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3912 => { id: 'mst_tipos_documento', tabla: 'Tipos de Documento' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3913 => { id: 'mst_requisitos_cargo', tabla: 'Requisitos por Cargo' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3914 => { id: 'mst_especialidades', tabla: 'Especialidades técnicas' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3915 => { id: 'mst_niveles_jerarquicos', tabla: 'Niveles Jerárquicos' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3916 => { id: 'mst_materiales', tabla: 'Materiales e insumos con codigo de barras' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3917 => { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3918 => { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3919 => { id: 'mst_almacenes', tabla: 'Almacenes y depósitos' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:3920 => { id: 'mst_tipos_contrato', tabla: 'Tipos de Contrato' },
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:6741 => supabase.from('tipo_cambio_historico').select('*').eq('moneda_base', 'PEN')
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:6762 => const { error } = await supabase.from('tipo_cambio_historico').upsert(row, { onConflict: 'fecha,moneda_base' });
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:6764 => const { data } = await supabase.from('tipo_cambio_historico').select('*').eq('moneda_base', 'PEN').order('fecha', { ascending: false }).limit(30);
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:6784 => const { error } = await supabase.from('tipo_cambio_historico').upsert(row, { onConflict: 'fecha,moneda_base' });
+d:\VIBECODING\ERP - TIDEO\src\pages_admin.jsx:6786 => const { data } = await supabase.from('tipo_cambio_historico').select('*').eq('moneda_base', 'PEN').order('fecha', { ascending: false }).limit(30);
+d:\VIBECODING\ERP - TIDEO\src\services\activosService.js:37 => const { data, error } = await supabase.from('activos').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\activosService.js:44 => const { data, error } = await supabase.from('activos')
+d:\VIBECODING\ERP - TIDEO\src\services\activosService.js:54 => const { data, error } = await supabase.from('activos').update({
+d:\VIBECODING\ERP - TIDEO\src\services\activosService.js:120 => supabase.from('centros_costo').select('id,codigo,nombre').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\activosService.js:121 => supabase.from('activos').select('id,codigo').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\activosService.js:186 => const { error } = await supabase.from('activos')
+d:\VIBECODING\ERP - TIDEO\src\services\activosService.js:193 => const { error } = await supabase.from('activos').insert([{ id: newId, ...payload }]);
+d:\VIBECODING\ERP - TIDEO\src\services\amonestacionesService.js:63 => let query = supabase.from('amonestaciones_personal').select('*').eq('empresa_id', empresaId);
+d:\VIBECODING\ERP - TIDEO\src\services\amonestacionesService.js:122 => const { data, error } = await supabase.from('amonestaciones_personal').insert([row]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\amonestacionesService.js:210 => await supabase.from('notificaciones_sistema').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\autoservicioEmpleadoService.js:190 => supabase.from('personal_documentos').select('*').eq('personal_id', ficha.personal_id).eq('empresa_id', ficha.empresa_id).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\autoservicioEmpleadoService.js:191 => supabase.from('solicitudes_rrhh').select('*').eq('personal_id', ficha.personal_id).eq('empresa_id', ficha.empresa_id).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\autoservicioEmpleadoService.js:192 => supabase.from('registros_asistencia').select('*').eq('trabajador_id', ficha.personal_id).eq('empresa_id', ficha.empresa_id).gte('fecha', desde).lte('fecha', hasta).order('fecha', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\autoservicioEmpleadoService.js:193 => supabase.from('periodos_nomina').select('*').eq('empresa_id', ficha.empresa_id).eq('estado', 'cerrado').order('fecha_inicio', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\autoservicioEmpleadoService.js:194 => supabase.from('prestamos_personal').select('*').eq('empresa_id', ficha.empresa_id).eq('trabajador_id', ficha.personal_id).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\autoservicioEmpleadoService.js:195 => supabase.from('amonestaciones_personal').select('*').eq('empresa_id', ficha.empresa_id).eq('personal_id', ficha.personal_id).order('fecha', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\autoservicioEmpleadoService.js:196 => supabase.from('notificaciones_sistema').select('*').eq('empresa_id', ficha.empresa_id).order('created_at', { ascending: false }).limit(30),
+d:\VIBECODING\ERP - TIDEO\src\services\autoservicioEmpleadoService.js:197 => supabase.from('horas_extra_compensacion').select('*').eq('empresa_id', ficha.empresa_id).eq('personal_id', ficha.personal_id),
+d:\VIBECODING\ERP - TIDEO\src\services\autoservicioEmpleadoService.js:198 => supabase.from('rrhh_config_ausencias').select('dias_vacaciones_anio').eq('empresa_id', ficha.empresa_id).maybeSingle(),
+d:\VIBECODING\ERP - TIDEO\src\services\autoservicioEmpleadoService.js:199 => supabase.from('tipos_documento_empresa').select('id').eq('empresa_id', ficha.empresa_id).eq('captura_snapshot_laboral', true),
+d:\VIBECODING\ERP - TIDEO\src\services\biometricoService.js:241 => supabase.from('asistencia_biometrico_perfiles').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\biometricoService.js:242 => supabase.from('asistencia_biometrico_lotes').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\biometricoService.js:254 => ? supabase.from('asistencia_biometrico_perfiles').update(payload).eq('id', perfil.id)
+d:\VIBECODING\ERP - TIDEO\src\services\biometricoService.js:255 => : supabase.from('asistencia_biometrico_perfiles').insert(payload);
+d:\VIBECODING\ERP - TIDEO\src\services\biometricoService.js:264 => const { data, error } = await supabase.from('asistencia_biometrico_lotes').insert({ ...lote, empresa_id: empresaId }).select('*').single();
+d:\VIBECODING\ERP - TIDEO\src\services\cajaChicaService.js:17 => const { data, error } = await supabase.from(table).insert(current).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\cajaChicaService.js:23 => const { data, error } = await supabase.from(table).insert(current).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\cajaChicaService.js:31 => const { data, error } = await supabase.from(table).update(current).eq('id', id).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\cajaChicaService.js:37 => const { data, error } = await supabase.from(table).update(current).eq('id', id).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\cajaChicaService.js:92 => supabase.from('caja_chica').select('*').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cajaChicaService.js:93 => supabase.from('caja_chica_rendiciones').select('*').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cajaChicaService.js:94 => supabase.from('caja_chica_arqueos').select('*').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cajaChicaService.js:114 => supabase.from('caja_chica').select('*').eq('empresa_id', empresaId).order('fecha', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\cajaChicaService.js:115 => supabase.from('caja_chica_rendiciones').select('*').eq('empresa_id', empresaId).order('creado_en', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\cajaChicaService.js:116 => supabase.from('caja_chica_fondos').select('id, nombre').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cajaChicaService.js:190 => const { data: actual, error: getError } = await supabase.from('caja_chica_rendiciones').select('*').eq('id', id).single();
+d:\VIBECODING\ERP - TIDEO\src\services\comprasService.js:170 => const { error } = await supabase.from('proveedores').delete().eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\services\comprasService.js:426 => await supabase.from('correlativos_documentos')
+d:\VIBECODING\ERP - TIDEO\src\services\comprasService.js:430 => await supabase.from('correlativos_documentos').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\comprasService.js:495 => const { error: linErr } = await supabase.from('devoluciones_proveedor_lineas').insert(lineasData);
+d:\VIBECODING\ERP - TIDEO\src\services\comprasService.js:526 => const { data: stockRows } = await supabase.from('stock')
+d:\VIBECODING\ERP - TIDEO\src\services\comprasService.js:563 => const { data: dev } = await supabase.from('devoluciones_proveedor').select('estado').eq('id', devolucionId).single();
+d:\VIBECODING\ERP - TIDEO\src\services\comprasService.js:591 => const { error: cxpErr } = await supabase.from('cxp').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\comprasService.js:615 => const { data: cxpOrigen } = await supabase.from('cxp').select('saldo, monto_pagado, monto_total').eq('id', cxp_origen_id).single();
+d:\VIBECODING\ERP - TIDEO\src\services\comprasService.js:619 => await supabase.from('cxp').update({
+d:\VIBECODING\ERP - TIDEO\src\services\createSupabaseRepository.js:16 => const { data, error } = await scoped(supabase.from(table).select('*')).order(orderBy, { ascending });
+d:\VIBECODING\ERP - TIDEO\src\services\createSupabaseRepository.js:23 => const { data, error } = await scoped(supabase.from(table).select('*').eq('id', id)).single();
+d:\VIBECODING\ERP - TIDEO\src\services\createSupabaseRepository.js:31 => const { data, error } = await supabase.from(table).insert(payload).select('*').single();
+d:\VIBECODING\ERP - TIDEO\src\services\createSupabaseRepository.js:38 => const { data, error } = await scoped(supabase.from(table).update(patch).eq('id', id)).select('*').single();
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:117 => return supabase.from('leads').insert(row);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:132 => return supabase.from('leads').update(row).eq('id', leadId);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:186 => return supabase.from('cuentas').insert(row);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:272 => return supabase.from('contactos').insert(row);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:314 => return supabase.from('oportunidades').insert(row);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:325 => return supabase.from('oportunidades').update(row).eq('id', oppId);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:376 => return supabase.from('cotizaciones').insert(row);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:398 => return supabase.from('cotizaciones').update(row).eq('id', cotId);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:464 => return supabase.from('os_clientes').insert(row);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:499 => return supabase.from('os_clientes').update(row).eq('id', oscId);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:503 => return supabase.from('cotizaciones').update({ os_cliente_id: osId }).eq('id', cotId);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:534 => return supabase.from('hojas_costeo').insert(row);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:585 => return supabase.from('hojas_costeo').update(row).eq('id', hcId);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:606 => return supabase.from('agenda_comercial').insert(row);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:620 => return supabase.from('agenda_comercial').update(row).eq('id', eventoId);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:643 => return supabase.from('actividades_comerciales').insert(row);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:657 => return supabase.from('actividades_comerciales').update(row).eq('id', actividadId);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:665 => const q = table => supabase.from(table).select('*').eq('empresa_id', empresaId);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:706 => return supabase.from('notificaciones_sistema').insert(rows);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:744 => return supabase.from('notificaciones_sistema').update({ leida: true }).eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:749 => let q = supabase.from('notificaciones_sistema').update({ leida: true }).eq('user_id', userId);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:756 => return supabase.from('acuerdo_comision_historial').insert(fila);
+d:\VIBECODING\ERP - TIDEO\src\services\crmService.js:771 => const q = table => supabase.from(table).select('*').eq('empresa_id', empresaId);
+d:\VIBECODING\ERP - TIDEO\src\services\cxcMassiveImportService.js:45 => supabase.from('cuentas').select('id,ruc,razon_social,nombre_comercial,agente_retencion_sunat,tasa_retencion_sunat').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cxcMassiveImportService.js:46 => supabase.from('centros_beneficio').select('id,codigo,nombre,estado,fecha_inicio,fecha_fin').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cxcMassiveImportService.js:47 => supabase.from('os_clientes').select('id,numero,cuenta_id,centro_beneficio_id,saldo_por_facturar,monto_facturado,estado').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cxcMassiveImportService.js:48 => supabase.from('facturas').select('id,numero').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cxcMassiveImportService.js:59 => const { data: cebes, error } = await supabase.from('centros_beneficio')
+d:\VIBECODING\ERP - TIDEO\src\services\cxpMassiveImportService.js:103 => supabase.from('proveedores').select('id,ruc,razon_social,estado').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cxpMassiveImportService.js:104 => supabase.from('centros_costo').select('id,codigo,nombre,estado,fecha_inicio,fecha_fin').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cxpMassiveImportService.js:105 => supabase.from('er_categorias').select('nombre,activo,tipo_sistema,seccion,orden').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cxpMassiveImportService.js:106 => supabase.from('cxp').select('id,proveedor_id,ruc_emisor,personal_id,tipo_comprobante,factura_numero,concepto,fecha_emision,monto_total,proveedores(ruc)').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cxpMassiveImportService.js:107 => supabase.from('personal_administrativo').select('id,nombre,estado,tipo_contrato,ruc_colaborador,retencion_ir,retencion_ir_comision,suspension_retenciones,vencimiento_suspension').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cxpMassiveImportService.js:108 => supabase.from('personal_operativo').select('id,nombre,estado,tipo_contrato,ruc_colaborador,retencion_ir,suspension_retenciones,vencimiento_suspension').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\cxpMassiveImportService.js:126 => supabase.from('centros_costo')
+d:\VIBECODING\ERP - TIDEO\src\services\cxpMassiveImportService.js:131 => supabase.from('er_categorias')
+d:\VIBECODING\ERP - TIDEO\src\services\cxpMassiveImportService.js:136 => supabase.from('personal_administrativo')
+d:\VIBECODING\ERP - TIDEO\src\services\cxpMassiveImportService.js:139 => supabase.from('personal_operativo')
+d:\VIBECODING\ERP - TIDEO\src\services\evaluacionesDesempenoService.js:161 => ? supabase.from('desempeno_competencias').insert(competenciasRows).select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\evaluacionesDesempenoService.js:164 => ? supabase.from('desempeno_objetivos').insert(objetivosRows).select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\evaluacionesDesempenoService.js:185 => ? await supabase.from('desempeno_evaluaciones').insert(evaluacionesRows).select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\financiamientosService.js:324 => createMockRepository({
+d:\VIBECODING\ERP - TIDEO\src\services\financiamientosService.js:344 => financiamientos: createSupabaseRepository({ table: 'financiamientos', empresa }),
+d:\VIBECODING\ERP - TIDEO\src\services\financiamientosService.js:345 => gastos: createSupabaseRepository({ table: 'compras_gastos', empresa }),
+d:\VIBECODING\ERP - TIDEO\src\services\financiamientosService.js:346 => tesoreria: createSupabaseRepository({ table: 'movimientos_tesoreria', empresa }),
+d:\VIBECODING\ERP - TIDEO\src\services\financiamientosService.js:347 => amortizacion: createSupabaseRepository({ table: 'tabla_amortizacion', empresa }),
+d:\VIBECODING\ERP - TIDEO\src\services\financiamientosService.js:348 => pagos: createSupabaseRepository({ table: 'pagos_financiamiento', empresa }),
+d:\VIBECODING\ERP - TIDEO\src\services\financiamientosService.js:354 => financiamientos: createMockRepository({
+d:\VIBECODING\ERP - TIDEO\src\services\financiamientosService.js:361 => gastos: createMockRepository({
+d:\VIBECODING\ERP - TIDEO\src\services\financiamientosService.js:367 => tesoreria: createMockRepository({
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:178 => const { data, error } = await supabase.from(table).insert(p).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:184 => const { data, error } = await supabase.from(table).insert(p).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:192 => const { data, error } = await supabase.from(table).update(p).eq('id', id).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:198 => const { data, error } = await supabase.from(table).update(p).eq('id', id).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:296 => const insert = async (p) => supabase.from('valorizaciones').insert(p).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:312 => const updateFn = async (p) => supabase.from('valorizaciones').update(p).eq('id', id).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:339 => const insert = async (p) => supabase.from('facturas').insert(p).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:367 => const updateFn = async (p) => supabase.from('facturas').update(p).eq('id', id).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:506 => const insert = async (p) => supabase.from('cxc').insert(p).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:565 => const updateFn = async (p) => supabase.from('cxc').update(p).eq('id', id).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:691 => const insert = async (p) => supabase.from('comisiones').insert(p).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:806 => const insert = async (p) => supabase.from('cxp').insert(p).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:897 => await supabase.from('movimientos_tesoreria').delete().eq('id', creados.movimiento.id).catch(() => null);
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:900 => await supabase.from('cxp_pagos').delete().eq('id', creados.pago.id).catch(() => null);
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:903 => await supabase.from('cxp').delete().eq('id', creados.cxp.id).catch(() => null);
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:906 => await supabase.from('compras_gastos').update({ cxp_id: null, estado_pago: 'pendiente' }).eq('id', gastoId).catch(() => null);
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:930 => await supabase.from('cxp_pagos').delete().eq('cxp_id', cxpRel.id);
+d:\VIBECODING\ERP - TIDEO\src\services\finanzasService.js:932 => await supabase.from('movimientos_tesoreria').delete().eq('gasto_id', gastoId).catch(() => null);
+d:\VIBECODING\ERP - TIDEO\src\services\geofencingService.js:193 => supabase.from('rrhh_geocercas').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\geofencingService.js:194 => supabase.from('rrhh_geocerca_asignaciones').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\geofencingService.js:195 => supabase.from('rrhh_ubicacion_consentimientos').select('*').eq('empresa_id', empresaId).order('aceptado_en', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\geofencingService.js:209 => ? supabase.from('rrhh_geocercas').update(payload).eq('id', id)
+d:\VIBECODING\ERP - TIDEO\src\services\geofencingService.js:210 => : supabase.from('rrhh_geocercas').insert(payload);
+d:\VIBECODING\ERP - TIDEO\src\services\geofencingService.js:219 => const { data, error } = await supabase.from('rrhh_geocercas').delete().eq('id', id).select();
+d:\VIBECODING\ERP - TIDEO\src\services\geofencingService.js:231 => ? supabase.from('rrhh_geocerca_asignaciones').update(payload).eq('id', asignacion.id)
+d:\VIBECODING\ERP - TIDEO\src\services\geofencingService.js:232 => : supabase.from('rrhh_geocerca_asignaciones').insert(payload);
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:45 => await supabase.from('correlativos_documentos')
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:49 => await supabase.from('correlativos_documentos').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:81 => let q = supabase.from('guias_remision').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:95 => const { data: lineas } = await supabase.from('guias_remision_lineas').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:107 => const { data, error } = await supabase.from('guias_remision').select('*').eq('id', guiaId).single();
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:109 => const { data: lineas } = await supabase.from('guias_remision_lineas').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:124 => const { data: guia, error } = await supabase.from('guias_remision').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:185 => await supabase.from('guias_remision_lineas').insert(lineasInsert);
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:195 => const { data, error } = await supabase.from('guias_remision').update({
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:204 => await supabase.from('guias_remision_lineas').delete().eq('guia_id', guiaId);
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:225 => await supabase.from('guias_remision_lineas').insert(lineasInsert);
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:229 => const { data: lineas } = await supabase.from('guias_remision_lineas').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:251 => const { data: guia } = await supabase.from('guias_remision').select('estado').eq('id', guiaId).single();
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:320 => await supabase.from('ordenes_venta_lineas')
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:337 => await supabase.from('ordenes_venta')
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:378 => const { data, error } = await supabase.from('transportistas').select(`
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:389 => const { data, error } = await supabase.from('transportistas').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:409 => const { data, error } = await supabase.from('transportistas').update({
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:422 => let q = supabase.from('vehiculos_transporte').select('*').eq('empresa_id', empresaId);
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:430 => const { data, error } = await supabase.from('vehiculos_transporte').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:451 => let q = supabase.from('conductores_transporte').select('*').eq('empresa_id', empresaId);
+d:\VIBECODING\ERP - TIDEO\src\services\guiasService.js:459 => const { data, error } = await supabase.from('conductores_transporte').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:22 => const { data } = await supabase.from('almacenes').select('*').eq('id', almacenId).maybeSingle();
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:26 => const { data: existente } = await supabase.from('almacenes').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:29 => const { data, error } = await supabase.from('almacenes').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:70 => const { data: stockRow } = await supabase.from('stock').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:88 => const { data: mat } = await supabase.from('materiales').select('costo_promedio').eq('id', material_id).maybeSingle();
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:146 => const { error: kdxErr } = await supabase.from('kardex').insert(kardexRow);
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:157 => const { error: stErr } = await supabase.from('stock').update({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:165 => const { error: stErr } = await supabase.from('stock').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:181 => await supabase.from('materiales').update({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:206 => const { data: mat } = await supabase.from('materiales').select('tipo_control, descripcion').eq('id', material_id).maybeSingle();
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:271 => const { data: mat } = await supabase.from('materiales').select('costo_promedio').eq('id', material_id).maybeSingle();
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:303 => const { data: mat } = await supabase.from('materiales').select('costo_promedio').eq('id', material_id).maybeSingle();
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:325 => const { data: stockRow } = await supabase.from('stock').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:334 => const { error } = await supabase.from('stock').update({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:345 => const { data: stockRow } = await supabase.from('stock').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:350 => const { error } = await supabase.from('stock').update({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:362 => const { data: kdx, error } = await supabase.from('kardex').select('*').eq('id', kardexId).single();
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:366 => await supabase.from('kardex').update({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:389 => const count = await supabase.from('inventario_conteos').select('id', { count: 'exact' }).eq('empresa_id', empresaId);
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:394 => let q = supabase.from('stock')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:417 => const { data, error } = await supabase.from('inventario_conteos').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:429 => const { data, error } = await supabase.from('inventario_conteos')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:444 => const { data: conteo, error: getErr } = await supabase.from('inventario_conteos')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:453 => const { data, error } = await supabase.from('inventario_conteos').update({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:464 => const { data: conteo, error: getErr } = await supabase.from('inventario_conteos')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:505 => await supabase.from('inventario_conteos').update({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:553 => let kardexQ = supabase.from('kardex')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:561 => let stockQ = supabase.from('stock')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:566 => let historicoSalidasQ = supabase.from('kardex')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:694 => let q = supabase.from('kardex').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:712 => const full = await supabase.from('stock').select(fullSelect).eq('empresa_id', empresaId).order('updated_at', { ascending: false });
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:715 => const base = await supabase.from('stock').select(baseSelect).eq('empresa_id', empresaId).order('updated_at', { ascending: false });
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:754 => const { data } = await supabase.from('stock')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:767 => const { data } = await supabase.from('ordenes_compra')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:796 => const { data } = await supabase.from('materiales').select('id').eq('empresa_id', empresaId).eq('codigo', codigoMat).maybeSingle();
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:802 => const { data: newMat, error } = await supabase.from('materiales').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:887 => let q = supabase.from('kardex')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:923 => const { error: updErr } = await supabase.from('kardex').update({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:933 => const { data: stocks, error: stockErr } = await supabase.from('stock')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:939 => const { data: mat } = await supabase.from('materiales').select('costo_promedio').eq('id', kdx.material_id).maybeSingle();
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:944 => await supabase.from('materiales').update({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:959 => const { data: mat } = await supabase.from('materiales')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:963 => let stockQ = supabase.from('stock').select('id, disponible, fisico, reservado, almacen_id')
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:973 => await supabase.from('kardex').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\inventarioService.js:995 => await supabase.from('stock').update({
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:60 => const { data, error } = await supabase.from(tabla).insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:80 => const { data, error } = await supabase.from('areas_empresa').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false });
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:88 => const { data, error } = await supabase.from('cargos_empresa').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false });
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:100 => const { data, error } = await supabase.from('cargos_empresa').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:106 => const { data, error } = await supabase.from('cargos_empresa').update(pick(payload, ['codigo', 'nombre', 'tipo', 'detalle', 'estado', 'modo_gestion'])).eq('id', cargoId).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:112 => const { error } = await supabase.from('cargos_empresa').delete().eq('id', cargoId);
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:128 => const { data, error } = await supabase.from('especialidades_tecnicas').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false });
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:140 => const { data, error } = await supabase.from('especialidades_tecnicas').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:146 => const { data, error } = await supabase.from('especialidades_tecnicas').update(pick(payload, ['codigo', 'nombre', 'area', 'requiere_cert', 'estado'])).eq('id', especialidadId).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:152 => const { error } = await supabase.from('especialidades_tecnicas').delete().eq('id', especialidadId);
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:160 => const { data, error } = await supabase.from('niveles_jerarquicos').select('*').eq('empresa_id', empresaId).order('orden', { ascending: true });
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:171 => const { data, error } = await supabase.from('niveles_jerarquicos').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:177 => const { data, error } = await supabase.from('niveles_jerarquicos').update(pick(payload, ['codigo', 'nombre', 'alcance', 'orden', 'estado'])).eq('id', nivelId).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:183 => const { error } = await supabase.from('niveles_jerarquicos').delete().eq('id', nivelId);
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:191 => const { data, error } = await supabase.from('tipos_servicio_interno').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false });
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:203 => const { data, error } = await supabase.from('tipos_servicio_interno').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:209 => const { data, error } = await supabase.from('tipos_servicio_interno').update(pick(payload, ['codigo', 'nombre', 'clasificacion', 'facturable', 'estado'])).eq('id', tipoServicioId).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:215 => const { error } = await supabase.from('tipos_servicio_interno').delete().eq('id', tipoServicioId);
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:223 => const { data, error } = await supabase.from('almacenes').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false });
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:235 => const { data, error } = await supabase.from('almacenes').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:241 => const { data, error } = await supabase.from('almacenes').update(pick(payload, ['codigo', 'nombre', 'tipo', 'responsable', 'direccion', 'estado'])).eq('id', almacenId).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:247 => const { error } = await supabase.from('almacenes').delete().eq('id', almacenId);
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:255 => const { data, error } = await supabase.from('sedes').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false });
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:267 => const { data, error } = await supabase.from('sedes').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:273 => const { data, error } = await supabase.from('sedes').update(pick(payload, ['codigo', 'nombre', 'direccion', 'gps', 'estado', 'tipo'])).eq('id', sedeId).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:279 => const { error } = await supabase.from('sedes').delete().eq('id', sedeId);
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:287 => const { data, error } = await supabase.from('industrias').select('*').eq('empresa_id', empresaId).eq('estado', 'activo').order('nombre', { ascending: true });
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:299 => const { data, error } = await supabase.from('industrias').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:305 => const { data, error } = await supabase.from('industrias').update(pick(payload, ['codigo', 'nombre', 'categoria', 'estado'])).eq('id', industriaId).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:311 => const { error } = await supabase.from('industrias').delete().eq('id', industriaId);
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:319 => const { data, error } = await supabase.from('monedas_impuestos_unidades').select('*').eq('empresa_id', empresaId).order('tipo', { ascending: true }).order('codigo', { ascending: true });
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:330 => const { data, error } = await supabase.from('monedas_impuestos_unidades').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:336 => const { data, error } = await supabase.from('monedas_impuestos_unidades').update(pick(payload, ['tipo', 'codigo', 'nombre', 'detalle', 'estado'])).eq('id', itemId).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:342 => const { error } = await supabase.from('monedas_impuestos_unidades').delete().eq('id', itemId);
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:349 => const { data, error } = await supabase.from('centros_beneficio').select('*').eq('empresa_id', empresaId).order('codigo', { ascending: true });
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:360 => const { data, error } = await supabase.from('centros_beneficio').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:366 => const { data, error } = await supabase.from('centros_beneficio').update(pick(payload, ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cebeId).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:374 => tabla: 'centros_beneficio',
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:384 => const { data, error } = await supabase.from('centros_costo').select('*').eq('empresa_id', empresaId).order('codigo', { ascending: true });
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:395 => const { data, error } = await supabase.from('centros_costo').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:401 => const { data, error } = await supabase.from('centros_costo').update(pick(payload, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'sede_padre', 'especialidad', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cecoId).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:409 => tabla: 'centros_costo',
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:420 => const { data, error } = await supabase.from('servicios').select('*').eq('empresa_id', empresaId).order('codigo', { ascending: true });
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:431 => const { data, error } = await supabase.from('servicios').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:437 => const { data, error } = await supabase.from('servicios').update(pick(payload, ['codigo', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas'])).eq('id', servicioId).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:443 => const { error } = await supabase.from('servicios').delete().eq('id', servicioId);
+d:\VIBECODING\ERP - TIDEO\src\services\maestrosService.js:453 => const { data, error } = await supabase.from('servicios').upsert(payload, { onConflict: 'empresa_id, codigo' }).select();
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:24 => const { data, error } = await supabase.from('material_grupos').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:31 => const { data, error } = await supabase.from('material_grupos')
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:39 => const { error } = await supabase.from('material_grupos').delete().eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:57 => const { data, error } = await supabase.from('material_familias').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:64 => const { data, error } = await supabase.from('material_familias')
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:72 => const { error } = await supabase.from('material_familias').delete().eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:90 => const { data, error } = await supabase.from('material_subfamilias').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:97 => const { data, error } = await supabase.from('material_subfamilias')
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:105 => const { error } = await supabase.from('material_subfamilias').delete().eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:153 => const { data, error } = await supabase.from('materiales').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:160 => const { data, error } = await supabase.from('materiales')
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:168 => const { error } = await supabase.from('materiales').delete().eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:255 => ? await supabase.from('materiales').select('id').eq('empresa_id', empresaId).eq('codigo', codigo).maybeSingle()
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:276 => await supabase.from('materiales').update(payload).eq('id', existente.id);
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:280 => await supabase.from('materiales').insert([{ id: newId, ...payload }]);
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:308 => supabase.from('material_grupos').select('*').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:309 => supabase.from('material_familias').select('*').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:310 => supabase.from('material_subfamilias').select('*').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:311 => supabase.from('almacenes').select('id,nombre').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:312 => supabase.from('materiales').select('id,codigo').eq('empresa_id', empresaId),
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:414 => const { data, error } = await supabase.from('materiales').update(payload).eq('id', existente.id).select('id,codigo').single();
+d:\VIBECODING\ERP - TIDEO\src\services\materialService.js:420 => const { data, error } = await supabase.from('materiales').insert([{ id: newId, ...payload }]).select('id,codigo').single();
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:16 => return supabase.from('backlog').insert(row);
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:20 => return supabase.from('backlog').update(datos).eq('id', backlogId);
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:55 => const insert = async (payload) => supabase.from('ordenes_trabajo').insert(payload);
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:136 => const update = async (payload) => supabase.from('ordenes_trabajo').update(payload).eq('id', otId);
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:186 => const result = await apply(supabase.from(table).select('*').eq('empresa_id', empresaId));
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:246 => return supabase.from('ot_tareas').insert(row).select('*').single();
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:318 => await supabase.from('ot_avance_historial').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:340 => await supabase.from('ot_tareas')
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:345 => await supabase.from('ot_avance_historial').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:476 => return supabase.from('ordenes_trabajo').delete().eq('id', otId);
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:520 => const insert = async (payload) => supabase.from('partes_diarios').insert(payload);
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:541 => supabase.from('partes_diarios').update(payload).eq('id', parteId).select('id');
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:586 => const insert = async (payload) => supabase.from('cierres_tecnicos').insert(payload);
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:603 => await supabase.from('kardex').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:617 => const { data: stocks } = await supabase.from('stock')
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:624 => await supabase.from('stock')
+d:\VIBECODING\ERP - TIDEO\src\services\operacionesService.js:634 => const q = table => supabase.from(table).select('*').eq('empresa_id', empresaId);
+d:\VIBECODING\ERP - TIDEO\src\services\personalDocumentosService.js:599 => await supabase.from('notificaciones_sistema').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\personalDocumentosService.js:627 => await supabase.from('notificaciones_sistema').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\personalDocumentosService.js:642 => await supabase.from('personal_documentos')
+d:\VIBECODING\ERP - TIDEO\src\services\personalDocumentosService.js:647 => await supabase.from('personal_documentos')
+d:\VIBECODING\ERP - TIDEO\src\services\personalDocumentosService.js:651 => await supabase.from('notificaciones_sistema').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\plannerService.js:210 => const { error: errM } = await supabase.from('cuadrilla_miembros').insert(miembros);
+d:\VIBECODING\ERP - TIDEO\src\services\plannerService.js:222 => const { error: errU } = await supabase.from('cuadrillas')
+d:\VIBECODING\ERP - TIDEO\src\services\plannerService.js:226 => await supabase.from('cuadrilla_miembros').delete().eq('cuadrilla_id', cuadrillaId);
+d:\VIBECODING\ERP - TIDEO\src\services\plannerService.js:228 => const { error: errM } = await supabase.from('cuadrilla_miembros').insert(tecnicoIds.map(tid => ({ cuadrilla_id: cuadrillaId, tecnico_id: tid })));
+d:\VIBECODING\ERP - TIDEO\src\services\portalFase2Service.js:44 => const { data, error } = await supabase.from(table).insert(row).select('*').single();
+d:\VIBECODING\ERP - TIDEO\src\services\portalFase2Service.js:51 => const { data, error } = await supabase.from(table).update(patch).eq('id', id).select('*').single();
+d:\VIBECODING\ERP - TIDEO\src\services\portalFase2Service.js:70 => supabase.from('portal_datos_solicitudes').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\portalFase2Service.js:71 => supabase.from('portal_constancias_trabajo').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\portalFase2Service.js:72 => supabase.from('portal_boleta_acuses').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\portalFase2Service.js:73 => supabase.from('portal_boleta_visualizaciones').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\portalFase2Service.js:74 => supabase.from('portal_contrato_firma_registros').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\portalFase2Service.js:75 => supabase.from('portal_firma_otp_intentos').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }),
+d:\VIBECODING\ERP - TIDEO\src\services\posicionesService.js:56 => const { data, error } = await supabase.from('unidades_organizacionales').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\posicionesService.js:122 => const { data, error } = await supabase.from('posiciones').insert([payload]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\reclutamientoService.js:58 => const { data, error } = await supabase.from('rrhh_vacantes').insert([row]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\rosterMineroService.js:341 => let query = supabase.from('roster_minero_snapshots').select('*').eq('empresa_id', empresaId);
+d:\VIBECODING\ERP - TIDEO\src\services\rosterMineroService.js:578 => const { data, error } = await supabase.from('roster_minero_ajustes').insert([row]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\rosterMineroService.js:590 => let query = supabase.from('roster_minero_ajustes').select('*').eq('empresa_id', empresaId);
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:719 => const { data, error } = await supabase.from('tipos_contrato').insert([{ id, empresa_id: empresaId, ...payload }]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:725 => const { data, error } = await supabase.from('tipos_contrato').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:731 => const { error } = await supabase.from('tipos_contrato').delete().eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:782 => const base = () => supabase.from('personal_administrativo').select(select).eq('empresa_id', empresaId);
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:838 => supabase.from('personal_operativo').select(select).eq('empresa_id', empresaId).or(`dni.eq.${doc},documento.eq.${doc}`).limit(1).maybeSingle(),
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:839 => supabase.from('personal_administrativo').select(select).eq('empresa_id', empresaId).or(`dni.eq.${doc},documento.eq.${doc}`).limit(1).maybeSingle(),
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:884 => const { error } = await supabase.from('turnos').delete().eq('id', id);
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:915 => const { data, error } = await supabase.from('registros_asistencia').delete().eq('id', id).select();
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:945 => let query = supabase.from('asistencia_ciclos_mineros').select('*').eq('empresa_id', empresaId);
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:955 => const { data, error } = await supabase.from('asistencia_ciclos_mineros').insert([row]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:960 => const { error: errAsis } = await supabase.from('registros_asistencia').insert(inserts);
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:968 => const { data, error } = await supabase.from('asistencia_ciclos_mineros')
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:975 => await supabase.from('registros_asistencia').delete().eq('ciclo_minero_id', id);
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:978 => const { error: errAsis } = await supabase.from('registros_asistencia').insert(inserts);
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1003 => let query = supabase.from('periodos_nomina').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1088 => await supabase.from(tabla)
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1111 => await supabase.from(tabla)
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1136 => const { data, error } = await supabase.from('autorizaciones_horas_extra').select('*').eq('empresa_id', empresaId).order('fecha', { ascending: false });
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1151 => const { data, error } = await supabase.from('autorizaciones_horas_extra').insert([row]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1158 => const { data, error } = await supabase.from('autorizaciones_horas_extra')
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1168 => const { data, error } = await supabase.from('horas_extra_compensacion').select('*').eq('empresa_id', empresaId).order('fecha_he', { ascending: false });
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1175 => const { data, error } = await supabase.from('horas_extra_compensacion').update({ ...cambios, decidido_en: new Date().toISOString() }).eq('id', id).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1178 => await supabase.from('registros_asistencia').upsert([{ id: `comp_${data.id}`, empresa_id: data.empresa_id, trabajador_id: data.personal_id, trabajador_tipo: data.personal_tipo === 'administrativo' ? 'admin' : data.personal_tipo, fecha: data.fecha_dia_libre, estado: 'dia_compensado', es_dia_compensado: true, compensacion_he_id: data.id }], { onConflict: 'id' });
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1186 => const { data, error } = await supabase.from('horas_extra_compensacion').select('minutos').eq('empresa_id', empresaId).eq('personal_id', personalId).eq('estado', 'pendiente');
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1194 => const { data, error } = await supabase.from('descuentos_extraordinarios').select('*').eq('empresa_id', empresaId).order('registrado_en', { ascending: false });
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1202 => const { data, error } = await supabase.from('descuentos_extraordinarios').insert([{ ...payload, empresa_id: empresaId, registrado_por: payload?.registrado_por || 'sistema' }]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1209 => const { data, error } = await supabase.from('descuentos_extraordinarios').update({ estado, resuelto_por: params.resuelto_por || null, comentario_resolucion: params.comentario_resolucion || null, resuelto_en: new Date().toISOString() }).eq('id', id).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1221 => const { data, error } = await supabase.from('ingresos_extraordinarios').select('*').eq('empresa_id', empresaId).order('registrado_en', { ascending: false });
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1232 => const { data, error } = await supabase.from('ingresos_extraordinarios').insert([{
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1248 => const { data: actual, error: errActual } = await supabase.from('ingresos_extraordinarios').select('sub_tipo').eq('id', id).single();
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1252 => const { data, error } = await supabase.from('ingresos_extraordinarios').update(update).eq('id', id).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\rrhhService.js:1261 => const { data, error } = await supabase.from('ingresos_extraordinarios').update({ estado: 'aplicado', aplicado_en: new Date().toISOString() }).eq('id', id).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\solicitudesRrhhService.js:105 => await supabase.from('correlativos_documentos')
+d:\VIBECODING\ERP - TIDEO\src\services\solicitudesRrhhService.js:109 => await supabase.from('correlativos_documentos').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\solicitudesRrhhService.js:398 => supabase.from('rrhh_config_ausencias').select('dias_vacaciones_anio').eq('empresa_id', empresaId).maybeSingle(),
+d:\VIBECODING\ERP - TIDEO\src\services\solicitudesRrhhService.js:399 => supabase.from('solicitudes_rrhh')
+d:\VIBECODING\ERP - TIDEO\src\services\unidadMineraService.js:54 => const { data, error } = await supabase.from('personal_asignaciones_um').insert([row]).select().single();
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:37 => await supabase.from('correlativos_documentos')
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:41 => await supabase.from('correlativos_documentos').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:56 => const { data, error } = await supabase.from('catalogo_venta')
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:66 => const { data, error } = await supabase.from('catalogo_venta').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:87 => const { data, error } = await supabase.from('catalogo_venta').update({
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:99 => let q = supabase.from('ordenes_venta').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:108 => const { data: lineas } = await supabase.from('ordenes_venta_lineas').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:129 => const { data: ov, error } = await supabase.from('ordenes_venta').insert({
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:174 => await supabase.from('ordenes_venta_lineas').insert(lineasInsert);
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:184 => const { data: ov, error } = await supabase.from('ordenes_venta').select('*').eq('id', ovId).single();
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:189 => const { data: lineas } = await supabase.from('ordenes_venta_lineas').select('*').eq('orden_venta_id', ovId);
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:200 => await supabase.from('ordenes_venta').update({
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:217 => const { data, error } = await supabase.from('ordenes_venta').update({
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:224 => await supabase.from('ordenes_venta_lineas').delete().eq('orden_venta_id', ovId);
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:248 => await supabase.from('ordenes_venta_lineas').insert(lineasInsert);
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:252 => const { data: lineas } = await supabase.from('ordenes_venta_lineas').select('*')
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:261 => const { data: ov } = await supabase.from('ordenes_venta').select('*').eq('id', ovId).single();
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:267 => const { data: lineas } = await supabase.from('ordenes_venta_lineas').select('*').eq('orden_venta_id', ovId);
+d:\VIBECODING\ERP - TIDEO\src\services\ventasService.js:277 => const { data, error } = await supabase.from('ordenes_venta').update({
+d:\VIBECODING\ERP - TIDEO\src\services\whatsappService.js:81 => supabase.from('whatsapp_plantillas').select('*').eq('empresa_id', empresaId).order('tipo_alerta'),
+d:\VIBECODING\ERP - TIDEO\src\services\whatsappService.js:82 => supabase.from('whatsapp_matriz_destinatarios').select('*').eq('empresa_id', empresaId).order('tipo_alerta'),
+d:\VIBECODING\ERP - TIDEO\src\services\whatsappService.js:83 => supabase.from('whatsapp_envios').select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false }).limit(200),
+d:\VIBECODING\ERP - TIDEO\src\services\whatsappService.js:137 => const { data, error } = await supabase.from('whatsapp_envios').insert(row).select('*').single();

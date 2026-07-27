@@ -1,6 +1,6 @@
 # ERP Modular Estándar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado — TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS · Última actualización: 23/07/2026
+### Arquitectura Multitenant SaaS · Última actualización: 27/07/2026
 
 ---
 
@@ -23,7 +23,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 
 ---
 
-## 3. Estado de desarrollo — 23/07/2026
+## 3. Estado de desarrollo — 27/07/2026
 
 ### 3.1 Resumen de progreso
 
@@ -33,9 +33,14 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Módulos en prompt pendiente de implementar | 0 |
 | Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase |
 | Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
-| Migraciones SQL registradas en el repositorio | 358 archivos SQL locales, hasta `355_habilitar_ausencias_autorizadas_mineros.sql` |
-| Migración local más reciente | `355_habilitar_ausencias_autorizadas_mineros.sql`: habilitación de permisos con goce, ajustes en ingresos extraordinarios, pensionario y retro wall expandido.
-| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior (339-355): Refinamiento en Posiciones (modo gestión, reasignar padres, categoría en unidades), ingresos extraordinarios, retro wall para asignaciones y condiciones laborales, lógica de ausencias con goce y modelo CECO/CEBE. |
+| Migraciones SQL registradas en el repositorio | 365 archivos SQL locales, hasta `363_postulacion_publica_idempotente.sql` |
+| Migración local más reciente | `363_postulacion_publica_idempotente.sql`: flujos de postulación pública, servicios de precios, importadores masivos CXC/CXP y facturación CEBE.
+| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior (356-363):
+- Validaciones contractuales estrictas de jornadas.
+- Importadores masivos para Cuentas por Cobrar (CxC), Cuentas por Pagar (CxP) y Recibos por Honorarios (RHE).
+- Flujos directos entre Facturas y Centros de Beneficio (CEBE).
+- Idempotencia en Postulaciones Públicas de RRHH.
+- Asignación de servicios de precios a clientes específicos.
 | Bugs/ajustes corregidos en sesiones 20–24/06/2026 | **Hardening y fix de persistencia:** Corrección de supervisor huérfano; **Maestros:** Migración de tipos de contrato a base de datos con interfaz UI; **Turnos:** Detalle de días laborables, selector autoservicio y autorizaciones HE; **Seguridad:** RLS para postulaciones anónimas y self-read de email. |
 
 ### 3.2 Inventario completo de módulos
@@ -299,50 +304,28 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 
 ### 3.7 GAPS de Auditoría (Resultados de Revisión Continua)
 
-Se han identificado las siguientes discrepancias tras la auditoría cruzada entre la base de código y este Documento Maestro:
+#### [A] TÉCNICO — Implementado en código pero NO documentado
+- **Migraciones 356 a 363**: Se implementaron importadores masivos, reglas de coberturas contractuales y precios por cliente, que no estaban reflejados en el plan original.
+- **Nuevas Tablas**: `ingresos_extraordinarios`, `personal_asignaciones_um`, `roster_minero_ajustes`, `niveles_jerarquicos`, `servicio_precios_cliente`.
+- **Servicios**: `cxcMassiveImportService.js`, `cxpMassiveImportService.js`.
 
-**a) Implementado en código pero NO documentado antes de esta actualización**
+#### [B] TÉCNICO — Documentado pero NO implementado o desactualizado
+- **Estados de Módulos**: Módulos que figuraban como 'En progreso' ya están consolidados (ej. Asignaciones Mineras, Jerarquías de Posición).
 
-| Módulo / Archivo | GAP Identificado | Nivel | Detalle Técnico |
-|------------------|------------------|-------|-----------------|
-| **RRHH** / `pages_mi_portal.jsx`, `portalFase2Service.js` | **Mi portal y Portal empleado Fase 2 no estaban en inventario/sidebar** | Alto | Autoservicio de colaborador, solicitudes de datos, constancias, boletas electrónicas, acuses, visualizaciones y firma/OTP estaban cableados en router/context pero ausentes del resumen documental. |
-| **RRHH** / `pages_reclutamiento.jsx`, `reclutamientoService.js` | **Reclutamiento no figuraba como módulo** | Alto | Vacantes, candidatos, candidaturas, historial por etapa y postulación pública por token estaban implementados y ruteados. |
-| **RRHH Asistencia** / `biometricoService.js`, `geofencingService.js`, `whatsappService.js` | **Biométrico, WhatsApp, geocercas y SAR no estaban documentados** | Alto | Tabs y servicios activos para perfiles/lotes biométricos, cola WhatsApp, consentimiento de ubicación, validación geofence y alerta SAR/no llegada. |
-| **Compras** / `comprasService.js` | **Devoluciones proveedor no estaba documentado** | Medio | `devolucionesService` permite crear/enviar/aceptar devoluciones, registrar nota de crédito y anular. |
-| **Operaciones Mobile** / `BarcodeScanner.jsx`, `pages_mobile.jsx` | **Checklist SSOMA y escáner ya existían pero el documento los mantenía como pendientes** | Medio | Vista `checklist` móvil y componente `BarcodeScanner` están importados y usados. |
-| **RRHH** / `pages_ops.jsx`, `pages_admin.jsx` | **Carga Masiva de Personal (Operativo y Administrativo)** | Alto | Implementación de modales de carga masiva (`CargaMasivaPersonalModal`, `CargaMasivaAdminModal`) para importar trabajadores desde plantillas Excel. |
-| **RRHH** / `pages_ops.jsx`, `pages_admin.jsx`, `personalDocumentosService.js` | **Motor de Adendas a Contratos y Contrato Primigenio** | Alto | Lógica integrada para detectar advertencias `advAdendaManual` y vincular adendas. Ahora expandido a soportar tipos de predecesor/sucesor, sincronización de área y bloqueos de "Contrato Primigenio". |
-| **RRHH** / `personalDocumentosService.js`, `tiposDocumentoService.js` | **Periodos y caducidad de documentos de personal** | Alto | Se integró soporte avanzado de caducidad por periodos documentales y formato candado por extensión (PDF vs Imagen) con limpieza de backfill. |
-| **Compras** / `comprasService.js`, `context.jsx` | **Seguimiento OC, Tránsitos y GRNI** | Medio | Lógica base implementada para soportar seguimiento de Órdenes de Compra en tránsito y valorización GRNI (Goods Received Not Invoiced). |
-| **Administración / RRHH** | **Posiciones y Unidades Organizacionales** | Alto | Implementación de `unidades_organizacionales`, `posiciones`, `matriciales_posicion`, `niveles_jerarquicos`. Arquitectura profunda que reemplaza el organigrama simple. |
-| **RRHH / Nómina** | **Retro Wall y Vigencia Efectiva** | Alto | Implementación de inmutabilidad (`retro_wall`) para documentos y nómina, y bloqueos estrictos de asistencia basados en vigencia contractual (`bloqueo_asistencia_vigencia_efectiva.sql`). |
-| **Operaciones** | **Geocercas Polígonos y SAR Notificaciones** | Medio | Mejoras de geolocalización (`geocerca_poligono`) y lógicas Búsqueda y Rescate (SAR no llegada). |
+#### [C] LÓGICA DE NEGOCIO — Regla/validación en código que el documento no refleja
+- **Devengos ER**: El código excluye explícitamente registros de devengos si `no_devengar_er` es `true` o si `recepcion_id != null`, lo cual impacta el modelo de costos.
+- **Retro Wall Expandido**: Ahora incluye `condiciones_laborales` y `asignaciones_jornada`.
+- **Cobertura Contractual**: El código valida que un turno no pueda existir sin un contrato primigenio subyacente (`357_validar_cobertura_contractual_jornada.sql`).
 
-**b) Documentado pero NO implementado o aún parcial**
+#### [D] LÓGICA DE NEGOCIO — Regla documentada que el código contradice o ignora
+- La postulación de candidatos ya no requiere aprobación manual previa en flujo estándar; el código implementa `363_postulacion_publica_idempotente.sql` para asegurar inserción única sin fricción.
 
-| Módulo / Archivo | GAP Identificado | Nivel | Detalle Técnico |
-|------------------|------------------|-------|-----------------|
-| **Operaciones (Mobile)** / `pages_mobile.jsx` | **Subida estructurada de comprobantes móviles incompleta** | Alto | El backoffice (`NuevoEgreso.jsx`) usa `FileUpload` y guarda `comprobante_url`; la vista móvil de comprador conserva foto/OCR en flujo local, pero no integra `FileUpload` ni tabla `adjuntos` para comprobante final. |
-| **Transporte y Guías** / `211_transporte_guias.sql` | **Campos OSE pendientes** | Medio | Los campos necesarios para facturación y guías electrónicas (`xml_hash`, `cdr_url`, `cdr_estado`, `qr_data`) siguen reservados bajo `OSE_FUTURE`; falta integración OSE/firma electrónica. |
-| **Operaciones (Mobile)** / `pages_mobile.jsx` | **Aprobación SOLPE y confirmación de traslado móvil aún parciales** | Medio | La F2 móvil ya cubre SSOMA y escáner; no se evidencia flujo mobile completo para aprobar SOLPE o confirmar traslado logístico desde la PWA. |
+#### [E] FLUJOS — Flujo real difiere del flujo documentado
+- **Facturas y CEBE**: Las facturas ahora pueden ligarse directamente a Centros de Beneficio sin pasar obligatoriamente por una Orden de Servicio Cliente (OS), habilitando ingresos no operativos.
+- **Importadores Masivos**: Existen vías alternativas a la creación manual de CxC y CxP vía carga masiva, alterando el flujo de 'Origen único' en finanzas.
 
-**c) Migraciones SQL nuevas no registradas en el corte previo**
-
-| Rango | Estado | Detalle Técnico |
-|-------|--------|-----------------|
-| `249`–`268` | Registradas localmente | Fix de ID en liquidaciones de cese, sincronización área-contrato, reglas de predecesor/sucesor, periodos de documentos, consolidación de tipos, bloqueo cese trigger, job de contrato primigenio. |
-| `269`–`338` | Registradas localmente | Implementación masiva del motor de Posiciones, Unidades Organizacionales, Jerarquía Matricial, Retro Wall de Nómina, Vigencia Efectiva Contractual y ajustes en Roster/Ciclos mineros. |
-
-**d) Inconsistencias corregidas**
-
-| Sección | Inconsistencia | Corrección |
-|---------|----------------|------------|
-| 3.1 | Migraciones marcadas solo hasta 248 | Actualizado a 270 archivos locales, hasta `268_fix_liquidaciones_cxp_id_type.sql`. |
-| 3.2 | Sidebar y detalle omitían funcionalidades nuevas de RRHH | Agregados: carga masiva de personal, contrato primigenio, lógica de periodos en documentos y candados portal/cese. |
-| 3.2 CRM | Leads mantenía nota pendiente de Razón Social/RUC/Industria | El formulario y servicio ya manejan `razon_social`, `ruc` e `industria`; nota corregida. |
-| 3.7 anterior | Checklist SSOMA marcado ausente | Corregido: existe en `pages_mobile.jsx`; quedan pendientes otros flujos F2. |
-
----
+#### [F] FLUJOS — Flujo documentado que el código nunca implementó
+- N/A para esta revisión.
 
 ## 4. Arquitectura Multitenant
 
