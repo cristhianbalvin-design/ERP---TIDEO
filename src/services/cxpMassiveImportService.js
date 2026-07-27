@@ -38,11 +38,19 @@ export const normalizarFechaCxp = value => {
     return value.toISOString().slice(0, 10);
   }
   const raw = texto(value);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
-  const [year, month, day] = raw.split('-').map(Number);
+  let year;
+  let month;
+  let day;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    [year, month, day] = raw.split('-').map(Number);
+  } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    [day, month, year] = raw.split('/').map(Number);
+  } else {
+    return null;
+  }
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-    ? raw
+    ? [year, String(month).padStart(2, '0'), String(day).padStart(2, '0')].join('-')
     : null;
 };
 
@@ -171,6 +179,7 @@ export async function descargarPlantillaCxpMasiva(supabase, empresaId, empresaNo
     ['9', 'RHE externo: RUC, razón social, número RHE, monto bruto y categoría ER. Retención automática: 8%.'],
     ['10', 'RHE interno: personal_id, número RHE, monto bruto y trabajo_facturable (SI/NO). RUC/nombre, retención y categoría se validan contra el maestro vigente.'],
     ['11', 'Para RHE, monto_total es neto (monto_bruto menos retención); el pago parcial se compara contra el neto.'],
+    ['12', 'Formato de fechas: DD/MM/AAAA o AAAA-MM-DD.'],
     [],
     ['Valores permitidos de tipo_cxp', ...TIPOS_CXP_MASIVA],
     [],
