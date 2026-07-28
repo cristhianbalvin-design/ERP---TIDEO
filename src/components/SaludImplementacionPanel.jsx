@@ -42,6 +42,38 @@ const citaComentario = (texto, maximo = 110) => {
   return limpio.length > maximo ? `${limpio.slice(0, maximo)}…` : limpio;
 };
 
+const ordenarComentariosEnHilo = (comentarios) => {
+  const ids = new Set(comentarios.map((comentario) => comentario.id));
+  const hijos = new Map();
+  const raices = [];
+
+  comentarios.forEach((comentario) => {
+    if (
+      comentario.respuesta_a_comentario_id
+      && ids.has(comentario.respuesta_a_comentario_id)
+    ) {
+      const lista = hijos.get(comentario.respuesta_a_comentario_id) || [];
+      lista.push(comentario);
+      hijos.set(comentario.respuesta_a_comentario_id, lista);
+    } else {
+      raices.push(comentario);
+    }
+  });
+
+  const porFechaDesc = (a, b) => new Date(b.created_at) - new Date(a.created_at);
+  const porFechaAsc = (a, b) => new Date(a.created_at) - new Date(b.created_at);
+  raices.sort(porFechaDesc);
+  hijos.forEach((lista) => lista.sort(porFechaAsc));
+
+  const resultado = [];
+  const agregarRama = (comentario, nivel) => {
+    resultado.push({ ...comentario, nivelRespuesta: nivel });
+    (hijos.get(comentario.id) || []).forEach((hijo) => agregarRama(hijo, nivel + 1));
+  };
+  raices.forEach((comentario) => agregarRama(comentario, 0));
+  return resultado;
+};
+
 function SelectorUsuario({ value, onChange, usuarios, placeholder, disabled }) {
   return (
     <select
@@ -75,23 +107,50 @@ function EstadoAvance({
 
   return (
     <div style={{ minWidth: 125, display: 'grid', gap: 5 }}>
-      {puedeEditar ? (
-        <button
-          type="button"
-          role="switch"
-          aria-checked={valor}
-          className={`btn ${valor ? 'btn-primary' : 'btn-secondary'}`}
-          disabled={guardando}
-          onClick={() => onCambiar(!valor)}
-          style={{ minWidth: 92, justifySelf: 'start', fontSize: 11 }}
-        >
-          {guardando ? 'Guardando...' : valor ? '✓ Sí' : 'No'}
-        </button>
-      ) : (
-        <span className={`badge ${valor ? 'badge-green' : 'badge-gray'}`}>
-          {valor ? `✓ ${etiqueta}` : 'Pendiente'}
-        </span>
-      )}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={valor}
+        aria-readonly={!puedeEditar}
+        disabled={!puedeEditar || guardando}
+        title={
+          puedeEditar
+            ? `${etiqueta}: ${valor ? 'Sí' : 'No'}. Clic para cambiar.`
+            : `${etiqueta}: ${valor ? 'Sí' : 'No'}. Solo lectura para clientes.`
+        }
+        onClick={puedeEditar ? () => onCambiar(!valor) : undefined}
+        style={{
+          minWidth: 88,
+          minHeight: 30,
+          padding: '5px 11px',
+          justifySelf: 'start',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          gap: 7,
+          border: '1px solid var(--border)',
+          borderRadius: 999,
+          background: valor ? 'rgba(34,197,94,.10)' : 'var(--bg-subtle)',
+          color: 'inherit',
+          fontSize: 11,
+          fontWeight: 700,
+          cursor: puedeEditar && !guardando ? 'pointer' : 'not-allowed',
+          opacity: puedeEditar ? 1 : 0.68,
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            width: 9,
+            height: 9,
+            flex: '0 0 9px',
+            borderRadius: '50%',
+            background: valor ? 'var(--success)' : 'var(--fg-muted)',
+            boxShadow: valor ? '0 0 0 3px rgba(34,197,94,.12)' : 'none',
+          }}
+        />
+        {guardando ? 'Guardando...' : valor ? 'Sí' : 'No'}
+      </button>
       {(autor || fecha) && (
         <div className="text-muted" style={{ fontSize: 9, lineHeight: 1.35 }}>
           {autor || 'Usuario TIDEO'}
@@ -139,14 +198,17 @@ function HistorialComentarios({
   mostrarOpcionInterna = false,
   soloInterno = false,
   onSoloInternoChange,
+  opcionInternaBloqueada = false,
   onResponder,
   respuestaActiva,
   onCancelarRespuesta,
 }) {
+  const comentariosOrdenados = ordenarComentariosEnHilo(comentarios);
+
   return (
     <div style={{ minWidth: 260, display: 'grid', gap: 8 }}>
       <div style={{ maxHeight: 150, overflowY: 'auto', display: 'grid', gap: 6 }}>
-        {comentarios.map((comentario) => {
+        {comentariosOrdenados.map((comentario) => {
           const original = comentario.respuesta_a_comentario_id
             ? comentariosPorId[comentario.respuesta_a_comentario_id]
             : null;
@@ -156,12 +218,12 @@ function HistorialComentarios({
               key={comentario.id}
               style={{
                 border: '1px solid var(--border)',
-                borderLeft: comentario.respuesta_a_comentario_id
+                borderLeft: comentario.nivelRespuesta > 0
                   ? '3px solid var(--cyan)'
                   : '1px solid var(--border)',
                 borderRadius: 8,
                 padding: '7px 9px',
-                marginLeft: comentario.respuesta_a_comentario_id ? 12 : 0,
+                marginLeft: Math.min(comentario.nivelRespuesta, 3) * 12,
                 background: 'var(--bg-subtle)',
                 whiteSpace: 'normal',
               }}
@@ -183,7 +245,24 @@ function HistorialComentarios({
                 </div>
               )}
               <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginBottom: 3 }}>
-                {comentario.autor_nombre} · {fechaComentario(comentario.created_at)}
+                {comentario.autor_nombre}
+                {comentario.audiencia === 'cliente' && comentario.autor_es_tideo && (
+                  <span
+                    style={{
+                      marginLeft: 5,
+                      padding: '1px 5px',
+                      borderRadius: 999,
+                      color: 'var(--cyan)',
+                      background: 'rgba(6,182,212,.10)',
+                      fontSize: 8,
+                      fontWeight: 800,
+                    }}
+                  >
+                    TIDEO
+                  </span>
+                )}
+                {' · '}
+                {fechaComentario(comentario.created_at)}
               </div>
               {comentario.solo_interno && (
                 <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--warning)', marginBottom: 3 }}>
@@ -265,9 +344,12 @@ function HistorialComentarios({
               <input
                 type="checkbox"
                 checked={soloInterno}
+                disabled={opcionInternaBloqueada}
                 onChange={(event) => onSoloInternoChange(event.target.checked)}
               />
-              Marcar como nota interna (no visible para el cliente)
+              {opcionInternaBloqueada
+                ? 'Visibilidad heredada del comentario original'
+                : 'Marcar como nota interna (no visible para el cliente)'}
             </label>
           )}
           <button
@@ -359,7 +441,7 @@ export function SaludImplementacionPanel({
 
       const comentariosQuery = supabase
         .from('tideo_salud_comentarios')
-        .select('id, configuracion_id, empresa_id, audiencia, autor_id, autor_nombre, texto, solo_interno, respuesta_a_comentario_id, created_at')
+        .select('id, configuracion_id, empresa_id, audiencia, autor_id, autor_nombre, autor_es_tideo, texto, solo_interno, respuesta_a_comentario_id, created_at')
         .eq('empresa_id', tenantId)
         .order('created_at', { ascending: false });
 
@@ -616,9 +698,18 @@ export function SaludImplementacionPanel({
   };
 
   const prepararRespuesta = (configuracionId, comentario) => {
-    const audienciaRespuesta = esPersonalTideo ? 'tideo' : 'cliente';
+    const audienciaRespuesta = comentario.audiencia;
     const key = `${configuracionId}_${audienciaRespuesta}`;
     setRespuestasActivas((prev) => ({ ...prev, [key]: comentario }));
+    setComentariosInternos((prev) => ({
+      ...prev,
+      [key]: Boolean(comentario.solo_interno),
+    }));
+  };
+
+  const cancelarRespuesta = (key) => {
+    setRespuestasActivas((prev) => ({ ...prev, [key]: null }));
+    setComentariosInternos((prev) => ({ ...prev, [key]: false }));
   };
 
   const agregarComentario = async (configuracionId, audiencia) => {
@@ -638,20 +729,24 @@ export function SaludImplementacionPanel({
         texto,
         respuesta_a_comentario_id: respuestasActivas[key]?.id || null,
       };
-      if (audiencia === 'tideo') {
+      if (respuestasActivas[key]) {
+        payload.audiencia = respuestasActivas[key].audiencia;
+        payload.solo_interno = Boolean(respuestasActivas[key].solo_interno);
+      } else if (audiencia === 'tideo') {
         payload.solo_interno = Boolean(comentariosInternos[key]);
       }
 
       const { data, error: insertError } = await supabase
         .from('tideo_salud_comentarios')
         .insert(payload)
-        .select('id, configuracion_id, empresa_id, audiencia, autor_id, autor_nombre, texto, solo_interno, respuesta_a_comentario_id, created_at')
+        .select('id, configuracion_id, empresa_id, audiencia, autor_id, autor_nombre, autor_es_tideo, texto, solo_interno, respuesta_a_comentario_id, created_at')
         .single();
 
       if (insertError) throw insertError;
+      const keyGuardado = `${configuracionId}_${data.audiencia}`;
       setComentarios((prev) => ({
         ...prev,
-        [key]: [data, ...(prev[key] || [])],
+        [keyGuardado]: [data, ...(prev[keyGuardado] || [])],
       }));
       setBorradoresComentarios((prev) => ({ ...prev, [key]: '' }));
       setComentariosInternos((prev) => ({ ...prev, [key]: false }));
@@ -1189,6 +1284,9 @@ export function SaludImplementacionPanel({
                                         botonLabel="Agregar observación TIDEO"
                                         mostrarOpcionInterna={esPersonalTideo}
                                         soloInterno={Boolean(comentariosInternos[keyTideo])}
+                                        opcionInternaBloqueada={Boolean(
+                                          respuestasActivas[keyTideo],
+                                        )}
                                         onSoloInternoChange={(value) => (
                                           setComentariosInternos((prev) => ({
                                             ...prev,
@@ -1200,12 +1298,7 @@ export function SaludImplementacionPanel({
                                           comentario,
                                         )}
                                         respuestaActiva={respuestasActivas[keyTideo]}
-                                        onCancelarRespuesta={() => (
-                                          setRespuestasActivas((prev) => ({
-                                            ...prev,
-                                            [keyTideo]: null,
-                                          }))
-                                        )}
+                                        onCancelarRespuesta={() => cancelarRespuesta(keyTideo)}
                                       />
                                     </div>
                                     <div
@@ -1239,12 +1332,7 @@ export function SaludImplementacionPanel({
                                           comentario,
                                         )}
                                         respuestaActiva={respuestasActivas[keyCliente]}
-                                        onCancelarRespuesta={() => (
-                                          setRespuestasActivas((prev) => ({
-                                            ...prev,
-                                            [keyCliente]: null,
-                                          }))
-                                        )}
+                                        onCancelarRespuesta={() => cancelarRespuesta(keyCliente)}
                                       />
                                     </div>
                                   </div>
