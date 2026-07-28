@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { useApp } from '../context.jsx';
+import { I } from '../icons.jsx';
 
 const TABS = [
   { id: 'pantallas', label: 'Pantallas' },
@@ -825,24 +826,29 @@ export function SaludImplementacionPanel({
         })}
       </div>
 
-      <div
-        style={{
-          margin: '0 16px 12px',
-          padding: '9px 12px',
-          border: '1px solid var(--border)',
-          borderRadius: 8,
-          background: 'var(--bg-subtle)',
-          fontSize: 12,
-          fontWeight: 600,
-        }}
-      >
-        {resumen.total} {pestana === 'pantallas' ? 'pantallas' : 'plantillas'}
-        {' · '}
-        {resumen.conDatos} con datos
-        {' · '}
-        {resumen.capacitadas} capacitadas
-        {' · '}
-        {resumen.implementadas} implementadas
+      <div className="kpi-grid" style={{ margin: '0 16px 20px' }}>
+        <div className="kpi-card">
+          <div className="kpi-label">
+            {pestana === 'pantallas' ? 'Pantallas' : 'Plantillas Masivas'}
+          </div>
+          <div className="kpi-value">{resumen.total}</div>
+          <div className="kpi-icon cyan">{I.dashboard}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Con datos</div>
+          <div className="kpi-value">{resumen.conDatos}</div>
+          <div className="kpi-icon purple">{I.file}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Capacitadas</div>
+          <div className="kpi-value">{resumen.capacitadas}</div>
+          <div className="kpi-icon orange">{I.userCheck}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Implementadas</div>
+          <div className="kpi-value">{resumen.implementadas}</div>
+          <div className="kpi-icon green">{I.check}</div>
+        </div>
       </div>
 
       <div
