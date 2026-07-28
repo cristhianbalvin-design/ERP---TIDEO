@@ -107,6 +107,8 @@ DO $$
 DECLARE
   v_tideo_rpc BIGINT;
   v_tideo_directo BIGINT;
+  v_cliente_rpc BIGINT;
+  v_cliente_directo BIGINT;
 BEGIN
   IF (
     SELECT count(*)
@@ -138,12 +140,22 @@ BEGIN
       v_tideo_directo;
   END IF;
 
-  IF (
-    SELECT count(*)
-    FROM public.get_salud_implementacion_usuarios('emp_20541435833')
-    WHERE tipo_usuario = 'cliente'
-  ) <> 41 THEN
-    RAISE EXCEPTION 'Se esperaban 41 usuarios ZAHORY elegibles';
+  SELECT count(*) INTO v_cliente_rpc
+  FROM public.get_salud_implementacion_usuarios('emp_20541435833')
+  WHERE tipo_usuario = 'cliente';
+
+  SELECT count(*) INTO v_cliente_directo
+  FROM public.usuarios u
+  WHERE public.tideo_salud_usuario_pertenece_tenant(
+    u.id,
+    'emp_20541435833'
+  );
+
+  IF v_cliente_rpc <> v_cliente_directo THEN
+    RAISE EXCEPTION
+      'Usuarios Cliente no coinciden con membresias activas: RPC %, directo %',
+      v_cliente_rpc,
+      v_cliente_directo;
   END IF;
 END;
 $$;
