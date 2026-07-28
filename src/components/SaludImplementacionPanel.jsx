@@ -102,6 +102,30 @@ function EstadoAvance({
   );
 }
 
+function IconoEstadoCompacto({ valor, etiqueta }) {
+  return (
+    <span
+      role="img"
+      aria-label={`${etiqueta}: ${valor ? 'Sí' : 'No'}`}
+      title={`${etiqueta}: ${valor ? 'Sí' : 'No'}`}
+      style={{
+        width: 24,
+        height: 24,
+        borderRadius: '50%',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 800,
+        color: valor ? 'var(--success)' : 'var(--fg-muted)',
+        background: valor ? 'rgba(34,197,94,.12)' : 'var(--bg-subtle)',
+        border: `1px solid ${valor ? 'rgba(34,197,94,.35)' : 'var(--border)'}`,
+      }}
+    >
+      {valor ? '✓' : '×'}
+    </span>
+  );
+}
+
 function HistorialComentarios({
   comentarios,
   comentariosPorId,
@@ -299,6 +323,7 @@ export function SaludImplementacionPanel({
   const [estadosGuardando, setEstadosGuardando] = useState({});
   const [comentariosGuardando, setComentariosGuardando] = useState({});
   const [seccionesColapsadas, setSeccionesColapsadas] = useState({});
+  const [filaExpandida, setFilaExpandida] = useState(null);
 
   const cargarDatos = useCallback(async () => {
     if (!tenantId) {
@@ -408,6 +433,10 @@ export function SaludImplementacionPanel({
   useEffect(() => {
     cargarDatos();
   }, [cargarDatos]);
+
+  useEffect(() => {
+    setFilaExpandida(null);
+  }, [tenantId, pestana]);
 
   const configuracionesPestana = useMemo(
     () => configuraciones.filter((configuracion) => configuracion.pestana === pestana),
@@ -739,6 +768,39 @@ export function SaludImplementacionPanel({
         {resumen.implementadas} implementadas
       </div>
 
+      <div
+        aria-label="Leyenda de estados"
+        style={{
+          margin: '0 16px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          flexWrap: 'wrap',
+          color: 'var(--fg-muted)',
+          fontSize: 10,
+        }}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span
+            aria-hidden="true"
+            style={{
+              width: 4,
+              height: 18,
+              borderRadius: 4,
+              background: 'var(--danger)',
+            }}
+          />
+          Requiere atención: sin datos y sin responsables asignados
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ color: 'var(--success)', fontWeight: 800 }}>✓</span>
+          Sí
+          <span style={{ marginLeft: 4, fontWeight: 800 }}>×</span>
+          No
+        </span>
+        <span>Los iconos corresponden a Capacitado e Implementado.</span>
+      </div>
+
       {error && (
         <div
           style={{
@@ -760,9 +822,12 @@ export function SaludImplementacionPanel({
       ) : (
         <div
           className="table-responsive"
-          style={{ maxHeight: 'calc(100vh - 230px)', overflow: 'auto' }}
+          style={{ maxHeight: 'calc(100vh - 310px)', overflow: 'auto' }}
         >
-          <table className="table" style={{ fontSize: 12, whiteSpace: 'normal' }}>
+          <table
+            className="table"
+            style={{ width: '100%', tableLayout: 'fixed', fontSize: 12, whiteSpace: 'normal' }}
+          >
             <thead
               style={{
                 position: 'sticky',
@@ -773,15 +838,11 @@ export function SaludImplementacionPanel({
               }}
             >
               <tr>
-                <th style={{ minWidth: 220 }}>Módulo / Pantalla</th>
+                <th>Pantalla</th>
                 <th style={{ width: 90, textAlign: 'center' }}>Registros</th>
-                <th style={{ minWidth: 135 }}>Capacitado</th>
-                <th style={{ minWidth: 135 }}>Implementado</th>
-                <th style={{ minWidth: 210 }}>Responsable TIDEO</th>
-                <th style={{ minWidth: 210 }}>Responsable Cliente</th>
-                <th style={{ width: 105 }}>Guardar</th>
-                <th style={{ minWidth: 280 }}>Observaciones TIDEO</th>
-                <th style={{ minWidth: 280 }}>Observaciones Cliente</th>
+                <th style={{ width: 110, textAlign: 'center' }}>Capacitado</th>
+                <th style={{ width: 120, textAlign: 'center' }}>Implementado</th>
+                <th style={{ width: 52 }} aria-label="Expandir detalle" />
               </tr>
             </thead>
             <tbody>
@@ -793,7 +854,7 @@ export function SaludImplementacionPanel({
                   <React.Fragment key={seccion}>
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={5}
                         style={{
                           padding: '8px 12px',
                           background: 'var(--bg-subtle)',
@@ -843,181 +904,355 @@ export function SaludImplementacionPanel({
                       const requiereAtencion = count === 0
                         && !anotacion.responsable_tideo
                         && !anotacion.responsable_cliente;
+                      const expandida = filaExpandida === configuracion.id;
                       const keyTideo = `${configuracion.id}_tideo`;
                       const keyCliente = `${configuracion.id}_cliente`;
 
                       return (
-                        <tr
-                          key={configuracion.id}
-                          className="hover-row"
-                          title={requiereAtencion ? 'Requiere atención: sin datos ni responsables' : ''}
-                          style={requiereAtencion ? {
-                            boxShadow: 'inset 4px 0 0 var(--danger)',
-                            background: 'rgba(239,68,68,.035)',
-                          } : undefined}
-                        >
-                          <td style={{ verticalAlign: 'top' }}>
-                            <div style={{ fontWeight: 600 }}>{configuracion.pantalla}</div>
-                            {requiereAtencion && (
-                              <div style={{ color: 'var(--danger)', fontSize: 9, marginTop: 3 }}>
-                                ● Requiere atención
-                              </div>
+                        <React.Fragment key={configuracion.id}>
+                          <tr
+                            className="hover-row"
+                            role="button"
+                            tabIndex={0}
+                            aria-expanded={expandida}
+                            title={
+                              requiereAtencion
+                                ? 'Requiere atención: sin datos ni responsables'
+                                : 'Abrir detalle'
+                            }
+                            onClick={() => setFilaExpandida(
+                              expandida ? null : configuracion.id,
                             )}
-                            <div
-                              style={{ fontSize: 10, color: 'var(--cyan)', marginTop: 3 }}
-                              title={configuracion.evidencia || ''}
-                            >
-                              {[configuracion.tabla_principal, configuracion.tabla_secundaria]
-                                .filter(Boolean)
-                                .join(' + ')}
-                            </div>
-                          </td>
-                          <td style={{ textAlign: 'center', verticalAlign: 'top' }}>
-                            <span
-                              className={`badge ${count > 0 ? 'badge-green' : 'badge-gray'}`}
-                              style={{ minWidth: 42, textAlign: 'center' }}
-                            >
-                              {count}
-                            </span>
-                          </td>
-                          <td style={{ verticalAlign: 'top' }}>
-                            <EstadoAvance
-                              campo="capacitado"
-                              etiqueta="Capacitado"
-                              anotacion={anotacion}
-                              puedeEditar={esPersonalTideo}
-                              guardando={Boolean(
-                                estadosGuardando[`${configuracion.id}_capacitado`],
-                              )}
-                              onCambiar={(valor) => guardarEstado(
-                                configuracion.id,
-                                'capacitado',
-                                valor,
-                              )}
-                            />
-                          </td>
-                          <td style={{ verticalAlign: 'top' }}>
-                            <EstadoAvance
-                              campo="implementado"
-                              etiqueta="Implementado"
-                              anotacion={anotacion}
-                              puedeEditar={esPersonalTideo}
-                              guardando={Boolean(
-                                estadosGuardando[`${configuracion.id}_implementado`],
-                              )}
-                              onCambiar={(valor) => guardarEstado(
-                                configuracion.id,
-                                'implementado',
-                                valor,
-                              )}
-                            />
-                          </td>
-                          <td style={{ verticalAlign: 'top' }}>
-                            <SelectorUsuario
-                              value={borrador.responsable_tideo}
-                              onChange={(value) => actualizarResponsable(
-                                configuracion.id,
-                                'responsable_tideo',
-                                value,
-                              )}
-                              usuarios={usuariosTideo}
-                              placeholder={
-                                usuariosTideo.length
-                                  ? 'Sin asignar'
-                                  : 'Sin usuarios TIDEO elegibles'
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                setFilaExpandida(expandida ? null : configuracion.id);
                               }
-                            />
-                          </td>
-                          <td style={{ verticalAlign: 'top' }}>
-                            <SelectorUsuario
-                              value={borrador.responsable_cliente}
-                              onChange={(value) => actualizarResponsable(
-                                configuracion.id,
-                                'responsable_cliente',
-                                value,
-                              )}
-                              usuarios={usuariosCliente}
-                              placeholder={
-                                usuariosCliente.length
-                                  ? 'Sin asignar'
-                                  : 'Sin usuarios cliente elegibles'
-                              }
-                            />
-                          </td>
-                          <td style={{ verticalAlign: 'top' }}>
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              disabled={
-                                guardado === 'guardando'
-                                || (!cambioPendiente && guardado !== 'error')
-                              }
-                              onClick={() => guardarResponsables(configuracion.id)}
-                              style={{ minWidth: 88, fontSize: 11 }}
-                            >
-                              {guardado === 'guardando'
-                                ? 'Guardando...'
-                                : guardado === 'ok'
-                                  ? '✓ Guardado'
-                                  : guardado === 'error'
-                                    ? 'Reintentar'
-                                    : 'Guardar'}
-                            </button>
-                          </td>
-                          <td style={{ verticalAlign: 'top' }}>
-                            <HistorialComentarios
-                              comentarios={comentarios[keyTideo] || []}
-                              comentariosPorId={comentariosPorId}
-                              borrador={borradoresComentarios[keyTideo] || ''}
-                              onBorradorChange={(value) => setBorradoresComentarios((prev) => ({
-                                ...prev,
-                                [keyTideo]: value,
-                              }))}
-                              onAgregar={() => agregarComentario(configuracion.id, 'tideo')}
-                              guardando={Boolean(comentariosGuardando[keyTideo])}
-                              puedeAgregar={esPersonalTideo}
-                              placeholder="Agregar observación TIDEO..."
-                              botonLabel="Agregar observación TIDEO"
-                              mostrarOpcionInterna={esPersonalTideo}
-                              soloInterno={Boolean(comentariosInternos[keyTideo])}
-                              onSoloInternoChange={(value) => setComentariosInternos((prev) => ({
-                                ...prev,
-                                [keyTideo]: value,
-                              }))}
-                              onResponder={(comentario) => prepararRespuesta(
-                                configuracion.id,
-                                comentario,
-                              )}
-                              respuestaActiva={respuestasActivas[keyTideo]}
-                              onCancelarRespuesta={() => setRespuestasActivas((prev) => ({
-                                ...prev,
-                                [keyTideo]: null,
-                              }))}
-                            />
-                          </td>
-                          <td style={{ verticalAlign: 'top' }}>
-                            <HistorialComentarios
-                              comentarios={comentarios[keyCliente] || []}
-                              comentariosPorId={comentariosPorId}
-                              borrador={borradoresComentarios[keyCliente] || ''}
-                              onBorradorChange={(value) => setBorradoresComentarios((prev) => ({
-                                ...prev,
-                                [keyCliente]: value,
-                              }))}
-                              onAgregar={() => agregarComentario(configuracion.id, 'cliente')}
-                              guardando={Boolean(comentariosGuardando[keyCliente])}
-                              onResponder={(comentario) => prepararRespuesta(
-                                configuracion.id,
-                                comentario,
-                              )}
-                              respuestaActiva={respuestasActivas[keyCliente]}
-                              onCancelarRespuesta={() => setRespuestasActivas((prev) => ({
-                                ...prev,
-                                [keyCliente]: null,
-                              }))}
-                            />
-                          </td>
-                        </tr>
+                            }}
+                            style={{
+                              cursor: 'pointer',
+                              boxShadow: requiereAtencion
+                                ? 'inset 4px 0 0 var(--danger)'
+                                : undefined,
+                              background: expandida
+                                ? 'rgba(6,182,212,.045)'
+                                : requiereAtencion
+                                  ? 'rgba(239,68,68,.035)'
+                                  : undefined,
+                            }}
+                          >
+                            <td style={{ padding: '8px 12px' }}>
+                              <div
+                                style={{
+                                  fontWeight: 600,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {configuracion.pantalla}
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 2,
+                                  color: 'var(--cyan)',
+                                  fontSize: 9,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={configuracion.evidencia || ''}
+                              >
+                                {[configuracion.tabla_principal, configuracion.tabla_secundaria]
+                                  .filter(Boolean)
+                                  .join(' + ') || 'Tabla pendiente de definición'}
+                              </div>
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '8px 6px' }}>
+                              <span
+                                className={`badge ${count > 0 ? 'badge-green' : 'badge-gray'}`}
+                                style={{ minWidth: 42, textAlign: 'center' }}
+                              >
+                                {count}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '8px 6px' }}>
+                              <IconoEstadoCompacto
+                                valor={Boolean(anotacion.capacitado)}
+                                etiqueta="Capacitado"
+                              />
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '8px 6px' }}>
+                              <IconoEstadoCompacto
+                                valor={Boolean(anotacion.implementado)}
+                                etiqueta="Implementado"
+                              />
+                            </td>
+                            <td style={{ textAlign: 'center', padding: '8px 6px' }}>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={expandida ? 'Cerrar detalle' : 'Abrir detalle'}
+                                aria-expanded={expandida}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setFilaExpandida(expandida ? null : configuracion.id);
+                                }}
+                                style={{ minWidth: 34, padding: '5px 8px', fontSize: 14 }}
+                              >
+                                {expandida ? '▴' : '▾'}
+                              </button>
+                            </td>
+                          </tr>
+                          {expandida && (
+                            <tr>
+                              <td
+                                colSpan={5}
+                                style={{
+                                  padding: 16,
+                                  background: 'var(--bg-subtle)',
+                                  borderBottom: '2px solid var(--border)',
+                                }}
+                              >
+                                <div style={{ display: 'grid', gap: 14 }}>
+                                  <div
+                                    style={{
+                                      display: 'grid',
+                                      gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                                      gap: 12,
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        padding: 12,
+                                        border: '1px solid var(--border)',
+                                        borderRadius: 9,
+                                        background: 'var(--bg)',
+                                      }}
+                                    >
+                                      <div style={{ fontWeight: 700, marginBottom: 9 }}>
+                                        Responsables
+                                      </div>
+                                      <div style={{ display: 'grid', gap: 9 }}>
+                                        <label style={{ display: 'grid', gap: 4, fontSize: 10 }}>
+                                          Responsable TIDEO
+                                          <SelectorUsuario
+                                            value={borrador.responsable_tideo}
+                                            onChange={(value) => actualizarResponsable(
+                                              configuracion.id,
+                                              'responsable_tideo',
+                                              value,
+                                            )}
+                                            usuarios={usuariosTideo}
+                                            placeholder={
+                                              usuariosTideo.length
+                                                ? 'Sin asignar'
+                                                : 'Sin usuarios TIDEO elegibles'
+                                            }
+                                          />
+                                        </label>
+                                        <label style={{ display: 'grid', gap: 4, fontSize: 10 }}>
+                                          Responsable Cliente
+                                          <SelectorUsuario
+                                            value={borrador.responsable_cliente}
+                                            onChange={(value) => actualizarResponsable(
+                                              configuracion.id,
+                                              'responsable_cliente',
+                                              value,
+                                            )}
+                                            usuarios={usuariosCliente}
+                                            placeholder={
+                                              usuariosCliente.length
+                                                ? 'Sin asignar'
+                                                : 'Sin usuarios cliente elegibles'
+                                            }
+                                          />
+                                        </label>
+                                        <button
+                                          type="button"
+                                          className="btn btn-primary"
+                                          disabled={
+                                            guardado === 'guardando'
+                                            || (!cambioPendiente && guardado !== 'error')
+                                          }
+                                          onClick={() => guardarResponsables(configuracion.id)}
+                                          style={{ minWidth: 88, justifySelf: 'start', fontSize: 11 }}
+                                        >
+                                          {guardado === 'guardando'
+                                            ? 'Guardando...'
+                                            : guardado === 'ok'
+                                              ? '✓ Guardado'
+                                              : guardado === 'error'
+                                                ? 'Reintentar'
+                                                : 'Guardar responsables'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <div
+                                      style={{
+                                        padding: 12,
+                                        border: '1px solid var(--border)',
+                                        borderRadius: 9,
+                                        background: 'var(--bg)',
+                                      }}
+                                    >
+                                      <div style={{ fontWeight: 700, marginBottom: 9 }}>
+                                        Avance
+                                      </div>
+                                      <div
+                                        style={{
+                                          display: 'grid',
+                                          gridTemplateColumns: 'repeat(2, minmax(125px, 1fr))',
+                                          gap: 12,
+                                        }}
+                                      >
+                                        <div>
+                                          <div style={{ fontSize: 10, marginBottom: 5 }}>
+                                            Capacitado
+                                          </div>
+                                          <EstadoAvance
+                                            campo="capacitado"
+                                            etiqueta="Capacitado"
+                                            anotacion={anotacion}
+                                            puedeEditar={esPersonalTideo}
+                                            guardando={Boolean(
+                                              estadosGuardando[
+                                                `${configuracion.id}_capacitado`
+                                              ],
+                                            )}
+                                            onCambiar={(valor) => guardarEstado(
+                                              configuracion.id,
+                                              'capacitado',
+                                              valor,
+                                            )}
+                                          />
+                                        </div>
+                                        <div>
+                                          <div style={{ fontSize: 10, marginBottom: 5 }}>
+                                            Implementado
+                                          </div>
+                                          <EstadoAvance
+                                            campo="implementado"
+                                            etiqueta="Implementado"
+                                            anotacion={anotacion}
+                                            puedeEditar={esPersonalTideo}
+                                            guardando={Boolean(
+                                              estadosGuardando[
+                                                `${configuracion.id}_implementado`
+                                              ],
+                                            )}
+                                            onCambiar={(valor) => guardarEstado(
+                                              configuracion.id,
+                                              'implementado',
+                                              valor,
+                                            )}
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div
+                                    style={{
+                                      display: 'grid',
+                                      gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                                      gap: 12,
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        padding: 12,
+                                        border: '1px solid var(--border)',
+                                        borderRadius: 9,
+                                        background: 'var(--bg)',
+                                      }}
+                                    >
+                                      <div style={{ fontWeight: 700, marginBottom: 9 }}>
+                                        Observaciones TIDEO
+                                      </div>
+                                      <HistorialComentarios
+                                        comentarios={comentarios[keyTideo] || []}
+                                        comentariosPorId={comentariosPorId}
+                                        borrador={borradoresComentarios[keyTideo] || ''}
+                                        onBorradorChange={(value) => (
+                                          setBorradoresComentarios((prev) => ({
+                                            ...prev,
+                                            [keyTideo]: value,
+                                          }))
+                                        )}
+                                        onAgregar={() => agregarComentario(
+                                          configuracion.id,
+                                          'tideo',
+                                        )}
+                                        guardando={Boolean(comentariosGuardando[keyTideo])}
+                                        puedeAgregar={esPersonalTideo}
+                                        placeholder="Agregar observación TIDEO..."
+                                        botonLabel="Agregar observación TIDEO"
+                                        mostrarOpcionInterna={esPersonalTideo}
+                                        soloInterno={Boolean(comentariosInternos[keyTideo])}
+                                        onSoloInternoChange={(value) => (
+                                          setComentariosInternos((prev) => ({
+                                            ...prev,
+                                            [keyTideo]: value,
+                                          }))
+                                        )}
+                                        onResponder={(comentario) => prepararRespuesta(
+                                          configuracion.id,
+                                          comentario,
+                                        )}
+                                        respuestaActiva={respuestasActivas[keyTideo]}
+                                        onCancelarRespuesta={() => (
+                                          setRespuestasActivas((prev) => ({
+                                            ...prev,
+                                            [keyTideo]: null,
+                                          }))
+                                        )}
+                                      />
+                                    </div>
+                                    <div
+                                      style={{
+                                        padding: 12,
+                                        border: '1px solid var(--border)',
+                                        borderRadius: 9,
+                                        background: 'var(--bg)',
+                                      }}
+                                    >
+                                      <div style={{ fontWeight: 700, marginBottom: 9 }}>
+                                        Observaciones Cliente
+                                      </div>
+                                      <HistorialComentarios
+                                        comentarios={comentarios[keyCliente] || []}
+                                        comentariosPorId={comentariosPorId}
+                                        borrador={borradoresComentarios[keyCliente] || ''}
+                                        onBorradorChange={(value) => (
+                                          setBorradoresComentarios((prev) => ({
+                                            ...prev,
+                                            [keyCliente]: value,
+                                          }))
+                                        )}
+                                        onAgregar={() => agregarComentario(
+                                          configuracion.id,
+                                          'cliente',
+                                        )}
+                                        guardando={Boolean(comentariosGuardando[keyCliente])}
+                                        onResponder={(comentario) => prepararRespuesta(
+                                          configuracion.id,
+                                          comentario,
+                                        )}
+                                        respuestaActiva={respuestasActivas[keyCliente]}
+                                        onCancelarRespuesta={() => (
+                                          setRespuestasActivas((prev) => ({
+                                            ...prev,
+                                            [keyCliente]: null,
+                                          }))
+                                        )}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </React.Fragment>
@@ -1025,7 +1260,7 @@ export function SaludImplementacionPanel({
               })}
               {configuracionesFiltradas.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="text-center text-muted" style={{ padding: 40 }}>
+                  <td colSpan={5} className="text-center text-muted" style={{ padding: 40 }}>
                     No hay configuraciones para mostrar.
                   </td>
                 </tr>
