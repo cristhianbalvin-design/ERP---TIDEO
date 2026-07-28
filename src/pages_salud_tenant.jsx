@@ -22,12 +22,20 @@ export function SaludImplementacionTenant() {
     setErrorAutorizacion('');
 
     getSupabaseClient()
-      .then((supabase) => supabase.rpc('usuario_es_admin_empresa', {
-        target_empresa_id: empresa.id,
-      }))
-      .then(({ data, error }) => {
-        if (error) throw error;
-        if (mounted) setAutorizado(data === true);
+      .then((supabase) => Promise.all([
+        supabase.rpc('usuario_es_admin_empresa', {
+          target_empresa_id: empresa.id,
+        }),
+        supabase.rpc('tideo_salud_personal_tideo_tiene_acceso', {
+          p_tenant_id: empresa.id,
+        }),
+      ]))
+      .then(([adminResp, tideoResp]) => {
+        if (adminResp.error) throw adminResp.error;
+        if (tideoResp.error) throw tideoResp.error;
+        if (mounted) {
+          setAutorizado(adminResp.data === true || tideoResp.data === true);
+        }
       })
       .catch((error) => {
         if (!mounted) return;
@@ -47,7 +55,7 @@ export function SaludImplementacionTenant() {
   }
 
   if (!autorizado) {
-    return <div style={{ padding: 40 }}>Acceso denegado. Solo Administrador de Empresa.</div>;
+    return <div style={{ padding: 40 }}>Acceso denegado. Solo Administrador de Empresa o personal TIDEO.</div>;
   }
 
   return (

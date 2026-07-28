@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { useApp } from '../context.jsx';
 
 const TABS = [
   { id: 'pantallas', label: 'Pantallas' },
@@ -47,28 +48,13 @@ function HistorialComentarios({
   onBorradorChange,
   onAgregar,
   guardando,
-  bloqueado,
+  puedeAgregar = true,
   placeholder = 'Agregar comentario...',
   botonLabel = 'Agregar comentario',
+  mostrarOpcionInterna = false,
+  soloInterno = false,
+  onSoloInternoChange,
 }) {
-  if (bloqueado) {
-    return (
-      <div
-        className="text-muted"
-        style={{
-          minWidth: 230,
-          padding: 12,
-          border: '1px dashed var(--border)',
-          borderRadius: 8,
-          fontSize: 11,
-          textAlign: 'center',
-        }}
-      >
-        Privado para TIDEO
-      </div>
-    );
-  }
-
   return (
     <div style={{ minWidth: 260, display: 'grid', gap: 8 }}>
       <div style={{ maxHeight: 150, overflowY: 'auto', display: 'grid', gap: 6 }}>
@@ -86,6 +72,11 @@ function HistorialComentarios({
             <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginBottom: 3 }}>
               {comentario.autor_nombre} · {fechaComentario(comentario.created_at)}
             </div>
+            {comentario.solo_interno && (
+              <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--warning)', marginBottom: 3 }}>
+                Nota interna
+              </div>
+            )}
             <div style={{ fontSize: 11, lineHeight: 1.4 }}>{comentario.texto}</div>
           </div>
         ))}
@@ -95,23 +86,41 @@ function HistorialComentarios({
           </div>
         )}
       </div>
-      <textarea
-        className="input"
-        rows={2}
-        value={borrador}
-        onChange={(event) => onBorradorChange(event.target.value)}
-        placeholder={placeholder}
-        style={{ width: '100%', resize: 'vertical', fontSize: 11 }}
-      />
-      <button
-        type="button"
-        className="btn btn-secondary"
-        disabled={guardando || !borrador.trim()}
-        onClick={onAgregar}
-        style={{ fontSize: 11, justifySelf: 'start' }}
-      >
-        {guardando ? 'Guardando...' : botonLabel}
-      </button>
+      {puedeAgregar ? (
+        <>
+          <textarea
+            className="input"
+            rows={2}
+            value={borrador}
+            onChange={(event) => onBorradorChange(event.target.value)}
+            placeholder={placeholder}
+            style={{ width: '100%', resize: 'vertical', fontSize: 11 }}
+          />
+          {mostrarOpcionInterna && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10 }}>
+              <input
+                type="checkbox"
+                checked={soloInterno}
+                onChange={(event) => onSoloInternoChange(event.target.checked)}
+              />
+              Marcar como nota interna (no visible para el cliente)
+            </label>
+          )}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={guardando || !borrador.trim()}
+            onClick={onAgregar}
+            style={{ fontSize: 11, justifySelf: 'start' }}
+          >
+            {guardando ? 'Guardando...' : botonLabel}
+          </button>
+        </>
+      ) : (
+        <div className="text-muted" style={{ fontSize: 10 }}>
+          Historial de solo lectura.
+        </div>
+      )}
     </div>
   );
 }
@@ -125,7 +134,12 @@ export function SaludImplementacionPanel({
   titulo,
   subtitulo,
 }) {
+  const { authUser } = useApp();
   const modoSuperadmin = esSuperadmin && !modoTenant;
+  const esPersonalTideo = String(authUser?.email || '')
+    .trim()
+    .toLowerCase()
+    .endsWith('@tideo.tech');
   const [pestana, setPestana] = useState('pantallas');
   const [filtroSeccion, setFiltroSeccion] = useState('Todas');
   const [loading, setLoading] = useState(true);
@@ -138,6 +152,7 @@ export function SaludImplementacionPanel({
   const [usuariosCliente, setUsuariosCliente] = useState([]);
   const [comentarios, setComentarios] = useState({});
   const [borradoresComentarios, setBorradoresComentarios] = useState({});
+  const [comentariosInternos, setComentariosInternos] = useState({});
   const [estadoGuardado, setEstadoGuardado] = useState({});
   const [comentariosGuardando, setComentariosGuardando] = useState({});
 
@@ -173,16 +188,11 @@ export function SaludImplementacionPanel({
       const usuariosQuery = supabase
         .rpc('get_salud_implementacion_usuarios', { p_tenant_id: tenantId });
 
-      let comentariosQuery = supabase
+      const comentariosQuery = supabase
         .from('tideo_salud_comentarios')
-        .select('id, configuracion_id, empresa_id, audiencia, autor_id, autor_nombre, texto, created_at')
+        .select('id, configuracion_id, empresa_id, audiencia, autor_id, autor_nombre, texto, solo_interno, created_at')
         .eq('empresa_id', tenantId)
         .order('created_at', { ascending: false });
-
-      // La vista tenant ni siquiera solicita la audiencia privada. RLS aplica como segunda barrera.
-      if (modoTenant) {
-        comentariosQuery = comentariosQuery.eq('audiencia', 'cliente');
-      }
 
       const [configResp, conteosResp, anotacionesResp, usuariosResp, comentariosResp] =
         await Promise.all([
@@ -323,22 +333,27 @@ export function SaludImplementacionPanel({
   const agregarComentario = async (configuracionId, audiencia) => {
     const key = `${configuracionId}_${audiencia}`;
     const texto = (borradoresComentarios[key] || '').trim();
-    if (!texto || (!modoSuperadmin && audiencia === 'tideo')) return;
+    if (!texto || (audiencia === 'tideo' && !esPersonalTideo)) return;
 
     setComentariosGuardando((prev) => ({ ...prev, [key]: true }));
     setError('');
 
     try {
       const supabase = await getSupabaseClient();
+      const payload = {
+        configuracion_id: configuracionId,
+        empresa_id: tenantId,
+        audiencia,
+        texto,
+      };
+      if (audiencia === 'tideo') {
+        payload.solo_interno = Boolean(comentariosInternos[key]);
+      }
+
       const { data, error: insertError } = await supabase
         .from('tideo_salud_comentarios')
-        .insert({
-          configuracion_id: configuracionId,
-          empresa_id: tenantId,
-          audiencia,
-          texto,
-        })
-        .select('id, configuracion_id, empresa_id, audiencia, autor_id, autor_nombre, texto, created_at')
+        .insert(payload)
+        .select('id, configuracion_id, empresa_id, audiencia, autor_id, autor_nombre, texto, solo_interno, created_at')
         .single();
 
       if (insertError) throw insertError;
@@ -347,6 +362,7 @@ export function SaludImplementacionPanel({
         [key]: [data, ...(prev[key] || [])],
       }));
       setBorradoresComentarios((prev) => ({ ...prev, [key]: '' }));
+      setComentariosInternos((prev) => ({ ...prev, [key]: false }));
     } catch (err) {
       console.error('Error agregando comentario:', err);
       setError(`No se pudo agregar el comentario: ${err.message || String(err)}`);
@@ -562,9 +578,15 @@ export function SaludImplementacionPanel({
                         }))}
                         onAgregar={() => agregarComentario(configuracion.id, 'tideo')}
                         guardando={Boolean(comentariosGuardando[keyTideo])}
-                        bloqueado={!modoSuperadmin}
+                        puedeAgregar={esPersonalTideo}
                         placeholder="Agregar observación TIDEO..."
                         botonLabel="Agregar observación TIDEO"
+                        mostrarOpcionInterna={esPersonalTideo}
+                        soloInterno={Boolean(comentariosInternos[keyTideo])}
+                        onSoloInternoChange={(value) => setComentariosInternos((prev) => ({
+                          ...prev,
+                          [keyTideo]: value,
+                        }))}
                       />
                     </td>
                     <td style={{ verticalAlign: 'top' }}>
