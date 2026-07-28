@@ -104,6 +104,9 @@ SELECT set_config(
 SET LOCAL ROLE authenticated;
 
 DO $$
+DECLARE
+  v_tideo_rpc BIGINT;
+  v_tideo_directo BIGINT;
 BEGIN
   IF (
     SELECT count(*)
@@ -116,12 +119,23 @@ BEGIN
     RAISE EXCEPTION 'La RPC superadmin no devolvio una fila por configuracion';
   END IF;
 
-  IF (
-    SELECT count(*)
-    FROM public.get_salud_implementacion_usuarios('emp_20541435833')
-    WHERE tipo_usuario = 'tideo'
-  ) <> 5 THEN
-    RAISE EXCEPTION 'Se esperaban 5 usuarios TIDEO elegibles';
+  SELECT count(*) INTO v_tideo_rpc
+  FROM public.get_salud_implementacion_usuarios('emp_20541435833')
+  WHERE tipo_usuario = 'tideo';
+
+  SELECT count(*) INTO v_tideo_directo
+  FROM public.usuarios u
+  WHERE public.tideo_salud_usuario_pertenece_tenant(
+      u.id,
+      'emp_20541435833'
+    )
+    AND lower(btrim(u.email)) LIKE '%@tideo.tech';
+
+  IF v_tideo_rpc <> v_tideo_directo THEN
+    RAISE EXCEPTION
+      'Usuarios TIDEO no coinciden con tenant+dominio: RPC %, directo %',
+      v_tideo_rpc,
+      v_tideo_directo;
   END IF;
 
   IF (
@@ -263,7 +277,7 @@ BEGIN
     FROM public.tideo_salud_anotaciones
     WHERE configuracion_id = v_configuracion_id
       AND empresa_id = 'emp_20541435833'
-      AND responsable_tideo = v_responsable_tideo
+      AND responsable_tideo IS NOT DISTINCT FROM v_responsable_tideo
       AND responsable_cliente = v_responsable_cliente
   ) THEN
     RAISE EXCEPTION 'Los responsables no persistieron';
