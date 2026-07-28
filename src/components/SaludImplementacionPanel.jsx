@@ -7,6 +7,20 @@ const TABS = [
   { id: 'plantillas_masivas', label: 'Plantillas Masivas' },
 ];
 
+const FILTROS_RAPIDOS = [
+  { id: 'todas', label: 'Todas' },
+  { id: 'pendientes', label: 'Solo pendientes' },
+  { id: 'sin_responsable', label: 'Sin responsable asignado' },
+  { id: 'con_datos', label: 'Con datos' },
+  { id: 'sin_capacitar', label: 'Sin capacitar' },
+  { id: 'sin_implementar', label: 'Sin implementar' },
+];
+
+const normalizarTexto = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase();
+
 const usuarioLabel = (usuario) => {
   if (!usuario) return '';
   if (usuario.email && usuario.email !== usuario.nombre) {
@@ -21,6 +35,11 @@ const fechaComentario = (value) => {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(new Date(value));
+};
+
+const citaComentario = (texto, maximo = 110) => {
+  const limpio = String(texto || '').replace(/\s+/g, ' ').trim();
+  return limpio.length > maximo ? `${limpio.slice(0, maximo)}…` : limpio;
 };
 
 function SelectorUsuario({ value, onChange, usuarios, placeholder, disabled }) {
@@ -42,8 +61,50 @@ function SelectorUsuario({ value, onChange, usuarios, placeholder, disabled }) {
   );
 }
 
+function EstadoAvance({
+  campo,
+  etiqueta,
+  anotacion,
+  puedeEditar,
+  guardando,
+  onCambiar,
+}) {
+  const valor = Boolean(anotacion?.[campo]);
+  const autor = anotacion?.[`${campo}_por_nombre`];
+  const fecha = anotacion?.[`${campo}_at`];
+
+  return (
+    <div style={{ minWidth: 125, display: 'grid', gap: 5 }}>
+      {puedeEditar ? (
+        <button
+          type="button"
+          role="switch"
+          aria-checked={valor}
+          className={`btn ${valor ? 'btn-primary' : 'btn-secondary'}`}
+          disabled={guardando}
+          onClick={() => onCambiar(!valor)}
+          style={{ minWidth: 92, justifySelf: 'start', fontSize: 11 }}
+        >
+          {guardando ? 'Guardando...' : valor ? '✓ Sí' : 'No'}
+        </button>
+      ) : (
+        <span className={`badge ${valor ? 'badge-green' : 'badge-gray'}`}>
+          {valor ? `✓ ${etiqueta}` : 'Pendiente'}
+        </span>
+      )}
+      {(autor || fecha) && (
+        <div className="text-muted" style={{ fontSize: 9, lineHeight: 1.35 }}>
+          {autor || 'Usuario TIDEO'}
+          {fecha ? ` · ${fechaComentario(fecha)}` : ''}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HistorialComentarios({
   comentarios,
+  comentariosPorId,
   borrador,
   onBorradorChange,
   onAgregar,
@@ -54,32 +115,78 @@ function HistorialComentarios({
   mostrarOpcionInterna = false,
   soloInterno = false,
   onSoloInternoChange,
+  onResponder,
+  respuestaActiva,
+  onCancelarRespuesta,
 }) {
   return (
     <div style={{ minWidth: 260, display: 'grid', gap: 8 }}>
       <div style={{ maxHeight: 150, overflowY: 'auto', display: 'grid', gap: 6 }}>
-        {comentarios.map((comentario) => (
-          <div
-            key={comentario.id}
-            style={{
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-              padding: '7px 9px',
-              background: 'var(--bg-subtle)',
-              whiteSpace: 'normal',
-            }}
-          >
-            <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginBottom: 3 }}>
-              {comentario.autor_nombre} · {fechaComentario(comentario.created_at)}
-            </div>
-            {comentario.solo_interno && (
-              <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--warning)', marginBottom: 3 }}>
-                Nota interna
+        {comentarios.map((comentario) => {
+          const original = comentario.respuesta_a_comentario_id
+            ? comentariosPorId[comentario.respuesta_a_comentario_id]
+            : null;
+
+          return (
+            <div
+              key={comentario.id}
+              style={{
+                border: '1px solid var(--border)',
+                borderLeft: comentario.respuesta_a_comentario_id
+                  ? '3px solid var(--cyan)'
+                  : '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '7px 9px',
+                marginLeft: comentario.respuesta_a_comentario_id ? 12 : 0,
+                background: 'var(--bg-subtle)',
+                whiteSpace: 'normal',
+              }}
+            >
+              {original && (
+                <div
+                  style={{
+                    padding: '5px 7px',
+                    marginBottom: 6,
+                    borderRadius: 6,
+                    background: 'var(--bg)',
+                    borderLeft: '2px solid var(--cyan)',
+                    fontSize: 9,
+                    color: 'var(--fg-muted)',
+                  }}
+                >
+                  En respuesta a {original.autor_nombre} · {fechaComentario(original.created_at)}
+                  <div style={{ marginTop: 2 }}>“{citaComentario(original.texto)}”</div>
+                </div>
+              )}
+              <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginBottom: 3 }}>
+                {comentario.autor_nombre} · {fechaComentario(comentario.created_at)}
               </div>
-            )}
-            <div style={{ fontSize: 11, lineHeight: 1.4 }}>{comentario.texto}</div>
-          </div>
-        ))}
+              {comentario.solo_interno && (
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--warning)', marginBottom: 3 }}>
+                  Nota interna
+                </div>
+              )}
+              <div style={{ fontSize: 11, lineHeight: 1.4 }}>{comentario.texto}</div>
+              {onResponder && (
+                <button
+                  type="button"
+                  onClick={() => onResponder(comentario)}
+                  style={{
+                    marginTop: 5,
+                    padding: 0,
+                    border: 0,
+                    background: 'transparent',
+                    color: 'var(--cyan)',
+                    fontSize: 10,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Responder
+                </button>
+              )}
+            </div>
+          );
+        })}
         {comentarios.length === 0 && (
           <div className="text-muted" style={{ fontSize: 10 }}>
             Sin comentarios.
@@ -88,6 +195,39 @@ function HistorialComentarios({
       </div>
       {puedeAgregar ? (
         <>
+          {respuestaActiva && (
+            <div
+              style={{
+                padding: '6px 8px',
+                borderRadius: 7,
+                background: 'rgba(6,182,212,.08)',
+                borderLeft: '3px solid var(--cyan)',
+                fontSize: 9,
+              }}
+            >
+              <div style={{ color: 'var(--fg-muted)' }}>
+                Respondiendo a {respuestaActiva.autor_nombre}
+                {' · '}
+                {fechaComentario(respuestaActiva.created_at)}
+              </div>
+              <div style={{ marginTop: 2 }}>“{citaComentario(respuestaActiva.texto)}”</div>
+              <button
+                type="button"
+                onClick={onCancelarRespuesta}
+                style={{
+                  padding: 0,
+                  marginTop: 4,
+                  border: 0,
+                  background: 'transparent',
+                  color: 'var(--danger)',
+                  fontSize: 9,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar respuesta
+              </button>
+            </div>
+          )}
           <textarea
             className="input"
             rows={2}
@@ -141,7 +281,8 @@ export function SaludImplementacionPanel({
     .toLowerCase()
     .endsWith('@tideo.tech');
   const [pestana, setPestana] = useState('pantallas');
-  const [filtroSeccion, setFiltroSeccion] = useState('Todas');
+  const [filtroRapido, setFiltroRapido] = useState('todas');
+  const [busqueda, setBusqueda] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [configuraciones, setConfiguraciones] = useState([]);
@@ -153,8 +294,11 @@ export function SaludImplementacionPanel({
   const [comentarios, setComentarios] = useState({});
   const [borradoresComentarios, setBorradoresComentarios] = useState({});
   const [comentariosInternos, setComentariosInternos] = useState({});
+  const [respuestasActivas, setRespuestasActivas] = useState({});
   const [estadoGuardado, setEstadoGuardado] = useState({});
+  const [estadosGuardando, setEstadosGuardando] = useState({});
   const [comentariosGuardando, setComentariosGuardando] = useState({});
+  const [seccionesColapsadas, setSeccionesColapsadas] = useState({});
 
   const cargarDatos = useCallback(async () => {
     if (!tenantId) {
@@ -190,7 +334,7 @@ export function SaludImplementacionPanel({
 
       const comentariosQuery = supabase
         .from('tideo_salud_comentarios')
-        .select('id, configuracion_id, empresa_id, audiencia, autor_id, autor_nombre, texto, solo_interno, created_at')
+        .select('id, configuracion_id, empresa_id, audiencia, autor_id, autor_nombre, texto, solo_interno, respuesta_a_comentario_id, created_at')
         .eq('empresa_id', tenantId)
         .order('created_at', { ascending: false });
 
@@ -270,17 +414,99 @@ export function SaludImplementacionPanel({
     [configuraciones, pestana],
   );
 
-  const secciones = useMemo(() => {
-    const valores = new Set(configuracionesPestana.map((configuracion) => configuracion.seccion));
-    return ['Todas', ...Array.from(valores).sort()];
-  }, [configuracionesPestana]);
+  const comentariosPorId = useMemo(() => {
+    const indice = {};
+    Object.values(comentarios).flat().forEach((comentario) => {
+      indice[comentario.id] = comentario;
+    });
+    return indice;
+  }, [comentarios]);
 
   const configuracionesFiltradas = useMemo(() => {
-    if (filtroSeccion === 'Todas') return configuracionesPestana;
-    return configuracionesPestana.filter(
-      (configuracion) => configuracion.seccion === filtroSeccion,
+    const termino = normalizarTexto(busqueda.trim());
+
+    return configuracionesPestana.filter((configuracion) => {
+      const count = conteos[configuracion.id] || 0;
+      const anotacion = anotaciones[configuracion.id] || {};
+      const coincideBusqueda = !termino || normalizarTexto(
+        `${configuracion.seccion} ${configuracion.pantalla}`,
+      ).includes(termino);
+
+      if (!coincideBusqueda) return false;
+
+      switch (filtroRapido) {
+        case 'pendientes':
+          return count === 0;
+        case 'sin_responsable':
+          return !anotacion.responsable_tideo && !anotacion.responsable_cliente;
+        case 'con_datos':
+          return count > 0;
+        case 'sin_capacitar':
+          return !anotacion.capacitado;
+        case 'sin_implementar':
+          return !anotacion.implementado;
+        default:
+          return true;
+      }
+    });
+  }, [anotaciones, busqueda, configuracionesPestana, conteos, filtroRapido]);
+
+  const resumen = useMemo(() => ({
+    total: configuracionesPestana.length,
+    conDatos: configuracionesPestana.filter(
+      (configuracion) => (conteos[configuracion.id] || 0) > 0,
+    ).length,
+    capacitadas: configuracionesPestana.filter(
+      (configuracion) => Boolean(anotaciones[configuracion.id]?.capacitado),
+    ).length,
+    implementadas: configuracionesPestana.filter(
+      (configuracion) => Boolean(anotaciones[configuracion.id]?.implementado),
+    ).length,
+  }), [anotaciones, configuracionesPestana, conteos]);
+
+  const resumenSecciones = useMemo(() => {
+    const indice = {};
+    configuracionesPestana.forEach((configuracion) => {
+      if (!indice[configuracion.seccion]) {
+        indice[configuracion.seccion] = { total: 0, conDatos: 0 };
+      }
+      indice[configuracion.seccion].total += 1;
+      if ((conteos[configuracion.id] || 0) > 0) {
+        indice[configuracion.seccion].conDatos += 1;
+      }
+    });
+    return indice;
+  }, [configuracionesPestana, conteos]);
+
+  const gruposFiltrados = useMemo(() => {
+    const ordenOriginal = new Map(
+      configuracionesPestana.map((configuracion, indice) => [configuracion.id, indice]),
     );
-  }, [configuracionesPestana, filtroSeccion]);
+    const grupos = new Map();
+
+    configuracionesFiltradas.forEach((configuracion) => {
+      if (!grupos.has(configuracion.seccion)) grupos.set(configuracion.seccion, []);
+      grupos.get(configuracion.seccion).push(configuracion);
+    });
+
+    return Array.from(grupos.entries()).map(([seccion, filas]) => ({
+      seccion,
+      filas: filas.sort((a, b) => {
+        const pendienteA = (conteos[a.id] || 0) === 0 ? 0 : 1;
+        const pendienteB = (conteos[b.id] || 0) === 0 ? 0 : 1;
+        return pendienteA - pendienteB
+          || (ordenOriginal.get(a.id) || 0) - (ordenOriginal.get(b.id) || 0);
+      }),
+    }));
+  }, [configuracionesFiltradas, configuracionesPestana, conteos]);
+
+  useEffect(() => {
+    const inicial = {};
+    Object.entries(resumenSecciones).forEach(([seccion, avance]) => {
+      inicial[seccion] = avance.total > 0 && avance.conDatos === avance.total;
+    });
+    setSeccionesColapsadas(inicial);
+  }, [tenantId, pestana, resumenSecciones]);
 
   const actualizarResponsable = (configuracionId, campo, valor) => {
     setBorradoresResponsables((prev) => ({
@@ -330,6 +556,42 @@ export function SaludImplementacionPanel({
     }
   };
 
+  const guardarEstado = async (configuracionId, campo, valor) => {
+    const key = `${configuracionId}_${campo}`;
+    setEstadosGuardando((prev) => ({ ...prev, [key]: true }));
+    setError('');
+
+    try {
+      const supabase = await getSupabaseClient();
+      const { data, error: rpcError } = await supabase.rpc(
+        'guardar_salud_implementacion_estado',
+        {
+          p_configuracion_id: configuracionId,
+          p_empresa_id: tenantId,
+          p_campo: campo,
+          p_valor: valor,
+        },
+      );
+
+      if (rpcError) throw rpcError;
+      const fila = Array.isArray(data) ? data[0] : data;
+      if (fila) {
+        setAnotaciones((prev) => ({ ...prev, [configuracionId]: fila }));
+      }
+    } catch (err) {
+      console.error('Error guardando estado de implementación:', err);
+      setError(`No se pudo guardar el estado: ${err.message || String(err)}`);
+    } finally {
+      setEstadosGuardando((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const prepararRespuesta = (configuracionId, comentario) => {
+    const audienciaRespuesta = esPersonalTideo ? 'tideo' : 'cliente';
+    const key = `${configuracionId}_${audienciaRespuesta}`;
+    setRespuestasActivas((prev) => ({ ...prev, [key]: comentario }));
+  };
+
   const agregarComentario = async (configuracionId, audiencia) => {
     const key = `${configuracionId}_${audiencia}`;
     const texto = (borradoresComentarios[key] || '').trim();
@@ -345,6 +607,7 @@ export function SaludImplementacionPanel({
         empresa_id: tenantId,
         audiencia,
         texto,
+        respuesta_a_comentario_id: respuestasActivas[key]?.id || null,
       };
       if (audiencia === 'tideo') {
         payload.solo_interno = Boolean(comentariosInternos[key]);
@@ -353,7 +616,7 @@ export function SaludImplementacionPanel({
       const { data, error: insertError } = await supabase
         .from('tideo_salud_comentarios')
         .insert(payload)
-        .select('id, configuracion_id, empresa_id, audiencia, autor_id, autor_nombre, texto, solo_interno, created_at')
+        .select('id, configuracion_id, empresa_id, audiencia, autor_id, autor_nombre, texto, solo_interno, respuesta_a_comentario_id, created_at')
         .single();
 
       if (insertError) throw insertError;
@@ -363,6 +626,7 @@ export function SaludImplementacionPanel({
       }));
       setBorradoresComentarios((prev) => ({ ...prev, [key]: '' }));
       setComentariosInternos((prev) => ({ ...prev, [key]: false }));
+      setRespuestasActivas((prev) => ({ ...prev, [key]: null }));
     } catch (err) {
       console.error('Error agregando comentario:', err);
       setError(`No se pudo agregar el comentario: ${err.message || String(err)}`);
@@ -373,7 +637,8 @@ export function SaludImplementacionPanel({
 
   const cambiarPestana = (nuevaPestana) => {
     setPestana(nuevaPestana);
-    setFiltroSeccion('Todas');
+    setFiltroRapido('todas');
+    setBusqueda('');
   };
 
   return (
@@ -414,15 +679,24 @@ export function SaludImplementacionPanel({
           )}
           <select
             className="input"
-            value={filtroSeccion}
-            onChange={(event) => setFiltroSeccion(event.target.value)}
-            style={{ minWidth: 190 }}
-            aria-label="Sección"
+            value={filtroRapido}
+            onChange={(event) => setFiltroRapido(event.target.value)}
+            style={{ minWidth: 210 }}
+            aria-label="Filtro rápido"
           >
-            {secciones.map((seccion) => (
-              <option key={seccion} value={seccion}>{seccion}</option>
+            {FILTROS_RAPIDOS.map((filtro) => (
+              <option key={filtro.id} value={filtro.id}>{filtro.label}</option>
             ))}
           </select>
+          <input
+            type="search"
+            className="input"
+            value={busqueda}
+            onChange={(event) => setBusqueda(event.target.value)}
+            placeholder="Buscar pantalla o sección..."
+            aria-label="Buscar pantalla o sección"
+            style={{ minWidth: 230 }}
+          />
           <button type="button" className="btn btn-secondary" onClick={cargarDatos}>
             Actualizar
           </button>
@@ -443,6 +717,26 @@ export function SaludImplementacionPanel({
             </button>
           );
         })}
+      </div>
+
+      <div
+        style={{
+          margin: '0 16px 12px',
+          padding: '9px 12px',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          background: 'var(--bg-subtle)',
+          fontSize: 12,
+          fontWeight: 600,
+        }}
+      >
+        {resumen.total} {pestana === 'pantallas' ? 'pantallas' : 'plantillas'}
+        {' · '}
+        {resumen.conDatos} con datos
+        {' · '}
+        {resumen.capacitadas} capacitadas
+        {' · '}
+        {resumen.implementadas} implementadas
       </div>
 
       {error && (
@@ -481,6 +775,8 @@ export function SaludImplementacionPanel({
               <tr>
                 <th style={{ minWidth: 220 }}>Módulo / Pantalla</th>
                 <th style={{ width: 90, textAlign: 'center' }}>Registros</th>
+                <th style={{ minWidth: 135 }}>Capacitado</th>
+                <th style={{ minWidth: 135 }}>Implementado</th>
                 <th style={{ minWidth: 210 }}>Responsable TIDEO</th>
                 <th style={{ minWidth: 210 }}>Responsable Cliente</th>
                 <th style={{ width: 105 }}>Guardar</th>
@@ -489,124 +785,247 @@ export function SaludImplementacionPanel({
               </tr>
             </thead>
             <tbody>
-              {configuracionesFiltradas.map((configuracion) => {
-                const count = conteos[configuracion.id] || 0;
-                const borrador = borradoresResponsables[configuracion.id] || {};
-                const guardado = estadoGuardado[configuracion.id];
-                const cambioPendiente =
-                  (borrador.responsable_tideo || '') !==
-                    (anotaciones[configuracion.id]?.responsable_tideo || '')
-                  || (borrador.responsable_cliente || '') !==
-                    (anotaciones[configuracion.id]?.responsable_cliente || '');
-                const keyTideo = `${configuracion.id}_tideo`;
-                const keyCliente = `${configuracion.id}_cliente`;
+              {gruposFiltrados.map(({ seccion, filas }) => {
+                const colapsada = Boolean(seccionesColapsadas[seccion]);
+                const avance = resumenSecciones[seccion] || { conDatos: 0, total: filas.length };
 
                 return (
-                  <tr key={configuracion.id} className="hover-row">
-                    <td style={{ verticalAlign: 'top' }}>
-                      <div style={{ fontWeight: 600 }}>{configuracion.seccion}</div>
-                      <div className="text-muted">{configuracion.pantalla}</div>
-                      <div
-                        style={{ fontSize: 10, color: 'var(--cyan)', marginTop: 3 }}
-                        title={configuracion.evidencia || ''}
+                  <React.Fragment key={seccion}>
+                    <tr>
+                      <td
+                        colSpan={9}
+                        style={{
+                          padding: '8px 12px',
+                          background: 'var(--bg-subtle)',
+                          borderTop: '1px solid var(--border)',
+                          borderBottom: '1px solid var(--border)',
+                        }}
                       >
-                        {[configuracion.tabla_principal, configuracion.tabla_secundaria]
-                          .filter(Boolean)
-                          .join(' + ')}
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'center', verticalAlign: 'top' }}>
-                      <span
-                        className={`badge ${count > 0 ? 'badge-green' : 'badge-gray'}`}
-                        style={{ minWidth: 42, textAlign: 'center' }}
-                      >
-                        {count}
-                      </span>
-                    </td>
-                    <td style={{ verticalAlign: 'top' }}>
-                      <SelectorUsuario
-                        value={borrador.responsable_tideo}
-                        onChange={(value) => actualizarResponsable(
-                          configuracion.id,
-                          'responsable_tideo',
-                          value,
-                        )}
-                        usuarios={usuariosTideo}
-                        placeholder={
-                          usuariosTideo.length ? 'Sin asignar' : 'Sin usuarios TIDEO elegibles'
-                        }
-                      />
-                    </td>
-                    <td style={{ verticalAlign: 'top' }}>
-                      <SelectorUsuario
-                        value={borrador.responsable_cliente}
-                        onChange={(value) => actualizarResponsable(
-                          configuracion.id,
-                          'responsable_cliente',
-                          value,
-                        )}
-                        usuarios={usuariosCliente}
-                        placeholder={
-                          usuariosCliente.length ? 'Sin asignar' : 'Sin usuarios cliente elegibles'
-                        }
-                      />
-                    </td>
-                    <td style={{ verticalAlign: 'top' }}>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        disabled={guardado === 'guardando' || (!cambioPendiente && guardado !== 'error')}
-                        onClick={() => guardarResponsables(configuracion.id)}
-                        style={{ minWidth: 88, fontSize: 11 }}
-                      >
-                        {guardado === 'guardando'
-                          ? 'Guardando...'
-                          : guardado === 'ok'
-                            ? '✓ Guardado'
-                            : guardado === 'error'
-                              ? 'Reintentar'
-                              : 'Guardar'}
-                      </button>
-                    </td>
-                    <td style={{ verticalAlign: 'top' }}>
-                      <HistorialComentarios
-                        comentarios={comentarios[keyTideo] || []}
-                        borrador={borradoresComentarios[keyTideo] || ''}
-                        onBorradorChange={(value) => setBorradoresComentarios((prev) => ({
-                          ...prev,
-                          [keyTideo]: value,
-                        }))}
-                        onAgregar={() => agregarComentario(configuracion.id, 'tideo')}
-                        guardando={Boolean(comentariosGuardando[keyTideo])}
-                        puedeAgregar={esPersonalTideo}
-                        placeholder="Agregar observación TIDEO..."
-                        botonLabel="Agregar observación TIDEO"
-                        mostrarOpcionInterna={esPersonalTideo}
-                        soloInterno={Boolean(comentariosInternos[keyTideo])}
-                        onSoloInternoChange={(value) => setComentariosInternos((prev) => ({
-                          ...prev,
-                          [keyTideo]: value,
-                        }))}
-                      />
-                    </td>
-                    <td style={{ verticalAlign: 'top' }}>
-                      <HistorialComentarios
-                        comentarios={comentarios[keyCliente] || []}
-                        borrador={borradoresComentarios[keyCliente] || ''}
-                        onBorradorChange={(value) => setBorradoresComentarios((prev) => ({
-                          ...prev,
-                          [keyCliente]: value,
-                        }))}
-                        onAgregar={() => agregarComentario(configuracion.id, 'cliente')}
-                        guardando={Boolean(comentariosGuardando[keyCliente])}
-                      />
-                    </td>
-                  </tr>
+                        <button
+                          type="button"
+                          onClick={() => setSeccionesColapsadas((prev) => ({
+                            ...prev,
+                            [seccion]: !colapsada,
+                          }))}
+                          aria-expanded={!colapsada}
+                          style={{
+                            width: '100%',
+                            padding: 0,
+                            border: 0,
+                            background: 'transparent',
+                            color: 'inherit',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span aria-hidden="true">{colapsada ? '▸' : '▾'}</span>
+                          <span>{seccion}</span>
+                          <span className="badge badge-gray">
+                            {avance.conDatos}/{avance.total} con datos
+                          </span>
+                        </button>
+                      </td>
+                    </tr>
+                    {!colapsada && filas.map((configuracion) => {
+                      const count = conteos[configuracion.id] || 0;
+                      const anotacion = anotaciones[configuracion.id] || {};
+                      const borrador = borradoresResponsables[configuracion.id] || {};
+                      const guardado = estadoGuardado[configuracion.id];
+                      const cambioPendiente =
+                        (borrador.responsable_tideo || '') !==
+                          (anotacion.responsable_tideo || '')
+                        || (borrador.responsable_cliente || '') !==
+                          (anotacion.responsable_cliente || '');
+                      const requiereAtencion = count === 0
+                        && !anotacion.responsable_tideo
+                        && !anotacion.responsable_cliente;
+                      const keyTideo = `${configuracion.id}_tideo`;
+                      const keyCliente = `${configuracion.id}_cliente`;
+
+                      return (
+                        <tr
+                          key={configuracion.id}
+                          className="hover-row"
+                          title={requiereAtencion ? 'Requiere atención: sin datos ni responsables' : ''}
+                          style={requiereAtencion ? {
+                            boxShadow: 'inset 4px 0 0 var(--danger)',
+                            background: 'rgba(239,68,68,.035)',
+                          } : undefined}
+                        >
+                          <td style={{ verticalAlign: 'top' }}>
+                            <div style={{ fontWeight: 600 }}>{configuracion.pantalla}</div>
+                            {requiereAtencion && (
+                              <div style={{ color: 'var(--danger)', fontSize: 9, marginTop: 3 }}>
+                                ● Requiere atención
+                              </div>
+                            )}
+                            <div
+                              style={{ fontSize: 10, color: 'var(--cyan)', marginTop: 3 }}
+                              title={configuracion.evidencia || ''}
+                            >
+                              {[configuracion.tabla_principal, configuracion.tabla_secundaria]
+                                .filter(Boolean)
+                                .join(' + ')}
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'center', verticalAlign: 'top' }}>
+                            <span
+                              className={`badge ${count > 0 ? 'badge-green' : 'badge-gray'}`}
+                              style={{ minWidth: 42, textAlign: 'center' }}
+                            >
+                              {count}
+                            </span>
+                          </td>
+                          <td style={{ verticalAlign: 'top' }}>
+                            <EstadoAvance
+                              campo="capacitado"
+                              etiqueta="Capacitado"
+                              anotacion={anotacion}
+                              puedeEditar={esPersonalTideo}
+                              guardando={Boolean(
+                                estadosGuardando[`${configuracion.id}_capacitado`],
+                              )}
+                              onCambiar={(valor) => guardarEstado(
+                                configuracion.id,
+                                'capacitado',
+                                valor,
+                              )}
+                            />
+                          </td>
+                          <td style={{ verticalAlign: 'top' }}>
+                            <EstadoAvance
+                              campo="implementado"
+                              etiqueta="Implementado"
+                              anotacion={anotacion}
+                              puedeEditar={esPersonalTideo}
+                              guardando={Boolean(
+                                estadosGuardando[`${configuracion.id}_implementado`],
+                              )}
+                              onCambiar={(valor) => guardarEstado(
+                                configuracion.id,
+                                'implementado',
+                                valor,
+                              )}
+                            />
+                          </td>
+                          <td style={{ verticalAlign: 'top' }}>
+                            <SelectorUsuario
+                              value={borrador.responsable_tideo}
+                              onChange={(value) => actualizarResponsable(
+                                configuracion.id,
+                                'responsable_tideo',
+                                value,
+                              )}
+                              usuarios={usuariosTideo}
+                              placeholder={
+                                usuariosTideo.length
+                                  ? 'Sin asignar'
+                                  : 'Sin usuarios TIDEO elegibles'
+                              }
+                            />
+                          </td>
+                          <td style={{ verticalAlign: 'top' }}>
+                            <SelectorUsuario
+                              value={borrador.responsable_cliente}
+                              onChange={(value) => actualizarResponsable(
+                                configuracion.id,
+                                'responsable_cliente',
+                                value,
+                              )}
+                              usuarios={usuariosCliente}
+                              placeholder={
+                                usuariosCliente.length
+                                  ? 'Sin asignar'
+                                  : 'Sin usuarios cliente elegibles'
+                              }
+                            />
+                          </td>
+                          <td style={{ verticalAlign: 'top' }}>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={
+                                guardado === 'guardando'
+                                || (!cambioPendiente && guardado !== 'error')
+                              }
+                              onClick={() => guardarResponsables(configuracion.id)}
+                              style={{ minWidth: 88, fontSize: 11 }}
+                            >
+                              {guardado === 'guardando'
+                                ? 'Guardando...'
+                                : guardado === 'ok'
+                                  ? '✓ Guardado'
+                                  : guardado === 'error'
+                                    ? 'Reintentar'
+                                    : 'Guardar'}
+                            </button>
+                          </td>
+                          <td style={{ verticalAlign: 'top' }}>
+                            <HistorialComentarios
+                              comentarios={comentarios[keyTideo] || []}
+                              comentariosPorId={comentariosPorId}
+                              borrador={borradoresComentarios[keyTideo] || ''}
+                              onBorradorChange={(value) => setBorradoresComentarios((prev) => ({
+                                ...prev,
+                                [keyTideo]: value,
+                              }))}
+                              onAgregar={() => agregarComentario(configuracion.id, 'tideo')}
+                              guardando={Boolean(comentariosGuardando[keyTideo])}
+                              puedeAgregar={esPersonalTideo}
+                              placeholder="Agregar observación TIDEO..."
+                              botonLabel="Agregar observación TIDEO"
+                              mostrarOpcionInterna={esPersonalTideo}
+                              soloInterno={Boolean(comentariosInternos[keyTideo])}
+                              onSoloInternoChange={(value) => setComentariosInternos((prev) => ({
+                                ...prev,
+                                [keyTideo]: value,
+                              }))}
+                              onResponder={(comentario) => prepararRespuesta(
+                                configuracion.id,
+                                comentario,
+                              )}
+                              respuestaActiva={respuestasActivas[keyTideo]}
+                              onCancelarRespuesta={() => setRespuestasActivas((prev) => ({
+                                ...prev,
+                                [keyTideo]: null,
+                              }))}
+                            />
+                          </td>
+                          <td style={{ verticalAlign: 'top' }}>
+                            <HistorialComentarios
+                              comentarios={comentarios[keyCliente] || []}
+                              comentariosPorId={comentariosPorId}
+                              borrador={borradoresComentarios[keyCliente] || ''}
+                              onBorradorChange={(value) => setBorradoresComentarios((prev) => ({
+                                ...prev,
+                                [keyCliente]: value,
+                              }))}
+                              onAgregar={() => agregarComentario(configuracion.id, 'cliente')}
+                              guardando={Boolean(comentariosGuardando[keyCliente])}
+                              onResponder={(comentario) => prepararRespuesta(
+                                configuracion.id,
+                                comentario,
+                              )}
+                              respuestaActiva={respuestasActivas[keyCliente]}
+                              onCancelarRespuesta={() => setRespuestasActivas((prev) => ({
+                                ...prev,
+                                [keyCliente]: null,
+                              }))}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
                 );
               })}
               {configuracionesFiltradas.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center text-muted" style={{ padding: 40 }}>
+                  <td colSpan={9} className="text-center text-muted" style={{ padding: 40 }}>
                     No hay configuraciones para mostrar.
                   </td>
                 </tr>
