@@ -107,4 +107,3 @@ COMMENT ON COLUMN public.tideo_salud_comentarios.solo_interno IS
 
 COMMENT ON FUNCTION public.tideo_salud_usuario_actual_es_personal_tideo() IS
   'Identifica al usuario autenticado como personal TIDEO mediante public.usuarios activo y correo terminado en @tideo.tech.';
-
