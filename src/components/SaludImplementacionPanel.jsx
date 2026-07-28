@@ -1128,8 +1128,6 @@ export function SaludImplementacionPanel({
                                       gridTemplateColumns: [
                                         'minmax(190px, 1fr)',
                                         'minmax(190px, 1fr)',
-                                        'minmax(125px, auto)',
-                                        'minmax(135px, auto)',
                                         'auto',
                                       ].join(' '),
                                       gap: 10,
@@ -1173,48 +1171,6 @@ export function SaludImplementacionPanel({
                                         }
                                       />
                                     </label>
-                                    <div>
-                                      <div style={{ fontSize: 10, marginBottom: 5 }}>
-                                        Capacitado
-                                      </div>
-                                      <EstadoAvance
-                                        campo="capacitado"
-                                        etiqueta="Capacitado"
-                                        anotacion={anotacion}
-                                        puedeEditar={esPersonalTideo}
-                                        guardando={Boolean(
-                                          estadosGuardando[
-                                            `${configuracion.id}_capacitado`
-                                          ],
-                                        )}
-                                        onCambiar={(valor) => guardarEstado(
-                                          configuracion.id,
-                                          'capacitado',
-                                          valor,
-                                        )}
-                                      />
-                                    </div>
-                                    <div>
-                                      <div style={{ fontSize: 10, marginBottom: 5 }}>
-                                        Implementado
-                                      </div>
-                                      <EstadoAvance
-                                        campo="implementado"
-                                        etiqueta="Implementado"
-                                        anotacion={anotacion}
-                                        puedeEditar={esPersonalTideo}
-                                        guardando={Boolean(
-                                          estadosGuardando[
-                                            `${configuracion.id}_implementado`
-                                          ],
-                                        )}
-                                        onCambiar={(valor) => guardarEstado(
-                                          configuracion.id,
-                                          'implementado',
-                                          valor,
-                                        )}
-                                      />
-                                    </div>
                                     <button
                                       type="button"
                                       className="btn btn-primary"
