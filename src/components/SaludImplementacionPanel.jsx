@@ -48,6 +48,8 @@ function HistorialComentarios({
   onAgregar,
   guardando,
   bloqueado,
+  placeholder = 'Agregar comentario...',
+  botonLabel = 'Agregar comentario',
 }) {
   if (bloqueado) {
     return (
@@ -98,7 +100,7 @@ function HistorialComentarios({
         rows={2}
         value={borrador}
         onChange={(event) => onBorradorChange(event.target.value)}
-        placeholder="Agregar comentario..."
+        placeholder={placeholder}
         style={{ width: '100%', resize: 'vertical', fontSize: 11 }}
       />
       <button
@@ -108,7 +110,7 @@ function HistorialComentarios({
         onClick={onAgregar}
         style={{ fontSize: 11, justifySelf: 'start' }}
       >
-        {guardando ? 'Guardando...' : 'Agregar comentario'}
+        {guardando ? 'Guardando...' : botonLabel}
       </button>
     </div>
   );
@@ -321,7 +323,7 @@ export function SaludImplementacionPanel({
   const agregarComentario = async (configuracionId, audiencia) => {
     const key = `${configuracionId}_${audiencia}`;
     const texto = (borradoresComentarios[key] || '').trim();
-    if (!texto || (modoTenant && audiencia === 'tideo')) return;
+    if (!texto || (!modoSuperadmin && audiencia === 'tideo')) return;
 
     setComentariosGuardando((prev) => ({ ...prev, [key]: true }));
     setError('');
@@ -560,7 +562,9 @@ export function SaludImplementacionPanel({
                         }))}
                         onAgregar={() => agregarComentario(configuracion.id, 'tideo')}
                         guardando={Boolean(comentariosGuardando[keyTideo])}
-                        bloqueado={modoTenant}
+                        bloqueado={!modoSuperadmin}
+                        placeholder="Agregar observación TIDEO..."
+                        botonLabel="Agregar observación TIDEO"
                       />
                     </td>
                     <td style={{ verticalAlign: 'top' }}>
