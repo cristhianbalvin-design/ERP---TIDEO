@@ -100,13 +100,15 @@ function EstadoAvance({
   puedeEditar,
   guardando,
   onCambiar,
+  compacto = false,
+  mostrarMetadatos = true,
 }) {
   const valor = Boolean(anotacion?.[campo]);
   const autor = anotacion?.[`${campo}_por_nombre`];
   const fecha = anotacion?.[`${campo}_at`];
 
   return (
-    <div style={{ minWidth: 125, display: 'grid', gap: 5 }}>
+    <div style={{ minWidth: compacto ? 0 : 125, display: 'grid', gap: 5 }}>
       <button
         type="button"
         role="switch"
@@ -118,12 +120,16 @@ function EstadoAvance({
             ? `${etiqueta}: ${valor ? 'Sí' : 'No'}. Clic para cambiar.`
             : `${etiqueta}: ${valor ? 'Sí' : 'No'}. Solo lectura para clientes.`
         }
-        onClick={puedeEditar ? () => onCambiar(!valor) : undefined}
+        onClick={puedeEditar ? (event) => {
+          event.stopPropagation();
+          onCambiar(!valor);
+        } : undefined}
+        onKeyDown={(event) => event.stopPropagation()}
         style={{
-          minWidth: 88,
-          minHeight: 30,
-          padding: '5px 11px',
-          justifySelf: 'start',
+          minWidth: compacto ? 68 : 88,
+          minHeight: compacto ? 26 : 30,
+          padding: compacto ? '3px 9px' : '5px 11px',
+          justifySelf: compacto ? 'center' : 'start',
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'flex-start',
@@ -151,37 +157,13 @@ function EstadoAvance({
         />
         {guardando ? 'Guardando...' : valor ? 'Sí' : 'No'}
       </button>
-      {(autor || fecha) && (
+      {mostrarMetadatos && (autor || fecha) && (
         <div className="text-muted" style={{ fontSize: 9, lineHeight: 1.35 }}>
           {autor || 'Usuario TIDEO'}
           {fecha ? ` · ${fechaComentario(fecha)}` : ''}
         </div>
       )}
     </div>
-  );
-}
-
-function IconoEstadoCompacto({ valor, etiqueta }) {
-  return (
-    <span
-      role="img"
-      aria-label={`${etiqueta}: ${valor ? 'Sí' : 'No'}`}
-      title={`${etiqueta}: ${valor ? 'Sí' : 'No'}`}
-      style={{
-        width: 24,
-        height: 24,
-        borderRadius: '50%',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontWeight: 800,
-        color: valor ? 'var(--success)' : 'var(--fg-muted)',
-        background: valor ? 'rgba(34,197,94,.12)' : 'var(--bg-subtle)',
-        border: `1px solid ${valor ? 'rgba(34,197,94,.35)' : 'var(--border)'}`,
-      }}
-    >
-      {valor ? '✓' : '×'}
-    </span>
   );
 }
 
@@ -893,7 +875,7 @@ export function SaludImplementacionPanel({
           <span style={{ marginLeft: 4, fontWeight: 800 }}>×</span>
           No
         </span>
-        <span>Los iconos corresponden a Capacitado e Implementado.</span>
+        <span>Las píldoras corresponden a Capacitado e Implementado.</span>
       </div>
 
       {error && (
@@ -1072,15 +1054,39 @@ export function SaludImplementacionPanel({
                               </span>
                             </td>
                             <td style={{ textAlign: 'center', padding: '8px 6px' }}>
-                              <IconoEstadoCompacto
-                                valor={Boolean(anotacion.capacitado)}
+                              <EstadoAvance
+                                campo="capacitado"
                                 etiqueta="Capacitado"
+                                anotacion={anotacion}
+                                puedeEditar={esPersonalTideo}
+                                guardando={Boolean(
+                                  estadosGuardando[`${configuracion.id}_capacitado`],
+                                )}
+                                onCambiar={(valor) => guardarEstado(
+                                  configuracion.id,
+                                  'capacitado',
+                                  valor,
+                                )}
+                                compacto
+                                mostrarMetadatos={false}
                               />
                             </td>
                             <td style={{ textAlign: 'center', padding: '8px 6px' }}>
-                              <IconoEstadoCompacto
-                                valor={Boolean(anotacion.implementado)}
+                              <EstadoAvance
+                                campo="implementado"
                                 etiqueta="Implementado"
+                                anotacion={anotacion}
+                                puedeEditar={esPersonalTideo}
+                                guardando={Boolean(
+                                  estadosGuardando[`${configuracion.id}_implementado`],
+                                )}
+                                onCambiar={(valor) => guardarEstado(
+                                  configuracion.id,
+                                  'implementado',
+                                  valor,
+                                )}
+                                compacto
+                                mostrarMetadatos={false}
                               />
                             </td>
                             <td style={{ textAlign: 'center', padding: '8px 6px' }}>
@@ -1113,138 +1119,120 @@ export function SaludImplementacionPanel({
                                   <div
                                     style={{
                                       display: 'grid',
-                                      gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                                      gap: 12,
+                                      gridTemplateColumns: [
+                                        'minmax(190px, 1fr)',
+                                        'minmax(190px, 1fr)',
+                                        'minmax(125px, auto)',
+                                        'minmax(135px, auto)',
+                                        'auto',
+                                      ].join(' '),
+                                      gap: 10,
+                                      alignItems: 'start',
+                                      overflowX: 'auto',
+                                      padding: '2px 0 12px',
+                                      borderBottom: '1px solid var(--border)',
                                     }}
                                   >
-                                    <div
+                                    <label style={{ display: 'grid', gap: 4, fontSize: 10 }}>
+                                      Responsable TIDEO
+                                      <SelectorUsuario
+                                        value={borrador.responsable_tideo}
+                                        onChange={(value) => actualizarResponsable(
+                                          configuracion.id,
+                                          'responsable_tideo',
+                                          value,
+                                        )}
+                                        usuarios={usuariosTideo}
+                                        placeholder={
+                                          usuariosTideo.length
+                                            ? 'Sin asignar'
+                                            : 'Sin usuarios TIDEO elegibles'
+                                        }
+                                      />
+                                    </label>
+                                    <label style={{ display: 'grid', gap: 4, fontSize: 10 }}>
+                                      Responsable Cliente
+                                      <SelectorUsuario
+                                        value={borrador.responsable_cliente}
+                                        onChange={(value) => actualizarResponsable(
+                                          configuracion.id,
+                                          'responsable_cliente',
+                                          value,
+                                        )}
+                                        usuarios={usuariosCliente}
+                                        placeholder={
+                                          usuariosCliente.length
+                                            ? 'Sin asignar'
+                                            : 'Sin usuarios cliente elegibles'
+                                        }
+                                      />
+                                    </label>
+                                    <div>
+                                      <div style={{ fontSize: 10, marginBottom: 5 }}>
+                                        Capacitado
+                                      </div>
+                                      <EstadoAvance
+                                        campo="capacitado"
+                                        etiqueta="Capacitado"
+                                        anotacion={anotacion}
+                                        puedeEditar={esPersonalTideo}
+                                        guardando={Boolean(
+                                          estadosGuardando[
+                                            `${configuracion.id}_capacitado`
+                                          ],
+                                        )}
+                                        onCambiar={(valor) => guardarEstado(
+                                          configuracion.id,
+                                          'capacitado',
+                                          valor,
+                                        )}
+                                      />
+                                    </div>
+                                    <div>
+                                      <div style={{ fontSize: 10, marginBottom: 5 }}>
+                                        Implementado
+                                      </div>
+                                      <EstadoAvance
+                                        campo="implementado"
+                                        etiqueta="Implementado"
+                                        anotacion={anotacion}
+                                        puedeEditar={esPersonalTideo}
+                                        guardando={Boolean(
+                                          estadosGuardando[
+                                            `${configuracion.id}_implementado`
+                                          ],
+                                        )}
+                                        onCambiar={(valor) => guardarEstado(
+                                          configuracion.id,
+                                          'implementado',
+                                          valor,
+                                        )}
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="btn btn-primary"
+                                      disabled={
+                                        guardado === 'guardando'
+                                        || (!cambioPendiente && guardado !== 'error')
+                                      }
+                                      onClick={() => guardarResponsables(configuracion.id)}
                                       style={{
-                                        padding: 12,
-                                        border: '1px solid var(--border)',
-                                        borderRadius: 9,
-                                        background: 'var(--bg)',
+                                        minWidth: 74,
+                                        marginTop: 17,
+                                        padding: '6px 10px',
+                                        fontSize: 10,
+                                        whiteSpace: 'nowrap',
                                       }}
                                     >
-                                      <div style={{ fontWeight: 700, marginBottom: 9 }}>
-                                        Responsables
-                                      </div>
-                                      <div style={{ display: 'grid', gap: 9 }}>
-                                        <label style={{ display: 'grid', gap: 4, fontSize: 10 }}>
-                                          Responsable TIDEO
-                                          <SelectorUsuario
-                                            value={borrador.responsable_tideo}
-                                            onChange={(value) => actualizarResponsable(
-                                              configuracion.id,
-                                              'responsable_tideo',
-                                              value,
-                                            )}
-                                            usuarios={usuariosTideo}
-                                            placeholder={
-                                              usuariosTideo.length
-                                                ? 'Sin asignar'
-                                                : 'Sin usuarios TIDEO elegibles'
-                                            }
-                                          />
-                                        </label>
-                                        <label style={{ display: 'grid', gap: 4, fontSize: 10 }}>
-                                          Responsable Cliente
-                                          <SelectorUsuario
-                                            value={borrador.responsable_cliente}
-                                            onChange={(value) => actualizarResponsable(
-                                              configuracion.id,
-                                              'responsable_cliente',
-                                              value,
-                                            )}
-                                            usuarios={usuariosCliente}
-                                            placeholder={
-                                              usuariosCliente.length
-                                                ? 'Sin asignar'
-                                                : 'Sin usuarios cliente elegibles'
-                                            }
-                                          />
-                                        </label>
-                                        <button
-                                          type="button"
-                                          className="btn btn-primary"
-                                          disabled={
-                                            guardado === 'guardando'
-                                            || (!cambioPendiente && guardado !== 'error')
-                                          }
-                                          onClick={() => guardarResponsables(configuracion.id)}
-                                          style={{ minWidth: 88, justifySelf: 'start', fontSize: 11 }}
-                                        >
-                                          {guardado === 'guardando'
-                                            ? 'Guardando...'
-                                            : guardado === 'ok'
-                                              ? '✓ Guardado'
-                                              : guardado === 'error'
-                                                ? 'Reintentar'
-                                                : 'Guardar responsables'}
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div
-                                      style={{
-                                        padding: 12,
-                                        border: '1px solid var(--border)',
-                                        borderRadius: 9,
-                                        background: 'var(--bg)',
-                                      }}
-                                    >
-                                      <div style={{ fontWeight: 700, marginBottom: 9 }}>
-                                        Avance
-                                      </div>
-                                      <div
-                                        style={{
-                                          display: 'grid',
-                                          gridTemplateColumns: 'repeat(2, minmax(125px, 1fr))',
-                                          gap: 12,
-                                        }}
-                                      >
-                                        <div>
-                                          <div style={{ fontSize: 10, marginBottom: 5 }}>
-                                            Capacitado
-                                          </div>
-                                          <EstadoAvance
-                                            campo="capacitado"
-                                            etiqueta="Capacitado"
-                                            anotacion={anotacion}
-                                            puedeEditar={esPersonalTideo}
-                                            guardando={Boolean(
-                                              estadosGuardando[
-                                                `${configuracion.id}_capacitado`
-                                              ],
-                                            )}
-                                            onCambiar={(valor) => guardarEstado(
-                                              configuracion.id,
-                                              'capacitado',
-                                              valor,
-                                            )}
-                                          />
-                                        </div>
-                                        <div>
-                                          <div style={{ fontSize: 10, marginBottom: 5 }}>
-                                            Implementado
-                                          </div>
-                                          <EstadoAvance
-                                            campo="implementado"
-                                            etiqueta="Implementado"
-                                            anotacion={anotacion}
-                                            puedeEditar={esPersonalTideo}
-                                            guardando={Boolean(
-                                              estadosGuardando[
-                                                `${configuracion.id}_implementado`
-                                              ],
-                                            )}
-                                            onCambiar={(valor) => guardarEstado(
-                                              configuracion.id,
-                                              'implementado',
-                                              valor,
-                                            )}
-                                          />
-                                        </div>
-                                      </div>
-                                    </div>
+                                      {guardado === 'guardando'
+                                        ? 'Guardando...'
+                                        : guardado === 'ok'
+                                          ? '✓ Guardado'
+                                          : guardado === 'error'
+                                            ? 'Reintentar'
+                                            : 'Guardar'}
+                                    </button>
                                   </div>
                                   <div
                                     style={{
