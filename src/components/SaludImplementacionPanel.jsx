@@ -116,12 +116,14 @@ function HistorialComentarios({
 
 export function SaludImplementacionPanel({
   esSuperadmin,
+  modoTenant = false,
   tenantId,
   tenants = [],
   onTenantChange,
   titulo,
   subtitulo,
 }) {
+  const modoSuperadmin = esSuperadmin && !modoTenant;
   const [pestana, setPestana] = useState('pantallas');
   const [filtroSeccion, setFiltroSeccion] = useState('Todas');
   const [loading, setLoading] = useState(true);
@@ -157,7 +159,7 @@ export function SaludImplementacionPanel({
         .order('seccion', { ascending: true })
         .order('pantalla', { ascending: true });
 
-      const conteosQuery = esSuperadmin
+      const conteosQuery = modoSuperadmin
         ? supabase.rpc('get_salud_implementacion_conteos', { p_tenant_ids: [tenantId] })
         : supabase.rpc('get_salud_implementacion_conteos_local', { p_tenant_id: tenantId });
 
@@ -176,7 +178,7 @@ export function SaludImplementacionPanel({
         .order('created_at', { ascending: false });
 
       // La vista tenant ni siquiera solicita la audiencia privada. RLS aplica como segunda barrera.
-      if (!esSuperadmin) {
+      if (modoTenant) {
         comentariosQuery = comentariosQuery.eq('audiencia', 'cliente');
       }
 
@@ -245,7 +247,7 @@ export function SaludImplementacionPanel({
     } finally {
       setLoading(false);
     }
-  }, [esSuperadmin, tenantId]);
+  }, [modoSuperadmin, modoTenant, tenantId]);
 
   useEffect(() => {
     cargarDatos();
@@ -319,7 +321,7 @@ export function SaludImplementacionPanel({
   const agregarComentario = async (configuracionId, audiencia) => {
     const key = `${configuracionId}_${audiencia}`;
     const texto = (borradoresComentarios[key] || '').trim();
-    if (!texto || (!esSuperadmin && audiencia === 'tideo')) return;
+    if (!texto || (modoTenant && audiencia === 'tideo')) return;
 
     setComentariosGuardando((prev) => ({ ...prev, [key]: true }));
     setError('');
@@ -377,7 +379,7 @@ export function SaludImplementacionPanel({
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          {esSuperadmin && tenants.length > 0 && (
+          {modoSuperadmin && tenants.length > 0 && (
             <select
               className="input"
               value={tenantId || ''}
@@ -558,7 +560,7 @@ export function SaludImplementacionPanel({
                         }))}
                         onAgregar={() => agregarComentario(configuracion.id, 'tideo')}
                         guardando={Boolean(comentariosGuardando[keyTideo])}
-                        bloqueado={!esSuperadmin}
+                        bloqueado={modoTenant}
                       />
                     </td>
                     <td style={{ verticalAlign: 'top' }}>
