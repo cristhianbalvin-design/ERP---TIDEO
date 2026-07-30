@@ -1,14 +1,13 @@
-node_modules/
+﻿node_modules/
 dist/
 .env
 .env.*
 !.env.example
 supabase/.temp/
 API OCR - ANTROPHIC.txt
-
 .vercel
 .env*.local
 vite-dev.err.log
 vite-dev.out.log
-
-.env*.local
+diag2.cjs
+diag3.cjs

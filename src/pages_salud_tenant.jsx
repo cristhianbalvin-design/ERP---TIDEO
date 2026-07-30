@@ -1,157 +1,74 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from './context.jsx';
+import { SaludImplementacionPanel } from './components/SaludImplementacionPanel.jsx';
 import { getSupabaseClient } from './lib/supabaseClient.js';
 
 export function SaludImplementacionTenant() {
-  const { role, empresaSeleccionada } = useApp();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  
-  const [configuraciones, setConfiguraciones] = useState([]);
-  const [conteos, setConteos] = useState({});
-  const [anotaciones, setAnotaciones] = useState({});
-  const [filtroSeccion, setFiltroSeccion] = useState('Todas');
-  
+  const { empresa, todasMembresias } = useApp();
+  const soySuperadmin = todasMembresias?.some((membresia) => membresia.empresa?.es_plataforma) || false;
+  const [autorizado, setAutorizado] = useState(null);
+  const [errorAutorizacion, setErrorAutorizacion] = useState('');
+
   useEffect(() => {
-    if (!role?.es_admin_empresa) {
-      setError('Acceso denegado. Solo Administrador de Empresa.');
-      setLoading(false);
-      return;
+    let mounted = true;
+
+    if (!empresa?.id) {
+      setAutorizado(null);
+      setErrorAutorizacion('');
+      return () => { mounted = false; };
     }
-    cargarDatos();
-  }, [role, empresaSeleccionada]);
 
-  const cargarDatos = async () => {
-    setLoading(true);
-    try {
-      const supabase = await getSupabaseClient();
+    setAutorizado(null);
+    setErrorAutorizacion('');
 
-      // 1. Configuraciones
-      const { data: configs, error: errCfg } = await supabase
-        .from('tideo_salud_configuracion')
-        .select('*')
-        .eq('activa', true)
-        .order('seccion', { ascending: true })
-        .order('pantalla', { ascending: true });
-        
-      if (errCfg) throw errCfg;
-      setConfiguraciones(configs || []);
-
-      if (configs?.length > 0 && empresaSeleccionada?.id) {
-        // 2. RPC Local
-        const { data: counts, error: errCount } = await supabase
-          .rpc('get_salud_implementacion_conteos_local', { p_tenant_id: empresaSeleccionada.id });
-          
-        if (errCount) console.warn("Error en conteos RPC:", errCount);
-        
-        const countMap = {};
-        if (counts) {
-          counts.forEach(c => { countMap[c.configuracion_id] = c.conteo; });
+    getSupabaseClient()
+      .then((supabase) => Promise.all([
+        supabase.rpc('usuario_es_admin_empresa', {
+          target_empresa_id: empresa.id,
+        }),
+        supabase.rpc('tideo_salud_personal_tideo_tiene_acceso', {
+          p_tenant_id: empresa.id,
+        }),
+      ]))
+      .then(([adminResp, tideoResp]) => {
+        if (adminResp.error) throw adminResp.error;
+        if (tideoResp.error) throw tideoResp.error;
+        if (mounted) {
+          setAutorizado(adminResp.data === true || tideoResp.data === true);
         }
-        setConteos(countMap);
-      }
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setAutorizado(false);
+        setErrorAutorizacion(error?.message || 'No se pudo validar el acceso de administrador.');
+      });
 
-      // 3. Anotaciones de mi empresa
-      if (empresaSeleccionada?.id) {
-        const { data: anots, error: errAnot } = await supabase
-          .from('tideo_salud_anotaciones')
-          .select('*')
-          .eq('empresa_id', empresaSeleccionada.id);
-          
-        if (errAnot) throw errAnot;
-        
-        const anotMap = {};
-        if (anots) {
-          anots.forEach(a => { anotMap[a.configuracion_id] = a; });
-        }
-        setAnotaciones(anotMap);
-      }
-    } catch (e) {
-      console.error(e);
-      setError('Error al cargar datos: ' + (e.message || String(e)));
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => { mounted = false; };
+  }, [empresa?.id]);
 
-  const secciones = useMemo(() => {
-    const s = new Set(configuraciones.map(c => c.seccion));
-    return ['Todas', ...Array.from(s).sort()];
-  }, [configuraciones]);
+  if (!empresa?.id || autorizado === null) {
+    return <div style={{ padding: 40 }}>Validando acceso al tenant activo de la sesión...</div>;
+  }
 
-  const filtradas = useMemo(() => {
-    if (filtroSeccion === 'Todas') return configuraciones;
-    return configuraciones.filter(c => c.seccion === filtroSeccion);
-  }, [configuraciones, filtroSeccion]);
+  if (errorAutorizacion) {
+    return <div style={{ padding: 40 }}>{errorAutorizacion}</div>;
+  }
 
-  if (!role?.es_admin_empresa) return <div style={{padding:40}}>Acceso denegado</div>;
-  if (loading) return <div style={{padding:40}}>Cargando progreso de implementación...</div>;
+  if (!autorizado) {
+    return <div style={{ padding: 40 }}>Acceso denegado. Solo Administrador de Empresa o personal TIDEO.</div>;
+  }
 
   return (
-    <div className="card" style={{margin:24}}>
-      <div className="card-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-        <div>
-          <h2 className="card-title" style={{fontSize:18, fontWeight:700}}>Progreso de Implementación</h2>
-          <p className="text-muted" style={{fontSize:13, marginTop:4}}>Estado de carga de datos iniciales en {empresaSeleccionada?.nombre_comercial || 'este entorno'}.</p>
-        </div>
-        <div style={{display:'flex', gap:10, alignItems:'center'}}>
-          <select 
-            className="input" 
-            style={{width:200}} 
-            value={filtroSeccion} 
-            onChange={e => setFiltroSeccion(e.target.value)}
-          >
-            {secciones.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <button className="btn btn-secondary" onClick={cargarDatos}>Actualizar</button>
-        </div>
-      </div>
-      
-      <div className="table-responsive" style={{maxHeight:'calc(100vh - 180px)', overflow:'auto'}}>
-        <table className="table" style={{whiteSpace:'nowrap', fontSize:12}}>
-          <thead style={{position:'sticky', top:0, zIndex:10, background:'var(--bg)', boxShadow:'0 1px 0 var(--border)'}}>
-            <tr>
-              <th style={{width: 250}}>Módulo / Pantalla</th>
-              <th style={{width: 100, textAlign:'center'}}>Registros</th>
-              <th style={{width: 150}}>Responsable Asignado</th>
-              <th>Observaciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtradas.map(cfg => {
-              const count = conteos[cfg.id] || 0;
-              const anot = anotaciones[cfg.id] || {};
-              // Si está marcado como solo interno y por el RLS se ocultó, anot estará vacio.
-              return (
-                <tr key={cfg.id} className="hover-row">
-                  <td>
-                    <div style={{fontWeight:600}}>{cfg.seccion}</div>
-                    <div className="text-muted">{cfg.pantalla}</div>
-                  </td>
-                  <td style={{textAlign:'center'}}>
-                    <span className={`badge ${count > 0 ? 'badge-green' : 'badge-gray'}`} style={{minWidth:40, textAlign:'center'}}>
-                      {count > 0 ? count : '0'}
-                    </span>
-                  </td>
-                  <td>
-                     {anot.responsable ? <span className="badge badge-blue">{anot.responsable}</span> : <span className="text-muted">Pendiente</span>}
-                  </td>
-                  <td style={{whiteSpace:'normal'}}>
-                     {anot.observacion || <span className="text-muted">-</span>}
-                  </td>
-                </tr>
-              );
-            })}
-            {filtradas.length === 0 && (
-              <tr>
-                <td colSpan={4} className="text-center text-muted" style={{padding:40}}>
-                  No hay pantallas configuradas en esta sección
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <SaludImplementacionPanel
+      esSuperadmin={soySuperadmin}
+      modoTenant
+      tenantId={empresa.id}
+      titulo="Progreso de Implementación"
+      subtitulo={`Estado de carga de datos iniciales en ${
+        empresa.nombre_comercial
+          || empresa.razon_social
+          || 'este entorno'
+      }.`}
+    />
   );
 }
