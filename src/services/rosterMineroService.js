@@ -346,6 +346,66 @@ export async function getSnapshotsRoster(empresaId, periodoAnio = null, periodoM
   return data || [];
 }
 
+export async function previsualizarReinicioRosterMinero(empresaId, sedeId, fechaInicio, fechaFin) {
+  if (getDataMode() !== 'supabase') {
+    throw new Error('El reinicio de roster solo está disponible con Supabase.');
+  }
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('previsualizar_reinicio_roster_minero', {
+    p_empresa_id: empresaId,
+    p_sede_id: sedeId,
+    p_fecha_inicio: fechaInicio,
+    p_fecha_fin: fechaFin,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function reiniciarRosterMinero(empresaId, sedeId, fechaInicio, fechaFin) {
+  if (getDataMode() !== 'supabase') {
+    throw new Error('El reinicio de roster solo está disponible con Supabase.');
+  }
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('reiniciar_roster_minero', {
+    p_empresa_id: empresaId,
+    p_sede_id: sedeId,
+    p_fecha_inicio: fechaInicio,
+    p_fecha_fin: fechaFin,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function previsualizarReinicioJornadaTrabajadores(empresaId, personalIds, fechaInicio, fechaFin) {
+  if (getDataMode() !== 'supabase') {
+    throw new Error('El reinicio de jornada solo está disponible con Supabase.');
+  }
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('previsualizar_reinicio_jornada_trabajadores', {
+    p_empresa_id: empresaId,
+    p_personal_ids: personalIds,
+    p_fecha_inicio: fechaInicio,
+    p_fecha_fin: fechaFin,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function reiniciarJornadaTrabajadores(empresaId, personalIds, fechaInicio, fechaFin) {
+  if (getDataMode() !== 'supabase') {
+    throw new Error('El reinicio de jornada solo está disponible con Supabase.');
+  }
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('reiniciar_jornada_trabajadores', {
+    p_empresa_id: empresaId,
+    p_personal_ids: personalIds,
+    p_fecha_inicio: fechaInicio,
+    p_fecha_fin: fechaFin,
+  });
+  if (error) throw error;
+  return data;
+}
+
 /**
  * Calcula y persiste el roster del período para todos los trabajadores mineros.
  * Solo puede ejecutarse sobre períodos abiertos (no cerrados).
