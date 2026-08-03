@@ -91,6 +91,88 @@ export async function crearSociedad(datos = {}) {
   throw new Error('No fue posible generar un código único para la sociedad.');
 }
 
+const SOCIEDAD_ADMIN_FIELDS = [
+  'codigo',
+  'nombre',
+  'razon_social',
+  'ruc',
+  'activa',
+  'direccion_fiscal',
+  'logo_url',
+  'firma_url',
+  'regimen_laboral',
+  'pct_quincena_1',
+];
+
+const normalizarCampoOpcional = value => {
+  if (value === null || value === undefined) return null;
+  const limpio = String(value).trim();
+  return limpio || null;
+};
+
+export async function listarSociedadesAdministracion(empresaId) {
+  if (!empresaId) throw new Error('empresa_id es obligatorio para listar sociedades.');
+
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('sociedades')
+    .select('id, empresa_id, codigo, nombre, razon_social, ruc, activa, created_at, updated_at, direccion_fiscal, logo_url, firma_url, regimen_laboral, pct_quincena_1, es_principal')
+    .eq('empresa_id', empresaId)
+    .order('es_principal', { ascending: false })
+    .order('nombre', { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function actualizarSociedad(sociedadId, empresaId, cambios = {}) {
+  if (!sociedadId) throw new Error('sociedad_id es obligatorio para actualizar.');
+  if (!empresaId) throw new Error('empresa_id es obligatorio para actualizar.');
+
+  const payload = {};
+  for (const field of SOCIEDAD_ADMIN_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(cambios, field)) payload[field] = cambios[field];
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'codigo')) {
+    payload.codigo = normalizarSlugTideo(payload.codigo);
+    if (!payload.codigo) throw new Error('El codigo de la sociedad es obligatorio.');
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'nombre')) {
+    payload.nombre = String(payload.nombre || '').trim();
+    if (!payload.nombre) throw new Error('El nombre comercial de la sociedad es obligatorio.');
+  }
+  for (const field of ['razon_social', 'ruc', 'direccion_fiscal', 'logo_url', 'firma_url']) {
+    if (Object.prototype.hasOwnProperty.call(payload, field)) payload[field] = normalizarCampoOpcional(payload[field]);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'regimen_laboral')) {
+    payload.regimen_laboral = normalizarCampoOpcional(payload.regimen_laboral);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'pct_quincena_1')) {
+    if (payload.pct_quincena_1 === null || payload.pct_quincena_1 === '') {
+      payload.pct_quincena_1 = null;
+    } else {
+      payload.pct_quincena_1 = Number(payload.pct_quincena_1);
+      if (!Number.isFinite(payload.pct_quincena_1)) throw new Error('El porcentaje de Quincena 1 no es valido.');
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'activa')) payload.activa = Boolean(payload.activa);
+
+  if (!Object.keys(payload).length) throw new Error('No hay cambios para guardar.');
+
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('sociedades')
+    .update(payload)
+    .eq('id', sociedadId)
+    .eq('empresa_id', empresaId)
+    .select('id, empresa_id, codigo, nombre, razon_social, ruc, activa, created_at, updated_at, direccion_fiscal, logo_url, firma_url, regimen_laboral, pct_quincena_1, es_principal')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 const sociedadIdsDeAsignaciones = (asignaciones, tipos = [PERFIL_SOCIEDAD.SOCIEDAD]) => [
   ...new Set(
     asignaciones

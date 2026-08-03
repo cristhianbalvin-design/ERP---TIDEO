@@ -9,7 +9,12 @@ import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { TiposGastoAdmin } from './components/NuevoEgreso.jsx';
 import { SociedadFormField } from './components/SociedadFormField.jsx';
-import { generarCodigoSociedadBase } from './services/sociedadesService.js';
+import {
+  actualizarSociedad,
+  crearSociedad,
+  generarCodigoSociedadBase,
+  listarSociedadesAdministracion,
+} from './services/sociedadesService.js';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { AsignacionCargosModal } from './components/AsignacionCargosModal.jsx';
 import { buildOcupantesPorPosicion, getPosicionesSinCargo, contarRespaldoPrincipal } from './lib/posicionesHelpers.js';
@@ -6635,10 +6640,264 @@ function EgresosConfigAdmin() {
   );
 }
 
+const SOCIEDAD_FORM_INICIAL = {
+  id: null,
+  razon_social: '',
+  nombre: '',
+  ruc: '',
+  codigo: '',
+  direccion_fiscal: '',
+  logo_url: null,
+  firma_url: null,
+  regimen_laboral: '',
+  pct_quincena_1: '',
+  hereda_pct_quincena: true,
+  activa: true,
+  es_principal: false,
+};
+
+const sociedadAFormulario = sociedad => ({
+  ...SOCIEDAD_FORM_INICIAL,
+  ...sociedad,
+  razon_social: sociedad?.razon_social || '',
+  nombre: sociedad?.nombre || '',
+  ruc: sociedad?.ruc || '',
+  codigo: sociedad?.codigo || '',
+  direccion_fiscal: sociedad?.direccion_fiscal || '',
+  regimen_laboral: sociedad?.regimen_laboral || '',
+  pct_quincena_1: sociedad?.pct_quincena_1 == null ? '' : String(sociedad.pct_quincena_1),
+  hereda_pct_quincena: sociedad?.pct_quincena_1 == null,
+  activa: sociedad?.activa !== false,
+  es_principal: Boolean(sociedad?.es_principal),
+});
+
+function SociedadesAdmin() {
+  const {
+    empresa,
+    subirImagenEmpresa,
+    recargarSociedades,
+    addNotificacion,
+  } = useApp();
+  const [sociedades, setSociedades] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [form, setForm] = useState(null);
+  const [logoFileSociedad, setLogoFileSociedad] = useState(null);
+  const [firmaFileSociedad, setFirmaFileSociedad] = useState(null);
+  const [logoPreviewSociedad, setLogoPreviewSociedad] = useState(null);
+  const [firmaPreviewSociedad, setFirmaPreviewSociedad] = useState(null);
+  const [savingSociedad, setSavingSociedad] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const cargarSociedades = useCallback(async () => {
+    if (!empresa?.id) return;
+    setLoading(true);
+    setLoadError('');
+    try {
+      setSociedades(await listarSociedadesAdministracion(empresa.id));
+    } catch (error) {
+      setLoadError(error?.message || 'No se pudo cargar la lista de sociedades.');
+    } finally {
+      setLoading(false);
+    }
+  }, [empresa?.id]);
+
+  useEffect(() => { cargarSociedades(); }, [cargarSociedades]);
+
+  const abrirFormulario = sociedad => {
+    const siguiente = sociedad ? sociedadAFormulario(sociedad) : { ...SOCIEDAD_FORM_INICIAL };
+    setForm(siguiente);
+    setLogoFileSociedad(null);
+    setFirmaFileSociedad(null);
+    setLogoPreviewSociedad(siguiente.logo_url || null);
+    setFirmaPreviewSociedad(siguiente.firma_url || null);
+    setFormError('');
+  };
+
+  const cerrarFormulario = () => {
+    setForm(null);
+    setLogoFileSociedad(null);
+    setFirmaFileSociedad(null);
+    setLogoPreviewSociedad(null);
+    setFirmaPreviewSociedad(null);
+    setFormError('');
+  };
+
+  const seleccionarImagenSociedad = (setFile, setPreview) => event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setFile(file);
+    setPreview(URL.createObjectURL(file));
+  };
+
+  const guardarSociedad = async event => {
+    event.preventDefault();
+    setSavingSociedad(true);
+    setFormError('');
+    try {
+      const payload = {
+        razon_social: form.razon_social,
+        nombre: form.nombre,
+        ruc: form.ruc,
+        codigo: form.codigo,
+        direccion_fiscal: form.direccion_fiscal,
+        logo_url: form.logo_url,
+        firma_url: form.firma_url,
+        regimen_laboral: form.regimen_laboral || null,
+        pct_quincena_1: form.hereda_pct_quincena ? null : form.pct_quincena_1,
+        activa: Boolean(form.activa),
+      };
+
+      let guardada = form.id
+        ? await actualizarSociedad(form.id, empresa.id, payload)
+        : await crearSociedad({ ...payload, empresa_id: empresa.id, es_principal: false });
+
+      const urls = {};
+      const advertencias = [];
+      if (logoFileSociedad) {
+        try {
+          const subida = await subirImagenEmpresa(`sociedad-${guardada.id}-logo`, logoFileSociedad);
+          urls.logo_url = typeof subida === 'string' ? subida : subida?.url;
+        } catch (error) {
+          advertencias.push(`logo: ${error?.message || 'error de storage'}`);
+        }
+      }
+      if (firmaFileSociedad) {
+        try {
+          const subida = await subirImagenEmpresa(`sociedad-${guardada.id}-firma`, firmaFileSociedad);
+          urls.firma_url = typeof subida === 'string' ? subida : subida?.url;
+        } catch (error) {
+          advertencias.push(`firma: ${error?.message || 'error de storage'}`);
+        }
+      }
+      if (Object.values(urls).some(Boolean)) {
+        guardada = await actualizarSociedad(guardada.id, empresa.id, urls);
+      }
+
+      await cargarSociedades();
+      await recargarSociedades?.();
+      cerrarFormulario();
+      addNotificacion(advertencias.length
+        ? `Sociedad guardada. No se pudo subir ${advertencias.join(' / ')}.`
+        : 'Sociedad guardada correctamente.');
+    } catch (error) {
+      const mensaje = error?.message || 'No se pudo guardar la sociedad.';
+      setFormError(mensaje);
+      addNotificacion(`No se pudo guardar la sociedad: ${mensaje}`);
+    } finally {
+      setSavingSociedad(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="card params-card mb-6">
+        <div className="card-head">
+          <div>
+            <h3>Sociedades del grupo</h3>
+            <div className="text-muted" style={{fontSize:12, marginTop:4}}>Administra la identidad legal y los overrides de nomina de cada sociedad.</div>
+          </div>
+          <button type="button" className="btn btn-primary" onClick={() => abrirFormulario(null)}>{I.plus} Nueva sociedad</button>
+        </div>
+        {loadError && <div className="alert alert-danger" style={{margin:16}}>{loadError}</div>}
+        {loading ? (
+          <div className="card-body text-muted">Cargando sociedades...</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Sociedad</th><th>Codigo</th><th>RUC</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+              <tbody>
+                {sociedades.map(sociedad => (
+                  <tr key={sociedad.id}>
+                    <td>
+                      <div style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+                        <strong>{sociedad.nombre}</strong>
+                        {sociedad.es_principal && <span className="badge badge-cyan">Principal</span>}
+                      </div>
+                      {sociedad.razon_social && <div className="text-muted" style={{fontSize:11, marginTop:2}}>{sociedad.razon_social}</div>}
+                    </td>
+                    <td><span className="mono">{sociedad.codigo}</span></td>
+                    <td>{sociedad.ruc || '-'}</td>
+                    <td><span className={`badge ${sociedad.activa ? 'badge-green' : 'badge-gray'}`}>{sociedad.activa ? 'Activa' : 'Inactiva'}</span></td>
+                    <td style={{textAlign:'right'}}><button type="button" className="btn btn-secondary btn-sm" onClick={() => abrirFormulario(sociedad)}>{I.edit} Editar</button></td>
+                  </tr>
+                ))}
+                {!sociedades.length && <tr><td colSpan={5} className="text-muted" style={{textAlign:'center', padding:24}}>No hay sociedades registradas.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {form && (
+        <div className="modal-backdrop" onClick={event => { if (event.target === event.currentTarget && !savingSociedad) cerrarFormulario(); }}>
+          <div className="modal" style={{maxWidth:760, width:'min(760px, calc(100vw - 32px))'}}>
+            <div className="modal-head">
+              <div><h3>{form.id ? 'Editar sociedad' : 'Nueva sociedad'}</h3>{form.es_principal && <span className="badge badge-cyan" style={{marginTop:6}}>Sociedad Principal</span>}</div>
+              <button type="button" className="icon-btn" disabled={savingSociedad} onClick={cerrarFormulario}>{I.x}</button>
+            </div>
+            <form onSubmit={guardarSociedad}>
+              <div className="modal-body" style={{maxHeight:'70vh', overflowY:'auto'}}>
+                {formError && <div className="alert alert-danger" style={{marginBottom:16}}>{formError}</div>}
+                <div className="grid-2" style={{gap:16}}>
+                  <div className="input-group"><label>Razon social</label><input className="input" required value={form.razon_social} onChange={e=>setForm(p=>({...p,razon_social:e.target.value}))}/></div>
+                  <div className="input-group"><label>Nombre comercial</label><input className="input" required value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))}/></div>
+                  <div className="input-group"><label>RUC</label><input className="input" required value={form.ruc} onChange={e=>setForm(p=>({...p,ruc:e.target.value}))}/></div>
+                  <div className="input-group"><label>Codigo</label><input className="input" value={form.codigo} onChange={e=>setForm(p=>({...p,codigo:e.target.value}))} placeholder="Se genera desde el nombre si se deja vacio"/></div>
+                  <div className="input-group" style={{gridColumn:'1/-1'}}><label>Direccion fiscal</label><input className="input" value={form.direccion_fiscal} onChange={e=>setForm(p=>({...p,direccion_fiscal:e.target.value}))}/></div>
+
+                  <div className="input-group">
+                    <label>Logo</label>
+                    <div style={{width:150, height:82, border:'1px dashed var(--border)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', marginBottom:8}}>
+                      {logoPreviewSociedad ? <img src={logoPreviewSociedad} alt="Logo de la sociedad" style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}}/> : <span className="text-muted" style={{fontSize:11}}>Sin logo</span>}
+                    </div>
+                    <label className="btn btn-secondary btn-sm" style={{cursor:'pointer', width:'fit-content'}}>{I.upload} Subir logo<input type="file" accept="image/*" hidden onChange={seleccionarImagenSociedad(setLogoFileSociedad, setLogoPreviewSociedad)}/></label>
+                  </div>
+                  <div className="input-group">
+                    <label>Firma</label>
+                    <div style={{width:180, height:82, border:'1px dashed var(--border)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', marginBottom:8}}>
+                      {firmaPreviewSociedad ? <img src={firmaPreviewSociedad} alt="Firma de la sociedad" style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}}/> : <span className="text-muted" style={{fontSize:11}}>Sin firma</span>}
+                    </div>
+                    <label className="btn btn-secondary btn-sm" style={{cursor:'pointer', width:'fit-content'}}>{I.upload} Subir firma<input type="file" accept="image/*" hidden onChange={seleccionarImagenSociedad(setFirmaFileSociedad, setFirmaPreviewSociedad)}/></label>
+                  </div>
+
+                  <div className="input-group">
+                    <label>Regimen laboral</label>
+                    <select className="select" value={form.regimen_laboral} onChange={e=>setForm(p=>({...p,regimen_laboral:e.target.value}))}>
+                      <option value="">Heredar del tenant</option>
+                      <option value="general">General</option>
+                      <option value="pequena_empresa">Pequena empresa</option>
+                      <option value="microempresa">Microempresa</option>
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>% Quincena 1</label>
+                    <label style={{display:'flex', alignItems:'center', gap:8, fontSize:12, marginBottom:8, cursor:'pointer'}}><input type="checkbox" checked={form.hereda_pct_quincena} onChange={e=>setForm(p=>({...p,hereda_pct_quincena:e.target.checked,pct_quincena_1:e.target.checked?'':p.pct_quincena_1}))}/> Heredar del tenant</label>
+                    <input className="input" type="number" min="1" max="99" step="0.01" required={!form.hereda_pct_quincena} disabled={form.hereda_pct_quincena} value={form.pct_quincena_1} onChange={e=>setForm(p=>({...p,pct_quincena_1:e.target.value}))}/>
+                  </div>
+                  <div className="input-group" style={{gridColumn:'1/-1'}}>
+                    <label style={{display:'flex', alignItems:'center', gap:8, cursor:'pointer'}}><input type="checkbox" checked={form.activa} onChange={e=>setForm(p=>({...p,activa:e.target.checked}))}/> Sociedad activa</label>
+                    <div className="text-muted" style={{fontSize:11, marginTop:5}}>La base de datos impedira desactivar la ultima sociedad activa del tenant.</div>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8}}>
+                <button type="button" className="btn btn-secondary" disabled={savingSociedad} onClick={cerrarFormulario}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={savingSociedad}>{I.save} {savingSociedad ? 'Guardando...' : 'Guardar sociedad'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function Parametros() {
   const {
     empresaConfig, guardarEmpresaConfig, subirImagenEmpresa, addNotificacion,
+    empresa, role, authUser, membresiaActiva,
     afpParametros = AFP_PARAMETROS_DEFAULT, guardarAfpParametro,
     seriesDocumentarias = [], slaPlantillas = [], diccionarioComercial = [],
     monedasImpuestosUnidades = [],
@@ -6689,6 +6948,18 @@ function Parametros() {
   const [logoPreview, setLogoPreview]   = useState(null);
   const [firmaPreview, setFirmaPreview] = useState(null);
   const [paramSection, setParamSection] = useState('identidad');
+  const puedeAdministrarSociedades = Boolean(
+    empresa?.multisociedad_habilitado
+    && (
+      authUser?.es_admin_empresa
+      || authUser?.es_superadmin
+      || (membresiaActiva && (role?.es_admin_empresa || role?.permisos?.tenant_admin || role?.permisos?.todo))
+    )
+  );
+
+  useEffect(() => {
+    if (paramSection === 'sociedades' && !puedeAdministrarSociedades) setParamSection('identidad');
+  }, [paramSection, puedeAdministrarSociedades]);
 
   // ── Estado configuración de nómina ──
   const nominaBase = {
@@ -7095,6 +7366,9 @@ function Parametros() {
     .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)));
   const paramsSections = [
     { key: 'identidad', title: 'Identidad', description: 'Datos legales, marca, firma y colores que viajan a tus PDFs.' },
+    ...(puedeAdministrarSociedades
+      ? [{ key: 'sociedades', title: 'Sociedades', description: 'Identidad legal, estado y configuracion de nomina por sociedad.' }]
+      : []),
     { key: 'comercial', title: 'Condiciones', description: 'Textos base que se precargan en cada cotizacion comercial.' },
     { key: 'biblioteca', title: 'Biblioteca', description: 'Variables del sistema y frases reutilizables para tus documentos.' },
     { key: 'documentos', title: 'Documentos', description: 'Series, moneda, impuestos y plantillas fiscales o comerciales.' },
@@ -7884,7 +8158,11 @@ function Parametros() {
             <EgresosConfigAdmin />
           )}
 
-          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'egresos_config' && (
+          {paramSection === 'sociedades' && puedeAdministrarSociedades && (
+            <SociedadesAdmin />
+          )}
+
+          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'egresos_config' && paramSection !== 'sociedades' && (
           <div className="params-footer-actions">
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
               {I.save} {saving ? 'Guardando...' : 'Guardar cambios'}

@@ -1333,6 +1333,8 @@ export function AppProvider({ children }) {
     try { localStorage.setItem(`last_sociedad_id_${empresa.id}`, siguiente.id); } catch {}
   };
 
+  const recargarSociedades = () => cargarSociedadesDeEmpresa(empresa);
+
   const cargarMembresiaCompleta = async (mem) => {
     try {
       const supabase = await getSupabaseClient();
@@ -9902,7 +9904,7 @@ export function AppProvider({ children }) {
     searchQuery: '',
     dataMode, supabaseStatus, reloadSupabaseFinanceData: loadSupabaseFinanceData,
     todasMembresias, membresiaActiva, membresiaCargando, seleccionarEmpresa,
-    perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles, seleccionarSociedad,
+    perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles, seleccionarSociedad, recargarSociedades,
     empresasPlataforma, setEmpresasPlataforma, crearTenantConAdmin, actualizarTenant, eliminarTenant,
     // Data
     usuarios, setUsuarios,
