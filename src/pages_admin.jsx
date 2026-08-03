@@ -8,6 +8,7 @@ import { useApp } from './context.jsx';
 import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { TiposGastoAdmin } from './components/NuevoEgreso.jsx';
+import { SociedadFormField } from './components/SociedadFormField.jsx';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { AsignacionCargosModal } from './components/AsignacionCargosModal.jsx';
 import { buildOcupantesPorPosicion, getPosicionesSinCargo, contarRespaldoPrincipal } from './lib/posicionesHelpers.js';
@@ -1557,7 +1558,7 @@ function CecoCebePanel({ onClose }) {
 
   const [tab, setTab] = useState('ceco');
 
-  const cecoBase = { codigo:'', nombre:'', tipo:'area_funcional', responsable_id:'', cebe_id:'', presupuesto_mensual:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
+  const cecoBase = { codigo:'', nombre:'', tipo:'area_funcional', responsable_id:'', cebe_id:'', sociedad_id:'', presupuesto_mensual:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
   const [cecoForm, setCecoForm] = useState(cecoBase);
   const [cecoEditId, setCecoEditId] = useState(null);
   const [cecoSaving, setCecoSaving] = useState(false);
@@ -1569,7 +1570,7 @@ function CecoCebePanel({ onClose }) {
   const [cecoImportRows, setCecoImportRows] = useState([]);
   const [cecoImportStep, setCecoImportStep] = useState(1);
 
-  const cebeBase = { codigo:'', nombre:'', tipo:'linea_servicio', responsable_id:'', cuenta_id:'', meta_ingresos:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
+  const cebeBase = { codigo:'', nombre:'', tipo:'linea_servicio', responsable_id:'', cuenta_id:'', sociedad_id:'', meta_ingresos:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
   const [cebeForm, setCebeForm] = useState(cebeBase);
   const [cebeEditId, setCebeEditId] = useState(null);
   const [cebeSaving, setCebeSaving] = useState(false);
@@ -1612,7 +1613,7 @@ function CecoCebePanel({ onClose }) {
   // ---- CECO ----
   const resetCecoForm = () => { setCecoForm(cecoBase); setCecoEditId(null); setCecoError(''); };
   const editarCeco = c => {
-    setCecoForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'area_funcional', responsable_id:c.responsable_id||'', cebe_id:c.cebe_id||'', presupuesto_mensual:c.presupuesto_mensual||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
+    setCecoForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'area_funcional', responsable_id:c.responsable_id||'', cebe_id:c.cebe_id||'', sociedad_id:c.sociedad_id||'', presupuesto_mensual:c.presupuesto_mensual||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
     setCecoEditId(c.id); setCecoError('');
   };
   const guardarCeco = async e => {
@@ -1620,6 +1621,7 @@ function CecoCebePanel({ onClose }) {
     if (!cecoForm.codigo.trim()) return setCecoError('El código del CECO es obligatorio.');
     if (!cecoForm.nombre.trim()) return setCecoError('El nombre es obligatorio.');
     if (!cecoForm.cebe_id) return setCecoError('El CEBE padre es obligatorio.');
+    if (empresa?.multisociedad_habilitado && !cecoForm.sociedad_id) return setCecoError('La sociedad es obligatoria.');
     if ((centrosCosto||[]).some(c => c.codigo === cecoForm.codigo.trim() && c.id !== cecoEditId)) return setCecoError('Este código ya está en uso. Elige uno diferente.');
     const cecoActual = (centrosCosto || []).find(c => c.id === cecoEditId);
     if (cecoEditId && cecoActual?.estado !== 'inactivo' && cecoForm.estado === 'inactivo' && !confirmarInactivacionCeco(cecoActual)) return;
@@ -1643,13 +1645,14 @@ function CecoCebePanel({ onClose }) {
   // ---- CEBE ----
   const resetCebeForm = () => { setCebeForm(cebeBase); setCebeEditId(null); setCebeError(''); };
   const editarCebe = c => {
-    setCebeForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'linea_servicio', responsable_id:c.responsable_id||'', cuenta_id:c.cuenta_id||'', meta_ingresos:c.meta_ingresos||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
+    setCebeForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'linea_servicio', responsable_id:c.responsable_id||'', cuenta_id:c.cuenta_id||'', sociedad_id:c.sociedad_id||'', meta_ingresos:c.meta_ingresos||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
     setCebeEditId(c.id); setCebeError('');
   };
   const guardarCebe = async e => {
     e.preventDefault();
     if (!cebeForm.codigo.trim()) return setCebeError('El código del CEBE es obligatorio.');
     if (!cebeForm.nombre.trim()) return setCebeError('El nombre es obligatorio.');
+    if (empresa?.multisociedad_habilitado && !cebeForm.sociedad_id) return setCebeError('La sociedad es obligatoria.');
     if ((centrosBeneficio||[]).some(c => c.codigo === cebeForm.codigo.trim() && c.id !== cebeEditId)) return setCebeError('Este código ya está en uso. Elige uno diferente.');
     setCebeSaving(true); setCebeError('');
     try {
@@ -1799,6 +1802,7 @@ function CecoCebePanel({ onClose }) {
                     <label>Presupuesto mensual</label>
                     <input className="input" type="number" min="0" value={cecoForm.presupuesto_mensual} onChange={e=>setCecoForm(p=>({...p,presupuesto_mensual:e.target.value}))} placeholder="0.00"/>
                   </div>
+                  <SociedadFormField value={cecoForm.sociedad_id} onChange={sociedad_id => setCecoForm(prev => ({ ...prev, sociedad_id }))} />
                   {['proyecto','temporal'].includes(cecoForm.tipo) && <>
                     <div className="input-group">
                       <label>Fecha inicio</label>
@@ -1928,6 +1932,7 @@ function CecoCebePanel({ onClose }) {
                     <label>Meta de ingresos</label>
                     <input className="input" type="number" min="0" value={cebeForm.meta_ingresos} onChange={e=>setCebeForm(p=>({...p,meta_ingresos:e.target.value}))} placeholder="0.00"/>
                   </div>
+                  <SociedadFormField value={cebeForm.sociedad_id} onChange={sociedad_id => setCebeForm(prev => ({ ...prev, sociedad_id }))} />
                   <div className="input-group">
                     <label>Fecha inicio</label>
                     <input className="input" type="date" value={cebeForm.fecha_inicio} onChange={e=>setCebeForm(p=>({...p,fecha_inicio:e.target.value}))}/>
@@ -7913,7 +7918,7 @@ const rrhhAdminEsDocContrato = (doc = {}, tiposDocumento = []) => {
     return false;
   }
   const tipo = tiposDocumento.find(t => t.id === doc.tipo_documento_id || t.id === doc.tipo_doc);
-  return Boolean(tipo?.captura_snapshot_laboral && !tipo?.documento_padre_tipo_id);
+  return rrhhAdminEsTipoContrato(tipo);
 };
 const rrhhAdminContratoActivoPersonal = (docs = [], personalId, tiposDocumento = []) =>
   (docs || [])
@@ -7940,7 +7945,7 @@ const rrhhAdminContratoTipoDocValue = (tipos = []) => {
     console.warn('rrhhAdminContratoTipoDocValue: catálogo tipos no disponible. Fallback por texto desactivado.');
     return null;
   }
-  const tipo = tipos.find(t => t.captura_snapshot_laboral && !t.documento_padre_tipo_id);
+  const tipo = tipos.find(rrhhAdminEsTipoContrato);
   return tipo?.id || tipo?.key || null;
 };
 const rrhhAdminTipoDocumentoTexto = (tipo, fallback = '') => [
@@ -7948,7 +7953,9 @@ const rrhhAdminTipoDocumentoTexto = (tipo, fallback = '') => [
 ].map(rrhhAdminContratoDocTexto).join(' ');
 const rrhhAdminEsTipoContrato = (tipo) => {
   if (!tipo) return false;
-  return Boolean(tipo.captura_snapshot_laboral && !tipo.documento_padre_tipo_id);
+  const descriptor = rrhhAdminTipoDocumentoTexto(tipo);
+  const esAdenda = Boolean(tipo.documento_padre_tipo_id) || descriptor.includes('adenda');
+  return !esAdenda && (descriptor.includes('contrato') || rrhhAdminContratoDocTexto(tipo.categoria) === 'contractual' || Boolean(tipo.captura_snapshot_laboral));
 };
 const rrhhAdminEsTipoAdenda = (tipo, fallback = '') =>
   Boolean(tipo?.documento_padre_tipo_id) ||
@@ -8462,7 +8469,7 @@ function RRHHAdmin() {
   const [crearUsuarioSistemaAdmin, setCrearUsuarioSistemaAdmin] = useState(false);
   const [usuarioSistemaFormAdmin, setUsuarioSistemaFormAdmin] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'administrativo' });
   // Estados para subida de documentos en tab Documentos
-  const docUploadFormBase = { tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
+  const docUploadFormBase = { tipoDoc: '', sociedadId: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
   const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
   const [docUploadFile, setDocUploadFile] = useState(null);
   const [docUploading, setDocUploading] = useState(false);
@@ -8507,7 +8514,7 @@ function RRHHAdmin() {
   const [previewLoadingUrlAdmin, setPreviewLoadingUrlAdmin] = useState(false);
   const visorTimerRefAdmin = useRef(null);
 
-  const inlineUploadFormBase = { fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', modoSubida: 'nueva_version', periodoIdAnterior: null, esIndefinido: false };
+  const inlineUploadFormBase = { sociedadId: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', modoSubida: 'nueva_version', periodoIdAnterior: null, esIndefinido: false };
   const [inlineUploadReq, setInlineUploadReq] = useState(null);
   const [inlineUploadForm, setInlineUploadForm] = useState(inlineUploadFormBase);
   const [inlineUploadFile, setInlineUploadFile] = useState(null);
@@ -9767,6 +9774,7 @@ function RRHHAdmin() {
               const inlineEsContrato = rrhhAdminEsTipoContrato(inlineUploadReq.tipo);
               const inlineEsAdenda = rrhhAdminEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id);
               if (inlineEsAdenda && !inlineUploadForm.contratoReferenciaId) { setInlineUploadError('Selecciona el contrato original que modifica la adenda.'); return; }
+              if (empresa?.multisociedad_habilitado && inlineEsContrato && !inlineUploadForm.sociedadId) { setInlineUploadError('Selecciona la sociedad empleadora.'); return; }
               const esCorreccion = inlineUploadForm.modoSubida === 'corregir' && inlineUploadReq.doc;
               const esNuevoContrato = inlineUploadForm.modoSubida === 'nuevo_contrato';
               if (inlineUploadReq.tipo?.exige_vencimiento && !inlineEsAdenda && !inlineUploadForm.esIndefinido && !inlineUploadForm.fechaVencimiento) {
@@ -9795,6 +9803,9 @@ function RRHHAdmin() {
                   tipo_contrato: inlineUploadForm.tipoContratoFirma || persona.tipo_contrato || '',
                   descripcion_cambio: inlineUploadForm.descripcionCambio || '',
                 }) : {};
+                const sociedadDocumento = inlineEsAdenda
+                  ? contratosValidados.find(d => d.id === inlineUploadForm.contratoReferenciaId)?.sociedad_id
+                  : inlineUploadForm.sociedadId;
                 if (esNuevoContrato) {
                   await nuevoContratoPeriodoCtx({
                     personalId: persona.id, personalTipo: 'administrativo',
@@ -9803,10 +9814,11 @@ function RRHHAdmin() {
                     file: inlineUploadFile,
                     fechaEmision: inlineUploadForm.fechaEmision || null,
                     fechaVencimiento: inlineUploadForm.esIndefinido ? null : (inlineUploadForm.fechaVencimiento || null),
-          es_indefinido: inlineUploadForm.esIndefinido,
+                    esIndefinido: inlineUploadForm.esIndefinido,
                     notas: inlineUploadForm.notas || null,
                     condicionesLaborales,
                     periodoIdAnterior: inlineUploadForm.periodoIdAnterior || null,
+                    sociedadId: sociedadDocumento || null,
                     forzarOverride, motivoOverride,
                   });
                   addNotificacion('Nuevo contrato creado. El período anterior quedó archivado.');
@@ -9825,6 +9837,22 @@ function RRHHAdmin() {
                     forzarOverride, motivoOverride,
                   });
                   addNotificacion('Documento corregido correctamente.');
+                } else if (inlineEsContrato && empresa?.multisociedad_habilitado) {
+                  await nuevoContratoPeriodoCtx({
+                    personalId: persona.id, personalTipo: 'administrativo',
+                    tipoDoc: inlineUploadReq.tipo_documento_id,
+                    tipoDocumentoId: inlineUploadReq.tipo_documento_id,
+                    file: inlineUploadFile,
+                    fechaEmision: inlineUploadForm.fechaEmision || null,
+                    fechaVencimiento: inlineUploadForm.esIndefinido ? null : (inlineUploadForm.fechaVencimiento || null),
+                    notas: inlineUploadForm.notas || null,
+                    condicionesLaborales,
+                    periodoIdAnterior: inlineUploadForm.periodoIdAnterior || null,
+                    esIndefinido: inlineUploadForm.esIndefinido,
+                    sociedadId: sociedadDocumento,
+                    forzarOverride, motivoOverride,
+                  });
+                  addNotificacion('Contrato de la sociedad registrado correctamente.');
                 } else {
                   await subirDocumentoPersonalCtx({
                     personalId: persona.id, personalTipo: 'administrativo',
@@ -9847,6 +9875,7 @@ function RRHHAdmin() {
                     seccionDocumental: 'requisito_cargo',
                     contratoPeriodoId: inlineUploadForm.periodoIdAnterior || null,
                     forzarOverride, motivoOverride,
+                    sociedadId: sociedadDocumento || null,
                   });
                   addNotificacion('Documento subido correctamente.');
                 }
@@ -9873,6 +9902,7 @@ function RRHHAdmin() {
               e.preventDefault();
               if (!docUploadFile || !docUploadForm.tipoDoc) { setDocUploadError('Selecciona el tipo y el archivo.'); return; }
               if (docUploadEsAdendaAdmin && !docUploadForm.contratoReferenciaId) { setDocUploadError('Selecciona el contrato original que modifica la adenda.'); return; }
+              if (empresa?.multisociedad_habilitado && docUploadEsContratoAdmin && !docUploadForm.sociedadId) { setDocUploadError('Selecciona la sociedad empleadora.'); return; }
               setDocUploading(true); setDocUploadError('');
               try {
                 const cargoSelDoc = cargos.find(c => c.id === docUploadForm.cargoIdFirma);
@@ -9893,7 +9923,10 @@ function RRHHAdmin() {
                   tipo_contrato: docUploadForm.tipoContratoFirma || persona.tipo_contrato || '',
                   descripcion_cambio: docUploadForm.descripcionCambio || '',
                 }) : {};
-                await subirDocumentoPersonalCtx({
+                const sociedadDocumento = docUploadEsAdendaAdmin
+                  ? contratosValidados.find(d => d.id === docUploadForm.contratoReferenciaId)?.sociedad_id
+                  : docUploadForm.sociedadId;
+                const payloadDocumento = {
                   personalId: persona.id, personalTipo: 'administrativo',
                   tipoDoc: docUploadForm.tipoDoc,
                   tipoDocumentoId: tiposDocAdminLocal.length > 0 ? docUploadForm.tipoDoc : null,
@@ -9912,7 +9945,13 @@ function RRHHAdmin() {
                   } : {},
                   fechaVigenciaCambio: docUploadEsAdendaAdmin ? (docUploadForm.fechaVigenciaCambio || null) : null,
                   seccionDocumental: 'adicional',
-                });
+                  sociedadId: sociedadDocumento || null,
+                };
+                if (docUploadEsContratoAdmin && empresa?.multisociedad_habilitado) {
+                  await nuevoContratoPeriodoCtx({ ...payloadDocumento, esIndefinido: docUploadForm.esIndefinido });
+                } else {
+                  await subirDocumentoPersonalCtx(payloadDocumento);
+                }
                 setDocUploadFile(null);
                 setDocUploadForm(docUploadFormBase);
                 addNotificacion('Documento subido correctamente.');
@@ -10466,6 +10505,9 @@ function RRHHAdmin() {
                           )}
                           {(rrhhAdminEsTipoContrato(inlineUploadReq.tipo) || rrhhAdminEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id)) && (
                             <div style={{display:'grid', gap:12, padding:12, background:'var(--bg-subtle)', borderRadius:8}}>
+                              {rrhhAdminEsTipoContrato(inlineUploadReq.tipo) && (
+                                <SociedadFormField label="Sociedad empleadora" value={inlineUploadForm.sociedadId} onChange={sociedadId=>setInlineUploadForm(f=>({...f,sociedadId}))} />
+                              )}
                               {inlineUploadReq.doc && inlineUploadForm.modoSubida !== 'nuevo_contrato' && (
                                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                                   <label>Modo de guardado</label>
@@ -10661,6 +10703,9 @@ function RRHHAdmin() {
                         </div>
                         {(docUploadEsContratoAdmin || docUploadEsAdendaAdmin) && (
                           <div style={{display:'grid', gap:12, padding:12, background:'var(--bg-subtle)', borderRadius:8}}>
+                            {docUploadEsContratoAdmin && (
+                              <SociedadFormField label="Sociedad empleadora" value={docUploadForm.sociedadId} onChange={sociedadId=>setDocUploadForm(f=>({...f,sociedadId}))} />
+                            )}
                             {docUploadEsAdendaAdmin && <>
                               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={docUploadForm.contratoReferenciaId||''} onChange={e=>setDocUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidados.map(d=><option key={d.id} value={d.id}>{d.fecha_emision||'Sin emisión'} · vence {d.fecha_vencimiento||'sin vencimiento'}</option>)}</select></div>
                               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Qué cambió</label><div className="row" style={{gap:12,flexWrap:'wrap'}}>{[['cambioCargo','Cargo'],['cambioRemuneracion','Remuneración'],['cambioModalidad','Modalidad'],['cambioSede','Sede'],['cambioOtro','Otro']].map(([k,l])=><label key={k} className="row" style={{gap:6}}><input type="checkbox" checked={Boolean(docUploadForm[k])} onChange={e=>setDocUploadForm(f=>({...f,[k]:e.target.checked}))}/>{l}</label>)}</div></div>

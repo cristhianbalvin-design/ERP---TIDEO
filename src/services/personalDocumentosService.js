@@ -255,6 +255,7 @@ export async function subirDocumento({
   esIndefinido,
   forzarOverride,
   motivoOverride,
+  sociedadId,
 }) {
   const supabase = await getSupabaseClient();
 
@@ -280,9 +281,10 @@ export async function subirDocumento({
   const config = configs.find(c => c.tipo_doc === tipoDoc);
   const isRenovable = config ? config.renovable : false;
 
-  let rpcName = 'subir_documento_personal';
+  let rpcName = sociedadId ? 'subir_documento_personal_sociedad' : 'subir_documento_personal';
   let rpcParams = {
     p_empresa_id:        empresaId,
+    ...(sociedadId ? { p_sociedad_id: sociedadId } : {}),
     p_personal_id:       personalId,
     p_personal_tipo:     personalTipo,
     p_tipo_doc:          tipoDoc,
@@ -305,7 +307,7 @@ export async function subirDocumento({
     p_motivo_override:   motivoOverride || null,
   };
 
-  if (isRenovable) {
+  if (isRenovable && !sociedadId) {
     rpcName = 'subir_version_documento';
     rpcParams.p_periodo_grupo_id = periodoGrupoId || null;
   }
@@ -315,7 +317,7 @@ export async function subirDocumento({
 
   if (rpcError) throw rpcError;
   // subir_version_documento retorna un UUID; subir_documento_personal retorna la fila completa.
-  return normalizar(isRenovable ? { id: data } : data);
+  return normalizar(isRenovable && !sociedadId ? { id: data } : data);
 }
 
 export async function renovarDocumento({
@@ -381,7 +383,7 @@ export async function renovarDocumento({
 
 export async function validarDocumento(documentoId, decision, motivoRechazo = null) {
   const supabase = await getSupabaseClient();
-  const { data, error } = await supabase.rpc('validar_documento_personal', {
+  const { data, error } = await supabase.rpc('validar_documento_personal_multisoc', {
     p_documento_id:   documentoId,
     p_decision:       decision,
     p_motivo_rechazo: motivoRechazo,
@@ -453,6 +455,7 @@ export async function nuevoContrato({
   esIndefinido,
   forzarOverride,
   motivoOverride,
+  sociedadId,
 }) {
   const supabase = await getSupabaseClient();
 
@@ -474,8 +477,10 @@ export async function nuevoContrato({
     nombreArchivo = file.name;
   }
 
-  const { data, error } = await supabase.rpc('nuevo_contrato_periodo', {
+  const rpc = sociedadId ? 'nuevo_contrato_periodo_sociedad' : 'nuevo_contrato_periodo';
+  const { data, error } = await supabase.rpc(rpc, {
     p_empresa_id:            empresaId,
+    ...(sociedadId ? { p_sociedad_id: sociedadId } : {}),
     p_personal_id:           personalId,
     p_personal_tipo:         personalTipo,
     p_tipo_doc:              tipoDoc,

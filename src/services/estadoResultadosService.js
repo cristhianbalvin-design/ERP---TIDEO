@@ -102,6 +102,10 @@ const finalizeResult = (result, sourceCounts = {}) => {
 
 const matchesIds = (id, ids) => ids == null || ids.includes(id);
 const intersectsIds = (id, ids) => ids == null || ids.includes(id);
+const normalizeSociedadIds = ids => Array.isArray(ids) && ids.filter(Boolean).length
+  ? [...new Set(ids.filter(Boolean))]
+  : null;
+const matchesSociedad = (id, ids) => ids == null || ids.includes(id);
 const norm = value => String(value || '')
   .toLowerCase()
   .normalize('NFD')
@@ -242,16 +246,18 @@ const compraCoversCxp = (cxp, comprasGastos = []) => {
   });
 };
 
-async function resolveCecoFilter(supabase, empresaId, cecoIds = [], cebeIds = []) {
+async function resolveCecoFilter(supabase, empresaId, cecoIds = [], cebeIds = [], sociedadIds = null) {
   const selectedCecos = Array.isArray(cecoIds) ? cecoIds.filter(Boolean) : [];
   const selectedCebes = Array.isArray(cebeIds) ? cebeIds.filter(Boolean) : [];
   if (!selectedCebes.length) return selectedCecos.length ? selectedCecos : null;
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('centros_costo')
-    .select('id, cebe_id')
+    .select('id, cebe_id, sociedad_id')
     .eq('empresa_id', empresaId)
     .in('cebe_id', selectedCebes);
+  if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
+  const { data, error } = await query;
   if (error) throw error;
 
   const cecosFromCebe = (data || []).map(c => c.id);
@@ -259,38 +265,59 @@ async function resolveCecoFilter(supabase, empresaId, cecoIds = [], cebeIds = []
   return cecosFromCebe;
 }
 
-export function buildEstadoResultados({ base, comprasGastos = [], ots = [], empresa, periodo = '2026-04' }) {
+export function buildEstadoResultados({ base, comprasGastos = [], ots = [], facturas = null, centrosCosto = [], centrosBeneficio = [], sociedadIds = null, empresa, periodo = '2026-04' }) {
   const result = emptyResult(periodo);
   const empresaId = empresa?.id;
+  const scopeSociedades = normalizeSociedadIds(sociedadIds);
+  const sociedadOt = ot => {
+    const ceco = centrosCosto.find(c => c.id === ot?.centro_costo_id);
+    const cebe = centrosBeneficio.find(c => c.id === ot?.centro_beneficio_id);
+    return ceco?.sociedad_id || cebe?.sociedad_id || null;
+  };
 
-  (base?.ingresos?.items || []).forEach(item => {
-    addToBlock(result.er.ingresos, item.label, item.valor, 'PEN');
-  });
-  if (!result.er.ingresos.items.length && base?.ingresos?.total) {
-    addToBlock(result.er.ingresos, 'Ventas de servicios', base.ingresos.total, 'PEN');
+  if (Array.isArray(facturas)) {
+    facturas
+      .filter(f => (!empresaId || !f.empresa_id || f.empresa_id === empresaId)
+        && isInPeriod(f.fecha_emision, periodo)
+        && f.estado !== 'anulada'
+        && ['factura', 'boleta'].includes(f.tipo_documento)
+        && matchesSociedad(f.sociedad_id, scopeSociedades))
+      .forEach(f => addToBlock(result.er.ingresos, 'Ventas de servicios', f.subtotal, f.moneda || 'PEN'));
+  } else {
+    (base?.ingresos?.items || []).forEach(item => {
+      addToBlock(result.er.ingresos, item.label, item.valor, 'PEN');
+    });
+    if (!result.er.ingresos.items.length && base?.ingresos?.total) {
+      addToBlock(result.er.ingresos, 'Ventas de servicios', base.ingresos.total, 'PEN');
+    }
   }
 
-  (base?.costoVentas?.items || []).forEach(item => {
-    addToBlock(result.er.costoVentas, item.label, item.valor, 'PEN');
-  });
+  if (!Array.isArray(facturas)) {
+    (base?.costoVentas?.items || []).forEach(item => {
+      addToBlock(result.er.costoVentas, item.label, item.valor, 'PEN');
+    });
+  }
 
   comprasGastos
     .filter(g =>
       (!empresaId || !g.empresa_id || g.empresa_id === empresaId) &&
       isInPeriod(g.fecha, periodo) &&
+      matchesSociedad(g.sociedad_id, scopeSociedades) &&
       !g.es_activo_fijo &&
       inferTipoSistema(g.categoria) !== 'gastos_financieros'
     )
     .forEach(g => addToBlock(result.er.gastosOp, g.categoria || 'Gasto operativo', g.monto, g.moneda || 'PEN'));
 
   const moReal = ots
-    .filter(o => isInPeriod(o.fecha_fin || o.fecha_inicio || o.fecha_programada, periodo))
+    .filter(o => isInPeriod(o.fecha_fin || o.fecha_inicio || o.fecha_programada, periodo)
+      && matchesSociedad(o.sociedad_id || sociedadOt(o), scopeSociedades))
     .reduce((s, o) => s + amount(o.costo_real), 0);
   if (moReal > 0) addToBlock(result.er.costoVentas, 'Mano de obra directa', moReal, 'PEN');
 
   const intereses = comprasGastos.filter(g =>
     (!empresaId || !g.empresa_id || g.empresa_id === empresaId) &&
     isInPeriod(g.fecha, periodo) &&
+    matchesSociedad(g.sociedad_id, scopeSociedades) &&
     inferTipoSistema(g.categoria) === 'gastos_financieros'
   );
   intereses.forEach(g => addToBlock(result.er.gastosFin, g.subcategoria || g.descripcion || 'Gastos financieros', g.monto, g.moneda || 'PEN'));
@@ -303,24 +330,25 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], empr
   });
 }
 
-async function loadFacturas(supabase, empresaId, periodo, cebeIds = []) {
+async function loadFacturas(supabase, empresaId, periodo, cebeIds = [], sociedadIds = null) {
   const { start, next } = periodBounds(periodo);
   const selectedCebes = Array.isArray(cebeIds) ? cebeIds.filter(Boolean) : [];
   let query = supabase
     .from('facturas')
-    .select('id, numero, subtotal, igv, total, moneda, fecha_emision, estado, tipo_documento, centro_beneficio_id')
+    .select('id, numero, subtotal, igv, total, moneda, fecha_emision, estado, tipo_documento, centro_beneficio_id, sociedad_id')
     .eq('empresa_id', empresaId)
     .gte('fecha_emision', start)
     .lt('fecha_emision', next)
     .neq('estado', 'anulada')
     .in('tipo_documento', ['factura', 'boleta']);
   if (selectedCebes.length) query = query.in('centro_beneficio_id', selectedCebes);
+  if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
   const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-async function loadCostosOt(supabase, empresaId) {
+async function loadCostosOt(supabase, empresaId, sociedadIds = null) {
   const [costosR, cierresR] = await Promise.all([
     supabase
       .from('costos_ot')
@@ -335,50 +363,75 @@ async function loadCostosOt(supabase, empresaId) {
   if (cierresR.error) throw cierresR.error;
 
   const cierreByOt = new Map((cierresR.data || []).map(c => [c.orden_trabajo_id, c.fecha_cierre]));
-  return (costosR.data || []).map(c => ({
+  let rows = (costosR.data || []).map(c => ({
     ...c,
     fecha_er: cierreByOt.get(c.orden_trabajo_id)
       || c.ordenes_trabajo?.fecha_fin
       || c.ordenes_trabajo?.fecha_programada
       || c.calculado_at?.slice?.(0, 10),
   }));
+  if (!sociedadIds) return rows;
+
+  const cecoIds = [...new Set(rows.map(c => c.ordenes_trabajo?.centro_costo_id).filter(Boolean))];
+  const cebeIds = [...new Set(rows.map(c => c.ordenes_trabajo?.centro_beneficio_id).filter(Boolean))];
+  const [cecosR, cebesR] = await Promise.all([
+    cecoIds.length
+      ? supabase.from('centros_costo').select('id, sociedad_id').eq('empresa_id', empresaId).in('id', cecoIds)
+      : Promise.resolve({ data: [], error: null }),
+    cebeIds.length
+      ? supabase.from('centros_beneficio').select('id, sociedad_id').eq('empresa_id', empresaId).in('id', cebeIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (cecosR.error) throw cecosR.error;
+  if (cebesR.error) throw cebesR.error;
+  const sociedadCeco = new Map((cecosR.data || []).map(c => [c.id, c.sociedad_id]));
+  const sociedadCebe = new Map((cebesR.data || []).map(c => [c.id, c.sociedad_id]));
+  rows = rows.filter(c => sociedadIds.includes(
+    sociedadCeco.get(c.ordenes_trabajo?.centro_costo_id)
+      || sociedadCebe.get(c.ordenes_trabajo?.centro_beneficio_id)
+  ));
+  return rows;
 }
 
-async function loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds) {
+async function loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds, sociedadIds = null) {
   if (effectiveCecoIds && effectiveCecoIds.length === 0) return [];
   const { start, next } = periodBounds(periodo);
   let query = supabase
     .from('compras_gastos')
-    .select('id, fecha, descripcion, categoria, subcategoria, monto, moneda, centro_costo_id, ot_vinc_id, es_activo_fijo, estado, cxp_id, periodo_nomina_id, origen_registro')
+    .select('id, fecha, descripcion, categoria, subcategoria, monto, moneda, centro_costo_id, ot_vinc_id, es_activo_fijo, estado, cxp_id, periodo_nomina_id, origen_registro, sociedad_id')
     .eq('empresa_id', empresaId)
     .gte('fecha', start)
     .lt('fecha', next);
   if (effectiveCecoIds) query = query.in('centro_costo_id', effectiveCecoIds);
+  if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
   const { data, error } = await query;
   if (error) throw error;
   return (data || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado');
 }
 
-async function loadCxPDevengos(supabase, empresaId, periodo) {
+async function loadCxPDevengos(supabase, empresaId, periodo, sociedadIds = null) {
   const { start, next } = periodBounds(periodo);
-  const { data, error } = await supabase
+  let query = supabase
     .from('cxp')
     // Corrección 5: se agrega no_devengar_er al SELECT.
-    .select('id, tipo_beneficiario, tipo_comprobante, factura_numero, concepto, fecha_emision, monto_total, monto_bruto, retencion_ir, moneda, estado, origen, motivo_cxp, gasto_id, recepcion_id, recibo_honorarios_id, personal_id, nombre_emisor, nc_id, categoria_er, centro_costo_id, ot_vinc_id, no_devengar_er')
+    .select('id, tipo_beneficiario, tipo_comprobante, factura_numero, concepto, fecha_emision, monto_total, monto_bruto, retencion_ir, moneda, estado, origen, motivo_cxp, gasto_id, recepcion_id, recibo_honorarios_id, personal_id, nombre_emisor, nc_id, categoria_er, centro_costo_id, ot_vinc_id, no_devengar_er, sociedad_id')
     .eq('empresa_id', empresaId)
     .gte('fecha_emision', start)
     .lt('fecha_emision', next);
+  if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-async function loadNomina(supabase, empresaId, periodo, effectiveCecoIds) {
+async function loadNomina(supabase, empresaId, periodo, effectiveCecoIds, sociedadIds = null) {
   if (effectiveCecoIds && effectiveCecoIds.length === 0) return [];
   const [year, month] = String(periodo || '').split('-').map(Number);
   let periodosQ = supabase
     .from('periodos_nomina')
-    .select('id, periodo, anio, mes, estado')
+    .select('id, periodo, anio, mes, estado, sociedad_id')
     .eq('empresa_id', empresaId);
+  if (sociedadIds) periodosQ = periodosQ.in('sociedad_id', sociedadIds);
   if (year && month) periodosQ = periodosQ.or(`periodo.eq.${periodo},and(anio.eq.${year},mes.eq.${month})`);
   const periodosR = await periodosQ;
   if (periodosR.error) throw periodosR.error;
@@ -400,43 +453,50 @@ async function loadNomina(supabase, empresaId, periodo, effectiveCecoIds) {
   return detalleR.data || [];
 }
 
-async function loadPagosFinancieros(supabase, empresaId, periodo) {
+async function loadPagosFinancieros(supabase, empresaId, periodo, sociedadIds = null) {
   const { start, next } = periodBounds(periodo);
   const pagosR = await supabase
     .from('pagos_financiamiento')
-    .select('id, fecha_pago, interes, moneda')
+    .select('id, fecha_pago, interes, moneda, financiamientos(sociedad_id)')
     .eq('empresa_id', empresaId)
     .gte('fecha_pago', start)
     .lt('fecha_pago', next);
   if (pagosR.error) throw pagosR.error;
-  if ((pagosR.data || []).length) return pagosR.data || [];
+  const pagos = sociedadIds
+    ? (pagosR.data || []).filter(p => sociedadIds.includes(p.financiamientos?.sociedad_id))
+    : (pagosR.data || []);
+  if ((pagosR.data || []).length) return pagos;
 
   const amortR = await supabase
     .from('tabla_amortizacion')
-    .select('id, fecha_pago_real, interes, estado, financiamientos(moneda)')
+    .select('id, fecha_pago_real, interes, estado, financiamientos(moneda, sociedad_id)')
     .eq('empresa_id', empresaId)
     .gte('fecha_pago_real', start)
     .lt('fecha_pago_real', next)
     .in('estado', ['pagada', 'pagado']);
   if (amortR.error) throw amortR.error;
-  return (amortR.data || []).map(row => ({
+  return (amortR.data || [])
+    .filter(row => !sociedadIds || sociedadIds.includes(row.financiamientos?.sociedad_id))
+    .map(row => ({
     id: row.id,
     fecha_pago: row.fecha_pago_real,
     interes: row.interes,
     moneda: row.financiamientos?.moneda || 'PEN',
-  }));
+    }));
 }
 
 // Corrección 1: caja_chica nunca era consultada; los egresos sin gasto_id desaparecían del ER.
-async function loadCajaChica(supabase, empresaId, periodo) {
+async function loadCajaChica(supabase, empresaId, periodo, sociedadIds = null) {
   const { start, next } = periodBounds(periodo);
-  const { data, error } = await supabase
+  let query = supabase
     .from('caja_chica')
-    .select('id, fecha, monto, moneda, categoria, gasto_id, estado')
+    .select('id, fecha, monto, moneda, categoria, gasto_id, estado, sociedad_id')
     .eq('empresa_id', empresaId)
     .gte('fecha', start)
     .lt('fecha', next)
     .neq('estado', 'anulado');
+  if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
+  const { data, error } = await query;
   if (error) throw error;
   // Excluir registros con gasto_id para no duplicar lo que ya recoge loadComprasGastos.
   return (data || []).filter(r => r.gasto_id == null);
@@ -470,22 +530,23 @@ export async function cargarConfiguracionER(empresaId) {
   }
 }
 
-export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], cebeIds = [] } = {}) {
+export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], cebeIds = [], sociedadIds = null } = {}) {
   if (!isSupabaseMode()) return emptyResult(periodo);
   if (!empresaId) throw new Error('No hay empresa activa.');
 
   const supabase = await getSupabaseClient();
-  const effectiveCecoIds = await resolveCecoFilter(supabase, empresaId, cecoIds, cebeIds);
+  const scopeSociedades = normalizeSociedadIds(sociedadIds);
+  const effectiveCecoIds = await resolveCecoFilter(supabase, empresaId, cecoIds, cebeIds, scopeSociedades);
   const result = emptyResult(periodo);
 
   const [facturas, costosOt, comprasGastos, detalleNomina, pagosFinancieros, cxpDevengos, cajaChica, erConfig] = await Promise.all([
-    loadFacturas(supabase, empresaId, periodo, cebeIds),
-    loadCostosOt(supabase, empresaId),
-    loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds),
-    loadNomina(supabase, empresaId, periodo, effectiveCecoIds),
-    loadPagosFinancieros(supabase, empresaId, periodo),
-    loadCxPDevengos(supabase, empresaId, periodo),
-    loadCajaChica(supabase, empresaId, periodo),
+    loadFacturas(supabase, empresaId, periodo, cebeIds, scopeSociedades),
+    loadCostosOt(supabase, empresaId, scopeSociedades),
+    loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds, scopeSociedades),
+    loadNomina(supabase, empresaId, periodo, effectiveCecoIds, scopeSociedades),
+    loadPagosFinancieros(supabase, empresaId, periodo, scopeSociedades),
+    loadCxPDevengos(supabase, empresaId, periodo, scopeSociedades),
+    loadCajaChica(supabase, empresaId, periodo, scopeSociedades),
     cargarConfiguracionER(empresaId),
   ]);
 
@@ -588,4 +649,98 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     pagos_financiamiento: pagosFinancieros.length,
     caja_chica: cajaChica.length,
   });
+}
+
+export const ER_SCOPE_MODE = Object.freeze({
+  SOCIEDAD: 'sociedad',
+  COMPARATIVO: 'comparativo',
+  CONSOLIDADO: 'consolidado',
+});
+
+export function consolidarEstadosResultados(resultados = [], eliminaciones = [], periodo = '') {
+  const result = emptyResult(periodo);
+  const sourceCounts = {};
+
+  resultados.filter(Boolean).forEach(data => {
+    Object.entries(data.sourceCounts || {}).forEach(([key, value]) => {
+      sourceCounts[key] = (sourceCounts[key] || 0) + Number(value || 0);
+    });
+    ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin', 'depreciacion'].forEach(blockKey => {
+      (data.er?.[blockKey]?.items || []).forEach(item => {
+        Object.entries(item.totals || {}).forEach(([moneda, value]) => {
+          addToBlock(result.er[blockKey], item.label, value, moneda);
+        });
+      });
+    });
+  });
+
+  eliminaciones.forEach(op => {
+    addToBlock(
+      result.er.ingresos,
+      '(-) Eliminaciones intercompañía',
+      -Math.abs(amount(op.monto)),
+      op.moneda || 'PEN'
+    );
+  });
+  sourceCounts.eliminaciones_intercompania = eliminaciones.length;
+
+  const final = finalizeResult(result, sourceCounts);
+  final.scopeMode = ER_SCOPE_MODE.CONSOLIDADO;
+  final.eliminacionesIntercompania = eliminaciones;
+  return final;
+}
+
+export async function getEstadoResultadosPorScope({
+  empresaId,
+  periodo,
+  mode = ER_SCOPE_MODE.SOCIEDAD,
+  sociedadIds = [],
+  cecoIds = [],
+  cebeIds = [],
+} = {}) {
+  const scopeSociedades = normalizeSociedadIds(sociedadIds);
+  if (!scopeSociedades) {
+    return getEstadoResultados({ empresaId, periodo, cecoIds, cebeIds });
+  }
+
+  if (mode === ER_SCOPE_MODE.SOCIEDAD) {
+    return getEstadoResultados({
+      empresaId,
+      periodo,
+      cecoIds,
+      cebeIds,
+      sociedadIds: [scopeSociedades[0]],
+    });
+  }
+
+  const comparativo = await Promise.all(scopeSociedades.map(async sociedadId => ({
+    sociedadId,
+    data: await getEstadoResultados({
+      empresaId,
+      periodo,
+      cecoIds,
+      cebeIds,
+      sociedadIds: [sociedadId],
+    }),
+  })));
+
+  if (mode === ER_SCOPE_MODE.COMPARATIVO) {
+    return { periodo, scopeMode: ER_SCOPE_MODE.COMPARATIVO, comparativo };
+  }
+
+  const supabase = await getSupabaseClient();
+  const { data: eliminaciones, error } = await supabase
+    .from('operaciones_intercompania')
+    .select('id, empresa_id, sociedad_origen, sociedad_destino, tipo_operacion, monto, moneda, periodo, concepto, factura_id, cxp_id, guia_remision_id')
+    .eq('empresa_id', empresaId)
+    .eq('periodo', periodo)
+    .in('sociedad_origen', scopeSociedades)
+    .in('sociedad_destino', scopeSociedades);
+  if (error) throw error;
+
+  return consolidarEstadosResultados(
+    comparativo.map(item => item.data),
+    eliminaciones || [],
+    periodo
+  );
 }

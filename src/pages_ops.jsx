@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ColumnFilter } from './components/ColumnFilter.jsx';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
+import { SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr } from './utils/rrhhLabels.js';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
@@ -30,6 +31,7 @@ import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { CATEGORIA_FIRMA_RUBRICA } from './services/firmaPersonalService.js';
 import { getPrimaSeguroAfp, nominaService, mapCalculoANominaDetalle, INGRESO_EXTRAORDINARIO_SUBTIPOS } from './services/nominaService.js';
+import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratosNominaSociedad } from './services/nominaSociedadService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { BIOMETRICO_PERFIL_DEFAULT, previsualizarImportacionBiometrica } from './services/biometricoService.js';
 import { GEO_CONFIG_DEFAULT, evaluarGeofenceLocal, parseGps } from './services/geofencingService.js';
@@ -1610,6 +1612,10 @@ function OT({ role }) {
   const puedeTenerOSCliente = permiteOSCliente(formNuevaOT.tipo);
   const osSeleccionada = puedeTenerOSCliente && formNuevaOT.os_cliente_id ? osClientes.find(o => o.id === formNuevaOT.os_cliente_id) : null;
   const cebeHeredado = osSeleccionada ? (centrosBeneficio || []).find(c => c.id === osSeleccionada.centro_beneficio_id) : null;
+  const sociedadNuevaOTId = (centrosCosto || []).find(c => c.id === formNuevaOT.centro_costo_id)?.sociedad_id
+    || cebeHeredado?.sociedad_id
+    || (centrosBeneficio || []).find(c => c.id === formNuevaOT.centro_beneficio_id)?.sociedad_id
+    || null;
 
   const hcReferencia = (() => {
     if (!osSeleccionada?.cotizacion_id) return null;
@@ -4791,6 +4797,7 @@ function OT({ role }) {
                     </select>
                   )}
                 </div>
+                <SociedadReadOnlyField sociedadId={sociedadNuevaOTId} />
               </div>
 
               <div className="eyebrow" style={{marginBottom:12}}>Detalle del trabajo</div>
@@ -6058,7 +6065,7 @@ function proveedorById(proveedores, id) {
   return proveedores.find(p => p.id === id) || { razon_social:'Proveedor no encontrado', nombre_comercial:'', calificacion_promedio:null, condicion_pago:'', estado:'inactivo' };
 }
 
-const OC_FORM_INIT = { proveedor_id:'', origen_compra:'directa', proceso_compra_id:'', solpe_id:'', solpe_codigo:'', ot_id:'', centro_costo_id:'', descripcion:'', fecha_entrega_esperada:'2025-04-30', items:[{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:1000 }] };
+const OC_FORM_INIT = { proveedor_id:'', origen_compra:'directa', proceso_compra_id:'', solpe_id:'', solpe_codigo:'', ot_id:'', centro_costo_id:'', sociedad_id:'', descripcion:'', fecha_entrega_esperada:'2025-04-30', items:[{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:1000 }] };
 const nuevaOCForm = (proveedorId = '') => ({ ...OC_FORM_INIT, proveedor_id: proveedorId || '' });
 const OC_COLUMNAS_OPCIONALES_INSERT = new Set(['condicion_pago', 'solpe_id', 'solpe_codigo', 'origen_tipo', 'notas_proveedor', 'notas_internas', 'creado_por']);
 const OC_TRANSITO_TIPO_LABEL = { recojo_propio: 'Recojo propio', despacho_proveedor: 'Despacho proveedor' };
@@ -6306,6 +6313,7 @@ function OrdenesCompra() {
 
   const crear = async (emitir=true) => {
     if (!form.centro_costo_id) { addToast('Selecciona un Centro de Costo (CECO) antes de continuar.'); return; }
+    if (empresa?.multisociedad_habilitado && !form.sociedad_id) { addToast('Selecciona una sociedad antes de continuar.'); return; }
     const proveedorSeleccionado = proveedores.find(p => p.id === form.proveedor_id);
     if (!proveedorSeleccionado) { addToast('Selecciona un proveedor valido antes de emitir la OC.'); return; }
     const selectedSolpe = form.solpe_id ? (solpes || []).find(s => s.id === form.solpe_id) : null;
@@ -6326,7 +6334,7 @@ function OrdenesCompra() {
     if (!items.length) { addToast('Agrega al menos un item con cantidad mayor a cero.'); return; }
     const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
     const p = proveedorSeleccionado;
-    const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id || null, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:Math.round(subtotal*0.18*100)/100, total:Math.round(subtotal*1.18*100)/100, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:form.solpe_id ? `SOLPE origen: ${form.solpe_codigo || form.solpe_id}` : '', creado_por: authUser?.id || null };
+    const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, sociedad_id:empresa?.multisociedad_habilitado ? form.sociedad_id : null, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id || null, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:Math.round(subtotal*0.18*100)/100, total:Math.round(subtotal*1.18*100)/100, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:form.solpe_id ? `SOLPE origen: ${form.solpe_codigo || form.solpe_id}` : '', creado_por: authUser?.id || null };
     const crearOCCompatible = async (payloadBase) => {
       let payload = { ...payloadBase };
       for (let intento = 0; intento <= OC_COLUMNAS_OPCIONALES_INSERT.size; intento += 1) {
@@ -6537,6 +6545,7 @@ function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centr
       <div className="input-group"><label>Proveedor</label><select className="select" value={form.proveedor_id} onChange={e=>setForm(v=>({...v,proveedor_id:e.target.value}))}>{proveedores.map(p=><option key={p.id} value={p.id}>{p.razon_social}{p.estado==='observado'?' - observado':''}</option>)}</select></div>
       {form.origen_compra === 'solpe' && <div className="input-group" style={{gridColumn:'1/-1'}}><label>Buscar SOLPE aprobada</label><input className="input" value={solpeQuery} onChange={e=>setSolpeQuery(e.target.value)} placeholder="Numero, descripcion o solicitante"/><select className="select" style={{marginTop:8}} value={form.solpe_id || ''} onChange={e=>aplicarSolpe(e.target.value)}><option value="">Seleccionar SOLPE...</option>{solpesFiltradas.map(s=><option key={s.id} value={s.id}>{solpeOCLabel(s)}</option>)}</select>{solpesFiltradas.length === 0 && <div className="text-muted" style={{fontSize:12, marginTop:4}}>No hay SOLPEs aprobadas sin OC generada.</div>}</div>}
       <div className="input-group"><label>CECO *</label>{form.origen_compra === 'directa' ? <SearchSelect value={form.centro_costo_id} placeholder={cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos'} options={cecos.map(c=>({ id: c.id, label: `${c.codigo ? c.codigo + ' - ' : ''}${c.nombre}` }))} onChange={id=>setForm(v=>({...v,centro_costo_id:id}))}/> : <select className="select" value={form.centro_costo_id} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select>}</div>
+      <SociedadFormField value={form.sociedad_id} onChange={sociedad_id => setForm(v => ({ ...v, sociedad_id }))} />
       <div className="input-group"><label>OT vinculada</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero || o.id}</option>)}</select></div>
       <div className="input-group"><label>Fecha entrega esperada</label><input className="input" type="date" value={form.fecha_entrega_esperada} onChange={e=>setForm(v=>({...v,fecha_entrega_esperada:e.target.value}))}/></div>
       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Descripcion</label><textarea className="input" rows="3" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div>
@@ -7007,15 +7016,30 @@ function TransitoOCPanel({ orden, transitos = [], transportistas = [], empresa, 
 }
 
 function OrdenesServicio() {
-  const { ordenesServicio, setOrdenesServicio, proveedores, ots, empresa, addNotificacion, navigate, centrosCosto } = useApp();
+  const { ordenesServicio, proveedores, ots, empresa, addNotificacion, navigate, centrosCosto, crearOrdenServicioCtx } = useApp();
   const [panel, setPanel] = useState(false);
   const [tab, setTab] = useState('todas');
-  const [form, setForm] = useState({ proveedor_id:'prv_003', ot_id:'', centro_costo_id:'', descripcion:'', total:800, fecha_inicio:'2025-04-30', fecha_fin:'2025-04-30', responsable_validacion:'Roberto Quispe' });
+  const [form, setForm] = useState({ proveedor_id:'prv_003', ot_id:'', centro_costo_id:'', sociedad_id:'', descripcion:'', total:800, fecha_inicio:'2025-04-30', fecha_fin:'2025-04-30', responsable_validacion:'Roberto Quispe' });
   const list = ordenesServicio.filter(o => tab === 'todas' || o.estado === tab);
   const provs = proveedores.filter(p => (p.estado === 'homologado' || p.estado === 'observado') && ['Servicios','Transporte','Mixto'].includes(p.categoria));
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const crear = () => { if (!form.centro_costo_id) { addNotificacion('Este campo es obligatorio. Selecciona un CECO antes de continuar.'); return; } const p=proveedorById(proveedores,form.proveedor_id); const os={id:`os_${Date.now()}`,empresa_id:empresa.id,codigo:`OS-2025-${String(ordenesServicio.length+13).padStart(4,'0')}`,proveedor_id:form.proveedor_id,ot_id:form.ot_id,centro_costo_id:form.centro_costo_id,descripcion:form.descripcion||'Servicio tercerizado',alcance:form.descripcion||'Servicio tercerizado',entregables:'Evidencia del servicio',criterios_conformidad:'Conforme a alcance',total:Number(form.total)||0,moneda:'PEN',condicion_pago:p.condicion_pago||'Contado',fecha_emision:new Date().toISOString().slice(0,10),fecha_inicio:form.fecha_inicio,fecha_fin:form.fecha_fin,responsable_validacion:form.responsable_validacion,estado:'emitida',notas:''}; setOrdenesServicio(prev=>[os,...prev]); addNotificacion(`${os.codigo} emitida.`); setPanel(false); };
-  return <><div className="page-header"><div><h1 className="page-title">Ordenes de Servicio</h1><div className="page-sub">Servicios tercerizados, conformidad y cierre</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>setPanel(true)}>{I.plus} Nueva OS</button></div><div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas</div><div className="kpi-value">{ordenesServicio.length}</div></div><div className="kpi-card"><div className="kpi-label">En ejecucion</div><div className="kpi-value">{ordenesServicio.filter(o=>o.estado==='en_ejecucion').length}</div></div><div className="kpi-card"><div className="kpi-label">Pendiente conformidad</div><div className="kpi-value">{ordenesServicio.filter(o=>o.estado==='pendiente_conformidad').length}</div></div><div className="kpi-card"><div className="kpi-label">Valor total</div><div className="kpi-value">{money(ordenesServicio.reduce((s,o)=>s+(o.total||0),0))}</div></div></div><div className="tabs">{['todas','emitida','confirmada','en_ejecucion','pendiente_conformidad','cerrada','observada'].map(t=><div key={t} className={'tab '+(tab===t?'active':'')} onClick={()=>setTab(t)}>{t.replace('_',' ')}</div>)}</div><div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>OS</th><th>Proveedor</th><th>Servicio</th><th>Monto</th><th>OT</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Validador</th><th>Acciones</th></tr></thead><tbody>{list.map(o=>{const p=proveedorById(proveedores,o.proveedor_id);return <tr key={o.id}><td className="mono">{o.codigo}</td><td><strong>{p.razon_social}</strong></td><td>{o.descripcion}</td><td>{money(o.total)}</td><td className="mono">{o.ot_id||'-'}</td><td><span className={'badge '+estadoOcBadge(o.estado)}>{o.estado.replace('_',' ')}</span></td><td>{o.fecha_inicio}</td><td>{o.fecha_fin}</td><td>{o.responsable_validacion}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>navigate('recepciones',{osId:o.id})}>Conformidad</button></td></tr>})}</tbody></table></div></div>{panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de servicio</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OS</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}><div className="input-group"><label>Proveedor</label><select className="select" value={form.proveedor_id} onChange={e=>setForm(v=>({...v,proveedor_id:e.target.value}))}>{provs.map(p=><option key={p.id} value={p.id}>{p.razon_social}</option>)}</select></div><div className="input-group"><label>OT</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero||o.id}</option>)}</select></div><div className="input-group" style={{gridColumn:'1/-1'}}><label>Servicio / alcance</label><textarea className="input" rows="4" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div><div className="input-group"><label>Fecha inicio</label><input className="input" type="date" value={form.fecha_inicio} onChange={e=>setForm(v=>({...v,fecha_inicio:e.target.value}))}/></div><div className="input-group"><label>Fecha fin</label><input className="input" type="date" value={form.fecha_fin} onChange={e=>setForm(v=>({...v,fecha_fin:e.target.value}))}/></div><div className="input-group"><label>Total</label><input className="input" type="number" value={form.total} onChange={e=>setForm(v=>({...v,total:e.target.value}))}/></div><div className="input-group"><label>Responsable validacion</label><input className="input" value={form.responsable_validacion} onChange={e=>setForm(v=>({...v,responsable_validacion:e.target.value}))}/></div></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={crear}>Emitir OS</button></div></div></div></>}</>;
+  const crear = async () => { if (!form.centro_costo_id) { addNotificacion('Este campo es obligatorio. Selecciona un CECO antes de continuar.'); return; } if (empresa?.multisociedad_habilitado && !form.sociedad_id) { addNotificacion('Selecciona una sociedad antes de continuar.'); return; } const p=proveedorById(proveedores,form.proveedor_id); const os={id:`os_${Date.now()}`,empresa_id:empresa.id,sociedad_id:empresa?.multisociedad_habilitado ? form.sociedad_id : null,codigo:`OS-2025-${String(ordenesServicio.length+13).padStart(4,'0')}`,proveedor_id:form.proveedor_id,ot_id:form.ot_id,centro_costo_id:form.centro_costo_id,descripcion:form.descripcion||'Servicio tercerizado',alcance:form.descripcion||'Servicio tercerizado',entregables:'Evidencia del servicio',criterios_conformidad:'Conforme a alcance',total:Number(form.total)||0,moneda:'PEN',condicion_pago:p.condicion_pago||'Contado',fecha_emision:new Date().toISOString().slice(0,10),fecha_inicio:form.fecha_inicio,fecha_fin:form.fecha_fin,responsable_validacion:form.responsable_validacion,estado:'emitida',notas:''}; await crearOrdenServicioCtx(os); addNotificacion(`${os.codigo} emitida.`); setPanel(false); };
+  return <>
+    <div className="page-header"><div><h1 className="page-title">Ordenes de Servicio</h1><div className="page-sub">Servicios tercerizados, conformidad y cierre</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>setPanel(true)}>{I.plus} Nueva OS</button></div>
+    <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas</div><div className="kpi-value">{ordenesServicio.length}</div></div><div className="kpi-card"><div className="kpi-label">En ejecucion</div><div className="kpi-value">{ordenesServicio.filter(o=>o.estado==='en_ejecucion').length}</div></div><div className="kpi-card"><div className="kpi-label">Pendiente conformidad</div><div className="kpi-value">{ordenesServicio.filter(o=>o.estado==='pendiente_conformidad').length}</div></div><div className="kpi-card"><div className="kpi-label">Valor total</div><div className="kpi-value">{money(ordenesServicio.reduce((s,o)=>s+(o.total||0),0))}</div></div></div>
+    <div className="tabs">{['todas','emitida','confirmada','en_ejecucion','pendiente_conformidad','cerrada','observada'].map(t=><div key={t} className={'tab '+(tab===t?'active':'')} onClick={()=>setTab(t)}>{t.replace('_',' ')}</div>)}</div>
+    <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>OS</th><th>Proveedor</th><th>Servicio</th><th>Monto</th><th>OT</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Validador</th><th>Acciones</th></tr></thead><tbody>{list.map(o=>{const p=proveedorById(proveedores,o.proveedor_id);return <tr key={o.id}><td className="mono">{o.codigo}</td><td><strong>{p.razon_social}</strong></td><td>{o.descripcion}</td><td>{money(o.total)}</td><td className="mono">{o.ot_id||'-'}</td><td><span className={'badge '+estadoOcBadge(o.estado)}>{o.estado.replace('_',' ')}</span></td><td>{o.fecha_inicio}</td><td>{o.fecha_fin}</td><td>{o.responsable_validacion}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>navigate('recepciones',{osId:o.id})}>Conformidad</button></td></tr>})}</tbody></table></div></div>
+    {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de servicio</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OS</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}>
+      <div className="input-group"><label>Proveedor</label><select className="select" value={form.proveedor_id} onChange={e=>setForm(v=>({...v,proveedor_id:e.target.value}))}>{provs.map(p=><option key={p.id} value={p.id}>{p.razon_social}</option>)}</select></div>
+      <div className="input-group"><label>OT</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero||o.id}</option>)}</select></div>
+      <div className="input-group" style={{gridColumn:'1/-1'}}><label>Servicio / alcance</label><textarea className="input" rows="4" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div>
+      <div className="input-group"><label>Fecha inicio</label><input className="input" type="date" value={form.fecha_inicio} onChange={e=>setForm(v=>({...v,fecha_inicio:e.target.value}))}/></div>
+      <div className="input-group"><label>Fecha fin</label><input className="input" type="date" value={form.fecha_fin} onChange={e=>setForm(v=>({...v,fecha_fin:e.target.value}))}/></div>
+      <SociedadFormField value={form.sociedad_id} onChange={sociedad_id=>setForm(v=>({...v,sociedad_id}))}/>
+      <div className="input-group"><label>Total</label><input className="input" type="number" value={form.total} onChange={e=>setForm(v=>({...v,total:e.target.value}))}/></div>
+      <div className="input-group"><label>Responsable validacion</label><input className="input" value={form.responsable_validacion} onChange={e=>setForm(v=>({...v,responsable_validacion:e.target.value}))}/></div>
+    </div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={crear}>Emitir OS</button></div></div></div></>}
+  </>;
 }
 
 const MOTIVO_DEV_LABEL = { defecto_calidad: 'Defecto de calidad', error_envio: 'Error de envío', exceso_cantidad: 'Exceso de cantidad', vencido: 'Vencido', otro: 'Otro' };
@@ -17379,6 +17403,7 @@ function Nomina() {
     asignacionesJornada = [],
     portalBoletaAcuses = [],
     solicitudesRRHH = [],
+    personalDocumentos = [], tiposDocumento = [], sociedadActiva, sociedadesDisponibles = [], seleccionarSociedad,
   } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('periodos');
@@ -17406,6 +17431,9 @@ function Nomina() {
   const procesandoNominaRef = useRef(false);
   const [procesandoNomina, setProcesandoNomina] = useState(false);
   const [advertenciaCorte, setAdvertenciaCorte] = useState(false);
+  const [nuevoPeriodoPanel, setNuevoPeriodoPanel] = useState(false);
+  const [nuevoPeriodoForm, setNuevoPeriodoForm] = useState({ mes: new Date().toISOString().slice(0, 7), sociedad_id: '' });
+  const [creandoPeriodo, setCreandoPeriodo] = useState(false);
 
   const empresaCfg = {
     regimen_laboral_empresa: empresaConfig?.regimen_laboral_empresa || 'general',
@@ -17425,6 +17453,8 @@ function Nomina() {
   const autoGenNominaRef = useRef(false);
   useEffect(() => {
     if (!empresa?.id || autoGenNominaRef.current || !isDataLoaded) return;
+    // En multisociedad el periodo requiere una sociedad elegida explicitamente.
+    if (empresa?.multisociedad_habilitado) return;
     const hoyAnio = hoy.getFullYear();
     const hoyMes = hoy.getMonth() + 1;
 
@@ -17474,15 +17504,21 @@ function Nomina() {
       }
       autoGenNominaRef.current = false;
     })();
-  }, [periodosNomina.length, empresa?.id, isDataLoaded]);
+  }, [periodosNomina.length, empresa?.id, empresa?.multisociedad_habilitado, isDataLoaded]);
 
-  const periodoActivo = periodoId ? periodosNomina.find(p => p.id === periodoId) : null;
+  const periodosNominaVisibles = useMemo(() => {
+    if (!empresa?.multisociedad_habilitado) return periodosNomina;
+    if (!sociedadActiva?.id) return [];
+    return periodosNomina.filter(p => p.sociedad_id === sociedadActiva.id);
+  }, [periodosNomina, empresa?.multisociedad_habilitado, sociedadActiva?.id]);
+
+  const periodoActivo = periodoId ? periodosNominaVisibles.find(p => p.id === periodoId) : null;
   const anioActual = hoy.getFullYear();
   const mesActual = hoy.getMonth() + 1;
-  const periodoMesActual = periodosNomina.find(p => p.anio === anioActual && p.mes === mesActual);
+  const periodoMesActual = periodosNominaVisibles.find(p => p.anio === anioActual && p.mes === mesActual);
   const periodoMasCercano = () => {
-    const conFecha = periodosNomina.filter(p => p.fecha_corte);
-    if (!conFecha.length) return periodosNomina[0] || null;
+    const conFecha = periodosNominaVisibles.filter(p => p.fecha_corte);
+    if (!conFecha.length) return periodosNominaVisibles[0] || null;
     const hoyStr = hoy.toISOString().split('T')[0];
     const futuros = conFecha.filter(p => p.fecha_corte >= hoyStr).sort((a, b) => a.fecha_corte.localeCompare(b.fecha_corte));
     if (futuros.length) return futuros[0];
@@ -17520,14 +17556,37 @@ function Nomina() {
     if (ing && new Date(`${ing}T00:00:00`) > periodoFin) return false;
     return true;
   };
-  const trabajadores = [
+  const trabajadoresLegacy = useMemo(() => [
     ...personalOperativo.filter(p => p.estado_laboral !== 'cesado' && !esModalidadHonorarios(p) && estaActivoEnPeriodo(p)).map(p => ({ ...p, area: p.area || 'Operativo', tipo: 'operativo' })),
     ...personalAdmin.filter(p => p.estado_laboral !== 'cesado' && !esModalidadHonorarios(p) && estaActivoEnPeriodo(p)).map(p => ({ ...p, area: p.area || 'Administrativo', tipo: 'admin' })),
-  ];
+  ], [personalOperativo, personalAdmin, periodo?.id]);
+
+  const personasCompartidas = useMemo(() => [
+    ...personalOperativo.map(p => ({ ...p, area: p.area || 'Operativo', tipo: 'operativo' })),
+    ...personalAdmin.map(p => ({ ...p, area: p.area || 'Administrativo', tipo: 'admin' })),
+  ], [personalOperativo, personalAdmin]);
+
+  const contratosNomina = useMemo(() => resolverContratosNominaSociedad({
+    documentos: personalDocumentos,
+    tiposDocumento,
+    sociedadId: periodo?.sociedad_id,
+    periodo,
+  }), [personalDocumentos, tiposDocumento, periodo?.id, periodo?.sociedad_id]);
+
+  const trabajadores = useMemo(() => {
+    if (!empresa?.multisociedad_habilitado) return trabajadoresLegacy;
+    const personasPorId = new Map(personasCompartidas.map(persona => [persona.id, persona]));
+    return contratosNomina.contratos
+      .map(contrato => {
+        const persona = personasPorId.get(contrato.personal_id);
+        return persona ? aplicarContratoATrabajador(persona, contrato) : null;
+      })
+      .filter(persona => persona && !esModalidadHonorarios(persona));
+  }, [empresa?.multisociedad_habilitado, trabajadoresLegacy, personasCompartidas, contratosNomina]);
 
   useEffect(() => {
-    if (!trabajadorSel && trabajadores[0]?.id) setTrabajadorSel(trabajadores[0].id);
-  }, [trabajadorSel, trabajadores.length]);
+    if (!trabajadores.some(t => t.id === trabajadorSel)) setTrabajadorSel(trabajadores[0]?.id || '');
+  }, [trabajadorSel, trabajadores.length, periodo?.id]);
 
   useEffect(() => {
     if (!descForm.personal_id && trabajadores[0]?.id) {
@@ -17572,8 +17631,8 @@ function Nomina() {
   // siendo síncrono); calcularNomina*/calculos solo reciben el resultado ya resuelto.
   const periodoQ1 = useMemo(() => {
     if (periodo?.quincena !== 2) return null;
-    return periodosNomina.find(p => p.anio === periodo.anio && p.mes === periodo.mes && p.quincena === 1) || null;
-  }, [periodo?.quincena, periodo?.anio, periodo?.mes, periodosNomina]);
+    return periodosNominaVisibles.find(p => p.anio === periodo.anio && p.mes === periodo.mes && p.quincena === 1) || null;
+  }, [periodo?.quincena, periodo?.anio, periodo?.mes, periodosNominaVisibles]);
 
   const [q1SnapshotRows, setQ1SnapshotRows] = useState([]);
   useEffect(() => {
@@ -17608,7 +17667,9 @@ function Nomina() {
     if (!periodo) return [];
     return trabajadores.map(t => {
       const turno = workerTurno(turnos, t);
-      const datos = trabajadoresDatosNomina[t.id] || {};
+      const datos = empresa?.multisociedad_habilitado
+        ? datosNominaDesdeContrato(trabajadoresDatosNomina[t.id] || {}, t.contrato_nomina)
+        : (trabajadoresDatosNomina[t.id] || {});
       const heNoPago = heCompRows.filter(h => h.personal_id === t.id && (h.estado === 'pendiente' || h.estado === 'compensar'));
       const heNoPagoAsistencia = new Set(heNoPago.map(h => h.registro_asistencia_id || h.asistencia_id).filter(Boolean));
       const heNoPagoFechas = new Set(heNoPago.map(h => h.fecha_he).filter(Boolean));
@@ -17618,7 +17679,9 @@ function Nomina() {
           ? { ...r, horas_extra_min: 0, horas_extra: 0 }
           : r
         );
-      const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === t.id);
+      // En multisociedad monto y regimen provienen del contrato de esa sociedad.
+      // El flujo legacy conserva sin cambios el historial de asignaciones de jornada.
+      const asigsTrabajador = empresa?.multisociedad_habilitado ? [] : asignacionesJornada.filter(a => a.personal_id === t.id);
       const ingresoInfo = ingresoExtraPorTrabajador[t.id] || { remunerativo: 0, noRemunerativo: 0 };
       // Para Q2, el motor necesita el total remunerativo de Q1+Q2 combinado (para que
       // reconciliarQ2 reste correctamente el snapshot de Q1) — no solo el de esta quincena.
@@ -17643,7 +17706,7 @@ function Nomina() {
         neto: Math.round((Number(base.neto || 0) + ingresoNoRemunerativo - descExtra) * 100) / 100,
       };
     }).filter(Boolean);
-  }, [periodo?.id, trabajadores.length, registrosAsistencia.length, asignacionesJornada.length, heCompRows, descExtraPorTrabajador, ingresoExtraPorTrabajador, ingresoRemunerativoMesCompletoPorTrabajador, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, empresaCfg.requiere_autorizacion_he, afpParametros, q1Snapshot]);
+  }, [periodo?.id, trabajadores, registrosAsistencia.length, asignacionesJornada.length, heCompRows, descExtraPorTrabajador, ingresoExtraPorTrabajador, ingresoRemunerativoMesCompletoPorTrabajador, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, empresaCfg.requiere_autorizacion_he, afpParametros, q1Snapshot, empresa?.multisociedad_habilitado]);
 
   const solicitudesAprobadasCobertura = useMemo(() => (solicitudesRRHH || []).filter(s =>
     SOLICITUD_ESTADOS_APROBADOS.includes(s.estado) && SOLICITUD_TIPOS_JUSTIFICAN_AUSENCIA.includes(s.tipo)
@@ -17698,9 +17761,14 @@ function Nomina() {
         return;
       }
 
+      if (empresa?.multisociedad_habilitado && contratosNomina.ambiguos.length > 0) {
+        addToast('Hay trabajadores con mas de un contrato vigente en la misma sociedad. Corrige la vigencia antes de procesar.', 'error');
+        return;
+      }
+
       if (isSupabaseConfigured() && empresa?.id) {
         const filas = calculos.map(c => mapCalculoANominaDetalle(c, periodo, empresaCfg));
-        const guardadas = await nominaService.guardarDetalle(empresa.id, periodo.id, filas);
+        const guardadas = await nominaService.guardarDetalle(empresa.id, periodo.id, filas, periodo.sociedad_id || null);
         const actualizado = await nominaService.upsertPeriodo(empresa.id, { id: periodo.id, estado: 'en_proceso' });
         setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, ...actualizado, total_trabajadores:resumen.total_trabajadores, masa_salarial_bruta:resumen.masa_salarial_bruta, total_neto:resumen.total_neto, total_cargas_empresa:resumen.total_cargas_empresa } : p));
         addToast(`Nómina ${periodo.periodo} procesada: ${guardadas} trabajador(es) guardados.`, 'success');
@@ -17806,10 +17874,10 @@ function Nomina() {
 
     // ── Gastos ER (devengado) ──
     if (totalNeto > 0) {
-      crearGasto({ tipo:'gasto', descripcion:`Planilla ${periodo.periodo}`, categoria:'planilla', monto:totalNeto, fecha:fechaCierre, origen_registro:'nomina', periodo_nomina_id:periodo.id, estado_pago:'pendiente', estado:'registrado' });
+      crearGasto({ tipo:'gasto', descripcion:`Planilla ${periodo.periodo}`, categoria:'planilla', monto:totalNeto, fecha:fechaCierre, origen_registro:'nomina', periodo_nomina_id:periodo.id, sociedad_id:periodo.sociedad_id || null, estado_pago:'pendiente', estado:'registrado' });
     }
     if (totalCargasEmpresa > 0) {
-      crearGasto({ tipo:'gasto', descripcion:`Cargas sociales ${periodo.periodo}`, categoria:'cargas_sociales', monto:totalCargasEmpresa, fecha:fechaCierre, origen_registro:'nomina', periodo_nomina_id:periodo.id, estado_pago:'pendiente', estado:'registrado' });
+      crearGasto({ tipo:'gasto', descripcion:`Cargas sociales ${periodo.periodo}`, categoria:'cargas_sociales', monto:totalCargasEmpresa, fecha:fechaCierre, origen_registro:'nomina', periodo_nomina_id:periodo.id, sociedad_id:periodo.sociedad_id || null, estado_pago:'pendiente', estado:'registrado' });
     }
 
     // ── CxPs separadas por institución ──
@@ -17822,6 +17890,7 @@ function Nomina() {
         monto_total: totalNeto, moneda: 'PEN',
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'planilla',
         periodo_nomina_id: periodo.id,
+        sociedad_id: periodo.sociedad_id || null,
       });
     }
     // 2. EsSalud → SUNAT/EsSalud
@@ -17833,6 +17902,7 @@ function Nomina() {
         monto_total: Math.round(totalEssalud * 100) / 100, moneda: 'PEN',
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'essalud',
         periodo_nomina_id: periodo.id,
+        sociedad_id: periodo.sociedad_id || null,
       });
     }
     // 3. Aportes previsionales (AFP + ONP)
@@ -17845,6 +17915,7 @@ function Nomina() {
         monto_total: Math.round(totalPensiones * 100) / 100, moneda: 'PEN',
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'pensiones',
         periodo_nomina_id: periodo.id,
+        sociedad_id: periodo.sociedad_id || null,
       });
     }
     // 4. Retenciones IR 5ta → SUNAT
@@ -17856,6 +17927,7 @@ function Nomina() {
         monto_total: Math.round(totalIr * 100) / 100, moneda: 'PEN',
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'ir_5ta',
         periodo_nomina_id: periodo.id,
+        sociedad_id: periodo.sociedad_id || null,
       });
     }
 
@@ -18059,6 +18131,67 @@ function Nomina() {
     }
   };
 
+  const crearPeriodoManual = async (event) => {
+    event.preventDefault();
+    const [anio, mes] = String(nuevoPeriodoForm.mes || '').split('-').map(Number);
+    if (!anio || !mes) { addToast('Selecciona el mes del periodo.', 'error'); return; }
+    if (empresa?.multisociedad_habilitado && !nuevoPeriodoForm.sociedad_id) { addToast('Selecciona la sociedad del periodo.', 'error'); return; }
+    setCreandoPeriodo(true);
+    try {
+      const inicioMes = `${anio}-${String(mes).padStart(2, '0')}-01`;
+      const finMes = `${anio}-${String(mes).padStart(2, '0')}-${String(new Date(anio, mes, 0).getDate()).padStart(2, '0')}`;
+      const base = { anio, mes, estado: 'abierto', sociedad_id: empresa?.multisociedad_habilitado ? nuevoPeriodoForm.sociedad_id : null };
+      const creados = [];
+      if (empresaCfg.frecuencia_pago === 'quincenal') {
+        creados.push(await crearPeriodoNominaCtx({ ...base, quincena: 1, periodo: `${mesNombres[mes - 1]} ${anio} — 1ra quincena`, fecha_inicio: inicioMes, fecha_fin: `${anio}-${String(mes).padStart(2, '0')}-15`, fecha_corte: `${anio}-${String(mes).padStart(2, '0')}-${String(empresaConfig?.dia_corte_q1 || 10).padStart(2, '0')}`, fecha_pago: `${anio}-${String(mes).padStart(2, '0')}-${String(empresaConfig?.dia_pago_q1 || 15).padStart(2, '0')}` }));
+        creados.push(await crearPeriodoNominaCtx({ ...base, quincena: 2, periodo: `${mesNombres[mes - 1]} ${anio} — 2da quincena`, fecha_inicio: `${anio}-${String(mes).padStart(2, '0')}-16`, fecha_fin: finMes, fecha_corte: `${anio}-${String(mes).padStart(2, '0')}-${String(empresaConfig?.dia_corte_q2 || 25).padStart(2, '0')}`, fecha_pago: `${anio}-${String(mes).padStart(2, '0')}-${String(empresaConfig?.dia_pago_q2 || 30).padStart(2, '0')}` }));
+      } else {
+        creados.push(await crearPeriodoNominaCtx({ ...base, quincena: null, periodo: `${mesNombres[mes - 1]} ${anio}`, fecha_inicio: inicioMes, fecha_fin: finMes, fecha_corte: `${anio}-${String(mes).padStart(2, '0')}-${String(empresaConfig?.dia_corte_mensual || 25).padStart(2, '0')}`, fecha_pago: `${anio}-${String(mes).padStart(2, '0')}-${String(empresaConfig?.dia_pago_mensual || 30).padStart(2, '0')}` }));
+      }
+      if (empresa?.multisociedad_habilitado && nuevoPeriodoForm.sociedad_id !== sociedadActiva?.id) seleccionarSociedad?.(nuevoPeriodoForm.sociedad_id);
+      if (creados[0]?.id) setPeriodoId(creados[0].id);
+      setNuevoPeriodoPanel(false);
+      addToast('Periodo de nomina creado.', 'success');
+    } catch (error) {
+      addToast(error?.message || 'No se pudo crear el periodo.', 'error');
+    } finally {
+      setCreandoPeriodo(false);
+    }
+  };
+
+  const sociedadPeriodo = periodo?.sociedad_id
+    ? sociedadesDisponibles.find(sociedad => sociedad.id === periodo.sociedad_id) || null
+    : null;
+  const emisorBoleta = sociedadPeriodo
+    ? {
+        nombre: sociedadPeriodo.nombre,
+        razon_social: sociedadPeriodo.razon_social || sociedadPeriodo.nombre,
+        ruc: sociedadPeriodo.ruc,
+        direccion_fiscal: sociedadPeriodo.direccion_fiscal,
+        logo_url: sociedadPeriodo.logo_url,
+        firma_url: sociedadPeriodo.firma_url,
+      }
+    : { ...empresaConfig, ...empresa, nombre: empresa?.nombre || empresa?.nombre_comercial };
+
+  const descargarBoletaPdf = async () => {
+    if (!boleta) return;
+    try {
+      const { pdf } = await import('@react-pdf/renderer');
+      const { BoletaPagoPDF } = await import('./pages_pdf.jsx');
+      const blob = await pdf(<BoletaPagoPDF calculo={boleta} periodo={periodo} emisor={emisorBoleta} />).toBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `boleta-${String(boleta.trabajador?.nombre || boleta.trabajador_id || 'trabajador').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${periodo?.anio || ''}-${String(periodo?.mes || '').padStart(2, '0')}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+      addNotificacion('Boleta PDF descargada.');
+    } catch (error) {
+      console.error('[descargarBoletaPdf]', error);
+      addToast('No se pudo generar la boleta PDF.', 'error');
+    }
+  };
+
   if (!canFinanzas) return (
     <div className="card" style={{padding:24}}>
       <div className="card-head"><h3>Nomina</h3></div>
@@ -18081,7 +18214,7 @@ function Nomina() {
   ];
 
   const hoyStr = hoy.toISOString().split('T')[0];
-  const periodosAbiertos = periodosNomina.filter(p => p.estado === 'abierto' || p.estado === 'en_proceso');
+  const periodosAbiertos = periodosNominaVisibles.filter(p => p.estado === 'abierto' || p.estado === 'en_proceso');
   const proximoCortePeriodo = periodosAbiertos
     .filter(p => p.fecha_corte && p.fecha_corte >= hoyStr)
     .sort((a, b) => a.fecha_corte.localeCompare(b.fecha_corte))[0] || null;
@@ -18134,13 +18267,16 @@ function Nomina() {
       {/* ── TAB: PERODOS ── */}
       {tab === 'periodos' && (
         <div>
+          <div className="row" style={{justifyContent:'flex-end', marginBottom:12}}>
+            <button className="btn btn-primary" onClick={() => { setNuevoPeriodoForm({ mes:new Date().toISOString().slice(0,7), sociedad_id:sociedadActiva?.id || '' }); setNuevoPeriodoPanel(true); }}>{I.plus} Nuevo período</button>
+          </div>
           <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:20}}>
             <div className="kpi-card"><div className="kpi-label">Período activo</div><div className="kpi-value" style={{fontSize:18}}>{periodo?.periodo || '—'}</div></div>
             <div className="kpi-card"><div className="kpi-label">Próxima fecha de corte</div><div className="kpi-value" style={{fontSize:18}}>{proximoCortePeriodo?.fecha_corte || 'Sin períodos programados'}</div></div>
             <div className="kpi-card"><div className="kpi-label">Próxima fecha de pago</div><div className="kpi-value" style={{fontSize:18, color:'var(--green)'}}>{proximoPagoPeriodo?.fecha_pago || 'Sin períodos programados'}</div></div>
           </div>
           <div style={{display:'flex', flexDirection:'column', gap:12}}>
-            {periodosNomina.map(p => (
+            {periodosNominaVisibles.map(p => (
               <div key={p.id} className="card" style={{padding:20, cursor:'pointer', border: periodoId === p.id ? '2px solid var(--cyan)' : '1px solid var(--border)'}}
                 onClick={()=>{ setPeriodoId(p.id); setTab('resumen'); }}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12}}>
@@ -18527,7 +18663,7 @@ function Nomina() {
 
 
       {/* Boleta */}
-      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{empresa?.nombre}</strong></p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} · Período: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}{boleta.ingreso_extra_remunerativo>0&&<p>Ingreso extraordinario (remunerativo): {money(boleta.ingreso_extra_remunerativo)}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p>{boleta.otros_ingresos>0&&<><hr/><p><strong>Otros ingresos no remunerativos</strong> <span className="text-muted" style={{fontSize:11}}>(no afectan AFP/EsSalud/CTS)</span></p><p>+{money(boleta.otros_ingresos)}</p></>}<hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}{boleta.desc_extraordinario>0&&<p>Extraordinario: -{money(boleta.desc_extraordinario)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={()=>addNotificacion('Boleta PDF lista.')}>{I.download} Descargar boleta PDF</button></div></div></>}
+      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{emisorBoleta?.razon_social || emisorBoleta?.nombre}</strong>{emisorBoleta?.ruc&&<><br/><span className="text-muted" style={{fontSize:11}}>RUC {emisorBoleta.ruc}</span></>}</p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} · Período: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}{boleta.ingreso_extra_remunerativo>0&&<p>Ingreso extraordinario (remunerativo): {money(boleta.ingreso_extra_remunerativo)}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p>{boleta.otros_ingresos>0&&<><hr/><p><strong>Otros ingresos no remunerativos</strong> <span className="text-muted" style={{fontSize:11}}>(no afectan AFP/EsSalud/CTS)</span></p><p>+{money(boleta.otros_ingresos)}</p></>}<hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}{boleta.desc_extraordinario>0&&<p>Extraordinario: -{money(boleta.desc_extraordinario)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={descargarBoletaPdf}>{I.download} Descargar boleta PDF</button></div></div></>}
 
       {descPanel && <><div className="side-panel-backdrop" onClick={()=>setDescPanel(false)}/><div className="side-panel" style={{width:'min(560px,96vw)'}}>
         <div className="side-panel-head"><div><div className="eyebrow">Nomina</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nuevo descuento</div></div><button className="icon-btn" onClick={()=>setDescPanel(false)}>{I.x}</button></div>
@@ -18562,6 +18698,7 @@ function Nomina() {
       {/* Modal cierre */}
       {cierre && <div className="modal-backdrop" onClick={()=>setCierre(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Cerrar período — {periodo?.periodo}</h3><button className="icon-btn" onClick={()=>setCierre(false)}>{I.x}</button></div><div className="modal-body"><p>Al cerrar se registrará un egreso de planilla por <strong>{money(resumen.total_neto)}</strong> y otro de cargas sociales por <strong>{money(resumen.total_cargas_empresa)}</strong> en Compras y Gastos.</p><p>El reporte PLAME quedará disponible.</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setCierre(false)}>Cancelar</button><button className="btn btn-primary" onClick={cerrarPeriodo} disabled={cerrandoPeriodo}>{cerrandoPeriodo ? 'Cerrando...' : 'Confirmar cierre'}</button></div></div></div></div>}
       {advertenciaCorte && <div className="modal-backdrop" onClick={()=>setAdvertenciaCorte(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Fecha de corte no alcanzada</h3><button className="icon-btn" onClick={()=>setAdvertenciaCorte(false)}>{I.x}</button></div><div className="modal-body"><p>Aún no llega la fecha de corte configurada ({periodo?.fecha_corte}). ¿Deseas procesar de todos modos?</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setAdvertenciaCorte(false)}>Cancelar</button><button className="btn btn-primary" onClick={confirmarProcesarPeseACorte}>Procesar de todos modos</button></div></div></div></div>}
+      {nuevoPeriodoPanel && <div className="modal-backdrop" onClick={()=>setNuevoPeriodoPanel(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Nuevo período de nómina</h3><button className="icon-btn" onClick={()=>setNuevoPeriodoPanel(false)}>{I.x}</button></div><form className="modal-body" onSubmit={crearPeriodoManual}><div className="input-group"><label>Mes *</label><input className="input" type="month" value={nuevoPeriodoForm.mes} onChange={e=>setNuevoPeriodoForm(f=>({...f,mes:e.target.value}))} required /></div><SociedadFormField value={nuevoPeriodoForm.sociedad_id} onChange={sociedad_id=>setNuevoPeriodoForm(f=>({...f,sociedad_id}))} /><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setNuevoPeriodoPanel(false)}>Cancelar</button><button className="btn btn-primary" disabled={creandoPeriodo}>{creandoPeriodo?'Creando...':'Crear período'}</button></div></form></div></div>}
     </>
   );
 }
@@ -18795,7 +18932,7 @@ const rrhhEsDocContrato = (doc = {}, tiposDocumento = []) => {
     return false;
   }
   const tipo = tiposDocumento.find(t => t.id === doc.tipo_documento_id || t.id === doc.tipo_doc);
-  return Boolean(tipo?.captura_snapshot_laboral && !tipo?.documento_padre_tipo_id);
+  return rrhhEsTipoContrato(tipo);
 };
 const rrhhContratoActivoPersonal = (docs = [], personalId, tiposDocumento = []) =>
   (docs || [])
@@ -18818,7 +18955,7 @@ const rrhhContratoTipoDocValue = (tipos = []) => {
     console.warn('rrhhContratoTipoDocValue: catálogo tipos no disponible. Fallback por texto desactivado.');
     return null;
   }
-  const tipo = tipos.find(t => t.captura_snapshot_laboral && !t.documento_padre_tipo_id);
+  const tipo = tipos.find(rrhhEsTipoContrato);
   return tipo?.id || tipo?.key || null;
 };
 const rrhhTipoDocumentoTexto = (tipo, fallback = '') => [
@@ -18826,7 +18963,9 @@ const rrhhTipoDocumentoTexto = (tipo, fallback = '') => [
 ].map(rrhhContratoDocTexto).join(' ');
 const rrhhEsTipoContrato = (tipo) => {
   if (!tipo) return false;
-  return Boolean(tipo.captura_snapshot_laboral && !tipo.documento_padre_tipo_id);
+  const descriptor = rrhhTipoDocumentoTexto(tipo);
+  const esAdenda = Boolean(tipo.documento_padre_tipo_id) || descriptor.includes('adenda');
+  return !esAdenda && (descriptor.includes('contrato') || rrhhContratoDocTexto(tipo.categoria) === 'contractual' || Boolean(tipo.captura_snapshot_laboral));
 };
 const rrhhEsTipoAdenda = (tipo, fallback = '') => rrhhTipoDocumentoTexto(tipo, fallback).includes('adenda');
 const rrhhSnapshotLaboral = (p = {}, extra = {}) => {
@@ -19313,7 +19452,7 @@ function RRHH_Operativo() {
   const [retroWallAsig, setRetroWallAsig] = useState(null);
   const [retroWallMotivoAsig, setRetroWallMotivoAsig] = useState('');
   // Estado para subir documentos en ficha
-  const docUploadFormBase = { tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
+  const docUploadFormBase = { tipoDoc: '', sociedadId: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
   const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
   const [docUploadFile, setDocUploadFile] = useState(null);
   const [docUploading, setDocUploading] = useState(false);
@@ -19354,7 +19493,7 @@ function RRHH_Operativo() {
   }, [visibleCols]);
 
   // Estado para subida inline
-  const inlineUploadFormBase = { fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', modoSubida: 'nueva_version', periodoIdAnterior: null, esIndefinido: false };
+  const inlineUploadFormBase = { sociedadId: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', modoSubida: 'nueva_version', periodoIdAnterior: null, esIndefinido: false };
   const [inlineUploadReq, setInlineUploadReq] = useState(null);
   const [inlineUploadFile, setInlineUploadFile] = useState(null);
   const [inlineUploadForm, setInlineUploadForm] = useState(inlineUploadFormBase);
@@ -20240,6 +20379,10 @@ function RRHH_Operativo() {
         setDocUploadError('Selecciona el contrato original que modifica la adenda.');
         return;
       }
+      if (empresa?.multisociedad_habilitado && docUploadEsContrato && !docUploadForm.sociedadId) {
+        setDocUploadError('Selecciona la sociedad empleadora.');
+        return;
+      }
       setDocUploading(true);
       setDocUploadError('');
       try {
@@ -20261,7 +20404,10 @@ function RRHH_Operativo() {
           tipo_contrato: docUploadForm.tipoContratoFirma || p.tipo_contrato || '',
           descripcion_cambio: docUploadForm.descripcionCambio || '',
         }) : {};
-        await subirDocumentoPersonalCtx({
+        const sociedadDocumento = docUploadEsAdenda
+          ? contratosValidados.find(d => d.id === docUploadForm.contratoReferenciaId)?.sociedad_id
+          : docUploadForm.sociedadId;
+        const payloadDocumento = {
           personalId: p.id,
           personalTipo: 'operativo',
           tipoDoc: docUploadForm.tipoDoc,
@@ -20269,7 +20415,7 @@ function RRHH_Operativo() {
           file: docUploadFile,
           fechaEmision: docUploadForm.fechaEmision || null,
           fechaVencimiento: (docUploadEsAdenda || docUploadForm.esIndefinido) ? null : (docUploadForm.fechaVencimiento || null),
-        es_indefinido: docUploadForm.esIndefinido,
+          esIndefinido: docUploadForm.esIndefinido,
           notas: docUploadForm.notas || null,
           subidoDesde: 'backoffice',
           condicionesLaborales,
@@ -20283,7 +20429,13 @@ function RRHH_Operativo() {
           } : {},
           fechaVigenciaCambio: docUploadEsAdenda ? (docUploadForm.fechaVigenciaCambio || null) : null,
           seccionDocumental: 'adicional',
-        });
+          sociedadId: sociedadDocumento || null,
+        };
+        if (docUploadEsContrato && empresa?.multisociedad_habilitado) {
+          await nuevoContratoPeriodoCtx({ ...payloadDocumento, esIndefinido: docUploadForm.esIndefinido });
+        } else {
+          await subirDocumentoPersonalCtx(payloadDocumento);
+        }
         setDocUploadFile(null);
         setDocUploadForm(docUploadFormBase);
         addNotificacion('Documento subido. Pendiente de aprobación por RRHH.');
@@ -21110,6 +21262,9 @@ function RRHH_Operativo() {
               if (inlineEsAdenda && !inlineUploadForm.contratoReferenciaId) {
                 setInlineUploadError('Selecciona el contrato original que modifica la adenda.'); return;
               }
+              if (empresa?.multisociedad_habilitado && inlineEsContrato && !inlineUploadForm.sociedadId) {
+                setInlineUploadError('Selecciona la sociedad empleadora.'); return;
+              }
               const esCorreccion = inlineUploadForm.modoSubida === 'corregir' && inlineUploadReq.doc;
               const esNuevoContrato = inlineUploadForm.modoSubida === 'nuevo_contrato';
               if (inlineUploadReq.tipo?.exige_vencimiento && !inlineEsAdenda && !inlineUploadForm.esIndefinido && !inlineUploadForm.fechaVencimiento) {
@@ -21140,6 +21295,9 @@ function RRHH_Operativo() {
                   tipo_contrato: inlineUploadForm.tipoContratoFirma || p.tipo_contrato || '',
                   descripcion_cambio: inlineUploadForm.descripcionCambio || '',
                 }) : {};
+                const sociedadDocumento = inlineEsAdenda
+                  ? contratosValidados.find(d => d.id === inlineUploadForm.contratoReferenciaId)?.sociedad_id
+                  : inlineUploadForm.sociedadId;
                 if (esNuevoContrato) {
                   await nuevoContratoPeriodoCtx({
                     personalId: p.id,
@@ -21149,10 +21307,11 @@ function RRHH_Operativo() {
                     file: inlineUploadFile,
                     fechaEmision: inlineUploadForm.fechaEmision || null,
                     fechaVencimiento: inlineUploadForm.esIndefinido ? null : (inlineUploadForm.fechaVencimiento || null),
-          es_indefinido: inlineUploadForm.esIndefinido,
+                    esIndefinido: inlineUploadForm.esIndefinido,
                     notas: inlineUploadForm.notas || null,
                     condicionesLaborales,
                     periodoIdAnterior: inlineUploadForm.periodoIdAnterior || null,
+                    sociedadId: sociedadDocumento || null,
                     forzarOverride, motivoOverride,
                   });
                   addNotificacion('Nuevo contrato creado. El período anterior quedó archivado.');
@@ -21171,6 +21330,23 @@ function RRHH_Operativo() {
                     forzarOverride, motivoOverride,
                   });
                   addNotificacion('Documento corregido correctamente.');
+                } else if (inlineEsContrato && empresa?.multisociedad_habilitado) {
+                  await nuevoContratoPeriodoCtx({
+                    personalId: p.id,
+                    personalTipo: 'operativo',
+                    tipoDoc: inlineUploadReq.tipo_documento_id,
+                    tipoDocumentoId: inlineUploadReq.tipo_documento_id,
+                    file: inlineUploadFile,
+                    fechaEmision: inlineUploadForm.fechaEmision || null,
+                    fechaVencimiento: inlineUploadForm.esIndefinido ? null : (inlineUploadForm.fechaVencimiento || null),
+                    notas: inlineUploadForm.notas || null,
+                    condicionesLaborales,
+                    periodoIdAnterior: inlineUploadForm.periodoIdAnterior || null,
+                    esIndefinido: inlineUploadForm.esIndefinido,
+                    sociedadId: sociedadDocumento,
+                    forzarOverride, motivoOverride,
+                  });
+                  addNotificacion('Contrato de la sociedad registrado correctamente.');
                 } else {
                   await subirDocumentoPersonalCtx({
                     personalId: p.id,
@@ -21195,6 +21371,7 @@ function RRHH_Operativo() {
                     seccionDocumental: 'requisito_cargo',
                     contratoPeriodoId: inlineUploadForm.periodoIdAnterior || null,
                     forzarOverride, motivoOverride,
+                    sociedadId: sociedadDocumento || null,
                   });
                   addNotificacion('Documento subido correctamente.');
                 }
@@ -21560,6 +21737,9 @@ function RRHH_Operativo() {
                           )}
                           {(rrhhEsTipoContrato(inlineUploadReq.tipo) || rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id)) && (
                             <div style={{display:'grid', gap:12, padding:12, background:'var(--bg-subtle)', borderRadius:8}}>
+                              {rrhhEsTipoContrato(inlineUploadReq.tipo) && (
+                                <SociedadFormField label="Sociedad empleadora" value={inlineUploadForm.sociedadId} onChange={sociedadId=>setInlineUploadForm(f=>({...f,sociedadId}))} />
+                              )}
                               {inlineUploadReq.doc && inlineUploadForm.modoSubida !== 'nuevo_contrato' && (
                                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                                   <label>Modo de guardado</label>
@@ -21712,6 +21892,9 @@ function RRHH_Operativo() {
                     </div>
                     {(docUploadEsContrato || docUploadEsAdenda) && (
                       <div style={{display:'grid', gap:12, padding:12, background:'var(--bg-subtle)', borderRadius:8}}>
+                        {docUploadEsContrato && (
+                          <SociedadFormField label="Sociedad empleadora" value={docUploadForm.sociedadId} onChange={sociedadId=>setDocUploadForm(f=>({...f,sociedadId}))} />
+                        )}
                         {docUploadEsAdenda && <>
                           <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={docUploadForm.contratoReferenciaId||''} onChange={e=>setDocUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidados.map(d=><option key={d.id} value={d.id}>{d.fecha_emision||'Sin emisión'} · vence {d.fecha_vencimiento||'sin vencimiento'}</option>)}</select></div>
                           <div className="input-group" style={{gridColumn:'1/-1'}}><label>Qué cambió</label><div className="row" style={{gap:12,flexWrap:'wrap'}}>{[['cambioCargo','Cargo'],['cambioRemuneracion','Remuneración'],['cambioModalidad','Modalidad'],['cambioSede','Sede'],['cambioOtro','Otro']].map(([k,l])=><label key={k} className="row" style={{gap:6}}><input type="checkbox" checked={Boolean(docUploadForm[k])} onChange={e=>setDocUploadForm(f=>({...f,[k]:e.target.checked}))}/>{l}</label>)}</div></div>

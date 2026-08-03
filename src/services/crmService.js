@@ -371,6 +371,7 @@ export async function persistirCotizacion(supabase, empresaId, cot) {
     token_aceptacion:   cot.token_aceptacion || null,
     token_activo:       cot.token_activo !== undefined ? cot.token_activo : true,
     centro_beneficio_id: cot.centro_beneficio_id || null,
+    sociedad_id: cot.sociedad_id || null,
   };
   if (cot.hoja_costeo_id) row.hoja_costeo_id = cot.hoja_costeo_id;
   return supabase.from('cotizaciones').insert(row);
@@ -388,7 +389,7 @@ export async function actualizarCotizacion(supabase, cotId, datos) {
     'fecha_envio', 'token_activo', 'token_aceptacion',
     'aprobacion_tipo', 'aprobacion_canal', 'aprobacion_fecha_cliente',
     'aprobacion_notas', 'aprobacion_registrada_por', 'aprobacion_registrada_at', 'aprobacion_archivos',
-    'centro_beneficio_id', 'responsable_id',
+    'centro_beneficio_id', 'responsable_id', 'sociedad_id',
   ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
@@ -530,6 +531,7 @@ export async function persistirHojaCosteo(supabase, empresaId, hc) {
     precio_sugerido_sin_igv: hc.precio_sugerido_sin_igv || 0,
     precio_sugerido_total: hc.precio_sugerido_total || 0,
     moneda: hc.moneda || 'PEN',
+    sociedad_id: hc.sociedad_id || null,
   };
   return supabase.from('hojas_costeo').insert(row);
 }
@@ -559,9 +561,47 @@ export async function crearHojaCosteoRpc(supabase, empresaId, hc) {
   });
 }
 
+export async function crearHojaCosteoSociedadRpc(supabase, empresaId, hc) {
+  return supabase.rpc('crear_hoja_costeo_sociedad', {
+    p_empresa_id: empresaId,
+    p_sociedad_id: hc.sociedad_id,
+    p_id: hc.id,
+    p_numero: hc.numero,
+    p_oportunidad_id: hc.oportunidad_id || null,
+    p_cuenta_id: hc.cuenta_id || null,
+    p_responsable_costeo: hc.responsable_costeo || null,
+    p_fecha: hc.fecha || null,
+    p_margen_objetivo_pct: hc.margen_objetivo_pct || 35,
+    p_notas: hc.notas || null,
+    p_mano_obra: hc.mano_obra || [],
+    p_materiales: hc.materiales || [],
+    p_servicios_terceros: hc.servicios_terceros || [],
+    p_logistica: hc.logistica || [],
+    p_total_mano_obra: hc.total_mano_obra || 0,
+    p_total_materiales: hc.total_materiales || 0,
+    p_total_servicios_terceros: hc.total_servicios_terceros || 0,
+    p_total_logistica: hc.total_logistica || 0,
+    p_costo_total: hc.costo_total || 0,
+    p_precio_sugerido_sin_igv: hc.precio_sugerido_sin_igv || 0,
+    p_precio_sugerido_total: hc.precio_sugerido_total || 0,
+  });
+}
+
 export async function aprobarHojaCosteoRpc(supabase, empresaId, hcId, cotizacion) {
   return supabase.rpc('aprobar_hoja_costeo_y_crear_cotizacion', {
     p_empresa_id: empresaId,
+    p_hoja_costeo_id: hcId,
+    p_cotizacion_id: cotizacion.id,
+    p_numero: cotizacion.numero,
+    p_moneda: cotizacion.moneda || 'PEN',
+    p_validez: cotizacion.validez || '30 dias',
+  });
+}
+
+export async function aprobarHojaCosteoSociedadRpc(supabase, empresaId, hcId, cotizacion) {
+  return supabase.rpc('aprobar_hoja_costeo_y_crear_cotizacion_sociedad', {
+    p_empresa_id: empresaId,
+    p_sociedad_id: cotizacion.sociedad_id,
     p_hoja_costeo_id: hcId,
     p_cotizacion_id: cotizacion.id,
     p_numero: cotizacion.numero,

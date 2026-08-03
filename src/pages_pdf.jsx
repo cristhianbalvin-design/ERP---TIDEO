@@ -78,6 +78,83 @@ function Footer({ S, cfg }) {
   );
 }
 
+const boletaStyles = StyleSheet.create({
+  page: { fontFamily: 'Helvetica', fontSize: 9, color: '#172033', padding: 36 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderColor: '#ccd5e0', paddingBottom: 12, marginBottom: 14 },
+  logo: { width: 105, height: 42, objectFit: 'contain', objectPosition: 'left center' },
+  company: { textAlign: 'right', maxWidth: 270 },
+  companyName: { fontFamily: 'Helvetica-Bold', fontSize: 12 },
+  muted: { color: '#667085', fontSize: 8, marginTop: 3 },
+  title: { textAlign: 'center', fontFamily: 'Helvetica-Bold', fontSize: 15, marginBottom: 14 },
+  info: { flexDirection: 'row', gap: 12, marginBottom: 14 },
+  infoBox: { flex: 1, borderWidth: 1, borderColor: '#e0e6ed', borderRadius: 4, padding: 9 },
+  label: { color: '#667085', fontSize: 7.5, marginBottom: 3 },
+  value: { fontFamily: 'Helvetica-Bold', fontSize: 9 },
+  section: { fontFamily: 'Helvetica-Bold', backgroundColor: '#eef3f8', padding: 6, marginTop: 8, marginBottom: 6 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: 0.5, borderColor: '#edf0f4' },
+  total: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, padding: 10, backgroundColor: '#eaf8ef', borderRadius: 4 },
+  totalText: { fontFamily: 'Helvetica-Bold', fontSize: 12, color: '#167344' },
+  signature: { marginTop: 36, alignItems: 'center', width: 220, alignSelf: 'center' },
+  signatureImage: { width: 120, height: 48, objectFit: 'contain', marginBottom: 4 },
+  signatureLine: { borderTopWidth: 1, borderColor: '#667085', width: 180, paddingTop: 5, textAlign: 'center' },
+  footer: { position: 'absolute', bottom: 24, left: 36, right: 36, textAlign: 'center', fontSize: 7, color: '#8893a2' },
+});
+
+const montoBoleta = value => `S/ ${Number(value || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+export function BoletaPagoPDF({ calculo, periodo, emisor }) {
+  const trabajador = calculo?.trabajador || {};
+  const ingresos = [
+    ['Sueldo base', calculo?.sueldo_base],
+    ['Asignación familiar', calculo?.asignacion_familiar],
+    ['Horas extra', calculo?.add_horas_extra],
+    ['Bonificación por altitud', calculo?.bonif_altitud],
+    ['Otros ingresos no remunerativos', calculo?.otros_ingresos],
+  ].filter(([, value], index) => index === 0 || Number(value) !== 0);
+  const descuentos = [
+    ['Faltas', calculo?.desc_faltas],
+    ['Tardanzas', calculo?.desc_tardanzas],
+    ['Aporte AFP', calculo?.aporte_afp],
+    ['Comisión AFP', calculo?.comision_flujo],
+    ['Prima de seguro AFP', calculo?.prima_seguro],
+    ['ONP', calculo?.desc_onp],
+    ['IR 5ta categoría', calculo?.retencion_ir],
+    ['Préstamos', calculo?.desc_prestamo],
+    ['Otros descuentos', calculo?.desc_extraordinario],
+  ].filter(([, value]) => Number(value) !== 0);
+
+  return (
+    <Document>
+      <Page size="A4" style={boletaStyles.page}>
+        <View style={boletaStyles.header}>
+          <View>{emisor?.logo_url ? <Image src={emisor.logo_url} style={boletaStyles.logo} /> : null}</View>
+          <View style={boletaStyles.company}>
+            <Text style={boletaStyles.companyName}>{emisor?.razon_social || emisor?.nombre || 'Empresa'}</Text>
+            {emisor?.ruc ? <Text style={boletaStyles.muted}>RUC: {emisor.ruc}</Text> : null}
+            {emisor?.direccion_fiscal || emisor?.direccion ? <Text style={boletaStyles.muted}>{emisor.direccion_fiscal || emisor.direccion}</Text> : null}
+          </View>
+        </View>
+        <Text style={boletaStyles.title}>BOLETA DE PAGO</Text>
+        <View style={boletaStyles.info}>
+          <View style={boletaStyles.infoBox}><Text style={boletaStyles.label}>TRABAJADOR</Text><Text style={boletaStyles.value}>{trabajador.nombre || '—'}</Text><Text style={boletaStyles.muted}>{trabajador.cargo || 'Sin cargo'}</Text></View>
+          <View style={boletaStyles.infoBox}><Text style={boletaStyles.label}>PERÍODO</Text><Text style={boletaStyles.value}>{periodo?.periodo || '—'}</Text><Text style={boletaStyles.muted}>{periodo?.fecha_inicio || '—'} al {periodo?.fecha_fin || '—'}</Text></View>
+        </View>
+        <Text style={boletaStyles.section}>INGRESOS</Text>
+        {ingresos.map(([label, value]) => <View key={label} style={boletaStyles.row}><Text>{label}</Text><Text>{montoBoleta(value)}</Text></View>)}
+        <View style={boletaStyles.row}><Text style={boletaStyles.value}>Remuneración bruta</Text><Text style={boletaStyles.value}>{montoBoleta(calculo?.remuneracion_bruta)}</Text></View>
+        <Text style={boletaStyles.section}>DESCUENTOS</Text>
+        {descuentos.length ? descuentos.map(([label, value]) => <View key={label} style={boletaStyles.row}><Text>{label}</Text><Text>-{montoBoleta(value)}</Text></View>) : <Text style={boletaStyles.muted}>Sin descuentos.</Text>}
+        <View style={boletaStyles.total}><Text style={boletaStyles.totalText}>NETO A PAGAR</Text><Text style={boletaStyles.totalText}>{montoBoleta(calculo?.neto)}</Text></View>
+        <View style={boletaStyles.signature}>
+          {emisor?.firma_url ? <Image src={emisor.firma_url} style={boletaStyles.signatureImage} /> : null}
+          <Text style={boletaStyles.signatureLine}>Empleador · {emisor?.razon_social || emisor?.nombre || 'Empresa'}</Text>
+        </View>
+        <Text style={boletaStyles.footer}>Documento generado por TIDEO ERP. Los cálculos son referenciales y deben validarse antes de procesar pagos.</Text>
+      </Page>
+    </Document>
+  );
+}
+
 export function HojaCostooPDF({ hc, opp, cuenta, cfg }) {
   const primary = cfg?.color_primario || '#1A2B4A';
   const secondary = cfg?.color_secundario || '#607D8B';

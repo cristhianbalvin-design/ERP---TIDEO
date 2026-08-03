@@ -191,7 +191,15 @@ export async function crearFinanciamientoConAmortizacion({ empresa, nuevo }) {
     p_notas: nuevo.notas || null,
   });
   if (error) throw error;
-  return { ...data, pagos_realizados: [] };
+  if (nuevo.sociedad_id) {
+    const { error: sociedadError } = await supabase
+      .from('financiamientos')
+      .update({ sociedad_id: nuevo.sociedad_id })
+      .eq('id', nuevo.id)
+      .eq('empresa_id', empresa.id);
+    if (sociedadError) throw sociedadError;
+  }
+  return { ...data, sociedad_id: nuevo.sociedad_id || null, pagos_realizados: [] };
 }
 
 export function buildPagoFinanciamiento({ financiamiento, datos, nuevoSaldo }) {

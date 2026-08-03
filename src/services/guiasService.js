@@ -29,14 +29,15 @@ export const CAMPOS_OBLIGATORIOS_GR = {
 };
 
 // ─── Correlativo (atómico: read-then-upsert; suficiente para uso no concurrente) ──
-async function siguienteCorrelativo(supabase, empresaId, tipoDocumento, serie = 'T001') {
-  const { data: existing } = await supabase
+async function siguienteCorrelativo(supabase, empresaId, tipoDocumento, serie = 'T001', sociedadId = null) {
+  let query = supabase
     .from('correlativos_documentos')
     .select('*')
     .eq('empresa_id', empresaId)
     .eq('tipo_documento', tipoDocumento)
-    .eq('serie', serie)
-    .maybeSingle();
+    .eq('serie', serie);
+  query = sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
+  const { data: existing } = await query.maybeSingle();
 
   const ultimo = Number(existing?.ultimo_numero ?? 0);
   const siguiente = ultimo + 1;
@@ -49,6 +50,7 @@ async function siguienteCorrelativo(supabase, empresaId, tipoDocumento, serie = 
     await supabase.from('correlativos_documentos').insert({
       id: mkId('cor'), empresa_id: empresaId,
       tipo_documento: tipoDocumento, serie,
+      sociedad_id: sociedadId,
       ultimo_numero: siguiente,
       updated_at: new Date().toISOString(),
     });
@@ -116,7 +118,7 @@ export async function crearGuia(empresaId, form, usuarioId) {
   const supabase = await getSupabaseClient();
 
   const serie = form.serie || 'T001';
-  const { numero, numero_completo } = await siguienteCorrelativo(supabase, empresaId, 'guia_remision', serie);
+  const { numero, numero_completo } = await siguienteCorrelativo(supabase, empresaId, 'guia_remision', serie, form.sociedad_origen_id || null);
 
   const guiaId = mkId('gr');
   const { lineas: lineasForm = [], ...guiaDatos } = form;
@@ -135,6 +137,8 @@ export async function crearGuia(empresaId, form, usuarioId) {
     orden_venta_id: guiaDatos.orden_venta_id || null,
     ot_id: guiaDatos.ot_id || null,
     almacen_origen_id: guiaDatos.almacen_origen_id || null,
+    sociedad_origen_id: guiaDatos.sociedad_origen_id || null,
+    sociedad_destino_id: guiaDatos.sociedad_destino_id || null,
     partida_direccion: guiaDatos.partida_direccion || '',
     partida_ubigeo: guiaDatos.partida_ubigeo || null,
     llegada_direccion: guiaDatos.llegada_direccion || '',
@@ -279,6 +283,7 @@ export async function confirmarEntrega(guiaId, usuarioId) {
           nro_documento: guia.numero_completo,
           observacion: `Despacho guía ${guia.numero_completo}`,
           usuario_id: usuarioId,
+          sociedad_id: guia.sociedad_origen_id || null,
         });
         kardexIds.push(res.kardex_id);
       } catch (err) {

@@ -21,14 +21,15 @@ function calcularTotalesOV(lineas, moneda = 'PEN') {
 }
 
 // ─── Correlativo OV ───────────────────────────────────────────────────────────
-async function siguienteNumeroOV(supabase, empresaId) {
-  const { data: existing } = await supabase
+async function siguienteNumeroOV(supabase, empresaId, sociedadId = null) {
+  let query = supabase
     .from('correlativos_documentos')
     .select('*')
     .eq('empresa_id', empresaId)
     .eq('tipo_documento', 'orden_venta')
-    .eq('serie', 'OV')
-    .maybeSingle();
+    .eq('serie', 'OV');
+  query = sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
+  const { data: existing } = await query.maybeSingle();
 
   const ultimo = Number(existing?.ultimo_numero ?? 0);
   const siguiente = ultimo + 1;
@@ -41,6 +42,7 @@ async function siguienteNumeroOV(supabase, empresaId) {
     await supabase.from('correlativos_documentos').insert({
       id: mkId('cor'), empresa_id: empresaId,
       tipo_documento: 'orden_venta', serie: 'OV',
+      sociedad_id: sociedadId,
       ultimo_numero: siguiente, updated_at: new Date().toISOString(),
     });
   }
@@ -122,13 +124,14 @@ export async function crearOrdenVenta(empresaId, form, usuarioId) {
   const { lineas: lineasForm = [], ...ovDatos } = form;
   if (!lineasForm.length) throw new Error('La OV debe tener al menos un ítem');
 
-  const numero = await siguienteNumeroOV(supabase, empresaId);
+  const numero = await siguienteNumeroOV(supabase, empresaId, ovDatos.sociedad_id || null);
   const totales = calcularTotalesOV(lineasForm, ovDatos.moneda);
 
   const ovId = mkId('ov');
   const { data: ov, error } = await supabase.from('ordenes_venta').insert({
     id: ovId,
     empresa_id: empresaId,
+    sociedad_id: ovDatos.sociedad_id || null,
     numero,
     cuenta_id: ovDatos.cuenta_id || null,
     cliente_nombre: ovDatos.cliente_nombre || '',

@@ -209,14 +209,17 @@ export const nominaService = {
   // Borrado + insercion transaccional de todo el detalle de un periodo (RPC de Postgres,
   // migracion 333). Reemplaza filas huerfanas de un "Procesar" anterior con roster distinto;
   // ambas operaciones ocurren dentro de la misma transaccion de la funcion en el servidor.
-  guardarDetalle: async (empresaId, periodoId, filas) => {
+  guardarDetalle: async (empresaId, periodoId, filas, sociedadId = null) => {
     if (!filas.length) return 0;
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.rpc('guardar_nomina_detalle_periodo', {
+    const rpc = sociedadId ? 'guardar_nomina_detalle_periodo_sociedad' : 'guardar_nomina_detalle_periodo';
+    const params = {
       p_empresa_id: empresaId,
       p_periodo_id: periodoId,
       p_filas: filas,
-    });
+      ...(sociedadId ? { p_sociedad_id: sociedadId } : {}),
+    };
+    const { data, error } = await supabase.rpc(rpc, params);
     if (error) throw error;
     return data ?? 0;
   },

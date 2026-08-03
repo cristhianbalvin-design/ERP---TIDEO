@@ -1,10 +1,11 @@
 // BI Financiero — Rentabilidad · CxC/CxP · Flujo de Caja · Presupuesto vs Real
 // Datos reales: buildEstadoResultados, cxc, cxp, movimientosTesoreria
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
-import { buildEstadoResultados } from './services/estadoResultadosService.js';
+import { ER_SCOPE_MODE, buildEstadoResultados, getEstadoResultadosPorScope } from './services/estadoResultadosService.js';
+import { PERFIL_SOCIEDAD } from './services/sociedadesService.js';
 
 const S = (n) => n == null ? '—' : 'S/ ' + Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const P = (n) => n == null ? '—' : Number(n).toFixed(1) + '%';
@@ -808,17 +809,46 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
 
 export function BIFinanciero() {
   const [tab, setTab] = useState('rentabilidad');
-  const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio, cxc, cxp, cxpPagos, cuentas, movimientosTesoreria, facturas } = useApp();
+  const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio, cxc, cxp, cxpPagos, cuentas, movimientosTesoreria, facturas, perfilSociedad, sociedadActiva, sociedadesDisponibles } = useApp();
 
   const now = new Date();
   const [periodo, setPeriodo] = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
   const [cecosSel, setCecosSel] = useState([]);
   const [cebesSel, setCebesSel] = useState([]);
+  const [scopeMode, setScopeMode] = useState(ER_SCOPE_MODE.SOCIEDAD);
+  const [scopeSociedadId, setScopeSociedadId] = useState(sociedadActiva?.id || '');
+  const [scopeErData, setScopeErData] = useState(null);
 
   const periodoOpts = Array.from({length:12}, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
     return { v:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, l:`${MESES[d.getMonth()]} ${d.getFullYear()}` };
   });
+  const multisociedadActiva = Boolean(empresa?.multisociedad_habilitado && perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
+  const puedeComparar = multisociedadActiva && sociedadesDisponibles.length > 1;
+  const scopeSociedadIds = scopeMode === ER_SCOPE_MODE.SOCIEDAD
+    ? [scopeSociedadId || sociedadActiva?.id].filter(Boolean)
+    : sociedadesDisponibles.map(s => s.id);
+
+  useEffect(() => {
+    if (!multisociedadActiva || puedeComparar || scopeMode === ER_SCOPE_MODE.SOCIEDAD) return;
+    setScopeMode(ER_SCOPE_MODE.SOCIEDAD);
+  }, [multisociedadActiva, puedeComparar, scopeMode]);
+
+  useEffect(() => {
+    if (!multisociedadActiva) {
+      setScopeErData(null);
+      return;
+    }
+    if (!sociedadesDisponibles.some(s => s.id === scopeSociedadId)) {
+      setScopeSociedadId(sociedadActiva?.id || sociedadesDisponibles[0]?.id || '');
+      return;
+    }
+    let cancelled = false;
+    getEstadoResultadosPorScope({ empresaId: empresa.id, periodo, mode: scopeMode, sociedadIds: scopeSociedadIds, cecoIds: cecosSel, cebeIds: cebesSel })
+      .then(result => { if (!cancelled) setScopeErData(result); })
+      .catch(() => { if (!cancelled) setScopeErData(null); });
+    return () => { cancelled = true; };
+  }, [multisociedadActiva, empresa?.id, periodo, scopeMode, scopeSociedadId, sociedadesDisponibles, cecosSel, cebesSel]);
 
   // ── CECO/CEBE filter ────────────────────────────────────────────────────────
   const cecosDeEmpresa = (centrosCosto || []).filter(c => c.empresa_id === empresa?.id && c.estado === 'activo');
@@ -838,13 +868,27 @@ export function BIFinanciero() {
   const otsFiltradas = efectivoCecos ? (ots || []).filter(o => efectivoCecos.includes(o.centro_costo_id)) : (ots || []);
 
   // ── ER actual y anterior ────────────────────────────────────────────────────
-  const { er, utilidadBruta, resultadoOp, resultadoNeto } = buildEstadoResultados({
+  const erLocal = buildEstadoResultados({
     base: MOCK.estadoResultados,
     comprasGastos: cgFiltrado,
     ots: otsFiltradas,
+    ...(multisociedadActiva ? {
+      facturas,
+      centrosCosto,
+      centrosBeneficio,
+      sociedadIds: scopeSociedadIds,
+    } : {}),
     empresa,
     periodo,
   });
+  const comparativoEr = scopeErData?.scopeMode === ER_SCOPE_MODE.COMPARATIVO
+    ? scopeErData.comparativo
+    : null;
+  const erResuelto = multisociedadActiva && scopeErData && !comparativoEr
+    ? scopeErData
+    : erLocal;
+  const { er, utilidadBruta, resultadoOp, resultadoNeto } = erResuelto;
+  const pen = totals => Number(totals?.PEN || 0);
 
   const prevPeriodo = (() => {
     const [y, m] = periodo.split('-').map(Number);
@@ -855,6 +899,12 @@ export function BIFinanciero() {
     base: MOCK.estadoResultados,
     comprasGastos: cgFiltrado,
     ots: otsFiltradas,
+    ...(multisociedadActiva ? {
+      facturas,
+      centrosCosto,
+      centrosBeneficio,
+      sociedadIds: scopeSociedadIds,
+    } : {}),
     empresa,
     periodo: prevPeriodo,
   });
@@ -883,11 +933,14 @@ export function BIFinanciero() {
   }).reduce((s,c) => s + saldoCxp(c), 0);
 
   // ── KPIs ────────────────────────────────────────────────────────────────────
-  const facturacionMes = er.ingresos.total;
-  const margenBrutoPct = facturacionMes > 0 ? utilidadBruta / facturacionMes * 100 : 0;
-  const margenNetoPct  = facturacionMes > 0 ? resultadoNeto / facturacionMes * 100 : 0;
-  const varFactPct     = erPrev.ingresos.total > 0 ? (facturacionMes - erPrev.ingresos.total) / erPrev.ingresos.total * 100 : 0;
-  const margenBrutoAntPct = erPrev.ingresos.total > 0 ? ubPrev / erPrev.ingresos.total * 100 : 0;
+  const facturacionMes = pen(er.ingresos.total);
+  const utilidadBrutaPen = pen(utilidadBruta);
+  const resultadoNetoPen = pen(resultadoNeto);
+  const ingresosPrevPen = pen(erPrev.ingresos.total);
+  const margenBrutoPct = facturacionMes > 0 ? utilidadBrutaPen / facturacionMes * 100 : 0;
+  const margenNetoPct  = facturacionMes > 0 ? resultadoNetoPen / facturacionMes * 100 : 0;
+  const varFactPct     = ingresosPrevPen > 0 ? (facturacionMes - ingresosPrevPen) / ingresosPrevPen * 100 : 0;
+  const margenBrutoAntPct = ingresosPrevPen > 0 ? pen(ubPrev) / ingresosPrevPen * 100 : 0;
 
   // ── Evolución margen 6 meses ─────────────────────────────────────────────────
   const evolucionMargen = useMemo(() => {
@@ -902,10 +955,18 @@ export function BIFinanciero() {
       else if (cecosPorCebeM != null) { efM = cecosPorCebeM; }
       const cgF = efM ? (comprasGastos||[]).filter(g => efM.includes(g.centro_costo_id)) : (comprasGastos||[]);
       const otsF = efM ? (ots||[]).filter(o => efM.includes(o.centro_costo_id)) : (ots||[]);
-      const { er: erM, utilidadBruta: ubM } = buildEstadoResultados({ base: MOCK.estadoResultados, comprasGastos: cgF, ots: otsF, empresa, periodo: p });
-      return { mes: MESES_CORTOS[d.getMonth()], facturacion: erM.ingresos.total, margen_pct: erM.ingresos.total > 0 ? Math.round(ubM / erM.ingresos.total * 100) : 0 };
+      const { er: erM, utilidadBruta: ubM } = buildEstadoResultados({
+        base: MOCK.estadoResultados,
+        comprasGastos: cgF,
+        ots: otsF,
+        ...(multisociedadActiva ? { facturas, centrosCosto, centrosBeneficio, sociedadIds: scopeSociedadIds } : {}),
+        empresa,
+        periodo: p,
+      });
+      const facturacion = pen(erM.ingresos.total);
+      return { mes: MESES_CORTOS[d.getMonth()], facturacion, margen_pct: facturacion > 0 ? Math.round(pen(ubM) / facturacion * 100) : 0 };
     });
-  }, [comprasGastos, ots, cecosSel, cebesSel, centrosCosto, empresa, periodo]);
+  }, [comprasGastos, ots, cecosSel, cebesSel, centrosCosto, centrosBeneficio, empresa, periodo, facturas, multisociedadActiva, scopeMode, scopeSociedadId, sociedadesDisponibles]);
 
   // ── Margen por cliente ───────────────────────────────────────────────────────
   const margenPorCliente = (() => {
@@ -1037,6 +1098,18 @@ export function BIFinanciero() {
           <div className="page-sub">Rentabilidad · Cobranza · Flujo · Presupuesto — {data.periodo}</div>
         </div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          {multisociedadActiva && (
+            <select className="select" style={{ width: 150 }} value={scopeMode} onChange={e => setScopeMode(e.target.value)}>
+              <option value={ER_SCOPE_MODE.SOCIEDAD}>Sociedad única</option>
+              {puedeComparar && <option value={ER_SCOPE_MODE.COMPARATIVO}>Comparativo</option>}
+              {puedeComparar && <option value={ER_SCOPE_MODE.CONSOLIDADO}>Consolidado</option>}
+            </select>
+          )}
+          {multisociedadActiva && scopeMode === ER_SCOPE_MODE.SOCIEDAD && (
+            <select className="select" style={{ width: 190 }} value={scopeSociedadId} onChange={e => setScopeSociedadId(e.target.value)}>
+              {sociedadesDisponibles.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+          )}
           <select className="select" style={{ width: 160 }} value={periodo} onChange={e => setPeriodo(e.target.value)}>
             {periodoOpts.map(p => <option key={p.v} value={p.v}>{p.l}</option>)}
           </select>
@@ -1045,15 +1118,48 @@ export function BIFinanciero() {
         </div>
       </div>
 
-      <div className="kpi-grid" style={{ marginBottom: 24 }}>
+      {comparativoEr && (
+        <div className="card" style={{ marginBottom: 24, overflowX: 'auto' }}>
+          <div className="card-title" style={{ marginBottom: 12 }}>Estado de Resultados comparativo</div>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Concepto</th>
+                {comparativoEr.map(item => <th key={item.sociedadId} className="num">{sociedadesDisponibles.find(s => s.id === item.sociedadId)?.nombre || item.sociedadId}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ['Ingresos', item => item.data.er.ingresos.total],
+                ['Costo de ventas', item => item.data.er.costoVentas.total],
+                ['Gastos operativos', item => item.data.er.gastosOp.total],
+                ['Gastos financieros', item => item.data.er.gastosFin.total],
+                ['Resultado neto', item => item.data.resultadoNeto],
+              ].map(([label, getter]) => (
+                <tr key={label}>
+                  <td><strong>{label}</strong></td>
+                  {comparativoEr.map(item => (
+                    <td key={item.sociedadId} className="num">
+                      <div>{S(pen(getter(item)))}</div>
+                      {Number(getter(item)?.USD || 0) !== 0 && <div className="text-muted">USD {Number(getter(item).USD).toLocaleString('es-PE')}</div>}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!comparativoEr && <div className="kpi-grid" style={{ marginBottom: 24 }}>
         <KPI label="Facturación Mes" value={S(facturacionMes)} sub={`${vi(varFactPct)} ${P(Math.abs(varFactPct))} vs mes ant.`} subColor={vc(varFactPct)} />
-        <KPI label="Margen Bruto" value={S(utilidadBruta)} sub={P(margenBrutoPct) + ' del total'} subColor="var(--green)" />
-        <KPI label="Margen Neto" value={S(resultadoNeto)} sub={P(margenNetoPct) + ' del total'} subColor={vc(resultadoNeto)} />
+        <KPI label="Margen Bruto" value={S(utilidadBrutaPen)} sub={P(margenBrutoPct) + ' del total'} subColor="var(--green)" />
+        <KPI label="Margen Neto" value={S(resultadoNetoPen)} sub={P(margenNetoPct) + ' del total'} subColor={vc(resultadoNetoPen)} />
         <KPI label="CxC Total" value={S(cxcTotal)} sub={S(cxcVencida) + ' vencida'} subColor="var(--danger)" />
         <KPI label="CxP Total" value={S(cxpTotal)} sub={S(cxpProximos30d) + ' próx. 30d'} subColor="var(--warning)" />
         <KPI label="Δ Margen Bruto" value={`${margenBrutoPct >= margenBrutoAntPct ? '+' : ''}${P(margenBrutoPct - margenBrutoAntPct)}`} sub="vs mes anterior" subColor={margenBrutoPct >= margenBrutoAntPct ? 'var(--green)' : 'var(--danger)'} />
         <KPI label="Retenciones SUNAT" value={S(totalRetencionesPeriodo)} sub={clientesRetencionPeriodo > 0 ? `${clientesRetencionPeriodo} cliente${clientesRetencionPeriodo > 1 ? 's' : ''} · crédito fiscal` : 'Sin retenciones en el período'} subColor={totalRetencionesPeriodo > 0 ? 'var(--cyan)' : 'var(--fg-muted)'} />
-      </div>
+      </div>}
 
       <div className="tab-bar" style={{ marginBottom: 24 }}>
         {tabs.map(t => (

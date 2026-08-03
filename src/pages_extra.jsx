@@ -6,6 +6,8 @@ import { useApp } from './context.jsx';
 import { getAssignableUsers, canUserSeeOwner, canUserApproveOwner } from './lib/hierarchy.js';
 import { renderTextoComercial } from './lib/textoComercial.js';
 import { SmartTextField } from './components/SmartTextField.jsx';
+import { SociedadBadge, SociedadFormField } from './components/SociedadFormField.jsx';
+import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD } from './services/sociedadesService.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 
 const normalizeCurrencyCode = (m = 'PEN') => String(m || 'PEN').trim().toUpperCase();
@@ -162,18 +164,22 @@ function CotizacionesInner() {
     cotizaciones, oportunidades, cuentas, contactos, usuarios, osClientes, hojasCosteo, activeParams,
     navigate, crearCotizacion, actualizarCotizacion, aprobarCotizacion, aprobarCotizacionInterna, registrarAprobacionManual,
     crearOSCliente, vincularCotizacionOS, subirVersionCotizacion, searchQuery, empresaConfig, diccionarioComercial = [], addNotificacion,
-    authUser, roles
+    authUser, roles, perfilSociedad, sociedadesIdsAlcance
   } = useApp();
   const [osModal, setOsModal] = useState(null);
   const [generandoPDF, setGenerandoPDF] = useState(false);
   const [filtros, setFiltros] = useState({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' });
+  const cotizacionesAlcance = useMemo(
+    () => filtrarRegistrosPorAlcanceSociedad(cotizaciones, perfilSociedad, sociedadesIdsAlcance),
+    [cotizaciones, perfilSociedad, sociedadesIdsAlcance]
+  );
 
   useEffect(() => {
     if (activeParams?.crear_os && activeParams?.detail) {
-      const c = cotizaciones.find(x => x.id === activeParams.detail);
+      const c = cotizacionesAlcance.find(x => x.id === activeParams.detail);
       if (c && c.estado === 'aprobada') setOsModal(c);
     }
-  }, [activeParams?.crear_os, activeParams?.detail]);
+  }, [activeParams?.crear_os, activeParams?.detail, cotizacionesAlcance]);
 
   const getOpp    = id => oportunidades.find(o => o.id === id);
   const getCuenta = id => cuentas.find(c => c.id === id);
@@ -219,7 +225,7 @@ function CotizacionesInner() {
 
   // ── Editar borrador ────────────────────────────────────────────────
   if (activeParams?.detail && activeParams?.edit) {
-    const cot = cotizaciones.find(c => c.id === activeParams.detail);
+    const cot = cotizacionesAlcance.find(c => c.id === activeParams.detail);
     if (!cot) return <div className="p-4">Cotización no encontrada</div>;
     const opp = getOpp(cot.oportunidad_id);
     const cuentaId = cot.cuenta_id || opp?.cuenta_id;
@@ -239,7 +245,7 @@ function CotizacionesInner() {
 
   // ── Detalle ────────────────────────────────────────────────────────
   if (activeParams?.detail) {
-    const cot = cotizaciones.find(c => c.id === activeParams.detail);
+    const cot = cotizacionesAlcance.find(c => c.id === activeParams.detail);
     if (!cot) return <div className="p-4">Cotización no encontrada</div>;
     const opp     = getOpp(cot.oportunidad_id);
     const cuenta  = getCuenta(cot.cuenta_id || opp?.cuenta_id);
@@ -324,7 +330,7 @@ function CotizacionesInner() {
   // ── Lista ──────────────────────────────────────────────────────────
   const query = searchQuery.toLowerCase();
   const latestPorNumero = Object.values(
-    cotizaciones.reduce((acc, c) => {
+    cotizacionesAlcance.reduce((acc, c) => {
       if (!acc[c.numero] || c.version > acc[c.numero].version) acc[c.numero] = c;
       return acc;
     }, {})
@@ -379,7 +385,7 @@ function CotizacionesInner() {
         <div className="table-wrap">
           <table className="tbl">
             <thead>
-              <tr><th>Número</th><th>Cliente</th><th>Oportunidad</th><th>Implementación</th><th>Recurrente/mes</th><th>Fecha</th><th>Estado</th></tr>
+              <tr><th>Número</th>{perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD && <th>Sociedad</th>}<th>Cliente</th><th>Oportunidad</th><th>Implementación</th><th>Recurrente/mes</th><th>Fecha</th><th>Estado</th></tr>
             </thead>
             <tbody>
               {filtered.map(r => {
@@ -393,6 +399,7 @@ function CotizacionesInner() {
                       {r.numero}
                       {r.version > 1 && <span className="badge badge-gray" style={{marginLeft:6, fontSize:10, verticalAlign:'middle'}}>v{r.version}</span>}
                     </td>
+                    {perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD && <td><SociedadBadge sociedadId={r.sociedad_id} /></td>}
                     <td><strong>{cliente}</strong></td>
                     <td className="text-muted">{opp?.nombre || '—'}</td>
                     <td className="num"><strong>{money(impl, currencySymbol(r.moneda))}</strong></td>
@@ -403,7 +410,7 @@ function CotizacionesInner() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan="7" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
+                <tr><td colSpan={perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD ? 8 : 7} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
                   {query ? `No se encontraron resultados para "${query}"` : 'No hay cotizaciones registradas.'}
                 </td></tr>
               )}
@@ -1036,7 +1043,7 @@ function TotalesBox({ subtotal, igvPct, igv, total, suffix = '', sym = 'S/' }) {
 
 // ── Editor (crear o editar borrador) ───────────────────────────────────
 function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfig, diccionarioComercial = [], onSave, onCancel }) {
-  const { centrosBeneficio, monedasActivas } = useApp();
+  const { centrosBeneficio, monedasActivas, empresa } = useApp();
   const cfg     = empresaConfig || {};
   const isEdit  = !!(cotizacionBase?.id);
   const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
@@ -1058,6 +1065,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
   const [validezFecha,setValidezFecha]= useState(cotizacionBase?.validez_fecha || '');
   const [contactoId,  setContactoId]  = useState(cotizacionBase?.contacto_id || contactoPrincipalCuenta?.id || opp?.contacto_id || contactosCuenta[0]?.id || '');
   const [cebeId,      setCebeId]      = useState(cotizacionBase?.centro_beneficio_id || '');
+  const [sociedadId,  setSociedadId]  = useState(cotizacionBase?.sociedad_id || '');
   const [descripcion, setDescripcion] = useState(cotizacionBase?.descripcion_general || '');
   const opcionesMoneda = (monedasActivas || [])
     .map(m => ({ ...m, codigo: normalizeCurrencyCode(m.codigo) }))
@@ -1153,6 +1161,10 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
   const [errorGuardar, setErrorGuardar] = useState('');
 
   const handleSave = async () => {
+    if (empresa?.multisociedad_habilitado && !sociedadId) {
+      alert('Selecciona una sociedad para la cotización.');
+      return;
+    }
     if (hitosActivos && Math.abs(sumPct - 100) > 0.01) {
       alert(`Los porcentajes de hitos suman ${sumPct.toFixed(1)}%. Deben sumar exactamente 100%.`);
       return;
@@ -1176,6 +1188,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
         cuenta_id:      cotizacionBase?.cuenta_id      || opp?.cuenta_id,
         contacto_id:    contactoId || null,
         centro_beneficio_id: cebeId || null,
+        sociedad_id: empresa?.multisociedad_habilitado ? sociedadId : null,
         ...(isEdit && numeroCot ? { numero: numeroCot.trim() } : {}),
         moneda: monedaActual, igv_pct: toCotNumber(igvPct),
         validez_tipo: validezTipo,
@@ -1265,6 +1278,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
                 {cebesActivos.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}{c.tipo ? ` (${c.tipo})` : ''}</option>)}
               </select>
             </div>
+            <SociedadFormField value={sociedadId} onChange={setSociedadId} />
           </div>
           <div className="grid-2" style={{gap:16, marginBottom:16}}>
             <div className="input-group">
@@ -4070,7 +4084,7 @@ function Inventario() {
 
 // ============ HOJA DE COSTEO ============
 function HojaCosteo() {
-  const { hojasCosteo, oportunidades, cuentas, activeParams, navigate, crearHojaCosteo, actualizarHojaCosteo, aprobarHojaCosteo, searchQuery } = useApp();
+  const { hojasCosteo, oportunidades, cuentas, activeParams, navigate, crearHojaCosteo, actualizarHojaCosteo, aprobarHojaCosteo, searchQuery, perfilSociedad, sociedadesIdsAlcance } = useApp();
 
   const getOpp = id => oportunidades.find(o => o.id === id);
   const getCuentaNombre = id => { const c = cuentas.find(x => x.id === id); return c?.razon_social || c?.nombre_comercial || id || 'N/A'; };
@@ -4078,8 +4092,12 @@ function HojaCosteo() {
   const labelEstadoHC = e => String(estadoHC(e)).replace('_', ' ');
   const badgeHC = e => estadoHC(e) === 'aprobada' ? 'badge-green' : estadoHC(e) === 'en_revision' ? 'badge-orange' : 'badge-gray';
 
+  const hojasCosteoAlcance = useMemo(
+    () => filtrarRegistrosPorAlcanceSociedad(hojasCosteo, perfilSociedad, sociedadesIdsAlcance),
+    [hojasCosteo, perfilSociedad, sociedadesIdsAlcance]
+  );
   const query = searchQuery.toLowerCase();
-  const filteredHC = hojasCosteo.filter(hc => {
+  const filteredHC = hojasCosteoAlcance.filter(hc => {
     const opp = getOpp(hc.oportunidad_id);
     const cliente = getCuentaNombre(hc.cuenta_id);
     return !query ||
@@ -4089,7 +4107,7 @@ function HojaCosteo() {
   });
 
   if (activeParams?.detail) {
-    const hc = hojasCosteo.find(h => h.id === activeParams.detail);
+    const hc = hojasCosteoAlcance.find(h => h.id === activeParams.detail);
     if (!hc) return <div className="p-4">Hoja de Costeo no encontrada</div>;
     return <DetalleHC hc={hc} getOpp={getOpp} getCuentaNombre={getCuentaNombre} badgeHC={badgeHC} actualizarHojaCosteo={actualizarHojaCosteo} aprobarHojaCosteo={aprobarHojaCosteo} navigate={navigate} />;
   }
@@ -4112,14 +4130,14 @@ function HojaCosteo() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Hojas de Costeo</h1>
-          <div className="page-sub">{hojasCosteo.length} documentos · documento interno previo a cotización</div>
+          <div className="page-sub">{hojasCosteoAlcance.length} documentos · documento interno previo a cotización</div>
         </div>
       </div>
       <div className="card mt-6">
         <div className="table-wrap">
           <table className="tbl">
             <thead>
-              <tr><th>Número</th><th>Oportunidad</th><th>Cliente</th><th>Costo Total</th><th>Precio Sugerido</th><th>Margen obj.</th><th>Responsable</th><th>Estado</th></tr>
+              <tr><th>Número</th>{perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD && <th>Sociedad</th>}<th>Oportunidad</th><th>Cliente</th><th>Costo Total</th><th>Precio Sugerido</th><th>Margen obj.</th><th>Responsable</th><th>Estado</th></tr>
             </thead>
             <tbody>
               {filteredHC.map(hc => {
@@ -4127,6 +4145,7 @@ function HojaCosteo() {
                 return (
                   <tr key={hc.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => navigate('hoja_costeo', { detail: hc.id })}>
                     <td className="mono" style={{fontWeight:600}}>{hc.numero}</td>
+                    {perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD && <td><SociedadBadge sociedadId={hc.sociedad_id} /></td>}
                     <td>{opp?.nombre || '—'}</td>
                     <td><strong>{getCuentaNombre(hc.cuenta_id)}</strong></td>
                     <td className="num">{moneyCurrency(hc.costo_total, opp?.moneda || hc.moneda)}</td>
@@ -4137,7 +4156,7 @@ function HojaCosteo() {
                   </tr>
                 );
               })}
-              {filteredHC.length === 0 && <tr><td colSpan="8" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>{query ? 'Sin resultados para la búsqueda' : 'No hay hojas de costeo. Créalas desde el Pipeline.'}</td></tr>}
+              {filteredHC.length === 0 && <tr><td colSpan={perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD ? 9 : 8} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>{query ? 'Sin resultados para la búsqueda' : 'No hay hojas de costeo. Créalas desde el Pipeline.'}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -4353,7 +4372,7 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
       <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
         <div>
           <button className="btn btn-ghost" onClick={() => navigate('hoja_costeo')} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver a lista</button>
-          <h1 className="page-title row" style={{gap:10}}>{hc.numero} <span className={'badge ' + badgeHC(estado)} style={{fontSize:12, textTransform:'uppercase'}}>{estadoLabel}</span><span className="badge badge-gray" style={{fontSize:11}}>{currencySymbol(hcMoneda)}</span></h1>
+          <h1 className="page-title row" style={{gap:10}}>{hc.numero} <span className={'badge ' + badgeHC(estado)} style={{fontSize:12, textTransform:'uppercase'}}>{estadoLabel}</span><span className="badge badge-gray" style={{fontSize:11}}>{currencySymbol(hcMoneda)}</span><SociedadBadge sociedadId={hc.sociedad_id} /></h1>
           <div className="page-sub">Oportunidad: {opp?.nombre || '—'} · Cliente: <strong>{getCuentaNombre(hc.cuenta_id)}</strong></div>
         </div>
         <div className="row">
@@ -4456,7 +4475,7 @@ const calcPrecio = f => {
 
 // Subcomponente Editor Hoja de Costeo
 function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
-  const { usuarios, roles, empresa, authUser } = useApp();
+  const { usuarios, roles, empresa, authUser, sociedadActiva } = useApp();
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const [form, setForm] = useState({
     oportunidad_id: opp.id,
@@ -4469,7 +4488,8 @@ function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
     logistica: [],
     margen_objetivo_pct: 35,
     responsable_costeo: 'Admin',
-    notas: ''
+    notas: '',
+    sociedad_id: empresa?.multisociedad_habilitado ? (sociedadActiva?.id || '') : null,
   });
 
   const totalCosto = calcSub(form.mano_obra) + calcSub(form.materiales) + calcSub(form.servicios_terceros) + calcSub(form.logistica);
@@ -4485,7 +4505,7 @@ function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
         </div>
         <div className="row">
           <button className="btn btn-secondary" onClick={onCancel}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => onSave({ ...form, costo_total: totalCosto, precio_sugerido_sin_igv: precioSinIgv, precio_sugerido_total: precioSinIgv * 1.18 })}>{I.save} Guardar y Continuar</button>
+          <button className="btn btn-primary" disabled={empresa?.multisociedad_habilitado && !form.sociedad_id} onClick={() => onSave({ ...form, costo_total: totalCosto, precio_sugerido_sin_igv: precioSinIgv, precio_sugerido_total: precioSinIgv * 1.18 })}>{I.save} Guardar y Continuar</button>
         </div>
       </div>
 
@@ -4523,6 +4543,7 @@ function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
              <ResumenCostos hc={{ ...form, costo_total: totalCosto, precio_sugerido_sin_igv: precioSinIgv, precio_sugerido_total: precioSinIgv * 1.18 }} moneda={form.moneda} />
              <div className="card mt-6" style={{padding:20}}>
               <div className="eyebrow" style={{marginBottom:16}}>Configuracion y notas</div>
+              <SociedadFormField value={form.sociedad_id || ''} onChange={sociedad_id => setForm(p => ({ ...p, sociedad_id }))} />
               <div className="input-group">
                 <label>Margen objetivo (%)</label>
                 <input type="number" className="input" value={form.margen_objetivo_pct} onChange={e => setForm(p=>({...p, margen_objetivo_pct: Number(e.target.value)}))} />
